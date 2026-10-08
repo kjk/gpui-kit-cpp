@@ -49,6 +49,10 @@ Clipboard* Clipboard::Tooltip(Str t) {
     tooltipText = t;
     return this;
 }
+Clipboard* Clipboard::TooltipShowDelay(int ms) {
+    tooltipShowDelayMs = ms;
+    return this;
+}
 Clipboard* Clipboard::AccessibilityLabel(Str label) {
     accessibilityLabel = label;
     return this;
@@ -86,6 +90,9 @@ El* Clipboard::IntoEl() {
                       ->WithSize(size);
     if (tooltipText.s) {
         btn->Tooltip(tooltipText);
+    }
+    if (tooltipShowDelayMs >= 0) {
+        btn->TooltipShowDelay(tooltipShowDelayMs);
     }
     btn->AccessibilityLabel(accessibilityLabel.s ? accessibilityLabel
                                                  : Tr("Copy"));

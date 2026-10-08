@@ -2072,6 +2072,13 @@ InputGroupButton* InputGroupButton::Tooltip(Str s) {
     return this;
 }
 
+InputGroupButton* InputGroupButton::TooltipShowDelay(int ms) {
+    if (button) {
+        button->TooltipShowDelay(ms);
+    }
+    return this;
+}
+
 InputGroupButton* InputGroupButton::AriaLabel(Str s) {
     if (button) {
         button->AccessibilityLabel(s);

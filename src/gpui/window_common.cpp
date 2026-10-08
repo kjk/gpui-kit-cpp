@@ -1948,6 +1948,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         Str tip = now ? now->tooltip : Str{};
         Bounds tipAt = now ? now->bounds : Bounds{};
         int tipPlacement = now ? now->tooltipPlacement : -1;
+        int tipDelay = now ? now->tooltipShowDelayMs : -1;
         bool tipRoot = now && now->rootTooltip;
         WindowHoverChanged(win, win->hoverId, id);
         win->hoverId = id;
@@ -1956,7 +1957,8 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         // that happens here, since the trigger is a style flag rather than an
         // element that could carry handlers of its own.
         if (tip.s) {
-            TooltipRequestShow(win, tip, tipAt, tipPlacement, tipRoot);
+            TooltipRequestShow(win, tip, tipAt, tipPlacement, tipRoot,
+                               tipDelay);
         } else {
             TooltipRequestHide(win);
         }

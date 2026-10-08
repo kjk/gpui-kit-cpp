@@ -71,6 +71,10 @@ Checkbox* Checkbox::Tooltip(Str s) {
     tooltip = s;
     return this;
 }
+Checkbox* Checkbox::TooltipShowDelay(int ms) {
+    tooltipShowDelayMs = ms;
+    return this;
+}
 Checkbox* Checkbox::OnClick(Listener fn) {
     return OnChange(fn);
 }
@@ -148,6 +152,9 @@ El* Checkbox::IntoEl() {
     }
     if (tooltip.s) {
         row->Tip(tooltip);
+        if (tooltipShowDelayMs >= 0) {
+            row->TipShowDelay(tooltipShowDelayMs);
+        }
     }
     row->Child(ind);
     if (w > 0) {

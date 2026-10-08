@@ -32,6 +32,14 @@ Radio* Radio::Hint(Str s) {
     hint = s;
     return this;
 }
+Radio* Radio::Tooltip(Str s) {
+    tooltip = s;
+    return this;
+}
+Radio* Radio::TooltipShowDelay(int ms) {
+    tooltipShowDelayMs = ms;
+    return this;
+}
 Radio* Radio::Checked(bool v) {
     checked = v;
     return this;
@@ -107,6 +115,12 @@ El* Radio::IntoEl() {
     Str name = accessibilityLabel.s ? accessibilityLabel : label;
     if (name.s) {
         row->AriaLabel(name);
+    }
+    if (tooltip.s) {
+        row->Tip(tooltip);
+        if (tooltipShowDelayMs >= 0) {
+            row->TipShowDelay(tooltipShowDelayMs);
+        }
     }
     refiner.Apply(row);
     row->Child(dot);

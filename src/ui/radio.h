@@ -16,6 +16,8 @@ struct Radio {
     // The announced name, when the visible label is not it.
     Str accessibilityLabel = {};
     Str hint = {};
+    Str tooltip = {};
+    int tooltipShowDelayMs = -1;
     bool checked = false;
     bool disabled = false;
     UiSize size = UiSize::Medium;
@@ -36,6 +38,8 @@ struct Radio {
     // replaces the announced name without changing what is displayed.
     Radio* AccessibilityLabel(Str s);
     Radio* Hint(Str s);
+    Radio* Tooltip(Str s);
+    Radio* TooltipShowDelay(int ms);
     Radio* Checked(bool v);
     Radio* Disabled(bool v);
     Radio* WithSize(UiSize s);

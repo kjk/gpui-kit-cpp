@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7eb5209c2138a44a8bab7aaeb504a19c8b702800` (2026-10-06,
-kit: Add optional gpui-fast backend (#3375)). The kit can compile
-against GPUI Fast behind a Cargo feature. This tree stays the one C++
-engine, and the story introduction takes the upstream README. The
-current update target is
+Processed through `c0bebdc8a8cf9a74f9f52feaca278a52a9cfcca2` (2026-10-06,
+tooltip: Make show delay and grace period configurable with
+`TooltipDefaults` (#3376)). Tooltip timing is an application global,
+500 ms and 300 ms unless installed otherwise, and a trigger can show
+sooner. The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust

@@ -39,9 +39,40 @@ TooltipRequest TooltipRequest::Text(Bounds bounds, Str value) {
     return out;
 }
 
-TooltipRequest& TooltipRequest::Placement(gpui::Placement value) {
+TooltipDefaults& TooltipDefaults::WithShowDelay(int ms) {
+    showDelayMs = ms;
+    return *this;
+}
+
+TooltipDefaults& TooltipDefaults::WithGracePeriod(int ms) {
+    gracePeriodMs = ms;
+    return *this;
+}
+
+void TooltipDefaults::Install(App* app) const {
+    if (TooltipDefaults* slot = AppGlobalEnsure<TooltipDefaults>(app)) {
+        *slot = *this;
+    }
+}
+
+TooltipDefaults TooltipDefaults::Global(const App* app) {
+    const TooltipDefaults* installed = AppGlobalGet<TooltipDefaults>(app);
+    return installed ? *installed : TooltipDefaults{};
+}
+
+TooltipRequest& TooltipRequest::WithPlacement(gpui::Placement value) {
     preferredPlacement = value;
     hasPreferredPlacement = true;
+    return *this;
+}
+
+TooltipRequest& TooltipRequest::Placement(gpui::Placement value) {
+    return WithPlacement(value);
+}
+
+TooltipRequest& TooltipRequest::WithShowDelay(int ms) {
+    hasShowDelay = true;
+    showDelayMs = ms;
     return *this;
 }
 
@@ -109,8 +140,13 @@ void TooltipOverlay::RequestShow(const TooltipRequest& request, Window* window,
         return;
     }
     TooltipCancelHide(window, this);
+    int showDelay =
+        request.hasShowDelay
+            ? request.showDelayMs
+            : TooltipDefaults::Global(window ? window->app : nullptr)
+                  .showDelayMs;
     bool wasVisible = hasContent;
-    if (wasVisible || hadRecentTooltip) {
+    if (wasVisible || hadRecentTooltip || showDelay <= 0) {
         TooltipCancelShow(window, this);
         hasPreviousBounds = wasVisible;
         if (wasVisible) {
@@ -132,9 +168,8 @@ void TooltipOverlay::RequestShow(const TooltipRequest& request, Window* window,
     hasPreviousBounds = false;
     isSwitching = false;
     NextEpoch();
-    showTask =
-        WindowSetTimeout(window, kTooltipShowDelayMs,
-                         TooltipTimerListener(cx, &TooltipOverlay::OnShow));
+    showTask = WindowSetTimeout(
+        window, showDelay, TooltipTimerListener(cx, &TooltipOverlay::OnShow));
 }
 
 void TooltipOverlay::RequestHide(Window* window, Ctx* cx) {
@@ -148,9 +183,19 @@ void TooltipOverlay::RequestHide(Window* window, Ctx* cx) {
     }
     NextEpoch();
     hadRecentTooltip = true;
-    hideTask =
-        WindowSetTimeout(window, kTooltipGracePeriodMs,
-                         TooltipTimerListener(cx, &TooltipOverlay::OnHide));
+    int grace = TooltipDefaults::Global(window ? window->app : nullptr)
+                    .gracePeriodMs;
+    if (grace <= 0) {
+        TooltipRequestClear(&content);
+        hasContent = false;
+        hasPreviousBounds = false;
+        hadRecentTooltip = false;
+        isSwitching = false;
+        Notify(cx);
+        return;
+    }
+    hideTask = WindowSetTimeout(
+        window, grace, TooltipTimerListener(cx, &TooltipOverlay::OnHide));
 }
 
 void TooltipOverlay::Hide(Ctx* cx) {
@@ -305,7 +350,7 @@ static TooltipOverlay* TooltipWindowOverlay(Window* win) {
 }
 
 void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
-                        int placement, bool rootLayer) {
+                        int placement, bool rootLayer, int showDelayMs) {
     // A trigger the root view drew asks the root's overlay; any other, or one
     // in a window whose root has none, the window's.
     TooltipOverlay* overlay = rootLayer ? TooltipRootOverlay(win) : nullptr;
@@ -343,7 +388,10 @@ void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
     // preferred side, `None` leaves the overlay's own placement.
     if (placement >= (int)gpui::Placement::Top &&
         placement <= (int)gpui::Placement::Right) {
-        request.Placement((gpui::Placement)placement);
+        request.WithPlacement((gpui::Placement)placement);
+    }
+    if (showDelayMs >= 0) {
+        request.WithShowDelay(showDelayMs);
     }
     overlay->RequestShow(request, win, &cx);
 }

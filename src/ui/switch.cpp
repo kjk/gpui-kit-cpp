@@ -44,6 +44,11 @@ Switch* Switch::Color(Rgba c) {
     hasColor = true;
     return this;
 }
+Switch* Switch::TooltipShowDelay(int ms) {
+    tooltipShowDelayMs = ms;
+    return this;
+}
+
 Switch* Switch::Tooltip(Str s) {
     tooltip = s;
     return this;
@@ -139,6 +144,9 @@ El* Switch::IntoEl() {
     }
     if (tooltip.s) {
         track->Tip(tooltip);
+        if (tooltipShowDelayMs >= 0) {
+            track->TipShowDelay(tooltipShowDelayMs);
+        }
     }
     // The thumb slides rather than jumping: Rust animates `left` from one end
     // to the other over 150 ms whenever the checked flag turns over. A

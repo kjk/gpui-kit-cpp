@@ -166,6 +166,8 @@ struct Button {
     Str tooltip = {};
     // tooltip_placement: Rust's `Option<Placement>`, -1 for None.
     int8_t tooltipPlacement = -1;
+    // tooltip_show_delay: -1 uses TooltipDefaults.
+    int tooltipShowDelayMs = -1;
     Str accessibilityLabel = {};
     Str accessibilityId = {};
     AccessibilityRole accessibilityRole = AccessibilityRole::None;
@@ -258,6 +260,9 @@ struct Button {
     // does not fit. Applies to `Tooltip`; omitting it keeps automatic
     // positioning, and setting it without tooltip content does nothing.
     Button* TooltipPlacement(gpui::Placement placement);
+    // tooltip_show_delay: how long the pointer rests before the tooltip
+    // shows. Zero shows at once. Applies to `Tooltip`.
+    Button* TooltipShowDelay(int ms);
     Button* AccessibilityLabel(Str s);
     Button* AccessibilityId(Str s);
     Button* Role(AccessibilityRole role);
@@ -292,6 +297,7 @@ struct Toggle {
     Str id = {};
     Str label = {};
     Str tooltip = {};
+    int tooltipShowDelayMs = -1;
     IconName icon = IconName::None;
     ArenaVec<El*> children;
     bool checked = false;
@@ -304,6 +310,7 @@ struct Toggle {
 
     static Toggle* New(Ctx* cx, Str id);
     Toggle* Tooltip(Str value);
+    Toggle* TooltipShowDelay(int ms);
     Toggle* Label(Str value);
     Toggle* Icon(IconName value);
     Toggle* Child(El* value);

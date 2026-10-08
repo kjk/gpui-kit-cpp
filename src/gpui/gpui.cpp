@@ -2430,6 +2430,10 @@ El* El::TipPlacement(int placement) {
         placement >= 0 && placement <= 3 ? (int8_t)placement : (int8_t)-1;
     return this;
 }
+El* El::TipShowDelay(int ms) {
+    style.tooltipShowDelayMs = ms;
+    return this;
+}
 El* El::Id(Str s) {
     id = s;
     return this;
@@ -7637,6 +7641,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.onMouseMove = e->onMouseMove;
         hr.tooltip = e->style.tooltip;
         hr.tooltipPlacement = e->style.tooltipPlacement;
+        hr.tooltipShowDelayMs = e->style.tooltipShowDelayMs;
         hr.rootTooltip = e->rootTooltip;
         hr.onMouseDown = e->onMouseDown;
         hr.onMouseUp = e->onMouseUp;

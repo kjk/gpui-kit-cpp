@@ -40,6 +40,7 @@ struct Clipboard {
     Str id = {};
     Str value = {};
     Str tooltipText = {};
+    int tooltipShowDelayMs = -1;
     Str accessibilityLabel = {};
     Listener onCopied;
     UiSize size = UiSize::XSmall;
@@ -47,6 +48,7 @@ struct Clipboard {
     static Clipboard* New(Ctx* cx, Str id);
     Clipboard* Value(Str v);
     Clipboard* Tooltip(Str t);
+    Clipboard* TooltipShowDelay(int ms);
     // Set the name a screen reader announces. Defaults to the localized
     // "Copy".
     //

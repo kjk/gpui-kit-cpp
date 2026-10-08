@@ -2015,6 +2015,11 @@ struct Style {
     // (inherit, and the default face at the root). The spare byte of this
     // unit.
     uint8_t fontFamily = 0;
+
+    // El::TipShowDelay. -1 uses TooltipDefaults; zero shows at once. The
+    // delay had no room in the unit above, so it opens the next one and
+    // leaves four bytes.
+    int tooltipShowDelayMs = -1;
 };
 
 enum : uint8_t {
@@ -2051,9 +2056,10 @@ enum : uint16_t {
 // an ellipsis goes on — opened the next unit, and font_family's id took the
 // byte it had to spare, leaving three bits. FocusLine::Inside's colour took
 // the four bytes zIndex gave up going to sixteen bits, and one of those bits
-// says it is set, leaving two. Grow this only for a member that has nowhere
-// else to go, never to absorb padding.
-static_assert(sizeof(Style) <= 432, "keep Style members packed by alignment");
+// says it is set, leaving two. tooltipShowDelayMs opened the next unit and
+// left four bytes. Grow this only for a member that has nowhere else to go,
+// never to absorb padding.
+static_assert(sizeof(Style) <= 440, "keep Style members packed by alignment");
 
 // One `on_action` handler. The tree is frame-arena, so a handful of these
 // chained off an element costs a pointer each and dies with the frame.
@@ -3247,6 +3253,9 @@ struct El {
     // managed_tooltip_with_placement's preferred side, as the value of base's
     // `Placement`; see Style::tooltipPlacement. Does nothing without a Tip.
     El* TipPlacement(int placement);
+    // tooltip_show_delay. -1 leaves TooltipDefaults. Does nothing without a
+    // Tip.
+    El* TipShowDelay(int ms);
     El* Id(Str s);
 };
 
@@ -3255,10 +3264,10 @@ static_assert(sizeof(unsigned int) == 4,
 // Style plus the optional lifecycle pointer. A debug build adds the
 // source location div() records.
 #ifdef NDEBUG
-static_assert(sizeof(El) <= 1888,
+static_assert(sizeof(El) <= 1896,
               "keep El flags packed and members alignment-ordered");
 #else
-static_assert(sizeof(El) <= 1904,
+static_assert(sizeof(El) <= 1912,
               "keep El flags packed and members alignment-ordered");
 #endif
 
@@ -3362,6 +3371,7 @@ struct HitRect {
     // survive the hit test rather than only the paint that drew it.
     Str tooltip = {};
     int8_t tooltipPlacement = -1;
+    int tooltipShowDelayMs = -1;
     // El::rootTooltip: the root view's own overlay shows it.
     bool rootTooltip = false;
     SliderState* slider = nullptr;

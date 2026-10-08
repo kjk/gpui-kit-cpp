@@ -43,6 +43,28 @@ El* TooltipStory::Render(TooltipStory* self, Ctx* cx) {
     StorySectionAdd(btn, btnRow);
     page->Child(btn);
 
+    El* delay = StorySection(cx, "Show delay",
+                             "Override the delay per trigger. Moving between "
+                             "triggers switches without waiting again.");
+    El* delayRow = Div(a)->FlexRow()->Gap(8)->ItemsCenter()->Wrap();
+    delayRow->Child(component::Button::New(cx, StrL("delay-immediate"))
+                        ->Label(StrL("Immediate"))
+                        ->Tooltip(StrL("Shows as soon as the pointer enters."))
+                        ->TooltipShowDelay(0)
+                        ->IntoEl());
+    delayRow->Child(
+        component::Button::New(cx, StrL("delay-default"))
+            ->Label(StrL("Default"))
+            ->Tooltip(StrL("Shows after the application default delay."))
+            ->IntoEl());
+    delayRow->Child(component::Button::New(cx, StrL("delay-slow"))
+                        ->Label(StrL("Slow"))
+                        ->Tooltip(StrL("Shows after 1 second."))
+                        ->TooltipShowDelay(1000)
+                        ->IntoEl());
+    StorySectionAdd(delay, delayRow);
+    page->Child(delay);
+
     El* chk =
         StorySection(cx, "Checkbox", "Tooltips work on selection controls.");
     StorySectionAdd(chk, component::Checkbox::New(cx, StrL("check"))

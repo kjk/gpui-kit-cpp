@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7eb5209c2138a44a8bab7aaeb504a19c8b702800",
+  sha: "c0bebdc8a8cf9a74f9f52feaca278a52a9cfcca2",
   date: "2026-10-06",
-  subject: "kit: Add optional gpui-fast backend (#3375)",
+  subject: "tooltip: Make show delay and grace period configurable with `TooltipDefaults` (#3376)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

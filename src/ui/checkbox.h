@@ -23,6 +23,7 @@ struct Checkbox {
     bool disabled = false;
     UiSize size = UiSize::Medium;
     Str tooltip = {};
+    int tooltipShowDelayMs = -1;
     bool focusRing = true;
     AccessibilityRole accessibilityRole = AccessibilityRole::CheckBox;
     int tabIndex = 0;
@@ -47,6 +48,7 @@ struct Checkbox {
     Checkbox* TabIndex(int v);
     Checkbox* TabStop(bool v);
     Checkbox* Tooltip(Str s);
+    Checkbox* TooltipShowDelay(int ms);
     Checkbox* OnClick(Listener fn);
     // Semantic controlled-value spelling. OnClick is the compatibility
     // alias; both replace the same callback.

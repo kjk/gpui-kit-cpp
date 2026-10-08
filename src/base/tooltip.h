@@ -17,6 +17,22 @@ constexpr float kTooltipWindowMargin = 4.f;
 constexpr int kTooltipGracePeriodMs = 300;
 constexpr int kTooltipShowDelayMs = 500;
 
+// tooltip.rs TooltipDefaults: application-wide timing for tooltips shown
+// through TooltipOverlay. Read on every show and hide, so installing new
+// defaults applies to windows that are already open.
+struct TooltipDefaults {
+    int showDelayMs = kTooltipShowDelayMs;
+    int gracePeriodMs = kTooltipGracePeriodMs;
+
+    static TooltipDefaults New() { return {}; }
+    TooltipDefaults& WithShowDelay(int ms);
+    TooltipDefaults& WithGracePeriod(int ms);
+    int ShowDelay() const { return showDelayMs; }
+    int GracePeriod() const { return gracePeriodMs; }
+    void Install(App* app) const;
+    static TooltipDefaults Global(const App* app);
+};
+
 struct Tooltip {
     static El* New(Ctx* cx, Str id);
 };
@@ -52,12 +68,18 @@ struct TooltipRequest {
     Bounds triggerBounds = {};
     gpui::Placement preferredPlacement = gpui::Placement::Top;
     bool hasPreferredPlacement = false;
+    // with_show_delay: None uses TooltipDefaults. Zero shows at once.
+    bool hasShowDelay = false;
+    int showDelayMs = 0;
     Str text = {};
 
     static TooltipRequest New(Bounds triggerBounds, TooltipBuilder build,
                               void* data = nullptr);
     static TooltipRequest Text(Bounds triggerBounds, Str text);
+    // with_placement. Placement remains the old name.
+    TooltipRequest& WithPlacement(gpui::Placement value);
     TooltipRequest& Placement(gpui::Placement value);
+    TooltipRequest& WithShowDelay(int ms);
 };
 
 // Per-window provider and overlay. `pending` is what Rust's show_task owns;
@@ -111,7 +133,8 @@ struct TooltipPositioner {
 // which asks the overlay that view owns (Window::rootTooltip) when it has
 // one.
 void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
-                        int placement = -1, bool rootLayer = false);
+                        int placement = -1, bool rootLayer = false,
+                        int showDelayMs = -1);
 void TooltipRequestHide(Window* win);
 void TooltipHide(Window* win);
 const TooltipOverlay* TooltipShowing(Window* win);

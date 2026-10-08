@@ -449,6 +449,7 @@ struct InputGroupButton {
     InputGroupButton* Icon(IconName n);
     InputGroupButton* Icon(Str path);
     InputGroupButton* Tooltip(Str s);
+    InputGroupButton* TooltipShowDelay(int ms);
     InputGroupButton* AriaLabel(Str s);
     InputGroupButton* WithSize(UiSize s);
     InputGroupButton* WithVariant(ButtonVariant v);

@@ -216,6 +216,42 @@ static void TooltipDelayOwnsAndCancelsPendingText() {
     ArenaDelete(a);
 }
 
+struct TipHost {
+    static El* Render(TipHost*, Ctx* cx) { return Div(cx->a); }
+};
+
+// tooltip.rs show_delay_follows_defaults_and_request_override.
+static void ShowDelayFollowsDefaultsAndRequestOverride() {
+    App* app = TestAppNew();
+    Entity<TooltipOverlay> entity = EntityNew<TooltipOverlay>(app);
+    Window* win = TestWindowOpen(app, EntityNew<TipHost>(app));
+    Arena* a = ArenaNew();
+    Ctx cx = {app, win, a, entity.id};
+    TooltipOverlay* overlay = entity.Get(app);
+    TooltipDefaults::New().WithShowDelay(100).Install(app);
+
+    TooltipRequest request = TooltipRequest::Text({0, 0, 20, 20}, StrL("x"));
+    overlay->RequestShow(request, win, &cx);
+    utassert(!overlay->hasContent && overlay->showTask != 0);
+    TestAdvanceClock(app, 99);
+    utassert(!overlay->hasContent);
+    TestAdvanceClock(app, 1);
+    utassert(overlay->hasContent && overlay->showTask == 0);
+
+    overlay->Hide(&cx);
+    request.WithShowDelay(0);
+    overlay->RequestShow(request, win, &cx);
+    utassert(overlay->hasContent && overlay->showTask == 0);
+
+    component::Button* button = component::Button::New(&cx, StrL("save"))
+                                    ->Tooltip(StrL("Click to save"))
+                                    ->TooltipShowDelay(100);
+    utassert(button && button->tooltipShowDelayMs == 100);
+
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
 static void DisabledTooltipOverlayIgnoresEveryShowPath() {
     App app;
     Window* win = new Window();
@@ -782,5 +818,6 @@ void TestPopup() {
     PopoverOwnsOpenCallbacksAndOutsideDismissal();
     TooltipOverlayOwnsRequestsTransitionsAndPositioning();
     TooltipDelayOwnsAndCancelsPendingText();
+    ShowDelayFollowsDefaultsAndRequestOverride();
     DisabledTooltipOverlayIgnoresEveryShowPath();
 }

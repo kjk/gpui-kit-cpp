@@ -359,6 +359,10 @@ Button* Button::TooltipPlacement(gpui::Placement placement) {
     tooltipPlacement = (int8_t)placement;
     return this;
 }
+Button* Button::TooltipShowDelay(int ms) {
+    tooltipShowDelayMs = ms;
+    return this;
+}
 Button* Button::AccessibilityLabel(Str s) {
     accessibilityLabel = s;
     return this;
@@ -843,6 +847,9 @@ El* Button::IntoEl() {
         if (tooltipPlacement >= 0) {
             e->TipPlacement(tooltipPlacement);
         }
+        if (tooltipShowDelayMs >= 0) {
+            e->TipShowDelay(tooltipShowDelayMs);
+        }
     }
     // button.rs fades the whole button while it loads rather than dimming its
     // colours one by one, and says why: Ghost, Link and Text have no
@@ -909,6 +916,11 @@ Toggle* Toggle::New(Ctx* cx, Str id) {
     out->cx = cx;
     out->id = id;
     return out;
+}
+
+Toggle* Toggle::TooltipShowDelay(int ms) {
+    tooltipShowDelayMs = ms;
+    return this;
 }
 
 Toggle* Toggle::Tooltip(Str value) {
@@ -1020,7 +1032,12 @@ El* Toggle::IntoEl() {
     if (!disabled && !checked) {
         root->HoverBg(th.tokens.accent)->HoverFg(th.accentFg);
     }
-    if (tooltip.s) root->Tip(tooltip)->AriaLabel(tooltip);
+    if (tooltip.s) {
+        root->Tip(tooltip)->AriaLabel(tooltip);
+        if (tooltipShowDelayMs >= 0) {
+            root->TipShowDelay(tooltipShowDelayMs);
+        }
+    }
     if (icon != IconName::None) root->Child(IconEl(a, icon, Rems(cx, 1)));
     if (label.s) root->Child(TextEl(a, label)->Font(font));
     for (El* child : children) root->Child(child);
