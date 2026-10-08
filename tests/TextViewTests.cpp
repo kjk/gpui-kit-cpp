@@ -1323,7 +1323,9 @@ static void TestManagedTextViewAndParseTimePlugins(Arena* a) {
             ->IntoEl();
     utassert(gParseTimePluginCalls > 0);
     utassert(gParseTimeRenderCalls == 1);
-    utassert(ElementTextBytes(element) == 7);
+    // The card paints "claimed", and the selection box holds the same
+    // plain string for a whole-block copy.
+    utassert(ElementTextBytes(element) == 14);
     El* owned = TextView::New(&cx, state)->Selectable()->IntoEl();
     utassert(FindSelectionOwner(owned, state.id));
     utassert(!UiTextViewStateCurrent(&app).IsValid());
@@ -6725,6 +6727,75 @@ static void TestTextStateWindow() {
 
 #endif
 
+// node.rs block_plugin_geometry_selects_whole_blocks_in_both_drag_directions.
+static void BlockPluginGeometrySelectsWholeBlocks() {
+    Bounds bounds = {10.f, 20.f, 100.f, 40.f};
+    Point inside = {60.f, 40.f};
+    Point above = {0.f, 0.f};
+    Point below = {0.f, 80.f};
+    Point nudge = {61.f, 40.f};
+    Point starts[] = {above, inside, above, inside};
+    Point ends[] = {inside, below, below, nudge};
+    for (int i = 0; i < 4; i++) {
+        utassert(CustomBlockIsSelected(bounds, starts[i], ends[i]));
+        utassert(CustomBlockIsSelected(bounds, ends[i], starts[i]));
+    }
+    utassert(!CustomBlockIsSelected(bounds, inside, inside));
+    utassert(!CustomBlockIsSelected(bounds, {150.f, 30.f}, {160.f, 40.f}));
+}
+
+// node.rs block_plugin_selection_copies_both_formats. Plain copies as_text
+// with its trailing newline. Source copies to_markdown. A click copies
+// nothing, and a drag that misses the box copies nothing either.
+static void BlockPluginSelectionCopiesBothFormats() {
+    PaintCtx ctx;
+    SelSource source = {};
+    source.pre = StrL("$$\nx\n$$");
+    SourceSegment seg = {};
+    seg.renderedEnd = 1;
+    seg.sourceEnd = len(source.pre);
+    SelSourceMap map = {};
+    map.segments = &seg;
+    map.count = 1;
+    map.atomic = true;
+    TextHit hit = {};
+    hit.blockPlugin = true;
+    hit.bounds = {10.f, 20.f, 100.f, 40.f};
+    hit.text = StrL("x");
+    hit.src = &source;
+    hit.map = &map;
+    hit.docOff = 0;
+    VecAppend(ctx.texts, hit);
+    ctx.selPoints = true;
+    ctx.selX0 = 0.f;
+    ctx.selY0 = 0.f;
+    ctx.selX1 = 60.f;
+    ctx.selY1 = 40.f;
+    char buf[64];
+    int n = CopyTextHitsIn(&ctx, 0, 1, -1, buf, 64, SelectionFormat::Plain);
+    utassert(n == 2 && buf[0] == 'x' && buf[1] == '\n');
+    n = CopyTextHitsIn(&ctx, 0, 1, -1, buf, 64, SelectionFormat::Source);
+    utassert(StrEq(Str(buf, n), StrL("$$\nx\n$$")));
+    Span span;
+    utassert(TextHitsSourceRange(&ctx, 0, 1, 0, {}).IntoRange(&span) &&
+             span.start == 0 && span.end == len(source.pre));
+    n = CopyTextHitsIn(&ctx, 0, 0, -1, buf, 64, SelectionFormat::Plain);
+    utassert(n == 0);
+    utassert(TextHitsSourceRange(&ctx, 0, 0, 0, {})
+                 .kind == SourceRangeSelection::Unselected);
+    ctx.selX0 = 150.f;
+    ctx.selY0 = 30.f;
+    ctx.selX1 = 160.f;
+    ctx.selY1 = 40.f;
+    n = CopyTextHitsIn(&ctx, 0, 1, -1, buf, 64, SelectionFormat::Plain);
+    utassert(n == 0);
+    n = CopyTextHitsIn(&ctx, 0, 1, -1, buf, 64, SelectionFormat::Source);
+    utassert(n == 0);
+    utassert(TextHitsSourceRange(&ctx, 0, 1, 0, {})
+                 .kind == SourceRangeSelection::Unselected);
+    VecReset(ctx.texts);
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -6796,6 +6867,8 @@ void TestTextView() {
     StreamFadeUnitsAreWordsOrCjkCharacters();
     FadesLayerOverHighlightsInsideTheirRange();
     FadesExplicitDecorationColorsWithTheText();
+    BlockPluginGeometrySelectsWholeBlocks();
+    BlockPluginSelectionCopiesBothFormats();
     StreamedWordsFadeInOneAfterAnother();
     SetTextExtendingMarkdownAppendsAndKeepsSelection();
     SetTextStreamingMarkdownMatchesAFullParse();

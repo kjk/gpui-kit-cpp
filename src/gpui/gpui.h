@@ -2818,6 +2818,9 @@ struct El {
     // Text selection/caret state.
     unsigned int selectable : 1 = false;
     unsigned int selJoin : 1 = false;
+    // A block MarkdownPlugin: the drag selects the whole block or none of
+    // it, and the copy is its plain text or its markdown, not a slice.
+    unsigned int selBlockPlugin : 1 = false;
     unsigned int caretLineEndAffinity : 1 = false;
     // StyledImage::grayscale.
     unsigned int imageGrayscale : 1 = false;
@@ -3132,6 +3135,10 @@ struct El {
     El* Italic();
     El* Selectable();
     El* SelectionOwner(EntityId owner);
+    // node.rs CustomBlockElement: this element is a block plugin. A drag
+    // that touches its box selects all of `plain`. The markdown, when there
+    // is any, is SelSrc()->pre.
+    El* BlockPluginSelection(Str plain);
     // The Markdown this run came from, and whether it continues the run
     // before it rather than starting a line of its own.
     El* SelSrc(const SelSource* s, bool join);
@@ -3497,6 +3504,9 @@ struct TextHit {
     // It holds a place in the document order so the selection can reach it,
     // and copies as nothing in Plain.
     bool atom = false;
+    // node.rs CustomBlockElement: copy `text` (plain) or `src->pre`
+    // (source) whole when the drag touches `bounds`, never a slice of it.
+    bool blockPlugin = false;
     // TextSelectionScopeId: the focus trap this run sits inside, 0 for the
     // page itself. A selection belongs to one scope, so a drag that started
     // in a dialog does not run on into the page behind it.
@@ -3748,6 +3758,16 @@ struct PaintCtx {
     // Which scope the range above belongs to; -1 paints it wherever it
     // falls, which is what a caller that knows of no scopes wants.
     int selScope = -1;
+    // Window selection endpoints in the same coordinates as TextHit::bounds.
+    // A block plugin is selected from these, not from a character offset.
+    float selX0 = 0;
+    float selY0 = 0;
+    float selX1 = 0;
+    float selY1 = 0;
+    bool selPoints = false;
+    // Nested block-plugin boxes. Their children are the picture; the box
+    // hit is the selection, so those children do not register runs.
+    int blockPluginDepth = 0;
     TextMeasCache textCache;
 
     PaintCtx() = default;
@@ -6134,6 +6154,10 @@ int TextHitOffsetAt(PaintCtx* ctx, float x, float y, bool nearest);
 int TextHitOffsetIn(PaintCtx* ctx, float x, float y, bool nearest, int scope,
                     int* outScope, int minLayer = 0);
 int CopyTextHits(PaintCtx* ctx, int selA, int selB, char* out, int cap);
+// node.rs custom_block_is_selected: a drag selects the whole block when it
+// starts or ends inside the box, or the box sits inside the drag. A click
+// (the two points equal) does not.
+bool CustomBlockIsSelected(Bounds bounds, Point start, Point end);
 // `fmt` is what each run contributes: its rendered text, or — where the run
 // carries a SelSource — the Markdown it was rendered from.
 int CopyTextHitsIn(PaintCtx* ctx, int selA, int selB, int scope, char* out,

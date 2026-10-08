@@ -914,13 +914,27 @@ SourceRangeSelection TextHitsSourceRange(const PaintCtx* ctx, int selA,
     int b = selA < selB ? selB : selA;
     for (int i = 0; i < ctx->texts.len; i++) {
         const TextHit& hit = ctx->texts[i];
-        // A run with no map is not Markdown content — a list marker, a
-        // plugin block — and has no part in the source range, which is what
-        // Rust's walk over the inline states gives it.
+        // A run with no map is not Markdown content — a list marker, or a
+        // plugin block that named no source span — and has no part in the
+        // source range. A mapped plugin is decided below as a whole block.
         if (hit.owner != owner || hit.scope != scope || !hit.map) {
             continue;
         }
         const SelSourceMap* map = hit.map;
+        if (hit.blockPlugin) {
+            bool selectedPlugin = false;
+            if (a != b && ctx->selPoints) {
+                selectedPlugin =
+                    CustomBlockIsSelected(hit.bounds, {ctx->selX0, ctx->selY0},
+                                          {ctx->selX1, ctx->selY1});
+            } else if (a != b) {
+                selectedPlugin = a <= hit.docOff && b > hit.docOff;
+            }
+            if (selectedPlugin && hit.map) {
+                selected.Merge(WholeOf(hit.map->segments, hit.map->count));
+            }
+            continue;
+        }
         if (hit.atom) {
             // Images have no rendered bytes. They join the source range
             // when a selected text run reaches their boundary, even if the
@@ -5771,6 +5785,36 @@ Str TextView::BlockText(MdNode* n) {
 }
 
 // Every registered plugin is offered the block, in the order they were added.
+El* TextView::MarkBlockPlugin(El* el, Str plain, Str markdown, bool hasSpan,
+                              Span span) {
+    if (!selectable || !el) {
+        return el;
+    }
+    // The plugin's own element keeps its text. The box around it is what
+    // the drag measures, and it carries the plain text and the markdown.
+    El* box = Div(a)->W(kFill)->MinW(0)->Child(el);
+    box->BlockPluginSelection(plain)
+        ->SelectionOwner(BaseTextViewStateCurrent(cx->app));
+    if (len(markdown) > 0) {
+        SelSource* marks = ArenaNew<SelSource>(a);
+        if (marks) {
+            marks->pre = markdown;
+            box->SelSrc(marks, false);
+        }
+    }
+    el = box;
+    if (hasSpan) {
+        SourceSegment* whole = ArenaNew<SourceSegment>(a);
+        if (whole) {
+            whole->renderedEnd = 1;
+            whole->sourceStart = span.start;
+            whole->sourceEnd = span.end;
+            SrcMap(el, whole, 1, 0, true);
+        }
+    }
+    return el;
+}
+
 El* TextView::PluginBlock(MdNode* n) {
     if (plugins.len <= 0) {
         return nullptr;
@@ -5783,7 +5827,8 @@ El* TextView::PluginBlock(MdNode* n) {
             continue;
         }
         if (El* el = plugins[i].render(cx, &node, plugins[i].data)) {
-            return el;
+            return MarkBlockPlugin(el, node.text, node.markdown, node.hasSpan,
+                                   node.span);
         }
     }
     return nullptr;
@@ -5799,6 +5844,11 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
         El* content = renderer && renderer->fn
                           ? renderer->fn(cx, &n->custom, renderer->data)
                           : nullptr;
+        if (content) {
+            content =
+                MarkBlockPlugin(content, n->custom.text, n->custom.markdown,
+                                n->custom.hasSpan, n->custom.span);
+        }
         if (!content && n->custom.text.s) {
             SrcOpen({}, {});
             content = TextEl(a, n->custom.text)->Font(baseFont)->Wrap();

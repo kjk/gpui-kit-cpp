@@ -16,13 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8d8cc6715e8f9f0765e8c1a0b005eb70f4c59b52` (2026-10-05,
-text_view: Improve default typography (#3371)). Headings scale with the body
-(1.8 / 1.333 / 1.133 / 1 / 0.933 / 0.867), all semibold, with a section gap
-that collapses against the previous block. Paragraphs gap 0.75rem, lists hang
-their markers in a 1.4em column, and code, quotes, rules, tables and task
-boxes take the new spacing. A component style that leaves heading sizes at
-the default no longer pins them to a 14px base. The current update target is
+Processed through `af78e935f237ff7cf0b5fc6de8132acaf8678411` (2026-10-06,
+text_view: Include block plugins in mouse selections (#3373)). A block
+plugin is one selection: a drag that starts or ends inside its box, or
+that covers the box, copies its plain text or its markdown, and a click
+does not. The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust
@@ -130,8 +128,12 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
 - **TextView selection mapping uses painted runs.** The window owns selection
   rather than each parsed inline node. Source mapping includes images when a
   selected run reaches their boundary, and Select All follows committed
-  appends until the selection moves. Under `-markdown=mini` the parser keeps
-  no positions, so source mapping is unavailable (`src/base/text.cpp`).
+  appends until the selection moves. A painted block plugin is included whole
+  when the drag starts or ends inside its box or covers it. An unpainted
+  plugin inside a selection is not copied: Rust still emits one unless its
+  node has observed an empty selection. Under `-markdown=mini` the parser
+  keeps no positions, so source mapping is unavailable (`src/base/text.cpp`,
+  `CopyTextHitsFiltered` in `src/gpui/gpui.cpp`).
 - **The window's selection of painted text needs no layer.** A participant
   registers only while a `TextSelectionLayer` is rendering, as Rust's
   `WindowSelectionState::existing` asks, but the selection of the runs the

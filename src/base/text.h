@@ -1371,6 +1371,10 @@ struct TextView {
     // The text a plugin's parser sees, and the block a plugin claimed.
     Str BlockText(MdNode* n);
     El* PluginBlock(MdNode* n);
+    // node.rs CustomBlockElement: the rendered plugin selects and copies as
+    // one block. `plain` is as_text, `markdown` is to_markdown.
+    El* MarkBlockPlugin(El* el, Str plain, Str markdown, bool hasSpan,
+                        Span span);
     // node.rs render_scroll_table: the same table, measured and scrolling.
     El* ScrollTable(MdNode* n);
     // node.rs render_block. `depth` is the list nesting level, `inList` and

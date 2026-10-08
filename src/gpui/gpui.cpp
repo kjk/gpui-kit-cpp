@@ -2189,6 +2189,12 @@ El* El::Selectable() {
     selectable = true;
     return this;
 }
+El* El::BlockPluginSelection(Str plain) {
+    selectable = true;
+    selBlockPlugin = true;
+    text = plain;
+    return this;
+}
 El* El::SelectionOwner(EntityId owner) {
     selectionOwner = owner;
     return this;
@@ -7823,7 +7829,24 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // `selected_source` emits its `![alt](url)` when the selection runs into
     // it. The copier walks runs, so the image registers one — empty, and
     // carrying the Markdown on the SelSource beside it.
-    if (e->kind == ElKind::Image && e->selectable && e->selSrc) {
+    // node.rs CustomBlockElement: one hit for the whole plugin box. The
+    // copy decides later, from the drag points, whether it was selected.
+    if (e->selBlockPlugin && e->selectable) {
+        TextHit th;
+        th.bounds = e->Bounds();
+        th.text = e->text;
+        th.blockPlugin = true;
+        th.docOff = ctx->textDocLen;
+        th.owner = e->selectionOwner;
+        th.src = e->selSrc;
+        th.map = e->selMap;
+        th.scope = ElSelectionScope(ctx, e);
+        th.paintLayer = ctx->paintLayer;
+        VecAppend(ctx->texts, th);
+        ctx->textDocLen += 1;
+    }
+    if (e->kind == ElKind::Image && e->selectable && e->selSrc &&
+        !e->selBlockPlugin && ctx->blockPluginDepth == 0) {
         TextHit th;
         th.bounds = e->Bounds();
         th.docOff = ctx->textDocLen;
@@ -7837,7 +7860,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         VecAppend(ctx->texts, th);
         ctx->textDocLen += 1;
     }
-    if (e->kind == ElKind::Text) {
+    if (e->kind == ElKind::Text && !e->selBlockPlugin &&
+        ctx->blockPluginDepth == 0) {
         float font = e->laidFont > 0
                          ? e->laidFont
                          : (e->style.fontSize > 0 ? e->style.fontSize : 14.f);
@@ -8155,6 +8179,9 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         VecAppend(ctx->window->imageCacheStack, e->imageCache);
     }
     bool sorted = false;
+    if (e->selBlockPlugin) {
+        ctx->blockPluginDepth++;
+    }
     for (El* c = e->first; c; c = c->next) {
         if (c->style.zIndex != 0) {
             sorted = true;
@@ -8180,6 +8207,19 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     }
     if (pushed) {
         ctx->window->imageCacheStack.len--;
+    }
+    if (e->selBlockPlugin) {
+        ctx->blockPluginDepth--;
+    }
+    // The selection wash goes over the plugin, as CustomBlockElement paints
+    // its quad after the content.
+    if (e->selBlockPlugin && e->selectable && ctx->selPoints &&
+        ctx->selA != ctx->selB) {
+        Point start = {ctx->selX0, ctx->selY0};
+        Point end = {ctx->selX1, ctx->selY1};
+        if (CustomBlockIsSelected(e->Bounds(), start, end)) {
+            CanvasFillRect(ctx, e->x, e->y, e->w, e->h, e->selColor);
+        }
     }
     if (e->lifecycle && e->lifecycle->afterPaint) {
         e->lifecycle->afterPaint(ctx, e, e->lifecycle->user);
@@ -8728,6 +8768,63 @@ static bool TextHitOwnerMatches(const TextHit& hit, EntityId owner) {
     return !owner.IsValid() || hit.owner == owner;
 }
 
+// inline.rs point_in_text_selection, with the block standing in for one
+// character as wide as the box and as tall as it.
+static bool PointInTextSelection(Point pos, float charWidth, Point start,
+                                 Point end, float lineHeight) {
+    auto inLine = [&](Point p) {
+        return p.y >= pos.y && p.y < pos.y + lineHeight;
+    };
+    float top = start.y < end.y ? start.y : end.y;
+    float bottom = start.y > end.y ? start.y : end.y;
+    float x = pos.x + charWidth * 0.5f;
+    if (pos.y + lineHeight <= top || pos.y > bottom) {
+        return false;
+    }
+    if (inLine(start) && inLine(end)) {
+        float left = start.x < end.x ? start.x : end.x;
+        float right = start.x > end.x ? start.x : end.x;
+        return x >= left && x <= right;
+    }
+    Point topPoint = start.y < end.y ? start : end;
+    Point bottomPoint = start.y < end.y ? end : start;
+    if (inLine(topPoint)) {
+        return x >= topPoint.x;
+    }
+    if (inLine(bottomPoint)) {
+        return x <= bottomPoint.x;
+    }
+    return true;
+}
+
+static bool BoundsContain(Bounds b, Point p) {
+    return p.x >= b.x && p.x < b.x + b.w && p.y >= b.y && p.y < b.y + b.h;
+}
+
+bool CustomBlockIsSelected(Bounds bounds, Point start, Point end) {
+    if (start.x == end.x && start.y == end.y) {
+        return false;
+    }
+    if (bounds.w <= 0 || bounds.h <= 0) {
+        return false;
+    }
+    return BoundsContain(bounds, start) || BoundsContain(bounds, end) ||
+           PointInTextSelection({bounds.x, bounds.y}, bounds.w, start, end,
+                                bounds.h);
+}
+
+static bool BlockPluginHitSelected(const PaintCtx* ctx, const TextHit& t, int a,
+                                   int b) {
+    if (!t.blockPlugin || a == b) {
+        return false;
+    }
+    if (ctx && ctx->selPoints) {
+        return CustomBlockIsSelected(t.bounds, {ctx->selX0, ctx->selY0},
+                                     {ctx->selX1, ctx->selY1});
+    }
+    return a <= t.docOff && b > t.docOff;
+}
+
 static bool AtomReached(PaintCtx* ctx, int i, int a, int b, EntityId owner) {
     const TextHit& t = ctx->texts[i];
     const SelBlock* blk = t.src ? t.src->block : nullptr;
@@ -8793,6 +8890,30 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         const TextHit& t = ctx->texts[i];
         if ((scope >= 0 && t.scope != scope) ||
             !TextHitOwnerMatches(t, owner)) {
+            continue;
+        }
+        if (t.blockPlugin) {
+            if (!BlockPluginHitSelected(ctx, t, a, b)) {
+                continue;
+            }
+            if (src && grp) {
+                CopyPut(&o, grp->post);
+                grp = nullptr;
+            }
+            if (src && blk) {
+                CopyPut(&o, blk->post);
+                blk = nullptr;
+            }
+            if (any) {
+                CopyPut(&o, src ? StrL("\n\n") : StrL("\n"));
+            }
+            Str piece = src && t.src ? t.src->pre : t.text;
+            CopyPut(&o, piece);
+            if (!src && len(piece) > 0 && piece.s[len(piece) - 1] != '\n') {
+                CopyPut(&o, StrL("\n"));
+            }
+            any = true;
+            sep = false;
             continue;
         }
         int pos = t.docOff;

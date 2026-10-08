@@ -1376,6 +1376,13 @@ void WindowSelectionApply(Window* win) {
     win->paint.selA = publishes ? s->anchor : -1;
     win->paint.selB = publishes ? s->cursor : -1;
     win->paint.selScope = publishes ? s->scope : -1;
+    win->paint.selPoints = publishes && s->hasWindowPoints;
+    if (win->paint.selPoints) {
+        win->paint.selX0 = s->anchorPoint.x;
+        win->paint.selY0 = s->anchorPoint.y;
+        win->paint.selX1 = s->cursorPoint.x;
+        win->paint.selY1 = s->cursorPoint.y;
+    }
 }
 
 // Rust keeps a participant that missed the generation while its element's
