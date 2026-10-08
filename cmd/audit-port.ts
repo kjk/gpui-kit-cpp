@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "c1bda59e67f46266991a230ae94f749af496af2a";
+const pinnedGpuiComponent = "6bb649ef246406d2b20038f2ddbaff9552ae8caf";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -600,7 +600,7 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 559, sha256: "4fd80e7f1550b5e73c841a911e327ae9377f03338dfefbc4b1032bca72715217" },
+    declaration: { count: 560, sha256: "1467a9b341d459423d494375144c383501a172b1410109ba12503d652ce3c201" },
     "pub-use": { count: 169, sha256: "42f6863d384671b2e7abb0b282ebb022c8c1146ba56f5a115fb087c1011b6d90" },
     test: { count: 1317, sha256: "350822dc95245b80c5ae76e85a6c59106117ad050466eb06e0bd3c77a673fb1f" },
   },

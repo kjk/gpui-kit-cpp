@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c1bda59e67f46266991a230ae94f749af496af2a",
+  sha: "6bb649ef246406d2b20038f2ddbaff9552ae8caf",
   date: "2026-10-07",
-  subject: "kit: Use one Windows manifest with GPUI Fast (#3380)",
+  subject: "test: Add find_all and configurable clicks to the UI test harness (#3384)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

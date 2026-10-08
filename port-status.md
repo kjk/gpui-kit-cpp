@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c1bda59e67f46266991a230ae94f749af496af2a` (2026-10-07,
-kit: Use one Windows manifest with GPUI Fast (#3380)). GPUI Fast 0.1.1
-lets the host supply the Windows manifest so Kit does not embed it
-twice. This tree has one engine and does not link that crate.
+Processed through `6bb649ef246406d2b20038f2ddbaff9552ae8caf` (2026-10-07,
+test: Add find_all and configurable clicks to the UI test harness
+(#3384)). The new queries and click options live on Kit's
+TestWindowExt. This tree drives the native runtime directly and does
+not carry that harness.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
