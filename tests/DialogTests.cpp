@@ -593,6 +593,195 @@ static void margin_top_moves_the_alert_surface_off_the_default_offset() {
     delete win;
 }
 
+static El* DialogPanel(El* host) {
+    El* popup = host ? host->last : nullptr;
+    El* placed = popup ? popup->first : nullptr;
+    return placed ? placed->first : nullptr;
+}
+
+static float LaidOutPanelY(Window* win, El* host, float viewW, float viewH) {
+    const RuntimeStyle& th = RuntimeStyleNow(win->app);
+    win->paint.viewW = viewW;
+    win->paint.viewH = viewH;
+    LayoutEl(&win->paint, host, 0, 0, viewW, viewH, th.fontSize, th.foreground);
+    El* panel = DialogPanel(host);
+    return panel ? panel->y : -1.f;
+}
+
+// entrance.rs
+// fade_slide_uses_resolved_bounds_and_keeps_the_surface_inside_the_window, plus
+// dialog.rs's builder, reduced-motion, immediate, and zero-duration cases.
+static void DialogEntrancesFollowTheResolvedSurface() {
+    // The offset itself, at the three samples the window test walks.
+    // requested 200 resolves to 84; 20 keeps 4px of room; 0 clamps to 16.
+    utassert(fabsf(84.f +
+                   component::DialogFadeSlideOffset(84.f, 16.f, 8.f, 0.f) -
+                   76.f) < 0.01f);
+    utassert(fabsf(84.f +
+                   component::DialogFadeSlideOffset(84.f, 16.f, 8.f, 0.5f) -
+                   80.f) < 0.01f);
+    utassert(fabsf(84.f +
+                   component::DialogFadeSlideOffset(84.f, 16.f, 8.f, 1.f) -
+                   84.f) < 0.01f);
+    utassert(fabsf(20.f +
+                   component::DialogFadeSlideOffset(20.f, 16.f, 8.f, 0.f) -
+                   16.f) < 0.01f);
+    utassert(fabsf(20.f +
+                   component::DialogFadeSlideOffset(20.f, 16.f, 8.f, 0.5f) -
+                   18.f) < 0.01f);
+    utassert(fabsf(20.f +
+                   component::DialogFadeSlideOffset(20.f, 16.f, 8.f, 1.f) -
+                   20.f) < 0.01f);
+    utassert(fabsf(16.f +
+                   component::DialogFadeSlideOffset(16.f, 16.f, 8.f, 0.f) -
+                   16.f) < 0.01f);
+    utassert(fabsf(16.f +
+                   component::DialogFadeSlideOffset(16.f, 16.f, 8.f, 1.f) -
+                   16.f) < 0.01f);
+
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+
+    component::Dialog* built = component::Dialog::New(&cx);
+    utassert(built->entrance == component::DialogEntrance::SlideDown);
+    component::DialogEntrance each[] = {
+        component::DialogEntrance::SlideDown, component::DialogEntrance::Fade,
+        component::DialogEntrance::FadeSlide, component::DialogEntrance::None};
+    for (component::DialogEntrance entrance : each) {
+        utassert(component::Dialog::New(&cx)->Entrance(entrance)->entrance ==
+                 entrance);
+        utassert(component::AlertDialog::New(&cx)
+                     ->Entrance(entrance)
+                     ->base->entrance == entrance);
+    }
+
+    // A 200×300 surface in a 400×400 window. The first frame of FadeSlide is
+    // progress 0, so the tall panel sits 8px above the clamp at y=84.
+    auto place = [&](component::DialogEntrance entrance, float marginTop,
+                     double now) {
+        arena->Reset();
+        win->frameNow = now;
+        // Click(), not a path id: this harness paints without IdsCollect,
+        // and a path id stays at click id 0 until that pass.
+        El* surface = Div(arena)->W(200)->H(300)->Click(7);
+        return component::Dialog::New(&cx)
+            ->Open(true)
+            ->W(200)
+            ->H(300)
+            ->MarginTop(marginTop)
+            ->Entrance(entrance)
+            ->Surface(surface)
+            ->IntoEl(WinSize{400, 400});
+    };
+    struct Sample {
+        float requested;
+        float atStart;
+        float atRest;
+    };
+    // The dialog's travel is the theme's distanceShort, 4px at a 16px root.
+    // entrance.rs drives the same clamp with a hardcoded 8px; that case is
+    // the DialogFadeSlideOffset checks above.
+    Sample samples[] = {{200, 80, 84}, {20, 16, 20}, {0, 16, 16}};
+    for (Sample sample : samples) {
+        WindowKeyedFree(win);
+        win = new Window();
+        win->app = &app;
+        win->paint.app = &app;
+        win->paint.window = win;
+        cx.win = win;
+        El* start =
+            place(component::DialogEntrance::FadeSlide, sample.requested, 1);
+        float y0 = LaidOutPanelY(win, start, 400, 400);
+        utassert(fabsf(y0 - sample.atStart) <= 0.5f);
+        El* panel = DialogPanel(start);
+        utassert(panel && panel->y + panel->h <= 384.5f && panel->y >= 15.5f);
+        win->paint.headless = true;
+        VecClear(win->paint.hits);
+        PaintEl(&win->paint, start);
+        // Two pixels inside the travelling surface, which is above the
+        // resting top when the entrance has just started.
+        utassert(HitTest(&win->paint, panel->x + 10.f, panel->y + 2.f) != 0);
+        utassert(HitTest(&win->paint, panel->x + 10.f, panel->y - 2.f) == 0);
+
+        El* rest =
+            place(component::DialogEntrance::FadeSlide, sample.requested, 2);
+        float y1 = LaidOutPanelY(win, rest, 400, 400);
+        utassert(fabsf(y1 - sample.atRest) <= 0.5f);
+    }
+
+    // Reduced motion shows every entrance at rest on the first frame.
+    MotionSetReduced(true);
+    for (component::DialogEntrance entrance : each) {
+        WindowKeyedFree(win);
+        win = new Window();
+        win->app = &app;
+        win->paint.app = &app;
+        win->paint.window = win;
+        cx.win = win;
+        arena->Reset();
+        win->frameNow = 1;
+        El* wide = component::Dialog::New(&cx)
+                       ->Open(true)
+                       ->Title(StrL("Entrance"))
+                       ->MarginTop(300)
+                       ->Entrance(entrance)
+                       ->IntoEl(WinSize{1000, 800});
+        utassert(fabsf(LaidOutPanelY(win, wide, 1000, 800) - 300.f) <= 0.5f);
+    }
+    MotionSetReduced(false);
+
+    WindowKeyedFree(win);
+    win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    cx.win = win;
+    El* immediate = component::Dialog::New(&cx)
+                        ->Open(true)
+                        ->Title(StrL("Immediate"))
+                        ->MarginTop(300)
+                        ->Entrance(component::DialogEntrance::None)
+                        ->Keyboard(true)
+                        ->IntoEl(WinSize{1000, 800});
+    utassert(fabsf(LaidOutPanelY(win, immediate, 1000, 800) - 300.f) <= 0.5f);
+    El* popup = immediate ? immediate->last : nullptr;
+    utassert(popup && popup->style.keyContext != 0);
+
+    ThemeUpdate(&app, [](Theme* theme) { theme->motion.durationNormalMs = 0; });
+    component::DialogEntrance fades[] = {component::DialogEntrance::Fade,
+                                         component::DialogEntrance::FadeSlide};
+    for (component::DialogEntrance entrance : fades) {
+        WindowKeyedFree(win);
+        win = new Window();
+        win->app = &app;
+        win->paint.app = &app;
+        win->paint.window = win;
+        cx.win = win;
+        El* host = component::Dialog::New(&cx)
+                       ->Open(true)
+                       ->Title(StrL("Immediate"))
+                       ->MarginTop(300)
+                       ->Entrance(entrance)
+                       ->IntoEl(WinSize{1000, 800});
+        utassert(fabsf(LaidOutPanelY(win, host, 1000, 800) - 300.f) <= 0.5f);
+    }
+    ThemeUpdate(&app,
+                [](Theme* theme) { theme->motion.durationNormalMs = 180; });
+
+    MotionResetReduceForTest();
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestDialog() {
     TestSuite("dialog");
     ButtonPropsMergeWithWhatTheDialogAlreadyCarries();
@@ -608,4 +797,5 @@ void TestDialog() {
     ASharedHandleControlsTriggersAndHosts();
     ThemedPartsAndAlertDefaultsMatchTheSource();
     margin_top_moves_the_alert_surface_off_the_default_offset();
+    DialogEntrancesFollowTheResolvedSurface();
 }

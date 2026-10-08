@@ -15,6 +15,82 @@ static float DialogEase(float t) {
     return CubicBezier(1.f / 3.f, 0.72f, 2.f / 3.f, 1.f, t);
 }
 
+// Fade and FadeSlide sample the theme's enter easing. MotionAppear asks for
+// a function pointer, and it samples that pointer before it returns, so the
+// easing copied just before the call is the one this frame uses.
+static Easing gDialogEnterEase = Easing::EaseOut();
+
+static float DialogEnterEase(float t) {
+    return gDialogEnterEase.Sample(t);
+}
+
+float DialogFadeSlideOffset(float top, float topLimit, float travel,
+                            float progress) {
+    float available = top - topLimit;
+    if (available < 0) {
+        available = 0;
+    }
+    if (travel < 0) {
+        travel = 0;
+    }
+    if (travel > available) {
+        travel = available;
+    }
+    if (progress < 0) {
+        progress = 0;
+    }
+    if (progress > 1) {
+        progress = 1;
+    }
+    return -travel * (1.f - progress);
+}
+
+// dialog.rs dialog_shadow: shadow_xl's two layers, with the ink scaled by
+// the entrance delta. A dialog that is not animating paints them at rest.
+static void DialogShadow(El* panel, float delta) {
+    if (!panel) {
+        return;
+    }
+    float alpha = 0.1f * delta;
+    BoxShadow shadows[2] = {
+        {0, 20, 25, -5, RgbaHsla(0, 0, 0, alpha), false},
+        {0, 8, 10, -6, RgbaHsla(0, 0, 0, alpha), false},
+    };
+    panel->Shadows(shadows, 2);
+}
+
+struct DialogFadeSlideHook {
+    AnchoredPlacedHook placed;
+    El* surface = nullptr;
+    float travel = 0;
+    float topLimit = 0;
+    float progress = 0;
+};
+
+static void ShiftDialogTree(El* e, float dy) {
+    if (!e || dy == 0) {
+        return;
+    }
+    e->y += dy;
+    for (El* c = e->first; c; c = c->next) {
+        ShiftDialogTree(c, dy);
+    }
+}
+
+// Runs from the positioner's on_placed, after the corner clamp has written
+// the resting bounds. Shifting here is before accessibility collection, so
+// the accessible box, the paint, and the hit rects all follow the travel.
+static void DialogFadeSlidePlaced(void* user, AnchoredPosition position,
+                                  Bounds) {
+    DialogFadeSlideHook* hook = (DialogFadeSlideHook*)user;
+    if (!hook || !hook->surface) {
+        return;
+    }
+    float dy = DialogFadeSlideOffset(position.bounds.y, hook->topLimit,
+                                     hook->travel, hook->progress);
+    ShiftDialogTree(hook->surface->first, dy);
+}
+
 static void ApplyDialogButtonVariant(Button* button, ButtonVariant variant) {
     switch (variant) {
         case ButtonVariant::Primary:
@@ -307,6 +383,10 @@ Dialog* Dialog::MarginTop(float px) {
     marginTop = px;
     return this;
 }
+Dialog* Dialog::Entrance(DialogEntrance value) {
+    entrance = value;
+    return this;
+}
 Dialog* Dialog::Overlay(bool v) {
     overlay = v;
     return this;
@@ -573,11 +653,28 @@ El* Dialog::IntoEl(WinSize size) {
     // Fixed, not absolute: Rust hangs the dialog off the window Root, so it
     // covers and centers on the window rather than on whatever page element
     // happens to contain it.
-    // "fade-in" and "slide-down": the whole layer fades in over a quarter of a
-    // second while the panel comes down from the top edge.
-    float delta = MotionAppear(
-        cx, MotionId(StrL("dialog"), StrDup(a, fmt("%d", layerIx))),
-        ANIMATION_DURATION, DialogEase);
+    //
+    // entrance.rs: None, reduced motion, and a zero theme duration (for every
+    // entrance except SlideDown) show the resting surface immediately.
+    // SlideDown keeps ANIMATION_DURATION and DialogEase. Fade and FadeSlide
+    // use the theme's normal duration and enter easing. Closing is still
+    // immediate — this clock only runs while the dialog is open.
+    bool reduce = MotionReduced();
+    bool animated = entrance != DialogEntrance::None && !reduce &&
+                    (entrance == DialogEntrance::SlideDown ||
+                     th.motion.durationNormalMs != 0);
+    float delta = 1.f;
+    if (animated) {
+        uint32_t key = MotionId(StrL("dialog"), StrDup(a, fmt("%d", layerIx)));
+        if (entrance == DialogEntrance::SlideDown) {
+            delta = MotionAppear(cx, key, ANIMATION_DURATION, DialogEase);
+        } else {
+            gDialogEnterEase = th.motion.easingEnter;
+            delta = MotionAppear(cx, key, th.motion.durationNormalMs,
+                                 DialogEnterEase);
+        }
+    }
+    DialogShadow(panel, animated ? delta : 1.f);
     El* backdrop = DialogBackdrop::New(cx)
                        ->Fixed()
                        ->Top(windowPadding.top)
@@ -593,16 +690,27 @@ El* Dialog::IntoEl(WinSize size) {
     }
     // DialogProps::margin_top: a tenth of the viewport down from the top,
     // not centered in it — through the viewport-aware corner positioner,
-    // which keeps an oversized panel inside the window. "slide-down" moves
-    // the requested corner.
-    El* placed =
-        Positioner::Corner(cx, Anchor::TopLeft,
-                           {windowPadding.left + panelX, windowPadding.top + y})
-            ->Margin(viewportMargin)
-            ->Position(
-                {windowPadding.left + panelX, windowPadding.top + y * delta})
-            ->Child(panel)
-            ->IntoEl();
+    // which keeps an oversized panel inside the window. SlideDown is the
+    // only entrance that moves that requested corner. FadeSlide travels
+    // after the clamp, from the resolved top.
+    Point resting = {windowPadding.left + panelX, windowPadding.top + y};
+    Positioner* positioner = Positioner::Corner(cx, Anchor::TopLeft, resting)
+                                 ->Margin(viewportMargin);
+    if (animated && entrance == DialogEntrance::SlideDown) {
+        positioner->Position({resting.x, windowPadding.top + y * delta});
+    }
+    El* placed = positioner->Child(panel)->IntoEl();
+    if (animated && entrance == DialogEntrance::FadeSlide) {
+        DialogFadeSlideHook* hook = ArenaNew<DialogFadeSlideHook>(a);
+        float rem = WindowRemSize(cx->win);
+        hook->travel = th.motion.distanceShort * (rem > 0 ? rem / 16.f : 1.f);
+        hook->topLimit = windowPadding.top + viewportMargin;
+        hook->progress = delta;
+        hook->surface = placed;
+        hook->placed.fn = &DialogFadeSlidePlaced;
+        hook->placed.user = hook;
+        placed->onPlaced = &hook->placed;
+    }
     El* popup = DialogPopup::New(cx)
                     ->Fixed()
                     ->Top(windowPadding.top)
@@ -633,8 +741,9 @@ El* Dialog::IntoEl(WinSize size) {
                    ->IntoEl();
     }
     // `.with_animation("fade-in", .., |this, delta| this.opacity(delta))`:
-    // the backdrop and the panel fade in together, as one layer.
-    return host->Opacity(delta);
+    // the backdrop and the panel fade in together, as one layer. An entrance
+    // that is not animated leaves the layer opaque.
+    return animated ? host->Opacity(delta) : host;
 }
 
 AlertDialog* AlertDialog::New(Ctx* cx) {
@@ -671,6 +780,10 @@ AlertDialog* AlertDialog::W(float value) {
 }
 AlertDialog* AlertDialog::MarginTop(float value) {
     base->MarginTop(value);
+    return this;
+}
+AlertDialog* AlertDialog::Entrance(DialogEntrance value) {
+    base->Entrance(value);
     return this;
 }
 AlertDialog* AlertDialog::H(float value) {

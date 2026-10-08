@@ -13,6 +13,21 @@ namespace component {
 // uses milliseconds rather than std::time::Duration.
 constexpr float ANIMATION_DURATION = 250.f;
 
+// dialog/entrance.rs. Closing stays immediate. Reduced motion shows the
+// final state for every option. SlideDown is the default.
+enum class DialogEntrance : uint8_t {
+    SlideDown,
+    Fade,
+    FadeSlide,
+    None,
+};
+
+// EntranceSurface::prepaint. `top` is the resolved resting top. Travel
+// shrinks to the space above `topLimit`, and the result is a y offset
+// (negative while the surface is still above its rest).
+float DialogFadeSlideOffset(float top, float topLimit, float travel,
+                            float progress);
+
 // The source keeps the standard action row in one value and lets Dialog and
 // AlertDialog share it. Listener is this runtime's stale-safe projection of
 // the three retained Rust callbacks.
@@ -138,6 +153,8 @@ struct Dialog {
     // DialogProps::margin_top. Unset keeps a tenth of the viewport height.
     bool hasMarginTop = false;
     float marginTop = 0;
+    // DialogProps::entrance. SlideDown keeps the legacy quarter-second drop.
+    DialogEntrance entrance = DialogEntrance::SlideDown;
     // DialogProps::overlay. The alert story's dialogs never tint the page.
     bool overlay = true;
     bool overlayClosable = true;
@@ -190,6 +207,7 @@ struct Dialog {
     Dialog* W(float px);
     Dialog* H(float px);
     Dialog* MarginTop(float px);
+    Dialog* Entrance(DialogEntrance value);
     Dialog* Overlay(bool v);
     Dialog* OverlayClosable(bool v);
     Dialog* Keyboard(bool v);
@@ -243,6 +261,8 @@ struct AlertDialog {
     AlertDialog* H(float value);
     // Overrides the tenth-of-the-viewport top offset on the alert surface.
     AlertDialog* MarginTop(float value);
+    // The same entrance policy as Dialog::Entrance.
+    AlertDialog* Entrance(DialogEntrance value);
     AlertDialog* Overlay(bool value);
     AlertDialog* Keyboard(bool value);
     AlertDialog* Layer(int value);

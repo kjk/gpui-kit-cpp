@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `29399be430979563800768feddab5885afce045b` (2026-10-08,
-table: Report visible row ranges of one row or none (#3397)). A table
-of one row reports `0..1`, and one whose rows drop to none reports
-`0..0`. The reported end never passes the row count. A single
-scrollable column is reported the same way.
+Processed through `6baad8b3db0dfd2b70fd8465849f63765424083a` (2026-10-08,
+dialog: Support configurable entrance animations (#3405)). Dialog and
+AlertDialog share DialogEntrance. SlideDown stays the default.
+Fade and FadeSlide use the theme's normal duration, and FadeSlide
+travels from the resolved resting top, shortened when the window edge
+is close. None, reduced motion, and a zero fade duration show the
+resting surface immediately.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

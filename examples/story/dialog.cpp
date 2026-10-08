@@ -27,6 +27,7 @@ struct DialogStory {
     bool overlayClosable = true;
     bool closeButton = true;
     bool keyboard = true;
+    component::DialogEntrance entrance = component::DialogEntrance::SlideDown;
     InputState focusInput;
     InputState basicInput;
     Entity<component::SelectState> basicSelect = {};
@@ -56,6 +57,18 @@ static void DlgToolbarAct(DialogStory* self, Ctx* cx, const ClickEvent*,
             break;
         case DlgOptKeyboard:
             self->keyboard = !self->keyboard;
+            break;
+        case 40:
+            self->entrance = component::DialogEntrance::SlideDown;
+            break;
+        case 41:
+            self->entrance = component::DialogEntrance::Fade;
+            break;
+        case 42:
+            self->entrance = component::DialogEntrance::FadeSlide;
+            break;
+        case 43:
+            self->entrance = component::DialogEntrance::None;
             break;
         default:
             StoryToolbarApply(&self->toolbar, nullptr, (int)act);
@@ -192,10 +205,11 @@ static El* DialogButton(Ctx* cx, Str id, Str label, Listener onClick,
     return button->IntoEl();
 }
 
-static component::Dialog* NewOpenDialog(DialogStory*, Ctx* cx) {
+static component::Dialog* NewOpenDialog(DialogStory* self, Ctx* cx) {
     Listener close = Listen(cx, &CloseDialog);
     return component::Dialog::New(cx)
         ->Open(true)
+        ->Entrance(self->entrance)
         ->OnClose(close)
         ->OnCancel(close)
         ->OnOk(close);
@@ -699,14 +713,23 @@ El* DialogStory::Render(DialogStory* self, Ctx* cx) {
     }
 
     El* page = Div(cx->a)->FlexCol()->Gap(24)->W(kFill);
-    StoryToolbarOpt opts[4] = {
+    // Rust nests these four under Options → Entrance. This page's options
+    // menu is one list, so the heading stands in for that submenu.
+    StoryToolbarOpt opts[9] = {
         {"Overlay", self->overlay, DlgOptOverlay},
         {"Close on overlay click", self->overlayClosable,
          DlgOptOverlayClosable},
         {"Close button", self->closeButton, DlgOptCloseButton},
         {"Keyboard", self->keyboard, DlgOptKeyboard},
+        {"Entrance", false, 0, false, true, true},
+        {"Slide down", self->entrance == component::DialogEntrance::SlideDown,
+         40},
+        {"Fade", self->entrance == component::DialogEntrance::Fade, 41},
+        {"Fade and slide",
+         self->entrance == component::DialogEntrance::FadeSlide, 42},
+        {"No animation", self->entrance == component::DialogEntrance::None, 43},
     };
-    page->Child(StoryToolbarOptions(cx, self, opts, 4,
+    page->Child(StoryToolbarOptions(cx, self, opts, 9,
                                     Listen(cx, &DlgToolbarAct), false));
     page->Child(RenderBasicDialog(self, cx));
     page->Child(RenderCustomButtons(self, cx));

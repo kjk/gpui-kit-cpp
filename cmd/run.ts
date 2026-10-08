@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "29399be430979563800768feddab5885afce045b",
+  sha: "6baad8b3db0dfd2b70fd8465849f63765424083a",
   date: "2026-10-08",
-  subject: "table: Report visible row ranges of one row or none (#3397)",
+  subject: "dialog: Support configurable entrance animations (#3405)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",
