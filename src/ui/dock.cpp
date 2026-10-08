@@ -550,7 +550,9 @@ static ResizeHandle* SkinDockResizeHandle(Ctx* cx, const DockCtx* d) {
         case DockPlacement::Center:
             break;
     }
-    ResizeHandle* h = resize_handle(cx, id, axis)
+    // `gpui::` — `component::resize_handle` is the same band with the
+    // divider already on it, and an unqualified call is ambiguous.
+    ResizeHandle* h = gpui::resize_handle(cx, id, axis)
                           ->WithAppearance(nullptr, ResizeHandleAppearance())
                           ->Inside(edge);
     return DockBindResizeHandle(d, h);

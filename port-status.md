@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `917610a9787b020f835d0a7571966c2fbea80d17` (2026-10-07,
-webview: Require GPUI Fast for gpui-webview (#3398)). Composition
-is no longer behind a feature: macOS and Linux always host the page
-in a window composition surface. This tree still parents the webview
-on the window.
+Processed through `bd8ed21f76cd8da14e92c18823e4063a3164cec2` (2026-10-07,
+resizable: Let an application build its own resize handle (#3302)).
+A standalone handle takes hover, double-click and drag-move listeners
+on the band. The themed `resize_handle` installs the divider
+appearance. The drag payload is the value itself.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

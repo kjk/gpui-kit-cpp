@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "917610a9787b020f835d0a7571966c2fbea80d17",
+  sha: "bd8ed21f76cd8da14e92c18823e4063a3164cec2",
   date: "2026-10-07",
-  subject: "webview: Require GPUI Fast for gpui-webview (#3398)",
+  subject: "resizable: Let an application build its own resize handle (#3302)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

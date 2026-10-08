@@ -39,6 +39,13 @@ inline ResizeHandleRenderer ResizeHandleAppearance() {
     return &RenderResizeHandle;
 }
 
+// resize_handle: the base band with this design system's divider on it,
+// for an edge no panel group owns.
+inline gpui::ResizeHandle* resize_handle(Ctx* cx, Str id, Axis axis) {
+    return gpui::resize_handle(cx, id, axis)
+        ->WithAppearance(nullptr, &RenderResizeHandle);
+}
+
 struct Resizable {
     // h_resizable / v_resizable: the base group with this design system's
     // handle appearance. The chain that follows — `W`, `Panel`, `Grow`,

@@ -7647,7 +7647,9 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.onMouseUp = e->onMouseUp;
         hr.mouseDownPhase = e->mouseDownPhase;
         hr.mouseUpPhase = e->mouseUpPhase;
-        hr.parent = ctx->hitParent;
+        // StopMouseDown is the occluding hitbox: the pointer is on this box,
+        // so nothing behind it, its own container included, stays hovered.
+        hr.parent = e->stopMouseDown ? -1 : ctx->hitParent;
         hr.onDragMove = e->onDragMove;
         hr.drag = e->drag;
         hr.onMouseDownOut = e->onMouseDownOut;

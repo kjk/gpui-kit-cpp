@@ -453,6 +453,78 @@ static void ARendererIsToldTheEdgeAHandleHugs() {
     delete win;
 }
 
+struct ResizeHeard {
+    int container = -1;
+    int handle = -1;
+    int doubles = 0;
+    int drags = 0;
+    int callerDrags = 0;
+};
+
+static ResizeHeard gResizeHeard;
+
+struct ResizeCaller {
+    static void OnBox(ResizeCaller*, Ctx*, const HoverEvent* ev) {
+        gResizeHeard.container = ev && ev->hovered ? 1 : 0;
+    }
+    static void OnHandle(ResizeCaller*, Ctx*, const HoverEvent* ev) {
+        gResizeHeard.handle = ev && ev->hovered ? 1 : 0;
+    }
+    static void OnDouble(ResizeCaller*, Ctx*, const MouseDownEvent*) {
+        gResizeHeard.doubles++;
+    }
+    static void OnDrag(ResizeCaller*, Ctx*, const DragMoveEvent*) {
+        gResizeHeard.drags++;
+    }
+    static void OnCallerDrag(ResizeCaller*, Ctx*, const DragMoveEvent*) {
+        gResizeHeard.callerDrags++;
+    }
+    static El* Render(ResizeCaller*, Ctx* cx) {
+        return Div(cx->a)
+            ->W(200)
+            ->H(100)
+            ->Click(1)
+            ->OnHover(Listen(cx, &ResizeCaller::OnBox))
+            ->Child(resize_handle(cx, StrL("edge"), Axis::Horizontal)
+                        ->Inside(HandleEdge::Trailing)
+                        ->OnHover(Listen(cx, &ResizeCaller::OnHandle))
+                        ->OnDoubleClick(Listen(cx, &ResizeCaller::OnDouble))
+                        ->OnDrag(StrL("resize-sidebar"), 0,
+                                 Listen(cx, &ResizeCaller::OnDrag))
+                        ->OnDragMove(Listen(cx, &ResizeCaller::OnCallerDrag))
+                        ->IntoEl());
+    }
+};
+
+// a_callers_listeners_reach_the_band: hover, double click and drag on a
+// standalone handle. The band occludes the container it hugs.
+static void ACallersListenersReachTheBand() {
+    gResizeHeard = {};
+    gResizeHeard.container = -1;
+    gResizeHeard.handle = -1;
+    App* app = TestAppNew();
+    Window* win =
+        TestWindowOpen(app, EntityNew<ResizeCaller>(app), 400, 100, 1);
+    TestDraw(win);
+    TestSimulateMouseMove(win, {100, 50});
+    utassert(gResizeHeard.container == 1);
+    const HitRect* band = HitTestRect(&win->paint, 198, 50);
+    utassert(band && band->bounds.w < 10.f);
+    TestSimulateMouseMove(win, {band->bounds.x + band->bounds.w * 0.5f, 50});
+    utassert(gResizeHeard.handle == 1);
+    utassert(gResizeHeard.container == 0);
+    float x = band->bounds.x + band->bounds.w * 0.5f;
+    PlatformInput second =
+        InputMouseDown(MouseButton::Left, x, 50, {}, 2, false);
+    WindowDispatchInput(win, &second);
+    TestFlushEffects(app);
+    utassert(gResizeHeard.doubles == 1);
+    TestSimulateMouseMove(win, {x + 24, 50}, true);
+    utassert(gResizeHeard.drags >= 1);
+    utassert(gResizeHeard.callerDrags >= 1);
+    TestAppFree(app);
+}
+
 void TestResizable() {
     TestSuite("resizable");
     ResizingOnePanelTakesFromTheNext();
@@ -468,4 +540,5 @@ void TestResizable() {
     AHandleReportsThePressAndTheDragToItsRenderer();
     AHuggingHandleDrawsItsLineOnTheSeam();
     ARendererIsToldTheEdgeAHandleHugs();
+    ACallersListenersReachTheBand();
 }

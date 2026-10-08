@@ -323,6 +323,10 @@ void SharedHandleState::OnDown(SharedHandleState* self, Ctx* cx,
     if (self->nextDown.IsValid()) {
         ListenerCall(cx->app, cx->win, self->nextDown, ev);
     }
+    // on_double_click: the second press, not the release.
+    if (ev && ev->clickCount >= 2 && self->nextDouble.IsValid()) {
+        ListenerCall(cx->app, cx->win, self->nextDouble, ev);
+    }
     if (changed) {
         Notify(cx);
     }
@@ -330,6 +334,9 @@ void SharedHandleState::OnDown(SharedHandleState* self, Ctx* cx,
 
 void SharedHandleState::OnHover(SharedHandleState* self, Ctx* cx,
                                 const HoverEvent* ev) {
+    if (self->nextHover.IsValid()) {
+        ListenerCall(cx->app, cx->win, self->nextHover, ev);
+    }
     // A held handle stays held wherever the pointer is: by the second frame
     // of a drag it is outside this nine-pixel band.
     if (ResizeHandleStateIsActive(self->state)) {
@@ -357,6 +364,9 @@ void SharedHandleState::OnDragMove(SharedHandleState* self, Ctx* cx,
     bool changed = self->Set(ResizeHandleState::Dragging);
     if (self->nextDrag.IsValid()) {
         ListenerCall(cx->app, cx->win, self->nextDrag, ev);
+    }
+    if (self->nextCallerDrag.IsValid()) {
+        ListenerCall(cx->app, cx->win, self->nextCallerDrag, ev);
     }
     if (changed) {
         Notify(cx);
@@ -438,6 +448,21 @@ ResizeHandle* ResizeHandle::OnRelease(Listener listener) {
     return this;
 }
 
+ResizeHandle* ResizeHandle::OnHover(Listener listener) {
+    onHover = listener;
+    return this;
+}
+
+ResizeHandle* ResizeHandle::OnDoubleClick(Listener listener) {
+    onDoubleClick = listener;
+    return this;
+}
+
+ResizeHandle* ResizeHandle::OnDragMove(Listener listener) {
+    onDragMove = listener;
+    return this;
+}
+
 ResizeHandle* ResizeHandle::WithAppearance(void* user,
                                            ResizeHandleRenderer renderer) {
     appearanceUser = user;
@@ -505,6 +530,9 @@ El* ResizeHandle::IntoEl() {
     if (stored) {
         stored->nextDrag = onDrag;
         stored->nextUp = onRelease;
+        stored->nextHover = onHover;
+        stored->nextDouble = onDoubleClick;
+        stored->nextCallerDrag = onDragMove;
     }
     ResizeHandleContext context = {axis, now, edge, hasEdge};
     El* line = nullptr;
@@ -525,7 +553,8 @@ El* ResizeHandle::IntoEl() {
         else
             line->H(kResizeHandleSize)->W(kFill);
     }
-    El* handle = Div(cx->a)->Absolute()->PathClick(id);
+    // The band occludes. A container behind it does not stay hovered.
+    El* handle = Div(cx->a)->Absolute()->PathClick(id)->StopMouseDown();
     ResizeHandleBindState(handle, state);
     if (onDrag.IsValid()) {
         handle->OnDrag(dragKind.s ? dragKind : kResizeDrag, dragIx);

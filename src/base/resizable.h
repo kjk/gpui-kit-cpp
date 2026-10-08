@@ -93,6 +93,11 @@ struct SharedHandleState {
     Listener nextDown;
     Listener nextUp;
     Listener nextDrag;
+    // A caller listening on the band itself, beside the group's drag.
+    // Rust puts these on the handle through the interactive-element traits.
+    Listener nextHover;
+    Listener nextDouble;
+    Listener nextCallerDrag;
 
     ResizeHandleState Get() const { return state; }
     // Answers whether the state actually changed, so a listener repaints only
@@ -167,8 +172,15 @@ struct ResizeHandle {
     Listener onDrag = {};
     // on_drag's value: what the press picks up. A handle nobody names a
     // value for drags the group's own kind, which only its group reads.
+    // The payload is the value itself. A caller following the drag listens
+    // for that value, not a shared wrapper around it.
     Str dragKind = {};
     int dragIx = 0;
+    // Listeners on the band: hover, a double click, and each move of the
+    // drag. The handle's own on_drag still owns the drag.
+    Listener onHover = {};
+    Listener onDoubleClick = {};
+    Listener onDragMove = {};
     // The release that ends a drag, wherever the pointer is by then. Rust's
     // dock skin follows it from a window-level listener; the port's element
     // carries one listener per event, so it rides the handle's shared state.
@@ -187,6 +199,11 @@ struct ResizeHandle {
     // an index, and the listener each move of it reaches.
     ResizeHandle* OnDrag(Str kind, int ix, Listener listener);
     ResizeHandle* OnRelease(Listener listener);
+    // The band itself. A double click, a hover and a drag-move a caller
+    // attaches here reach the element the pointer hits.
+    ResizeHandle* OnHover(Listener listener);
+    ResizeHandle* OnDoubleClick(Listener listener);
+    ResizeHandle* OnDragMove(Listener listener);
     ResizeHandle* WithAppearance(void* user, ResizeHandleRenderer renderer);
     ResizeHandle* Colors(Rgba rest, Rgba active);
     El* IntoEl();
