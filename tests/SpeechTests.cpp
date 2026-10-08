@@ -33,17 +33,20 @@ static bool PushTone(LevelMeter* meter, int16_t amplitude, int n) {
 static void OneLevelPerIntervalAcrossPushes() {
     LevelMeter meter;
     meter.Reset(16000, 1);
-    // 25 ms at 16 kHz is 400 samples; feed 1 000 samples in uneven pushes.
-    utassert(!PushTone(&meter, 1000, 150));
-    utassert(PushTone(&meter, 1000, 300));
-    utassert(PushTone(&meter, 1000, 550));
+    // Two and a half levels' worth of audio in uneven pushes.
+    int window = SpeechLevelWindowFor(16000, 1);
+    utassert(!PushTone(&meter, 1000, window / 3));
+    utassert(PushTone(&meter, 1000, window));
+    utassert(PushTone(&meter, 1000, window + window / 6));
     utassert(meter.LevelsLen() == 2);
-    utassert(meter.lastLevelAt >= 0);
+    float lead = 0;
+    utassert(meter.LeadAt(TimeNow(), &lead));
 }
 
 static void TheWindowFollowsTheStreamFormat() {
-    utassert(SpeechLevelWindowFor(16000, 1) == 400);
-    utassert(SpeechLevelWindowFor(48000, 2) == 2400);
+    // 80 ms of 16 kHz mono, and of 48 kHz stereo.
+    utassert(SpeechLevelWindowFor(16000, 1) == 1280);
+    utassert(SpeechLevelWindowFor(48000, 2) == 7680);
 }
 
 static void PeaksRiseFastAndFallSlowly() {
@@ -58,7 +61,7 @@ static void BackgroundNoiseReadsAsSilence() {
     LevelMeter meter;
     meter.Reset(16000, 1);
     // -60 dBFS: below the -50 dB floor of the scale.
-    PushTone(&meter, 32, 400);
+    PushTone(&meter, 32, SpeechLevelWindowFor(16000, 1));
     utassert(meter.LevelsLen() == 1 && meter.LevelAt(0) == 0.f);
 }
 
@@ -72,8 +75,71 @@ static void LevelMapsDecibelsToTheUnitRange() {
 static void HistoryIsBounded() {
     LevelMeter meter;
     meter.Reset(16000, 1);
-    PushTone(&meter, 8000, 400 * (kSpeechLevelHistory + 10));
+    PushTone(&meter, 8000,
+             SpeechLevelWindowFor(16000, 1) * (kSpeechLevelHistory + 10));
     utassert(meter.LevelsLen() == kSpeechLevelHistory);
+}
+
+static void LevelAtTime(LevelMeter* meter, double at) {
+    int window = SpeechLevelWindowFor(16000, 1);
+    utassert(meter->PushAt(Tone(1000, window).els, window, at));
+}
+
+static bool LeadNear(LevelMeter* meter, double at, float want, float tol) {
+    float lead = 0;
+    if (!meter->LeadAt(at, &lead)) {
+        return false;
+    }
+    return fabsf(lead - want) < tol;
+}
+
+static void ThePlayheadMovesAtAnEvenPaceBetweenLevels() {
+    LevelMeter meter;
+    meter.Reset(16000, 1);
+    double start = TimeNow();
+    LevelAtTime(&meter, start);
+    utassert(LeadNear(&meter, start, 1.75f, 1e-3f));
+    utassert(LeadNear(&meter, start + 0.040, 1.25f, 1e-3f));
+    utassert(LeadNear(&meter, start + 0.080, 0.75f, 1e-3f));
+    float lead = -1;
+    utassert(meter.LeadAt(start + 1.0, &lead));
+    utassert(lead == 0.f);
+}
+
+static void UnevenArrivalsDoNotJerkThePlayhead() {
+    LevelMeter meter;
+    meter.Reset(16000, 1);
+    double start = TimeNow();
+    LevelAtTime(&meter, start);
+    float before = 0;
+    utassert(meter.LeadAt(start + 0.060, &before));
+    LevelAtTime(&meter, start + 0.060);
+    float after = 0;
+    utassert(meter.LeadAt(start + 0.060, &after));
+    utassert(fabsf(after - before - 1.f) < 0.05f);
+}
+
+static void ThePlayheadSettlesOnThePaceLevelsArriveAt() {
+    const int intervals[] = {72, 92};
+    for (int intervalMs : intervals) {
+        LevelMeter meter;
+        meter.Reset(16000, 1);
+        double start = TimeNow();
+        for (int ix = 0; ix < 300; ix++) {
+            LevelAtTime(&meter, start + ix * (intervalMs / 1000.0));
+        }
+        double last = start + 299 * (intervalMs / 1000.0);
+        utassert(LeadNear(&meter, last, 1.75f, 0.1f));
+        utassert(
+            LeadNear(&meter, last + (intervalMs / 2) / 1000.0, 1.25f, 0.1f));
+    }
+}
+
+static void NothingLeadsBeforeTheFirstLevel() {
+    LevelMeter meter;
+    meter.Reset(16000, 1);
+    float lead = 0;
+    utassert(!meter.LeadAt(TimeNow(), &lead));
 }
 
 // ─── microphone.rs ────────────────────────────────────────────────────────
@@ -188,23 +254,43 @@ static Bounds WaveBounds(float width, float height) {
     return Bounds{10.f, 20.f, width, height};
 }
 
-static void BarsFillTheWidthWithTheNewestAtTheTrailingEdge() {
+static void AShortHistoryGrowsFromTheTrailingEdge() {
     Bounds bounds = WaveBounds(98.f, 20.f);
     const float levels[] = {0.2f, 0.9f};
     Bounds rects[64];
-    int n = SpeechWaveformBarRects(bounds, levels, 2, 0.f, 2.f, 2.f, rects, 64);
-    // 98 px at a 4 px pitch fits 25 bars.
-    utassert(n == 25);
+    int n = SpeechWaveformBarRects(bounds, levels, 2, 0.f, 2.f, 5.f, rects, 64);
+    utassert(n == 2);
     utassert(rects[0].x + rects[0].w == bounds.x + bounds.w);
     utassert(rects[0].h == 18.f);
+    utassert(rects[1].x + rects[1].w == bounds.x + bounds.w - 7.f);
     utassert(rects[1].h == 4.f);
 }
 
-static void BarsGrowFromTheMidlineAndRestAsABaseline() {
-    Bounds bounds = WaveBounds(40.f, 20.f);
-    const float levels[] = {0.5f};
+static void ALongHistoryFillsTheWidth() {
+    Bounds bounds = WaveBounds(96.f, 20.f);
+    float levels[64] = {};
     Bounds rects[64];
-    int n = SpeechWaveformBarRects(bounds, levels, 1, 0.f, 2.f, 2.f, rects, 64);
+    int n =
+        SpeechWaveformBarRects(bounds, levels, 64, 0.f, 2.f, 5.f, rects, 64);
+    // 96 px at a 7 px pitch fits 14 bars.
+    utassert(n == 14);
+    for (int i = 0; i < n; i++) {
+        utassert(rects[i].x >= bounds.x - 0.5f);
+    }
+}
+
+static void NothingIsDrawnBeforeAnyAudio() {
+    Bounds bounds = WaveBounds(96.f, 20.f);
+    Bounds rects[8];
+    utassert(SpeechWaveformBarRects(bounds, nullptr, 0, 0.f, 2.f, 5.f, rects,
+                                    8) == 0);
+}
+
+static void BarsGrowFromTheMidlineAndSilenceIsADot() {
+    Bounds bounds = WaveBounds(40.f, 20.f);
+    const float levels[] = {0.5f, 0.f};
+    Bounds rects[64];
+    int n = SpeechWaveformBarRects(bounds, levels, 2, 0.f, 2.f, 5.f, rects, 64);
     utassert(n > 0);
     for (int i = 0; i < n; i++) {
         float middle = rects[i].y + rects[i].h / 2.f;
@@ -215,18 +301,33 @@ static void BarsGrowFromTheMidlineAndRestAsABaseline() {
 
 static void ScrollingMovesBarsTowardTheLeadingEdge() {
     Bounds bounds = WaveBounds(40.f, 20.f);
-    const float levels[] = {1.f};
+    const float levels[] = {1, 1, 1, 1, 1, 1, 1, 1};
     Bounds still[64];
     Bounds moving[64];
     int nStill =
-        SpeechWaveformBarRects(bounds, levels, 1, 0.f, 2.f, 2.f, still, 64);
+        SpeechWaveformBarRects(bounds, levels, 8, 0.f, 2.f, 5.f, still, 64);
     int nMoving =
-        SpeechWaveformBarRects(bounds, levels, 1, 0.5f, 2.f, 2.f, moving, 64);
+        SpeechWaveformBarRects(bounds, levels, 8, 0.5f, 2.f, 5.f, moving, 64);
     utassert(nStill > 0 && nMoving > 0);
-    utassert(still[0].x - moving[0].x == 2.f);
+    utassert(still[0].x - moving[0].x == 3.5f);
     for (int i = 0; i < nMoving; i++) {
         utassert(moving[i].x >= bounds.x - 0.5f);
     }
+}
+
+static void ABarPastTheTrailingEdgeIsLeftOutUntilItSlidesIn() {
+    Bounds bounds = WaveBounds(40.f, 20.f);
+    const float levels[] = {1.f, 0.5f};
+    Bounds out[8];
+    int nOut =
+        SpeechWaveformBarRects(bounds, levels, 2, -1.f, 2.f, 5.f, out, 8);
+    utassert(nOut == 1);
+    utassert(out[0].x + out[0].w == bounds.x + bounds.w);
+    Bounds entering[8];
+    int nIn =
+        SpeechWaveformBarRects(bounds, levels, 2, -0.2f, 2.f, 5.f, entering, 8);
+    utassert(nIn == 2);
+    utassert(entering[0].x < bounds.x + bounds.w);
 }
 
 // ─── state.rs ─────────────────────────────────────────────────────────────
@@ -406,9 +507,9 @@ static void SessionRunsFromStartToFinal() {
 
     f.Sink().Ready(f.app);
     {
-        // Two levels' worth: 25 ms is 400 samples at 16 kHz.
+        // Two levels' worth: 80 ms is 1 280 samples at 16 kHz.
         Vec<int16_t> half;
-        for (int i = 0; i < 800; i++) {
+        for (int i = 0; i < 2560; i++) {
             VecAppend(half, (int16_t)(32767 / 2));
         }
         f.Audio().Push(half.els, len(half), f.app);
@@ -416,7 +517,7 @@ static void SessionRunsFromStartToFinal() {
     f.Sink().Hypothesis(StrL("hello"), f.app);
     TestRunUntilParked(f.app);
     utassert(f.Status() == SpeechStatus::Recording);
-    utassert(f.recognizer.recorded.samples == 800);
+    utassert(f.recognizer.recorded.samples == 2560);
     utassert(f.S()->LevelsLen() == 2);
     utassert(f.S()->LevelAt(0) > 0.5f);
 
@@ -548,6 +649,10 @@ void TestSpeech() {
     BackgroundNoiseReadsAsSilence();
     LevelMapsDecibelsToTheUnitRange();
     HistoryIsBounded();
+    ThePlayheadMovesAtAnEvenPaceBetweenLevels();
+    UnevenArrivalsDoNotJerkThePlayhead();
+    ThePlayheadSettlesOnThePaceLevelsArriveAt();
+    NothingLeadsBeforeTheFirstLevel();
     ConverterKeepsRateAndDuplicatesChannels();
     ConverterDownsamplesAcrossChunks();
     ConverterUpsamples();
@@ -556,9 +661,12 @@ void TestSpeech() {
     PhrasesAreSpacedByScript();
     PhraseSeparatorFollowsTheLanguage();
     ASystemRecognizerWithoutAPlatformIsUnsupported();
-    BarsFillTheWidthWithTheNewestAtTheTrailingEdge();
-    BarsGrowFromTheMidlineAndRestAsABaseline();
+    AShortHistoryGrowsFromTheTrailingEdge();
+    ALongHistoryFillsTheWidth();
+    NothingIsDrawnBeforeAnyAudio();
+    BarsGrowFromTheMidlineAndSilenceIsADot();
     ScrollingMovesBarsTowardTheLeadingEdge();
+    ABarPastTheTrailingEdgeIsLeftOutUntilItSlidesIn();
     SessionRunsFromStartToFinal();
     StopEndsWithTheTranscriptSoFarAfterTheTimeout();
     CancelDiscardsTheSessionAndIgnoresLateResults();

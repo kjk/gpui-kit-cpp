@@ -16,12 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6150a8c6ecd723c78dffa9f28e05f80c68348036` (2026-10-05,
-input: Count characters, not bytes, when validating a mask pattern (#3369)).
-Upstream compared a character index with the mask text's byte length, so a
-multi-byte separator or `€` under `*` was rejected. `MaskIsValid` already
-walks and compares byte offsets, so the same text is accepted. The current
-update target is `288767cc730ca4977852a7860f52a8465a61876f`.
+Processed through `4890b1c2ab37c7a072d1a3c6adc6a5923ec09807` (2026-10-05,
+speech: Pace `SpeechWaveform` at one bar per 80 ms and scroll it smoothly
+(#3352)). A level is 80 ms of audio. The waveform follows a playhead 1.75
+levels behind the newest one, with a small pace and phase correction, and
+draws only levels that exist, spaced 2.5 bar-widths apart and clipped at the
+trailing edge. While recording, the example's waveform takes the rest of the
+row. The current update target is
+`288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust
 

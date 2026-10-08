@@ -479,7 +479,50 @@ void LevelMeter::Reset(uint32_t sampleRate, uint16_t channels) {
 }
 
 bool LevelMeter::Push(const int16_t* samples, int n) {
-    bool recorded = false;
+    return PushAt(samples, n, TimeNow());
+}
+
+void LevelMeter::AlignPlayhead(double now) {
+    if (anchor < 0) {
+        // The first level arrives on time by definition.
+        anchor = now - (double)kSpeechLevelIntervalMs / 1000.;
+        return;
+    }
+    double error = (now - anchor) - (double)recorded * pace;
+    double interval = (double)kSpeechLevelIntervalMs / 1000.;
+    double next = pace + error * kSpeechPlayheadPaceGain;
+    double lo = interval / 2.;
+    double hi = interval * 2.;
+    if (next < lo) {
+        next = lo;
+    } else if (next > hi) {
+        next = hi;
+    }
+    // Re-anchor so the playhead's position at `now` is unchanged by the new
+    // pace.
+    double elapsed = (now - anchor) / pace;
+    double shifted = now + (-elapsed * next);
+    pace = next;
+    anchor = shifted + error * kSpeechPlayheadPhaseGain;
+}
+
+bool LevelMeter::LeadAt(double now, float* out) const {
+    if (anchor < 0) {
+        return false;
+    }
+    double playhead = (now - anchor) / pace - kSpeechPlayheadLag;
+    float lead = (float)((double)recorded - playhead);
+    if (lead < 0) {
+        lead = 0;
+    } else if (lead > kSpeechPlayheadMaxLead) {
+        lead = kSpeechPlayheadMaxLead;
+    }
+    *out = lead;
+    return true;
+}
+
+bool LevelMeter::PushAt(const int16_t* samples, int n, double now) {
+    bool any = false;
     for (int i = 0; i < n; i++) {
         double sample = (double)samples[i] / 32767.;
         sum += sample * sample;
@@ -495,13 +538,12 @@ bool LevelMeter::Push(const int16_t* samples, int n) {
             nLevels++;
             sum = 0;
             count = 0;
-            recorded = true;
+            recorded++;
+            AlignPlayhead(now);
+            any = true;
         }
     }
-    if (recorded) {
-        lastLevelAt = TimeNow();
-    }
-    return recorded;
+    return any;
 }
 
 // ─── state.rs ─────────────────────────────────────────────────────────────
@@ -1042,9 +1084,10 @@ El* SpeechButton::IntoEl() {
 
 // ─── waveform.rs ──────────────────────────────────────────────────────────
 
-// DEFAULT_WIDTH: the width of a waveform the caller does not size, 24 bars
-// at the smaller sizes.
+// DEFAULT_WIDTH: the width of a waveform the caller does not size.
 static const float kWaveformDefaultWidth = 96.f;
+// GAP_RATIO: the space between bars, relative to their width.
+static const float kWaveformGapRatio = 2.5f;
 
 SpeechWaveform* SpeechWaveform::New(Ctx* cx, Entity<SpeechState> state) {
     SpeechWaveform* w = ArenaNew<SpeechWaveform>(cx->a);
@@ -1092,18 +1135,25 @@ int SpeechWaveformBarRects(Bounds bounds, const float* levels, int nLevels,
     float height = bounds.h;
     float middle = bounds.y + height / 2.f;
     float right0 = bounds.x + bounds.w;
-    // One more bar than fits, to scroll in from the trailing edge.
-    float fits = floorf((bounds.w + gap) / pitch);
-    int count = (int)(fits > 0 ? fits : 0) + 1;
+    // Enough bars to reach the leading edge from wherever the newest sits.
+    float past = scroll < 0.f ? -scroll : 0.f;
+    float fits = ceilf((bounds.w + gap) / pitch - past);
+    if (fits < 0.f) {
+        fits = 0.f;
+    }
+    int count = (int)fits + 1;
     int n = 0;
     for (int fromEnd = 0; fromEnd < count && n < cap; fromEnd++) {
         float right = right0 - pitch * ((float)fromEnd + scroll);
         float left = right - bar;
-        if (left < bounds.x - 0.5f) {
+        if (left < bounds.x - 0.5f || left >= right0) {
             continue;
         }
         int ix = nLevels - (fromEnd + 1);
-        float level = ix >= 0 ? levels[ix] : 0.f;
+        if (ix < 0) {
+            continue;
+        }
+        float level = levels[ix];
         level = level < 0 ? 0 : (level > 1 ? 1 : level);
         float barHeight = height * level;
         if (barHeight < bar) {
@@ -1119,47 +1169,56 @@ struct WaveformPaint {
     int nLevels = 0;
     float scroll = 0;
     float bar = 2;
+    float gap = 5;
     Rgba color = {};
 };
 
 static void PaintWaveform(PaintCtx* ctx, El* e, void* user) {
     const WaveformPaint* w = (const WaveformPaint*)user;
-    Bounds rects[kSpeechLevelHistory + 1];
+    Bounds rects[kSpeechLevelHistory + 4];
+    Bounds box = e->Bounds();
     int n =
-        SpeechWaveformBarRects(e->Bounds(), w->levels, w->nLevels, w->scroll,
-                               w->bar, w->bar, rects, kSpeechLevelHistory + 1);
+        SpeechWaveformBarRects(box, w->levels, w->nLevels, w->scroll, w->bar,
+                               w->gap, rects, kSpeechLevelHistory + 4);
     Rgba color = PaintFade(ctx, w->color);
+    // A bar sliding in is cut at the trailing edge. FillRound is a capsule
+    // (radius of half the short side) and is not snapped to device pixels,
+    // which is what Rust's path is for: a snapped quad would step.
+    CanvasPushClip(ctx, box.x, box.y, box.w, box.h);
     for (int i = 0; i < n; i++) {
+        float radius = rects[i].w < rects[i].h ? rects[i].w : rects[i].h;
         FillRound(ctx, rects[i].x, rects[i].y, rects[i].w, rects[i].h,
-                  w->bar / 2.f, color);
+                  radius / 2.f, color);
     }
+    CanvasPopClip(ctx);
 }
 
 El* SpeechWaveform::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     float height = Height();
     // Bars thicken with the waveform so a tall one does not read as
-    // hairlines.
+    // hairlines, and stand apart so a run of silence reads as a row of dots.
     float bar = roundf(height * 0.125f);
     bar = bar < 2.f ? 2.f : (bar > 4.f ? 4.f : bar);
+    float gap = roundf(bar * kWaveformGapRatio);
     const SpeechState* s = state.Get(cx->app);
     bool capturing = s && SpeechStatusIsCapturing(s->Status());
     bool animate = capturing && !MotionReduced();
 
     WaveformPaint* paint = ArenaNew<WaveformPaint>(a);
     paint->bar = bar;
+    paint->gap = gap;
     paint->color = capturing ? th.primary : th.mutedFg;
     if (s) {
         paint->nLevels = s->LevelsLen();
         for (int i = 0; i < paint->nLevels; i++) {
             paint->levels[i] = s->LevelAt(i);
         }
-        // How far the bars have scrolled toward the next level, so the motion
-        // stays smooth when levels arrive slower than the display refreshes.
-        if (animate && s->LastLevelAt() >= 0) {
-            float elapsedMs = (float)((TimeNow() - s->LastLevelAt()) * 1000.);
-            float scroll = elapsedMs / (float)kSpeechLevelIntervalMs;
-            paint->scroll = scroll < 0 ? 0 : (scroll > 1 ? 1 : scroll);
+        // The bars follow an even clock rather than each arrival. Without
+        // animation the newest bar sits at the edge.
+        float lead = 0;
+        if (animate && s->LevelLeadAt(TimeNow(), &lead)) {
+            paint->scroll = -lead;
         }
     }
     if (animate && cx->win) {

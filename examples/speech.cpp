@@ -651,23 +651,29 @@ El* SpeechApp::RenderSpeechBar(Ctx* cx) {
                    ->ShowWhenUnsupported(true)
                    ->WithSize(UiSize::Large)
                    ->IntoEl());
-    bar->Child(Div(a)
+    // While recording the waveform takes the rest of the row, so the text
+    // keeps a fixed column and truncates the live transcript.
+    El* text = Div(a)
                    ->FlexCol()
-                   ->Flex1()
                    ->MinW(0)
                    ->Gap(2)
                    ->Child(TextEl(a, title)->Font(14)->Medium()->Fg(
                        (supported && available) || active ? th.foreground
                                                           : th.mutedFg))
                    ->Child(TextEl(a, detail)->Font(14)->Truncate()->Fg(
-                       active && heard ? th.foreground : th.mutedFg)));
+                       active && heard ? th.foreground : th.mutedFg));
     if (active) {
-        Style width;
-        width.width = 112;
+        text->W(220)->Shrink0();
+    } else {
+        text->Flex1();
+    }
+    bar->Child(text);
+    if (active) {
         bar->Child(component::SpeechWaveform::New(cx, speech)
-                       ->Refine(width, StyleFieldWidth)
                        ->WithSize(UiSize::Small)
-                       ->IntoEl());
+                       ->IntoEl()
+                       ->Flex1()
+                       ->MinW(0));
         bar->Child(component::Button::New(cx, StrL("discard"))
                        ->Ghost()
                        ->WithSize(UiSize::Small)

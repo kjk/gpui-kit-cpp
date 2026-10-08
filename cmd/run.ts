@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6150a8c6ecd723c78dffa9f28e05f80c68348036",
+  sha: "4890b1c2ab37c7a072d1a3c6adc6a5923ec09807",
   date: "2026-10-05",
-  subject: "input: Count characters, not bytes, when validating a mask pattern (#3369)",
+  subject: "speech: Pace `SpeechWaveform` at one bar per 80 ms and scroll it smoothly (#3352)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

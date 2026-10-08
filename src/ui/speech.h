@@ -239,18 +239,30 @@ struct SpeechAudioConverter {
 
 // ─── level.rs ─────────────────────────────────────────────────────────────
 
-// LEVEL_INTERVAL: how much audio one level covers, short enough for the bars
-// to follow syllables.
-const int kSpeechLevelIntervalMs = 25;
+// LEVEL_INTERVAL: how much audio one level covers, and so how often the
+// waveform takes a step: about the pace of a syllable.
+const int kSpeechLevelIntervalMs = 80;
 // LEVEL_HISTORY: how many recent levels are kept, enough to fill a wide
-// waveform (about six seconds of audio).
+// waveform (about twenty seconds of audio).
 const int kSpeechLevelHistory = 256;
+// PLAYHEAD_LAG: how far behind the newest level the waveform's playhead
+// runs, in levels. It advances a whole level between arrivals, so it must
+// run more than one behind to never catch the newest bar.
+const double kSpeechPlayheadLag = 1.75;
+// PLAYHEAD_PHASE_GAIN / PLAYHEAD_PACE_GAIN: how much of each arrival error
+// corrects the playhead's phase and its pace.
+const double kSpeechPlayheadPhaseGain = 0.1;
+const double kSpeechPlayheadPaceGain = 0.01;
+// PLAYHEAD_MAX_LEAD: how far ahead of the playhead levels may pile up, in
+// levels, before the waveform shows them anyway.
+const float kSpeechPlayheadMaxLead = 3.f;
 
 // Turns a stream of PCM into smoothed input levels, one per
 // kSpeechLevelIntervalMs of audio, carrying partial intervals across pushes.
 struct LevelMeter {
     // Samples per level: the interval at the stream's rate and channels.
-    int window = 400;
+    // 80 ms of 16 kHz mono.
+    int window = 1280;
     double sum = 0;
     int count = 0;
     float smoothed = 0;
@@ -258,19 +270,32 @@ struct LevelMeter {
     float levels[kSpeechLevelHistory] = {};
     int first = 0;
     int nLevels = 0;
-    // TimeNow() when the newest level was recorded, to scroll smoothly
-    // between levels; negative is None.
-    double lastLevelAt = -1;
+    // Levels recorded since the reset, including those dropped from history.
+    uint64_t recorded = 0;
+    // When level zero would have arrived on the playhead's even clock.
+    // Negative is None, until the first level.
+    double anchor = -1;
+    // The playhead's pace in seconds per level, tuned to how fast levels
+    // actually arrive. LEVEL_INTERVAL.
+    double pace = 0.080;
 
     // Clear the history and measure a stream of `sampleRate` × `channels`.
     void Reset(uint32_t sampleRate, uint16_t channels);
     // Measure `samples`; answers whether a new level was recorded.
     bool Push(const int16_t* samples, int n);
+    // Push with the time the samples arrived, in TimeNow() seconds.
+    bool PushAt(const int16_t* samples, int n, double now);
     int LevelsLen() const { return nLevels; }
     // Oldest first.
     float LevelAt(int ix) const {
         return levels[(first + ix) % kSpeechLevelHistory];
     }
+    // Where the waveform should draw the newest level at `now`, in levels
+    // past the trailing edge. False before the first level.
+    bool LeadAt(double now, float* out) const;
+
+    // Nudge the playhead toward the level just recorded.
+    void AlignPlayhead(double now);
 };
 
 int SpeechLevelWindowFor(uint32_t sampleRate, uint16_t channels);
@@ -439,11 +464,15 @@ struct SpeechState {
     // The transcript of the current or last session: every committed phrase
     // followed by the current hypothesis. A temp-arena string.
     TempStr TranscriptTemp() const;
-    // Recent input levels in 0..=1, oldest first, one per 25 ms of audio.
+    // Recent input levels in 0..=1, oldest first, one per 80 ms of audio.
     // Peaks rise at once and fall back smoothly; background noise reads as 0.
     int LevelsLen() const { return meter.LevelsLen(); }
     float LevelAt(int ix) const { return meter.LevelAt(ix); }
-    double LastLevelAt() const { return meter.lastLevelAt; }
+    // How far past the waveform's trailing edge the newest level sits at
+    // `now`, in levels. False before the first level.
+    bool LevelLeadAt(double now, float* out) const {
+        return meter.LeadAt(now, out);
+    }
 
     // Start a session. Does nothing while one is running.
     //
@@ -508,11 +537,12 @@ struct SpeechButton {
 
 // A live waveform of a SpeechState's input levels.
 //
-// Bars fill the waveform's width and grow up and down from its midline. The
-// newest level enters at the trailing edge and older ones scroll toward the
-// leading edge, redrawn every frame while audio is captured. Without capture
-// the bars rest as a muted baseline. With reduced motion the bars still show
-// each level but do not scroll between them.
+// Each level is a bar that grows up and down from the midline; silence is a
+// dot. The newest level enters at the trailing edge and older ones scroll
+// toward the leading edge at a steady pace, redrawn every frame while audio
+// is captured, so the trail grows from the trailing edge until it fills the
+// width. Before any audio, nothing is drawn. With reduced motion the bars
+// still show each level but do not scroll between them.
 //
 // Size the waveform like any element, e.g. a kFill width to span a row; it is
 // 96 px wide by default, and its height follows WithSize.
@@ -533,9 +563,10 @@ struct SpeechWaveform {
 };
 
 // bar_rects: the bars for `levels` (oldest first) in `bounds`: the newest at
-// the trailing edge, `scroll` of a step further toward the leading edge, each
-// centered on the midline and at least as tall as it is wide. Writes up to
-// `cap` bars to `out` and answers how many.
+// the trailing edge, `scroll` of a step further toward the leading edge
+// (negative past the trailing edge, where a bar is cut off or left out),
+// each centered on the midline and at least as tall as it is wide. Only
+// levels that exist are drawn. Writes up to `cap` bars to `out`.
 int SpeechWaveformBarRects(Bounds bounds, const float* levels, int nLevels,
                            float scroll, float bar, float gap, Bounds* out,
                            int cap);
