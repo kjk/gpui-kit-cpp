@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `58d078b67fdbddc739faf1f475f2da964aad2bff` (2026-10-07,
-text_view: Ignore gestures that stay inside one block plugin (#3390)).
-A custom block is selected only when the gesture crosses its edge.
-A drag that starts and ends inside the block selects nothing.
+Processed through `9acf47ccccccb283b6feed68a8208ab9ed8a688b` (2026-10-07,
+text_view: Round the first and last table rows to the frame radius
+(#3309)). The first row's top corners and the last row's bottom
+corners follow the table frame, inset by its 1px border.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

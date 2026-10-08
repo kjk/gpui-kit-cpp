@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "58d078b67fdbddc739faf1f475f2da964aad2bff",
+  sha: "9acf47ccccccb283b6feed68a8208ab9ed8a688b",
   date: "2026-10-07",
-  subject: "text_view: Ignore gestures that stay inside one block plugin (#3390)",
+  subject: "text_view: Round the first and last table rows to the frame radius (#3309)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

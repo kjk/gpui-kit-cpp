@@ -1530,5 +1530,12 @@ Str MdDecodeEntity(Arena* a, Str e);
 TextView* MarkdownView(Ctx* cx, Str source);
 TextView* HtmlView(Ctx* cx, Str source);
 
+// node.rs table_row_corner_radii. The first row's top and the last row's
+// bottom follow the table frame, inset by its 1px border. A corner left at
+// 0 stays square. GPUI's content mask is rectangular, so the row fill has
+// to carry the radius itself.
+void TableRowCornerRadii(const Style& table, uint32_t fields, bool first,
+                         bool last, float* tl, float* tr, float* br, float* bl);
+
 } // namespace gpui
 #endif // GPUI_BASE_TEXT_H_

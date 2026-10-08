@@ -3812,6 +3812,53 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
     return col->ReportLineSpan(lineH);
 }
 
+void TableRowCornerRadii(const Style& table, uint32_t fields, bool first,
+                         bool last, float* tl, float* tr, float* br,
+                         float* bl) {
+    *tl = *tr = *br = *bl = 0;
+    if (!first && !last) {
+        return;
+    }
+    float srcTl = 0;
+    float srcTr = 0;
+    float srcBr = 0;
+    float srcBl = 0;
+    if (table.hasCorners) {
+        srcTl = table.corners.tl;
+        srcTr = table.corners.tr;
+        srcBr = table.corners.br;
+        srcBl = table.corners.bl;
+    } else if (fields & StyleFieldRadius) {
+        srcTl = srcTr = srcBr = srcBl = table.radius;
+    } else {
+        return;
+    }
+    // The frame's 1px border sits between the frame and the rows.
+    auto inset = [](float radius) { return radius > 1.f ? radius - 1.f : 0.f; };
+    if (first) {
+        *tl = inset(srcTl);
+        *tr = inset(srcTr);
+    }
+    if (last) {
+        *br = inset(srcBr);
+        *bl = inset(srcBl);
+    }
+}
+
+static void RoundTableRow(El* row, const TextViewStyle& style, bool first,
+                          bool last) {
+    float tl = 0;
+    float tr = 0;
+    float br = 0;
+    float bl = 0;
+    TableRowCornerRadii(style.table, style.tableFields, first, last, &tl, &tr,
+                        &br, &bl);
+    if (tl == 0 && tr == 0 && br == 0 && bl == 0) {
+        return;
+    }
+    row->Corners(tl, tr, br, bl);
+}
+
 // node.rs render_scroll_table, which is what `style.table` opts a table into
 // with overflow-x: scroll. The columns are as wide as the widest text in
 // them — measured, not counted, since a character count is a poor guess on a
@@ -3910,7 +3957,8 @@ El* TextView::ScrollTable(MdNode* n) {
     if (textViewStyle.tableFields) {
         track->Refine(textViewStyle.table, textViewStyle.tableFields);
     }
-    for (MdNode* r = n->first; r; r = r->next) {
+    int rowIx = 0;
+    for (MdNode* r = n->first; r; r = r->next, rowIx++) {
         El* row = Div(a)->FlexRow()->W(kFill);
         if (r->next) {
             row->BorderB(1, textViewStyle.border);
@@ -3922,6 +3970,9 @@ El* TextView::ScrollTable(MdNode* n) {
                                                          .tableHeadFields);
             }
         }
+        // A scrolled track can still meet the viewport with a square edge.
+        // The mask that clips it is rectangular.
+        RoundTableRow(row, textViewStyle, rowIx == 0, r->next == nullptr);
         int ix = 0;
         for (MdNode* c = r->first; c; c = c->next, ix++) {
             int col = ix < nCols ? ix : nCols - 1;
@@ -4055,7 +4106,8 @@ El* TextView::Table(MdNode* n) {
     if (textViewStyle.tableFields) {
         table->Refine(textViewStyle.table, textViewStyle.tableFields);
     }
-    for (MdNode* r = n->first; r; r = r->next) {
+    int rowIx = 0;
+    for (MdNode* r = n->first; r; r = r->next, rowIx++) {
         El* row = Div(a)->FlexRow()->W(kFill);
         if (r->next) {
             row->BorderB(1, textViewStyle.border);
@@ -4067,6 +4119,7 @@ El* TextView::Table(MdNode* n) {
                                                          .tableHeadFields);
             }
         }
+        RoundTableRow(row, textViewStyle, rowIx == 0, r->next == nullptr);
         int ix = 0;
         for (MdNode* c = r->first; c; c = c->next, ix++) {
             float frac = ix < nCols ? (float)colLen[ix] / total : 1.f / total;

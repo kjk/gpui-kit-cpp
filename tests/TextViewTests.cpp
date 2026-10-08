@@ -6727,6 +6727,31 @@ static void TestTextStateWindow() {
 
 #endif
 
+// text_view.rs table_row_backgrounds_follow_the_frame_corner_radius.
+// The window assertion reads painted quads. The radius itself is the seam.
+static void TableRowBackgroundsFollowTheFrameCornerRadius() {
+    Style table = {};
+    table.radius = 8.f;
+    float tl = 0, tr = 0, br = 0, bl = 0;
+    TableRowCornerRadii(table, StyleFieldRadius, true, false, &tl, &tr, &br,
+                        &bl);
+    utassert(tl == 7.f && tr == 7.f && br == 0.f && bl == 0.f);
+    TableRowCornerRadii(table, StyleFieldRadius, false, true, &tl, &tr, &br,
+                        &bl);
+    utassert(tl == 0.f && tr == 0.f && br == 7.f && bl == 7.f);
+    TableRowCornerRadii(table, StyleFieldRadius, true, true, &tl, &tr, &br,
+                        &bl);
+    utassert(tl == 7.f && tr == 7.f && br == 7.f && bl == 7.f);
+    table.radius = 0.5f;
+    TableRowCornerRadii(table, StyleFieldRadius, true, true, &tl, &tr, &br,
+                        &bl);
+    utassert(tl == 0.f && tr == 0.f && br == 0.f && bl == 0.f);
+    table.hasCorners = true;
+    table.corners = {8.f, 6.f, 4.f, 2.f};
+    TableRowCornerRadii(table, 0, true, true, &tl, &tr, &br, &bl);
+    utassert(tl == 7.f && tr == 5.f && br == 3.f && bl == 1.f);
+}
+
 // node.rs block_plugin_geometry_selects_whole_blocks_in_both_drag_directions.
 static void BlockPluginGeometrySelectsWholeBlocks() {
     Bounds bounds = {10.f, 20.f, 100.f, 40.f};
@@ -6877,6 +6902,7 @@ void TestTextView() {
     FadesLayerOverHighlightsInsideTheirRange();
     FadesExplicitDecorationColorsWithTheText();
     BlockPluginGeometrySelectsWholeBlocks();
+    TableRowBackgroundsFollowTheFrameCornerRadius();
     BlockPluginSelectionCopiesBothFormats();
     StreamedWordsFadeInOneAfterAnother();
     SetTextExtendingMarkdownAppendsAndKeepsSelection();
