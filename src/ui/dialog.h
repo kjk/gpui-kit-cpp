@@ -135,6 +135,9 @@ struct Dialog {
     // AlertDialog::w.
     float width = 448;
     float height = 0;
+    // DialogProps::margin_top. Unset keeps a tenth of the viewport height.
+    bool hasMarginTop = false;
+    float marginTop = 0;
     // DialogProps::overlay. The alert story's dialogs never tint the page.
     bool overlay = true;
     bool overlayClosable = true;
@@ -186,6 +189,7 @@ struct Dialog {
     Dialog* Surface(El* e);
     Dialog* W(float px);
     Dialog* H(float px);
+    Dialog* MarginTop(float px);
     Dialog* Overlay(bool v);
     Dialog* OverlayClosable(bool v);
     Dialog* Keyboard(bool v);
@@ -237,6 +241,8 @@ struct AlertDialog {
     AlertDialog* Surface(El* value);
     AlertDialog* W(float value);
     AlertDialog* H(float value);
+    // Overrides the tenth-of-the-viewport top offset on the alert surface.
+    AlertDialog* MarginTop(float value);
     AlertDialog* Overlay(bool value);
     AlertDialog* Keyboard(bool value);
     AlertDialog* Layer(int value);

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "72ec1734df4f0c8089ff9ee41980290bb7d9eb48",
+  sha: "3751aef7e2509b70576d96b3e020e149051988d9",
   date: "2026-10-08",
-  subject: "scrollable_mask: Keep rounded scroll-table corners clean at any scroll offset (#3400)",
+  subject: "dialog: Add margin_top to AlertDialog (#3404)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

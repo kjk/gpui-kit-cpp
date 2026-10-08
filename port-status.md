@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `72ec1734df4f0c8089ff9ee41980290bb7d9eb48` (2026-10-08,
-scrollable_mask: Keep rounded scroll-table corners clean at any scroll
-offset (#3400)). A scrolling table's background, border and radius stay
-on the viewport. A sibling cover fills the four corner notches with the
-theme background, so rows scrolled under the rectangular clip do not
-show square corners.
+Processed through `3751aef7e2509b70576d96b3e020e149051988d9` (2026-10-08,
+dialog: Add margin_top to AlertDialog (#3404)). AlertDialog::MarginTop
+passes through to Dialog and replaces the tenth-of-the-viewport top
+offset, so a short alert can sit further down a tall window.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

@@ -302,6 +302,11 @@ Dialog* Dialog::H(float px) {
     height = px;
     return this;
 }
+Dialog* Dialog::MarginTop(float px) {
+    hasMarginTop = true;
+    marginTop = px;
+    return this;
+}
 Dialog* Dialog::Overlay(bool v) {
     overlay = v;
     return this;
@@ -525,7 +530,7 @@ El* Dialog::IntoEl(WinSize size) {
     // does not waste height its content could use.
     const float viewportMargin = 16.f;
     float layerOffset = (float)layerIx * 16.f;
-    float y = viewH * 0.1f + layerOffset;
+    float y = (hasMarginTop ? marginTop : viewH * 0.1f) + layerOffset;
     float panelW = std::min(width, std::max(0.f, viewW - viewportMargin * 2));
     float panelX = (viewW - panelW) * 0.5f;
     float panelMaxH = std::max(0.f, viewH - viewportMargin * 2 - layerOffset);
@@ -662,6 +667,10 @@ AlertDialog* AlertDialog::Surface(El* value) {
 }
 AlertDialog* AlertDialog::W(float value) {
     base->W(value);
+    return this;
+}
+AlertDialog* AlertDialog::MarginTop(float value) {
+    base->MarginTop(value);
     return this;
 }
 AlertDialog* AlertDialog::H(float value) {

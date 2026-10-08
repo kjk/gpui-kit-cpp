@@ -546,6 +546,53 @@ static void ButtonPropsMergeWithWhatTheDialogAlreadyCarries() {
     delete win;
 }
 
+// alert_dialog.rs margin_top_moves_the_alert_surface_off_the_default_offset.
+// A 600px window would seat the alert at y=60. margin_top(100) seats it
+// at y=100 once the entrance animation is at rest.
+static void margin_top_moves_the_alert_surface_off_the_default_offset() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    auto build = [&]() {
+        return component::AlertDialog::New(&cx)
+            ->Title(StrL("Unsaved changes"))
+            ->Description(StrL("Discard the draft?"))
+            ->Confirm()
+            ->MarginTop(100)
+            ->Open(true)
+            ->IntoEl(WinSize{800, 600});
+    };
+    // The first build starts the slide. A second later the surface is at rest.
+    win->frameNow = 1;
+    (void)build();
+    win->frameNow = 2;
+    arena->Reset();
+    El* host = build();
+    const RuntimeStyle& th = RuntimeStyleNow(&app);
+    // The corner positioner clamps against the paint context's viewport.
+    win->paint.viewW = 800;
+    win->paint.viewH = 600;
+    LayoutEl(&win->paint, host, 0, 0, 800, 600, th.fontSize, th.foreground);
+    El* popup = host ? host->last : nullptr;
+    El* placed = popup ? popup->first : nullptr;
+    El* panel = placed ? placed->first : nullptr;
+    utassert(panel);
+    if (panel) {
+        utassert(fabsf(panel->y - 100.f) <= 0.5f);
+    }
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestDialog() {
     TestSuite("dialog");
     ButtonPropsMergeWithWhatTheDialogAlreadyCarries();
@@ -560,4 +607,5 @@ void TestDialog() {
     ABackdropPressDismissesOnlyWhenAllFourHold();
     ASharedHandleControlsTriggersAndHosts();
     ThemedPartsAndAlertDefaultsMatchTheSource();
+    margin_top_moves_the_alert_surface_off_the_default_offset();
 }
