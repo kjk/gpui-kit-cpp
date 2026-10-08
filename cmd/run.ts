@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "42fbb97ae0697f50ca5e06aa9e5d20ce486acc3c",
+  sha: "1269b7abc9a57aa4252bcc5fb525b72bf7fcd692",
   date: "2026-10-05",
-  subject: "highlighter: Make the Kotlin query compile against its grammar (#3367)",
+  subject: "text_view: normalize GFM table rows to the header column count (#3365)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

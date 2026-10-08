@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `42fbb97ae0697f50ca5e06aa9e5d20ce486acc3c` (2026-10-05,
-highlighter: Make the Kotlin query compile against its grammar (#3367)). The
-Kotlin highlight query now names the grammar's interpolation nodes so `$` and
-`${` compile and highlight. Syntax colouring here is the scanner, which does
-not run tree-sitter queries, so the query and its compile test do not apply.
-The current update target is `288767cc730ca4977852a7860f52a8465a61876f`.
+Processed through `1269b7abc9a57aa4252bcc5fb525b72bf7fcd692` (2026-10-05,
+text_view: normalize GFM table rows to the header column count (#3365)). A
+GFM table's column count is the delimiter row. A short body row is padded
+with empty cells and a long one drops the cells past that count, so every
+row shares one grid. The current update target is
+`288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust
 

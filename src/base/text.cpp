@@ -716,9 +716,11 @@ void TextViewState::SetSelectionFormat(gpui::SelectionFormat value, App* app,
 
 int TextViewState::SelectedText(Window* window, char* out, int cap) const {
     const WindowSelection* selection = window ? window->sel : nullptr;
-    if (format == TextViewFormat::Markdown && selectionFormat == SelectionFormat::Source &&
-        out && cap > 0 && selection && selectAllAnchor >= 0 &&
-        selection->anchor == selectAllAnchor && selection->cursor == selectAllCursor) {
+    if (format == TextViewFormat::Markdown &&
+        selectionFormat == SelectionFormat::Source && out && cap > 0 &&
+        selection && selectAllAnchor >= 0 &&
+        selection->anchor == selectAllAnchor &&
+        selection->cursor == selectAllCursor) {
         Str selected = Source();
         int n = std::min(len(selected), cap - 1);
         if (n > 0) memcpy(out, selected.s, (size_t)n);
@@ -930,12 +932,13 @@ SourceRangeSelection TextHitsSourceRange(const PaintCtx* ctx, int selA,
                     const TextHit& adjacent = ctx->texts[at];
                     if (adjacent.owner != owner || adjacent.scope != scope ||
                         !hit.src || !adjacent.src ||
-                        adjacent.src->block != hit.src->block) break;
+                        adjacent.src->block != hit.src->block)
+                        break;
                     if (!adjacent.atom) {
                         int end = adjacent.docOff + len(adjacent.text);
-                        reached |= direction < 0
-                                       ? a < end && b >= end
-                                       : a <= adjacent.docOff && b > adjacent.docOff;
+                        reached |= direction < 0 ? a < end && b >= end
+                                                 : a <= adjacent.docOff &&
+                                                       b > adjacent.docOff;
                         break;
                     }
                     at += direction;
@@ -2215,6 +2218,39 @@ static void MdCodeBlock(MdBuild* b, Str value, Str lang,
     Pop(b);
 }
 
+// One cell of a GFM table. `source` is the mdast cell; a pad has none, and
+// takes no leaf key, because it is not in the document.
+static void MdTableCell(MdBuild* b, md::ArenaAlign align, int32_t column,
+                        const md::Node* source, bool hasTableSpan,
+                        int32_t tableStart, int* ordinal) {
+    MdNode* c = Push(b, MdKind::Cell);
+    if (source && hasTableSpan) {
+        c->leafStart = tableStart;
+        c->leafOrdinal = *ordinal + 1;
+        (*ordinal)++;
+    }
+    if (column < md::ArenaAlignCount(b->a, align)) {
+        switch (md::ArenaAlignAt(b->a, align, column)) {
+            case md::AlignKind::Left:
+                c->align = MdAlignLeft;
+                break;
+            case md::AlignKind::Center:
+                c->align = MdAlignCenter;
+                break;
+            case md::AlignKind::Right:
+                c->align = MdAlignRight;
+                break;
+            case md::AlignKind::None:
+                c->align = MdAlignDefault;
+                break;
+        }
+    }
+    if (source) {
+        MdInline(b, source);
+    }
+    Pop(b);
+}
+
 static void MdTable(MdBuild* b, const md::Node* n) {
     MdNode* table = Push(b, MdKind::Table);
     (void)table;
@@ -2223,6 +2259,11 @@ static void MdTable(MdBuild* b, const md::Node* n) {
     Span tableSpan;
     bool hasTableSpan = MdNodeSpan(b, n, &tableSpan);
     int ordinal = 0;
+    // GFM fixes the column count with the header delimiter, not each body
+    // row. markdown-rs keeps a short row short and a long row long; padding
+    // and truncation put every row on that grid.
+    md::ArenaAlign align = md::NodePerKind(b->a, n);
+    int32_t nCols = md::ArenaAlignCount(b->a, align);
     int32_t rowIndex = 0;
     for (const md::Node* row : md::NodeKids(b->a, n)) {
         int32_t at = rowIndex++;
@@ -2237,32 +2278,16 @@ static void MdTable(MdBuild* b, const md::Node* n) {
             if (cell->kind != md::NodeKind::TableCell) {
                 continue;
             }
-            int32_t column = cellIndex++;
-            MdNode* c = Push(b, MdKind::Cell);
-            if (hasTableSpan) {
-                c->leafStart = tableSpan.start;
-                c->leafOrdinal = ordinal + 1;
+            if (cellIndex >= nCols) {
+                break;
             }
-            ordinal++;
-            md::ArenaAlign align = md::NodePerKind(b->a, n);
-            if (column < md::ArenaAlignCount(b->a, align)) {
-                switch (md::ArenaAlignAt(b->a, align, column)) {
-                    case md::AlignKind::Left:
-                        c->align = MdAlignLeft;
-                        break;
-                    case md::AlignKind::Center:
-                        c->align = MdAlignCenter;
-                        break;
-                    case md::AlignKind::Right:
-                        c->align = MdAlignRight;
-                        break;
-                    case md::AlignKind::None:
-                        c->align = MdAlignDefault;
-                        break;
-                }
-            }
-            MdInline(b, cell);
-            Pop(b);
+            MdTableCell(b, align, cellIndex, cell, hasTableSpan,
+                        tableSpan.start, &ordinal);
+            cellIndex++;
+        }
+        while (cellIndex < nCols) {
+            MdTableCell(b, align, cellIndex, nullptr, false, 0, &ordinal);
+            cellIndex++;
         }
         Pop(b);
     }
@@ -4989,13 +5014,15 @@ struct TextViewParseJob {
 };
 
 static MarkdownExtensions CopyParserExtensions(Arena* a,
-                                                const MarkdownExtensions& src) {
+                                               const MarkdownExtensions& src) {
     MarkdownExtensions copy;
     copy.enableFrontmatter = src.enableFrontmatter;
     copy.enableMdx = src.enableMdx;
     copy.parserRevision = src.parserRevision;
-    for (const auto& parser : src.blockParsers) copy.blockParsers.Append(a, parser);
-    for (const auto& parser : src.inlineParsers) copy.inlineParsers.Append(a, parser);
+    for (const auto& parser : src.blockParsers)
+        copy.blockParsers.Append(a, parser);
+    for (const auto& parser : src.inlineParsers)
+        copy.inlineParsers.Append(a, parser);
     // The renderer names are part of parser configuration identity. No
     // renderer is called by parsing, but keep its name outside the frame.
     for (auto renderer : src.blockRenderers) {
@@ -5186,8 +5213,8 @@ void TextViewState::StartParse(App* app, Window* window,
     if (sync) {
         Arena* arena = ArenaNew();
         Str source = StrDup(text);
-        MdNode* doc = TextViewParseSource(arena, source, from, html,
-                                          &parserExtensions);
+        MdNode* doc =
+            TextViewParseSource(arena, source, from, html, &parserExtensions);
         TextViewCommit(this, app, arena, doc, source, append, from,
                        updateRevision, fingerprint, kFadeAtFirstFrame);
         if (!append && app && self.IsValid()) {
@@ -5242,7 +5269,8 @@ static void TextViewParseJobDiscard(TextViewParseJob* job) {
 // committed, is discarded.
 void TextViewState::CommitParsedUpdate(TextViewParseJob* job) {
     TextViewState* s = job->state;
-    if (job->fingerprint != (s->format == TextViewFormat::Html ? 0 : s->parserFingerprint) ||
+    if (job->fingerprint !=
+            (s->format == TextViewFormat::Html ? 0 : s->parserFingerprint) ||
         job->revision < s->fullUpdateRevision ||
         job->revision <= s->committedRevision) {
         TextViewParseJobDiscard(job);
@@ -5291,7 +5319,8 @@ TextViewParseJob* TextViewParseNowForTest(TextViewState* s, App* app) {
     job->fingerprint = fingerprint;
     job->revision = s->updateRevision;
     job->parserArena = ArenaNew();
-    job->extensions = CopyParserExtensions(job->parserArena, s->parserExtensions);
+    job->extensions =
+        CopyParserExtensions(job->parserArena, s->parserExtensions);
     TextViewParseWork(job);
     return job;
 }
@@ -5548,12 +5577,14 @@ void TextView::RevealPainted(PaintCtx* ctx, El* element, void* data) {
     // Descendants have reported this frame's positions; the enclosing
     // content mask is still active.
     WinSize size = WindowSize(ctx->window);
-    Bounds visible = reveal.hasMask ? reveal.mask : ctx->hasHitMask ? ctx->hitMask
-                                    : Bounds{0, 0, size.dipW, size.dipH};
-    bool shown = reveal.block
-                     ? line.y + line.h > visible.y && line.y < visible.y + visible.h
-                     : line.y >= visible.y - 0.5f &&
-                       line.y + line.h <= visible.y + visible.h + 0.5f;
+    Bounds visible = reveal.hasMask    ? reveal.mask
+                     : ctx->hasHitMask ? ctx->hitMask
+                                       : Bounds{0, 0, size.dipW, size.dipH};
+    bool shown =
+        reveal.block
+            ? line.y + line.h > visible.y && line.y < visible.y + visible.h
+            : line.y >= visible.y - 0.5f &&
+                  line.y + line.h <= visible.y + visible.h + 0.5f;
     if (shown) {
         reveal.pending = false;
         return;
@@ -5561,10 +5592,12 @@ void TextView::RevealPainted(PaintCtx* ctx, El* element, void* data) {
     reveal.attempts++;
     if (view->scrollable) {
         float y = managed->scrollY;
-        if (line.y < visible.y) y -= visible.y - line.y;
-        else y += line.y + line.h - (visible.y + visible.h);
-        managed->scrollY = std::min(std::max(y, 0.f),
-                                    std::max(element->contentH - element->h, 0.f));
+        if (line.y < visible.y)
+            y -= visible.y - line.y;
+        else
+            y += line.y + line.h - (visible.y + visible.h);
+        managed->scrollY = std::min(
+            std::max(y, 0.f), std::max(element->contentH - element->h, 0.f));
     } else {
         WindowRequestAutoscroll(ctx->window, line);
         if (view->onReveal.IsValid()) {
@@ -5857,11 +5890,12 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
     return nullptr;
 }
 
-void TextView::PrepareInheritedColor(PaintCtx*, El* element,
-                                     Rgba inherited, void* data) {
+void TextView::PrepareInheritedColor(PaintCtx*, El* element, Rgba inherited,
+                                     void* data) {
     TextView* view = (TextView*)data;
     Rgba color = (view->outerStyleFields & StyleFieldColor)
-                     ? view->outerStyle.color : inherited;
+                     ? view->outerStyle.color
+                     : inherited;
     if (!TextRgbaEq(element->style.color, view->textViewStyle.foreground)) {
         color = element->style.color;
     }
@@ -5975,8 +6009,8 @@ El* TextView::IntoEl() {
     BaseTextViewStatePush(cx->app, state.id);
     // A state renders the parse that landed last. One that has none for its
     // text yet, or whose parser changed, starts one here: at once when it is
-    // small, and otherwise in the background with copied registrations while the last
-    // document stays up. A state-less caller parses through the cache.
+    // small, and otherwise in the background with copied registrations while
+    // the last document stays up. A state-less caller parses through the cache.
     MdNode* doc = nullptr;
     if (managed) {
         uint64_t fingerprint =

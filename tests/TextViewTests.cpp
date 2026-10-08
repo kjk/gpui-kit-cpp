@@ -145,6 +145,27 @@ static void TestMarkdownTableAlign(Arena* a) {
     utassert(Child(body, 2)->align == MdAlignRight);
 }
 
+// format/markdown.rs table_rows_use_header_column_count. A short body row
+// is padded and a long one loses the cells past the delimiter.
+static void TestMarkdownTableColumnCount(Arena* a) {
+    MdNode* doc = MdParse(a, StrL("| A | B | C |\n"
+                                  "| --- | --- | --- |\n"
+                                  "| one |\n"
+                                  "| two | three | four | ignored |\n"));
+    MdNode* table = Child(doc, 0);
+    utassert(table && table->kind == MdKind::Table);
+    utassert(Children(table) == 3);
+    for (int i = 0; i < 3; i++) {
+        utassert(Children(Child(table, i)) == 3);
+    }
+    MdNode* shortRow = Child(table, 1);
+    utassert(TextIs(a, Child(shortRow, 0), "one"));
+    utassert(TextIs(a, Child(shortRow, 1), ""));
+    utassert(TextIs(a, Child(shortRow, 2), ""));
+    MdNode* longRow = Child(table, 2);
+    utassert(TextIs(a, Child(longRow, 2), "four"));
+}
+
 // Inline HTML inside a paragraph: the parser hands the tags over as mdast
 // Html nodes and text.cpp turns them into the marks html5ever would have
 // produced.
@@ -1479,14 +1500,14 @@ struct FollowsTextColorRoot {
         return Div(cx->a)
             ->W(300)
             ->Fg(ColorTokens::Light().foreground)
-            ->Child(Div(cx->a)
-                        ->Fg(self->surfaceText)
-                        ->Child(gpui::TextView::New(cx, self->inherited)
-                                    ->IntoEl())
-                        ->Child(gpui::TextView::New(cx, self->explicitStyle)
-                                    ->Refine(color, StyleFieldColor)
-                                    ->Style(TextViewStyle::Default())
-                                    ->IntoEl()));
+            ->Child(
+                Div(cx->a)
+                    ->Fg(self->surfaceText)
+                    ->Child(gpui::TextView::New(cx, self->inherited)->IntoEl())
+                    ->Child(gpui::TextView::New(cx, self->explicitStyle)
+                                ->Refine(color, StyleFieldColor)
+                                ->Style(TextViewStyle::Default())
+                                ->IntoEl()));
     }
 };
 
@@ -1546,7 +1567,8 @@ static void InheritedInvertedColorSuppressesTheDefaultHighlighter() {
         .Install(app);
     auto root = EntityNew<FollowsTextColorRoot>(app);
     auto* view = root.Get(app);
-    view->inherited = gpui::TextViewState::Markdown(app, StrL("```cpp\nint x;\n```"));
+    view->inherited =
+        gpui::TextViewState::Markdown(app, StrL("```cpp\nint x;\n```"));
     view->explicitStyle = gpui::TextViewState::Markdown(app, StrL("plain"));
     view->surfaceText = ColorTokens::Light().primaryForeground;
     gTestHighlighterCalls = 0;
@@ -1557,8 +1579,8 @@ static void InheritedInvertedColorSuppressesTheDefaultHighlighter() {
     view->surfaceText = ColorTokens::Light().foreground;
     TestDraw(win);
     utassert(gTestHighlighterCalls > 0);
-    utassert(SameTextViewColor(view->inherited.Get(app)->textViewStyle.foreground,
-                               view->surfaceText));
+    utassert(SameTextViewColor(
+        view->inherited.Get(app)->textViewStyle.foreground, view->surfaceText));
     TestAppFree(app);
 }
 
@@ -1758,9 +1780,9 @@ static void TestMarkdownInlinePlugin() {
             ->MarkdownExtensionsSet(extensions)
             ->IntoEl();
     if (root->lifecycle && root->lifecycle->prepareStyle) {
-        root->lifecycle->prepareStyle(&win->paint, root,
-                                      RuntimeStyleNow(&app).foreground,
-                                      root->lifecycle->user);
+        root->lifecycle
+            ->prepareStyle(&win->paint, root, RuntimeStyleNow(&app).foreground,
+                           root->lifecycle->user);
     }
     utassert(FindTextViewElement(root, "formula") != nullptr);
     utassert(gInlineParses >= 1 && gInlineRenders == 1);
@@ -1938,7 +1960,8 @@ static void HeadingRefinementChangesRenderedHeadingGeometry() {
     TextViewStyle custom = TextViewStyle::Default();
     custom.WithHeading(&HeadingOnePadded);
     El* defaultH1 = TextView::New(&cx, StrL("# Heading"))
-                        ->Style(TextViewDefaults::Global(&app).style)->IntoEl();
+                        ->Style(TextViewDefaults::Global(&app).style)
+                        ->IntoEl();
     El* customH1 =
         TextView::New(&cx, StrL("# Heading"))->Style(custom)->IntoEl();
     El* customH2 =
@@ -4082,8 +4105,8 @@ static void OnRevealHearsAHiddenLine() {
     VecAppend(v.win->prevScrolls, around);
     s->reveal.view = {10, 0, 200, 400};
     El* root = gpui::TextView::New(&v.cx, v.state)
-        ->OnReveal(ListenTo(probe, &RevealProbe::OnReveal))
-        ->IntoEl();
+                   ->OnReveal(ListenTo(probe, &RevealProbe::OnReveal))
+                   ->IntoEl();
     utassert(gRevealCalls == 0);
     RhRevealReport(&v, root, {10, 300, 20, 20}, {0, 0, 300, 100});
     utassert(gRevealCalls == 1 && gRevealLine.y == 300.f);
@@ -6587,6 +6610,7 @@ void TestTextView() {
     TestMarkdownBlocks(a);
 #if GPUI_MARKDOWN_FULL
     TestMarkdownTableAlign(a);
+    TestMarkdownTableColumnCount(a);
     TestTableToMarkdown(a);
     TestMarkdownInlineHtml(a);
     TestMarkdownHtmlBlock(a);
