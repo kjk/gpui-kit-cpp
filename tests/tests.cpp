@@ -61,6 +61,7 @@ int GpuiMain(int argc, char** argv) {
     TestTimeField();
     TestSelect();
     TestDialog();
+    TestDiff();
     TestQuestionnaire();
     TestSheet();
     TestMotion();

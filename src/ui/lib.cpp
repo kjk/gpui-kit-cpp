@@ -23,6 +23,7 @@ void Init(App* app) {
     TableInitKeys();
     TextViewInitKeys();
     SelectInitKeys();
+    DiffInitKeys();
 }
 
 } // namespace component

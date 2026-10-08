@@ -23,6 +23,7 @@
 #include "ui/time.h"
 #include "ui/description_list.h"
 #include "ui/dialog.h"
+#include "ui/diff.h"
 #include "ui/dock.h"
 #include "ui/empty.h"
 #include "ui/inspector.h"

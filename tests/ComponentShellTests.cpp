@@ -3073,14 +3073,23 @@ void EditorIsAnExactLeaf() {
     utassert(StrEq(error, StrL("Editor does not accept children")));
 }
 
+// diff.rs diff_is_an_exact_leaf
+void DiffIsAnExactLeaf() {
+    Str error;
+    utassert(component_shell::media::diff::RequireLeaf(0, &error));
+    utassert(!component_shell::media::diff::RequireLeaf(1, &error));
+    utassert(StrEq(error, StrL("Diff does not accept children")));
+}
+
 // media_public_host.rs catalog_exposes_only_renderable_media_surfaces
 void CatalogExposesOnlyRenderableMediaSurfaces() {
     FamilyCatalog catalog(&component_shell::RegisterMedia);
     utassert(catalog.ok);
-    const char* names[] = {"Image", "Editor"};
-    utassert(catalog.NamesAre(names, 2));
-    utassert(catalog.frozen.StateCount() == 1 &&
-             strcmp(catalog.frozen.State(0)->exportName, "EditorState") == 0);
+    const char* names[] = {"Image", "Editor", "Diff"};
+    utassert(catalog.NamesAre(names, 3));
+    utassert(catalog.frozen.StateCount() == 2 &&
+             strcmp(catalog.frozen.State(0)->exportName, "EditorState") == 0 &&
+             strcmp(catalog.frozen.State(1)->exportName, "DiffState") == 0);
 }
 
 // media_public_host.rs's EditorProbe: what each render saw of the state.
@@ -6566,11 +6575,11 @@ void QuestionnaireRefusesWhatRustRefuses() {
 // With every family registered, the catalog's whole `declare module
 // "gpui-component"` block and its Element union are byte for byte what the
 // Rust catalog writes: every export in the same order, nothing missing and
-// nothing extra (130 element types and 14 state exports).
+// nothing extra (131 element types and 15 state exports).
 void WholeCatalogDeclarationsEqualRust() {
     const FrozenComponentRegistry* frozen = component_shell::Components();
-    utassert(frozen->DescriptorCount() == 130);
-    utassert(frozen->StateCount() == 14);
+    utassert(frozen->DescriptorCount() == 131);
+    utassert(frozen->StateCount() == 15);
 
     StrBuilder rust;
     AppendRustComponentDeclarations(&rust);
@@ -7929,6 +7938,7 @@ void TestComponentShell() {
     TestSuite("media");
     ImageSourcesAreConfinedToTheAssetRoot();
     EditorIsAnExactLeaf();
+    DiffIsAnExactLeaf();
     CatalogExposesOnlyRenderableMediaSurfaces();
     LocalImageAndRetainedEditorCrossThePublicHost();
     MediaRecordersRefuseWhatRustRefuses();

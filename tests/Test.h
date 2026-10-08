@@ -16,13 +16,14 @@ extern int gTestFailures;
 // Structural fixtures without a paint backend can resolve lazy text styles
 // before inspecting descendants, without shaping or applying refinements.
 inline void TestPrepareTextStyles(gpui::PaintCtx* paint, gpui::El* element,
-                                   gpui::Rgba inherited) {
+                                  gpui::Rgba inherited) {
     if (!element) return;
     if (element->lifecycle && element->lifecycle->prepareStyle) {
-        element->lifecycle->prepareStyle(paint, element, inherited,
-                                         element->lifecycle->user);
+        element->lifecycle
+            ->prepareStyle(paint, element, inherited, element->lifecycle->user);
     }
-    gpui::Rgba color = element->style.hasColor ? element->style.color : inherited;
+    gpui::Rgba color =
+        element->style.hasColor ? element->style.color : inherited;
     for (gpui::El* child = element->first; child; child = child->next) {
         TestPrepareTextStyles(paint, child, color);
     }
@@ -96,6 +97,7 @@ void TestOtpInput();
 void TestTimeField();
 void TestSelect();
 void TestDialog();
+void TestDiff();
 void TestQuestionnaire();
 void TestSheet();
 void TestMotion();

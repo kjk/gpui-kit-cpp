@@ -101,6 +101,9 @@ static const StoryInfo kMeta[StoryCount] = {
     {"description-list", "DescriptionList",
      "Present labels and values in a structured summary."},
     {"dialog", "Dialog", "Present focused content above the current view."},
+    {"diff", "Diff",
+     "Readonly unified and Git patches, merge conflicts and source files, "
+     "with review comments."},
     {"dock", "Dock",
      "Drag tabs between groups or towards an edge to split the workspace."},
     {"dropdown-button", "DropdownButton",

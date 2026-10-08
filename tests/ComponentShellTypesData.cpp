@@ -137,6 +137,14 @@ static const char kComponentModule0[] = R"GPUI_DTS(declare module "gpui-componen
    */
   export function EditorState(initial_value: string, language?: "rust" | "json"): EditorState;
   /**
+   * Retained readonly patch state parsed from unified or Git diff text, in unified or split mode.
+   */
+  export interface DiffState { readonly __gpuiComponentState: unique symbol }
+  /**
+   * Retained readonly patch state parsed from unified or Git diff text, in unified or split mode.
+   */
+  export function DiffState(patch: string, mode?: "unified" | "split"): DiffState;
+  /**
    * A retained native scroll capability owned by one Scroll viewport and shared with any Scrollbar elements that control it.
    */
   export interface ScrollbarHandle { readonly __gpuiComponentState: unique symbol }
@@ -297,7 +305,8 @@ static const char kComponentModule0[] = R"GPUI_DTS(declare module "gpui-componen
     axis(axis: "horizontal" | "vertical"): AttachmentElement;
     /**
      * Sets the semantic attachment size.
-     */
+)GPUI_DTS";
+static const char kComponentModule1[] = R"GPUI_DTS(     */
     size(size: "xsmall" | "small" | "medium" | "large"): AttachmentElement;
     /**
      * Not available on this component: `Attachment` does not declare `disabled`, and the runtime refuses it.
@@ -306,8 +315,7 @@ static const char kComponentModule0[] = R"GPUI_DTS(declare module "gpui-componen
     /**
      * Not available on this component: `Attachment` does not declare `selected`, and the runtime refuses it.
      */
-)GPUI_DTS";
-static const char kComponentModule1[] = R"GPUI_DTS(    selected(unavailable: never): never;
+    selected(unavailable: never): never;
     /**
      * Not available on this component: `Attachment` does not declare `on_click`, and the runtime refuses it.
      */
@@ -600,7 +608,8 @@ static const char kComponentModule1[] = R"GPUI_DTS(    selected(unavailable: nev
    * A centered media part accepting arbitrary children such as an icon, avatar, or image.
    */
   export type EmptyMediaElement = Omit<NativeElement, "variant" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
-    /**
+)GPUI_DTS";
+static const char kComponentModule2[] = R"GPUI_DTS(    /**
      * Sets the unframed default treatment or a muted icon frame.
      */
     variant(variant: "default" | "icon"): EmptyMediaElement;
@@ -609,8 +618,7 @@ static const char kComponentModule1[] = R"GPUI_DTS(    selected(unavailable: nev
      */
     disabled(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule2[] = R"GPUI_DTS(     * Not available on this component: `EmptyMedia` does not declare `selected`, and the runtime refuses it.
+     * Not available on this component: `EmptyMedia` does not declare `selected`, and the runtime refuses it.
      */
     selected(unavailable: never): never;
     /**
@@ -885,15 +893,15 @@ static const char kComponentModule2[] = R"GPUI_DTS(     * Not available on this 
      */
     accessibility_id(accessibility_id: string): InputGroupInputElement;
     /**
-     * Controls the retained text. Equal values preserve the caret and undo history; programmatic changes do not emit on_change.
+)GPUI_DTS";
+static const char kComponentModule3[] = R"GPUI_DTS(     * Controls the retained text. Equal values preserve the caret and undo history; programmatic changes do not emit on_change.
      */
     value(value: string): InputGroupInputElement;
     /**
      * Sets the empty-value prompt on the retained state.
      */
     placeholder(placeholder: string): InputGroupInputElement;
-)GPUI_DTS";
-static const char kComponentModule3[] = R"GPUI_DTS(    /**
+    /**
      * Reports edits from the retained input without duplicating subscriptions across renders.
      */
     on_change(callback: (value: string, cx: Context) => void): InputGroupInputElement;
@@ -1167,12 +1175,12 @@ static const char kComponentModule3[] = R"GPUI_DTS(    /**
     transition(unavailable: never): never;
   }
   /**
-   * A controlled stateless boolean control. Provide checked explicitly; boolean change callbacks are not exposed until the shell callback facade can carry values.
+)GPUI_DTS";
+static const char kComponentModule4[] = R"GPUI_DTS(   * A controlled stateless boolean control. Provide checked explicitly; boolean change callbacks are not exposed until the shell callback facade can carry values.
    */
   export const Checkbox: { new(id: string): CheckboxElement };
   /**
-)GPUI_DTS";
-static const char kComponentModule4[] = R"GPUI_DTS(   * A controlled stateless boolean control. Provide checked explicitly; boolean change callbacks are not exposed until the shell callback facade can carry values.
+   * A controlled stateless boolean control. Provide checked explicitly; boolean change callbacks are not exposed until the shell callback facade can carry values.
    */
   export type SwitchElement = Omit<NativeElement, "label" | "tooltip" | "checked" | "size" | "on_change" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
     /**
@@ -1483,14 +1491,14 @@ static const char kComponentModule4[] = R"GPUI_DTS(   * A controlled stateless b
    */
   export type ListElement = Omit<NativeElement, "disabled" | "selected" | "on_click" | "role" | "transition"> & {
     /**
-     * Not available on this component: `List` does not declare `disabled`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule5[] = R"GPUI_DTS(     * Not available on this component: `List` does not declare `disabled`, and the runtime refuses it.
      */
     disabled(unavailable: never): never;
     /**
      * Not available on this component: `List` does not declare `selected`, and the runtime refuses it.
      */
-)GPUI_DTS";
-static const char kComponentModule5[] = R"GPUI_DTS(    selected(unavailable: never): never;
+    selected(unavailable: never): never;
     /**
      * Not available on this component: `List` does not declare `on_click`, and the runtime refuses it.
      */
@@ -1772,14 +1780,14 @@ static const char kComponentModule5[] = R"GPUI_DTS(    selected(unavailable: nev
     /**
      * Not available on this component: `Clipboard` does not declare `on_click`, and the runtime refuses it.
      */
-    on_click(unavailable: never): never;
+)GPUI_DTS";
+static const char kComponentModule6[] = R"GPUI_DTS(    on_click(unavailable: never): never;
     /**
      * Not available on this component: `Clipboard` does not declare `role`, and the runtime refuses it.
      */
     role(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule6[] = R"GPUI_DTS(     * Not available on this component: `Clipboard` does not declare `transition`, and the runtime refuses it.
+     * Not available on this component: `Clipboard` does not declare `transition`, and the runtime refuses it.
      */
     transition(unavailable: never): never;
   }
@@ -2087,13 +2095,13 @@ static const char kComponentModule6[] = R"GPUI_DTS(     * Not available on this 
      */
     size(size: "xsmall" | "small" | "medium" | "large"): ProgressElement;
     /**
-     * Not available on this component: `Progress` does not declare `disabled`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule7[] = R"GPUI_DTS(     * Not available on this component: `Progress` does not declare `disabled`, and the runtime refuses it.
      */
     disabled(unavailable: never): never;
     /**
      * Not available on this component: `Progress` does not declare `selected`, and the runtime refuses it.
-)GPUI_DTS";
-static const char kComponentModule7[] = R"GPUI_DTS(     */
+     */
     selected(unavailable: never): never;
     /**
      * Not available on this component: `Progress` does not declare `on_click`, and the runtime refuses it.
@@ -2400,15 +2408,15 @@ static const char kComponentModule7[] = R"GPUI_DTS(     */
      */
     role(unavailable: never): never;
     /**
-     * Not available on this component: `StepperItem` does not declare `transition`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule8[] = R"GPUI_DTS(     * Not available on this component: `StepperItem` does not declare `transition`, and the runtime refuses it.
      */
     transition(unavailable: never): never;
   }
   /**
    * A step part accepted only as a direct Stepper child.
    */
-)GPUI_DTS";
-static const char kComponentModule8[] = R"GPUI_DTS(  export const StepperItem: { new(): StepperItemElement };
+  export const StepperItem: { new(): StepperItemElement };
   /**
    * A typed progress stepper accepting only StepperItem children.
    */
@@ -2702,13 +2710,13 @@ static const char kComponentModule8[] = R"GPUI_DTS(  export const StepperItem: {
      */
     role(unavailable: never): never;
     /**
-     * Not available on this component: `CommandItem` does not declare `transition`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule9[] = R"GPUI_DTS(     * Not available on this component: `CommandItem` does not declare `transition`, and the runtime refuses it.
      */
     transition(unavailable: never): never;
   }
   /**
-)GPUI_DTS";
-static const char kComponentModule9[] = R"GPUI_DTS(   * Typed native CommandItem data. Action strings map to ShellAction; style and ordinary/typed children are rejected. Named content(element) is a repeatable lazy row factory.
+   * Typed native CommandItem data. Action strings map to ShellAction; style and ordinary/typed children are rejected. Named content(element) is a repeatable lazy row factory.
    */
   export const CommandItem: { new(label: string): CommandItemElement };
   /**
@@ -2977,12 +2985,12 @@ static const char kComponentModule9[] = R"GPUI_DTS(   * Typed native CommandItem
   /**
    * A real button-triggered native window effect; on_effect_error receives asynchronous effect failures.
    */
-  export const Dialog: { new(id: string, label: string, on_effect_error: (message: string, cx: Context) => void): DialogElement };
+)GPUI_DTS";
+static const char kComponentModule10[] = R"GPUI_DTS(  export const Dialog: { new(id: string, label: string, on_effect_error: (message: string, cx: Context) => void): DialogElement };
   /**
    * A real button-triggered native window effect; on_effect_error receives asynchronous effect failures.
    */
-)GPUI_DTS";
-static const char kComponentModule10[] = R"GPUI_DTS(  export type AlertDialogElement = Omit<NativeElement, "title" | "description" | "show_cancel" | "on_ok" | "on_cancel" | "on_close" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
+  export type AlertDialogElement = Omit<NativeElement, "title" | "description" | "show_cancel" | "on_ok" | "on_cancel" | "on_close" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
     /**
      * Configures this native window effect.
      */
@@ -3268,7 +3276,8 @@ static const char kComponentModule10[] = R"GPUI_DTS(  export type AlertDialogEle
     /**
      * Sets the name announced by accessibility clients.
      */
-    aria_label(label: string): InputElement;
+)GPUI_DTS";
+static const char kComponentModule11[] = R"GPUI_DTS(    aria_label(label: string): InputElement;
     /**
      * Controls whether the form control accepts interaction.
      */
@@ -3276,8 +3285,7 @@ static const char kComponentModule10[] = R"GPUI_DTS(  export type AlertDialogEle
     /**
      * Renders an atomic token from its current UTF-16 range and read-only context.
      */
-)GPUI_DTS";
-static const char kComponentModule11[] = R"GPUI_DTS(    token(render: (token: InlineTokenContext, cx: Context) => Element | null): InputElement;
+    token(render: (token: InlineTokenContext, cx: Context) => Element | null): InputElement;
     /**
      * Activates a reference after a completed unconsumed click, outside the editing borrow.
      */
@@ -3565,7 +3573,8 @@ static const char kComponentModule11[] = R"GPUI_DTS(    token(render: (token: In
     /**
      * Sets the corresponding native textarea presentation or editing policy.
      */
-    readonly(readonly: boolean): TextareaElement;
+)GPUI_DTS";
+static const char kComponentModule12[] = R"GPUI_DTS(    readonly(readonly: boolean): TextareaElement;
     /**
      * Sets the accessibility label.
      */
@@ -3573,8 +3582,7 @@ static const char kComponentModule11[] = R"GPUI_DTS(    token(render: (token: In
     /**
      * Renders an atomic token from its current UTF-16 range and read-only context.
      */
-)GPUI_DTS";
-static const char kComponentModule12[] = R"GPUI_DTS(    token(render: (token: InlineTokenContext, cx: Context) => Element | null): TextareaElement;
+    token(render: (token: InlineTokenContext, cx: Context) => Element | null): TextareaElement;
     /**
      * Activates a reference after a completed unconsumed click, outside the editing borrow.
      */
@@ -3761,6 +3769,63 @@ static const char kComponentModule12[] = R"GPUI_DTS(    token(render: (token: In
    */
   export const Editor: { new(state: EditorState): EditorElement };
   /**
+   * A readonly patch viewer for one or more files. Shell style is honored; children are rejected.
+   */
+  export type DiffElement = Omit<NativeElement, "line_number" | "syntax_highlight" | "header_visible" | "change_background" | "soft_wrap" | "hunk_separator" | "change_indicator" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
+    /**
+     * Shows line numbers.
+     */
+    line_number(line_number: boolean): DiffElement;
+    /**
+     * Emphasizes syntax.
+     */
+    syntax_highlight(syntax_highlight: boolean): DiffElement;
+    /**
+     * Shows a header above each file.
+     */
+    header_visible(header_visible: boolean): DiffElement;
+    /**
+     * Tints changed lines.
+     */
+    change_background(change_background: boolean): DiffElement;
+    /**
+     * Wraps long lines at the column width.
+     */
+    soft_wrap(soft_wrap: boolean): DiffElement;
+    /**
+     * Marks the start of each hunk.
+     */
+    hunk_separator(hunk_separator: "metadata" | "line_info" | "simple"): DiffElement;
+    /**
+     * Marks changed lines beside the code.
+     */
+    change_indicator(change_indicator: "signs" | "bars" | "none"): DiffElement;
+    /**
+     * Not available on this component: `Diff` does not declare `disabled`, and the runtime refuses it.
+     */
+    disabled(unavailable: never): never;
+    /**
+     * Not available on this component: `Diff` does not declare `selected`, and the runtime refuses it.
+     */
+    selected(unavailable: never): never;
+    /**
+     * Not available on this component: `Diff` does not declare `on_click`, and the runtime refuses it.
+     */
+    on_click(unavailable: never): never;
+    /**
+     * Not available on this component: `Diff` does not declare `role`, and the runtime refuses it.
+     */
+    role(unavailable: never): never;
+    /**
+     * Not available on this component: `Diff` does not declare `transition`, and the runtime refuses it.
+     */
+    transition(unavailable: never): never;
+  }
+  /**
+   * A readonly patch viewer for one or more files. Shell style is honored; children are rejected.
+   */
+  export const Diff: { new(state: DiffState): DiffElement };
+  /**
    * Adapter wrapper for ScrollableElement overflow behavior. It shares a retained native handle, accepts ordinary children and shell style, and defaults to vertical scrolling.
    */
   export type ScrollElement = Omit<NativeElement, "scroll_axis" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
@@ -3800,7 +3865,8 @@ static const char kComponentModule12[] = R"GPUI_DTS(    token(render: (token: In
     /**
      * Selects the native scroll axes.
      */
-    scroll_axis(axis: "vertical" | "horizontal" | "both"): ScrollbarElement;
+)GPUI_DTS";
+static const char kComponentModule13[] = R"GPUI_DTS(    scroll_axis(axis: "vertical" | "horizontal" | "both"): ScrollbarElement;
     /**
      * Sets the native scrollbar visibility policy.
      */
@@ -3859,8 +3925,7 @@ static const char kComponentModule12[] = R"GPUI_DTS(    token(render: (token: In
      */
     selected(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule13[] = R"GPUI_DTS(     * Not available on this component: `SettingItem` does not declare `on_click`, and the runtime refuses it.
+     * Not available on this component: `SettingItem` does not declare `on_click`, and the runtime refuses it.
      */
     on_click(unavailable: never): never;
     /**
@@ -4090,7 +4155,8 @@ static const char kComponentModule13[] = R"GPUI_DTS(     * Not available on this
      */
     label(label: string): FieldElement;
     /**
-     * Sets supporting text below the control.
+)GPUI_DTS";
+static const char kComponentModule14[] = R"GPUI_DTS(     * Sets supporting text below the control.
      */
     description(description: string): FieldElement;
     /**
@@ -4159,8 +4225,7 @@ static const char kComponentModule13[] = R"GPUI_DTS(     * Not available on this
      */
     disabled(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule14[] = R"GPUI_DTS(     * Not available on this component: `Form` does not declare `selected`, and the runtime refuses it.
+     * Not available on this component: `Form` does not declare `selected`, and the runtime refuses it.
      */
     selected(unavailable: never): never;
     /**
@@ -4416,7 +4481,8 @@ static const char kComponentModule14[] = R"GPUI_DTS(     * Not available on this
    */
   export const TableCaption: { new(): TableCaptionElement };
   /**
-   * A simple stateless table composed from typed table-part children.
+)GPUI_DTS";
+static const char kComponentModule15[] = R"GPUI_DTS(   * A simple stateless table composed from typed table-part children.
    */
   export type TableElement = Omit<NativeElement, "accessibility_label" | "size" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
     /**
@@ -4475,8 +4541,7 @@ static const char kComponentModule14[] = R"GPUI_DTS(     * Not available on this
     /**
      * Not available on this component: `Icon` does not declare `selected`, and the runtime refuses it.
      */
-)GPUI_DTS";
-static const char kComponentModule15[] = R"GPUI_DTS(    selected(unavailable: never): never;
+    selected(unavailable: never): never;
     /**
      * Not available on this component: `Icon` does not declare `on_click`, and the runtime refuses it.
      */
@@ -4709,7 +4774,8 @@ static const char kComponentModule15[] = R"GPUI_DTS(    selected(unavailable: ne
    */
   export type TextElement = Omit<NativeElement, "disabled" | "selected" | "on_click" | "role" | "transition"> & {
     /**
-     * Not available on this component: `Text` does not declare `disabled`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule16[] = R"GPUI_DTS(     * Not available on this component: `Text` does not declare `disabled`, and the runtime refuses it.
      */
     disabled(unavailable: never): never;
     /**
@@ -4769,8 +4835,7 @@ static const char kComponentModule15[] = R"GPUI_DTS(    selected(unavailable: ne
      * Appends a clickable popup-menu item in call order.
      */
     menu_item(label: string, callback: (cx: Context) => void): DropdownButtonElement;
-)GPUI_DTS";
-static const char kComponentModule16[] = R"GPUI_DTS(    /**
+    /**
      * Not available on this component: `DropdownButton` does not declare `role`, and the runtime refuses it.
      */
     role(unavailable: never): never;
@@ -5004,7 +5069,8 @@ static const char kComponentModule16[] = R"GPUI_DTS(    /**
      */
     selected(unavailable: never): never;
     /**
-     * Not available on this component: `RadarChart` does not declare `on_click`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule17[] = R"GPUI_DTS(     * Not available on this component: `RadarChart` does not declare `on_click`, and the runtime refuses it.
      */
     on_click(unavailable: never): never;
     /**
@@ -5059,8 +5125,7 @@ static const char kComponentModule16[] = R"GPUI_DTS(    /**
     /**
      * Not available on this component: `Carousel` does not declare `role`, and the runtime refuses it.
      */
-)GPUI_DTS";
-static const char kComponentModule17[] = R"GPUI_DTS(    role(unavailable: never): never;
+    role(unavailable: never): never;
     /**
      * Not available on this component: `Carousel` does not declare `transition`, and the runtime refuses it.
      */
@@ -5289,7 +5354,8 @@ static const char kComponentModule17[] = R"GPUI_DTS(    role(unavailable: never)
      */
     disabled(disabled: boolean): QuestionnaireChoiceElement;
     /**
-     * Selects the choice in the questionnaire's initial snapshot.
+)GPUI_DTS";
+static const char kComponentModule18[] = R"GPUI_DTS(     * Selects the choice in the questionnaire's initial snapshot.
      */
     default_selected(default_selected: boolean): QuestionnaireChoiceElement;
     /**
@@ -5346,8 +5412,7 @@ static const char kComponentModule17[] = R"GPUI_DTS(    role(unavailable: never)
      */
     role(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule18[] = R"GPUI_DTS(     * Not available on this component: `QuestionnaireItem` does not declare `transition`, and the runtime refuses it.
+     * Not available on this component: `QuestionnaireItem` does not declare `transition`, and the runtime refuses it.
      */
     transition(unavailable: never): never;
   }
@@ -5420,7 +5485,7 @@ static const char kComponentModule18[] = R"GPUI_DTS(     * Not available on this
 }
 
 )GPUI_DTS";
-static const char kComponentUnion0[] = R"GPUI_DTS( | import("gpui-component").SpinnerElement | import("gpui-component").SeparatorElement | import("gpui-component").SkeletonElement | import("gpui-component").AttachmentElement | import("gpui-component").BubbleElement | import("gpui-component").MarkerElement | import("gpui-component").MessageElement | import("gpui-component").ShimmerTextElement | import("gpui-component").MessageScrollerElement | import("gpui-component").EmptyElement | import("gpui-component").EmptyHeaderElement | import("gpui-component").EmptyMediaElement | import("gpui-component").EmptyTitleElement | import("gpui-component").EmptyDescriptionElement | import("gpui-component").EmptyContentElement | import("gpui-component").InputGroupElement | import("gpui-component").InputGroupAddonElement | import("gpui-component").InputGroupButtonElement | import("gpui-component").InputGroupInputElement | import("gpui-component").InputGroupTextareaElement | import("gpui-component").InputGroupTextElement | import("gpui-component").ButtonElement | import("gpui-component").CheckboxElement | import("gpui-component").SwitchElement | import("gpui-component").ToggleElement | import("gpui-component").BadgeElement | import("gpui-component").TagElement | import("gpui-component").LabelElement | import("gpui-component").LinkElement | import("gpui-component").KbdElement | import("gpui-component").ListElement | import("gpui-component").ComboboxElement | import("gpui-component").SelectElement | import("gpui-component").DataTableElement | import("gpui-component").AlertElement | import("gpui-component").BreadcrumbElement | import("gpui-component").ClipboardElement | import("gpui-component").GroupBoxElement | import("gpui-component").RatingElement | import("gpui-component").StatusBarElement | import("gpui-component").ToolbarElement | import("gpui-component").AvatarElement | import("gpui-component").CollapsibleElement | import("gpui-component").PaginationElement | import("gpui-component").ProgressElement | import("gpui-component").RadioElement | import("gpui-component").AccordionItemElement | import("gpui-component").AccordionElement | import("gpui-component").RadioGroupElement | import("gpui-component").TabElement | import("gpui-component").TabBarElement | import("gpui-component").StepperItemElement | import("gpui-component").StepperElement | import("gpui-component").TooltipElement | import("gpui-component").MenuItemElement | import("gpui-component").MenuSeparatorElement | import("gpui-component").MenuElement | import("gpui-component").MenuBarElement | import("gpui-component").TreeItemElement | import("gpui-component").TreeElement | import("gpui-component").CommandItemElement | import("gpui-component").CommandGroupElement | import("gpui-component").CommandSeparatorElement | import("gpui-component").CommandElement | import("gpui-component").NativeMenuItemElement | import("gpui-component").NativeMenuSeparatorElement | import("gpui-component").NativeMenuTriggerElement | import("gpui-component").DialogElement | import("gpui-component").AlertDialogElement | import("gpui-component").SheetElement | import("gpui-component").NotificationElement | import("gpui-component").HoverCardElement | import("gpui-component").PopoverElement | import("gpui-component").DropdownMenuElement | import("gpui-component").InputElement | import("gpui-component").NumberInputElement | import("gpui-component").OtpInputElement | import("gpui-component").SliderElement | import("gpui-component").ColorPickerElement | import("gpui-component").CalendarElement | import("gpui-component").DatePickerElement | import("gpui-component").TimeFieldElement | import("gpui-component").TextareaElement | import("gpui-component").ResizablePanelElement | import("gpui-component").ResizableElement | import("gpui-component").ImageElement | import("gpui-component").EditorElement | import("gpui-component").ScrollElement | import("gpui-component").ScrollbarElement | import("gpui-component").SettingItemElement | import("gpui-component").SettingGroupElement | import("gpui-component").SettingPageElement | import("gpui-component").SettingsElement | import("gpui-component").DescriptionItemElement | import("gpui-component").DescriptionListElement | import("gpui-component").FieldElement | import("gpui-component").FormElement | import("gpui-component").TableHeaderElement | import("gpui-component").TableBodyElement | import("gpui-component").TableFooterElement | import("gpui-component").TableRowElement | import("gpui-component").TableHeadElement | import("gpui-component").TableCellElement | import("gpui-component").TableCaptionElement | import("gpui-component").TableElement | import("gpui-component").IconElement | import("gpui-component").SidebarMenuItemElement | import("gpui-component").SidebarMenuElement | import("gpui-component").SidebarHeaderElement | import("gpui-component").SidebarFooterElement | import("gpui-component").SidebarElement | import("gpui-component").SidebarToggleButtonElement | import("gpui-component").TextElement | import("gpui-component").DropdownButtonElement | import("gpui-component").BarChartElement | import("gpui-component").LineChartElement | import("gpui-component").AreaChartElement | import("gpui-component").PieChartElement | import("gpui-component").RadarChartElement | import("gpui-component").CarouselElement | import("gpui-component").CarouselContentElement | import("gpui-component").CarouselItemElement | import("gpui-component").CarouselPreviousElement | import("gpui-component").CarouselNextElement | import("gpui-component").CarouselPaginationElement | import("gpui-component").CarouselPaginationItemElement | import("gpui-component").QuestionnaireChoiceElement | import("gpui-component").QuestionnaireItemElement | import("gpui-component").QuestionnaireInputElement | import("gpui-component").QuestionnaireElement)GPUI_DTS";
+static const char kComponentUnion0[] = R"GPUI_DTS( | import("gpui-component").SpinnerElement | import("gpui-component").SeparatorElement | import("gpui-component").SkeletonElement | import("gpui-component").AttachmentElement | import("gpui-component").BubbleElement | import("gpui-component").MarkerElement | import("gpui-component").MessageElement | import("gpui-component").ShimmerTextElement | import("gpui-component").MessageScrollerElement | import("gpui-component").EmptyElement | import("gpui-component").EmptyHeaderElement | import("gpui-component").EmptyMediaElement | import("gpui-component").EmptyTitleElement | import("gpui-component").EmptyDescriptionElement | import("gpui-component").EmptyContentElement | import("gpui-component").InputGroupElement | import("gpui-component").InputGroupAddonElement | import("gpui-component").InputGroupButtonElement | import("gpui-component").InputGroupInputElement | import("gpui-component").InputGroupTextareaElement | import("gpui-component").InputGroupTextElement | import("gpui-component").ButtonElement | import("gpui-component").CheckboxElement | import("gpui-component").SwitchElement | import("gpui-component").ToggleElement | import("gpui-component").BadgeElement | import("gpui-component").TagElement | import("gpui-component").LabelElement | import("gpui-component").LinkElement | import("gpui-component").KbdElement | import("gpui-component").ListElement | import("gpui-component").ComboboxElement | import("gpui-component").SelectElement | import("gpui-component").DataTableElement | import("gpui-component").AlertElement | import("gpui-component").BreadcrumbElement | import("gpui-component").ClipboardElement | import("gpui-component").GroupBoxElement | import("gpui-component").RatingElement | import("gpui-component").StatusBarElement | import("gpui-component").ToolbarElement | import("gpui-component").AvatarElement | import("gpui-component").CollapsibleElement | import("gpui-component").PaginationElement | import("gpui-component").ProgressElement | import("gpui-component").RadioElement | import("gpui-component").AccordionItemElement | import("gpui-component").AccordionElement | import("gpui-component").RadioGroupElement | import("gpui-component").TabElement | import("gpui-component").TabBarElement | import("gpui-component").StepperItemElement | import("gpui-component").StepperElement | import("gpui-component").TooltipElement | import("gpui-component").MenuItemElement | import("gpui-component").MenuSeparatorElement | import("gpui-component").MenuElement | import("gpui-component").MenuBarElement | import("gpui-component").TreeItemElement | import("gpui-component").TreeElement | import("gpui-component").CommandItemElement | import("gpui-component").CommandGroupElement | import("gpui-component").CommandSeparatorElement | import("gpui-component").CommandElement | import("gpui-component").NativeMenuItemElement | import("gpui-component").NativeMenuSeparatorElement | import("gpui-component").NativeMenuTriggerElement | import("gpui-component").DialogElement | import("gpui-component").AlertDialogElement | import("gpui-component").SheetElement | import("gpui-component").NotificationElement | import("gpui-component").HoverCardElement | import("gpui-component").PopoverElement | import("gpui-component").DropdownMenuElement | import("gpui-component").InputElement | import("gpui-component").NumberInputElement | import("gpui-component").OtpInputElement | import("gpui-component").SliderElement | import("gpui-component").ColorPickerElement | import("gpui-component").CalendarElement | import("gpui-component").DatePickerElement | import("gpui-component").TimeFieldElement | import("gpui-component").TextareaElement | import("gpui-component").ResizablePanelElement | import("gpui-component").ResizableElement | import("gpui-component").ImageElement | import("gpui-component").EditorElement | import("gpui-component").DiffElement | import("gpui-component").ScrollElement | import("gpui-component").ScrollbarElement | import("gpui-component").SettingItemElement | import("gpui-component").SettingGroupElement | import("gpui-component").SettingPageElement | import("gpui-component").SettingsElement | import("gpui-component").DescriptionItemElement | import("gpui-component").DescriptionListElement | import("gpui-component").FieldElement | import("gpui-component").FormElement | import("gpui-component").TableHeaderElement | import("gpui-component").TableBodyElement | import("gpui-component").TableFooterElement | import("gpui-component").TableRowElement | import("gpui-component").TableHeadElement | import("gpui-component").TableCellElement | import("gpui-component").TableCaptionElement | import("gpui-component").TableElement | import("gpui-component").IconElement | import("gpui-component").SidebarMenuItemElement | import("gpui-component").SidebarMenuElement | import("gpui-component").SidebarHeaderElement | import("gpui-component").SidebarFooterElement | import("gpui-component").SidebarElement | import("gpui-component").SidebarToggleButtonElement | import("gpui-component").TextElement | import("gpui-component").DropdownButtonElement | import("gpui-component").BarChartElement | import("gpui-component").LineChartElement | import("gpui-component").AreaChartElement | import("gpui-component").PieChartElement | import("gpui-component").RadarChartElement | import("gpui-component").CarouselElement | import("gpui-component").CarouselContentElement | import("gpui-component").CarouselItemElement | import("gpui-component").CarouselPreviousElement | import("gpui-component").CarouselNextElement | import("gpui-component").CarouselPaginationElement | import("gpui-component").CarouselPaginationItemElement | import("gpui-component").QuestionnaireChoiceElement | import("gpui-component").QuestionnaireItemElement | import("gpui-component").QuestionnaireInputElement | import("gpui-component").QuestionnaireElement)GPUI_DTS";
 
 void AppendRustComponentDeclarations(StrBuilder* out) {
     out->Append(Str(kComponentModule0, (int)sizeof(kComponentModule0) - 1));

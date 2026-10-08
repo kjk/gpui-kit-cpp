@@ -32,4 +32,11 @@ struct EditorStateValue {
 bool RequireLeaf(int children, Str* error);
 
 } // namespace gpui::component_shell::media::editor
+
+namespace gpui::component_shell::media::diff {
+
+// require_leaf: "Diff does not accept children".
+bool RequireLeaf(int children, Str* error);
+
+} // namespace gpui::component_shell::media::diff
 #endif // GPUI_COMPONENT_SHELL_MEDIA_MOD_H_

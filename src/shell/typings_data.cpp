@@ -6,7 +6,7 @@ namespace gpui::shell {
 
 static const char kShellTypes0[] = R"GPUI_DTS(// Auto-generated — add `gpui-kit.d.ts` to your .gitignore.
 //
-// The built-in modules, as TypeScript declarations, for gpui-shell 0.7.0.
+// The built-in modules, as TypeScript declarations, for gpui-shell 0.7.1.
 // Do not edit: gpui-shell rewrites this on every run, in every directory that
 // imports one of them, from the runtime that is about to execute the script. A
 // committed copy could only ever be the stale one.

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "bf44ad7419429b841280fa0d2c78f8c00beb578c",
+  sha: "9808ec1efbfdc675bc9e3f57e9d1da8f0768658a",
   date: "2026-10-07",
-  subject: "docs: Explain recovering focus when the focused element stops rendering (#3386)",
+  subject: "diff: Add readonly patch viewer (#3378)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

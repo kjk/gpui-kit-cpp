@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bf44ad7419429b841280fa0d2c78f8c00beb578c` (2026-10-07,
-docs: Explain recovering focus when the focused element stops
-rendering (#3386)). The note is website and skill text. It describes
-`on_focus_lost` and `focus_lost_restore_target`, which this engine does
-not add. The current update target is
+Processed through `9808ec1efbfdc675bc9e3f57e9d1da8f0768658a` (2026-10-07,
+diff: Add readonly patch viewer (#3378)). The viewer parses unified and
+Git patches, projects hunks, folds and conflicts, and paints them in a
+virtual list. Inline emphasis is prepared on the frame that needs it.
+The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust
@@ -218,6 +218,17 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   what position alone settles. Nothing that needs a tree (rename, semantic
   scope) can be asked of it. Folding is brace-pair scanning, which is what
   upstream's own showcase highlighter does.
+- **Diff review text is line ranges, not a text selection.** `src/ui/diff.cpp`
+  selects source lines and copies them. It does not drive GPUI's
+  `TextSelection`, so the hit-tested caret, word sweeps and chunk clipping
+  in `selection_tests.rs` and `header_tests.rs` are not ported. Inline
+  emphasis is computed on the frame that asks, and a rebuild keeps the
+  scroll index rather than the source line that was at the top. Soft wrap
+  is stored and not applied. Annotation content is painted inside the
+  uniform row, which does not grow with the comment. The story page
+  shows the pull-request patch and previous/next; the options menu and
+  the other example patches are not on the page yet. The per-hunk
+  tree-sitter test stays under the scanner gap above.
 - **The Base showcase's editor is plain text with a gutter.** Upstream's
   page installs its own syntect highlighter (`syntect_highlighter.rs`,
   a third-party crate) for Rust, colours its captures through

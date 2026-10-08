@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "bf44ad7419429b841280fa0d2c78f8c00beb578c";
+const pinnedGpuiComponent = "9808ec1efbfdc675bc9e3f57e9d1da8f0768658a";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -37,7 +37,7 @@ const uiModules = `
 component_traits element_ext global_state icon index_path inspector
 root sizing styled time title_bar virtual_list window_border window_ext
 accordion alert attachment avatar badge breadcrumb bubble button chart checkbox
-carousel clipboard collapsible color_picker combobox command description_list dialog dock
+carousel clipboard collapsible color_picker combobox command description_list dialog diff dock
 empty form group_box highlighter history hover_card input kbd label link list marker
 menu message message_scroller native_menu notification pagination plot popover
 progress questionnaire radio rating resizable scroll searchable_list select separator setting
@@ -286,6 +286,7 @@ const testTargets: Record<string, string[]> = {
   ],
   "ui/dock": ["tests/DockTests.cpp", "tests/DockStateTests.cpp"],
   "ui/dialog": ["tests/DialogTests.cpp"],
+  "ui/diff": ["tests/DiffTests.cpp"],
   "ui/empty": ["tests/BuilderCapacityTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/form": ["tests/FormTests.cpp"],
   "ui/group_box": ["tests/GroupBoxTests.cpp", "tests/AccessibilityTests.cpp"],
@@ -604,9 +605,9 @@ const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256
     test: { count: 1317, sha256: "350822dc95245b80c5ae76e85a6c59106117ad050466eb06e0bd3c77a673fb1f" },
   },
   ui: {
-    declaration: { count: 447, sha256: "98df04a0e12dfd9095ad123a531bafd53bb286391fdd493e35ffdb573982f042" },
-    "pub-use": { count: 162, sha256: "7bf810ca45926f4ed0d1e6a58d32182ebf36c3be9a7229d80cea2ef4f5fc930a" },
-    test: { count: 659, sha256: "3ca0fa1cf8c26cae7bd6950da383fac72a4b2c2ddbeb909edbdbc17a79ed59df" },
+    declaration: { count: 464, sha256: "85eac27dc8069d0206052faca1935f34f92afe1a1e2da374ac8662a552e3eefc" },
+    "pub-use": { count: 167, sha256: "12e431216cc11fa1c497d51c25db865e9810a12edc006ff1a428b821be7e019d" },
+    test: { count: 705, sha256: "8d0517ba32af4009fbc52b853bedf560b9c53ece661149e4d7987643d09e6a1c" },
   },
 };
 
