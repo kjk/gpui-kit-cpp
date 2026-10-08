@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4890b1c2ab37c7a072d1a3c6adc6a5923ec09807` (2026-10-05,
-speech: Pace `SpeechWaveform` at one bar per 80 ms and scroll it smoothly
-(#3352)). A level is 80 ms of audio. The waveform follows a playhead 1.75
-levels behind the newest one, with a small pace and phase correction, and
-draws only levels that exist, spaced 2.5 bar-widths apart and clipped at the
-trailing edge. While recording, the example's waveform takes the rest of the
-row. The current update target is
+Processed through `87d10ae5e1299d1be18670a37570c5402f952e34` (2026-10-05,
+kit: Update GPUI to gpui-pre 0.3.8 and prepare v0.7.1 (#3370)). The workspace
+packages are 0.7.1. The editor wrapper and inline flow pass
+`IndentAdjustment::SameIndent`, which is the continuation indent already
+applied here, and the shell scroll regression reads laid-out bounds rather
+than a release-disabled debug selector. The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust

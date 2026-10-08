@@ -538,17 +538,17 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4890b1c2ab37c7a072d1a3c6adc6a5923ec09807",
+  sha: "87d10ae5e1299d1be18670a37570c5402f952e34",
   date: "2026-10-05",
-  subject: "speech: Pace `SpeechWaveform` at one bar per 80 ms and scroll it smoothly (#3352)",
+  subject: "kit: Update GPUI to gpui-pre 0.3.8 and prepare v0.7.1 (#3370)",
   crates: {
-    "gpui-kit": "0.7.0",
-    "gpui-base": "0.7.0",
-    "gpui-component": "0.7.0",
-    "gpui-component-story": "0.7.0",
-    "gpui-wry": "0.7.0",
-    "gpui-shell": "0.7.0",
-    "gpui-component-shell": "0.7.0",
+    "gpui-kit": "0.7.1",
+    "gpui-base": "0.7.1",
+    "gpui-component": "0.7.1",
+    "gpui-component-story": "0.7.1",
+    "gpui-wry": "0.7.1",
+    "gpui-shell": "0.7.1",
+    "gpui-component-shell": "0.7.1",
   },
   dir: ".work/gpui-component",
 } as const;
