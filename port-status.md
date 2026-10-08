@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `636e0888701125d1c91d7c4a236f96edc53e40bf` (2026-10-08,
-table: Make the sort icon a labelled button (#3396)). The sort icon is
-a button labelled "Sort by %{column}". A click still sorts and selects
-the column. The current sort direction is not on the button.
+Processed through `29399be430979563800768feddab5885afce045b` (2026-10-08,
+table: Report visible row ranges of one row or none (#3397)). A table
+of one row reports `0..1`, and one whose rows drop to none reports
+`0..0`. The reported end never passes the row count. A single
+scrollable column is reported the same way.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

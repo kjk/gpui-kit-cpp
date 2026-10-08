@@ -307,10 +307,12 @@ inline int TableCellCol(int64_t packed) {
 }
 // update_visible_range_if_need, one axis at a time: the range is written
 // down and true comes back when it moved, which is when the delegate wants
-// telling. A range of one is skipped — Rust's virtual list measures with a
-// single item, and here it is the frame before anything has been laid out.
-bool TableVisibleRowsChanged(TableState* s, int first, int end);
-bool TableVisibleColsChanged(TableState* s, int first, int end);
+// telling. A range of one is skipped when there is more than one item —
+// the virtual list measures with a single item. The end never passes
+// `items`. An empty range while items remain is stale and is not written.
+// `0..0` with no items is a real report.
+bool TableVisibleRowsChanged(TableState* s, int first, int end, int items);
+bool TableVisibleColsChanged(TableState* s, int first, int end, int items);
 // The columns whose slot overlaps the scrolling pane, in display positions.
 // Rust culls the ones outside it; this tree builds them all, so this answers
 // the same question without being what decides anything.

@@ -1157,7 +1157,11 @@ El* DataTable::BuildEl() {
     scrollPane->Child(headWrap);
 
     // render_empty: a table with no rows shows this instead of a body.
+    // The rows list is not rendered, so the empty range is reported here.
     if (nRows == 0) {
+        if (s && TableVisibleRowsChanged(s, 0, 0, 0) && visibleRowsChanged) {
+            visibleRowsChanged(cx, data, 0, 0);
+        }
         El* delegateEmpty = hasDelegate && delegate.renderEmpty
                                 ? delegate.renderEmpty(cx, data)
                                 : nullptr;
@@ -1228,14 +1232,21 @@ El* DataTable::BuildEl() {
     // here the row range is what the body was built from and the column range
     // is worked out from the offset, since this tree builds every column.
     if (s) {
-        if (TableVisibleRowsChanged(s, range.first, range.end) &&
+        if (TableVisibleRowsChanged(s, range.first, range.end, nRows) &&
             visibleRowsChanged) {
-            visibleRowsChanged(cx, data, range.first, range.end);
+            visibleRowsChanged(cx, data, s->visibleRange.rowFirst,
+                               s->visibleRange.rowEnd);
         }
         int cFirst = 0, cEnd = 0;
         TableVisibleCols(s, &cFirst, &cEnd);
-        if (TableVisibleColsChanged(s, cFirst, cEnd) && visibleColsChanged) {
-            visibleColsChanged(cx, data, cFirst, cEnd);
+        int nScroll = s->colCount - s->fixedCols;
+        if (nScroll < 0) {
+            nScroll = 0;
+        }
+        if (TableVisibleColsChanged(s, cFirst, cEnd, nScroll) &&
+            visibleColsChanged) {
+            visibleColsChanged(cx, data, s->visibleRange.colFirst,
+                               s->visibleRange.colEnd);
         }
     }
     for (int r = range.first; r < range.end; r++) {

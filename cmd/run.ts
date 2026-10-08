@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "636e0888701125d1c91d7c4a236f96edc53e40bf",
+  sha: "29399be430979563800768feddab5885afce045b",
   date: "2026-10-08",
-  subject: "table: Make the sort icon a labelled button (#3396)",
+  subject: "table: Report visible row ranges of one row or none (#3397)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

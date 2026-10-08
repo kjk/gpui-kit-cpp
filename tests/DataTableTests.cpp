@@ -377,27 +377,39 @@ static void ARightClickMarksARowOrACellButNeverBoth() {
 }
 
 // update_visible_range_if_need: the delegate is told only when the range
-// actually moved, and never about a range of one — Rust skips that because
-// its virtual list lays a single item out to measure with, and here it is the
-// frame before the pane has been laid out at all.
+// actually moved. A range of one is the measuring pass when more than one
+// item exists, and is a real range when the table has a single item. The
+// end never passes the item count, and a range wholly past it is stale.
 static void TheDelegateHearsAboutTheRangeOnlyWhenItMoves() {
     TableState s;
-    utassert(TableVisibleRowsChanged(&s, 0, 20));
+    utassert(TableVisibleRowsChanged(&s, 0, 20, 40));
     // The same range again says nothing.
-    utassert(!TableVisibleRowsChanged(&s, 0, 20));
-    utassert(TableVisibleRowsChanged(&s, 5, 25));
+    utassert(!TableVisibleRowsChanged(&s, 0, 20, 40));
+    utassert(TableVisibleRowsChanged(&s, 5, 25, 40));
     utassert(s.visibleRange.rowFirst == 5 && s.visibleRange.rowEnd == 25);
     // A range of one is the measuring pass, and does not even overwrite what
     // was last reported.
-    utassert(!TableVisibleRowsChanged(&s, 0, 1));
-    utassert(!TableVisibleRowsChanged(&s, 0, 0));
+    utassert(!TableVisibleRowsChanged(&s, 0, 1, 40));
+    utassert(!TableVisibleRowsChanged(&s, 0, 0, 40));
     utassert(s.visibleRange.rowFirst == 5 && s.visibleRange.rowEnd == 25);
+    // Stripe filler and a stale window are clamped back to the rows.
+    utassert(TableVisibleRowsChanged(&s, 0, 8, 3));
+    utassert(s.visibleRange.rowFirst == 0 && s.visibleRange.rowEnd == 3);
+    utassert(!TableVisibleRowsChanged(&s, 8, 12, 3));
+    utassert(s.visibleRange.rowEnd == 3);
+    // One row, and then none, are both real ranges.
+    utassert(TableVisibleRowsChanged(&s, 0, 1, 1));
+    utassert(s.visibleRange.rowFirst == 0 && s.visibleRange.rowEnd == 1);
+    utassert(TableVisibleRowsChanged(&s, 0, 0, 0));
+    utassert(s.visibleRange.rowFirst == 0 && s.visibleRange.rowEnd == 0);
 
-    // The two axes are independent.
-    utassert(TableVisibleColsChanged(&s, 2, 9));
-    utassert(!TableVisibleColsChanged(&s, 2, 9));
-    utassert(s.visibleRange.rowFirst == 5);
+    // The two axes are independent. One scrollable column is reported.
+    utassert(TableVisibleColsChanged(&s, 2, 9, 12));
+    utassert(!TableVisibleColsChanged(&s, 2, 9, 12));
+    utassert(s.visibleRange.rowFirst == 0);
     utassert(s.visibleRange.colFirst == 2 && s.visibleRange.colEnd == 9);
+    utassert(TableVisibleColsChanged(&s, 0, 1, 1));
+    utassert(s.visibleRange.colFirst == 0 && s.visibleRange.colEnd == 1);
 }
 
 // Which columns overlap the scrolling pane. The pinned ones are never in it —

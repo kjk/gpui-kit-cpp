@@ -654,32 +654,44 @@ int TableDragGapAt(const Bounds* colBounds, int n, float x, int dragCol,
     return gap;
 }
 
-// Both halves of update_visible_range_if_need. The range-of-one guard is
-// Rust's `if visible_range.len() <= 1 { return }`: the virtual list lays a
-// single item out to measure with, and telling a delegate that one row is
-// visible would be a lie it might go and fetch data on.
-bool TableVisibleRowsChanged(TableState* s, int first, int end) {
-    if (end - first <= 1) {
+// Both halves of update_visible_range_if_need. A one-item range is the
+// virtual list measuring, and is skipped only when there is more than one
+// item — a table of one row really is `0..1`. The end is clamped to the
+// item count so stripe filler never shows up in it. A range wholly past
+// the last item is stale and is left unwritten.
+static bool VisibleSpanChanged(int* storedFirst, int* storedEnd, int first,
+                               int end, int items) {
+    if (end < first) {
+        end = first;
+    }
+    if ((end - first) <= 1 && items > 1) {
         return false;
     }
-    if (s->visibleRange.rowFirst == first && s->visibleRange.rowEnd == end) {
+    if (end > items) {
+        end = items;
+    }
+    if (first > end) {
+        first = end;
+    }
+    if (first == end && items > 0) {
         return false;
     }
-    s->visibleRange.rowFirst = first;
-    s->visibleRange.rowEnd = end;
+    if (*storedFirst == first && *storedEnd == end) {
+        return false;
+    }
+    *storedFirst = first;
+    *storedEnd = end;
     return true;
 }
 
-bool TableVisibleColsChanged(TableState* s, int first, int end) {
-    if (end - first <= 1) {
-        return false;
-    }
-    if (s->visibleRange.colFirst == first && s->visibleRange.colEnd == end) {
-        return false;
-    }
-    s->visibleRange.colFirst = first;
-    s->visibleRange.colEnd = end;
-    return true;
+bool TableVisibleRowsChanged(TableState* s, int first, int end, int items) {
+    return VisibleSpanChanged(&s->visibleRange.rowFirst,
+                              &s->visibleRange.rowEnd, first, end, items);
+}
+
+bool TableVisibleColsChanged(TableState* s, int first, int end, int items) {
+    return VisibleSpanChanged(&s->visibleRange.colFirst,
+                              &s->visibleRange.colEnd, first, end, items);
 }
 
 void TableVisibleCols(const TableState* s, int* first, int* end) {

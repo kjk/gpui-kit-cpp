@@ -107,6 +107,8 @@ struct TableDelegate {
     int (*loadMoreThreshold)(void* data) = nullptr;
     void (*loadMore)(Ctx* cx, void* data) = nullptr;
     El* (*renderLastEmptyCol)(Ctx* cx, void* data) = nullptr;
+    // The range never ends past the row count. A table whose rows drop
+    // to none reports 0..0.
     void (*visibleRowsChanged)(Ctx* cx, void* data, int first,
                                int end) = nullptr;
     void (*visibleColumnsChanged)(Ctx* cx, void* data, int first,
