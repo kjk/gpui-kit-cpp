@@ -73,6 +73,10 @@ bool WebViewFocusParent(WebView*) {
 bool WebViewZoom(WebView*, double) {
     return false;
 }
+bool WebViewMatchPageScale(WebView*, float) {
+    return false;
+}
+void WebViewSetPageClick(WebView*, WebViewPageClick, void*) {}
 bool WebViewSetBackgroundColor(WebView*, Rgba) {
     return false;
 }

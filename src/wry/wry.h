@@ -1,7 +1,7 @@
 /* wry/src/lib.rs — the public API of the `wry` crate.
  *
  * `src/wry/` is a C++ port of lb-wry 0.53.3, the webview crate
- * gpui-kit's `crates/webview` (`gpui-wry`) drives. See
+ * gpui-kit's `crates/webview` (`gpui-webview`) drives. See
  * src/wry/readme.md for the file-for-file map and for what is deliberately
  * not ported, and cmd/versions.ts (`wry`) for the pinned version.
  *
@@ -440,6 +440,16 @@ bool WebViewFocus(WebView* webview);
 bool WebViewFocusParent(WebView* webview);
 /** `WebView::zoom`. */
 bool WebViewZoom(WebView* webview, double scaleFactor);
+/** Linux page zoom so CSS pixels match GPUI's scale. GDK's factor is an
+    integer, so a fractional GPUI scale would otherwise draw the page large.
+    Other platforms already share the window scale and leave the page alone. */
+bool WebViewMatchPageScale(WebView* webview, float gpuiScale);
+/** A press on the page, in the webview's own coordinates, with GDK's scale.
+    Linux forwards it so an overlay that closes on an outside click hears
+    the page. Other platforms leave this unset. */
+typedef void (*WebViewPageClick)(void* user, int button, float x, float y,
+                                 float gdkScale);
+void WebViewSetPageClick(WebView* webview, WebViewPageClick fn, void* user);
 /** `WebView::set_background_color`. */
 bool WebViewSetBackgroundColor(WebView* webview, Rgba color);
 /** `WebViewExtWindows::set_theme`. */

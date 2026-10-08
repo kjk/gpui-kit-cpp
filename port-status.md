@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9acf47ccccccb283b6feed68a8208ab9ed8a688b` (2026-10-07,
-text_view: Round the first and last table rows to the frame radius
-(#3309)). The first row's top corners and the last row's bottom
-corners follow the table frame, inset by its 1px border.
+Processed through `56c5eb496d9ffd4eea24bbd81d7e1952b863bea3` (2026-10-07,
+webview: Support Linux on X11 and rename the crate to gpui-webview
+(#3395)). The workspace package is `gpui-webview` 0.7.1. Linux page
+zoom is the GPUI scale divided by GDK's integer factor, and a press
+on the page is forwarded so an overlay can close. `WebView::forward`
+evaluates `history.forward()`.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
@@ -270,12 +272,20 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   browser hides the target that the shell must capability-check.
   See the browser section of AGENTS.md.
 - **No GPUI Fast native composition surface.** Upstream reparents a
-  macOS WKWebView onto `WindowCompositionSurface` so overlays draw above
-  it (`crates/webview/src/composition.rs`, GPUI Fast 0.1.2). This tree
-  has one engine and parents the webview on the window
-  (`src/webview/webview.cpp`). `WebView::set_bounds` and `set_visible`
-  are the wry calls `PaintWebView`, `WebViewShow` and `WebViewHide`
-  already make.
+  macOS WKWebView, and on Linux an X11 overlay window, onto
+  `WindowCompositionSurface` so overlays draw above the page
+  (`crates/webview/src/composition.rs` and `linux.rs`, GPUI Fast
+  0.1.3). This tree has one engine and parents the webview on the
+  window (`src/webview/webview.cpp`). `WebView::set_bounds` and
+  `set_visible` are the wry calls `PaintWebView`, `WebViewShow` and
+  `WebViewHide` already make.
+- **Linux webview bounds stay logical.** Upstream `device_bounds` passes
+  physical pixels because lb-wry then scales by GDK. `WebViewSetBounds`
+  in `wry_linux.cpp` already multiplies a logical rect by that factor
+  for the X11 child, so the kit conversion is not applied again. Page
+  zoom is `WebViewMatchPageScale`. Wayland is unsupported here as
+  upstream: the window is X11, which is the backend WebKitGTK can embed
+  into.
 - **macOS webview drag positions account for the child view.** The pinned
   Wry backend flips a window-relative point using the view's height; this
   port first converts it into the child view, then normalizes the top-left

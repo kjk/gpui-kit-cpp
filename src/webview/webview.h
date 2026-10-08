@@ -1,4 +1,4 @@
-/* crates/webview/src/lib.rs — the `gpui-wry` crate.
+/* crates/webview/src/lib.rs — the `gpui-webview` crate.
  *
  * A webview inside a gpui window: `src/wry` is the webview, this is the view
  * that gives it a box in the element tree and keeps it there.
@@ -67,7 +67,7 @@ struct WebViewHandle {
                                       const wry::WebViewAttributes* attrs);
 };
 
-/** `gpui_wry::WebView`. */
+/** `gpui_webview::WebView`. */
 struct WebView {
     WebViewHandle owned;
     bool visible = true;
@@ -77,6 +77,15 @@ struct WebView {
     // The box already handed to wry, so an unchanged frame moves nothing.
     Bounds applied = {};
     bool hasApplied = false;
+    // Linux `scale_factor`: the GPUI scale the page zoom was last matched
+    // to. Other platforms share the window scale and skip the zoom.
+    float pageScale = 0;
+    bool hasPageScale = false;
+    // The window the page-click forward posts into, and this entity, so a
+    // click queued from GTK is dropped once either is gone.
+    Window* window = nullptr;
+    App* app = nullptr;
+    EntityId selfId = {};
     // Whether the window subscription that blurs the page on an outside
     // click has been made. Rust installs its `on_mouse_event` every paint,
     // for that frame; a subscription here outlives the frame, so it is made
@@ -90,6 +99,10 @@ struct WebView {
         goes. Rust does this from inside the element's paint. */
     static void OnWindowMouseDown(WebView* self, Ctx* cx,
                                   const MouseDownEvent* ev);
+    // `linux::forward_mouse_down`. wry calls this with the page's own
+    // coordinates; the body posts a GPUI press.
+    static void OnPageClick(void* user, int button, float x, float y,
+                            float gdkScale);
 };
 
 /** `cx.new(|cx| WebView::new(wry::WebViewBuilder::new()…build_as_child(..)))`:
@@ -122,6 +135,8 @@ void WebViewLoadUrl(WebView* self, Str url);
 /** `WebView::back` — `history.back()` evaluated in the page, which is what
     Rust does rather than asking the webview to go back. */
 void WebViewBack(WebView* self);
+/** `WebView::forward` — `history.forward()`, the same way as `back`. */
+void WebViewForward(WebView* self);
 /** `WebView::raw`: the wry webview, for everything this façade does not
     wrap. Null until one has been made. */
 wry::WebView* WebViewRaw(const WebView* self);

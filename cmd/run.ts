@@ -538,15 +538,15 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "9acf47ccccccb283b6feed68a8208ab9ed8a688b",
+  sha: "56c5eb496d9ffd4eea24bbd81d7e1952b863bea3",
   date: "2026-10-07",
-  subject: "text_view: Round the first and last table rows to the frame radius (#3309)",
+  subject: "webview: Support Linux on X11 and rename the crate to gpui-webview (#3395)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",
     "gpui-component": "0.7.1",
     "gpui-component-story": "0.7.1",
-    "gpui-wry": "0.7.1",
+    "gpui-webview": "0.7.1",
     "gpui-shell": "0.7.1",
     "gpui-component-shell": "0.7.1",
   },
@@ -609,7 +609,7 @@ export const html5ever = {
 } as const;
 
 /**
- * The webview crate `crates/webview` (the `gpui-wry` crate) is built on:
+ * The webview crate `crates/webview` (the `gpui-webview` crate) is built on:
  * `wry = { version = "0.53.3", package = "lb-wry" }`, longbridge's fork. We
  * port it: `src/wry/` is a C++ port of exactly this version, and
  * `src/webview/` is the gpui-side view `crates/webview` is. See

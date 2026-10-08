@@ -14,6 +14,7 @@ struct Example {
     InputState address;
     Entity<WebView> web;
     bool started = false;
+    bool about = false;
 
     static void OnAddress(Example* self, Ctx* cx, const InputEvent* ev) {
         if (!ev || ev->kind != InputEventKind::PressEnter) {
@@ -23,6 +24,35 @@ struct Example {
         if (web) {
             WebViewLoadUrl(web, InputValue(&self->address));
         }
+    }
+
+    static void OnBack(Example* self, Ctx* cx, const ClickEvent*) {
+        if (WebView* web = self->web.Get(cx->app)) {
+            WebViewBack(web);
+        }
+    }
+
+    static void OnForward(Example* self, Ctx* cx, const ClickEvent*) {
+        if (WebView* web = self->web.Get(cx->app)) {
+            WebViewForward(web);
+        }
+    }
+
+    static void OnReload(Example* self, Ctx* cx, const ClickEvent*) {
+        WebView* web = self->web.Get(cx->app);
+        if (wry::WebView* raw = WebViewRaw(web)) {
+            wry::WebViewReload(raw);
+        }
+    }
+
+    static void OnAbout(Example* self, Ctx* cx, const ClickEvent*) {
+        self->about = true;
+        Notify(cx);
+    }
+
+    static void OnAboutClose(Example* self, Ctx* cx, const ClickEvent*) {
+        self->about = false;
+        Notify(cx);
     }
 
     static El* Render(Example* self, Ctx* cx) {
@@ -43,23 +73,62 @@ struct Example {
             self->web = WebViewNew(cx, &attrs);
         }
 
-        El* bar = Div(a)->FlexRow()->Gap(8)->ItemsCenter()->Child(
-            component::Input::New(cx, StrL("address"), &self->address)
-                ->IntoEl());
+        El* bar =
+            Div(a)
+                ->FlexRow()
+                ->Gap(8)
+                ->ItemsCenter()
+                ->Child(component::Button::New(cx, StrL("back"))
+                            ->Ghost()
+                            ->Icon(IconName::ChevronLeft)
+                            ->OnClick(Listen(cx, &Example::OnBack))
+                            ->IntoEl())
+                ->Child(component::Button::New(cx, StrL("forward"))
+                            ->Ghost()
+                            ->Icon(IconName::ChevronRight)
+                            ->OnClick(Listen(cx, &Example::OnForward))
+                            ->IntoEl())
+                ->Child(
+                    component::Input::New(cx, StrL("address"), &self->address)
+                        ->IntoEl())
+                ->Child(component::DropdownMenu::New(cx, StrL("webview-more"))
+                            ->Trigger(component::Button::New(cx, StrL("more"))
+                                          ->Ghost()
+                                          ->Icon(IconName::Ellipsis)
+                                          ->IntoEl())
+                            ->Menu(component::PopupMenu::New(
+                                       cx, StrL("webview-more-menu"))
+                                       ->Menu(StrL("Reload"))
+                                       ->OnClick(Listen(cx, &Example::OnReload))
+                                       ->Separator()
+                                       ->Menu(StrL("About"))
+                                       ->OnClick(Listen(cx, &Example::OnAbout)))
+                            ->IntoEl());
 
         El* frame = Div(a)
                         ->Flex1()
                         ->Border(1, th.border)
                         ->Child(WebViewEl(self->web, cx));
 
-        return Div(a)
-            ->FlexCol()
-            ->Pad(8)
-            ->Gap(12)
-            ->SizeFull()
-            ->Bg(th.background)
-            ->Child(bar)
-            ->Child(frame);
+        El* root = Div(a)
+                       ->FlexCol()
+                       ->Pad(8)
+                       ->Gap(12)
+                       ->SizeFull()
+                       ->Bg(th.background)
+                       ->Child(bar)
+                       ->Child(frame);
+        if (self->about) {
+            root->Child(
+                component::Dialog::New(cx)
+                    ->Open(true)
+                    ->Title(StrL("About"))
+                    ->Body(TextEl(a, StrL("A WebView embedded in a GPUI Kit "
+                                          "window.")))
+                    ->OnClose(Listen(cx, &Example::OnAboutClose))
+                    ->IntoEl(WindowSize(cx->win)));
+        }
+        return root;
     }
 };
 

@@ -1,7 +1,7 @@
 # src/wry — the wry webview crate, ported to C++
 
 This is a port of [wry](https://github.com/tauri-apps/wry) **0.53.3** — the
-`lb-wry` fork gpui-kit's `crates/webview` (the `gpui-wry` crate) depends
+`lb-wry` fork gpui-kit's `crates/webview` (the `gpui-webview` crate) depends
 on, and therefore the crate that defines what a webview in a gpui window
 means. `src/webview/` is the gpui-side half — the port of `crates/webview`
 itself — and it is the only thing in the tree that calls in here.

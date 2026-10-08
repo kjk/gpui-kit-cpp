@@ -1468,6 +1468,14 @@ bool WebViewZoom(WebView* wv, double scaleFactor) {
     return true;
 }
 
+// Linux matches the page to a fractional GPUI scale. WKWebView already shares
+// the window's scale, so the page is left alone.
+bool WebViewMatchPageScale(WebView*, float) {
+    return true;
+}
+
+void WebViewSetPageClick(WebView*, WebViewPageClick, void*) {}
+
 // `set_background_color` is the iOS half of the crate; on macOS the colour
 // comes from the page, and the only knob is the transparency attribute,
 // which is set on the configuration before the webview exists.
