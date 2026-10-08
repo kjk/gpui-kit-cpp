@@ -410,7 +410,15 @@ El* RenderTabs(const AreaCtx& ac, int node) {
         if (activeIx >= 0) {
             const DockPanelDef& def = s->panels[n.panel[activeIx]];
             if (def.render) {
-                body->Child(def.render(cx, def.data));
+                El* view = def.render(cx, def.data);
+                // The shell's own root already tracks the same handle. A
+                // panel that only stored it on the def still has to, or
+                // closing it cannot tell that it held the focus.
+                if (view && def.focus.IsValid() &&
+                    view->style.focusId != def.focus.id) {
+                    view->TrackFocus(def.focus);
+                }
+                body->Child(view);
             }
         } else if (ac.r->emptyGroup) {
             // render_empty: a group with nothing to show is the one place a

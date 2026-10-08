@@ -1323,6 +1323,59 @@ static void TabCloseButtonsFollowTheSkinAndThePanel() {
     EntityDropAll(&app);
 }
 
+static FocusHandle FocusOf(int id) {
+    FocusHandle handle;
+    handle.id = id;
+    return handle;
+}
+
+// dock_area.rs: closing the focused tab moves focus to the panel the group
+// shows in its place. Closing one that never had it leaves focus alone.
+static void ClosingTheFocusedTabHandsFocusToItsReplacement() {
+    DockState s;
+    int a = 0, b = 0;
+    Seed(&s, &a, &b);
+    s.panels[0].focus = FocusOf(10);
+    s.panels[1].focus = FocusOf(11);
+    s.panels[2].focus = FocusOf(12);
+    Window win;
+    win.focusId = 10;
+    Ctx cx = {nullptr, &win, nullptr, {}};
+
+    DockClosePanel(&s, &cx, a, 0);
+    utassert(s.nodes[a].panel.len == 1 && s.nodes[a].panel[0] == 1);
+    utassert(win.focusId == 11);
+
+    win.focusId = 12;
+    DockClosePanel(&s, &cx, a, 0);
+    utassert(win.focusId == 12);
+}
+
+static int gDockFocusStolen = 0;
+
+static void StealDockFocus(Ctx* cx, void*) {
+    gDockFocusStolen++;
+    if (cx && cx->win) {
+        cx->win->focusId = 99;
+    }
+}
+
+static void ARemovalThatMovesFocusIsLeftAlone() {
+    DockState s;
+    int a = 0, b = 0;
+    Seed(&s, &a, &b);
+    s.panels[0].focus = FocusOf(10);
+    s.panels[0].onRemoved = &StealDockFocus;
+    s.panels[1].focus = FocusOf(11);
+    Window win;
+    win.focusId = 10;
+    Ctx cx = {nullptr, &win, nullptr, {}};
+    gDockFocusStolen = 0;
+    DockClosePanel(&s, &cx, a, 0);
+    utassert(gDockFocusStolen == 1);
+    utassert(win.focusId == 99);
+}
+
 void TestDock() {
     AMoveOfAnUnownedPanelIsIgnored();
     TabCloseButtonsFollowTheSkinAndThePanel();
@@ -1347,6 +1400,8 @@ void TestDock() {
     ALayoutSurvivesDumpAndLoad();
     APanelNothingAnswersToBecomesInvalid();
     ALockedDockMovesNothing();
+    ClosingTheFocusedTabHandsFocusToItsReplacement();
+    ARemovalThatMovesFocusIsLeftAlone();
     AHiddenPanelIsNotThere();
     TheLastPanelStays();
     TheTogglesPickTheirGroup();

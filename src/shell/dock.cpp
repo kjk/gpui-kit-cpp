@@ -161,6 +161,7 @@ static DockPanelDef PanelDef(ScriptPanelData* panel) {
     def.render = RenderPanel;
     def.dump = DumpPanel;
     def.data = panel;
+    def.focus = panel->focus;
     def.closable = script ? script->closable : true;
     def.visible = script ? script->visible : true;
     def.canZoom = script ? script->zoomable : true;

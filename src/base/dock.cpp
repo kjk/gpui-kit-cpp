@@ -604,11 +604,132 @@ bool DockClosePanelAt(DockState* s, int node, int ix) {
     return true;
 }
 
+static int DockRootOf(const DockState* s, int node) {
+    int root = node;
+    while (root >= 0 && root < s->nodes.len && s->nodes[root].parent >= 0) {
+        root = s->nodes[root].parent;
+    }
+    return root;
+}
+
+// A shut side dock keeps its tabs and shows no panel, which is TabPanel's
+// collapsed bit. The center is never collapsed.
+static bool DockGroupCollapsed(const DockState* s, int node) {
+    int root = DockRootOf(s, node);
+    if (root < 0) {
+        return false;
+    }
+    if (s->left.node == root && !s->left.open) {
+        return true;
+    }
+    if (s->right.node == root && !s->right.open) {
+        return true;
+    }
+    if (s->bottom.node == root && !s->bottom.open) {
+        return true;
+    }
+    return false;
+}
+
+static void DockCollectTabNodes(const DockState* s, int node, Vec<int>* out) {
+    if (!out || node < 0 || node >= s->nodes.len || !s->nodes[node].used) {
+        return;
+    }
+    const DockNode& n = s->nodes[node];
+    if (!n.split) {
+        VecAppend(*out, node);
+        return;
+    }
+    for (int i = 0; i < n.child.len; i++) {
+        DockCollectTabNodes(s, n.child[i], out);
+    }
+}
+
+// The panel a group would show, when that group may take the focus. A zoom
+// hides every other group. A collapsed dock and a panel with no focus
+// handle cannot.
+static int DockFocusTargetInGroup(const DockState* s, int node) {
+    if (node < 0 || node >= s->nodes.len || !s->nodes[node].used ||
+        s->nodes[node].split) {
+        return -1;
+    }
+    if (s->zoomPanel >= 0 && DockNodeOfPanel(s, s->zoomPanel) != node) {
+        return -1;
+    }
+    if (DockGroupCollapsed(s, node)) {
+        return -1;
+    }
+    int active = DockActiveIx(s, node);
+    if (active < 0) {
+        return -1;
+    }
+    int panel = s->nodes[node].panel[active];
+    if (panel < 0 || panel >= s->panels.len ||
+        !s->panels[panel].focus.IsValid()) {
+        return -1;
+    }
+    return panel;
+}
+
+static int DockFocusTargetInNode(const DockState* s, int node) {
+    if (node < 0 || node >= s->nodes.len || !s->nodes[node].used) {
+        return -1;
+    }
+    if (!s->nodes[node].split) {
+        return DockFocusTargetInGroup(s, node);
+    }
+    for (int i = 0; i < s->nodes[node].child.len; i++) {
+        int child = s->nodes[node].child[i];
+        int found = DockFocusTargetInNode(s, child);
+        if (found >= 0) {
+            return found;
+        }
+    }
+    return -1;
+}
+
 void DockClosePanel(DockState* s, Ctx* cx, int node, int ix) {
     int panelIx = node >= 0 && node < s->nodes.len && ix >= 0 &&
                           ix < s->nodes[node].panel.len
                       ? s->nodes[node].panel[ix]
                       : -1;
+    // Record the tab order before the close prunes an empty group. The
+    // closed group comes first, then the groups after it, then the ones
+    // before it from nearest to farthest.
+    Vec<int> candidates;
+    bool hadFocus = false;
+    FocusHandle focused = {};
+    int regionRoot = -1;
+    if (panelIx >= 0 && cx && cx->win) {
+        focused = WindowFocused(cx->win);
+        hadFocus =
+            FocusHandleContainsFocused(cx->win, s->panels[panelIx].focus);
+        if (hadFocus) {
+            regionRoot = DockRootOf(s, node);
+            DockCollectTabNodes(s, regionRoot, &candidates);
+            int at = -1;
+            for (int i = 0; i < candidates.len; i++) {
+                if (candidates[i] == node) {
+                    at = i;
+                    break;
+                }
+            }
+            if (at > 0) {
+                Vec<int> rotated;
+                for (int i = at; i < candidates.len; i++) {
+                    VecAppend(rotated, candidates[i]);
+                }
+                for (int i = at - 1; i >= 0; i--) {
+                    VecAppend(rotated, candidates[i]);
+                }
+                VecReset(candidates);
+                for (int i = 0; i < rotated.len; i++) {
+                    VecAppend(candidates, rotated[i]);
+                }
+                VecReset(rotated);
+            }
+        }
+    }
     if (DockClosePanelAt(s, node, ix)) {
         if (panelIx >= 0 && panelIx < s->panels.len &&
             s->panels[panelIx].onRemoved) {
@@ -616,7 +737,28 @@ void DockClosePanel(DockState* s, Ctx* cx, int node, int ix) {
             panel.onRemoved(cx, panel.data);
         }
         DockEmit(s, cx);
+        // onRemoved may focus something else. The handoff is only the
+        // fallback when that callback left the focus where it was.
+        if (hadFocus && cx && cx->win && WindowFocused(cx->win) == focused) {
+            int next = -1;
+            for (int i = 0; i < candidates.len && next < 0; i++) {
+                next = DockFocusTargetInGroup(s, candidates[i]);
+            }
+            int roots[] = {s->center, s->left.node, s->right.node,
+                           s->bottom.node};
+            bool open[] = {true, s->left.open, s->right.open, s->bottom.open};
+            for (int i = 0; i < 4 && next < 0; i++) {
+                if (roots[i] < 0 || roots[i] == regionRoot || !open[i]) {
+                    continue;
+                }
+                next = DockFocusTargetInNode(s, roots[i]);
+            }
+            if (next >= 0) {
+                FocusHandleFocus(cx->win, s->panels[next].focus);
+            }
+        }
     }
+    VecReset(candidates);
 }
 
 bool DockMovePanelTo(DockState* s, int panelIx, int to, DockDrop drop,

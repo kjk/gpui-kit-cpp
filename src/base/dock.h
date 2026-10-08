@@ -228,6 +228,10 @@ struct DockPanelDef {
     void (*setZoomed)(Ctx* cx, void* data, bool zoomed) = nullptr;
     void (*onAddedTo)(Ctx* cx, void* data, int node) = nullptr;
     void (*onRemoved)(Ctx* cx, void* data) = nullptr;
+    // Panel::focus_handle. Empty until the host creates one. Closing a
+    // panel whose handle contains the focus hands it to the panel that
+    // replaces the closed one, unless onRemoved already moved it.
+    FocusHandle focus = {};
     bool canZoom = true;
     DockPanelControl zoomable = DockPanelControl::Menu;
     // ui::Panel::title_bar: a lone panel that carries its own chrome may use

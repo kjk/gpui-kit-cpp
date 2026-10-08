@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `296fe2fa8b9e644371c156949dbacbcfafff5f69` (2026-10-08,
-docs: Explain the open_dialog builder and footer contracts (#3406)).
-The change is comments and the website. A dialog builder may run again
-when its layer rebuilds, so persistent entities are created before
-opening. Nothing in the runtime moved.
+Processed through `59cba65a4249385cc6ba74fe76aac2c5ebad6de2` (2026-10-08,
+dock: Hand the focus to the tab that replaces a closed one (#3409)).
+Closing a panel that held the focus gives it to the panel that group
+now shows, then to later groups, then to an open dock. A close that
+never had the focus, or whose removal callback already moved it, leaves
+the focus where it is.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
