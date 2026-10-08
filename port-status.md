@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c0bebdc8a8cf9a74f9f52feaca278a52a9cfcca2` (2026-10-06,
-tooltip: Make show delay and grace period configurable with
-`TooltipDefaults` (#3376)). Tooltip timing is an application global,
-500 ms and 300 ms unless installed otherwise, and a trigger can show
-sooner. The current update target is
+Processed through `bf44ad7419429b841280fa0d2c78f8c00beb578c` (2026-10-07,
+docs: Explain recovering focus when the focused element stops
+rendering (#3386)). The note is website and skill text. It describes
+`on_focus_lost` and `focus_lost_restore_target`, which this engine does
+not add. The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust

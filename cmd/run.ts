@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c0bebdc8a8cf9a74f9f52feaca278a52a9cfcca2",
-  date: "2026-10-06",
-  subject: "tooltip: Make show delay and grace period configurable with `TooltipDefaults` (#3376)",
+  sha: "bf44ad7419429b841280fa0d2c78f8c00beb578c",
+  date: "2026-10-07",
+  subject: "docs: Explain recovering focus when the focused element stops rendering (#3386)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",
