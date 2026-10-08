@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c7b5b480989817fe462beb4ed6705203bb6deaf6",
+  sha: "ab7b54fdf420ef6522b91fb39b7c659d2a468387",
   date: "2026-10-08",
-  subject: "input: Add InputState::add_selection for programmatic multi-cursor (#3403)",
+  subject: "text_selection: Stop writing selection state on every frame (#3407)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

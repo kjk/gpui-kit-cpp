@@ -16,11 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c7b5b480989817fe462beb4ed6705203bb6deaf6` (2026-10-08,
-input: Add InputState::add_selection for programmatic multi-cursor
-(#3403)). InputAddSelection adds a range as another cursor, clips it to
-character and CRLF boundaries, merges overlaps, and scrolls to it. A
-single-line field replaces its selection instead.
+Processed through `ab7b54fdf420ef6522b91fb39b7c659d2a468387` (2026-10-08,
+text_selection: Stop writing selection state on every frame (#3407)).
+Painting selection geometry no longer writes the entities GPUI Fast
+retains, so a scroll does not rebuild every text view that reads them.
+This runtime rebuilds the element tree every frame and already skips an
+unchanged snapshot, a drag that is not selecting, and a focus or scope
+that did not move. A participant that misses a frame is gone: there is
+no cached-view replay to keep its touch handles.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
