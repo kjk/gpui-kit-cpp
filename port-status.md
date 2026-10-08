@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `56c5eb496d9ffd4eea24bbd81d7e1952b863bea3` (2026-10-07,
-webview: Support Linux on X11 and rename the crate to gpui-webview
-(#3395)). The workspace package is `gpui-webview` 0.7.1. Linux page
-zoom is the GPUI scale divided by GDK's integer factor, and a press
-on the page is forwarded so an overlay can close. `WebView::forward`
-evaluates `history.forward()`.
+Processed through `917610a9787b020f835d0a7571966c2fbea80d17` (2026-10-07,
+webview: Require GPUI Fast for gpui-webview (#3398)). Composition
+is no longer behind a feature: macOS and Linux always host the page
+in a window composition surface. This tree still parents the webview
+on the window.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
@@ -271,12 +270,13 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `Module.set_theme(dark)`. An opaque manual redirect is refused because the
   browser hides the target that the shell must capability-check.
   See the browser section of AGENTS.md.
-- **No GPUI Fast native composition surface.** Upstream reparents a
-  macOS WKWebView, and on Linux an X11 overlay window, onto
-  `WindowCompositionSurface` so overlays draw above the page
-  (`crates/webview/src/composition.rs` and `linux.rs`, GPUI Fast
-  0.1.3). This tree has one engine and parents the webview on the
-  window (`src/webview/webview.cpp`). `WebView::set_bounds` and
+- **No GPUI Fast native composition surface.** Upstream always
+  reparents a macOS WKWebView, and on Linux an X11 overlay window,
+  onto `WindowCompositionSurface` so overlays draw above the page
+  (`crates/webview/src/composition.rs` and `linux.rs`). The
+  `gpui-fast` feature is a no-op; composition is not optional. This
+  tree has one engine and parents the webview on the window
+  (`src/webview/webview.cpp`). `WebView::set_bounds` and
   `set_visible` are the wry calls `PaintWebView`, `WebViewShow` and
   `WebViewHide` already make.
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
