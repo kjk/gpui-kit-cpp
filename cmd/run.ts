@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c8fdf3323f4a35c790dcc83db7216fb328f2c99a",
+  sha: "952202f600e9093ed75a0107c347518ef60d8fb7",
   date: "2026-10-08",
-  subject: "kit: Extend UI testing with semantic queries and Linux rendering (#3402)",
+  subject: "settings: Keep focus rings inside the list viewport (#3394)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

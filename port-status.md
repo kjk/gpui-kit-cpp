@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c8fdf3323f4a35c790dcc83db7216fb328f2c99a` (2026-10-08,
-kit: Extend UI testing with semantic queries and Linux rendering (#3402)).
-A nested right click opens only the innermost context menu. The kit
-test harness's semantic queries and Linux pixel suite are the Rust
-test platform, not this engine.
+Processed through `952202f600e9093ed75a0107c347518ef60d8fb7` (2026-10-08,
+settings: Keep focus rings inside the list viewport (#3394)).
+Settings page padding sits on each group row, inside the list clip, so
+a focus ring can pass the group's edge and still stay in the viewport.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

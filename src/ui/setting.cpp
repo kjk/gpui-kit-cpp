@@ -957,7 +957,9 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
     bool anyDirty = false;
     SettingsPageScroll* scroll = ArenaNew<SettingsPageScroll>(a);
     scroll->state = state;
-    // `div().px_4().flex_1().w_full()` around the list of groups.
+    // `div().flex_1().w_full()` around the list. The page's px_4 lives on
+    // each row, inside the clip, so a focus ring can pass the group's edge
+    // without leaving the viewport.
     El* body =
         Div(a)
             ->Id(StrL("page-body"))
@@ -965,7 +967,6 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
             ->W(kFill)
             ->Flex1()
             ->MinH(0)
-            ->PadX(Rems(cx, 1.f))
             ->ClipY()
             ->ScrollY(st ? st->scrollY : 0)
             ->ScrollId((int)IdFoldName(cx->path, fmt("page-%d", selected)))
@@ -1038,10 +1039,13 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
         }
         box->Child(slot);
         grp.refiner.Apply(box);
+        // page.rs wraps the group in `div().w_full().px_4()` so the inset is
+        // inside the list's clip instead of outside it.
+        El* row = Div(a)->W(kFill)->PadX(Rems(cx, 1.f))->Child(box);
         if (g == scrollGroup) {
-            scroll->target = box;
+            scroll->target = row;
         }
-        body->Child(box);
+        body->Child(row);
     }
 
     // page.rs: the header is `v_flex().p_4().gap_3().border_b_1()`, and
