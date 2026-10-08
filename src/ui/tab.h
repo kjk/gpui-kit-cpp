@@ -13,14 +13,16 @@ namespace gpui {
 
 namespace component {
 
-// TabVariant. Five looks over the same behaviour: a folder-style tab, an
-// outlined one, a pill, a segmented control and an underline.
+// TabVariant. Six looks over the same behaviour: a plain tab, an outlined
+// one, a pill, a segmented control, an underline, and a browser-style folder
+// tab whose selected item joins the content below.
 enum class TabVariant : uint8_t {
     Tab,
     Outline,
     Pill,
     Segmented,
-    Underline
+    Underline,
+    Folder
 };
 
 // The tables from `impl TabVariant`, which are what the look actually is.
@@ -42,6 +44,17 @@ float TabBarPadX(TabVariant v, UiSize size);
 float TabBarRadius(TabVariant v, UiSize size, float radius, float radiusLg);
 float TabRadius(TabVariant v, UiSize size, float radius, float radiusLg);
 float TabInnerRadius(TabVariant v, UiSize size, float radius, float radiusLg);
+// Folder tab geometry. The radius is the theme's, capped at a third of the
+// tab height so a curve cannot reach under the neighbor's hover fill.
+struct FolderTabMetrics {
+    float topPadding = 0;
+    float radius = 0;
+    float paddingX = 0;
+    float separatorHeight = 0;
+};
+FolderTabMetrics FolderTabMetricsFor(UiSize size, float radius, float radiusLg);
+// How far a tab paints past its box. Only Folder has any.
+float TabOverhang(TabVariant v, UiSize size, float radius, float radiusLg);
 
 // A source-shaped Tab value. It is arena-built like every other component,
 // then copied as POD into TabBar's list; its element children remain owned by
@@ -87,6 +100,7 @@ struct Tab {
     Tab* Pill();
     Tab* Segmented();
     Tab* Underline();
+    Tab* Folder();
     Tab* WithSize(UiSize value);
     Tab* Flex1();
     Tab* MaxWidth(float value);
@@ -146,6 +160,7 @@ struct TabBar {
     TabBar* Pill();
     TabBar* Segmented();
     TabBar* Underline();
+    TabBar* Folder();
     TabBar* Size(UiSize v);
     TabBar* WithSize(UiSize v);
     TabBar* MaxWidth(float v);

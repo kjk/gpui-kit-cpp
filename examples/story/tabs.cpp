@@ -234,6 +234,48 @@ El* TabsStory::Render(TabsStory* self, Ctx* cx) {
         page->Child(sec);
     }
 
+    // Folder Tabs: the selected tab joins the panel under the bar. Each tab
+    // carries a close button, and the bar a new-tab button.
+    El* folderSec = StorySection(cx, "Folder Tabs", nullptr);
+    StorySectionBody(folderSec)->W(kFill);
+    component::TabBar* folderBar = component::TabBar::New(cx, StrL("folder"))
+                                       ->WFill()
+                                       ->Folder()
+                                       ->Size(self->toolbar.size)
+                                       ->Menu(self->menu)
+                                       ->Selected(self->tab)
+                                       ->OnChange(Listen(cx, &SetTab));
+    if (maxWidth > 0) {
+        folderBar->MaxWidth(maxWidth);
+    }
+    for (int i = 0; i < kTabCount; i++) {
+        component::Tab* tab = component::Tab::New(cx, Str(kTabNames[i]));
+        tab->Suffix(component::Button::New(
+                        cx, StoryFmt(cx, "folder-tab-close-%s", kTabNames[i]))
+                        ->Ghost()
+                        ->WithSize(UiSize::XSmall)
+                        ->Icon(IconName::Close)
+                        ->IntoEl());
+        folderBar->Child(tab);
+    }
+    El* folderNew = component::Button::New(cx, StrL("folder-new-tab"))
+                        ->Ghost()
+                        ->WithSize(UiSize::XSmall)
+                        ->Icon(IconName::Plus)
+                        ->IntoEl();
+    folderNew->MarginX(4);
+    folderBar->Suffix(folderNew);
+    El* folderFrame = Div(a)
+                          ->W(kFill)
+                          ->Border(1, th.border)
+                          ->Radius(th.radiusLg)
+                          ->ClipX()
+                          ->ClipY()
+                          ->Child(folderBar->IntoEl())
+                          ->Child(Div(a)->H(Rems(cx, 5.f))->Bg(th.tabActiveBg));
+    StorySectionAdd(folderSec, folderFrame);
+    page->Child(folderSec);
+
     // Dynamic Tabs: a ButtonGroup that grows and shrinks the bar, and tabs
     // that carry a prefix icon and their own close button.
     El* dynamic =

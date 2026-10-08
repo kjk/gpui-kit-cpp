@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `32529dc24643fe179ae80ffaadf6bb2efbb4e093` (2026-10-08,
-editor: Add on-demand completion commands (#3411)).
-`ShowCompletions` asks the provider at the caret without typing. It
-has no default chord. An open menu keeps its selection, and a field
-that is not an editor leaves the action alone.
+Processed through `099aff53d4948edb5bbc832a3fbecce1f39df76d` (2026-10-08,
+tab: Add `Folder` variant (#3415)).
+A folder tab is a browser-style index: the selected tab has rounded
+top corners and curves out into the content below. Separators hide
+beside the selected or hovered tab.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

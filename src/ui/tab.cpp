@@ -2,6 +2,7 @@
 #include "ui/tab.h"
 #include "ui/styled.h"
 #include "base/motion.h"
+#include "gpui/paint.h"
 
 namespace gpui {
 
@@ -30,13 +31,14 @@ float TabHeight(TabVariant v, UiSize size) {
 float TabInnerHeight(TabVariant v, UiSize size) {
     bool boxed = v == TabVariant::Tab || v == TabVariant::Outline ||
                  v == TabVariant::Pill;
+    bool shortBox = v == TabVariant::Segmented || v == TabVariant::Folder;
     switch (size) {
         case UiSize::XSmall:
-            return boxed ? 18.f : v == TabVariant::Segmented ? 16.f : 20.f;
+            return boxed ? 18.f : shortBox ? 16.f : 20.f;
         case UiSize::Small:
-            return boxed ? 22.f : v == TabVariant::Segmented ? 18.f : 22.f;
+            return boxed ? 22.f : shortBox ? 18.f : 22.f;
         case UiSize::Large:
-            return boxed ? 36.f : v == TabVariant::Segmented ? 28.f : 32.f;
+            return boxed ? 36.f : shortBox ? 28.f : 32.f;
         default:
             switch (v) {
                 case TabVariant::Tab:
@@ -45,6 +47,7 @@ float TabInnerHeight(TabVariant v, UiSize size) {
                 case TabVariant::Pill:
                     return 26.f;
                 case TabVariant::Segmented:
+                case TabVariant::Folder:
                     return 24.f;
                 default:
                     return 26.f;
@@ -54,7 +57,8 @@ float TabInnerHeight(TabVariant v, UiSize size) {
 
 float TabPadX(TabVariant v, UiSize size) {
     // Underline has no padding of its own; the bar's gap does that job.
-    if (v == TabVariant::Underline) {
+    // A folder tab pads its content from FolderTabMetrics instead.
+    if (v == TabVariant::Underline || v == TabVariant::Folder) {
         return 0;
     }
     switch (size) {
@@ -113,6 +117,9 @@ float TabBarGap(TabVariant v, UiSize size) {
                 default:
                     return 16.f;
             }
+        case TabVariant::Folder:
+            // Room for the separator that sits between two folder tabs.
+            return 4.f;
         default:
             // Outline takes the default gap.
             switch (size) {
@@ -155,6 +162,50 @@ float TabRadius(TabVariant v, UiSize size, float radius, float radiusLg) {
         return 99.f;
     }
     return TabBarRadius(v, size, radius, radiusLg);
+}
+
+FolderTabMetrics FolderTabMetricsFor(UiSize size, float radius,
+                                     float radiusLg) {
+    FolderTabMetrics m;
+    float themeR = radiusLg;
+    switch (size) {
+        case UiSize::XSmall:
+            m.topPadding = 2.f;
+            m.paddingX = 8.f;
+            m.separatorHeight = 12.f;
+            themeR = radius;
+            break;
+        case UiSize::Small:
+            m.topPadding = 4.f;
+            m.paddingX = 8.f;
+            m.separatorHeight = 12.f;
+            themeR = radius;
+            break;
+        case UiSize::Large:
+            m.topPadding = 8.f;
+            m.paddingX = 16.f;
+            m.separatorHeight = 16.f;
+            themeR = radiusLg;
+            break;
+        default:
+            m.topPadding = 4.f;
+            m.paddingX = 12.f;
+            m.separatorHeight = 16.f;
+            themeR = radiusLg;
+            break;
+    }
+    // Past a third of the height a curve reaches under its neighbor's
+    // hover fill.
+    float cap = TabHeight(TabVariant::Folder, size) / 3.f;
+    m.radius = themeR < cap ? themeR : cap;
+    return m;
+}
+
+float TabOverhang(TabVariant v, UiSize size, float radius, float radiusLg) {
+    if (v != TabVariant::Folder) {
+        return 0;
+    }
+    return FolderTabMetricsFor(size, radius, radiusLg).radius;
 }
 
 float TabInnerRadius(TabVariant v, UiSize size, float radius, float radiusLg) {
@@ -230,6 +281,9 @@ Tab* Tab::Segmented() {
 }
 Tab* Tab::Underline() {
     return WithVariant(TabVariant::Underline);
+}
+Tab* Tab::Folder() {
+    return WithVariant(TabVariant::Folder);
 }
 Tab* Tab::WithSize(UiSize value) {
     size = value;
@@ -371,6 +425,9 @@ TabBar* TabBar::Segmented() {
 TabBar* TabBar::Underline() {
     return Variant(TabVariant::Underline);
 }
+TabBar* TabBar::Folder() {
+    return Variant(TabVariant::Folder);
+}
 TabBar* TabBar::Size(UiSize v) {
     size = v;
     return this;
@@ -454,6 +511,10 @@ static TabStyle TabNormal(TabVariant v, const Theme& th) {
             s.fg = th.tabFg;
             s.borderB = 2;
             break;
+        case TabVariant::Folder:
+            // The selected shape and the hover fill are painted as children.
+            s.fg = th.tabFg;
+            break;
     }
     return s;
 }
@@ -483,6 +544,9 @@ static TabStyle TabSelected(TabVariant v, const Theme& th) {
             s.fg = th.tabActiveFg;
             s.borderColor = th.primary;
             break;
+        case TabVariant::Folder:
+            s.fg = th.tabActiveFg;
+            break;
     }
     return s;
 }
@@ -506,6 +570,9 @@ static TabStyle TabHovered(TabVariant v, bool selected, const Theme& th) {
             s.innerBg = selected ? th.background : kTabNone;
             break;
         case TabVariant::Underline:
+            s.fg = th.tabActiveFg;
+            break;
+        case TabVariant::Folder:
             s.fg = th.tabActiveFg;
             break;
     }
@@ -534,6 +601,8 @@ static TabStyle TabDisabled(TabVariant v, bool selected, const Theme& th) {
             break;
         case TabVariant::Underline:
             s.borderColor = selected ? th.border : kTabNone;
+            break;
+        case TabVariant::Folder:
             break;
     }
     return s;
@@ -581,6 +650,86 @@ static El* TabMenuButton(TabBar* tabs, const Theme&, float) {
         ->IntoEl();
 }
 
+// Room between two folder tabs. The separator sits in the middle of it.
+static constexpr float kFolderTabGap = 4.f;
+
+// Control-point distance that makes a cubic Bezier a quarter circle.
+static constexpr float kQuarterCircle = 0.5522848f;
+
+struct FolderShapePaint {
+    float curve = 0;
+    Rgba bg = {};
+};
+
+struct FolderHover {
+    int ix = -1;
+
+    static void OnHover(FolderHover* self, Ctx* cx, const HoverEvent* ev,
+                        int64_t arg) {
+        int ix = (int)arg;
+        int next = self->ix;
+        if (ev && ev->hovered) {
+            next = ix;
+        } else if (self->ix == ix) {
+            next = -1;
+        }
+        if (next != self->ix) {
+            self->ix = next;
+            Notify(cx);
+        }
+    }
+};
+
+static void QuarterCircleTo(Path* path, float x0, float y0, float cx, float cy,
+                            float x1, float y1) {
+    PathCubicTo(path, x0 + (cx - x0) * kQuarterCircle,
+                y0 + (cy - y0) * kQuarterCircle,
+                x1 + (cx - x1) * kQuarterCircle,
+                y1 + (cy - y1) * kQuarterCircle, x1, y1);
+}
+
+// The selected folder tab: rounded on top and curving out at the bottom,
+// traced after Chrome's tab path. The element is already wider than the tab
+// by the curve on each side.
+static void PaintFolderTab(PaintCtx* ctx, El* e, void* user) {
+    FolderShapePaint* shape = (FolderShapePaint*)user;
+    if (!ctx || !e || !shape || shape->curve <= 0) {
+        return;
+    }
+    float curve = shape->curve;
+    float left = e->x;
+    float top = e->y;
+    float right = e->x + e->w;
+    float bottom = e->y + e->h;
+    float tabLeft = left + curve;
+    float tabRight = right - curve;
+    // Like Chrome, keep at least a third of the top flat on narrow tabs.
+    float radius = (e->w - curve * 2.f) / 3.f;
+    if (radius < 0) {
+        radius = 0;
+    }
+    if (radius > curve) {
+        radius = curve;
+    }
+    if (Path* path = PathNew(ctx, true)) {
+        PathMoveTo(path, left, bottom);
+        QuarterCircleTo(path, left, bottom, tabLeft, bottom, tabLeft,
+                        bottom - curve);
+        PathLineTo(path, tabLeft, top + radius);
+        QuarterCircleTo(path, tabLeft, top + radius, tabLeft, top,
+                        tabLeft + radius, top);
+        PathLineTo(path, tabRight - radius, top);
+        QuarterCircleTo(path, tabRight - radius, top, tabRight, top, tabRight,
+                        top + radius);
+        PathLineTo(path, tabRight, bottom - curve);
+        QuarterCircleTo(path, tabRight, bottom - curve, tabRight, bottom, right,
+                        bottom);
+        PathClose(path);
+        PathFill(ctx, path, shape->bg);
+        PathFree(path);
+    }
+}
+
 struct TabBarScrollState {
     float offset = 0;
 
@@ -603,6 +752,10 @@ El* TabBar::IntoEl() {
     float innerRadius =
         TabInnerRadius(variant, size, th.radius, th.radius * 1.5f);
     float font = UiFontPx(size);
+    bool folder = variant == TabVariant::Folder;
+    FolderTabMetrics folderM =
+        folder ? FolderTabMetricsFor(size, th.radius, th.radiusLg)
+               : FolderTabMetrics{};
 
     El* bar = gpui::Tabs::New(cx, id)
                   ->FlexRow()
@@ -610,10 +763,15 @@ El* TabBar::IntoEl() {
                   ->W(width)
                   ->H(h)
                   ->Radius(barRadius);
-    if (variant == TabVariant::Tab) {
+    if (variant == TabVariant::Tab || folder) {
         bar->Bg(th.tokens.tabBar);
     } else if (variant == TabVariant::Segmented) {
         bar->Bg(th.tokens.tabBarSegmented);
+    }
+    if (folder) {
+        // The strip's top padding sits above the tabs, so the bar grows by
+        // it. Prefix and suffix stay centered on that full height.
+        bar->H(h + folderM.topPadding);
     }
     if (barPadX > 0) {
         bar->PadX(barPadX);
@@ -671,6 +829,11 @@ El* TabBar::IntoEl() {
     if (gap > 0) {
         strip->Gap(gap);
     }
+    if (folder) {
+        // Room for the end tabs' curves inside the clipped viewport, and
+        // the bar space above the tabs.
+        strip->PadX(folderM.radius)->PadT(folderM.topPadding);
+    }
     // Where the selected tab was last frame, and where the indicator has got
     // to on its way there. Both outlive the frame, so both are motion slots.
     auto* selBox = (Bounds*)MotionSlot(cx, MotionId(StrL("tab-sel"), id),
@@ -686,7 +849,9 @@ El* TabBar::IntoEl() {
     float indX = 0;
     float indW = 0;
     bool sliding = false;
-    if (selBox && selBox->w > 0) {
+    // A folder tab paints its own selected shape. It does not share the
+    // sliding indicator, so the shape is there on the first frame.
+    if (!folder && selBox && selBox->w > 0) {
         indX = SpringValue(cx, MotionId(StrL("tab-ind-x"), id), selBox->x,
                            indSpring);
         indW = SpringValue(cx, MotionId(StrL("tab-ind-w"), id), selBox->w,
@@ -696,6 +861,15 @@ El* TabBar::IntoEl() {
         float dx = indX - selBox->x;
         float dw = indW - selBox->w;
         sliding = (dx < -0.5f || dx > 0.5f) || (dw < -0.5f || dw > 0.5f);
+    }
+    Entity<FolderHover> folderHover = {};
+    int folderHovered = -1;
+    if (folder && cx->win) {
+        folderHover = ElementStateEntity<FolderHover>(
+            cx, id, StrL("gpui::component::FolderHover"));
+        if (FolderHover* hover = folderHover.Get(cx)) {
+            folderHovered = hover->ix;
+        }
     }
     int i = -1;
     for (const component::Tab& item : items) {
@@ -756,6 +930,9 @@ El* TabBar::IntoEl() {
             }
             tab->HoverFg(hov.fg);
         }
+        if (folder) {
+            tab->PadX(folderM.paddingX)->PadB(folderM.topPadding);
+        }
 
         // The inner box is what carries the padding, the label and — for
         // Segmented — the background of the selected tab.
@@ -808,6 +985,50 @@ El* TabBar::IntoEl() {
             tab->Flex1();
             inner->W(kFill);
         }
+        bool nextOn = false;
+        if (folder && i + 1 < items.len) {
+            nextOn = selected >= 0 ? i + 1 == selected : items[i + 1].selected;
+        }
+        bool thisShaped = folder && (on || folderHovered == i);
+        bool nextShaped = folder && (nextOn || folderHovered == i + 1);
+        if (folder && on) {
+            FolderShapePaint* paint = ArenaNew<FolderShapePaint>(a);
+            paint->curve = folderM.radius;
+            paint->bg = th.tabActiveBg;
+            El* shape = Div(a)
+                            ->Absolute()
+                            ->Top(0)
+                            ->Bottom(0)
+                            ->Left(-folderM.radius)
+                            ->Right(-folderM.radius);
+            shape->customPaint = &PaintFolderTab;
+            shape->customUser = paint;
+            tab->Child(shape);
+        }
+        if (folder && folderHovered == i && !on && !item.disabled) {
+            tab->Child(Div(a)
+                           ->Absolute()
+                           ->Top(0)
+                           ->Left(0)
+                           ->Right(0)
+                           ->Bottom(folderM.topPadding)
+                           ->Radius(folderM.radius)
+                           ->Bg(th.secondary));
+        }
+        if (folder && i + 1 < items.len && !thisShaped && !nextShaped) {
+            float sepTop =
+                (h - folderM.topPadding - folderM.separatorHeight) / 2.f;
+            tab->Child(Div(a)
+                           ->Absolute()
+                           ->W(1)
+                           ->H(folderM.separatorHeight)
+                           ->Right(-(kFolderTabGap / 2.f))
+                           ->Top(sepTop)
+                           ->Bg(th.border));
+        }
+        if (folder && item.prefix && item.icon == IconName::None) {
+            inner->PadL(4);
+        }
         if (item.prefix) {
             El* prefixWrap = Div(a)->Child(item.prefix);
             if (maxWidth > 0) {
@@ -830,7 +1051,21 @@ El* TabBar::IntoEl() {
             // The box the indicator is heading for, measured where it is.
             tab->BoundsOut(selBox);
         }
-        strip->Child(tab);
+        if (folder) {
+            // The hover lives on the wrapper so one tab can hide the
+            // separator that belongs to its neighbor.
+            El* host = Div(a)->Shrink0()->H(kFill);
+            if (item.flex1) {
+                host->Flex1();
+            }
+            if (!item.disabled && folderHover.IsValid()) {
+                host->OnHover(ListenTo(folderHover, &FolderHover::OnHover, i));
+            }
+            host->Child(tab);
+            strip->Child(host);
+        } else {
+            strip->Child(tab);
+        }
     }
     if ((suffix || menu) && lastEmptySpace) {
         strip->Child(lastEmptySpace);

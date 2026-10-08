@@ -27,9 +27,12 @@ static void TheInnerBoxIsShorterThanTheTab() {
     utassertnear(TabInnerHeight(TabVariant::Outline, UiSize::Medium), 26.f);
     utassertnear(TabInnerHeight(TabVariant::Pill, UiSize::Medium), 26.f);
     utassertnear(TabInnerHeight(TabVariant::Segmented, UiSize::Medium), 24.f);
+    utassertnear(TabInnerHeight(TabVariant::Folder, UiSize::Medium), 24.f);
     utassertnear(TabInnerHeight(TabVariant::Underline, UiSize::Medium), 26.f);
     // Segmented is the short one at every size; the boxed three share theirs.
     utassertnear(TabInnerHeight(TabVariant::Segmented, UiSize::XSmall), 16.f);
+    utassertnear(TabInnerHeight(TabVariant::Folder, UiSize::XSmall), 16.f);
+    utassertnear(TabInnerHeight(TabVariant::Folder, UiSize::Large), 28.f);
     utassertnear(TabInnerHeight(TabVariant::Tab, UiSize::XSmall), 18.f);
     utassertnear(TabInnerHeight(TabVariant::Underline, UiSize::XSmall), 20.f);
     utassertnear(TabInnerHeight(TabVariant::Pill, UiSize::Large), 36.f);
@@ -44,6 +47,7 @@ static void UnderlinePadsFromTheBarInstead() {
     // ...but the underline has none, and the bar's gap does that job with the
     // same numbers.
     utassertnear(TabPadX(TabVariant::Underline, UiSize::Medium), 0.f);
+    utassertnear(TabPadX(TabVariant::Folder, UiSize::Medium), 0.f);
     utassertnear(TabBarGap(TabVariant::Underline, UiSize::Medium), 16.f);
     utassertnear(TabBarGap(TabVariant::Underline, UiSize::XSmall), 10.f);
     // And it is the only variant with a margin above and below its box.
@@ -53,9 +57,12 @@ static void UnderlinePadsFromTheBarInstead() {
 }
 
 static void OnlyTheStripsThatNeedGapsHaveThem() {
-    // Folder tabs sit against each other; the segmented ones are two apart
-    // and the pills four; outline takes the default gap for its size.
+    // Plain tabs sit against each other. Folder tabs leave 4px for a
+    // separator. Segmented ones are two apart and pills four; outline
+    // takes the default gap for its size.
     utassertnear(TabBarGap(TabVariant::Tab, UiSize::Medium), 0.f);
+    utassertnear(TabBarGap(TabVariant::Folder, UiSize::Medium), 4.f);
+    utassertnear(TabBarGap(TabVariant::Folder, UiSize::Large), 4.f);
     utassertnear(TabBarGap(TabVariant::Segmented, UiSize::Medium), 2.f);
     utassertnear(TabBarGap(TabVariant::Pill, UiSize::Medium), 4.f);
     utassertnear(TabBarGap(TabVariant::Outline, UiSize::Medium), 12.f);
@@ -86,6 +93,22 @@ static void OnlySegmentedRoundsItsBar() {
     utassertnear(TabInnerRadius(TabVariant::Segmented, UiSize::Large, r, rlg),
                  rlg - 3);
     utassertnear(TabInnerRadius(TabVariant::Pill, UiSize::Medium, r, rlg), 0.f);
+    // Folder curves use the theme radius, and never more than a third of
+    // the tab. Medium is 32px tall, so the cap is about 10.7 and radius_lg
+    // wins. XSmall is 20px, so the cap is about 6.7 and the small radius
+    // wins.
+    FolderTabMetrics medium = FolderTabMetricsFor(UiSize::Medium, r, rlg);
+    utassertnear(medium.topPadding, 4.f);
+    utassertnear(medium.paddingX, 12.f);
+    utassertnear(medium.separatorHeight, 16.f);
+    utassertnear(medium.radius, rlg);
+    FolderTabMetrics xs = FolderTabMetricsFor(UiSize::XSmall, r, rlg);
+    utassertnear(xs.topPadding, 2.f);
+    utassertnear(xs.paddingX, 8.f);
+    utassertnear(xs.separatorHeight, 12.f);
+    utassertnear(xs.radius, r);
+    utassertnear(TabOverhang(TabVariant::Folder, UiSize::Medium, r, rlg), rlg);
+    utassertnear(TabOverhang(TabVariant::Tab, UiSize::Medium, r, rlg), 0.f);
 }
 
 static El* FindNamedTab(El* root, const char* name) {
@@ -336,7 +359,7 @@ static void FlexTabsGrowForEveryVariant() {
     Ctx cx = {&app, win, a, {}};
     const TabVariant variants[] = {
         TabVariant::Tab,  TabVariant::Outline,   TabVariant::Segmented,
-        TabVariant::Pill, TabVariant::Underline,
+        TabVariant::Pill, TabVariant::Underline, TabVariant::Folder,
     };
     for (const TabVariant variant : variants) {
         TabBar* bar = TabBar::New(&cx, StrL("flex-tabs"))->Variant(variant);
@@ -361,6 +384,77 @@ static void FlexTabsGrowForEveryVariant() {
     EntityDropAll(&app);
 }
 
+static bool HasCustomPaint(El* root) {
+    if (!root) {
+        return false;
+    }
+    if (root->customPaint) {
+        return true;
+    }
+    for (El* c = root->first; c; c = c->next) {
+        if (HasCustomPaint(c)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static El* FindWidth(El* root, float w) {
+    if (!root) {
+        return nullptr;
+    }
+    if (root->style.width == w) {
+        return root;
+    }
+    for (El* c = root->first; c; c = c->next) {
+        if (El* hit = FindWidth(c, w)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+// A selected folder tab paints the joining shape. The tab after it, and
+// not the selected one, owns the separator in the gap.
+static void FolderTabPaintsItsShapeAndTheNextSeparator() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    El* root = TabBar::New(&cx, StrL("folder"))
+                   ->Folder()
+                   ->Selected(0)
+                   ->Tab(StrL("Account"))
+                   ->Tab(StrL("Profile"))
+                   ->Tab(StrL("Mail"))
+                   ->IntoEl();
+    El* bar = root;
+    utassertnear(bar->style.height, 36.f);
+    El* strip = FindNamedTab(root, "tabs-inner");
+    utassert(strip);
+    utassertnear(strip ? strip->style.pad.left : 0, 8.f);
+    utassertnear(strip ? strip->style.pad.top : 0, 4.f);
+    utassertnear(strip ? strip->style.gapX : 0, 4.f);
+    El* selected = FindNamedTab(root, "0");
+    El* next = FindNamedTab(root, "1");
+    utassert(HasCustomPaint(selected));
+    utassert(!HasCustomPaint(next));
+    utassertnear(selected ? selected->style.pad.left : 0, 12.f);
+    utassertnear(selected ? selected->style.pad.bottom : 0, 4.f);
+    utassert(!FindWidth(selected, 1.f));
+    El* sep = FindWidth(next, 1.f);
+    utassert(sep && sep->style.height == 16.f);
+
+    WindowMotionFree(win);
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestTab() {
     TestSuite("tab");
     UnderlineIsTallerThanEveryOtherVariant();
@@ -373,4 +467,5 @@ void TestTab() {
     TabBarRetainsStyleSpacingScrollAndUnboundedChildren();
     SegmentedShadowFitsInsideExpandedClips();
     FlexTabsGrowForEveryVariant();
+    FolderTabPaintsItsShapeAndTheNextSeparator();
 }
