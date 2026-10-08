@@ -1154,9 +1154,11 @@ static void TestMarkdownTableThemeTokens() {
         // table theme's own row border.
         utassert(head && head->style.borderB == 1 &&
                  SameTextViewColor(head->style.borderColor, th.border));
-        El* firstCell = head ? head->first : nullptr;
-        utassert(firstCell && firstCell->style.borderR == 1 &&
-                 SameTextViewColor(firstCell->style.borderColor, th.border));
+        // The column rule is the slack after the cell, outside the cell's
+        // max width, the way node.rs draws the divider.
+        El* divider = head && head->first ? head->first->next : nullptr;
+        utassert(divider && divider->style.borderR == 1 &&
+                 SameTextViewColor(divider->style.borderColor, th.border));
     }
 
     WindowKeyedFree(win);
@@ -6830,6 +6832,62 @@ static void BlockPluginSelectionCopiesBothFormats() {
     VecReset(ctx.texts);
 }
 
+// text_view.rs table_keeps_narrow_columns_on_one_line_while_wide_ones_wrap.
+// A short column stays one line at 700px; the long column wraps.
+struct TableFitView {
+    Entity<gpui::TextViewState> state;
+    bool scroll = false;
+
+    static El* Render(TableFitView* self, Ctx* cx) {
+        gpui::TextView* view = gpui::TextView::New(cx, self->state);
+        if (self->scroll) {
+            view->TableScroll();
+        }
+        return Div(cx->a)->W(700)->Child(view->IntoEl());
+    }
+};
+
+static float TallestHit(Window* win, const char* needle) {
+    float h = 0;
+    for (int i = 0; i < win->paint.texts.len; i++) {
+        if (!StrContains(win->paint.texts[i].text, Str(needle))) {
+            continue;
+        }
+        if (win->paint.texts[i].bounds.h > h) {
+            h = win->paint.texts[i].bounds.h;
+        }
+    }
+    return h;
+}
+
+static void TableKeepsNarrowColumnsOnOneLine() {
+    char words[256];
+    int n = 0;
+    for (int i = 0; i < 30 && n + 5 < (int)sizeof(words); i++) {
+        memcpy(words + n, "word ", 5);
+        n += 5;
+    }
+    words[n] = 0;
+    for (int scroll = 0; scroll < 2; scroll++) {
+        App* app = TestAppNew();
+        // fmt lives on the temp arena, which TestAppNew resets.
+        TempStr source =
+            fmt("| Operating revenue (USD) | Note |\n| --- | --- |\n"
+                "| Operating revenue (USD) | x |\n| 1 | %s |",
+                Str(words, n));
+        Entity<TableFitView> view = EntityNew<TableFitView>(app);
+        view.Get(app)->state = gpui::TextViewState::Markdown(app, source);
+        view.Get(app)->scroll = scroll != 0;
+        Window* win = TestWindowOpen(app, view, 800, 600);
+        TestDraw(win);
+        float shortH = TallestHit(win, "Operating revenue");
+        float longH = TallestHit(win, "word word");
+        utassert(shortH > 0 && shortH < 30);
+        utassert(longH > shortH * 1.5f);
+        TestAppFree(app);
+    }
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -6837,6 +6895,7 @@ void TestTextView() {
 #if GPUI_MARKDOWN_FULL
     TestMarkdownTableAlign(a);
     TestMarkdownTableColumnCount(a);
+    TableKeepsNarrowColumnsOnOneLine();
     TestTableToMarkdown(a);
     TestMarkdownInlineHtml(a);
     TestMarkdownHtmlBlock(a);

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1af2d1f91e488d6ddf4167bc79851316dc8e92ac",
-  date: "2026-10-07",
-  subject: "menu: Open a context menu with a long press on touch (#3393)",
+  sha: "3cc2d0d624ce124be62eb4670e04197bc78bb8a5",
+  date: "2026-10-08",
+  subject: "text_view: Keep narrow table columns on one line (#3399)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

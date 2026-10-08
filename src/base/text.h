@@ -1303,6 +1303,10 @@ struct TextView {
     El* IntoEl();
 
   private:
+    void AppendTableCells(El* row, MdNode* r, const float* maxW,
+                          const float* minW, int nCols,
+                          const uint8_t* colAlign);
+
     // node.rs names no text colour on a paragraph, a heading or a table cell:
     // each takes whatever the container above it pushed, which is how a
     // blockquote greys everything inside it in one line. This is that

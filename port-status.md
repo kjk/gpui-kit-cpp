@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1af2d1f91e488d6ddf4167bc79851316dc8e92ac` (2026-10-07,
-menu: Open a context menu with a long press on touch (#3393)).
-A long press on a context-menu trigger opens the same menu as a right
-click, at the press. An input claims the gesture first. Selectable text
-yields the press via `TextSelectionIsSelectableAt`; blank space opens
-the menu and stops the window selection.
+Processed through `3cc2d0d624ce124be62eb4670e04197bc78bb8a5` (2026-10-08,
+text_view: Keep narrow table columns on one line (#3399)).
+Table columns are sized from measured text. Narrow columns keep that
+width; only the widest shrink and wrap. Widths round up to the device
+pixel, and a header is measured with the head and cell styles.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

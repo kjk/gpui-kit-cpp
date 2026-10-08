@@ -3859,6 +3859,257 @@ static void RoundTableRow(El* row, const TextViewStyle& style, bool first,
     row->Corners(tl, tr, br, bl);
 }
 
+// node.rs TableColumn. max is the content width, min the floor, and the
+// divider is the border the slack after the cell draws.
+struct TableCol {
+    float maxW = 0;
+    float minW = 0;
+    float divider = 0;
+};
+
+static const float kTableCellPad = 24.f;
+static const float kTableCellMin = 48.f;
+static const float kTableCellBorder = 1.f;
+static const float kTableCellGrow = 1000000.f;
+static const float kTableSlackGrow = 1.f;
+static const float kTableWrapLines = 2.f;
+static const float kTableWrapMin = 160.f;
+static const float kTableWrapMax = 480.f;
+
+static float DeviceCeil(const Ctx* cx, float width) {
+    float scale = 1.f;
+    if (cx && cx->win && cx->win->paint.dpi > 0) {
+        scale = cx->win->paint.dpi / 96.f;
+    }
+    float px = width * scale;
+    float whole = (float)(int)px;
+    if (whole < px) {
+        whole += 1.f;
+    }
+    return whole / scale;
+}
+
+static void CellFont(const TextView* tv, bool head, float* size, int* weight) {
+    float font = tv->baseFont * (14.f / 15.f);
+    int w = 0;
+    const TextViewStyle& st = tv->textViewStyle;
+    const gpui::Style* styles[3] = {&st.table, nullptr, &st.tableCell};
+    uint32_t fields[3] = {st.tableFields, 0, st.tableCellFields};
+    if (head) {
+        styles[1] = &st.tableHead;
+        fields[1] = st.tableHeadFields;
+    }
+    for (int i = 0; i < 3; i++) {
+        if (!styles[i]) {
+            continue;
+        }
+        const gpui::Style& s = *styles[i];
+        if ((fields[i] & StyleFieldFontSize) && s.fontSize > 0) {
+            font = s.fontSize;
+        }
+        if (s.fontWeight) {
+            w = s.fontWeight;
+        } else if (s.fontBold) {
+            w = (int)FontWeight::Bold;
+        } else if (s.fontSemibold) {
+            w = (int)FontWeight::Semibold;
+        } else if (s.fontMedium) {
+            w = (int)FontWeight::Medium;
+        }
+    }
+    *size = font;
+    *weight = w;
+}
+
+static float CellPadX(const TextViewStyle& st) {
+    if (st.tableCellFields & StyleFieldPad) {
+        return st.tableCell.pad.left + st.tableCell.pad.right;
+    }
+    return kTableCellPad;
+}
+
+// The widest line of a cell, shaped with the row's font. A newline starts
+// a new line; runs on one line add.
+static float CellTextWidth(TextView* tv, MdNode* cell, bool head) {
+    if (!cell) {
+        return 0;
+    }
+    float size = 0;
+    int weight = 0;
+    CellFont(tv, head, &size, &weight);
+    PaintCtx* paint = tv->cx && tv->cx->win ? &tv->cx->win->paint : nullptr;
+    float line = 0;
+    float widest = 0;
+    for (MdRun* run = cell->runFirst; run; run = run->next) {
+        Str text = run->text;
+        int i = 0;
+        int n = len(text);
+        while (i <= n) {
+            int start = i;
+            while (i < n && text.s[i] != '\n') {
+                i++;
+            }
+            if (i > start) {
+                Str seg(text.s + start, i - start);
+                float w = 0;
+                if (paint) {
+                    w = MeasureText(paint, seg, size, 0, false, weight).w;
+                } else {
+                    w = (float)(i - start) * size * 0.5f;
+                }
+                line += w;
+            }
+            if (i >= n) {
+                break;
+            }
+            if (line > widest) {
+                widest = line;
+            }
+            line = 0;
+            i++;
+        }
+    }
+    if (line > widest) {
+        widest = line;
+    }
+    return widest;
+}
+
+static void MeasureTableColumns(TextView* tv, MdNode* n, int nCols, bool scroll,
+                                TableCol* cols, uint8_t* colAlign) {
+    for (int i = 0; i < nCols; i++) {
+        cols[i] = {};
+        colAlign[i] = MdAlignDefault;
+    }
+    for (MdNode* r = n->first; r; r = r->next) {
+        int ix = 0;
+        for (MdNode* c = r->first; c && ix < nCols; c = c->next, ix++) {
+            if (colAlign[ix] == MdAlignDefault) {
+                colAlign[ix] = c->align;
+            }
+            float text = CellTextWidth(tv, c, r->head);
+            float border = ix + 1 < nCols ? kTableCellBorder : 0;
+            float w = text + kTableCellPad + border;
+            if (w < kTableCellMin) {
+                w = kTableCellMin;
+            }
+            if (w > cols[ix].maxW) {
+                cols[ix].maxW = w;
+                cols[ix].divider = border;
+            }
+        }
+    }
+    float padDelta = CellPadX(tv->textViewStyle) - kTableCellPad;
+    bool nowrap = tv->textViewStyle.tableCell.whiteSpaceSet &&
+                  !tv->textViewStyle.tableCell.wrap;
+    float wrapFloor = tv->tableColW > 0 ? tv->tableColW : Rems(tv->cx, 4.f);
+    for (int i = 0; i < nCols; i++) {
+        float w = cols[i].maxW + padDelta;
+        float border = i + 1 < nCols ? kTableCellBorder : 0;
+        if (w < border) {
+            w = border;
+        }
+        cols[i].divider = border;
+        float floor = w;
+        if (scroll && nowrap) {
+            floor = w;
+        } else if (scroll) {
+            floor = w / kTableWrapLines;
+            floor = ClampF(floor, kTableWrapMin, kTableWrapMax);
+            if (floor > w) {
+                floor = w;
+            }
+        } else if (w < wrapFloor) {
+            floor = w;
+        } else {
+            floor = wrapFloor;
+        }
+        float maxW = DeviceCeil(tv->cx, w - border);
+        float minW = DeviceCeil(tv->cx, floor - border);
+        if (minW > maxW) {
+            minW = maxW;
+        }
+        cols[i].maxW = maxW;
+        cols[i].minW = minW;
+    }
+}
+
+static El* TableSlack(TextView* tv, Arena* a, float grow, bool border) {
+    El* slack = Div(a)->Basis(0)->Grow(grow)->Shrink0();
+    if (border) {
+        slack->BorderR(1, tv->textViewStyle.border);
+    }
+    if (tv->textViewStyle.tableCell.hasBg) {
+        slack->Bg(tv->textViewStyle.tableCell.bg.color);
+    }
+    return slack;
+}
+
+// render_table_rows: each column is a cell that grows up to its content
+// width, plus slack that takes only the spare after every cell has frozen.
+// Narrow columns therefore keep their text on one line while the widest
+// ones share what is left and wrap.
+void TextView::AppendTableCells(El* row, MdNode* r, const float* maxW,
+                                const float* minW, int nCols,
+                                const uint8_t* colAlign) {
+    TextView* tv = this;
+    Arena* arena = this->a;
+    float total = 0;
+    for (int i = 0; i < nCols; i++) {
+        total += maxW[i];
+    }
+    if (total < 1.f) {
+        total = 1.f;
+    }
+    MdNode* c = r->first;
+    for (int col = 0; col < nCols; col++) {
+        bool last = col + 1 == nCols;
+        uint8_t align = MdAlignDefault;
+        if (c) {
+            align = c->align;
+        }
+        if (align == MdAlignDefault) {
+            align = colAlign[col];
+        }
+        float share = kTableSlackGrow * maxW[col] / total;
+        float lead = 0;
+        float trail = share;
+        if (align == MdAlignCenter) {
+            lead = share * 0.5f;
+            trail = share * 0.5f;
+        } else if (align == MdAlignRight) {
+            lead = share;
+            trail = 0;
+        }
+        if (lead > 0) {
+            row->Child(TableSlack(tv, arena, lead, false));
+        }
+        El* cell = Div(arena)
+                       ->Basis(0)
+                       ->Grow(kTableCellGrow)
+                       ->MinW(minW[col])
+                       ->MaxW(maxW[col])
+                       ->ClipX()
+                       ->PadX(12)
+                       ->PadY(7);
+        if (tv->textViewStyle.tableCellFields) {
+            cell->Refine(tv->textViewStyle.tableCell, tv->textViewStyle
+                                                          .tableCellFields);
+        }
+        if (c) {
+            tv->SrcCell(r, c, nCols, colAlign);
+            cell->Child(tv->Inline(c, tv->baseFont * (14.f / 15.f),
+                                   r->head ? kInheritFg : tv->BlockFg(), 0,
+                                   align));
+            c = c->next;
+        }
+        row->Child(cell);
+        if (trail > 0 || !last) {
+            row->Child(TableSlack(tv, arena, trail, !last));
+        }
+    }
+}
+
 // node.rs render_scroll_table, which is what `style.table` opts a table into
 // with overflow-x: scroll. The columns are as wide as the widest text in
 // them — measured, not counted, since a character count is a poor guess on a
@@ -3879,19 +4130,8 @@ static void OnMdTableScroll(MdTableScroll* st, Ctx* cx, const ScrollEvent* ev) {
 }
 
 El* TextView::ScrollTable(MdNode* n) {
-    // px_2 either side, the border every column but the last draws, and the
-    // track's own border on both sides.
-    const float kCellPad = 24.f;
-    const float kCellMin = 48.f;
-    const float kCellBorder = 1.f;
+    // The frame's border_1 on both sides. Column floors live on the cells.
     const float kTableBorder = 2.f;
-    // A column stops shrinking at about the width its text would wrap to two
-    // lines at, held between the two bounds so a moderate column can still
-    // wrap and one huge column cannot push the scrolling threshold up on its
-    // own.
-    const float kWrapLines = 2.f;
-    const float kWrapMin = 160.f;
-    const float kWrapMax = 480.f;
 
     // node.rs paints the frame from the Base theme's surface and the style's
     // border; the radius arrives through `style.table()`, which is what the
@@ -3900,55 +4140,28 @@ El* TextView::ScrollTable(MdNode* n) {
                        ? textViewStyle.tableBackground
                        : base_theme::Theme::Global(cx->app)
                              .tokens.colors.surface;
-    PaintCtx* paint = cx->win ? &cx->win->paint : nullptr;
     int rows = 0;
     int nCols = 0;
     TableDimensions(n, &rows, &nCols);
     if (rows <= 0 || nCols <= 0) {
         return Div(a);
     }
-    float* colW = TextArenaArray<float>(a, nCols);
+    TableCol* cols = TextArenaArray<TableCol>(a, nCols);
     uint8_t* colAlign = TextArenaArray<uint8_t>(a, nCols);
-    if (!colW || !colAlign) {
+    if (!cols || !colAlign) {
         return Div(a);
     }
-    for (MdNode* r = n->first; r; r = r->next) {
-        int ix = 0;
-        for (MdNode* c = r->first; c; c = c->next, ix++) {
-            if (colAlign[ix] == MdAlignDefault) {
-                colAlign[ix] = c->align;
-            }
-            if (colW[ix] < kCellMin) {
-                colW[ix] = kCellMin;
-            }
-            float w = 0;
-            if (paint) {
-                for (MdRun* run = c->runFirst; run; run = run->next) {
-                    // Unwrapped, so what comes back is the run's own width.
-                    Size sz =
-                        MeasureText(paint, run->text, baseFont * (14.f / 15.f),
-                                    0, false, 0);
-                    w += sz.w;
-                }
-            } else {
-                w = (float)RunsLen(c) * baseFont * 0.5f;
-            }
-            w += kCellPad + (ix + 1 < nCols ? kCellBorder : 0);
-            if (w > colW[ix]) {
-                colW[ix] = w;
-            }
-        }
+    MeasureTableColumns(this, n, nCols, true, cols, colAlign);
+    float* maxW = TextArenaArray<float>(a, nCols);
+    float* minW = TextArenaArray<float>(a, nCols);
+    if (!maxW || !minW) {
+        return Div(a);
     }
     float minTotal = kTableBorder;
-    float* colMin = TextArenaArray<float>(a, nCols);
-    if (!colMin) {
-        return Div(a);
-    }
     for (int i = 0; i < nCols; i++) {
-        float floorW = colW[i] / kWrapLines;
-        floorW = ClampF(floorW, kWrapMin, kWrapMax);
-        colMin[i] = floorW < colW[i] ? floorW : colW[i];
-        minTotal += colMin[i];
+        maxW[i] = cols[i].maxW;
+        minW[i] = cols[i].minW;
+        minTotal += cols[i].minW + cols[i].divider;
     }
 
     El* track =
@@ -3973,35 +4186,7 @@ El* TextView::ScrollTable(MdNode* n) {
         // A scrolled track can still meet the viewport with a square edge.
         // The mask that clips it is rectangular.
         RoundTableRow(row, textViewStyle, rowIx == 0, r->next == nullptr);
-        int ix = 0;
-        for (MdNode* c = r->first; c; c = c->next, ix++) {
-            int col = ix < nCols ? ix : nCols - 1;
-            // The measured width is the basis and what the growth is shared
-            // out in proportion to, and the floor is where the squeezing
-            // stops and the track starts to be wider than its frame.
-            El* cell = Div(a)
-                           ->Basis(colW[col])
-                           ->Grow(colW[col])
-                           ->MinW(colMin[col])
-                           ->ClipX()
-                           ->PadX(12)
-                           ->PadY(7);
-            if (textViewStyle.tableCellFields) {
-                cell->Refine(textViewStyle.tableCell, textViewStyle
-                                                          .tableCellFields);
-            }
-            if (c->next) {
-                cell->BorderR(1, textViewStyle.border);
-            }
-            uint8_t align = c->align;
-            if (align == MdAlignDefault) {
-                align = colAlign[col];
-            }
-            SrcCell(r, c, nCols, colAlign);
-            cell->Child(Inline(c, baseFont * (14.f / 15.f),
-                               r->head ? kInheritFg : BlockFg(), 0, align));
-            row->Child(cell);
-        }
+        AppendTableCells(row, r, maxW, minW, nCols, colAlign);
         track->Child(row);
     }
     // The viewport: it clips and scrolls sideways, and the frame is on the
@@ -4045,20 +4230,15 @@ El* TextView::ScrollTable(MdNode* n) {
         ->Child(actions);
 }
 
-// node.rs render_wrap_table proportions the columns by content length and
-// lets them shrink to fit, with a floor per column. Same here: the widths are
-// fractions of the table, TableColumnWidth is the floor, and a table whose
-// floors do not fit is clipped rather than scrolled — this tree has no
-// horizontal scroll area.
+// node.rs render_table, the non-scrolling half. Columns are measured, not
+// counted. Narrow ones keep their content width; only the widest shrink,
+// down to a rems(4) floor (TableColumnWidth when the caller set one). A
+// table whose floors do not fit is clipped rather than scrolled.
 //
 // Column alignment is the delimiter row's (`|:--:|`) or, for an HTML table,
 // the cell's align attribute. A body cell with none of its own takes the
 // header cell's, which is how a markdown table says it once.
 El* TextView::Table(MdNode* n) {
-    enum : uint8_t {
-        // node.rs MAX_LENGTH: one long cell must not starve the rest.
-        kMaxLen = 150
-    };
     Rgba surface = textViewStyle.hasTableBackground
                        ? textViewStyle.tableBackground
                        : base_theme::Theme::Global(cx->app)
@@ -4069,39 +4249,23 @@ El* TextView::Table(MdNode* n) {
     if (rows <= 0 || nCols <= 0) {
         return Div(a);
     }
-    int* colLen = TextArenaArray<int>(a, nCols);
+    TableCol* cols = TextArenaArray<TableCol>(a, nCols);
     uint8_t* colAlign = TextArenaArray<uint8_t>(a, nCols);
-    if (!colLen || !colAlign) {
+    if (!cols || !colAlign) {
         return Div(a);
     }
-    for (MdNode* r = n->first; r; r = r->next) {
-        int ix = 0;
-        for (MdNode* c = r->first; c; c = c->next, ix++) {
-            if (colAlign[ix] == MdAlignDefault) {
-                colAlign[ix] = c->align;
-            }
-            int len = RunsLen(c);
-            if (len > kMaxLen) {
-                len = kMaxLen;
-            }
-            if (len > colLen[ix]) {
-                colLen[ix] = len;
-            }
-        }
+    MeasureTableColumns(this, n, nCols, false, cols, colAlign);
+    float* maxW = TextArenaArray<float>(a, nCols);
+    float* minW = TextArenaArray<float>(a, nCols);
+    if (!maxW || !minW) {
+        return Div(a);
     }
-    float total = 0;
     for (int i = 0; i < nCols; i++) {
-        // An empty column still needs room for its border and padding.
-        if (colLen[i] < 4) {
-            colLen[i] = 4;
-        }
-        total += (float)colLen[i];
-    }
-    if (total <= 0) {
-        return Div(a);
+        maxW[i] = cols[i].maxW;
+        minW[i] = cols[i].minW;
     }
 
-    El* table = Div(a)->FlexCol()->W(kFill)->Bg(surface)->Border(
+    El* table = Div(a)->FlexCol()->W(kFill)->ClipX()->Bg(surface)->Border(
         1, textViewStyle.border);
     if (textViewStyle.tableFields) {
         table->Refine(textViewStyle.table, textViewStyle.tableFields);
@@ -4120,30 +4284,7 @@ El* TextView::Table(MdNode* n) {
             }
         }
         RoundTableRow(row, textViewStyle, rowIx == 0, r->next == nullptr);
-        int ix = 0;
-        for (MdNode* c = r->first; c; c = c->next, ix++) {
-            float frac = ix < nCols ? (float)colLen[ix] / total : 1.f / total;
-            El* cell = Div(a)
-                           ->WFrac(frac)
-                           ->MinW(tableColW > 0 ? tableColW : Rems(cx, 4.f))
-                           ->PadX(12)
-                           ->PadY(7);
-            if (textViewStyle.tableCellFields) {
-                cell->Refine(textViewStyle.tableCell, textViewStyle
-                                                          .tableCellFields);
-            }
-            if (c->next) {
-                cell->BorderR(1, textViewStyle.border);
-            }
-            uint8_t align = c->align;
-            if (align == MdAlignDefault && ix < nCols) {
-                align = colAlign[ix];
-            }
-            SrcCell(r, c, nCols, colAlign);
-            cell->Child(Inline(c, baseFont * (14.f / 15.f),
-                               r->head ? kInheritFg : BlockFg(), 0, align));
-            row->Child(cell);
-        }
+        AppendTableCells(row, r, maxW, minW, nCols, colAlign);
         table->Child(row);
     }
     El* actions = TableActionsRow(n, nCols, colAlign);
