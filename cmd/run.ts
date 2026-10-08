@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4c7f1350331562436df868c55ac33bebc4c6406c",
-  date: "2026-10-04",
-  subject: "editor: Measure the completion prefix from the typed text and drop stale trigger offsets (#3363)",
+  sha: "42fbb97ae0697f50ca5e06aa9e5d20ce486acc3c",
+  date: "2026-10-05",
+  subject: "highlighter: Make the Kotlin query compile against its grammar (#3367)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

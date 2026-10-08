@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4c7f1350331562436df868c55ac33bebc4c6406c` (2026-10-04,
-editor: Measure the completion prefix from the typed text and drop stale
-trigger offsets (#3363)). Upstream measures a completion's prefix from the
-typed text and drops a stale trigger offset; a completion request here already
-reads its query from the document at the caret, and hiding a menu dismisses at
-once, so a newer response is never the one dismissed. The current update target
-is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `42fbb97ae0697f50ca5e06aa9e5d20ce486acc3c` (2026-10-05,
+highlighter: Make the Kotlin query compile against its grammar (#3367)). The
+Kotlin highlight query now names the grammar's interpolation nodes so `$` and
+`${` compile and highlight. Syntax colouring here is the scanner, which does
+not run tree-sitter queries, so the query and its compile test do not apply.
+The current update target is `288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust
 
