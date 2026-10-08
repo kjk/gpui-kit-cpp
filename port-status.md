@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1e41f17e27ea46589af9c6c428d18b5bf23ef4f6` (2026-10-08,
-dropdown_button: Add A11y names for the menu trigger (#3410)).
-The caret shows no text, so it announces `menu_accessibility_label`,
-or the localized "More options" when that is left empty. The action
-half keeps the name of the inner button.
+Processed through `2ef9968180e72a5e70d084ea3fc669b986f9c209` (2026-10-08,
+text, resizable: Stop notifying state that did not change (#3418)).
+A synchronous parse acknowledgement already clears its flag without
+notifying, and a resizable group notifies only when the container
+size changes. The two GPUI Fast render-count tests stay unported.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

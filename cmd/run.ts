@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1e41f17e27ea46589af9c6c428d18b5bf23ef4f6",
+  sha: "2ef9968180e72a5e70d084ea3fc669b986f9c209",
   date: "2026-10-08",
-  subject: "dropdown_button: Add A11y names for the menu trigger (#3410)",
+  subject: "text, resizable: Stop notifying state that did not change (#3418)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",
