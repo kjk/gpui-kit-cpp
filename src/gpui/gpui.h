@@ -5453,9 +5453,10 @@ InputPasteTarget InputPasteTargetOf(const InputState* s);
 // clipboard without text leaves the selection alone.
 void InputInsertClipboard(InputState* s, App* app, Window* win,
                           const ClipboardItem& item);
-// is_copyable: whether the selection may leave the field. A masked one may
-// not — what it shows is not what it holds, and a copy or a cut would put
-// what it holds on the clipboard.
+// is_copyable: any non-empty cursor may leave the field. A caret plus a
+// range still copies the range. A masked field may not — what it shows is
+// not what it holds, and a copy or a cut would put what it holds on the
+// clipboard.
 bool InputIsCopyable(const InputState* s);
 // cursor(): the caret offset, which end of the selection depends on which way
 // it was dragged.
@@ -5537,6 +5538,10 @@ void InputMergeOverlappingCursors(InputState* s);
 // add_cursor_at: an alt-click. Refused inside an existing selection or on
 // top of an existing caret, and in a single-line field.
 void InputAddCursorAt(InputState* s, App* app, Window* win, int offset);
+// add_selection: another cursor over `a..b`, keeping the ones already there.
+// A range already inside a selection adds nothing. Overlaps merge. A
+// single-line field has no second cursor, so the call replaces the selection.
+void InputAddSelection(InputState* s, App* app, Window* win, int a, int b);
 // build_columnar_selection: an alt+shift drag. One selection per row between
 // the two offsets, each over the same column span.
 void InputBuildColumnarSelection(InputState* s, App* app, Window* win,

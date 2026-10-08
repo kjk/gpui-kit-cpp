@@ -9094,6 +9094,107 @@ static void MultiCursorMultilineInsertAndDelete() {
     InputViewFree(&view);
 }
 
+// state.rs test_add_selection.
+static void AddSelection() {
+    InputView view = InputViewNew();
+    InputSetValue(view.input, StrL("foo bar foo"));
+    InputSetSelectedRange(view.input, view.app, view.win, 0, 3);
+    InputAddSelection(view.input, view.app, view.win, 8, 11);
+    // A range that is already selected adds nothing.
+    InputAddSelection(view.input, view.app, view.win, 0, 3);
+    utassert(ViewRangeIs(view, 0, 3));
+    utassert(view.input->extraCursors.len == 1);
+    utassert(view.input->extraCursors[0].range.start == 8);
+    utassert(view.input->extraCursors[0].range.end == 11);
+    ViewTypeText(view, "x");
+    Flush(view);
+    utassert(ViewValueIs(view, "x bar x"));
+    InputViewFree(&view);
+}
+
+// state.rs test_add_selection_preserves_crlf_boundaries.
+static void AddSelectionPreservesCrlfBoundaries() {
+    InputView view = InputViewBuildTextarea();
+    InputSetValue(view.input, StrL("a\r\nb"));
+    InputSetSelectedRange(view.input, view.app, view.win, 4, 4);
+    InputAddSelection(view.input, view.app, view.win, 2, 2);
+    utassert(ViewRangeIs(view, 4, 4));
+    utassert(view.input->extraCursors.len == 1);
+    utassert(view.input->extraCursors[0].range.start == 1);
+    utassert(view.input->extraCursors[0].range.end == 1);
+    ViewTypeText(view, "x");
+    Flush(view);
+    utassert(ViewValueIs(view, "ax\r\nbx"));
+
+    InputSetValue(view.input, StrL("a\r\nb"));
+    InputSetSelectedRange(view.input, view.app, view.win, 4, 4);
+    InputAddSelection(view.input, view.app, view.win, 2, 3);
+    ViewAct(view, InputAction::Cut);
+    Flush(view);
+    utassert(ClipboardIsB("\r\n"));
+    utassert(ViewValueIs(view, "ab"));
+    InputViewFree(&view);
+}
+
+// state.rs test_add_selection_merges_overlaps_before_copy_and_cut.
+static void AddSelectionMergesOverlapsBeforeCopyAndCut() {
+    InputView view = InputViewNew();
+    int ranges[3][4] = {
+        {2, 5, 0, 0},
+        {0, 5, 0, 0},
+        {4, 5, 2, 4},
+    };
+    int counts[3] = {1, 1, 2};
+    for (int s = 0; s < 3; s++) {
+        InputSetValue(view.input, StrL("abcdef"));
+        InputSetSelectedRange(view.input, view.app, view.win, 0, 3);
+        for (int i = 0; i < counts[s]; i++) {
+            InputAddSelection(view.input, view.app, view.win, ranges[s][i * 2],
+                              ranges[s][i * 2 + 1]);
+        }
+        utassert(view.input->extraCursors.len == 0);
+        utassert(ViewRangeIs(view, 0, 5));
+        ViewAct(view, InputAction::Copy);
+        utassert(ClipboardIsB("abcde"));
+        ViewAct(view, InputAction::Cut);
+        Flush(view);
+        utassert(ClipboardIsB("abcde"));
+        utassert(ViewValueIs(view, "f"));
+        ViewAct(view, InputAction::Undo);
+        Flush(view);
+        utassert(ViewValueIs(view, "abcdef"));
+        utassert(ViewRangeIs(view, 0, 5));
+    }
+    InputViewFree(&view);
+}
+
+// state.rs test_add_selection_clears_inline_completion.
+static void AddSelectionClearsInlineCompletion() {
+    InputView view = InputViewNew();
+    InputSetValue(view.input, StrL("aa\naa"));
+    InputSetSelectedRange(view.input, view.app, view.win, 2, 2);
+    view.input->inlineCompletion.text = StrL("suggestion");
+    InputAddSelection(view.input, view.app, view.win, 5, 5);
+    utassert(!InputHasInlineCompletion(view.input));
+    ViewAct(view, InputAction::IndentInline);
+    Flush(view);
+    utassert(ViewValueIs(view, "aa  \naa  "));
+    utassert(InputCursorCount(view.input) == 2);
+
+    InputSetValue(view.input, StrL("aa\naa"));
+    InputSetSelectedRange(view.input, view.app, view.win, 2, 2);
+    view.input->inlineCompletionProvider = &TestInlineCompletion;
+    gInlineCalls = 0;
+    InputScheduleInlineCompletion(view.input);
+    InputAddSelection(view.input, view.app, view.win, 5, 5);
+    utassert(!InputUpdateInlineCompletion(view.input, false));
+    utassert(gInlineCalls == 0);
+    utassert(!InputHasInlineCompletion(view.input));
+    utassert(InputCursorCount(view.input) == 2);
+    utassert(ViewValueIs(view, "aa\naa"));
+    InputViewFree(&view);
+}
+
 // state.rs test_add_cursor_below_preserves_column.
 static void AddCursorBelowPreservesColumn() {
     InputView view = MultiLineD();
@@ -9487,6 +9588,10 @@ static void RunWindowTestsD() {
     MultiCursorMultilineInsertAndDelete();
     AddCursorBelowPreservesColumn();
     AddCursorAtRejectsDuplicates();
+    AddSelection();
+    AddSelectionPreservesCrlfBoundaries();
+    AddSelectionMergesOverlapsBeforeCopyAndCut();
+    AddSelectionClearsInlineCompletion();
     MultiCursorUndoRedoRestoresSelections();
     MultiCursorUndoRedoDifferentLineLengths();
     MultiCursorUndoMultipleInserts();

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3751aef7e2509b70576d96b3e020e149051988d9",
+  sha: "c7b5b480989817fe462beb4ed6705203bb6deaf6",
   date: "2026-10-08",
-  subject: "dialog: Add margin_top to AlertDialog (#3404)",
+  subject: "input: Add InputState::add_selection for programmatic multi-cursor (#3403)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

@@ -3594,11 +3594,22 @@ bool InputIsSingleLine(const InputState* s) {
     return !InputIsMultiLine(s);
 }
 
-// is_copyable: whether the selection may leave the field. A masked one may
-// not — what it shows is not what it holds, and the clipboard would get what
-// it holds.
+// is_copyable: any non-empty cursor may leave the field. A caret plus a
+// range still copies the range. A masked field may not — what it shows is
+// not what it holds, and the clipboard would get what it holds.
 bool InputIsCopyable(const InputState* s) {
-    return s && !s->selectedRange.IsEmpty() && !s->masked;
+    if (!s || s->masked) {
+        return false;
+    }
+    if (!s->selectedRange.IsEmpty()) {
+        return true;
+    }
+    for (int i = 0; i < s->extraCursors.len; i++) {
+        if (!s->extraCursors[i].range.IsEmpty()) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool InputIsEditable(const InputState* s) {
@@ -4359,6 +4370,42 @@ void InputAddCursorAt(InputState* s, App* app, Window* win, int offset) {
     CursorSelection c;
     c.range = SelectionAt(offset);
     VecAppend(s->extraCursors, c);
+    Notify(app, win);
+}
+
+void InputAddSelection(InputState* s, App* app, Window* win, int a, int b) {
+    if (!s) {
+        return;
+    }
+    // A single-line field has nowhere to put a second cursor.
+    if (!InputIsMultiLine(s)) {
+        InputSetSelectedRange(s, app, win, a, b);
+        return;
+    }
+    InputNormalizeTokenRange(s, &a, &b);
+    Bias endBias = a == b ? Bias::Left : Bias::Right;
+    int start = InputCursorBoundary(s, a, Bias::Left);
+    int clippedEnd = RopeClipOffset(InputValue(s), b, endBias);
+    int end = InputCursorBoundary(s, clippedEnd, Bias::Left);
+    Arena* arena = GetTempArena();
+    int n = 0;
+    CursorSelection* all = AllCursors(arena, s, &n);
+    for (int i = 0; i < n; i++) {
+        if (all[i].range.start <= start && end <= all[i].range.end) {
+            return;
+        }
+    }
+    UndoBreakCoalescing(&s->undo);
+    s->hasSelectedWordRange = false;
+    PauseBlink(s, app, win);
+    InputHideContextMenu(s);
+    InputClearInlineCompletion(s);
+    CursorSelection added;
+    added.range = Selection{start, end};
+    added.preferredColumn = RopeOffsetToPoint(InputValue(s), end).column;
+    VecAppend(s->extraCursors, added);
+    InputMergeOverlappingCursors(s);
+    InputScrollToOffset(s, end, InputMoveDir::None);
     Notify(app, win);
 }
 
