@@ -16,13 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6baad8b3db0dfd2b70fd8465849f63765424083a` (2026-10-08,
-dialog: Support configurable entrance animations (#3405)). Dialog and
-AlertDialog share DialogEntrance. SlideDown stays the default.
-Fade and FadeSlide use the theme's normal duration, and FadeSlide
-travels from the resolved resting top, shortened when the window edge
-is close. None, reduced motion, and a zero fade duration show the
-resting surface immediately.
+Processed through `296fe2fa8b9e644371c156949dbacbcfafff5f69` (2026-10-08,
+docs: Explain the open_dialog builder and footer contracts (#3406)).
+The change is comments and the website. A dialog builder may run again
+when its layer rebuilds, so persistent entities are created before
+opening. Nothing in the runtime moved.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
