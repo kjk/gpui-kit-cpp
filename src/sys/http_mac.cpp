@@ -27,6 +27,101 @@
 }
 @end
 
+// A request with a streamed body, a streamed answer, or both. The delegate
+// methods run on the session's queue while HttpSend waits on `done`.
+@interface GpuiStreamDelegate : NSObject <NSURLSessionDataDelegate> {
+  @public
+    const gpui::HttpReq* request;
+    gpui::HttpRsp* out;
+    NSHTTPURLResponse* response;
+    dispatch_semaphore_t done;
+    bool ok;
+    bool refused;
+}
+@end
+
+@implementation GpuiStreamDelegate
+- (void)URLSession:(NSURLSession*)session
+                          task:(NSURLSessionTask*)task
+    willPerformHTTPRedirection:(NSHTTPURLResponse*)redirect
+                    newRequest:(NSURLRequest*)newRequest
+             completionHandler:(void (^)(NSURLRequest*))completionHandler {
+    (void)session;
+    (void)task;
+    (void)redirect;
+    // A streamed body cannot be sent a second time.
+    bool follow = !request->noRedirect && !request->readBody;
+    completionHandler(follow ? newRequest : nil);
+}
+
+- (void)URLSession:(NSURLSession*)session
+                 task:(NSURLSessionTask*)task
+    needNewBodyStream:(void (^)(NSInputStream*))completionHandler {
+    (void)session;
+    refused = true;
+    [task cancel];
+    completionHandler(nil);
+}
+
+- (void)URLSession:(NSURLSession*)session
+              dataTask:(NSURLSessionDataTask*)task
+    didReceiveResponse:(NSURLResponse*)rsp
+     completionHandler:
+         (void (^)(NSURLSessionResponseDisposition))completionHandler {
+    (void)session;
+    (void)task;
+    if ([rsp isKindOfClass:[NSHTTPURLResponse class]]) {
+        response = (NSHTTPURLResponse*)rsp;
+    }
+    completionHandler(NSURLSessionResponseAllow);
+}
+
+- (void)URLSession:(NSURLSession*)session
+          dataTask:(NSURLSessionDataTask*)task
+    didReceiveData:(NSData*)data {
+    (void)session;
+    if (refused) {
+        return;
+    }
+    NSInteger status = response ? [response statusCode] : 0;
+    bool stream = request->onBody && status >= 200 && status < 300;
+    [data enumerateByteRangesUsingBlock:^(const void* bytes, NSRange range,
+                                          BOOL* stop) {
+      int n = (int)range.length;
+      if (stream) {
+          if (!request->onBody(request->onBodyCtx, (const uint8_t*)bytes, n)) {
+              refused = true;
+          }
+      } else if ((int64_t)gpui::len(out->body) + n >
+                 (int64_t)gpui::kHttpMaxBody) {
+          refused = true;
+      } else {
+          uint8_t* dst = gpui::VecAppendBlanks(out->body, n);
+          if (dst) {
+              memcpy(dst, bytes, (size_t)n);
+          } else {
+              refused = true;
+          }
+      }
+      if (refused) {
+          *stop = YES;
+      }
+    }];
+    if (refused) {
+        [task cancel];
+    }
+}
+
+- (void)URLSession:(NSURLSession*)session
+                    task:(NSURLSessionTask*)task
+    didCompleteWithError:(NSError*)error {
+    (void)session;
+    (void)task;
+    ok = !error && !refused && response != nil;
+    dispatch_semaphore_signal(done);
+}
+@end
+
 namespace gpui {
 
 // "image/png; charset=..." -> "image/png", lowercased where it stands.
@@ -63,11 +158,129 @@ static NSString* NSFromStr(Str s) {
                                   encoding:NSUTF8StringEncoding];
 }
 
+// The streamed request body goes through a bound pair of streams: the
+// session reads one end while this thread fills the other.
+static bool HttpSendStreamed(const HttpReq& request, HttpRsp* out) {
+    @autoreleasepool {
+        NSURL* u = [NSURL URLWithString:NSFromStr(request.url)];
+        if (!u || request.bodyLen < 0) {
+            return false;
+        }
+        // The timeout of a request is how long it may stay idle, which is
+        // the limit a long transfer wants.
+        NSMutableURLRequest* req = [NSMutableURLRequest
+             requestWithURL:u
+                cachePolicy:NSURLRequestUseProtocolCachePolicy
+            timeoutInterval:(NSTimeInterval)kHttpTimeoutMs / 1000.0];
+        [req setHTTPMethod:len(request.method) > 0 ? NSFromStr(request.method)
+                                                   : @"GET"];
+        [req setValue:@"gpui/1.0" forHTTPHeaderField:@"User-Agent"];
+        for (int i = 0; i < request.nHeaders; i++) {
+            NSString* name = NSFromStr(request.headers[i].name);
+            NSString* value = NSFromStr(request.headers[i].value);
+            if (name && value) {
+                [req setValue:value forHTTPHeaderField:name];
+            }
+        }
+        NSInputStream* bodyIn = nil;
+        NSOutputStream* bodyOut = nil;
+        if (request.readBody) {
+            [NSStream getBoundStreamsWithBufferSize:64 * 1024
+                                        inputStream:&bodyIn
+                                       outputStream:&bodyOut];
+            if (!bodyIn || !bodyOut) {
+                return false;
+            }
+            [req setHTTPBodyStream:bodyIn];
+            // Named so the body is not sent chunked, which not every server
+            // takes for an upload.
+            [req setValue:[NSString stringWithFormat:@"%lld", (long long)request
+                                                                  .bodyLen]
+                forHTTPHeaderField:@"Content-Length"];
+        }
+
+        GpuiStreamDelegate* delegate = [[GpuiStreamDelegate alloc] init];
+        delegate->request = &request;
+        delegate->out = out;
+        delegate->response = nil;
+        delegate->done = dispatch_semaphore_create(0);
+        delegate->ok = false;
+        delegate->refused = false;
+        NSURLSession* session = [NSURLSession
+            sessionWithConfiguration:[NSURLSessionConfiguration
+                                         defaultSessionConfiguration]
+                            delegate:delegate
+                       delegateQueue:nil];
+        NSURLSessionDataTask* task = [session dataTaskWithRequest:req];
+        [task resume];
+
+        bool finished = false;
+        if (bodyOut) {
+            [bodyOut open];
+            uint8_t* buf = AllocArray<uint8_t>(64 * 1024);
+            bool sent = buf != nullptr;
+            for (int64_t left = request.bodyLen;
+                 sent && !finished && left > 0;) {
+                int cap = left < 64 * 1024 ? (int)left : 64 * 1024;
+                int n = request.readBody(request.readBodyCtx, buf, cap);
+                sent = n > 0 && n <= cap;
+                for (int at = 0; sent && !finished && at < n;) {
+                    // A write blocks until the session has read what is
+                    // queued, which a task that already failed never does.
+                    while (!finished && ![bodyOut hasSpaceAvailable]) {
+                        dispatch_time_t tick = dispatch_time(
+                            DISPATCH_TIME_NOW, 10 * NSEC_PER_MSEC);
+                        finished =
+                            dispatch_semaphore_wait(delegate->done, tick) == 0;
+                    }
+                    if (finished) {
+                        break;
+                    }
+                    NSInteger wrote =
+                        [bodyOut write:buf + at maxLength:(NSUInteger)(n - at)];
+                    sent = wrote > 0;
+                    at += (int)wrote;
+                }
+                left -= n;
+            }
+            Free(nullptr, buf);
+            [bodyOut close];
+            if (!sent && !finished) {
+                [task cancel];
+            }
+        }
+        if (!finished) {
+            dispatch_semaphore_wait(delegate->done, DISPATCH_TIME_FOREVER);
+        }
+        [session finishTasksAndInvalidate];
+        NSHTTPURLResponse* rsp = delegate->response;
+        if (!delegate->ok || !rsp) {
+            VecReset(out->body);
+            return false;
+        }
+        out->status = (int)[rsp statusCode];
+        if (request.noRedirect && out->status >= 300 && out->status < 400) {
+            NSString* location = [rsp valueForHTTPHeaderField:@"Location"];
+            NSURL* target = location ? [NSURL URLWithString:location
+                                              relativeToURL:[rsp URL]]
+                                     : nil;
+            out->redirectUrl = StrFromNS([[target absoluteURL] absoluteString]);
+        }
+        Str ct = StrFromNS([rsp valueForHTTPHeaderField:@"Content-Type"]);
+        TrimMediaType(&ct);
+        out->contentType = ct;
+        return true;
+    }
+}
+
 bool HttpSend(const HttpReq& request, HttpRsp* out) {
     Str url = request.url;
     bool noRedirect = request.noRedirect;
     if (!out || !HttpUrlIsRemote(url)) {
         return false;
+    }
+    if (request.readBody || request.onBody) {
+        return HttpSendStreamed(request, out);
     }
     @autoreleasepool {
         NSString* s = [[NSString alloc] initWithBytes:url.s

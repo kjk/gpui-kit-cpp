@@ -44,8 +44,34 @@ static void FetchingOffStartsNothing() {
     utassert(HttpFetchPending() == 0);
 }
 
+static int NoBody(void*, uint8_t*, int) {
+    return -1;
+}
+
+static bool DropBody(void*, const uint8_t*, int) {
+    return true;
+}
+
+static void IgnoreResult(HttpAsyncResult) {}
+
+// The callbacks of a streamed body are borrowed for one blocking call, so the
+// asynchronous client has nothing it could safely do with them.
+static void AStreamedRequestIsNotSentAsync() {
+    HttpReq up;
+    up.url = StrL("https://example.com/upload");
+    up.method = StrL("PUT");
+    up.readBody = NoBody;
+    up.bodyLen = 1;
+    utassert(!HttpSendAsync(up, MkFunc1Void(IgnoreResult)));
+    HttpReq down;
+    down.url = StrL("https://example.com/big");
+    down.onBody = DropBody;
+    utassert(!HttpSendAsync(down, MkFunc1Void(IgnoreResult)));
+}
+
 void TestHttp() {
     TestSuite("http");
+    AStreamedRequestIsNotSentAsync();
     HttpOnlyKnowsTwoSchemes();
     AFetchOfSomethingLocalFailsAtOnce();
     FetchingOffStartsNothing();

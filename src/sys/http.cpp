@@ -102,6 +102,9 @@ bool HttpSendAsync(const HttpReq& req, Func1<HttpAsyncResult> done) {
     if (!done.IsValid()) {
         return false;
     }
+    if (req.readBody || req.onBody) {
+        return false;
+    }
     HttpAsyncJob* job = HttpAsyncJobNew(req, done);
     if (!job) {
         return false;

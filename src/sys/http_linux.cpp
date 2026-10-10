@@ -31,11 +31,29 @@ static void TrimMediaType(Str* s) {
     }
 }
 
+struct CurlTransfer {
+    const HttpReq* req = nullptr;
+    HttpRsp* out = nullptr;
+    CURL* curl = nullptr;
+    int64_t sent = 0;
+};
+
 // Returns short of `n * size` to tell curl to stop, which is how a body over
 // the cap is refused rather than truncated.
 static size_t OnBody(char* data, size_t size, size_t n, void* userp) {
-    HttpRsp* out = (HttpRsp*)userp;
+    CurlTransfer* t = (CurlTransfer*)userp;
+    HttpRsp* out = t->out;
     size_t want = size * n;
+    if (t->req->onBody && want > 0) {
+        long status = 0;
+        curl_easy_getinfo(t->curl, CURLINFO_RESPONSE_CODE, &status);
+        if (status >= 200 && status < 300) {
+            return t->req->onBody(t->req->onBodyCtx, (const uint8_t*)data,
+                                  (int)want)
+                       ? want
+                       : 0;
+        }
+    }
     if ((int64_t)len(out->body) + (int64_t)want > (int64_t)kHttpMaxBody) {
         return 0;
     }
@@ -45,6 +63,26 @@ static size_t OnBody(char* data, size_t size, size_t n, void* userp) {
     }
     memcpy(dst, data, want);
     return want;
+}
+
+// The streamed request body, a piece each time curl has room for one.
+static size_t OnReadBody(char* buf, size_t size, size_t n, void* userp) {
+    CurlTransfer* t = (CurlTransfer*)userp;
+    int64_t left = t->req->bodyLen - t->sent;
+    int64_t room = (int64_t)(size * n);
+    int cap = (int)(left < room ? left : room);
+    if (cap > 1024 * 1024) {
+        cap = 1024 * 1024;
+    }
+    if (cap <= 0) {
+        return 0;
+    }
+    int got = t->req->readBody(t->req->readBodyCtx, (uint8_t*)buf, cap);
+    if (got <= 0 || got > cap) {
+        return CURL_READFUNC_ABORT;
+    }
+    t->sent += got;
+    return (size_t)got;
 }
 
 bool HttpSend(const HttpReq& req, HttpRsp* out) {
@@ -69,13 +107,25 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
     curl_easy_setopt(c, CURLOPT_URL, u);
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, noRedirect ? 0L : 1L);
     curl_easy_setopt(c, CURLOPT_MAXREDIRS, 5L);
-    curl_easy_setopt(c, CURLOPT_TIMEOUT_MS, (long)kHttpTimeoutMs);
+    CurlTransfer transfer;
+    transfer.req = &req;
+    transfer.out = out;
+    transfer.curl = c;
+    bool streamed = req.readBody || req.onBody;
+    if (streamed) {
+        // A large body may take as long as it takes, but not stand still.
+        curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT_MS, (long)kHttpTimeoutMs);
+        curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, 1L);
+        curl_easy_setopt(c, CURLOPT_LOW_SPEED_TIME, 60L);
+    } else {
+        curl_easy_setopt(c, CURLOPT_TIMEOUT_MS, (long)kHttpTimeoutMs);
+    }
     curl_easy_setopt(c, CURLOPT_USERAGENT, "gpui/1.0");
     // This runs on a worker thread and curl's alarm-based DNS timeout is not
     // something to install from one.
     curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, OnBody);
-    curl_easy_setopt(c, CURLOPT_WRITEDATA, out);
+    curl_easy_setopt(c, CURLOPT_WRITEDATA, &transfer);
     // http and https and nothing else, whatever a redirect asks for. The
     // string form is 7.85 and later; older curl takes the bitmask, which 7.85
     // deprecated rather than removed — and which -Werror will not let us name
@@ -104,12 +154,23 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
         verb[len(req.method)] = 0;
         curl_easy_setopt(c, CURLOPT_CUSTOMREQUEST, verb);
     }
-    if (len(req.body) > 0) {
+    struct curl_slist* headers = nullptr;
+    bool headersReady = true;
+    if (req.readBody) {
+        // POST with no POSTFIELDS is what makes curl ask the read callback;
+        // CUSTOMREQUEST above still names the verb that goes on the wire.
+        curl_easy_setopt(c, CURLOPT_POST, 1L);
+        curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE_LARGE,
+                         (curl_off_t)req.bodyLen);
+        curl_easy_setopt(c, CURLOPT_READFUNCTION, OnReadBody);
+        curl_easy_setopt(c, CURLOPT_READDATA, &transfer);
+        // Without this curl waits a second for a 100 Continue first.
+        headers = curl_slist_append(headers, "Expect:");
+        headersReady = headers != nullptr && req.bodyLen >= 0;
+    } else if (len(req.body) > 0) {
         curl_easy_setopt(c, CURLOPT_POSTFIELDS, req.body.s);
         curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, (long)len(req.body));
     }
-    struct curl_slist* headers = nullptr;
-    bool headersReady = true;
     for (int i = 0; i < req.nHeaders && headersReady; i++) {
         StrBuilder line;
         line.Append(req.headers[i].name);

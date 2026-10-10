@@ -49,6 +49,14 @@ struct HttpHeader {
     Str value;
 };
 
+// The next piece of a streamed request body, written into `buf`: how many
+// bytes, or a negative number to give the request up. It is asked until it
+// has handed over `HttpReq::bodyLen` bytes and must not come up short.
+using HttpReadBodyFn = int (*)(void* ctx, uint8_t* buf, int cap);
+// One piece of a streamed response body, in the order it arrived. False gives
+// the request up.
+using HttpOnBodyFn = bool (*)(void* ctx, const uint8_t* data, int n);
+
 // What to send. `method` empty means GET. `body` is sent as the request
 // entity for any method that has one; an empty body sends none, so a GET
 // carries no Content-Length it did not ask for.
@@ -66,13 +74,30 @@ struct HttpReq {
     // absolute target. Shell uses this so its capability policy can approve a
     // Location before anything contacts it.
     bool noRedirect = false;
+
+    // A request body too big to hold: `readBody` supplies `bodyLen` bytes a
+    // piece at a time and `body` is ignored. The body cannot be replayed, so
+    // a redirect of such a request fails rather than being followed.
+    HttpReadBodyFn readBody = nullptr;
+    void* readBodyCtx = nullptr;
+    int64_t bodyLen = 0;
+    // A response body too big to hold: the body of a 2xx answer goes to
+    // `onBody` as it arrives, `HttpRsp::body` stays empty and `kHttpMaxBody`
+    // does not apply. Any other status is collected into `HttpRsp::body` as
+    // usual, so an error can still be read.
+    HttpOnBodyFn onBody = nullptr;
+    void* onBodyCtx = nullptr;
 };
 
 // Answers true when the transfer finished, whatever the status: `status` and
 // `body` are then the server's. False means it never got that far.
 //
 // A response body over `kHttpMaxBody` is refused rather than truncated, and
-// the whole thing gives up after `kHttpTimeoutMs`.
+// the whole thing gives up after `kHttpTimeoutMs`. With `readBody` or
+// `onBody` set that is a limit on how long the transfer may stall, not on how
+// long it may take. Both run on the calling thread, except on macOS, where
+// `onBody` runs on the session's queue while the caller waits. The browser
+// has no blocking client, so there is no streaming there either.
 bool HttpSend(const HttpReq& req, HttpRsp* out);
 
 // The two GETs the image path is written against, in terms of the above.
@@ -100,7 +125,8 @@ struct HttpAsyncResult {
 // Copies `req` before returning and calls `done` on the main thread after the
 // response lands. Hosted targets run HttpSend on the executor; wasm uses the
 // browser's asynchronous fetch(). False means the request could not be copied
-// or started and no callback will arrive.
+// or started and no callback will arrive. A request with `readBody` or
+// `onBody` is refused: those are for a caller that waits.
 bool HttpSendAsync(const HttpReq& req, Func1<HttpAsyncResult> done);
 
 // Owns the request fields until the callback. Hosted targets and wasm both

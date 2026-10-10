@@ -96,8 +96,56 @@ static void ReadRedirect(HINTERNET req, const wchar_t* base, HttpRsp* out) {
     Free(nullptr, location);
 }
 
-static bool ReadResponse(HINTERNET req, const wchar_t* base, bool noRedirect,
-                         HttpRsp* out) {
+constexpr int kStreamBuf = 64 * 1024;
+
+// The streamed request body, written after the headers went out.
+static bool WriteBody(HINTERNET req, const HttpReq& request) {
+    uint8_t* buf = AllocArray<uint8_t>(kStreamBuf);
+    if (!buf) {
+        return false;
+    }
+    bool ok = true;
+    for (int64_t left = request.bodyLen; ok && left > 0;) {
+        int cap = left < kStreamBuf ? (int)left : kStreamBuf;
+        int n = request.readBody(request.readBodyCtx, buf, cap);
+        ok = n > 0 && n <= cap;
+        for (int at = 0; ok && at < n;) {
+            DWORD wrote = 0;
+            ok = WinHttpWriteData(req, buf + at, (DWORD)(n - at), &wrote) &&
+                 wrote > 0;
+            at += (int)wrote;
+        }
+        left -= n;
+    }
+    Free(nullptr, buf);
+    return ok;
+}
+
+// A 2xx body handed to the caller as it arrives instead of being collected.
+static bool StreamBody(HINTERNET req, const HttpReq& request) {
+    uint8_t* buf = AllocArray<uint8_t>(kStreamBuf);
+    if (!buf) {
+        return false;
+    }
+    bool ok = true;
+    for (;;) {
+        DWORD got = 0;
+        ok = WinHttpReadData(req, buf, kStreamBuf, &got);
+        if (!ok || got == 0) {
+            break;
+        }
+        ok = request.onBody(request.onBodyCtx, buf, (int)got);
+        if (!ok) {
+            break;
+        }
+    }
+    Free(nullptr, buf);
+    return ok;
+}
+
+static bool ReadResponse(HINTERNET req, const wchar_t* base,
+                         const HttpReq& request, HttpRsp* out) {
+    bool noRedirect = request.noRedirect;
     DWORD status = 0;
     DWORD size = sizeof(status);
     if (!WinHttpQueryHeaders(
@@ -119,6 +167,10 @@ static bool ReadResponse(HINTERNET req, const wchar_t* base, bool noRedirect,
         Str ct = FromWide(ctype);
         TrimMediaType(&ct);
         out->contentType = ct;
+    }
+
+    if (request.onBody && status >= 200 && status < 300) {
+        return StreamBody(req, request);
     }
 
     for (;;) {
@@ -207,13 +259,21 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
                 // decided these may be sent.
                 wchar_t* headers = nullptr;
                 bool headersReady = true;
-                if (req.nHeaders > 0) {
+                // WinHTTP takes the length of a body as a DWORD. A longer one
+                // names its own Content-Length and tells WinHTTP not to.
+                bool streamed = req.readBody != nullptr;
+                bool hugeBody = streamed && req.bodyLen > 0xffffffffLL;
+                if (req.nHeaders > 0 || hugeBody) {
                     StrBuilder block;
                     for (int i = 0; i < req.nHeaders; i++) {
                         block.Append(req.headers[i].name);
                         block.Append(StrL(": "));
                         block.Append(req.headers[i].value);
                         block.Append(StrL("\r\n"));
+                    }
+                    if (hugeBody) {
+                        block.Append(fmt("Content-Length: %v\r\n",
+                                         (long long)req.bodyLen));
                     }
                     Str text = block.TakeStr();
                     headers = text.s ? ToWide(text) : nullptr;
@@ -232,16 +292,21 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
                     (request.h &&
                      WinHttpSetOption(request.h, WINHTTP_OPTION_REDIRECT_POLICY,
                                       &redirectPolicy, sizeof(redirectPolicy)));
+                bool hasBody = !streamed && len(req.body) > 0;
+                DWORD total = hugeBody   ? WINHTTP_IGNORE_REQUEST_TOTAL_LENGTH
+                              : streamed ? (DWORD)req.bodyLen
+                                         : (DWORD)len(req.body);
                 if (request.h && redirectReady && headersReady &&
+                    (!streamed || req.bodyLen >= 0) &&
                     WinHttpSendRequest(
                         request.h,
                         headers ? headers : WINHTTP_NO_ADDITIONAL_HEADERS,
                         headers ? (DWORD)-1 : 0,
-                        len(req.body) > 0 ? (void*)req.body.s
-                                          : WINHTTP_NO_REQUEST_DATA,
-                        (DWORD)len(req.body), (DWORD)len(req.body), 0) &&
+                        hasBody ? (void*)req.body.s : WINHTTP_NO_REQUEST_DATA,
+                        hasBody ? (DWORD)len(req.body) : 0, total, 0) &&
+                    (!streamed || WriteBody(request.h, req)) &&
                     WinHttpReceiveResponse(request.h, nullptr)) {
-                    ok = ReadResponse(request.h, wurl, noRedirect, out);
+                    ok = ReadResponse(request.h, wurl, req, out);
                 }
                 Free(nullptr, headers);
                 Free(nullptr, verb);
