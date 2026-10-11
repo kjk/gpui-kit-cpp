@@ -1,10 +1,11 @@
 /* Ported from crates/base/src/scrollbar.rs.
  *
  * Rust's own cases there drive a window and a drag; the arithmetic underneath
- * is the thumb's length and the two ways a pointer sets the offset — a track
- * press, which centres the thumb where it landed, and a drag, which keeps the
- * grab point. Offsets here run positive-down, the way El::ScrollY takes them;
- * Rust's run negative because it offsets the content rather than the view.
+ * is the thumb's length and the two ways a pointer sets the offset - a Shift
+ * track press, which centres the thumb where it landed, and a drag, which
+ * keeps the grab point. Offsets here run positive-down, the way El::ScrollY
+ * takes them; Rust's run negative because it offsets the content rather than
+ * the view.
  *
  * The second half is the visibility animation that arrived with gpui-kit
  * 2a1335d5: the animation lives beside the element tree here rather than in a
@@ -36,7 +37,7 @@ static void TheThumbSitsWhereTheOffsetSaysAndStopsAtTheEnds() {
     utassertnear(ScrollbarThumbPos(400, 100, 600, 200, 800, 16), 284.f);
 }
 
-static void ATrackPressCentresTheThumbOnIt() {
+static void AShiftTrackPressCentresTheThumbOnIt() {
     // Press halfway down a 400 track whose origin is 0: the thumb's centre
     // goes there, so its top lands at 150 of the 300 available -> half.
     utassertnear(ScrollbarOffsetForTrackPress(200, 0, 400, 100, 200, 800),
@@ -323,7 +324,7 @@ static void ScrollableMasksChainAndTrapLikeTheSource() {
     EntityDropAll(&app);
 }
 
-static void ATrackPressMovesOnceAndOnlyAThumbPressDrags() {
+static void ATrackPressPagesAndShiftPressJumps() {
     App app = {};
     Window* win = new Window();
     win->app = &app;
@@ -338,7 +339,16 @@ static void ATrackPressMovesOnceAndOnlyAThumbPressDrags() {
     PlatformInput track =
         InputMouseDown(MouseButton::Left, 85, 90, {}, 1, false);
     WindowDispatchInput(win, &track);
-    utassert(state->innerCalls == 1 && state->innerY > 0);
+    utassert(state->innerCalls == 1 && state->innerY == 100);
+    utassert(win->scrollDragId == 0);
+
+    win->paint.scrolls[0].scrollY = 0;
+    Modifiers shift;
+    shift.shift = true;
+    PlatformInput jump =
+        InputMouseDown(MouseButton::Left, 85, 90, shift, 1, false);
+    WindowDispatchInput(win, &jump);
+    utassert(state->innerCalls == 2 && state->innerY == 300);
     utassert(win->scrollDragId == 0);
 
     win->paint.scrolls[0].scrollY = 0;
@@ -548,7 +558,7 @@ void TestScrollbar() {
     AScrollableFlexItemShrinksBelowItsContent();
     TheThumbShrinksWithWhatIsVisible();
     TheThumbSitsWhereTheOffsetSaysAndStopsAtTheEnds();
-    ATrackPressCentresTheThumbOnIt();
+    AShiftTrackPressCentresTheThumbOnIt();
     ADragKeepsTheGrabPoint();
     NothingToScrollMeansNoOffset();
     SharedGeometryKeepsThePaintedGrabPoint();
@@ -556,7 +566,7 @@ void TestScrollbar() {
     ScrollableElementPreservesTheSourceElementAndMask();
     corner_notch_paths_stay_inside_their_corner_squares();
     ScrollableMasksChainAndTrapLikeTheSource();
-    ATrackPressMovesOnceAndOnlyAThumbPressDrags();
+    ATrackPressPagesAndShiftPressJumps();
     AThumbPressOnAnInputScrollerDragsEvenWithoutAScrollId();
     ATouchThumbDragMovesDownAndCancelReleasesIt();
     ATouchReleaseKeepsItsFinalDisplacement();

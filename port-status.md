@@ -45,6 +45,9 @@ The current update target is
   shift-Tab / copy actions are the runtime's for every window (`FocusNext`,
   `WindowSelectionCopy`), and WindowState's tooltip overlay is the window's
   own (`src/base/root.cpp`, `src/ui/root.cpp`).
+- **Scrollbar track clicks follow Windows.** A click pages; Shift+click jumps
+  the thumb to the pointer. Rust jumps on every click
+  (`src/gpui/window_common.cpp`).
 - **Editor range decorations do not notify their owning view.** Decorations
   are measured and painted at the editor column's current visual rows, but
   collection methods require the owning view to re-render

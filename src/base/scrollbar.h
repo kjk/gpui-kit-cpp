@@ -203,9 +203,7 @@ float ScrollbarThumbPos(float track, float thumb, float offset, float container,
 float ScrollbarThumbPos(float track, float thumb, float offset, float container,
                         float content, float marginEnd);
 
-// A press on the track away from the thumb: the thumb jumps so its centre is
-// under the press. Rust caps this at 1 without a floor, since a press below
-// the origin cannot happen inside the bar.
+// A Shift+press on the track jumps the thumb centre under the press.
 float ScrollbarOffsetForTrackPress(float pos, float trackOrigin, float track,
                                    float thumb, float container, float content);
 
