@@ -20,7 +20,58 @@ void HttpRspFree(HttpRsp* r) {
     }
     StrFree(r->redirectUrl);
     r->redirectUrl = {};
+    StrFree(r->headers);
+    r->headers = {};
     r->status = 0;
+}
+
+Str HttpRspHeader(const HttpRsp& r, Str name) {
+    Str all = r.headers;
+    for (int at = 0; at < len(all);) {
+        int end = at;
+        while (end < len(all) && all.s[end] != '\n') {
+            end++;
+        }
+        int colon = at;
+        while (colon < end && all.s[colon] != ':') {
+            colon++;
+        }
+        if (colon < end && base::StrEqI(Str(all.s + at, colon - at), name)) {
+            return StrTrimAscii(Str(all.s + colon + 1, end - colon - 1));
+        }
+        at = end + 1;
+    }
+    return {};
+}
+
+Str HttpHeadersFromRaw(Str raw) {
+    StrBuilder out;
+    for (int at = 0; at < len(raw);) {
+        int end = at;
+        while (end < len(raw) && raw.s[end] != '\n') {
+            end++;
+        }
+        Str line = StrTrimAscii(Str(raw.s + at, end - at));
+        at = end + 1;
+        // A status line opens the next answer of a followed redirect.
+        if (base::StrStartsWithI(line, "HTTP/")) {
+            out.Reset();
+            continue;
+        }
+        int colon = 0;
+        while (colon < len(line) && line.s[colon] != ':') {
+            colon++;
+        }
+        if (colon <= 0 || colon >= len(line)) {
+            continue;
+        }
+        out.Append(StrTrimAscii(Str(line.s, colon)));
+        out.Append(StrL(": "));
+        out.Append(
+            StrTrimAscii(Str(line.s + colon + 1, len(line) - colon - 1)));
+        out.AppendChar('\n');
+    }
+    return out.TakeStr();
 }
 
 bool HttpUrlIsRemote(Str url) {

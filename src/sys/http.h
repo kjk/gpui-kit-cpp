@@ -5,7 +5,10 @@
    This is the whole of the network in this tree: send one http(s) request and
    read its answer. A method, request headers and a request body are carried,
    because `crates/shell`'s `fetch` carries them and an OAuth form exchange or
-   an authenticated read is the ordinary shape of what a script does. What is
+   an authenticated read is the ordinary shape of what a script does. The
+   answer carries its headers, because for some requests they are the answer:
+   a HEAD has nothing else, and an object store keeps an object's metadata
+   there. What is
    still not here: cookies, a session, a connection kept alive, a socket, a
    TLS stack of ours. The image path follows redirects through the platform
    client; the shell path exposes each redirect so its capability policy can
@@ -38,9 +41,29 @@ struct HttpRsp {
     // With HttpGetNoRedirect, the absolute target named by a 3xx Location
     // header. Owned and empty for every other response.
     Str redirectUrl;
+    // The headers of the answer, one "Name: value\n" line each. When
+    // redirects were followed these are the last answer's. Names keep the
+    // spelling the client reports, which on macOS and in the browser is not
+    // always the server's, so look one up with HttpRspHeader rather than by
+    // comparing text. A header sent twice is two lines where the client says
+    // so (WinHTTP, libcurl) and one joined with ", " where it does not. The
+    // browser shows only what CORS lets a page read. Owned; empty when the
+    // client reported none.
+    Str headers;
 };
 
 void HttpRspFree(HttpRsp* r);
+
+// The value of the first header called `name`, compared without case: a view
+// into `r.headers`, empty when there is no such header.
+Str HttpRspHeader(const HttpRsp& r, Str name);
+
+// What `HttpRsp::headers` holds, made from the header block a client hands
+// over: lines ended by CRLF or LF, possibly several answers when redirects
+// were followed, each starting with its status line. Only the last answer's
+// headers are kept. Owned by the caller. The platform files use it; it is
+// here so a test can.
+Str HttpHeadersFromRaw(Str raw);
 
 // One request header. Both halves are borrowed for the length of the call:
 // the request is sent before `HttpSend` returns, so nothing here is copied.
@@ -59,7 +82,8 @@ using HttpOnBodyFn = bool (*)(void* ctx, const uint8_t* data, int n);
 
 // What to send. `method` empty means GET. `body` is sent as the request
 // entity for any method that has one; an empty body sends none, so a GET
-// carries no Content-Length it did not ask for.
+// carries no Content-Length it did not ask for. A HEAD is answered with
+// headers and no body, and the transfer ends there.
 //
 // The caller has already decided that these headers may be sent — the
 // platform layer sets no header of its own beyond what the client needs to

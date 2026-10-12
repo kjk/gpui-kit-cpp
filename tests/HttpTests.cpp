@@ -69,8 +69,46 @@ static void AStreamedRequestIsNotSentAsync() {
     utassert(!HttpSendAsync(down, MkFunc1Void(IgnoreResult)));
 }
 
+// The header block a client hands over becomes one line a header, and a
+// followed redirect leaves only the last answer's.
+static void HeadersComeFromTheLastAnswer() {
+    Str raw = StrL(
+        "HTTP/1.1 302 Found\r\n"
+        "Location: /b\r\n"
+        "X-Hop: first\r\n"
+        "\r\n"
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: text/plain\r\n"
+        "ETag:   \"abc\"  \r\n"
+        "x-amz-meta-name: geometry.pdf\r\n"
+        "Set-Cookie: a=1\r\n"
+        "Set-Cookie: b=2\r\n"
+        "\r\n");
+    HttpRsp r;
+    r.headers = HttpHeadersFromRaw(raw);
+    utassert(StrEq(r.headers, StrL("Content-Type: text/plain\n"
+                                   "ETag: \"abc\"\n"
+                                   "x-amz-meta-name: geometry.pdf\n"
+                                   "Set-Cookie: a=1\n"
+                                   "Set-Cookie: b=2\n")));
+    // A name is found whatever its case, and the first of two wins.
+    utassert(StrEq(HttpRspHeader(r, StrL("etag")), StrL("\"abc\"")));
+    utassert(StrEq(HttpRspHeader(r, StrL("CONTENT-TYPE")), StrL("text/plain")));
+    utassert(StrEq(HttpRspHeader(r, StrL("Set-Cookie")), StrL("a=1")));
+    utassert(len(HttpRspHeader(r, StrL("X-Hop"))) == 0);
+    utassert(len(HttpRspHeader(r, StrL("ETa"))) == 0);
+    HttpRspFree(&r);
+    utassert(len(r.headers) == 0);
+    // LF alone ends a line too, and a line without a colon is not a header.
+    Str bare = HttpHeadersFromRaw(StrL("HTTP/2 200\nA: 1\nnot a header\nB:\n"));
+    utassert(StrEq(bare, StrL("A: 1\nB: \n")));
+    StrFree(bare);
+    utassert(len(HttpHeadersFromRaw(StrL(""))) == 0);
+}
+
 void TestHttp() {
     TestSuite("http");
+    HeadersComeFromTheLastAnswer();
     AStreamedRequestIsNotSentAsync();
     HttpOnlyKnowsTwoSchemes();
     AFetchOfSomethingLocalFailsAtOnce();

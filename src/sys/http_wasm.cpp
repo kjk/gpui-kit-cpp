@@ -57,11 +57,12 @@ EM_JS(int, GpJsHttpBegin,
             return { ptr: ptr, len: bytes.length };
         };
         G.finish = function(tokenValue, ok, status, bytes, contentType,
-                            redirectUrl) {
+                            redirectUrl, headerLines) {
             let body = 0;
             let bodyLen = 0;
             const type = G.encoded(contentType);
             const redirect = G.encoded(redirectUrl);
+            const headers = G.encoded(headerLines);
             if (bytes && bytes.length > 0) {
                 bodyLen = bytes.length;
                 body = _malloc(bodyLen);
@@ -74,7 +75,10 @@ EM_JS(int, GpJsHttpBegin,
             }
             _gpui_wasm_http_done(tokenValue, ok ? 1 : 0, status, body,
                                  bodyLen, type.ptr, type.len, redirect.ptr,
-                                 redirect.len);
+                                 redirect.len, headers.ptr, headers.len);
+            if (headers.ptr) {
+                _free(headers.ptr);
+            }
             if (type.ptr) {
                 _free(type.ptr);
             }
@@ -188,10 +192,15 @@ EM_JS(void, GpJsHttpStart,
                     redirectUrl = new URL(location, response.url).href;
                 }
             }
+            let headerLines = "";
+            response.headers.forEach(function(value, name) {
+                headerLines += name + ": " + value + String.fromCharCode(10);
+            });
             G.finish(token, true, response.status, bytes,
-                     response.headers.get("content-type") || "", redirectUrl);
+                     response.headers.get("content-type") || "", redirectUrl,
+                     headerLines);
         } catch (error) {
-            G.finish(token, false, 0, null, "", "");
+            G.finish(token, false, 0, null, "", "", "");
         } finally {
             clearTimeout(timeout);
         }
@@ -202,7 +211,7 @@ EM_JS(void, GpJsHttpStart,
 extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_http_done(
     int token, int ok, int status, uint8_t* body, int bodyLen,
     const char* contentType, int contentTypeLen, const char* redirectUrl,
-    int redirectUrlLen) {
+    int redirectUrlLen, const char* headers, int headersLen) {
     WasmHttpTransfer* transfer = (WasmHttpTransfer*)(intptr_t)token;
     if (!transfer) {
         Free(nullptr, body);
@@ -225,6 +234,9 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_http_done(
     if (redirectUrl && redirectUrlLen > 0) {
         transfer->response
             .redirectUrl = StrDup(Str(redirectUrl, redirectUrlLen));
+    }
+    if (headers && headersLen > 0) {
+        transfer->response.headers = StrDup(Str(headers, headersLen));
     }
     HttpAsyncResult result = {ok != 0, &transfer->response};
     transfer->done.Call(result);

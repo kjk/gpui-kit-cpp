@@ -36,7 +36,15 @@ struct CurlTransfer {
     HttpRsp* out = nullptr;
     CURL* curl = nullptr;
     int64_t sent = 0;
+    // Every header line of every answer, as curl hands them over.
+    StrBuilder rawHeaders;
 };
+
+static size_t OnHeader(char* data, size_t size, size_t n, void* userp) {
+    CurlTransfer* t = (CurlTransfer*)userp;
+    size_t got = size * n;
+    return t->rawHeaders.Append(Str(data, (int)got)) ? got : 0;
+}
 
 // Returns short of `n * size` to tell curl to stop, which is how a body over
 // the cap is refused rather than truncated.
@@ -126,6 +134,8 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
     curl_easy_setopt(c, CURLOPT_NOSIGNAL, 1L);
     curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, OnBody);
     curl_easy_setopt(c, CURLOPT_WRITEDATA, &transfer);
+    curl_easy_setopt(c, CURLOPT_HEADERFUNCTION, OnHeader);
+    curl_easy_setopt(c, CURLOPT_HEADERDATA, &transfer);
     // http and https and nothing else, whatever a redirect asks for. The
     // string form is 7.85 and later; older curl takes the bitmask, which 7.85
     // deprecated rather than removed — and which -Werror will not let us name
@@ -153,6 +163,11 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
         memcpy(verb, req.method.s, (size_t)len(req.method));
         verb[len(req.method)] = 0;
         curl_easy_setopt(c, CURLOPT_CUSTOMREQUEST, verb);
+        // A HEAD names a Content-Length and sends no body; without this curl
+        // waits for the bytes until the timeout.
+        if (base::StrEqI(req.method, "HEAD")) {
+            curl_easy_setopt(c, CURLOPT_NOBODY, 1L);
+        }
     }
     struct curl_slist* headers = nullptr;
     bool headersReady = true;
@@ -214,6 +229,8 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
             TrimMediaType(&s);
             out->contentType = s;
         }
+        out->headers = HttpHeadersFromRaw(
+            Str(transfer.rawHeaders.els, len(transfer.rawHeaders)));
     }
     curl_easy_cleanup(c);
     if (headers) {

@@ -149,6 +149,30 @@ static Str StrFromNS(NSString* s) {
     return StrDup(Str(u));
 }
 
+// Foundation keeps the headers as a dictionary, so the order is its own and
+// a header the server sent twice arrives as one value.
+static Str HeadersFromResponse(NSHTTPURLResponse* rsp) {
+    StrBuilder out;
+    NSDictionary* fields = [rsp allHeaderFields];
+    for (id key in fields) {
+        id value = [fields objectForKey:key];
+        if (![key isKindOfClass:[NSString class]] ||
+            ![value isKindOfClass:[NSString class]]) {
+            continue;
+        }
+        const char* name = [(NSString*)key UTF8String];
+        const char* text = [(NSString*)value UTF8String];
+        if (!name || !text) {
+            continue;
+        }
+        out.Append(Str(name));
+        out.Append(StrL(": "));
+        out.Append(Str(text));
+        out.AppendChar('\n');
+    }
+    return out.TakeStr();
+}
+
 static NSString* NSFromStr(Str s) {
     if (len(s) <= 0) {
         return @"";
@@ -269,6 +293,7 @@ static bool HttpSendStreamed(const HttpReq& request, HttpRsp* out) {
         Str ct = StrFromNS([rsp valueForHTTPHeaderField:@"Content-Type"]);
         TrimMediaType(&ct);
         out->contentType = ct;
+        out->headers = HeadersFromResponse(rsp);
         return true;
     }
 }
@@ -359,6 +384,7 @@ bool HttpSend(const HttpReq& request, HttpRsp* out) {
         Str ct = StrFromNS([rsp valueForHTTPHeaderField:@"Content-Type"]);
         TrimMediaType(&ct);
         out->contentType = ct;
+        out->headers = HeadersFromResponse(rsp);
 
         NSUInteger n = body ? [body length] : 0;
         if (n > (NSUInteger)kHttpMaxBody) {

@@ -96,6 +96,27 @@ static void ReadRedirect(HINTERNET req, const wchar_t* base, HttpRsp* out) {
     Free(nullptr, location);
 }
 
+// Every header of the answer, which WinHTTP hands over as one block.
+static void ReadHeaders(HINTERNET req, HttpRsp* out) {
+    DWORD size = 0;
+    WinHttpQueryHeaders(req, WINHTTP_QUERY_RAW_HEADERS_CRLF,
+                        WINHTTP_HEADER_NAME_BY_INDEX, nullptr, &size,
+                        WINHTTP_NO_HEADER_INDEX);
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER || size < sizeof(wchar_t))
+        return;
+    wchar_t* block = (wchar_t*)Alloc(nullptr, (int)size + (int)sizeof(wchar_t));
+    if (!block) return;
+    if (WinHttpQueryHeaders(req, WINHTTP_QUERY_RAW_HEADERS_CRLF,
+                            WINHTTP_HEADER_NAME_BY_INDEX, block, &size,
+                            WINHTTP_NO_HEADER_INDEX)) {
+        block[size / sizeof(wchar_t)] = 0;
+        Str raw = FromWide(block);
+        out->headers = HttpHeadersFromRaw(raw);
+        StrFree(raw);
+    }
+    Free(nullptr, block);
+}
+
 constexpr int kStreamBuf = 64 * 1024;
 
 // The streamed request body, written after the headers went out.
@@ -155,6 +176,7 @@ static bool ReadResponse(HINTERNET req, const wchar_t* base,
         return false;
     }
     out->status = (int)status;
+    ReadHeaders(req, out);
     if (noRedirect && status >= 300 && status < 400) {
         ReadRedirect(req, base, out);
     }
