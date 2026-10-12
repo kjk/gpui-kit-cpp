@@ -1385,6 +1385,21 @@ void WindowSetFullScreen(Window* win, bool fullScreen) {
     }
 }
 
+void AppWindowSetOpacity(Window* win, int percent) {
+    if (!win || !win->plat) {
+        return;
+    }
+    int clamped = percent < 20 ? 20 : percent > 100 ? 100 : percent;
+    [win->plat->window setAlphaValue:clamped / 100.0];
+}
+
+void AppWindowSetClickThrough(Window* win, bool on) {
+    if (!win || !win->plat) {
+        return;
+    }
+    [win->plat->window setIgnoresMouseEvents:on ? YES : NO];
+}
+
 void AppDrag(Window* win) {
     if (!win || !win->plat) {
         return;

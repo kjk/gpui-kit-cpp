@@ -2030,6 +2030,30 @@ void WindowSetFullScreen(Window* win, bool fullScreen) {
     }
 }
 
+void AppWindowSetOpacity(Window* win, int percent) {
+    if (!win || !win->plat) {
+        return;
+    }
+    Atom atom = XInternAtom(gDpy, "_NET_WM_WINDOW_OPACITY", False);
+    if (percent >= 100) {
+        XDeleteProperty(gDpy, win->plat->xwin, atom);
+    } else {
+        // A CARDINAL where 0xFFFFFFFF is opaque. Format 32 is passed as longs.
+        unsigned long value = (unsigned long)(0xFFFFFFFFu / 100.0 *
+                                              (percent < 20 ? 20 : percent));
+        XChangeProperty(gDpy, win->plat->xwin, atom, XA_CARDINAL, 32,
+                        PropModeReplace, (unsigned char*)&value, 1);
+    }
+    XFlush(gDpy);
+}
+
+// An empty input shape is what this would take, and the shape extension is
+// not one of this tree's dependencies.
+void AppWindowSetClickThrough(Window* win, bool on) {
+    (void)win;
+    (void)on;
+}
+
 void AppDrag(Window* win) {
     if (!win || !win->plat) {
         return;

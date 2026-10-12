@@ -37,6 +37,10 @@ struct PlatWindow {
     LONG_PTR windowedStyle = 0;
     WINDOWPLACEMENT windowedPlacement = {sizeof(WINDOWPLACEMENT)};
     bool fullScreen = false;
+    // AppWindowSetOpacity / AppWindowSetClickThrough: both are the layered
+    // extended style, so each call applies the pair.
+    int opacity = 100;
+    bool clickThrough = false;
 };
 
 static HWND Hwnd(Window* win) {
@@ -984,6 +988,55 @@ void WindowSetFullScreen(Window* win, bool fullScreen) {
                          SWP_NOACTIVATE);
     }
     pw->fullScreen = fullScreen;
+}
+
+// A window created with WS_EX_NOREDIRECTIONBITMAP can still be layered: DWM
+// applies the alpha to the composition surface. The style stays on once
+// either call has needed it; taking it off again buys nothing.
+static void ApplyLayered(HWND hwnd, const PlatWindow* pw) {
+    LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    bool layered = (ex & WS_EX_LAYERED) != 0;
+    if (!layered && pw->opacity >= 100 && !pw->clickThrough) {
+        return;
+    }
+    LONG_PTR want = (ex | WS_EX_LAYERED) & ~(LONG_PTR)WS_EX_TRANSPARENT;
+    if (pw->clickThrough) {
+        want |= WS_EX_TRANSPARENT;
+    }
+    if (want != ex) {
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, want);
+    }
+    SetLayeredWindowAttributes(hwnd, 0, (BYTE)(pw->opacity * 255 / 100),
+                               LWA_ALPHA);
+    if (!layered) {
+        // A window that turns layered after it was shown is blank until it
+        // is drawn again.
+        SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                     SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                         SWP_NOACTIVATE);
+        RedrawWindow(hwnd, nullptr, nullptr,
+                     RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
+    }
+}
+
+void AppWindowSetOpacity(Window* win, int percent) {
+    HWND hwnd = Hwnd(win);
+    PlatWindow* pw = win ? win->plat : nullptr;
+    if (!hwnd || !pw) {
+        return;
+    }
+    pw->opacity = percent < 20 ? 20 : percent > 100 ? 100 : percent;
+    ApplyLayered(hwnd, pw);
+}
+
+void AppWindowSetClickThrough(Window* win, bool on) {
+    HWND hwnd = Hwnd(win);
+    PlatWindow* pw = win ? win->plat : nullptr;
+    if (!hwnd || !pw) {
+        return;
+    }
+    pw->clickThrough = on;
+    ApplyLayered(hwnd, pw);
 }
 
 void AppDrag(Window* win) {

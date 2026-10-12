@@ -7718,6 +7718,17 @@ void AppMinimize(Window* win);
 void AppToggleMaximize(Window* win);
 // Enter or leave native fullscreen mode without changing application chrome.
 void WindowSetFullScreen(Window* win, bool fullScreen);
+// How solid the whole window is, frame and content alike: 100 is opaque, and
+// anything under 20 is taken as 20 so a window cannot be made to vanish.
+// Windows makes the window layered, macOS sets its alpha, X11 sets
+// _NET_WM_WINDOW_OPACITY, which only a compositing window manager applies.
+// A browser tab has no such thing.
+void AppWindowSetOpacity(Window* win, int percent);
+// The mouse acts on whatever is under the window, which still draws. Nothing
+// in the window can be clicked while it is on, so the way back is a global
+// hotkey or a timer, not a control in the window. Windows and macOS; X11
+// would need the shape extension and does nothing, nor does a browser tab.
+void AppWindowSetClickThrough(Window* win, bool on);
 // Hide or restore the pointer without changing the element-selected shape.
 void WindowSetCursorVisible(Window* win, bool visible);
 // Called for a window-manager close request. Returning false keeps the window

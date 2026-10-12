@@ -916,6 +916,18 @@ void WindowSetFullScreen(Window* win, bool fullScreen) {
     win->plat->dirty = true;
 }
 
+// A tab is as solid as the browser draws it and takes the pointer the browser
+// gives it.
+void AppWindowSetOpacity(Window* win, int percent) {
+    (void)win;
+    (void)percent;
+}
+
+void AppWindowSetClickThrough(Window* win, bool on) {
+    (void)win;
+    (void)on;
+}
+
 // The window is the tab, and the tab belongs to the browser.
 void AppDrag(Window* win) {
     (void)win;
