@@ -150,8 +150,17 @@ static bool StreamBody(HINTERNET req, const HttpReq& request) {
     }
     bool ok = true;
     for (;;) {
+        // only what has arrived: a read of the whole buffer would wait for it
+        // to fill, and a stream of small events would reach onBody when it ends
+        DWORD avail = 0;
+        ok = WinHttpQueryDataAvailable(req, &avail);
+        if (!ok || avail == 0) {
+            break;
+        }
         DWORD got = 0;
-        ok = WinHttpReadData(req, buf, kStreamBuf, &got);
+        ok = WinHttpReadData(
+            req, buf, avail < (DWORD)kStreamBuf ? avail : (DWORD)kStreamBuf,
+            &got);
         if (!ok || got == 0) {
             break;
         }
