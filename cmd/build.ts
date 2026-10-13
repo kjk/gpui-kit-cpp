@@ -1007,12 +1007,12 @@ function winLibs(f: BuildFlags): string[] {
   const backend = f.winBackend;
   const renderer =
     backend === "d2d"
-      ? ["d2d1.lib", "d3d11.lib", "dxgi.lib"]
+      ? ["d2d1.lib", "d3d11.lib", "dxgi.lib", "dcomp.lib"]
       : backend === "d3d11"
         ? ["d3d11.lib", "dxgi.lib"]
         : backend === "d3d12"
           ? ["d3d12.lib", "dxgi.lib"]
-          : ["d2d1.lib", "d3d11.lib", "d3d12.lib", "dxgi.lib"];
+          : ["d2d1.lib", "d3d11.lib", "d3d12.lib", "dxgi.lib", "dcomp.lib"];
   return [...renderer, ...winCommonLibs];
 }
 

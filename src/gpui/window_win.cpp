@@ -1029,6 +1029,10 @@ void AppWindowSetOpacity(Window* win, int percent) {
     ApplyLayered(hwnd, pw);
 }
 
+bool PlatWindowCanBeTransparent() {
+    return PaintWindowCanBeTransparent();
+}
+
 void AppWindowSetClickThrough(Window* win, bool on) {
     HWND hwnd = Hwnd(win);
     PlatWindow* pw = win ? win->plat : nullptr;

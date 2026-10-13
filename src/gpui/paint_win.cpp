@@ -17,6 +17,7 @@
 #include <d3d11.h>
 #include <dwrite.h>
 #include <dxgi1_2.h>
+#include <dcomp.h>
 #include <math.h>
 #include <wincodec.h>
 
@@ -195,6 +196,12 @@ struct PaintTarget {
     int pxH = 0;
     ID2D1RenderTarget* rt = nullptr;
     ID2D1SolidColorBrush* brush = nullptr;
+    // A transparent window's chain is not bound to the HWND but handed to
+    // DirectComposition, the only way DWM takes per-pixel alpha from one.
+    bool transparent = false;
+    IDCompositionDevice* dcomp = nullptr;
+    IDCompositionTarget* dcompTarget = nullptr;
+    IDCompositionVisual* dcompVisual = nullptr;
 };
 
 // ─── lifecycle ────────────────────────────────────────────────────────────
@@ -356,6 +363,12 @@ Str PaintSystemUIFontMappedFamily() {
     return cached;
 }
 
+// Per-pixel alpha is this renderer's alone: the GPU renderers blend onto an
+// opaque target.
+bool PaintWindowCanBeTransparent() {
+    return WIN_BACKEND_DIRECT2D && !PaintGpuOn();
+}
+
 void PaintTargetFree(PaintCtx* ctx) {
     // Before anything is released: the scene's path cache holds geometry
     // realizations, which belong to the device context about to go.
@@ -369,6 +382,9 @@ void PaintTargetFree(PaintCtx* ctx) {
     if (!ctx || !ctx->rt) {
         return;
     }
+    Rel(&ctx->rt->dcompVisual);
+    Rel(&ctx->rt->dcompTarget);
+    Rel(&ctx->rt->dcomp);
     Rel(&ctx->rt->brush);
     Rel(&ctx->rt->dcRt);
     if (ctx->rt->dc) {
@@ -460,7 +476,9 @@ static bool BindBackBuffer(PaintTarget* t) {
     }
     D2D1_BITMAP_PROPERTIES1 props = D2D1::BitmapProperties1(
         D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+                          t->transparent ? D2D1_ALPHA_MODE_PREMULTIPLIED
+                                         : D2D1_ALPHA_MODE_IGNORE),
         96.f, 96.f);
     hr = t->dc->CreateBitmapFromDxgiSurface(surface, &props, &t->backBuffer);
     surface->Release();
@@ -492,13 +510,15 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
     // A target belongs to the window it was made for; a window that changed
     // wants a new chain. A size change only needs ResizeBuffers, which keeps
     // the device context and everything cached on it.
-    if (ctx->rt && ctx->rt->hwnd != hwnd) {
+    if (ctx->rt &&
+        (ctx->rt->hwnd != hwnd || ctx->rt->transparent != ctx->transparent)) {
         PaintTargetFree(ctx);
     }
     if (!ctx->rt) {
         auto* t = new PaintTarget();
         t->generation = PaintResourceGenerationNew();
         t->hwnd = hwnd;
+        t->transparent = ctx->transparent;
         DXGI_SWAP_CHAIN_DESC1 desc = {};
         desc.Width = (UINT)pxW;
         desc.Height = (UINT)pxH;
@@ -518,10 +538,40 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
         // while the window is between sizes. None keeps left-side content
         // where it was; the new strip is empty until this frame presents.
         desc.Scaling = DXGI_SCALING_NONE;
-        HRESULT hr = ctx->pa->dxgiFactory->CreateSwapChainForHwnd(
-            ctx->pa->d3d, hwnd, &desc, nullptr, nullptr, &t->swap);
+        HRESULT hr = S_OK;
+        if (t->transparent) {
+            // A composition chain must stretch and is the one kind that may
+            // carry alpha. The visual tree is one visual holding the chain.
+            desc.AlphaMode = DXGI_ALPHA_MODE_PREMULTIPLIED;
+            desc.Scaling = DXGI_SCALING_STRETCH;
+            hr = ctx->pa->dxgiFactory->CreateSwapChainForComposition(
+                ctx->pa->d3d, &desc, nullptr, &t->swap);
+            if (SUCCEEDED(hr)) {
+                hr = DCompositionCreateDevice(ctx->pa->dxgi,
+                                              __uuidof(IDCompositionDevice),
+                                              (void**)&t->dcomp);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = t->dcomp->CreateTargetForHwnd(hwnd, TRUE, &t->dcompTarget);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = t->dcomp->CreateVisual(&t->dcompVisual);
+            }
+            if (SUCCEEDED(hr)) {
+                t->dcompVisual->SetContent(t->swap);
+                t->dcompTarget->SetRoot(t->dcompVisual);
+                hr = t->dcomp->Commit();
+            }
+        } else {
+            hr = ctx->pa->dxgiFactory->CreateSwapChainForHwnd(
+                ctx->pa->d3d, hwnd, &desc, nullptr, nullptr, &t->swap);
+        }
         if (FAILED(hr)) {
-            logf("CreateSwapChainForHwnd failed %08x", (unsigned)hr);
+            logf("creating the swap chain failed %08x", (unsigned)hr);
+            Rel(&t->dcompVisual);
+            Rel(&t->dcompTarget);
+            Rel(&t->dcomp);
+            Rel(&t->swap);
             delete t;
             return false;
         }
@@ -537,6 +587,11 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
             return false;
         }
         t->dc->SetDpi(96.f, 96.f);
+        if (t->transparent) {
+            // ClearType blends per subpixel against what is under the text,
+            // which a surface with alpha does not have.
+            t->dc->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+        }
         if (!BindBackBuffer(t)) {
             Rel(&t->dc);
             Rel(&t->swap);

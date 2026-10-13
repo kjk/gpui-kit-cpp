@@ -1684,8 +1684,17 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
                 if (partial) {
                     // Clearing is a fill of what is being redrawn: the rest
                     // of the buffer is last frame's and has to stay.
-                    CanvasFillRect(ctx, damage->x, damage->y, damage->w,
-                                   damage->h, p.color);
+                    if (ctx->transparent) {
+                        // A fill blends, and nothing blended over last
+                        // frame's pixels leaves them there.
+                        CanvasPushClip(ctx, damage->x, damage->y, damage->w,
+                                       damage->h);
+                        CanvasClear(ctx, p.color);
+                        CanvasPopClip(ctx);
+                    } else {
+                        CanvasFillRect(ctx, damage->x, damage->y, damage->w,
+                                       damage->h, p.color);
+                    }
                 } else {
                     CanvasClear(ctx, p.color);
                 }

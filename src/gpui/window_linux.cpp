@@ -2047,6 +2047,12 @@ void AppWindowSetOpacity(Window* win, int percent) {
     XFlush(gDpy);
 }
 
+// A 32-bit visual and a compositing manager are what this would take; the
+// window is made on the default visual.
+bool PlatWindowCanBeTransparent() {
+    return false;
+}
+
 // An empty input shape is what this would take, and the shape extension is
 // not one of this tree's dependencies.
 void AppWindowSetClickThrough(Window* win, bool on) {

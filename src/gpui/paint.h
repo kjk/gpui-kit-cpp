@@ -217,6 +217,12 @@ Str PaintSystemUIFontMappedFamily();
 // render target this used to be spent most of the frame copying its surface
 // back through the GDI interop.
 bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH);
+// Whether a window's target can keep per-pixel alpha (PaintCtx::transparent).
+// Defined by the Windows renderer only.
+bool PaintWindowCanBeTransparent();
+// The same question for a window about to be made, answered by every
+// platform's window file.
+bool PlatWindowCanBeTransparent();
 // An offscreen square of pixels rather than a window: transparent to start
 // with, and read back as premultiplied BGRA, top-down, by
 // PaintTargetEndOffscreen. What a menu icon is rasterized through — the OS

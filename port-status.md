@@ -27,6 +27,13 @@ The current update target is
 
 ## Known gaps vs Rust
 
+- **A transparent window is Windows with Direct2D only.** GPUI's
+  `WindowBackgroundAppearance::Transparent` is `WinOpts::transparent`: a
+  composition swap chain with premultiplied alpha and grayscale text
+  (`paint_win.cpp`). The D3D11 / D3D12 renderers blend onto an opaque target,
+  X11 would need a 32-bit visual and Cocoa a non-opaque layer; there the
+  option is ignored and `WindowIsTransparent` says so. `Blurred` and the
+  other appearances are not ported.
 - **A browser file drop carries names, not paths.** A desktop window accepts
   an OS file drop as gpui's `ExternalPaths` (`OnDrop(StrL("ExternalPaths"))`,
   newline-separated paths on `DropEvent::externalPaths`). Windows registers

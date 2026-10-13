@@ -928,6 +928,10 @@ void AppWindowSetClickThrough(Window* win, bool on) {
     (void)on;
 }
 
+bool PlatWindowCanBeTransparent() {
+    return false;
+}
+
 // The window is the tab, and the tab belongs to the browser.
 void AppDrag(Window* win) {
     (void)win;

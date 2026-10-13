@@ -588,7 +588,8 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     win->paint.app = win->app;
     win->paint.window = win;
     const RuntimeStyle& th = RuntimeStyleNow(win->app);
-    CanvasClear(&win->paint, th.background);
+    CanvasClear(&win->paint,
+                win->paint.transparent ? RgbaTransparent() : th.background);
     gFrameLayoutSecs = 0;
     gFramePaintSecs = 0;
     if (root) {
@@ -702,6 +703,10 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     InteractionBenchRecord(win, timing);
     win->frameSeq++;
     FrameBenchTick(win, timing.drawSecs);
+}
+
+bool WindowIsTransparent(const Window* win) {
+    return win && win->paint.transparent;
 }
 
 void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
@@ -3816,6 +3821,7 @@ Window* WindowAlloc(App* app, WinOpts opts) {
     Window* win = new Window();
     win->app = app;
     win->opts = opts;
+    win->paint.transparent = opts.transparent && PlatWindowCanBeTransparent();
     win->anim = opts.anim;
     // The factories and the font cache live on App; each window borrows them.
     win->paint.pa = app->paint;

@@ -1393,6 +1393,11 @@ void AppWindowSetOpacity(Window* win, int percent) {
     [win->plat->window setAlphaValue:clamped / 100.0];
 }
 
+// Not done here: the view's layer is drawn opaque.
+bool PlatWindowCanBeTransparent() {
+    return false;
+}
+
 void AppWindowSetClickThrough(Window* win, bool on) {
     if (!win || !win->plat) {
         return;

@@ -3710,6 +3710,9 @@ struct PaintCtx {
     // records its hit rect, focus and geometry, and every drawing call finds
     // `rt` null and draws nothing.
     bool headless = false;
+    // WinOpts::transparent: the frame starts from nothing instead of the
+    // theme's background, and the target keeps each pixel's alpha.
+    bool transparent = false;
     // The recorded and previous frames, damage history and retained path
     // geometry belong to this target's window. Opaque here so the portable
     // public drawing context does not expose the scene implementation.
@@ -6336,6 +6339,17 @@ struct WinOpts {
     // and — off macOS — the minimize / maximize / close controls, which is
     // what component::TitleBar builds.
     bool clientTitleBar = false;
+    // GPUI's WindowBackgroundAppearance::Transparent: the window is cleared
+    // to nothing each frame and keeps the alpha of what is drawn, so a root
+    // with a translucent background, or none, lets what is behind the window
+    // show while text and controls stay solid. It is a property of the window
+    // from its first frame on: Windows keeps showing the last frame an
+    // ordinary swap chain presented, so a window cannot turn transparent
+    // later. Windows with the Direct2D renderer only — the target is a
+    // composition swap chain with premultiplied alpha, and text is drawn
+    // grayscale, since ClearType needs an opaque surface. Ignored elsewhere;
+    // WindowIsTransparent says which it was.
+    bool transparent = false;
     bool anim = false;
     int timerMs = 500;
 };
@@ -7729,6 +7743,9 @@ void AppWindowSetOpacity(Window* win, int percent);
 // hotkey or a timer, not a control in the window. Windows and macOS; X11
 // would need the shape extension and does nothing, nor does a browser tab.
 void AppWindowSetClickThrough(Window* win, bool on);
+// Whether the window was opened with WinOpts::transparent and the platform
+// could honor it.
+bool WindowIsTransparent(const Window* win);
 // Hide or restore the pointer without changing the element-selected shape.
 void WindowSetCursorVisible(Window* win, bool visible);
 // Called for a window-manager close request. Returning false keeps the window
