@@ -113,6 +113,21 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
     u[len(url)] = 0;
 
     curl_easy_setopt(c, CURLOPT_URL, u);
+    // "system" and nothing leave libcurl to the environment, as before
+    Str proxy = HttpProxyDup();
+    if (StrEqI(proxy, StrL("direct"))) {
+        curl_easy_setopt(c, CURLOPT_PROXY, "");
+    } else if (len(proxy) > 0 && !StrEqI(proxy, StrL("system"))) {
+        char* p = (char*)Alloc(nullptr, len(proxy) + 1);
+        if (p) {
+            memcpy(p, proxy.s, (size_t)len(proxy));
+            p[len(proxy)] = 0;
+            // libcurl copies the string
+            curl_easy_setopt(c, CURLOPT_PROXY, p);
+            Free(nullptr, p);
+        }
+    }
+    StrFree(proxy);
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, noRedirect ? 0L : 1L);
     curl_easy_setopt(c, CURLOPT_MAXREDIRS, 5L);
     CurlTransfer transfer;

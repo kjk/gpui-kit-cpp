@@ -260,11 +260,47 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
     bool ok = false;
     {
         WinHttpHandle session;
-        // WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY wants Windows 8.1; this one is
-        // the constant that works everywhere this tree runs.
-        session
-            .h = WinHttpOpen(L"gpui/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-                             WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        // WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY wants Windows 8.1; the default
+        // one is the constant that works everywhere this tree runs, so it
+        // stays what an app that set no proxy gets.
+        Str proxy = HttpProxyDup();
+        DWORD access = WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
+        wchar_t* named = nullptr;
+        if (StrEqI(proxy, StrL("system"))) {
+            access = WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY;
+        } else if (StrEqI(proxy, StrL("direct"))) {
+            access = WINHTTP_ACCESS_TYPE_NO_PROXY;
+        } else if (len(proxy) > 0) {
+            // WinHTTP takes "host:port", without a scheme
+            Str proxyHost = proxy;
+            int scheme = StrFind(proxyHost, StrL("://"));
+            if (scheme >= 0) {
+                proxyHost =
+                    Str(proxyHost.s + scheme + 3, len(proxyHost) - scheme - 3);
+            }
+            while (len(proxyHost) > 0 &&
+                   proxyHost.s[len(proxyHost) - 1] == '/') {
+                proxyHost = Str(proxyHost.s, len(proxyHost) - 1);
+            }
+            int n = MultiByteToWideChar(CP_UTF8, 0, proxyHost.s, len(proxyHost),
+                                        nullptr, 0);
+            named = (wchar_t*)Alloc(nullptr, (n + 1) * (int)sizeof(wchar_t));
+            if (named) {
+                MultiByteToWideChar(CP_UTF8, 0, proxyHost.s, len(proxyHost),
+                                    named, n);
+                named[n] = 0;
+                access = WINHTTP_ACCESS_TYPE_NAMED_PROXY;
+            }
+        }
+        // a server on this machine is never reached through a named proxy
+        session.h = WinHttpOpen(
+            L"gpui/1.0", access, named ? named : WINHTTP_NO_PROXY_NAME,
+            named ? L"<local>;localhost;127.0.0.1" : WINHTTP_NO_PROXY_BYPASS,
+            0);
+        if (named) {
+            Free(nullptr, named);
+        }
+        StrFree(proxy);
         if (session.h) {
             WinHttpSetTimeouts(session.h, kHttpTimeoutMs, kHttpTimeoutMs,
                                kHttpTimeoutMs, kHttpTimeoutMs);

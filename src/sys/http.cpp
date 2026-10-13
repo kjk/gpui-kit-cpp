@@ -195,6 +195,23 @@ constexpr int kFetchSlots = 24;
 constexpr int kMaxConcurrent = 4;
 
 static FetchSlot gFetch[kFetchSlots];
+static Mutex gProxyLock;
+static Str gProxy;
+
+void HttpSetProxy(Str proxy) {
+    gProxyLock.Lock();
+    StrFree(gProxy);
+    gProxy = StrDup(StrTrim(proxy));
+    gProxyLock.Unlock();
+}
+
+Str HttpProxyDup() {
+    gProxyLock.Lock();
+    Str copy = StrDup(gProxy);
+    gProxyLock.Unlock();
+    return copy;
+}
+
 static Mutex gFetchLock;
 static int gFetchPending = 0;
 static int gFetchNext = 0;

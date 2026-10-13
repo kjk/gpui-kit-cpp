@@ -124,6 +124,16 @@ struct HttpReq {
 // has no blocking client, so there is no streaming there either.
 bool HttpSend(const HttpReq& req, HttpRsp* out);
 
+// The proxy every later HttpSend goes through. Empty: the platform's default,
+// as before (on Windows the machine's WinHTTP proxy). "system": the user's
+// own proxy settings (on Windows the ones of Internet Options, which is what
+// a proxy tool sets). "direct": none. Anything else is the proxy itself,
+// "host:port" or "http://host:port". Windows and Linux; elsewhere the system
+// decides. Any thread.
+void HttpSetProxy(Str proxy);
+// What HttpSetProxy last set, copied; the caller frees it.
+Str HttpProxyDup();
+
 // The two GETs the image path is written against, in terms of the above.
 bool HttpGet(Str url, HttpRsp* out);
 bool HttpGetNoRedirect(Str url, HttpRsp* out);
