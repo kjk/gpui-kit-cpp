@@ -130,9 +130,14 @@ bool HttpSend(const HttpReq& req, HttpRsp* out);
 // a proxy tool sets). "direct": none. Anything else is the proxy itself,
 // "host:port" or "http://host:port". Windows and Linux; elsewhere the system
 // decides. Any thread.
-void HttpSetProxy(Str proxy);
-// What HttpSetProxy last set, copied; the caller frees it.
+//
+// `direct` names hosts that are reached without a proxy that was given by
+// name, separated by commas, semicolons or spaces ("example.com *.cn"); this
+// machine is always among them.
+void HttpSetProxy(Str proxy, Str direct = {});
+// What HttpSetProxy last set, copied; the caller frees them.
 Str HttpProxyDup();
+Str HttpProxyDirectDup();
 
 // The two GETs the image path is written against, in terms of the above.
 bool HttpGet(Str url, HttpRsp* out);

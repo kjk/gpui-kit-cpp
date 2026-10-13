@@ -126,6 +126,25 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
             curl_easy_setopt(c, CURLOPT_PROXY, p);
             Free(nullptr, p);
         }
+        // the hosts the app names, and this machine, are reached directly
+        Str direct = HttpProxyDirectDup();
+        StrBuilder list;
+        list.Append(StrL("localhost,127.0.0.1,::1"));
+        int start = 0;
+        for (int i = 0; i <= len(direct); i++) {
+            char ch = i < len(direct) ? direct.s[i] : ',';
+            if (ch != ',' && ch != ';' && ch != ' ') {
+                continue;
+            }
+            if (i > start) {
+                list.AppendChar(',');
+                list.Append(Str(direct.s + start, i - start));
+            }
+            start = i + 1;
+        }
+        list.AppendChar(0);
+        curl_easy_setopt(c, CURLOPT_NOPROXY, list.els);
+        StrFree(direct);
     }
     StrFree(proxy);
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, noRedirect ? 0L : 1L);
