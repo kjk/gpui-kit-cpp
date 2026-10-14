@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a25598ede4a9081e435222749fc7d7d19cd39a0f` (2026-10-11,
-input: Run custom context menu builders after releasing the input (#3433)).
-A custom context menu builder runs after the right-click call returns, so
-it can read the caret, the selection and the text. The focus bookkeeping
-still follows the handler.
+Processed through `5e1da3124f023b8cf3457b00098ebd7a4d490c4c` (2026-10-11,
+motion: Keep cubic-bezier anticipation and overshoot in Easing (#3432)).
+A cubic-bezier easing with y controls outside 0..=1 can anticipate or
+overshoot. The public bezier solver still clamps, and opacity, colour,
+dialog entrance and the progress ring clamp at the call site.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

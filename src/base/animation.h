@@ -16,7 +16,14 @@ namespace gpui {
 // answer. Reading `t` as the parameter and taking `y` off it directly, which
 // is what this did before gpui-kit 5b3e18d1, makes every curve run
 // slower than the same control points do in a browser.
+//
+// The output stays in [0, 1]. A curve whose y controls leave that range is
+// sampled with UnclampedCubicBezier, which is what Easing::CubicBezier does.
 float CubicBezier(float x1, float y1, float x2, float y2, float t);
+// unclamped_cubic_bezier: the same solve, without the output clamp, so a y
+// control outside 0..=1 keeps its anticipation or overshoot. Input progress
+// is still clamped.
+float UnclampedCubicBezier(float x1, float y1, float x2, float y2, float t);
 
 // An easing curve. Rust takes `impl Fn(f32) -> f32`; the same thing here is a
 // function pointer, which is what lets a Motion be a POD.

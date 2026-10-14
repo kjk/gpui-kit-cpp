@@ -44,6 +44,9 @@ El* RenderResizeHandle(void*, const ResizeHandleContext* handle, Ctx* cx) {
     float opacity = MotionValue(
         cx, MotionName(cx, StrL("resizable-handle-indicator-opacity")),
         target.opacity, policy);
+    // An overshooting theme curve may carry the length past its target, but
+    // the opacity has to stay a valid alpha.
+    opacity = ClampF01(opacity);
 
     // The hairline fills the handle's content area exactly, so it has
     // nothing to give: shrinking it collapses the divider.

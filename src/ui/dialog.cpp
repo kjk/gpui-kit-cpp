@@ -21,7 +21,9 @@ static float DialogEase(float t) {
 static Easing gDialogEnterEase = Easing::EaseOut();
 
 static float DialogEnterEase(float t) {
-    return gDialogEnterEase.Sample(t);
+    // The delta drives opacity and shadow alpha, so an overshooting theme
+    // curve stays in range.
+    return ClampF01(gDialogEnterEase.Sample(t));
 }
 
 float DialogFadeSlideOffset(float top, float topLimit, float travel,

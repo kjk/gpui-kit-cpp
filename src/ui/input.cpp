@@ -2404,6 +2404,15 @@ struct InputGroupHost {
     }
 };
 
+// A colour cannot overshoot its target, so the theme curve is clamped.
+// MotionValue samples the ease before it returns, so the copy just before
+// the call is the one this frame uses.
+static Easing gInputGroupEase = Easing::EaseOut();
+
+static float InputGroupEase(float t) {
+    return ClampF01(gInputGroupEase.Sample(t));
+}
+
 El* InputGroup::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     InputState* state = nullptr;
@@ -2443,8 +2452,8 @@ El* InputGroup::IntoEl() {
     // The border and background colours transition, duration_fast along
     // easing_move, under the group's own id; the ring outside them changes
     // at once, like the standalone input's.
-    Motion fast = MotionNew(th.motion.durationFastMs)
-                      .Ease(th.motion.easingMove);
+    gInputGroupEase = th.motion.easingMove;
+    Motion fast = MotionNew(th.motion.durationFastMs).Ease(InputGroupEase);
     Rgba border = MotionValue(cx, MotionId(id, StrL("border-color")),
                               appearance.border, fast);
     Rgba background = MotionValue(cx, MotionId(id, StrL("background-color")),

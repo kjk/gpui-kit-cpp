@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a25598ede4a9081e435222749fc7d7d19cd39a0f",
+  sha: "5e1da3124f023b8cf3457b00098ebd7a4d490c4c",
   date: "2026-10-11",
-  subject: "input: Run custom context menu builders after releasing the input (#3433)",
+  subject: "motion: Keep cubic-bezier anticipation and overshoot in Easing (#3432)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

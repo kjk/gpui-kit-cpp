@@ -586,6 +586,23 @@ static void TheCssKeywordEasingsMatchTheirPublishedSamples() {
     utassertnear(Easing::EaseInOut().Sample(-1.f), 0.f);
 }
 
+// cubic_bezier_easing_keeps_anticipation_and_overshoot: y controls outside
+// 0..=1 leave the sample, and progress outside 0..=1 still pins the ends.
+// The public solver keeps its output in range.
+static void CubicBezierEasingKeepsAnticipationAndOvershoot() {
+    Easing anticipate = Easing::CubicBezier(1.f, -0.4f, 0.35f, 0.95f).Unwrap();
+    Easing overshoot = Easing::CubicBezier(0.175f, 0.885f, 0.32f, 1.275f)
+                           .Unwrap();
+    utassert(anticipate.Sample(0.2f) < 0.f);
+    utassert(overshoot.Sample(0.8f) > 1.f);
+    utassert(anticipate.Sample(-1.f) == 0.f);
+    utassert(anticipate.Sample(2.f) == 1.f);
+    utassert(overshoot.Sample(-1.f) == 0.f);
+    utassert(overshoot.Sample(2.f) == 1.f);
+    utassert(CubicBezier(1.f, -0.4f, 0.35f, 0.95f, 0.2f) >= 0.f);
+    utassert(CubicBezier(0.175f, 0.885f, 0.32f, 1.275f, 0.8f) <= 1.f);
+}
+
 // step_easing_observes_css_jump_positions.
 static void StepEasingObservesTheCssJumpPositions() {
     Easing start = Easing::Steps(4, StepPosition::JumpStart).Unwrap();
@@ -1275,6 +1292,7 @@ void TestMotion() {
     ACoarseEpsilonSettlesSooner();
     ASpringChecksItsPhysicalParameters();
     TheCssKeywordEasingsMatchTheirPublishedSamples();
+    CubicBezierEasingKeepsAnticipationAndOvershoot();
     StepEasingObservesTheCssJumpPositions();
     LinearStopsFillTheirOmittedPositions();
     ANegativeDelayStartsInsideTheActiveInterval();

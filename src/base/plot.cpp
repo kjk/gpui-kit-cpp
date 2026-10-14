@@ -1718,6 +1718,8 @@ bool TrackHover(Ctx* cx, const TooltipState* live, const Point* cursor,
     float progress = motion::transition(
         cx, motion::TransitionId(StrL("__plot-hover"), StrL("progress")),
         hovered ? 1.f : 0.f, hovered ? motion.Enter() : motion.Exit());
+    // The progress fades a presentation, so an overshooting curve is clamped.
+    progress = ClampF01(progress);
     if (live && cursor) {
         memory->state = *live;
         int n = live->dotCount;

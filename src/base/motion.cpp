@@ -172,7 +172,7 @@ float Easing::Sample(float progress) const {
         case EasingKind::EaseInOut:
             return gpui::CubicBezier(0.42f, 0.f, 0.58f, 1.f, progress);
         case EasingKind::CubicBezier:
-            return gpui::CubicBezier(x1, y1, x2, y2, progress);
+            return gpui::UnclampedCubicBezier(x1, y1, x2, y2, progress);
         case EasingKind::Steps: {
             float steps = (float)count;
             float jumps = steps;

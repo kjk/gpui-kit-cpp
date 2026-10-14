@@ -142,6 +142,10 @@ struct Easing {
     static EasingResult LinearStops(Arena* a, const LinearStop* stops,
                                     int32_t len);
 
+    // Map elapsed progress, clamped to 0..=1, through the curve. The output
+    // may leave that range: a cubic Bézier with y controls outside it
+    // anticipates or overshoots, and linear stops or a custom curve may do
+    // the same. Clamp the result where it drives an opacity or a colour.
     float Sample(float progress) const;
 
   private:

@@ -209,6 +209,9 @@ El* ProgressCircle::IntoEl() {
     } else {
         value = MotionValue(cx, MotionId(StrL("progress-circle"), id), value,
                             ProgressMotion(ThemeNow(cx->app)));
+        // An overshooting theme curve may carry the value past either end,
+        // but the ring cannot sweep more than once around.
+        value = ClampF(value, 0.f, 100.f);
         startValue = 0;
     }
     El* e = Div(a)

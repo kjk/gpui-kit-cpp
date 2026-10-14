@@ -10,9 +10,7 @@ float MotionAppear(Ctx* cx, uint32_t key, float durationMs, EaseFn ease);
 
 namespace gpui {
 
-// The same three-line clamp scrollbar.cpp and slider.cpp each keep: base has
-// no float clamp of its own, and one header for one expression is worse.
-float CubicBezier(float x1, float y1, float x2, float y2, float t) {
+float UnclampedCubicBezier(float x1, float y1, float x2, float y2, float t) {
     t = ClampF(t, 0.f, 1.f);
     // Polynomial form of the unit bezier, where p0 = (0, 0) and p3 = (1, 1).
     float cx = 3.f * x1;
@@ -64,6 +62,12 @@ float CubicBezier(float x1, float y1, float x2, float y2, float t) {
     return ((ay * s + by) * s + cy) * s;
 }
 
+float CubicBezier(float x1, float y1, float x2, float y2, float t) {
+    // with_easing feeds this to opacity. Solver error and an overshooting
+    // control point both stay inside [0, 1].
+    return ClampF01(UnclampedCubicBezier(x1, y1, x2, y2, t));
+}
+
 float EaseLinear(float t) {
     return ClampF(t, 0.f, 1.f);
 }
@@ -88,6 +92,8 @@ float EaseInOutCubic(float t) {
     return 1.f - (u * u * u) / 2.f;
 }
 
+// The same three-line clamp scrollbar.cpp and slider.cpp each keep: base has
+// no float clamp of its own, and one header for one expression is worse.
 float ClampF01(float t) {
     return ClampF(t, 0.f, 1.f);
 }
