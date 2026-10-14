@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `507e82b8115ac73af92b7d3856501f9d7b73b2c9` (2026-10-13,
-input: Skip the notify in `set_line_number` when nothing changes (#3475)).
-A code editor whose line numbers are already as asked does not notify.
-Any other layout mode still notifies, and changes nothing.
+Processed through `19603b13f7dea98be5ba4b8b7f050eec3f642cd2` (2026-10-13,
+input: Clamp the vertical scroll offset in all layout modes (#3477)).
+Layout clamps the vertical offset in every mode before it picks rows,
+including the room a code editor keeps below its last line. Folded code
+still measures scroll height from wrapped rows before folding.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

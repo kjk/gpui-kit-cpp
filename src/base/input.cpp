@@ -1925,6 +1925,19 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         float height = state->contentH > 0
                            ? state->contentH
                            : (float)InputLinesLen(state) * lineH;
+        // The placeholder frame scrolls too. An offset past the end would
+        // slide this spacer out of the box for the frame before the rows
+        // exist.
+        float vh = state->viewH;
+        float vhCap = 600.f;
+        if (cx->win && cx->win->paint.viewH > 0) {
+            vhCap = cx->win->paint.viewH;
+        }
+        if (vh <= 0 || vh > vhCap) {
+            vh = vhCap;
+        }
+        state->scrollY =
+            InputClampVerticalScrollOffset(state->scrollY, height, vh);
         return col->Child(Div(a)->H(height));
     }
 
@@ -2046,6 +2059,15 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (vh <= 0 || vh > vhCap) {
         vh = vhCap;
     }
+    // calculate_visible_range clamps before it picks rows, in every mode.
+    // The room a code editor keeps below its last line is part of that
+    // range. A target past the end used to paint an empty frame.
+    float emptyBottom =
+        InputEmptyBottomHeight(state->mode.kind == LayoutModeKind::CodeEditor,
+                               state->scrollBeyondLastLine, vh, lineH);
+    state->scrollY = InputClampVerticalScrollOffset(
+        state->scrollY, state->contentH + emptyBottom, vh);
+    state->contentH += emptyBottom;
     int firstRow = 0;
     int endRow = rows;
     float padTop = 0;
@@ -2118,13 +2140,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
         }
     }
-    // empty_bottom_height: extra scrollable space past the last line, so
-    // the caret can sit in the upper half of a code editor. Ghost lines
-    // are overlaid here rather than stacked, so they do not share this.
-    float emptyBottom =
-        InputEmptyBottomHeight(state->mode.kind == LayoutModeKind::CodeEditor,
-                               state->scrollBeyondLastLine, vh, lineH);
-    state->contentH += emptyBottom;
+    // empty_bottom_height was added to the scroll range above, before the
+    // rows were chosen. Ghost lines are overlaid here rather than stacked,
+    // so they do not share the row walk; the spacer still holds their room.
     padBottom += emptyBottom;
     if (padTop > 0) {
         col->Child(Div(a)->W(kFill)->Shrink0()->H(padTop));
@@ -3871,6 +3889,21 @@ int InputLineNumberLen(int totalLines) {
 
 int InputDisplayedLineNumber(int number) {
     return number > kMaxDisplayedLineNumber ? kMaxDisplayedLineNumber : number;
+}
+
+float InputClampVerticalScrollOffset(float scroll, float scrollHeight,
+                                     float viewportH) {
+    float most = scrollHeight - viewportH;
+    if (most < 0) {
+        most = 0;
+    }
+    if (scroll < 0) {
+        return 0;
+    }
+    if (scroll > most) {
+        return most;
+    }
+    return scroll;
 }
 
 float InputEmptyBottomHeight(bool isCodeEditor, int overrideRows,

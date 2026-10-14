@@ -5625,6 +5625,76 @@ static void SetLineNumberNotifiesOnlyOnChange() {
     TestAppFree(u.app);
 }
 
+// element.rs test_vertical_scroll_offset_is_clamped_to_current_viewport.
+// Rust's offset is negative-down, so each sample here is negated.
+static void VerticalScrollOffsetIsClampedToCurrentViewport() {
+    utassertnear(InputClampVerticalScrollOffset(260.f, 340.f, 160.f), 180.f);
+    utassertnear(InputClampVerticalScrollOffset(40.f, 340.f, 160.f), 40.f);
+    utassertnear(InputClampVerticalScrollOffset(-20.f, 340.f, 160.f), 0.f);
+    // Content shorter than the viewport stays at the top.
+    utassertnear(InputClampVerticalScrollOffset(40.f, 100.f, 160.f), 0.f);
+}
+
+struct ScrollClampRoot {
+    InputState input;
+
+    static El* Render(ScrollClampRoot* self, Ctx* cx) {
+        return Div(cx->a)->SizeFull()->Child(InputStateFrame(cx, &self->input));
+    }
+};
+
+static void FillNumberedLines(InputState* s, int n) {
+    StrBuilder text;
+    for (int ix = 1; ix <= n; ix++) {
+        if (ix > 1) {
+            text.AppendChar('\n');
+        }
+        text.Append(fmt("line %d", ix));
+    }
+    Str joined = text.TakeStr();
+    InputSetValue(s, joined);
+    StrFree(joined);
+}
+
+// element.rs set_scroll_offset_past_the_end_is_clamped. The target is stored
+// as given; layout clamps it before the rows are chosen.
+static void SetScrollOffsetPastTheEndIsClamped() {
+    App* app = TestAppNew();
+    Entity<ScrollClampRoot> root = EntityNew<ScrollClampRoot>(app);
+    InputState* s = &root.Get(app)->input;
+    s->kind = InputKind::Textarea;
+    FillNumberedLines(s, 40);
+    Window* win = TestWindowOpen(app, root, 240, 400);
+    TestRunUntilParked(app);
+    TestDraw(win);
+    s->scrollY = 10000.f;
+    TestDraw(win);
+    utassert(s->viewH > 0);
+    utassert(s->contentH > s->viewH);
+    utassertnear(s->scrollY, s->contentH - s->viewH);
+    TestAppFree(app);
+}
+
+// element.rs set_scroll_offset_past_the_end_is_clamped_in_a_code_editor.
+// The furthest offset includes the room below the last line.
+static void SetScrollOffsetPastTheEndIsClampedInACodeEditor() {
+    App* app = TestAppNew();
+    Entity<ScrollClampRoot> root = EntityNew<ScrollClampRoot>(app);
+    InputState* s = &root.Get(app)->input;
+    MakeCodeEditor(s);
+    FillNumberedLines(s, 40);
+    Window* win = TestWindowOpen(app, root, 240, 400);
+    TestRunUntilParked(app);
+    TestDraw(win);
+    s->scrollY = 10000.f;
+    TestDraw(win);
+    utassert(s->viewH > 0);
+    float furthest = s->contentH - s->viewH;
+    utassert(furthest > s->viewH);
+    utassertnear(s->scrollY, furthest);
+    TestAppFree(app);
+}
+
 // cursor_layout(): where the active caret was last laid out.
 struct CursorLayoutA {
     float x = 0;
@@ -6388,6 +6458,9 @@ static void RunWindowTestsA() {
     NoopScrollNotifiesDiagnosticDismissal();
     InputScrollOffsetNotifiesOnlyOnChange();
     SetLineNumberNotifiesOnlyOnChange();
+    VerticalScrollOffsetIsClampedToCurrentViewport();
+    SetScrollOffsetPastTheEndIsClamped();
+    SetScrollOffsetPastTheEndIsClampedInACodeEditor();
 }
 
 // ─── state.rs window tests, part B ──────────────────────────────────────

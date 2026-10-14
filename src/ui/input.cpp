@@ -1296,14 +1296,14 @@ El* Textarea::IntoEl() {
                   ->PadX(padX)
                   ->PadY(padY)
                   ->ClipY()
-                  // scroll_handle: the rows slide under the box as the caret
-                  // moves, and the wheel moves them too.
-                  ->ScrollY(state ? state->scrollY : 0)
                   // The bar drag finds the box again by this id in the
                   // frame that is on screen; the box is already named, so
                   // its place in the tree is what it is found by.
                   ->ScrollFromPath()
-                  ->Child(gpui::Textarea::New(cx, state, editor));
+                  // The rows clamp the offset, including a target past the
+                  // end, so the box has to read it after they are built.
+                  ->Child(gpui::Textarea::New(cx, state, editor))
+                  ->ScrollY(state ? state->scrollY : 0);
     if (interactive) InputTrackFrameFocus(cx, box, state);
     if (accessibilityId.s) {
         box->AccessibilityId(accessibilityId);

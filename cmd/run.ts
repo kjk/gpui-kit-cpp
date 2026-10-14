@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "507e82b8115ac73af92b7d3856501f9d7b73b2c9",
+  sha: "19603b13f7dea98be5ba4b8b7f050eec3f642cd2",
   date: "2026-10-13",
-  subject: "input: Skip the notify in `set_line_number` when nothing changes (#3475)",
+  subject: "input: Clamp the vertical scroll offset in all layout modes (#3477)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",
