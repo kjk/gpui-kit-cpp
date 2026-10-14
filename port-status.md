@@ -16,15 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `595266ce6e7055502ea400f4e2925723fc5b1a66` (2026-10-14,
-shell: Fix the runtime gaps found by the gpui-shell benchmark apps (#3505)).
-The runtime now has TextEncoder and TextDecoder, `process.env` and
-`process.dataDir`, `os.homedir`, `import.meta.url`, `fs` stat, lstat,
-rename and readlink, a default fetch User-Agent, `Type.new` on every
-component export, and `InputState.on`. A manifest expands `${homeDir}`
-and refuses the other home spellings. The shell typings were
-regenerated. Website and install docs from this checkin are not
-ported.
+Processed through `72747eeb9dc702fbd7f016cfec8f168477bfe06b` (2026-10-14,
+shell: Strip symbols from release builds (#3507)). Cargo's release
+profile now strips the symbol table. This tree's release builds keep a
+PDB on Windows and `-g` on Linux and macOS, so nothing else changes.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
