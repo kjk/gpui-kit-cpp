@@ -21,6 +21,13 @@ const float kMessageScrollerBottomFadeTransitionMs = 200.f;
 // measurement of the visible range.
 const float kMessageScrollerEstimatedRowHeight = 64.f;
 
+// gpui::ListOffset: the row at the top of a list, and how far into that
+// row the viewport has scrolled.
+struct ListOffset {
+    int itemIx = 0;
+    float offsetInItem = 0;
+};
+
 // The entity-owned scrolling state for a MessageScroller.
 //
 // The state owns only the virtual-list bookkeeping; message data stays with
@@ -46,6 +53,11 @@ struct MessageScrollerState {
     bool IsScrolledUp() const;
     // Whether the list is actively following its tail.
     bool IsFollowingTail() const;
+    // The row at the top of the viewport and how far into it the list is
+    // scrolled. A wheel, the scrollbar and ScrollToItem set it at once.
+    // ScrollToEnd and tail following settle it when the list next lays out;
+    // until then itemIx is ItemCount().
+    ListOffset LogicalScrollTop() const;
 
     // Reset the list to `itemCount` rows.
     void Reset(Ctx* cx, int itemCount);

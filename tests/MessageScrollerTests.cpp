@@ -30,8 +30,16 @@ static void TheStateSplicesScrollsAndFollowsItsTail() {
     utassert(state.ScrollToItem(nullptr, 2));
     utassert(!state.IsScrolledUp());
     utassert(!state.IsFollowingTail());
+    // scroll_to_item sets the row at once, before a layout moves the pixels.
+    ListOffset jumped = state.LogicalScrollTop();
+    utassert(jumped.itemIx == 2);
+    utassertnear(jumped.offsetInItem, 0.f);
     state.ScrollToEnd(nullptr);
     utassert(state.IsFollowingTail());
+    // Right after scroll_to_end the anchor is past the last row.
+    ListOffset end = state.LogicalScrollTop();
+    utassert(end.itemIx == state.ItemCount());
+    utassertnear(end.offsetInItem, 0.f);
     state.Reset(nullptr, 2);
     utassert(state.ItemCount() == 2);
     utassert(state.IsFollowingTail());
@@ -177,10 +185,56 @@ static void AScrollerWithoutAHeightFillsItsBox() {
     ArenaDelete(a);
 }
 
+// test_logical_scroll_top_reports_the_row_at_the_top. A 30-row scroller in a
+// 400px box. Each row is 40px plus the 32px gap after every row but the last.
+struct LogicalTopView {
+    Entity<MessageScrollerState> state;
+
+    static El* Row(void*, Ctx* cx, int) { return Div(cx->a)->H(40); }
+
+    static El* Render(LogicalTopView* self, Ctx* cx) {
+        return Div(cx->a)->W(400)->H(400)->Child(
+            MessageScroller::New(cx, StrL("messages"), self->state, &Row,
+                                 nullptr)
+                ->Scrollbar(false)
+                ->JumpButton(false)
+                ->IntoEl());
+    }
+};
+
+static void TheLogicalScrollTopReportsTheRowAtTheTop() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<LogicalTopView> view = EntityNew<LogicalTopView>(app);
+    LogicalTopView* self = view.Get(app);
+    self->state = EntityNewState<MessageScrollerState>(app);
+    MessageScrollerState::Init(self->state.Get(app), 30);
+    Window* win = TestWindowOpen(app, view, 400, 400, 1);
+    TestDraw(win);
+
+    MessageScrollerState* st = self->state.Get(app);
+    // Following the tail, layout settles on the row the tail starts on.
+    ListOffset tail = st->LogicalScrollTop();
+    utassert(tail.itemIx > 0 && tail.itemIx < 30);
+
+    utassert(st->ScrollToItem(nullptr, 10));
+    TestDraw(win);
+    utassert(st->LogicalScrollTop().itemIx == 10);
+
+    // A wheel scroll by one row: its 40px and the 32px gap after it.
+    TestSimulateScrollWheel(win, Point{200, 200}, Point{0, -72});
+    ListOffset after = st->LogicalScrollTop();
+    utassert(after.itemIx == 11);
+    utassertnear(after.offsetInItem, 0.f);
+
+    TestAppFree(app);
+}
+
 void TestMessageScroller() {
     TestSuite("message_scroller");
     TheStateSplicesScrollsAndFollowsItsTail();
     ASpliceKeepsTheSurvivingRowHeights();
     TheBuilderCarriesEveryOption();
     AScrollerWithoutAHeightFillsItsBox();
+    TheLogicalScrollTopReportsTheRowAtTheTop();
 }

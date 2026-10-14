@@ -16,12 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `61a01b93109a5c3bd826764af4469b269c980523` (2026-10-13,
-input: Let `Editor` take a size, as `Textarea` does (#3480)).
-Editor takes the same size tiers as Input and Textarea. The tier changes
-the padding around the code. The code font and line height stay. An
-editor with no size keeps the medium insets. The website notes are not
-ported.
+Processed through `b02dc60cf898cbb755a8974984e369755d7ae3d5` (2026-10-13,
+message_scroller: Add `logical_scroll_top` to read the reading position
+(#3485)).
+`MessageScrollerState::LogicalScrollTop` reports the row at the top of
+the viewport and the offset into it. A wheel, the scrollbar and
+`ScrollToItem` set it at once. `ScrollToEnd` and tail following settle
+it at the next layout; until then the row index is the item count.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

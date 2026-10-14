@@ -24,6 +24,9 @@ void MessageScrollerState::Init(MessageScrollerState* self, int itemCount) {
     self->handle = VirtualListScrollHandle{};
     self->handle.itemsCount = itemCount;
     self->followTail = true;
+    // Tail following anchors past the last row until a layout walks back to
+    // the row the viewport actually starts on. Same anchor scroll_to_end sets.
+    VirtualListScrollToBottomDeferred(&self->handle);
 }
 
 int MessageScrollerState::ItemCount() const {
@@ -32,6 +35,31 @@ int MessageScrollerState::ItemCount() const {
 
 bool MessageScrollerState::IsFollowingTail() const {
     return followTail;
+}
+
+ListOffset MessageScrollerState::LogicalScrollTop() const {
+    ListOffset top;
+    // A deferred tail scroll has not been applied yet: GPUI reports
+    // item_count until layout replaces that anchor with a real row.
+    // ScrollToItem's request is the row itself, before the pixel offset moves.
+    if (handle.pending) {
+        if (followTail) {
+            top.itemIx = heights.len;
+            return top;
+        }
+        int ix = handle.pendingIx + handle.pendingOffset;
+        if (ix < 0) {
+            ix = 0;
+        }
+        if (ix > heights.len) {
+            ix = heights.len;
+        }
+        top.itemIx = ix;
+        return top;
+    }
+    VirtualListLogicalFromPixel(heights.els, heights.len, 0, handle.offset,
+                                &top.itemIx, &top.offsetInItem);
+    return top;
 }
 
 bool MessageScrollerState::IsScrolledUp() const {
@@ -139,8 +167,22 @@ bool MessageScrollerState::ScrollToItem(Ctx* cx, int index) {
     if (index < 0 || index >= heights.len) {
         return false;
     }
+    // ListState::scroll_to pins the row to the top. The virtual list's
+    // deferred request only reveals it, and a remeasure then leaves the
+    // offset on the estimate. The pixel anchor is the row's origin now;
+    // layout's anchor adjustment keeps that row at the top once its
+    // neighbors are measured. Pending stays clear so that adjustment runs.
     followTail = false;
-    VirtualListScrollToItemDeferred(&handle, index, ScrollStrategy::Top);
+    handle.pending = false;
+    float origin = VirtualListItemOrigin(heights.els, heights.len, index);
+    float most = handle.contentSize - handle.viewport;
+    if (handle.contentSize > 0 && handle.viewport > 0 && origin > most) {
+        origin = most > 0.f ? most : 0.f;
+    }
+    if (origin < 0) {
+        origin = 0;
+    }
+    handle.offset = origin;
     if (cx) {
         Notify(cx);
     }
@@ -160,6 +202,9 @@ void MessageScrollerState::OnScroll(MessageScrollerState* self, Ctx* cx,
     if (!self || !ev) {
         return;
     }
+    // A wheel or scrollbar move replaces a scroll that layout has not
+    // applied yet, the way ListState::scroll_by replaces logical_scroll_top.
+    self->handle.pending = false;
     self->handle.offset = ev->offsetY;
     // Scrolling away from the live edge releases tail following; arriving
     // back at it resumes, which is what FollowMode::Tail does.
