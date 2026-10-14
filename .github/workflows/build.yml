@@ -165,21 +165,24 @@ jobs:
 
       # windows-latest carries clang 20.1.8, which miscompiles the shell's
       # suspend_never coroutines at /O2 and strands their task registry slots.
-      # Windows PowerShell does not fail a step when a native command returns
-      # non-zero, so a Chocolatey 504 used to leave 20.1.8 in place and the
-      # suite then ran on the compiler this job exists to avoid.
+      # community.chocolatey.org returns 504 and then exits 0 ("llvm was not
+      # found"), so a choco retry never ran and the image compiler stayed.
+      # The official installer is the pin. 3010 is a successful install that
+      # wants a reboot; the new clang-cl is already on disk.
       - name: Install clang-cl 22
         if: matrix.name == 'windows-clang-mini-all-backends'
         shell: powershell
         run: |
-          $installed = $false
-          for ($try = 1; $try -le 3; $try++) {
-            choco upgrade llvm --version=22.1.7 --yes --no-progress
-            if ($LASTEXITCODE -eq 0) { $installed = $true; break }
-            Write-Host "choco upgrade llvm 22.1.7 failed with exit $LASTEXITCODE (try $try of 3)"
-            Start-Sleep -Seconds (20 * $try)
+          $ver = "22.1.7"
+          $installer = Join-Path $env:RUNNER_TEMP "LLVM-$ver-win64.exe"
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$ver/LLVM-$ver-win64.exe"
+          curl.exe -fL --retry 5 --retry-all-errors --retry-delay 10 -o $installer $url
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $proc = Start-Process -FilePath $installer -ArgumentList "/S" -Wait -PassThru
+          if ($null -eq $proc.ExitCode -or ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010)) {
+            Write-Host "LLVM installer exited $($proc.ExitCode)"
+            exit 1
           }
-          if (-not $installed) { exit 1 }
           $version = & "$env:ProgramFiles\LLVM\bin\clang-cl.exe" --version 2>&1 | Out-String
           Write-Host $version
           if ($version -notmatch "22\.1\.7") {
