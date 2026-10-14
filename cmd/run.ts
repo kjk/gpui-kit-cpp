@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "9c4b175c6b7716d9df141544db6f6c4880501a78",
+  sha: "0bbd9870ce420af9feacbf948b21d3824d82dc0b",
   date: "2026-10-09",
-  subject: "menu: Focus a context menu before its first frame (#3422)",
+  subject: "text: Preserve logical selection across presentation changes (#3421)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

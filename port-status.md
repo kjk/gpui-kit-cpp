@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9c4b175c6b7716d9df141544db6f6c4880501a78` (2026-10-09,
-menu: Focus a context menu before its first frame (#3422)).
-Opening a context menu focuses it before the frame that draws it, so
-that frame has one accessibility focus. Hovering another item takes
-focus back when that hover closes a submenu the keyboard had entered.
-Focus the application moves off an open menu stays where it was moved.
+Processed through `0bbd9870ce420af9feacbf948b21d3824d82dc0b` (2026-10-09,
+text: Preserve logical selection across presentation changes (#3421)).
+A finished text selection is already a pair of document offsets, so a
+style, width, font, or origin change leaves the same characters
+selected. A new drag or an explicit clear still replaces it, and
+replacing the source still drops it.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
