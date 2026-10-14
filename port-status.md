@@ -16,13 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `16e963c6f4053399f609dbe93317b22f5e46e199` (2026-10-13,
-shell: Ship gpui-shell as an installable runtime with run, new and packaging (#3464)).
-The host runs an installed name, a `--dir` path, or the application packaged
-beside the executable, and `new`, `list` and `agents` scaffold and describe
-one. A manifest `window` sets the opening size, the catalog draws a
-`TitleBar`, and a failed load stays on screen with a copy button. Release
-packaging, the install script and the website are not ported.
+Processed through `a1ac7d963e8d8a1daa6cd2ba4fc8ee7384b98f7f` (2026-10-13,
+shell: Show each release's Shell pages for the binary it ships (#3479)).
+The website and the release workflow snapshot each shell binary's pages.
+Neither is ported.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
