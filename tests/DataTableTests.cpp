@@ -691,6 +691,34 @@ static void TableRetainsNavigationPositionsWhenSelectionModeChanges() {
     utassert(TableSelectedRow(&s) == -1);
 }
 
+// table_home_and_end_select_the_first_and_last_row (crates/kit/tests)
+static void TableHomeAndEndSelectTheFirstAndLastRow() {
+    TableState s;
+    s.rowCount = 200;
+    s.colCount = 2;
+    Ctx cx = {};
+    // A click on row 1, then End and Home walk the rows.
+    TableSetSelectedRow(&s, &cx, 1);
+    TablePerform(&s, &cx, TableAction::SelectLast);
+    utassert(TableSelectedRow(&s) == 199);
+    TablePerform(&s, &cx, TableAction::SelectFirst);
+    utassert(TableSelectedRow(&s) == 0);
+
+    // A selected column still moves to the first or last column.
+    TableSetSelectedCol(&s, &cx, 0);
+    TablePerform(&s, &cx, TableAction::SelectLast);
+    utassert(TableSelectedCol(&s) == 1);
+
+    // Without selectable rows, Home and End move the column as before.
+    TableState plain;
+    plain.rowCount = 200;
+    plain.colCount = 2;
+    plain.rowSelectable = false;
+    TablePerform(&plain, &cx, TableAction::SelectLast);
+    utassert(TableSelectedCol(&plain) == 1);
+    utassert(TableSelectedRow(&plain) == -1);
+}
+
 static void KeyboardLeavesRowsAloneWhenTheyAreNotSelectable() {
     TableState s;
     s.rowCount = 100;
@@ -1197,6 +1225,7 @@ void TestDataTable() {
     KeyboardLeavesRowsAloneWhenTheyAreNotSelectable();
     TableSelectionGettersFollowTheActiveMode();
     TableRetainsNavigationPositionsWhenSelectionModeChanges();
+    TableHomeAndEndSelectTheFirstAndLastRow();
     ARightClickMarksARowOrACellButNeverBoth();
     ARightClickedCellClearsOnTheNextClick();
     ACellIsOneNumber();

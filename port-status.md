@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `29eaf422f97ad6096f0a9372f314084100fddfff` (2026-10-13,
-sidebar: Name the submenu caret button for assistive tech (#3470)).
-The submenu caret is named "Toggle {label} submenu". The design-guide
-notes are documentation and are not ported.
+Processed through `7f1bf0c2ee83b4b882cbdcfe3171349b2247c370` (2026-10-13,
+table: Select the first or last row on Home and End in row mode (#3471)).
+In row mode Home and End select the first or last row. Column mode, cell
+mode, and a table whose rows are not selectable still move by column.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

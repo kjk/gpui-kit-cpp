@@ -456,10 +456,12 @@ void TablePerform(TableState* s, Ctx* cx, TableAction act) {
             }
             break;
         case TableAction::SelectFirst:
-            // Home and End are the first and last column, not the first and
-            // last row.
+            // Cell mode stays on the current row. A selected row goes to the
+            // first row, as in a list. Anything else is the first column.
             if (cellMode) {
                 TableSetSelectedCell(s, cx, s->selectedCellRow, 0);
+            } else if (s->mode == TableSelectionMode::Row && s->rowSelectable) {
+                TableSetSelectedRow(s, cx, 0);
             } else {
                 TableSetSelectedCol(s, cx, 0);
             }
@@ -468,6 +470,8 @@ void TablePerform(TableState* s, Ctx* cx, TableAction act) {
             if (cellMode) {
                 TableSetSelectedCell(s, cx, s->selectedCellRow,
                                      s->colCount - 1);
+            } else if (s->mode == TableSelectionMode::Row && s->rowSelectable) {
+                TableSetSelectedRow(s, cx, last);
             } else {
                 TableSetSelectedCol(s, cx, s->colCount - 1);
             }
