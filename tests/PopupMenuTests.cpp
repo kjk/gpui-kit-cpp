@@ -728,6 +728,106 @@ static void LongPressOnBlankSpaceInATextTriggerOpensTheMenu() {
     TestAppFree(app);
 }
 
+// crates/component/src/menu/context_menu.rs
+// menu_takes_focus_before_its_first_frame. The frame that draws the menu
+// must begin with focus already on the menu. Recording it at the start of
+// render is the stand-in for the accessibility node a frame may claim once.
+struct FocusRecordingMenu {
+    FocusHandle contentFocus = {};
+    bool contentFocusedAtRender = false;
+    Entity<PopupMenuState> menu;
+
+    static El* Render(FocusRecordingMenu* self, Ctx* cx) {
+        self->contentFocusedAtRender =
+            FocusHandleIsFocused(cx->win, self->contentFocus);
+        PopupMenu* menu = PopupMenu::New(cx, StrL("close-menu"))
+                              ->Menu(StrL("Close"));
+        self->menu = menu->state;
+        El* content = Div(cx->a)
+                          ->Id(StrL("content"))
+                          ->H(40)
+                          ->W(kFill)
+                          ->TrackFocus(self->contentFocus);
+        El* tab = Div(cx->a)->Id(StrL("tab"))->H(60)->W(kFill);
+        return Div(cx->a)->SizeFull()->FlexCol()->Child(content)->Child(
+            ContextMenu::New(cx, StrL("tab-menu"))
+                ->Child(tab)
+                ->Menu(menu)
+                ->IntoEl());
+    }
+};
+
+static void MenuTakesFocusBeforeItsFirstFrame() {
+    App* app = TestAppNew();
+    Entity<FocusRecordingMenu> view = EntityNew<FocusRecordingMenu>(app);
+    FocusRecordingMenu* root = view.Get(app);
+    root->contentFocus = FocusHandleNew(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    FocusHandleFocus(win, root->contentFocus);
+    TestDraw(win);
+    utassert(root->contentFocusedAtRender);
+
+    // The tab sits under the 40px content row. (50, 70) is inside it.
+    TestSimulateMouseDown(win, {50, 70}, MouseButton::Right);
+    utassert(!root->contentFocusedAtRender);
+    PopupMenuState* menu = root->menu.Get(app);
+    utassert(menu && menu->open);
+    utassert(menu && FocusHandleIsFocused(win, menu->focus));
+    utassert(!FocusHandleIsFocused(win, root->contentFocus));
+    TestAppFree(app);
+}
+
+// crates/kit/tests/menu.rs
+// hovering_away_from_a_keyboard_entered_submenu_refocuses_its_parent.
+// Entering a submenu with the keyboard and then pointing at another parent
+// item closes the submenu while it still holds focus. The parent takes that
+// focus back, so Escape still dismisses the menu.
+struct SubmenuHoverMenu {
+    Entity<PopupMenuState> menu;
+    Entity<PopupMenuState> submenu;
+
+    static El* Render(SubmenuHoverMenu* self, Ctx* cx) {
+        PopupMenu* sub = PopupMenu::New(cx, StrL("submenu"))
+                             ->Menu(StrL("Save copy"));
+        PopupMenu* menu = PopupMenu::New(cx, StrL("parent-menu"))
+                              ->Menu(StrL("Copy"))
+                              ->Submenu(StrL("More"), sub);
+        self->menu = menu->state;
+        self->submenu = sub->state;
+        El* tab = Div(cx->a)->Id(StrL("tab"))->H(80)->W(320);
+        return Div(cx->a)->SizeFull()->Child(ContextMenu::New(cx, StrL("wrap"))
+                                                 ->Child(tab)
+                                                 ->Menu(menu)
+                                                 ->IntoEl());
+    }
+};
+
+static void HoveringAwayFromAKeyboardEnteredSubmenuRefocusesItsParent() {
+    App* app = TestAppNew();
+    Entity<SubmenuHoverMenu> view = EntityNew<SubmenuHoverMenu>(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestSimulateMouseDown(win, {40, 40}, MouseButton::Right);
+    SubmenuHoverMenu* self = view.Get(app);
+    PopupMenuState* menu = self->menu.Get(app);
+    PopupMenuState* sub = self->submenu.Get(app);
+    utassert(menu && menu->open);
+
+    TestSimulateKeystrokes(win, "down down right");
+    utassert(menu->openSubmenu == 1);
+    utassert(FocusHandleContainsFocused(win, sub->focus));
+
+    Bounds box = menu->bounds;
+    utassert(box.h > 20);
+    TestSimulateMouseMove(win, {box.x + 12, box.y + 17});
+    utassert(menu->openSubmenu < 0);
+    utassert(FocusHandleContainsFocused(win, menu->focus));
+    utassert(!FocusHandleContainsFocused(win, sub->focus));
+
+    TestSimulateKeystrokes(win, "escape");
+    utassert(!menu->open);
+    TestAppFree(app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     TheWalkStepsOverWhatCannotBeClicked();
@@ -746,6 +846,8 @@ void TestPopupMenu() {
     LongPressOnTextInAContextMenuTriggerSelects();
     LongPressOnBlankSpaceInATextTriggerOpensTheMenu();
     NestedContextMenuUsesTheInnermostRightClick();
+    MenuTakesFocusBeforeItsFirstFrame();
+    HoveringAwayFromAKeyboardEnteredSubmenuRefocusesItsParent();
     AppMenuBarBindsAndHandlesItsSourceActions();
     RootPopupPropagatesUnusedHorizontalActionsToTheMenuBar();
     OpenWithoutDismissReleasesTheMenu();

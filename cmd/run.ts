@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "37cad320d4ac8950e6fc40a38b8cb6251079a133",
+  sha: "9c4b175c6b7716d9df141544db6f6c4880501a78",
   date: "2026-10-09",
-  subject: "table: Allow a header row height separate from the body (#3420)",
+  subject: "menu: Focus a context menu before its first frame (#3422)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

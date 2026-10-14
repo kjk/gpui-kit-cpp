@@ -238,6 +238,11 @@ El* PopupMenu::IntoEl() {
     PopupMenuState* s = state.Get(cx);
     int selected = s ? s->selected : -1;
     int openSubmenu = s ? s->openSubmenu : -1;
+    // Filled again below if a submenu of this menu is on screen. A hover
+    // between frames reads the handle the last frame recorded.
+    if (s) {
+        s->submenuFocus = {};
+    }
     // has_left_icon: the gutter exists only if some row needs it, so a menu
     // of plain labels is not indented for nothing.
     bool leftGutter = false;
@@ -552,6 +557,9 @@ El* PopupMenu::IntoEl() {
                 subState->side = s->side;
             }
             El* sub = it.submenu->IntoEl();
+            if (s && subState && subState->focus.IsValid()) {
+                s->submenuFocus = subState->focus;
+            }
             sub->Absolute()->Top(-Rems(cx, 0.25f)); // top_neg_1
             if (s && SideIsLeft(s->side)) {
                 sub->Right(menuW - 8);
@@ -712,16 +720,22 @@ static void ContextMenuOpenAt(ContextMenuState* self, Ctx* cx, float x, float y,
     menu->x = self->position.x;
     menu->y = self->position.y;
     PopupMenuOpen(menu, cx);
+    if (!menu->focus.IsValid()) {
+        menu->focus = FocusHandleNew(cx);
+    }
     // Keep the field's selection and ring while this menu has focus. The
     // caret stays with the field. An explicit action target would win; this
     // menu's target is the key context, so the press has to land in the field.
     InputState* field = cx->win ? cx->win->input : nullptr;
     if (field && field->focused && field->inputBounds.Contains({x, y})) {
-        if (!menu->focus.IsValid()) {
-            menu->focus = FocusHandleNew(cx);
-        }
         field->SetSelectionFocus(menu->focus);
     }
+    // Focus before the menu's first frame, not while building it: a frame
+    // reports one focused accessibility node, and the element that held
+    // focus may already have claimed it by the time the menu is drawn.
+    // Doing this on every frame used to pull focus back whenever the
+    // application moved it off the open menu.
+    FocusHandleFocus(cx->win, menu->focus);
 }
 
 void ContextMenuState::OnMouseDown(ContextMenuState* self, Ctx* cx,

@@ -329,6 +329,22 @@ void PopupMenuState::OnContextDown(PopupMenuState* self, Ctx* cx,
     PopupMenuOpen(self, cx);
 }
 
+// Pointing at a different row closes the open submenu. When the keyboard
+// had moved focus into that submenu, take it back before the row changes,
+// or Escape and the arrows land on a menu that is no longer on screen.
+static void RefocusLeavingSubmenu(PopupMenuState* self, Ctx* cx, int ix) {
+    if (!self || !cx || !cx->win || self->selected == ix) {
+        return;
+    }
+    if (!FocusHandleContainsFocused(cx->win, self->submenuFocus)) {
+        return;
+    }
+    if (!self->focus.IsValid()) {
+        self->focus = FocusHandleNew(cx);
+    }
+    FocusHandleFocus(cx->win, self->focus);
+}
+
 void PopupMenuState::OnItemHover(PopupMenuState* self, Ctx* cx,
                                  const HoverEvent* ev, int64_t ix) {
     // The hovered row is the selected one; leaving it deselects, unless it is
@@ -337,6 +353,7 @@ void PopupMenuState::OnItemHover(PopupMenuState* self, Ctx* cx,
     // A key press ends hover under a still pointer; keep the highlight then,
     // so the next arrow key moves on from this item (popup_menu.rs).
     if (ev->hovered) {
+        RefocusLeavingSubmenu(self, cx, (int)ix);
         self->selected = (int)ix;
         self->openSubmenu = -1;
     } else if (self->selected == (int)ix && self->openSubmenu != (int)ix &&
@@ -358,6 +375,7 @@ void PopupMenuState::OnSubmenuHover(PopupMenuState* self, Ctx* cx,
     // Rust renders a submenu as soon as its row becomes selected. Keep it
     // selected while the pointer crosses from the row into the child menu.
     if (ev->hovered) {
+        RefocusLeavingSubmenu(self, cx, (int)ix);
         self->selected = (int)ix;
         self->openSubmenu = (int)ix;
         Notify(cx);

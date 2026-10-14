@@ -87,6 +87,10 @@ struct PopupMenuState {
     // so it is the right thing to own a handle.
     FocusHandle focus = {};
     FocusHandle previousFocus = {};
+    // The open submenu's focus, recorded while that submenu is built.
+    // Hovering a different row closes it; if the keyboard had moved focus
+    // into it, the parent takes focus back in the same turn (popup_menu.rs).
+    FocusHandle submenuFocus = {};
     // Registered on the trigger's dispatch path without taking focus. The
     // trigger existed in the previous frame, so context-scoped shortcut hints
     // can resolve on the first frame this menu appears.

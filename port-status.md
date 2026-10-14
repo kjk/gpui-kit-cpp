@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `37cad320d4ac8950e6fc40a38b8cb6251079a133` (2026-10-09,
-table: Allow a header row height separate from the body (#3420)).
-`header_row_height` sets each header row, including column-group rows,
-apart from the body row height. Unset, header rows keep the body
-height. Page Up and Page Down step by how many body rows fit under
-that header band.
+Processed through `9c4b175c6b7716d9df141544db6f6c4880501a78` (2026-10-09,
+menu: Focus a context menu before its first frame (#3422)).
+Opening a context menu focuses it before the frame that draws it, so
+that frame has one accessibility focus. Hovering another item takes
+focus back when that hover closes a submenu the keyboard had entered.
+Focus the application moves off an open menu stays where it was moved.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
