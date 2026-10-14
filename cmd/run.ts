@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d23fdc9248968125fa7f9c6a01a5e38383391170",
+  sha: "20676e3228e81867b0fff9a209499b1a11f8d408",
   date: "2026-10-14",
-  subject: "tooltip: Fix direction-dependent switching between triggers (#3501)",
+  subject: "shell: Fix a Wayland crash when activating the window at launch (#3508)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

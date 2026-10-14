@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d23fdc9248968125fa7f9c6a01a5e38383391170` (2026-10-14,
-tooltip: Fix direction-dependent switching between triggers (#3501)).
-A move between tooltip triggers is one hover target here, so the new
-tooltip is shown without a leave from the previous trigger cancelling
-it. Press-dismissal is unchanged. The headless tests cover both
-directions and a switch during the show delay.
+Processed through `20676e3228e81867b0fff9a209499b1a11f8d408` (2026-10-14,
+shell: Fix a Wayland crash when activating the window at launch (#3508)).
+Upstream moved launch activation off a deferred effect so a Wayland
+portal callback does not re-enter the client it still holds. This
+shell already posts activation onto the executor queue after the
+window opens, and the Linux window is X11.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
