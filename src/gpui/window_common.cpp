@@ -2802,23 +2802,27 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
         }
         VecReset(chain);
     }
-    // A multi-line field takes the wheel before anything around it, the way
-    // the editor's own scroll handle does in Rust.
+    // The field under the pointer takes the wheel before anything around it,
+    // the way its on_scroll_wheel does in Rust. It keeps the wheel when its
+    // offset moved, and also when the text has room to scroll on that axis,
+    // even where the text already ends. A single-line field still passes a
+    // mostly vertical wheel through.
     InputState* field = InputAtPosition(&win->paint, in.x, in.y);
-    if (field && InputIsMultiLine(field)) {
-        bool canY = field->contentH > field->viewH;
-        // A field that does not wrap scrolls sideways too, and a wheel with
-        // no sideways delta over one that can only go that way is read as
-        // one, the way a scrolled box reads it.
-        bool canX = field->contentW > field->viewW;
+    if (field) {
         float dx = in.deltaX;
         float dy = in.deltaY;
-        if (canX && !canY && dx == 0) {
-            dx = dy;
-            dy = 0;
+        if (InputIsMultiLine(field)) {
+            bool canY = field->contentH > field->viewH;
+            // A field that does not wrap scrolls sideways too, and a wheel
+            // with no sideways delta over one that can only go that way is
+            // read as one, the way a scrolled box reads it. A single-line
+            // field does not: a vertical wheel over wide text stays vertical.
+            bool canX = field->contentW > field->viewW;
+            if (canX && !canY && dx == 0) {
+                dx = dy;
+                dy = 0;
+            }
         }
-        // on_scroll_wheel: the field keeps the wheel only when its offset
-        // moved; a clamped one lets it on to what is around the field.
         if (InputOnScrollWheel(field, win->app, win, dx, dy, in.phase)) {
             AppInvalidate(win);
             return;

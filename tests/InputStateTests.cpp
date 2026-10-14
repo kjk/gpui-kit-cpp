@@ -5533,6 +5533,124 @@ static uint64_t NotificationsA(const UnrenderedInputA& u) {
     return u.win->invalidations;
 }
 
+// textarea.rs scrolling_page: a field partway down a page that scrolls.
+struct ScrollingPage {
+    InputState text;
+    float pageY = 0;
+    bool single = false;
+
+    static void OnPageScroll(ScrollingPage* self, Ctx*, const ScrollEvent* ev) {
+        if (ev) {
+            self->pageY = ev->offsetY;
+        }
+    }
+
+    static El* Render(ScrollingPage* self, Ctx* cx) {
+        El* field = nullptr;
+        if (self->single) {
+            field = component::Input::New(cx, StrL("input"), &self->text)
+                        ->W(160)
+                        ->IntoEl();
+        } else {
+            self->text.kind = InputKind::Textarea;
+            field = component::Textarea::New(cx, StrL("text"), &self->text)
+                        ->H(160)
+                        ->IntoEl();
+        }
+        field->Shrink0();
+        return Div(cx->a)
+            ->PathId(StrL("page"))
+            ->SizeFull()
+            ->FlexCol()
+            ->ScrollY(self->pageY)
+            ->OnScroll(Listen(cx, &ScrollingPage::OnPageScroll))
+            ->Child(Div(cx->a)->H(120)->Shrink0())
+            ->Child(field)
+            ->Child(Div(cx->a)->H(1200)->Shrink0());
+    }
+};
+
+static Window* OpenScrollingPage(App** appOut, ScrollingPage** pageOut,
+                                 Str value, bool single) {
+    App* app = TestAppNew();
+    ThemeSet(app, ThemeMode::Light);
+    Entity<ScrollingPage> root = EntityNew<ScrollingPage>(app);
+    ScrollingPage* page = root.Get(app);
+    page->single = single;
+    if (!single) {
+        page->text.kind = InputKind::Textarea;
+    }
+    InputSetValue(&page->text, value);
+    Window* win = TestWindowOpen(app, root, 480, 480);
+    *appOut = app;
+    *pageOut = page;
+    return win;
+}
+
+// One scroll packet over the field, after the pointer moves onto it.
+static void ScrollOverField(Window* win, InputState* text, float dx, float dy) {
+    Bounds b = text->inputBounds;
+    Point at = {b.x + b.w * 0.5f, b.y + b.h * 0.5f};
+    TestSimulateMouseMove(win, at);
+    TestSimulateScrollWheel(win, at, Point{dx, dy});
+}
+
+static Str FortyLines(StrBuilder* b) {
+    b->Reset();
+    for (int i = 0; i < 40; i++) {
+        b->Append(fmt("line %d\n", i));
+    }
+    return Str(b->els, len(*b));
+}
+
+// textarea.rs scrolling_past_the_end_of_a_textarea_does_not_scroll_the_page.
+static void ScrollingPastTheEndOfATextareaDoesNotScrollThePage() {
+    StrBuilder lines;
+    App* app = nullptr;
+    ScrollingPage* page = nullptr;
+    Window* win = OpenScrollingPage(&app, &page, FortyLines(&lines), false);
+    utassert(page->text.inputBounds.h > 0);
+    utassert(page->text.contentH > page->text.viewH);
+    // A swipe that runs far past the end of the text, then its momentum.
+    ScrollOverField(win, &page->text, 0, -40);
+    ScrollOverField(win, &page->text, 0, -2000);
+    float end = page->text.scrollY;
+    utassert(end > 0);
+    ScrollOverField(win, &page->text, 0, 0);
+    ScrollOverField(win, &page->text, 0, -300);
+    // A wheel flick, or a new swipe, that starts at the end.
+    ScrollOverField(win, &page->text, 0, -40);
+    ScrollOverField(win, &page->text, 0, -40);
+    utassertnear(page->text.scrollY, end);
+    utassertnear(page->pageY, 0);
+    TestAppFree(app);
+}
+
+// textarea.rs scrolling_over_a_textarea_whose_text_fits_scrolls_the_page.
+static void ScrollingOverATextareaWhoseTextFitsScrollsThePage() {
+    App* app = nullptr;
+    ScrollingPage* page = nullptr;
+    Window* win = OpenScrollingPage(&app, &page, StrL("one line"), false);
+    utassert(page->text.contentH <= page->text.viewH);
+    ScrollOverField(win, &page->text, 0, -40);
+    utassert(page->pageY > 0);
+    TestAppFree(app);
+}
+
+// textarea.rs scrolling_vertically_over_a_single_line_input_scrolls_the_page.
+static void ScrollingVerticallyOverASingleLineInputScrollsThePage() {
+    App* app = nullptr;
+    ScrollingPage* page = nullptr;
+    Window* win = OpenScrollingPage(
+        &app, &page, StrL("a value much wider than the input it sits in"),
+        true);
+    // A trackpad swipe that is mostly vertical still drifts sideways, here
+    // toward the start the text already sits at.
+    ScrollOverField(win, &page->text, 2, -40);
+    utassert(page->pageY > 0);
+    TestAppFree(app);
+}
+
 // state.rs test_noop_scroll_notifies_diagnostic_dismissal. The scroll size
 // and input bounds Rust seeds are the content and view extents the port
 // clamps against.
@@ -6455,6 +6573,9 @@ static void RunWindowTestsA() {
     ClickingBesideCodeActionMenuDismissesIt();
     InlineTokenEditHistoryAndValidation();
     InlineTokenTextareaImeAndModes();
+    ScrollingPastTheEndOfATextareaDoesNotScrollThePage();
+    ScrollingOverATextareaWhoseTextFitsScrollsThePage();
+    ScrollingVerticallyOverASingleLineInputScrollsThePage();
     NoopScrollNotifiesDiagnosticDismissal();
     InputScrollOffsetNotifiesOnlyOnChange();
     SetLineNumberNotifiesOnlyOnChange();

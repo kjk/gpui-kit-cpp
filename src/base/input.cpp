@@ -4109,6 +4109,19 @@ bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
     return true;
 }
 
+// overflows_along: the text has room to scroll on the axis `delta` mostly
+// moves on. A trackpad swipe drifts off its axis, so the drift alone does
+// not claim the scroll. scroll_size and input_bounds are the content and
+// view extents this port clamps against.
+static bool InputOverflowsAlong(const InputState* s, float dx, float dy) {
+    float ax = dx < 0 ? -dx : dx;
+    float ay = dy < 0 ? -dy : dy;
+    if (ay >= ax) {
+        return InputIsMultiLine(s) && dy != 0 && s->contentH > s->viewH;
+    }
+    return s->contentW > s->viewW;
+}
+
 bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
                         float dy, TouchPhase phase) {
     if (!s) {
@@ -4128,7 +4141,10 @@ bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
     // The handles follow the text; the menu would sit over whatever scrolls
     // underneath it, so it steps aside until the finger lifts.
     InputEditMenuOnScroll(s, app, win, phase);
-    return moved;
+    // Text that has room to scroll keeps a scroll over it even where the
+    // text ends, so reaching the end does not scroll the region around the
+    // input. Text that fits leaves the scroll to that region.
+    return moved || InputOverflowsAlong(s, dx, dy);
 }
 
 void InputScrollToOffset(InputState* s, int offset, InputMoveDir dir) {

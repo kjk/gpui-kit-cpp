@@ -5456,8 +5456,9 @@ bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
                              const Point* offset);
 // on_scroll_wheel: the wheel's delta in pixels, applied through
 // update_scroll_offset. A diagnostic popover is put away (and notified) even
-// when the clamp kept the offset. True when the offset moved, which is when
-// the wheel stops at this field rather than going on to what is around it.
+// when the clamp kept the offset. True when the offset moved, or when the
+// text has room to scroll along the axis the wheel mostly moves on, so a
+// field that can scroll keeps the wheel even at its end.
 // `phase` is the wheel's touch phase: a finger scrolling the field steps the
 // touch selection's edit menu aside until it lifts (edit_menu_on_scroll).
 bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,

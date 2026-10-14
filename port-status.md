@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9fdc9d757683425a91e5e11c9fd695b92d8afca4` (2026-10-13,
-input: Expose the editor display map instead of a row count wrapper (#3495)).
-`InputDisplayMap` is the read-only display map. Wrapped rows are
-`InputWrapRowCount` on that map, and `InputPrewrap` still fills them
-for a font and width before the first layout.
+Processed through `4ee820106ac5a081d43f37aef484b407324344c7` (2026-10-13,
+input: Keep a scroll over text that can scroll, even at its end (#3484)).
+A textarea or editor whose text can scroll keeps the wheel even at its
+end. Text that fits, and a mostly vertical wheel over a single-line
+field, still scroll the page around the field.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
