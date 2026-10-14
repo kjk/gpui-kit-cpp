@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ce09848c9dcf3f1a01bebef98d584f8df523a5a7` (2026-10-13,
-table: Don't stop event propagation in `set_selected_row` (#3469)).
-Selecting a row no longer ends the event. The row click and the row
-header click stop it, so a header click still selects once and a cell
-press that selects its row still lets the table take focus.
+Processed through `29eaf422f97ad6096f0a9372f314084100fddfff` (2026-10-13,
+sidebar: Name the submenu caret button for assistive tech (#3470)).
+The submenu caret is named "Toggle {label} submenu". The design-guide
+notes are documentation and are not ported.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

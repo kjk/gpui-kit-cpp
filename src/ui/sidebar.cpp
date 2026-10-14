@@ -237,6 +237,9 @@ El* SidebarMenuItem::IntoEl(Str id) {
                                   : IconName::ChevronRight)
                     ->Ghost()
                     ->WithSize(UiSize::XSmall)
+                    // The caret is icon-only, so assistive tech needs the
+                    // item it toggles: "Toggle {label} submenu".
+                    ->AccessibilityLabel(fmt("Toggle %s submenu", label))
                     ->OnClick(ListenTo(st, &SidebarMenuState::OnCaretClick))
                     ->IntoEl()
                     // "without being a click on the item" is what

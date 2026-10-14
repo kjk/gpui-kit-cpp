@@ -318,6 +318,36 @@ static void ItemsCarryTheirAccessibleNames() {
     ArenaDelete(a);
 }
 
+static El* FindId(El* root, const char* name) {
+    if (!root) return nullptr;
+    if (root->id.s && base::StrEq(root->id, name)) return root;
+    for (El* c = root->first; c; c = c->next) {
+        if (El* hit = FindId(c, name)) return hit;
+    }
+    return nullptr;
+}
+
+// menu.rs `submenu_caret_is_named_after_the_item`: the icon-only caret is
+// named for the item it opens.
+static void SubmenuCaretIsNamedAfterTheItem() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Window win;
+    win.app = &app;
+    Ctx cx = {&app, &win, a, {}};
+    El* item = SidebarMenuItem::New(&cx, StrL("Projects"))
+                   ->Child(SidebarMenuItem::New(&cx, StrL("Overview")))
+                   ->IntoEl(StrL("projects"));
+    El* caret = FindId(item, "caret");
+    utassert(caret && base::StrEq(caret->accessibility.label,
+                                  StrL("Toggle Projects submenu")));
+    WindowKeyedFree(&win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestSidebar() {
     TestSuite("sidebar");
     BoolCollapsibleRemainsBackwardCompatible();
@@ -330,4 +360,5 @@ void TestSidebar() {
     HeaderFooterAndMenuRetainTheirBuilderSurface();
     CollapsedTooltipRequiresAnIconAndContentScrolls();
     ItemsCarryTheirAccessibleNames();
+    SubmenuCaretIsNamedAfterTheItem();
 }
