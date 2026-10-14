@@ -1,4 +1,5 @@
 #include "shell/watch.h"
+#include "shell/root.h"
 
 #include <string.h>
 
@@ -211,6 +212,22 @@ static void SourceScanDone(SourceScanJob* job) {
             WindowCancelTimer(watcher->window, watcher->timer);
             watcher->timer = 0;
         }
+        if (watcher->error.IsSet()) {
+            // The watcher itself stopped. A failed reload belongs on the
+            // view; this one belongs to no view, because edits no longer
+            // reach the window at all.
+            logf("source watch stopped: %s\n", watcher->error.message);
+            Ctx cx = {job->app, job->window, job->window->frameArena,
+                      watcher->view};
+            ToastRequest toast;
+            toast.title = StrL("Stopped watching for changes");
+            toast.description = watcher->error.message;
+            toast.level = ToastLevel::Error;
+            toast.hasTimeout = false;
+            toast.hasId = true;
+            toast.id = StrL("shell-watch");
+            ShellRootPushToast(&cx, toast);
+        }
         delete job;
         return;
     }
@@ -233,12 +250,14 @@ static void SourceScanDone(SourceScanJob* job) {
     ShellError reload = {};
     if (!ScriptView::Reload(view, &cx, watcher->directory, watcher->entry,
                             &reload)) {
-        ShellErrorClear(&watcher->error);
-        watcher->error = reload;
-        reload = {};
-        if (watcher->error.IsSet()) log(watcher->error.message);
+        // The view keeps running its previous code, so this is a failure
+        // of the view and takes the banner ahead of a render error.
+        if (reload.IsSet()) logf("reload failed: %s\n", reload.message);
+        ScriptView::SetReloadError(view, &cx, reload.message);
+        ShellErrorClear(&reload);
         return;
     }
+    ScriptView::SetReloadError(view, &cx, {});
     ShellErrorClear(&watcher->error);
 }
 

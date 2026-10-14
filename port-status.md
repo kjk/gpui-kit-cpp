@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `20676e3228e81867b0fff9a209499b1a11f8d408` (2026-10-14,
-shell: Fix a Wayland crash when activating the window at launch (#3508)).
-Upstream moved launch activation off a deferred effect so a Wayland
-portal callback does not re-enter the client it still holds. This
-shell already posts activation onto the executor queue after the
-window opens, and the Linux window is X11.
+Processed through `607f589aa45b4708bd8fd09aec361363c0a48cb7` (2026-10-14,
+shell: Fold script failures to one line and explain what failed (#3509)).
+A script failure is one line over the last working view, with the stack
+behind Details, and a reload failure takes that banner instead of a
+toast. Interrupt limits are watchdogs (render 2s, event and task 5s,
+module load 10s) and the report names what was stopped.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

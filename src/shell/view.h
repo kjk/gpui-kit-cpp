@@ -1,6 +1,7 @@
 #ifndef GPUI_SHELL_VIEW_H_
 #define GPUI_SHELL_VIEW_H_
 
+#include "shell/failure.h"
 #include "shell/materialize.h"
 #include "base/number_input.h"
 #include "base/popover.h"
@@ -80,6 +81,12 @@ struct ScriptView {
     Vec<RenderSnapshot*> frameSnapshots;
     Policy* policy = nullptr;
     ShellError error = {};
+    // A failed rebuild leaves the last snapshot up. This is that failure,
+    // separate from anything materialize writes into `error` afterwards.
+    bool renderBroken = false;
+    // Why the latest source reload failed. It takes the banner ahead of a
+    // render error, which describes code the author has already edited away.
+    ShellError reloadError = {};
     EntityId self = {};
     // The palette revision the current snapshot resolved its colors against.
     // A theme change reaches every description, and nothing else would notify
@@ -95,6 +102,12 @@ struct ScriptView {
     static void Refresh(ScriptView* self, Ctx* cx);
     static bool Reload(ScriptView* self, Ctx* cx, Str directory, Str entry,
                        ShellError* error = nullptr);
+    // Records, or clears, why the latest reload of this view's source failed.
+    static void SetReloadError(ScriptView* self, Ctx* cx, Str message);
+    static void OnFailureToggle(ScriptView* self, Ctx* cx,
+                                const ClickEvent* event, int64_t slot);
+    static void OnFailureCopy(ScriptView* self, Ctx* cx,
+                              const ClickEvent* event, int64_t slot);
 
     static void OnClick(ScriptView* self, Ctx* cx, const ClickEvent* event,
                         int64_t callback);

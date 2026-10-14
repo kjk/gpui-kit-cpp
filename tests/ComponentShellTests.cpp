@@ -7209,7 +7209,7 @@ void CheckReportsLoadAndRenderFailuresWithoutHanging() {
          "export default class App extends View {\n"
          "  render() { while (true) {} }\n"
          "}\n",
-         "interrupted"},
+         "render() ran for 2 s without returning and was stopped."},
     };
     for (const Case& c : cases) {
         TempApp dir(Str(c.source));

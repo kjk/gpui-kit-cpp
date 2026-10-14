@@ -394,6 +394,7 @@ struct ShellRuntimeImpl {
     uint64_t interruptIdentity = UINT64_MAX;
     double interruptStarted = 0;
     bool interruptWasScoped = false;
+    bool interruptWarned = false;
     uint32_t tokenFrame = 0;
     // The component catalog this runtime was built with, or null for the
     // bare runtime. Borrowed: a catalog is frozen static data that outlives
@@ -1213,6 +1214,11 @@ static void BeginExecution(ShellRuntimeImpl* impl) {
     if (impl->detachedExecution == 0) impl->detachedExecution++;
 }
 
+// QuickJS reports a cut-off as a bare "interrupted". The handler is the
+// only place that knows the phase and the budget, so it leaves them here
+// for the error report. One slot per thread, as the engine's own handler is.
+static ScriptInterruption gInterruption;
+
 static int Interrupt(JSRuntime*, void* opaque) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)opaque;
     uint64_t generation = shell::ScopeCurrentGeneration();
@@ -1223,48 +1229,141 @@ static int Interrupt(JSRuntime*, void* opaque) {
         impl->interruptIdentity = identity;
         impl->interruptWasScoped = scoped;
         impl->interruptStarted = TimeNow();
+        impl->interruptWarned = false;
+        // An interrupt nobody reported belongs to a call that is over.
+        gInterruption.set = false;
     }
-    double budget = 5.0;
-    if (scoped) {
-        ScopePhase phase = shell::ScopeCurrentPhase();
-        budget = phase == ScopePhase::Render || phase == ScopePhase::Layout
-                     ? 0.050
-                     : 0.500;
+    ScopePhase phase = scoped ? shell::ScopeCurrentPhase() : ScopePhase::Render;
+    // Watchdogs for a script that never returns, not a frame budget. A
+    // slow call that finishes only costs frames; cutting it off loses the
+    // render. A call that is merely slow is logged while it still runs.
+    double budget = 10.0;
+    double warnAfter = 1.0;
+    if (scoped &&
+        (phase == ScopePhase::Render || phase == ScopePhase::Layout)) {
+        budget = 2.0;
+        warnAfter = 0.100;
+    } else if (scoped) {
+        budget = 5.0;
     }
-    return TimeNow() - impl->interruptStarted > budget;
+    double elapsed = TimeNow() - impl->interruptStarted;
+    if (!impl->interruptWarned && elapsed > warnAfter) {
+        impl->interruptWarned = true;
+        char over[32];
+        char stop[32];
+        SpokenDuration(warnAfter, over, (int)sizeof(over));
+        SpokenDuration(budget, stop, (int)sizeof(stop));
+        const char* which = scoped ? ScopePhaseName(phase) : "module";
+        logf(
+            "a script %s call has run for over %s; it will be stopped at "
+            "%s\n",
+            Str(which), Str(over), Str(stop));
+    }
+    bool expired = elapsed > budget;
+    if (expired) {
+        gInterruption.set = true;
+        gInterruption.scoped = scoped;
+        gInterruption.phase = phase;
+        gInterruption.budget = budget;
+    }
+    return expired;
 }
 
+static Str JsText(Arena* arena, JSContext* ctx, JSValue value) {
+    size_t n = 0;
+    const char* text = JS_ToCStringLen(ctx, &n, value);
+    Str out;
+    if (text) {
+        out = StrDup(arena, Str(text, (int)n));
+        JS_FreeCString(ctx, text);
+    }
+    return out;
+}
+
+static Str JsProp(Arena* arena, JSContext* ctx, JSValue object,
+                  const char* name) {
+    JSValue value = JS_GetPropertyStr(ctx, object, name);
+    Str out;
+    if (!JS_IsException(value) && !JS_IsUndefined(value) && !JS_IsNull(value))
+        out = JsText(arena, ctx, value);
+    JS_FreeValue(ctx, value);
+    return out;
+}
+
+static bool StackBlank(Str text) {
+    for (int i = 0; i < len(text); i++) {
+        char c = text.s[i];
+        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') return false;
+    }
+    return true;
+}
+
+// One line that says what happened, then the script stack. The first line
+// is what a failure surface shows collapsed, so a value that is not an
+// Error is described in words rather than dumped.
 static Str ExceptionText(Arena* arena, JSContext* ctx) {
     JSValue exception = JS_GetException(ctx);
     StrBuilder out(arena);
-    size_t messageLen = 0;
-    const char* message = JS_ToCStringLen(ctx, &messageLen, exception);
-    Str messageText;
-    if (message) {
-        messageText = StrDup(arena, Str(message, (int)messageLen));
-        out.Append(messageText);
-        JS_FreeCString(ctx, message);
-    } else {
-        out.Append(StrL("JavaScript exception"));
-    }
     if (JS_IsError(exception)) {
-        JSValue stack = JS_GetPropertyStr(ctx, exception, "stack");
-        if (!JS_IsException(stack) && !JS_IsUndefined(stack)) {
-            size_t stackLen = 0;
-            const char* text = JS_ToCStringLen(ctx, &stackLen, stack);
-            if (text && stackLen > 0) {
-                Str stackText(text, (int)stackLen);
-                if (!messageText || !StrStartsWith(stackText, messageText)) {
-                    out.AppendChar('\n');
-                    out.Append(stackText);
-                } else if ((int)stackLen > (int)messageLen) {
-                    out.Append(Str(text + messageLen,
-                                   (int)stackLen - (int)messageLen));
-                }
-                JS_FreeCString(ctx, text);
+        Str raw = JsProp(arena, ctx, exception, "message");
+        if (!raw) raw = JsText(arena, ctx, exception);
+        Str explained = ExplainInterruption(arena, raw, &gInterruption);
+        if (explained) {
+            out.Append(explained);
+        } else {
+            Str name = JsProp(arena, ctx, exception, "name");
+            if (name && !raw) {
+                out.Append(name);
+            } else if (name && !StrEq(name, StrL("Error"))) {
+                out.Append(name);
+                out.Append(StrL(": "));
+                if (raw) out.Append(raw);
+            } else if (!raw) {
+                out.Append(StrL("Error"));
+            } else {
+                out.Append(raw);
             }
         }
-        JS_FreeValue(ctx, stack);
+        Str stack = JsProp(arena, ctx, exception, "stack");
+        if (stack && !StackBlank(stack)) {
+            Str frames = stack;
+            if (raw && StrStartsWith(stack, raw)) {
+                frames = Str(stack.s + len(raw), len(stack) - len(raw));
+            }
+            Str tidy = TidyStack(arena, frames);
+            if (tidy && !StackBlank(tidy)) {
+                out.AppendChar('\n');
+                out.Append(tidy);
+            }
+        }
+    } else if (JS_IsString(exception)) {
+        Str text = JsText(arena, ctx, exception);
+        out.Append(text ? text : StrL("JavaScript exception"));
+    } else if (JS_IsNull(exception) || JS_IsUndefined(exception)) {
+        out.Append(StrL("A script threw "));
+        out.Append(JS_IsNull(exception) ? StrL("null") : StrL("undefined"));
+        out.Append(
+            StrL(" instead of an Error.\n"
+                 "Throw an Error with a message so the failure says what went "
+                 "wrong and where."));
+    } else {
+        JSValue json =
+            JS_JSONStringify(ctx, exception, JS_UNDEFINED, JS_UNDEFINED);
+        Str text;
+        if (!JS_IsException(json) && !JS_IsUndefined(json) && !JS_IsNull(json))
+            text = JsText(arena, ctx, json);
+        JS_FreeValue(ctx, json);
+        if (!text) {
+            text =
+                StrDup(arena, JS_IsFunction(ctx, exception) ? StrL("function")
+                                                            : StrL("object"));
+        }
+        out.Append(StrL("A script threw "));
+        out.Append(text);
+        out.Append(
+            StrL(" instead of an Error.\n"
+                 "Throw an Error with a message so the failure says what went "
+                 "wrong and where."));
     }
     JS_FreeValue(ctx, exception);
     return out.TakeStr();

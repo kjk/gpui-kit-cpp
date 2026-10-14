@@ -22,6 +22,7 @@ ScriptView::~ScriptView() {
     ViewTypeRelease(type);
     PolicyRelease(policy);
     ShellErrorClear(&error);
+    ShellErrorClear(&reloadError);
     if (runtime) runtime->Release();
 }
 
@@ -73,23 +74,52 @@ El* ScriptView::Render(ScriptView* self, Ctx* cx) {
             if (self->snapshot) self->snapshot->Release();
             self->snapshot = next;
             self->dirty = false;
+            self->renderBroken = false;
             ShellErrorClear(&self->error);
+        } else {
+            self->renderBroken = true;
         }
     }
-    if (self->snapshot) {
+    bool reloadFailed = self->reloadError.IsSet();
+    bool renderFailed =
+        self->renderBroken || (!self->snapshot && self->error.IsSet());
+    ViewFailure failure =
+        reloadFailed ? ViewFailure::Reload : ViewFailure::Render;
+    Str message = reloadFailed ? self->reloadError.message
+                  : self->error.IsSet()
+                      ? self->error.message
+                      : StrL("The shell view did not publish a snapshot");
+    if (self->snapshot && !reloadFailed && !renderFailed) {
         return ShellMaterialize(cx, self->runtime, self->snapshot,
                                 &self->error);
     }
-    Str message = self->error.IsSet()
-                      ? self->error.message
-                      : StrL("The shell view did not publish a snapshot");
-    return Div(cx->a)
-        ->FlexCol()
-        ->SizeFull()
-        ->Pad(16)
-        ->Gap(8)
-        ->Child(TextEl(cx->a, StrL("JavaScript application error"))->Bold())
-        ->Child(TextEl(cx->a, message)->Wrap());
+    // Keep the script's message: materialize writes its own into the
+    // error it is given, and a banner must not lose the throw.
+    ShellError scratch = {};
+    ShellError* into = reloadFailed || renderFailed ? &scratch : &self->error;
+    if (self->snapshot) {
+        El* kept = ShellMaterialize(cx, self->runtime, self->snapshot, into);
+        ShellErrorClear(&scratch);
+        // An element is relative unless it says Absolute, which is Rust's
+        // `.relative()`: the banner's absolute box is placed against the
+        // view that is still on screen.
+        return Div(cx->a)->SizeFull()->Child(kept)->Child(
+            ShellErrorBanner(cx, failure, message));
+    }
+    ShellErrorClear(&scratch);
+    return ShellErrorOverlay(cx, failure, message);
+}
+
+void ScriptView::SetReloadError(ScriptView* self, Ctx* cx, Str message) {
+    if (!self) return;
+    bool clear = !message;
+    bool same = clear ? !self->reloadError.IsSet()
+                      : self->reloadError.IsSet() &&
+                            StrEq(self->reloadError.message, message);
+    if (same) return;
+    ShellErrorClear(&self->reloadError);
+    if (!clear) ShellErrorSet(&self->reloadError, message);
+    if (cx) Notify(cx);
 }
 
 void ScriptView::Refresh(ScriptView* self, Ctx* cx) {
@@ -127,7 +157,9 @@ bool ScriptView::Reload(ScriptView* self, Ctx* cx, Str directory, Str entry,
     self->type = nextType;
     self->snapshot = nullptr;
     self->dirty = true;
+    self->renderBroken = false;
     ShellErrorClear(&self->error);
+    ShellErrorClear(&self->reloadError);
     if (oldObject) self->runtime->ReleaseApplicationState(oldObject);
     if (oldSnapshot) oldSnapshot->Release();
     ViewObjectRelease(oldObject);

@@ -5067,6 +5067,144 @@ static void ShellTextCodingAndProcessSurface() {
     AppGlobalClear(&app);
 }
 
+// crates/shell runtime FailureText, tidy_stack, and describe_value.
+static void ScriptFailuresFoldToOneLine() {
+    Arena* arena = ArenaNew();
+    FailureText split = FailureTextParse(
+        arena, StrL("interrupted\n    at walk (scan.js:1:2)\n"));
+    utassert(StrEq(split.summary, StrL("interrupted")));
+    utassert(StrEq(split.detail, StrL("    at walk (scan.js:1:2)")));
+    utassert(split.expandable);
+    FailureText shortText = FailureTextParse(arena, StrL("a short message"));
+    utassert(!shortText.detail);
+    utassert(!shortText.expandable);
+
+    StrBuilder longLine(arena);
+    for (int i = 0; i < 97; i++) longLine.AppendChar('a');
+    FailureText longText = FailureTextParse(arena, longLine.TakeStr());
+    utassert(!longText.detail);
+    utassert(longText.expandable);
+
+    Str stack = StrL(
+        "    at walk (/app/lib/scan.js?v=1:237:72)\n"
+        "    at walk (/app/lib/scan.js?v=1:237:72)\n"
+        "    at walk (/app/lib/scan.js?v=1:237:72)\n"
+        "    at render (/app/main.js?v=12:870:21)\n");
+    Str tidy = TidyStack(arena, stack);
+    const char* folded =
+        "    at walk (/app/lib/scan.js:237:72) \xC3\x97"
+        "3\n"
+        "    at render (/app/main.js:870:21)";
+    utassert(StrEq(tidy, Str(folded)));
+    utassert(StrEq(TidyStack(arena, StrL("    at f (/app/query.js?v=:1:2)")),
+                   StrL("    at f (/app/query.js?v=:1:2)")));
+
+    char cwd[kMaxPath];
+    PlatGetCwd(cwd, kMaxPath);
+    StrBuilder forward(arena);
+    forward.Append(Str(cwd));
+    forward.Append(StrL("/src/main.js:12: unexpected token"));
+    FailureText relative = FailureTextParse(arena, forward.TakeStr());
+    utassert(StrEq(relative.summary, StrL("src/main.js:12: unexpected token")));
+    StrBuilder backward(arena);
+    backward.Append(Str(cwd));
+    backward.Append(StrL("\\src\\main.js:12: unexpected token"));
+    relative = FailureTextParse(arena, backward.TakeStr());
+    utassert(
+        StrEq(relative.summary, StrL("src\\main.js:12: unexpected token")));
+    FailureText external =
+        FailureTextParse(arena, StrL("/opt/runtime/internal.js:3: host error"));
+    utassert(StrEq(external.summary,
+                   StrL("/opt/runtime/internal.js:3: host error")));
+
+    char spoken[32];
+    SpokenDuration(0.020, spoken, (int)sizeof(spoken));
+    utassert(StrEq(Str(spoken), StrL("20 ms")));
+    SpokenDuration(0.100, spoken, (int)sizeof(spoken));
+    utassert(StrEq(Str(spoken), StrL("100 ms")));
+    SpokenDuration(1, spoken, (int)sizeof(spoken));
+    utassert(StrEq(Str(spoken), StrL("1 s")));
+    SpokenDuration(2, spoken, (int)sizeof(spoken));
+    utassert(StrEq(Str(spoken), StrL("2 s")));
+
+    ScriptInterruption slot = {};
+    utassert(!ExplainInterruption(arena, StrL("interrupted"), &slot));
+    slot.set = true;
+    slot.scoped = true;
+    slot.phase = ScopePhase::Render;
+    slot.budget = 2;
+    utassert(!ExplainInterruption(arena, StrL("nope"), &slot));
+    utassert(slot.set);
+    Str explained = ExplainInterruption(arena, StrL("interrupted"), &slot);
+    utassert(StrContains(explained, StrL("render() ran for 2 s")));
+    utassert(StrContains(explained,
+                         StrL("move slow work such as scanning or parsing")));
+    utassert(!slot.set);
+    utassert(!ExplainInterruption(arena, StrL("interrupted"), &slot));
+    ArenaDelete(arena);
+}
+
+static void ScriptThrowsSayWhatWasThrown() {
+    struct Case {
+        const char* expr;
+        const char* first;
+    };
+    const Case cases[] = {
+        {"null", "A script threw null instead of an Error."},
+        {"undefined", "A script threw undefined instead of an Error."},
+        {"({ code: 7 })", "A script threw {\"code\":7} instead of an Error."},
+        {"'plain text'", "plain text"},
+    };
+    App app;
+    Window window;
+    window.app = &app;
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    utassert(runtime != nullptr);
+    if (!runtime) {
+        AppGlobalClear(&app);
+        return;
+    }
+    for (const Case& c : cases) {
+        ShellErrorClear(&error);
+        Str source =
+            StrDup(fmt("import { View, div } from 'gpui';\n"
+                       "export default class Main extends View {\n"
+                       "  render() { throw %s; }\n"
+                       "}\n",
+                       Str(c.expr)));
+        ViewType* type = runtime->LoadSource(StrL("thrown.js"), source, &error);
+        ViewObject* object =
+            type ? runtime->Instantiate(type, &window, &app, nullptr, &error)
+                 : nullptr;
+        RenderSnapshot* snapshot =
+            object ? runtime->BuildSnapshot(object, &window, &app, {}, nullptr,
+                                            &error)
+                   : nullptr;
+        int line = 0;
+        if (error.IsSet()) {
+            while (line < len(error.message) && error.message.s[line] != '\n')
+                line++;
+        }
+        if (!error.IsSet() ||
+            !StrEq(Str(error.message.s, line), Str(c.first))) {
+            fprintf(stderr, "thrown %s -> %.*s\n", c.expr,
+                    error.IsSet() ? len(error.message) : 0,
+                    error.IsSet() && error.message.s ? error.message.s : "");
+        }
+        utassert(snapshot == nullptr);
+        utassert(error.IsSet());
+        utassert(StrEq(Str(error.message.s, line), Str(c.first)));
+        delete snapshot;
+        ViewObjectRelease(object);
+        ViewTypeRelease(type);
+        StrFree(source);
+    }
+    runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
 void TestShellCore() {
     TestSuite("shell_core");
     BridgedValuesMatchJavaScriptConversions();
@@ -5082,6 +5220,8 @@ void TestShellCore() {
     ScriptThemesAndOpenUrlsFollowHostScopeRules();
     RuntimeLoadsRendersAndRetiresCallbacks();
     RuntimeAbortsFailedSnapshotTransactions();
+    ScriptFailuresFoldToOneLine();
+    ScriptThrowsSayWhatWasThrown();
     ShellTemplatesRecordOnceAndFillPerCall();
     ShellStructureFingerprintsCountRepeatedShapes();
     RuntimeLoadsOnlyModulesInsideTheApplicationRoot();
