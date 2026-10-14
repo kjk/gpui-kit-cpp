@@ -1935,6 +1935,14 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
     float y = in.y;
     win->mouseX = x;
     win->mouseY = y;
+    // The press ends on the first move outside the trigger. A removed
+    // trigger never reports a hover-leave, so this is the window's, and a
+    // move that is still inside — hover also drops while the button is
+    // held — leaves the dismissal in place.
+    if (win->tooltipPressedTrigger.w >= 0 && !win->tooltipPressedTrigger
+                                                  .Contains({x, y})) {
+        win->tooltipPressedTrigger.w = -1;
+    }
     // Back to mouse modality. The hover id is 0 since the key press, so the
     // hit test below finds the element as newly entered, tooltip and all.
     if (win->lastInputKeyboard) {
@@ -2006,8 +2014,18 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         // that happens here, since the trigger is a style flag rather than an
         // element that could carry handlers of its own.
         if (tip.s) {
-            TooltipRequestShow(win, tip, tipAt, tipPlacement, tipRoot,
-                               tipDelay);
+            // A press keeps the tooltip dismissed until the pointer leaves
+            // the trigger. This also drops the hover-enter that a click
+            // removing the trigger dispatches to the stale frame.
+            bool held = win->tooltipPressedTrigger.w >= 0 &&
+                        win->tooltipPressedTrigger.x == tipAt.x &&
+                        win->tooltipPressedTrigger.y == tipAt.y &&
+                        win->tooltipPressedTrigger.w == tipAt.w &&
+                        win->tooltipPressedTrigger.h == tipAt.h;
+            if (!held) {
+                TooltipRequestShow(win, tip, tipAt, tipPlacement, tipRoot,
+                                   tipDelay);
+            }
         } else {
             TooltipRequestHide(win);
         }
@@ -2349,9 +2367,21 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     // press set it while the event bubbles; selection begins afterwards.
     BaseResetTextSelectionSuppression(win->app);
     // ManagedTooltipExt hides the active overlay immediately on a primary
-    // press, even when the pointer remains over the same trigger.
+    // press, and keeps it dismissed until the pointer leaves the trigger,
+    // even when the pointer remains over it.
     if (in.IsFocusing()) {
         TooltipHide(win);
+        win->tooltipPressedTrigger.w = -1;
+        Vec<int> tipChain;
+        HitChain(win, x, y, &tipChain);
+        for (int k = 0; k < len(tipChain); k++) {
+            const HitRect& hr = win->paint.hits[tipChain[k]];
+            if (hr.tooltip.s) {
+                win->tooltipPressedTrigger = hr.bounds;
+                break;
+            }
+        }
+        VecReset(tipChain);
     }
     if (win->onMouseDown.IsValid()) {
         ListenerCall(win->app, win, win->onMouseDown, &in);

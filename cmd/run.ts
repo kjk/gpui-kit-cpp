@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "5b5566e9acf44208b67339f79cb4902e692be9de",
+  sha: "7d7580fa59e7e4086e3a6c8de593f5656e2c009f",
   date: "2026-10-13",
-  subject: "docs: Add Home and End selecting the first and last row (#3486)",
+  subject: "tooltip: Keep a pressed trigger's tooltip dismissed until the pointer leaves (#3492)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

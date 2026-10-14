@@ -6573,6 +6573,9 @@ struct Window {
     // false in keyboard modality, so a key press ends the hover under a
     // still pointer and the next move or press brings it back.
     int hoverId = 0;
+    // tooltip_pressed_trigger. A press keeps that trigger's tooltip
+    // dismissed until the pointer moves outside these bounds. w < 0 is none.
+    Bounds tooltipPressedTrigger = {0, 0, -1, 0};
     // Window::last_input_modality == Keyboard: set by a key press, cleared by
     // a pointer move or press. A modifier on its own is not a key press, as
     // GPUI reads it as ModifiersChanged.

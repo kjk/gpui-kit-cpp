@@ -829,8 +829,142 @@ static void ArrowJoinCoversBothSidesOfTheSurfaceEdge() {
     }
 }
 
+// tooltip.rs: a trigger that removes itself when clicked, like a button
+// that replaces the view it sits in.
+struct TipProbe {
+    bool shown = true;
+    bool removes = false;
+
+    static void OnClick(TipProbe* self, Ctx* cx, const ClickEvent*) {
+        if (self->removes) {
+            self->shown = false;
+        }
+        Notify(cx);
+    }
+
+    static El* Render(TipProbe* self, Ctx* cx) {
+        El* page = Div(cx->a)->SizeFull();
+        if (!self->shown) {
+            return page;
+        }
+        return page->Child(Div(cx->a)
+                               ->PathClick(StrL("trigger"))
+                               ->Absolute()
+                               ->Left(10)
+                               ->Top(10)
+                               ->W(100)
+                               ->H(30)
+                               ->Tip(StrL("tip"))
+                               ->OnClick(Listen(cx, &TipProbe::OnClick)));
+    }
+};
+
+struct TipWindow {
+    App* app = nullptr;
+    Window* win = nullptr;
+    TipProbe* probe = nullptr;
+};
+
+static TipWindow OpenTipProbe(bool removes) {
+    TipWindow w;
+    w.app = TestAppNew();
+    BaseInit(w.app);
+    Entity<TipProbe> root = EntityNew<TipProbe>(w.app);
+    w.probe = root.Get(w.app);
+    w.probe->removes = removes;
+    w.win = TestWindowOpen(w.app, root, 400, 300);
+    return w;
+}
+
+static bool TooltipIsShowing(Window* win) {
+    const TooltipOverlay* showing = TooltipShowing(win);
+    return showing && (showing->hasContent || showing->hasPending);
+}
+
+static void HoverTipUntilShown(TipWindow* w, Point at) {
+    TestSimulateMouseMove(w->win, at);
+    TestAdvanceClock(w->app, kTooltipShowDelayMs + 50);
+    TestDraw(w->win);
+}
+
+// Presses at `at` and releases a pixel away, as most real clicks do.
+static void ClickTipWithDrift(Window* win, Point at) {
+    Point drift = {at.x + 1, at.y};
+    TestSimulateMouseDown(win, at);
+    TestSimulateMouseMove(win, drift, true);
+    TestSimulateMouseUp(win, drift);
+}
+
+// tooltip.rs a_press_dismisses_the_tooltip_until_the_pointer_leaves.
+static void APressDismissesTheTooltipUntilThePointerLeaves() {
+    TipWindow w = OpenTipProbe(false);
+    Point at = {50, 25};
+    HoverTipUntilShown(&w, at);
+    utassert(TooltipIsShowing(w.win));
+
+    ClickTipWithDrift(w.win, at);
+    TestSimulateMouseMove(w.win, {52, 25});
+    TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+    TestDraw(w.win);
+    utassert(!TooltipIsShowing(w.win));
+
+    TestSimulateMouseMove(w.win, {300, 300});
+    TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+    TestSimulateMouseMove(w.win, at);
+    TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+    TestDraw(w.win);
+    utassert(TooltipIsShowing(w.win));
+    TestAppFree(w.app);
+}
+
+// tooltip.rs clicking_a_trigger_away_does_not_leave_its_tooltip.
+static void ClickingATriggerAwayDoesNotLeaveItsTooltip() {
+    TipWindow w = OpenTipProbe(true);
+    Point at = {50, 25};
+    HoverTipUntilShown(&w, at);
+    utassert(TooltipIsShowing(w.win));
+
+    TestSimulateMouseDown(w.win, at);
+    TestSimulateMouseMove(w.win, {51, 25}, true);
+    // One update, so no frame is drawn between the release and the move
+    // that follows it. The test platform otherwise draws after every event.
+    PlatformInput up = InputMouseUp(MouseButton::Left, 51, 25, {}, 1);
+    PlatformInput move = InputMouseMove(52, 25, false, MouseButton::Left, {});
+    WindowDispatchInput(w.win, &up);
+    WindowDispatchInput(w.win, &move);
+    TestDraw(w.win);
+    TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+    TestDraw(w.win);
+    utassert(!TooltipIsShowing(w.win));
+    utassert(!w.probe->shown);
+    TestAppFree(w.app);
+}
+
+// tooltip.rs a_press_on_a_removed_trigger_ends_when_the_pointer_moves_away.
+static void APressOnARemovedTriggerEndsWhenThePointerMovesAway() {
+    TipWindow w = OpenTipProbe(true);
+    Point at = {50, 25};
+    HoverTipUntilShown(&w, at);
+
+    TestSimulateClick(w.win, at);
+    TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+    TestSimulateMouseMove(w.win, {300, 300});
+    TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+
+    w.probe->shown = true;
+    TestDraw(w.win);
+    TestSimulateMouseMove(w.win, at);
+    TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+    TestDraw(w.win);
+    utassert(TooltipIsShowing(w.win));
+    TestAppFree(w.app);
+}
+
 void TestPopup() {
     TestSuite("popup");
+    APressDismissesTheTooltipUntilThePointerLeaves();
+    ClickingATriggerAwayDoesNotLeaveItsTooltip();
+    APressOnARemovedTriggerEndsWhenThePointerMovesAway();
     ThePopupSurfaceBlocksThePanelItCovers();
     TheTopAnchorsTakeTheTopEdge();
     TheBottomAnchorsMatchUpstreamsSubtractedHeight();

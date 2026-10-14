@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5b5566e9acf44208b67339f79cb4902e692be9de` (2026-10-13,
-docs: Add Home and End selecting the first and last row (#3486)).
-The data-table keyboard docs now say Home and End select the first or
-last row. Website docs are not ported, and no code changed.
+Processed through `7d7580fa59e7e4086e3a6c8de593f5656e2c009f` (2026-10-13,
+tooltip: Keep a pressed trigger's tooltip dismissed until the pointer leaves (#3492)).
+A press hides the trigger's tooltip and keeps it hidden until the
+pointer moves outside the trigger, including when the click removes
+the trigger before the next frame.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
