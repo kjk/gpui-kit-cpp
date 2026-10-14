@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4ee820106ac5a081d43f37aef484b407324344c7` (2026-10-13,
-input: Keep a scroll over text that can scroll, even at its end (#3484)).
-A textarea or editor whose text can scroll keeps the wheel even at its
-end. Text that fits, and a mostly vertical wheel over a single-line
-field, still scroll the page around the field.
+Processed through `5b5566e9acf44208b67339f79cb4902e692be9de` (2026-10-13,
+docs: Add Home and End selecting the first and last row (#3486)).
+The data-table keyboard docs now say Home and End select the first or
+last row. Website docs are not ported, and no code changed.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
