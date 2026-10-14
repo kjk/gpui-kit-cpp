@@ -16,13 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `45b0bbf26ce315e6500025f700d8a4166775767a` (2026-10-12,
-base: read the pointer only under hovered text, and ask no frame for a closed popup (#3431)).
-A closed popup notes its trigger and asks for no animation frame. The
-frame is requested only when that first capture has content to place;
-opened later, the content is a child of the build that opens it.
-The link hand is the link element's cursor, applied when the pointer
-is over that hitbox, so text paint does not read the pointer.
+Processed through `90c7a69eb360017b326e296dbf3da7b772220b21` (2026-10-12,
+chore: Restore default codegen units and stop optimizing proc macros (#3457)).
+Cargo's dev profile and the website's install and hosting notes. The
+C++ build does not use those codegen units or proc-macro settings.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "45b0bbf26ce315e6500025f700d8a4166775767a",
+  sha: "90c7a69eb360017b326e296dbf3da7b772220b21",
   date: "2026-10-12",
-  subject: "base: read the pointer only under hovered text, and ask no frame for a closed popup (#3431)",
+  subject: "chore: Restore default codegen units and stop optimizing proc macros (#3457)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",
