@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1e7ffaa6d1c0c230cb84099584e6c057531d5a5d` (2026-10-12,
-kit: Update GPUI to gpui-pre 0.3.9 (#3459)).
-The GPUI reference is gpui-pre 0.3.9. A uniform list places a far-down
-row in double precision, so rows past 2^27 px stay a stride apart.
-Taffy stays 0.13.0, which is what gpui-pre asks for; 0.14.0 is only
-gpui-fast.
+Processed through `369f7a8f5a6602da980f008cf726467588ad517f` (2026-10-12,
+button: Keep the hover style registered while selected or disabled (#3461)).
+A selected button still does not paint a hover fill. Hover is taken
+from the hit test each frame, so unselecting does not leave the last
+hover colour in place.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

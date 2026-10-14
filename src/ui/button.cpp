@@ -812,10 +812,13 @@ El* Button::IntoEl() {
     // refining it. Only the caret names a colour of its own, since Rust
     // builds it from `normal_style.fg` and it does not follow the state.
     e->Fg(fg);
-    // button.rs hangs the hover and the active style off
-    // `when(!disabled && !selected)` and then `when(interactive)`: a selected
-    // button shows its selected fill and nothing else, and a loading one
-    // keeps its normal colours because it is not waiting for another click.
+    // button.rs always registers hover, and leaves that style empty while
+    // the button is selected, disabled or loading. GPUI only refreshes its
+    // cached hover bit while a hover style is present, so skipping the
+    // registration left the last hover colour on after unselect. Hover here
+    // is the hit test each frame, so the fill is simply not set in those
+    // states and the next frame already agrees with the pointer. Active
+    // stays on the interactive button only.
     if (interactive && !showsSelected) {
         e->HoverBg(hover);
         e->ActiveBg(press);

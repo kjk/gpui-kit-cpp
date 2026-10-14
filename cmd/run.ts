@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1e7ffaa6d1c0c230cb84099584e6c057531d5a5d",
+  sha: "369f7a8f5a6602da980f008cf726467588ad517f",
   date: "2026-10-12",
-  subject: "kit: Update GPUI to gpui-pre 0.3.9 (#3459)",
+  subject: "button: Keep the hover style registered while selected or disabled (#3461)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",
