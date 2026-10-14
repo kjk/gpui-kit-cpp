@@ -16,13 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8173d61cebfc620ccbaa69f1d614656f0bb69154` (2026-10-13,
-resizable: Add `ResizablePanel::fixed` to keep a panel's size on container
-resizes (#3478)).
-A panel marked fixed, and given a size, keeps that size when the
-container resizes. The other panels share what is left. A drag on
-another handle does not take space from it. The website notes are not
-ported.
+Processed through `a861ebabba55c6ed835f5b86f42f548962a1c141` (2026-10-13,
+tests: Build each crate's integration tests as one binary (#3481)).
+Upstream folds each crate's integration tests into one binary. This
+tree's tests are already one tests.exe, so nothing else changes.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
