@@ -183,6 +183,9 @@ bool PlatPathsCaseFold();
 bool PlatIsWindows();
 bool PlatSecondaryIsCommand();
 bool PlatShowsWindowControls();
+// Linux draws the title-bar close button as an element click. Elsewhere the
+// window manager owns closing, so a script close handler is not that button.
+bool PlatTitleBarCloseIsElement();
 float PlatCaretWidth();
 bool PlatScrollBounce();
 const char* PlatMonoFontName();

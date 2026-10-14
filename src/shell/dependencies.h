@@ -49,6 +49,12 @@ Str GitDependencyCacheRoot(Str home);
 // absolute path or there is no private cache to speak of.
 bool GitDependencyUserCacheRoot(Str home, Str userProfile, Str* out,
                                 Str* error);
+// `for_user_with_environment`. A non-empty `shellHome` replaces
+// ~/.gpui-shell and must be absolute; an empty one falls through to HOME
+// then USERPROFILE. The cache is <shell home>/cache/dependencies, or
+// <home>/.gpui-shell/cache/dependencies.
+bool GitDependencyCacheFromEnvironment(Str shellHome, Str home, Str userProfile,
+                                       Str* out, Str* error);
 
 // `digest(&[("git", url)])`, hex SHA-256, the per-remote cache key.
 Str GitDependencyRemoteKey(Str git);

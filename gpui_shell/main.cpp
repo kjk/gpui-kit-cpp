@@ -15,25 +15,34 @@ static void PrintVersion() {
 }
 
 static void PrintHelp() {
-    PrintVersion();
-    printf(
-        "\nUsage: gpui-shell <directory> [options]\n"
-        "       gpui-shell check <directory> [--print-spec]\n"
-        "       gpui-shell types <directory>\n\n"
-        "Arguments:\n"
-        "  <directory>  The application root, or the main.js inside it.\n\n"
-        "Commands:\n"
-        "  types        Write gpui.d.ts beside scripts that import Shell "
-        "modules, and\n"
-        "               link the manifest's Git dependencies into "
-        "node_modules.\n"
-        "  check        Load and render once without opening a window.\n\n"
-        "Options:\n"
-        "  --watch      Reload when application sources change.\n"
-        "  --dev        Enable development mode and imply --watch.\n"
-        "  --print-spec With check, print the rendered element description.\n"
-        "  --help       Print this message and exit.\n"
-        "  --version    Print the version and exit.\n");
+    StrBuilder help;
+    ShellFormatHelp(&help);
+    Str text = help.TakeStr();
+    Print(text);
+    if (text && (len(text) == 0 || text.s[len(text) - 1] != '\n'))
+        fputc('\n', stdout);
+    StrFree(text);
+}
+
+// cmd-q on macOS, alt-f4 elsewhere. Installed before the script's own
+// bindings, so a script that binds the same chord still wins.
+static void QuitShell(Window* win, ActionEvent*) {
+    if (win && win->app) AppQuitAll(win->app);
+}
+
+static void InstallQuit() {
+    KeyBinding binding;
+    binding.stroke = PlatSecondaryIsCommand() ? "cmd-q" : "alt-f4";
+    binding.action = ActionOf(StrL("gpui_shell::Quit"));
+    KeymapBind(&binding, 1);
+    AppOnAction(binding.action, &QuitShell);
+}
+
+static Window* gActivateWindow = nullptr;
+static void ActivatePosted() {
+    Window* window = gActivateWindow;
+    gActivateWindow = nullptr;
+    if (window) AppActivate(window);
 }
 
 static TempStr JoinPathTemp(Str left, Str right) {
@@ -96,7 +105,7 @@ static bool ResolveRoot(Str input, bool requireEntry, Str* root, Str* entry,
     return root->s && entry->s;
 }
 
-static Policy* LocalPolicy(Str root, ShellError* error) {
+static Policy* LocalPolicy(Str root, bool installed, ShellError* error) {
     PluginManifest manifest;
     TempStr manifestPath = JoinPathTemp(root, Str(kShellManifestFile));
     bool hasManifest = manifestPath && PlatFileExists(manifestPath.s);
@@ -104,7 +113,11 @@ static Policy* LocalPolicy(Str root, ShellError* error) {
         return nullptr;
 
     Arena* scratch = ArenaNew();
-    Str id = ShellBundleIdForPath(root);
+    // An installed or packaged application keeps its data under the manifest
+    // id. A directory named with -d stays keyed by its path.
+    Str id = installed && hasManifest && manifest.id
+                 ? StrDup(manifest.id)
+                 : ShellBundleIdForPath(root);
     Str data = ShellAppDataDirectory(id, scratch, error);
     if (!data) {
         StrFree(id);
@@ -224,24 +237,143 @@ static Str WindowTitle(Str root) {
     return title.TakeStr();
 }
 
-// What the window shows when the application loaded but would not mount:
-// its init() threw. host.rs mounts a LoadFailure view in the ShellRoot for
-// the same case, so the window says why instead of closing.
+// failure_surface: the cwd prefix is noise when the failure is the
+// application the command just started.
+static Str DisplayMessage(Arena* a, Str message) {
+    if (!message) return {};
+    char cwd[kMaxPath];
+    cwd[0] = 0;
+    PlatGetCwd(cwd, kMaxPath);
+    if (!cwd[0]) return StrDup(a, message);
+    int n = (int)strlen(cwd);
+    StrBuilder out;
+    for (int i = 0; i < len(message);) {
+        bool hit = i + n < len(message) &&
+                   (message.s[i + n] == '/' || message.s[i + n] == '\\') &&
+                   memcmp(message.s + i, cwd, (size_t)n) == 0;
+        if (hit) {
+            i += n + 1;
+            continue;
+        }
+        out.AppendChar(message.s[i]);
+        i++;
+    }
+    Str built = out.TakeStr();
+    Str stable = StrDup(a, built);
+    StrFree(built);
+    return stable;
+}
+
+struct FailureCopied {
+    bool on = false;
+};
+
+static uint32_t FailureCopiedKey() {
+    return KeyedKey(HashClickId(StrL("shell-failure-copied")), 1);
+}
+
+// What the window shows when the application could not be loaded, or loaded
+// but would not mount. host.rs mounts this in the ShellRoot so the window
+// says why instead of closing.
 struct LoadFailure {
     Str message;
 
     ~LoadFailure() { StrFree(message); }
 
+    static void OnCopy(LoadFailure* self, Ctx* cx, const ClickEvent*) {
+        StrBuilder payload;
+        payload.Append(StrL("This application could not be loaded\n\n"));
+        if (self && self->message) payload.Append(self->message);
+        Str text = payload.TakeStr();
+        ClipboardSetText(cx->win, text);
+        StrFree(text);
+        FailureCopied* copied =
+            KeyedState<FailureCopied>(cx, FailureCopiedKey());
+        if (copied) copied->on = true;
+        Notify(cx);
+    }
+
     static El* Render(LoadFailure* self, Ctx* cx) {
-        return Div(cx->a)
-            ->FlexCol()
+        Arena* a = cx->a;
+        const Theme& th = ThemeNow(cx->app);
+        FailureCopied* copied =
+            KeyedState<FailureCopied>(cx, FailureCopiedKey());
+        bool isCopied = copied && copied->on;
+        Str detail = DisplayMessage(a, self ? self->message : Str{});
+        El* copy =
+            Div(a)
+                ->W(Rems(cx, 1.625f))
+                ->H(Rems(cx, 1.625f))
+                ->Shrink0()
+                ->ItemsCenter()
+                ->JustifyCenter()
+                ->Border(1, th.border)
+                ->Click(HashClickId(StrL("shell-failure-copy")))
+                ->OnClick(Listen(cx, &LoadFailure::OnCopy))
+                ->Child(IconEl(a, isCopied ? IconName::Check : IconName::Copy,
+                               Rems(cx, 0.875f))
+                            ->Fg(isCopied ? th.mutedFg : th.foreground));
+        El* body =
+            Div(a)
+                ->FlexCol()
+                ->Gap(Rems(cx, 0.625f))
+                ->Pad(Rems(cx, 1.25f))
+                ->Child(TextEl(a, StrL("This application could not be loaded"))
+                            ->Fg(th.foreground)
+                            ->Font(Rems(cx, 0.875f))
+                            ->LineHeight(1.4f))
+                ->Child(Div(a)
+                            ->MaxH(Rems(cx, 18.f))
+                            ->ScrollY(0)
+                            ->Child(TextEl(a, detail)
+                                        ->Wrap()
+                                        ->Fg(th.mutedFg)
+                                        ->Font(Rems(cx, 0.75f))
+                                        ->FontFamily(Str(PlatMonoFontName()))
+                                        ->LineHeight(1.5f)))
+                ->Child(
+                    Div(a)
+                        ->FlexRow()
+                        ->ItemsCenter()
+                        ->JustifyBetween()
+                        ->Gap(Rems(cx, 1.f))
+                        ->PadT(Rems(cx, 0.75f))
+                        ->BorderT(1, th.border)
+                        ->Child(TextEl(a, StrL("An application directory needs "
+                                               "main.js, or the entry its "
+                                               "gpui-shell.json names, "
+                                               "default-exporting a class that "
+                                               "extends View."))
+                                    ->Wrap()
+                                    ->Flex1()
+                                    ->MinW(0)
+                                    ->Fg(th.mutedFg)
+                                    ->Font(Rems(cx, 0.75f))
+                                    ->LineHeight(1.5f))
+                        ->Child(copy));
+        return Div(a)
             ->SizeFull()
-            ->Pad(16)
-            ->Gap(8)
-            ->Child(TextEl(cx->a, StrL("JavaScript application error"))->Bold())
-            ->Child(TextEl(cx->a, self ? self->message : Str{})->Wrap());
+            ->Flex()
+            ->ItemsCenter()
+            ->JustifyCenter()
+            ->Bg(th.background)
+            ->Pad(Rems(cx, 2.f))
+            ->Child(Div(a)
+                        ->FlexCol()
+                        ->W(kFill)
+                        ->MaxW(Rems(cx, 42.f))
+                        ->Bg(th.popover)
+                        ->Border(1, th.border)
+                        ->Child(Div(a)->H(2)->W(kFill)->Bg(th.danger))
+                        ->Child(body));
     }
 };
+
+static EntityId FailureRoot(App* app, Str message) {
+    Entity<LoadFailure> failure = EntityNew<LoadFailure>(app);
+    if (LoadFailure* state = failure.Get(app)) state->message = StrDup(message);
+    return ShellRoot::New(app, failure.id).id;
+}
 
 // The window builder host.rs hands the catalog's opener: mounts the loaded
 // application in the window that just opened and answers the ShellRoot it
@@ -249,30 +381,31 @@ struct LoadFailure {
 struct MountRequest {
     ShellRuntime* runtime = nullptr;
     LoadedApplication* application = nullptr;
+    // Set when the application never loaded. The window still opens.
+    Str loadError;
     Entity<ScriptView> view = {};
 };
 
 static EntityId BuildShellRoot(Window* window, App* app, void* data) {
     MountRequest* request = (MountRequest*)data;
+    if (!request->application) return FailureRoot(app, request->loadError);
     ShellError error = {};
     request->view = request->runtime->MountApplication(request->application,
                                                        window, app, &error);
-    EntityId content = request->view.id;
     if (!request->view.IsValid()) {
         fprintf(stderr, "gpui-shell: ");
         Print(error.message, stderr);
         fputc('\n', stderr);
-        Entity<LoadFailure> failure = EntityNew<LoadFailure>(app);
-        if (LoadFailure* state = failure.Get(app))
-            state->message = StrDup(error.message);
-        content = failure.id;
+        Str message = error.message;
+        ShellErrorClear(&error);
+        return FailureRoot(app, message);
     }
     ShellErrorClear(&error);
-    return ShellRoot::New(app, content).id;
+    return ShellRoot::New(app, request->view.id).id;
 }
 
 static int Run(Str root, Str entry, const Invocation& invocation,
-               Policy* policy) {
+               Policy* policy, Str earlyError) {
     ShellSetDevelopmentMode(invocation.development);
     AppAssets assets(root);
     assets.Install();
@@ -284,30 +417,47 @@ static int Run(Str root, Str entry, const Invocation& invocation,
     }
     const FrozenComponentRegistry* components = component_shell::Components();
     ShellInitWithComponents(app, components);
+    InstallQuit();
     // load_application loads under the default policy, as Rust's does, so
     // the application's grants -- its manifest's capabilities, its name and
     // its store -- become the default before anything loads.
-    PolicySetDefault(policy);
+    if (policy) PolicySetDefault(policy);
     ShellError error = {};
     ShellRuntime* runtime = ShellRuntime::New(app, &error, components);
-    LoadedApplication* application =
-        runtime ? runtime->LoadApplication(root, entry, &error) : nullptr;
-    if (!application) {
+    LoadedApplication* application = nullptr;
+    if (!earlyError && runtime)
+        application = runtime->LoadApplication(root, entry, &error);
+    Str loadError = {};
+    if (earlyError)
+        loadError = StrDup(earlyError);
+    else if (!application)
+        loadError = StrDup(error.IsSet() ? error.message
+                                         : StrL("failed to start the script "
+                                                "runtime"));
+    if (loadError) {
         fprintf(stderr, "gpui-shell: ");
-        Print(error.message, stderr);
+        Print(loadError, stderr);
         fputc('\n', stderr);
-        if (runtime) runtime->Release();
-        AppFree(app);
-        ShellErrorClear(&error);
-        ShellSetDevelopmentMode(false);
-        return 1;
     }
     Str title = WindowTitle(root);
     ComponentWindowOptions options;
     options.title = title;
+    if (!earlyError) {
+        PluginManifest manifest;
+        ShellError windowError = {};
+        TempStr manifestPath = JoinPathTemp(root, Str(kShellManifestFile));
+        if (manifestPath && PlatFileExists(manifestPath.s) &&
+            PluginManifestRead(root, &manifest, &windowError) &&
+            manifest.hasWindow) {
+            options.dipW = (int)manifest.windowW;
+            options.dipH = (int)manifest.windowH;
+        }
+        ShellErrorClear(&windowError);
+    }
     MountRequest request;
     request.runtime = runtime;
     request.application = application;
+    request.loadError = loadError;
     // A catalog whose components require a particular window root opens the
     // window itself; see ComponentWindowOpener.
     Window* window =
@@ -316,22 +466,25 @@ static int Run(Str root, Str entry, const Invocation& invocation,
     LoadedApplicationFree(application);
     if (!window) {
         fprintf(stderr, "gpui-shell: could not open a window\n");
-        runtime->Release();
+        if (runtime) runtime->Release();
+        StrFree(loadError);
         AppFree(app);
+        ShellErrorClear(&error);
         ShellSetDevelopmentMode(false);
         return 1;
     }
-    RefreshTypes(root, policy, false);
+    ShellErrorClear(&error);
+    if (policy) RefreshTypes(root, policy, false);
     if (invocation.watch) {
         if (request.view.IsValid()) {
             ShellWatcher::Start(runtime, request.view, root, entry, window, app,
                                 &error);
         } else {
-            // A failed mount never produced a view to reload into. Saying so
-            // is better than a --watch that looks armed and never fires.
-            ShellErrorSet(&error,
-                          StrL("the application did not mount, so there is "
-                               "no view to reload into"));
+            // A failed load never produced a view to reload into.
+            fprintf(stderr,
+                    "--watch is inactive: the application did not load, so "
+                    "there is no view to reload into. Fix the declared entry "
+                    "and start gpui-shell again.\n");
         }
         if (error.IsSet()) {
             fprintf(stderr, "gpui-shell: --watch is inactive: ");
@@ -340,8 +493,11 @@ static int Run(Str root, Str entry, const Invocation& invocation,
             ShellErrorClear(&error);
         }
     }
+    gActivateWindow = window;
+    ExecPost(MkFunc0Void(&ActivatePosted));
     ShellOnExitRequest(OnExitRequest);
-    runtime->Release();
+    if (runtime) runtime->Release();
+    StrFree(loadError);
     int status = AppRun(app);
     ShellOnExitRequest(nullptr);
     AppFree(app);
@@ -385,16 +541,104 @@ int GpuiMain(int argc, char** argv) {
         PrintVersion();
         return 0;
     }
+    if (invocation.kind == InvocationKind::List) return ShellListApplications();
+    if (invocation.kind == InvocationKind::Agents &&
+        invocation.application == ApplicationKind::None) {
+        const FrozenComponentRegistry* components =
+            component_shell::Components();
+        Str text = ShellAgentsText(components);
+        Print(text);
+        if (text && (len(text) == 0 || text.s[len(text) - 1] != '\n'))
+            fputc('\n', stdout);
+        StrFree(text);
+        return 0;
+    }
+    if (invocation.kind == InvocationKind::New) {
+        const FrozenComponentRegistry* components =
+            component_shell::Components();
+        Str created;
+        Str createError;
+        if (!ShellCreateApplication(invocation.directory, components, &created,
+                                    &createError)) {
+            fprintf(stderr, "gpui-shell: ");
+            Print(createError, stderr);
+            fputc('\n', stderr);
+            StrFree(createError);
+            return 1;
+        }
+        printf("created ");
+        Print(created);
+        printf("\n\n");
+        printf("  gpui-shell run -d %s --watch   # run it, reloading on save\n",
+               invocation.directory.s ? invocation.directory.s : "");
+        printf(
+            "  gpui-shell check -d %s         # check it after every change\n",
+            invocation.directory.s ? invocation.directory.s : "");
+        printf("\n");
+        Str apps = ShellApplicationsDirectory();
+        printf("To install it, copy or link it into %s.\n",
+               apps.s ? apps.s : "");
+        StrFree(apps);
+        StrFree(created);
+        return 0;
+    }
+    if (invocation.kind == InvocationKind::Bare &&
+        !ShellBundledApplication(nullptr)) {
+        PrintHelp();
+        return 0;
+    }
 
     ShellError error = {};
-    Str root;
-    Str entry;
-    if (!ResolveRoot(invocation.directory,
-                     invocation.kind != InvocationKind::Types, &root, &entry,
-                     &error)) {
-        ReportSetupFailure(invocation, error.message);
+    Str resolved;
+    if (!ShellResolveApplication(invocation, &resolved, &error.message)) {
+        if (invocation.kind == InvocationKind::Check) {
+            ReportSetupFailure(invocation, error.message);
+        } else {
+            fprintf(stderr, "gpui-shell: ");
+            Print(error.message, stderr);
+            fputc('\n', stderr);
+        }
         ShellErrorClear(&error);
         return 1;
+    }
+    // Resolve hands back the directory. The entry name still comes from the
+    // manifest, which ResolveRoot reads.
+    Str root;
+    Str entry;
+    if (!ResolveRoot(resolved, invocation.kind != InvocationKind::Types, &root,
+                     &entry, &error)) {
+        ReportSetupFailure(invocation, error.message);
+        StrFree(resolved);
+        ShellErrorClear(&error);
+        return 1;
+    }
+    StrFree(resolved);
+    if (invocation.kind == InvocationKind::Agents) {
+        const FrozenComponentRegistry* components =
+            component_shell::Components();
+        Str written;
+        Str agentsError;
+        if (!ShellWriteAgents(root, components, &written, &agentsError)) {
+            fprintf(stderr, "gpui-shell: ");
+            Print(agentsError, stderr);
+            fputc('\n', stderr);
+            StrFree(agentsError);
+            StrFree(root);
+            return 1;
+        }
+        if (written) {
+            printf("wrote ");
+            Print(written);
+            fputc('\n', stdout);
+            StrFree(written);
+        } else {
+            printf("%s%cAGENTS.md is up to date\n", root.s,
+                   root.s[len(root) - 1] == '/' || root.s[len(root) - 1] == '\\'
+                       ? root.s[len(root) - 1]
+                       : (GPUI_OS_WINDOWS ? '\\' : '/'));
+        }
+        StrFree(root);
+        return 0;
     }
     if (invocation.kind == InvocationKind::Types) {
         Policy* policy = PolicyDefault();
@@ -418,12 +662,32 @@ int GpuiMain(int argc, char** argv) {
         return status;
     }
 
-    Policy* policy = LocalPolicy(root, &error);
-    if (!policy) {
-        ReportSetupFailure(invocation, error.message);
+    bool installed = invocation.application == ApplicationKind::Installed ||
+                     invocation.application == ApplicationKind::Bundled;
+    PluginManifest manifest;
+    ShellError manifestError = {};
+    TempStr manifestPath = JoinPathTemp(root, Str(kShellManifestFile));
+    bool hasManifest = manifestPath && PlatFileExists(manifestPath.s);
+    bool manifestOk =
+        !hasManifest || PluginManifestRead(root, &manifest, &manifestError);
+    if (invocation.kind == InvocationKind::Check && !manifestOk) {
+        ReportSetupFailure(invocation, manifestError.message);
         StrFree(root);
+        ShellErrorClear(&manifestError);
         ShellErrorClear(&error);
         return 1;
+    }
+
+    Policy* policy = nullptr;
+    if (manifestOk) {
+        policy = LocalPolicy(root, installed, &error);
+        if (!policy) {
+            ReportSetupFailure(invocation, error.message);
+            StrFree(root);
+            ShellErrorClear(&error);
+            ShellErrorClear(&manifestError);
+            return 1;
+        }
     }
 
     int status = 0;
@@ -431,10 +695,12 @@ int GpuiMain(int argc, char** argv) {
         RefreshTypes(root, policy, false);
         status = Check(root, entry, invocation.printSpec, policy);
     } else {
-        status = Run(root, entry, invocation, policy);
+        status = Run(root, entry, invocation, policy,
+                     manifestOk ? Str{} : manifestError.message);
     }
-    PolicyRelease(policy);
+    if (policy) PolicyRelease(policy);
     StrFree(root);
+    ShellErrorClear(&manifestError);
     ShellErrorClear(&error);
     return status;
 }

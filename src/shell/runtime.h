@@ -259,5 +259,10 @@ void ShellInit(App* app);
 void ShellInitWithComponents(App* app,
                              const shell::FrozenComponentRegistry* components);
 
+// host/agents.rs `modules`: the built-in module list the generated
+// instructions name, plus the catalog when this runtime has one.
+void ShellAppendAgentsModules(StrBuilder* out,
+                              const shell::FrozenComponentRegistry* components);
+
 } // namespace gpui
 #endif // GPUI_SHELL_RUNTIME_H_

@@ -680,6 +680,58 @@ PluginManifest::~PluginManifest() {
     ArenaDelete(arena);
 }
 
+static bool WindowFail(ShellError* error, Str detail) {
+    SetError(error, fmt("invalid `window`: %s. Expected an object such as "
+                        "{\"width\": 360, \"height\": 520}, in logical pixels",
+                        detail));
+    return false;
+}
+
+static bool PositivePixels(double value, const char* name, ShellError* error) {
+    if (value == value && value > 0 && value < 1e10) return true;
+    return WindowFail(error, fmt("`%s` must be a positive number of logical "
+                                 "pixels, found %g",
+                                 Str(name), value));
+}
+
+// Manifest `window`: the opening size only. Unknown keys, a missing side,
+// and a size that is not a positive finite number are refused.
+static bool ParseWindow(const JsonValue* value, PluginManifest* out,
+                        ShellError* error) {
+    if (!value || value->kind == JsonKind::Null) return true;
+    if (value->kind != JsonKind::Object) {
+        return WindowFail(error, StrL("expected an object"));
+    }
+    bool sawWidth = false;
+    bool sawHeight = false;
+    for (const JsonValue* child = value->first; child; child = child->next) {
+        bool width = StrEq(child->key, StrL("width"));
+        bool height = StrEq(child->key, StrL("height"));
+        if (!width && !height) {
+            return WindowFail(error, fmt("unknown field `%s`", child->key));
+        }
+        if (child->kind != JsonKind::Number) {
+            return WindowFail(error,
+                              fmt("`%s` must be a positive number of logical "
+                                  "pixels, found a non-number",
+                                  child->key));
+        }
+        if (!PositivePixels(child->num, width ? "width" : "height", error))
+            return false;
+        if (width) {
+            out->windowW = (float)child->num;
+            sawWidth = true;
+        } else {
+            out->windowH = (float)child->num;
+            sawHeight = true;
+        }
+    }
+    if (!sawWidth) return WindowFail(error, StrL("missing field `width`"));
+    if (!sawHeight) return WindowFail(error, StrL("missing field `height`"));
+    out->hasWindow = true;
+    return true;
+}
+
 bool PluginManifestParse(Str source, PluginManifest* out, ShellError* error) {
     ShellErrorClear(error);
     if (!out || !out->arena) {
@@ -692,9 +744,9 @@ bool PluginManifestParse(Str source, PluginManifest* out, ShellError* error) {
         return false;
     }
     static const char* fields[] = {
-        "id",    "name",         "version",     "shell-version",
-        "entry", "dependencies", "capabilities"};
-    if (!HasOnly(root, fields, 7, StrL("the manifest"), error)) return false;
+        "id",    "name",         "version",      "shell-version",
+        "entry", "dependencies", "capabilities", "window"};
+    if (!HasOnly(root, fields, 8, StrL("the manifest"), error)) return false;
     Str id, name, entry;
     if (!RequiredString(root, "id", &id, error) ||
         !RequiredString(root, "name", &name, error) ||
@@ -759,7 +811,9 @@ bool PluginManifestParse(Str source, PluginManifest* out, ShellError* error) {
     out->entry = StrDup(out->arena, entry);
     if (!ParseDependencies(JsonGet(root, "dependencies"), out, error))
         return false;
-    return ParseCapabilities(JsonGet(root, "capabilities"), out, error);
+    if (!ParseCapabilities(JsonGet(root, "capabilities"), out, error))
+        return false;
+    return ParseWindow(JsonGet(root, "window"), out, error);
 }
 
 bool PluginManifestRead(Str directory, PluginManifest* out, ShellError* error) {
@@ -793,7 +847,11 @@ void PluginManifestSchema(StrBuilder* out) {
         "\"string\"},"
         "\"entry\":{\"type\":\"string\"},\"dependencies\":{\"type\":\"object\"}"
         ","
-        "\"capabilities\":{\"type\":\"object\"}}}"));
+        "\"capabilities\":{\"type\":\"object\"},"
+        "\"window\":{\"type\":\"object\",\"additionalProperties\":false,"
+        "\"required\":[\"width\",\"height\"],\"properties\":{"
+        "\"width\":{\"type\":\"number\"},\"height\":{\"type\":\"number\"}}}}"
+        "}"));
 }
 
 static bool AbsolutePath(Str path) {

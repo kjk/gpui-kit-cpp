@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `aa626f2177c6a0a81d02906820519b8a6e15b17a` (2026-10-13,
-diff: Wrap the next-change key once the list is scrolled to its end (#3462)).
-Next change wraps to the first change once the last row sits in the
-viewport. The list would otherwise clamp and repeat the same group.
-Previous change is unchanged.
+Processed through `16e963c6f4053399f609dbe93317b22f5e46e199` (2026-10-13,
+shell: Ship gpui-shell as an installable runtime with run, new and packaging (#3464)).
+The host runs an installed name, a `--dir` path, or the application packaged
+beside the executable, and `new`, `list` and `agents` scaffold and describe
+one. A manifest `window` sets the opening size, the catalog draws a
+`TitleBar`, and a failed load stays on screen with a copy button. Release
+packaging, the install script and the website are not ported.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

@@ -110,6 +110,22 @@ static void DependencyCacheLivesInTheShellCache() {
     utassert(StrContains(error, StrL("HOME")) &&
              StrContains(error, StrL("absolute")) &&
              StrContains(error, StrL("relative/home")));
+    // the_shell_home_variable_moves_the_cache. A set GPUI_SHELL_HOME replaces
+    // ~/.gpui-shell; a relative one is refused rather than resolved.
+    StrFree(selected);
+    selected = {};
+    utassert(
+        GitDependencyCacheFromEnvironment(
+            StrL("/opt/shell"), StrL("/home/example"), {}, &selected, &error) &&
+        StrEq(selected,
+              fmt("/opt/shell%ccache%cdependencies", separator, separator)));
+    StrFree(selected);
+    selected = {};
+    utassert(!GitDependencyCacheFromEnvironment(StrL("relative/shell"), {}, {},
+                                                &selected, &error) &&
+             StrContains(error, StrL("GPUI_SHELL_HOME")) &&
+             StrContains(error, StrL("absolute")) &&
+             StrContains(error, StrL("relative/shell")));
     StrFree(error);
 
     // `digest(&[("git", url)])` is the per-remote cache key: stable, hex, and

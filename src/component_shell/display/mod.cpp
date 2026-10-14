@@ -13,6 +13,7 @@ bool RegisterDisplay(shell::ComponentRegistry* registry,
            RegisterDisplayGroupBox(registry, error) &&
            RegisterDisplayRating(registry, error) &&
            RegisterDisplayStatusBar(registry, error) &&
+           RegisterDisplayTitleBar(registry, error) &&
            RegisterDisplayToolbar(registry, error);
 }
 

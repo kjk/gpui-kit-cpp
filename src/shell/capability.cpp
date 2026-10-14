@@ -507,4 +507,55 @@ bool Capabilities::ResolvePath(Str path, CapabilityAccess access,
     return false;
 }
 
+static void AppendJoined(StrBuilder* out, const Vec<Str>& values,
+                         const char* separator) {
+    for (int i = 0; i < values.len; i++) {
+        if (i) out->Append(Str(separator));
+        out->Append(values[i]);
+    }
+}
+
+void Capabilities::AppendSummary(StrBuilder* out) const {
+    if (!out) return;
+    if (readRoots.len > 0) {
+        out->Append(StrL("fs read: "));
+        AppendJoined(out, readRoots, ", ");
+        out->Append(StrL("\n"));
+    }
+    if (writeRoots.len > 0) {
+        out->Append(StrL("fs write: "));
+        AppendJoined(out, writeRoots, ", ");
+        out->Append(StrL("\n"));
+    }
+    if (networkHosts.len > 0) {
+        out->Append(StrL("network: "));
+        AppendJoined(out, networkHosts, ", ");
+        out->Append(StrL("\n"));
+    }
+    for (int i = 0; i < httpRequests.len; i++) {
+        const HttpRequestGrant* request = httpRequests[i];
+        if (!request) continue;
+        out->Append(StrL("http: "));
+        AppendJoined(out, request->methods, "|");
+        out->Append(fmt(" %s://%s", request->scheme, request->host));
+        if (request->hasPort) out->Append(fmt(":%u", (unsigned)request->port));
+        out->Append(StrL("\n"));
+    }
+    if (execute.kind == ExecuteGrantKind::Allowed) {
+        out->Append(StrL("process: "));
+        AppendJoined(out, execute.commands, ", ");
+        out->Append(StrL("\n"));
+    } else if (execute.kind == ExecuteGrantKind::Unrestricted) {
+        out->Append(StrL("process: any command\n"));
+    }
+    if (storage) out->Append(StrL("storage\n"));
+    if (clipboardRead && clipboardWrite) {
+        out->Append(StrL("clipboard: read, write\n"));
+    } else if (clipboardRead) {
+        out->Append(StrL("clipboard: read\n"));
+    } else if (clipboardWrite) {
+        out->Append(StrL("clipboard: write\n"));
+    }
+}
+
 } // namespace gpui

@@ -65,8 +65,13 @@ void MountWindowRoot(App* app, Window* window,
 Window* OpenWindowWithRoot(App* app,
                            const shell::ComponentWindowOptions& options,
                            shell::ComponentWindowBuild build, void* data) {
-    Window* window = WindowOpen(app, options.title, options.dipW, options.dipH,
-                                options.opts);
+    // TitleBar::window_options: the catalog draws the title bar, so sheets
+    // and notifications line up under it. Copy the options; the reference
+    // the host passed is const.
+    shell::ComponentWindowOptions chrome = options;
+    chrome.opts.clientTitleBar = true;
+    Window* window =
+        WindowOpen(app, chrome.title, chrome.dipW, chrome.dipH, chrome.opts);
     if (!window) return nullptr;
     MountWindowRoot(app, window, build, data);
     return window;

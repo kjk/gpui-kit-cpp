@@ -6,7 +6,7 @@
 
 namespace gpui::shell {
 
-constexpr const char* kShellVersion = "0.6.0";
+constexpr const char* kShellVersion = "0.7.3";
 constexpr const char* kShellManifestFile = "gpui-shell.json";
 constexpr int kShellMaxManifestBytes = 1024 * 1024;
 // `default_dependency_entry` in crates/shell/src/plugin.rs.
@@ -52,6 +52,10 @@ struct PluginManifest {
     bool clipboardRead = false;
     bool clipboardWrite = false;
     bool exit = false;
+    // Opening size, in logical pixels. Absent when the manifest is silent.
+    bool hasWindow = false;
+    float windowW = 0;
+    float windowH = 0;
 
     PluginManifest();
     PluginManifest(const PluginManifest&) = delete;

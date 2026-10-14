@@ -92,6 +92,7 @@ bool RegisterDisplayClipboard(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplayGroupBox(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplayRating(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplayStatusBar(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterDisplayTitleBar(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplayToolbar(shell::ComponentRegistry*, shell::RegistryError*);
 
 // compound/mod.rs

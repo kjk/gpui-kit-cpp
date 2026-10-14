@@ -66,6 +66,9 @@ bool PlatSecondaryIsCommand() {
 bool PlatShowsWindowControls() {
     return true;
 }
+bool PlatTitleBarCloseIsElement() {
+    return true;
+}
 float PlatCaretWidth() {
     return 2.f;
 }

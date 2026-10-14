@@ -98,6 +98,8 @@ struct MaterialBehavior {
     bool hasAriaSelected = false;
     bool ariaActiveDescendant = false;
     Str tooltip;
+    // window_control_area. 0 is none; the chrome click ids are negative.
+    int windowControl = 0;
     float value = 0;
     int rowCount = -1;
     int columnCount = -1;
@@ -425,6 +427,23 @@ static void ResolveBehavior(const shell::SpecNode* node,
             out->ariaActiveDescendant = true;
         } else if (StrEq(op.name, StrL("tooltip"))) {
             out->tooltip = AsString(op, 0);
+        } else if (StrEq(op.name, StrL("window_control_area"))) {
+            Str area = AsString(op, 0);
+            if (StrEq(area, StrL("drag")))
+                out->windowControl = ClickWinCaption;
+            else if (StrEq(area, StrL("close")))
+                out->windowControl = ClickWinClose;
+            else if (StrEq(area, StrL("max")))
+                out->windowControl = ClickWinMax;
+            else if (StrEq(area, StrL("min")))
+                out->windowControl = ClickWinMin;
+            else {
+                logf(
+                    "`window_control_area` takes \"drag\", \"close\", "
+                    "\"max\" or \"min\", not `%s`; the area is dropped\n",
+                    area.s ? area : Str{});
+                out->windowControl = 0;
+            }
         } else if (StrEq(op.name, StrL("track_scroll"))) {
             const shell::Bridged* handle = Arg(op, 0);
             if (handle && handle->kind == shell::BridgedKind::Number &&
@@ -2638,6 +2657,10 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         element->Tip(behavior.tooltip);
         element->rootTooltip = true;
     }
+    // with_window_control. The chrome id is what Windows hit-tests, and the
+    // same id is what the other platforms already treat as a drag or a
+    // zoom. A child's own click listener is applied below and still runs.
+    if (behavior.windowControl) element->Click(behavior.windowControl);
     element->TabIndex(behavior.tabIndex)->TabStop(behavior.tabStop);
     if (behavior.scrollX || behavior.scrollY ||
         node->component.kind == shell::ComponentKind::Scrollbar) {

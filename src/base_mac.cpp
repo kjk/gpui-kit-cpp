@@ -66,6 +66,9 @@ uint64_t PlatStatModifiedNs(const struct stat* st) {
 bool PlatSecondaryIsCommand() {
     return true;
 }
+bool PlatTitleBarCloseIsElement() {
+    return false;
+}
 bool PlatShowsWindowControls() {
     return false;
 }

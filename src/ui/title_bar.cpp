@@ -8,28 +8,36 @@ namespace component {
 // platform window's business — WM_NCHITTEST hands it back as HTMINBUTTON and
 // friends on Windows, and the X11 loop claims it before the element tree sees
 // it — so the click id here is identity only, the way El::Click always is.
-static El* ControlIcon(Ctx* cx, IconName icon, int clickId) {
+static El* ControlIcon(Ctx* cx, IconName icon, int clickId, Listener onClose) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     bool isClose = clickId == ClickWinClose;
     // The icon takes the theme foreground it would default to anyway, so the
     // cell's hover color is the one that reaches it. Close needs that half:
     // its hover fills with danger, which the default foreground vanishes into.
-    return Div(a)
-        ->W(kTitleBarHeight)
-        ->H(kFill)
-        ->Shrink0()
-        ->ItemsCenter()
-        ->JustifyCenter()
-        ->Click(clickId)
-        ->HoverBg(isClose ? th.danger : th.secondaryHover)
-        ->HoverFg(isClose ? th.dangerFg : th.secondaryFg)
-        ->Child(IconEl(a, icon, UiIconPx(cx, UiSize::Small)));
+    El* cell = Div(a)
+                   ->W(kTitleBarHeight)
+                   ->H(kFill)
+                   ->Shrink0()
+                   ->ItemsCenter()
+                   ->JustifyCenter()
+                   ->HoverBg(isClose ? th.danger : th.secondaryHover)
+                   ->HoverFg(isClose ? th.dangerFg : th.secondaryFg);
+    // Linux owns the close button. A listener replaces the window-manager
+    // click; without one, the platform still closes the window. Other
+    // platforms keep the chrome id either way (title_bar.rs cfg linux).
+    bool customClose =
+        isClose && onClose.fn && base::PlatTitleBarCloseIsElement();
+    if (customClose)
+        cell->OnClick(onClose);
+    else
+        cell->Click(clickId);
+    return cell->Child(IconEl(a, icon, UiIconPx(cx, UiSize::Small)));
 }
 
 // WindowControls: nothing on macOS, where the native traffic lights sit over
 // the bar instead.
-static El* WindowControls(Ctx* cx) {
+static El* WindowControls(Ctx* cx, Listener onClose) {
     Arena* a = cx->a;
     Window* win = cx->win;
     // Under server-side decorations the window manager already draws a title
@@ -46,11 +54,11 @@ static El* WindowControls(Ctx* cx) {
         ->H(kFill)
         ->ItemsCenter()
         ->Shrink0()
-        ->Child(ControlIcon(cx, IconName::WindowMinimize, ClickWinMin))
+        ->Child(ControlIcon(cx, IconName::WindowMinimize, ClickWinMin, {}))
         ->Child(ControlIcon(
             cx, maximized ? IconName::WindowRestore : IconName::WindowMaximize,
-            ClickWinMax))
-        ->Child(ControlIcon(cx, IconName::WindowClose, ClickWinClose));
+            ClickWinMax, {}))
+        ->Child(ControlIcon(cx, IconName::WindowClose, ClickWinClose, onClose));
 }
 
 TitleBar* TitleBar::New(Ctx* cx) {
@@ -89,9 +97,14 @@ TitleBar* TitleBar::Child(El* e) {
     return this;
 }
 
+TitleBar* TitleBar::OnCloseWindow(Listener listener) {
+    onCloseWindow = listener;
+    return this;
+}
+
 El* TitleBar::IntoEl() {
     if (base::PlatShowsWindowControls()) {
-        bar->Child(WindowControls(cx));
+        bar->Child(WindowControls(cx, onCloseWindow));
     }
     return bar;
 }

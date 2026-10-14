@@ -303,6 +303,9 @@ bool PlatIsWindows() {
 bool PlatSecondaryIsCommand() {
     return false;
 }
+bool PlatTitleBarCloseIsElement() {
+    return false;
+}
 bool PlatShowsWindowControls() {
     return true;
 }

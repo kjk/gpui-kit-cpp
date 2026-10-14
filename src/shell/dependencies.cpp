@@ -134,6 +134,25 @@ bool GitDependencyUserCacheRoot(Str home, Str userProfile, Str* out,
     return true;
 }
 
+bool GitDependencyCacheFromEnvironment(Str shellHome, Str home, Str userProfile,
+                                       Str* out, Str* error) {
+    if (out) *out = {};
+    if (shellHome && len(shellHome) > 0) {
+        if (!AbsolutePath(shellHome)) {
+            DepError(error,
+                     fmt("cannot locate the Git dependency cache: "
+                         "GPUI_SHELL_HOME must be an absolute path, got `%s`",
+                         shellHome));
+            return false;
+        }
+        Str cache = JoinPath(shellHome, StrL("cache"));
+        if (out) *out = JoinPath(cache, StrL("dependencies"));
+        StrFree(cache);
+        return true;
+    }
+    return GitDependencyUserCacheRoot(home, userProfile, out, error);
+}
+
 // `digest(&[("git", url)])`.
 static void AppendLengthLe(Vec<uint8_t>* out, int value) {
     uint64_t length = (uint64_t)value;
@@ -384,11 +403,12 @@ GitDependencyStore::GitDependencyStore(Str value) {
         root = StrDup(value);
         return;
     }
+    const char* shellHome = getenv("GPUI_SHELL_HOME");
     const char* home = getenv("HOME");
     const char* userProfile = getenv("USERPROFILE");
-    GitDependencyUserCacheRoot(Str(home ? home : ""),
-                               Str(userProfile ? userProfile : ""), &root,
-                               &initError);
+    GitDependencyCacheFromEnvironment(
+        Str(shellHome ? shellHome : ""), Str(home ? home : ""),
+        Str(userProfile ? userProfile : ""), &root, &initError);
 }
 
 GitDependencyStore::~GitDependencyStore() {

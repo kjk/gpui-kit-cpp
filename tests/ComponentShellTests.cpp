@@ -1214,8 +1214,8 @@ void RegistersTheDisplayCatalogWithDocumentedCallables() {
     FamilyCatalog catalog(&component_shell::RegisterDisplay);
     utassert(catalog.ok);
     const char* names[] = {"Alert",  "Breadcrumb", "Clipboard", "GroupBox",
-                           "Rating", "StatusBar",  "Toolbar"};
-    utassert(catalog.NamesAre(names, 7));
+                           "Rating", "StatusBar",  "TitleBar",  "Toolbar"};
+    utassert(catalog.NamesAre(names, 8));
     utassert(catalog.Documented());
 }
 
@@ -1268,7 +1268,7 @@ void DisplayComponentsBuildFromAScript() {
 void DisplayComponentsRejectAnIncompatiblePayload() {
     const char* const names[] = {"Alert",    "Breadcrumb", "Clipboard",
                                  "GroupBox", "Rating",     "StatusBar",
-                                 "Toolbar"};
+                                 "TitleBar", "Toolbar"};
     for (const char* name : names) {
         Str failure = MaterializeFailure(name, shell::ComponentPayload{}, 0);
         utassert(StrEq(failure,
@@ -6575,10 +6575,10 @@ void QuestionnaireRefusesWhatRustRefuses() {
 // With every family registered, the catalog's whole `declare module
 // "gpui-component"` block and its Element union are byte for byte what the
 // Rust catalog writes: every export in the same order, nothing missing and
-// nothing extra (131 element types and 15 state exports).
+// nothing extra (132 element types and 15 state exports).
 void WholeCatalogDeclarationsEqualRust() {
     const FrozenComponentRegistry* frozen = component_shell::Components();
-    utassert(frozen->DescriptorCount() == 131);
+    utassert(frozen->DescriptorCount() == 132);
     utassert(frozen->StateCount() == 15);
 
     StrBuilder rust;
@@ -7259,14 +7259,58 @@ void RuntimeCheckPreservesErrorsAndClearsThemBeforeTheNextCheck() {
 // component_shell_accepts_the_same_run_check_and_types_commands_as_shell
 void ComponentShellAcceptsTheSameRunCheckAndTypesCommandsAsShell() {
     struct Case {
-        const char* arguments[2];
+        const char* arguments[4];
         int count;
         shell::InvocationKind kind;
+        shell::ApplicationKind application;
+        const char* directory;
     };
     const Case cases[] = {
-        {{"examples/js_story", nullptr}, 1, shell::InvocationKind::Run},
-        {{"check", "examples/js_story"}, 2, shell::InvocationKind::Check},
-        {{"types", "examples/js_story"}, 2, shell::InvocationKind::Types},
+        {{"run", "examples/js_story"},
+         2,
+         shell::InvocationKind::Run,
+         shell::ApplicationKind::Path,
+         "examples/js_story"},
+        {{"check", "examples/js_story"},
+         2,
+         shell::InvocationKind::Check,
+         shell::ApplicationKind::Path,
+         "examples/js_story"},
+        {{"types", "examples/js_story"},
+         2,
+         shell::InvocationKind::Types,
+         shell::ApplicationKind::Path,
+         "examples/js_story"},
+        {{"run", "clock"},
+         2,
+         shell::InvocationKind::Run,
+         shell::ApplicationKind::Installed,
+         "clock"},
+        {{"run", "--dir", "clock"},
+         3,
+         shell::InvocationKind::Run,
+         shell::ApplicationKind::Path,
+         "clock"},
+        {{"new", "clock"},
+         2,
+         shell::InvocationKind::New,
+         shell::ApplicationKind::Path,
+         "clock"},
+        {{"list"},
+         1,
+         shell::InvocationKind::List,
+         shell::ApplicationKind::None,
+         nullptr},
+        {{"agents"},
+         1,
+         shell::InvocationKind::Agents,
+         shell::ApplicationKind::None,
+         nullptr},
+        {{nullptr},
+         0,
+         shell::InvocationKind::Bare,
+         shell::ApplicationKind::Bundled,
+         nullptr},
     };
     for (const Case& c : cases) {
         shell::Invocation invocation;
@@ -7274,7 +7318,9 @@ void ComponentShellAcceptsTheSameRunCheckAndTypesCommandsAsShell() {
         utassert(shell::ShellParseInvocation(c.arguments, c.count, &invocation,
                                              &error));
         utassert(invocation.kind == c.kind);
-        utassert(StrEq(invocation.directory, StrL("examples/js_story")));
+        utassert(invocation.application == c.application);
+        if (c.directory)
+            utassert(StrEq(invocation.directory, Str(c.directory)));
         StrFree(error);
     }
 }
@@ -7303,10 +7349,30 @@ void InvalidArgumentsAreRefusedWithTheSentenceToPrint() {
     const char* const two[] = {"one", "two"};
     utassert(!shell::ShellParseInvocation(two, 2, &invocation, &error));
     utassert(StrEq(error, StrL("unexpected argument `two`; gpui-shell runs "
-                               "one application directory")));
-    utassert(!shell::ShellParseInvocation(nullptr, 0, &invocation, &error));
-    utassert(StrEq(error, StrL("expected an application directory")));
+                               "one application")));
+    const char* const bare[] = {"clock"};
+    utassert(!shell::ShellParseInvocation(bare, 1, &invocation, &error));
+    utassert(StrEq(error, StrL("an application runs with `gpui-shell run "
+                               "clock`")));
+    const char* const dirFlag[] = {"--dir"};
+    utassert(!shell::ShellParseInvocation(dirFlag, 1, &invocation, &error));
+    utassert(StrEq(error, StrL("`--dir` expects an application directory")));
+    utassert(shell::ShellParseInvocation(nullptr, 0, &invocation, &error));
+    utassert(invocation.kind == shell::InvocationKind::Bare);
+    StrBuilder help;
+    shell::ShellFormatHelp(&help);
+    Str helpText = help.TakeStr();
+    const char* flags[] = {"run",       "--dir", "--watch", "--dev", "--help",
+                           "--version", "new",   "list",    "agents"};
+    for (const char* flag : flags) utassert(StrContains(helpText, Str(flag)));
+    StrFree(helpText);
     StrFree(error);
+    // the_shell_home_variable_replaces_the_dot_directory: an absolute
+    // GPUI_SHELL_HOME is the shell home itself.
+    Str shellHome =
+        shell::ShellHomeFrom(StrL("/opt/shell"), StrL("/home/me"), {});
+    utassert(StrEq(shellHome, StrL("/opt/shell")));
+    StrFree(shellHome);
 }
 
 // types_uses_the_adapter_component_registry: `types` writes the declarations

@@ -111,6 +111,10 @@ class Capabilities {
     bool MayRequest(Str scheme, Str host, uint16_t port, bool hasPort,
                     Str method, Str path) const;
 
+    // One line per granted capability, for `gpui-shell list`. Empty when
+    // nothing is granted. Each line ends with a newline.
+    void AppendSummary(StrBuilder* out) const;
+
     // Selects a granted root and returns a path relative to it. The result is
     // authority metadata, not a path to open ambiently: filesystem operations
     // pass both halves to the platform capability opener in one call.

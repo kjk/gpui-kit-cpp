@@ -1154,7 +1154,8 @@ static void ShellHostsHtmlAndMarkdownTextViews() {
     utassert(root != nullptr && !error.IsSet());
     window.paint.app = &app;
     window.paint.window = &window;
-    TestPrepareTextStyles(&window.paint, root, RuntimeStyleNow(&app).foreground);
+    TestPrepareTextStyles(&window.paint, root,
+                          RuntimeStyleNow(&app).foreground);
     El* site = FindShellText(root, StrL("site"));
     El* bold = FindShellText(root, StrL("bold"));
     El* blocked = FindShellText(root, StrL("blocked"));
@@ -1570,7 +1571,7 @@ static void TvDraw(TvMounted* m, Vec<El*>* images) {
             m->window.paint.app = &m->app;
             m->window.paint.window = &m->window;
             TestPrepareTextStyles(&m->window.paint, root,
-                                   RuntimeStyleNow(&m->app).foreground);
+                                  RuntimeStyleNow(&m->app).foreground);
             TvCollectImages(root, images);
         }
         utassert(ExecWaitIdle(5000));
@@ -1816,26 +1817,33 @@ static void ShellMaterializesStateTemplatesInputsAndPaths() {
 
 // A runtime built without a component catalog declares no gpui-component
 // module at all, as Rust's does: the import is refused like any unknown one.
+// render.rs `the_component_module_without_a_catalog_names_the_host_that_has_it`
+// loads an application, because a specifier with no application is refused
+// before the catalog sentence.
 static void ShellWithoutCatalogRefusesGpuiComponent() {
+    const char* mainName = "shell_no_catalog_main.js";
+    remove(mainName);
+    utassert(WriteTestModule(mainName,
+                             "import { View } from 'gpui';\n"
+                             "import { InputGroup } from 'gpui-component';\n"
+                             "export default class Main extends View {\n"
+                             "  render() { return null; }\n"
+                             "}\n"));
     App app;
     component::Init(&app);
     ShellError error = {};
     ShellRuntime* runtime = ShellRuntime::New(&app, &error);
-    Str source = StrL(
-        "import { View, div } from 'gpui';\n"
-        "import { InputGroup } from 'gpui-component';\n"
-        "export default class Main extends View {\n"
-        "  render() { return div(); }\n"
-        "}\n");
     ViewType* type =
-        runtime ? runtime->LoadSource(StrL("no-catalog.js"), source, &error)
-                : nullptr;
+        runtime ? runtime->LoadApp(StrL("."), Str(mainName), &error) : nullptr;
     utassert(runtime != nullptr);
     utassert(type == nullptr && error.IsSet());
+    utassert(StrContains(error.message, StrL("`components`")));
+    utassert(!StrContains(error.message, StrL("built-in modules are")));
     ViewTypeRelease(type);
     if (runtime) runtime->Release();
     ShellErrorClear(&error);
     AppGlobalClear(&app);
+    remove(mainName);
 }
 
 // inline_tokens_host.rs's gpui-base half: the same token operations on
@@ -3965,10 +3973,47 @@ static void ShellPluginManifestsDiscoverAuthorizeAndUnload() {
     PluginManifest future;
     utassert(!PluginManifestParse(
         StrL("{\"id\":\"com.example.future\",\"name\":\"Future\",\"shell-"
-             "version\":\"0.7.0\",\"entry\":\"main.js\"}"),
+             "version\":\"9.0.0\",\"entry\":\"main.js\"}"),
         &future, &error));
     utassert(StrContains(error.message, StrL("not compatible")));
     ShellErrorClear(&error);
+
+    // the_window_size_is_read_from_the_manifest /
+    // invalid_window_sizes_are_rejected.
+    PluginManifest sized;
+    utassert(PluginManifestParse(
+        StrL("{\"id\":\"com.example.calc\",\"name\":\"Calc\",\"entry\":\"main."
+             "js\",\"window\":{\"width\":360,\"height\":520}}"),
+        &sized, &error));
+    utassert(!error.IsSet() && sized.hasWindow && sized.windowW == 360.f &&
+             sized.windowH == 520.f);
+    PluginManifest noWindow;
+    utassert(PluginManifestParse(
+        StrL("{\"id\":\"com.example.calc\",\"name\":\"Calc\",\"entry\":\"main."
+             "js\"}"),
+        &noWindow, &error));
+    utassert(!error.IsSet() && !noWindow.hasWindow);
+    const char* badWindows[] = {
+        "{\"width\":0,\"height\":520}",
+        "{\"width\":360,\"height\":-1}",
+        "{\"width\":360}",
+        "{\"width\":360,\"height\":520,\"x\":0}",
+        "\"360x520\"",
+    };
+    for (const char* window : badWindows) {
+        StrBuilder source;
+        source
+            .Append(StrL("{\"id\":\"com.example.calc\",\"name\":\"Calc\","
+                         "\"entry\":\"main.js\",\"window\":"));
+        source.Append(Str(window));
+        source.AppendChar('}');
+        Str text = source.TakeStr();
+        PluginManifest badWindow;
+        utassert(!PluginManifestParse(text, &badWindow, &error));
+        utassert(StrContains(error.message, StrL("invalid `window`")));
+        ShellErrorClear(&error);
+        StrFree(text);
+    }
 
     PluginManifest older;
     utassert(PluginManifestParse(

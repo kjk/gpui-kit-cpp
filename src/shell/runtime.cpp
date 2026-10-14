@@ -1585,6 +1585,19 @@ static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
                 PlatFileExists(candidate.s);
     }
     if (!found) {
+        // A bare `gpui-component` that no catalog answered. The file search
+        // already failed, which is when Rust's resolver reports the missing
+        // catalog rather than listing the module as a built-in.
+        if (StrEq(moduleName, shell::kDefaultComponentModule)) {
+            JS_ThrowReferenceError(
+                ctx,
+                "cannot resolve module `%s`: this runtime has no component "
+                "catalog. `gpui-shell` provides it with its default "
+                "`components` feature; a build without that feature, or an "
+                "embedding host that registers no catalog, does not.",
+                name);
+            return nullptr;
+        }
         JS_ThrowReferenceError(ctx, "cannot resolve module `%s` from `%s`",
                                name, base);
         return nullptr;
@@ -2167,7 +2180,7 @@ static bool IsBehavior(Str name) {
         "key_context\0aria_level\0keep_mounted\0"
         "readonly\0invalid\0focus_ring\0aria_label\0masked\0placeholder\0"
         "content_type\0align\0label\0icon\0variant\0loading\0outline\0"
-        "accessibility_id\0rows\0auto_grow\0";
+        "accessibility_id\0rows\0auto_grow\0window_control_area\0";
     for (const char* at = names; *at; at += strlen(at) + 1) {
         if (StrEq(name, at)) return true;
     }
@@ -8210,8 +8223,8 @@ globalThis.__gpui = (() => {
   });
   const storage = (session) => {
     const object = {
-      key: (index) => Number.isInteger(index) && index >= 0 ? __storage_key(index, session) : null,
-      getItem: (key) => __storage_get(String(key), session),
+      key: (index) => Number.isInteger(index) && index >= 0 ? (__storage_key(index, session) ?? null) : null,
+      getItem: (key) => __storage_get(String(key), session) ?? null,
       setItem: (key, value) => __storage_set(String(key), String(value), session),
       removeItem: (key) => __storage_remove(String(key), session),
       clear: () => __storage_clear(session),
@@ -8386,6 +8399,7 @@ globalThis.__gpui = (() => {
     activate_window: () => __window_activate(),
     minimize_window: () => __window_minimize(),
     zoom_window: () => __window_zoom(),
+    start_window_move: () => __window_start_move(),
     toggle_fullscreen: () => __window_toggle_fullscreen(),
   });
   globalThis.localStorage = localStorage;
@@ -9454,17 +9468,20 @@ static JSValue NativeWindowCommand(JSContext* ctx, JSValueConst, int,
                                    JSValueConst*, int magic) {
     Window* window = nullptr;
     App* app = nullptr;
-    static const char* const names[] = {"window.activate_window()",
-                                        "window.minimize_window()",
-                                        "window.zoom_window()"};
+    static const char* const names[] = {
+        "window.activate_window()", "window.minimize_window()",
+        "window.zoom_window()", "window.start_window_move()"};
+    if (magic < 0 || magic > 3) return JS_EXCEPTION;
     if (!WindowHost(ctx, names[magic], true, &window, &app))
         return JS_EXCEPTION;
     if (magic == 0) {
         AppActivate(window);
     } else if (magic == 1) {
         AppMinimize(window);
-    } else {
+    } else if (magic == 2) {
         AppToggleMaximize(window);
+    } else {
+        AppDrag(window);
     }
     return JS_UNDEFINED;
 }
@@ -10748,6 +10765,8 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
                            NativeWindowCommand, 0, 1);
     SetGlobalMagicFunction(impl->context, global, "__window_zoom",
                            NativeWindowCommand, 0, 2);
+    SetGlobalMagicFunction(impl->context, global, "__window_start_move",
+                           NativeWindowCommand, 0, 3);
     SetGlobalFunction(impl->context, global, "__stop_propagation",
                       NativeStopPropagation, 0);
     SetGlobalFunction(impl->context, global, "__propagate", NativePropagate, 0);
@@ -13480,6 +13499,60 @@ void ViewObjectRelease(ViewObject* object) {
                  object->value);
     object->runtime->Release();
     delete object;
+}
+
+static void AppendAgentsSection(StrBuilder* out, bool* first, const char* spec,
+                                const char* description,
+                                const char* const* names, int count) {
+    if (!out || !spec) return;
+    if (first && *first) {
+        *first = false;
+    } else if (first) {
+        out->AppendChar('\n');
+    }
+    out->Append(fmt("- `\"%s\"` — %s: ", Str(spec), Str(description)));
+    for (int i = 0; i < count; i++) {
+        if (i) out->Append(StrL(", "));
+        out->Append(fmt("`%s`", Str(names[i])));
+    }
+}
+
+void ShellAppendAgentsModules(
+    StrBuilder* out, const shell::FrozenComponentRegistry* components) {
+    if (!out) return;
+    bool first = true;
+    const char* const* names = nullptr;
+    int count = 0;
+    ModuleExports(StrL("gpui-kit"), &names, &count);
+    AppendAgentsSection(out, &first, "gpui-kit",
+                        "GPUI's own elements and the runtime (`\"gpui\"` is "
+                        "an alias)",
+                        names, count);
+    ModuleExports(StrL("gpui-base"), &names, &count);
+    AppendAgentsSection(out, &first, "gpui-base",
+                        "unstyled controls, layout helpers and the theme",
+                        names, count);
+    ModuleExports(StrL("gpui-fps"), &names, &count);
+    AppendAgentsSection(out, &first, "gpui-fps", "the native performance HUD",
+                        names, count);
+    if (!components || !components->ModuleSpecifier()) return;
+    Vec<const char*> catalog;
+    for (int i = 0; i < components->DescriptorCount(); i++) {
+        const shell::ComponentDescriptor* descriptor =
+            components->Descriptor((uint32_t)i);
+        if (descriptor && descriptor->name)
+            VecAppend(catalog, descriptor->name);
+    }
+    for (int i = 0; i < components->StateCount(); i++) {
+        const shell::StateDescriptor* state = components->State(i);
+        if (state && state->exportName) VecAppend(catalog, state->exportName);
+    }
+    AppendAgentsSection(
+        out, &first, components->ModuleSpecifier(),
+        "this host's styled components; prefer them to hand-styled base "
+        "controls",
+        catalog.els, catalog.len);
+    VecReset(catalog);
 }
 
 } // namespace gpui
