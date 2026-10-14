@@ -43,6 +43,13 @@ VirtualRange VirtualListVisibleRangeFromLayout(const float* origins,
 VirtualRange VirtualListVisibleRows(int count, float rowSize, float offset,
                                     float viewport);
 
+// Where uniform item `ix` sits relative to a viewport scrolled by `offset`.
+// The product and the subtraction are done in double: past 2^27 px an f32
+// can only land on multiples of 16, so `ix * stride - offset` in float
+// stacks rows on top of each other. The result is a small distance a float
+// can hold. uniform_list.rs test_item_positions_far_down_long_list.
+float VirtualListUniformAlong(int ix, float stride, float offset);
+
 // The distance from the start of the list to item `ix` — Rust's running scan
 // over the sizes, which is where each item is placed.
 float VirtualListItemOrigin(const float* sizes, int count, int ix);

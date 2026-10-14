@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `90c7a69eb360017b326e296dbf3da7b772220b21` (2026-10-12,
-chore: Restore default codegen units and stop optimizing proc macros (#3457)).
-Cargo's dev profile and the website's install and hosting notes. The
-C++ build does not use those codegen units or proc-macro settings.
+Processed through `1e7ffaa6d1c0c230cb84099584e6c057531d5a5d` (2026-10-12,
+kit: Update GPUI to gpui-pre 0.3.9 (#3459)).
+The GPUI reference is gpui-pre 0.3.9. A uniform list places a far-down
+row in double precision, so rows past 2^27 px stay a stride apart.
+Taffy stays 0.13.0, which is what gpui-pre asks for; 0.14.0 is only
+gpui-fast.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
@@ -44,8 +46,9 @@ The current update target is
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
-  The GPUI reference is `gpui-pre` 0.3.8 (Zed `279fe070bb38`); the five ported
-  dependency versions are unchanged.
+  The GPUI reference is `gpui-pre` 0.3.9 (Zed `93d745668805`); the five ported
+  dependency versions are unchanged. gpui-fast resolves taffy 0.14.0 beside
+  gpui-pre's taffy 0.13.0; layout follows gpui-pre.
 - **Base Root's Tab and copy actions are the runtime's.** Base Root's Tab /
   shift-Tab / copy actions are the runtime's for every window (`FocusNext`,
   `WindowSelectionCopy`), and WindowState's tooltip overlay is the window's

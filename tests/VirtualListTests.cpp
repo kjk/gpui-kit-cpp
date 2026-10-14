@@ -217,6 +217,23 @@ static void TheHandleAnswersTheVisibleRange() {
     utassert(r.first == want.first && r.end == want.end);
 }
 
+// uniform_list.rs test_item_positions_far_down_long_list: 16 px into item
+// 9_000_002 of a 24 px row, past the point where f32 steps by 16 px. The
+// rows stay 24 px apart.
+static void ItemPositionsFarDownALongList() {
+    const float kRow = 24.f;
+    const float kOffset = 216000064.f;
+    const int kCount = 10000000;
+    VirtualRange vis = VirtualListVisibleRows(kCount, kRow, kOffset, 200.f);
+    utassert(vis.first == 9000002);
+    utassert(vis.end > 9000010);
+    for (int ix = 9000002; ix < 9000011; ix++) {
+        float along = VirtualListUniformAlong(ix, kRow, kOffset);
+        float expected = -16.f + 24.f * (float)(ix - 9000002);
+        utassertnear(along, expected);
+    }
+}
+
 static void ItemSizeLayoutCarriesOriginsGapsAndCrossSize() {
     const float sizes[] = {20, 30, 40};
     ItemSizeLayout vertical;
@@ -416,6 +433,7 @@ void TestVirtualList() {
     ScrollToBottomGoesAsFarAsThereIs();
     TheOffsetIsClampedToTheList();
     TheHandleAnswersTheVisibleRange();
+    ItemPositionsFarDownALongList();
     ItemSizeLayoutCarriesOriginsGapsAndCrossSize();
     HorizontalConstructorUsesXAxisEndToEnd();
     PrePaintUsesTheLaidOutBoxNotViewH();

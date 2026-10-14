@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "90c7a69eb360017b326e296dbf3da7b772220b21",
+  sha: "1e7ffaa6d1c0c230cb84099584e6c057531d5a5d",
   date: "2026-10-12",
-  subject: "chore: Restore default codegen units and stop optimizing proc macros (#3457)",
+  subject: "kit: Update GPUI to gpui-pre 0.3.9 (#3459)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",
@@ -554,20 +554,20 @@ export const gpuiComponent = {
 } as const;
 
 /**
- * Zed reference snapshot recorded in gpui-pre 0.3.6's package metadata.
+ * Zed reference snapshot recorded in gpui-pre 0.3.9's package metadata.
  * Cargo.lock now resolves registry packages rather than a Zed git source.
  */
 export const zedGpui = {
   repo: "https://github.com/zed-industries/zed",
-  sha: "279fe070bb389b79652e52065b2f001edcc0b11b",
-  date: "2026-10-04",
-  subject: "languages: Fix JSON completion order for settings keys (#65139)",
+  sha: "93d745668805029476e6d7fbb19652116fed51de",
+  date: "2026-10-10",
+  subject: "git_ui: Fix commit editor button hover colors (#65448)",
   crates: {
-    "gpui-pre": "0.3.8",
-    "gpui-pre-platform": "0.3.8",
-    "gpui-pre-macros": "0.3.8",
+    "gpui-pre": "0.3.9",
+    "gpui-pre-platform": "0.3.9",
+    "gpui-pre-macros": "0.3.9",
   },
-  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.8",
+  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.9",
 } as const;
 
 /**

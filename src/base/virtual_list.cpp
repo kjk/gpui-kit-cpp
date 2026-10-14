@@ -84,17 +84,22 @@ VirtualRange VirtualListVisibleRows(int count, float rowSize, float offset,
     }
     // The first row whose end has passed the top edge. Scrolled past the end
     // of the list there is no such row, and Rust's scan leaves the first at
-    // zero rather than clamping.
-    int first = (int)(offset / rowSize);
-    if (first < 0 || first >= count) {
-        first = 0;
+    // zero rather than clamping. The division is in double: an f32 quotient
+    // past 2^27 px no longer names the row the pointer is in.
+    double row = (double)rowSize;
+    double top = (double)offset / row;
+    int first = 0;
+    if (top > 0 && top < (double)count) {
+        first = (int)top;
     }
     r.first = first;
     // The first whose end has passed the bottom edge, counted in, plus the
-    // spare Rust adds after it.
-    int last = (int)((offset + viewport) / rowSize);
-    if (last < 0) {
-        last = 0;
+    // spare Rust adds after it. Add the viewport in double so a 200 px
+    // window on a huge offset is not rounded to the f32 step first.
+    double bottom = ((double)offset + (double)viewport) / row;
+    int last = 0;
+    if (bottom > 0) {
+        last = bottom >= (double)count ? count : (int)bottom;
     }
     int end = last >= count ? count : last + 2;
     r.end = end < count ? end : count;
@@ -102,6 +107,13 @@ VirtualRange VirtualListVisibleRows(int count, float rowSize, float offset,
         r.end = r.first;
     }
     return r;
+}
+
+float VirtualListUniformAlong(int ix, float stride, float offset) {
+    if (ix < 0 || stride == 0) {
+        return 0;
+    }
+    return (float)((double)ix * (double)stride - (double)offset);
 }
 
 float VirtualListItemOrigin(const float* sizes, int count, int ix) {
@@ -313,7 +325,8 @@ static void VirtualListAfterPaint(PaintCtx* ctx, El* e, void* user) {
         WindowRequestAutoscroll(ctx->window, want);
         return;
     }
-    float delta = want.y < top || want.h > height ? want.y - top
+    float delta = want.y < top || want.h > height
+                      ? want.y - top
                       : std::max(want.y + want.h - (top + height), 0.f);
     float next = std::min(std::max(e->scrollY + delta, 0.f),
                           std::max(e->contentH - e->h, 0.f));
@@ -331,17 +344,17 @@ static El* VirtualListTakeRow(const VirtualListOpts& o, El** rangeRows,
 }
 
 static void VirtualListPlace(PaintCtx* ctx, El* e, El* made, Axis axis,
-                             float pad, float innerW, float innerH,
-                             float origin, float offset, float extent) {
+                             float pad, float innerW, float innerH, float along,
+                             float extent) {
     float x = e->x + pad;
     float y = e->y + pad;
     float w = innerW;
     float h = innerH;
     if (axis == Axis::Horizontal) {
-        x += origin - offset;
+        x += along;
         w = extent;
     } else {
-        y += origin - offset;
+        y += along;
         h = extent;
     }
     // The rows are laid out under the list's own text style, the way GPUI
@@ -396,18 +409,25 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
                 }
                 if (ix < layout->sizes.len) layout->sizes[ix] = extent;
             }
-            VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH, origin,
-                             offset, extent);
+            VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH,
+                             origin - offset, extent);
             along += extent;
             origin += extent;
             ix++;
         }
         return;
     }
-    VirtualRange vis = VirtualListVisibleRangeFromLayout(
-        layout->origins.len ? layout->origins.els : nullptr,
-        layout->sizes.len ? layout->sizes.els : nullptr, o.count, offset,
-        viewport);
+    // Uniform rows divide in double and place from that, rather than from
+    // an f32 origin table. uniform_list does the same so a row past 2^27 px
+    // stays a stride apart from the next one.
+    bool uniform = !o.sizes && o.rowH > 0;
+    float stride = o.rowH + o.gap;
+    VirtualRange vis =
+        uniform ? VirtualListVisibleRows(o.count, stride, offset, viewport)
+                : VirtualListVisibleRangeFromLayout(
+                      layout->origins.len ? layout->origins.els : nullptr,
+                      layout->sizes.len ? layout->sizes.els : nullptr, o.count,
+                      offset, viewport);
     int visibleCount = vis.end - vis.first;
     El** rangeRows = nullptr;
     if (o.range && visibleCount > 0 && cx.a) {
@@ -426,10 +446,16 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
             made = Div(cx.a);
         }
         float extent = ix < layout->sizes.len ? layout->sizes[ix] : o.rowH;
-        float origin =
-            ix < layout->origins.len ? layout->origins[ix] : (float)ix * o.rowH;
-        VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH, origin,
-                         offset, extent);
+        float along;
+        if (uniform) {
+            along = VirtualListUniformAlong(ix, stride, offset);
+        } else {
+            float origin = ix < layout->origins.len ? layout->origins[ix]
+                                                    : (float)ix * o.rowH;
+            along = origin - offset;
+        }
+        VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH, along,
+                         extent);
     }
 }
 
