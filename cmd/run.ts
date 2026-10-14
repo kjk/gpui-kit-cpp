@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "dff65edcae4df6a251a859e25bfb98832fc1e433",
+  sha: "9fdc9d757683425a91e5e11c9fd695b92d8afca4",
   date: "2026-10-13",
-  subject: "input: Add `EditorState::wrap_row_count` and `prewrap` (#3483)",
+  subject: "input: Expose the editor display map instead of a row count wrapper (#3495)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `dff65edcae4df6a251a859e25bfb98832fc1e433` (2026-10-13,
-input: Add `EditorState::wrap_row_count` and `prewrap` (#3483)).
-`InputWrapRowCount` is the soft-wrapped row count, and `InputPrewrap`
-computes it for a font and width before the first layout. Once the
-editor has been laid out, prewrap leaves the wrap alone.
+Processed through `9fdc9d757683425a91e5e11c9fd695b92d8afca4` (2026-10-13,
+input: Expose the editor display map instead of a row count wrapper (#3495)).
+`InputDisplayMap` is the read-only display map. Wrapped rows are
+`InputWrapRowCount` on that map, and `InputPrewrap` still fills them
+for a font and width before the first layout.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

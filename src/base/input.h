@@ -182,13 +182,21 @@ bool InputLastActiveLine(const InputState* s, const Window* win, Bounds* out);
 // last laid out; a test calls it to wrap without drawing.
 void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
                         float fontSize, uint16_t fontWord);
-// EditorState::wrap_row_count: the rows the scroll height uses. 0 until a
-// layout or InputPrewrap has prepared them. Folded rows still count.
-int InputWrapRowCount(const InputState* s);
+// EditorState::display_map. Read-only: wrapped rows, and the positions the
+// editor already maps. Text is prepared during layout or by InputPrewrap.
+struct InputDisplayMapRef {
+    const InputState* state = nullptr;
+};
+InputDisplayMapRef InputDisplayMap(const InputState* s);
+// DisplayMap::wrap_row_count: the rows the scroll height uses. 0 until a
+// layout or InputPrewrap has prepared them. Folded rows still count. A
+// laid-out editor whose soft wrap never built the map still has one row
+// per logical line.
+int InputWrapRowCount(InputDisplayMapRef map);
 // EditorState::prewrap. `width` is the text area. Before the first layout
 // this wraps a little short of it, with the state's soft wrap and wrapping
-// indent, so the row count is known on the first frame. Once the column
-// has been laid out this does nothing.
+// indent, so DisplayMap::wrap_row_count is known on the first frame. Once
+// the column has been laid out this does nothing.
 void InputPrewrap(InputState* s, PaintCtx* ctx, float fontSize,
                   uint16_t fontWord, float width);
 // The rows of logical line `line`, as byte offsets into it (row 0's is 0),

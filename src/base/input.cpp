@@ -706,7 +706,14 @@ static bool InputWrapLaidOut(const InputState* s) {
            s->lastBounds.w > 0;
 }
 
-int InputWrapRowCount(const InputState* s) {
+InputDisplayMapRef InputDisplayMap(const InputState* s) {
+    InputDisplayMapRef map;
+    map.state = s;
+    return map;
+}
+
+int InputWrapRowCount(InputDisplayMapRef map) {
+    const InputState* s = map.state;
     if (!s) {
         return 0;
     }

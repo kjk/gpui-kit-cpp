@@ -10951,7 +10951,7 @@ static void PrewrapCountsWrappedRowsBeforeTheFirstPaint() {
         s.softWrap = soft;
         InputSetValue(&s, Str(text));
         InputPrewrap(&s, nullptr, 14, 0, 120);
-        int rows = InputWrapRowCount(&s);
+        int rows = InputWrapRowCount(InputDisplayMap(&s));
         utassert((rows > 2) == soft);
         if (!soft) {
             utassert(rows == 2);
@@ -10971,7 +10971,7 @@ static void PrewrapWrapsWithTheWrappingIndent() {
         InputSetWrappingIndent(&s, nullptr, nullptr, indents[i]);
         InputSetValue(&s, Str(text));
         InputPrewrap(&s, nullptr, 14, 0, 200);
-        rows[i] = InputWrapRowCount(&s);
+        rows[i] = InputWrapRowCount(InputDisplayMap(&s));
     }
     utassert(rows[0] > rows[1]);
 }
@@ -10986,10 +10986,10 @@ static void PrewrapDoesNothingOnceLaidOut() {
         },
         400, 100);
     TestDraw(v.win);
-    int laid = InputWrapRowCount(v.input);
+    int laid = InputWrapRowCount(InputDisplayMap(v.input));
     utassert(laid >= 2);
     InputPrewrap(v.input, v.win ? &v.win->paint : nullptr, 14, 0, 60);
-    utassert(InputWrapRowCount(v.input) == laid);
+    utassert(InputWrapRowCount(InputDisplayMap(v.input)) == laid);
     InputViewFree(&v);
 }
 
