@@ -499,6 +499,11 @@ void TablePerform(TableState* s, Ctx* cx, TableAction act) {
 
 void TableState::OnRowClick(TableState* self, Ctx* cx, const ClickEvent* ev,
                             int64_t row) {
+    // set_selected_row used to stop the event itself, so a cell's mouse-down
+    // that selected its row kept the table from taking focus. The stop stays
+    // on the two clicks that need it — the row, and the row header, which
+    // shares this handler — so a header click still selects its row once.
+    WindowStopPropagation(cx);
     TableSetSelectedRow(self, cx, (int)row);
     if (ev->clickCount == 2) {
         TableEmit(self, cx, TableEventKind::DoubleClickedRow, (int)row, -1,

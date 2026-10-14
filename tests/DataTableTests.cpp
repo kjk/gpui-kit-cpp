@@ -1051,6 +1051,136 @@ static void SortIconIsALabelledButtonThatCyclesTheSort() {
     TestAppFree(app);
 }
 
+// collections.rs: a cell's mouse-down selects its row without swallowing
+// the press, so the table still takes focus. The row header's click stops,
+// and that click selects its row once.
+struct PressRecords {
+    Entity<TableState> table;
+    bool watched = false;
+    int nselected = 0;
+    int selected[4] = {};
+    bool pressed = false;
+
+    static int Columns(Ctx*, void*) { return 2; }
+    static int Rows(Ctx*, void*) { return 3; }
+    static component::TableColumn Column(Ctx*, void*, int ix) {
+        return ix == 0 ? component::TableColumn::New(StrL("column-0"),
+                                                     StrL("Column 0"))
+                             .Width(180)
+                       : component::TableColumn::New(StrL("column-1"),
+                                                     StrL("Column 1"))
+                             .Width(180);
+    }
+    static void OnCellPress(PressRecords* self, Ctx* cx, const MouseDownEvent*,
+                            int64_t row) {
+        self->pressed = true;
+        TableSetSelectedRow(self->table.Get(cx), cx, (int)row);
+    }
+    static void OnTable(PressRecords* self, Ctx*, const TableEvent* ev) {
+        if (ev->kind == TableEventKind::SelectRow && self->nselected < 4) {
+            self->selected[self->nselected++] = ev->row;
+        }
+    }
+    static El* Cell(Ctx* cx, void*, int row, int col) {
+        El* box = Div(cx->a)->W(180)->H(32);
+        if (col == 1) {
+            box->OnMouseDown(
+                Listen(cx, &PressRecords::OnCellPress, (int64_t)row));
+        }
+        return box;
+    }
+    static El* Render(PressRecords* self, Ctx* cx) {
+        if (!self->watched) {
+            self->watched = true;
+            Subscribe(cx, self->table, &PressRecords::OnTable);
+        }
+        component::TableDelegate delegate = {};
+        delegate.data = self;
+        delegate.columnsCount = Columns;
+        delegate.rowsCount = Rows;
+        delegate.column = Column;
+        delegate.renderTd = Cell;
+        return component::DataTable::New(cx, StrL("t"), self->table)
+            ->Delegate(delegate)
+            ->IntoEl();
+    }
+};
+
+static const Bounds* ClickBounds(const Window* win, uintptr_t fn, int64_t arg,
+                                 float maxW) {
+    const Bounds* found = nullptr;
+    for (int i = 0; i < win->paint.hits.len; i++) {
+        const HitRect& hr = win->paint.hits[i];
+        if (hr.listener.Fn() != fn || hr.listener.arg != arg) {
+            continue;
+        }
+        if (hr.bounds.w <= 0 || hr.bounds.h <= 0 || hr.bounds.w > maxW) {
+            continue;
+        }
+        found = &hr.bounds;
+    }
+    return found;
+}
+
+static const Bounds* PressBounds(const Window* win, int64_t row) {
+    const Bounds* found = nullptr;
+    for (int i = 0; i < win->paint.hits.len; i++) {
+        const HitRect& hr = win->paint.hits[i];
+        if (hr.onMouseDown.Fn() != (uintptr_t)&PressRecords::OnCellPress ||
+            hr.onMouseDown.arg != row || hr.bounds.w <= 1 || hr.bounds.h <= 1) {
+            continue;
+        }
+        found = &hr.bounds;
+    }
+    return found;
+}
+
+static Window* OpenPressRecords(App* app, Entity<PressRecords> view,
+                                bool cellSelectable) {
+    PressRecords* self = view.Get(app);
+    self->table = EntityNewState<TableState>(app);
+    self->table.Get(app)->cellSelectable = cellSelectable;
+    return TestWindowOpen(app, view, 640, 320, 1);
+}
+
+static void TableKeepsFocusWhenACellSelectsItsRowOnMouseDown() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<PressRecords> view = EntityNew<PressRecords>(app);
+    Window* win = OpenPressRecords(app, view, false);
+    PressRecords* self = view.Get(app);
+    const Bounds* cell = PressBounds(win, 1);
+    utassert(cell != nullptr);
+    if (cell) {
+        TestSimulateClick(
+            win, Point{cell->x + cell->w / 2.f, cell->y + cell->h / 2.f});
+    }
+    TableState* table = self->table.Get(app);
+    utassert(self->pressed);
+    utassert(table && TableSelectedRow(table) == 1);
+    utassert(table && FocusHandleIsFocused(win, table->focus));
+    TestAppFree(app);
+}
+
+static void TableRowHeaderClickSelectsItsRowOnce() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<PressRecords> view = EntityNew<PressRecords>(app);
+    Window* win = OpenPressRecords(app, view, true);
+    PressRecords* self = view.Get(app);
+    const Bounds* header =
+        ClickBounds(win, (uintptr_t)&TableState::OnRowClick, 2, 40);
+    utassert(header != nullptr);
+    if (header) {
+        TestSimulateClick(win, Point{header->x + header->w / 2.f,
+                                     header->y + header->h / 2.f});
+    }
+    TableState* table = self->table.Get(app);
+    utassert(table && TableSelectedRow(table) == 2);
+    utassert(self->nselected == 1 && self->selected[0] == 2);
+    TestAppFree(app);
+}
+
 void TestDataTable() {
     AStripedTableFillsTheBodyWithEmptyRows();
     SortIconIsALabelledButtonThatCyclesTheSort();
@@ -1077,6 +1207,8 @@ void TestDataTable() {
     AMovedColumnLandsInTheGap();
     LoadMoreAsksNearTheEnd();
     TheKeyTable();
+    TableKeepsFocusWhenACellSelectsItsRowOnMouseDown();
+    TableRowHeaderClickSelectsItsRowOnce();
     TheSortCycle();
     OnlyOneColumnCarriesTheSort();
     ATableWithoutAHeightFillsItsBox();

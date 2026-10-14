@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a1ac7d963e8d8a1daa6cd2ba4fc8ee7384b98f7f` (2026-10-13,
-shell: Show each release's Shell pages for the binary it ships (#3479)).
-The website and the release workflow snapshot each shell binary's pages.
-Neither is ported.
+Processed through `ce09848c9dcf3f1a01bebef98d584f8df523a5a7` (2026-10-13,
+table: Don't stop event propagation in `set_selected_row` (#3469)).
+Selecting a row no longer ends the event. The row click and the row
+header click stop it, so a header click still selects once and a cell
+press that selects its row still lets the table take focus.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
