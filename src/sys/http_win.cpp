@@ -228,6 +228,38 @@ static bool ReadResponse(HINTERNET req, const wchar_t* base,
     }
 }
 
+// WinHTTP's own words for one of its errors, else the system's
+static Str WinHttpErrorDup(DWORD code) {
+    wchar_t* text = nullptr;
+    HMODULE winhttp = GetModuleHandleW(L"winhttp.dll");
+    DWORD n = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                                 FORMAT_MESSAGE_FROM_SYSTEM |
+                                 FORMAT_MESSAGE_IGNORE_INSERTS |
+                                 (winhttp ? FORMAT_MESSAGE_FROM_HMODULE : 0),
+                             winhttp, code, 0, (wchar_t*)&text, 0, nullptr);
+    while (n > 0 && (text[n - 1] == L'\r' || text[n - 1] == L'\n' ||
+                     text[n - 1] == L' ' || text[n - 1] == L'.')) {
+        n--;
+    }
+    StrBuilder b;
+    if (n > 0) {
+        int bytes = WideCharToMultiByte(CP_UTF8, 0, text, (int)n, nullptr, 0,
+                                        nullptr, nullptr);
+        TempStr utf8 = bytes > 0 ? AllocStrTemp(bytes) : TempStr{};
+        if (utf8.s) {
+            WideCharToMultiByte(CP_UTF8, 0, text, (int)n, utf8.s, bytes,
+                                nullptr, nullptr);
+            b.Append(utf8);
+            b.Append(StrL(" "));
+        }
+    }
+    if (text) {
+        LocalFree(text);
+    }
+    b.Append(fmt("(error %d)", (int)code));
+    return b.TakeStr();
+}
+
 bool HttpSend(const HttpReq& req, HttpRsp* out) {
     Str url = req.url;
     bool noRedirect = req.noRedirect;
@@ -267,6 +299,7 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
     }
 
     bool ok = false;
+    DWORD failure = 0;
     {
         WinHttpHandle session;
         // WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY wants Windows 8.1; the default
@@ -339,11 +372,17 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
             Free(nullptr, bypass);
         }
         StrFree(proxy);
+        if (!session.h) {
+            failure = GetLastError();
+        }
         if (session.h) {
             WinHttpSetTimeouts(session.h, kHttpTimeoutMs, kHttpTimeoutMs,
                                kHttpTimeoutMs, kHttpTimeoutMs);
             WinHttpHandle conn;
             conn.h = WinHttpConnect(session.h, host, uc.nPort, 0);
+            if (!conn.h) {
+                failure = GetLastError();
+            }
             if (conn.h) {
                 DWORD flags = uc.nScheme == INTERNET_SCHEME_HTTPS
                                   ? WINHTTP_FLAG_SECURE
@@ -403,6 +442,8 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
                     (!streamed || WriteBody(request.h, req)) &&
                     WinHttpReceiveResponse(request.h, nullptr)) {
                     ok = ReadResponse(request.h, wurl, req, out);
+                } else {
+                    failure = GetLastError();
                 }
                 Free(nullptr, headers);
                 Free(nullptr, verb);
@@ -413,6 +454,9 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
     Free(nullptr, wurl);
     if (!ok) {
         VecReset(out->body);
+        if (out->status == 0 && failure != 0 && len(out->error) == 0) {
+            out->error = WinHttpErrorDup(failure);
+        }
     }
     return ok;
 }

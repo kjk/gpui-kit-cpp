@@ -50,6 +50,11 @@ struct HttpRsp {
     // browser shows only what CORS lets a page read. Owned; empty when the
     // client reported none.
     Str headers;
+    // Why there is no answer, as the client words it (WinHTTP's message for
+    // its error, libcurl's, NSError's): no DNS, refused, timed out, a
+    // certificate refused, the proxy not answering. Owned; empty when there
+    // was an answer or the client said nothing.
+    Str error;
 };
 
 void HttpRspFree(HttpRsp* r);

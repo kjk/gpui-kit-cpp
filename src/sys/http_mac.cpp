@@ -338,6 +338,7 @@ bool HttpSend(const HttpReq& request, HttpRsp* out) {
 
         __block NSData* body = nil;
         __block NSHTTPURLResponse* rsp = nil;
+        __block NSString* failure = nil;
         dispatch_semaphore_t done = dispatch_semaphore_create(0);
         GpuiNoRedirectDelegate* delegate =
             noRedirect ? [[GpuiNoRedirectDelegate alloc] init] : nil;
@@ -355,6 +356,8 @@ bool HttpSend(const HttpReq& request, HttpRsp* out) {
                 if (!e && [r isKindOfClass:[NSHTTPURLResponse class]]) {
                     body = d;
                     rsp = (NSHTTPURLResponse*)r;
+                } else if (e) {
+                    failure = [e localizedDescription];
                 }
                 dispatch_semaphore_signal(done);
               }];
@@ -371,6 +374,10 @@ bool HttpSend(const HttpReq& request, HttpRsp* out) {
         }
         if (noRedirect) [session finishTasksAndInvalidate];
         if (!rsp) {
+            const char* why = failure ? [failure UTF8String] : nullptr;
+            if (why) {
+                out->error = StrDup(Str(why));
+            }
             return false;
         }
         out->status = (int)[rsp statusCode];

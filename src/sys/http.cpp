@@ -22,6 +22,8 @@ void HttpRspFree(HttpRsp* r) {
     r->redirectUrl = {};
     StrFree(r->headers);
     r->headers = {};
+    StrFree(r->error);
+    r->error = {};
     r->status = 0;
 }
 

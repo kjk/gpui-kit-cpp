@@ -244,6 +244,9 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
 
     CURLcode err = headersReady ? curl_easy_perform(c) : CURLE_OUT_OF_MEMORY;
     bool ok = err == CURLE_OK;
+    if (!ok) {
+        out->error = StrDup(Str(curl_easy_strerror(err)));
+    }
     if (ok) {
         long status = 0;
         curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &status);
