@@ -23,13 +23,21 @@ const float kResizablePanelMinSize = PANEL_MIN_SIZE;
 //
 // `sizes` is read and written in place. `mins` and `maxs` are the per-panel
 // range — pass null for either to use kResizablePanelMinSize and no ceiling.
-// Answers false when there was nothing to do, which is Rust's early return.
+// `fixed` null means no panel is fixed. A fixed panel gives space only to a
+// drag on its own handle (the panel immediately after that handle); a drag
+// further away skips it, and a shrink never takes from a fixed panel before
+// the handle. Answers false when there was nothing to do, which is Rust's
+// early return.
 bool ResizablePanelResize(float* sizes, const float* mins, const float* maxs,
-                          int n, int ix, float size, float containerSize);
+                          int n, int ix, float size, float containerSize,
+                          const bool* fixed = nullptr);
 
-// adjust_to_container_size: every panel keeps the share it had when the
-// container changes size.
-void ResizableAdjustToContainer(float* sizes, int n, float containerSize);
+// adjust_to_container_size. Panels that are not fixed keep the share they
+// had of the space the fixed panels leave. A container too small for the
+// fixed panels, or a group with no flexible panel, leaves every size alone.
+// `fixed` null means none are.
+void ResizableAdjustToContainer(float* sizes, int n, float containerSize,
+                                const bool* fixed = nullptr);
 
 // HANDLE_SIZE and HANDLE_PADDING: a hairline with four DIPs of grab either
 // side of it, sitting over the boundary rather than taking room from it.
@@ -230,6 +238,10 @@ struct ResizableState {
     // while nothing is drawn for it, so showing the panel again brings back
     // the width a drag left it at.
     Vec<bool> shown;
+    // ResizablePanel::fixed, and only when that panel also has a size. A
+    // fixed panel keeps its size when the container changes; the others share
+    // what is left. One entry per panel, like the arrays above.
+    Vec<bool> fixed;
     // Where the layout put each panel on the last frame. A panel with no size
     // of its own is declared as a flex item and measured, and what comes back
     // is its size from then on — `update_panel_size`, one frame later, since
@@ -251,6 +263,7 @@ struct ResizableState {
         VecReset(maxs);
         VecReset(grows);
         VecReset(shown);
+        VecReset(fixed);
         VecReset(laid);
     }
 
@@ -306,6 +319,8 @@ struct ResizablePanelGroup {
     ArenaVec<float> maxs;
     ArenaVec<bool> grows;
     ArenaVec<bool> shown;
+    // Effective ResizablePanel::fixed: the panel asked for it and has a size.
+    ArenaVec<bool> fixed;
     // The ResizablePanel each panel was declared from, or null for one
     // declared through Panel / Grow: its style and its further children.
     ArenaVec<const struct ResizablePanel*> sources;
@@ -365,12 +380,20 @@ struct ResizablePanel {
     float max = 0;
     bool grow = true;
     bool visible = true;
+    // Keep `size` when the container resizes. Needs a size; without one the
+    // panel lays out as usual.
+    bool fixed = false;
 
     static ResizablePanel* New(Ctx* cx);
     ResizablePanel* Child(El* value);
     ResizablePanel* Size(float value);
     ResizablePanel* SizeRange(float minValue, float maxValue = 0);
     ResizablePanel* FlexNone();
+    // Keep this panel's size when the group's container resizes. The other
+    // panels share the difference in their proportions. Dragging its own
+    // handle still resizes it. At least one panel in the group should not
+    // be fixed.
+    ResizablePanel* Fixed();
     ResizablePanel* Visible(bool value);
 };
 

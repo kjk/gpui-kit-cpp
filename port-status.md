@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `efd2e672d22d3ea6b2c7061ef03c891c65bbaa4b` (2026-10-13,
-table: Restore the default column resize protection (#3472)).
-A column drag stops at 1200px unless the column sets a wider maximum.
-An initial width is not limited by that default. The website notes are
-not ported.
+Processed through `8173d61cebfc620ccbaa69f1d614656f0bb69154` (2026-10-13,
+resizable: Add `ResizablePanel::fixed` to keep a panel's size on container
+resizes (#3478)).
+A panel marked fixed, and given a size, keeps that size when the
+container resizes. The other panels share what is left. A drag on
+another handle does not take space from it. The website notes are not
+ported.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

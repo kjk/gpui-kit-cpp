@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "efd2e672d22d3ea6b2c7061ef03c891c65bbaa4b",
+  sha: "8173d61cebfc620ccbaa69f1d614656f0bb69154",
   date: "2026-10-13",
-  subject: "table: Restore the default column resize protection (#3472)",
+  subject: "resizable: Add `ResizablePanel::fixed` to keep a panel's size on container resizes (#3478)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

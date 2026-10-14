@@ -525,6 +525,166 @@ static void ACallersListenersReachTheBand() {
     TestAppFree(app);
 }
 
+// mod.rs fixed_panel_keeps_its_size_across_a_container_resize, the size
+// arithmetic without a window. A fixed 240 beside 400 and 200 stays 240
+// across 1140, 200 and 600; a drag on the middle panel takes from the panel
+// after it, and the fixed panel's own handle still resizes it.
+static void AFixedPanelKeepsItsShareOfTheArithmetic() {
+    float sizes[3] = {240, 400, 200};
+    const bool fixed[3] = {true, false, false};
+    ResizableAdjustToContainer(sizes, 3, 1140, fixed);
+    utassertnear(sizes[0], 240.f);
+    utassertnear(sizes[1], 600.f);
+    utassertnear(sizes[2], 300.f);
+    // Too small for the fixed panel: every size stays, so the proportions
+    // are still there when the container grows.
+    ResizableAdjustToContainer(sizes, 3, 200, fixed);
+    utassertnear(sizes[0], 240.f);
+    utassertnear(sizes[1], 600.f);
+    utassertnear(sizes[2], 300.f);
+    ResizableAdjustToContainer(sizes, 3, 600, fixed);
+    utassertnear(sizes[0], 240.f);
+    utassertnear(sizes[1], 240.f);
+    utassertnear(sizes[2], 120.f);
+
+    const float mins[3] = {100, 100, 100};
+    utassert(ResizablePanelResize(sizes, mins, nullptr, 3, 1, 50, 600, fixed));
+    utassertnear(sizes[0], 240.f);
+    utassertnear(sizes[1], 100.f);
+    utassertnear(sizes[2], 260.f);
+    utassert(ResizablePanelResize(sizes, mins, nullptr, 3, 0, 300, 600, fixed));
+    utassertnear(sizes[0], 300.f);
+    utassertnear(sizes[1], 100.f);
+    utassertnear(sizes[2], 200.f);
+
+    // The fixed panel immediately after the dragged handle gives space. A
+    // fixed panel further along does not.
+    float along[3] = {100, 300, 200};
+    const bool both[3] = {false, true, true};
+    const float loose[3] = {50, 50, 50};
+    utassert(ResizablePanelResize(along, loose, nullptr, 3, 0, 200, 600, both));
+    utassertnear(along[0], 200.f);
+    utassertnear(along[1], 200.f);
+    utassertnear(along[2], 200.f);
+}
+
+static float LaidPanel(El* group, int ix) {
+    El* panel = group ? group->first : nullptr;
+    for (int i = 0; panel && i < ix; i++) panel = panel->next;
+    return panel ? panel->w : -1.f;
+}
+
+// One frame of the rust FixedPanelHarness: h_resizable at `width`, sidebar
+// size 240 range 100..480, main size 400, aside with no size.
+static El* DrawFixedPanels(Ctx* cx, Window* win, Entity<ResizableState> state,
+                           float width, bool fixed) {
+    ResizablePanel* sidebar =
+        resizable_panel(cx)->Size(240)->SizeRange(100, 480)->Child(Div(cx->a));
+    if (fixed) sidebar->Fixed();
+    El* root = h_resizable(cx, StrL("fixed-panel"))
+                   ->WithState(state)
+                   ->Child(sidebar)
+                   ->Child(resizable_panel(cx)->Size(400)->Child(Div(cx->a)))
+                   ->Child(resizable_panel(cx)->Child(Div(cx->a)))
+                   ->IntoEl();
+    LayoutEl(&win->paint, root, 0, 0, width, 100, 16, Rgba{});
+    if (root->customPaint) {
+        root->customPaint(&win->paint, root, root->customUser);
+    }
+    ExecDrain();
+    return root;
+}
+
+static El* SettleFixedPanels(Ctx* cx, Window* win, Entity<ResizableState> state,
+                             float width, bool fixed) {
+    DrawFixedPanels(cx, win, state, width, fixed);
+    return DrawFixedPanels(cx, win, state, width, fixed);
+}
+
+// mod.rs fixed_panel_keeps_its_size_across_a_container_resize.
+static void FixedPanelKeepsItsSizeAcrossAContainerResize() {
+    ExecInit();
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<ResizableState> state = EntityNewState<ResizableState>(&app);
+
+    El* root = SettleFixedPanels(&cx, win, state, 840, true);
+    utassertnear(LaidPanel(root, 0), 240.f);
+    utassertnear(LaidPanel(root, 1), 400.f);
+    utassertnear(LaidPanel(root, 2), 200.f);
+
+    root = SettleFixedPanels(&cx, win, state, 1140, true);
+    utassertnear(LaidPanel(root, 0), 240.f);
+    utassertnear(LaidPanel(root, 1), 600.f);
+    utassertnear(LaidPanel(root, 2), 300.f);
+
+    root = SettleFixedPanels(&cx, win, state, 200, true);
+    utassertnear(LaidPanel(root, 0), 240.f);
+
+    root = SettleFixedPanels(&cx, win, state, 600, true);
+    utassertnear(LaidPanel(root, 0), 240.f);
+    utassertnear(LaidPanel(root, 1), 240.f);
+    utassertnear(LaidPanel(root, 2), 120.f);
+
+    state.Get(&cx)->ResizePanel(&cx, 1, 50);
+    root = DrawFixedPanels(&cx, win, state, 600, true);
+    utassertnear(LaidPanel(root, 0), 240.f);
+    utassertnear(LaidPanel(root, 1), 100.f);
+    utassertnear(LaidPanel(root, 2), 260.f);
+
+    state.Get(&cx)->ResizePanel(&cx, 0, 300);
+    root = DrawFixedPanels(&cx, win, state, 600, true);
+    utassertnear(LaidPanel(root, 0), 300.f);
+    utassertnear(LaidPanel(root, 1), 100.f);
+    utassertnear(LaidPanel(root, 2), 200.f);
+
+    root = SettleFixedPanels(&cx, win, state, 900, true);
+    utassertnear(LaidPanel(root, 0), 300.f);
+
+    // Without a size, fixed() does not stick.
+    ResizablePanelGroup* plain =
+        h_resizable(&cx, StrL("unfixed"))
+            ->Child(resizable_panel(&cx)->Fixed()->Child(Div(arena)));
+    utassert(plain->fixed.len == 1 && !plain->fixed[0]);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    delete win;
+    ArenaDelete(arena);
+    ExecShutdown();
+}
+
+// mod.rs panel_made_fixed_in_place_keeps_its_size_across_a_container_resize.
+static void PanelMadeFixedInPlaceKeepsItsSizeAcrossAContainerResize() {
+    ExecInit();
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<ResizableState> state = EntityNewState<ResizableState>(&app);
+
+    DrawFixedPanels(&cx, win, state, 840, false);
+    DrawFixedPanels(&cx, win, state, 840, true);
+    El* root = SettleFixedPanels(&cx, win, state, 1140, true);
+    utassertnear(LaidPanel(root, 0), 240.f);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    delete win;
+    ArenaDelete(arena);
+    ExecShutdown();
+}
+
 void TestResizable() {
     TestSuite("resizable");
     ResizingOnePanelTakesFromTheNext();
@@ -533,7 +693,10 @@ void TestResizable() {
     APanelWillNotShrinkBelowItsMinimum();
     ARangeOfItsOwnBeatsTheDefault();
     EveryPanelKeepsItsShareWhenTheContainerChanges();
+    AFixedPanelKeepsItsShareOfTheArithmetic();
     ProgrammaticResizeAndDynamicPanelsUseTheSameState();
+    FixedPanelKeepsItsSizeAcrossAContainerResize();
+    PanelMadeFixedInPlaceKeepsItsSizeAcrossAContainerResize();
     SourceConstructorsAndHandleAppearanceRemainConcrete();
     MixedSizingSettlesAfterContainerResize();
     AHandleStateReportsOnlyRealChanges();
