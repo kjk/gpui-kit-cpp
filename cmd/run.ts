@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7f1bf0c2ee83b4b882cbdcfe3171349b2247c370",
+  sha: "507e82b8115ac73af92b7d3856501f9d7b73b2c9",
   date: "2026-10-13",
-  subject: "table: Select the first or last row on Home and End in row mode (#3471)",
+  subject: "input: Skip the notify in `set_line_number` when nothing changes (#3475)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

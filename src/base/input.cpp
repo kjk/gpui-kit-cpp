@@ -5336,6 +5336,22 @@ void InputSetSmartIndent(InputState* s, bool enabled, App* app, Window* win) {
     Notify(app, win);
 }
 
+void InputSetLineNumber(InputState* s, bool lineNumber, App* app, Window* win) {
+    // set_line_number: a code editor whose gutter is already as asked says
+    // nothing, so an observer that sets it from the notify stops. Any other
+    // layout mode still notifies, and changes nothing.
+    if (!s) {
+        return;
+    }
+    if (s->mode.kind == LayoutModeKind::CodeEditor) {
+        if (s->mode.lineNumber == lineNumber) {
+            return;
+        }
+        s->mode.lineNumber = lineNumber;
+    }
+    Notify(app, win);
+}
+
 // typing_intent: the intent of a batch the caller did not label. Inserting
 // text at collapsed cursors is typing; anything else stands on its own.
 static EditIntent TypingIntent(const Selection* ranges, int n, Str newText) {

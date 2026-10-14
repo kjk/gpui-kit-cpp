@@ -5846,6 +5846,10 @@ void InputSetAutoClose(InputState* s, bool enabled, App* app,
                        Window* win = nullptr);
 void InputSetSmartIndent(InputState* s, bool enabled, App* app,
                          Window* win = nullptr);
+// set_line_number. A code editor whose gutter is already as asked says
+// nothing. Any other layout mode still notifies, and changes nothing.
+void InputSetLineNumber(InputState* s, bool lineNumber, App* app,
+                        Window* win = nullptr);
 // Input methods count in UTF-16 on both platforms that have one to talk to;
 // a field counts in bytes. These are the two directions across. An offset
 // past the end clamps to it, which is what a platform handing over a stale

@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7f1bf0c2ee83b4b882cbdcfe3171349b2247c370` (2026-10-13,
-table: Select the first or last row on Home and End in row mode (#3471)).
-In row mode Home and End select the first or last row. Column mode, cell
-mode, and a table whose rows are not selectable still move by column.
+Processed through `507e82b8115ac73af92b7d3856501f9d7b73b2c9` (2026-10-13,
+input: Skip the notify in `set_line_number` when nothing changes (#3475)).
+A code editor whose line numbers are already as asked does not notify.
+Any other layout mode still notifies, and changes nothing.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

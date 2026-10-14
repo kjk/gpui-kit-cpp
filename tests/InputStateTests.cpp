@@ -5610,6 +5610,21 @@ static void InputScrollOffsetNotifiesOnlyOnChange() {
     TestAppFree(u.app);
 }
 
+// state.rs test_set_line_number_notifies_only_on_change.
+static void SetLineNumberNotifiesOnlyOnChange() {
+    UnrenderedInputA u;
+    UnrenderedInputOpenA(&u);
+    MakeCodeEditor(&u.input);
+    bool shown = u.input.mode.lineNumber;
+    uint64_t before = NotificationsA(u);
+    InputSetLineNumber(&u.input, shown, u.app, u.win);
+    utassert(NotificationsA(u) - before == 0);
+    InputSetLineNumber(&u.input, !shown, u.app, u.win);
+    utassert(NotificationsA(u) - before == 1);
+    utassert(u.input.mode.lineNumber == !shown);
+    TestAppFree(u.app);
+}
+
 // cursor_layout(): where the active caret was last laid out.
 struct CursorLayoutA {
     float x = 0;
@@ -6372,6 +6387,7 @@ static void RunWindowTestsA() {
     InlineTokenTextareaImeAndModes();
     NoopScrollNotifiesDiagnosticDismissal();
     InputScrollOffsetNotifiesOnlyOnChange();
+    SetLineNumberNotifiesOnlyOnChange();
 }
 
 // ─── state.rs window tests, part B ──────────────────────────────────────
