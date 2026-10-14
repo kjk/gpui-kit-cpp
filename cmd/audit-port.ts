@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "ed27c6293b585acc40c10be7138534243bee5841";
+const pinnedGpuiComponent = "75fc4ed3f5cd4085545784fa51e419dbd4fd92c3";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -371,6 +371,10 @@ const declarationMappings: Record<string, DeclarationMapping> = {
   "base/input/editor/language.rs::fn set_language_provider": {
     spellings: ["InputSetLanguageProvider"],
   },
+  "base/input/base/state.rs::struct PrepaintCaretGeometry": {
+    collapse:
+      "the stash is InputState caretWinX/Y, lastLineH, inputBounds and scroll, written at write-back so a menu prepaint in the same frame can read it; there is no separate geometry struct",
+  },
   "base/dialog.rs::fn init": { spellings: ["DialogInitKeys"] },
   "base/number_input.rs::fn step_value": {
     spellings: ["NumberStepValueTemp"],
@@ -600,13 +604,13 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 561, sha256: "9cab2567f4348e1a10a1359fc5d7dbf2b3185cd21c17b8ad2d3bd2e5698cb0ec" },
+    declaration: { count: 562, sha256: "e7bae46cb363909860175784c36c1dd16665b70565bba78ac05c37acf6305200" },
     "pub-use": { count: 169, sha256: "c290abea497898c61169557849c55bdd449fe590cd551ed736432ddd12f1ad1c" },
     test: { count: 1330, sha256: "deda45bcb6a470f74f4a5b8e88255559c8b7176585edffcc63332c5da3c0487d" },
   },
   ui: {
     declaration: { count: 467, sha256: "25acb3cf968f941750ad4713bbfbacd136dc46acf38d6250d86f77f641bde232" },
-    "pub-use": { count: 168, sha256: "866f5f9e20a45c15e191a56880c1e0938de6faad549ef50189233cc827d2a184" },
+    "pub-use": { count: 168, sha256: "c56f58476e81a0f0f9fd333601cd6e81d40cbf9b87b1347d59275f3539c188b4" },
     test: { count: 718, sha256: "4d88b2ea9128aebbd1449661c3b17d19a74e004ca553730a37f09cff8a92fd8f" },
   },
 };

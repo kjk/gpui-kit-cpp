@@ -6115,6 +6115,187 @@ static void NumberInputUndoWithMask() {
     InputViewFree(&view);
 }
 
+// completions.rs: the menu's hit id is PathClick("completion-menu") with
+// no named ancestor, which is IdFold of that name alone.
+static int FoldClickId(const char* name) {
+    uint32_t h = 2166136261u;
+    h ^= (uint8_t)'/';
+    h *= 16777619u;
+    for (const char* p = name; *p; p++) {
+        h ^= (uint8_t)*p;
+        h *= 16777619u;
+    }
+    int id = (int)(h & 0x3fffffff);
+    return id ? id : 1;
+}
+
+static Bounds MenuHitBounds(Window* win, const char* name) {
+    if (!win) return {};
+    int id = FoldClickId(name);
+    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
+        if (win->paint.hits[i].id == id) return win->paint.hits[i].bounds;
+    }
+    return {};
+}
+
+static bool NearPx(float a, float b) {
+    float d = a - b;
+    if (d < 0) d = -d;
+    return d < 2.f;
+}
+
+// The styled editor, so the completion menu is in the tree. Render records
+// the caret it can see, which is the previous frame's.
+struct CompletionAnchorPanel {
+    InputState input;
+    float editorH = 280;
+    float renderCaretX = 0;
+    float renderCaretY = 0;
+
+    static El* Render(CompletionAnchorPanel* self, Ctx* cx) {
+        self->renderCaretX = self->input.caretWinX;
+        self->renderCaretY = self->input.caretWinY;
+        return Div(cx->a)
+            ->SizeFull()
+            ->Child(component::Editor::New(cx, StrL("editor"), &self->input)
+                        ->Searchable(false)
+                        ->H(self->editorH)
+                        ->IntoEl());
+    }
+};
+
+struct AnchorSession {
+    App* app = nullptr;
+    Window* win = nullptr;
+    Entity<CompletionAnchorPanel> panel = {};
+    CompletionAnchorPanel* p = nullptr;
+};
+
+static AnchorSession OpenAnchorEditor(float w, float h, float editorH) {
+    AnchorSession s;
+    s.app = TestAppNew();
+    if (!s.app) return s;
+    s.panel = EntityNew<CompletionAnchorPanel>(s.app);
+    s.p = s.panel.Get(s.app);
+    MakeCodeEditor(&s.p->input);
+    s.p->editorH = editorH;
+    s.win = TestWindowOpen(s.app, s.panel, w, h);
+    return s;
+}
+
+static void ShowOneCompletion(AnchorSession* s) {
+    CompletionItem item;
+    item.label = StrL("print");
+    InputPresentCompletionItems(&s->p->input, 0, StrL(""), &item, 1);
+}
+
+// completions.rs completion_popup_follows_caret_on_first_frame.
+static void CompletionPopupFollowsCaretOnFirstFrame() {
+    AnchorSession s = OpenAnchorEditor(800, 360, 280);
+    InputSetValue(&s.p->input, StrL("hello"));
+    InputSetSelectedRange(&s.p->input, s.app, s.win, 0, 0);
+    InputFocus(&s.p->input, s.app, s.win);
+    ShowOneCompletion(&s);
+    TestFlushEffects(s.app);
+    TestRunUntilParked(s.app);
+    utassert(s.p->input.caretWinX > 0);
+    utassert(s.p->input.completion.open);
+
+    InputPerform(&s.p->input, s.app, s.win, InputAction::MoveRight, false);
+    TestDraw(s.win);
+
+    Bounds menu = MenuHitBounds(s.win, "completion-menu");
+    utassert(menu.w > 0);
+    // The caret moved in this frame, and render still saw the old one.
+    utassert(!NearPx(s.p->input.caretWinX, s.p->renderCaretX));
+    utassert(NearPx(menu.x, s.p->input.caretWinX - 4.f));
+    utassert(NearPx(menu.y, s.p->input.caretWinY + 4.f));
+    // Not the anchor render would have used.
+    utassert(!NearPx(menu.x, s.p->renderCaretX - 4.f));
+    utassert(NearPx(menu.y, s.p->renderCaretY + 4.f));
+    utassert(s.p->input.completion.open);
+    TestAppFree(s.app);
+}
+
+// completions.rs ordinary_input_schedules_no_followup_frame.
+static void OrdinaryInputSchedulesNoFollowupFrame() {
+    InputView view = InputViewBuildWith(InputKind::Input, nullptr, 400, 80);
+    InputFocus(view.input, view.app, view.win);
+    ViewTypeText(view, "hello");
+    TestRunUntilParked(view.app);
+    view.win->animFrame = false;
+    TestDraw(view.win);
+    utassert(!view.win->animFrame);
+    InputViewFree(&view);
+}
+
+// completions.rs
+// completion_popup_anchors_to_wrapped_and_scrolled_caret_on_first_frame.
+static void CompletionPopupAnchorsToWrappedAndScrolledCaret() {
+    struct Case {
+        bool newlines;
+    };
+    Case cases[2] = {{false}, {true}};
+    for (int c = 0; c < 2; c++) {
+        AnchorSession s = OpenAnchorEditor(260, 220, 140);
+        StrBuilder text;
+        if (!cases[c].newlines) {
+            for (int i = 0; i < 240; i++) text.Append(StrL("p"));
+        } else {
+            for (int i = 0; i < 40; i++) text.Append(StrL("p\n"));
+            text.Append(StrL("p"));
+        }
+        Str value = Str(text.els, text.len);
+        InputSetValue(&s.p->input, value);
+        int n = len(value);
+        InputFocus(&s.p->input, s.app, s.win);
+        // The first frame is what fills viewH and contentH. set_selected_range
+        // scrolls against those, and a call before they exist leaves scrollY
+        // at 0 — the newline case never reached the caret's row.
+        TestFlushEffects(s.app);
+        TestRunUntilParked(s.app);
+        InputSetSelectedRange(&s.p->input, s.app, s.win, n, n);
+        ShowOneCompletion(&s);
+        TestFlushEffects(s.app);
+        TestRunUntilParked(s.app);
+        utassert(s.p->input.caretWinY >
+                 s.p->input.inputBounds.y + s.p->input.lastLineH);
+        if (cases[c].newlines) {
+            utassert(s.p->input.scrollY > 0);
+        }
+
+        InputPerform(&s.p->input, s.app, s.win, InputAction::MoveLeft, false);
+        TestDraw(s.win);
+        Bounds menu = MenuHitBounds(s.win, "completion-menu");
+        utassert(menu.w > 0);
+        utassert(NearPx(menu.x, s.p->input.caretWinX - 4.f));
+        utassert(NearPx(menu.y, s.p->input.caretWinY + 4.f));
+        utassert(!NearPx(s.p->input.caretWinX, s.p->renderCaretX) ||
+                 !NearPx(s.p->input.caretWinY, s.p->renderCaretY));
+        TestAppFree(s.app);
+    }
+}
+
+// completions.rs clicking_beside_code_action_menu_dismisses_it.
+static void ClickingBesideCodeActionMenuDismissesIt() {
+    AnchorSession s = OpenAnchorEditor(640, 360, 280);
+    InputSetValue(&s.p->input, StrL("hello"));
+    InputFocus(&s.p->input, s.app, s.win);
+    CodeActionItem item;
+    item.title = StrL("First action");
+    InputPresentCodeActions(&s.p->input, &item, 1);
+    TestFlushEffects(s.app);
+    TestRunUntilParked(s.app);
+    Bounds popup = MenuHitBounds(s.win, "code-action-menu");
+    utassert(popup.w > 0);
+    Point outside = {popup.Right() + 24.f, popup.y + popup.h * 0.5f};
+    utassert(outside.x < 640.f);
+    TestSimulateClick(s.win, outside);
+    utassert(!s.p->input.codeActions.open);
+    utassert(MenuHitBounds(s.win, "code-action-menu").w == 0);
+    TestAppFree(s.app);
+}
+
 static void RunWindowTestsA() {
     EditRevealsFarOffscreenCaret();
     ScrollToEobDoesNotOvershootSafeRange();
@@ -6129,6 +6310,10 @@ static void RunWindowTestsA() {
     NumberInputClampOnBlur();
     NumberInputUndoWithMask();
     CursorLayoutConsumerUpdatesAfterSelection();
+    CompletionPopupFollowsCaretOnFirstFrame();
+    OrdinaryInputSchedulesNoFollowupFrame();
+    CompletionPopupAnchorsToWrappedAndScrolledCaret();
+    ClickingBesideCodeActionMenuDismissesIt();
     InlineTokenEditHistoryAndValidation();
     InlineTokenTextareaImeAndModes();
     NoopScrollNotifiesDiagnosticDismissal();

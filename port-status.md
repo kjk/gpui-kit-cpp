@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ed27c6293b585acc40c10be7138534243bee5841` (2026-10-10,
-text: Keep inline HTML mark highlights in Markdown (#3425)).
-An inline `<mark>` in a Markdown paragraph is paired like `<strong>`.
-Its wash is the tag's `color`, then the `background-color` in `style`,
-then `#fef08a`. A `<mark>` in an HTML document uses those same rules.
+Processed through `75fc4ed3f5cd4085545784fa51e419dbd4fd92c3` (2026-10-11,
+input: Anchor completion/code-action popups to the current frame's caret (#3412)).
+A completion or code-action menu is placed in its prepaint from the caret
+this frame just measured, so a keystroke that opens it does not leave the
+menu on the previous frame's caret. That measurement does not ask for
+another frame.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

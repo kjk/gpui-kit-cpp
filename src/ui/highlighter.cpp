@@ -174,25 +174,161 @@ bool CompletionMenu::HandleAction(InputAction action) {
     return editor && InputCompletionAction(editor, cx->app, cx->win, action);
 }
 
+// caret_popup_anchor. caretWinX/Y are window coordinates, and caretWinY is
+// already the bottom of the glyph (PublishCaretGeometry). Rust's cursor
+// origin is the top in scroll space, so it adds scroll_offset.y and the
+// line height; adding them again here would lift the menu by a screen.
+static float CaretPopupX(const InputState* s) {
+    if (!s) return 0;
+    return s->caretWinX > 0 ? s->caretWinX - 4.f : s->inputBounds.x;
+}
+
+static float CaretPopupY(const InputState* s) {
+    if (!s) return 0;
+    float lineH = s->lastLineH > 0 ? s->lastLineH : 20.f;
+    return s->caretWinY > 0 ? s->caretWinY + 4.f
+                            : s->inputBounds.y + lineH + 4.f;
+}
+
+static float PopupWindowW(Ctx* cx, PaintCtx* ctx) {
+    if (ctx && ctx->viewW > 0) return ctx->viewW;
+    if (cx && cx->win) return WindowSize(cx->win).dipW;
+    return 0;
+}
+
+struct MenuWidth {
+    float maxW = 0;
+    bool vertical = false;
+};
+
+// completion_menu max_width / vertical_layout, from the anchor's window x.
+static MenuWidth CompletionWidth(float x, float configuredMax, float windowW) {
+    MenuWidth w;
+    w.maxW = configuredMax;
+    if (windowW > 0 && windowW - x < w.maxW) w.maxW = windowW - x;
+    if (w.maxW < 120.f) w.maxW = 120.f;
+    const float gap = 4.f;
+    w.vertical =
+        windowW > 0 && x + configuredMax + gap + configuredMax + gap > windowW;
+    return w;
+}
+
+static float CodeActionWidth(float x, float windowW) {
+    float maxW = windowW > x ? windowW - x : 120.f;
+    if (maxW > 320.f) maxW = 320.f;
+    if (maxW < 120.f) maxW = 120.f;
+    return maxW;
+}
+
+// What the menu was built against. prepaint re-reads the caret write-back
+// published and either slides this tree or rebuilds it when the width
+// decision changed. CaretAnchoredPopup in caret_anchored.rs.
+struct CaretMenuAnchor {
+    CompletionMenu* completion = nullptr;
+    CodeActionMenu* codeAction = nullptr;
+    float maxW = 0;
+    bool vertical = false;
+};
+
+static void ShiftMenu(El* e, float dx, float dy) {
+    if (!e || (dx == 0.f && dy == 0.f)) return;
+    e->x += dx;
+    e->y += dy;
+    for (El* c = e->first; c; c = c->next) {
+        ShiftMenu(c, dx, dy);
+    }
+}
+
+static El* CompletionMenuContent(CompletionMenu* self, float maxW,
+                                 bool vertical);
+static El* CodeActionMenuContent(CodeActionMenu* self, float maxW);
+
+static void PlaceCaretMenu(PaintCtx* ctx, El* e, void* user) {
+    auto* anchor = (CaretMenuAnchor*)user;
+    if (!anchor || !e) return;
+    InputState* state = anchor->completion   ? anchor->completion->editor
+                        : anchor->codeAction ? anchor->codeAction->state
+                                             : nullptr;
+    if (!state) return;
+    float x = CaretPopupX(state);
+    float y = CaretPopupY(state);
+    Ctx* cx =
+        anchor->completion ? anchor->completion->cx : anchor->codeAction->cx;
+    float windowW = PopupWindowW(cx, ctx);
+    bool rebuild = false;
+    float maxW = anchor->maxW;
+    bool vertical = anchor->vertical;
+    if (anchor->completion) {
+        MenuWidth now = CompletionWidth(x, state->completionMenuMaxW, windowW);
+        rebuild = now.maxW != anchor->maxW || now.vertical != anchor->vertical;
+        maxW = now.maxW;
+        vertical = now.vertical;
+    } else {
+        float now = CodeActionWidth(x, windowW);
+        rebuild = now != anchor->maxW;
+        maxW = now;
+    }
+    if (!rebuild) {
+        ShiftMenu(e, x - e->x, y - e->y);
+        return;
+    }
+    // The width the list was given no longer matches this caret. Build the
+    // content the way the deferred prepaint does and lay that child out;
+    // laying the wrapper out from its own prepaint would re-enter it.
+    e->first = nullptr;
+    e->last = nullptr;
+    El* content =
+        anchor->completion
+            ? CompletionMenuContent(anchor->completion, maxW, vertical)
+            : CodeActionMenuContent(anchor->codeAction, maxW);
+    if (!content) return;
+    LayoutEl(ctx, content, x, y, 0, 0, e->laidFont, e->style.color);
+    e->Child(content);
+    e->x = x;
+    e->y = y;
+    e->w = content->w;
+    e->h = content->h;
+    IdsCollectChildren(e);
+}
+
 El* CompletionMenu::IntoEl() {
     if (!editor || !editor->completion.open ||
         editor->completion.items.len <= 0) {
         return nullptr;
     }
+    float x = CaretPopupX(editor);
+    float y = CaretPopupY(editor);
+    float windowW = PopupWindowW(cx, nullptr);
+    MenuWidth width = CompletionWidth(x, editor->completionMenuMaxW, windowW);
+    Entity<InputMenuViewState> view =
+        InputMenuView(cx, editor, "completion-menu");
+    El* content = CompletionMenuContent(this, width.maxW, width.vertical);
+    auto* anchor = ArenaNew<CaretMenuAnchor>(a);
+    anchor->completion = this;
+    anchor->maxW = width.maxW;
+    anchor->vertical = width.vertical;
+    El* root = Div(a)
+                   ->Fixed()
+                   ->Left(x)
+                   ->Top(y)
+                   ->PathClick(StrL("completion-menu"))
+                   ->OnMouseDownOut(
+                       ListenTo(view, &InputMenuViewState::CompletionOutside))
+                   ->Child(content);
+    root->customUser = anchor;
+    root->prePaint = &PlaceCaretMenu;
+    return root;
+}
+
+static El* CompletionMenuContent(CompletionMenu* self, float maxW,
+                                 bool vertical) {
+    if (!self || !self->editor) return nullptr;
+    Ctx* cx = self->cx;
+    Arena* a = self->a;
+    InputState* editor = self->editor;
     const Theme& theme = ThemeNow(cx->app);
-    float x =
-        editor->caretWinX > 0 ? editor->caretWinX - 4.f : editor->inputBounds.x;
-    float lineH = editor->lastLineH > 0 ? editor->lastLineH : 20.f;
-    float y = editor->caretWinY > 0 ? editor->caretWinY + 4.f
-                                    : editor->inputBounds.y + lineH + 4.f;
     float configuredMax = editor->completionMenuMaxW;
-    float windowW = cx->win ? WindowSize(cx->win).dipW : 0.f;
-    float maxW = configuredMax;
-    if (windowW > 0 && windowW - x < maxW) maxW = windowW - x;
-    if (maxW < 120.f) maxW = 120.f;
     const float gap = 4.f;
-    bool vertical =
-        windowW > 0 && x + configuredMax + gap + configuredMax + gap > windowW;
     Entity<InputMenuViewState> view =
         InputMenuView(cx, editor, "completion-menu");
 
@@ -269,12 +405,7 @@ El* CompletionMenu::IntoEl() {
                                     ->Selectable()
                                     ->IntoEl()));
     }
-    return Div(a)
-        ->Fixed()
-        ->Left(x)
-        ->Top(y)
-        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::CompletionOutside))
-        ->Child(menu);
+    return menu;
 }
 
 CodeActionMenu* CodeActionMenu::New(Ctx* cx, InputState* state) {
@@ -305,16 +436,36 @@ bool CodeActionMenu::HandleAction(InputAction action) {
 El* CodeActionMenu::IntoEl() {
     if (!state || !state->codeActions.open || state->codeActions.items.len <= 0)
         return nullptr;
+    float x = CaretPopupX(state);
+    float y = CaretPopupY(state);
+    float windowW = PopupWindowW(cx, nullptr);
+    if (windowW <= 0) windowW = 320.f;
+    float maxW = CodeActionWidth(x, windowW);
+    Entity<InputMenuViewState> view =
+        InputMenuView(cx, state, "code-action-menu");
+    El* content = CodeActionMenuContent(this, maxW);
+    auto* anchor = ArenaNew<CaretMenuAnchor>(a);
+    anchor->codeAction = this;
+    anchor->maxW = maxW;
+    El* root = Div(a)
+                   ->Fixed()
+                   ->Left(x)
+                   ->Top(y)
+                   ->PathClick(StrL("code-action-menu"))
+                   ->OnMouseDownOut(
+                       ListenTo(view, &InputMenuViewState::CodeActionOutside))
+                   ->Child(content);
+    root->customUser = anchor;
+    root->prePaint = &PlaceCaretMenu;
+    return root;
+}
+
+static El* CodeActionMenuContent(CodeActionMenu* self, float maxW) {
+    if (!self || !self->state) return nullptr;
+    Ctx* cx = self->cx;
+    Arena* a = self->a;
+    InputState* state = self->state;
     const Theme& theme = ThemeNow(cx->app);
-    float x =
-        state->caretWinX > 0 ? state->caretWinX - 4.f : state->inputBounds.x;
-    float lineH = state->lastLineH > 0 ? state->lastLineH : 20.f;
-    float y = state->caretWinY > 0 ? state->caretWinY + 4.f
-                                   : state->inputBounds.y + lineH + 4.f;
-    float windowW = cx->win ? WindowSize(cx->win).dipW : 320.f;
-    float maxW = windowW > x ? windowW - x : 120.f;
-    if (maxW > 320.f) maxW = 320.f;
-    if (maxW < 120.f) maxW = 120.f;
     El* list = PopoverSurface(
         cx,
         // editor_popover: p_1.
@@ -343,12 +494,7 @@ El* CodeActionMenu::IntoEl() {
                        ->LineHeight(1.f));
         list->Child(row);
     }
-    return Div(a)
-        ->Fixed()
-        ->Left(x)
-        ->Top(y)
-        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::CodeActionOutside))
-        ->Child(list);
+    return list;
 }
 
 DiagnosticPopover* DiagnosticPopover::New(Ctx* cx, InputState* state,

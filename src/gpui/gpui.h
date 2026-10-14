@@ -3133,11 +3133,11 @@ struct El {
     // The selections and carets of the cursors other than the active one.
     El* ExtraSelRanges(const Selection* ranges, int n);
     El* ExtraCarets(const int* offsets, int n, Rgba color);
-    // Where the caret this element draws ended up, in window coordinates —
-    // the seam a popover anchored to the caret needs, since only the painter
-    // knows where inside a shaped run an offset falls. Reported the way
-    // BoundsOut reports a box: one frame stale, which is what every other
-    // popover here is placed against.
+    // Where the caret this element draws ended up, in window coordinates.
+    // Written when the element is written back, so a completion or
+    // code-action menu can read it in its own prepaint — the same frame —
+    // and again when the caret is painted. A popover that reads it while
+    // rendering still sees the previous frame.
     El* CaretOut(float* outX, float* outY);
     // Report where the bytes [lo, hi) of this run were painted.
     El* RangeOut(int lo, int hi, gpui::Bounds* out);
@@ -5351,9 +5351,10 @@ struct InputState {
     float scrollY = 0;
     float viewW = 0;
     float viewH = 0;
-    // Where the caret was last painted, in window coordinates. `cursor_
-    // layout()` in Rust, which is what a completion menu and a hover popover
-    // are placed under.
+    // Where the caret last landed, in window coordinates: the bottom of the
+    // glyph, so a menu under it is `caretWinY + 4`. Written at write-back
+    // (this frame, for a menu's prepaint) and again at paint. `cursor_layout()`
+    // in Rust. A reader during render still sees the previous frame.
     float caretWinX = 0;
     float caretWinY = 0;
     // The caret's x inside the run, measured when it was last painted, and

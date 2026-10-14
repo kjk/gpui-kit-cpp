@@ -4663,6 +4663,10 @@ static void LayoutCacheReset(LayoutCache* lc) {
 
 static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
                         float originY);
+// The caret's window position, measured the way paint measures it. Called
+// from write-back so a later sibling's prepaint — a completion menu — sees
+// this frame's caret. Defined beside PaintCaretAt.
+static void PublishCaretGeometry(PaintCtx* ctx, El* e);
 
 static void ShiftElTree(El* e, float dx, float dy) {
     if (!e || (dx == 0 && dy == 0)) {
@@ -4884,6 +4888,10 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     if (e->prePaint) {
         e->prePaint(ctx, e, e->customUser);
     }
+    // After prepaint, so a column that rebuilds its rows there (soft wrap)
+    // has already written the caret run back. Fixed menus are written back
+    // after the whole tree, and read this.
+    PublishCaretGeometry(ctx, e);
 }
 
 static float PositionMax(float a, float b) {
@@ -7221,67 +7229,104 @@ static bool IsOverlay(El* e) {
 // an open dropdown covers the page instead of being covered by the siblings
 // that follow it. Painting last also hit-tests first: HitTestRect walks the
 // rects backwards.
-// InputElement's cursor_bounds: where the caret sits inside the run this
-// element painted. Rust measures it in prepaint from the shaped line and
-// paints a quad there; the shaped line is already in hand here, so the two
-// steps fold together. A run with no text puts the caret at its left edge,
-// which is where an empty field with a placeholder shows it.
+// InputElement's cursor_bounds: where the caret sits inside the run.
+// Rust measures it in prepaint from the shaped line and paints a quad
+// there. The same measurement runs at write-back, so a menu whose prepaint
+// follows this element anchors to this frame, and again here so paint still
+// publishes it. A run with no text puts the caret at its left edge, which
+// is where an empty field with a placeholder shows it.
+struct CaretPlace {
+    float x = 0;
+    float y = 0;
+    float h = 0;
+};
+
+static CaretPlace MeasureCaretPlace(PaintCtx* ctx, El* e, float font, int off,
+                                    bool lineEndAffinity) {
+    CaretPlace place;
+    place.x = e->x;
+    place.y = e->y;
+    place.h = e->h;
+    if (!e->text.s || len(e->text) <= 0) {
+        return place;
+    }
+    float maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
+    // The weight and line height the run was drawn with, or the rects
+    // come back measured against a different font -- the mono family is a
+    // weight sentinel -- and the caret drifts further from the glyphs the
+    // further along the line it stands.
+    TextLayout* tl =
+        TextMeasLayout(ctx, e->text, font, maxW, e->style.wrap, ElTextWeight(e),
+                       e->style.lineHeight, nullptr, nullptr, ElTextAlign(e));
+    if (!tl) {
+        return place;
+    }
+    Bounds r[32] = {};
+    if (off > len(e->text)) {
+        off = len(e->text);
+    }
+    int n = 0;
+    if (off > 0 && (lineEndAffinity || off == len(e->text))) {
+        // The trailing edge of everything before it.
+        n = TextLayoutRangeRects(tl, e->text, 0, off, r, 32);
+        if (n > 0) {
+            place.x = e->x + r[n - 1].x + r[n - 1].w;
+            place.y = e->y + r[n - 1].y;
+            place.h = r[n - 1].h;
+        }
+    } else {
+        // The leading edge of what follows. At a wrap boundary this
+        // puts a no-affinity caret on the next row.
+        n = TextLayoutRangeRects(tl, e->text, off, len(e->text), r, 32);
+        if (n > 0) {
+            place.x = e->x + r[0].x;
+            place.y = e->y + r[0].y;
+            place.h = r[0].h;
+        }
+    }
+    TextLayoutRelease(tl);
+    return place;
+}
+
+// last_layout: where the caret ended up inside the run. caretWinY is the
+// window-space bottom of the glyph, which is what a menu adds 4px to.
+static void ApplyPrimaryCaret(El* e, CaretPlace place) {
+    if (e->input) {
+        e->input->caretX = place.x - e->x;
+    }
+    if (e->caretOutX) {
+        *e->caretOutX = place.x;
+    }
+    if (e->caretOutY) {
+        *e->caretOutY = place.y + place.h;
+    }
+}
+
+static void PublishCaretGeometry(PaintCtx* ctx, El* e) {
+    if (!ctx || !e || e->caretOff < 0) {
+        return;
+    }
+    if (!e->caretOutX && !e->caretOutY && !e->input) {
+        return;
+    }
+    float font = e->laidFont > 0
+                     ? e->laidFont
+                     : (e->style.fontSize > 0 ? e->style.fontSize : 14.f);
+    ApplyPrimaryCaret(e, MeasureCaretPlace(ctx, e, font, e->caretOff,
+                                           e->caretLineEndAffinity));
+}
+
 // One caret. `primary` is the active cursor's, the one last_layout and a
 // completion menu's anchor are measured from; the others only paint.
 static void PaintCaretAt(PaintCtx* ctx, El* e, float font, int off,
                          bool lineEndAffinity, bool primary) {
-    float x = e->x;
-    float y = e->y;
-    float h = e->h;
-    if (e->text.s && len(e->text) > 0) {
-        float maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
-        // The weight and line height the run was drawn with, or the rects
-        // come back measured against a different font -- the mono family is a
-        // weight sentinel -- and the caret drifts further from the glyphs the
-        // further along the line it stands.
-        TextLayout* tl = TextMeasLayout(ctx, e->text, font, maxW, e->style.wrap,
-                                        ElTextWeight(e), e->style.lineHeight,
-                                        nullptr, nullptr, ElTextAlign(e));
-        if (tl) {
-            Bounds r[32] = {};
-            if (off > len(e->text)) {
-                off = len(e->text);
-            }
-            int n = 0;
-            if (off > 0 && (lineEndAffinity || off == len(e->text))) {
-                // The trailing edge of everything before it.
-                n = TextLayoutRangeRects(tl, e->text, 0, off, r, 32);
-                if (n > 0) {
-                    x = e->x + r[n - 1].x + r[n - 1].w;
-                    y = e->y + r[n - 1].y;
-                    h = r[n - 1].h;
-                }
-            } else {
-                // The leading edge of what follows. At a wrap boundary this
-                // puts a no-affinity caret on the next row.
-                n = TextLayoutRangeRects(tl, e->text, off, len(e->text), r, 32);
-                if (n > 0) {
-                    x = e->x + r[0].x;
-                    y = e->y + r[0].y;
-                    h = r[0].h;
-                }
-            }
-            TextLayoutRelease(tl);
-        }
-    }
-    // last_layout: where the caret ended up inside the run, which is what
-    // scroll_to measures against on the next move.
-    if (primary && e->input) {
-        e->input->caretX = x - e->x;
-    }
-    if (primary && e->caretOutX) {
-        *e->caretOutX = x;
-    }
-    if (primary && e->caretOutY) {
-        *e->caretOutY = y + h;
+    CaretPlace place = MeasureCaretPlace(ctx, e, font, off, lineEndAffinity);
+    if (primary) {
+        ApplyPrimaryCaret(e, place);
     }
     if (e->caretColor.a != 0) {
-        CanvasFillRect(ctx, x, y, e->caretW, h, e->caretColor);
+        CanvasFillRect(ctx, place.x, place.y, e->caretW, place.h,
+                       e->caretColor);
     }
 }
 
