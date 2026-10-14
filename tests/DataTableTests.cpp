@@ -73,6 +73,51 @@ static void AColumnKeepsItsWidthOnceItHasOne() {
     utassert(s.colWidth.len == 1);
 }
 
+// column_resize_bounds_preserve_initial_widths (crates/component table)
+static void ColumnResizeBoundsPreserveInitialWidths() {
+    using component::Column;
+    Column cols[6];
+    cols[0] =
+        Column::New(StrL("narrow"), StrL("Narrow")).MinWidth(80).Width(40);
+    cols[1] = Column::New(StrL("wide"), StrL("Wide")).MaxWidth(120).Width(300);
+    cols[2] = Column::New(StrL("tiny"), StrL("Tiny")).Width(10);
+    cols[3] = Column::New(StrL("wide_default"), StrL("Wide Default"))
+                  .Width(2000);
+    cols[4] = Column::New(StrL("wide_explicit"), StrL("Wide Explicit"))
+                  .MaxWidth(2400)
+                  .Width(2000);
+    cols[5] = Column::New(StrL("inverted"), StrL("Inverted"))
+                  .MinWidth(200)
+                  .MaxWidth(100);
+    const float initial[] = {40, 300, 10, 2000, 2000, 100};
+    for (int i = 0; i < 6; i++) {
+        utassertnear(cols[i].width, initial[i]);
+    }
+
+    TableState s;
+    s.colCount = 6;
+    Ctx cx = {};
+    for (int i = 0; i < 6; i++) {
+        TableSeedColWidth(&s, i, cols[i].width);
+        TableSetColConstraints(&s, i, cols[i].minWidth, cols[i].maxWidth);
+        utassertnear(TableColWidth(&s, i, cols[i].width), initial[i]);
+    }
+    for (int i = 0; i < 6; i++) {
+        TableResizeCol(&s, &cx, i, 10000);
+    }
+    const float wide[] = {1200, 120, 1200, 1200, 2400, 100};
+    for (int i = 0; i < 6; i++) {
+        utassertnear(s.colWidth[i], wide[i]);
+    }
+    for (int i = 0; i < 6; i++) {
+        TableResizeCol(&s, &cx, i, -100);
+    }
+    const float narrow[] = {80, 20, 20, 20, 20, 100};
+    for (int i = 0; i < 6; i++) {
+        utassertnear(s.colWidth[i], narrow[i]);
+    }
+}
+
 static void AResizeIsClamped() {
     TableState s;
     // Rust's defaults: 20px at the narrow end and no ceiling at all.
@@ -1230,6 +1275,7 @@ void TestDataTable() {
     ARightClickedCellClearsOnTheNextClick();
     ACellIsOneNumber();
     AColumnKeepsItsWidthOnceItHasOne();
+    ColumnResizeBoundsPreserveInitialWidths();
     AResizeIsClamped();
     TheGapIsAfterTheLastCentreLeftOfThePointer();
     AHeadDragNeverCrossesTheFixedBoundary();

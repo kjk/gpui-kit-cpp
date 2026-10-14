@@ -38,7 +38,10 @@ struct TableColumn {
     ColumnFixed fixedSide = ColumnFixed::Left;
     bool movable = true;
     float minWidth = 20;
-    float maxWidth = 0; // zero is source f32::MAX
+    // Column::max_width default. A drag stops here; an initial width set
+    // afterwards is not limited by it. Zero still means no ceiling, which is
+    // how a base table leaves the scalar fallback.
+    float maxWidth = 1200;
 
     static TableColumn New(Str key, Str name);
     TableColumn Sort(ColumnSort value) const;

@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `19603b13f7dea98be5ba4b8b7f050eec3f642cd2` (2026-10-13,
-input: Clamp the vertical scroll offset in all layout modes (#3477)).
-Layout clamps the vertical offset in every mode before it picks rows,
-including the room a code editor keeps below its last line. Folded code
-still measures scroll height from wrapped rows before folding.
+Processed through `efd2e672d22d3ea6b2c7061ef03c891c65bbaa4b` (2026-10-13,
+table: Restore the default column resize protection (#3472)).
+A column drag stops at 1200px unless the column sets a wider maximum.
+An initial width is not limited by that default. The website notes are
+not ported.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

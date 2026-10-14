@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "19603b13f7dea98be5ba4b8b7f050eec3f642cd2",
+  sha: "efd2e672d22d3ea6b2c7061ef03c891c65bbaa4b",
   date: "2026-10-13",
-  subject: "input: Clamp the vertical scroll offset in all layout modes (#3477)",
+  subject: "table: Restore the default column resize protection (#3472)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

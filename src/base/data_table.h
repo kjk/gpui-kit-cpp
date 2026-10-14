@@ -357,8 +357,9 @@ float TableColWidth(const TableState* s, int col, float declared);
 // The width a column keeps, seeded once from what the caller declared.
 void TableSeedColWidth(TableState* s, int col, float declared);
 
-// size.clamp(min_width, max_width), which is what decides how far a drag on a
-// column edge is allowed to get.
+// size.max(min_width).min(max_width): how far a drag on a column edge is
+// allowed to get. An inverted range resolves to the maximum, which is what
+// max-then-min does, and it does not panic.
 float TableClampColWidth(const TableState* s, float width);
 float TableClampColWidth(const TableState* s, int col, float width);
 void TableSetColConstraints(TableState* s, int col, float minWidth,
