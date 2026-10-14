@@ -121,7 +121,15 @@ struct HttpReq {
     // usual, so an error can still be read.
     HttpOnBodyFn onBody = nullptr;
     void* onBodyCtx = nullptr;
+    // How long the answer may take once connected: 0 is `kHttpTimeoutMs`, a
+    // negative number no limit, for a server that takes its time (a language
+    // model, a voice). Connecting still gives up after `kHttpTimeoutMs`. The
+    // browser keeps its own.
+    int waitMs = 0;
 };
+
+// The limit `waitMs` asks for in milliseconds; 0 when there is none.
+int HttpWaitMs(const HttpReq& req);
 
 // Answers true when the transfer finished, whatever the status: `status` and
 // `body` are then the server's. False means it never got that far.

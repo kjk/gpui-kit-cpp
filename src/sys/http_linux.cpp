@@ -154,13 +154,17 @@ bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
     transfer.out = out;
     transfer.curl = c;
     bool streamed = req.readBody || req.onBody;
+    curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT_MS, (long)kHttpTimeoutMs);
     if (streamed) {
-        // A large body may take as long as it takes, but not stand still.
-        curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT_MS, (long)kHttpTimeoutMs);
-        curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, 1L);
-        curl_easy_setopt(c, CURLOPT_LOW_SPEED_TIME, 60L);
+        // A large body may take as long as it takes, but not stand still,
+        // unless the request has no limit at all.
+        if (req.waitMs >= 0) {
+            curl_easy_setopt(c, CURLOPT_LOW_SPEED_LIMIT, 1L);
+            curl_easy_setopt(c, CURLOPT_LOW_SPEED_TIME, 60L);
+        }
     } else {
-        curl_easy_setopt(c, CURLOPT_TIMEOUT_MS, (long)kHttpTimeoutMs);
+        // 0 is no limit
+        curl_easy_setopt(c, CURLOPT_TIMEOUT_MS, (long)HttpWaitMs(req));
     }
     curl_easy_setopt(c, CURLOPT_USERAGENT, "gpui/1.0");
     // This runs on a worker thread and curl's alarm-based DNS timeout is not

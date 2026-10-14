@@ -98,6 +98,10 @@ Str HttpHeadersFromRaw(Str raw) {
     return out.TakeStr();
 }
 
+int HttpWaitMs(const HttpReq& req) {
+    return req.waitMs < 0 ? 0 : req.waitMs > 0 ? req.waitMs : kHttpTimeoutMs;
+}
+
 bool HttpUrlIsRemote(Str url) {
     if (!url.s || len(url) <= 0) {
         return false;

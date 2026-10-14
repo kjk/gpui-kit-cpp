@@ -184,6 +184,12 @@ static NSString* NSFromStr(Str s) {
 
 // The streamed request body goes through a bound pair of streams: the
 // session reads one end while this thread fills the other.
+// how long a request may stay idle: a week stands for no limit
+static NSTimeInterval IdleSeconds(const HttpReq& request) {
+    int ms = HttpWaitMs(request);
+    return ms > 0 ? (NSTimeInterval)ms / 1000.0 : 7 * 24 * 3600.0;
+}
+
 static bool HttpSendStreamed(const HttpReq& request, HttpRsp* out) {
     @autoreleasepool {
         NSURL* u = [NSURL URLWithString:NSFromStr(request.url)];
@@ -195,7 +201,7 @@ static bool HttpSendStreamed(const HttpReq& request, HttpRsp* out) {
         NSMutableURLRequest* req = [NSMutableURLRequest
              requestWithURL:u
                 cachePolicy:NSURLRequestUseProtocolCachePolicy
-            timeoutInterval:(NSTimeInterval)kHttpTimeoutMs / 1000.0];
+            timeoutInterval:IdleSeconds(request)];
         [req setHTTPMethod:len(request.method) > 0 ? NSFromStr(request.method)
                                                    : @"GET"];
         [req setValue:@"gpui/1.0" forHTTPHeaderField:@"User-Agent"];
@@ -318,7 +324,7 @@ bool HttpSendPlatform(const HttpReq& request, HttpRsp* out) {
         NSMutableURLRequest* req = [NSMutableURLRequest
              requestWithURL:u
                 cachePolicy:NSURLRequestUseProtocolCachePolicy
-            timeoutInterval:(NSTimeInterval)kHttpTimeoutMs / 1000.0];
+            timeoutInterval:IdleSeconds(request)];
         NSString* verb =
             len(request.method) > 0 ? NSFromStr(request.method) : @"GET";
         [req setHTTPMethod:verb];
@@ -365,8 +371,11 @@ bool HttpSendPlatform(const HttpReq& request, HttpRsp* out) {
         // The timeout above is the request's; this is the backstop for a
         // completion handler that never runs at all.
         dispatch_time_t deadline =
-            dispatch_time(DISPATCH_TIME_NOW,
-                          (int64_t)(kHttpTimeoutMs + 5000) * NSEC_PER_MSEC);
+            HttpWaitMs(request) == 0
+                ? DISPATCH_TIME_FOREVER
+                : dispatch_time(
+                      DISPATCH_TIME_NOW,
+                      (int64_t)(HttpWaitMs(request) + 5000) * NSEC_PER_MSEC);
         if (dispatch_semaphore_wait(done, deadline) != 0) {
             [task cancel];
             if (noRedirect) [session invalidateAndCancel];

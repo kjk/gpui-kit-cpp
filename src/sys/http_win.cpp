@@ -376,8 +376,9 @@ bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
             failure = GetLastError();
         }
         if (session.h) {
+            // 0 for sending and receiving is no limit
             WinHttpSetTimeouts(session.h, kHttpTimeoutMs, kHttpTimeoutMs,
-                               kHttpTimeoutMs, kHttpTimeoutMs);
+                               HttpWaitMs(req), HttpWaitMs(req));
             WinHttpHandle conn;
             conn.h = WinHttpConnect(session.h, host, uc.nPort, 0);
             if (!conn.h) {
