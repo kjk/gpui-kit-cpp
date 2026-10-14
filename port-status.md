@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8d4907da456a4f363c7ee1c22c553f44c3c58500` (2026-10-13,
-table: Add `DataTable::fixed_cols_border` (#3482)).
-`DataTable::FixedColsBorder` draws the hairline on the right of the fixed
-columns, in the header and on each body row. The default is on.
+Processed through `dff65edcae4df6a251a859e25bfb98832fc1e433` (2026-10-13,
+input: Add `EditorState::wrap_row_count` and `prewrap` (#3483)).
+`InputWrapRowCount` is the soft-wrapped row count, and `InputPrewrap`
+computes it for a font and width before the first layout. Once the
+editor has been laid out, prewrap leaves the wrap alone.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

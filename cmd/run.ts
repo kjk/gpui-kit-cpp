@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8d4907da456a4f363c7ee1c22c553f44c3c58500",
+  sha: "dff65edcae4df6a251a859e25bfb98832fc1e433",
   date: "2026-10-13",
-  subject: "table: Add `DataTable::fixed_cols_border` (#3482)",
+  subject: "input: Add `EditorState::wrap_row_count` and `prewrap` (#3483)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

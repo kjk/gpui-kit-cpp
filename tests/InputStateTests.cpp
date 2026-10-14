@@ -10940,7 +10940,63 @@ static void RunTouchWindowTests() {
     ScrollingClosesTheMenuAndKeepsTheHandles();
 }
 
+// state.rs test_prewrap_counts_wrapped_rows_before_the_first_paint.
+static void PrewrapCountsWrappedRowsBeforeTheFirstPaint() {
+    const char* text =
+        "select id, name, email, phone from users where active\nlimit 10";
+    for (int i = 0; i < 2; i++) {
+        bool soft = i == 0;
+        InputState s;
+        s.kind = InputKind::Editor;
+        s.softWrap = soft;
+        InputSetValue(&s, Str(text));
+        InputPrewrap(&s, nullptr, 14, 0, 120);
+        int rows = InputWrapRowCount(&s);
+        utassert((rows > 2) == soft);
+        if (!soft) {
+            utassert(rows == 2);
+        }
+    }
+}
+
+// state.rs test_prewrap_wraps_with_the_wrapping_indent.
+static void PrewrapWrapsWithTheWrappingIndent() {
+    const char* text =
+        "            select id, name, email, phone from users where active";
+    WrappingIndent indents[2] = {WrappingIndent::Same, WrappingIndent::None};
+    int rows[2] = {};
+    for (int i = 0; i < 2; i++) {
+        InputState s;
+        s.kind = InputKind::Editor;
+        InputSetWrappingIndent(&s, nullptr, nullptr, indents[i]);
+        InputSetValue(&s, Str(text));
+        InputPrewrap(&s, nullptr, 14, 0, 200);
+        rows[i] = InputWrapRowCount(&s);
+    }
+    utassert(rows[0] > rows[1]);
+}
+
+// state.rs test_prewrap_does_nothing_once_laid_out.
+static void PrewrapDoesNothingOnceLaidOut() {
+    InputView v = InputViewBuildWith(
+        InputKind::Editor,
+        [](InputState* s, App*) {
+            InputSetValue(s, Str("select id, name, email, phone from users "
+                                 "where active\nlimit 10"));
+        },
+        400, 100);
+    TestDraw(v.win);
+    int laid = InputWrapRowCount(v.input);
+    utassert(laid >= 2);
+    InputPrewrap(v.input, v.win ? &v.win->paint : nullptr, 14, 0, 60);
+    utassert(InputWrapRowCount(v.input) == laid);
+    InputViewFree(&v);
+}
+
 void TestInputState() {
+    PrewrapCountsWrappedRowsBeforeTheFirstPaint();
+    PrewrapWrapsWithTheWrappingIndent();
+    PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
     WhitespaceMarksFollowTheShapedGlyphs();
     IndentGuidesStandAtTheMeasuredIndentWidth();

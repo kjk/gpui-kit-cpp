@@ -698,6 +698,43 @@ static void WrapMapCatchUp(InputState* s, PaintCtx* ctx) {
     VecClear(m->dirtyLines);
 }
 
+// A layout has owned the wrap: the column was measured, or a row was
+// painted. prewrap stops there, and a soft-wrap-off editor that never
+// built the map still has a row per logical line.
+static bool InputWrapLaidOut(const InputState* s) {
+    return s->contentBox.w > 0 || s->wrap.measuredWidth > 0 ||
+           s->lastBounds.w > 0;
+}
+
+int InputWrapRowCount(const InputState* s) {
+    if (!s) {
+        return 0;
+    }
+    if (s->wrap.valid) {
+        return s->wrap.totalRows;
+    }
+    if (InputWrapLaidOut(s)) {
+        return RopeLinesLen(InputValue(s));
+    }
+    return 0;
+}
+
+void InputPrewrap(InputState* s, PaintCtx* ctx, float fontSize,
+                  uint16_t fontWord, float width) {
+    if (!s || InputWrapLaidOut(s)) {
+        return;
+    }
+    // on_layout_changed(soft_wrap.then_some(width - RIGHT_MARGIN)).
+    float wrapWidth = 0;
+    if (s->softWrap) {
+        wrapWidth = width - kEditorRightMargin;
+        if (wrapWidth < 1) {
+            wrapWidth = 1;
+        }
+    }
+    InputUpdateWrapMap(s, ctx, wrapWidth, fontSize, fontWord);
+}
+
 void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
                         float fontSize, uint16_t fontWord) {
     if (!s) {
