@@ -10511,7 +10511,63 @@ static void GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges() {
 // lifetime is GeometricDecorationsTrackEditsHistoryReplacementAndOwnerLifetime
 // above: everything it asserts is the collection's, which needs no frame.
 
+// editor.rs the_insets_follow_the_size. The top inset moves with the size
+// tier by exactly that tier's input_py, and the row height does not. The
+// inset is the padding set_editor_paddings writes around the rows; a laid
+// out text top differs from it by the border, which is the same at every
+// size, so the difference the Rust test checks is this padding.
+static El* EditorPadEl(El* el) {
+    if (!el) return nullptr;
+    if (el->style.pad.left > 0 && el->style.pad.right > 0) return el;
+    for (El* child = el->first; child; child = child->next) {
+        if (El* found = EditorPadEl(child)) return found;
+    }
+    return nullptr;
+}
+
+static void MeasureEditorInsets(UiSize size, bool apply, float* inset,
+                                float* lineH) {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    InputState state;
+    InputSetValue(&state, StrL("fn main() {}"));
+    component::Editor* editor =
+        component::Editor::New(&cx, StrL("sized-editor"), &state);
+    if (apply) editor->WithSize(size);
+    El* pad = EditorPadEl(editor->IntoEl());
+    utassert(pad != nullptr);
+    *inset = pad ? pad->style.pad.top : -1.f;
+    *lineH = state.lastLineH;
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+static void TheInsetsFollowTheSize() {
+    float medium = 0, rows = 0;
+    MeasureEditorInsets(UiSize::Medium, true, &medium, &rows);
+    float none = 0, noneRows = 0;
+    MeasureEditorInsets(UiSize::Medium, false, &none, &noneRows);
+    utassertnear(none, medium);
+    utassertnear(noneRows, rows);
+    UiSize sizes[3] = {UiSize::XSmall, UiSize::Small, UiSize::Large};
+    // Size::input_py: medium 8, xsmall 0, small 2, large 10.
+    float py[3] = {0, 2, 10};
+    for (int i = 0; i < 3; i++) {
+        float inset = 0, lineH = 0;
+        MeasureEditorInsets(sizes[i], true, &inset, &lineH);
+        utassertnear(medium - inset, 8.f - py[i]);
+        utassertnear(lineH, rows);
+    }
+}
+
 static void RunElementWindowTests() {
+    TheInsetsFollowTheSize();
     EditorLineNumberGutterResizesWithDocumentLines();
     GeometricDecorationsClipScrolledViewportAndCullOffscreenRanges();
     GeometricDecorationsUseShapedWrapBoundariesAndNewlineCells();

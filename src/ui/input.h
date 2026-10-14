@@ -245,6 +245,10 @@ struct Editor {
     float height = 0;
     float fontSize = 0;
     Str fontFamily = {};
+    // Sizable, forwarded as the padding around the code. The code font and
+    // the 1.5 line height stay the editor's own. Medium is the size an
+    // editor with none set has always had.
+    UiSize size = UiSize::Medium;
     bool appearance = true;
     bool bordered = true;
     bool disabled = false;
@@ -277,6 +281,7 @@ struct Editor {
     static Editor* New(Ctx* cx, InputState* state);
     static Editor* New(Ctx* cx, Str id, InputState* state);
     Editor* H(float value);
+    Editor* WithSize(UiSize value);
     Editor* Font(float value);
     // Styled::font_family. Empty keeps theme.mono_font_family.
     Editor* FontFamily(Str family);

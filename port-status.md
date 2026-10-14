@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a861ebabba55c6ed835f5b86f42f548962a1c141` (2026-10-13,
-tests: Build each crate's integration tests as one binary (#3481)).
-Upstream folds each crate's integration tests into one binary. This
-tree's tests are already one tests.exe, so nothing else changes.
+Processed through `61a01b93109a5c3bd826764af4469b269c980523` (2026-10-13,
+input: Let `Editor` take a size, as `Textarea` does (#3480)).
+Editor takes the same size tiers as Input and Textarea. The tier changes
+the padding around the code. The code font and line height stay. An
+editor with no size keeps the medium insets. The website notes are not
+ported.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

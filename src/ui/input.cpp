@@ -645,11 +645,19 @@ Editor* Editor::Folding(bool value) {
     return this;
 }
 
+Editor* Editor::WithSize(UiSize value) {
+    size = value;
+    return this;
+}
+
 Editor* Editor::Refine(const gpui::Style& value, uint32_t fields) {
     StyleApplyFields(&style, value, fields);
     styleFields |= fields;
     return this;
 }
+
+static void InputSizeMetrics(const Ctx* cx, UiSize size, float* h, float* padX,
+                             float* padY, float* font);
 
 El* Editor::IntoEl() {
     if (!state) return Div(a);
@@ -671,10 +679,14 @@ El* Editor::IntoEl() {
     if (height > 0 || height == kFill) highlighter->H(height);
     if (fontSize > 0) highlighter->Font(fontSize);
     highlighter->FontFamily(fontFamily);
-    // input.rs set_editor_paddings for a multi-line Input of the default
-    // Medium size: input_py above and below, input_px on the right, and on
-    // the left input_px held to 6 for a code editor, where the gutter is.
-    highlighter->editorPad = Edges::New(6, 10, 8, 8);
+    // set_editor_paddings: input_py above and below, input_px on the right,
+    // and on the left input_px held to 6, where the gutter is. The size
+    // changes those insets. It does not change the code font or the line
+    // height, which the highlighter keeps as the mono face at 1.5.
+    float unusedH = 0, padX = 0, padY = 0, unusedFont = 0;
+    InputSizeMetrics(cx, size, &unusedH, &padX, &padY, &unusedFont);
+    float left = padX < 6.f ? padX : 6.f;
+    highlighter->editorPad = Edges::New(left, padX, padY, padY);
     El* element = highlighter->IntoEl();
 
     const Theme& theme = ThemeNow(cx->app);
