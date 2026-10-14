@@ -175,6 +175,9 @@ struct DataTable {
     // Size::table_row_height, which is what with_size(..) comes to here: 26 /
     // 30 / 32 / 40, or an explicit pixel height.
     float rowHeight = 32;
+    // header_row_height. 0 means unset, so each header row uses rowHeight.
+    // Column-group rows use the same height.
+    float headerRowHeight = 0;
     // options.size, kept because render_loading is handed it.
     UiSize size = UiSize::Medium;
     TableDelegate delegate = {};
@@ -191,6 +194,9 @@ struct DataTable {
     DataTable* WithSize(UiSize s);
     // Size::Size(px), which the story's 48px row offers.
     DataTable* RowHeight(float px);
+    // header_row_height: each header row, including column-group rows. Body
+    // rows keep RowHeight.
+    DataTable* HeaderRowHeight(float px);
     DataTable* GroupHeader(const TableGroupCell* cells, int n);
     DataTable* H(float px);
     DataTable* Empty(El* e);

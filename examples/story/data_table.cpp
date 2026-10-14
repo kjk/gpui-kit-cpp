@@ -43,6 +43,7 @@ static const Stock kStocks[] = {
 
 enum {
     DtMenuSize = 1,
+    DtMenuHeaderH,
     DtMenuRows,
     DtMenuExtra,
     DtMenuOptions,
@@ -50,10 +51,11 @@ enum {
 };
 
 enum {
-    DtActSize = 480,   // + index into kSizes
-    DtActRows = 500,   // + index into kRowCounts
-    DtActExtra = 520,  // + index into kExtraCounts
-    DtActOption = 540, // + index into kDtOptions
+    DtActSize = 480,    // + index into kSizes
+    DtActHeaderH = 470, // + index into kHeaderRowH
+    DtActRows = 500,    // + index into kRowCounts
+    DtActExtra = 520,   // + index into kExtraCounts
+    DtActOption = 540,  // + index into kDtOptions
     DtActClear = 559,
     DtActGoTo = 560
 };
@@ -71,6 +73,10 @@ static const float kSizeRowH[] = {48, 40, 32, 30, 26};
 static const char* const kSizeLabels[] = {"48px", "Large", "Medium", "Small",
                                           "XSmall"};
 static const int kNSizes = 5;
+// header_row_height: 0 is unset (the body row height).
+static const float kHeaderRowH[] = {0, 40, 48};
+static const char* const kHeaderLabels[] = {"Default", "40px", "48px"};
+static const int kNHeaderRowH = 3;
 
 // The Options dropdown, in Rust's own order.
 enum {
@@ -102,9 +108,10 @@ static const int kNGoTo = 4;
 // The order the rows are shown in, which is what the delegate's perform_sort
 // rewrites. -1 means the table's own order.
 struct DataTableStory {
-    int rowCount = 2; // 5,000
-    int extra = 0;    // no extra columns
-    int size = 2;     // Medium
+    int rowCount = 2;   // 5,000
+    int extra = 0;      // no extra columns
+    int size = 2;       // Medium
+    int headerRowH = 0; // index into kHeaderRowH; 0 is Default
     int openMenu = 0;
     // TableState's own defaults: everything but cell selection and the four
     // switches under the separator.
@@ -288,6 +295,8 @@ static void DtMenuAct(DataTableStory* self, Ctx* cx, const ClickEvent*,
         self->rowCount = (int)(act - DtActRows);
     } else if (act >= DtActSize) {
         self->size = (int)(act - DtActSize);
+    } else if (act >= DtActHeaderH) {
+        self->headerRowH = (int)(act - DtActHeaderH);
     }
     self->openMenu = 0;
     Notify(cx);
@@ -736,6 +745,18 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
         self->openMenu == DtMenuSize, ListenerArg(openMenu, DtMenuSize),
         sizeRows, kNSizes, act));
     group->Child(StoryToolbarDivider(cx));
+    StoryToolbarOpt headerRows[kNHeaderRowH];
+    for (int i = 0; i < kNHeaderRowH; i++) {
+        headerRows[i].label = kHeaderLabels[i];
+        headerRows[i].checked = self->headerRowH == i;
+        headerRows[i].act = DtActHeaderH + i;
+    }
+    group->Child(StoryToolbarDropdown(
+        cx, StrL("dt-header-h"),
+        StoryFmt(cx, "Header Row Height: %s", kHeaderLabels[self->headerRowH]),
+        self->openMenu == DtMenuHeaderH, ListenerArg(openMenu, DtMenuHeaderH),
+        headerRows, kNHeaderRowH, act));
+    group->Child(StoryToolbarDivider(cx));
     StoryToolbarOpt rowRows[kNRowCounts];
     for (int i = 0; i < kNRowCounts; i++) {
         rowRows[i].label = kRowLabels[i];
@@ -915,6 +936,9 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
             ->OnVisibleRows(DtVisibleRows)
             ->OnVisibleCols(DtVisibleCols)
             ->CellText(DtCellText);
+    if (kHeaderRowH[self->headerRowH] > 0) {
+        table->HeaderRowHeight(kHeaderRowH[self->headerRowH]);
+    }
     if (self->options[DtOptGroupHeaders]) {
         table->GroupHeader(kGroup1, 6)->GroupHeader(kGroup2, 12);
     }

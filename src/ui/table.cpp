@@ -452,6 +452,10 @@ DataTable* DataTable::RowHeight(float px) {
     rowHeight = px;
     return this;
 }
+DataTable* DataTable::HeaderRowHeight(float px) {
+    headerRowHeight = px;
+    return this;
+}
 DataTable* DataTable::H(float px) {
     h = px;
     return this;
@@ -922,7 +926,11 @@ El* DataTable::BuildEl() {
     if (fill) {
         box->H(kFill);
     }
-    float headsH = (float)(groupHeaders.len + 1) * rowHeight;
+    // header_row_height, or the body row height when it is unset. The band
+    // is that height times every header row, and an empty layout still
+    // reserves the leaf row (header_layout.len().max(1)).
+    float headerH = headerRowHeight > 0 ? headerRowHeight : rowHeight;
+    float headsH = (float)(groupHeaders.len + 1) * headerH;
     float first = h > 0 ? h : (cx->win ? WindowSize(cx->win).dipH : 0.f);
     LaidOutHeight* laid = UseLaidOutHeight(cx, id, first);
     if (laid) {
@@ -982,17 +990,17 @@ El* DataTable::BuildEl() {
     };
 
     for (int g = 0; g < groupHeaders.len; g++) {
-        // Every head row is one table row tall — state.rs renders the group
-        // bands and the leaf heads through the same `h(table_row_height())`,
-        // which is what makes the head block a whole number of rows.
+        // Every head row is header_row_height — state.rs renders the group
+        // bands and the leaf heads through the same height, which is what
+        // makes the head block a whole number of those rows.
         El* gf =
-            Div(a)->FlexRow()->Shrink0()->H(rowHeight)->BorderB(1, th.border);
+            Div(a)->FlexRow()->Shrink0()->H(headerH)->BorderB(1, th.border);
         // The band fills the pane's width; it must not be a flex item along
         // the pane's own axis, which is down. A basis of zero there would
         // leave the band out of the pane's intrinsic height and the body
         // would give that height back by shrinking.
         El* gsWrap = follow(
-            Div(a)->FlexRow()->W(kFill)->H(rowHeight)->BorderB(1, th.border));
+            Div(a)->FlexRow()->W(kFill)->H(headerH)->BorderB(1, th.border));
         El* gs = Div(a)->FlexRow()->Shrink0();
         gsWrap->Child(gs);
         int col = 0;
@@ -1034,14 +1042,14 @@ El* DataTable::BuildEl() {
     El* headFixed = gpui::TableHeader::New(cx, StrL("head-fixed"))
                         ->FlexRow()
                         ->Shrink0()
-                        ->H(rowHeight)
+                        ->H(headerH)
                         ->Bg(th.tokens.tableHead)
                         ->Fg(th.tableHeadFg)
                         ->BorderB(1, th.border);
     El* headWrap = follow(Div(a)
                               ->FlexRow()
                               ->W(kFill)
-                              ->H(rowHeight)
+                              ->H(headerH)
                               ->Bg(th.tokens.tableHead)
                               ->Fg(th.tableHeadFg)
                               ->BorderB(1, th.border));
@@ -1200,6 +1208,16 @@ El* DataTable::BuildEl() {
     VirtualRange range = {0, nRows};
     if (s && viewH > 0) {
         s->viewportH = viewH;
+        // page_item_count: how many body rows fit under the header band.
+        // viewH is that body once a frame has been laid out. Before then it
+        // is the whole window, so the band comes off here.
+        float bodyForPage = viewH;
+        if ((!laid || laid->measured < 0) && headsH > 0 &&
+            bodyForPage > headsH) {
+            bodyForPage -= headsH;
+        }
+        int page = rowHeight > 0 ? (int)floorf(bodyForPage / rowHeight) : 1;
+        s->pageRows = page < 1 ? 1 : page;
         range = VirtualListVisibleRows(nRows, s->rowH, s->scrollY, viewH);
         // ListSizingBehavior::Auto: a table that fills its box and has fewer
         // rows than it can show is as tall as its rows, unless stripes run

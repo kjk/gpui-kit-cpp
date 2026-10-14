@@ -16,14 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `02daace3522954eb8b3a8db77d59c3bbaa5a839d` (2026-10-08,
-tab: Scroll a clicked tab into view with the next one peeking (#3419)).
-Clicking a tab, or picking it from the overflow menu, scrolls it into
-view with part of the next tab showing. The travel uses the selection
-indicator's spring, and a wheel scroll during it takes over. Changing
-the selection another way still leaves the offset where it was.
+Processed through `37cad320d4ac8950e6fc40a38b8cb6251079a133` (2026-10-09,
+table: Allow a header row height separate from the body (#3420)).
+`header_row_height` sets each header row, including column-group rows,
+apart from the body row height. Unset, header rows keep the body
+height. Page Up and Page Down step by how many body rows fit under
+that header band.
 The current update target is
-`02daace3522954eb8b3a8db77d59c3bbaa5a839d`.
+`1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
 ## Known gaps vs Rust
 

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "02daace3522954eb8b3a8db77d59c3bbaa5a839d",
-  date: "2026-10-08",
-  subject: "tab: Scroll a clicked tab into view with the next one peeking (#3419)",
+  sha: "37cad320d4ac8950e6fc40a38b8cb6251079a133",
+  date: "2026-10-09",
+  subject: "table: Allow a header row height separate from the body (#3420)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",
