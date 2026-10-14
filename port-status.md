@@ -16,13 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7a20941742df8ed9c9acfbccca76134ef565b976` (2026-10-13,
-shell: Add `bundle` to package an application, and a `dev` command
-(#3487)).
-`gpui-shell bundle` writes a macOS app, a Linux tar.gz plus install.sh,
-or a Windows zip. `dev` is `run` that reloads and records a verbose flag.
-A packaged run titles the window from the manifest and writes no editor
-files.
+Processed through `8d4907da456a4f363c7ee1c22c553f44c3c58500` (2026-10-13,
+table: Add `DataTable::fixed_cols_border` (#3482)).
+`DataTable::FixedColsBorder` draws the hairline on the right of the fixed
+columns, in the header and on each body row. The default is on.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

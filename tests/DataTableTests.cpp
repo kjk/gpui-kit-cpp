@@ -1254,8 +1254,98 @@ static void TableRowHeaderClickSelectsItsRowOnce() {
     TestAppFree(app);
 }
 
+// True when `head` and the header's fixed-column line are siblings, and
+// the line is exactly as tall as that head.
+static bool FixedBorderBeside(El* node, El* head) {
+    if (!node || !head) {
+        return false;
+    }
+    bool sawHead = false;
+    bool sawLine = false;
+    for (El* c = node->first; c; c = c->next) {
+        if (c == head) {
+            sawHead = true;
+        }
+        if (c->style.absolute && c->style.borderR == 1 && c->style.width == 0 &&
+            c->style.height == head->style.height && c->style.absRight == 0 &&
+            c->style.absTop == 0 && c->style.absBottom == kAuto) {
+            sawLine = true;
+        }
+    }
+    if (sawHead && sawLine) {
+        return true;
+    }
+    for (El* c = node->first; c; c = c->next) {
+        if (FixedBorderBeside(c, head)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int CountFixedColBorders(El* root) {
+    if (!root) {
+        return 0;
+    }
+    int n = 0;
+    if (root->style.absolute && root->style.width == 0 &&
+        root->style.borderR == 1) {
+        n++;
+    }
+    for (El* c = root->first; c; c = c->next) {
+        n += CountFixedColBorders(c);
+    }
+    return n;
+}
+
+// fixed_cols_border: the hairline on the right of the fixed columns, once
+// for the head and once per body row. Off leaves the edge to the cells.
+// A table with no fixed column draws none either way.
+static void FixedColsBorderFollowsTheFixedColumns() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.win = win;
+    cx.a = a;
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    component::TableColumn cols[2] = {
+        component::TableColumn::New(StrL("id"), StrL("ID")).Fixed(),
+        component::TableColumn::New(StrL("name"), StrL("Name")),
+    };
+    auto build = [&](bool border, bool fixed) {
+        if (!fixed) {
+            cols[0].fixed = false;
+        } else {
+            cols[0].fixed = true;
+        }
+        return component::DataTable::New(&cx, StrL("t"), state)
+            ->Columns(cols, 2)
+            ->Rows(2, nullptr, nullptr)
+            ->FixedColsBorder(border)
+            ->IntoEl();
+    };
+    // Head plus two rows.
+    utassert(CountFixedColBorders(build(true, true)) == 3);
+    utassert(CountFixedColBorders(build(false, true)) == 0);
+    utassert(CountFixedColBorders(build(true, false)) == 0);
+    El* on = build(true, true);
+    El* head = FindNamed(on, "head-fixed");
+    utassert(head && head->style.height > 0);
+    // The head line hangs on the pane beside the leaf head, as tall as the
+    // head block. The pane also holds the body, so the line is not a child
+    // of the leaf head and does not run the body's height.
+    utassert(FixedBorderBeside(on, head));
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestDataTable() {
     AStripedTableFillsTheBodyWithEmptyRows();
+    FixedColsBorderFollowsTheFixedColumns();
     SortIconIsALabelledButtonThatCyclesTheSort();
     SourceColumnBuildersKeepEveryField();
     EachColumnHasItsOwnResizeBounds();

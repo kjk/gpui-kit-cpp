@@ -438,6 +438,10 @@ DataTable* DataTable::Bordered(bool v) {
     bordered = v;
     return this;
 }
+DataTable* DataTable::FixedColsBorder(bool v) {
+    fixedColsBorder = v;
+    return this;
+}
 DataTable* DataTable::ScrollbarVisible(bool vertical, bool horizontal) {
     scrollbarV = vertical;
     scrollbarH = horizontal;
@@ -645,6 +649,21 @@ static El* LeadingResizeHandle(Ctx* cx, Str id, int prevCol,
         ->Left(0)
         ->H(kFill)
         ->W(kTableResizeHandlePadding);
+}
+
+// render_fixed_cols_border. The hairline on the right of the fixed columns.
+// `height` 0 stretches it to its parent, which is one header row or one body
+// row. A positive height is the whole header block: the fixed pane also
+// holds the scrolling body, so the line has to stop where the head does.
+static El* RenderFixedColsBorder(Ctx* cx, float height) {
+    El* e = Div(cx->a)->Absolute()->Top(0)->Right(0)->W(0)->Shrink0()->BorderR(
+        1, ThemeNow(cx->app).border);
+    if (height > 0) {
+        e->H(height);
+    } else {
+        e->Bottom(0);
+    }
+    return e;
 }
 
 // The pane a column is drawn in: the pinned one holds the leading columns
@@ -1169,6 +1188,13 @@ El* DataTable::BuildEl() {
     headScroll->Child(LastEmptyColEl(cx, lastEmptyCol, data));
     fixedPane->Child(headFixed);
     scrollPane->Child(headWrap);
+    // The header's copy of render_fixed_cols_border. Rust hangs it on the
+    // fixed-column head, which is only the head; here that head shares a
+    // pane with the body, so the line is as tall as the head block.
+    bool drawFixedBorder = nFixed > 0 && fixedColsBorder;
+    if (drawFixedBorder) {
+        fixedPane->Child(RenderFixedColsBorder(cx, headsH));
+    }
 
     // render_empty: a table with no rows shows this instead of a body.
     // The rows list is not rendered, so the empty range is reported here.
@@ -1376,6 +1402,11 @@ El* DataTable::BuildEl() {
             (d < nFixed ? rowFixed : rowScroll)->Child(td);
         }
         rowScroll->Child(LastEmptyColEl(cx, lastEmptyCol, data));
+        // The body's copy: one line per row, on the fixed side, so it
+        // scrolls with the row and stops at the last one.
+        if (drawFixedBorder) {
+            rowFixed->Child(RenderFixedColsBorder(cx, 0));
+        }
         if (s && s->rowSelectable && !s->cellSelectable) {
             BindPathClick(rowScroll,
                           ElementIdNamed(a, StrL("row"), (uint64_t)r),
@@ -1428,6 +1459,11 @@ El* DataTable::BuildEl() {
         if (r % 2 == 1) {
             fillFixed->Bg(th.tokens.tableEven);
             fillScroll->Bg(th.tokens.tableEven);
+        }
+        // Extra rows go through render_table_row upstream, so they carry
+        // the same fixed-column line.
+        if (drawFixedBorder) {
+            fillFixed->Child(RenderFixedColsBorder(cx, 0));
         }
         bodyFixed->Child(fillFixed);
         bodyScroll->Child(fillScroll);

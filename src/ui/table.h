@@ -137,6 +137,10 @@ struct DataTable {
     // TableOptions::bordered: the rounded 1px border round the table, on by
     // default as in Rust.
     bool bordered = true;
+    // TableOptions::fixed_cols_border: the hairline on the right of the
+    // fixed columns, in the header and on each body row. Off when those
+    // cells draw the edge themselves.
+    bool fixedColsBorder = true;
     // TableOptions::scrollbar_visible: the right (vertical) and bottom
     // (horizontal) scrollbars of the scrolling body, both on by default.
     bool scrollbarV = true;
@@ -193,6 +197,7 @@ struct DataTable {
                     El* (*cell)(Ctx* cx, void* data, int row, int col));
     DataTable* Stripe(bool v);
     DataTable* Bordered(bool v);
+    DataTable* FixedColsBorder(bool v);
     DataTable* ScrollbarVisible(bool vertical, bool horizontal);
     DataTable* WithSize(UiSize s);
     // Size::Size(px), which the story's 48px row offers.
