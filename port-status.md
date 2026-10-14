@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c5f8eca4a0759f8c0c7ed624eddfd03f1c93a5f2` (2026-10-13,
-slider: Add accessibility labels (#3494)).
-Base and component sliders take an optional accessibility label and
-put it on the existing slider role. Omitting it leaves the name
-empty. The label is applied when the element is built, so a later
-frame can rename it or clear it.
+Processed through `859729d62059e13c5f9e223f757c0f73e6397657` (2026-10-14,
+tests: Keep the WebSocket pending-read test pumping until its server closes (#3497)).
+The shell WebSocket test keeps pumping the executor until the
+server thread finishes, so a pending read cannot starve the
+close. This tree has no WebSocket client and no counterpart of
+that test.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
