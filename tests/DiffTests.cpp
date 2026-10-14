@@ -575,8 +575,33 @@ static void TestInlineAndRows() {
     utassert(Same(resolved, "start\ntheirs\nmiddle\na\nc\nend\n"));
 }
 
+// diff.rs next_change_wraps_once_the_list_is_scrolled_to_its_end: once
+// the last row sits in the viewport, next change wraps. It still walks
+// forward before that, and previous change does not wrap.
+static void NextChangeWrapsOnceTheListIsScrolledToItsEnd() {
+    DiffFix fix;
+    VecAppend(fix.state->changeRows, 10);
+    VecAppend(fix.state->changeRows, 500);
+    VecAppend(fix.state->changeRows, 990);
+    fix.state->listScroll.itemsCount = 1000;
+    fix.state->listScroll.contentSize = 20000;
+    fix.state->listScroll.viewport = 400;
+
+    fix.state->listScroll.offset = 200;
+    fix.state->NextChange(&fix.cx);
+    utassert(fix.state->scrollItem == 500);
+
+    fix.state->listScroll.offset = 19600;
+    fix.state->PreviousChange(&fix.cx);
+    utassert(fix.state->scrollItem == 500);
+
+    fix.state->NextChange(&fix.cx);
+    utassert(fix.state->scrollItem == 10);
+}
+
 void TestDiff() {
     TestParser();
     TestConflictsAndLanguage();
     TestInlineAndRows();
+    NextChangeWrapsOnceTheListIsScrolledToItsEnd();
 }

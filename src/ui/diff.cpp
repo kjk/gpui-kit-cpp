@@ -2768,15 +2768,30 @@ static int ScrollTop(const DiffState* self) {
     return self->scrollItem;
 }
 
+// The last row's bottom is inside the viewport. bounds_for_item is none
+// until that row has been laid out; content size and the offset answer
+// the same question once a layout has run, including after a jump to the
+// end that never measured the rows above.
+static bool ScrolledToEnd(const DiffState* self) {
+    const VirtualListScrollHandle& h = self->listScroll;
+    if (h.itemsCount <= 0 || h.viewport <= 0 || h.contentSize <= 0) {
+        return false;
+    }
+    return h.offset + h.viewport >= h.contentSize - 0.5f;
+}
+
 static void MoveChange(DiffState* self, bool forward, Ctx* cx) {
     int top = ScrollTop(self);
     int n = len(self->changeRows);
     if (n == 0) return;
     int target = -1;
     if (forward) {
+        // At the end the list clamps, so a later change below the top never
+        // becomes the top and the key would repeat it. Wrap to the first.
         int i = 0;
         while (i < n && self->changeRows[i] <= top) i++;
-        target = i < n ? self->changeRows[i] : self->changeRows[0];
+        bool atEnd = ScrolledToEnd(self);
+        target = i < n && !atEnd ? self->changeRows[i] : self->changeRows[0];
     } else {
         int i = 0;
         while (i < n && self->changeRows[i] < top) i++;

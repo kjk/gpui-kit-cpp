@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `369f7a8f5a6602da980f008cf726467588ad517f` (2026-10-12,
-button: Keep the hover style registered while selected or disabled (#3461)).
-A selected button still does not paint a hover fill. Hover is taken
-from the hit test each frame, so unselecting does not leave the last
-hover colour in place.
+Processed through `aa626f2177c6a0a81d02906820519b8a6e15b17a` (2026-10-13,
+diff: Wrap the next-change key once the list is scrolled to its end (#3462)).
+Next change wraps to the first change once the last row sits in the
+viewport. The list would otherwise clamp and repeat the same group.
+Previous change is unchanged.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
