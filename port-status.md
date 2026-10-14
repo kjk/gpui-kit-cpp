@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1ccf011620da24d633f7cd6d3c11ca2e97798dcf` (2026-10-11,
-input: Keep auto-grow rows fitted when the limits change (#3430)).
-Changing a textarea's auto-grow limits recounts its rows immediately, so
-a field that already holds text does not collapse to the new minimum
-until the next edit.
+Processed through `4e2a00eea7212baa9b5edf1f73753760deb2780b` (2026-10-12,
+text: Paint TextView selection under the glyphs (#3439)).
+A TextView selection is already painted before the glyphs, so an opaque
+selection colour does not cover the text. Run backgrounds stay under
+that quad.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
