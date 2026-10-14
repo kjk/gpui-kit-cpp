@@ -6635,8 +6635,10 @@ void InputOnContextMenu(InputState* state, InputContextMenuFn handler,
     state->contextMenuDrop = drop;
 }
 
-// cx.defer_in: the handler with what it was captured with, run once the
-// event that asked for it is over.
+// window.defer: the handler runs once this call returns, with the field
+// released, so a builder can read the cursor, the selection and the text.
+// ExecPost is that release. Rust also drops the call when the input entity
+// is gone; the state here belongs to its view, so the job keeps the pointer.
 struct ContextMenuJob {
     InputContextMenuFn handler = nullptr;
     void* data = nullptr;

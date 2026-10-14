@@ -5729,6 +5729,30 @@ static void ContextMenuHandlerIsDeferredAndRespectsDisabled() {
     InputViewFree(&view);
 }
 
+// state.rs context_menu_handler_can_read_its_input: the builder reads the
+// caret. Rust used to run it inside the input's update, which panicked on
+// the entity lease. The handler here is already posted, so the read works.
+// The flush is the end of that update.
+static int gContextMenuCursor = -1;
+
+static void ReadContextMenuCursor(void* data, NativeMenu*,
+                                  const InputContextMenuCapabilities&, Point,
+                                  App*, Window*) {
+    gContextMenuCursor = InputCursor((InputState*)data);
+}
+
+static void ContextMenuHandlerCanReadItsInput() {
+    gContextMenuCursor = -1;
+    InputView view = InputViewNew();
+    InputSetValue(view.input, StrL("hello"));
+    InputOnContextMenu(view.input, &ReadContextMenuCursor, view.input);
+    InputHandleRightClickMenu(view.input, view.app, view.win, {0, 0}, 2);
+    utassert(gContextMenuCursor == -1);
+    TestRunUntilParked(view.app);
+    utassert(gContextMenuCursor == 2);
+    InputViewFree(&view);
+}
+
 // line_and_position_for_offset's y plus the scroll offset: where the visual
 // row holding `offset` starts inside the field — the visual rows of the
 // lines above it, then the row of its own line the wrap map puts it on.
@@ -8505,6 +8529,7 @@ static void RunWindowTestsC() {
     UnfoldAt();
     BlurKeepsDecorations();
     ContextMenuHandlerIsDeferredAndRespectsDisabled();
+    ContextMenuHandlerCanReadItsInput();
     EditorDecorationsFollowTyping();
     KindDoesNotFollowTheRowCount();
     SoftWrapIsEnabledByDefault();
