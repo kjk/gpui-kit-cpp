@@ -940,6 +940,97 @@ static void ClickingATriggerAwayDoesNotLeaveItsTooltip() {
     TestAppFree(w.app);
 }
 
+// tooltip.rs tooltips_switch_in_both_directions and
+// leaving_a_trigger_does_not_cancel_the_next_tooltip_delay.
+// Two triggers, 100 by 30, at x = 10 and x = 110. The points are the
+// centers Rust uses: 50 and 150.
+struct AdjacentTipProbe {
+    static El* Render(AdjacentTipProbe*, Ctx* cx) {
+        return Div(cx->a)
+            ->SizeFull()
+            ->Child(Div(cx->a)
+                        ->PathClick(StrL("trigger-0"))
+                        ->Absolute()
+                        ->Left(10)
+                        ->Top(10)
+                        ->W(100)
+                        ->H(30)
+                        ->Tip(StrL("tip-0")))
+            ->Child(Div(cx->a)
+                        ->PathClick(StrL("trigger-1"))
+                        ->Absolute()
+                        ->Left(110)
+                        ->Top(10)
+                        ->W(100)
+                        ->H(30)
+                        ->Tip(StrL("tip-1")));
+    }
+};
+
+static TipWindow OpenAdjacentTips() {
+    TipWindow w;
+    w.app = TestAppNew();
+    BaseInit(w.app);
+    Entity<AdjacentTipProbe> root = EntityNew<AdjacentTipProbe>(w.app);
+    w.win = TestWindowOpen(w.app, root, 400, 300);
+    TestDraw(w.win);
+    return w;
+}
+
+static bool TooltipContentIs(Window* win, Str text) {
+    const TooltipOverlay* showing = TooltipShowing(win);
+    return showing && showing->hasContent && StrEq(showing->content.text, text);
+}
+
+static Point AdjacentTipAt(int index) {
+    return {50.f + (float)index * 100.f, 25.f};
+}
+
+static void TooltipsSwitchInBothDirections() {
+    TipWindow w = OpenAdjacentTips();
+    const int order[] = {0, 1, 0};
+    for (int step = 0; step < 3; step++) {
+        int index = order[step];
+        TestSimulateMouseMove(w.win, AdjacentTipAt(index));
+        if (step > 0) {
+            TestDraw(w.win);
+            utassert(TooltipContentIs(
+                w.win, index == 0 ? StrL("tip-0") : StrL("tip-1")));
+        }
+        TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+        TestDraw(w.win);
+        utassert(TooltipContentIs(w.win,
+                                  index == 0 ? StrL("tip-0") : StrL("tip-1")));
+        // Rebuilding the triggers must keep the visible tooltip.
+        TestDraw(w.win);
+        utassert(TooltipContentIs(w.win,
+                                  index == 0 ? StrL("tip-0") : StrL("tip-1")));
+    }
+    TestSimulateMouseMove(w.win, {300, 300});
+    TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+    TestDraw(w.win);
+    utassert(!TooltipContentIs(w.win, StrL("tip-0")));
+    utassert(!TooltipContentIs(w.win, StrL("tip-1")));
+    TestAppFree(w.app);
+}
+
+static void LeavingATriggerDoesNotCancelTheNextTooltipDelay() {
+    const int pairs[][2] = {{0, 1}, {1, 0}};
+    for (auto& pair : pairs) {
+        TipWindow w = OpenAdjacentTips();
+        TestSimulateMouseMove(w.win, AdjacentTipAt(pair[0]));
+        TestAdvanceClock(w.app, 100);
+        utassert(!TooltipContentIs(w.win, StrL("tip-0")));
+        utassert(!TooltipContentIs(w.win, StrL("tip-1")));
+        TestSimulateMouseMove(w.win, AdjacentTipAt(pair[1]));
+        TestAdvanceClock(w.app, kTooltipShowDelayMs + 50);
+        TestDraw(w.win);
+        utassert(TooltipContentIs(
+            w.win, pair[1] == 0 ? StrL("tip-0") : StrL("tip-1")));
+        TestAppFree(w.app);
+    }
+}
+
 // tooltip.rs a_press_on_a_removed_trigger_ends_when_the_pointer_moves_away.
 static void APressOnARemovedTriggerEndsWhenThePointerMovesAway() {
     TipWindow w = OpenTipProbe(true);
@@ -965,6 +1056,8 @@ void TestPopup() {
     APressDismissesTheTooltipUntilThePointerLeaves();
     ClickingATriggerAwayDoesNotLeaveItsTooltip();
     APressOnARemovedTriggerEndsWhenThePointerMovesAway();
+    TooltipsSwitchInBothDirections();
+    LeavingATriggerDoesNotCancelTheNextTooltipDelay();
     ThePopupSurfaceBlocksThePanelItCovers();
     TheTopAnchorsTakeTheTopEdge();
     TheBottomAnchorsMatchUpstreamsSubtractedHeight();

@@ -2009,10 +2009,12 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         bool tipRoot = now && now->rootTooltip;
         WindowHoverChanged(win, win->hoverId, id);
         win->hoverId = id;
-        // El::Tip is a tooltip trigger. Rust's triggers call request_show and
-        // request_hide on the window's one overlay; the hover change is where
-        // that happens here, since the trigger is a style flag rather than an
-        // element that could carry handlers of its own.
+        // El::Tip is a tooltip trigger. Rust's triggers each listen for
+        // hover, and a later sibling can enter before the earlier one
+        // leaves; that leave is ignored unless it is still the current
+        // trigger. Here the pointer is over one element, so a move between
+        // triggers is only a show and the one that was left cannot cancel
+        // it. Press-dismissal stays the bounds check above.
         if (tip.s) {
             // A press keeps the tooltip dismissed until the pointer leaves
             // the trigger. This also drops the hover-enter that a click

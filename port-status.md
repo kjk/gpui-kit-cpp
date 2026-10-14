@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `72747eeb9dc702fbd7f016cfec8f168477bfe06b` (2026-10-14,
-shell: Strip symbols from release builds (#3507)). Cargo's release
-profile now strips the symbol table. This tree's release builds keep a
-PDB on Windows and `-g` on Linux and macOS, so nothing else changes.
+Processed through `d23fdc9248968125fa7f9c6a01a5e38383391170` (2026-10-14,
+tooltip: Fix direction-dependent switching between triggers (#3501)).
+A move between tooltip triggers is one hover target here, so the new
+tooltip is shown without a leave from the previous trigger cancelling
+it. Press-dismissal is unchanged. The headless tests cover both
+directions and a switch during the show delay.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
