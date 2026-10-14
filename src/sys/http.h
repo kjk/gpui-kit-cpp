@@ -59,6 +59,11 @@ struct HttpRsp {
 
 void HttpRspFree(HttpRsp* r);
 
+// Why the calling thread's last HttpSend got no answer (HttpRsp::error), or
+// empty when it got one: for code far from the HttpRsp that reports a
+// failure. Valid until the thread's next request.
+Str HttpLastError();
+
 // The value of the first header called `name`, compared without case: a view
 // into `r.headers`, empty when there is no such header.
 Str HttpRspHeader(const HttpRsp& r, Str name);

@@ -9,6 +9,28 @@
 
 namespace gpui {
 
+static thread_local char gLastError[512];
+
+// each platform's client; HttpSend notes its failure for HttpLastError
+bool HttpSendPlatform(const HttpReq& req, HttpRsp* out);
+
+bool HttpSend(const HttpReq& req, HttpRsp* out) {
+    bool ok = HttpSendPlatform(req, out);
+    Str why = !ok && out ? out->error : Str{};
+    int n = len(why) < (int)sizeof(gLastError) - 1
+                ? len(why)
+                : (int)sizeof(gLastError) - 1;
+    if (n > 0) {
+        memcpy(gLastError, why.s, (size_t)n);
+    }
+    gLastError[n] = 0;
+    return ok;
+}
+
+Str HttpLastError() {
+    return Str(gLastError);
+}
+
 void HttpRspFree(HttpRsp* r) {
     if (!r) {
         return;

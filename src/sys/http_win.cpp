@@ -260,7 +260,7 @@ static Str WinHttpErrorDup(DWORD code) {
     return b.TakeStr();
 }
 
-bool HttpSend(const HttpReq& req, HttpRsp* out) {
+bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
     Str url = req.url;
     bool noRedirect = req.noRedirect;
     if (!out || !HttpUrlIsRemote(url)) {

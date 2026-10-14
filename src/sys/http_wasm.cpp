@@ -273,7 +273,7 @@ bool HttpWasmSendAsync(const HttpReq& req, Func1<HttpAsyncResult> done) {
     return true;
 }
 
-bool HttpSend(const HttpReq& req, HttpRsp* out) {
+bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
     (void)req;
     (void)out;
     return false;

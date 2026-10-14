@@ -93,7 +93,7 @@ static size_t OnReadBody(char* buf, size_t size, size_t n, void* userp) {
     return (size_t)got;
 }
 
-bool HttpSend(const HttpReq& req, HttpRsp* out) {
+bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
     Str url = req.url;
     bool noRedirect = req.noRedirect;
     if (!out || !HttpUrlIsRemote(url)) {
@@ -296,11 +296,13 @@ bool HttpGetNoRedirect(Str url, HttpRsp* out) {
 
 #else
 
-bool HttpSend(const HttpReq& req, HttpRsp* out) {
+bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
     // Built without libcurl: there is no client here to make the request
     // with, so every request fails the way one to an unreachable host would.
     (void)req;
-    (void)out;
+    if (out) {
+        out->error = StrDup(StrL("built without libcurl"));
+    }
     return false;
 }
 

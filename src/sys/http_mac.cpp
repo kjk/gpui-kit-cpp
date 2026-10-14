@@ -298,7 +298,7 @@ static bool HttpSendStreamed(const HttpReq& request, HttpRsp* out) {
     }
 }
 
-bool HttpSend(const HttpReq& request, HttpRsp* out) {
+bool HttpSendPlatform(const HttpReq& request, HttpRsp* out) {
     Str url = request.url;
     bool noRedirect = request.noRedirect;
     if (!out || !HttpUrlIsRemote(url)) {
