@@ -69,5 +69,14 @@ HtmlInlineTag HtmlParseInlineTag(Arena* a, Str tag);
 // does not carry it.
 Str HtmlAttrValue(Arena* a, Str attrs, const char* name);
 
+// html.rs default_mark_color: gpui::rgb(0xfef08a).
+inline Rgba DefaultMarkColor() {
+    return Rgba{0xfe, 0xf0, 0x8a, 0xff};
+}
+
+// html.rs mark_color_from_values. `color` wins, then `style`'s
+// background-color, then DefaultMarkColor. Either string may be empty.
+Rgba MarkColorFromValues(Str color, Str style);
+
 } // namespace gpui
 #endif // GPUI_BASE_TEXT_FORMAT_H_

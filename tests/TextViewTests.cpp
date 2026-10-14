@@ -1943,6 +1943,63 @@ static void InlineHtmlFormattingTagsPairAcrossSiblings() {
     ArenaDelete(a);
 }
 
+static MdRun* RunText(MdRun* run, const char* needle) {
+    int n = (int)strlen(needle);
+    for (; run; run = run->next) {
+        for (int i = 0; i + n <= len(run->text); i++) {
+            if (StrEq(Str(run->text.s + i, n), Str(needle, n))) return run;
+        }
+    }
+    return nullptr;
+}
+
+static bool WashIs(MdRun* run, Rgba color) {
+    return run && (run->marks & MdHighlight) != 0 && run->hasHighlight &&
+           RgbaEq(run->highlight, color);
+}
+
+// markdown.rs: inline_html_mark_applies_highlight_colors. Inline <mark>
+// pairs like <strong>. The wash is color, then style background-color,
+// then #fef08a. An HTML document uses the same rules.
+static void InlineHtmlMarkAppliesHighlightColors() {
+    Arena* a = ArenaNew();
+    MdNode* doc = MdParse(
+        a, StrL("Plain <mark>highlighted</mark> text and "
+                "<mark data_id=\"1\" color=\"#ff000059\">red</mark> and "
+                "<mark style=\"background-color: #336699\">hex</mark>."));
+    Str marked[4];
+    int nMarked = 0;
+    Str text = ParagraphText(doc, MdHighlight, marked, 4, &nMarked);
+    utassert(StrEq(text, StrL("Plain highlighted text and red and hex.")));
+    utassert(nMarked == 3 && StrEq(marked[0], StrL("highlighted")) &&
+             StrEq(marked[1], StrL("red")) && StrEq(marked[2], StrL("hex")));
+    MdRun* runs = FirstRunOfKind(doc, MdKind::Paragraph);
+    utassert(WashIs(RunText(runs, "highlighted"), DefaultMarkColor()));
+    utassert(WashIs(RunText(runs, "red"), Rgba{0xff, 0x00, 0x00, 0x59}));
+    utassert(WashIs(RunText(runs, "hex"), Rgba{0x33, 0x66, 0x99, 0xff}));
+    utassert(RunText(runs, "Plain") &&
+             (RunText(runs, "Plain")->marks & MdHighlight) == 0);
+    FreeRuns(marked, nMarked);
+    StrFree(text);
+
+    MdNode* html = HtmlParse(
+        a, StrL("<p><mark>m</mark> <mark color=\"#ff000059\">r</mark> "
+                "<mark style=\"background-color: yellow\">h</mark></p>"));
+    MdRun* htmlRuns = FirstRunOfKind(html, MdKind::Paragraph);
+    utassert(WashIs(RunText(htmlRuns, "m"), DefaultMarkColor()));
+    utassert(WashIs(RunText(htmlRuns, "r"), Rgba{0xff, 0x00, 0x00, 0x59}));
+    utassert(WashIs(RunText(htmlRuns, "h"), Rgba{0xfa, 0xcc, 0x15, 0xff}));
+
+    MdNode* open = MdParse(a, StrL("before <mark>nope"));
+    Str openMarked[2];
+    int nOpen = 0;
+    Str openText = ParagraphText(open, MdHighlight, openMarked, 2, &nOpen);
+    utassert(StrEq(openText, StrL("before nope")) && nOpen == 0);
+    FreeRuns(openMarked, nOpen);
+    StrFree(openText);
+    ArenaDelete(a);
+}
+
 static uint32_t HeadingOnePadded(uint8_t level, gpui::Style* out, void*) {
     if (level != 1) return 0;
     out->pad.bottom = 32; // pb(rems(2.))
@@ -6955,6 +7012,7 @@ void TestTextView() {
     UnclaimedInlineMathParsesItsSpanAsProse();
     ClaimedInlineMathSurvivesProseFlattening();
     InlineHtmlFormattingTagsPairAcrossSiblings();
+    InlineHtmlMarkAppliesHighlightColors();
     HeadingRefinementChangesRenderedHeadingGeometry();
     FlowPositionSkipsBlocksThatRenderNothing();
     FlowPositionReportsThePreviousHeadingOrRule();

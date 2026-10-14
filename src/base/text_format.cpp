@@ -299,6 +299,10 @@ struct Project {
     MdNode* cur = nullptr;
     MdNode* para = nullptr;
     uint8_t marks = 0;
+    // The <mark> wash in force. hasHighlight is the Option, because a
+    // default Rgba is opaque black.
+    Rgba highlight = {};
+    bool hasHighlight = false;
     Str href = {};
     bool raw = false;
     bool tableHead = false;
@@ -342,6 +346,8 @@ static void AddRun(Project* p, Str text) {
     run->text = text;
     run->marks = p->marks;
     run->href = p->href;
+    run->highlight = p->highlight;
+    run->hasHighlight = p->hasHighlight;
     if (target->runLast)
         target->runLast->next = run;
     else
@@ -388,6 +394,8 @@ static void AddImage(Project* p, const html5ever::Node* node) {
     run->imgH = ElementLength(p->a, node, "height");
     run->marks = p->marks;
     run->href = p->href;
+    run->highlight = p->highlight;
+    run->hasHighlight = p->hasHighlight;
     if (target->runLast)
         target->runLast->next = run;
     else
@@ -505,16 +513,27 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
     }
     uint8_t oldMarks = p->marks;
     Str oldHref = p->href;
+    Rgba oldHighlight = p->highlight;
+    bool oldHasHighlight = p->hasHighlight;
     uint8_t mark = InlineMark(name);
     if (StrEqI(name, "a")) {
         p->marks = (uint8_t)(p->marks | MdLink);
         p->href = html5ever::AttrValue(p->a, source, StrL("href"));
     } else {
         p->marks = (uint8_t)(p->marks | mark);
+        if (mark & MdHighlight) {
+            // html.rs mark_color: color, then style background-color.
+            p->highlight = MarkColorFromValues(
+                html5ever::AttrValue(p->a, source, StrL("color")),
+                html5ever::AttrValue(p->a, source, StrL("style")));
+            p->hasHighlight = true;
+        }
     }
     ProjectChildren(p, source);
     p->marks = oldMarks;
     p->href = oldHref;
+    p->highlight = oldHighlight;
+    p->hasHighlight = oldHasHighlight;
 }
 
 static void ProjectNode(Project* p, const html5ever::Node* source) {
@@ -552,6 +571,104 @@ MdNode* HtmlParse(Arena* a, Str source) {
     project.cur = doc;
     ProjectNode(&project, dom);
     return doc;
+}
+
+// gpui::Rgba::try_from: #rgb, #rgba, #rrggbb, #rrggbbaa. The short forms
+// duplicate each digit. Anything else is not a color.
+static int MarkHexDigit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+static bool ParseMarkHex(Str value, Rgba* out) {
+    value = StrTrim(value);
+    if (len(value) < 2 || value.s[0] != '#') return false;
+    const char* hex = value.s + 1;
+    int n = len(value) - 1;
+    if (n != 3 && n != 4 && n != 6 && n != 8) return false;
+    int v[8];
+    for (int i = 0; i < n; i++) {
+        v[i] = MarkHexDigit(hex[i]);
+        if (v[i] < 0) return false;
+    }
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+    uint8_t a = 255;
+    if (n == 3 || n == 4) {
+        r = (uint8_t)((v[0] << 4) | v[0]);
+        g = (uint8_t)((v[1] << 4) | v[1]);
+        b = (uint8_t)((v[2] << 4) | v[2]);
+        if (n == 4) a = (uint8_t)((v[3] << 4) | v[3]);
+    } else {
+        r = (uint8_t)((v[0] << 4) | v[1]);
+        g = (uint8_t)((v[2] << 4) | v[3]);
+        b = (uint8_t)((v[4] << 4) | v[5]);
+        if (n == 8) a = (uint8_t)((v[6] << 4) | v[7]);
+    }
+    *out = Rgba{r, g, b, a};
+    return true;
+}
+
+// html.rs parse_mark_color. Hex goes through Rgba::try_from. The four
+// names are the only ones Base accepts.
+static bool ParseMarkColor(Str value, Rgba* out) {
+    if (!out || !value.s || len(value) <= 0) return false;
+    value = StrTrim(value);
+    if (len(value) <= 0) return false;
+    if (value.s[0] == '#') return ParseMarkHex(value, out);
+    if (StrEqI(value, "black")) {
+        *out = Rgba{0, 0, 0, 255};
+        return true;
+    }
+    if (StrEqI(value, "white")) {
+        *out = Rgba{255, 255, 255, 255};
+        return true;
+    }
+    if (StrEqI(value, "blue")) {
+        *out = Rgba{0x3b, 0x82, 0xf6, 255};
+        return true;
+    }
+    if (StrEqI(value, "yellow")) {
+        *out = Rgba{0xfa, 0xcc, 0x15, 255};
+        return true;
+    }
+    return false;
+}
+
+// html.rs style_attrs, for one property. The last declaration wins, which
+// is what inserting into the map does.
+static Str StyleDecl(Str css, const char* name) {
+    if (!css.s || !name || len(css) <= 0) return {};
+    int nameLen = (int)strlen(name);
+    Str found = {};
+    int i = 0;
+    while (i < len(css)) {
+        int semi = i;
+        while (semi < len(css) && css.s[semi] != ';') semi++;
+        Str decl = StrTrim(Str(css.s + i, semi - i));
+        int colon = 0;
+        while (colon < len(decl) && decl.s[colon] != ':') colon++;
+        if (colon < len(decl)) {
+            Str key = StrTrim(Str(decl.s, colon));
+            if (len(key) == nameLen && StrEqI(key, Str(name, nameLen))) {
+                found = StrTrim(Str(decl.s + colon + 1, len(decl) - colon - 1));
+            }
+        }
+        i = semi < len(css) ? semi + 1 : semi;
+    }
+    return found;
+}
+
+Rgba MarkColorFromValues(Str color, Str style) {
+    Rgba parsed;
+    if (ParseMarkColor(color, &parsed)) return parsed;
+    if (ParseMarkColor(StyleDecl(style, "background-color"), &parsed)) {
+        return parsed;
+    }
+    return DefaultMarkColor();
 }
 
 } // namespace gpui

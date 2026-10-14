@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0bbd9870ce420af9feacbf948b21d3824d82dc0b` (2026-10-09,
-text: Preserve logical selection across presentation changes (#3421)).
-A finished text selection is already a pair of document offsets, so a
-style, width, font, or origin change leaves the same characters
-selected. A new drag or an explicit clear still replaces it, and
-replacing the source still drops it.
+Processed through `ed27c6293b585acc40c10be7138534243bee5841` (2026-10-10,
+text: Keep inline HTML mark highlights in Markdown (#3425)).
+An inline `<mark>` in a Markdown paragraph is paired like `<strong>`.
+Its wash is the tag's `color`, then the `background-color` in `style`,
+then `#fef08a`. A `<mark>` in an HTML document uses those same rules.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
@@ -146,6 +145,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   VirtualList's scroll handle, is updated then and laid out on the next frame;
   Rust can scroll and prepaint the line again within the same frame
   (`src/base/text.cpp`, `src/base/virtual_list.cpp`).
+- **A default `<mark>` paints near-black ink.** Rust leaves the foreground
+  alone (`html.rs`). `#fef08a` disappears on the dark theme's near-white
+  text, so that default wash pins the ink to `#0a0a0a` (`src/base/text.cpp`).
+  A tag that names another color keeps the run's own foreground.
 - **TextView selection mapping uses painted runs.** The window owns selection
   rather than each parsed inline node. Source mapping includes images when a
   selected run reaches their boundary, and Select All follows committed

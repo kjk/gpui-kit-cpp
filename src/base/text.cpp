@@ -1114,6 +1114,10 @@ struct MdBuild {
     MdNode* cur = nullptr;
     // The marks in effect, from the enclosing inline nodes.
     uint8_t marks = 0;
+    // The <mark> wash in effect with those marks. hasHighlight is the
+    // Option: a default Rgba is opaque black.
+    Rgba highlight = {};
+    bool hasHighlight = false;
     Str href = {};
     ArenaVec<MdDef> defs{};
 };
@@ -1614,8 +1618,12 @@ static void AddText(MdBuild* b, Str s,
     int added = segments ? segments->len : 0;
     MdNode* n = b->cur;
     MdRun* r = n->runLast;
+    // A different wash is a different run, or two adjacent <mark>s would
+    // paint as one.
+    bool sameWash = r && r->hasHighlight == b->hasHighlight &&
+                    (!r->hasHighlight || RgbaEq(r->highlight, b->highlight));
     if (r && !r->imgSrc.s && !r->hasCustom && r->marks == b->marks &&
-        r->href.s == b->href.s && r->text.s + len(r->text) == s.s) {
+        sameWash && r->href.s == b->href.s && r->text.s + len(r->text) == s.s) {
         if (added > 0) {
             int total = r->segmentCount + added;
             SourceSegment* merged = TextArenaArray<SourceSegment>(b->a, total);
@@ -1639,6 +1647,8 @@ static void AddText(MdBuild* b, Str s,
     r = ArenaNew<MdRun>(b->a);
     r->text = s;
     r->marks = b->marks;
+    r->highlight = b->highlight;
+    r->hasHighlight = b->hasHighlight;
     r->href = b->href;
     if (added > 0) {
         SourceSegment* copy = TextArenaArray<SourceSegment>(b->a, added);
@@ -1674,6 +1684,8 @@ static void AddImage(MdBuild* b, Str src, Str alt, float w, float h,
     r->imgW = w;
     r->imgH = h;
     r->marks = b->marks;
+    r->highlight = b->highlight;
+    r->hasHighlight = b->hasHighlight;
     r->href = b->href;
     if (n->runLast) {
         n->runLast->next = r;
@@ -1713,6 +1725,8 @@ static void AddCustomInline(MdBuild* b, const MarkdownNode& custom,
     r->text = r->custom.text;
     r->hasCustom = true;
     r->marks = b->marks;
+    r->highlight = b->highlight;
+    r->hasHighlight = b->hasHighlight;
     r->href = b->href;
     if (n->runLast) {
         n->runLast->next = r;
@@ -1745,10 +1759,11 @@ Str MdDecodeEntity(Arena* a, Str e) {
     return value.s ? value : e;
 }
 
-// markdown.rs inline_html_tag: whether a raw inline tag closes, and its
-// lower-cased name. False for anything that is not one plain tag, a
-// self-closing one included.
-static bool MdInlineHtmlTag(Str v, bool* closing, char* name, int cap) {
+// markdown.rs inline_html_tag: whether a raw inline tag closes, its
+// lower-cased name, and the attribute tail after that name. False for
+// anything that is not one plain tag, a self-closing one included.
+static bool MdInlineHtmlTag(Str v, bool* closing, char* name, int cap,
+                            Str* attrs) {
     int s = 0;
     int e = len(v);
     auto space = [](char c) {
@@ -1760,6 +1775,7 @@ static bool MdInlineHtmlTag(Str v, bool* closing, char* name, int cap) {
     while (e > s && space(v.s[e - 1])) {
         e--;
     }
+    if (attrs) *attrs = {};
     if (e - s < 2 || v.s[s] != '<' || v.s[e - 1] != '>') {
         return false;
     }
@@ -1784,17 +1800,75 @@ static bool MdInlineHtmlTag(Str v, bool* closing, char* name, int cap) {
         s++;
     }
     name[n] = 0;
+    if (attrs && n > 0) {
+        int as = s;
+        int ae = e;
+        while (as < ae && space(v.s[as])) as++;
+        while (ae > as && space(v.s[ae - 1])) ae--;
+        *attrs = Str((char*)v.s + as, ae - as);
+    }
     return n > 0;
 }
 
 // markdown.rs inline_html_mark: the formatting tags this renderer pairs.
+// `<mark>` carries its wash separately; the bit is what the pairing sees.
 static uint8_t MdInlineHtmlMark(const char* name) {
     if (!strcmp(name, "strong") || !strcmp(name, "b")) return MdBold;
     if (!strcmp(name, "em") || !strcmp(name, "i")) return MdItalic;
     if (!strcmp(name, "u")) return MdUnderline;
     if (!strcmp(name, "s") || !strcmp(name, "del") || !strcmp(name, "strike"))
         return MdDel;
+    if (!strcmp(name, "mark")) return MdHighlight;
     return 0;
+}
+
+// markdown.rs inline_html_attr. False when a quoted value runs off the end
+// of the tag, which aborts the scan the way `?` does. *value stays empty
+// when `name` is absent.
+static bool MdInlineHtmlAttr(Str attrs, const char* name, Str* value) {
+    if (value) *value = {};
+    if (!name || !value) return false;
+    if (!attrs.s || len(attrs) <= 0) return true;
+    int i = 0;
+    int n = len(attrs);
+    int nameLen = (int)strlen(name);
+    auto space = [](char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    };
+    while (i < n) {
+        while (i < n && space(attrs.s[i])) i++;
+        if (i >= n) break;
+        int keyStart = i;
+        while (i < n && !space(attrs.s[i]) && attrs.s[i] != '=' &&
+               attrs.s[i] != '/' && attrs.s[i] != '>') {
+            i++;
+        }
+        if (i == keyStart) break;
+        Str key(attrs.s + keyStart, i - keyStart);
+        while (i < n && space(attrs.s[i])) i++;
+        Str val = {};
+        if (i < n && attrs.s[i] == '=') {
+            i++;
+            while (i < n && space(attrs.s[i])) i++;
+            if (i < n && (attrs.s[i] == '"' || attrs.s[i] == '\'')) {
+                char q = attrs.s[i++];
+                int vs = i;
+                while (i < n && attrs.s[i] != q) i++;
+                if (i >= n) return false;
+                val = Str(attrs.s + vs, i - vs);
+                i++;
+            } else {
+                int vs = i;
+                while (i < n && !space(attrs.s[i])) i++;
+                val = Str(attrs.s + vs, i - vs);
+            }
+        }
+        if (len(key) == nameLen && StrEqI(key, Str(name, nameLen))) {
+            *value = val;
+            return true;
+        }
+    }
+    return true;
 }
 
 // One inline tag inside a paragraph. The markdown parser hands `<b>` over as
@@ -1812,7 +1886,7 @@ static void MdInlineHtml(MdBuild* b, Str tag) {
     // alone in Rust, which yields an empty element that is dropped.
     bool closing = false;
     char name[16];
-    if (MdInlineHtmlTag(tag, &closing, name, (int)sizeof name) &&
+    if (MdInlineHtmlTag(tag, &closing, name, (int)sizeof name, nullptr) &&
         MdInlineHtmlMark(name)) {
         return;
     }
@@ -1857,10 +1931,10 @@ struct MdInlineItem {
 };
 
 static bool MdItemTag(MdBuild* b, const MdInlineItem& item, bool* closing,
-                      char* name, int cap) {
+                      char* name, int cap, Str* attrs = nullptr) {
     return item.node->kind == md::NodeKind::Html &&
            MdInlineHtmlTag(V(b, item.node, md::NodeStrKind::Value), closing,
-                           name, cap);
+                           name, cap, attrs);
 }
 
 // markdown.rs matching_close_tag: the sibling that closes the tag opened at
@@ -1898,17 +1972,32 @@ static void MdInlineItems(MdBuild* b, const MdInlineItem* items, int count) {
         b->posShift = items[i].shift;
         bool closing = false;
         char name[16];
+        Str attrs = {};
         if (b->cur->kind != MdKind::Html &&
-            MdItemTag(b, items[i], &closing, name, (int)sizeof name) &&
+            MdItemTag(b, items[i], &closing, name, (int)sizeof name, &attrs) &&
             !closing) {
             uint8_t mark = MdInlineHtmlMark(name);
             int close =
                 mark ? MdMatchingCloseTag(b, items, count, i, name) : -1;
             if (close >= 0) {
                 uint8_t saved = b->marks;
+                Rgba savedHighlight = b->highlight;
+                bool savedHasHighlight = b->hasHighlight;
                 b->marks = (uint8_t)(b->marks | mark);
+                if (mark & MdHighlight) {
+                    Str colorAttr;
+                    Str styleAttr;
+                    bool colorOk = MdInlineHtmlAttr(attrs, "color", &colorAttr);
+                    bool styleOk = MdInlineHtmlAttr(attrs, "style", &styleAttr);
+                    b->highlight =
+                        MarkColorFromValues(colorOk ? colorAttr : Str{},
+                                            styleOk ? styleAttr : Str{});
+                    b->hasHighlight = true;
+                }
                 MdInlineItems(b, items + i + 1, close - i - 1);
                 b->marks = saved;
+                b->highlight = savedHighlight;
+                b->hasHighlight = savedHasHighlight;
                 i = close;
                 continue;
             }
@@ -2998,11 +3087,10 @@ El* TextView::SrcImage(El* e, MdRun* r) {
     return e;
 }
 
-// `<mark>`: html.rs takes yellow(200) — a fixed Tailwind step, not a theme
-// color — and leaves the ink alone, which works because the foreground it
-// runs against there is dark. Ours is near-white in the dark theme, so the
-// ink is pinned to the same near-black the light theme already paints with
-// and the highlight reads the same in both.
+// `<mark>`: html.rs default_mark_color is #fef08a and leaves the ink alone.
+// That yellow disappears on the dark theme's near-white foreground, so the
+// default wash pins the ink to the light theme's near-black. A tag that
+// names another color keeps the run's own foreground.
 static const Rgba kMarkBg = {0xfe, 0xf0, 0x8a, 0xff};
 static const Rgba kMarkFg = {0x0a, 0x0a, 0x0a, 0xff};
 
@@ -3074,14 +3162,15 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
 // One styled word. Everything a TextMark can say about a run, applied to the
 // element that carries it — node.rs 1390 builds the same HighlightStyle.
 El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
-                   Str href) {
+                   Str href, Rgba highlight, bool hasHighlight) {
     Rgba c = color;
+    Rgba markBg = hasHighlight ? highlight : kMarkBg;
     if (marks & MdLink) {
         // node.rs: `highlight.color = Some(node_cx.style.link())`. It used to
         // be `cx.theme().link`; the style carries the role now.
         c = textViewStyle.link;
     }
-    if (marks & MdHighlight) {
+    if ((marks & MdHighlight) && RgbaEq(markBg, kMarkBg)) {
         c = kMarkFg;
     }
     El* t = TextEl(a, w)->Font(font);
@@ -3118,7 +3207,7 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
         t->Strikethrough();
     }
     if (marks & MdHighlight) {
-        t->Bg(kMarkBg);
+        t->Bg(markBg);
     } else if (marks & MdCode) {
         // inline.rs shapes inline code in the theme's monospace face at
         // 0.875 of the surrounding font size. Its background has four DIP of
@@ -3236,6 +3325,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     int wordLen = 0;
     uint8_t marks = 0;
     Str href = {};
+    Rgba highlight = {};
+    bool hasHighlight = false;
     // The run the word being gathered comes from, and where in its text the
     // word starts: what the word's source map is measured from.
     MdRun* wordRun = nullptr;
@@ -3253,7 +3344,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             return;
         }
         El* w = Word(StrDup(a, Str(word, wordLen)), font, color, marks, weight,
-                     href);
+                     href, highlight, hasHighlight);
         if (wordRun) {
             SrcMap(w, wordRun->segments, wordRun->segmentCount, wordStart);
             RangeWashes(w, n, runOffset + wordStart,
@@ -3275,6 +3366,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         flush();
         marks = r->marks;
         href = r->href;
+        highlight = r->highlight;
+        hasHighlight = r->hasHighlight;
         runOffset = nextRunOffset;
         nextRunOffset += len(r->text);
         if (r->hasCustom) {
@@ -3316,7 +3409,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 }
                 row->Child(rendered.element);
             } else if (r->custom.text) {
-                El* w = Word(r->custom.text, font, color, marks, weight, href);
+                El* w = Word(r->custom.text, font, color, marks, weight, href,
+                             highlight, hasHighlight);
                 // An inline plugin node is selected as a unit, and maps to
                 // `MarkdownNode::source_range`.
                 SourceSegment* whole = nullptr;

@@ -247,8 +247,8 @@ enum MdMark : uint8_t {
     MdDel = 1 << 3,
     MdUnderline = 1 << 4,
     MdLink = 1 << 5,
-    // <mark>: TextMark::highlight, painted with the theme's yellow behind it.
-    // Rust reads a color off the tag; this takes the default one.
+    // <mark>: TextMark::highlight. The wash is the tag's color, then its
+    // style background-color, then #fef08a (html.rs mark_color_from_values).
     MdHighlight = 1 << 6,
 };
 
@@ -278,6 +278,11 @@ struct MdRun {
     bool hasCustom = false;
     MdRun* next = nullptr;
     uint8_t marks = 0;
+    // html.rs mark color, meaningful when `marks` has MdHighlight.
+    // `hasHighlight` is the Option: a default Rgba is opaque black, not
+    // "no color".
+    Rgba highlight = {};
+    bool hasHighlight = false;
 };
 
 // text/node.rs BlockNode. Table rows and cells are blocks here rather than
@@ -1401,8 +1406,8 @@ struct TextView {
     El* ImageRun(MdRun* r, float font, Rgba color, bool inFlow);
     // One styled word of a flow, with its marks applied and — for a link —
     // the click that opens it.
-    El* Word(Str w, float font, Rgba color, uint8_t marks, int weight,
-             Str href);
+    El* Word(Str w, float font, Rgba color, uint8_t marks, int weight, Str href,
+             Rgba highlight = {}, bool hasHighlight = false);
     // The inline flow of a block, as a column of wrapping rows — a hard break
     // starts a new row. `weight` is 0 normal, 1 medium, 2 semibold, 3 bold.
     El* Inline(MdNode* n, float font, Rgba color, int weight,
