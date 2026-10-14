@@ -61,6 +61,18 @@ bool PlatDirExists(const char* path) {
     return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+bool PlatFileIsExecutable(const char* path) {
+    if (!path || !path[0]) return false;
+    struct stat st;
+    if (stat(path, &st) != 0) return false;
+    return (st.st_mode & 0111) != 0;
+}
+
+bool PlatMakeExecutable(const char* path) {
+    if (!path || !path[0]) return false;
+    return chmod(path, 0755) == 0;
+}
+
 bool PlatFileExists(const char* path) {
     if (!path || !path[0]) {
         return false;

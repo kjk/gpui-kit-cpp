@@ -424,6 +424,11 @@ static int Run(Str root, Str entry, const Invocation& invocation,
     if (policy) PolicySetDefault(policy);
     ShellError error = {};
     ShellRuntime* runtime = ShellRuntime::New(app, &error, components);
+    // A packaged application is not a directory anybody edits. Editor files
+    // would break a signed bundle and fail in a read-only install.
+    bool packaged = invocation.packaged ||
+                    invocation.application == ApplicationKind::Bundled;
+    if (runtime) runtime->SetEditorFiles(!packaged);
     LoadedApplication* application = nullptr;
     if (!earlyError && runtime)
         application = runtime->LoadApplication(root, entry, &error);
@@ -439,21 +444,26 @@ static int Run(Str root, Str entry, const Invocation& invocation,
         Print(loadError, stderr);
         fputc('\n', stderr);
     }
-    Str title = WindowTitle(root);
+    // A packaged application's directory is always `app`, which names
+    // nothing. The manifest's name is the window title. Every other window
+    // keeps the directory name.
+    Str title;
     ComponentWindowOptions options;
-    options.title = title;
     if (!earlyError) {
         PluginManifest manifest;
         ShellError windowError = {};
         TempStr manifestPath = JoinPathTemp(root, Str(kShellManifestFile));
-        if (manifestPath && PlatFileExists(manifestPath.s) &&
-            PluginManifestRead(root, &manifest, &windowError) &&
-            manifest.hasWindow) {
+        bool read = manifestPath && PlatFileExists(manifestPath.s) &&
+                    PluginManifestRead(root, &manifest, &windowError);
+        if (read && manifest.hasWindow) {
             options.dipW = (int)manifest.windowW;
             options.dipH = (int)manifest.windowH;
         }
+        if (packaged && read && manifest.name) title = StrDup(manifest.name);
         ShellErrorClear(&windowError);
     }
+    if (!title) title = WindowTitle(root);
+    options.title = title;
     MountRequest request;
     request.runtime = runtime;
     request.application = application;
@@ -474,7 +484,7 @@ static int Run(Str root, Str entry, const Invocation& invocation,
         return 1;
     }
     ShellErrorClear(&error);
-    if (policy) RefreshTypes(root, policy, false);
+    if (policy && !packaged) RefreshTypes(root, policy, false);
     if (invocation.watch) {
         if (request.view.IsValid()) {
             ShellWatcher::Start(runtime, request.view, root, entry, window, app,
@@ -569,7 +579,7 @@ int GpuiMain(int argc, char** argv) {
         printf("created ");
         Print(created);
         printf("\n\n");
-        printf("  gpui-shell run -d %s --watch   # run it, reloading on save\n",
+        printf("  gpui-shell dev -d %s     # run it, reloading on save\n",
                invocation.directory.s ? invocation.directory.s : "");
         printf(
             "  gpui-shell check -d %s         # check it after every change\n",
@@ -640,6 +650,25 @@ int GpuiMain(int argc, char** argv) {
         StrFree(root);
         return 0;
     }
+    if (invocation.kind == InvocationKind::Bundle) {
+        Str report;
+        Str bundleError;
+        if (!ShellBundle(root, invocation, &report, &bundleError)) {
+            fprintf(stderr, "gpui-shell: ");
+            Print(bundleError, stderr);
+            fputc('\n', stderr);
+            StrFree(bundleError);
+            StrFree(report);
+            StrFree(root);
+            return 1;
+        }
+        Print(report);
+        if (!report || len(report) == 0 || report.s[len(report) - 1] != '\n')
+            fputc('\n', stdout);
+        StrFree(report);
+        StrFree(root);
+        return 0;
+    }
     if (invocation.kind == InvocationKind::Types) {
         Policy* policy = PolicyDefault();
         int status = RefreshTypes(root, policy, true) ? 0 : 1;
@@ -662,14 +691,28 @@ int GpuiMain(int argc, char** argv) {
         return status;
     }
 
-    bool installed = invocation.application == ApplicationKind::Installed ||
-                     invocation.application == ApplicationKind::Bundled;
+    bool packaged = invocation.packaged ||
+                    invocation.application == ApplicationKind::Bundled;
+    // An installed application, a bundle beside the executable, and
+    // `run --packaged` keep data under the manifest id.
+    bool installed =
+        invocation.application == ApplicationKind::Installed || packaged;
     PluginManifest manifest;
     ShellError manifestError = {};
     TempStr manifestPath = JoinPathTemp(root, Str(kShellManifestFile));
     bool hasManifest = manifestPath && PlatFileExists(manifestPath.s);
     bool manifestOk =
         !hasManifest || PluginManifestRead(root, &manifest, &manifestError);
+    if (packaged && !hasManifest && invocation.kind != InvocationKind::Check) {
+        fprintf(stderr,
+                "gpui-shell: %s has no %s; a packaged application needs one "
+                "for its `id`\n",
+                root.s ? root.s : "", kShellManifestFile);
+        StrFree(root);
+        ShellErrorClear(&manifestError);
+        ShellErrorClear(&error);
+        return 1;
+    }
     if (invocation.kind == InvocationKind::Check && !manifestOk) {
         ReportSetupFailure(invocation, manifestError.message);
         StrFree(root);

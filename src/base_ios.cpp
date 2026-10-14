@@ -9,6 +9,11 @@
 
 namespace base {
 
+bool PlatGetExePath(char* out, int cap) {
+    if (out && cap > 0) out[0] = 0;
+    return false;
+}
+
 uint64_t PlatStatModifiedNs(const struct stat* st) {
     return (uint64_t)st->st_mtimespec.tv_sec * 1000000000ull +
            (uint64_t)st->st_mtimespec.tv_nsec;

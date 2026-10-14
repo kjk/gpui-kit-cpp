@@ -52,6 +52,12 @@ class ShellRuntime {
     ShellRuntime* Retain();
     void Release();
 
+    // Whether a load writes gpui-kit.d.ts, jsconfig.json and dependency
+    // links into the application. On by default. A packaged application
+    // turns it off: nothing there is being edited, and the directory may
+    // be signed or read-only.
+    void SetEditorFiles(bool enabled);
+
     // Loads an application's JavaScript entry without exposing engine
     // values: quickjs/mod.rs `load_application`, the host-facing load.
     // Resolution, declaration refresh, module generations, capabilities and

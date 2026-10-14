@@ -175,19 +175,37 @@ bool PlatCanonicalPath(const char* path, char* out, int cap) {
     return true;
 }
 
-void PlatGetExeDir(char* out, int cap) {
-    if (!out || cap <= 0) {
-        return;
-    }
+bool PlatGetExePath(char* out, int cap) {
+    if (!out || cap <= 0) return false;
     out[0] = 0;
-    GetModuleFileNameA(nullptr, out, (DWORD)cap);
+    DWORD n = GetModuleFileNameA(nullptr, out, (DWORD)cap);
+    if (n == 0 || n >= (DWORD)cap) {
+        out[0] = 0;
+        return false;
+    }
+    // fopen accepts '/'. Rust keeps the native separator; nothing compares
+    // the text of this path.
+    for (DWORD i = 0; i < n; i++) {
+        if (out[i] == '\\') out[i] = '/';
+    }
+    return true;
+}
+
+void PlatGetExeDir(char* out, int cap) {
+    if (!PlatGetExePath(out, cap)) return;
     int n = (int)strlen(out);
-    while (n > 0 && out[n - 1] != '\\' && out[n - 1] != '/') {
-        out[--n] = 0;
-    }
-    while (n > 0 && (out[n - 1] == '\\' || out[n - 1] == '/')) {
-        out[--n] = 0;
-    }
+    while (n > 0 && out[n - 1] != '/') out[--n] = 0;
+    while (n > 0 && out[n - 1] == '/') out[--n] = 0;
+}
+
+bool PlatFileIsExecutable(const char* path) {
+    (void)path;
+    return false;
+}
+
+bool PlatMakeExecutable(const char* path) {
+    (void)path;
+    return true;
 }
 
 int PlatListDir(const char* dir, DirEntry* out, int max) {

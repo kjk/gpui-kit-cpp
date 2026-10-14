@@ -12,16 +12,17 @@ namespace base {
 
 void PlatDirNameInPlace(char* path);
 
-void PlatGetExeDir(char* out, int cap) {
-    if (!out || cap <= 0) {
-        return;
-    }
+bool PlatGetExePath(char* out, int cap) {
+    if (!out || cap <= 0) return false;
     out[0] = 0;
     ssize_t n = readlink("/proc/self/exe", out, (size_t)cap - 1);
-    if (n <= 0) {
-        return;
-    }
+    if (n <= 0) return false;
     out[n] = 0;
+    return true;
+}
+
+void PlatGetExeDir(char* out, int cap) {
+    if (!PlatGetExePath(out, cap)) return;
     PlatDirNameInPlace(out);
 }
 

@@ -414,6 +414,9 @@ struct ShellRuntimeImpl {
     Vec<ComponentAppEffectGeneration*> appEffects;
     Vec<DeferredAppEffect> deferredAppEffects;
     uint64_t nextAppEffectToken = 1;
+    // ShellRuntime::SetEditorFiles. A packaged load writes nothing an editor
+    // would read back.
+    bool editorFiles = true;
 };
 
 // ComponentAppEffectGeneration: the root view the effects were installed for
@@ -11255,6 +11258,10 @@ ShellRuntime* ShellRuntime::Retain() {
     return this;
 }
 
+void ShellRuntime::SetEditorFiles(bool enabled) {
+    if (impl) impl->editorFiles = enabled;
+}
+
 void ShellRuntime::Release() {
     if (--refs == 0) delete this;
 }
@@ -11401,9 +11408,11 @@ ViewType* ShellRuntime::ReloadApp(Str directory, Str entry, Policy* policy,
             return nullptr;
         }
         StrFree(dependencyError);
-        Str linkError = {};
-        store.LinkForEditor(Str(dir), dependencies, nullptr, &linkError);
-        StrFree(linkError);
+        if (impl->editorFiles) {
+            Str linkError = {};
+            store.LinkForEditor(Str(dir), dependencies, nullptr, &linkError);
+            StrFree(linkError);
+        }
     }
     StrFree(manifestPath);
 

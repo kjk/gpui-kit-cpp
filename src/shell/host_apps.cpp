@@ -544,10 +544,10 @@ bool ShellCreateApplication(Str directory,
     Str manifestPath = JoinOwned(root, Str(kShellManifestFile));
     Str entryPath = JoinOwned(root, StrL("main.js"));
     Str ignorePath = JoinOwned(root, StrL(".gitignore"));
-    bool ok =
-        WriteWhole(manifestPath, manifest, error) &&
-        WriteWhole(entryPath, entry, error) &&
-        WriteWhole(ignorePath, StrL("gpui-kit.d.ts\nnode_modules/\n"), error);
+    bool ok = WriteWhole(manifestPath, manifest, error) &&
+              WriteWhole(entryPath, entry, error) &&
+              WriteWhole(ignorePath,
+                         StrL("gpui-kit.d.ts\nnode_modules/\ndist/\n"), error);
     StrFree(manifest);
     StrFree(entry);
     StrFree(manifestPath);

@@ -1,6 +1,7 @@
 #ifndef GPUI_SHELL_HOST_H_
 #define GPUI_SHELL_HOST_H_
 
+#include "shell/bundle.h"
 #include "shell/component_registry.h"
 
 // crates/shell/src/host.rs and host/: the command line the shipped host
@@ -23,6 +24,8 @@ enum class InvocationKind : uint8_t {
     Types,
     Agents,
     New,
+    // Packages an application as a desktop application.
+    Bundle,
     Help,
     Version,
 };
@@ -37,7 +40,8 @@ enum class ApplicationKind : uint8_t {
     Path,
     // Nothing named: the application packaged beside the executable.
     Bundled,
-    // `run`, `check` or `types` with no application: the working directory.
+    // `run`, `dev`, `check`, `types` or `bundle` with no application: the
+    // working directory.
     Current,
 };
 
@@ -48,8 +52,21 @@ struct Invocation {
     // directory `new` creates. Empty when the command names none.
     Str directory;
     bool watch = false;
+    // `dev` only. This host has no tracing subscriber, so the flag is parsed
+    // and not applied; see port-status.md.
+    bool verbose = false;
     bool development = false;
+    // `run --packaged`. A bare invocation is packaged because its application
+    // is Bundled, which ShellBundle and the host treat the same way.
+    bool packaged = false;
     bool printSpec = false;
+    // `bundle` only. Borrowed from the arguments. `platformSet` false means
+    // the platform this process runs on.
+    bool platformSet = false;
+    BundlePlatform platform = BundlePlatform::Linux;
+    Str icon;
+    Str out;
+    Str downloadUrl;
 };
 
 // host.rs `parse`: the arguments after the program name. False with the

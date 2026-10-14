@@ -11,17 +11,17 @@ namespace base {
 
 void PlatDirNameInPlace(char* path);
 
-void PlatGetExeDir(char* out, int cap) {
-    if (!out || cap <= 0) {
-        return;
-    }
+bool PlatGetExePath(char* out, int cap) {
+    if (!out || cap <= 0) return false;
     out[0] = 0;
     uint32_t n = (uint32_t)cap;
-    if (_NSGetExecutablePath(out, &n) != 0) {
-        out[0] = 0;
-        return;
-    }
+    if (_NSGetExecutablePath(out, &n) != 0) return false;
     out[cap - 1] = 0;
+    return out[0] != 0;
+}
+
+void PlatGetExeDir(char* out, int cap) {
+    if (!PlatGetExePath(out, cap)) return;
     PlatDirNameInPlace(out);
 }
 

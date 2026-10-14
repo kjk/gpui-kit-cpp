@@ -16,13 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b02dc60cf898cbb755a8974984e369755d7ae3d5` (2026-10-13,
-message_scroller: Add `logical_scroll_top` to read the reading position
-(#3485)).
-`MessageScrollerState::LogicalScrollTop` reports the row at the top of
-the viewport and the offset into it. A wheel, the scrollbar and
-`ScrollToItem` set it at once. `ScrollToEnd` and tail following settle
-it at the next layout; until then the row index is the item count.
+Processed through `7a20941742df8ed9c9acfbccca76134ef565b976` (2026-10-13,
+shell: Add `bundle` to package an application, and a `dev` command
+(#3487)).
+`gpui-shell bundle` writes a macOS app, a Linux tar.gz plus install.sh,
+or a Windows zip. `dev` is `run` that reloads and records a verbose flag.
+A packaged run titles the window from the manifest and writes no editor
+files.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
@@ -73,6 +73,17 @@ The current update target is
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
+- **A window has no application id.** A packaged run knows the manifest id,
+  but `WinOpts` has nowhere to put it, so a Linux desktop file is not matched
+  to `<id>.desktop` (`gpui_shell/main.cpp`).
+- **`dev` does not raise a debug log.** The host has no tracing subscriber.
+  `Invocation::verbose` is parsed and not applied (`src/shell/host.cpp`).
+- **Bundle icons are a box filter, and only 8-bit PNG.** Rust scales with
+  Lanczos3. Paletted and 16-bit icons are refused (`src/shell/bundle.cpp`).
+- **A Windows bundle downloads its runtime through `HttpGet`.** That client
+  stops at 16 MiB. The unit test injects the zip; a release binary larger
+  than the cap fails the live download (`src/sys/http.h`,
+  `src/shell/bundle.cpp`).
 
 - **A key down's held and IME flags come from the platform, not from a
   keystroke.** A key event here has no `key_char`, so

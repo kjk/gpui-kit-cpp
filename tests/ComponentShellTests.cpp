@@ -7362,8 +7362,22 @@ void InvalidArgumentsAreRefusedWithTheSentenceToPrint() {
     StrBuilder help;
     shell::ShellFormatHelp(&help);
     Str helpText = help.TakeStr();
-    const char* flags[] = {"run",       "--dir", "--watch", "--dev", "--help",
-                           "--version", "new",   "list",    "agents"};
+    const char* flags[] = {"run",
+                           "bundle",
+                           "dev",
+                           "--dir",
+                           "--watch",
+                           "--dev",
+                           "--packaged",
+                           "--platform",
+                           "--icon",
+                           "--out",
+                           "--download-url",
+                           "--help",
+                           "--version",
+                           "new",
+                           "list",
+                           "agents"};
     for (const char* flag : flags) utassert(StrContains(helpText, Str(flag)));
     StrFree(helpText);
     StrFree(error);
@@ -7373,6 +7387,94 @@ void InvalidArgumentsAreRefusedWithTheSentenceToPrint() {
         shell::ShellHomeFrom(StrL("/opt/shell"), StrL("/home/me"), {});
     utassert(StrEq(shellHome, StrL("/opt/shell")));
     StrFree(shellHome);
+}
+
+// bundle_takes_a_directory_and_its_own_flags, dev_is_run_with_development_mode,
+// packaged_is_a_run_flag, bundle_flags_are_checked, the_dev_flag_only_relaxes
+// _the_sandbox. host.rs.
+void BundleAndDevCommandsParseAsTheHostDoes() {
+    const char* bundle[] = {"bundle",
+                            "-d",
+                            "clock",
+                            "--platform",
+                            "linux",
+                            "--icon",
+                            "icon.png",
+                            "--out",
+                            "out",
+                            "--download-url",
+                            "https://example.com/clock"};
+    shell::Invocation invocation;
+    Str error = {};
+    utassert(shell::ShellParseInvocation(bundle, 11, &invocation, &error));
+    utassert(invocation.kind == shell::InvocationKind::Bundle);
+    utassert(invocation.application == shell::ApplicationKind::Path);
+    utassert(StrEq(invocation.directory, StrL("clock")));
+    utassert(invocation.platformSet);
+    utassert(invocation.platform == shell::BundlePlatform::Linux);
+    utassert(StrEq(invocation.icon, StrL("icon.png")));
+    utassert(StrEq(invocation.out, StrL("out")));
+    utassert(StrEq(invocation.downloadUrl, StrL("https://example.com/clock")));
+
+    const char* badUrl[] = {"bundle", "--download-url", "example.com"};
+    utassert(!shell::ShellParseInvocation(badUrl, 3, &invocation, &error));
+    utassert(StrEq(error, StrL("`--download-url` expects an http(s) URL, not "
+                               "`example.com`")));
+    const char* runUrl[] = {"run", "--download-url", "https://example.com"};
+    utassert(!shell::ShellParseInvocation(runUrl, 3, &invocation, &error));
+    utassert(StrEq(error, StrL("`--download-url` is only for `bundle`")));
+    const char* alone[] = {"bundle"};
+    utassert(shell::ShellParseInvocation(alone, 1, &invocation, &error));
+    utassert(invocation.kind == shell::InvocationKind::Bundle);
+    utassert(invocation.application == shell::ApplicationKind::Current);
+
+    const char* devDir[] = {"dev", "-d", "app"};
+    utassert(shell::ShellParseInvocation(devDir, 3, &invocation, &error));
+    utassert(invocation.kind == shell::InvocationKind::Run);
+    utassert(invocation.application == shell::ApplicationKind::Path);
+    utassert(StrEq(invocation.directory, StrL("app")));
+    utassert(invocation.watch && invocation.verbose);
+    utassert(!invocation.development && !invocation.packaged);
+    const char* devFlag[] = {"dev", "app", "--dev"};
+    utassert(shell::ShellParseInvocation(devFlag, 3, &invocation, &error));
+    utassert(invocation.development && invocation.watch && invocation.verbose);
+    const char* devAlone[] = {"dev"};
+    utassert(shell::ShellParseInvocation(devAlone, 1, &invocation, &error));
+    utassert(invocation.application == shell::ApplicationKind::Current);
+    const char* watch[] = {"check", "app", "--watch"};
+    utassert(!shell::ShellParseInvocation(watch, 3, &invocation, &error));
+    utassert(StrContains(error, StrL("only for `run` and `dev`")));
+    const char* devPackaged[] = {"dev", "app", "--packaged"};
+    utassert(!shell::ShellParseInvocation(devPackaged, 3, &invocation, &error));
+    utassert(StrEq(error, StrL("`--packaged` is only for `run`")));
+
+    const char* packaged[] = {"run", "-d", "app", "--packaged"};
+    utassert(shell::ShellParseInvocation(packaged, 4, &invocation, &error));
+    utassert(invocation.packaged);
+    const char* plain[] = {"run", "-d", "app"};
+    utassert(shell::ShellParseInvocation(plain, 3, &invocation, &error));
+    utassert(!invocation.packaged);
+    const char* checkPackaged[] = {"check", "app", "--packaged"};
+    utassert(
+        !shell::ShellParseInvocation(checkPackaged, 3, &invocation, &error));
+    utassert(StrContains(error, StrL("only for `run`")));
+
+    const char* platform[] = {"run", "./app", "--platform", "linux"};
+    utassert(!shell::ShellParseInvocation(platform, 4, &invocation, &error));
+    utassert(StrContains(error, StrL("only for `bundle`")));
+    const char* beos[] = {"bundle", "--platform", "beos"};
+    utassert(!shell::ShellParseInvocation(beos, 3, &invocation, &error));
+    utassert(StrEq(error, StrL("unknown platform `beos`; `--platform` is "
+                               "macos, linux or windows")));
+    const char* missingOut[] = {"bundle", "--out", "--icon", "x.png"};
+    utassert(!shell::ShellParseInvocation(missingOut, 4, &invocation, &error));
+    utassert(StrContains(error, StrL("`--out` expects")));
+
+    const char* sandbox[] = {"run", "./app", "--dev"};
+    utassert(shell::ShellParseInvocation(sandbox, 3, &invocation, &error));
+    utassert(invocation.development);
+    utassert(!invocation.watch && !invocation.verbose);
+    StrFree(error);
 }
 
 // types_uses_the_adapter_component_registry: `types` writes the declarations
@@ -8105,6 +8207,7 @@ void TestComponentShell() {
     ComponentShellAcceptsTheSameRunCheckAndTypesCommandsAsShell();
     HelpIsAnsweredBeforeAnyOtherArgument();
     InvalidArgumentsAreRefusedWithTheSentenceToPrint();
+    BundleAndDevCommandsParseAsTheHostDoes();
     TypesUsesTheComponentCatalog();
 
     TestSuite("inventory");

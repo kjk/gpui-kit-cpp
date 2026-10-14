@@ -5,8 +5,18 @@
 #include "base.h"
 
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace base {
+
+bool PlatGetExePath(char* out, int cap) {
+    if (!out || cap <= 0) return false;
+    out[0] = 0;
+    ssize_t n = readlink("/proc/self/exe", out, (size_t)cap - 1);
+    if (n <= 0) return false;
+    out[n] = 0;
+    return true;
+}
 
 uint64_t PlatStatModifiedNs(const struct stat* st) {
     return (uint64_t)st->st_mtim.tv_sec * 1000000000ull + (uint64_t)st->st_mtim

@@ -503,4 +503,44 @@ bool ZlibInflate(Str input, bool gzip, Str* output, Str* error) {
     return true;
 }
 
+bool ZlibInflateRaw(Str input, Str* output, Str* error) {
+    if (output) {
+        StrFree(*output);
+        *output = {};
+    }
+    if (error) {
+        StrFree(*error);
+        *error = {};
+    }
+    if (!input.s || len(input) < 0 || len(input) > kStandardDataLimit) {
+        StandardError(
+            error,
+            StrL("compressed input is invalid or exceeds the 64 MiB limit"));
+        return false;
+    }
+    Vec<uint8_t> decoded;
+    int consumed = 0;
+    bool ok =
+        InflateRaw((const uint8_t*)input.s, len(input), &decoded, &consumed) &&
+        consumed == len(input);
+    if (!ok) {
+        StandardError(error, StrL("invalid or oversized DEFLATE stream"));
+        VecReset(decoded);
+        return false;
+    }
+    if (output) {
+        char* result = (char*)Alloc(nullptr, len(decoded) + 1);
+        if (!result) {
+            StandardError(error, StrL("allocating decompressed data failed"));
+            VecReset(decoded);
+            return false;
+        }
+        if (len(decoded)) memcpy(result, decoded.els, (size_t)len(decoded));
+        result[len(decoded)] = 0;
+        *output = Str(result, len(decoded));
+    }
+    VecReset(decoded);
+    return true;
+}
+
 } // namespace gpui::shell

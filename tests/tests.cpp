@@ -175,6 +175,7 @@ int GpuiMain(int argc, char** argv) {
     TestShellCore();
     TestShellStyle();
     TestComponentShell();
+    TestShellBundle();
     TestShellDependencies();
     TestShellDock();
     TestShellRoot();
