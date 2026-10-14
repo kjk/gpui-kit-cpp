@@ -7457,18 +7457,20 @@ struct PathPrompt {
     // dialog that can choose nothing, so it is read as `files`.
     bool files = true;
     bool directories = false;
+    // Rust's `multiple`: several paths may be chosen; they come back one a
+    // line.
+    bool multiple = false;
     // The dialog's title. Rust calls it `prompt`.
     Str title = {};
 };
 
-// cx.prompt_for_paths, with one path and no task: the chosen path is returned
-// in the temp arena, or empty when the user cancelled, when the platform has
-// no dialog of its own (wasm), or when the desktop has none to offer (a Linux
-// session with neither zenity nor kdialog). Rust answers a
-// `Task<Result<Option<Vec<PathBuf>>>>` and can be asked for several paths at
-// once; every caller here wants one and wants it where it asked, which is what
-// the platform dialogs do anyway — they run their own loop until the user is
-// done.
+// cx.prompt_for_paths, with no task: the chosen path is returned in the temp
+// arena (with `multiple`, the chosen paths separated by '\n'), or empty when
+// the user cancelled, when the platform has no dialog of its own (wasm), or
+// when the desktop has none to offer (a Linux session with neither zenity nor
+// kdialog). Rust answers a `Task<Result<Option<Vec<PathBuf>>>>`; every caller
+// here wants the answer where it asked, which is what the platform dialogs do
+// anyway — they run their own loop until the user is done.
 TempStr PromptForPathTemp(Window* win, const PathPrompt& opts);
 
 int AppRun(App* app);

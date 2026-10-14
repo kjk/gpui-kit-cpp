@@ -2000,7 +2000,7 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     NSOpenPanel* panel = [NSOpenPanel openPanel];
     [panel setCanChooseFiles:opts.files ? YES : NO];
     [panel setCanChooseDirectories:opts.directories ? YES : NO];
-    [panel setAllowsMultipleSelection:NO];
+    [panel setAllowsMultipleSelection:opts.multiple ? YES : NO];
     if (len(opts.title) > 0) {
         NSString* t =
             [[NSString alloc] initWithBytes:opts.title.s
@@ -2013,12 +2013,25 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     if ([panel runModal] != NSModalResponseOK) {
         return {};
     }
-    NSURL* url = [[panel URLs] firstObject];
-    const char* path = url ? [[url path] UTF8String] : nullptr;
-    if (!path) {
+    // several, with `multiple`, a path a line
+    StrBuilder paths;
+    for (NSURL* url in [panel URLs]) {
+        const char* path = url ? [[url path] UTF8String] : nullptr;
+        if (!path) {
+            continue;
+        }
+        if (len(paths) > 0) {
+            paths.AppendChar('\n');
+        }
+        paths.Append(Str(path));
+        if (!opts.multiple) {
+            break;
+        }
+    }
+    if (len(paths) == 0) {
         return {};
     }
-    return StrDupTemp(Str(path));
+    return StrDupTemp(Str(paths.els, len(paths)));
 }
 
 void ClipboardSetText(Window* win, Str text) {

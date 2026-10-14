@@ -1169,6 +1169,13 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
                    title ? title.s : (char*)nullptr, (char*)nullptr);
             execlp("kdialog", "kdialog", "--getexistingdirectory", ".",
                    (char*)nullptr);
+        } else if (opts.multiple) {
+            // a path a line, as PromptForPathTemp answers several
+            execlp("zenity", "zenity", "--file-selection", "--multiple",
+                   "--separator=\n", title ? "--title" : (char*)nullptr,
+                   title ? title.s : (char*)nullptr, (char*)nullptr);
+            execlp("kdialog", "kdialog", "--getopenfilename", ".", "--multiple",
+                   "--separate-output", (char*)nullptr);
         } else {
             execlp("zenity", "zenity", "--file-selection",
                    title ? "--title" : (char*)nullptr,
@@ -1183,7 +1190,8 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
         close(fds[0]);
         return {};
     }
-    TempStr result = AllocStrTemp(kMaxPath - 1);
+    TempStr result =
+        AllocStrTemp(opts.multiple ? kMaxPath * 64 - 1 : kMaxPath - 1);
     if (!result.s) {
         close(fds[0]);
         int st = 0;
