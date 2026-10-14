@@ -35,6 +35,10 @@ struct Slider {
     // the gradient behind the slider shows.
     Rgba bar = {};
     bool hasBar = false;
+    // The name a screen reader announces. Empty leaves the slider unnamed.
+    // It is applied when the element is built, so a later frame can rename
+    // it or clear it.
+    Str accessibilityLabel = {};
     Listener onChange;
 
     static Slider* New(Ctx* cx, Str id, SliderState* state);
@@ -46,6 +50,9 @@ struct Slider {
     // w_full(): the track fills the box it is given.
     Slider* WFill();
     Slider* Bg(Rgba c);
+    // Sets the label exposed to accessibility clients. Forwarded to the
+    // base slider's existing Role::Slider node.
+    Slider* AccessibilityLabel(Str s);
     // cx.subscribe(&state, ..): the view hears SliderEvent::Change while the
     // slider moves and Release when the button comes back up.
     Slider* OnChange(Listener fn);

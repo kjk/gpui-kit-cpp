@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `af2f4c2c8e15183dab9891096795209ef9f3f4e2` (2026-10-13,
-table: Fit a column to its content on double-click of its resize handle (#3489)).
-A double-click on a column's resize handle fits that column to the
-width its delegate reports, plus the cell padding, clamped to the
-column's minimum and maximum. The drag the second press also starts
-is ignored until the next single press.
+Processed through `c5f8eca4a0759f8c0c7ed624eddfd03f1c93a5f2` (2026-10-13,
+slider: Add accessibility labels (#3494)).
+Base and component sliders take an optional accessibility label and
+put it on the existing slider role. Omitting it leaves the name
+empty. The label is applied when the element is built, so a later
+frame can rename it or clear it.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

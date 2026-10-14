@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "af2f4c2c8e15183dab9891096795209ef9f3f4e2",
+  sha: "c5f8eca4a0759f8c0c7ed624eddfd03f1c93a5f2",
   date: "2026-10-13",
-  subject: "table: Fit a column to its content on double-click of its resize handle (#3489)",
+  subject: "slider: Add accessibility labels (#3494)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

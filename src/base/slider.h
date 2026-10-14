@@ -7,8 +7,11 @@
 namespace gpui {
 
 struct Slider {
+    // `accessibilityLabel` is the name a screen reader announces. Empty
+    // leaves the node unnamed, which is Rust's `accessibility_label: None`.
     static El* New(Ctx* cx, SliderState* state = nullptr,
-                   Axis axis = Axis::Horizontal, int clickId = 0);
+                   Axis axis = Axis::Horizontal, int clickId = 0,
+                   Str accessibilityLabel = {});
 };
 // The box that catches a press. Binding the state here is what Rust's
 // `SliderTrack::on_mouse_down` + `on_drag_move` do.

@@ -550,6 +550,71 @@ static void SliderActionsUseTheSlidersOwnStep() {
     FreeAccessibilityFrame(&f);
 }
 
+// crates/kit/tests/integration/slider_steps.rs
+// slider_accessibility_labels_follow_the_existing_nodes. The kit query is
+// window.find(("slider", entity_id)); here the two nodes are the base
+// slider and the component slider, in that order, on one collected tree.
+static int SliderRoleCount(const Vec<AccessibilityNode>& nodes) {
+    int n = 0;
+    for (int i = 0; i < len(nodes); i++) {
+        if (nodes[i].info.role == AccessibilityRole::Slider) {
+            n++;
+        }
+    }
+    return n;
+}
+
+static void ExpectSliderLabel(const AccessibilityNode* node, Str label) {
+    utassert(node && node->info.role == AccessibilityRole::Slider);
+    if (!node) {
+        return;
+    }
+    if (label) {
+        utassert(base::StrEq(node->info.label, label));
+    } else {
+        utassert(!node->info.label);
+    }
+}
+
+static void SliderAccessibilityLabelsFollowTheExistingNodes() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    SliderState base = SliderStateNew(0, 100, SliderSingle(20), 1);
+    SliderState themed = SliderStateNew(0, 100, SliderSingle(40), 1);
+    struct LabelPair {
+        Str base;
+        Str themed;
+    };
+    LabelPair cases[4] = {
+        {},
+        {StrL("Corner radius"), StrL("Padding scale")},
+        {StrL("圆角"), StrL("内边距")},
+        {},
+    };
+    for (int i = 0; i < 4; i++) {
+        El* column = Div(f.arena)->FlexCol()->Pad(8)->W(264);
+        column->Child(
+            Slider::New(&f.cx, &base, Axis::Horizontal, 0, cases[i].base)
+                ->W(kFill)
+                ->H(24));
+        component::Slider* widget =
+            component::Slider::New(&f.cx, StrL("padding-scale"), &themed);
+        if (cases[i].themed) {
+            widget->AccessibilityLabel(cases[i].themed);
+        }
+        column->Child(widget->IntoEl());
+        AccessibilityCollect(column, &f.win->accessibility);
+        utassert(SliderRoleCount(f.win->accessibility) == 2);
+        ExpectSliderLabel(
+            RoleNode(f.win->accessibility, AccessibilityRole::Slider, 0),
+            cases[i].base);
+        ExpectSliderLabel(
+            RoleNode(f.win->accessibility, AccessibilityRole::Slider, 1),
+            cases[i].themed);
+    }
+    FreeAccessibilityFrame(&f);
+}
+
 static void EditableTextOffersSetValueAndReadOnlyTextDoesNot() {
     AccessibilityFrame f = NewAccessibilityFrame();
     InputState editable;
@@ -786,6 +851,7 @@ void TestAccessibility() {
     BaseControlsProjectTheirControlledState();
     TablesKeepCountsAndOneBasedIndices();
     SliderActionsUseTheSlidersOwnStep();
+    SliderAccessibilityLabelsFollowTheExistingNodes();
     EditableTextOffersSetValueAndReadOnlyTextDoesNot();
     SetValuePreservesExactEditorText();
     SelectionContainersExposeTheirSelectedItems();

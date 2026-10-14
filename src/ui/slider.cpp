@@ -54,6 +54,10 @@ Slider* Slider::Bg(Rgba c) {
     hasBar = true;
     return this;
 }
+Slider* Slider::AccessibilityLabel(Str s) {
+    accessibilityLabel = s;
+    return this;
+}
 
 El* Slider::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
@@ -174,7 +178,7 @@ El* Slider::IntoEl() {
                                         ->BindSlider(bind, axis),
                                     thumbId, thumbBorder));
         }
-        El* root = gpui::Slider::New(cx, state, axis)
+        El* root = gpui::Slider::New(cx, state, axis, 0, accessibilityLabel)
                        ->Id(id.s ? id : StrL("slider"))
                        ->AriaDisabled(disabled)
                        ->AriaOrientation(AccessibilityOrientation::Vertical)
@@ -240,7 +244,7 @@ El* Slider::IntoEl() {
         thumb->Click(thumbId)->BindSlider(bind, axis);
         track->Child(ThumbRing(thumb, thumbId, thumbBorder));
     }
-    El* root = gpui::Slider::New(cx, state, axis)
+    El* root = gpui::Slider::New(cx, state, axis, 0, accessibilityLabel)
                    ->Id(id.s ? id : StrL("slider"))
                    ->AriaDisabled(disabled)
                    ->AriaOrientation(AccessibilityOrientation::Horizontal)

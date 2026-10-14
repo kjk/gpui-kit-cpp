@@ -194,13 +194,17 @@ bool SliderHandleRelease(SliderState* s) {
     return true;
 }
 
-El* Slider::New(Ctx* cx, SliderState* state, Axis axis, int clickId) {
+El* Slider::New(Ctx* cx, SliderState* state, Axis axis, int clickId,
+                Str accessibilityLabel) {
     Arena* a = cx->a;
     El* e = UiRoot(a, StrL("example-slider"), clickId)
                 ->Role(AccessibilityRole::Slider)
                 ->AriaOrientation(axis == Axis::Vertical
                                       ? AccessibilityOrientation::Vertical
                                       : AccessibilityOrientation::Horizontal);
+    if (accessibilityLabel) {
+        e->AriaLabel(accessibilityLabel);
+    }
     if (state) {
         e->slider = state;
         e->AriaNumericValue(state->value.End())
