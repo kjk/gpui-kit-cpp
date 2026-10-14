@@ -1343,7 +1343,183 @@ static void FixedColsBorderFollowsTheFixedColumns() {
     EntityDropAll(&app);
 }
 
+// table_fit_column.rs. Three columns: a free one, one capped at 120, and
+// one that cannot be resized. Every column pads 8.3 on each side.
+static const int kFitFree = 0;
+static const int kFitCapped = 1;
+static const int kFitFixed = 2;
+static const float kFitPad = 8.3f;
+static const float kFitCap = 120.f;
+
+struct FitHost {
+    bool hasContent = false;
+    float content = 0;
+    int events = 0;
+    float last[3] = {};
+    // EntityNew requires a render. The fit tests never draw this view.
+    static El* Render(FitHost*, Ctx* cx) { return Div(cx->a); }
+    static bool Answer(Ctx*, void* data, int, float* out) {
+        FitHost* self = (FitHost*)data;
+        if (!self->hasContent) {
+            return false;
+        }
+        *out = self->content;
+        return true;
+    }
+    static void OnWidths(FitHost* self, Ctx*, const TableEvent* ev) {
+        if (!ev || ev->kind != TableEventKind::ColumnWidthsChanged) {
+            return;
+        }
+        self->events++;
+        int n = ev->nWidths < 3 ? ev->nWidths : 3;
+        for (int i = 0; i < n; i++) {
+            self->last[i] = ev->widths[i];
+        }
+    }
+};
+
+static void PrepareFit(TableState* s, FitHost* host, Ctx* cx) {
+    s->colCount = 3;
+    s->colResizable = true;
+    s->delegateData = host;
+    s->delegateFitColumn = &FitHost::Answer;
+    s->onEvent = Listen(cx, &FitHost::OnWidths);
+    for (int c = 0; c < 3; c++) {
+        TableSeedColWidth(s, c, 80);
+        TableSetColConstraints(s, c, 20, c == kFitCapped ? kFitCap : 1200);
+        TableSetColEdge(s, c, c != kFitFixed, true, kFitPad, kFitPad);
+    }
+}
+
+static float FitWidth(TableState* s, Ctx* cx, FitHost* host, int col, bool has,
+                      float content) {
+    host->hasContent = has;
+    host->content = content;
+    TableFitCol(s, cx, col);
+    float w = 0;
+    TableColWidthNow(s, col, &w);
+    return w;
+}
+
+static bool WholeDevicePixels(float width, float scale) {
+    float device = width * scale;
+    float d = device - roundf(device);
+    if (d < 0) {
+        d = -d;
+    }
+    return d < 1e-3f;
+}
+
+static void AFittedColumnHoldsItsContentOnWholeDevicePixels() {
+    App* app = TestAppNew();
+    Window* win = WindowAlloc(app, WinOpts{});
+    Entity<FitHost> host = EntityNew<FitHost>(app);
+    Ctx cx = {};
+    cx.app = app;
+    cx.win = win;
+    cx.self = host.id;
+    TableState table;
+    PrepareFit(&table, host.Get(&cx), &cx);
+    const float scales[] = {1.f, 1.25f, 1.5f, 2.f, 3.f};
+    for (float scale : scales) {
+        win->paint.dpi = 96.f * scale;
+        for (int tenth = 0; tenth < 10; tenth++) {
+            float content = 100.f + (float)tenth / 10.f;
+            float width =
+                FitWidth(&table, &cx, host.Get(&cx), kFitFree, true, content);
+            utassert(width >= content + 2.f * kFitPad);
+            utassert(WholeDevicePixels(width, scale));
+            float device = width * scale;
+            utassert(device < (content + 2.f * kFitPad) * scale + 4.f);
+        }
+    }
+    FitHost* h = host.Get(&cx);
+    utassert(h->events > 0);
+    float held = 0;
+    utassert(TableColWidthNow(&table, kFitFree, &held));
+    utassertnear(h->last[kFitFree], held);
+    TestAppFree(app);
+}
+
+static void AFitStaysWithinTheColumnAndEmitsOnlyOnAChange() {
+    App* app = TestAppNew();
+    Window* win = WindowAlloc(app, WinOpts{});
+    Entity<FitHost> host = EntityNew<FitHost>(app);
+    Ctx cx = {};
+    cx.app = app;
+    cx.win = win;
+    cx.self = host.id;
+    TableState table;
+    PrepareFit(&table, host.Get(&cx), &cx);
+    FitHost* h = host.Get(&cx);
+    float free = 0;
+    float fixed = 0;
+    utassert(TableColWidthNow(&table, kFitFree, &free));
+    utassert(TableColWidthNow(&table, kFitFixed, &fixed));
+
+    utassertnear(FitWidth(&table, &cx, h, kFitFree, false, 0), free);
+    utassertnear(FitWidth(&table, &cx, h, kFitFixed, true, 300), fixed);
+    utassert(h->events == 0);
+
+    utassertnear(FitWidth(&table, &cx, h, kFitCapped, true, 500), kFitCap);
+    utassert(h->events == 1);
+
+    h->events = 0;
+    float first = FitWidth(&table, &cx, h, kFitFree, true, 100.45f);
+    h->events = 0;
+    float second = FitWidth(&table, &cx, h, kFitFree, true, 100.45f);
+    utassertnear(first, second);
+    utassert(h->events == 0);
+    TestAppFree(app);
+}
+
+static void AResizeDragAfterAFitWaitsForTheNextPress() {
+    App* app = TestAppNew();
+    Window* win = WindowAlloc(app, WinOpts{});
+    Entity<FitHost> host = EntityNew<FitHost>(app);
+    Ctx cx = {};
+    cx.app = app;
+    cx.win = win;
+    cx.self = host.id;
+    TableState table;
+    PrepareFit(&table, host.Get(&cx), &cx);
+    FitHost* h = host.Get(&cx);
+    MouseDownEvent down = {};
+    down.button = MouseButton::Left;
+    down.clickCount = 2;
+    h->hasContent = true;
+    h->content = 40;
+    TableState::OnResizeMouseDown(&table, &cx, &down, kFitFree);
+    utassert(table.fittedCol == kFitFree);
+    float fitted = 0;
+    utassert(TableColWidthNow(&table, kFitFree, &fitted));
+    utassert(fitted != 80.f);
+
+    DragMoveEvent drag = {};
+    drag.drag.kind = kTableResizeDrag;
+    drag.drag.ix = kFitFree;
+    drag.el = Bounds{0, 0, fitted, 20};
+    drag.event.x = 400;
+    TableState::OnResizeDrag(&table, &cx, &drag);
+    float held = 0;
+    utassert(TableColWidthNow(&table, kFitFree, &held));
+    utassertnear(held, fitted);
+    utassert(table.resizingCol < 0);
+
+    down.clickCount = 1;
+    TableState::OnResizeMouseDown(&table, &cx, &down, kFitFree);
+    utassert(table.fittedCol < 0);
+    TableState::OnResizeDrag(&table, &cx, &drag);
+    utassert(TableColWidthNow(&table, kFitFree, &held));
+    utassert(held != fitted);
+    utassert(table.resizingCol == kFitFree);
+    TestAppFree(app);
+}
+
 void TestDataTable() {
+    AFittedColumnHoldsItsContentOnWholeDevicePixels();
+    AFitStaysWithinTheColumnAndEmitsOnlyOnAChange();
+    AResizeDragAfterAFitWaitsForTheNextPress();
     AStripedTableFillsTheBodyWithEmptyRows();
     FixedColsBorderFollowsTheFixedColumns();
     SortIconIsALabelledButtonThatCyclesTheSort();

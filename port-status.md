@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7d7580fa59e7e4086e3a6c8de593f5656e2c009f` (2026-10-13,
-tooltip: Keep a pressed trigger's tooltip dismissed until the pointer leaves (#3492)).
-A press hides the trigger's tooltip and keeps it hidden until the
-pointer moves outside the trigger, including when the click removes
-the trigger before the next frame.
+Processed through `af2f4c2c8e15183dab9891096795209ef9f3f4e2` (2026-10-13,
+table: Fit a column to its content on double-click of its resize handle (#3489)).
+A double-click on a column's resize handle fits that column to the
+width its delegate reports, plus the cell padding, clamped to the
+column's minimum and maximum. The drag the second press also starts
+is ignored until the next single press.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

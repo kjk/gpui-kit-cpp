@@ -72,9 +72,9 @@ struct TableEvent {
     int col = -1;
     // What the column was sorted into, for a Sort.
     ColumnSort sort = ColumnSort::Default;
-    // ColumnWidthsChanged(Vec<Pixels>): every column's width, once the drag
-    // that changed one of them has ended. The array is the table's own, so a
-    // listener reads it and does not keep it.
+    // ColumnWidthsChanged(Vec<Pixels>): every column's width, once a drag
+    // that changed one of them has ended, or a fit changed one. The array
+    // is the table's own, so a listener reads it and does not keep it.
     const float* widths = nullptr;
     int nWidths = 0;
 };
@@ -105,6 +105,16 @@ struct TableVisibleRange {
     int rowEnd = 0;
     int colFirst = 0;
     int colEnd = 0;
+};
+
+// What fit_col reads off a column besides its width: whether the edge can
+// move, and the padding added to the content width the delegate reports.
+// Rust keeps both on the column group.
+struct TableColEdge {
+    uint8_t resizable = 1;
+    uint8_t hasPaddings = 0;
+    float padL = 0;
+    float padR = 0;
 };
 
 // What a table is between frames: the selection, what is sorted by what, and
@@ -162,6 +172,18 @@ struct TableState {
     // resizing_col: which edge is being dragged right now, and the flag that
     // decides whether a release has anything to report.
     int resizingCol = -1;
+    // fitted_col. A double-click that just fitted this column ignores
+    // resize drags until the next single press, so the second press of
+    // that click cannot pull the fitted edge back under the pointer.
+    // -1 is none.
+    int fittedCol = -1;
+    // The padding fit_col adds when a column has none of its own. The
+    // themed table writes the size's cell padding here as it builds.
+    Edges cellPadding = Edges::New(8, 8, 4, 4);
+    // Per-column resize flag and padding. Grown with the other column
+    // arrays. A column that has not been written answers as not
+    // resizable, which is what a missing col group does.
+    Vec<TableColEdge> colFit;
     // col_groups, as the order the columns are shown in: `colOrder[i]` is the
     // caller's column at display position i. Rust reorders the col_groups
     // vector itself; the columns are the caller's array here, so the order is
@@ -225,6 +247,7 @@ struct TableState {
         VecReset(colMaxWidths);
         VecReset(colOrder);
         VecReset(colBounds);
+        VecReset(colFit);
     }
     Listener onLoadMore = {};
     // UI TableDelegate hooks stored in base-shaped signatures so retained
@@ -234,6 +257,11 @@ struct TableState {
                          ColumnSort sort) = nullptr;
     void (*delegateMoveColumn)(Ctx* cx, void* data, int from, int to) = nullptr;
     void (*delegateLoadMore)(Ctx* cx, void* data) = nullptr;
+    // TableDelegate::fit_column. Null is the trait's default, which
+    // leaves the column alone. Writes the content width and returns
+    // true when the column should fit.
+    bool (*delegateFitColumn)(Ctx* cx, void* data, int col,
+                              float* width) = nullptr;
 
     static void OnRowClick(TableState* self, Ctx* cx, const ClickEvent* ev,
                            int64_t row);
@@ -261,6 +289,8 @@ struct TableState {
     // of the ResizeColumn it matched on.
     static void OnResizeDrag(TableState* self, Ctx* cx,
                              const DragMoveEvent* ev);
+    static void OnResizeMouseDown(TableState* self, Ctx* cx,
+                                  const MouseDownEvent* ev, int64_t col);
     static void OnResizeEnd(TableState* self, Ctx* cx, const MouseUpEvent* ev);
     static void OnColDragMove(TableState* self, Ctx* cx,
                               const DragMoveEvent* ev);
@@ -366,8 +396,21 @@ void TableSetColConstraints(TableState* s, int col, float minWidth,
                             float maxWidth);
 
 // resize_cols: the column takes the new width, clamped, and the table is only
-// notified if that changed anything.
-void TableResizeCol(TableState* s, Ctx* cx, int col, float width);
+// notified if that changed anything. True when the width changed.
+bool TableResizeCol(TableState* s, Ctx* cx, int col, float width);
+
+// TableState::col_width. False past the last column.
+bool TableColWidthNow(const TableState* s, int col, float* out);
+
+// TableState::fit_col. True when the delegate gave a width for a column
+// that can be resized. The width is that content plus the cell padding,
+// rounded up to device pixels and clamped to the column's min and max.
+// ColumnWidthsChanged is emitted only when the width changed.
+bool TableFitCol(TableState* s, Ctx* cx, int col);
+
+// The per-column edge fit_col and the resize handle agree on.
+void TableSetColEdge(TableState* s, int col, bool resizable, bool hasPaddings,
+                     float padL, float padR);
 
 // perform_sort's cycle: Default becomes Descending, Descending becomes
 // Ascending, and Ascending goes back to Default.

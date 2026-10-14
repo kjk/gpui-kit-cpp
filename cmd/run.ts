@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7d7580fa59e7e4086e3a6c8de593f5656e2c009f",
+  sha: "af2f4c2c8e15183dab9891096795209ef9f3f4e2",
   date: "2026-10-13",
-  subject: "tooltip: Keep a pressed trigger's tooltip dismissed until the pointer leaves (#3492)",
+  subject: "table: Fit a column to its content on double-click of its resize handle (#3489)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

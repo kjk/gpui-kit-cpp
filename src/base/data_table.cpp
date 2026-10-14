@@ -106,6 +106,11 @@ void TableEnsureCols(TableState* s, int n) {
     while (s->colBounds.len < n) {
         VecAppend(s->colBounds, Bounds{});
     }
+    while (s->colFit.len < n) {
+        TableColEdge edge = {};
+        edge.resizable = 1;
+        VecAppend(s->colFit, edge);
+    }
 }
 
 float TableColWidth(const TableState* s, int col, float declared) {
@@ -163,19 +168,102 @@ void TableSetColConstraints(TableState* s, int col, float minWidth,
     s->colMaxWidths[col] = maxWidth;
 }
 
-void TableResizeCol(TableState* s, Ctx* cx, int col, float width) {
+bool TableResizeCol(TableState* s, Ctx* cx, int col, float width) {
     if (!s->colResizable || col < 0 || col >= s->colCount) {
-        return;
+        return false;
     }
     TableEnsureCols(s, col + 1);
     width = TableClampColWidth(s, col, width);
     // Rust only lays the header out again and notifies when the clamp let
     // something through.
     if (s->colWidth[col] == width) {
-        return;
+        return false;
     }
     s->colWidth[col] = width;
     Notify(cx);
+    return true;
+}
+
+void TableSetColEdge(TableState* s, int col, bool resizable, bool hasPaddings,
+                     float padL, float padR) {
+    if (!s || col < 0) {
+        return;
+    }
+    TableEnsureCols(s, col + 1);
+    TableColEdge& edge = s->colFit[col];
+    edge.resizable = resizable ? 1 : 0;
+    edge.hasPaddings = hasPaddings ? 1 : 0;
+    edge.padL = padL;
+    edge.padR = padR;
+}
+
+bool TableColWidthNow(const TableState* s, int col, float* out) {
+    if (!s || !out || col < 0 || col >= s->colCount || col >= s->colWidth.len) {
+        return false;
+    }
+    *out = s->colWidth[col];
+    return true;
+}
+
+static bool TableColCanResize(const TableState* s, int col) {
+    if (!s->colResizable || col < 0 || col >= s->colCount ||
+        col >= s->colFit.len) {
+        return false;
+    }
+    return s->colFit[col].resizable != 0;
+}
+
+static float TableDeviceScale(const Ctx* cx) {
+    if (cx && cx->win && cx->win->paint.dpi > 0) {
+        return cx->win->paint.dpi / 96.f;
+    }
+    return 1.f;
+}
+
+// Round a length up to a whole device pixel, in device pixels.
+static float TableDevicePixels(float length, float scale) {
+    return ceilf(length * scale);
+}
+
+bool TableFitCol(TableState* s, Ctx* cx, int col) {
+    if (!TableColCanResize(s, col) || !s->delegateFitColumn) {
+        return false;
+    }
+    float content = 0;
+    if (!s->delegateFitColumn(cx, s->delegateData, col, &content)) {
+        return false;
+    }
+    float padL = s->cellPadding.left;
+    float padR = s->cellPadding.right;
+    if (col < s->colFit.len && s->colFit[col].hasPaddings) {
+        padL = s->colFit[col].padL;
+        padR = s->colFit[col].padR;
+    }
+    // Layout rounds a width to the nearest device pixel, and text even a
+    // fraction of a pixel wider than its cell is truncated, so round every
+    // part up to a whole device pixel.
+    float scale = TableDeviceScale(cx);
+    float contentPx = TableDevicePixels(content, scale);
+    // Dividing back can land one ulp below the content at a fractional
+    // scale, and the text is cut for that ulp too.
+    if (contentPx / scale < content) {
+        contentPx += 1.f;
+    }
+    float widthPx = contentPx + TableDevicePixels(padL, scale) +
+                    TableDevicePixels(padR, scale);
+    if (TableResizeCol(s, cx, col, widthPx / scale)) {
+        TableEvent ev = {TableEventKind::ColumnWidthsChanged,
+                         -1,
+                         -1,
+                         ColumnSort::Default,
+                         s->colWidth.els,
+                         s->colCount};
+        if (s->onEvent.IsValid()) {
+            ListenerCall(cx->app, cx->win, s->onEvent, &ev);
+        }
+        EntityEmit(cx->app, cx->win, s->self, &ev);
+    }
+    return true;
 }
 
 void TablePerformSort(TableState* s, Ctx* cx, int col) {
@@ -830,6 +918,11 @@ void TableState::OnResizeDrag(TableState* self, Ctx* cx,
     if (col < 0 || col >= self->colCount) {
         return;
     }
+    // The double-click's second press also starts this drag. Leave the
+    // fitted width where fit_col put it until a later single press.
+    if (self->fittedCol == col) {
+        return;
+    }
     TableEnsureCols(self, col + 1);
     self->resizingCol = col;
     // col_group.bounds.left(). Each boundary is covered by two bands: the
@@ -840,6 +933,19 @@ void TableState::OnResizeDrag(TableState* self, Ctx* cx,
     float boundary = ev->drag.data ? ev->el.x : ev->el.Right();
     float left = boundary - self->colWidth[col];
     TableResizeCol(self, cx, col, ev->event.x - kTableResizeHandleW - left);
+}
+
+void TableState::OnResizeMouseDown(TableState* self, Ctx* cx,
+                                   const MouseDownEvent* ev, int64_t col) {
+    if (!ev || ev->button != MouseButton::Left) {
+        return;
+    }
+    int ix = (int)col;
+    if (ev->clickCount == 1) {
+        self->fittedCol = -1;
+    } else if (ev->clickCount == 2 && TableFitCol(self, cx, ix)) {
+        self->fittedCol = ix;
+    }
 }
 
 void TableState::OnResizeEnd(TableState* self, Ctx* cx, const MouseUpEvent*) {

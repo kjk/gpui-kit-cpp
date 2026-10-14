@@ -484,6 +484,10 @@ DataTable* DataTable::CellText(Str (*fn)(Ctx*, void*, int, int)) {
     cellText = fn;
     return this;
 }
+DataTable* DataTable::FitColumn(bool (*fn)(Ctx*, void*, int, float*)) {
+    fitColumn = fn;
+    return this;
+}
 
 static Str TableColumnLabel(const TableColumn& column) {
     return column.name.s ? column.name : column.title;
@@ -602,6 +606,10 @@ static El* ResizeHandleBand(Ctx* cx, Str id, int col, bool leading,
     // and every move afterwards carries it back to the handler.
     e->OnDrag(kTableResizeDrag, col, leading ? (void*)e : nullptr);
     e->OnDragMove(ListenTo(state, &TableState::OnResizeDrag));
+    // A double-click fits the column. The second press also starts the
+    // drag above; fitted_col is what keeps that drag from undoing the fit.
+    e->OnMouseDown(
+        ListenTo(state, &TableState::OnResizeMouseDown, (int64_t)col));
     // on_mouse_up_out ends the drag. A release back over the band it started
     // on is not "out", so the handle listens for that one too — the handler
     // does nothing when no drag is going on.
@@ -892,27 +900,33 @@ El* DataTable::BuildEl() {
         s->rowCount = nRows;
         s->colCount = nColumns;
         s->rowH = rowHeight;
+        s->cellPadding = UiTableCellPadding(size);
         if (hasDelegate) {
             s->delegateData = data;
             s->delegateSort = delegate.performSort;
             s->delegateMoveColumn = delegate.moveColumn;
             s->delegateLoadMore = delegate.loadMore;
+            s->delegateFitColumn = delegate.fitColumn;
             s->loading = delegate.loading && delegate.loading(cx, data);
             s->hasMore = delegate.hasMore && delegate.hasMore(cx, data);
             s->loadMoreThreshold = delegate.loadMoreThreshold
                                        ? delegate.loadMoreThreshold(data)
                                        : 20;
         } else {
-            s->delegateData = nullptr;
+            s->delegateData = data;
             s->delegateSort = nullptr;
             s->delegateMoveColumn = nullptr;
             s->delegateLoadMore = nullptr;
+            s->delegateFitColumn = fitColumn;
         }
         TableSeedColOrder(s, nColumns);
         for (int c = 0; c < nColumns; c++) {
             TableSeedColWidth(s, c, columns[c].width);
             TableSetColConstraints(s, c, columns[c].minWidth,
                                    columns[c].maxWidth);
+            TableSetColEdge(s, c, columns[c].resizable, columns[c].hasPaddings,
+                            columns[c].paddings.left,
+                            columns[c].paddings.right);
             if (s->sortCol < 0 && columns[c].hasSort &&
                 columns[c].sort != ColumnSort::Default) {
                 s->sortCol = c;

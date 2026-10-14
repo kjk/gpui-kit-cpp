@@ -103,6 +103,10 @@ struct TableDelegate {
     PopupMenu* (*contextMenu)(Ctx* cx, void* data, int row,
                               PopupMenu* menu) = nullptr;
     void (*moveColumn)(Ctx* cx, void* data, int from, int to) = nullptr;
+    // fit_column. The content width column `col` needs, or false to
+    // leave it. Called from inside the table's own update, so it must
+    // not update the table again. Null leaves the column alone.
+    bool (*fitColumn)(Ctx* cx, void* data, int col, float* width) = nullptr;
     El* (*renderEmpty)(Ctx* cx, void* data) = nullptr;
     bool (*loading)(Ctx* cx, void* data) = nullptr;
     El* (*renderLoading)(Ctx* cx, void* data, UiSize size) = nullptr;
@@ -179,6 +183,9 @@ struct DataTable {
     // The default answers nothing, so a table that has not set it dumps
     // empty cells the way Rust's does.
     Str (*cellText)(Ctx* cx, void* data, int row, int col) = nullptr;
+    // fit_column, when the table is not using TableDelegate. Copied onto
+    // the state as it builds, which is what a double-click calls later.
+    bool (*fitColumn)(Ctx* cx, void* data, int col, float* width) = nullptr;
     // Size::table_row_height, which is what with_size(..) comes to here: 26 /
     // 30 / 32 / 40, or an explicit pixel height.
     float rowHeight = 32;
@@ -213,6 +220,9 @@ struct DataTable {
     DataTable* OnVisibleRows(void (*fn)(Ctx*, void*, int, int));
     DataTable* OnVisibleCols(void (*fn)(Ctx*, void*, int, int));
     DataTable* CellText(Str (*fn)(Ctx*, void*, int, int));
+    // TableDelegate::fit_column, for a table that is not driven by the
+    // whole delegate table. The same hook as TableDelegate::fitColumn.
+    DataTable* FitColumn(bool (*fn)(Ctx*, void*, int, float*));
     // TableState::dump. Rust answers `(Vec<String>, Vec<Vec<String>>)`; the
     // rows come back flat here, `nColumns` to a row, since a Vec of Vecs is
     // not a thing this tree builds. Both are arena strings, so neither is
