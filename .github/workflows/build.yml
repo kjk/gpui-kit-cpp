@@ -165,10 +165,27 @@ jobs:
 
       # windows-latest carries clang 20.1.8, which miscompiles the shell's
       # suspend_never coroutines at /O2 and strands their task registry slots.
+      # Windows PowerShell does not fail a step when a native command returns
+      # non-zero, so a Chocolatey 504 used to leave 20.1.8 in place and the
+      # suite then ran on the compiler this job exists to avoid.
       - name: Install clang-cl 22
         if: matrix.name == 'windows-clang-mini-all-backends'
         shell: powershell
-        run: choco upgrade llvm --version=22.1.7 --yes --no-progress
+        run: |
+          $installed = $false
+          for ($try = 1; $try -le 3; $try++) {
+            choco upgrade llvm --version=22.1.7 --yes --no-progress
+            if ($LASTEXITCODE -eq 0) { $installed = $true; break }
+            Write-Host "choco upgrade llvm 22.1.7 failed with exit $LASTEXITCODE (try $try of 3)"
+            Start-Sleep -Seconds (20 * $try)
+          }
+          if (-not $installed) { exit 1 }
+          $version = & "$env:ProgramFiles\LLVM\bin\clang-cl.exe" --version 2>&1 | Out-String
+          Write-Host $version
+          if ($version -notmatch "22\.1\.7") {
+            Write-Host "expected clang-cl 22.1.7 in $env:ProgramFiles\LLVM\bin"
+            exit 1
+          }
 
       # Compile every Windows backend into the examples. The suite does not
       # paint, so tests stay on the default backend — same as the MSVC job.
@@ -180,6 +197,7 @@ jobs:
           for /f "usebackq delims=" %%i in (`%VSWHERE% -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
           if not defined VSPATH (echo could not find a VC toolset & exit /b 1)
           call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
+          clang-cl --version 2>&1 | findstr /C:"22.1.7" >nul || (echo expected clang-cl 22.1.7, the runner image's 20.1.8 miscompiles shell coroutines & clang-cl --version & exit /b 1)
           bun cmd/build.ts -clang -rel -markdown=mini -html=mini --win-backend=all -all || exit /b 1
           bun cmd/test.ts -clang -rel -markdown=full -html=full
 
