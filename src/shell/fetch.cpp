@@ -1,7 +1,10 @@
 #include "shell/fetch.h"
 
+#include "shell/plugin.h"
 #include "sys/executor.h"
 #include "sys/http.h"
+
+#include <stdio.h>
 
 namespace gpui::shell {
 
@@ -23,6 +26,29 @@ static void FetchError(Str* error, Str message) {
     if (!error) return;
     StrFree(*error);
     *error = StrDup(message);
+}
+
+static bool HeaderIsUserAgent(Str name) {
+    return StrEqI(name, "user-agent");
+}
+
+// The default sits on the wire, not in the caller's header list, so a
+// redirect strip of caller headers does not drop it and a script header
+// still wins. `agent` must outlive the send that reads `wire`.
+static bool AppendDefaultUserAgent(Vec<HttpHeader>* wire,
+                                   const Vec<FetchHeader>& headers, Str agent) {
+    for (int i = 0; i < len(headers); i++) {
+        if (HeaderIsUserAgent(headers[i].name)) return true;
+    }
+    HttpHeader header;
+    header.name = StrL("User-Agent");
+    header.value = agent;
+    return VecAppend(*wire, header);
+}
+
+static void FormatUserAgent(char* out, int cap) {
+    if (!out || cap <= 0) return;
+    snprintf(out, (size_t)cap, "gpui-shell/%s", kShellVersion);
 }
 
 static bool ParsePort(Str text, uint16_t* value) {
@@ -379,6 +405,8 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
         return false;
     }
 
+    char userAgent[64];
+    FormatUserAgent(userAgent, (int)sizeof(userAgent));
     Vec<HttpHeader> wire;
     for (int redirects = 0;; redirects++) {
         VecReset(wire);
@@ -387,6 +415,13 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
             h.name = walk.headers[i].name;
             h.value = walk.headers[i].value;
             VecAppend(wire, h);
+        }
+        if (!AppendDefaultUserAgent(&wire, walk.headers, Str(userAgent))) {
+            FetchError(&out->error,
+                       StrL("allocating the fetch headers failed"));
+            VecReset(wire);
+            walk.Free();
+            return false;
         }
         HttpReq req;
         req.url = walk.url;
@@ -487,6 +522,7 @@ struct FetchAsyncState {
     Func1<FetchAsyncResult> done;
     int redirects = 0;
     double deadline = 0;
+    char userAgent[64] = {};
 
     // The test transport has the blocking signature on purpose: the redirect
     // rule tests use it directly too. Its async adapter fills these on an
@@ -656,6 +692,7 @@ static void FetchAsyncTestDone(FetchAsyncState* state) {
 }
 
 static bool FetchAsyncStart(FetchAsyncState* state) {
+    FormatUserAgent(state->userAgent, (int)sizeof(state->userAgent));
     VecReset(state->wire);
     for (int i = 0; i < len(state->walk.headers); i++) {
         HttpHeader header;
@@ -666,6 +703,12 @@ static bool FetchAsyncStart(FetchAsyncState* state) {
                        StrL("allocating the fetch headers failed"));
             return false;
         }
+    }
+    if (!AppendDefaultUserAgent(&state->wire, state->walk.headers,
+                                Str(state->userAgent))) {
+        FetchError(&state->result.error,
+                   StrL("allocating the fetch headers failed"));
+        return false;
     }
     HttpReq request;
     request.url = state->walk.url;

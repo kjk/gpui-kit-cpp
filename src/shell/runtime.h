@@ -20,6 +20,7 @@ namespace gpui::shell {
 struct MaterializedDependencies;
 class FrozenComponentRegistry;
 struct ComponentAppEffectInstall;
+struct TextStateEntity;
 } // namespace gpui::shell
 namespace gpui {
 struct ShellTaskDriver;
@@ -199,6 +200,13 @@ class ShellRuntime {
                                     App* app);
     void DispatchInputEvent(shell::EntityHandle handle, const InputEvent& event,
                             Window* window, App* app);
+    // A gpui-component InputState / TextareaState subscription. The payload
+    // matches DispatchInputEvent: submit carries secondary and shift, and
+    // change, focus and blur carry an empty object.
+    void DispatchComponentInput(shell::TextStateEntity* state,
+                                const InputEvent* event, Window* window,
+                                App* app);
+    void RetireTextState(shell::TextStateEntity* state);
     void DispatchSliderEvent(shell::EntityHandle handle,
                              const SliderEvent& event, Window* window,
                              App* app);

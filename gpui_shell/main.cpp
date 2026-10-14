@@ -113,11 +113,12 @@ static Policy* LocalPolicy(Str root, bool installed, ShellError* error) {
         return nullptr;
 
     Arena* scratch = ArenaNew();
-    // An installed or packaged application keeps its data under the manifest
-    // id. A directory named with -d stays keyed by its path.
-    Str id = installed && hasManifest && manifest.id
-                 ? StrDup(manifest.id)
-                 : ShellBundleIdForPath(root);
+    // An application with a manifest keeps its data under the manifest id,
+    // so a directory run, an install and a package all reach the same files.
+    // A directory without a manifest is keyed by its path.
+    (void)installed;
+    Str id = hasManifest && manifest.id ? StrDup(manifest.id)
+                                        : ShellBundleIdForPath(root);
     Str data = ShellAppDataDirectory(id, scratch, error);
     if (!data) {
         StrFree(id);
@@ -143,9 +144,12 @@ static Policy* LocalPolicy(Str root, bool installed, ShellError* error) {
     Capabilities capabilities =
         hasManifest ? manifest.Grant(root, data) : Capabilities();
     if (!hasManifest) capabilities.Storage(true);
-    capabilities.AddReadRoot(root).AddReadRoot(data).AddWriteRoot(data).Exit(
-        true);
+    capabilities.AddReadRootOnce(root)
+        .AddReadRootOnce(data)
+        .AddWriteRootOnce(data)
+        .Exit(true);
     Policy* policy = PolicyNew(capabilities);
+    PolicySetDataDir(policy, data);
     // The same name namespaces the application's dock panels. Storage and a
     // persisted layout are the two things that have to survive a restart under
     // a name rather than a path, so they take the name from one place.

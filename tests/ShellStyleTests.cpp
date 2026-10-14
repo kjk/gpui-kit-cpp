@@ -487,7 +487,24 @@ static void ParamStylesFollowTheLengthGrammar() {
     // a_missing_argument_names_the_method
     SpecOp missing = ParamOp(StrL("p"), nullptr, 0);
     utassert(!ApplyParamStyle(Div(arena), missing, &error));
-    utassert(StrFind(error.message, "`p` expects at least 1 argument") >= 0);
+    utassert(StrFind(error.message, "`p` expects 1 argument") >= 0);
+    ShellErrorClear(&error);
+    // an_undefined_argument_names_the_method_and_its_argument_free_forms
+    Bridged nil = Bridged::Nil();
+    SpecOp bare = ParamOp(StrL("flex_shrink"), &nil, 1);
+    utassert(!ApplyParamStyle(Div(arena), bare, &error));
+    utassert(StrFind(error.message, "`flex_shrink` expects 1 argument") >= 0);
+    utassert(StrFind(error.message, "`flex_shrink_0()`") >= 0);
+    utassert(StrFind(error.message, "`flex_shrink_1()`") >= 0);
+    ShellErrorClear(&error);
+    // a_bare_line_height_is_a_multiplier_as_in_css
+    El* height = Div(arena);
+    utassert(ApplyParamValue(height, StrL("line_height"), Bridged::Number(1.5),
+                             &error));
+    utassertnear(height->style.lineHeight, 1.5f);
+    utassert(ApplyParamValue(height, StrL("line_height"),
+                             Bridged::String(StrL("18px")), &error));
+    utassertnear(height->style.lineHeight, 18.f / 16.f);
     ShellErrorClear(&error);
     // A name that is not a parametric style is not refused, only not taken.
     Bridged one = Bridged::Number(1);

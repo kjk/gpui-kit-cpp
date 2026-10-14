@@ -479,7 +479,7 @@ static constexpr shell::StateDescriptor kStates[] = {
     {"InputState", "InputState", kInputStateArgs,
      "Retained editable text state shared by Input and NumberInput, with "
      "optional placeholder and initial value.",
-     &NewInputState, shell::kInputTokenStateMethods},
+     &NewInputState, shell::kInputTokenStateMethods, true},
     {"CalendarState",
      "CalendarState",
      {},

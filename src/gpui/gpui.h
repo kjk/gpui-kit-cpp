@@ -6845,6 +6845,8 @@ struct IdScope {
 
 EntityId EntityNewRaw(App* app, void* ptr, RenderFn render, DropFn drop);
 void* EntityGet(App* app, EntityId id);
+// The entity's destructor, used as its type when a downcast has no RTTI.
+bool EntityHasDrop(App* app, EntityId id, DropFn drop);
 void EntityDrop(App* app, EntityId id);
 void EntityDropAll(App* app);
 

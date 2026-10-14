@@ -25,6 +25,10 @@ const Capabilities& PolicyCapabilities(const Policy* policy);
 // `app`, and a single-application layout file has nothing to collide with.
 Str PolicyApplication(const Policy* policy);
 void PolicySetApplication(Policy* policy, Str name);
+// The application's data directory, shown to script as `process.dataDir`.
+// A path, not a grant: reaching it still needs a filesystem root.
+void PolicySetDataDir(Policy* policy, Str path);
+Str PolicyDataDir(const Policy* policy);
 // The default policy's name, which `set_bundle_id` places beside its store.
 void PolicyUpdateDefaultApplication(Str name);
 

@@ -295,6 +295,7 @@ void Capabilities::Clear() {
     FreeStrings(&readRoots);
     FreeStrings(&writeRoots);
     FreeStrings(&networkHosts);
+    FreeStrings(&envVariables);
     for (int i = 0; i < httpRequests.len; i++) delete httpRequests[i];
     VecReset(httpRequests);
     execute = ExecuteGrant::Denied();
@@ -312,6 +313,7 @@ void Capabilities::CopyFrom(const Capabilities& other) {
     clipboardRead = other.clipboardRead;
     clipboardWrite = other.clipboardWrite;
     exit = other.exit;
+    CopyStrings(&envVariables, other.envVariables);
 }
 
 Capabilities& Capabilities::AddReadRoot(Str root) {
@@ -349,6 +351,121 @@ Capabilities& Capabilities::ClipboardWrite(bool allowed) {
 Capabilities& Capabilities::Exit(bool allowed) {
     exit = allowed;
     return *this;
+}
+Capabilities& Capabilities::AddEnvVariable(Str name) {
+    if (name) VecAppend(envVariables, StrDup(name));
+    return *this;
+}
+
+static bool SameRoot(const Vec<Str>& roots, Str root) {
+    for (int i = 0; i < roots.len; i++) {
+        if (StrEq(roots[i], root)) return true;
+    }
+    return false;
+}
+
+Capabilities& Capabilities::AddReadRootOnce(Str root) {
+    if (!SameRoot(readRoots, root)) AddReadRoot(root);
+    return *this;
+}
+Capabilities& Capabilities::AddWriteRootOnce(Str root) {
+    if (!SameRoot(writeRoots, root)) AddWriteRoot(root);
+    return *this;
+}
+
+// crates/shell/src/default-env, one upper-case name per line.
+static const char* const kDefaultEnvNames[] = {
+    "HOME",
+    "USER",
+    "LOGNAME",
+    "USERNAME",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "HOSTNAME",
+    "COMPUTERNAME",
+    "PROCESSOR_ARCHITECTURE",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "LC_ADDRESS",
+    "LC_COLLATE",
+    "LC_CTYPE",
+    "LC_IDENTIFICATION",
+    "LC_MEASUREMENT",
+    "LC_MESSAGES",
+    "LC_MONETARY",
+    "LC_NAME",
+    "LC_NUMERIC",
+    "LC_PAPER",
+    "LC_TELEPHONE",
+    "LC_TIME",
+    "TZ",
+    "PATH",
+    "PATHEXT",
+    "SHELL",
+    "EDITOR",
+    "VISUAL",
+    "PAGER",
+    "BROWSER",
+    "TERM",
+    "DISPLAY",
+    "WAYLAND_DISPLAY",
+    "XDG_CURRENT_DESKTOP",
+    "XDG_SESSION_TYPE",
+    "DESKTOP_SESSION",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "TMPDIR",
+    "TEMP",
+    "TMP",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_STATE_HOME",
+    "XDG_RUNTIME_DIR",
+    "XDG_CONFIG_DIRS",
+    "XDG_DATA_DIRS",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PROGRAMDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "SYSTEMROOT",
+    "WINDIR",
+};
+
+int ShellDefaultEnvNameCount() {
+    return (int)(sizeof(kDefaultEnvNames) / sizeof(kDefaultEnvNames[0]));
+}
+const char* ShellDefaultEnvName(int index) {
+    if (index < 0 || index >= ShellDefaultEnvNameCount()) return nullptr;
+    return kDefaultEnvNames[index];
+}
+
+static bool EqIgnoreAsciiCase(Str a, Str b) {
+    if (len(a) != len(b)) return false;
+    for (int i = 0; i < len(a); i++) {
+        unsigned char ca = (unsigned char)a.s[i];
+        unsigned char cb = (unsigned char)b.s[i];
+        if (ca >= 'A' && ca <= 'Z') ca = (unsigned char)(ca - 'A' + 'a');
+        if (cb >= 'A' && cb <= 'Z') cb = (unsigned char)(cb - 'A' + 'a');
+        if (ca != cb) return false;
+    }
+    return true;
+}
+
+bool Capabilities::MayShowEnvVariable(Str name) const {
+    if (!name) return false;
+    for (int i = 0; i < ShellDefaultEnvNameCount(); i++) {
+        if (EqIgnoreAsciiCase(name, Str(ShellDefaultEnvName(i)))) return true;
+    }
+    for (int i = 0; i < envVariables.len; i++) {
+        if (EqIgnoreAsciiCase(name, envVariables[i])) return true;
+    }
+    return false;
 }
 bool Capabilities::HasReadAccess() const {
     return readRoots.len != 0;
@@ -555,6 +672,11 @@ void Capabilities::AppendSummary(StrBuilder* out) const {
         out->Append(StrL("clipboard: read\n"));
     } else if (clipboardWrite) {
         out->Append(StrL("clipboard: write\n"));
+    }
+    if (envVariables.len > 0) {
+        out->Append(StrL("env: "));
+        AppendJoined(out, envVariables, ", ");
+        out->Append(StrL("\n"));
     }
 }
 

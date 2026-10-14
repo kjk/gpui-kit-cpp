@@ -76,6 +76,10 @@ Str CapabilityErrorMessage(Arena* arena, const CapabilityError& error);
 // cx.open_url and TextView's default link handling.
 bool IsOpenableUrl(Str url);
 
+// `default-env`: names every application may read from `process.env`.
+int ShellDefaultEnvNameCount();
+const char* ShellDefaultEnvName(int index);
+
 struct CapabilityPath {
     Str root;
     Str relative;
@@ -99,6 +103,11 @@ class Capabilities {
     Capabilities& ClipboardRead(bool allowed);
     Capabilities& ClipboardWrite(bool allowed);
     Capabilities& Exit(bool allowed);
+    // A name `process.env` may show beyond the defaults. Stored as written.
+    Capabilities& AddEnvVariable(Str name);
+    // Adds `root` unless that exact path is already granted.
+    Capabilities& AddReadRootOnce(Str root);
+    Capabilities& AddWriteRootOnce(Str root);
 
     bool HasReadAccess() const;
     bool HasWriteAccess() const;
@@ -106,6 +115,8 @@ class Capabilities {
     bool IsClipboardReadable() const;
     bool IsClipboardWritable() const;
     bool MayExit() const;
+    // A default name or a granted one, compared without regard to case.
+    bool MayShowEnvVariable(Str name) const;
     bool MayRun(Str command) const;
     bool MayReach(Str host) const;
     bool MayRequest(Str scheme, Str host, uint16_t port, bool hasPort,
@@ -131,6 +142,7 @@ class Capabilities {
     bool clipboardRead = false;
     bool clipboardWrite = false;
     bool exit = false;
+    Vec<Str> envVariables;
 
     void Clear();
     void CopyFrom(const Capabilities& other);

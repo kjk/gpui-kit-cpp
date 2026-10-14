@@ -158,10 +158,38 @@ static bool ParseStringArray(Arena* arena, const JsonValue* value,
     return true;
 }
 
+// Spellings a shell would expand and the manifest does not. Each is refused
+// with the path rewritten as ${homeDir}, instead of becoming a relative
+// directory such as <app>/$HOME/.claude.
+static const char* const kHomeSpellings[] = {
+    "${HOME}", "$HOME", "${USERPROFILE}", "$USERPROFILE", "%USERPROFILE%", "~",
+};
+
+static bool HomeSpelling(Str path, Str* rest) {
+    for (const char* spelling : kHomeSpellings) {
+        int n = (int)strlen(spelling);
+        if (len(path) < n || !StrEq(Str(path.s, n), Str(spelling))) continue;
+        Str tail(path.s + n, len(path) - n);
+        if (len(tail) != 0 && tail.s[0] != '/' && tail.s[0] != '\\') continue;
+        if (rest) *rest = tail;
+        return true;
+    }
+    return false;
+}
+
 static bool ValidatePlaceholders(const Vec<Str>& paths, Str field,
                                  ShellError* error) {
     for (int p = 0; p < len(paths); p++) {
         Str value = paths[p];
+        Str rest;
+        if (HomeSpelling(value, &rest)) {
+            SetError(error,
+                     fmt("\"%s\" in %s is not expanded: the manifest does not "
+                         "read environment variables or `~`; write "
+                         "\"${homeDir}%s\"",
+                         value, field, rest));
+            return false;
+        }
         for (int i = 0; i + 2 < len(value); i++) {
             if (value.s[i] != '$' || value.s[i + 1] != '{') continue;
             int end = i + 2;
@@ -172,9 +200,12 @@ static bool ValidatePlaceholders(const Vec<Str>& paths, Str field,
             }
             Str placeholder(value.s + i, end - i + 1);
             if (!StrEq(placeholder, StrL("${pluginDir}")) &&
-                !StrEq(placeholder, StrL("${dataDir}"))) {
-                SetError(error, fmt("unknown placeholder `%s` in %s",
-                                    placeholder, field));
+                !StrEq(placeholder, StrL("${dataDir}")) &&
+                !StrEq(placeholder, StrL("${homeDir}"))) {
+                SetError(error,
+                         fmt("unknown placeholder `%s` in %s: the manifest "
+                             "may use ${pluginDir}, ${dataDir} and ${homeDir}",
+                             placeholder, field));
                 return false;
             }
             i = end;
@@ -648,8 +679,8 @@ static bool ParseCapabilities(const JsonValue* value, PluginManifest* out,
     }
     const JsonValue* process = JsonGet(value, "process");
     if (process && process->kind != JsonKind::Null) {
-        static const char* processFields[] = {"exit"};
-        if (!HasOnly(process, processFields, 1, StrL("capabilities.process"),
+        static const char* processFields[] = {"exit", "env"};
+        if (!HasOnly(process, processFields, 2, StrL("capabilities.process"),
                      error))
             return false;
         const JsonValue* exit = JsonGet(process, "exit");
@@ -659,6 +690,18 @@ static bool ParseCapabilities(const JsonValue* value, PluginManifest* out,
             return false;
         }
         out->exit = exit && exit->b;
+        if (!ParseStringArray(out->arena, JsonGet(process, "env"), &out->env,
+                              StrL("capabilities.process.env"), error))
+            return false;
+        for (int i = 0; i < out->env.len; i++) {
+            Str name = out->env[i];
+            if (!name || StrFind(name, StrL("=")) >= 0) {
+                SetError(error, fmt("process.env entry `%s` must be an "
+                                    "environment variable name",
+                                    name));
+                return false;
+            }
+        }
     }
     return true;
 }
@@ -671,6 +714,7 @@ PluginManifest::~PluginManifest() {
     VecReset(writeRoots);
     VecReset(execute);
     VecReset(networkHosts);
+    VecReset(env);
     for (int i = 0; i < http.len; i++) {
         VecReset(http[i]->methods);
         VecReset(http[i]->paths);
@@ -860,23 +904,34 @@ static bool AbsolutePath(Str path) {
            (path.s[2] == '/' || path.s[2] == '\\');
 }
 
-static Str ExpandPath(Str raw, Str plugin, Str data) {
-    StrBuilder out;
+// False when the path names ${homeDir} and there is no home directory: left
+// in, the placeholder would become a relative directory inside the plugin.
+static bool ExpandPath(Str raw, Str plugin, Str data, Str home, Str* out) {
+    if (out) *out = {};
+    if (StrFind(raw, StrL("${homeDir}")) >= 0 && !home) return false;
+    StrBuilder built;
     for (int i = 0; i < len(raw);) {
         if (i + 12 <= len(raw) &&
             StrEq(Str(raw.s + i, 12), StrL("${pluginDir}"))) {
-            out.Append(plugin);
+            built.Append(plugin);
             i += 12;
         } else if (i + 10 <= len(raw) &&
                    StrEq(Str(raw.s + i, 10), StrL("${dataDir}"))) {
-            out.Append(data);
+            built.Append(data);
+            i += 10;
+        } else if (i + 10 <= len(raw) &&
+                   StrEq(Str(raw.s + i, 10), StrL("${homeDir}"))) {
+            built.Append(home);
             i += 10;
         } else {
-            out.AppendChar(raw.s[i++]);
+            built.AppendChar(raw.s[i++]);
         }
     }
-    Str expanded = out.TakeStr();
-    if (AbsolutePath(expanded)) return expanded;
+    Str expanded = built.TakeStr();
+    if (AbsolutePath(expanded)) {
+        if (out) *out = expanded;
+        return true;
+    }
     StrBuilder joined;
     joined.Append(plugin);
     if (plugin && plugin.s[len(plugin) - 1] != '/' &&
@@ -884,22 +939,32 @@ static Str ExpandPath(Str raw, Str plugin, Str data) {
         joined.AppendChar(base::PlatPathSep());
     joined.Append(expanded);
     StrFree(expanded);
-    return joined.TakeStr();
+    if (out) *out = joined.TakeStr();
+    return true;
 }
 
 Capabilities PluginManifest::Grant(Str pluginDirectory,
                                    Str dataDirectory) const {
     Capabilities result;
+    Str home = ShellHomeDirectory();
     for (int i = 0; i < readRoots.len; i++) {
-        Str path = ExpandPath(readRoots[i], pluginDirectory, dataDirectory);
+        Str path;
+        if (!ExpandPath(readRoots[i], pluginDirectory, dataDirectory, home,
+                        &path))
+            continue;
         result.AddReadRoot(path);
         StrFree(path);
     }
     for (int i = 0; i < writeRoots.len; i++) {
-        Str path = ExpandPath(writeRoots[i], pluginDirectory, dataDirectory);
+        Str path;
+        if (!ExpandPath(writeRoots[i], pluginDirectory, dataDirectory, home,
+                        &path))
+            continue;
         result.AddWriteRoot(path);
         StrFree(path);
     }
+    StrFree(home);
+    for (int i = 0; i < env.len; i++) result.AddEnvVariable(env[i]);
     if (executeUnrestricted) {
         result.SetExecute(ExecuteGrant::Unrestricted());
     } else if (execute.len > 0) {
@@ -931,6 +996,16 @@ static int ComparePaths(const void* left, const void* right) {
     const Str* a = (const Str*)left;
     const Str* b = (const Str*)right;
     return StrCmp(*a, *b);
+}
+
+Str ShellHomeDirectory() {
+    const char* home = getenv("HOME");
+    if ((!home || !*home) && base::PlatIsWindows())
+        home = getenv("USERPROFILE");
+    if (!home || !*home) return {};
+    Str path(home);
+    if (!AbsolutePath(path)) return {};
+    return StrDup(path);
 }
 
 Str ShellDataHome() {
@@ -1171,6 +1246,7 @@ bool PluginManager::Load(ShellRuntime* runtime, Str id,
     }
     Capabilities capabilities = selected->manifest->Grant(selected->root, data);
     Policy* policy = PolicyNew(capabilities);
+    PolicySetDataDir(policy, data);
     // The manifest id is already unique among loaded plugins, which is exactly
     // what a dock layout needs to keep two plugins' panels of the same name
     // apart.

@@ -2,7 +2,10 @@
 
 #include "shell/input_tokens.h"
 
+#include "shell/runtime.h"
+
 #include <math.h>
+#include <stddef.h>
 
 namespace gpui::shell {
 
@@ -10,6 +13,17 @@ TextStateEntity::~TextStateEntity() {
     // Rust's entity drops its blink cursor with it; the blink here is an
     // entity of its own, dropped through the App it was made in.
     if (app && input.blink.IsValid()) EntityDrop(app, input.blink);
+    // After the runtime has cleared its callback arena this finds nothing.
+    // Before that, it drops the handlers with the state.
+    if (runtime) runtime->RetireTextState(this);
+}
+
+void TextStateNotify(InputState* state, const InputEvent* event, Ctx* cx) {
+    if (!state || !event || !cx) return;
+    TextStateEntity* entity =
+        (TextStateEntity*)((char*)state - offsetof(TextStateEntity, input));
+    if (!entity->runtime) return;
+    entity->runtime->DispatchComponentInput(entity, event, cx->win, cx->app);
 }
 
 void TextStateInit(TextStateEntity* state, App* app, bool textarea,

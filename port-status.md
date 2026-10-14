@@ -16,12 +16,15 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `859729d62059e13c5f9e223f757c0f73e6397657` (2026-10-14,
-tests: Keep the WebSocket pending-read test pumping until its server closes (#3497)).
-The shell WebSocket test keeps pumping the executor until the
-server thread finishes, so a pending read cannot starve the
-close. This tree has no WebSocket client and no counterpart of
-that test.
+Processed through `595266ce6e7055502ea400f4e2925723fc5b1a66` (2026-10-14,
+shell: Fix the runtime gaps found by the gpui-shell benchmark apps (#3505)).
+The runtime now has TextEncoder and TextDecoder, `process.env` and
+`process.dataDir`, `os.homedir`, `import.meta.url`, `fs` stat, lstat,
+rename and readlink, a default fetch User-Agent, `Type.new` on every
+component export, and `InputState.on`. A manifest expands `${homeDir}`
+and refuses the other home spellings. The shell typings were
+regenerated. Website and install docs from this checkin are not
+ported.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
@@ -72,6 +75,17 @@ The current update target is
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
+- **`on_pinch` is accepted and never delivered.** The callback name is
+  recognized so a script can pass a handler. There is no `PinchEvent`, and
+  materialize does not bind one (`src/shell/runtime.cpp`).
+- **`fs.stat` does not follow a symlink.** Rust follows a link that stays
+  inside the grant. Here `stat` refuses a symlink and a Windows junction,
+  and `lstat` describes the link. POSIX `atime` and `birthtime` stay 0;
+  Windows fills them (`src/shell/filesystem_posix.cpp`,
+  `src/shell/filesystem_win.cpp`).
+- **Fetch sends the default User-Agent; a WebSocket handshake cannot.**
+  There is no WebSocket client. `fetch` adds `User-Agent: gpui-shell/<version>`
+  when the script set none (`src/shell/fetch.cpp`).
 - **A window has no application id.** A packaged run knows the manifest id,
   but `WinOpts` has nowhere to put it, so a Linux desktop file is not matched
   to `<id>.desktop` (`gpui_shell/main.cpp`).

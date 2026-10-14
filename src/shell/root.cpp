@@ -871,10 +871,12 @@ El* ShellRoot::Render(ShellRoot* self, Ctx* cx) {
     }
     // The tooltip layer, above everything: ShellRoot::tooltip_overlay, the
     // root's own, which a script's triggers show in. It is the window's
-    // root overlay only while this root is the window's first view, as
-    // `ShellRoot::tooltip_overlay` answers.
-    if (self->tooltipOverlay.IsValid() && cx->win &&
-        cx->win->root == cx->self) {
+    // root overlay while this root is the one the window has — its first
+    // view, or the view directly inside a component Root.
+    Root* outer = cx->win ? Root::Read(cx->win) : nullptr;
+    bool ownsWindow = cx->win && (cx->win->root == cx->self ||
+                                  (outer && outer->View() == cx->self));
+    if (self->tooltipOverlay.IsValid() && ownsWindow) {
         cx->win->rootTooltip = self->tooltipOverlay;
         if (El* tooltip =
                 EntityRender(cx->app, cx->win, cx->a, self->tooltipOverlay))
@@ -883,13 +885,25 @@ El* ShellRoot::Render(ShellRoot* self, Ctx* cx) {
     return root;
 }
 
+static bool IsShellRootEntity(App* app, EntityId id) {
+    return EntityHasDrop(app, id, &EntityDropT<ShellRoot>);
+}
+
 ShellRoot* ShellRootOf(Window* window, App* app) {
-    ShellRootWindowState* state = RootWindowState(window);
-    if (!state || !state->root.IsValid()) return nullptr;
-    // `window.root::<ShellRoot>()`: the window's first view, and nothing
-    // else. A window a catalog's opener wrapped in a Base Root has none.
-    if (state->root != window->root) return nullptr;
-    return Entity<ShellRoot>{state->root}.Get(app);
+    if (!window || !app) return nullptr;
+    // ShellRoot::find: the window's first view, or the view directly inside
+    // a Base Root a component catalog opened the window with. init() still
+    // sees none, because that runs before the window has a root.
+    if (IsShellRootEntity(app, window->root)) {
+        return Entity<ShellRoot>{window->root}.Get(app);
+    }
+    if (Root* outer = Root::Read(window)) {
+        EntityId view = outer->View();
+        if (IsShellRootEntity(app, view)) {
+            return Entity<ShellRoot>{view}.Get(app);
+        }
+    }
+    return nullptr;
 }
 
 bool ShellRootShowFpsMonitor(Ctx* cx, const FpsHudRequest& request) {

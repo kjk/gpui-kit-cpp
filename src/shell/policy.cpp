@@ -21,9 +21,13 @@ struct Policy {
     // persisted panels are filed under, and a copy that renamed them would
     // lose the layout the user had.
     Str application = StrDup(Str(kDefaultApplication));
+    Str dataDir = {};
     PolicyShared* shared = nullptr;
 
-    ~Policy() { StrFree(application); }
+    ~Policy() {
+        StrFree(application);
+        StrFree(dataDir);
+    }
 };
 
 static PolicyShared* SharedRetain(PolicyShared* shared) {
@@ -70,6 +74,16 @@ void PolicySetApplication(Policy* policy, Str name) {
         trimmed && len(trimmed) > 0 ? trimmed : Str(kDefaultApplication));
 }
 
+void PolicySetDataDir(Policy* policy, Str path) {
+    if (!policy) return;
+    StrFree(policy->dataDir);
+    policy->dataDir = path ? StrDup(path) : Str{};
+}
+
+Str PolicyDataDir(const Policy* policy) {
+    return policy ? policy->dataDir : Str{};
+}
+
 const Capabilities& PolicyCapabilities(const Policy* policy) {
     static const Capabilities denied;
     return policy ? policy->capabilities : denied;
@@ -97,6 +111,7 @@ void PolicyUpdateDefaultCapabilities(const Capabilities& capabilities) {
     Policy* replacement = new Policy();
     replacement->capabilities = capabilities;
     PolicySetApplication(replacement, current->application);
+    PolicySetDataDir(replacement, current->dataDir);
     replacement->shared = SharedRetain(current->shared);
     gDefaultPolicy = replacement;
     PolicyRelease(current);
@@ -107,6 +122,7 @@ void PolicyUpdateDefaultApplication(Str name) {
     Policy* replacement = new Policy();
     replacement->capabilities = current->capabilities;
     PolicySetApplication(replacement, name);
+    PolicySetDataDir(replacement, current->dataDir);
     replacement->shared = SharedRetain(current->shared);
     gDefaultPolicy = replacement;
     PolicyRelease(current);

@@ -1451,7 +1451,8 @@ static bool ApplyOtherParam(El* e, Str name, const Bridged& value,
         }
         e->Weight((FontWeight)(int)number);
     } else if (StrEq(name, StrL("line_height"))) {
-        // A bare number is a multiplier, not pixels.
+        // A bare number is a multiplier of the font size, as in CSS
+        // (`1.45`); a string is a length (`"18px"`).
         if (value.kind == BridgedKind::Number) {
             s.lineHeight = (float)value.number;
         } else {
@@ -1572,6 +1573,58 @@ static int EditDistance(const uint32_t* left, int nLeft, Str right) {
     return previous[nRight];
 }
 
+// The error for a parametric style called without its argument. GPUI spells
+// the argument-free forms as separate methods (`flex_shrink_0`, `border_1`),
+// so naming those siblings turns the guess into the call that was meant.
+static TempStr MissingArgumentTemp(Str name) {
+    char prefixBuf[96];
+    int prefixLen = snprintf(prefixBuf, sizeof(prefixBuf), "%.*s_", len(name),
+                             name.s ? name.s : "");
+    char siblings[4][64];
+    int found = 0;
+    if (prefixLen > 0 && prefixLen < (int)sizeof(prefixBuf)) {
+        Str prefix(prefixBuf, prefixLen);
+        EachKnownName([&](Str candidate) {
+            if (found >= 4 || len(candidate) <= 0 || len(candidate) >= 64) {
+                return;
+            }
+            if (!StrStartsWith(candidate, prefix)) return;
+            if (FindFamily(candidate) != nullptr || IsOtherParam(candidate)) {
+                return;
+            }
+            memcpy(siblings[found], candidate.s, (size_t)len(candidate));
+            siblings[found][len(candidate)] = 0;
+            found++;
+        });
+    }
+    if (found == 0) {
+        return fmt("`%s` expects 1 argument, got none", name);
+    }
+    if (found == 1) {
+        return fmt(
+            "`%s` expects 1 argument, got none; the forms without an "
+            "argument are `%s()`",
+            name, Str(siblings[0]));
+    }
+    if (found == 2) {
+        return fmt(
+            "`%s` expects 1 argument, got none; the forms without an "
+            "argument are `%s()`, `%s()`",
+            name, Str(siblings[0]), Str(siblings[1]));
+    }
+    if (found == 3) {
+        return fmt(
+            "`%s` expects 1 argument, got none; the forms without an "
+            "argument are `%s()`, `%s()`, `%s()`",
+            name, Str(siblings[0]), Str(siblings[1]), Str(siblings[2]));
+    }
+    return fmt(
+        "`%s` expects 1 argument, got none; the forms without an "
+        "argument are `%s()`, `%s()`, `%s()`, `%s()`",
+        name, Str(siblings[0]), Str(siblings[1]), Str(siblings[2]),
+        Str(siblings[3]));
+}
+
 } // namespace gpui::shell::style
 
 namespace gpui::shell {
@@ -1663,6 +1716,15 @@ bool ApplyParamStyle(El* element, const SpecOp& op, ShellError* error,
     RemScope scope(remSize);
     const style::Family* family = style::FindFamily(op.name);
     if (!family && !style::IsOtherParam(op.name)) {
+        return false;
+    }
+    // A script that drops the argument passes `undefined`, which crosses the
+    // bridge as nil. Every coercion below would then report a nil with no
+    // method name, so a missing argument is answered here.
+    bool missing =
+        op.argCount <= 0 || !op.args || op.args[0].kind == BridgedKind::Nil;
+    if (missing) {
+        ShellErrorSet(error, style::MissingArgumentTemp(op.name));
         return false;
     }
     Bridged value;

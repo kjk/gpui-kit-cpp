@@ -52,6 +52,8 @@ struct PluginManifest {
     bool clipboardRead = false;
     bool clipboardWrite = false;
     bool exit = false;
+    // capabilities.process.env, names beyond the default process.env list.
+    Vec<Str> env;
     // Opening size, in logical pixels. Absent when the manifest is silent.
     bool hasWindow = false;
     float windowW = 0;
@@ -74,6 +76,8 @@ void PluginManifestSchema(StrBuilder* out);
 // Per-user application storage follows gpui-shell's Rust layout:
 // <data-home>/gpui-shell/apps/<path identity>.
 Str ShellDataHome();
+// HOME, then USERPROFILE on Windows. Empty when neither is an absolute path.
+Str ShellHomeDirectory();
 Str ShellBundleIdForPath(Str root);
 Str ShellAppDataDirectory(Str id, Arena* arena, ShellError* error = nullptr);
 

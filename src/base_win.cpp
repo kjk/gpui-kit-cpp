@@ -208,6 +208,45 @@ bool PlatMakeExecutable(const char* path) {
     return true;
 }
 
+static char* WideToUtf8Alloc(const WCHAR* text, int wlen) {
+    if (!text) return nullptr;
+    if (wlen < 0) wlen = (int)wcslen(text);
+    int bytes = wlen == 0
+                    ? 0
+                    : WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text,
+                                          wlen, nullptr, 0, nullptr, nullptr);
+    if (wlen != 0 && bytes <= 0) return nullptr;
+    char* out = (char*)malloc((size_t)bytes + 1);
+    if (!out) return nullptr;
+    if (bytes > 0) {
+        WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, text, wlen, out,
+                            bytes, nullptr, nullptr);
+    }
+    out[bytes] = 0;
+    return out;
+}
+
+bool PlatVisitEnv(void (*visit)(Str name, Str value, void* user), void* user) {
+    if (!visit) return false;
+    LPWCH block = GetEnvironmentStringsW();
+    if (!block) return false;
+    for (WCHAR* at = block; *at;) {
+        int n = (int)wcslen(at);
+        WCHAR* eq = wcschr(at, L'=');
+        // `=C:=C:\` is a hidden drive mapping, not a variable.
+        if (eq && eq != at && at[0] != L'=') {
+            char* name = WideToUtf8Alloc(at, (int)(eq - at));
+            char* value = WideToUtf8Alloc(eq + 1, -1);
+            if (name && value && name[0]) visit(Str(name), Str(value), user);
+            free(name);
+            free(value);
+        }
+        at += n + 1;
+    }
+    FreeEnvironmentStringsW(block);
+    return true;
+}
+
 int PlatListDir(const char* dir, DirEntry* out, int max) {
     if (!dir || !out || max <= 0) {
         return 0;

@@ -120,6 +120,14 @@ void* EntityGet(App* app, EntityId id) {
     return s.ptr;
 }
 
+bool EntityHasDrop(App* app, EntityId id, DropFn drop) {
+    if (!app || !drop || !id.IsValid() || id.index >= app->entities.len) {
+        return false;
+    }
+    EntitySlot& s = app->entities[id.index];
+    return s.gen == id.gen && s.ptr && s.drop == drop;
+}
+
 void EntityDrop(App* app, EntityId id) {
     if (!app || !id.IsValid() || id.index >= app->entities.len) {
         return;

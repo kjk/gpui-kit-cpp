@@ -608,9 +608,18 @@ Str FrozenComponentRegistry::JavaScriptModuleSource(Str stateProof) const {
                                       Str(method.name)));
             source.Append(StrL("](__stateProof, handle, args),"));
         }
+        if (state->inputEvents) {
+            source.Append(
+                StrL("on:(event,handler)=>globalThis.__component_input_on("
+                     "__stateProof,handle,event,handler),"));
+        }
         source
             .Append(StrL("}); __stateHandles.set(value, handle); return "
-                         "value; }\nexport { "));
+                         "value; }\n"));
+        source.Append(Str(state->exportName));
+        source.Append(StrL(".new = "));
+        source.Append(Str(state->exportName));
+        source.Append(StrL(";\nexport { "));
         source.Append(Str(state->exportName));
         source.Append(StrL(" };\n"));
     }
@@ -624,7 +633,11 @@ Str FrozenComponentRegistry::JavaScriptModuleSource(Str stateProof) const {
                              "globalThis.__gpui.__element(globalThis.__gpui_"
                              "components["));
             AppendQuoted(&source, Str(constructor.exportName));
-            source.Append(StrL("](args.map(__unwrapState))); }\nexport { "));
+            source.Append(StrL("](args.map(__unwrapState))); }\n"));
+            source.Append(Str(constructor.exportName));
+            source.Append(StrL(".new = "));
+            source.Append(Str(constructor.exportName));
+            source.Append(StrL(";\nexport { "));
             source.Append(Str(constructor.exportName));
             source.Append(StrL(" };\n"));
         }
@@ -728,6 +741,13 @@ void AppendComponentDeclarations(StrBuilder* out,
     out
         ->Append(StrL("  import { ClickEvent, Context, Element, NativeElement "
                       "} from \"gpui-kit\";\n"));
+    bool inputEvents = false;
+    for (int i = 0; components && i < components->StateCount(); i++) {
+        if (components->State(i)->inputEvents) inputEvents = true;
+    }
+    if (inputEvents) {
+        out->Append(StrL("  import { InputEvent } from \"gpui-base\";\n"));
+    }
     out->Append(inlineTokenTypes);
     for (int i = 0; components && i < components->StateCount(); i++) {
         const StateDescriptor* state = components->State(i);
@@ -740,15 +760,28 @@ void AppendComponentDeclarations(StrBuilder* out,
             out->Append(S(method.name));
             out->Append(S(method.signature));
         }
+        if (state->inputEvents) {
+            out->Append(StrL(
+                ";\n    /** `change`, `submit` (Enter), `focus` or `blur`, "
+                "as on `gpui-base`'s `InputState`. */\n"
+                "    on(event: \"change\" | \"submit\" | \"focus\" | "
+                "\"blur\", handler: (event: InputEvent, cx: Context) => "
+                "void): boolean"));
+        }
         out->Append(StrL(" }\n"));
         AppendJsdoc(out, state->documentation, nullptr, "  ");
-        out->Append(StrL("  export function "));
+        // State.new is the form gpui-base uses; the plain call is kept.
+        out->Append(StrL("  export const "));
         out->Append(S(state->exportName));
-        out->AppendChar('(');
+        out->Append(StrL(": { ("));
         AppendArguments(out, state->arguments);
         out->Append(StrL("): "));
         out->Append(S(state->kind));
-        out->Append(StrL(";\n"));
+        out->Append(StrL("; new: ("));
+        AppendArguments(out, state->arguments);
+        out->Append(StrL(") => "));
+        out->Append(S(state->kind));
+        out->Append(StrL(" };\n"));
     }
     for (int i = 0; components && i < components->DescriptorCount(); i++) {
         const ComponentDescriptor* d = components->Descriptor((uint32_t)i);
@@ -815,9 +848,14 @@ void AppendComponentDeclarations(StrBuilder* out,
                         "  ");
             out->Append(StrL("  export const "));
             out->Append(S(constructor.exportName));
+            // Type.new is the form gpui-base uses; new Type is kept.
             out->Append(StrL(": { new("));
             AppendArguments(out, constructor.arguments);
             out->Append(StrL("): "));
+            out->Append(S(d->name));
+            out->Append(StrL("Element; new: ("));
+            AppendArguments(out, constructor.arguments);
+            out->Append(StrL(") => "));
             out->Append(S(d->name));
             out->Append(StrL("Element };\n"));
         }

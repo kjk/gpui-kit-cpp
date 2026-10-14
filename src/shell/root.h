@@ -154,9 +154,10 @@ struct ShellRoot {
                              int64_t key);
 };
 
-// ShellRoot::update: the root of the window a call is happening in, which is
-// the window's first view. Null when that is not a ShellRoot, which is a host
-// wiring mistake rather than a script error.
+// ShellRoot::find: the root of the window a call is happening in. That is
+// the window's first view, or the view directly inside a Base Root. Null
+// when the window has no ShellRoot — still being opened, or opened with
+// another root — which is a host wiring fact rather than a script error.
 ShellRoot* ShellRootOf(Window* window, App* app);
 
 // Opens a dialog on top of the stack. The root takes ownership of `content`

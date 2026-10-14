@@ -132,7 +132,8 @@ static constexpr shell::StateDescriptor kState = {
     kStateArgs,
     "Retained multi-line editing state with an optional initial value.",
     &NewTextareaState,
-    shell::kTextareaTokenStateMethods};
+    shell::kTextareaTokenStateMethods,
+    true};
 
 static constexpr ArgumentDescriptor kConstructorArgs[] = {
     {"state", SchemaEntity("TextareaState")}};

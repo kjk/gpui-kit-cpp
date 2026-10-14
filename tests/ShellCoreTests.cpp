@@ -3012,6 +3012,12 @@ static void ShellFilesystemUsesGrantedHandleRelativePaths() {
     utassert(StrContains(unavailableError, StrL("unavailable in a browser")));
     unavailable.Free();
     StrFree(unavailableError);
+    unavailableError = {};
+    utassert(!FsRename(StrL("application"), StrL("note.txt"),
+                       StrL("application"), StrL("renamed.txt"),
+                       &unavailableError));
+    utassert(StrContains(unavailableError, StrL("unavailable in a browser")));
+    StrFree(unavailableError);
     return;
 #endif
     const char* rootName = "shell_fs_test_root";
@@ -3040,8 +3046,21 @@ static void ShellFilesystemUsesGrantedHandleRelativePaths() {
                    StrL("nested/child/note.txt"), {}, false, &result,
                    &fsError) &&
              result.exists);
-    utassert(FsRun(FsOperation::RemoveFile, Str(rootName),
+    utassert(FsRun(FsOperation::Stat, Str(rootName),
                    StrL("nested/child/note.txt"), {}, false, &result,
+                   &fsError));
+    utassert(result.hasStats && result.isFile && !result.isDirectory &&
+             !result.isSymbolicLink && result.size == 5);
+    utassert(FsRename(Str(rootName), StrL("nested/child/note.txt"),
+                      Str(rootName), StrL("nested/child/renamed.txt"),
+                      &fsError));
+    utassert(!fsError);
+    utassert(FsRun(FsOperation::Exists, Str(rootName),
+                   StrL("nested/child/renamed.txt"), {}, false, &result,
+                   &fsError) &&
+             result.exists);
+    utassert(FsRun(FsOperation::RemoveFile, Str(rootName),
+                   StrL("nested/child/renamed.txt"), {}, false, &result,
                    &fsError));
     utassert(FsRun(FsOperation::RemoveDirectory, Str(rootName),
                    StrL("nested/child"), {}, false, &result, &fsError));
@@ -3616,10 +3635,19 @@ static void ShellFetchChecksEveryGetTargetBeforeContact() {
     StrFree(posted.url);
     posted.url = StrDup(StrL("https://api.example.test/start"));
     utassert(FetchSend(posted, initialOnly, &result));
+    // The body's Content-Type does not follow a 303. The default
+    // User-Agent is added on the wire for the GET, and it is not a
+    // caller header the redirect policy kept.
+    StrBuilder wantHeaders;
+    wantHeaders.Append(StrL("User-Agent:gpui-shell/"));
+    wantHeaders.Append(Str(kShellVersion));
+    wantHeaders.AppendChar(';');
+    Str want = wantHeaders.TakeStr();
     utassert(!result.error && result.status == 200 &&
              StrEq(result.body, StrL("after")) && gShellFetchCalls == 2 &&
              StrEq(gShellFetchMethod, StrL("GET")) &&
-             len(gShellFetchBody) == 0 && len(gShellFetchHeaders) == 0);
+             len(gShellFetchBody) == 0 && StrEq(gShellFetchHeaders, want));
+    StrFree(want);
     result.Free();
     posted.Free();
     request.Free();
@@ -3969,7 +3997,28 @@ static void ShellPluginManifestsDiscoverAuthorizeAndUnload() {
              "js\",\"capabilities\":{\"fs\":{\"read\":[\"${otherDir}\"]}}}"),
         &badPlaceholder, &error));
     utassert(StrContains(error.message, StrL("unknown placeholder")));
+    utassert(StrContains(error.message, StrL("${homeDir}")));
     ShellErrorClear(&error);
+    PluginManifest homeSpelling;
+    utassert(!PluginManifestParse(
+        StrL("{\"id\":\"com.example.bad\",\"name\":\"Bad\",\"entry\":\"main."
+             "js\",\"capabilities\":{\"fs\":{\"read\":[\"$HOME/notes\"]}}}"),
+        &homeSpelling, &error));
+    utassert(StrContains(error.message, StrL("is not expanded")) &&
+             StrContains(error.message, StrL("${homeDir}")));
+    ShellErrorClear(&error);
+    PluginManifest tildeName;
+    utassert(PluginManifestParse(
+        StrL("{\"id\":\"com.example.notes\",\"name\":\"Notes\",\"entry\":"
+             "\"main.js\",\"capabilities\":{\"fs\":{\"read\":[\"~notes\"]},"
+             "\"process\":{\"env\":[\"my_app_mode\"]}}}"),
+        &tildeName, &error));
+    utassert(!error.IsSet());
+    Capabilities tildeGrant =
+        tildeName.Grant(StrL("plugin-root"), StrL("data-root"));
+    utassert(tildeGrant.MayShowEnvVariable(StrL("MY_APP_MODE")));
+    utassert(tildeGrant.MayShowEnvVariable(StrL("editor")));
+    utassert(!tildeGrant.MayShowEnvVariable(StrL("GITHUB_TOKEN")));
     PluginManifest future;
     utassert(!PluginManifestParse(
         StrL("{\"id\":\"com.example.future\",\"name\":\"Future\",\"shell-"
@@ -4872,6 +4921,152 @@ static void VirtualListRowsReportASecondaryPress() {
     AppGlobalClear(&app);
 }
 
+static bool EnvNameCharset(Str name) {
+    if (!name) return false;
+    for (int i = 0; i < len(name); i++) {
+        unsigned char c = (unsigned char)name.s[i];
+        bool ok = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+                  c == '_' || c == '(' || c == ')';
+        if (!ok) return false;
+    }
+    return true;
+}
+
+static void ShellDefaultEnvironmentStaysPlain() {
+    static const char* secrets[] = {
+        "TOKEN", "SECRET", "PASSWORD", "PASSWD",     "CREDENTIAL",
+        "KEY",   "AUTH",   "COOKIE",   "SESSION_ID", "BUS_ADDRESS",
+    };
+    int count = ShellDefaultEnvNameCount();
+    utassert(count > 0);
+    bool sawHome = false;
+    for (int i = 0; i < count; i++) {
+        Str name = Str(ShellDefaultEnvName(i));
+        utassert(EnvNameCharset(name));
+        if (StrEq(name, StrL("HOME"))) sawHome = true;
+        for (int j = 0; j < i; j++) {
+            utassert(!StrEq(name, Str(ShellDefaultEnvName(j))));
+        }
+        for (const char* secret : secrets) {
+            utassert(!StrContains(name, Str(secret)));
+        }
+    }
+    utassert(sawHome);
+    Capabilities granted;
+    granted.AddEnvVariable(StrL("my_app_mode"));
+    utassert(granted.MayShowEnvVariable(StrL("HTTP_PROXY")));
+    utassert(granted.MayShowEnvVariable(StrL("http_proxy")));
+    utassert(granted.MayShowEnvVariable(StrL("MY_APP_MODE")));
+    utassert(granted.MayShowEnvVariable(StrL("editor")));
+    utassert(!granted.MayShowEnvVariable(StrL("GITHUB_TOKEN")));
+}
+
+// text_encoder_and_decoder_follow_the_encoding_standard, plus the
+// process/os surface that checkin adds. The script stays ASCII; the
+// Unicode is written as JS escapes.
+static void ShellTextCodingAndProcessSurface() {
+    App app;
+    Window window;
+    window.app = &app;
+    component::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    Str source = StrL(
+        "import { div, View } from 'gpui-kit';\n"
+        "import { homedir } from 'os';\n"
+        "import { env } from 'process';\n"
+        "function codes(text) {\n"
+        "  const out = [];\n"
+        "  for (let i = 0; i < text.length; i++) "
+        "out.push(text.charCodeAt(i));\n"
+        "  return out.join(',');\n"
+        "}\n"
+        "export default class Probe extends View {\n"
+        "  render() {\n"
+        "    const encoder = new TextEncoder();\n"
+        "    const bytes = encoder.encode('A\\u{1F600}');\n"
+        "    if (encoder.encoding !== 'utf-8') throw new Error('encoding');\n"
+        "    if ([...bytes].join(',') !== '65,240,159,152,128')\n"
+        "      throw new Error('encode ' + [...bytes].join(','));\n"
+        "    const back = new TextDecoder().decode(bytes);\n"
+        "    if (codes(back) !== '65,55357,56832')\n"
+        "      throw new Error('round ' + codes(back));\n"
+        "    const bad = new TextDecoder().decode(new Uint8Array([0xff]));\n"
+        "    if (bad.length !== 1 || bad.charCodeAt(0) !== 0xFFFD)\n"
+        "      throw new Error('fffd ' + codes(bad));\n"
+        "    if (typeof env !== 'object' || env === null) throw new "
+        "Error('env');\n"
+        "    if (typeof homedir !== 'function') throw new Error('homedir');\n"
+        "    let fatal = 'accepted';\n"
+        "    try {\n"
+        "      new TextDecoder('utf-8', { fatal: true }).decode(new "
+        "Uint8Array([0xff]));\n"
+        "    } catch (error) {\n"
+        "      fatal = error instanceof TypeError ? 'TypeError' : 'other';\n"
+        "    }\n"
+        "    if (fatal !== 'TypeError') throw new Error('fatal ' + fatal);\n"
+        "    let label = 'accepted';\n"
+        "    try { new TextDecoder('latin1'); }\n"
+        "    catch (error) {\n"
+        "      label = error instanceof RangeError ? 'RangeError' : 'other';\n"
+        "    }\n"
+        "    if (label !== 'RangeError') throw new Error('label ' + label);\n"
+        "    const target = new Uint8Array(4);\n"
+        "    const into = encoder.encodeInto('a\\u4e2d\\u4e2d', target);\n"
+        "    if (into.read !== 2 || into.written !== 4)\n"
+        "      throw new Error('into ' + into.read + ':' + into.written);\n"
+        "    if ([...target].join(',') !== '97,228,184,173')\n"
+        "      throw new Error('dest ' + [...target].join(','));\n"
+        "    const lone = [...encoder.encode('\\ud800')].join(',');\n"
+        "    if (lone !== '239,191,189') throw new Error('lone ' + lone);\n"
+        "    const bom = new Uint8Array([0xef, 0xbb, 0xbf, 0x61]);\n"
+        "    if (new TextDecoder().decode(bom).length !== 1) throw new "
+        "Error('bom');\n"
+        "    if (new TextDecoder('utf-8', { ignoreBOM: true "
+        "}).decode(bom).length !== 2)\n"
+        "      throw new Error('ignore');\n"
+        "    const view = new DataView(bytes.buffer, bytes.byteOffset, 1);\n"
+        "    if (new TextDecoder().decode(view) !== 'A') throw new "
+        "Error('view');\n"
+        "    const full = encoder.encode('h\\u00e9\\u4e2d\\u{1F600}');\n"
+        "    const streamed = new TextDecoder('utf8');\n"
+        "    const a = streamed.decode(full.subarray(0, 4), { stream: true "
+        "});\n"
+        "    const b = streamed.decode(full.subarray(4, 9), { stream: true "
+        "});\n"
+        "    const c = streamed.decode(full.subarray(9));\n"
+        "    if (codes(a) !== '104,233') throw new Error('sa ' + codes(a));\n"
+        "    if (codes(b) !== '20013') throw new Error('sb ' + codes(b));\n"
+        "    if (codes(c) !== '55357,56832') throw new Error('sc ' + "
+        "codes(c));\n"
+        "    return div().child('coded');\n"
+        "  }\n"
+        "}\n");
+    ViewType* type =
+        runtime ? runtime->LoadSource(StrL("text-coding.js"), source, &error)
+                : nullptr;
+    ViewObject* object =
+        type && runtime
+            ? runtime->Instantiate(type, &window, &app, nullptr, &error)
+            : nullptr;
+    Arena* output = ArenaNew();
+    Str rendered = object && runtime
+                       ? runtime->RenderToSpec(output, object, &window, &app,
+                                               {}, nullptr, &error)
+                       : Str{};
+    if (error.IsSet()) {
+        fprintf(stderr, "text-coding: %.*s\n", len(error.message),
+                error.message.s ? error.message.s : "");
+    }
+    utassert(!error.IsSet() && StrContains(rendered, StrL("coded")));
+    ViewObjectRelease(object);
+    ViewTypeRelease(type);
+    ArenaDelete(output);
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
 void TestShellCore() {
     TestSuite("shell_core");
     BridgedValuesMatchJavaScriptConversions();
@@ -4942,4 +5137,6 @@ void TestShellCore() {
     ShellAccessibilityRolesMirrorUpstream();
     ShellDockPanelsPersistAndChromeRunsInLayoutScope();
     ShellPluginManifestsDiscoverAuthorizeAndUnload();
+    ShellDefaultEnvironmentStaysPlain();
+    ShellTextCodingAndProcessSurface();
 }

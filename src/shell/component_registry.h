@@ -314,6 +314,9 @@ struct StateDescriptor {
     const char* documentation = nullptr;
     StateFactory factory = nullptr;
     Slice<StateMethodDescriptor> methods = {};
+    // `on(event, handler)` for change, submit, focus and blur, the same
+    // events a gpui-base InputState takes. Omitted initializers stay false.
+    bool inputEvents = false;
 };
 
 enum class RegistryErrorKind : uint8_t {

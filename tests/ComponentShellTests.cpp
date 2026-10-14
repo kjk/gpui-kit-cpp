@@ -577,13 +577,16 @@ void RuntimeTypingsIncludeLeafExportsAndMethods() {
                                        Str{});
     Str declarations = out.TakeStr();
     const char* expected[] = {
-        "export const Spinner: { new(): SpinnerElement };",
+        "export const Spinner: { new(): SpinnerElement; new: () => "
+        "SpinnerElement };",
         ("size(size: \"xsmall\" | \"small\" | \"medium\" | \"large\"): "
          "SpinnerElement;"),
-        "export const VerticalDashedSeparator: { new(): SeparatorElement };",
+        "export const VerticalDashedSeparator: { new(): SeparatorElement; "
+        "new: () => SeparatorElement };",
         "label(label: string): SeparatorElement;",
         "secondary(): SkeletonElement;",
-        "export const Skeleton: { new(): SkeletonElement };",
+        "export const Skeleton: { new(): SkeletonElement; new: () => "
+        "SkeletonElement };",
     };
     for (const char* line : expected) {
         utassert(StrContains(declarations, Str(line)));
@@ -606,10 +609,15 @@ Str OneDeclaration(const ComponentDescriptor* descriptor,
     StrBuilder out;
     shell::AppendComponentDeclarations(&out, &frozen, Str{});
     Str text = out.TakeStr();
-    // Past `declare module ...` and its import line, and before `}\n\n`.
+    // Past the module line and every import line, and before `}\n\n`.
+    // A state with input events adds `import { InputEvent }`.
     int at = 0;
-    for (int lines = 0; lines < 2 && at < len(text); at++) {
-        if (text.s[at] == '\n') lines++;
+    while (at < len(text) && text.s[at] != '\n') at++;
+    if (at < len(text)) at++;
+    while (at < len(text) &&
+           StrStartsWith(Str(text.s + at, len(text) - at), StrL("  import "))) {
+        while (at < len(text) && text.s[at] != '\n') at++;
+        if (at < len(text)) at++;
     }
     Str body = StrDup(Str(text.s + at, len(text) - at - 3));
     StrFree(text);
@@ -7565,13 +7573,16 @@ void TheCatalogOpensAWindowItsOverlaysCanFind() {
     component_shell::MountWindowRoot(&app, &window, &BuildOpenerShellRoot,
                                      nullptr);
     utassert(Root::Read(&window) != nullptr);
-    // The ShellRoot keeps rendering inside it, but it is not the window's
-    // first view, so `window.root::<ShellRoot>()` -- ShellRootOf -- does not
-    // find it there, as in Rust.
+    // The ShellRoot renders inside the catalog Root. ShellRoot::find reaches
+    // that inner view, so a CLI window's overlays and tooltips find it.
     Arena* frame = ArenaNew();
     window.frameArena = frame;
     utassert(EntityRender(&app, &window, frame, window.root) != nullptr);
-    utassert(ShellRootOf(&window, &app) == nullptr);
+    Root* outer = Root::Read(&window);
+    ShellRoot* shell = ShellRootOf(&window, &app);
+    utassert(outer && shell);
+    utassert(Entity<ShellRoot>{outer->View()}.Get(&app) == shell);
+    utassert(!EntityHasDrop(&app, window.root, &EntityDropT<ShellRoot>));
     EntityDropAll(&app);
     ArenaDelete(frame);
     AppGlobalClear(&app);

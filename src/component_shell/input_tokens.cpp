@@ -121,12 +121,16 @@ struct InputChangeFanout {
     // to render in a new frame starts it over, so a component no longer
     // rendered is no longer told.
     uint64_t frame = 0;
+    // The TextStateEntity's input. Script `on(...)` subscriptions listen
+    // here because this fanout is the state's only onChange.
+    InputState* state = nullptr;
     static constexpr int kCap = 16;
     Listener relays[kCap];
     int count = 0;
 
     static void OnChange(InputChangeFanout* self, Ctx* cx,
                          const InputEvent* event) {
+        if (self) shell::TextStateNotify(self->state, event, cx);
         // The relays are copied first: a script reacting to the change may
         // render, which rebuilds the list under the loop.
         Listener relays[kCap];
@@ -168,6 +172,7 @@ void SubscribeChange(Ctx* cx, InputState* state, uint64_t handle, Str key,
         }
         fanout->frame = frame;
         fanout->count = 0;
+        fanout->state = state;
         state->onChange = ListenTo(owner, &InputChangeFanout::OnChange);
     }
     bool known = false;

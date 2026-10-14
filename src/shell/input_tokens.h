@@ -18,8 +18,18 @@ namespace gpui::shell {
 
 // What an adapter's InputState / TextareaState factory builds, through
 // StateBuild::New<TextStateEntity>().
+struct TextStateSubscription {
+    InputEventKind kind = InputEventKind::Change;
+    CallbackId id = 0;
+};
+
 struct TextStateEntity {
     App* app = nullptr;
+    // Set on the first `on(...)`. The destructor retires subscriptions
+    // through it; a runtime that has already cleared its callbacks makes
+    // that a no-op.
+    ShellRuntime* runtime = nullptr;
+    Vec<TextStateSubscription> subs;
     InputState input;
 
     TextStateEntity() = default;
@@ -27,6 +37,11 @@ struct TextStateEntity {
     TextStateEntity& operator=(const TextStateEntity&) = delete;
     ~TextStateEntity();
 };
+
+// The component fanout's change listener is also the state's only
+// listener, so focus, blur and submit arrive here too. `state` is the
+// `input` member of a TextStateEntity.
+void TextStateNotify(InputState* state, const InputEvent* event, Ctx* cx);
 
 // Starts a new text state: its focus handle, and for a textarea the
 // multi-line mode. `placeholder` and `value` may be empty.

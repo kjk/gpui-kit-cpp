@@ -11,6 +11,7 @@
 #include "shell/fetch.h"
 #include "shell/filesystem.h"
 #include "shell/host_modules.h"
+#include "shell/input_tokens.h"
 #include "shell/materialize.h"
 #include "shell/process.h"
 #include "shell/retained.h"
@@ -558,6 +559,8 @@ struct FsJob {
     ShellJobHeader head;
     shell::FsOperation operation = shell::FsOperation::Read;
     CapabilityPath path;
+    // Rename's destination. Unused by the one-path operations.
+    CapabilityPath dest;
     Str input;
     shell::FsResult result;
     Str error;
@@ -567,6 +570,7 @@ struct FsJob {
 
     void Free() {
         path.Free();
+        dest.Free();
         StrFree(input);
         result.Free();
         StrFree(error);
@@ -914,6 +918,11 @@ static Task ShellProcessTask(TaskGuard guard, ProcessJob* job) {
 }
 
 static void FsJobWork(FsJob* job) {
+    if (job->operation == shell::FsOperation::Rename) {
+        shell::FsRename(job->path.root, job->path.relative, job->dest.root,
+                        job->dest.relative, &job->error);
+        return;
+    }
     shell::FsRun(job->operation, job->path.root, job->path.relative, job->input,
                  job->recursive, &job->result, &job->error);
 }
@@ -936,6 +945,33 @@ static JSValue FsJobValue(JSContext* context, FsJob* job) {
     }
     if (job->operation == shell::FsOperation::Exists) {
         return JS_NewBool(context, job->result.exists);
+    }
+    if (job->operation == shell::FsOperation::ReadLink) {
+        return JS_NewStringLen(context,
+                               job->result.bytes.s ? job->result.bytes.s : "",
+                               (size_t)job->result.bytes.len);
+    }
+    if (job->operation == shell::FsOperation::Stat ||
+        job->operation == shell::FsOperation::Lstat) {
+        JSValue global = JS_GetGlobalObject(context);
+        JSValue make = JS_GetPropertyStr(context, global, "__shell_fs_stats");
+        JSValue args[8] = {
+            JS_NewBool(context, job->result.isFile),
+            JS_NewBool(context, job->result.isDirectory),
+            JS_NewBool(context, job->result.isSymbolicLink),
+            JS_NewFloat64(context, (double)job->result.size),
+            JS_NewInt32(context, (int32_t)job->result.mode),
+            JS_NewFloat64(context, job->result.mtimeMs),
+            JS_NewFloat64(context, job->result.atimeMs),
+            JS_NewFloat64(context, job->result.birthtimeMs),
+        };
+        JSValue value = JS_IsException(make)
+                            ? JS_EXCEPTION
+                            : JS_Call(context, make, JS_UNDEFINED, 8, args);
+        for (int i = 0; i < 8; i++) JS_FreeValue(context, args[i]);
+        JS_FreeValue(context, make);
+        JS_FreeValue(context, global);
+        return value;
     }
     if (job->operation != shell::FsOperation::ReadDirectory) {
         return JS_UNDEFINED;
@@ -992,17 +1028,21 @@ static Task ShellFsTask(TaskGuard guard, FsJob* job) {
 static JSValue FetchJobValue(JSContext* context, ShellFetchJob* job) {
     JSValue global = JS_GetGlobalObject(context);
     JSValue make = JS_GetPropertyStr(context, global, "__shell_fetch_response");
-    JSValue args[3] = {
+    JSValue args[4] = {
         JS_NewInt32(context, job->result.status),
         JS_NewStringLen(context, job->result.url.s ? job->result.url.s : "",
                         (size_t)len(job->result.url)),
         JS_NewStringLen(context, job->result.body.s ? job->result.body.s : "",
                         (size_t)len(job->result.body)),
+        JS_NewUint8ArrayCopy(
+            context,
+            (const uint8_t*)(job->result.body.s ? job->result.body.s : ""),
+            (size_t)len(job->result.body)),
     };
     JSValue value = JS_IsException(make)
                         ? JS_EXCEPTION
-                        : JS_Call(context, make, JS_UNDEFINED, 3, args);
-    for (int i = 0; i < 3; i++) JS_FreeValue(context, args[i]);
+                        : JS_Call(context, make, JS_UNDEFINED, 4, args);
+    for (int i = 0; i < 4; i++) JS_FreeValue(context, args[i]);
     JS_FreeValue(context, make);
     JS_FreeValue(context, global);
     return value;
@@ -1314,16 +1354,17 @@ static const char* const kConsoleExports[] = {"default"};
 static const char* const kCryptoExports[] = {
     "default",         "createHash", "randomBytes", "randomUUID",
     "getRandomValues", "crypto",     "webcrypto"};
-static const char* const kFsExports[] = {"default", "readFile", "writeFile",
-                                         "readdir", "exists",   "unlink",
-                                         "rmdir",   "mkdir"};
-static const char* const kOsExports[] = {"default", "platform", "arch", "EOL"};
+static const char* const kFsExports[] = {
+    "default", "readFile", "writeFile", "readdir", "exists", "unlink",
+    "rmdir",   "mkdir",    "stat",      "lstat",   "rename", "readlink"};
+static const char* const kOsExports[] = {"default", "platform", "arch", "EOL",
+                                         "homedir"};
 static const char* const kPathExports[] = {
     "default", "sep",        "delimiter", "basename",  "dirname",
     "extname", "isAbsolute", "join",      "normalize", "relative",
     "resolve", "parse",      "format"};
-static const char* const kProcessExports[] = {"default", "run",      "nextTick",
-                                              "exit",    "platform", "arch"};
+static const char* const kProcessExports[] = {
+    "default", "run", "nextTick", "exit", "platform", "arch", "env", "dataDir"};
 static const char* const kUrlExports[] = {"default", "URL", "URLSearchParams",
                                           "fileURLToPath", "pathToFileURL"};
 static const char* const kZlibExports[] = {
@@ -1719,6 +1760,66 @@ static JSModuleDef* LoadHostModule(JSContext* ctx, Str name) {
     return definition;
 }
 
+static bool PathIsAbsolute(Str path) {
+    if (!path.s || len(path) == 0) return false;
+    if (path.s[0] == '/' || path.s[0] == '\\') return true;
+    if (len(path) >= 3 && path.s[1] == ':' &&
+        ((path.s[0] >= 'A' && path.s[0] <= 'Z') ||
+         (path.s[0] >= 'a' && path.s[0] <= 'z')) &&
+        (path.s[2] == '/' || path.s[2] == '\\'))
+        return true;
+    return false;
+}
+
+static bool UrlUnreserved(unsigned char byte) {
+    return (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') ||
+           (byte >= '0' && byte <= '9') || byte == '-' || byte == '.' ||
+           byte == '_' || byte == '~' || byte == '/' || byte == ':';
+}
+
+// file: URL for an absolute path. The generation tag is already gone.
+// Windows strips a `\\?\` prefix and turns backslashes into slashes.
+static Str FileUrlFromPath(Str path) {
+    StrBuilder out;
+    out.Append(StrL("file://"));
+    const char* text = path.s;
+    int n = len(path);
+    if (base::PlatIsWindows() && n >= 4 && text[0] == '\\' && text[1] == '\\' &&
+        text[2] == '?' && text[3] == '\\') {
+        text += 4;
+        n -= 4;
+    }
+    bool slash = n > 0 && (text[0] == '/' || text[0] == '\\');
+    if (!slash) out.AppendChar('/');
+    for (int i = 0; i < n; i++) {
+        unsigned char byte = (unsigned char)text[i];
+        if (base::PlatIsWindows() && byte == '\\') byte = '/';
+        if (UrlUnreserved(byte)) {
+            out.AppendChar((char)byte);
+        } else {
+            char hex[4];
+            snprintf(hex, sizeof(hex), "%%%02X", byte);
+            out.Append(Str(hex));
+        }
+    }
+    return out.TakeStr();
+}
+
+static void SetFileImportMeta(JSContext* ctx, JSModuleDef* module, Str tagged) {
+    if (!ctx || !module) return;
+    TempStr path = UntagTemp(tagged);
+    if (!PathIsAbsolute(path)) return;
+    Str url = FileUrlFromPath(path);
+    if (!url.s) return;
+    JSValue meta = JS_GetImportMeta(ctx, module);
+    if (!JS_IsException(meta)) {
+        JS_SetPropertyStr(ctx, meta, "url",
+                          JS_NewStringLen(ctx, url.s, (size_t)len(url)));
+        JS_FreeValue(ctx, meta);
+    }
+    StrFree(url);
+}
+
 static JSModuleDef* ModuleLoad(JSContext* ctx, const char* name, void* opaque) {
     Str moduleName = Str(name);
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)opaque;
@@ -1767,6 +1868,7 @@ static JSModuleDef* ModuleLoad(JSContext* ctx, const char* name, void* opaque) {
                             JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
     if (JS_IsException(value)) return nullptr;
     JSModuleDef* module = (JSModuleDef*)JS_VALUE_GET_PTR(value);
+    SetFileImportMeta(ctx, module, moduleName);
     JS_FreeValue(ctx, value);
     return module;
 }
@@ -2116,6 +2218,9 @@ static bool IsCallbackMethod(Str name) {
         "on_item_secondary_click\0on_change\0"
         "on_open_change\0on_confirm\0on_dismiss\0on_step\0on_resize\0"
         "on_key_down\0on_key_up\0on_mouse_down_out\0on_scroll_wheel\0"
+        // The name is accepted so a script can pass the handler. There is
+        // no PinchEvent, and materialize does not bind one, so it never runs.
+        "on_pinch\0"
         "on_link_click\0token\0on_token_click\0on_token_hover\0"
         // A dock's chrome handlers. They are callbacks like any other; what
         // makes them different is that they are asked from inside the frame
@@ -2752,14 +2857,33 @@ static bool ValidateComponentValue(ComponentArgumentScope* scope,
         case shell::SchemaKind::Entity: {
             // A registered state, by the wrapper the catalog module unwrapped
             // into its handle and this runtime's proof. A gpui-base entity
-            // (`{ __handle }`) is refused: the component states are a store
-            // of their own, and no registered kind lives in the other one.
+            // (`{ __handle }`) of a kind the catalog also has is refused by
+            // name: the two stores are not the same table.
             double handle = 0;
-            if (!JS_IsObject(value) || JS_IsFunction(ctx, value) ||
-                !JsObjectNumber(ctx, value, "__componentStateHandle",
-                                &handle) ||
-                handle < 0)
-                return ThrowExpects(scope, name, schema);
+            bool object = JS_IsObject(value) && !JS_IsFunction(ctx, value);
+            bool componentHandle =
+                object &&
+                JsObjectNumber(ctx, value, "__componentStateHandle", &handle) &&
+                handle >= 0;
+            if (!componentHandle && object && scope->impl->components &&
+                scope->impl->components->StateOfKind(Str(schema.text))) {
+                double baseHandle = 0;
+                if (JsObjectNumber(ctx, value, "__handle", &baseHandle)) {
+                    const char* module = scope->impl->components
+                                             ->ModuleSpecifier();
+                    if (!module) module = "";
+                    JS_ThrowTypeError(
+                        ctx,
+                        "%s(%s) expects the %s from \"%s\", created with "
+                        "%s.new(...) imported from \"%s\"; this one is "
+                        "gpui-base's",
+                        scope->api ? scope->api : "component", name,
+                        schema.text ? schema.text : "", module,
+                        schema.text ? schema.text : "", module);
+                    return false;
+                }
+            }
+            if (!componentHandle) return ThrowExpects(scope, name, schema);
             JSValue proofValue =
                 JS_GetPropertyStr(ctx, value, "__componentStateProof");
             Str proof;
@@ -4124,8 +4248,10 @@ static bool OverlayHost(JSContext* ctx, const char* api,
     if (!ShellRootOf(host.GetWindow(), host.GetApp())) {
         JS_ThrowTypeError(
             ctx,
-            "%s needs a ShellRoot as the window's first view; this window "
-            "was opened with another view",
+            "%s found no ShellRoot in this window. A view's init() runs "
+            "before its window has one, so open overlays from an event "
+            "handler or a task; otherwise the host opened the window with "
+            "another root view",
             api);
         return false;
     }
@@ -7593,20 +7719,585 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
     return promise;
 }
 
+static void AppendFffd(StrBuilder* out) {
+    out->Append(StrL("\xEF\xBF\xBD"));
+}
+
+// WHATWG UTF-8 decoder: one U+FFFD per maximal invalid subpart. A sequence
+// still open at the end is one replacement. Fatal mode refuses any of that.
+static bool DecodeUtf8(StrBuilder* out, const uint8_t* bytes, int count,
+                       bool fatal) {
+    int i = 0;
+    while (i < count) {
+        uint8_t lead = bytes[i];
+        if (lead <= 0x7F) {
+            out->AppendChar((char)lead);
+            i++;
+            continue;
+        }
+        int need = 0;
+        unsigned lo = 0x80;
+        unsigned hi = 0xBF;
+        if (lead >= 0xC2 && lead <= 0xDF)
+            need = 2;
+        else if (lead == 0xE0) {
+            need = 3;
+            lo = 0xA0;
+        } else if ((lead >= 0xE1 && lead <= 0xEC) || lead == 0xEE ||
+                   lead == 0xEF)
+            need = 3;
+        else if (lead == 0xED) {
+            need = 3;
+            hi = 0x9F;
+        } else if (lead == 0xF0) {
+            need = 4;
+            lo = 0x90;
+        } else if (lead >= 0xF1 && lead <= 0xF3)
+            need = 4;
+        else if (lead == 0xF4) {
+            need = 4;
+            hi = 0x8F;
+        } else {
+            if (fatal) return false;
+            AppendFffd(out);
+            i++;
+            continue;
+        }
+        if (i + need > count) {
+            if (fatal) return false;
+            AppendFffd(out);
+            return true;
+        }
+        bool bad = false;
+        for (int k = 1; k < need; k++) {
+            unsigned byte = bytes[i + k];
+            unsigned min = k == 1 ? lo : 0x80;
+            unsigned max = k == 1 ? hi : 0xBF;
+            if (byte < min || byte > max) {
+                bad = true;
+                break;
+            }
+        }
+        if (bad) {
+            if (fatal) return false;
+            AppendFffd(out);
+            i++;
+            continue;
+        }
+        out->Append(Str((const char*)bytes + i, need));
+        i += need;
+    }
+    return true;
+}
+
+// A completable UTF-8 tail, or 0 when the end is whole or already invalid.
+static int IncompleteTail(const uint8_t* bytes, int count) {
+    int len = count;
+    for (int back = 1; back <= len && back <= 3; back++) {
+        uint8_t byte = bytes[len - back];
+        if ((byte & 0xC0) == 0x80) continue;
+        int expected = 0;
+        if (byte >= 0xC2 && byte <= 0xDF)
+            expected = 2;
+        else if (byte >= 0xE0 && byte <= 0xEF)
+            expected = 3;
+        else if (byte >= 0xF0 && byte <= 0xF4)
+            expected = 4;
+        else
+            return 0;
+        if (back >= expected) return 0;
+        if (len - back + 1 < len) {
+            uint8_t next = bytes[len - back + 1];
+            bool valid = true;
+            if (byte == 0xE0)
+                valid = next >= 0xA0 && next <= 0xBF;
+            else if (byte == 0xED)
+                valid = next >= 0x80 && next <= 0x9F;
+            else if (byte == 0xF0)
+                valid = next >= 0x90 && next <= 0xBF;
+            else if (byte == 0xF4)
+                valid = next >= 0x80 && next <= 0x8F;
+            if (!valid) return 0;
+        }
+        return back;
+    }
+    return 0;
+}
+
+static bool BufferSource(JSContext* ctx, JSValueConst value,
+                         const uint8_t** out, int* count) {
+    *out = nullptr;
+    *count = 0;
+    if (JS_IsUndefined(value) || JS_IsNull(value)) return true;
+    if (JS_IsArrayBuffer(value)) {
+        size_t n = 0;
+        uint8_t* data = JS_GetArrayBuffer(ctx, &n, value);
+        if (!data || n == 0) return true;
+        if (n > (size_t)INT_MAX) {
+            JS_ThrowRangeError(ctx, "TextDecoder.decode input is too large");
+            return false;
+        }
+        *out = data;
+        *count = (int)n;
+        return true;
+    }
+    JSValue buffer = JS_GetPropertyStr(ctx, value, "buffer");
+    if (!JS_IsArrayBuffer(buffer)) {
+        JS_FreeValue(ctx, buffer);
+        JS_ThrowTypeError(ctx,
+                          "TextDecoder.decode(input) expects an ArrayBuffer, "
+                          "a typed array or a DataView");
+        return false;
+    }
+    double offset = 0;
+    double length = 0;
+    JSValue off = JS_GetPropertyStr(ctx, value, "byteOffset");
+    JSValue len = JS_GetPropertyStr(ctx, value, "byteLength");
+    bool numbers = JS_IsNumber(off) && JS_IsNumber(len) &&
+                   JS_ToFloat64(ctx, &offset, off) >= 0 &&
+                   JS_ToFloat64(ctx, &length, len) >= 0 && offset >= 0 &&
+                   length >= 0;
+    JS_FreeValue(ctx, off);
+    JS_FreeValue(ctx, len);
+    size_t n = 0;
+    uint8_t* data = JS_GetArrayBuffer(ctx, &n, buffer);
+    JS_FreeValue(ctx, buffer);
+    if (!numbers || offset + length > (double)n || length > (double)INT_MAX) {
+        if (!JS_HasException(ctx)) {
+            JS_ThrowTypeError(ctx,
+                              "TextDecoder.decode(input) expects an "
+                              "ArrayBuffer, a typed array or a DataView");
+        }
+        return false;
+    }
+    if (!data || length == 0) return true;
+    *out = data + (size_t)offset;
+    *count = (int)length;
+    return true;
+}
+
+static bool NextUsv(const uint16_t* units, int count, int at, uint32_t* cp,
+                    int* used) {
+    if (at >= count) return false;
+    uint16_t unit = units[at];
+    if (unit >= 0xD800 && unit <= 0xDBFF) {
+        if (at + 1 < count && units[at + 1] >= 0xDC00 &&
+            units[at + 1] <= 0xDFFF) {
+            *cp = 0x10000u + ((((uint32_t)unit - 0xD800u) << 10) |
+                              ((uint32_t)units[at + 1] - 0xDC00u));
+            *used = 2;
+            return true;
+        }
+        *cp = 0xFFFDu;
+        *used = 1;
+        return true;
+    }
+    if (unit >= 0xDC00 && unit <= 0xDFFF) {
+        *cp = 0xFFFDu;
+        *used = 1;
+        return true;
+    }
+    *cp = unit;
+    *used = 1;
+    return true;
+}
+
+static int Utf8Size(uint32_t cp) {
+    if (cp < 0x80) return 1;
+    if (cp < 0x800) return 2;
+    if (cp < 0x10000) return 3;
+    return 4;
+}
+
+static void WriteUtf8(uint8_t* out, uint32_t cp) {
+    if (cp < 0x80) {
+        out[0] = (uint8_t)cp;
+    } else if (cp < 0x800) {
+        out[0] = (uint8_t)(0xC0 | (cp >> 6));
+        out[1] = (uint8_t)(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out[0] = (uint8_t)(0xE0 | (cp >> 12));
+        out[1] = (uint8_t)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (uint8_t)(0x80 | (cp & 0x3F));
+    } else {
+        out[0] = (uint8_t)(0xF0 | (cp >> 18));
+        out[1] = (uint8_t)(0x80 | ((cp >> 12) & 0x3F));
+        out[2] = (uint8_t)(0x80 | ((cp >> 6) & 0x3F));
+        out[3] = (uint8_t)(0x80 | (cp & 0x3F));
+    }
+}
+
+static JSValue NativeTextEncode(JSContext* ctx, JSValueConst, int argc,
+                                JSValueConst* argv) {
+    if (argc < 1 || JS_IsUndefined(argv[0]) || JS_IsNull(argv[0])) {
+        uint8_t empty = 0;
+        return JS_NewUint8ArrayCopy(ctx, &empty, 0);
+    }
+    size_t units = 0;
+    const uint16_t* text = JS_ToCStringLenUTF16(ctx, &units, argv[0]);
+    if (!text) return JS_EXCEPTION;
+    if (units > (size_t)INT_MAX) {
+        JS_FreeCStringUTF16(ctx, text);
+        return JS_ThrowRangeError(ctx, "TextEncoder.encode input is too large");
+    }
+    int count = (int)units;
+    int bytes = 0;
+    for (int at = 0; at < count;) {
+        uint32_t cp = 0;
+        int used = 1;
+        NextUsv(text, count, at, &cp, &used);
+        bytes += Utf8Size(cp);
+        at += used;
+    }
+    uint8_t* encoded = (uint8_t*)malloc((size_t)bytes + 1);
+    if (!encoded) {
+        JS_FreeCStringUTF16(ctx, text);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    int written = 0;
+    for (int at = 0; at < count;) {
+        uint32_t cp = 0;
+        int used = 1;
+        NextUsv(text, count, at, &cp, &used);
+        WriteUtf8(encoded + written, cp);
+        written += Utf8Size(cp);
+        at += used;
+    }
+    JS_FreeCStringUTF16(ctx, text);
+    JSValue value = JS_NewUint8ArrayCopy(
+        ctx, bytes ? encoded : (const uint8_t*)"", (size_t)bytes);
+    free(encoded);
+    return value;
+}
+
+static JSValue NativeTextEncodeInto(JSContext* ctx, JSValueConst, int argc,
+                                    JSValueConst* argv) {
+    if (argc < 2) {
+        return JS_ThrowTypeError(
+            ctx,
+            "TextEncoder.encodeInto(source, destination) expects a "
+            "Uint8Array destination");
+    }
+    size_t capacity = 0;
+    uint8_t* destination = JS_GetUint8Array(ctx, &capacity, argv[1]);
+    if (!destination && capacity != 0) {
+        return JS_ThrowTypeError(
+            ctx,
+            "TextEncoder.encodeInto(source, destination) expects a "
+            "Uint8Array destination");
+    }
+    size_t units = 0;
+    const uint16_t* text = nullptr;
+    if (argc >= 1 && !JS_IsUndefined(argv[0]) && !JS_IsNull(argv[0])) {
+        text = JS_ToCStringLenUTF16(ctx, &units, argv[0]);
+        if (!text) return JS_EXCEPTION;
+    }
+    int read = 0;
+    int written = 0;
+    int count = (int)units;
+    for (int at = 0; at < count;) {
+        uint32_t cp = 0;
+        int used = 1;
+        NextUsv(text, count, at, &cp, &used);
+        int size = Utf8Size(cp);
+        if ((size_t)written + (size_t)size > capacity) break;
+        if (destination) WriteUtf8(destination + written, cp);
+        written += size;
+        read += used;
+        at += used;
+    }
+    if (text) JS_FreeCStringUTF16(ctx, text);
+    JSValue result = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, result, "read", JS_NewInt32(ctx, read));
+    JS_SetPropertyStr(ctx, result, "written", JS_NewInt32(ctx, written));
+    return result;
+}
+
+static JSValue NativeTextDecode(JSContext* ctx, JSValueConst, int argc,
+                                JSValueConst* argv) {
+    if (argc < 1 || !JS_IsObject(argv[0])) {
+        return JS_ThrowTypeError(ctx, "TextDecoder.decode needs its decoder");
+    }
+    JSValue decoder = argv[0];
+    bool fatal = false;
+    bool ignoreBom = false;
+    bool started = false;
+    {
+        JSValue value = JS_GetPropertyStr(ctx, decoder, "fatal");
+        fatal = JS_ToBool(ctx, value) == 1;
+        JS_FreeValue(ctx, value);
+        value = JS_GetPropertyStr(ctx, decoder, "ignoreBOM");
+        ignoreBom = JS_ToBool(ctx, value) == 1;
+        JS_FreeValue(ctx, value);
+        value = JS_GetPropertyStr(ctx, decoder, "_started");
+        started = JS_ToBool(ctx, value) == 1;
+        JS_FreeValue(ctx, value);
+    }
+    bool stream = false;
+    if (argc >= 3 && JS_IsObject(argv[2]) && !JS_IsNull(argv[2])) {
+        JSValue value = JS_GetPropertyStr(ctx, argv[2], "stream");
+        stream = JS_ToBool(ctx, value) == 1;
+        JS_FreeValue(ctx, value);
+    }
+    const uint8_t* pending = nullptr;
+    int pendingCount = 0;
+    JSValue pendingValue = JS_GetPropertyStr(ctx, decoder, "_pending");
+    if (!BufferSource(ctx, pendingValue, &pending, &pendingCount)) {
+        JS_FreeValue(ctx, pendingValue);
+        return JS_EXCEPTION;
+    }
+    const uint8_t* input = nullptr;
+    int inputCount = 0;
+    if (argc >= 2 && !BufferSource(ctx, argv[1], &input, &inputCount)) {
+        JS_FreeValue(ctx, pendingValue);
+        return JS_EXCEPTION;
+    }
+    int total = pendingCount + inputCount;
+    uint8_t* bytes = (uint8_t*)malloc((size_t)total + 1);
+    if (!bytes) {
+        JS_FreeValue(ctx, pendingValue);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    if (pendingCount) memcpy(bytes, pending, (size_t)pendingCount);
+    if (inputCount) memcpy(bytes + pendingCount, input, (size_t)inputCount);
+    JS_FreeValue(ctx, pendingValue);
+    const uint8_t bom[3] = {0xEF, 0xBB, 0xBF};
+    int start = 0;
+    if (!started) {
+        bool prefix = total < 3;
+        for (int i = 0; prefix && i < total; i++) prefix = bytes[i] == bom[i];
+        if (!ignoreBom && stream && prefix) {
+            JS_SetPropertyStr(
+                ctx, decoder, "_pending",
+                JS_NewUint8ArrayCopy(ctx, total ? bytes : bom, (size_t)total));
+            JS_SetPropertyStr(ctx, decoder, "_started", JS_FALSE);
+            free(bytes);
+            return JS_NewString(ctx, "");
+        }
+        if (!ignoreBom && total >= 3 && bytes[0] == bom[0] &&
+            bytes[1] == bom[1] && bytes[2] == bom[2]) {
+            start = 3;
+        }
+        started = total > 0;
+    }
+    int end = total;
+    if (stream) {
+        end -= IncompleteTail(bytes + start, end - start);
+    } else {
+        started = false;
+    }
+    if (end < start) end = start;
+    StrBuilder text;
+    bool valid = DecodeUtf8(&text, bytes + start, end - start, fatal);
+    if (!valid) {
+        uint8_t empty = 0;
+        JS_SetPropertyStr(ctx, decoder, "_pending",
+                          JS_NewUint8ArrayCopy(ctx, &empty, 0));
+        JS_SetPropertyStr(ctx, decoder, "_started", JS_FALSE);
+        free(bytes);
+        StrFree(text.TakeStr());
+        return JS_ThrowTypeError(
+            ctx, "TextDecoder.decode received invalid UTF-8 data");
+    }
+    int held = total - end;
+    JS_SetPropertyStr(
+        ctx, decoder, "_pending",
+        JS_NewUint8ArrayCopy(ctx, held ? bytes + end : bom, (size_t)held));
+    JS_SetPropertyStr(ctx, decoder, "_started", JS_NewBool(ctx, started));
+    free(bytes);
+    Str decoded = text.TakeStr();
+    JSValue result =
+        JS_NewStringLen(ctx, decoded.s ? decoded.s : "", (size_t)len(decoded));
+    StrFree(decoded);
+    return result;
+}
+
+struct EnvVisit {
+    JSContext* ctx;
+    JSValue object;
+    const Capabilities* capabilities;
+};
+
+static void VisitGrantedEnv(Str name, Str value, void* user) {
+    EnvVisit* visit = (EnvVisit*)user;
+    if (!visit || !name.s || len(name) <= 0 || len(name) >= 512 || !value.s)
+        return;
+    if (!visit->capabilities->MayShowEnvVariable(name)) return;
+    char key[512];
+    memcpy(key, name.s, (size_t)len(name));
+    key[len(name)] = 0;
+    JS_SetPropertyStr(visit->ctx, visit->object, key,
+                      JS_NewStringLen(visit->ctx, value.s, (size_t)len(value)));
+}
+
+static JSValue NativeProcessEnv(JSContext* ctx, JSValueConst, int,
+                                JSValueConst*) {
+    bool release = false;
+    Policy* policy = CurrentPolicy(&release);
+    JSValue object = JS_NewObject(ctx);
+    if (!JS_IsException(object)) {
+        EnvVisit visit;
+        visit.ctx = ctx;
+        visit.object = object;
+        visit.capabilities = &PolicyCapabilities(policy);
+        base::PlatVisitEnv(VisitGrantedEnv, &visit);
+    }
+    if (release) PolicyRelease(policy);
+    return object;
+}
+
+static JSValue NativeProcessDataDir(JSContext* ctx, JSValueConst, int,
+                                    JSValueConst*) {
+    bool release = false;
+    Policy* policy = CurrentPolicy(&release);
+    Str dir = PolicyDataDir(policy);
+    JSValue value =
+        dir ? JS_NewStringLen(ctx, dir.s, (size_t)len(dir)) : JS_UNDEFINED;
+    if (release) PolicyRelease(policy);
+    return value;
+}
+
+static JSValue NativeOsHomedir(JSContext* ctx, JSValueConst, int,
+                               JSValueConst*) {
+    Str home = shell::ShellHomeDirectory();
+    if (!home) {
+        return JS_ThrowPlainError(ctx,
+                                  "os.homedir(): neither HOME nor USERPROFILE "
+                                  "names an absolute directory");
+    }
+    JSValue value = JS_NewStringLen(ctx, home.s, (size_t)len(home));
+    StrFree(home);
+    return value;
+}
+
+static bool ComponentInputEvent(Str name, InputEventKind* kind) {
+    if (StrEq(name, StrL("change"))) {
+        *kind = InputEventKind::Change;
+        return true;
+    }
+    if (StrEq(name, StrL("submit"))) {
+        *kind = InputEventKind::PressEnter;
+        return true;
+    }
+    if (StrEq(name, StrL("focus"))) {
+        *kind = InputEventKind::Focus;
+        return true;
+    }
+    if (StrEq(name, StrL("blur"))) {
+        *kind = InputEventKind::Blur;
+        return true;
+    }
+    return false;
+}
+
+static JSValue NativeComponentInputOn(JSContext* ctx, JSValueConst, int argc,
+                                      JSValueConst* argv) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    if (!impl || argc < 4) {
+        return JS_ThrowTypeError(ctx,
+                                 "on(...) needs a live host call; subscribe "
+                                 "from init() or an event handler");
+    }
+    Arena* arena = ArenaNew();
+    Str proof;
+    double handleNumber = 0;
+    if (!JS_IsString(argv[0]) || !JsString(ctx, argv[0], arena, &proof) ||
+        !StrEq(proof, impl->componentStateProof) ||
+        JS_ToFloat64(ctx, &handleNumber, argv[1]) < 0 || handleNumber < 0) {
+        ArenaDelete(arena);
+        return JS_ThrowTypeError(ctx, "state belongs to another runtime");
+    }
+    if (shell::ScopeHasCurrent() &&
+        (shell::ScopeCurrentPhase() == ScopePhase::Render ||
+         shell::ScopeCurrentPhase() == ScopePhase::Layout)) {
+        ArenaDelete(arena);
+        return JS_ThrowTypeError(
+            ctx,
+            "on(...) cannot run during render; subscribe from init() or an "
+            "event handler");
+    }
+    Str eventName;
+    if (!JsString(ctx, argv[2], arena, &eventName)) {
+        ArenaDelete(arena);
+        return JS_EXCEPTION;
+    }
+    InputEventKind kind = InputEventKind::Change;
+    if (!ComponentInputEvent(eventName, &kind)) {
+        JSValue thrown = JS_ThrowTypeError(
+            ctx,
+            "unknown input event `%.*s`; expected one of: change, submit, "
+            "focus, blur",
+            len(eventName), eventName.s);
+        ArenaDelete(arena);
+        return thrown;
+    }
+    if (!JS_IsFunction(ctx, argv[3])) {
+        ArenaDelete(arena);
+        return JS_ThrowTypeError(ctx,
+                                 "state.on(event, handler) expects a function");
+    }
+    uint64_t handle = (uint64_t)handleNumber;
+    const char* stored = impl->componentStates.Kind(handle);
+    if (!stored || (strcmp(stored, "InputState") != 0 &&
+                    strcmp(stored, "TextareaState") != 0)) {
+        ArenaDelete(arena);
+        return JS_ThrowTypeError(ctx,
+                                 "retained state handle has been released");
+    }
+    Str error;
+    void* value = impl->componentStates.Get(handle, stored, &error, arena);
+    if (!value) {
+        JSValue thrown =
+            JS_ThrowTypeError(ctx, "%.*s", len(error), error.s ? error.s : "");
+        ArenaDelete(arena);
+        return thrown;
+    }
+    shell::ScopeHostContext host = shell::ScopeCurrentHost();
+    if (!host.IsSet()) {
+        ArenaDelete(arena);
+        return JS_ThrowTypeError(ctx,
+                                 "on(...) needs a live host call; subscribe "
+                                 "from init() or an event handler");
+    }
+    shell::CallbackId callback = impl->callbacks.PushPersistent(
+        ctx, argv[3], shell::ScopeCurrentView(), shell::ScopeCurrentPolicy(),
+        (AppModule*)shell::ScopeCurrentApplication());
+    ArenaDelete(arena);
+    if (callback == UINT64_MAX) {
+        return JS_ThrowInternalError(ctx, "callback id space is exhausted");
+    }
+    shell::TextStateEntity* entity = (shell::TextStateEntity*)value;
+    shell::TextStateSubscription sub;
+    sub.kind = kind;
+    sub.id = callback;
+    if (!VecAppend(entity->subs, sub)) {
+        impl->callbacks.RetireId(ctx, callback);
+        return JS_ThrowOutOfMemory(ctx);
+    }
+    entity->runtime = impl->owner;
+    return JS_TRUE;
+}
+
 static JSValue NativeFs(JSContext* ctx, JSValueConst, int argc,
                         JSValueConst* argv, int magic) {
-    if (magic < 0 || magic > 6)
+    if (magic < 0 || magic > (int)shell::FsOperation::Rename)
         return JS_ThrowInternalError(ctx, "invalid filesystem operation");
     shell::FsOperation operation = (shell::FsOperation)magic;
+    bool readAccess = operation == shell::FsOperation::Read ||
+                      operation == shell::FsOperation::ReadDirectory ||
+                      operation == shell::FsOperation::Exists ||
+                      operation == shell::FsOperation::Stat ||
+                      operation == shell::FsOperation::Lstat ||
+                      operation == shell::FsOperation::ReadLink;
     CapabilityAccess access =
-        operation == shell::FsOperation::Read ||
-                operation == shell::FsOperation::ReadDirectory ||
-                operation == shell::FsOperation::Exists
-            ? CapabilityAccess::Read
-            : CapabilityAccess::Write;
+        readAccess ? CapabilityAccess::Read : CapabilityAccess::Write;
     Arena* arena = ArenaNew();
     Str requested;
     bool ok = argc >= 1 && JsString(ctx, argv[0], arena, &requested);
+    Str requestedDest;
+    if (ok && operation == shell::FsOperation::Rename) {
+        ok = argc >= 2 && JsString(ctx, argv[1], arena, &requestedDest);
+    }
     if (!ok) {
         ArenaDelete(arena);
         return JS_EXCEPTION;
@@ -7614,15 +8305,22 @@ static JSValue NativeFs(JSContext* ctx, JSValueConst, int argc,
     bool release = false;
     Policy* policy = CurrentPolicy(&release);
     CapabilityPath path;
+    CapabilityPath dest;
     CapabilityError capabilityError;
     ok = PolicyCapabilities(policy)
              .ResolvePath(requested, access, &path, &capabilityError);
+    if (ok && operation == shell::FsOperation::Rename) {
+        ok = PolicyCapabilities(policy).ResolvePath(
+            requestedDest, CapabilityAccess::Write, &dest, &capabilityError);
+    }
     if (release) PolicyRelease(policy);
     if (!ok) {
         Str message = CapabilityErrorMessage(arena, capabilityError);
         JSValue result =
             JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
         CapabilityErrorFree(&capabilityError);
+        path.Free();
+        dest.Free();
         ArenaDelete(arena);
         return result;
     }
@@ -7630,6 +8328,7 @@ static JSValue NativeFs(JSContext* ctx, JSValueConst, int argc,
     FsJob* job = new FsJob();
     job->operation = operation;
     job->path = path;
+    job->dest = dest;
     if (operation == shell::FsOperation::Read) {
         ok = FsReadTextOption(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, arena,
                               &job->text);
@@ -8420,6 +9119,21 @@ globalThis.__gpui = (() => {
     name,
     isDirectory: () => directory,
   });
+  // Node's Stats, cut to the fields every platform can fill. A time the
+  // filesystem does not record is 0, and `new Date(0)` is the epoch.
+  globalThis.__shell_fs_stats = (isFile, isDirectory, isSymbolicLink, size, mode, mtimeMs, atimeMs, birthtimeMs) => Object.freeze({
+    isFile: () => isFile,
+    isDirectory: () => isDirectory,
+    isSymbolicLink: () => isSymbolicLink,
+    size,
+    mode,
+    mtimeMs,
+    atimeMs,
+    birthtimeMs,
+    mtime: new Date(mtimeMs),
+    atime: new Date(atimeMs),
+    birthtime: new Date(birthtimeMs),
+  });
   globalThis.__shell_fs = Object.freeze({
     readFile: (path, encoding) => __fs_read(path, encoding),
     writeFile: (path, contents) => __fs_write(path, contents),
@@ -8428,6 +9142,10 @@ globalThis.__gpui = (() => {
     unlink: (path) => __fs_unlink(path),
     rmdir: (path) => __fs_rmdir(path),
     mkdir: (path, options) => __fs_mkdir(path, options),
+    stat: (path) => __fs_stat(path),
+    lstat: (path) => __fs_lstat(path),
+    rename: (from, to) => __fs_rename(from, to),
+    readlink: (path) => __fs_readlink(path),
   });
 
   const utf8Encode = (text) => {
@@ -8669,12 +9387,15 @@ globalThis.__gpui = (() => {
   globalThis.URLSearchParams = URLSearchParams;
   globalThis.__shell_url = Object.freeze(urlApi);
 
-  globalThis.__shell_fetch_response = (status, url, body) => Object.freeze({
+  globalThis.__shell_fetch_response = (status, url, body, bytes) => Object.freeze({
     status,
     ok: status >= 200 && status < 300,
     url,
     text: () => Promise.resolve(body),
     json: () => Promise.resolve().then(() => JSON.parse(body)),
+    arrayBuffer: () => Promise.resolve(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)),
+    bytes: () => Promise.resolve(bytes.slice()),
   });
   globalThis.fetch = (url, options) => {
     let method = "GET";
@@ -8728,6 +9449,7 @@ globalThis.__gpui = (() => {
     platform: () => __shell_platform,
     arch: () => __shell_arch,
     EOL: __shell_is_windows ? "\r\n" : "\n",
+    homedir: () => __os_homedir(),
   });
   globalThis.process = Object.freeze({
     run: (...args) => __process_run(...args),
@@ -8735,7 +9457,44 @@ globalThis.__gpui = (() => {
     exit: (code = 0) => __process_exit(Number(code)),
     platform: __shell_platform,
     arch: __shell_arch,
+    get env() { return __process_env(); },
+    get dataDir() { return __process_data_dir(); },
   });
+
+  // WHATWG Encoding, UTF-8 only. The bytes live in the C++ natives;
+  // the label check and the decoder's own flags stay here so a
+  // getter reads the value the constructor stored.
+  class TextEncoder {
+    get encoding() { return "utf-8"; }
+    encode(input) { return __text_encode(input); }
+    encodeInto(source, destination) { return __text_encode_into(source, destination); }
+  }
+  class TextDecoder {
+    constructor(label, options) {
+      if (label !== undefined && label !== null) {
+        const text = String(label);
+        const name = text.trim().toLowerCase();
+        if (name !== "utf-8" && name !== "utf8" && name !== "unicode-1-1-utf-8") {
+          throw new RangeError(
+            "TextDecoder encoding `" + text + "` is not supported; only utf-8 is available");
+        }
+      }
+      let fatal = false;
+      let ignoreBOM = false;
+      if (options !== undefined && options !== null && typeof options === "object") {
+        if (options.fatal != null) fatal = Boolean(options.fatal);
+        if (options.ignoreBOM != null) ignoreBOM = Boolean(options.ignoreBOM);
+      }
+      Object.defineProperty(this, "fatal", { get() { return fatal; } });
+      Object.defineProperty(this, "ignoreBOM", { get() { return ignoreBOM; } });
+      this._pending = new Uint8Array(0);
+      this._started = false;
+    }
+    get encoding() { return "utf-8"; }
+    decode(input, options) { return __text_decode(this, input, options); }
+  }
+  globalThis.TextEncoder = TextEncoder;
+  globalThis.TextDecoder = TextDecoder;
 )JS"
                                R"JS(
   const component = (kind, text, handle, index) =>
@@ -10974,6 +11733,28 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
                            (int)shell::FsOperation::RemoveDirectory);
     SetGlobalMagicFunction(impl->context, global, "__fs_mkdir", NativeFs, 2,
                            (int)shell::FsOperation::MakeDirectory);
+    SetGlobalMagicFunction(impl->context, global, "__fs_stat", NativeFs, 1,
+                           (int)shell::FsOperation::Stat);
+    SetGlobalMagicFunction(impl->context, global, "__fs_lstat", NativeFs, 1,
+                           (int)shell::FsOperation::Lstat);
+    SetGlobalMagicFunction(impl->context, global, "__fs_readlink", NativeFs, 1,
+                           (int)shell::FsOperation::ReadLink);
+    SetGlobalMagicFunction(impl->context, global, "__fs_rename", NativeFs, 2,
+                           (int)shell::FsOperation::Rename);
+    SetGlobalFunction(impl->context, global, "__text_encode", NativeTextEncode,
+                      1);
+    SetGlobalFunction(impl->context, global, "__text_encode_into",
+                      NativeTextEncodeInto, 2);
+    SetGlobalFunction(impl->context, global, "__text_decode", NativeTextDecode,
+                      3);
+    SetGlobalFunction(impl->context, global, "__process_env", NativeProcessEnv,
+                      0);
+    SetGlobalFunction(impl->context, global, "__process_data_dir",
+                      NativeProcessDataDir, 0);
+    SetGlobalFunction(impl->context, global, "__os_homedir", NativeOsHomedir,
+                      0);
+    SetGlobalFunction(impl->context, global, "__component_input_on",
+                      NativeComponentInputOn, 4);
     SetGlobalFunction(impl->context, global, "__process_run", NativeProcessRun,
                       2);
     SetGlobalFunction(impl->context, global, "__process_exit",
@@ -11281,6 +12062,7 @@ static ViewType* LoadModule(ShellRuntime* runtime, Str name, Str source,
         return nullptr;
     }
     JSModuleDef* definition = (JSModuleDef*)JS_VALUE_GET_PTR(module);
+    SetFileImportMeta(impl->context, definition, name);
     JSValue evaluated =
         JS_EvalFunction(impl->context, JS_DupValue(impl->context, module));
     if (JS_IsException(evaluated)) {
@@ -12293,6 +13075,34 @@ void ShellRuntime::DispatchInputEvent(shell::EntityHandle handle,
         Dispatch(this, callbacks[i], payload, window, app);
     }
     VecReset(callbacks);
+}
+
+void ShellRuntime::RetireTextState(shell::TextStateEntity* state) {
+    if (!state) return;
+    if (impl && impl->context) {
+        for (int i = 0; i < len(state->subs); i++) {
+            impl->callbacks.RetireId(impl->context, state->subs[i].id);
+        }
+    }
+    VecReset(state->subs);
+    state->runtime = nullptr;
+}
+
+void ShellRuntime::DispatchComponentInput(shell::TextStateEntity* state,
+                                          const InputEvent* event,
+                                          Window* window, App* app) {
+    if (!state || !event || !impl || !impl->context) return;
+    for (int i = 0; i < len(state->subs); i++) {
+        if (state->subs[i].kind != event->kind) continue;
+        JSValue payload = JS_NewObject(impl->context);
+        if (event->kind == InputEventKind::PressEnter) {
+            JS_SetPropertyStr(impl->context, payload, "secondary",
+                              JS_NewBool(impl->context, event->secondary));
+            JS_SetPropertyStr(impl->context, payload, "shift",
+                              JS_NewBool(impl->context, event->shift));
+        }
+        Dispatch(this, state->subs[i].id, payload, window, app);
+    }
 }
 
 void ShellRuntime::DispatchSliderEvent(shell::EntityHandle handle,

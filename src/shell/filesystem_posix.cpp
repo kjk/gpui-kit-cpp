@@ -320,6 +320,109 @@ static bool MakeDirectoryRecursive(int root, Str rootName, Str relative,
     return ok;
 }
 
+namespace base {
+uint64_t PlatStatModifiedNs(const struct stat* st);
+}
+
+static void FillPosixStats(const struct stat& info, FsResult* result) {
+    result->hasStats = true;
+    result->isSymbolicLink = S_ISLNK(info.st_mode) != 0;
+    result->isDirectory = S_ISDIR(info.st_mode) != 0;
+    result->isFile = S_ISREG(info.st_mode) != 0;
+    result->size = (uint64_t)info.st_size;
+    result->mode = (uint32_t)info.st_mode;
+    // atime and birthtime differ by target (st_atim versus st_atimespec),
+    // and this file is compiled for every POSIX target including wasm, so
+    // a time it cannot name stays the epoch.
+    uint64_t ns = base::PlatStatModifiedNs(&info);
+    result->mtimeMs = (double)(ns / 1000000ull);
+    result->atimeMs = 0;
+    result->birthtimeMs = 0;
+}
+
+static bool StatAt(int root, Str rootName, Str relative, bool followRefusal,
+                   FsResult* result, Str* error) {
+    int parent = -1;
+    TempStr leaf;
+    if (!OpenParent(root, relative, &parent, &leaf, rootName, error))
+        return false;
+    struct stat info = {};
+    bool ok = fstatat(parent, leaf.s, &info, AT_SYMLINK_NOFOLLOW) == 0;
+    if (!ok) {
+        SyscallError(error, "stat", rootName, relative);
+    } else if (followRefusal && S_ISLNK(info.st_mode)) {
+        FsError(error, fmt("cannot stat `%s/%s`: symbolic links are not "
+                           "followed",
+                           rootName, relative));
+        ok = false;
+    } else {
+        FillPosixStats(info, result);
+    }
+    close(parent);
+    return ok;
+}
+
+static bool ReadLinkAt(int root, Str rootName, Str relative, FsResult* result,
+                       Str* error) {
+    int parent = -1;
+    TempStr leaf;
+    if (!OpenParent(root, relative, &parent, &leaf, rootName, error))
+        return false;
+    char bytes[16384];
+    ssize_t n = readlinkat(parent, leaf.s, bytes, sizeof(bytes));
+    close(parent);
+    if (n < 0) {
+        SyscallError(error, "read link", rootName, relative);
+        return false;
+    }
+    if (n >= (ssize_t)sizeof(bytes)) {
+        FsError(error, fmt("cannot read link `%s/%s`: target is too long",
+                           rootName, relative));
+        return false;
+    }
+    result->bytes = StrDup(Str(bytes, (int)n));
+    if (!result->bytes.s && n != 0) {
+        FsError(error, StrL("allocating a symlink target failed"));
+        return false;
+    }
+    return true;
+}
+
+bool FsRename(Str fromRoot, Str fromRelative, Str toRoot, Str toRelative,
+              Str* error) {
+    if (error) {
+        StrFree(*error);
+        *error = {};
+    }
+    int source = OpenRoot(fromRoot, true, error);
+    if (source < 0) return false;
+    int destination = OpenRoot(toRoot, true, error);
+    if (destination < 0) {
+        close(source);
+        return false;
+    }
+    int sourceParent = -1;
+    int destinationParent = -1;
+    TempStr sourceLeaf;
+    TempStr destinationLeaf;
+    bool ok = OpenParent(source, fromRelative, &sourceParent, &sourceLeaf,
+                         fromRoot, error);
+    if (ok) {
+        ok = OpenParent(destination, toRelative, &destinationParent,
+                        &destinationLeaf, toRoot, error);
+    }
+    if (ok && renameat(sourceParent, sourceLeaf.s, destinationParent,
+                       destinationLeaf.s) != 0) {
+        SyscallError(error, "rename", fromRoot, fromRelative);
+        ok = false;
+    }
+    if (sourceParent >= 0) close(sourceParent);
+    if (destinationParent >= 0) close(destinationParent);
+    close(source);
+    close(destination);
+    return ok;
+}
+
 bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
            bool recursive, FsResult* result, Str* error) {
     if (result) result->Free();
@@ -342,6 +445,12 @@ bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
         ok = WriteFile(root, rootName, relative, input, error);
     } else if (operation == FsOperation::ReadDirectory) {
         ok = ReadDirectory(root, rootName, relative, result, error);
+    } else if (operation == FsOperation::Stat) {
+        ok = StatAt(root, rootName, relative, true, result, error);
+    } else if (operation == FsOperation::Lstat) {
+        ok = StatAt(root, rootName, relative, false, result, error);
+    } else if (operation == FsOperation::ReadLink) {
+        ok = ReadLinkAt(root, rootName, relative, result, error);
     } else if (operation == FsOperation::Exists) {
         int parent = -1;
         TempStr leaf;

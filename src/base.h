@@ -165,6 +165,12 @@ bool PlatGetExePath(char* out, int cap);
 bool PlatFileIsExecutable(const char* path);
 // chmod 0755. True without doing anything where the OS has no mode bit.
 bool PlatMakeExecutable(const char* path);
+// Walk the process environment. `name` and `value` live only for the
+// call: the callback copies what it keeps. A name may be a slice of a
+// longer entry and is not necessarily terminated at `len`. False when
+// the block cannot be read. Entries that are not text, or whose name is
+// empty, are skipped. Windows also skips the `=X:` drive mappings.
+bool PlatVisitEnv(void (*visit)(Str name, Str value, void* user), void* user);
 
 struct DirEntry {
     char name[260] = {};

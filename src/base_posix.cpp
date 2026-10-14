@@ -15,6 +15,7 @@
 #include <dirent.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -71,6 +72,21 @@ bool PlatFileIsExecutable(const char* path) {
 bool PlatMakeExecutable(const char* path) {
     if (!path || !path[0]) return false;
     return chmod(path, 0755) == 0;
+}
+
+// The process environment. unistd.h does not declare it on every target
+// this file is compiled for, emscripten included.
+extern char** environ;
+
+bool PlatVisitEnv(void (*visit)(Str name, Str value, void* user), void* user) {
+    if (!visit) return false;
+    if (!environ) return true;
+    for (char** at = environ; *at; at++) {
+        char* eq = strchr(*at, '=');
+        if (!eq || eq == *at) continue;
+        visit(Str(*at, (int)(eq - *at)), Str(eq + 1), user);
+    }
+    return true;
 }
 
 bool PlatFileExists(const char* path) {

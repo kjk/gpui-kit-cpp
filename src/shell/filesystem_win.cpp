@@ -1,6 +1,7 @@
 #include "shell/filesystem.h"
 
 #include <windows.h>
+#include <winioctl.h>
 #include <winternl.h>
 #include <stdlib.h>
 
@@ -8,6 +9,9 @@ namespace gpui::shell {
 
 #ifndef FILE_OPEN_REPARSE_POINT
 #define FILE_OPEN_REPARSE_POINT 0x00200000
+#endif
+#ifndef IO_REPARSE_TAG_SYMLINK
+#define IO_REPARSE_TAG_SYMLINK 0xA000000CL
 #endif
 
 using NtCreateFileProc = NTSTATUS(NTAPI*)(PHANDLE, ACCESS_MASK,
@@ -482,6 +486,190 @@ static bool DeleteHandle(HANDLE handle, Str root, Str relative, Str* error) {
     return false;
 }
 
+static double NtTimeToUnixMs(LONGLONG ticks) {
+    const LONGLONG epoch = 116444736000000000LL;
+    if (ticks <= epoch) return 0;
+    return (double)((uint64_t)(ticks - epoch) / 10000ull);
+}
+
+static bool FillWinStats(HANDLE handle, FsResult* result) {
+    FILE_BASIC_INFO basic = {};
+    FILE_STANDARD_INFO standard = {};
+    if (!GetFileInformationByHandleEx(handle, FileBasicInfo, &basic,
+                                      sizeof(basic)) ||
+        !GetFileInformationByHandleEx(handle, FileStandardInfo, &standard,
+                                      sizeof(standard))) {
+        return false;
+    }
+    bool symlink = false;
+    FILE_ATTRIBUTE_TAG_INFO tag = {};
+    if ((basic.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 &&
+        GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &tag,
+                                     sizeof(tag))) {
+        symlink = tag.ReparseTag == IO_REPARSE_TAG_SYMLINK;
+    }
+    result->hasStats = true;
+    result->isSymbolicLink = symlink;
+    result->isDirectory = standard.Directory != FALSE && !symlink;
+    result->isFile = standard.Directory == FALSE && !symlink;
+    result->size = (uint64_t)standard.EndOfFile.QuadPart;
+    result->mode =
+        (basic.FileAttributes & FILE_ATTRIBUTE_READONLY) != 0 ? 0444u : 0666u;
+    result->mtimeMs = NtTimeToUnixMs(basic.LastWriteTime.QuadPart);
+    result->atimeMs = NtTimeToUnixMs(basic.LastAccessTime.QuadPart);
+    result->birthtimeMs = NtTimeToUnixMs(basic.CreationTime.QuadPart);
+    return true;
+}
+
+static bool ReadLinkHandle(HANDLE handle, Str root, Str relative,
+                           FsResult* result, Str* error) {
+    uint8_t bytes[16 * 1024];
+    DWORD got = 0;
+    if (!DeviceIoControl(handle, FSCTL_GET_REPARSE_POINT, nullptr, 0, bytes,
+                         sizeof(bytes), &got, nullptr) ||
+        got < 20) {
+        FsError(error, fmt("cannot read link `%s/%s`: Windows error %u", root,
+                           relative, GetLastError()));
+        return false;
+    }
+    ULONG tag = *(ULONG*)bytes;
+    if (tag != IO_REPARSE_TAG_SYMLINK) {
+        FsError(error, fmt("cannot read link `%s/%s`: not a symbolic link",
+                           root, relative));
+        return false;
+    }
+    USHORT printOffset = *(USHORT*)(bytes + 12);
+    USHORT printLength = *(USHORT*)(bytes + 14);
+    if ((DWORD)20 + printOffset + printLength > got) {
+        FsError(error, fmt("cannot read link `%s/%s`: reparse data is short",
+                           root, relative));
+        return false;
+    }
+    const WCHAR* print = (const WCHAR*)(bytes + 20 + printOffset);
+    int chars = (int)(printLength / sizeof(WCHAR));
+    int utf8 = chars == 0
+                   ? 0
+                   : WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, print,
+                                         chars, nullptr, 0, nullptr, nullptr);
+    if (chars != 0 && utf8 <= 0) {
+        FsError(error, fmt("cannot read link `%s/%s`: target is not UTF-8",
+                           root, relative));
+        return false;
+    }
+    char* text = (char*)malloc((size_t)utf8 + 1);
+    if (!text) {
+        FsError(error, StrL("allocating a symlink target failed"));
+        return false;
+    }
+    if (utf8 > 0) {
+        WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, print, chars, text,
+                            utf8, nullptr, nullptr);
+    }
+    text[utf8] = 0;
+    result->bytes = StrDup(Str(text, utf8));
+    free(text);
+    if (!result->bytes.s && utf8 != 0) {
+        FsError(error, StrL("allocating a symlink target failed"));
+        return false;
+    }
+    return true;
+}
+
+bool FsRename(Str fromRoot, Str fromRelative, Str toRoot, Str toRelative,
+              Str* error) {
+    if (error) {
+        StrFree(*error);
+        *error = {};
+    }
+    HANDLE sourceRoot = OpenRoot(fromRoot, true, error);
+    if (!sourceRoot) return false;
+    HANDLE destinationRoot = OpenRoot(toRoot, true, error);
+    if (!destinationRoot) {
+        CloseHandle(sourceRoot);
+        return false;
+    }
+    HANDLE sourceParent = nullptr;
+    HANDLE destinationParent = nullptr;
+    WCHAR sourceLeaf[256];
+    WCHAR destinationLeaf[256];
+    bool ok = OpenParent(sourceRoot, fromRoot, fromRelative, &sourceParent,
+                         sourceLeaf, error);
+    if (ok) {
+        ok = OpenParent(destinationRoot, toRoot, toRelative, &destinationParent,
+                        destinationLeaf, error);
+    }
+    HANDLE file = nullptr;
+    if (ok) {
+        NTSTATUS status = 0;
+        // The same rights a remove uses.
+        file = OpenAt(sourceParent, sourceLeaf,
+                      DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_OPEN,
+                      FILE_NON_DIRECTORY_FILE, &status);
+        if (!file) {
+            NtError(error, "rename", fromRoot, fromRelative, status);
+            ok = false;
+        }
+    }
+    if (ok) {
+        // SetFileInformationByHandle returns error 87 for a non-null
+        // RootDirectory, with FileRenameInfo and FileRenameInfoEx.
+        // The parent handle was opened by the same no-follow walk, so
+        // its final path plus the leaf is still that directory.
+        WCHAR* parentPath = (WCHAR*)malloc(32768 * sizeof(WCHAR));
+        DWORD parentChars = 0;
+        if (!parentPath) {
+            FsError(error, StrL("allocating a rename failed"));
+            ok = false;
+        } else {
+            parentChars = GetFinalPathNameByHandleW(
+                destinationParent, parentPath, 32768, FILE_NAME_NORMALIZED);
+            if (parentChars == 0 || parentChars >= 32768) {
+                FsError(error, fmt("cannot rename `%s/%s`: Windows error %u",
+                                   fromRoot, fromRelative, GetLastError()));
+                ok = false;
+            }
+        }
+        int leafChars = ok ? (int)wcslen(destinationLeaf) : 0;
+        bool slash =
+            ok && parentChars > 0 && parentPath[parentChars - 1] != L'\\';
+        int nameChars = ok ? (int)parentChars + (slash ? 1 : 0) + leafChars : 0;
+        int nameBytes = nameChars * (int)sizeof(WCHAR);
+        int bytes = ok ? (int)FIELD_OFFSET(FILE_RENAME_INFO, FileName) +
+                             nameBytes + (int)sizeof(WCHAR)
+                       : 0;
+        FILE_RENAME_INFO* info =
+            ok ? (FILE_RENAME_INFO*)malloc((size_t)bytes) : nullptr;
+        if (ok && !info) {
+            FsError(error, StrL("allocating a rename failed"));
+            ok = false;
+        } else if (ok) {
+            memset(info, 0, (size_t)bytes);
+            info->ReplaceIfExists = TRUE;
+            info->RootDirectory = nullptr;
+            info->FileNameLength = (DWORD)nameBytes;
+            memcpy(info->FileName, parentPath, parentChars * sizeof(WCHAR));
+            int at = (int)parentChars;
+            if (slash) info->FileName[at++] = L'\\';
+            memcpy(info->FileName + at, destinationLeaf,
+                   (size_t)leafChars * sizeof(WCHAR));
+            if (!SetFileInformationByHandle(file, FileRenameInfo, info,
+                                            (DWORD)bytes)) {
+                FsError(error, fmt("cannot rename `%s/%s`: Windows error %u",
+                                   fromRoot, fromRelative, GetLastError()));
+                ok = false;
+            }
+            free(info);
+        }
+        free(parentPath);
+    }
+    if (file) CloseHandle(file);
+    if (sourceParent) CloseHandle(sourceParent);
+    if (destinationParent) CloseHandle(destinationParent);
+    CloseHandle(sourceRoot);
+    CloseHandle(destinationRoot);
+    return ok;
+}
+
 bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
            bool recursive, FsResult* result, Str* error) {
     if (result) result->Free();
@@ -512,7 +700,40 @@ bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
         ok = OpenParent(root, rootName, relative, &parent, leaf, error);
         if (ok) {
             NTSTATUS status = 0;
-            if (operation == FsOperation::Exists) {
+            if (operation == FsOperation::Stat ||
+                operation == FsOperation::Lstat ||
+                operation == FsOperation::ReadLink) {
+                HANDLE target =
+                    OpenAt(parent, leaf, FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                           FILE_OPEN, 0, &status);
+                if (!target) {
+                    NtError(error,
+                            operation == FsOperation::ReadLink ? "read link"
+                                                               : "stat",
+                            rootName, relative, status);
+                    ok = false;
+                } else if (operation == FsOperation::ReadLink) {
+                    ok = ReadLinkHandle(target, rootName, relative, result,
+                                        error);
+                } else if (operation == FsOperation::Stat &&
+                           IsReparse(target)) {
+                    // OpenAt asks for the reparse point, so this does not
+                    // follow. A link that stayed inside the root is refused
+                    // too: confirming the target would need a second walk.
+                    FsError(error, fmt("cannot stat `%s/%s`: symbolic links "
+                                       "are not followed",
+                                       rootName, relative));
+                    ok = false;
+                } else {
+                    ok = FillWinStats(target, result);
+                    if (!ok) {
+                        FsError(error,
+                                fmt("cannot stat `%s/%s`: Windows error %u",
+                                    rootName, relative, GetLastError()));
+                    }
+                }
+                if (target) CloseHandle(target);
+            } else if (operation == FsOperation::Exists) {
                 HANDLE target =
                     OpenAt(parent, leaf, FILE_READ_ATTRIBUTES | SYNCHRONIZE,
                            FILE_OPEN, 0, &status);
