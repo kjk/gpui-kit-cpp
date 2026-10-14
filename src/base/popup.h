@@ -48,6 +48,10 @@ struct Popup {
     // captured bounds. This runtime can place from live layout, but keeps the
     // same first-frame visibility contract.
     bool contentReady = false;
+    // The capture that noted the trigger this build. A frame is asked for
+    // only if Content then has something to place.
+    bool askFrame = false;
+    Window* win = nullptr;
 
     static Popup* New(Ctx* cx, Str id, El* trigger,
                       PopupAnchor anchor = PopupAnchor::TopLeft);

@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4e2a00eea7212baa9b5edf1f73753760deb2780b` (2026-10-12,
-text: Paint TextView selection under the glyphs (#3439)).
-A TextView selection is already painted before the glyphs, so an opaque
-selection colour does not cover the text. Run backgrounds stay under
-that quad.
+Processed through `45b0bbf26ce315e6500025f700d8a4166775767a` (2026-10-12,
+base: read the pointer only under hovered text, and ask no frame for a closed popup (#3431)).
+A closed popup notes its trigger and asks for no animation frame. The
+frame is requested only when that first capture has content to place;
+opened later, the content is a child of the build that opens it.
+The link hand is the link element's cursor, applied when the pointer
+is over that hitbox, so text paint does not read the pointer.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

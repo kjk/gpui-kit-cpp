@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4e2a00eea7212baa9b5edf1f73753760deb2780b",
+  sha: "45b0bbf26ce315e6500025f700d8a4166775767a",
   date: "2026-10-12",
-  subject: "text: Paint TextView selection under the glyphs (#3439)",
+  subject: "base: read the pointer only under hovered text, and ask no frame for a closed popup (#3431)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

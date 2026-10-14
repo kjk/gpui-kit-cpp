@@ -65,6 +65,37 @@ static void PopupContentUsesThePinnedCornerMarginAndDeferredLayer() {
     ArenaDelete(a);
 }
 
+// popup.rs a_closed_popup_asks_for_no_frame_and_opens_at_once: a closed
+// popup notes its trigger and asks for no frame. Opened on a later build,
+// the content is a child of that build.
+static void AClosedPopupAsksForNoFrameAndOpensAtOnce() {
+    App app;
+    Window* win = new Window();
+    Arena* a = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, a, {}};
+
+    Popup* closed = Popup::New(&cx, StrL("popup"), Div(a)->W(100)->H(100));
+    El* closedRoot = closed->Content(nullptr)->IntoEl();
+    utassert(closedRoot->first != nullptr);
+    utassert(closedRoot->first->next == nullptr);
+    utassert(!win->animFrame);
+
+    Arena* b = ArenaNew();
+    cx.a = b;
+    El* content = Div(b)->W(20)->H(20);
+    Popup* open = Popup::New(&cx, StrL("popup"), Div(b)->W(100)->H(100));
+    El* openRoot = open->Content(content)->IntoEl();
+    utassert(openRoot->first != nullptr);
+    utassert(openRoot->first->next == content);
+    utassert(!win->animFrame);
+
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(a);
+    ArenaDelete(b);
+}
+
 static void TriggerCaptureEnablesContentOnTheNextFrame() {
     App app;
     Window* win = new Window();
@@ -813,6 +844,7 @@ void TestPopup() {
     ArrowAlignmentUsesTheAnchorInsteadOfTriggerCenter();
     ArrowsPointTowardTheTriggerOnEveryResolvedSide();
     ArrowJoinCoversBothSidesOfTheSurfaceEdge();
+    AClosedPopupAsksForNoFrameAndOpensAtOnce();
     TriggerCaptureEnablesContentOnTheNextFrame();
     PopoverOpenStateOwnsItsDeferredRegistration();
     PopoverOwnsOpenCallbacksAndOutsideDismissal();

@@ -53,10 +53,15 @@ Popup* Popup::New(Ctx* cx, Str id, El* trigger, PopupAnchor anchor) {
     p->anchor = anchor;
     PopupAnchorState* state =
         ElementState<PopupAnchorState>(cx, id, StrL("PopupAnchorState"));
+    // Note the trigger on the first build. A closed popup stops there: the
+    // frame that would place content is asked for in Content, and only when
+    // there is content. Opened later, contentReady is already set, so that
+    // build places it from the bounds noted here.
     p->contentReady = state && state->captured;
-    if (state && !state->captured) {
+    p->askFrame = state && !state->captured;
+    p->win = cx->win;
+    if (p->askFrame) {
         state->captured = true;
-        WindowRequestAnimationFrame(cx->win);
     }
     // Root sizes to the trigger only. Content is an overlay (Rust Positioner).
     p->root = Div(a)->Id(id);
@@ -101,6 +106,12 @@ static void PopupPlaced(void* user, AnchoredPosition placed, Bounds trigger) {
 }
 
 Popup* Popup::Content(El* content) {
+    // first && has_content: the next frame is what places content the
+    // trigger's first capture could not. Nothing to place asks for nothing,
+    // so a list of closed popups is not kept off its scroll layer.
+    if (content && askFrame && win) {
+        WindowRequestAnimationFrame(win);
+    }
     if (!content || !contentReady) {
         return this;
     }
