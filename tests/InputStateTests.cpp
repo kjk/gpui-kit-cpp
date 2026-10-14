@@ -5753,6 +5753,36 @@ static void ContextMenuHandlerCanReadItsInput() {
     InputViewFree(&view);
 }
 
+// state.rs test_set_auto_grow_keeps_rows_fitted: changing the limits
+// recounts the rows. A fresh auto_grow starts at min_rows, and the next
+// edit used to be the only thing that fitted them.
+static void SetAutoGrowKeepsRowsFitted() {
+    InputView view = InputViewBuildWith(InputKind::Textarea, nullptr, 720, 400);
+    TextareaSetAutoGrow(view.input, 1, 10);
+    StrBuilder text;
+    for (int i = 1; i <= 8; i++) {
+        if (i > 1) {
+            text.Append(StrL("\n"));
+        }
+        text.Append(fmt("line %d", i));
+    }
+    Str value = text.TakeStr();
+    InputSetValue(view.input, value);
+    StrFree(value);
+    Flush(view);
+    TestRunUntilParked(view.app);
+    utassert(view.input->mode.rows == 8);
+
+    TextareaSetAutoGrow(view.input, 1, 12);
+    TestRunUntilParked(view.app);
+    utassert(view.input->mode.rows == 8);
+
+    TextareaSetAutoGrow(view.input, 1, 4);
+    TestRunUntilParked(view.app);
+    utassert(view.input->mode.rows == 4);
+    InputViewFree(&view);
+}
+
 // line_and_position_for_offset's y plus the scroll offset: where the visual
 // row holding `offset` starts inside the field — the visual rows of the
 // lines above it, then the row of its own line the wrap map puts it on.
@@ -8530,6 +8560,7 @@ static void RunWindowTestsC() {
     BlurKeepsDecorations();
     ContextMenuHandlerIsDeferredAndRespectsDisabled();
     ContextMenuHandlerCanReadItsInput();
+    SetAutoGrowKeepsRowsFitted();
     EditorDecorationsFollowTyping();
     KindDoesNotFollowTheRowCount();
     SoftWrapIsEnabledByDefault();

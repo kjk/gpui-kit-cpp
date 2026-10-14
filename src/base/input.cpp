@@ -3183,6 +3183,13 @@ void TextareaSetAutoGrow(InputState* s, int minRows, int maxRows) {
     s->mode.rows = minRows;
     s->mode.minRows = minRows;
     s->mode.maxRows = maxRows > minRows ? maxRows : minRows;
+    // update_auto_grow: fit the rows now. A fresh mode starts at min_rows,
+    // and the next edit was otherwise the only recount. Rust counts
+    // display_map.wrap_row_count(); the edit path here counts logical
+    // lines, and a limit change uses that same count.
+    if (InputIsMultiLine(s)) {
+        LayoutModeSetRows(&s->mode, RopeLinesLen(InputValue(s)));
+    }
 }
 
 void TextareaSetRows(InputState* s, int rows) {

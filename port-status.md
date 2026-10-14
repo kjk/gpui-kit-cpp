@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5e1da3124f023b8cf3457b00098ebd7a4d490c4c` (2026-10-11,
-motion: Keep cubic-bezier anticipation and overshoot in Easing (#3432)).
-A cubic-bezier easing with y controls outside 0..=1 can anticipate or
-overshoot. The public bezier solver still clamps, and opacity, colour,
-dialog entrance and the progress ring clamp at the call site.
+Processed through `1ccf011620da24d633f7cd6d3c11ca2e97798dcf` (2026-10-11,
+input: Keep auto-grow rows fitted when the limits change (#3430)).
+Changing a textarea's auto-grow limits recounts its rows immediately, so
+a field that already holds text does not collapse to the new minimum
+until the next edit.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
@@ -62,6 +62,9 @@ The current update target is
   The handler is posted with `ExecPost` and keeps the `InputState` pointer.
   Rust skips the call when the input entity is gone
   (`src/base/input.cpp` `RunContextMenuJob`).
+- **Auto-grow row counts are logical lines.** `update_auto_grow` and the
+  edit path count `RopeLinesLen`, not `display_map.wrap_row_count()`, so a
+  soft-wrapped line does not add a row (`src/base/input.cpp`).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
