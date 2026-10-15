@@ -809,6 +809,7 @@ const rustExamplePkgs = new Set([
   "system_monitor",
   "table_in_scrollable",
   "text_selection",
+  "touch_selection",
   "text_max_lines",
   "tooltip_top_edge",
   "webview",

@@ -195,6 +195,7 @@ export const simpleExamples = [
   "tooltip_top_edge",
   "table_in_scrollable",
   "text_selection",
+  "touch_selection",
   "text_max_lines",
   "motion",
   "markdown_table",
