@@ -204,16 +204,19 @@ static component::AlertDialog* Alert(AlertDialogStory* self, Ctx* cx) {
                              ->OnClick(Listen(cx, &OnAlertOk))
                              ->IntoEl()
                              ->W(kFill);
-            return d->Title(StrL("Session Expired"))
+            return d
+                ->Title(StrL("Session Expired"))
+                // The Rust literal continues with `\`, which drops the break
+                // and the indent, so the two sentences meet with no space.
                 ->Description(StrL("Your session has expired due to "
-                                   "inactivity. Please log in again to "
+                                   "inactivity.Please log in again to "
                                    "continue."))
                 ->Footer(signIn);
         }
         case AlertCustomContent:
             return d->Confirm()
                 ->Title(StrL("Update Available"))
-                ->Description(StrL("A new version (v2.0.0) is available. This "
+                ->Description(StrL("A new version (v2.0.0) is available.This "
                                    "update includes new features and bug "
                                    "fixes."))
                 ->OkText(StrL("Update"))
