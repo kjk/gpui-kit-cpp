@@ -118,6 +118,9 @@ void VirtualListScrollToItemDeferredWithOffset(VirtualListScrollHandle* h,
 // as the list goes.
 void VirtualListScrollToBottomDeferred(VirtualListScrollHandle* h);
 
+// The handle as a ScrollbarHandle. Offset is reported negative-down.
+ScrollbarHandle VirtualListScrollbar(VirtualListScrollHandle* handle);
+
 // What the list does with the handle when it lays out: the item sizes and the
 // viewport it measured, then the pending request if there is one, and last
 // the clamp that keeps the offset inside the list. `sizes` may be null for a

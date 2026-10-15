@@ -5,6 +5,8 @@
 #include "ui/icon.h"
 #include "ui/spinner.h"
 #include "ui/virtual_list.h"
+#include "base/scroll_bounce.h"
+#include "base/virtual_list.h"
 #include "base/actions.h"
 #include "base/input_keys.h"
 #include "gpui/keymap.h"
@@ -737,6 +739,10 @@ Command* Command::Bordered(bool v) {
     bordered = v;
     return this;
 }
+Command* Command::ScrollBounce(bool v) {
+    scrollBounce = v ? 1 : 0;
+    return this;
+}
 Command* Command::W(float v) {
     w = v;
     return this;
@@ -1031,7 +1037,11 @@ El* Command::IntoEl() {
                        ->Pad(inset)
                        ->Row(CommandRowEl, rowCx)
                        ->IntoEl();
-        listBox->Child(list);
+        gpui::ScrollBounce* bounce =
+            gpui::ScrollBounce::New(cx, StrL("command-scroll-bounce"),
+                                    VirtualListScrollbar(&s->scroll), list);
+        if (scrollBounce >= 0) bounce->Enabled(scrollBounce == 1);
+        listBox->Child(bounce->IntoEl());
     }
     box->Child(listBox);
     if (footer) {

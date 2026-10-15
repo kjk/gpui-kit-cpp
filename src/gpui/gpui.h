@@ -190,6 +190,8 @@ inline bool BackgroundIsSolid(const Background& b) {
 // The text-field engine, in the input section below. El and HitRect name one
 // before it is defined, the way they name SliderState.
 struct InputState;
+// Boundary displacement for a scrolling field. base/scroll_bounce.h defines it.
+struct ScrollOverscroll;
 // An editor's range decoration store, which base/input_editor.cpp defines.
 struct RangeDecorationsState;
 struct DecorationCollectionsState;
@@ -5362,6 +5364,11 @@ struct InputState {
     float caretX = 0;
     float contentW = 0;
     float contentH = 0;
+    // scroll_bounce: precise scrolling stretches a multi-line field past its
+    // ends. A line wheel only scrolls. The default follows the platform.
+    bool scrollBounce = base::PlatScrollBounce();
+    // Owned by input.cpp. Null until the field first scrolls.
+    ScrollOverscroll* overscroll = nullptr;
     // Suppressed while set_value writes the text, so a programmatic write is
     // not reported as the user having typed.
     bool emitEvents = true;
@@ -5461,8 +5468,14 @@ bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
 // field that can scroll keeps the wheel even at its end.
 // `phase` is the wheel's touch phase: a finger scrolling the field steps the
 // touch selection's edit menu aside until it lifts (edit_menu_on_scroll).
+// `precise` is ScrollDelta::Pixels. A line wheel never stretches.
 bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
-                        float dy, TouchPhase phase = TouchPhase::Moved);
+                        float dy, TouchPhase phase = TouchPhase::Moved,
+                        bool precise = false);
+// How far the text is drawn from its clamped scroll this frame. Steps the
+// spring and asks for another frame while it is moving.
+float InputBouncePaint(InputState* s, Window* win);
+void InputSetScrollBounce(InputState* s, bool on);
 void InputScrollToOffsetWithPadding(InputState* s, int offset, InputMoveDir dir,
                                     InputScrollPadding padding);
 // The same, for wherever the caret is now: the row it is on and the x the

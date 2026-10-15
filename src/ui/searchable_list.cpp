@@ -1,4 +1,5 @@
 #include "ui/searchable_list.h"
+#include "base/scroll_bounce.h"
 #include "base/actions.h"
 #include "base/list.h"
 #include "base/select.h"
@@ -762,6 +763,10 @@ SearchableList* SearchableList::InSelect(bool v) {
     inSelect = v;
     return this;
 }
+SearchableList* SearchableList::ScrollBounce(bool v) {
+    scrollBounce = v ? 1 : 0;
+    return this;
+}
 SearchableList* SearchableList::CheckIcon(IconName n) {
     checkIcon = n;
     return this;
@@ -865,7 +870,7 @@ El* SearchableList::IntoEl() {
         return box;
     }
 
-    El* rows = Div(a)->FlexCol()->W(kFill)->MaxH(maxH)->ClipY();
+    El* rows = Div(a)->FlexCol()->W(kFill)->Shrink0();
     Listener click = ListenTo(state, &SearchableListState::OnRowClick, 0);
     int lastSection = -1;
     for (int m = 0; m < s->matches.len; m++) {
@@ -967,7 +972,28 @@ El* SearchableList::IntoEl() {
         }
         rows->Child(row);
     }
-    box->Child(rows);
+    Entity<ScrollBounceMetrics> met =
+        ScrollBounceMetricsEntity(cx, StrL("searchable-list-bounce"), true);
+    ScrollBounceMetrics* m = met.Get(cx);
+    El* pane = Div(a)
+                   ->FlexCol()
+                   ->W(kFill)
+                   ->MaxH(maxH)
+                   ->ClipY()
+                   ->ScrollY(m ? m->offset : 0)
+                   ->ScrollFromPath()
+                   ->OnScroll(ListenTo(met, &ScrollBounceMetrics::OnScroll))
+                   ->Child(rows);
+    if (m) {
+        gpui::ScrollBounce* bounce =
+            gpui::ScrollBounce::New(cx, StrL("searchable-list-bounce"),
+                                    PositiveScrollHandle(&m->slot), pane)
+                ->Measure(&m->slot)
+                ->OnScroll(ListenTo(met, &ScrollBounceMetrics::OnScroll));
+        if (scrollBounce >= 0) bounce->Enabled(scrollBounce == 1);
+        pane = bounce->IntoEl();
+    }
+    box->Child(pane);
     if (footer) {
         // Combobox::footer: an action under the list, ruled off from it.
         box->Child(Div(a)

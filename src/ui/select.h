@@ -118,6 +118,8 @@ struct Select {
     float width = kFill;
     float menuWidth = 0; // menu_width(px(..)): wider than the trigger
     float menuMaxH = 0;
+    // None defers to the platform. 0 off, 1 on.
+    int scrollBounce = -1;
     UiSize size = UiSize::Medium;
     IconName icon = IconName::None; // replaces the caret when set
     // Combobox::check_icon, which the Select forwards to its list.
@@ -172,6 +174,9 @@ struct Select {
     // FocusableExt::focus_ring: no focus appearance on this control.
     Select* FocusRing(bool v);
     Select* Searchable(InputState* query, Listener onFocus);
+    // Bounce the dropdown list at its vertical boundaries. On by default on
+    // iOS, Android and macOS, off elsewhere.
+    Select* ScrollBounce(bool v);
     Select* Trigger(El* e);
     Select* Footer(El* e);
     Select* Delegate(const SearchableListDelegate& value);

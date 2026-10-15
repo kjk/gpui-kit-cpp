@@ -2855,7 +2855,8 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
                 dy = 0;
             }
         }
-        if (InputOnScrollWheel(field, win->app, win, dx, dy, in.phase)) {
+        if (InputOnScrollWheel(field, win->app, win, dx, dy, in.phase,
+                               in.precise)) {
             AppInvalidate(win);
             return;
         }

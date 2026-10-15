@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "607f589aa45b4708bd8fd09aec361363c0a48cb7",
+  sha: "14c26d306ca97316d66ae474e3cb40bb5de0594b",
   date: "2026-10-14",
-  subject: "shell: Fold script failures to one line and explain what failed (#3509)",
+  subject: "scroll: Bounce scrollable content like NSScrollView, by default on macOS (#3500)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

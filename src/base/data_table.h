@@ -3,6 +3,7 @@
 /* Unstyled data table — crates/ui/src/table/state.rs + table/data_table.rs */
 
 #include "gpui/gpui.h"
+#include "base/scroll_bounce.h"
 #include "base/virtual_list.h"
 
 namespace gpui {
@@ -204,6 +205,14 @@ struct TableState {
     float rowH = 32;
     float scrollY = 0;
     float viewportH = 0;
+    // nRows * rowH. The bounce clamps against this, and the headers stay
+    // outside the stretch.
+    float contentH = 0;
+    // The builder's override, resolved each frame. Off still claims the wheel.
+    bool bounceOn = false;
+    PositiveScroll bounce = {};
+    ScrollOverscroll* overscroll = nullptr;
+    OngoingScroll bounceLock = {};
     // How far the un-fixed columns are slid to the left, and the width they
     // were last laid out in. A table wide enough to need it scrolls sideways
     // under a head that goes with it.
@@ -248,6 +257,7 @@ struct TableState {
         VecReset(colOrder);
         VecReset(colBounds);
         VecReset(colFit);
+        delete overscroll;
     }
     Listener onLoadMore = {};
     // UI TableDelegate hooks stored in base-shaped signatures so retained
@@ -297,6 +307,8 @@ struct TableState {
     static void OnColDrop(TableState* self, Ctx* cx, const DropEvent* ev);
     static void OnColDragEnd(TableState* self, Ctx* cx, const MouseUpEvent* ev);
     static void OnScroll(TableState* self, Ctx* cx, const ScrollEvent* ev);
+    static void OnBounceWheel(TableState* self, Ctx* cx,
+                              const ScrollWheelEvent* ev);
     // The scrolling pane moves both ways; the pinned one only moves down, so
     // it keeps the plain handler and never writes the sideways offset back.
     static void OnScrollXY(TableState* self, Ctx* cx, const ScrollEvent* ev);

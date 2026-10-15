@@ -1,4 +1,5 @@
 #include "ui/scroll.h"
+#include "base/scroll_bounce.h"
 
 namespace gpui {
 
@@ -59,18 +60,39 @@ Scrollable* Scrollable::H(float v) {
     hSet = true;
     return this;
 }
+Scrollable* Scrollable::ScrollBounce(bool v) {
+    scrollBounce = v ? 1 : 0;
+    return this;
+}
 
 El* Scrollable::IntoEl() {
     // The scrolled box is the base one — the clip, the offsets, the id and
     // the listener all come together there, so the themed wrapper cannot end
     // up with a box that clips but does not take the wheel.
-    El* box = Scrollbar::Apply(cx, element, id.s ? id : StrL("scrollable"),
-                               scrollY, scrollX, onScroll, axis,
-                               modeSet ? mode : ScrollbarModeNow(cx->app));
+    Str scrollId = id.s ? id : StrL("scrollable");
+    El* box =
+        Scrollbar::Apply(cx, element, scrollId, scrollY, scrollX, onScroll,
+                         axis, modeSet ? mode : ScrollbarModeNow(cx->app));
     if (hSet) {
         box->H(h);
     }
-    return box;
+    // A horizontal-only area does not bounce. Every other axis owns its
+    // vertical wheel, stretch or not, so a nested scroller stops at its end.
+    if (axis == ScrollAxis::Horizontal) {
+        return box;
+    }
+    Entity<ScrollBounceMetrics> met =
+        ScrollBounceMetricsEntity(cx, scrollId, true);
+    ScrollBounceMetrics* m = met.Get(cx);
+    if (!m) return box;
+    m->offset = scrollY;
+    gpui::ScrollBounce* bounce =
+        gpui::ScrollBounce::New(cx, StrL("scrollable-bounce"),
+                                PositiveScrollHandle(&m->slot), box)
+            ->Measure(&m->slot);
+    if (scrollBounce >= 0) bounce->Enabled(scrollBounce == 1);
+    if (onScroll.IsValid()) bounce->OnScroll(onScroll);
+    return bounce->IntoEl();
 }
 
 El* ScrollableElement::Scrollbar(Ctx* cx, El* element, Str id, float scrollY,

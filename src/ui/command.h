@@ -257,6 +257,8 @@ struct Command {
     // CommandOptions::max_h; below 0 is the default, rems(18.75).
     float maxH = -1;
     bool bordered = true;
+    // -1 defers to the platform. 0 off, 1 on.
+    int scrollBounce = -1;
     float w = kFill;
     // impl Styled for Command: the refinement Rust keeps in
     // `CommandOptions::style` and lays over the palette's box after its
@@ -285,6 +287,7 @@ struct Command {
     Command* Footer(El* e);
     Command* MaxH(float v);
     Command* Bordered(bool v);
+    Command* ScrollBounce(bool v);
     Command* W(float v);
     Command* Refine(const Style& s, uint32_t fields);
     Command* OnQuery(Listener fn);

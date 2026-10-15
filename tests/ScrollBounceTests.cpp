@@ -2,6 +2,8 @@
 
 #include "Test.h"
 
+#include <math.h>
+
 static void ResistanceAndReversePreserveUnconsumedDistance() {
     ScrollBouncePhysics scroll;
     scroll.Begin(600);
@@ -172,6 +174,314 @@ static void APhaselessWheelBouncesAgainOnlyAfterAPause() {
     utassert(!gesture.Lifts(2.0, -50));
 }
 
+static void MotionBuilderConfiguresTrackingAndResponse() {
+    ScrollBounceMotion motion = ScrollBounceMotion()
+                                    .WithTracking(0.4f)
+                                    .WithResponse(300)
+                                    .WithMaxStretch(24);
+    utassertnear(motion.Tracking(), 0.4f);
+    utassertnear(motion.Response(), 300);
+    utassert(motion.HasMaxStretch());
+    utassertnear(motion.MaxStretch(), 24);
+}
+
+static float StretchAt(float tracking) {
+    ScrollBouncePhysics scroll;
+    scroll.motion = scroll.motion.WithTracking(tracking);
+    scroll.Begin(600);
+    scroll.Pull(100);
+    return scroll.Offset();
+}
+
+static void TrackingScalesTheFirstStretch() {
+    utassert(StretchAt(0.3f) < StretchAt(0.55f));
+    utassert(StretchAt(0.55f) < StretchAt(0.8f));
+}
+
+static void RegrabbingADisplacedEdgeKeepsItsExtent() {
+    ScrollBouncePhysics scroll;
+    scroll.Begin(600);
+    scroll.Pull(-150);
+    scroll.Release();
+    scroll.Step(0.08f);
+    float before = scroll.Offset();
+    // The viewport shrank below the displacement while the edge returned.
+    scroll.Begin(40);
+    utassert(fabsf(scroll.Offset() - before) < 0.001f);
+    scroll.Pull(10);
+    utassert(scroll.Offset() > before);
+    utassert(scroll.Offset() < before + 10);
+}
+
+static void AGestureFromRestAdoptsTheCurrentExtent() {
+    ScrollBouncePhysics scroll;
+    scroll.Begin(600);
+    scroll.Begin(40);
+    scroll.Pull(-100);
+    // Saturates below the 40 px viewport, not the 600 px one.
+    utassert(scroll.Offset() > -40.f);
+}
+
+static void ReturnKeepsAVisibleTailAfterAQuarterSecond() {
+    ScrollBouncePhysics scroll;
+    scroll.position = 100;
+    utassert(scroll.Step(0.25f));
+    utassert(scroll.Offset() > 10.f && scroll.Offset() < 30.f);
+    utassert(scroll.velocity < 0.f);
+}
+
+static void SpringSettlesWithoutCrossingTheBoundary() {
+    ScrollBouncePhysics scroll;
+    scroll.Begin(600);
+    scroll.Pull(-200);
+    scroll.Release();
+    utassert(scroll.suppressMomentum);
+    float previous = scroll.Offset();
+    for (int i = 0; i < 120; i++) {
+        scroll.Step(1.f / 120.f);
+        utassert(scroll.Offset() >= previous && scroll.Offset() <= 0.f);
+        previous = scroll.Offset();
+    }
+    utassertnear(scroll.Offset(), 0);
+    scroll.Begin(600);
+    utassert(!scroll.suppressMomentum);
+}
+
+struct OverRoom {
+    float room = 0;
+};
+
+static float OverUseRoom(void* user, float dy) {
+    OverRoom* r = (OverRoom*)user;
+    float used = dy > -r->room ? dy : -r->room;
+    r->room += used;
+    return used;
+}
+
+static void ExpectIn(float v, float lo, float hi) {
+    if (!(v >= lo && v <= hi)) {
+        logf("scroll bounce %f not in [%f, %f]\n", v, lo, hi);
+    }
+    utassert(v >= lo && v <= hi);
+}
+
+static void ASwipePastTheEndStretchesAndSpringsBack() {
+    ScrollOverscroll over;
+    OverRoom room{30};
+    double now = 0;
+    over.Packet(-10, TouchPhase::Started, 400, now, OverUseRoom, &room);
+    over.Packet(-100, TouchPhase::Moved, 400, now, OverUseRoom, &room);
+    utassertnear(room.room, 0);
+    float stretched = over.Offset();
+    utassert(stretched < 0.f && stretched > -80.f);
+    over.Packet(0, TouchPhase::Ended, 400, now, OverUseRoom, &room);
+    utassert(
+        !over.Packet(-40, TouchPhase::Moved, 400, now, OverUseRoom, &room));
+    double later = now;
+    int guard = 0;
+    while (over.Step(later) && guard < 400) {
+        later += 0.016;
+        guard++;
+    }
+    utassertnear(over.Offset(), 0);
+}
+
+static void PullingBackUnstretchesBeforeScrollingTheText() {
+    ScrollOverscroll over;
+    OverRoom room{0};
+    double now = 0;
+    over.Packet(0, TouchPhase::Started, 400, now, OverUseRoom, &room);
+    over.Packet(-50, TouchPhase::Moved, 400, now, OverUseRoom, &room);
+    utassert(over.Offset() < 0.f);
+    struct Back {
+        float scrolled = 0;
+    } back;
+    over.Packet(
+        70, TouchPhase::Moved, 400, now,
+        [](void* user, float dy) {
+            Back* b = (Back*)user;
+            b->scrolled += dy;
+            return dy;
+        },
+        &back);
+    utassertnear(over.Offset(), 0);
+    utassertnear(back.scrolled, 20);
+}
+
+static void FlingPath(float speed, float room0, uint32_t stall,
+                      Vec<float>* path) {
+    const double frame = 0.016667;
+    ScrollOverscroll over;
+    float dy = -speed / 60.f;
+    Vec<float> held;
+    OverRoom room{room0};
+    for (int n = 0; n < 120; n++) {
+        double at = frame * (double)n;
+        if (n < 100) {
+            VecAppend(held, dy);
+            dy *= 0.95f;
+            float sum = 0;
+            for (int i = 0; i < len(held); i++) sum += held[i];
+            if (stall == 0 || n < (int)stall || room.room == 0.f ||
+                -sum > room.room) {
+                for (int i = 0; i < len(held); i++) {
+                    over.Packet(held[i], TouchPhase::Moved, 300, at,
+                                OverUseRoom, &room);
+                }
+                VecClear(held);
+            }
+        }
+        over.Step(at);
+        VecAppend(*path, over.Offset());
+    }
+}
+
+static float PathPeak(const Vec<float>& path) {
+    float peak = 0;
+    for (int i = 0; i < len(path); i++) {
+        if (path[i] < peak) peak = path[i];
+    }
+    return peak;
+}
+
+static void AFlingThrowsTheEdgeAsFarAsNSScrollViewDoes() {
+    Vec<float> path;
+    FlingPath(1500, 0, 0, &path);
+    float peak = PathPeak(path);
+    ExpectIn(peak, -16.f, -12.f);
+    int turned = 0;
+    for (int i = 0; i < len(path); i++) {
+        if (path[i] == peak) {
+            turned = i;
+            break;
+        }
+    }
+    utassert(turned >= 4 && turned <= 6);
+    utassertnear(path[50], 0);
+    for (int i = turned + 1; i < len(path); i++) {
+        utassert(path[i] >= path[i - 1]);
+    }
+    for (int i = 50; i < len(path); i++) utassert(path[i] == 0.f);
+    Vec<float> faster;
+    FlingPath(3000, 0, 0, &faster);
+    float fastPeak = PathPeak(faster);
+    utassert(fabsf(fastPeak / peak - 2.f) < 0.15f);
+    Vec<float> hardest;
+    FlingPath(20000, 0, 0, &hardest);
+    ExpectIn(PathPeak(hardest), -36.f, -34.f);
+}
+
+static void PacketsHandedOverAtOnceDoNotThrowTheEdgeFurther() {
+    Vec<float> evenPath;
+    Vec<float> stalledPath;
+    FlingPath(4000, 500, 0, &evenPath);
+    FlingPath(4000, 500, 3, &stalledPath);
+    float even = PathPeak(evenPath);
+    float stalled = PathPeak(stalledPath);
+    utassert(even < -10.f);
+    utassert(fabsf(stalled / even - 1.f) < 0.25f);
+}
+
+static void ATouchThatLiftsWithoutMovingLetsGoOfTheEdge() {
+    ScrollOverscroll over;
+    OverRoom room{0};
+    over.Packet(-80, TouchPhase::Moved, 400, 0, OverUseRoom, &room);
+    double later = 0.030;
+    over.Step(later);
+    float held = over.Offset();
+    over.Packet(0, TouchPhase::Started, 400, later, OverUseRoom, &room);
+    utassert(over.Packet(0, TouchPhase::Moved, 400, later, OverUseRoom, &room));
+    double at = later;
+    int guard = 0;
+    while (over.Step(at) && guard < 400) {
+        at += 0.016;
+        guard++;
+    }
+    utassert(held < 0.f);
+    utassertnear(over.Offset(), 0);
+}
+
+static float StretchTravel(float travel) {
+    ScrollOverscroll over;
+    OverRoom room{0};
+    over.Packet(0, TouchPhase::Started, 300, 0, OverUseRoom, &room);
+    over.Packet(-travel, TouchPhase::Moved, 300, 0, OverUseRoom, &room);
+    return -over.Offset();
+}
+
+static void AStretchFollowsTheTravelAsNSScrollViewDoes() {
+    ExpectIn(StretchTravel(100), 6.5f, 8.f);
+    ExpectIn(StretchTravel(764), 28.f, 34.f);
+    float stretched = StretchTravel(2400);
+    utassert(stretched >= 35.f && stretched < 36.f);
+    utassert(StretchTravel(100000) < 36.f);
+}
+
+static void AStillReleaseReturnsAtFullSpeed() {
+    ScrollOverscroll over;
+    OverRoom room{0};
+    over.Packet(0, TouchPhase::Started, 300, 0, OverUseRoom, &room);
+    over.Packet(-800, TouchPhase::Moved, 300, 0, OverUseRoom, &room);
+    float held = over.Offset();
+    double lifted = 0.200;
+    over.Packet(0, TouchPhase::Ended, 300, lifted, OverUseRoom, &room);
+    over.Step(lifted + 0.008);
+    utassert(over.Offset() / held < 0.92f);
+    over.Step(lifted + 0.055);
+    float half = over.Offset() / held;
+    ExpectIn(half, 0.45f, 0.55f);
+}
+
+static void AfterAPauseTheNextFlickThrowsTheEdgeAgain() {
+    ScrollOverscroll over;
+    OverRoom room{0};
+    utassert(over.Packet(-40, TouchPhase::Moved, 400, 0, OverUseRoom, &room));
+    double at = 0;
+    int guard = 0;
+    while (over.Step(at) && guard < 400) {
+        at += 0.016;
+        guard++;
+    }
+    double later = at + 0.25;
+    utassert(
+        over.Packet(-40, TouchPhase::Moved, 400, later, OverUseRoom, &room));
+}
+
+static void MomentumBackIntoTheTextScrollsWhileTheEdgeReturns() {
+    ScrollOverscroll over;
+    OverRoom room{0};
+    over.Packet(0, TouchPhase::Started, 400, 0, OverUseRoom, &room);
+    over.Packet(-800, TouchPhase::Moved, 400, 0, OverUseRoom, &room);
+    double lifted = 0.100;
+    over.Packet(0, TouchPhase::Ended, 400, lifted, OverUseRoom, &room);
+    double later = lifted + 0.016;
+    over.Step(later);
+    float before = over.Offset();
+    utassert(before < 0.f);
+    over.Packet(20, TouchPhase::Moved, 400, later, OverUseRoom, &room);
+    utassertnear(room.room, 20);
+    utassertnear(over.Offset(), before);
+    over.Step(later + 0.016);
+    utassert(over.Offset() > before && over.Offset() < 0.f);
+}
+
+static void ANewPreciseGestureTakesOverWithoutJumping() {
+    ScrollOverscroll over;
+    OverRoom room{0};
+    over.Packet(-80, TouchPhase::Moved, 400, 0, OverUseRoom, &room);
+    over.Step(0.016);
+    double later = 0.200;
+    over.Step(later);
+    utassert(over.Offset() < 0.f);
+    float before = over.Offset();
+    over.Packet(0, TouchPhase::Started, 400, later, OverUseRoom, &room);
+    utassert(fabsf(over.Offset() - before) < 0.001f);
+    utassert(
+        over.Packet(-40, TouchPhase::Moved, 400, later, OverUseRoom, &room));
+    over.Step(later + 0.016);
+    utassert(over.Offset() < before);
+}
+
 void TestScrollBounce() {
     TestSuite("scroll_bounce");
     ResistanceAndReversePreserveUnconsumedDistance();
@@ -183,4 +493,20 @@ void TestScrollBounce() {
     ADeliberateDragAfterACatchCanFling();
     APhaselessWheelScrollsBackRightAfterBouncing();
     APhaselessWheelBouncesAgainOnlyAfterAPause();
+    MotionBuilderConfiguresTrackingAndResponse();
+    TrackingScalesTheFirstStretch();
+    RegrabbingADisplacedEdgeKeepsItsExtent();
+    AGestureFromRestAdoptsTheCurrentExtent();
+    ReturnKeepsAVisibleTailAfterAQuarterSecond();
+    SpringSettlesWithoutCrossingTheBoundary();
+    ASwipePastTheEndStretchesAndSpringsBack();
+    PullingBackUnstretchesBeforeScrollingTheText();
+    AFlingThrowsTheEdgeAsFarAsNSScrollViewDoes();
+    PacketsHandedOverAtOnceDoNotThrowTheEdgeFurther();
+    ATouchThatLiftsWithoutMovingLetsGoOfTheEdge();
+    AStretchFollowsTheTravelAsNSScrollViewDoes();
+    AStillReleaseReturnsAtFullSpeed();
+    AfterAPauseTheNextFlickThrowsTheEdgeAgain();
+    MomentumBackIntoTheTextScrollsWhileTheEdgeReturns();
+    ANewPreciseGestureTakesOverWithoutJumping();
 }

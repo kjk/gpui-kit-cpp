@@ -149,6 +149,8 @@ struct DataTable {
     // (horizontal) scrollbars of the scrolling body, both on by default.
     bool scrollbarV = true;
     bool scrollbarH = true;
+    // None defers to the platform. 0 off, 1 on. Headers stay fixed.
+    int scrollBounce = -1;
     // group_headers: the extra head rows a caller stacks over the columns,
     // outermost first.
     ArenaVec<TableGroupHeader> groupHeaders;
@@ -206,6 +208,9 @@ struct DataTable {
     DataTable* Bordered(bool v);
     DataTable* FixedColsBorder(bool v);
     DataTable* ScrollbarVisible(bool vertical, bool horizontal);
+    // Bounce the rows at the vertical boundaries. Headers and scrollbars
+    // stay fixed. On by default on iOS, Android and macOS, off elsewhere.
+    DataTable* ScrollBounce(bool v);
     DataTable* WithSize(UiSize s);
     // Size::Size(px), which the story's 48px row offers.
     DataTable* RowHeight(float px);

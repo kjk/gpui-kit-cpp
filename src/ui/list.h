@@ -132,6 +132,9 @@ struct List {
     List* SearchPlaceholder(Str value);
     List* WithSize(UiSize value);
     List* ScrollbarVisible(bool value);
+    // -1 defers to the platform. 0 off, 1 on.
+    int scrollBounce = -1;
+    List* ScrollBounce(bool value);
     List* Padding(float value);
     List* Loading(El* e);
     List* Initial(El* e);

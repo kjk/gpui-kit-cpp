@@ -372,6 +372,9 @@ float PlatCaretWidth() {
 bool PlatScrollBounce() {
     return false;
 }
+bool PlatScrollBounceTouch() {
+    return false;
+}
 const char* PlatMonoFontName() {
     return "Consolas";
 }

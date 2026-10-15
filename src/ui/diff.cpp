@@ -9,6 +9,7 @@
 #include "ui/syntax.h"
 #include "ui/theme.h"
 #include "ui/virtual_list.h"
+#include "base/scroll_bounce.h"
 
 namespace gpui {
 namespace component {
@@ -3437,10 +3438,13 @@ El* Diff::IntoEl() {
     root->OnAction(Act("diff::ExtendUp"), ListenTo(state, &OnDiffAction));
     root->OnAction(Act("diff::ExtendDown"), ListenTo(state, &OnDiffAction));
     root->OnAction(input::Copy(), ListenTo(state, &OnDiffAction));
-    root->Child(VirtualList::New(cx, len(st->rows))
-                    ->RowH(24)
-                    ->Handle(&st->listScroll)
-                    ->Row(&RenderRow, this)
+    El* rows = VirtualList::New(cx, len(st->rows))
+                   ->RowH(24)
+                   ->Handle(&st->listScroll)
+                   ->Row(&RenderRow, this)
+                   ->IntoEl();
+    root->Child(ScrollBounce::New(cx, StrL("diff-bounce"),
+                                  VirtualListScrollbar(&st->listScroll), rows)
                     ->IntoEl());
     return root;
 }

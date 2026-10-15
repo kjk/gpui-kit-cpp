@@ -4139,18 +4139,32 @@ static El* RhRenderScrollable(RhView* v) {
     return gpui::TextView::New(&v->cx, v->state)->Scrollable()->IntoEl();
 }
 
+// The bounce wrapper has no lifecycle of its own. Reveal is painted on the
+// scroll box, whose content height is the document.
+static El* RhRevealHost(El* root) {
+    if (root && root->lifecycle && root->lifecycle->afterPaint) return root;
+    if (root) {
+        for (El* c = root->first; c; c = c->next) {
+            if (c->lifecycle && c->lifecycle->afterPaint) return c;
+        }
+    }
+    return root;
+}
+
 // Hand the current paint report to the root's lifecycle, with its live mask.
 static void RhRevealReport(RhView* v, El* root, Bounds line, Bounds mask,
                            float contentH = 0) {
     RhState(v)->reveal.line = line;
-    root->h = mask.h;
-    root->contentH = contentH;
+    El* host = RhRevealHost(root);
+    if (!host || !host->lifecycle || !host->lifecycle->afterPaint) return;
+    host->h = mask.h;
+    host->contentH = contentH;
     PaintCtx paint;
     paint.app = &v->app;
     paint.window = v->win;
     paint.hitMask = mask;
     paint.hasHitMask = true;
-    root->lifecycle->afterPaint(&paint, root, root->lifecycle->user);
+    host->lifecycle->afterPaint(&paint, host, host->lifecycle->user);
 }
 
 // The scroll box a scrollable view puts its document in, the way
@@ -6248,9 +6262,20 @@ struct TswScrollTop {
     float offsetInItem = 0;
 };
 
+// A scrollable view's outer element is the bounce. The scroll box, and
+// the document under it, are one step further in.
+static El* TswScrollBox(El* scroller) {
+    if (scroller && scroller->style.overflowY != Overflow::Scroll &&
+        scroller->first &&
+        scroller->first->style.overflowY == Overflow::Scroll) {
+        return scroller->first;
+    }
+    return scroller;
+}
+
 static TswScrollTop TswScrollTopOf(const TswView& v) {
     TswScrollTop top;
-    El* scroller = v.Root()->scroller;
+    El* scroller = TswScrollBox(v.Root()->scroller);
     El* doc = scroller ? scroller->first : nullptr;
     float scroll = v.State()->scrollY;
     int ix = 0;
@@ -6266,7 +6291,7 @@ static TswScrollTop TswScrollTopOf(const TswView& v) {
 }
 
 static int TswBlockCount(const TswView& v) {
-    El* scroller = v.Root()->scroller;
+    El* scroller = TswScrollBox(v.Root()->scroller);
     El* doc = scroller ? scroller->first : nullptr;
     int n = 0;
     for (El* b = doc ? doc->first : nullptr; b; b = b->next) {

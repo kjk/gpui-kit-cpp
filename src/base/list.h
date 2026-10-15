@@ -4,6 +4,7 @@
 
 #include "gpui/gpui.h"
 #include "base/index_path.h"
+#include "base/scroll_bounce.h"
 #include "base/virtual_list.h"
 
 namespace gpui {
@@ -143,6 +144,10 @@ struct ListState {
     Vec<float> rowHeights;
     float scrollY = 0;
     float viewportH = 0;
+    // The rows' full height, what the bounce clamps against.
+    float contentH = 0;
+    // Points at scrollY, viewportH and contentH. Stable for the entity.
+    PositiveScroll bounce = {};
     // delegate.loading() / has_more() / load_more_threshold(): the rows are
     // replaced by a loading view, and coming within `loadMoreThreshold` rows
     // of the end asks for more.

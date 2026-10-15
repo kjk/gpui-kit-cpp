@@ -2,6 +2,7 @@
 
 #include "base/global_state.h"
 #include "base/input_keys.h"
+#include "base/scroll_bounce.h"
 #include "base/scrollable_mask.h"
 #include "base/scrollbar.h"
 #include "base/text_format.h"
@@ -6550,17 +6551,35 @@ El* TextView::IntoEl() {
                                  : Listener{});
     }
 
+    El* scrollBox = nullptr;
     if (scrollable && cx->win && managed) {
         uint32_t key = TextViewScrollKey(state);
-        element = Div(a)
-                      ->FlexCol()
-                      ->W(kFill)
-                      ->H(kFill)
-                      ->ClipY()
-                      ->ScrollY(managed->scrollY)
-                      ->ScrollId((int)key)
-                      ->OnScroll(ListenTo(state, &TextViewState::OnScroll))
-                      ->Child(element);
+        Listener onScroll = ListenTo(state, &TextViewState::OnScroll);
+        scrollBox = Div(a)
+                        ->FlexCol()
+                        ->W(kFill)
+                        ->H(kFill)
+                        ->ClipY()
+                        ->ScrollY(managed->scrollY)
+                        ->ScrollId((int)key)
+                        ->OnScroll(onScroll)
+                        ->Child(element);
+        element = scrollBox;
+        Entity<ScrollBounceMetrics> met =
+            ScrollBounceMetricsEntity(cx, StrL("text-view-bounce"), true);
+        ScrollBounceMetrics* m = met.Get(cx);
+        if (m) {
+            m->offset = managed->scrollY;
+            element =
+                ScrollBounce::New(cx, StrL("text-view-bounce"),
+                                  PositiveScrollHandle(&m->slot), scrollBox)
+                    ->Measure(&m->slot)
+                    ->OnScroll(onScroll)
+                    ->IntoEl();
+            // The scroll box was the sized child. The bounce takes that
+            // place, and the box fills it so the document still overflows.
+            element->FlexCol()->W(kFill)->H(kFill)->MinH(0);
+        }
     }
     if (outerStyleFields) {
         element->Refine(outerStyle, outerStyleFields);
@@ -6576,15 +6595,18 @@ El* TextView::IntoEl() {
             ->OnAction(input::Copy(), onAction)
             ->OnAction(input::SelectAll(), onAction);
     }
-    element = RevealReportView(element, managed);
-    element->lifecycle = ArenaNew<ElLifecycle>(a);
-    element->lifecycle->afterPaint = &TextView::RevealPainted;
-    element->lifecycle->user = this;
+    // Reveal measures the scroll box. On the bounce, that is the child:
+    // the wrapper's content height is the viewport, not the document.
+    El* revealed = scrollBox ? scrollBox : element;
+    revealed = RevealReportView(revealed, managed);
+    revealed->lifecycle = ArenaNew<ElLifecycle>(a);
+    revealed->lifecycle->afterPaint = &TextView::RevealPainted;
+    revealed->lifecycle->user = this;
     if (inheritedBuilder) {
         inheritedBuilder->state = state;
         inheritedBuilder->textViewStyle = textViewStyle;
-        element->lifecycle->prepareStyle = &TextView::PrepareInheritedColor;
-        element->lifecycle->user = inheritedBuilder;
+        revealed->lifecycle->prepareStyle = &TextView::PrepareInheritedColor;
+        revealed->lifecycle->user = inheritedBuilder;
     }
     return element;
 }

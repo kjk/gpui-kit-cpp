@@ -334,11 +334,22 @@ static void DelegateHooksDriveSearchRenderingAndSelection() {
     utassert(state->matches.len == 1 && state->matches[0] == 1);
     utassert(hooks.renderedHeaders == 1);
     utassert(hooks.renderedItems == 1);
-    El* rows = box->first;
-    utassert(rows != nullptr && rows->first != nullptr);
-    utassert(base::StrEq(rows->first->text, StrL("Custom header")));
-    utassert(rows->first->next != nullptr);
-    utassert(rows->first->next->accessibility.selected);
+    // The rows sit under the bounce and its scroll pane. The header is the
+    // text element the delegate returned, and the item is its sibling.
+    El* header = nullptr;
+    struct Find {
+        static El* Text(El* e, Str text) {
+            if (!e) return nullptr;
+            if (e->text.s && base::StrEq(e->text, text)) return e;
+            for (El* c = e->first; c; c = c->next) {
+                if (El* hit = Text(c, text)) return hit;
+            }
+            return nullptr;
+        }
+    };
+    header = Find::Text(box, StrL("Custom header"));
+    utassert(header != nullptr && header->next != nullptr);
+    utassert(header && header->next && header->next->accessibility.selected);
 
     utassert(SearchableListClick(state, 1));
     utassert(hooks.willChange == 1);

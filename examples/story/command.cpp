@@ -400,6 +400,8 @@ struct CommandMenuDialog {
             component::Command::New(cx, StrL("command-dialog"), story->dialog)
                 ->Entries(gSuggestionEntries, 3)
                 ->Bordered(false)
+                ->Refine(Style{.radius = ThemeNow(cx->app).radiusLg},
+                         StyleFieldRadius)
                 ->Placeholder(StrL("Type a command or search..."))
                 ->OnConfirm(Listen(cx, &CommandMenuDialog::OnConfirm))
                 ->Header(MatchesHeader)
@@ -539,6 +541,8 @@ struct StockSearchDialog {
             component::Command::New(cx, StrL("command-stocks"), story->search)
                 ->Entries(story->stockEntries, story->nStockEntries)
                 ->Bordered(false)
+                ->Refine(Style{.radius = ThemeNow(cx->app).radiusLg},
+                         StyleFieldRadius)
                 ->Placeholder(StrL("Search stocks..."))
                 ->Empty(StockEmpty(cx))
                 ->Refine(floor, StyleFieldMinHeight)

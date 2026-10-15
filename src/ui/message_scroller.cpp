@@ -1,6 +1,8 @@
 #include "ui/message_scroller.h"
 #include "ui/button.h"
 #include "ui/virtual_list.h"
+#include "base/scroll_bounce.h"
+#include "base/virtual_list.h"
 
 namespace gpui {
 
@@ -382,13 +384,21 @@ El* MessageScroller::IntoEl() {
                             ListenTo(state, &MessageScrollerState::OnScroll))
                    ->Row(&MessageScrollerRow, rc)
                    ->IntoEl();
-    // Keep vertical wheel scrolling from leaking into an ancestor scroller:
-    // the mask consumes vertical-dominant wheel events while the list can
-    // move and chains to the ancestor only at the edges.
-    list->ScrollMask(Axis::Vertical);
+    // The bounce owns the vertical wheel, including at the ends, so the
+    // mask that used to chain there is gone. The scrollbar stays on the list.
     if (!scrollbar) {
         list->HideScrollbarY();
     }
+    StrBuilder bounceName;
+    bounceName.Append(id);
+    bounceName.Append(StrL("-bounce"));
+    list = ScrollBounce::New(cx, StrDup(a, Str(bounceName.els, bounceName.len)),
+                             VirtualListScrollbar(&st->handle), list)
+               ->OnScroll(ListenTo(state, &MessageScrollerState::OnScroll))
+               ->IntoEl();
+    // The list used to be the viewport's only child and filled it. The
+    // bounce is that child now, so it has to take the same box.
+    list->W(kFill)->H(kFill)->MinH(0)->MinW(0);
     if (listStyleSet) {
         list->Refine(listStyle, listStyleSet & ~(uint32_t)StyleFieldPad);
     }

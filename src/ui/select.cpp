@@ -378,6 +378,10 @@ Select* Select::Searchable(InputState* q, Listener onFocus) {
     onQueryFocus = onFocus;
     return this;
 }
+Select* Select::ScrollBounce(bool v) {
+    scrollBounce = v ? 1 : 0;
+    return this;
+}
 Select* Select::Multiple(bool v) {
     SearchableListState* s = state.Get(cx);
     if (s) {
@@ -666,6 +670,7 @@ El* Select::IntoEl() {
         }
         // menu_max_h: rems(20.) unless the caller set one.
         list->MaxH(menuMaxH > 0 ? menuMaxH : Rems(cx, 20.f));
+        if (scrollBounce >= 0) list->ScrollBounce(scrollBounce == 1);
         if (footer) {
             list->Footer(footer);
         }

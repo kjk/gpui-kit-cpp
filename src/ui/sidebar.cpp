@@ -1,5 +1,6 @@
 #include "ui/sidebar.h"
 #include "base/motion.h"
+#include "base/scroll_bounce.h"
 #include "ui/button.h"
 #include "ui/scroll.h"
 
@@ -732,13 +733,24 @@ El* Sidebar::IntoEl() {
     Entity<SidebarScrollState> scrollState = KeyedEntity<SidebarScrollState>(
         cx, KeyedName(cx, StrL("sidebar-content-scroll")));
     SidebarScrollState* scroll = scrollState.Get(cx);
-    El* viewport =
-        gpui::Scrollbar::Vertical(
-            cx, StrL("sidebar-content-scroll"), scroll ? scroll->y : 0,
-            ListenTo(scrollState, &SidebarScrollState::OnScroll))
-            ->W(kFill)
-            ->H(kFill)
-            ->Child(inner);
+    Listener onScroll = ListenTo(scrollState, &SidebarScrollState::OnScroll);
+    El* viewport = gpui::Scrollbar::Vertical(cx, StrL("sidebar-content-scroll"),
+                                             scroll ? scroll->y : 0, onScroll)
+                       ->W(kFill)
+                       ->H(kFill)
+                       ->Child(inner);
+    Entity<ScrollBounceMetrics> met =
+        ScrollBounceMetricsEntity(cx, StrL("sidebar-content-scroll"), true);
+    ScrollBounceMetrics* m = met.Get(cx);
+    if (m) {
+        m->offset = scroll ? scroll->y : 0;
+        viewport = ScrollBounce::New(cx, StrL("sidebar-bounce"),
+                                     PositiveScrollHandle(&m->slot), viewport)
+                       ->Measure(&m->slot)
+                       ->OnScroll(onScroll)
+                       ->IntoEl();
+        viewport->W(kFill)->H(kFill);
+    }
     body->Child(viewport);
     root->Child(body);
     if (footer) {

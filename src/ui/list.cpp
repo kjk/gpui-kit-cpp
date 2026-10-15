@@ -201,6 +201,11 @@ List* List::ScrollbarVisible(bool value) {
     return this;
 }
 
+List* List::ScrollBounce(bool value) {
+    scrollBounce = value ? 1 : 0;
+    return this;
+}
+
 List* List::Padding(float value) {
     padding = value < 0 ? 0 : value;
     return this;
@@ -580,17 +585,30 @@ El* List::IntoEl() {
     };
     opts.user = rows;
     opts.onScroll = ListenTo(state, &ListState::OnScroll);
+    s->contentH =
+        sizes ? VirtualListContentSize(sizes, total) : (float)total * s->rowH;
+    s->bounce.offset = &s->scrollY;
+    s->bounce.viewport = &s->viewportH;
+    s->bounce.content = &s->contentH;
     // The wheel reaches a scroll box only through a handler of its own:
     // VirtualList::New attaches `onScroll` only beside a numeric scroll id,
-    // and this body takes its id from its path.
-    El* body = gpui::VirtualList::New(cx, StrL("body"), opts)
-                   ->ScrollFromPath()
-                   ->OnScroll(opts.onScroll);
+    // and this body takes its id from its path. The bounce owns the vertical
+    // wheel; a scrollbar drag still reports through OnScroll.
+    El* rowList = gpui::VirtualList::New(cx, StrL("body"), opts)
+                      ->ScrollFromPath()
+                      ->OnScroll(opts.onScroll);
+    if (!scrollbarVisible) {
+        rowList->HideScrollbar();
+    }
+    // The class method hides gpui::ScrollBounce, so the type is qualified.
+    gpui::ScrollBounce* bounce =
+        gpui::ScrollBounce::New(cx, StrL("list-scroll-bounce"),
+                                PositiveScrollHandle(&s->bounce), rowList);
+    if (scrollBounce >= 0) bounce->Enabled(scrollBounce == 1);
+    bounce->OnScroll(opts.onScroll);
+    El* body = bounce->IntoEl();
     if (fill) {
         body->Flex1()->MinH(0);
-    }
-    if (!scrollbarVisible) {
-        body->HideScrollbar();
     }
     inner->Child(body);
 

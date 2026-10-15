@@ -31,12 +31,17 @@ struct Tree {
     float h = 0;
     // Whether a row shows a file / folder icon beside its chevron.
     bool icons = true;
+    // None defers to ScrollBounce::EnabledByDefault. 0 off, 1 on.
+    int scrollBounce = -1;
     TreeContextMenuFn contextMenu = nullptr;
     void* contextMenuUser = nullptr;
 
     static Tree* New(Ctx* cx, Str id, Entity<TreeState> state);
     Tree* H(float v);
     Tree* Icons(bool v);
+    // Bounce at the vertical boundaries. On by default on iOS, Android and
+    // macOS, off elsewhere.
+    Tree* ScrollBounce(bool v);
     Tree* ContextMenu(TreeContextMenuFn fn, void* user = nullptr);
     El* IntoEl();
 };

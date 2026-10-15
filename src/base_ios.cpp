@@ -34,6 +34,9 @@ float PlatCaretWidth() {
 bool PlatScrollBounce() {
     return true;
 }
+bool PlatScrollBounceTouch() {
+    return true;
+}
 const char* PlatMonoFontName() {
     return "DejaVu Sans Mono";
 }

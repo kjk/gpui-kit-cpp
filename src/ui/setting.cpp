@@ -1,5 +1,6 @@
 #include "ui/i18n.h"
 #include "ui/setting.h"
+#include "base/scroll_bounce.h"
 #include "ui/button.h"
 #include "ui/checkbox.h"
 #include "ui/input.h"
@@ -1090,6 +1091,20 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
     }
     body->customPaint = &SettingsPageScrollPaint;
     body->customUser = scroll;
+    Entity<ScrollBounceMetrics> met =
+        ScrollBounceMetricsEntity(cx, StrL("settings-page-bounce"), true);
+    ScrollBounceMetrics* m = met.Get(cx);
+    if (m) {
+        m->offset = st ? st->scrollY : 0;
+        body = ScrollBounce::New(cx, StrL("settings-page-bounce"),
+                                 PositiveScrollHandle(&m->slot), body)
+                   ->Measure(&m->slot)
+                   ->OnScroll(ListenTo(state, &SettingsState::OnPageScroll))
+                   ->IntoEl();
+        // The page body was the flex child. The bounce takes that place
+        // and the body fills it, so the groups still scroll inside.
+        body->FlexCol()->W(kFill)->Flex1()->MinH(0);
+    }
     pane->Child(head);
     pane->Child(body);
 }

@@ -16,12 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `607f589aa45b4708bd8fd09aec361363c0a48cb7` (2026-10-14,
-shell: Fold script failures to one line and explain what failed (#3509)).
-A script failure is one line over the last working view, with the stack
-behind Details, and a reload failure takes that banner instead of a
-toast. Interrupt limits are watchdogs (render 2s, event and task 5s,
-module load 10s) and the report names what was stopped.
+Processed through `14c26d306ca97316d66ae474e3cb40bb5de0594b` (2026-10-14,
+scroll: Bounce scrollable content like NSScrollView, by default on macOS
+(#3500)).
+Scrollable content bounces at its ends on precise input, on by default
+where the platform's own scroll views bounce. A line wheel only scrolls.
+The innermost area keeps the gesture. Reduced motion leaves the
+content unmoved.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
@@ -67,6 +68,9 @@ The current update target is
 - **Auto-grow row counts are logical lines.** `update_auto_grow` and the
   edit path count `RopeLinesLen`, not `display_map.wrap_row_count()`, so a
   soft-wrapped line does not add a row (`src/base/input.cpp`).
+- **Scroll bounce builders do not panic.** `WithTracking` and
+  `WithMaxStretch` leave a non-positive or NaN value unchanged. Rust
+  panics (`src/base/scroll_bounce.h`).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell

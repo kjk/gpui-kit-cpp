@@ -31,6 +31,9 @@ struct Scrollable {
     // No explicit mode reads the projected Base theme (Scrolling by default).
     ScrollbarMode mode = ScrollbarMode::Scrolling;
     bool modeSet = false;
+    // None defers to the platform. 0 off, 1 on. Horizontal-only areas do
+    // not bounce.
+    int scrollBounce = -1;
     // Where a scrollbar press, a drag or the wheel reports the offset it
     // worked out. The view owns the offsets, so it is the one that stores
     // them.
@@ -48,6 +51,9 @@ struct Scrollable {
     Scrollable* Mode(ScrollbarMode v);
     Scrollable* H(float v);
     Scrollable* OnScroll(Listener fn);
+    // Bounce at the vertical boundaries. On by default on iOS, Android and
+    // macOS, off elsewhere.
+    Scrollable* ScrollBounce(bool v);
     El* IntoEl();
 };
 

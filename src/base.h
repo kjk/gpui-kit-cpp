@@ -200,6 +200,9 @@ bool PlatShowsWindowControls();
 bool PlatTitleBarCloseIsElement();
 float PlatCaretWidth();
 bool PlatScrollBounce();
+// The UIScrollView feel (tracking 0.55, no stretch cap). iOS and Android.
+// macOS bounces too, with the NSScrollView feel, so this is not that.
+bool PlatScrollBounceTouch();
 const char* PlatMonoFontName();
 const char* PlatShellDataDir();
 const char* PlatShellPlatformName();

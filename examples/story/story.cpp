@@ -1345,6 +1345,8 @@ struct StoryPalette {
                 self->command)
                 ->Items(self->items.els, count)
                 ->Bordered(false)
+                ->Refine(Style{.radius = ThemeNow(cx->app).radiusLg},
+                         StyleFieldRadius)
                 ->Placeholder(self->themes ? StrL("Search themes...")
                                            : StrL("Search components..."))
                 ->MaxH(400)

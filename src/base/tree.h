@@ -3,6 +3,7 @@
 /* Unstyled tree — crates/base/src/tree.rs */
 
 #include "gpui/gpui.h"
+#include "base/scroll_bounce.h"
 #include "base/virtual_list.h"
 
 namespace gpui {
@@ -120,6 +121,9 @@ struct TreeState {
     // The last height the list was laid out at, which is what scroll_to_item
     // measures against.
     float viewportH = 0;
+    // entries.len * rowH. The bounce clamps against this.
+    float contentH = 0;
+    PositiveScroll bounce = {};
     Listener onEvent;
     // cx.emit needs to know who is emitting, and Rust's Context<Self> does.
     // The element stamps this as it builds, so a state can send an event to

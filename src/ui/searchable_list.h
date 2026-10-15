@@ -360,6 +360,8 @@ struct SearchableList {
     // rather than clearing the highlight — while one standing on its own
     // declares the "List" context and answers for itself.
     bool inSelect = false;
+    // None defers to the platform. 0 off, 1 on.
+    int scrollBounce = -1;
 
     static SearchableList* New(Ctx* cx, Str id, Entity<SearchableListState> st,
                                InputState* query);
@@ -374,6 +376,9 @@ struct SearchableList {
     SearchableList* WithSize(UiSize value);
     SearchableList* Delegate(const SearchableListDelegate& value);
     SearchableList* InSelect(bool v);
+    // Bounce the option list at its vertical boundaries. On by default on
+    // iOS, Android and macOS, off elsewhere.
+    SearchableList* ScrollBounce(bool v);
     El* IntoEl();
 };
 

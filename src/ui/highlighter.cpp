@@ -1307,6 +1307,9 @@ El* Highlighter::IntoEl() {
     // The wash under the caret's row reaches over the left padding too.
     style.activeLineBleedL = editorPad.left;
     El* editor = gpui::Editor::New(cx, state, style);
+    // The stretch moves the text inside the frame. The bar stays put.
+    float stretch = InputBouncePaint(state, cx->win);
+    if (stretch != 0) editor->PaintOffset(0, stretch);
     bool padded = editorPad.left != 0 || editorPad.right != 0 ||
                   editorPad.top != 0 || editorPad.bottom != 0;
     El* scroller = editor;

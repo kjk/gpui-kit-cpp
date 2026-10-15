@@ -76,6 +76,9 @@ float PlatCaretWidth() {
     return 1.5f;
 }
 bool PlatScrollBounce() {
+    return true;
+}
+bool PlatScrollBounceTouch() {
     return false;
 }
 const char* PlatMonoFontName() {

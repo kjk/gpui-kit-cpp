@@ -8,9 +8,13 @@
 #include "base/input.h"
 #include "base/element_ext.h"
 #include "base/global_state.h"
+#include "base/motion.h"
 #include "base/number_input.h"
+#include "base/scroll_bounce.h"
 #include "base/text_boundary.h"
 #include "base/theme.h"
+
+#include <math.h>
 
 namespace gpui {
 
@@ -3040,6 +3044,8 @@ InputState::~InputState() {
     if (highlighter.drop) {
         highlighter.drop(highlighter.data);
     }
+    delete overscroll;
+    overscroll = nullptr;
 }
 
 static void TextReserve(InputState* s, int want) {
@@ -4109,42 +4115,105 @@ bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
     return true;
 }
 
-// overflows_along: the text has room to scroll on the axis `delta` mostly
-// moves on. A trackpad swipe drifts off its axis, so the drift alone does
-// not claim the scroll. scroll_size and input_bounds are the content and
-// view extents this port clamps against.
-static bool InputOverflowsAlong(const InputState* s, float dx, float dy) {
-    float ax = dx < 0 ? -dx : dx;
-    float ay = dy < 0 ? -dy : dy;
-    if (ay >= ax) {
-        return InputIsMultiLine(s) && dy != 0 && s->contentH > s->viewH;
+static ScrollOverscroll* InputOverscrollGet(InputState* s) {
+    if (!s->overscroll) {
+        s->overscroll = new ScrollOverscroll();
+        s->overscroll->SetMotion(ScrollBounceMotion::Default());
     }
-    return s->contentW > s->viewW;
+    return s->overscroll;
+}
+
+struct InputScrollUser {
+    InputState* state = nullptr;
+    App* app = nullptr;
+    Window* win = nullptr;
+    float dx = 0;
+};
+
+// `dy` is negative-down. Positive moves toward the start, which lowers the
+// positive-down offset this state stores.
+static float InputScrollRust(void* user, float dy) {
+    InputScrollUser* u = (InputScrollUser*)user;
+    float before = u->state->scrollY;
+    Point want = {u->state->scrollX - u->dx, u->state->scrollY - dy};
+    InputUpdateScrollOffset(u->state, u->app, u->win, &want);
+    return before - u->state->scrollY;
+}
+
+static bool InputOverflowsVertically(const InputState* s) {
+    return InputIsMultiLine(s) && s->contentH > s->viewH;
 }
 
 bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
-                        float dy, TouchPhase phase) {
+                        float dy, TouchPhase phase, bool precise) {
     if (!s) {
         return false;
     }
     float oldX = s->scrollX;
     float oldY = s->scrollY;
-    Point want = {oldX - dx, oldY - dy};
-    InputUpdateScrollOffset(s, app, win, &want);
+    bool overflowsV = InputOverflowsVertically(s);
+    bool reduced = MotionReduced();
+    if (!precise || !s->scrollBounce || reduced || !overflowsV) {
+        ScrollOverscroll* over = s->overscroll;
+        if (over && over->Offset() != 0) {
+            over->Reset();
+            Notify(app, win);
+        }
+    }
+    bool bounces = s->scrollBounce && precise && !reduced &&
+                   fabsf(dy) >= fabsf(dx) && overflowsV;
+    if (bounces) {
+        ScrollOverscroll* over = InputOverscrollGet(s);
+        InputScrollUser user = {s, app, win, dx};
+        float extent = s->viewH > 1.f ? s->viewH : 1.f;
+        if (over->Packet(dy, phase, extent, TimeNow(), InputScrollRust,
+                         &user)) {
+            Notify(app, win);
+        }
+    } else {
+        if ((phase == TouchPhase::Ended || phase == TouchPhase::Cancelled) &&
+            s->overscroll && s->overscroll->Offset() != 0) {
+            InputScrollUser user = {s, app, win, 0};
+            float extent = s->viewH > 1.f ? s->viewH : 1.f;
+            s->overscroll
+                ->Packet(0, phase, extent, TimeNow(), InputScrollRust, &user);
+            Notify(app, win);
+        }
+        Point want = {oldX - dx, oldY - dy};
+        InputUpdateScrollOffset(s, app, win, &want);
+    }
     bool moved = s->scrollX != oldX || s->scrollY != oldY;
-    // diagnostic_popover.take(): a popover over text that may have moved is
-    // put away, and that is a change even when the clamp kept the offset.
     if (s->hoverDiagnostic >= 0) {
         s->hoverDiagnostic = -1;
         Notify(app, win);
     }
-    // The handles follow the text; the menu would sit over whatever scrolls
-    // underneath it, so it steps aside until the finger lifts.
     InputEditMenuOnScroll(s, app, win, phase);
-    // Text that has room to scroll keeps a scroll over it even where the
-    // text ends, so reaching the end does not scroll the region around the
-    // input. Text that fits leaves the scroll to that region.
-    return moved || InputOverflowsAlong(s, dx, dy);
+    // A gesture's start or end moves on neither axis. Text that can scroll
+    // vertically keeps it, so the area around the field does not.
+    bool vertical = fabsf(dy) >= fabsf(dx);
+    bool takes = vertical ? overflowsV : s->contentW > s->viewW;
+    return moved || takes;
+}
+
+float InputBouncePaint(InputState* s, Window* win) {
+    if (!s || !s->overscroll) return 0;
+    if (!s->scrollBounce || MotionReduced() || !InputOverflowsVertically(s)) {
+        s->overscroll->Reset();
+        return 0;
+    }
+    if (s->overscroll->Step(TimeNow()) && win) AppRequestAnim(win, true);
+    if (!InputOverflowsVertically(s)) {
+        s->overscroll->Reset();
+        return 0;
+    }
+    return s->overscroll->Offset();
+}
+
+void InputSetScrollBounce(InputState* s, bool on) {
+    if (!s || s->scrollBounce == on) return;
+    s->scrollBounce = on;
+    if (s->overscroll) s->overscroll->Reset();
+    if (s->focusWin) AppInvalidate(s->focusWin);
 }
 
 void InputScrollToOffset(InputState* s, int offset, InputMoveDir dir) {

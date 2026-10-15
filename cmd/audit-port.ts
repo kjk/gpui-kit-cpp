@@ -17,14 +17,14 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "607f589aa45b4708bd8fd09aec361363c0a48cb7";
+const pinnedGpuiComponent = "14c26d306ca97316d66ae474e3cb40bb5de0594b";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
 calendar checkbox collapsible color_picker combobox component_traits
 date_picker dialog dock element_ext event focus_trap geometry global_state
 history hover_card index_path input link list_settings macos_accessibility
-measure motion nav_stack number_input observe otp_input pagination plot popover popup positioner
+measure motion nav_stack number_input observe otp_input overscroll pagination plot popover popup positioner
 progress questionnaire radio radio_group resizable scrollbar scrollable_mask select selectable_text
 reduce_motion root scroll_bounce sheet slider state_style styled switch table tabs test_support
 text text_boundary text_selection theme theme_tokens time_field toast toolbar touch_selection
@@ -112,6 +112,8 @@ const baseOverrides: Record<string, string[]> = {
   plot: ["src/base/plot.h", "src/base/plot.cpp", "src/base/sankey.h", "src/base/sankey.cpp"],
   reduce_motion: ["src/base/lib.h", "src/base/lib.cpp", "src/base/motion.h"],
   scroll_bounce: ["src/base/scroll_bounce.h", "src/base/scroll_bounce.cpp"],
+  // Private next to scroll_bounce. The displacement engine lives in that pair.
+  overscroll: ["src/base/scroll_bounce.h", "src/base/scroll_bounce.cpp"],
   test_support: ["src/gpui/gpui.h", "tests/AccessibilityTests.cpp"],
   touch_selection: ["src/base/touch_selection.h", "src/base/touch_selection.cpp", "src/base/text_selection.h"],
   macos_accessibility: ["src/gpui/window_mac.cpp"],
@@ -239,6 +241,7 @@ const testTargets: Record<string, string[]> = {
   "base/toolbar": ["tests/ToolbarTests.cpp"],
   "base/scrollbar": ["tests/ScrollbarTests.cpp"],
   "base/scroll_bounce": ["tests/ScrollBounceTests.cpp", "tests/ScrollbarTests.cpp", "tests/MotionTests.cpp"],
+  "base/overscroll": ["tests/ScrollBounceTests.cpp"],
   "base/select": ["tests/SelectTests.cpp"],
   "base/sheet": ["tests/SheetTests.cpp"],
   "base/slider": ["tests/SliderTests.cpp", "tests/AccessibilityTests.cpp"],
@@ -607,12 +610,12 @@ const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256
   base: {
     declaration: { count: 562, sha256: "e7bae46cb363909860175784c36c1dd16665b70565bba78ac05c37acf6305200" },
     "pub-use": { count: 169, sha256: "c290abea497898c61169557849c55bdd449fe590cd551ed736432ddd12f1ad1c" },
-    test: { count: 1342, sha256: "9eb27e8384e62ffc88c2041ad06dc1fac5a61403744a3f431006621881d56514" },
+    test: { count: 1367, sha256: "0145f7f895cb3ddb12d66e3c0d464f28bdec2b9428bb51bf455f87228223bb61" },
   },
   ui: {
     declaration: { count: 467, sha256: "25acb3cf968f941750ad4713bbfbacd136dc46acf38d6250d86f77f641bde232" },
     "pub-use": { count: 168, sha256: "c56f58476e81a0f0f9fd333601cd6e81d40cbf9b87b1347d59275f3539c188b4" },
-    test: { count: 727, sha256: "8fe4a0810320d9f6743beaccd8eba48793314213b572b9bfc8c4d16a4e99ba87" },
+    test: { count: 729, sha256: "b7229916e20a87d97c2f2fd155ba39bae4e7abde87d357447cff184b2135b319" },
   },
 };
 

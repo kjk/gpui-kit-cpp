@@ -1023,6 +1023,22 @@ void TableState::OnColDragEnd(TableState* self, Ctx* cx, const MouseUpEvent*) {
     Notify(cx);
 }
 
+void TableState::OnBounceWheel(TableState* self, Ctx* cx,
+                               const ScrollWheelEvent* ev) {
+    if (!self || !ev) return;
+    if (!self->overscroll) {
+        self->overscroll = new ScrollOverscroll();
+        self->overscroll->SetMotion(ScrollBounceMotion::Default());
+    }
+    Listener onScroll = {};
+    if (self->self.IsValid()) {
+        onScroll = ListenTo(self->self, &TableState::OnScroll);
+    }
+    ScrollBounceOwnedWheel(self->overscroll, &self->bounceLock,
+                           PositiveScrollHandle(&self->bounce), self->bounceOn,
+                           ev, cx, onScroll);
+}
+
 void TableState::OnScroll(TableState* self, Ctx* cx, const ScrollEvent* ev) {
     self->scrollY = ev->offsetY;
     Notify(cx);

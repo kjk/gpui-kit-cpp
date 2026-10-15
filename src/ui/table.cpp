@@ -1,5 +1,6 @@
 #include "ui/table.h"
 #include "base/list_settings.h"
+#include "base/scroll_bounce.h"
 #include "ui/i18n.h"
 #include "ui/scroll.h"
 #include "ui/skeleton.h"
@@ -440,6 +441,10 @@ DataTable* DataTable::Bordered(bool v) {
 }
 DataTable* DataTable::FixedColsBorder(bool v) {
     fixedColsBorder = v;
+    return this;
+}
+DataTable* DataTable::ScrollBounce(bool v) {
+    scrollBounce = v ? 1 : 0;
     return this;
 }
 DataTable* DataTable::ScrollbarVisible(bool vertical, bool horizontal) {
@@ -1272,18 +1277,25 @@ El* DataTable::BuildEl() {
         bodyFixed->H(bodyH)->ClipY()->ScrollY(s->scrollY)->ScrollFromPath();
         bodyFixed->OnScroll(ListenTo(state, &TableState::OnScroll));
         bodyFixed->noScrollbar = true;
-        ScrollableMask::Apply(bodyFixed, Axis::Vertical);
         bodyScroll->H(bodyH)
             ->ClipY()
             ->ScrollY(s->scrollY)
             ->ScrollX(s->scrollX)
             ->ScrollFromPath()
             ->OnScroll(ListenTo(state, &TableState::OnScrollXY));
-        // The two transparent ScrollableMask siblings in Rust collapse onto
-        // this integrated scroll record. Horizontal gestures stay with the
-        // table even at its edge; vertical ones chain to an outer scroller.
+        // Horizontal gestures stay with the table even at its edge. Vertical
+        // ones belong to the bounce, including at the ends, so the rows do
+        // not chain into an ancestor.
         ScrollableMask::Apply(bodyScroll, Axis::Horizontal);
-        ScrollableMask::Apply(bodyScroll, Axis::Vertical);
+        s->contentH = (float)nRows * s->rowH;
+        s->bounce.offset = &s->scrollY;
+        s->bounce.viewport = &s->viewportH;
+        s->bounce.content = &s->contentH;
+        s->bounceOn = scrollBounce < 0 ? gpui::ScrollBounce::EnabledByDefault()
+                                       : scrollBounce == 1;
+        Listener bounceWheel = ListenTo(state, &TableState::OnBounceWheel);
+        bodyFixed->OnScrollWheel(bounceWheel);
+        bodyScroll->OnScrollWheel(bounceWheel);
         bodyScroll->noScrollbarY = !scrollbarV;
         bodyScroll->noScrollbarX = !scrollbarH;
         if (range.first > 0) {
@@ -1481,6 +1493,29 @@ El* DataTable::BuildEl() {
         }
         bodyFixed->Child(fillFixed);
         bodyScroll->Child(fillScroll);
+    }
+    // The scroll boxes stay put, so their scrollbars do too. The rows move.
+    if (s && viewH > 0) {
+        El* fixedRows = Div(a)->FlexCol()->W(kFill);
+        El* scrollRows = Div(a)->FlexCol()->W(kFill);
+        fixedRows->first = bodyFixed->first;
+        fixedRows->last = bodyFixed->last;
+        bodyFixed->first = nullptr;
+        bodyFixed->last = nullptr;
+        bodyFixed->Child(fixedRows);
+        scrollRows->first = bodyScroll->first;
+        scrollRows->last = bodyScroll->last;
+        bodyScroll->first = nullptr;
+        bodyScroll->last = nullptr;
+        bodyScroll->Child(scrollRows);
+        float maxExtent = s->contentH - s->viewportH;
+        if (maxExtent < 0) maxExtent = 0;
+        float stretch = ScrollBounceOwnedOffset(s->overscroll, cx->win,
+                                                s->bounceOn, maxExtent);
+        if (stretch != 0) {
+            fixedRows->PaintOffset(0, stretch);
+            scrollRows->PaintOffset(0, stretch);
+        }
     }
     fixedPane->Child(bodyFixed);
     scrollPane->Child(bodyScroll);

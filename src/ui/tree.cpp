@@ -1,5 +1,6 @@
 #include "ui/tree.h"
 #include "base/list_settings.h"
+#include "base/scroll_bounce.h"
 #include "ui/menu.h"
 
 namespace gpui {
@@ -17,6 +18,10 @@ Tree* Tree::New(Ctx* cx, Str id, Entity<TreeState> state) {
 }
 Tree* Tree::H(float v) {
     h = v;
+    return this;
+}
+Tree* Tree::ScrollBounce(bool v) {
+    scrollBounce = v ? 1 : 0;
     return this;
 }
 Tree* Tree::Icons(bool v) {
@@ -96,10 +101,22 @@ static El* TreeRow(void* user, Ctx* cx, int ix, const TreeEntry& entry,
 }
 
 El* Tree::IntoEl() {
-    if (!state.Get(cx)) {
+    TreeState* s = state.Get(cx);
+    if (!s) {
         return Div(a)->W(kFill)->H(h > 0 ? h : kFill);
     }
-    return TreeList::New(cx, id, state, h, &TreeRow, this);
+    El* list = TreeList::New(cx, id, state, h, &TreeRow, this);
+    s->contentH = (float)len(s->entries) * s->rowH;
+    s->bounce.offset = &s->scrollY;
+    s->bounce.viewport = &s->viewportH;
+    s->bounce.content = &s->contentH;
+    gpui::ScrollBounce* bounce =
+        gpui::ScrollBounce::New(cx, StrL("tree-scroll-bounce"),
+                                PositiveScrollHandle(&s->bounce), list)
+            ->Measure(&s->bounce)
+            ->OnScroll(ListenTo(state, &TreeState::OnScroll));
+    if (scrollBounce >= 0) bounce->Enabled(scrollBounce == 1);
+    return bounce->IntoEl();
 }
 
 } // namespace component

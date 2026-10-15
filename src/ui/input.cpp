@@ -1314,8 +1314,12 @@ El* Textarea::IntoEl() {
                   ->ScrollFromPath()
                   // The rows clamp the offset, including a target past the
                   // end, so the box has to read it after they are built.
-                  ->Child(gpui::Textarea::New(cx, state, editor))
                   ->ScrollY(state ? state->scrollY : 0);
+    El* text = gpui::Textarea::New(cx, state, editor);
+    // The stretch moves the text inside the frame. The bar stays put.
+    float stretch = InputBouncePaint(state, cx->win);
+    if (stretch != 0) text->PaintOffset(0, stretch);
+    box->Child(text);
     if (interactive) InputTrackFrameFocus(cx, box, state);
     if (accessibilityId.s) {
         box->AccessibilityId(accessibilityId);
