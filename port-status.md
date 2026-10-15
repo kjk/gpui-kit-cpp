@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a0230dbfc47c8a5c6d1f3f099529ff40b1d2e5d2` (2026-10-14,
-highlighter: Add syntect as a lighter syntax highlighting backend (#3512)).
-An optional syntect backend highlights about 200 languages when
-tree-sitter is off. This tree does not vendor syntect. The scanner
-remains the only highlighter.
+Processed through `baf03ed80a4f2cb797afed49ab94d55606f7b746` (2026-10-14,
+webview: Clip native views without resizing the page (#3499)).
+A webview inside a scrolling container takes the inherited content
+mask. An empty mask hides the native view and leaves the page loaded.
+A partial mask does the same on macOS and Linux. Windows keeps the
+full document bounds.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
@@ -330,9 +331,11 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   (`crates/webview/src/composition.rs` and `linux.rs`). The
   `gpui-fast` feature is a no-op; composition is not optional. This
   tree has one engine and parents the webview on the window
-  (`src/webview/webview.cpp`). `WebView::set_bounds` and
-  `set_visible` are the wry calls `PaintWebView`, `WebViewShow` and
-  `WebViewHide` already make.
+  (`src/webview/webview.cpp`). Without that container, a content mask
+  cannot clip the page without resizing it. On macOS and Linux a
+  partial clip hides the native view and leaves the page loaded;
+  Windows keeps the full document bounds. The hit box is already the
+  masked intersection.
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because lb-wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor

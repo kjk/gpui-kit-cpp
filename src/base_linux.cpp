@@ -79,6 +79,9 @@ bool PlatScrollBounce() {
 bool PlatScrollBounceTouch() {
     return false;
 }
+bool PlatWebViewPartialClipHides() {
+    return true;
+}
 const char* PlatMonoFontName() {
     return "DejaVu Sans Mono";
 }

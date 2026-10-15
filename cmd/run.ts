@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a0230dbfc47c8a5c6d1f3f099529ff40b1d2e5d2",
+  sha: "baf03ed80a4f2cb797afed49ab94d55606f7b746",
   date: "2026-10-14",
-  subject: "highlighter: Add syntect as a lighter syntax highlighting backend (#3512)",
+  subject: "webview: Clip native views without resizing the page (#3499)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

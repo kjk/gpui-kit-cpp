@@ -375,6 +375,9 @@ bool PlatScrollBounce() {
 bool PlatScrollBounceTouch() {
     return false;
 }
+bool PlatWebViewPartialClipHides() {
+    return false;
+}
 const char* PlatMonoFontName() {
     return "Consolas";
 }

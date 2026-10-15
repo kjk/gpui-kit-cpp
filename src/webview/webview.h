@@ -71,6 +71,9 @@ struct WebViewHandle {
 struct WebView {
     WebViewHandle owned;
     bool visible = true;
+    // The OS view, which a clip can hide without changing `visible`.
+    bool nativeShown = true;
+    bool clipWarned = false;
     // Where the element last was, which is the box the OS control is moved
     // to. Rust keeps this too, filled by the `canvas` in its render.
     Bounds bounds = {};

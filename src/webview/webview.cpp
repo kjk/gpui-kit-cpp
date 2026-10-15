@@ -130,6 +130,7 @@ void WebViewShow(WebView* self) {
     }
     wry::WebViewSetVisible(raw, true);
     self->visible = true;
+    self->nativeShown = true;
 }
 
 void WebViewHide(WebView* self) {
@@ -140,6 +141,7 @@ void WebViewHide(WebView* self) {
     wry::WebViewFocusParent(raw);
     wry::WebViewSetVisible(raw, false);
     self->visible = false;
+    self->nativeShown = false;
 }
 
 bool WebViewVisible(const WebView* self) {
@@ -251,17 +253,42 @@ WebViewHandle WebViewGetHandle(const WebView* self) {
     return self ? self->owned : WebViewHandle();
 }
 
+static Bounds ClipIntersect(Bounds a, Bounds b) {
+    float x = a.x > b.x ? a.x : b.x;
+    float y = a.y > b.y ? a.y : b.y;
+    float right = (a.x + a.w) < (b.x + b.w) ? (a.x + a.w) : (b.x + b.w);
+    float bottom = (a.y + a.h) < (b.y + b.h) ? (a.y + a.h) : (b.y + b.h);
+    return {x, y, right > x ? right - x : 0.f, bottom > y ? bottom - y : 0.f};
+}
+
+static bool BoundsSame(Bounds a, Bounds b) {
+    return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+static void HideNative(WebView* self, wry::WebView* raw) {
+    if (!self->nativeShown) {
+        return;
+    }
+    wry::WebViewSetVisible(raw, false);
+    self->nativeShown = false;
+}
+
 // The element's prepaint: layout has decided where the box is, so the OS
 // control is moved there. Rust does this in `Element::prepaint`, which runs
 // before the frame is drawn; the paint pass is where an element here first
 // knows its box, and the two are a frame apart only if something else in the
 // same frame reads the webview's bounds.
+//
+// `set_geometry`: the content mask is the clip. An empty clip hides the
+// native view and leaves the page loaded. A partial clip does the same on
+// macOS and Linux, because there is no composition container to clip
+// without resizing the page. Windows keeps the full document bounds.
 static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
     WebView* self = (WebView*)user;
-    Bounds b = e->Bounds();
-    self->bounds = b;
+    Bounds document = e->Bounds();
+    self->bounds = document;
     wry::WebView* raw = self->owned.Raw();
-    if (!raw || !self->visible) {
+    if (!raw) {
         return;
     }
     // `match_scale_factor`: GDK's factor is an integer, so a fractional
@@ -274,21 +301,42 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
             self->hasPageScale = true;
         }
     }
-    bool same = self->hasApplied && self->applied.x == b.x &&
-                self->applied.y == b.y && self->applied.w == b.w &&
-                self->applied.h == b.h;
-    if (same) {
+    if (!self->visible) {
+        HideNative(self, raw);
         return;
     }
-    self->applied = b;
-    self->hasApplied = true;
-    // Logical DIPs. Upstream Linux passes device pixels because lb-wry then
-    // multiplies by GDK's factor. `WebViewSetBounds` on Linux already does
-    // that conversion for the X11 child, so doing it here would double it.
-    wry::Rect r;
-    r.position = wry::LogicalPosition(b.x, b.y);
-    r.size = wry::LogicalSize(b.w, b.h);
-    wry::WebViewSetBounds(raw, r);
+    Bounds visible = ctx && ctx->hasHitMask
+                         ? ClipIntersect(document, ctx->hitMask)
+                         : document;
+    bool empty = visible.w <= 0.f || visible.h <= 0.f;
+    bool partial = !empty && !BoundsSame(visible, document);
+    if (empty || (partial && PlatWebViewPartialClipHides())) {
+        if (partial && !self->clipWarned) {
+            self->clipWarned = true;
+            logf(
+                "webview: a partial clip needs a native composition "
+                "surface, so the view is hidden\n");
+        }
+        HideNative(self, raw);
+        return;
+    }
+    bool same = self->hasApplied && BoundsSame(self->applied, document);
+    if (!same) {
+        self->applied = document;
+        self->hasApplied = true;
+        // Logical DIPs. Upstream Linux passes device pixels because lb-wry
+        // then multiplies by GDK's factor. `WebViewSetBounds` on Linux
+        // already does that conversion for the X11 child, so doing it here
+        // would double it.
+        wry::Rect r;
+        r.position = wry::LogicalPosition(document.x, document.y);
+        r.size = wry::LogicalSize(document.w, document.h);
+        wry::WebViewSetBounds(raw, r);
+    }
+    if (!self->nativeShown) {
+        wry::WebViewSetVisible(raw, true);
+        self->nativeShown = true;
+    }
 }
 
 El* WebViewEl(Entity<WebView> view, Ctx* cx) {
