@@ -71,7 +71,7 @@ bool PlatTitleBarCloseIsElement() {
     return true;
 }
 float PlatCaretWidth() {
-    return 2.f;
+    return 1.f;
 }
 bool PlatScrollBounce() {
     return false;

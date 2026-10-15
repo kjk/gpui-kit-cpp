@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `baf03ed80a4f2cb797afed49ab94d55606f7b746` (2026-10-14,
-webview: Clip native views without resizing the page (#3499)).
-A webview inside a scrolling container takes the inherited content
-mask. An empty mask hides the native view and leaves the page loaded.
-A partial mask does the same on macOS and Linux. Windows keeps the
-full document bounds.
+Processed through `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7` (2026-10-14,
+input: Fix the caret flashing off on click, and draw it crisp at 1px (#3515)).
+A press focuses the field at once and holds the caret lit. A second
+start of a blink restarts from a visible caret instead of leaving the
+hidden half running. The caret is 1px on every platform, and paint
+snaps its x and width onto the device pixel grid.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 

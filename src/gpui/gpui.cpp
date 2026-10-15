@@ -7325,8 +7325,22 @@ static void PaintCaretAt(PaintCtx* ctx, El* e, float font, int off,
         ApplyPrimaryCaret(e, place);
     }
     if (e->caretColor.a != 0) {
-        CanvasFillRect(ctx, place.x, place.y, e->caretW, place.h,
-                       e->caretColor);
+        // element.rs snap_caret_to_device_pixels. The layout position stays
+        // where the text measured it; only the painted quad moves. y and
+        // height are left alone.
+        float x = place.x;
+        float w = e->caretW;
+        float scale = ctx && ctx->dpi > 0 ? ctx->dpi / 96.f : 1.f;
+        if (!(scale > 0.f)) {
+            scale = 1.f;
+        }
+        x = (float)lroundf(x * scale) / scale;
+        float px = (float)lroundf(w * scale);
+        if (px < 1.f) {
+            px = 1.f;
+        }
+        w = px / scale;
+        CanvasFillRect(ctx, x, place.y, w, place.h, e->caretColor);
     }
 }
 

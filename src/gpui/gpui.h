@@ -2821,7 +2821,7 @@ struct El {
     Rgba indentGuideColor = {0, 0, 0, 0};
     int16_t indentGuideCount = 0;
     uint8_t indentGuideTab = 0;
-    float caretW = 2;
+    float caretW = 1;
     float laidFont = 0; // resolved font size from last LayoutEl
     float laidMaxW = 0; // MeasureText maxW used (0 = unconstrained)
     // What the measure callback last answered for this text leaf, keyed on
@@ -3160,7 +3160,7 @@ struct El {
     El* Spans(const TextSpan* runs, int n);
     // The marked range, which is drawn underlined in the text's own colour.
     El* MarkRange(int lo, int hi);
-    El* Caret(int off, Rgba color, float width = 2,
+    El* Caret(int off, Rgba color, float width = 1,
               bool lineEndAffinity = false);
     El* Child(El* c);
     El* Bold();
@@ -7362,7 +7362,8 @@ struct BlinkCursor {
     static void OnResume(BlinkCursor* self, Ctx* cx, const TickEvent* ev);
 };
 
-// Idempotent. Rust calls these from on_focus / on_blur.
+// Every call restarts from a visible caret. Rust calls this from focus,
+// from on_focus, and when the window becomes active.
 void BlinkStart(App* app, Window* win, EntityId* handle);
 void BlinkStop(App* app, Window* win, EntityId* handle);
 // Keep it solid, then resume blinking shortly after — Rust's

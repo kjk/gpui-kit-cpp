@@ -198,6 +198,8 @@ bool PlatShowsWindowControls();
 // Linux draws the title-bar close button as an element click. Elsewhere the
 // window manager owns closing, so a script close handler is not that button.
 bool PlatTitleBarCloseIsElement();
+// blink_cursor.rs CURSOR_WIDTH: 1px on every platform. Paint snaps the
+// caret onto the device pixel grid so that width stays one device pixel.
 float PlatCaretWidth();
 bool PlatScrollBounce();
 // The UIScrollView feel (tracking 0.55, no stretch cap). iOS and Android.

@@ -1434,12 +1434,18 @@ static void SliderPress(Window* win, const HitRect* hit, Point at) {
 // selection, and leaves the menu to the release.
 static void InputRightPress(Window* win, const MouseDownEvent& in) {
     InputState* s = InputAtPosition(&win->paint, in.x, in.y);
-    if (!s || s->disabled || !s->enableContextMenu) {
+    if (!s || s->disabled) {
+        return;
+    }
+    // on_mouse_down focuses and pauses before the right-button branch, so a
+    // secondary press shows the caret even when no menu will open.
+    InputFocus(s, win->app, win);
+    BlinkPause(win->app, win, &s->blink);
+    if (!s->enableContextMenu) {
         return;
     }
     // The press publishes this field before a context menu resolves its
     // owner, including a field that was not focused in the last frame.
-    InputFocus(s, win->app, win);
     int offset = InputIndexForPosition(s, &win->paint, in.x, in.y);
     if (!s->selectedRange.Contains(offset)) {
         InputMoveTo(s, win->app, win, offset);
@@ -1477,6 +1483,11 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
         InputToggleFold(s, win->app, win, foldLine);
         return;
     }
+    // Treat every press like a cursor move: take focus now rather than
+    // waiting for the frame handoff, show the caret and restart the idle
+    // delay, whatever phase the blink was in. state.rs on_mouse_down.
+    InputFocus(s, win->app, win);
+    BlinkPause(win->app, win, &s->blink);
     // "Clear inline completion on any mouse interaction."
     InputClearInlineCompletion(s);
     // A tap on the touch selection asks for its menu back. Any other press
@@ -1487,9 +1498,6 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
         return;
     }
     InputDismissTouchSelection(s, win->app, win);
-    if (!s->focused) {
-        InputFocus(s, win->app, win);
-    }
     bool lineEndAffinity = false;
     int columnsPastLineEnd = 0;
     int offset = InputIndexForPosition(s, &win->paint, in.x, in.y,
@@ -3660,12 +3668,20 @@ void BlinkStart(App* app, Window* win, EntityId* handle) {
                                &EntityDropT<BlinkCursor>);
     }
     BlinkCursor* b = BlinkGet(app, *handle);
-    if (!b || b->timer) {
-        return; // already blinking
+    if (!b) {
+        return;
+    }
+    // blink_cursor.rs start: a focus calls this twice (InputState::focus,
+    // then on_focus) and window activation calls it too. Resuming the
+    // running cycle used to step the caret that had just appeared, so every
+    // start drops the pending timer and begins again from a visible caret.
+    // Rust sets visible false and lets blink() toggle it; the caret is lit
+    // either way, and the next flip is a full interval later.
+    if (b->timer) {
+        WindowCancelTimer(win, b->timer);
+        b->timer = 0;
     }
     b->paused = false;
-    // Rust starts hidden and flips on the first tick; lit immediately is what
-    // makes a click feel like it landed.
     b->visible = true;
     b->timer = WindowSetInterval(win, kBlinkIntervalMs,
                                  BlinkListener(*handle, &BlinkCursor::OnFlip));

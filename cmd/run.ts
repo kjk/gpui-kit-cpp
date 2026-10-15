@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "baf03ed80a4f2cb797afed49ab94d55606f7b746",
+  sha: "1188c11003b5cb5b83bc07d3fb9112e7674fbfa7",
   date: "2026-10-14",
-  subject: "webview: Clip native views without resizing the page (#3499)",
+  subject: "input: Fix the caret flashing off on click, and draw it crisp at 1px (#3515)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

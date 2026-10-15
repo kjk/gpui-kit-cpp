@@ -4002,6 +4002,22 @@ static void StoppingABlinkingCursorEndsTheBlinkLoop() {
     utassert(f.win->frameSeq == frames);
 }
 
+// blink_cursor.rs starting_a_blinking_cursor_keeps_it_visible
+static void StartingABlinkingCursorKeepsItVisible() {
+    BlinkFixture f;
+    // Clicking into an input starts the cursor from focus and again from
+    // the focus observer; the second start must not hide the new cursor.
+    f.Start();
+    f.Start();
+    utassert(f.Visible());
+    // The restart drops the first cycle's timer, so the cursor stays
+    // visible for a full interval before it blinks off.
+    f.Advance(kIntervalMs - 1);
+    utassert(f.Visible());
+    f.Advance(1);
+    utassert(!f.Visible());
+}
+
 // kit/tests/input_focus.rs (#3253): each input is one tab stop, so Tab and
 // Shift-Tab walk the inputs in order and wrap, a passive prefix or suffix
 // takes no stop of its own, and addon buttons take theirs in paint order.
@@ -8291,6 +8307,35 @@ static void ConsumedKeystrokesKeepCursorVisible() {
     InputViewFree(&view);
 }
 
+// state.rs test_mouse_down_shows_cursor_like_a_cursor_move. The press
+// itself shows the caret, and a later press during the hidden phase
+// shows it again and holds it for the idle delay.
+static Point MouseDownCaretAt(const InputView& v, float offset) {
+    const InputState* s = v.input;
+    float lineH = s->lastLineH > 0 ? s->lastLineH : 20.f;
+    // lastBounds is the first row's text, which is Rust's origin plus
+    // line_number_width. `offset` is how far into that text the press is.
+    return {s->lastBounds.x + offset, s->lastBounds.y + lineH * 0.5f};
+}
+
+static void MouseDownShowsCursorLikeACursorMove() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "abcd|efgh");
+    Point first = MouseDownCaretAt(view, 2.f);
+    TestSimulateMouseDown(view.win, first);
+    utassert(BlinkVisible(view.app, view.input->blink));
+    TestSimulateMouseUp(view.win, first);
+    TestAdvanceClock(view.app, 400);
+    utassert(!BlinkVisible(view.app, view.input->blink));
+    Point second = MouseDownCaretAt(view, 30.f);
+    TestSimulateMouseDown(view.win, second);
+    utassert(BlinkVisible(view.app, view.input->blink));
+    TestAdvanceClock(view.app, 250);
+    utassert(BlinkVisible(view.app, view.input->blink));
+    TestSimulateMouseUp(view.win, second);
+    InputViewFree(&view);
+}
+
 // state.rs test_multi_cursor_actions_reveal_hidden_carets: start each action
 // in the hidden phase without depending on a key-down listener: actions and
 // text input also arrive directly.
@@ -8779,6 +8824,7 @@ static void RunWindowTestsC() {
     AltDragOverAShortRowKeepsTheBlockWidth();
     AltMouseReleaseOutsideEditorEndsColumnSelection();
     ConsumedKeystrokesKeepCursorVisible();
+    MouseDownShowsCursorLikeACursorMove();
     MultiCursorActionsRevealHiddenCarets();
     MultiCursorKeyboardDispatch();
     MultiCursorPlatformWordSelectionDispatch();
@@ -11128,6 +11174,7 @@ void TestInputState() {
     BlurringAPausedCursorLeavesTheNextFocusBlinking();
     StoppingAPausedCursorEndsTheBlinkLoop();
     StoppingABlinkingCursorEndsTheBlinkLoop();
+    StartingABlinkingCursorKeepsItVisible();
     InlineTokenContentValidatesRanges();
     InlineTokensRespectModeAndContent();
     InlineTokenWrapAndSizeRefresh();

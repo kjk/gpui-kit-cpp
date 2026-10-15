@@ -73,7 +73,7 @@ bool PlatShowsWindowControls() {
     return false;
 }
 float PlatCaretWidth() {
-    return 1.5f;
+    return 1.f;
 }
 bool PlatScrollBounce() {
     return true;

@@ -2711,7 +2711,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     el->Caret(0, style.caret);
                 }
             } else if (!tokenLine && caret && caretHere) {
-                el->Caret(cursor - start, style.caret, 2,
+                el->Caret(cursor - start, style.caret, base::PlatCaretWidth(),
                           state->cursorLineEndAffinity);
                 // Where it lands is the anchor a completion menu hangs off.
                 el->CaretOut(&state->caretWinX, &state->caretWinY);
@@ -2720,8 +2720,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 // unfocused, or the dark half of the blink -- so
                 // cursor_layout() follows the selection all the same.
                 // Measured, not drawn.
-                el->Caret(cursor - start, Rgba{0, 0, 0, 0}, 2,
-                          state->cursorLineEndAffinity);
+                el->Caret(cursor - start, Rgba{0, 0, 0, 0},
+                          base::PlatCaretWidth(), state->cursorLineEndAffinity);
                 el->CaretOut(&state->caretWinX, &state->caretWinY);
             }
             if (!tokenLine && state->extraCursors.len > 0) {
@@ -4090,8 +4090,8 @@ bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
     Point want = offset ? *offset : Point{s->scrollX, s->scrollY};
     // A right- or centre-aligned run keeps a caret's width spare on the
     // right, which the left edge does not need.
-    // blink_cursor.rs CURSOR_WIDTH: a whole pixel off the Mac, so the caret
-    // is never blurred.
+    // blink_cursor.rs CURSOR_WIDTH: one logical pixel on every platform.
+    // Paint snaps that width onto the device pixel grid.
     float safeX = s->align == 0 ? 0.f : base::PlatCaretWidth();
     float mostY = s->contentH - s->viewH;
     float mostX = s->contentW - s->viewW + safeX;
