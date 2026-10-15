@@ -10,7 +10,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-extern char** environ;
+// libc's environ. Qualified at the use so a using-directive for base,
+// which declares the same symbol, does not make the name ambiguous
+// when this file is compiled inside the amalgam.
+extern "C" char** environ;
 
 namespace gpui::shell {
 
@@ -112,10 +115,10 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     int extra = options ? options->environmentCount : 0;
     int inherited = 0;
     if (options && options->inheritEnvironment) {
-        while (environ[inherited]) inherited++;
+        while (::environ[inherited]) inherited++;
     }
     char** envp = AllocArray<char*>(inherited + extra + 1);
-    for (int i = 0; i < inherited; i++) envp[i] = environ[i];
+    for (int i = 0; i < inherited; i++) envp[i] = ::environ[i];
     for (int i = 0; i < extra; i++)
         envp[inherited + i] = options->environment[i].s;
     envp[inherited + extra] = nullptr;

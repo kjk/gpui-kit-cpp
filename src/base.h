@@ -84,7 +84,7 @@ namespace base {
 template <typename T, size_t N>
 char (&DimofSizeHelper(T (&array)[N]) noexcept)[N];
 #ifndef dimof
-#define dimof(array) (sizeof(base::DimofSizeHelper(array)))
+#define dimof(array) (sizeof(::base::DimofSizeHelper(array)))
 #endif
 
 enum : uint16_t {

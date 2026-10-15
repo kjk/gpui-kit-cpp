@@ -75,8 +75,9 @@ bool PlatMakeExecutable(const char* path) {
 }
 
 // The process environment. unistd.h does not declare it on every target
-// this file is compiled for, emscripten included.
-extern char** environ;
+// this file is compiled for, emscripten included. C linkage is the libc
+// symbol; a C++ declaration in this namespace would be a different one.
+extern "C" char** environ;
 
 bool PlatVisitEnv(void (*visit)(Str name, Str value, void* user), void* user) {
     if (!visit) return false;

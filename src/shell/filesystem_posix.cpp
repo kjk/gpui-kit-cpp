@@ -9,6 +9,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+// Defined in base_{linux,mac,wasm,ios,android}.cpp. Declared out here so
+// the name is ::base, not a namespace nested inside gpui::shell: the
+// amalgam is one translation unit, and a nested base steals base:: lookup.
+namespace base {
+uint64_t PlatStatModifiedNs(const struct stat* st);
+}
+
 namespace gpui::shell {
 
 static void FsError(Str* error, Str message) {
@@ -320,10 +327,6 @@ static bool MakeDirectoryRecursive(int root, Str rootName, Str relative,
     return ok;
 }
 
-namespace base {
-uint64_t PlatStatModifiedNs(const struct stat* st);
-}
-
 static void FillPosixStats(const struct stat& info, FsResult* result) {
     result->hasStats = true;
     result->isSymbolicLink = S_ISLNK(info.st_mode) != 0;
@@ -334,7 +337,7 @@ static void FillPosixStats(const struct stat& info, FsResult* result) {
     // atime and birthtime differ by target (st_atim versus st_atimespec),
     // and this file is compiled for every POSIX target including wasm, so
     // a time it cannot name stays the epoch.
-    uint64_t ns = base::PlatStatModifiedNs(&info);
+    uint64_t ns = ::base::PlatStatModifiedNs(&info);
     result->mtimeMs = (double)(ns / 1000000ull);
     result->atimeMs = 0;
     result->birthtimeMs = 0;
