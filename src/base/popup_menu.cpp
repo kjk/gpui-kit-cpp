@@ -130,16 +130,34 @@ void PopupMenuDismissAll(PopupMenuState* s, Ctx* cx) {
 }
 
 void PopupMenuConfirm(PopupMenuState* s, Ctx* cx, int ix) {
+    // Copied out first. Dismiss clears the focus a context names, and the
+    // handler below can rebuild the rows before the action is sent.
+    PopupMenuRow row = {};
+    bool have = ix >= 0 && ix < len(s->rows);
+    if (have) {
+        row = s->rows[ix];
+    }
     // `handler(&ClickEvent::default(), window, cx)`: the row's own handler,
-    // for a click and for Enter alike.
-    if (ix >= 0 && ix < len(s->rows) && s->rows[ix].handler.IsValid()) {
-        Listener handler = s->rows[ix].handler;
+    // for a click and for Enter alike. An action row has none.
+    if (have && row.handler.IsValid()) {
         ClickEvent ev = {};
-        ListenerCall(cx->app, cx->win, handler, &ev);
+        ListenerCall(cx->app, cx->win, row.handler, &ev);
     }
     if (s->onConfirm.IsValid()) {
         ClickEvent ev = {};
         ListenerCall(cx->app, cx->win, ListenerFill(s->onConfirm, ix), &ev);
+    }
+    // The action, in place of the handler. A click and Enter both arrive
+    // here; the row carries the focus the click used to attach, so the two
+    // dispatch from the same place. This is before the menu goes, which is
+    // Rust's confirm: the action runs, then dismiss.
+    if (have && row.action && !row.handler.IsValid()) {
+        if (row.actionFocus.IsValid()) {
+            WindowDispatchActionAtFocus(cx->win, row.actionFocus, row.action,
+                                        row.actionArg);
+        } else {
+            WindowDispatchAction(cx->win, row.action, row.actionArg);
+        }
     }
     // The item ran, so this menu and every parent go. Rust spells this
     // dismiss_all; without it, choosing a nested item leaves the top-level

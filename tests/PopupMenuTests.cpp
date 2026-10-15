@@ -828,6 +828,308 @@ static void HoveringAwayFromAKeyboardEnteredSubmenuRefocusesItsParent() {
     TestAppFree(app);
 }
 
+// MenuWithAction used to run from the row's OnClickAction only, so Enter
+// closed the menu and never dispatched. The row now carries the action, and
+// confirm — click or Enter — dispatches it once before the menu goes.
+static uint32_t MenuRowAction() {
+    return ActionOf(StrL("test::PopupMenuRow"));
+}
+
+struct ActionMenu {
+    bool withContext = false;
+    int fieldRuns = 0;
+    int rootRuns = 0;
+    int clicks = 0;
+    int64_t arg = 0;
+    bool atMenu = false;
+    FocusHandle field = {};
+    Entity<PopupMenuState> menu;
+    Entity<PopupMenuState> sub;
+
+    static void OnField(ActionMenu* self, Ctx* cx, const ActionEvent* ev) {
+        self->fieldRuns++;
+        self->arg = ev->arg;
+        PopupMenuState* menu = self->menu.Get(cx);
+        self->atMenu =
+            menu && menu->open && FocusHandleIsFocused(cx->win, menu->focus);
+        Notify(cx);
+    }
+
+    static void OnRoot(ActionMenu* self, Ctx* cx, const ActionEvent* ev) {
+        self->rootRuns++;
+        self->arg = ev->arg;
+        PopupMenuState* menu = self->menu.Get(cx);
+        self->atMenu =
+            menu && menu->open && FocusHandleIsFocused(cx->win, menu->focus);
+        Notify(cx);
+    }
+
+    static void OnClick(ActionMenu* self, Ctx* cx, const ClickEvent*) {
+        self->clicks++;
+        Notify(cx);
+    }
+
+    static El* Render(ActionMenu* self, Ctx* cx) {
+        PopupMenu* sub =
+            PopupMenu::New(cx, StrL("action-sub"))
+                ->MenuWithAction(StrL("Nested"), MenuRowAction(), 9);
+        PopupMenu* menu = PopupMenu::New(cx, StrL("action-menu"))
+                              ->MenuWithAction(StrL("Run"), MenuRowAction(), 7)
+                              ->Menu(StrL("Click"))
+                              ->OnClick(Listen(cx, &ActionMenu::OnClick))
+                              ->Link(StrL("Site"), StrL("https://example.com"))
+                              ->Submenu(StrL("More"), sub);
+        if (self->withContext) {
+            menu->ActionContext("Input");
+        }
+        self->menu = menu->state;
+        self->sub = sub->state;
+        El* field =
+            Div(cx->a)
+                ->Id(StrL("field"))
+                ->H(36)
+                ->W(kFill)
+                ->TrackFocus(self->field)
+                ->OnAction(MenuRowAction(), Listen(cx, &ActionMenu::OnField));
+        El* page =
+            Div(cx->a)
+                ->Id(StrL("page"))
+                ->SizeFull()
+                ->FlexCol()
+                ->OnAction(MenuRowAction(), Listen(cx, &ActionMenu::OnRoot))
+                ->Child(field)
+                ->Child(Div(cx->a)->Id(StrL("pad"))->Flex1()->W(kFill));
+        return ContextMenu::New(cx, StrL("action-ctx"))
+            ->Child(page)
+            ->Menu(menu)
+            ->IntoEl();
+    }
+};
+
+static int ActionRuns(const ActionMenu* self) {
+    return self->withContext ? self->fieldRuns : self->rootRuns;
+}
+
+static void KeyboardConfirmDispatchesAMenuAction(bool withContext) {
+    App* app = TestAppNew();
+    Entity<ActionMenu> view = EntityNew<ActionMenu>(app);
+    ActionMenu* self = view.Get(app);
+    self->withContext = withContext;
+    self->field = FocusHandleNew(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestFocus(win, self->field);
+    RightClickAt(win, {40, 80});
+
+    PopupMenuState* menu = self->menu.Get(app);
+    utassert(menu && menu->open);
+    utassert(menu->rows.len == 4);
+    utassert(menu->rows[0].action == MenuRowAction());
+    utassert(menu->rows[0].actionArg == 7);
+    utassert(!menu->rows[0].handler.IsValid());
+    utassert(menu->rows[0].actionFocus.IsValid() == withContext);
+    if (withContext) {
+        utassert(menu->rows[0].actionFocus == self->field);
+    }
+    utassert(menu->rows[1].handler.IsValid() && menu->rows[1].action == 0);
+    utassert(menu->rows[2].link && menu->rows[2].action == 0);
+    utassert(!menu->rows[2].handler.IsValid());
+    utassert(menu->rows[3].submenu && menu->rows[3].action == 0);
+
+    TestSimulateKeystrokes(win, "down enter");
+    utassert(ActionRuns(self) == 1);
+    utassert(self->arg == 7);
+    utassert(self->atMenu);
+    utassert(self->withContext ? self->rootRuns == 0 : self->fieldRuns == 0);
+    utassert(!menu->open);
+
+    RightClickAt(win, {40, 80});
+    utassert(menu->open);
+    // A menu row suppresses selection, so its label is not a text hit. The
+    // first row sits just inside the menu's top edge.
+    Bounds box = menu->bounds;
+    utassert(box.w > 40 && box.h > 26);
+    TestSimulateClick(win, {box.x + 24, box.y + 17});
+    utassert(ActionRuns(self) == 2);
+    utassert(self->arg == 7);
+    utassert(self->atMenu);
+    utassert(!menu->open);
+
+    RightClickAt(win, {40, 80});
+    TestSimulateKeystrokes(win, "down down enter");
+    utassert(self->clicks == 1);
+    utassert(ActionRuns(self) == 2);
+    utassert(!menu->open);
+
+    RightClickAt(win, {40, 80});
+    TestSimulateKeystrokes(win, "down down down down enter");
+    utassert(menu->open && menu->openSubmenu == 3);
+    utassert(ActionRuns(self) == 2);
+    utassert(self->clicks == 1);
+    PopupMenuState* sub = self->sub.Get(app);
+    utassert(sub && sub->open);
+    if (withContext && sub && sub->rows.len > 0) {
+        utassert(sub->rows[0].actionFocus == self->field);
+        utassert(sub->rows[0].actionArg == 9);
+    }
+    TestSimulateKeystrokes(win, "down enter");
+    utassert(ActionRuns(self) == 3);
+    utassert(self->arg == 9);
+    utassert(self->clicks == 1);
+    utassert(!menu->open);
+    TestAppFree(app);
+}
+
+static void KeyboardConfirmDispatchesAMenuActionInContext() {
+    KeyboardConfirmDispatchesAMenuAction(true);
+}
+
+static void KeyboardConfirmDispatchesAMenuActionWithoutAContext() {
+    KeyboardConfirmDispatchesAMenuAction(false);
+}
+
+// The listener is on the trigger, which is a sibling of the open menu. The
+// page behind both also listens, so an ancestor walk from the menu would
+// reach the page and miss the trigger. Naming an action context is what
+// sends the action to previousFocus instead.
+static uint32_t TriggerMenuAction() {
+    return ActionOf(StrL("test::PopupMenuTrigger"));
+}
+
+struct TriggerActionMenu {
+    bool nested = false;
+    int runs = 0;
+    int decoy = 0;
+    int64_t arg = 0;
+    FocusHandle trigger = {};
+    Entity<PopupMenuState> menu;
+    Entity<PopupMenuState> sub;
+
+    static void OnTrigger(TriggerActionMenu* self, Ctx* cx,
+                          const ActionEvent* ev) {
+        self->runs++;
+        self->arg = ev->arg;
+        Notify(cx);
+    }
+
+    static void OnDecoy(TriggerActionMenu* self, Ctx* cx, const ActionEvent*) {
+        self->decoy++;
+        Notify(cx);
+    }
+
+    static El* Render(TriggerActionMenu* self, Ctx* cx) {
+        PopupMenu* menu = PopupMenu::New(cx, StrL("trigger-menu"))
+                              ->ActionContext("Input");
+        if (self->nested) {
+            PopupMenu* sub =
+                PopupMenu::New(cx, StrL("trigger-sub"))
+                    ->MenuWithAction(StrL("Nested"), TriggerMenuAction(), 9);
+            menu->Submenu(StrL("More"), sub);
+            self->sub = sub->state;
+        } else {
+            menu->MenuWithAction(StrL("Run"), TriggerMenuAction(), 42);
+        }
+        self->menu = menu->state;
+        El* trigger = Div(cx->a)
+                          ->Id(StrL("trigger"))
+                          ->H(32)
+                          ->W(160)
+                          ->TrackFocus(self->trigger)
+                          ->OnAction(TriggerMenuAction(),
+                                     Listen(cx, &TriggerActionMenu::OnTrigger));
+        return Div(cx->a)
+            ->Id(StrL("page"))
+            ->SizeFull()
+            ->Pad(8)
+            ->OnAction(TriggerMenuAction(),
+                       Listen(cx, &TriggerActionMenu::OnDecoy))
+            ->Child(DropdownMenu::New(cx, StrL("trigger-drop"))
+                        ->Trigger(trigger)
+                        ->Menu(menu)
+                        ->IntoEl());
+    }
+};
+
+// The trigger is the 160×32 box. Its label is not painted, so the hit is
+// what names it.
+static Point TriggerHit(Window* win) {
+    for (int i = 0; i < win->paint.hits.len; i++) {
+        Bounds b = win->paint.hits[i].bounds;
+        if (b.w > 150 && b.w < 170 && b.h > 28 && b.h < 36) {
+            return {b.x + b.w * 0.5f, b.y + b.h * 0.5f};
+        }
+    }
+    return {40, 24};
+}
+
+static void ConfirmOnTheTriggerRunsItsListenerOnce() {
+    App* app = TestAppNew();
+    Entity<TriggerActionMenu> view = EntityNew<TriggerActionMenu>(app);
+    TriggerActionMenu* self = view.Get(app);
+    self->trigger = FocusHandleNew(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestFocus(win, self->trigger);
+    TestSimulateClick(win, TriggerHit(win));
+
+    PopupMenuState* menu = self->menu.Get(app);
+    utassert(menu && menu->open);
+    utassert(menu->previousFocus == self->trigger);
+    utassert(menu->rows.len == 1);
+    utassert(menu->rows[0].action == TriggerMenuAction());
+    utassert(menu->rows[0].actionArg == 42);
+    utassert(!menu->rows[0].handler.IsValid());
+    utassert(menu->rows[0].actionFocus == self->trigger);
+
+    TestDispatchAction(win, action::SelectDown());
+    utassert(menu->selected == 0);
+    TestDispatchAction(win, action::Confirm());
+    utassert(self->runs == 1);
+    utassert(self->arg == 42);
+    utassert(self->decoy == 0);
+    utassert(!menu->open);
+    TestAppFree(app);
+}
+
+static void ConfirmInASubmenuUsesTheRootPreviousFocus() {
+    App* app = TestAppNew();
+    Entity<TriggerActionMenu> view = EntityNew<TriggerActionMenu>(app);
+    TriggerActionMenu* self = view.Get(app);
+    self->nested = true;
+    self->trigger = FocusHandleNew(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestFocus(win, self->trigger);
+    TestSimulateClick(win, TriggerHit(win));
+
+    PopupMenuState* menu = self->menu.Get(app);
+    utassert(menu && menu->open);
+    utassert(menu->previousFocus == self->trigger);
+    utassert(menu->rows.len == 1);
+    utassert(menu->rows[0].submenu);
+    utassert(menu->rows[0].action == 0);
+
+    TestDispatchAction(win, action::SelectDown());
+    utassert(menu->selected == 0);
+    // Right opens the submenu. Its own previousFocus stays empty; the row's
+    // action is sent to the root menu's previousFocus, which is the trigger.
+    TestDispatchAction(win, action::SelectRight());
+    utassert(menu->openSubmenu == 0);
+    PopupMenuState* sub = self->sub.Get(app);
+    utassert(sub && sub->open);
+    utassert(sub->rows.len == 1);
+    utassert(sub->rows[0].action == TriggerMenuAction());
+    utassert(sub->rows[0].actionArg == 9);
+    utassert(sub->rows[0].actionFocus == menu->previousFocus);
+    utassert(sub->rows[0].actionFocus == self->trigger);
+
+    TestDispatchAction(win, action::SelectDown());
+    utassert(sub->selected == 0);
+    TestDispatchAction(win, action::Confirm());
+    utassert(self->runs == 1);
+    utassert(self->arg == 9);
+    utassert(self->decoy == 0);
+    utassert(!menu->open);
+    TestAppFree(app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     TheWalkStepsOverWhatCannotBeClicked();
@@ -848,6 +1150,10 @@ void TestPopupMenu() {
     NestedContextMenuUsesTheInnermostRightClick();
     MenuTakesFocusBeforeItsFirstFrame();
     HoveringAwayFromAKeyboardEnteredSubmenuRefocusesItsParent();
+    KeyboardConfirmDispatchesAMenuActionInContext();
+    KeyboardConfirmDispatchesAMenuActionWithoutAContext();
+    ConfirmOnTheTriggerRunsItsListenerOnce();
+    ConfirmInASubmenuUsesTheRootPreviousFocus();
     AppMenuBarBindsAndHandlesItsSourceActions();
     RootPopupPropagatesUnusedHorizontalActionsToTheMenuBar();
     OpenWithoutDismissReleasesTheMenu();

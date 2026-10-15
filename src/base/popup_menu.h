@@ -60,6 +60,14 @@ struct PopupMenuRow {
     // The row's own handler, PopupMenuItem::on_click, which confirm runs
     // in place of the action.
     Listener handler = {};
+    // PopupMenuItem::action, for a row with no handler. Confirm dispatches
+    // it. A handler, a link and a submenu leave this at zero.
+    uint32_t action = 0;
+    int64_t actionArg = 0;
+    // The focus that action is dispatched from when the menu named an action
+    // context: the focus the menu took, walked up through parent menus. An
+    // invalid handle dispatches from the focus the menu is holding.
+    FocusHandle actionFocus = {};
 };
 
 // What a menu is between frames. Rust keeps this in the PopupMenu entity

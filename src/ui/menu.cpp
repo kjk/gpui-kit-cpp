@@ -222,6 +222,32 @@ PopupMenu* PopupMenu::ExternalLinkIcon(bool v) {
     return this;
 }
 
+// The focus a row's action is dispatched from. An action context sends it to
+// the focus the menu took; a submenu walks up to a parent that parked one, so
+// the root's focus wins. No context leaves the handle invalid, and confirm
+// dispatches from whatever the menu is holding. The key and the click both
+// read the handle off the row, so this is the only place it is decided.
+static FocusHandle MenuActionFocus(PopupMenuState* s, Ctx* cx,
+                                   const char* actionContext) {
+    FocusHandle target = {};
+    if (!actionContext || !s || !cx) {
+        return target;
+    }
+    target = s->previousFocus;
+    Entity<PopupMenuState> parent = s->parent;
+    while (parent.IsValid()) {
+        PopupMenuState* up = parent.Get(cx);
+        if (!up) {
+            break;
+        }
+        if (up->previousFocus.IsValid()) {
+            target = up->previousFocus;
+        }
+        parent = up->parent;
+    }
+    return target;
+}
+
 static void OnPopupLinkClick(PopupMenuState* state, Ctx* cx, const ClickEvent*,
                              int64_t hrefPtr) {
     const Str* href = (const Str*)hrefPtr;
@@ -352,6 +378,9 @@ El* PopupMenu::IntoEl() {
         ->OnAction(action::SelectRight(), onAction);
     // The rows, as the keyboard sees them. Rust's menu owns its items; here
     // they are the caller's, so what an action needs is copied across.
+    // One focus for every action row: Enter and the click both confirm the
+    // row, and confirm dispatches from this handle.
+    FocusHandle actionFocus = MenuActionFocus(s, cx, actionContext);
     PopupMenuBeginRows(s);
     for (const MenuItem& it : items) {
         PopupMenuRow row;
@@ -361,6 +390,14 @@ El* PopupMenu::IntoEl() {
         row.link = it.isLink;
         row.href = it.href;
         row.handler = it.onClick;
+        // A handler, a link and a submenu keep the paths they already have.
+        // An action row has none of those, so confirm is what runs it.
+        if (it.action && !it.onClick.IsValid() && !it.submenu &&
+            !(it.isLink && it.href.s)) {
+            row.action = it.action;
+            row.actionArg = it.actionArg;
+            row.actionFocus = actionFocus;
+        }
         PopupMenuAddRow(s, row);
     }
     // p_1().gap_y_0p5()
@@ -508,34 +545,10 @@ El* PopupMenu::IntoEl() {
                 row->OnHover(ListenerArg(hover, i));
             } else {
                 BindClick(row, StrDup(a, fmt("%d", i)), ListenerArg(click, i));
-                // `window.dispatch_action(action.boxed_clone(), cx)`, beside
-                // the click the menu itself needs to close on.
-                if (it.action && !it.onClick.IsValid()) {
-                    // An explicit context sends the action to the focus the
-                    // menu took, including a submenu that inherited it. The
-                    // context itself is the keymap name; the handle is the
-                    // focus parked when the root menu opened.
-                    FocusHandle target = {};
-                    if (actionContext && s) {
-                        target = s->previousFocus;
-                        Entity<PopupMenuState> parent = s->parent;
-                        while (parent.IsValid()) {
-                            PopupMenuState* up = parent.Get(cx);
-                            if (!up) {
-                                break;
-                            }
-                            if (up->previousFocus.IsValid()) {
-                                target = up->previousFocus;
-                            }
-                            parent = up->parent;
-                        }
-                    }
-                    if (target.IsValid()) {
-                        row->OnClickActionAt(it.action, target, it.actionArg);
-                    } else {
-                        row->OnClickAction(it.action, it.actionArg);
-                    }
-                }
+                // The action is on the row, and this click confirms it.
+                // Confirm dispatches from MenuActionFocus — the focus this
+                // used to attach with OnClickAction — so the hit must not
+                // dispatch that action a second time after the listener.
                 row->OnHover(ListenerArg(hover, i));
             }
         }
