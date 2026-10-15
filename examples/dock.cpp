@@ -344,7 +344,7 @@ El* DockApp::Render(DockApp* self, Ctx* cx) {
         ->Menu(StrL("Add Panel to Right"))
         ->Menu(StrL("Add Panel to Bottom"))
         ->Separator()
-        ->MenuWithCheck(StrL("Show Dock Toggle Button"),
+        ->MenuWithCheck(StrL("Show / Hide Dock Toggle Button"),
                         self->toggleButtonVisible);
     if (PopupMenuState* ms = menu->state.Get(cx)) {
         ms->onConfirm = Listen(cx, &OnMenuItem);
