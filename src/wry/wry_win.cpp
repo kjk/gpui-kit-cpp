@@ -158,7 +158,9 @@ struct ICoreWebView2PrintCompletedHandler;
 struct ICoreWebView2PrintSettings;
 struct ICoreWebView2PrintToPdfCompletedHandler;
 struct ICoreWebView2PrintToPdfStreamCompletedHandler;
-struct ICoreWebView2ProcessFailedEventHandler;
+struct ICoreWebView2ProcessFailedEventArgs;
+struct DECLSPEC_UUID("79e0aea4-990b-42d9-aa1d-0fcc2e5bc7f1")
+    ICoreWebView2ProcessFailedEventHandler;
 struct ICoreWebView2ProcessInfoCollection;
 struct ICoreWebView2ProcessInfosChangedEventHandler;
 struct ICoreWebView2BrowserExtension;
@@ -1314,6 +1316,15 @@ struct ICoreWebView2NavigationCompletedEventHandler : IUnknown {
 struct ICoreWebView2ContentLoadingEventHandler : IUnknown {
     virtual HRESULT STDMETHODCALLTYPE Invoke(
         ICoreWebView2* sender, ICoreWebView2ContentLoadingEventArgs* args) = 0;
+};
+
+struct ICoreWebView2ProcessFailedEventArgs : IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE get_ProcessFailedKind(int* kind) = 0;
+};
+
+struct ICoreWebView2ProcessFailedEventHandler : IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE Invoke(
+        ICoreWebView2* sender, ICoreWebView2ProcessFailedEventArgs* args) = 0;
 };
 
 struct ICoreWebView2DocumentTitleChangedEventHandler : IUnknown {
@@ -3066,6 +3077,7 @@ struct WebView {
     void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
     void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
                               Str url) = nullptr;
+    void (*processFailedHandler)(void* ctx, int kind) = nullptr;
     DownloadStartedHandler downloadStartedHandler = nullptr;
     DownloadCompletedHandler downloadCompletedHandler = nullptr;
     DownloadCallbackState* downloadCallbacks = nullptr;
@@ -4246,6 +4258,20 @@ static HRESULT OnDocumentTitleChanged(void* ctx, ICoreWebView2* sender,
     return S_OK;
 }
 
+static HRESULT OnProcessFailed(void* ctx, ICoreWebView2*,
+                               ICoreWebView2ProcessFailedEventArgs* args) {
+    WebView* wv = LiveWebView(ctx);
+    if (!wv || !wv->processFailedHandler) {
+        return S_OK;
+    }
+    int kind = 0;
+    if (!args || FAILED(args->get_ProcessFailedKind(&kind))) {
+        kind = 0;
+    }
+    wv->processFailedHandler(wv->ctx, kind);
+    return S_OK;
+}
+
 static HRESULT OnContentLoading(void* ctx, ICoreWebView2* sender,
                                 ICoreWebView2ContentLoadingEventArgs*) {
     WebView* wv = LiveWebView(ctx);
@@ -4471,6 +4497,17 @@ static bool AttachHandlers(WebView* wv, EventRegistrationToken* token) {
             Handler2<ICoreWebView2DocumentTitleChangedEventHandler,
                      ICoreWebView2*, IUnknown*>>(wv, OnDocumentTitleChanged);
         HRESULT hr = wv->webview->add_DocumentTitleChanged(h, token);
+        h->Release();
+        if (FAILED(hr)) {
+            return false;
+        }
+    }
+    if (wv->processFailedHandler) {
+        auto* h = MkWebViewHandler<
+            Handler2<ICoreWebView2ProcessFailedEventHandler, ICoreWebView2*,
+                     ICoreWebView2ProcessFailedEventArgs*>>(wv,
+                                                            OnProcessFailed);
+        HRESULT hr = wv->webview->add_ProcessFailed(h, token);
         h->Release();
         if (FAILED(hr)) {
             return false;
@@ -4777,6 +4814,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     wv->navigationHandler = attrs->navigationHandler;
     wv->documentTitleChangedHandler = attrs->documentTitleChangedHandler;
     wv->onPageLoadHandler = attrs->onPageLoadHandler;
+    wv->processFailedHandler = attrs->processFailedHandler;
     wv->downloadStartedHandler = attrs->downloadStartedHandler;
     wv->downloadCompletedHandler = attrs->downloadCompletedHandler;
     if (attrs->downloadCompletedHandler) {

@@ -325,6 +325,10 @@ struct WebViewAttributes {
     void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
     void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
                               Str url) = nullptr;
+    /** Windows: a process of the web view failed (WebView2's ProcessFailed);
+        kind is COREWEBVIEW2_PROCESS_FAILED_KIND, 0 the browser process exited
+        and the web view is gone, 1 the page's render process exited. */
+    void (*processFailedHandler)(void* ctx, int kind) = nullptr;
     /** Wry's default closure accepts every download at its suggested path. */
     DownloadStartedHandler downloadStartedHandler = AllowDownload;
     DownloadCompletedHandler downloadCompletedHandler = nullptr;
