@@ -13,8 +13,8 @@ struct SelApp {
 static const char* kMsgs[] = {
     "**Hello!** How can I help you today?",
     "I want to select text *across* multiple bubbles.",
-    "Sure — drag from anywhere, even from the blank space between "
-    "bubbles, then press `cmd-c` to copy everything.",
+    ("Sure — drag from anywhere, even from the blank space between "
+     "bubbles, then press `cmd-c` to copy everything."),
     "Nice, it also keeps the top-to-bottom order.",
 };
 static const int kNMsgs = 4;
