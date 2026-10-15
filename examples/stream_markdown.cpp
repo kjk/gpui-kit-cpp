@@ -67,6 +67,11 @@ struct StreamApp {
     float scroll = 0;
     Bounds viewBox = {};
     Bounds contentBox = {};
+    // One TextViewState for the whole run, so a chunk is an append and
+    // stream_fade can see what was added. Rust keeps the same entity.
+    Entity<TextViewState> viewState = {};
+    // Switch::new("stream-fade"). Rust starts it off.
+    bool streamFade = false;
     // The example's own handle, for the listener a worker thread posts with.
     Entity<StreamApp> me = {};
 
@@ -90,6 +95,8 @@ static int ChunkEnd(Str s, int from, uint32_t* seed) {
     return end;
 }
 
+static void SyncDoc(StreamApp* self, Ctx* cx);
+
 // The main thread's half: take the chunk if it belongs to the current run.
 static void OnChunk(StreamApp* self, Ctx* cx, const StreamChunk* ev) {
     if (!ev) {
@@ -97,6 +104,7 @@ static void OnChunk(StreamApp* self, Ctx* cx, const StreamChunk* ev) {
     }
     if (ev->gen == self->gen) {
         self->doc.Append(ev->text);
+        SyncDoc(self, cx);
         // scroll_handle.scroll_to_bottom(): the view follows the text as it
         // grows. The height it can scroll to is last frame's, which is a
         // frame behind and a chunk short — invisible at fifty milliseconds.
@@ -161,6 +169,7 @@ static void OnTick(StreamApp* self, Ctx* cx, const TickEvent*) {
     int end = ChunkEnd(self->source, self->sent, &seed);
     self->doc.Append(Str(self->source.s + self->sent, end - self->sent));
     self->sent = end;
+    SyncDoc(self, cx);
     float maxY = self->contentBox.h - self->viewBox.h;
     self->scroll = maxY > 0 ? maxY : 0;
     Notify(cx);
@@ -172,6 +181,7 @@ static void Replay(StreamApp* self, Ctx* cx, const ClickEvent*) {
     self->gen = StreamBumpGen();
     self->doc.Reset();
     self->sent = 0;
+    SyncDoc(self, cx);
     self->scroll = 0;
     self->streaming = true;
     if (self->timer) {
@@ -197,6 +207,19 @@ static void Replay(StreamApp* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 
+// SetText sees an extension of the current markdown and pushes the new
+// tail, which is what starts a stream fade when the switch is on.
+static void SyncDoc(StreamApp* self, Ctx* cx) {
+    TextViewState* st = self->viewState.Get(cx);
+    if (!st) return;
+    st->SetText(Str(self->doc.els, len(self->doc)), cx->app, cx->win);
+}
+
+static void OnFade(StreamApp* self, Ctx* cx, const ClickEvent*, int64_t on) {
+    self->streamFade = on != 0;
+    Notify(cx);
+}
+
 static void OnScroll(StreamApp* self, Ctx* cx, const ScrollEvent* ev) {
     self->scroll = ev->offsetY;
     Notify(cx);
@@ -206,20 +229,30 @@ El* StreamApp::Render(StreamApp* self, Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
 
-    El* bar = Div(a)->FlexRow()->W(kFill)->Child(
-        component::Button::New(cx, StrL("replay"))
-            ->Outline()
-            ->Label(StrL("Replay"))
-            ->OnClick(Listen(cx, &Replay))
-            ->IntoEl());
+    El* bar = Div(a)->FlexRow()->W(kFill)->Gap(16)->ItemsCenter();
+    bar->Child(component::Button::New(cx, StrL("replay"))
+                   ->Outline()
+                   ->Label(StrL("Replay"))
+                   ->OnClick(Listen(cx, &Replay))
+                   ->IntoEl());
+    bar->Child(component::Switch::New(cx, StrL("stream-fade"))
+                   ->Checked(self->streamFade)
+                   ->Label(StrL("Fade in streamed text"))
+                   ->OnClick(Listen(cx, &OnFade))
+                   ->IntoEl());
 
-    Str doc = Str(self->doc.els, len(self->doc));
-    El* content =
-        Div(a)
-            ->FlexCol()
-            ->W(kFill)
-            ->BoundsOut(&self->contentBox)
-            ->Child(component::TextView::New(cx, doc)->Selectable()->IntoEl());
+    if (!self->viewState.IsValid()) {
+        self->viewState = TextViewState::Markdown(
+            cx->app, Str(self->doc.els, len(self->doc)));
+    }
+    El* content = Div(a)
+                      ->FlexCol()
+                      ->W(kFill)
+                      ->BoundsOut(&self->contentBox)
+                      ->Child(component::TextView::New(cx, self->viewState)
+                                  ->Selectable()
+                                  ->StreamFade(self->streamFade)
+                                  ->IntoEl());
     El* body = Div(a)
                    ->FlexCol()
                    ->Flex1()
