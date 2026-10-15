@@ -599,9 +599,51 @@ static void NextChangeWrapsOnceTheListIsScrolledToItsEnd() {
     utassert(fix.state->scrollItem == 10);
 }
 
+struct DiffBoxView {
+    Entity<DiffState> state;
+    bool loaded = false;
+
+    static El* Render(DiffBoxView* self, Ctx* cx) {
+        if (!self->loaded) {
+            self->state = EntityNew<DiffState>(cx->app);
+            DiffState* st = self->state.Get(cx);
+            st->Bind(cx->app, self->state);
+            const char* patch =
+                "--- a/src/retry.rs\n"
+                "+++ b/src/retry.rs\n"
+                "@@ -1 +1 @@\n"
+                "-old\n"
+                "+new\n";
+            Vec<DiffFile*> files;
+            DiffParseError error = {};
+            if (DiffFile::Parse(Str(patch), &files, &error)) {
+                st->SetFiles(files.els, len(files), cx);
+            }
+            self->loaded = true;
+        }
+        return Diff::New(cx, self->state)->IntoEl()->H(320);
+    }
+};
+
+// The list is height 100% of the diff. A parent that is only as tall as
+// that percentage collapses it, so a 320px diff reported a 0 viewport and
+// painted no rows.
+static void TestDiffListFillsItsHeight() {
+    App* app = TestAppNew();
+    Init(app);
+    Entity<DiffBoxView> view = EntityNew<DiffBoxView>(app);
+    Window* win = TestWindowOpen(app, view, 480, 400);
+    TestDraw(win);
+    DiffBoxView* self = view.Get(app);
+    DiffState* st = self ? self->state.Get(app) : nullptr;
+    utassert(st && st->listScroll.viewport > 100.f);
+    TestAppFree(app);
+}
+
 void TestDiff() {
     TestParser();
     TestConflictsAndLanguage();
     TestInlineAndRows();
     NextChangeWrapsOnceTheListIsScrolledToItsEnd();
+    TestDiffListFillsItsHeight();
 }

@@ -1,8 +1,8 @@
 #include "Story.h"
 
-// crates/story/src/stories/diff_story.rs — the pull-request patch, its
-// toolbar, and the review comment. The other example patches are not on
-// this page yet.
+// crates/story/src/stories/diff_story.rs — the example patches, the
+// toolbar, and the pull-request review comment. Soft wrap is stored on
+// the diff and not applied; the add-annotation button is not painted.
 
 static const char* kReview =
     "diff --git a/src/retry.rs b/src/retry.rs\n"
@@ -32,12 +32,104 @@ static const char* kReview =
     " pub fn describe(policy: &RetryPolicy) -> String {\n"
     "-    format!(\"{} attempts\", policy.max_attempts)\n"
     "+    format!(\"Up to {} attempts\", policy.max_attempts)\n"
+    " }\n";
+
+static const char* kAdded =
+    "diff --git a/src/retry.rs b/src/retry.rs\n"
+    "new file mode 100644\n"
+    "--- /dev/null\n"
+    "+++ b/src/retry.rs\n"
+    "@@ -0,0 +1,3 @@\n"
+    "+pub fn retry_delay(attempt: u32) -> u64 {\n"
+    "+    100 * 2_u64.pow(attempt.min(6))\n"
+    "+}\n";
+
+static const char* kDeleted =
+    "diff --git a/src/legacy_retry.rs b/src/legacy_retry.rs\n"
+    "deleted file mode 100644\n"
+    "--- a/src/legacy_retry.rs\n"
+    "+++ /dev/null\n"
+    "@@ -1,3 +0,0 @@\n"
+    "-pub fn retry_delay(_: u32) -> u64 {\n"
+    "-    1000\n"
+    "-}\n";
+
+static const char* kUnicode =
+    "--- a/src/greeting.rs\n"
+    "+++ b/src/greeting.rs\n"
+    "@@ -1,6 +1,6 @@\n"
+    "-// Greeting for every visitor\n"
+    "+// 为每位访客生成问候\n"
+    " fn greeting(name: &str) -> String {\n"
+    "-\tformat!(\"Hello, {name} \U0001F44B\")\n"
+    "+\tformat!(\"你好，{name} \U0001F30F\")\n"
+    " }\n"
+    " \n"
+    "-// café: e\u0301, 中文，مرحبا\n"
+    "+// café: é, 中文，مرحبا\n";
+
+static const char* kRenamed =
+    "diff --git a/src/retry.rs b/src/retry_policy.rs\n"
+    "similarity index 100%\n"
+    "rename from src/retry.rs\n"
+    "rename to src/retry_policy.rs\n";
+
+static const char* kNoNewline =
+    "--- a/config/review.conf\n"
+    "+++ b/config/review.conf\n"
+    "@@ -1,2 +1,2 @@\n"
+    " enabled=true\n"
+    "-limit=20\n"
+    "+limit=100\n"
+    "\\ No newline at end of file\n";
+
+static const char* kMode =
+    "diff --git a/scripts/review.sh b/scripts/review.sh\n"
+    "old mode 100644\n"
+    "new mode 100755\n";
+
+static const char* kMerge =
+    "impl Default for RetryPolicy {\n"
+    "    fn default() -> Self {\n"
+    "        Self {\n"
+    "<<<<<<< HEAD\n"
+    "            max_attempts: 5,\n"
+    "            base_delay: Duration::from_millis(100),\n"
+    "=======\n"
+    "            max_attempts: 3,\n"
+    "            base_delay: Duration::from_millis(250),\n"
+    ">>>>>>> retry-backoff\n"
+    "        }\n"
+    "    }\n"
     "}\n";
+
+static const char* kSource =
+    "use std::time::Duration;\n"
+    "\n"
+    "/// How often a failed request is retried.\n"
+    "pub struct RetryPolicy {\n"
+    "    pub max_attempts: u32,\n"
+    "    pub base_delay: Duration,\n"
+    "}\n"
+    "\n"
+    "impl RetryPolicy {\n"
+    "    /// Returns the delay before the next attempt.\n"
+    "    pub fn delay(&self, attempt: u32) -> Duration {\n"
+    "        self.base_delay * 2_u32.pow(attempt.min(6))\n"
+    "    }\n"
+    "}\n";
+
+static const char* kExamples[] = {
+    "Pull request", "Added file",     "Deleted file", "Unicode",
+    "Long lines",   "Large file",     "Renamed file", "Missing final newline",
+    "File mode",    "Merge conflict", "Source file",
+};
 
 struct DiffStory {
     StoryToolbarState toolbar;
     Entity<component::DiffState> state;
     bool loaded = false;
+    int example = 0;
     // diff_story.rs defaults: tint on, hover and wrap off, words, hunk
     // header, signs.
     bool background = true;
@@ -52,6 +144,7 @@ struct DiffStory {
     static component::DiffState* State(DiffStory* self, Ctx* cx) {
         return self->state.Get(cx);
     }
+    static void LoadExample(DiffStory* self, Ctx* cx);
     static void OnUnified(DiffStory* self, Ctx* cx, const ClickEvent*) {
         if (component::DiffState* st = State(self, cx)) {
             st->SetMode(component::DiffMode::Unified, cx);
@@ -114,6 +207,13 @@ struct DiffStory {
         self->indicator = (int)ix;
         Notify(cx);
     }
+    static void OnExample(DiffStory* self, Ctx* cx, const ClickEvent*,
+                          int64_t ix) {
+        if (ix < 0 || ix > 10) ix = 0;
+        self->example = (int)ix;
+        LoadExample(self, cx);
+        Notify(cx);
+    }
     static void OnTint(DiffStory* self, Ctx* cx, const ClickEvent*) {
         self->background = !self->background;
         Notify(cx);
@@ -165,6 +265,108 @@ El* DiffStory::RenderComment(Ctx* cx, const component::DiffAnnotation*,
     return col;
 }
 
+static void AppendRepeat(StrBuilder& out, const char* piece, int n) {
+    for (int i = 0; i < n; i++) out.Append(Str(piece));
+}
+
+static Str ExamplePatch(int example) {
+    StrBuilder b;
+    if (example == 1) {
+        b.Append(Str(kAdded));
+    } else if (example == 2) {
+        b.Append(Str(kDeleted));
+    } else if (example == 3) {
+        b.Append(Str(kUnicode));
+    } else if (example == 4) {
+        const char* prefix =
+            "const ENDPOINT: &str = \"https://api.example.com/v1/changes?";
+        b.Append(
+            Str("--- a/src/endpoint.rs\n+++ b/src/endpoint.rs\n@@ -1 +1 "
+                "@@\n-"));
+        b.Append(Str(prefix));
+        AppendRepeat(b, "scope=repository&", 24);
+        b.Append(Str("&limit=20\";\n+"));
+        b.Append(Str(prefix));
+        AppendRepeat(b, "scope=repository&", 24);
+        b.Append(Str("&limit=100\";\n"));
+    } else if (example == 5) {
+        b.Append(
+            Str("--- a/config/features.conf\n+++ b/config/features.conf\n"
+                "@@ -1,5000 +1,5000 @@\n"));
+        for (int line = 1; line <= 5000; line++) {
+            char num[4] = {
+                (char)('0' + (line / 1000) % 10),
+                (char)('0' + (line / 100) % 10),
+                (char)('0' + (line / 10) % 10),
+                (char)('0' + line % 10),
+            };
+            Str digits = Str(num, 4);
+            if (line == 40 || line == 4960) {
+                b.Append(Str("-entry_"));
+                b.Append(digits);
+                b.Append(Str(" = enabled\n+entry_"));
+                b.Append(digits);
+                b.Append(Str(" = disabled\n"));
+            } else if (line == 2500) {
+                b.Append(Str("-entry_"));
+                b.Append(digits);
+                b.Append(Str(" = enabled\n+entry_"));
+                b.Append(digits);
+                b.Append(Str(" = pending\n"));
+            } else {
+                b.Append(Str(" entry_"));
+                b.Append(digits);
+                b.Append(Str(" = enabled\n"));
+            }
+        }
+    } else if (example == 6) {
+        b.Append(Str(kRenamed));
+    } else if (example == 7) {
+        b.Append(Str(kNoNewline));
+    } else if (example == 8) {
+        b.Append(Str(kMode));
+    } else {
+        b.Append(Str(kReview));
+        b.Append(Str(kAdded));
+        b.Append(Str(kDeleted));
+        b.Append(Str(kMode));
+    }
+    return b.TakeStr();
+}
+
+static void SetOne(component::DiffState* st, component::DiffFile* file,
+                   Ctx* cx) {
+    if (file) st->SetFiles(&file, 1, cx);
+}
+
+void DiffStory::LoadExample(DiffStory* self, Ctx* cx) {
+    component::DiffState* st = State(self, cx);
+    if (!st) return;
+    int example = self->example;
+    if (example == 9) {
+        component::DiffParseError error = {};
+        SetOne(st,
+               component::DiffFile::ParseConflicts(StrL("src/retry.rs"),
+                                                   Str(kMerge), &error),
+               cx);
+        return;
+    }
+    if (example == 10) {
+        SetOne(
+            st,
+            component::DiffFile::Unchanged(StrL("src/retry.rs"), Str(kSource)),
+            cx);
+        return;
+    }
+    Str patch = ExamplePatch(example);
+    Vec<component::DiffFile*> files;
+    component::DiffParseError error = {};
+    if (component::DiffFile::Parse(patch, &files, &error)) {
+        st->SetFiles(files.els, len(files), cx);
+    }
+    StrFree(patch);
+}
+
 static bool PatchHasChanges(component::DiffState* st) {
     int n = 0;
     component::DiffFile** files = st ? st->Files(&n) : nullptr;
@@ -190,11 +392,7 @@ El* DiffStory::Render(DiffStory* self, Ctx* cx) {
         self->state = EntityNew<component::DiffState>(cx->app);
         component::DiffState* st = self->state.Get(cx);
         st->Bind(cx->app, self->state);
-        Vec<component::DiffFile*> files;
-        component::DiffParseError error;
-        if (component::DiffFile::Parse(Str(kReview), &files, &error)) {
-            st->SetFiles(files.els, len(files), cx);
-        }
+        LoadExample(self, cx);
         self->note = component::DiffAnnotation::Line(
             StrL("retry-delay-review"),
             component::DiffLinePosition::New(
@@ -254,6 +452,9 @@ El* DiffStory::Render(DiffStory* self, Ctx* cx) {
         ->OnClick(Listen(cx, &DiffStory::OnCollapse));
     component::PopupMenu* options =
         component::PopupMenu::New(cx, StrL("diff-options-menu"));
+    options->Submenu(StrL("Example"),
+                     CheckedMenu(cx, StrL("diff-example"), kExamples, 11,
+                                 self->example, &DiffStory::OnExample));
     options->Submenu(StrL("Context"), context);
     options->Submenu(StrL("Inline changes"),
                      CheckedMenu(cx, StrL("diff-inline"), kInline, 3,
@@ -291,22 +492,26 @@ El* DiffStory::Render(DiffStory* self, Ctx* cx) {
     if (self->indicator == 1) mark = component::DiffChangeIndicator::Bars;
     if (self->indicator == 2) mark = component::DiffChangeIndicator::None;
 
-    El* page = Div(cx->a)->W(kFill)->Gap(12);
+    component::Diff* diff =
+        component::Diff::New(cx, self->state)
+            ->HunkSeparator(sep)
+            ->ChangeIndicator(mark)
+            ->ChangeBackground(self->background)
+            ->HoverHighlight(self->hover ? component::DiffHoverHighlight::Both
+                                         : component::DiffHoverHighlight::None)
+            ->SoftWrap(self->wrap);
+    if (self->example == 0) {
+        diff->Annotations(&self->note, 1)
+            ->RenderAnnotation(&DiffStory::RenderComment, self);
+    }
+    El* body = Div(cx->a)->FlexCol()->W(kFill)->Gap(8);
+    body->Child(TextEl(cx->a, Str(kExamples[self->example]))->Medium());
+    body->Child(diff->IntoEl()->H(512));
+
+    El* page = Div(cx->a)->FlexCol()->W(kFill)->Gap(12);
     page->Child(StoryToolbar(cx, self));
     page->Child(row);
-    page->Child(TextEl(cx->a, StrL("Pull request")));
-    page->Child(component::Diff::New(cx, self->state)
-                    ->HunkSeparator(sep)
-                    ->ChangeIndicator(mark)
-                    ->ChangeBackground(self->background)
-                    ->HoverHighlight(self->hover
-                                         ? component::DiffHoverHighlight::Both
-                                         : component::DiffHoverHighlight::None)
-                    ->SoftWrap(self->wrap)
-                    ->Annotations(&self->note, 1)
-                    ->RenderAnnotation(&DiffStory::RenderComment, self)
-                    ->IntoEl()
-                    ->H(512));
+    page->Child(body);
     return page;
 }
 

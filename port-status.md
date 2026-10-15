@@ -288,10 +288,11 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   painted inside the uniform row, which does not grow with the comment.
   Gutter `TextSelection::Cleared` is not a separate path: clearing goes
   through `SetSelectedLines`, which drops the shift anchor and does not
-  emit. The story page shows the pull-request patch, previous/next, and
-  the options menu (mode, context, inline, separator, indicator, tint,
-  hover, and wrap) plus the Alex review comment. The other example
-  patches are not on the page yet. `examples/tig`, the git history
+  emit. The story page shows every example patch from `diff_story.rs`
+  (the pull request is the review, added, deleted, and mode files
+  together), previous/next, and the options menu (example, mode,
+  context, inline, separator, indicator, tint, hover, and wrap). The
+  Alex review comment is on the pull request. `examples/tig`, the git history
   browser, is not ported. The
   per-hunk tree-sitter test stays under the scanner gap above.
 - **The Base showcase's editor is plain text with a gutter.** Upstream's

@@ -57,6 +57,7 @@ const slugs = [
   "date-picker",
   "description-list",
   "dialog",
+  "diff",
   "dock",
   "dropdown-button",
   "editor",

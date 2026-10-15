@@ -3431,8 +3431,14 @@ El* Diff::IntoEl() {
     DiffState* st = state.Get(cx);
     if (!st) return Div(a);
     st->listScroll.itemsCount = len(st->rows);
-    El* root =
-        Div(a)->SizeFull()->KeyContext(StrL("Diff"))->TrackFocus(st->focus);
+    // A column so the caller's height (the story's 32rem) reaches the list.
+    // The list is height 100%, which collapses when its parent is only as
+    // tall as that percentage.
+    El* root = Div(a)
+                   ->FlexCol()
+                   ->SizeFull()
+                   ->KeyContext(StrL("Diff"))
+                   ->TrackFocus(st->focus);
     root->OnAction(Act("diff::ScrollUp"), ListenTo(state, &OnDiffAction));
     root->OnAction(Act("diff::ScrollDown"), ListenTo(state, &OnDiffAction));
     root->OnAction(Act("diff::ExtendUp"), ListenTo(state, &OnDiffAction));
@@ -3445,7 +3451,10 @@ El* Diff::IntoEl() {
                    ->IntoEl();
     root->Child(ScrollBounce::New(cx, StrL("diff-bounce"),
                                   VirtualListScrollbar(&st->listScroll), rows)
-                    ->IntoEl());
+                    ->IntoEl()
+                    ->Flex1()
+                    ->MinH(0)
+                    ->H(kFill));
     return root;
 }
 
