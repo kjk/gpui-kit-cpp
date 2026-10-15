@@ -4,6 +4,11 @@
 // and never fetch or rewrite dependencies:
 //
 //   bun cmd/update-quickjs.ts
+//   git apply src/quickjs/js_make_error.patch
+//
+// The generator overwrites src/quickjs and strips every comment, which drops
+// the local JS_MakeError change. Apply the patch afterwards. If it does not
+// apply, the upstream function moved: update the patch and apply that.
 //
 // The source checkout is disposable and gitignored; cmd/run.ts is the source
 // of truth for the revision. Upstream's amalgam.js emits one C file with the

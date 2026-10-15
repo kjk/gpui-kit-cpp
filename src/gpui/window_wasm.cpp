@@ -1048,6 +1048,8 @@ void OpenUrl(Str url) {
     }
 }
 
+void OpenPath(Str) {}
+
 // cx.prompt_for_paths. A page cannot open a file picker of its own and read
 // what it chose without a user gesture and a callback, and nothing here has
 // asked for one, so this says so rather than pretending.

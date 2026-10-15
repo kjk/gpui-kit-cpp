@@ -117,8 +117,9 @@ struct MaterialBehavior {
     shell::CallbackId onItemClick = 0;
     shell::CallbackId onLinkClick = 0;
     // Reports a secondary press on a virtual list row, with the row's key and
-    // the press itself. Registered on the list for the same reason
-    // on_item_click is: the rows are rebuilt every frame.
+    // the press itself. A row may register its own handlers too; those are
+    // released with the batch. The list-level callbacks stay, one for every
+    // row.
     shell::CallbackId onItemSecondaryClick = 0;
     shell::CallbackId onToken = 0;
     shell::CallbackId onTokenClick = 0;

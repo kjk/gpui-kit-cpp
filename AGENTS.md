@@ -79,7 +79,13 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    `bun cmd/update-quickjs.ts` to the tracked `src/quickjs/quickjs.h` +
    `quickjs.c`, compiled as C11. Ordinary builds never fetch it.
    `quickjs-libc.c` is excluded — Shell owns its sandboxed module loader,
-   scheduler and capability-gated system APIs.
+   scheduler and capability-gated system APIs. The generator strips every
+   comment, so the one local change — `JS_MakeError` keeps a message longer
+   than 256 bytes whole — lives in
+   [`src/quickjs/js_make_error.patch`](src/quickjs/js_make_error.patch).
+   After `bun cmd/update-quickjs.ts`, apply it with
+   `git apply src/quickjs/js_make_error.patch`. If it does not apply, the
+   upstream function moved: update the patch and apply that.
 4. **POD-friendly C++.** Structs with explicit ownership. `Vec<T>` is
    memcpy/POD only. Heap strings are `Str` owned by `StrDup`/`StrFree` or an
    `Arena`. Frame UI trees allocate from a per-frame `Arena` and are discarded,
@@ -754,7 +760,8 @@ cmd/audit-port.ts      the Base/UI declaration/export/test audit; CI runs it
 cmd/upstream-pending.ts  the upstream checkins after the pin, oldest first
 cmd/update-dist.ts     amalgamate src/** into gpui.h + gpui.cpp
 cmd/update-win-shaders.ts  FXC over paintgpu_win.hlsl -> checked-in DXBC
-cmd/update-quickjs.ts  regenerate src/quickjs/ from the pinned QuickJS-NG
+cmd/update-quickjs.ts  regenerate src/quickjs/ from the pinned QuickJS-NG,
+                       then git apply src/quickjs/js_make_error.patch
 cmd/update-shell-types.ts  regenerate the shell's TypeScript declarations
 cmd/gen-theme-data.ts / gen-locale-data.ts  upstream JSON -> generated tables
 cmd/wsl-run.ts         run cmd/run.ts inside WSL from a Windows checkout
@@ -797,7 +804,8 @@ src/webview/           crates/webview: the view that gives a wry webview a box
 src/shell/             crates/shell: sandboxed JS apps; fetch.h is the policy
 src/component_shell/   crates/component-shell: the gpui-component catalog the
                        shell registers (component_registry.h is the API)
-src/quickjs/           the reduced QuickJS-NG, generated, compiled as C11
+src/quickjs/           the reduced QuickJS-NG, generated, compiled as C11;
+                       js_make_error.patch is reapplied after update-quickjs.ts
 
 examples/              AppLog.cpp (log hooks) + every example, showcase/, story/
 gpui_shell/            the shell host binary

@@ -1142,6 +1142,30 @@ void OpenUrl(Str url) {
     }
 }
 
+void OpenPath(Str path) {
+    if (!path.s || len(path) <= 0) {
+        return;
+    }
+    // The whole path. A file name past 1023 bytes is still the file the
+    // script named; truncating it would open something else. The grandchild
+    // has its own copy at the second fork, so the parent frees after the
+    // intermediate exits.
+    Str value = StrDup(path);
+    pid_t pid = fork();
+    if (pid == 0) {
+        if (fork() == 0) {
+            execlp("xdg-open", "xdg-open", value.s, (char*)nullptr);
+            _exit(127);
+        }
+        _exit(0);
+    }
+    if (pid > 0) {
+        int st = 0;
+        waitpid(pid, &st, 0);
+    }
+    StrFree(value);
+}
+
 // cx.prompt_for_paths. X11 has no file dialog of its own and this tree has no
 // toolkit to borrow one from, so it asks the desktop's: zenity on GTK
 // desktops, kdialog on KDE, whichever is on the PATH. A session with neither

@@ -1476,6 +1476,14 @@ void OpenUrl(Str url) {
                   SW_SHOWNORMAL);
 }
 
+void OpenPath(Str path) {
+    if (!path.s || len(path) <= 0) {
+        return;
+    }
+    ShellExecuteW(nullptr, L"open", ToCWstrTemp(path), nullptr, nullptr,
+                  SW_SHOWNORMAL);
+}
+
 // cx.prompt_for_paths. The shell's own dialog, which is IFileOpenDialog on
 // everything this runs on; COM is already up (apartment threaded) because the
 // drag-and-drop registration needs it. The dialog runs its own loop, so this

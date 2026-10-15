@@ -16,14 +16,15 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7` (2026-10-14,
-input: Fix the caret flashing off on click, and draw it crisp at 1px (#3515)).
-A press focuses the field at once and holds the caret lit. A second
-start of a blink restarts from a visible caret instead of leaving the
-hidden half running. The caret is 1px on every platform, and paint
-snaps its x and width onto the device pixel grid.
+Processed through `50dac1cafb34a4d453c92715219c0458d9a4727b` (2026-10-14,
+shell: Fix more runtime gaps found by the benchmark apps (#3510)).
+A virtual-list row may register its own handlers for the frame that
+drew it. The QuickJS heap has no ceiling, and a long error is kept
+whole. `process.spawn` streams a child, and `process.run` takes a
+working directory and a timeout. `cx.open_path` opens a path the script
+may read, once it exists, with the system.
 The current update target is
-`1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
+`50dac1cafb34a4d453c92715219c0458d9a4727b`.
 
 ## Known gaps vs Rust
 

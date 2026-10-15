@@ -47,8 +47,14 @@ struct ScriptInterruption {
 };
 Str ExplainInterruption(Arena* arena, Str message, ScriptInterruption* slot);
 
-// Drops `?v=<generation>` loader tags and folds a run of identical frames.
+// Drops `?v=<generation>` loader tags, drops the runtime's own
+// `(eval_script:)` frames, and folds a run of identical frames.
 Str TidyStack(Arena* arena, Str stack);
+
+// `js` is a JSContext*. This header does not include QuickJS. Empty when
+// `message` is not "out of memory" and a thrown null is not sitting on a
+// heap that has reached 90% of a ceiling the host set.
+Str ExplainOutOfMemory(Arena* arena, void* js, Str message, bool thrownNull);
 
 FailureText FailureTextParse(Arena* arena, Str message);
 
