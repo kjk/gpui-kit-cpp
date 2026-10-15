@@ -73,8 +73,9 @@ El* HoverCardStory::Render(HoverCardStory*, Ctx* cx) {
         cx, "Rich Content",
         "Cards can contain avatars, typography, and structured details.");
     StorySectionBody(rich)->W(520);
-    El* richRow = Div(a)->FlexRow()->ItemsCenter()->Gap(4);
-    richRow->Child(StoryTxt(cx, StrL("Hover over"), 16, th.foreground));
+    // h_flex() has no gap. The spaces live in the literals.
+    El* richRow = Div(a)->FlexRow()->ItemsCenter();
+    richRow->Child(StoryTxt(cx, StrL("Hover over "), 16, th.foreground));
     bool richOpen = Showing(cx, StrL("hc-rich-card"));
     El* link = Trig(component::Link::New(cx, StrL("user-profile-link"))
                         ->Text(StrL("@huacnlee"))
@@ -99,8 +100,8 @@ El* HoverCardStory::Render(HoverCardStory*, Ctx* cx) {
         info->Child(StoryTxt(cx, StrL("Jason Lee"), 16, th.foreground)
                         ->Semibold());
         info->Child(StoryTxt(cx, StrL("@huacnlee"), 14, th.primary));
-        info->Child(Div(a)->PadT(4)->Child(
-            StoryTxt(cx, StrL("The author of GPUI Component."), 16, th.foreground)));
+        info->Child(Div(a)->PadT(4)->Child(StoryTxt(
+            cx, StrL("The author of GPUI Component."), 16, th.foreground)));
         profile->Child(info);
     }
     richRow->Child(component::HoverCard::New(cx)
@@ -108,7 +109,7 @@ El* HoverCardStory::Render(HoverCardStory*, Ctx* cx) {
                        ->Content(profile)
                        ->IntoEl());
     richRow
-        ->Child(StoryTxt(cx, StrL("to see their profile"), 16, th.foreground));
+        ->Child(StoryTxt(cx, StrL(" to see their profile"), 16, th.foreground));
     StorySectionAdd(rich, richRow);
     page->Child(rich);
 
