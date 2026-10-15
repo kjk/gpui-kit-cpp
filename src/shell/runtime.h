@@ -123,6 +123,8 @@ class ShellRuntime {
     void RecordMaterialize(uint64_t nanos);
     void RecordStructure(bool repeated);
     int LiveCallbacks() const;
+    // QuickJS `malloc_limit`. Zero or negative means the host set no ceiling.
+    int64_t MallocLimit() const;
     int LiveEntities() const;
     int LiveNestedViews() const;
     int LiveTasks() const;

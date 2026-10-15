@@ -2,6 +2,7 @@
 
 #include "base/button.h"
 #include "base/theme_tokens.h"
+#include "quickjs/quickjs.h"
 #include "shell/theme_tokens.h"
 #include "shell/view.h"
 
@@ -83,7 +84,7 @@ Str TidyStack(Arena* arena, Str stack) {
         while (end < len(stack) && stack.s[end] != '\n') end++;
         Str raw(stack.s + at, end - at);
         at = end < len(stack) ? end + 1 : end + 1;
-        if (LineBlank(raw)) {
+        if (LineBlank(raw) || StrContains(raw, StrL("(eval_script:"))) {
             if (end >= len(stack)) break;
             continue;
         }
@@ -127,6 +128,43 @@ Str TidyStack(Arena* arena, Str stack) {
         }
     }
     return out.TakeStr();
+}
+
+static const char kMemoryAdvice[] =
+    "Keep less data in script \xE2\x80\x94 derive values instead of storing "
+    "them on every item \xE2\x80\x94 or move a large data set into a host "
+    "module.";
+
+static Str SpokenSize(Arena* arena, int64_t bytes) {
+    if (bytes >= ((int64_t)1 << 30) && (bytes % ((int64_t)1 << 30)) == 0) {
+        return Dup(arena, fmt("%d GiB", (int)(bytes >> 30)));
+    }
+    return Dup(arena, fmt("%d MiB", (int)(bytes >> 20)));
+}
+
+Str ExplainOutOfMemory(Arena* arena, void* js, Str message, bool thrownNull) {
+    if (!arena || !js) return {};
+    JSContext* ctx = (JSContext*)js;
+    JSRuntime* rt = JS_GetRuntime(ctx);
+    if (!rt) return {};
+    JSMemoryUsage usage;
+    memset(&usage, 0, sizeof(usage));
+    JS_ComputeMemoryUsage(rt, &usage);
+    bool limited =
+        usage.malloc_limit > 0 && usage.malloc_limit < (INT64_MAX / 2);
+    bool nearlyFull = limited && (double)usage.malloc_size >=
+                                     0.9 * (double)usage.malloc_limit;
+    bool oom = StrEq(message, StrL("out of memory"));
+    if (!oom && !(thrownNull && nearlyFull)) return {};
+    if (oom && !limited) {
+        return Dup(arena, fmt("The script ran out of memory: the system could "
+                              "not allocate more.\n%s",
+                              Str(kMemoryAdvice)));
+    }
+    Str size = SpokenSize(arena, usage.malloc_limit);
+    return Dup(arena, fmt("The script ran out of memory: its JavaScript heap "
+                          "reached the %s limit this host set.\n%s",
+                          size, Str(kMemoryAdvice)));
 }
 
 static bool IsSpace(char c) {

@@ -703,19 +703,35 @@ bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
             if (operation == FsOperation::Stat ||
                 operation == FsOperation::Lstat ||
                 operation == FsOperation::ReadLink) {
-                HANDLE target =
-                    OpenAt(parent, leaf, FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-                           FILE_OPEN, 0, &status);
-                if (!target) {
-                    NtError(error,
-                            operation == FsOperation::ReadLink ? "read link"
-                                                               : "stat",
-                            rootName, relative, status);
-                    ok = false;
-                } else if (operation == FsOperation::ReadLink) {
+                // NtCreateFile rejects the object name ".". OpenParent
+                // already duplicated the root for that relative path, so
+                // the parent handle is the directory itself.
+                HANDLE target = nullptr;
+                if (wcscmp(leaf, L".") == 0) {
+                    if (!DuplicateHandle(GetCurrentProcess(), parent,
+                                         GetCurrentProcess(), &target, 0, FALSE,
+                                         DUPLICATE_SAME_ACCESS)) {
+                        FsError(error,
+                                fmt("cannot stat `%s/%s`: Windows error %u",
+                                    rootName, relative, GetLastError()));
+                        ok = false;
+                    }
+                } else {
+                    target =
+                        OpenAt(parent, leaf, FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                               FILE_OPEN, 0, &status);
+                    if (!target) {
+                        NtError(error,
+                                operation == FsOperation::ReadLink ? "read link"
+                                                                   : "stat",
+                                rootName, relative, status);
+                        ok = false;
+                    }
+                }
+                if (target && operation == FsOperation::ReadLink) {
                     ok = ReadLinkHandle(target, rootName, relative, result,
                                         error);
-                } else if (operation == FsOperation::Stat &&
+                } else if (target && operation == FsOperation::Stat &&
                            IsReparse(target)) {
                     // OpenAt asks for the reparse point, so this does not
                     // follow. A link that stayed inside the root is refused
@@ -724,7 +740,7 @@ bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
                                        "are not followed",
                                        rootName, relative));
                     ok = false;
-                } else {
+                } else if (target) {
                     ok = FillWinStats(target, result);
                     if (!ok) {
                         FsError(error,
@@ -734,15 +750,19 @@ bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
                 }
                 if (target) CloseHandle(target);
             } else if (operation == FsOperation::Exists) {
-                HANDLE target =
-                    OpenAt(parent, leaf, FILE_READ_ATTRIBUTES | SYNCHRONIZE,
-                           FILE_OPEN, 0, &status);
-                result->exists = target != nullptr;
-                if (target)
-                    CloseHandle(target);
-                else if (!NtMissing(status)) {
-                    NtError(error, "inspect", rootName, relative, status);
-                    ok = false;
+                if (wcscmp(leaf, L".") == 0) {
+                    result->exists = true;
+                } else {
+                    HANDLE target =
+                        OpenAt(parent, leaf, FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+                               FILE_OPEN, 0, &status);
+                    result->exists = target != nullptr;
+                    if (target)
+                        CloseHandle(target);
+                    else if (!NtMissing(status)) {
+                        NtError(error, "inspect", rootName, relative, status);
+                        ok = false;
+                    }
                 }
             } else if (operation == FsOperation::MakeDirectory) {
                 HANDLE target =

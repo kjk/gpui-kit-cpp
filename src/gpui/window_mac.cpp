@@ -1993,6 +1993,19 @@ void OpenUrl(Str url) {
     }
 }
 
+void OpenPath(Str path) {
+    if (!path.s || len(path) <= 0) {
+        return;
+    }
+    NSString* s = [[NSString alloc] initWithBytes:path.s
+                                           length:(NSUInteger)len(path)
+                                         encoding:NSUTF8StringEncoding];
+    NSURL* u = s ? [NSURL fileURLWithPath:s] : nil;
+    if (u) {
+        [[NSWorkspace sharedWorkspace] openURL:u];
+    }
+}
+
 // cx.prompt_for_paths. NSOpenPanel, run modally: it takes over the loop until
 // the user is done, which is what the other two platforms' dialogs do too.
 TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {

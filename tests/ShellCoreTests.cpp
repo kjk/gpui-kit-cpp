@@ -3,7 +3,10 @@
 
 #include "Test.h"
 
+#include "quickjs/quickjs.h"
+
 #include <stdio.h>
+#include <string.h>
 #if !GPUI_OS_WINDOWS
 #include <unistd.h>
 #endif
@@ -5086,6 +5089,7 @@ static void ScriptFailuresFoldToOneLine() {
     utassert(longText.expandable);
 
     Str stack = StrL(
+        "    at <anonymous> (eval_script:36:15)\n"
         "    at walk (/app/lib/scan.js?v=1:237:72)\n"
         "    at walk (/app/lib/scan.js?v=1:237:72)\n"
         "    at walk (/app/lib/scan.js?v=1:237:72)\n"
@@ -5205,6 +5209,513 @@ static void ScriptThrowsSayWhatWasThrown() {
     AppGlobalClear(&app);
 }
 
+static bool ShellTreeContains(El* element, Str text) {
+    if (!element) return false;
+    if (element->kind == ElKind::Text && element->text.s &&
+        StrContains(element->text, text)) {
+        return true;
+    }
+    for (El* child = element->first; child; child = child->next) {
+        if (ShellTreeContains(child, text)) return true;
+    }
+    return false;
+}
+
+static bool CollectClickListeners(El* element, Str text, Listener* out, int cap,
+                                  int* count) {
+    if (!element || !out || !count) return false;
+    int mark = *count;
+    if (element->listener.IsValid() && *count < cap)
+        out[(*count)++] = element->listener;
+    if (element->kind == ElKind::Text && StrEq(element->text, text))
+        return true;
+    for (El* child = element->first; child; child = child->next) {
+        if (CollectClickListeners(child, text, out, cap, count)) return true;
+    }
+    *count = mark;
+    return false;
+}
+
+static El* DrawShellView(App* app, Window* window, Entity<ScriptView> view,
+                         Arena** frame) {
+    if (*frame) ArenaDelete(*frame);
+    *frame = ArenaNew();
+    window->frameArena = *frame;
+    window->paint.app = app;
+    window->paint.window = window;
+    El* root =
+        view.IsValid() ? EntityRender(app, window, *frame, view.id) : nullptr;
+    if (root) LayoutEl(&window->paint, root, 0, 0, 300, 400, 14, Rgba{});
+    return root;
+}
+
+static void ShellLongTypeErrorStaysWhole() {
+    JSRuntime* rt = JS_NewRuntime();
+    JSContext* ctx = rt ? JS_NewContext(rt) : nullptr;
+    utassert(ctx != nullptr);
+    if (!ctx) {
+        if (rt) JS_FreeRuntime(rt);
+        return;
+    }
+    StrBuilder body;
+    for (int i = 0; i < 400; i++) body.AppendChar('x');
+    body.Append(StrL(" and then what to do instead"));
+    Str text = body.TakeStr();
+    JS_ThrowTypeError(ctx, "%.*s", len(text), text.s);
+    JSValue exc = JS_GetException(ctx);
+    JSValue message = JS_GetPropertyStr(ctx, exc, "message");
+    JSValue stack = JS_GetPropertyStr(ctx, exc, "stack");
+    const char* messageText = JS_ToCString(ctx, message);
+    utassert(JS_IsError(exc));
+    utassert(messageText && strstr(messageText, text.s) != nullptr);
+    utassert(JS_IsString(stack));
+    JS_FreeCString(ctx, messageText);
+    JS_FreeValue(ctx, stack);
+    JS_FreeValue(ctx, message);
+    JS_FreeValue(ctx, exc);
+    StrFree(text);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static void ShellSetsNoHeapCeiling() {
+    App app;
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    utassert(runtime != nullptr);
+    if (runtime) {
+        utassert(runtime->MallocLimit() <= 0);
+        runtime->Release();
+    }
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
+static void ShellExplainsRunningOutOfMemory() {
+    JSRuntime* rt = JS_NewRuntime();
+    JSContext* ctx = rt ? JS_NewContext(rt) : nullptr;
+    utassert(ctx != nullptr);
+    if (!ctx) {
+        if (rt) JS_FreeRuntime(rt);
+        return;
+    }
+    JS_SetMemoryLimit(rt, (size_t)16 << 20);
+    const char* fill =
+        "globalThis.kept = []; while (true) kept.push({ path: 'x'.repeat(64) + "
+        "kept.length })";
+    JSValue result =
+        JS_Eval(ctx, fill, strlen(fill), "<oom>", JS_EVAL_TYPE_GLOBAL);
+    utassert(JS_IsException(result));
+    JSValue exc = JS_GetException(ctx);
+    bool thrownNull = JS_IsNull(exc);
+    Str message = {};
+    if (!thrownNull) {
+        JSValue prop = JS_GetPropertyStr(ctx, exc, "message");
+        const char* text = JS_ToCString(ctx, prop);
+        if (text) message = StrDup(Str(text));
+        JS_FreeCString(ctx, text);
+        JS_FreeValue(ctx, prop);
+    }
+    Arena* arena = ArenaNew();
+    Str explained = ExplainOutOfMemory(arena, ctx, message, thrownNull);
+    utassert(StrStartsWith(explained, StrL("The script ran out of memory")));
+    utassert(StrContains(explained, StrL("16 MiB")));
+    JS_FreeValue(ctx, exc);
+    // Deleting the property is what the Rust test does. Compiling another
+    // script here can fail while the heap is still at the limit, which
+    // would leave the array in place.
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSAtom kept = JS_NewAtom(ctx, "kept");
+    if (!JS_IsException(global) && kept != JS_ATOM_NULL) {
+        JS_DeleteProperty(ctx, global, kept, 0);
+    }
+    if (JS_HasException(ctx)) {
+        JSValue ignored = JS_GetException(ctx);
+        JS_FreeValue(ctx, ignored);
+    }
+    JS_FreeAtom(ctx, kept);
+    JS_FreeValue(ctx, global);
+    JS_RunGC(rt);
+    Str after = ExplainOutOfMemory(arena, ctx, {}, true);
+    utassert(!after.s || len(after) == 0);
+    StrFree(message);
+    ArenaDelete(arena);
+    JS_FreeContext(ctx);
+    JS_FreeRuntime(rt);
+}
+
+static Str ShellForwardPath(Arena* arena, Str path) {
+    StrBuilder out(arena);
+    for (int i = 0; i < len(path); i++) {
+        out.AppendChar(path.s[i] == '\\' ? '/' : path.s[i]);
+    }
+    return out.TakeStr();
+}
+
+static void ShellOpenPathIsConfinedToTheReadGrant() {
+    Arena* arena = ArenaNew();
+    char cwd[kMaxPath];
+    PlatGetCwd(cwd, kMaxPath);
+    Str root = StrDup(arena, fmt("%s/shell_open_path_test", Str(cwd)));
+    root = ShellForwardPath(arena, root);
+#if !GPUI_OS_WASM
+    FsResult made;
+    Str fsError;
+    utassert(FsRun(FsOperation::MakeDirectory, Str(cwd),
+                   StrL("shell_open_path_test"), {}, true, &made, &fsError));
+    utassert(FsRun(FsOperation::Write, root, StrL("notes.txt"), StrL("hello"),
+                   false, &made, &fsError));
+    made.Free();
+    StrFree(fsError);
+#endif
+    Capabilities granted;
+    granted.AddReadRoot(root);
+    PolicyUpdateDefaultCapabilities(granted);
+    App app;
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    utassert(runtime != nullptr);
+    if (runtime) {
+        utassert(!runtime->Eval(StrL("globalThis.__open_path(undefined, "
+                                     "'/etc/hosts')"),
+                                StrL("open-path-outside.js"), &error));
+        utassert(StrContains(error.message, StrL("capabilities.fs.read")));
+#if !GPUI_OS_WASM
+        Str missing = StrDup(arena, fmt("globalThis.__open_path(undefined, "
+                                        "'%s/missing.txt')",
+                                        root));
+        ShellErrorClear(&error);
+        utassert(!runtime->Eval(missing, StrL("open-path-missing.js"), &error));
+        utassert(StrContains(error.message, StrL("cannot open")));
+        Str notes = StrDup(arena, fmt("globalThis.__open_path(undefined, "
+                                      "'%s/notes.txt')",
+                                      root));
+        ShellErrorClear(&error);
+        utassert(!runtime->Eval(notes, StrL("open-path-file.js"), &error));
+        utassert(StrContains(error.message, StrL("needs a live host call")));
+        Str directory = StrDup(arena, fmt("globalThis.__open_path(undefined, "
+                                          "'%s')",
+                                          root));
+        ShellErrorClear(&error);
+        utassert(!runtime->Eval(directory, StrL("open-path-dir.js"), &error));
+        utassert(StrContains(error.message, StrL("needs a live host call")));
+#endif
+        runtime->Release();
+    }
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+    Capabilities denied;
+    PolicyUpdateDefaultCapabilities(denied);
+    ArenaDelete(arena);
+}
+
+static void ShellProcessCarriesSplitUtf8AndLines() {
+    Utf8Carry utf8;
+    Utf8CarryInit(&utf8);
+    const uint8_t zhong[] = {0xE4, 0xB8, 0xAD};
+    StrBuilder decoded;
+    for (int i = 0; i < 3; i++) {
+        Str part = Utf8CarryDecode(&utf8, zhong + i, 1);
+        decoded.Append(part);
+        StrFree(part);
+    }
+    Str whole = decoded.TakeStr();
+    utassert(StrEq(whole, StrL("\xE4\xB8\xAD")));
+    StrFree(whole);
+
+    Utf8CarryInit(&utf8);
+    const uint8_t grin[] = {0xF0, 0x9F, 0x98, 0x80};
+    StrBuilder emoji;
+    for (int i = 0; i < 4; i++) {
+        Str part = Utf8CarryDecode(&utf8, grin + i, 1);
+        emoji.Append(part);
+        StrFree(part);
+    }
+    whole = emoji.TakeStr();
+    utassert(StrEq(whole, StrL("\xF0\x9F\x98\x80")));
+    StrFree(whole);
+
+    Utf8CarryInit(&utf8);
+    const uint8_t bad[] = {'a', 0xFF, 'b'};
+    Str invalid = Utf8CarryDecode(&utf8, bad, 3);
+    utassert(StrEq(invalid, StrL("a\xEF\xBF\xBD"
+                                 "b")));
+    StrFree(invalid);
+
+    LineCarry lines;
+    LineCarryInit(&lines);
+    Vec<Str> out;
+    Str lineError;
+    utassert(LineCarryPush(&lines, StrL("a"), &out, &lineError));
+    utassert(LineCarryPush(&lines, StrL("b\nc"), &out, &lineError));
+    utassert(LineCarryPush(&lines, StrL("\r\nd"), &out, &lineError));
+    Str tail = LineCarryFinish(&lines);
+    if (tail.s) VecAppend(out, tail);
+    utassert(len(out) == 3);
+    if (len(out) == 3) {
+        utassert(StrEq(out[0], StrL("ab")));
+        utassert(StrEq(out[1], StrL("c")));
+        utassert(StrEq(out[2], StrL("d")));
+    }
+    for (int i = 0; i < len(out); i++) StrFree(out[i]);
+    VecReset(out);
+    StrFree(lineError);
+    LineCarryFree(&lines);
+}
+
+static void ARowRegistersItsOwnHandlerWithoutAccumulating() {
+    App app;
+    Window window;
+    window.app = &app;
+    component::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    Str source = StrL(
+        "import { View, div } from 'gpui';\n"
+        "import { v_flex, v_virtual_list } from 'gpui-base';\n"
+        "export default class Rows extends View {\n"
+        "  init() { this.range = [0, 0]; this.clicked = -1; this.refused = ''; "
+        "}\n"
+        "  render(cx) {\n"
+        "    return v_flex().w(300).h(400).child(\n"
+        "      v_flex().h(200).child(\n"
+        "        v_virtual_list('rows', 500, 20, index => String(index), range "
+        "=> {\n"
+        "          this.range = [range.start, range.end];\n"
+        "          const items = [];\n"
+        "          for (let index = range.start; index < range.end; index++) "
+        "{\n"
+        "            const row = div().h(20).child('row ' + index);\n"
+        "            const at = index;\n"
+        "            row.on_click((_event, cx) => { this.refused = 'row' + at; "
+        "cx.notify(); });\n"
+        "            items.push(row);\n"
+        "          }\n"
+        "          return items;\n"
+        "        }).on_item_click((key, cx) => { this.clicked = key; "
+        "cx.notify(); })\n"
+        "      )\n"
+        "    ).child('range ' + this.range[0] + '..' + this.range[1] +\n"
+        "      ' clicked ' + this.clicked + ' refused ' + this.refused);\n"
+        "  }\n"
+        "}\n");
+    ViewType* type =
+        runtime ? runtime->LoadSource(StrL("row-handlers.js"), source, &error)
+                : nullptr;
+    Entity<ScriptView> view =
+        type ? ScriptView::New(&app, runtime, type) : Entity<ScriptView>{};
+    ViewTypeRelease(type);
+    Arena* frame = nullptr;
+    El* root = DrawShellView(&app, &window, view, &frame);
+    utassert(root != nullptr && !error.IsSet());
+    Listener clicks[8];
+    int clickCount = 0;
+    utassert(
+        CollectClickListeners(root, StrL("row 2"), clicks, 8, &clickCount));
+    utassert(clickCount >= 2);
+    ClickEvent click = {};
+    for (int i = clickCount - 1; i >= 0 && i >= clickCount - 2; i--) {
+        ListenerCall(&app, &window, clicks[i], &click);
+    }
+    root = DrawShellView(&app, &window, view, &frame);
+    utassert(ShellTreeContains(root, StrL("refused row2")));
+    utassert(ShellTreeContains(root, StrL("clicked 2")));
+    int settled = runtime ? runtime->LiveCallbacks() : 0;
+    for (int i = 0; i < 20; i++) {
+        root = DrawShellView(&app, &window, view, &frame);
+    }
+    utassert(runtime && runtime->LiveCallbacks() <= settled + 2);
+    if (view.IsValid()) EntityDrop(&app, view.id);
+    if (frame) ArenaDelete(frame);
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
+#if GPUI_OS_WINDOWS
+static void PumpShellTimers(ShellRuntime* runtime, Window* window, int slices) {
+    for (int i = 0; i < slices; i++) {
+        ExecDrain();
+        if (runtime) {
+            ShellError jobs = {};
+            runtime->DrainJobs(1024, &jobs);
+            ShellErrorClear(&jobs);
+        }
+        if (window) {
+            // A due time of 0 is what a one-shot uses to mark itself dead.
+            // Forcing that value makes WindowTimerTick delete every repeating
+            // timer it did not reach, which is what happens when an earlier
+            // child exits and cancels its own timer mid-pass. A positive
+            // instant that is already due still fires, and a timer the pass
+            // skipped survives to the next one.
+            double now = TimeNow();
+            if (now <= 0) now = 1;
+            for (int t = 0; t < window->timers.len; t++)
+                window->timers[t].dueAt = now;
+            WindowTimerTick(window);
+        }
+        PlatSleepMs(20);
+    }
+}
+#endif
+
+static void ShellProcessSpawnStreamsAndRunTakesOptions() {
+#if GPUI_OS_WINDOWS
+    Arena* arena = ArenaNew();
+    char cwd[kMaxPath];
+    PlatGetCwd(cwd, kMaxPath);
+    Str dir = ShellForwardPath(
+        arena, StrDup(arena, fmt("%s/shell_proc_cwd", Str(cwd))));
+    FsResult made;
+    Str fsError;
+    utassert(FsRun(FsOperation::MakeDirectory, Str(cwd), StrL("shell_proc_cwd"),
+                   {}, true, &made, &fsError));
+    made.Free();
+    StrFree(fsError);
+
+    Str commands[] = {StrL("cmd.exe"), StrL("ping.exe")};
+    ExecuteGrant execute = ExecuteGrant::Allowed(commands, 2);
+    Capabilities granted;
+    granted.SetExecute(execute);
+    granted.AddReadRoot(dir);
+    PolicyUpdateDefaultCapabilities(granted);
+
+    App app;
+    Window window;
+    window.app = &app;
+    VecAppend(app.windows, &window);
+    component::Init(&app);
+    ExecInit();
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    utassert(runtime != nullptr);
+    if (!runtime) {
+        AppGlobalClear(&app);
+        Capabilities denied;
+        PolicyUpdateDefaultCapabilities(denied);
+        ArenaDelete(arena);
+        return;
+    }
+
+    utassert(!runtime->Eval(StrL("process.spawn('not-granted.exe', [])"),
+                            StrL("spawn-denied.js"), &error));
+    utassert(StrContains(error.message, StrL("is not granted")));
+    ShellErrorClear(&error);
+    utassert(!runtime->Eval(StrL("process.spawn('cmd.exe', [], { stdin: 'nope' "
+                                 "})"),
+                            StrL("spawn-stdin.js"), &error));
+    utassert(StrContains(error.message, StrL("options.stdin")));
+    ShellErrorClear(&error);
+    utassert(!runtime->Eval(
+        StrL("process.spawn('cmd.exe', [], { cwd: 'C:/Windows' })"),
+        StrL("spawn-cwd.js"), &error));
+    utassert(StrContains(error.message, StrL("capabilities.fs.read")));
+
+    Str source = StrDup(
+        arena,
+        fmt("import { View, div } from 'gpui';\n"
+            "import process from 'process';\n"
+            "globalThis.processResult = 'pending';\n"
+            "globalThis.lines = [];\n"
+            "globalThis.exitError = 'pending';\n"
+            "globalThis.wrote = 'pending';\n"
+            "globalThis.bareWrite = 'pending';\n"
+            "export default class Main extends View {\n"
+            "  init(props, cx) { cx.spawn(async cx => {\n"
+            "    try {\n"
+            "      const ran = await process.run('cmd.exe', ['/D', '/C', "
+            "'cd'], "
+            "{ cwd: '%s', timeoutMs: 15000 });\n"
+            "      processResult = ran.code + '|' + ran.stdout;\n"
+            "    } catch (e) { processResult = 'ERR ' + e.message; }\n"
+            "    const streamed = process.spawn('cmd.exe', ['/D', '/C', 'echo "
+            "hello'], { lines: true });\n"
+            "    streamed.on('stdout', (text) => { lines.push(text); });\n"
+            "    const slow = process.spawn('ping.exe', ['-n', '6', "
+            "'127.0.0.1'], { timeoutMs: 100 });\n"
+            "    slow.on('exit', (result) => { exitError = result && "
+            "result.error ? String(result.error) : ('code ' + (result && "
+            "result.code)); });\n"
+            "    const piped = process.spawn('cmd.exe', ['/D', '/C', 'echo "
+            "z'], { stdin: 'pipe' });\n"
+            "    piped.end();\n"
+            "    try { piped.write('more'); wrote = 'ok'; }\n"
+            "    catch (e) { wrote = String(e); }\n"
+            "    const bare = process.spawn('cmd.exe', ['/D', '/C', 'echo "
+            "z']);\n"
+            "    try { bare.write('more'); bareWrite = 'ok'; }\n"
+            "    catch (e) { bareWrite = e.name + ' ' + e.message; }\n"
+            "  }); }\n"
+            "  render() { return div(); }\n"
+            "}\n",
+            dir));
+    ShellErrorClear(&error);
+    ViewType* type = runtime
+                         ->LoadSource(StrL("process-spawn.js"), source, &error);
+    Entity<ScriptView> view =
+        type ? ScriptView::New(&app, runtime, type) : Entity<ScriptView>{};
+    ViewTypeRelease(type);
+    Arena* frame = ArenaNew();
+    window.frameArena = frame;
+    El* root =
+        view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
+    utassert(root != nullptr && !error.IsSet());
+    // process.run starts a cold cmd.exe before the streaming children exist,
+    // so a fixed slice count can end before the 100 ms deadline is polled.
+    // Keep ticking until that exit is delivered, or the wall clock runs out.
+    double deadline = TimeNow() + 8.0;
+    while (TimeNow() < deadline) {
+        PumpShellTimers(runtime, &window, 1);
+        ShellError probe = {};
+        bool delivered = runtime->Eval(
+            StrL("if (String(exitError).indexOf('timed out after 100 ms') < "
+                 "0) throw new Error('wait')"),
+            StrL("process-timeout-wait.js"), &probe);
+        ShellErrorClear(&probe);
+        if (delivered) break;
+    }
+    utassert(runtime->Eval(
+        StrL("if (processResult.indexOf('shell_proc_cwd') < 0) throw new "
+             "Error(processResult)"),
+        StrL("process-cwd.js"), &error));
+    utassert(runtime->Eval(
+        StrL("if (lines.indexOf('hello') < 0) throw new Error(JSON.stringify("
+             "lines))"),
+        StrL("process-lines.js"), &error));
+    if (!runtime->Eval(
+            StrL("if (exitError.indexOf('timed out after 100 ms') < 0) throw "
+                 "new Error(exitError)"),
+            StrL("process-timeout.js"), &error)) {
+        fprintf(stderr, "process-timeout: %.*s\n", len(error.message),
+                error.message.s ? error.message.s : "");
+        utassert(false);
+    } else {
+        utassert(true);
+    }
+    utassert(runtime->Eval(
+        StrL("if (wrote.indexOf('stdin has already been closed') < 0) throw "
+             "new Error(wrote)"),
+        StrL("process-write-end.js"), &error));
+    utassert(runtime->Eval(
+        StrL("if (bareWrite.indexOf('TypeError') < 0 || "
+             "bareWrite.indexOf('needs a child spawned') < 0 || "
+             "bareWrite.indexOf('ChildProcess.write(text):') >= 0) throw new "
+             "Error(bareWrite)"),
+        StrL("process-write-null.js"), &error));
+    if (view.IsValid()) EntityDrop(&app, view.id);
+    app.windows.len = 0;
+    ArenaDelete(frame);
+    runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+    Capabilities denied;
+    PolicyUpdateDefaultCapabilities(denied);
+    ArenaDelete(arena);
+#else
+    utassert(true);
+#endif
+}
+
 void TestShellCore() {
     TestSuite("shell_core");
     BridgedValuesMatchJavaScriptConversions();
@@ -5279,4 +5790,11 @@ void TestShellCore() {
     ShellPluginManifestsDiscoverAuthorizeAndUnload();
     ShellDefaultEnvironmentStaysPlain();
     ShellTextCodingAndProcessSurface();
+    ShellLongTypeErrorStaysWhole();
+    ShellSetsNoHeapCeiling();
+    ShellExplainsRunningOutOfMemory();
+    ShellOpenPathIsConfinedToTheReadGrant();
+    ShellProcessCarriesSplitUtf8AndLines();
+    ARowRegistersItsOwnHandlerWithoutAccumulating();
+    ShellProcessSpawnStreamsAndRunTakesOptions();
 }

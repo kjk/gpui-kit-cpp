@@ -5,12 +5,27 @@
 namespace gpui::shell {
 
 constexpr int kProcessStreamLimit = 8 * 1024 * 1024;
-constexpr double kProcessTimeout = 30.0;
 
 static void ProcessError(Str* error, Str message) {
     if (!error) return;
     StrFree(*error);
     *error = StrDup(message);
+}
+
+// A child deadline is wall time. TimeNow() is the frame clock, and the
+// test platform replaces it, so a 100 ms timeout would never arrive
+// while a test holds that clock still.
+static double WallSeconds() {
+    static LARGE_INTEGER freq = {};
+    static LARGE_INTEGER start = {};
+    if (freq.QuadPart == 0) {
+        QueryPerformanceFrequency(&freq);
+        QueryPerformanceCounter(&start);
+    }
+    LARGE_INTEGER now = {};
+    QueryPerformanceCounter(&now);
+    if (freq.QuadPart == 0) return 0;
+    return (double)(now.QuadPart - start.QuadPart) / (double)freq.QuadPart;
 }
 
 static WCHAR* WideDup(Str value) {
@@ -425,7 +440,11 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         StrBuilder stdoutText, stderrText;
         bool stdoutClosed = false, stderrClosed = false, done = false;
         DWORD exitCode = (DWORD)-1;
-        double started = TimeNow();
+        double started = WallSeconds();
+        double timeoutSeconds = (options && options->timeoutSeconds > 0)
+                                    ? options->timeoutSeconds
+                                    : 30.0;
+        int timeoutMs = (int)(timeoutSeconds * 1000.0 + 0.5);
         while (!done || !stdoutClosed || !stderrClosed) {
             if (!stdoutClosed)
                 ok = DrainPipe(&outRead, &stdoutText, &stdoutClosed, error,
@@ -434,12 +453,12 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
                 ok = DrainPipe(&errRead, &stderrText, &stderrClosed, error,
                                "stderr");
             bool cancelled = cancellation && cancellation->IsCancelled();
-            if (!ok || cancelled || TimeNow() - started >= kProcessTimeout) {
+            if (!ok || cancelled || WallSeconds() - started >= timeoutSeconds) {
                 if (ok && cancelled)
                     ProcessError(error, fmt("`%s` was cancelled", command));
                 else if (ok)
-                    ProcessError(error,
-                                 fmt("`%s` timed out after 30000 ms", command));
+                    ProcessError(error, fmt("`%s` timed out after %d ms",
+                                            command, timeoutMs));
                 ok = false;
                 TerminateJobObject(job, 1);
                 WaitForSingleObject(process.hProcess, 5000);
@@ -479,6 +498,418 @@ cleanup:
     Free(nullptr, environment);
     Free(nullptr, directory);
     return ok;
+}
+
+// A streaming child. The waiter joins the readers before it publishes Exit,
+// so a poll never sees the exit ahead of the output that preceded it.
+struct ProcessStream {
+    ProcessEventBox box;
+    Str command;
+    Str cwd;
+    double timeoutSeconds = 0;
+    uint32_t pid = 0;
+    HANDLE process = nullptr;
+    HANDLE job = nullptr;
+    HANDLE outRead = nullptr;
+    HANDLE errRead = nullptr;
+    HANDLE inWrite = nullptr;
+    HANDLE readerOut = nullptr;
+    HANDLE readerErr = nullptr;
+    HANDLE waiter = nullptr;
+    HANDLE stdinThread = nullptr;
+    ProcessDecodeState outDecode;
+    ProcessDecodeState errDecode;
+};
+
+struct ReaderLaunch {
+    ProcessStream* stream = nullptr;
+    HANDLE* pipeSlot = nullptr;
+    ProcessDecodeState* decode = nullptr;
+    ProcessStreamEvent::Kind kind = ProcessStreamEvent::Kind::Out;
+};
+
+static int TimeoutMilliseconds(double seconds) {
+    return (int)(seconds * 1000.0 + 0.5);
+}
+
+static void JoinThread(HANDLE* thread) {
+    if (!thread || !*thread) return;
+    WaitForSingleObject(*thread, INFINITE);
+    CloseHandle(*thread);
+    *thread = nullptr;
+}
+
+static DWORD WINAPI StreamReaderMain(LPVOID param) {
+    ReaderLaunch* launch = (ReaderLaunch*)param;
+    ProcessStream* stream = launch->stream;
+    HANDLE pipe = launch->pipeSlot ? *launch->pipeSlot : nullptr;
+    uint8_t chunk[64 * 1024];
+    bool failed = false;
+    for (;;) {
+        if (!pipe) break;
+        // ReadFile on an anonymous pipe cannot be cancelled reliably, and the
+        // waiter joins this thread before it publishes exit. Poll so a reaped
+        // child — a timeout, in particular — is not stuck behind a blocked
+        // read that still holds the exit event.
+        DWORD available = 0;
+        DWORD count = 0;
+        if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr)) {
+            // The write end closed. ReadFile returns whatever is still
+            // buffered and then zero, so the last chunk is not dropped.
+            if (!ReadFile(pipe, chunk, sizeof(chunk), &count, nullptr) ||
+                count == 0) {
+                break;
+            }
+        } else if (available == 0) {
+            if (ProcessEventReaped(&stream->box)) break;
+            Sleep(5);
+            continue;
+        } else {
+            DWORD want =
+                available > sizeof(chunk) ? (DWORD)sizeof(chunk) : available;
+            if (!ReadFile(pipe, chunk, want, &count, nullptr) || count == 0) {
+                break;
+            }
+        }
+        Str error;
+        if (!ProcessDecodeFeed(launch->decode, &stream->box, launch->kind,
+                               chunk, (int)count, &error)) {
+            ProcessEventSetReason(&stream->box, error);
+            if (stream->job && !ProcessEventReaped(&stream->box))
+                TerminateJobObject(stream->job, 1);
+            failed = true;
+            break;
+        }
+    }
+    if (!failed)
+        ProcessDecodeFinish(launch->decode, &stream->box, launch->kind);
+    ProcessDecodeFree(launch->decode);
+    if (launch->pipeSlot) Close(launch->pipeSlot);
+    delete launch;
+    return 0;
+}
+
+static DWORD WINAPI StreamStdinMain(LPVOID param) {
+    ProcessStream* stream = (ProcessStream*)param;
+    for (;;) {
+        Vec<char> bytes;
+        bool ended = false;
+        if (!ProcessStdinTake(&stream->box, &bytes, &ended)) break;
+        int offset = 0;
+        bool ok = true;
+        while (offset < bytes.len) {
+            DWORD wrote = 0;
+            if (!WriteFile(stream->inWrite, bytes.els + offset,
+                           (DWORD)(bytes.len - offset), &wrote, nullptr) ||
+                wrote == 0) {
+                ok = false;
+                break;
+            }
+            offset += (int)wrote;
+        }
+        VecReset(bytes);
+        if (!ok) {
+            ProcessStdinFail(&stream->box);
+            break;
+        }
+        if (ended) break;
+    }
+    Close(&stream->inWrite);
+    return 0;
+}
+
+static DWORD WINAPI StreamWaiterMain(LPVOID param) {
+    ProcessStream* stream = (ProcessStream*)param;
+    double started = WallSeconds();
+    bool waitFailed = false;
+    for (;;) {
+        DWORD waited = WaitForSingleObject(stream->process, 20);
+        if (waited == WAIT_OBJECT_0) break;
+        if (waited != WAIT_TIMEOUT) {
+            ProcessEventSetReason(
+                &stream->box,
+                StrDup(fmt("waiting for `%s` failed with Windows error %u",
+                           stream->command, GetLastError())));
+            waitFailed = true;
+            break;
+        }
+        if (stream->timeoutSeconds > 0 &&
+            WallSeconds() - started >= stream->timeoutSeconds) {
+            ProcessEventSetReason(
+                &stream->box,
+                StrDup(fmt("`%s` timed out after %d ms", stream->command,
+                           TimeoutMilliseconds(stream->timeoutSeconds))));
+            if (stream->job) TerminateJobObject(stream->job, 1);
+            break;
+        }
+    }
+    if (stream->job) TerminateJobObject(stream->job, 1);
+    // Readers poll and leave once this is set and the pipe is idle, so the
+    // join below is not stuck in a blocking ReadFile.
+    ProcessEventMarkReaped(&stream->box);
+    JoinThread(&stream->readerOut);
+    JoinThread(&stream->readerErr);
+    ProcessStreamEvent event;
+    event.kind = ProcessStreamEvent::Kind::Exit;
+    if (!waitFailed) {
+        DWORD code = 0;
+        if (GetExitCodeProcess(stream->process, &code)) {
+            event.hasCode = true;
+            event.code = (int)code;
+        }
+    }
+    Str reason = ProcessEventTakeReason(&stream->box);
+    if (reason) {
+        event.hasError = true;
+        event.text = reason;
+    }
+    ProcessEventPush(&stream->box, event);
+    return 0;
+}
+
+static HANDLE StartReader(ProcessStream* stream, HANDLE* pipe,
+                          ProcessDecodeState* decode,
+                          ProcessStreamEvent::Kind kind) {
+    ReaderLaunch* launch = new ReaderLaunch();
+    launch->stream = stream;
+    launch->pipeSlot = pipe;
+    launch->decode = decode;
+    launch->kind = kind;
+    HANDLE thread =
+        CreateThread(nullptr, 0, StreamReaderMain, launch, 0, nullptr);
+    if (!thread) delete launch;
+    return thread;
+}
+
+static void ReleaseStream(ProcessStream* stream) {
+    if (!stream) return;
+    if (!ProcessEventReaped(&stream->box)) {
+        ProcessEventMarkKilled(&stream->box);
+        if (stream->job) TerminateJobObject(stream->job, 1);
+    }
+    ProcessStdinStop(&stream->box);
+    JoinThread(&stream->waiter);
+    JoinThread(&stream->readerOut);
+    JoinThread(&stream->readerErr);
+    JoinThread(&stream->stdinThread);
+    Close(&stream->outRead);
+    Close(&stream->errRead);
+    Close(&stream->inWrite);
+    Close(&stream->process);
+    Close(&stream->job);
+    ProcessDecodeFree(&stream->outDecode);
+    ProcessDecodeFree(&stream->errDecode);
+    ProcessEventBoxFree(&stream->box);
+    StrFree(stream->command);
+    StrFree(stream->cwd);
+    delete stream;
+}
+
+bool ProcessStreamStart(Str command, const Str* args, int count,
+                        const ProcessSpawnOptions* options, ProcessStream** out,
+                        Str* error) {
+    if (out) *out = nullptr;
+    if (error) {
+        StrFree(*error);
+        *error = {};
+    }
+    WCHAR* executable = ResolveExecutable(command, error);
+    if (!executable) return false;
+    Vec<WCHAR> commandLine;
+    bool built = AppendArgument(&commandLine, command);
+    for (int i = 0; built && i < count; i++)
+        built = AppendArgument(&commandLine, args[i]);
+    if (built) built = VecAppend(commandLine, (WCHAR)0);
+    if (!built) {
+        Free(nullptr, executable);
+        ProcessError(error,
+                     StrL("building the child-process command line failed"));
+        return false;
+    }
+
+    ProcessStream* stream = new ProcessStream();
+    ProcessEventBoxInit(&stream->box, options && options->stdinPipe);
+    stream->command = StrDup(command);
+    stream->timeoutSeconds = options ? options->timeoutSeconds : 0;
+    if (options && options->cwd) stream->cwd = StrDup(options->cwd);
+    bool lines = options && options->lines;
+    ProcessDecodeInit(&stream->outDecode, lines);
+    ProcessDecodeInit(&stream->errDecode, lines);
+
+    SECURITY_ATTRIBUTES security = {};
+    security.nLength = sizeof(security);
+    security.bInheritHandle = TRUE;
+    HANDLE outWrite = nullptr;
+    HANDLE errWrite = nullptr;
+    HANDLE inRead = nullptr;
+    HANDLE nullInput = nullptr;
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+    STARTUPINFOW startup = {};
+    PROCESS_INFORMATION process = {};
+    WCHAR emptyEnvironment[2] = {};
+    WCHAR* directory = nullptr;
+    bool ok = true;
+    bool wantStdin = false;
+    bool threadsOk = false;
+    if (!CreatePipe(&stream->outRead, &outWrite, &security, 0) ||
+        !CreatePipe(&stream->errRead, &errWrite, &security, 0) ||
+        !SetHandleInformation(stream->outRead, HANDLE_FLAG_INHERIT, 0) ||
+        !SetHandleInformation(stream->errRead, HANDLE_FLAG_INHERIT, 0)) {
+        ProcessError(error, fmt("creating child-process pipes failed with "
+                                "Windows error %u",
+                                GetLastError()));
+        ok = false;
+        goto done;
+    }
+    if (options && options->stdinPipe) {
+        if (!CreatePipe(&inRead, &stream->inWrite, &security, 0) ||
+            !SetHandleInformation(stream->inWrite, HANDLE_FLAG_INHERIT, 0)) {
+            ProcessError(error, fmt("creating the child stdin pipe failed with "
+                                    "Windows error %u",
+                                    GetLastError()));
+            ok = false;
+            goto done;
+        }
+    } else {
+        nullInput = CreateFileW(L"NUL", GENERIC_READ,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE, &security,
+                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (nullInput == INVALID_HANDLE_VALUE) {
+            nullInput = nullptr;
+            ProcessError(error, fmt("opening the child-process null input "
+                                    "failed with Windows error %u",
+                                    GetLastError()));
+            ok = false;
+            goto done;
+        }
+    }
+    stream->job = CreateJobObjectW(nullptr, nullptr);
+    if (!stream->job) {
+        ProcessError(error, fmt("creating the child-process Job Object failed "
+                                "with Windows error %u",
+                                GetLastError()));
+        ok = false;
+        goto done;
+    }
+    limits.BasicLimitInformation
+        .LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if (!SetInformationJobObject(stream->job, JobObjectExtendedLimitInformation,
+                                 &limits, sizeof(limits))) {
+        ProcessError(error, fmt("configuring the child-process Job Object "
+                                "failed with Windows error %u",
+                                GetLastError()));
+        ok = false;
+        goto done;
+    }
+    if (stream->cwd) {
+        directory = WideDup(stream->cwd);
+        if (!directory) {
+            ProcessError(error, StrL("the child-process working directory is "
+                                     "not valid UTF-8"));
+            ok = false;
+            goto done;
+        }
+    }
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = (options && options->stdinPipe) ? inRead : nullInput;
+    startup.hStdOutput = outWrite;
+    startup.hStdError = errWrite;
+    if (!CreateProcessW(
+            executable, commandLine.els, nullptr, nullptr, TRUE,
+            CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
+            emptyEnvironment, directory, &startup, &process)) {
+        ProcessError(error, fmt("running `%s` failed with Windows error %u",
+                                command, GetLastError()));
+        ok = false;
+        goto done;
+    }
+    stream->process = process.hProcess;
+    stream->pid = process.dwProcessId;
+    if (!AssignProcessToJobObject(stream->job, stream->process) ||
+        ResumeThread(process.hThread) == (DWORD)-1) {
+        ProcessError(error,
+                     fmt("isolating `%s` process tree failed with Windows "
+                         "error %u",
+                         command, GetLastError()));
+        ok = false;
+        goto done;
+    }
+    CloseHandle(process.hThread);
+    process.hThread = nullptr;
+    Close(&outWrite);
+    Close(&errWrite);
+    Close(&inRead);
+    Close(&nullInput);
+    // Readers are stored before the waiter starts. The waiter joins those
+    // handles and clears the fields, so it must not race this assignment.
+    wantStdin = options && options->stdinPipe;
+    stream
+        ->readerOut = StartReader(stream, &stream->outRead, &stream->outDecode,
+                                  ProcessStreamEvent::Kind::Out);
+    stream
+        ->readerErr = StartReader(stream, &stream->errRead, &stream->errDecode,
+                                  ProcessStreamEvent::Kind::Err);
+    if (wantStdin) {
+        stream->stdinThread =
+            CreateThread(nullptr, 0, StreamStdinMain, stream, 0, nullptr);
+    }
+    threadsOk = stream->readerOut && stream->readerErr &&
+                (!wantStdin || stream->stdinThread);
+    if (threadsOk) {
+        stream->waiter =
+            CreateThread(nullptr, 0, StreamWaiterMain, stream, 0, nullptr);
+        threadsOk = stream->waiter != nullptr;
+    }
+    if (!threadsOk) {
+        ProcessError(error, fmt("running `%s` failed: a stream thread could "
+                                "not be started",
+                                command));
+        ok = false;
+    }
+
+done:
+    Close(&outWrite);
+    Close(&errWrite);
+    Close(&inRead);
+    Close(&nullInput);
+    if (process.hThread) CloseHandle(process.hThread);
+    Free(nullptr, executable);
+    Free(nullptr, directory);
+    if (!ok) {
+        ReleaseStream(stream);
+        return false;
+    }
+    if (out) *out = stream;
+    return true;
+}
+
+uint32_t ProcessStreamPid(const ProcessStream* stream) {
+    return stream ? stream->pid : 0;
+}
+
+void ProcessStreamPoll(ProcessStream* stream, Vec<ProcessStreamEvent>* out) {
+    if (stream) ProcessEventTake(&stream->box, out);
+}
+
+bool ProcessStreamWrite(ProcessStream* stream, Str text, Str* error) {
+    if (!stream) return false;
+    return ProcessStdinEnqueue(&stream->box, text, error);
+}
+
+void ProcessStreamEnd(ProcessStream* stream) {
+    if (stream) ProcessStdinEnd(&stream->box);
+}
+
+void ProcessStreamKill(ProcessStream* stream) {
+    if (!stream || ProcessEventReaped(&stream->box)) return;
+    ProcessEventMarkKilled(&stream->box);
+    if (stream->job) TerminateJobObject(stream->job, 1);
+    ProcessStdinStop(&stream->box);
+}
+
+void ProcessStreamFree(ProcessStream* stream) {
+    ReleaseStream(stream);
 }
 
 } // namespace gpui::shell

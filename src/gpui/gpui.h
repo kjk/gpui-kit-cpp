@@ -7480,6 +7480,11 @@ void WindowSetTextContentType(Window* win, Str value);
 // takes an `&str` and answers nothing, and so does this — a browser that
 // refuses to start is not something a caller can do anything about.
 void OpenUrl(Str url);
+// cx.open_path: hand a filesystem path to whatever the desktop opens that
+// kind of file with. The caller has already checked the grant and that the
+// path exists. A desktop that refuses to start is not something a caller
+// can do anything about.
+void OpenPath(Str path);
 
 // PathPromptOptions: what the desktop's own open dialog may be pointed at.
 struct PathPrompt {
