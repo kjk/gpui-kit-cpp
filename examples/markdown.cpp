@@ -53,6 +53,14 @@ static const int kMarkerCount = (int)(sizeof(kMarkers) / sizeof(kMarkers[0]));
 // Room for the markers one document can hold; the fixture has a handful.
 static const int kMaxMarkers = 256;
 
+// One table's CSV and TSV, copied while TableActions runs so a click
+// after the frame still has the cells. Freed at the start of the next
+// render, which is after the click has been dispatched.
+struct TableExport {
+    Str csv = {};
+    Str tsv = {};
+};
+
 struct MarkdownApp {
     InputState source;
     float previewScroll = 0;
@@ -79,6 +87,16 @@ struct MarkdownApp {
     Vec<Span> matches;
     // The index of the current match in `matches`.
     int currentMatch = 0;
+    // table_to_csv / table_to_tsv, one entry per table in this frame.
+    Vec<TableExport> exports;
+
+    ~MarkdownApp() {
+        for (int i = 0; i < len(exports); i++) {
+            StrFree(exports[i].csv);
+            StrFree(exports[i].tsv);
+        }
+        VecReset(exports);
+    }
 
     static El* Render(MarkdownApp* self, Ctx* cx);
 };
@@ -791,15 +809,95 @@ static El* CodeActions(Ctx* cx, void* data, Str code, Str lang) {
     return row;
 }
 
-// table_actions: what the shape of the table is, and the table itself on the
-// clipboard as GFM. The Rust example puts a CSV / TSV export behind an
-// Ellipsis dropdown beside these two; the pair here is the part that needs no
-// menu of its own.
+// table_to_csv: quote a cell that contains `"`, `,` or a newline, and
+// double the quotes inside it.
+static void AppendCsvField(StrBuilder& b, Str cell) {
+    bool quote = false;
+    for (int i = 0; i < len(cell); i++) {
+        char c = cell.s[i];
+        if (c == '"' || c == ',' || c == '\n') quote = true;
+    }
+    if (!quote) {
+        b.Append(cell);
+        return;
+    }
+    b.AppendChar('"');
+    for (int i = 0; i < len(cell); i++) {
+        if (cell.s[i] == '"') b.AppendChar('"');
+        b.AppendChar(cell.s[i]);
+    }
+    b.AppendChar('"');
+}
+
+static void AppendDelimited(StrBuilder& b, const Str* cells, int n, bool csv) {
+    for (int i = 0; i < n; i++) {
+        if (i) b.AppendChar(csv ? ',' : '\t');
+        if (csv) {
+            AppendCsvField(b, cells[i]);
+            continue;
+        }
+        Str cell = cells[i];
+        for (int j = 0; j < len(cell); j++) {
+            char c = cell.s[j];
+            if (c == '\t') {
+                b.Append(StrL("\\t"));
+            } else if (c == '\n') {
+                b.Append(StrL("\\n"));
+            } else if (c == '\r') {
+                b.Append(StrL("\\r"));
+            } else {
+                b.AppendChar(c);
+            }
+        }
+    }
+}
+
+static Str TableDelimited(const component::TableData* table, bool csv) {
+    StrBuilder b;
+    if (table && table->cols > 0 && table->header) {
+        AppendDelimited(b, table->header, table->cols, csv);
+        for (int r = 0; r < table->rowCount; r++) {
+            b.AppendChar('\n');
+            AppendDelimited(b, table->rows + r * table->cols, table->cols, csv);
+        }
+    }
+    return b.TakeStr();
+}
+
+static void ClearExports(MarkdownApp* self) {
+    for (int i = 0; i < len(self->exports); i++) {
+        StrFree(self->exports[i].csv);
+        StrFree(self->exports[i].tsv);
+    }
+    VecClear(self->exports);
+}
+
+static void OnCopyCsv(MarkdownApp* self, Ctx* cx, const ClickEvent*,
+                      int64_t ix) {
+    if (ix < 0 || ix >= len(self->exports)) return;
+    ClipboardSetText(cx->win, self->exports[(int)ix].csv);
+}
+
+static void OnCopyTsv(MarkdownApp* self, Ctx* cx, const ClickEvent*,
+                      int64_t ix) {
+    if (ix < 0 || ix >= len(self->exports)) return;
+    ClipboardSetText(cx->win, self->exports[(int)ix].tsv);
+}
+
+// table_actions: the shape, the GFM copy, and the CSV / TSV menu Rust
+// hangs off the ellipsis button.
 static El* TableActions(Ctx* cx, void* data,
                         const component::TableData* table) {
-    (void)data;
+    auto* self = (MarkdownApp*)data;
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
+    int ix = self ? len(self->exports) : 0;
+    if (self) {
+        TableExport exp;
+        exp.csv = TableDelimited(table, true);
+        exp.tsv = TableDelimited(table, false);
+        VecAppend(self->exports, exp);
+    }
     El* row = Div(a)->FlexRow()->W(kFill)->JustifyEnd()->ItemsCenter()->Gap(4);
     row->Child(
         TextEl(a, StrDup(a, fmt("%d × %d", table->rowCount, table->cols)))
@@ -808,6 +906,19 @@ static El* TableActions(Ctx* cx, void* data,
     row->Child(component::Clipboard::New(cx, StrL("copy-table"))
                    ->Value(StrDup(a, table->markdown))
                    ->Tooltip(StrL("Copy as Markdown"))
+                   ->IntoEl());
+    TempStr id = fmt("export-table-%d", ix);
+    component::PopupMenu* menu = component::PopupMenu::New(cx, id);
+    menu->Menu(StrL("Copy as CSV"))->OnClick(Listen(cx, &OnCopyCsv, ix));
+    menu->Menu(StrL("Copy as TSV"))->OnClick(Listen(cx, &OnCopyTsv, ix));
+    row->Child(component::DropdownMenu::New(cx, id)
+                   ->Trigger(component::Button::New(cx, id)
+                                 ->Icon(IconName::Ellipsis)
+                                 ->Ghost()
+                                 ->WithSize(UiSize::XSmall)
+                                 ->IntoEl())
+                   ->Menu(menu)
+                   ->AnchorRight()
                    ->IntoEl());
     return row;
 }
@@ -928,6 +1039,7 @@ static void OnReveal(MarkdownApp* self, Ctx* cx,
 }
 
 El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
+    ClearExports(self);
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     if (!self->seeded) {
@@ -1095,8 +1207,8 @@ int GpuiMain(int argc, char** argv) {
     TempStr md = AssetsLoadTextTemp(StrL("test.md"));
     InputSetValue(&self->source, md);
     self->source.focused = true;
-    Window* win =
-        KitOpenWindow(app, StrL("Markdown"), 1200, 900, view.id, WinOpts{});
+    Window* win = KitOpenWindow(app, StrL("Markdown Editor"), 1200, 900,
+                                view.id, WinOpts{});
     // The Open chord, which upstream binds in the story app's own keymap.
     WindowOnKey(win, ListenTo(view, &OnKey));
     int rc = AppRun(app);
