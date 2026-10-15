@@ -41,8 +41,8 @@ El* Example::Render(Example*, Ctx* cx) {
                     ->Gap(8)
                     ->Pad(16)
                     ->Radius(th.radius)
-                    ->Bg(RgbaOpacity(th.accent, 0.4f))
-                    ->Border(1, th.blue)
+                    ->Bg(RgbaOpacity(th.accent, 0.1f))
+                    ->Border(1, th.accent)
                     ->Child(trapBtn(21, "Trap 2 - Button 1", 2))
                     ->Child(trapBtn(22, "Trap 2 - Button 2", 2))
                     ->Child(trapBtn(23, "Trap 2 - Button 3", 2))
@@ -79,7 +79,7 @@ El* Example::Render(Example*, Ctx* cx) {
                     ->Semibold()
                     ->Fg(th.foreground))
         ->Child(trap1)
-        ->Child(TextEl(frame, StrL("-> Press Tab in this area, focus cycles "
+        ->Child(TextEl(frame, StrL("→ Press Tab in this area, focus cycles "
                                    "through 3 buttons without escaping"))
                     ->Font(12)
                     ->Fg(th.mutedFg))
@@ -97,7 +97,7 @@ El* Example::Render(Example*, Ctx* cx) {
                     ->Semibold()
                     ->Fg(th.foreground))
         ->Child(trap2)
-        ->Child(TextEl(frame, StrL("-> Press Tab in this area, focus cycles "
+        ->Child(TextEl(frame, StrL("→ Press Tab in this area, focus cycles "
                                    "through 4 buttons without escaping"))
                     ->Font(12)
                     ->Fg(th.mutedFg));
