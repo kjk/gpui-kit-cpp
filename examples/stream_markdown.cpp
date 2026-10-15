@@ -70,8 +70,8 @@ struct StreamApp {
     // One TextViewState for the whole run, so a chunk is an append and
     // stream_fade can see what was added. Rust keeps the same entity.
     Entity<TextViewState> viewState = {};
-    // Switch::new("stream-fade"). Rust starts it off.
-    bool streamFade = false;
+    // Switch::new("stream-fade"). main.rs starts stream_fade at true.
+    bool streamFade = true;
     // The example's own handle, for the listener a worker thread posts with.
     Entity<StreamApp> me = {};
 
