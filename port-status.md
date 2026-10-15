@@ -16,13 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `14c26d306ca97316d66ae474e3cb40bb5de0594b` (2026-10-14,
-scroll: Bounce scrollable content like NSScrollView, by default on macOS
-(#3500)).
-Scrollable content bounces at its ends on precise input, on by default
-where the platform's own scroll views bounce. A line wheel only scrolls.
-The innermost area keeps the gesture. Reduced motion leaves the
-content unmoved.
+Processed through `a0230dbfc47c8a5c6d1f3f099529ff40b1d2e5d2` (2026-10-14,
+highlighter: Add syntect as a lighter syntax highlighting backend (#3512)).
+An optional syntect backend highlights about 200 languages when
+tree-sitter is off. This tree does not vendor syntect. The scanner
+remains the only highlighter.
 The current update target is
 `1188c11003b5cb5b83bc07d3fb9112e7674fbfa7`.
 
@@ -273,7 +271,8 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   tree-sitter's place: comments, strings, numbers, keywords, type names, and
   what position alone settles. Nothing that needs a tree (rename, semantic
   scope) can be asked of it. Folding is brace-pair scanning, which is what
-  upstream's own showcase highlighter does.
+  upstream's own showcase highlighter does. The optional `syntect` feature
+  (syntect and two-face) is the same exclusion and is not vendored.
 - **Diff review text is line ranges, not a text selection.** `src/ui/diff.cpp`
   selects source lines and copies them. It does not drive GPUI's
   `TextSelection`, so the hit-tested caret, word sweeps and chunk clipping

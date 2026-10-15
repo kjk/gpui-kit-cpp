@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "14c26d306ca97316d66ae474e3cb40bb5de0594b",
+  sha: "a0230dbfc47c8a5c6d1f3f099529ff40b1d2e5d2",
   date: "2026-10-14",
-  subject: "scroll: Bounce scrollable content like NSScrollView, by default on macOS (#3500)",
+  subject: "highlighter: Add syntect as a lighter syntax highlighting backend (#3512)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",
