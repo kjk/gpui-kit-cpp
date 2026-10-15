@@ -223,12 +223,25 @@ static float CodeActionWidth(float x, float windowW) {
 // What the menu was built against. prepaint re-reads the caret write-back
 // published and either slides this tree or rebuilds it when the width
 // decision changed. CaretAnchoredPopup in caret_anchored.rs.
+// app/win/path are copied while the render Ctx is alive. prepaint runs from
+// write-back, after EntityRender has returned, so the Ctx* the menu stored
+// is a dead stack slot.
 struct CaretMenuAnchor {
     CompletionMenu* completion = nullptr;
     CodeActionMenu* codeAction = nullptr;
+    App* app = nullptr;
+    Window* win = nullptr;
+    uint32_t path = 0;
     float maxW = 0;
     bool vertical = false;
 };
+
+static void AnchorFromCtx(CaretMenuAnchor* anchor, Ctx* cx) {
+    if (!anchor || !cx) return;
+    anchor->app = cx->app;
+    anchor->win = cx->win;
+    anchor->path = cx->path;
+}
 
 static void ShiftMenu(El* e, float dx, float dy) {
     if (!e || (dx == 0.f && dy == 0.f)) return;
@@ -239,9 +252,9 @@ static void ShiftMenu(El* e, float dx, float dy) {
     }
 }
 
-static El* CompletionMenuContent(CompletionMenu* self, float maxW,
+static El* CompletionMenuContent(CompletionMenu* self, Ctx* cx, float maxW,
                                  bool vertical);
-static El* CodeActionMenuContent(CodeActionMenu* self, float maxW);
+static El* CodeActionMenuContent(CodeActionMenu* self, Ctx* cx, float maxW);
 
 static void PlaceCaretMenu(PaintCtx* ctx, El* e, void* user) {
     auto* anchor = (CaretMenuAnchor*)user;
@@ -252,8 +265,13 @@ static void PlaceCaretMenu(PaintCtx* ctx, El* e, void* user) {
     if (!state) return;
     float x = CaretPopupX(state);
     float y = CaretPopupY(state);
-    Ctx* cx =
-        anchor->completion ? anchor->completion->cx : anchor->codeAction->cx;
+    // The render Ctx is gone. This one lives for the rebuild below.
+    Ctx frame = {};
+    frame.app = anchor->app ? anchor->app : (ctx ? ctx->app : nullptr);
+    frame.win = anchor->win ? anchor->win : (ctx ? ctx->window : nullptr);
+    frame.a = e->arena;
+    frame.path = anchor->path;
+    Ctx* cx = &frame;
     float windowW = PopupWindowW(cx, ctx);
     bool rebuild = false;
     float maxW = anchor->maxW;
@@ -279,8 +297,8 @@ static void PlaceCaretMenu(PaintCtx* ctx, El* e, void* user) {
     e->last = nullptr;
     El* content =
         anchor->completion
-            ? CompletionMenuContent(anchor->completion, maxW, vertical)
-            : CodeActionMenuContent(anchor->codeAction, maxW);
+            ? CompletionMenuContent(anchor->completion, cx, maxW, vertical)
+            : CodeActionMenuContent(anchor->codeAction, cx, maxW);
     if (!content) return;
     LayoutEl(ctx, content, x, y, 0, 0, e->laidFont, e->style.color);
     e->Child(content);
@@ -302,11 +320,12 @@ El* CompletionMenu::IntoEl() {
     MenuWidth width = CompletionWidth(x, editor->completionMenuMaxW, windowW);
     Entity<InputMenuViewState> view =
         InputMenuView(cx, editor, "completion-menu");
-    El* content = CompletionMenuContent(this, width.maxW, width.vertical);
+    El* content = CompletionMenuContent(this, cx, width.maxW, width.vertical);
     auto* anchor = ArenaNew<CaretMenuAnchor>(a);
     anchor->completion = this;
     anchor->maxW = width.maxW;
     anchor->vertical = width.vertical;
+    AnchorFromCtx(anchor, cx);
     El* root = Div(a)
                    ->Fixed()
                    ->Left(x)
@@ -320,10 +339,9 @@ El* CompletionMenu::IntoEl() {
     return root;
 }
 
-static El* CompletionMenuContent(CompletionMenu* self, float maxW,
+static El* CompletionMenuContent(CompletionMenu* self, Ctx* cx, float maxW,
                                  bool vertical) {
-    if (!self || !self->editor) return nullptr;
-    Ctx* cx = self->cx;
+    if (!self || !self->editor || !cx) return nullptr;
     Arena* a = self->a;
     InputState* editor = self->editor;
     const Theme& theme = ThemeNow(cx->app);
@@ -443,10 +461,11 @@ El* CodeActionMenu::IntoEl() {
     float maxW = CodeActionWidth(x, windowW);
     Entity<InputMenuViewState> view =
         InputMenuView(cx, state, "code-action-menu");
-    El* content = CodeActionMenuContent(this, maxW);
+    El* content = CodeActionMenuContent(this, cx, maxW);
     auto* anchor = ArenaNew<CaretMenuAnchor>(a);
     anchor->codeAction = this;
     anchor->maxW = maxW;
+    AnchorFromCtx(anchor, cx);
     El* root = Div(a)
                    ->Fixed()
                    ->Left(x)
@@ -460,9 +479,8 @@ El* CodeActionMenu::IntoEl() {
     return root;
 }
 
-static El* CodeActionMenuContent(CodeActionMenu* self, float maxW) {
-    if (!self || !self->state) return nullptr;
-    Ctx* cx = self->cx;
+static El* CodeActionMenuContent(CodeActionMenu* self, Ctx* cx, float maxW) {
+    if (!self || !self->state || !cx) return nullptr;
     Arena* a = self->a;
     InputState* state = self->state;
     const Theme& theme = ThemeNow(cx->app);

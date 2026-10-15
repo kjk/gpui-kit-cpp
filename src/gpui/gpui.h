@@ -1765,7 +1765,10 @@ struct Style {
     // participate in layout; they paint behind the element in declaration
     // order, as GPUI's box-shadow list does.
     const BoxShadow* shadows = nullptr;
-    Str tooltip;
+    // A designated initializer that sets one later field (Style{.radius = …})
+    // has to name every member that has no default, or clang and gcc reject
+    // it under -Wmissing-field-initializers. Empty means no tip.
+    Str tooltip = {};
 
     float width = kAuto;
     float height = kAuto;
