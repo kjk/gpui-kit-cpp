@@ -36,8 +36,17 @@ struct QFixture {
     InputState secondInput;
     Entity<QuestionnaireState> state = {};
     Entity<QEvents> events = {};
+    bool wasReduced = false;
 
     QFixture() {
+        // Reduced motion confirms a choice through WindowPost, onto the
+        // process-wide queue. This window is not in the App's list and both
+        // die with the fixture, so a post would outlive them and the next
+        // test's drain would run it against a dead App. The flag is global:
+        // any earlier Init(app) copies the host's setting into it, and CI
+        // runners report reduced motion.
+        wasReduced = MotionReduced();
+        MotionSetReduced(false);
         ThemeSet(&app, ThemeMode::Light);
         win = new Window();
         win->app = &app;
@@ -58,6 +67,7 @@ struct QFixture {
         EntityDropAll(&app);
         ArenaDelete(a);
         delete win;
+        MotionSetReduced(wasReduced);
     }
 
     void Watch() { SubscribeTo(&app, state, events, &QEvents::OnEvent); }
