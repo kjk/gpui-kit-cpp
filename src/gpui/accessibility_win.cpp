@@ -257,6 +257,11 @@ static bool AccessibilityInvokePattern(const AccessibilityNode& node) {
              AccessibilitySelectionItemRole(node.info.role));
 }
 
+// Node bounds are DIPs; UI Automation speaks physical screen pixels.
+static float DipScale(const Window* win) {
+    return win && win->paint.dpi > 0 ? win->paint.dpi / 96.f : 1.f;
+}
+
 struct WinAccessibility : IRawElementProviderSimple,
                           IRawElementProviderFragment,
                           IRawElementProviderFragmentRoot {
@@ -805,11 +810,13 @@ HRESULT WinAccessibility::ElementProviderFromPoint(
     }
     POINT point = {(LONG)x, (LONG)y};
     ScreenToClient(hwnd, &point);
+    float scale = DipScale(win);
+    float px = (float)point.x / scale;
+    float py = (float)point.y / scale;
     int found = -1;
     for (int i = 0; i < win->accessibility.len; i++) {
         const Bounds& b = win->accessibility[i].bounds;
-        if ((float)point.x >= b.x && (float)point.x <= b.Right() &&
-            (float)point.y >= b.y && (float)point.y <= b.Bottom()) {
+        if (px >= b.x && px <= b.Right() && py >= b.y && py <= b.Bottom()) {
             // The tree is preorder; a later containing node is a deeper child
             // or a later painted sibling and is the one hit-testing should use.
             found = i;
@@ -1051,9 +1058,10 @@ HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
     } else if (property == UIA_IsOffscreenPropertyId && root->hwnd) {
         RECT client = {};
         GetClientRect(root->hwnd, &client);
+        float scale = DipScale(root->win);
         bool off = node->bounds.Right() <= 0 || node->bounds.Bottom() <= 0 ||
-                   node->bounds.x >= (float)client.right ||
-                   node->bounds.y >= (float)client.bottom;
+                   node->bounds.x * scale >= (float)client.right ||
+                   node->bounds.y * scale >= (float)client.bottom;
         VariantBool(out, off);
     }
     return S_OK;
@@ -1155,10 +1163,11 @@ HRESULT WinAccessibilityNode::get_BoundingRectangle(UiaRect* out) {
     }
     POINT origin = {};
     ClientToScreen(root->hwnd, &origin);
-    out->left = (float)origin.x + node->bounds.x;
-    out->top = (float)origin.y + node->bounds.y;
-    out->width = node->bounds.w;
-    out->height = node->bounds.h;
+    float scale = DipScale(root->win);
+    out->left = (float)origin.x + node->bounds.x * scale;
+    out->top = (float)origin.y + node->bounds.y * scale;
+    out->width = node->bounds.w * scale;
+    out->height = node->bounds.h * scale;
     return S_OK;
 }
 
@@ -2042,9 +2051,10 @@ HRESULT WinTextRange::GetBoundingRectangles(SAFEARRAY** out) {
     if (start != end) {
         POINT origin = {};
         ClientToScreen(root->hwnd, &origin);
-        double values[4] = {(double)origin.x + node->bounds.x,
-                            (double)origin.y + node->bounds.y, node->bounds.w,
-                            node->bounds.h};
+        double scale = DipScale(root->win);
+        double values[4] = {(double)origin.x + node->bounds.x * scale,
+                            (double)origin.y + node->bounds.y * scale,
+                            node->bounds.w * scale, node->bounds.h * scale};
         for (LONG i = 0; i < 4; i++) {
             HRESULT hr = SafeArrayPutElement(*out, &i, &values[i]);
             if (FAILED(hr)) {

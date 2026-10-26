@@ -96,9 +96,8 @@ static void ImeMoveCandidateWindow(Window* win, HIMC imc) {
     }
     float x = in->lastBounds.x + in->caretX - in->scrollX;
     float y = in->lastBounds.y - in->scrollY;
-    // The render target is made at 96 dpi, so a DIP is a client pixel and
-    // there is nothing to scale.
-    POINT pt = {(LONG)x, (LONG)(y + in->lastLineH)};
+    POINT pt = {DipToPx(&win->paint, x),
+                DipToPx(&win->paint, y + in->lastLineH)};
     COMPOSITIONFORM cf = {};
     cf.dwStyle = CFS_POINT;
     cf.ptCurrentPos = pt;
@@ -180,6 +179,35 @@ typedef UINT(WINAPI* GetDpiForWindowFn)(HWND);
 // else is the function.
 static GetDpiForWindowFn kNoDpiFn = (GetDpiForWindowFn)1;
 
+typedef UINT(WINAPI* GetDpiForSystemFn)();
+
+// GPUI_DPI=<dpi> draws every window at that dpi whatever its monitor says, so
+// high-DPI layout can be checked on a 100% display.
+static float DpiOverride() {
+    static float dpi = -1;
+    if (dpi < 0) {
+        const char* env = getenv("GPUI_DPI");
+        dpi = env ? (float)atoi(env) : 0;
+        if (dpi < 48 || dpi > 960) {
+            dpi = 0;
+        }
+    }
+    return dpi;
+}
+
+// The dpi a window draws at. The Direct3D backends place their geometry in
+// device pixels, so they stay at 96 and draw a DIP as one pixel.
+static float DrawDpi(UINT monitorDpi) {
+    if (PaintGpuOn()) {
+        return 96;
+    }
+    float dpi = DpiOverride();
+    if (dpi > 0) {
+        return dpi;
+    }
+    return monitorDpi > 0 ? (float)monitorDpi : 96.f;
+}
+
 static float HostDpi(HWND hwnd) {
     static GetDpiForWindowFn getDpiForWindow = nullptr;
     if (!getDpiForWindow) {
@@ -192,11 +220,16 @@ static float HostDpi(HWND hwnd) {
             getDpiForWindow = kNoDpiFn;
         }
     }
-    UINT dpi = getDpiForWindow != kNoDpiFn ? getDpiForWindow(hwnd) : 96;
-    if (dpi == 0) {
-        dpi = 96;
-    }
-    return (float)dpi;
+    return DrawDpi(getDpiForWindow != kNoDpiFn ? getDpiForWindow(hwnd) : 96);
+}
+
+// The primary monitor's dpi, for sizing a window before it exists.
+static float SystemDpi() {
+    HMODULE user = GetModuleHandleW(L"user32.dll");
+    auto getDpiForSystem =
+        user ? (GetDpiForSystemFn)GetProcAddress(user, "GetDpiForSystem")
+             : nullptr;
+    return DrawDpi(getDpiForSystem ? getDpiForSystem() : 96);
 }
 
 static void RenderFrame(Window* win) {
@@ -206,14 +239,14 @@ static void RenderFrame(Window* win) {
     }
     RECT rc = {};
     GetClientRect(hwnd, &rc);
-    // The render target is created at 96 dpi, so a DIP is a pixel.
-    win->paint.dpi = 96;
+    win->paint.dpi = HostDpi(hwnd);
     WINDOWPLACEMENT wp = {sizeof(wp)};
     GetWindowPlacement(hwnd, &wp);
     win->maximized = wp.showCmd == SW_SHOWMAXIMIZED;
     int pxW = rc.right - rc.left;
     int pxH = rc.bottom - rc.top;
-    WindowDrawFrame(win, hwnd, pxW, pxH, (float)pxW, (float)pxH);
+    WindowDrawFrame(win, hwnd, pxW, pxH, PxToDip(&win->paint, pxW),
+                    PxToDip(&win->paint, pxH));
 }
 
 static int BorderPx() {
@@ -844,6 +877,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             SetWindowPos(hwnd, nullptr, r->left, r->top, r->right - r->left,
                          r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
             PaintTargetFree(&win->paint);
+            // The suggested rect can be the size the window already has, and
+            // then no WM_SIZE comes to paint it at the new dpi.
+            InvalidateRect(hwnd, nullptr, FALSE);
             return 0;
         }
         case WM_TIMER:
@@ -1959,8 +1995,11 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
     int sx = wa.right - wa.left;
     int sy = wa.bottom - wa.top;
-    WindowClampToDisplay(&dipW, &dipH, sx, sy);
-    RECT wr = {0, 0, dipW, dipH};
+    float scale = SystemDpi() / 96.f;
+    WindowClampToDisplay(&dipW, &dipH, (int)((float)sx / scale),
+                         (int)((float)sy / scale));
+    RECT wr = {0, 0, (LONG)lroundf((float)dipW * scale),
+               (LONG)lroundf((float)dipH * scale)};
     AdjustWindowRectEx(&wr, style, FALSE, 0);
     int pxW = wr.right - wr.left;
     int pxH = wr.bottom - wr.top;

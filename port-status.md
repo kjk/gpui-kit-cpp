@@ -28,6 +28,11 @@ The current update target is
 
 ## Known gaps vs Rust
 
+- **High-DPI on Windows is Direct2D only.** A window draws at its monitor's
+  dpi and follows `WM_DPICHANGED` (`window_win.cpp`, `SetDpi` in
+  `paint_win.cpp`). The D3D11 / D3D12 renderers place geometry in device
+  pixels, so with them a window stays at 96 dpi and is small on a scaled
+  display. `GPUI_DPI=<dpi>` forces a dpi for checking layout on a 100% display.
 - **A transparent window is Windows with Direct2D only.** GPUI's
   `WindowBackgroundAppearance::Transparent` is `WinOpts::transparent`: a
   composition swap chain with premultiplied alpha and grayscale text

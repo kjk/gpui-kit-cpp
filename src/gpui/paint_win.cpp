@@ -586,7 +586,6 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
             delete t;
             return false;
         }
-        t->dc->SetDpi(96.f, 96.f);
         if (t->transparent) {
             // ClearType blends per subpixel against what is under the text,
             // which a surface with alpha does not have.
@@ -627,6 +626,9 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
         // frame the scene remembers is not what is on this one.
         scene::Invalidate(ctx);
     }
+    // Coordinates are DIPs; the context scales them to the window's pixels.
+    float dpi = ctx->dpi > 0 ? ctx->dpi : 96.f;
+    ctx->rt->rt->SetDpi(dpi, dpi);
     ctx->rt->rt->BeginDraw();
     ctx->rt->rt->SetTransform(D2D1::Matrix3x2F::Identity());
     // The target is open before the recording starts, because the replay at
@@ -1261,10 +1263,12 @@ void PathRealize(PaintCtx* ctx, Path* p) {
     if (!dc || !g || p->fillReal) {
         return;
     }
-    // Identity transform and one DIP to one pixel, which is what this backend
-    // draws at; a realization is tessellated for a scale and this is it.
-    dc->CreateFilledGeometryRealization(g, D2D1_DEFAULT_FLATTENING_TOLERANCE,
-                                        &p->fillReal);
+    // A realization is tessellated for one scale: the identity transform at
+    // the target's dpi.
+    float dpi = ctx->dpi > 0 ? ctx->dpi : 96.f;
+    float tolerance = D2D1::ComputeFlatteningTolerance(
+        D2D1::Matrix3x2F::Identity(), dpi, dpi);
+    dc->CreateFilledGeometryRealization(g, tolerance, &p->fillReal);
 }
 
 static bool PathOffsetBegin(PaintCtx* ctx, float dx, float dy) {
