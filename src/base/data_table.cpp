@@ -396,13 +396,28 @@ void TableSetSelection(TableState* s, Ctx* cx, TableSelection selection) {
     }
 }
 
+void SelectOnModifierClick(TableState* s, bool value) {
+    if (s) {
+        s->selectOnModifierClick = value;
+    }
+}
+
+bool TableSelectsRowOnClick(const TableState* s, const Modifiers& modifiers) {
+    if (!s) {
+        return false;
+    }
+    return s->selectOnModifierClick ||
+           !(modifiers.Secondary() || modifiers.shift);
+}
+
 bool TableEscalatesToRow(const TableState* s, int row, int col,
-                         bool doubleClick) {
+                         bool doubleClick, const Modifiers& modifiers) {
     int cellRow = -1;
     int cellCol = -1;
     bool reselect = TableSelectedCell(s, &cellRow, &cellCol) &&
                     cellRow == row && cellCol == col;
-    return !s->rowHeader && s->rowSelectable && reselect && !doubleClick;
+    return !s->rowHeader && s->rowSelectable && reselect && !doubleClick &&
+           TableSelectsRowOnClick(s, modifiers);
 }
 
 void TableClearSelection(TableState* s, Ctx* cx) {
@@ -596,7 +611,10 @@ void TableState::OnRowClick(TableState* self, Ctx* cx, const ClickEvent* ev,
     // on the two clicks that need it — the row, and the row header, which
     // shares this handler — so a header click still selects its row once.
     WindowStopPropagation(cx);
-    TableSetSelectedRow(self, cx, (int)row);
+    Modifiers modifiers = ev ? ev->modifiers : Modifiers{};
+    if (TableSelectsRowOnClick(self, modifiers)) {
+        TableSetSelectedRow(self, cx, (int)row);
+    }
     if (ev->clickCount == 2) {
         TableEmit(self, cx, TableEventKind::DoubleClickedRow, (int)row, -1,
                   ColumnSort::Default);
@@ -611,7 +629,8 @@ void TableState::OnCellClick(TableState* self, Ctx* cx, const ClickEvent* ev,
     int row = TableCellRow(packed);
     int col = TableCellCol(packed);
     bool isDouble = ev->clickCount == 2;
-    if (TableEscalatesToRow(self, row, col, isDouble)) {
+    if (TableEscalatesToRow(self, row, col, isDouble,
+                            ev ? ev->modifiers : Modifiers{})) {
         TableSetSelectedRow(self, cx, row);
         return;
     }

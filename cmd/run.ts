@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "2963d6d880b9dffe59b48b0533bdc83c03201209",
+  sha: "e929d9833095988b47899d69f0011df601244a84",
   date: "2026-10-16",
-  subject: "base: Mark disabled controls disabled on their accessibility node (#3531)",
+  subject: "table: Add `TableState::select_on_modifier_click` (#3523)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

@@ -1235,6 +1235,75 @@ static void TableKeepsFocusWhenACellSelectsItsRowOnMouseDown() {
     TestAppFree(app);
 }
 
+// collections.rs table_modifier_clicks_select_rows_unless_turned_off.
+// A modified click is the secondary modifier or Shift. The default still
+// selects; turned off, the row that was selected stays selected. A plain
+// click selects either way. Without a row header, a modified re-click of
+// the selected cell does not take the row.
+static ClickEvent ModifiedClick(bool secondary, bool shift) {
+    ClickEvent ev = {};
+    if (secondary) {
+        if (PlatSecondaryIsCommand()) {
+            ev.modifiers.platform = true;
+        } else {
+            ev.modifiers.control = true;
+        }
+    }
+    ev.modifiers.shift = shift;
+    return ev;
+}
+
+static void TableModifierClicksSelectRowsUnlessTurnedOff() {
+    App* app = TestAppNew();
+    Entity<TableState> state = EntityNewState<TableState>(app);
+    TableState* s = state.Get(app);
+    s->self = state;
+    s->rowCount = 5;
+    s->colCount = 2;
+    Ctx cx = {};
+    cx.app = app;
+    cx.self = state.id;
+
+    auto row = [&](int ix, bool secondary, bool shift) {
+        ClickEvent ev = ModifiedClick(secondary, shift);
+        TableState::OnRowClick(s, &cx, &ev, ix);
+    };
+    row(1, false, false);
+    utassert(TableSelectedRow(s) == 1);
+    row(3, true, false);
+    utassert(TableSelectedRow(s) == 3);
+    row(1, false, false);
+    row(3, false, true);
+    utassert(TableSelectedRow(s) == 3);
+
+    SelectOnModifierClick(s, false);
+    row(1, false, false);
+    utassert(TableSelectedRow(s) == 1);
+    row(3, true, false);
+    utassert(TableSelectedRow(s) == 1);
+    row(3, false, true);
+    utassert(TableSelectedRow(s) == 1);
+    row(3, false, false);
+    utassert(TableSelectedRow(s) == 3);
+
+    s->cellSelectable = true;
+    s->rowHeader = false;
+    TableSetSelectedCell(s, &cx, 1, 0);
+    ClickEvent modified = ModifiedClick(true, false);
+    utassert(!TableEscalatesToRow(s, 1, 0, false, modified.modifiers));
+    TableState::OnCellClick(s, &cx, &modified, TableCellPack(1, 0));
+    utassert(TableSelectedRow(s) < 0);
+    int cellRow = -1;
+    int cellCol = -1;
+    utassert(TableSelectedCell(s, &cellRow, &cellCol) && cellRow == 1 &&
+             cellCol == 0);
+    ClickEvent plain = ModifiedClick(false, false);
+    utassert(TableEscalatesToRow(s, 1, 0, false, plain.modifiers));
+    TableState::OnCellClick(s, &cx, &plain, TableCellPack(1, 0));
+    utassert(TableSelectedRow(s) == 1);
+    TestAppFree(app);
+}
+
 static void TableRowHeaderClickSelectsItsRowOnce() {
     App* app = TestAppNew();
     component::Init(app);
@@ -1549,6 +1618,7 @@ void TestDataTable() {
     LoadMoreAsksNearTheEnd();
     TheKeyTable();
     TableKeepsFocusWhenACellSelectsItsRowOnMouseDown();
+    TableModifierClicksSelectRowsUnlessTurnedOff();
     TableRowHeaderClickSelectsItsRowOnce();
     TheSortCycle();
     OnlyOneColumnCarriesTheSort();

@@ -139,6 +139,10 @@ struct TableState {
     int rightClickedCellCol = -1;
     bool rowSelectable = true;
     bool colSelectable = true;
+    // select_on_modifier_click: a row click with the secondary modifier or
+    // Shift still selects the row. An app that keeps its own multi-row
+    // selection turns this off so that click is left alone.
+    bool selectOnModifierClick = true;
     bool cellSelectable = false;
     // row_header: whether the table has a column of its own for picking rows.
     // Without one, clicking an already-selected cell takes the whole row.
@@ -473,12 +477,18 @@ void TableSetSelectedRow(TableState* s, Ctx* cx, int row);
 void TableSetSelectedCol(TableState* s, Ctx* cx, int col);
 void TableSetSelectedCell(TableState* s, Ctx* cx, int row, int col);
 void TableClearSelection(TableState* s, Ctx* cx);
+// select_on_modifier_click. The default keeps today's click. False leaves
+// the selected row alone when the secondary modifier or Shift is held.
+void SelectOnModifierClick(TableState* s, bool value);
+// A click selects its row unless that opt-out is set and the click is modified.
+bool TableSelectsRowOnClick(const TableState* s, const Modifiers& modifiers);
 // The escalation `on_cell_click` opens with: with no row header column there
 // is nothing else to pick a whole row with, so a single click on the cell
 // that is already selected takes the row instead. A double click is passed
-// through to DoubleClickedCell and never escalates.
+// through to DoubleClickedCell and never escalates. A modified click does
+// not escalate when select_on_modifier_click is off.
 bool TableEscalatesToRow(const TableState* s, int row, int col,
-                         bool doubleClick);
+                         bool doubleClick, const Modifiers& modifiers = {});
 
 // The action, applied.
 void TablePerform(TableState* s, Ctx* cx, TableAction act);

@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2963d6d880b9dffe59b48b0533bdc83c03201209` (2026-10-16,
-base: Mark disabled controls disabled on their accessibility node (#3531)).
-Button, Link, Switch, Radio, Toggle, Checkbox, Select, Tab, DatePicker
-and Slider already wrote `AriaDisabled`. TimeField does too now. A
-disabled slider still drops Increment and Decrement. NumberInput's own
-spin button, Accordion, Pagination and Toolbar stay for a later
-checkin, as they do upstream.
+Processed through `e929d9833095988b47899d69f0011df601244a84` (2026-10-16,
+table: Add `TableState::select_on_modifier_click` (#3523)).
+A row click with the secondary modifier or Shift still selects the row
+unless `SelectOnModifierClick(false)`. The click still stops. A modified
+re-click of a selected cell does not take the row when that is off.
+The DataTable website pages are not ported.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
