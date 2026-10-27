@@ -565,14 +565,18 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
         return false;
     }
     // The callback is compared by what it answers for every level, which is
-    // Rust's fingerprint: two callbacks that agree are the same style.
-    for (uint8_t level = 1; level <= 6; level++) {
-        gpui::Style mine;
-        gpui::Style theirs;
-        uint32_t fields = Heading(level, &mine);
-        if (fields != other.Heading(level, &theirs) ||
-            !StyleFieldsEqual(mine, theirs, fields)) {
-            return false;
+    // Rust's fingerprint: two callbacks that agree are the same style. A
+    // shared callback (the same function and the same data) is Arc::ptr_eq
+    // and is not evaluated; layout compares a style to itself every frame.
+    if (heading != other.heading || headingData != other.headingData) {
+        for (uint8_t level = 1; level <= 6; level++) {
+            gpui::Style mine;
+            gpui::Style theirs;
+            uint32_t fields = Heading(level, &mine);
+            if (fields != other.Heading(level, &theirs) ||
+                !StyleFieldsEqual(mine, theirs, fields)) {
+                return false;
+            }
         }
     }
     return true;

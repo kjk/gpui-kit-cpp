@@ -979,6 +979,24 @@ static uint32_t Heading28(uint8_t, gpui::Style* out, void*) {
     return StyleFieldFontSize;
 }
 
+// A second callback with the same answer, so equality cannot treat it as
+// the shared one. `data` counts evaluations when it is an int*.
+static uint32_t Heading14Other(uint8_t, gpui::Style* out, void*) {
+    out->fontSize = 14;
+    return StyleFieldFontSize;
+}
+
+static uint32_t Heading14Counted(uint8_t, gpui::Style* out, void* data) {
+    if (data) *(int*)data += 1;
+    out->fontSize = 14;
+    return StyleFieldFontSize;
+}
+
+static uint32_t HeadingDiffersAtLevel6(uint8_t level, gpui::Style* out, void*) {
+    out->fontSize = level == 6 ? 28.f : 14.f;
+    return StyleFieldFontSize;
+}
+
 static void TestSourceShapedTextValues(Arena* a) {
     TextMark mark;
     mark.Bold().Italic().Code().Underline();
@@ -1017,6 +1035,32 @@ static void TestSourceShapedTextValues(Arena* a) {
     utassert(copy.Equals(same));
     same.WithHeading(&Heading28);
     utassert(!base.Equals(same));
+
+    // heading_equality_skips_shared_callbacks_and_compares_distinct_ones.
+    int calls = 0;
+    TextViewStyle shared = TextViewStyle::Default();
+    shared.WithHeading(&Heading14Counted, &calls);
+    TextViewStyle sharedCopy = shared;
+    utassert(shared.Equals(sharedCopy));
+    utassert(calls == 0);
+    TextViewStyle gapped = shared;
+    gapped.WithParagraphGap(shared.paragraphGap + 1.f);
+    utassert(!shared.Equals(gapped));
+    TextViewStyle dark = shared;
+    dark.isDark = !shared.isDark;
+    utassert(!shared.Equals(dark));
+    utassert(calls == 0);
+
+    TextViewStyle equal = shared;
+    equal.WithHeading(&Heading14Other);
+    utassert(shared.Equals(equal));
+    utassert(calls == 6);
+
+    calls = 0;
+    TextViewStyle different = shared;
+    different.WithHeading(&HeadingDiffersAtLevel6);
+    utassert(!shared.Equals(different));
+    utassert(calls == 6);
 
     TextViewStyle styledA = TextViewStyle::Default();
     TextViewStyle styledB = TextViewStyle::Default();

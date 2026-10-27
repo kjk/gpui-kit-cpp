@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1319484e43a6ff70d5b534ceccfbbe59e3380f00` (2026-10-16,
-input: Let the textarea scrollbar drag reach the content end (#3527)).
-A textarea's scrollbar track includes its padding, and the drag range is
-the unpadded content viewport. The thumb is sized against the painted
-track and reaches the end of the document. Ordinary bars, whose track and
-viewport are the same box, are unchanged.
+Processed through `8a83be7eb6ec9cc4055298fa340ab738c313af7a` (2026-10-16,
+base: Skip shared heading callbacks when comparing text styles (#3536)).
+Two text styles that share a heading callback compare equal without
+calling it. Distinct callbacks are still compared by what they answer
+for heading levels 1 through 6.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
