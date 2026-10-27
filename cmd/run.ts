@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cbb6e382bf68c76649c2bcbe0e7a39fd31b9de02",
+  sha: "4dda232896db53ce726596179e7c12fd55ea47ca",
   date: "2026-10-16",
-  subject: "docs: Correct three gpui-shell script-facing docs (#3545)",
+  subject: "dock: Report the user's dock toggles with DockToggleEvent (#3546)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

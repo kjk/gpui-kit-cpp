@@ -21,6 +21,27 @@ struct DockEventCounter {
     }
 };
 
+// tab_panel.rs / dock.rs: what `cx.subscribe(&area, .. DockToggleEvent)` is
+// here. Two events is as many as one drag-close then drag-open produces.
+struct DockToggleCounter {
+    int count = 0;
+    DockPlacement placement[2] = {};
+    bool open[2] = {};
+
+    static void OnToggle(DockToggleCounter* self, Ctx*,
+                         const DockToggleEvent* ev) {
+        if (!ev || self->count >= 2) {
+            if (ev) {
+                self->count++;
+            }
+            return;
+        }
+        self->placement[self->count] = ev->Placement();
+        self->open[self->count] = ev->IsOpen();
+        self->count++;
+    }
+};
+
 static void TheFiveDropZones() {
     Bounds b = {0, 0, 200, 100};
     // Left of 35%, right of 65%, then the same two thresholds vertically —
@@ -1044,6 +1065,155 @@ static void SetSplitSizesRestoresAShareAndReportsIt() {
     EntityDropAll(&app);
 }
 
+// tab_panel.rs the_collapse_button_reports_the_toggle.
+static void TheCollapseButtonReportsTheToggle() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<DockState> state = EntityNewState<DockState>(&app);
+    DockState* s = state.Get(&cx);
+    int a = 0, b = 0;
+    Seed(s, &a, &b);
+    int dockNode = DockNewTabs(s);
+    DockTabsAdd(s, dockNode, 0);
+    s->left.node = dockNode;
+    s->left.SetSize(200);
+
+    Entity<DockToggleCounter> counter = EntityNewState<DockToggleCounter>(&app);
+    s->onUserToggle = ListenTo(counter, &DockToggleCounter::OnToggle);
+
+    DockState::OnToggleSide(s, &cx, nullptr, (int64_t)DockPlacement::Left);
+    utassert(!s->left.IsOpen());
+    DockToggleCounter* got = counter.Get(&app);
+    utassert(got->count == 1);
+    utassert(got->placement[0] == DockPlacement::Left && !got->open[0]);
+
+    DockToggleSide(s, &cx, DockPlacement::Left);
+    utassert(s->left.IsOpen());
+    utassert(counter.Get(&app)->count == 1);
+
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
+// tab_panel.rs opening_the_bottom_strip_reports_the_toggle.
+static void OpeningTheBottomStripReportsTheToggle() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<DockState> state = EntityNewState<DockState>(&app);
+    DockState* s = state.Get(&cx);
+    int a = 0, b = 0;
+    Seed(s, &a, &b);
+    int dockNode = DockNewTabs(s);
+    DockTabsAdd(s, dockNode, 0);
+    DockTabsAdd(s, dockNode, 1);
+    s->bottom.node = dockNode;
+    s->bottom.SetOpen(false);
+
+    Entity<DockToggleCounter> counter = EntityNewState<DockToggleCounter>(&app);
+    s->onUserToggle = ListenTo(counter, &DockToggleCounter::OnToggle);
+
+    DockState::OnTabClick(s, &cx, nullptr, DockPack(dockNode, 0));
+    utassert(s->bottom.IsOpen());
+    DockToggleCounter* got = counter.Get(&app);
+    utassert(got->count == 1);
+    utassert(got->placement[0] == DockPlacement::Bottom && got->open[0]);
+
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
+// tab_panel.rs a_refused_toggle_is_not_reported.
+static void ARefusedToggleIsNotReported() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<DockState> state = EntityNewState<DockState>(&app);
+    DockState* s = state.Get(&cx);
+    int a = 0, b = 0;
+    Seed(s, &a, &b);
+    int dockNode = DockNewTabs(s);
+    DockTabsAdd(s, dockNode, 0);
+    s->left.node = dockNode;
+    DockSetCollapsible(s, DockPlacement::Left, false);
+
+    Entity<DockToggleCounter> counter = EntityNewState<DockToggleCounter>(&app);
+    s->onUserToggle = ListenTo(counter, &DockToggleCounter::OnToggle);
+
+    DockState::OnToggleSide(s, &cx, nullptr, (int64_t)DockPlacement::Left);
+    utassert(s->left.IsOpen());
+    utassert(counter.Get(&app)->count == 0);
+
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
+// dock.rs dragging_the_bottom_dock_closed_and_open_reports_each_toggle.
+static void DraggingTheBottomDockClosedAndOpenReportsEachToggle() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<DockState> state = EntityNewState<DockState>(&app);
+    DockState* s = state.Get(&cx);
+    int a = 0, b = 0;
+    Seed(s, &a, &b);
+    int dockNode = DockNewTabs(s);
+    DockTabsAdd(s, dockNode, 0);
+    s->bottom.node = dockNode;
+    s->bottom.SetSize(200);
+    s->bounds = {0, 0, 800, 600};
+
+    Entity<DockToggleCounter> counter = EntityNewState<DockToggleCounter>(&app);
+    s->onUserToggle = ListenTo(counter, &DockToggleCounter::OnToggle);
+
+    auto drag = [&](const float* ys, int n) {
+        for (int i = 0; i < n; i++) {
+            DragMoveEvent move;
+            move.drag.kind = kDockResizeDrag;
+            move.drag.ix =
+                (int)DockPack(kDockSideBase + (int)DockPlacement::Bottom, 0);
+            move.event.x = 400.f;
+            move.event.y = ys[i];
+            DockState::OnResizeDrag(s, &cx, &move);
+        }
+        DockState::OnResizeEnd(s, &cx, nullptr);
+    };
+
+    const float plain[] = {400.5f, 380.f, 350.f};
+    drag(plain, 3);
+    utassert(counter.Get(&app)->count == 0);
+    utassert(s->bottom.IsOpen());
+
+    const float shut[] = {350.5f, 356.f, 580.f, 540.f};
+    drag(shut, 4);
+    const float reopen[] = {571.5f, 565.f, 520.f};
+    drag(reopen, 3);
+    DockToggleCounter* got = counter.Get(&app);
+    utassert(got->count == 2);
+    utassert(got->placement[0] == DockPlacement::Bottom && !got->open[0]);
+    utassert(got->placement[1] == DockPlacement::Bottom && got->open[1]);
+
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void ADockSizeChangeEmitsOneLayoutEvent() {
     App app;
     Window* win = new Window();
@@ -1419,6 +1589,10 @@ void TestDock() {
     ADockIsItsOwnWidthUnderARendererThatDrawsNoChrome();
     RestoredSplitSharesSurviveResizeAndTabChanges();
     ADockSizeChangeEmitsOneLayoutEvent();
+    TheCollapseButtonReportsTheToggle();
+    OpeningTheBottomStripReportsTheToggle();
+    ARefusedToggleIsNotReported();
+    DraggingTheBottomDockClosedAndOpenReportsEachToggle();
     SetSplitSizesRestoresAShareAndReportsIt();
     DraggingTheBottomHandleBelowTheMinimumSnapsToTheNearerEnd();
     DraggingTheLeftHandleResizesOnlyTheLeftDock();

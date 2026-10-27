@@ -408,6 +408,20 @@ struct DockEvent {
     DockEventKind kind = DockEventKind::LayoutChanged;
 };
 
+// A dock the user opened or closed with a skin control: the collapse button,
+// a tab on a collapsed strip, or a resize handle dragged across the closed
+// strip and released. Rust emits this on the component DockArea
+// (EventEmitter<DockToggleEvent>). That entity is DockState here, which
+// already reports layout on `onEvent`, so a user toggle is `onUserToggle`.
+// DockToggleSide and the other setters do not raise it.
+struct DockToggleEvent {
+    DockPlacement placement = DockPlacement::Center;
+    bool open = false;
+
+    DockPlacement Placement() const { return placement; }
+    bool IsOpen() const { return open; }
+};
+
 struct DockState {
     Vec<DockPanelDef> panels;
     // The node pool. A free slot is one whose `used` is false, and the pool
@@ -455,8 +469,17 @@ struct DockState {
     // The side being resized, and the split handle being dragged.
     DockPlacement resizingSide = DockPlacement::Center;
     bool resizing = false;
+    // Whether that dock was open when the user's drag began. A release
+    // compares it with the settled open state. `resizeTrackUser` is set only
+    // by the handle's drag, so a resize the tests drive straight through
+    // DockResizeSide is not reported.
+    bool resizeStartedOpen = false;
+    bool resizeTrackUser = false;
 
     Listener onEvent;
+    // DockToggleEvent. Separate from onEvent so a user's toggle is not the
+    // same signal as DockEvent::LayoutChanged.
+    Listener onUserToggle;
     // One strip's tab boxes, indexed by node. The click reveal reads the
     // boxes the last frame painted. 64 is DockPack's slot limit.
     Vec<DockTabGeom> tabGeom;

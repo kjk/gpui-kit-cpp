@@ -178,6 +178,21 @@ static void DockEmit(DockState* s, Ctx* cx) {
     Notify(cx);
 }
 
+// report_user_toggle: emit only when the dock's open state moved. A refused
+// toggle and a resize that leaves the dock open emit nothing.
+static void DockReportUserToggle(DockState* s, Ctx* cx, DockPlacement p,
+                                 bool wasOpen) {
+    DockSide* side = DockSideOf(s, p);
+    bool open = side && side->open;
+    if (open == wasOpen || !s->onUserToggle.IsValid()) {
+        return;
+    }
+    DockToggleEvent ev;
+    ev.placement = p;
+    ev.open = open;
+    ListenerCall(cx->app, cx->win, s->onUserToggle, &ev);
+}
+
 int DockPanelByName(const DockState* s, Str name) {
     if (!name.s || len(name) <= 0) {
         return -1;
@@ -1356,11 +1371,15 @@ void DockState::OnTabClick(DockState* self, Ctx* cx, const ClickEvent*,
         self->nodes[node].pendingScrollIx = -1;
     }
     // "Open dock if clicked on the collapsed bottom dock": its tab bar is all
-    // that is left of it, so a click there is what opens it again.
+    // that is left of it, so a click there is what opens it again. Rust only
+    // does this for the bottom strip. A click here already opens whichever
+    // side the tab belongs to, and that open is a user toggle too.
     DockPlacement p = DockPlacementOfNode(self, node);
     DockSide* side = DockSideOf(self, p);
     if (side && !side->open) {
+        bool wasOpen = side->open;
         DockToggleSide(self, cx, p);
+        DockReportUserToggle(self, cx, p, wasOpen);
     }
 }
 
@@ -1377,7 +1396,13 @@ void DockState::OnZoomClick(DockState* self, Ctx* cx, const ClickEvent*,
 
 void DockState::OnToggleSide(DockState* self, Ctx* cx, const ClickEvent*,
                              int64_t placement) {
-    DockToggleSide(self, cx, (DockPlacement)placement);
+    // toggle_dock_by_user: the collapse button, as opposed to DockToggleSide
+    // called by code.
+    DockPlacement p = (DockPlacement)placement;
+    DockSide* side = DockSideOf(self, p);
+    bool wasOpen = side && side->open;
+    DockToggleSide(self, cx, p);
+    DockReportUserToggle(self, cx, p, wasOpen);
 }
 
 void DockState::OnTabDragMove(DockState* self, Ctx* cx,
@@ -1511,12 +1536,21 @@ void DockState::OnResizeDrag(DockState* self, Ctx* cx,
     if (!base::StrEq(ev->drag.kind, kDockResizeDrag)) {
         return;
     }
+    // The first move is the drag's start. Rust records open in the handle's
+    // on_drag, before any size is applied.
+    bool starting = !self->resizing;
     self->resizing = true;
     int node = DockUnpackNode(ev->drag.ix);
     // A node index past the end of the tree is one of the three Docks, which
     // resize against the whole area rather than against a split's children.
     if (node >= kDockSideBase) {
         DockPlacement p = (DockPlacement)(node - kDockSideBase);
+        if (starting || self->resizingSide != p) {
+            if (DockSide* side = DockSideOf(self, p)) {
+                self->resizeStartedOpen = side->open;
+                self->resizeTrackUser = true;
+            }
+        }
         self->resizingSide = p;
         if (DockSide* side = DockSideOf(self, p)) {
             side->SetResizing(true);
@@ -1548,15 +1582,23 @@ void DockState::OnResizeEnd(DockState* self, Ctx* cx, const MouseUpEvent*) {
     }
     self->resizing = false;
     // DockContext::end_resize: the skin's handle hands the release to base,
-    // which here owns the drag itself.
-    if (self->resizingSide != DockPlacement::Center) {
-        DockEndSideResize(self, cx, self->resizingSide);
+    // which here owns the drag itself. LayoutChanged is the size; the toggle
+    // event follows only when this drag opened or closed the dock.
+    DockPlacement placement = self->resizingSide;
+    bool wasOpen = self->resizeStartedOpen;
+    bool track = self->resizeTrackUser;
+    self->resizeTrackUser = false;
+    if (placement != DockPlacement::Center) {
+        DockEndSideResize(self, cx, placement);
     }
     self->left.SetResizing(false);
     self->right.SetResizing(false);
     self->bottom.SetResizing(false);
     self->resizingSide = DockPlacement::Center;
     DockEmit(self, cx);
+    if (track) {
+        DockReportUserToggle(self, cx, placement, wasOpen);
+    }
 }
 
 } // namespace gpui

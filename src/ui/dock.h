@@ -20,6 +20,9 @@ using Panel = DockPanelDef;
 using PanelView = DockPanelDef;
 using PanelStyle = DockPanelStyle;
 using PanelControl = DockPanelControl;
+// gpui_component::dock::DockToggleEvent. Raised on DockState, the entity a
+// component DockArea is here.
+using DockToggleEvent = gpui::DockToggleEvent;
 
 struct TitleStyle {
     Rgba background = {};

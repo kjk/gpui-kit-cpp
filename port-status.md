@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cbb6e382bf68c76649c2bcbe0e7a39fd31b9de02` (2026-10-16,
-docs: Correct three gpui-shell script-facing docs (#3545)).
-`show_fps_monitor`'s declaration says to call it from an event handler
-or a task, because `init()` runs before the window has a root. The
-styled `new` template constructs with `TitleBar.new()` and
-`Button.new(...)`. The `Background.stop` range was already documented.
+Processed through `4dda232896db53ce726596179e7c12fd55ea47ca` (2026-10-16,
+dock: Report the user's dock toggles with DockToggleEvent (#3546)).
+A collapse button, a tab on a collapsed dock strip, and a resize handle
+dragged across the closed strip report that the user opened or closed a
+dock. A toggle made by code, a refused non-collapsible toggle, and a
+resize that leaves the dock open do not.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
@@ -75,6 +75,12 @@ The current update target is
 - **Scroll bounce builders do not panic.** `WithTracking` and
   `WithMaxStretch` leave a non-positive or NaN value unchanged. Rust
   panics (`src/base/scroll_bounce.h`).
+- **DockToggleEvent is a listener on DockState.** Rust emits
+  `EventEmitter<DockToggleEvent>` on the component `DockArea`, and only
+  `DockSkin`'s controls raise it. The entity here is `DockState`
+  (`src/base/dock.h`), so the event is `onUserToggle`, beside `onEvent`.
+  A click on a collapsed side's tab opens that side and reports it; Rust
+  only opens the bottom strip.
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
