@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `14f59330a4aa0cb5becf140e067d64a616328612` (2026-10-17,
-shell: Act on the link itself for lstat, readlink, unlink, rmdir and rename (#3561)).
-Rust stopped canonicalizing the last component of an absolute path, so
-those five operations no longer follow a symlink into its target. This
-tree never canonicalizes that component: the opener keeps the leaf and
-acts on it with the no-follow calls.
+Processed through `e0375e2070f54e8dcdcc3b8a04435ea74c36b0f8` (2026-10-18,
+tests: Fix gpui-shell path assertions on Windows and report script build errors (#3535)).
+Rust's shell snapshots quote Windows paths the way Debug does, and a
+missing snapshot now reports the script's build error. This tree's
+shell tests compare the script's own strings, and a failed load already
+carries its error. The quickjs-jit size_t bug is not this engine.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
