@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f692bb846ab5eb6e393ab71ec4a006e974735ed8",
+  sha: "5591a658e460a404568ab1372aa589c1b5fdad41",
   date: "2026-10-18",
-  subject: "ci: Quote the tooltip test command so the workflow parses (#3592)",
+  subject: "tests: Accept USERPROFILE as the default home variable on Windows (#3593)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

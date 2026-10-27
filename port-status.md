@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f692bb846ab5eb6e393ab71ec4a006e974735ed8` (2026-10-18,
-ci: Quote the tooltip test command so the workflow parses (#3592)).
-The quote is in upstream's workflow file, which this tree does not
-carry.
+Processed through `5591a658e460a404568ab1372aa589c1b5fdad41` (2026-10-18,
+tests: Accept USERPROFILE as the default home variable on Windows (#3593)).
+process.env already exports each default home variable the host
+sets, HOME or USERPROFILE, and leaves out one the host does not.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
