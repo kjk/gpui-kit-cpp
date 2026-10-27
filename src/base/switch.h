@@ -35,6 +35,8 @@ struct SwitchThumbStyles {
 // `onChange`, which a
 // `void On(T*, Ctx*, const ClickEvent*, int64_t next)` reads as a bool. A
 // disabled switch keeps its element id but takes neither focus nor the click.
+// A switch without text children has no accessible name, so pass
+// `accessibilityLabel` whenever it is drawn without visible text.
 struct Switch {
     static El* New(Ctx* cx, Str id, bool checked = false, bool disabled = false,
                    Listener onChange = {}, const SwitchStyles* styles = nullptr,

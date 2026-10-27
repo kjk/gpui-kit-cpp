@@ -763,7 +763,10 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
                   : kFill;
     switch (it.field) {
         case SettingFieldKind::Switch:
+            // The control has no visible text of its own. The setting title
+            // is the name a screen reader announces.
             out.el = Switch::New(cx, id)
+                         ->AccessibilityLabel(it.title)
                          ->Checked(it.boolValue && *it.boolValue)
                          ->Disabled(options.disabled)
                          ->OnClick(click)
@@ -773,6 +776,7 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
             break;
         case SettingFieldKind::Checkbox:
             out.el = Checkbox::New(cx, id)
+                         ->AccessibilityLabel(it.title)
                          ->Checked(it.boolValue && *it.boolValue)
                          ->Disabled(options.disabled)
                          ->OnClick(click)

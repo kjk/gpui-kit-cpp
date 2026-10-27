@@ -46,7 +46,9 @@ struct CheckboxIndicatorStyles {
 // its handler `next_state` — read it with a
 // `void On(T*, Ctx*, const ClickEvent*, int64_t next)` and compare against
 // CheckboxState. A disabled box keeps its id, so it still hit-tests and
-// hovers, but takes neither focus nor the click.
+// hovers, but takes neither focus nor the click. A box without text
+// children has no accessible name, so pass `accessibilityLabel` whenever
+// it is drawn without visible text.
 struct Checkbox {
     static El* New(Ctx* cx, Str id,
                    CheckboxState state = CheckboxState::Unchecked,

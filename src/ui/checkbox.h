@@ -34,7 +34,9 @@ struct Checkbox {
     static Checkbox* New(Ctx* cx, Str id);
     Checkbox* Label(Str s);
     // Set the name a screen reader announces, overriding the visible label.
-    // This does not change the label drawn on screen.
+    // This does not change the label drawn on screen. A checkbox without a
+    // label or text children has no accessible name, so set this whenever
+    // the checkbox is drawn without visible text.
     Checkbox* AccessibilityLabel(Str s);
     Checkbox* Hint(Str s);
     Checkbox* Child(El* e);

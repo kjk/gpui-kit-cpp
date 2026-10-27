@@ -765,8 +765,50 @@ static void SelectingAGroupFromAnotherPageScrollsToIt() {
     delete win;
 }
 
+struct BoolSettingsView {
+    bool dark = false;
+    bool autoTheme = true;
+    Entity<SettingsState> state;
+
+    static El* Render(BoolSettingsView* self, Ctx* cx) {
+        return Settings::New(cx, StrL("bool-settings"), self->state)
+            ->Page(StrL("General"))
+            ->Group({})
+            ->Item(StrL("Dark Mode"), {})
+            ->SwitchField(&self->dark, false, true)
+            ->Item(StrL("Auto Switch Theme"), {})
+            ->CheckboxField(&self->autoTheme, false, true)
+            ->IntoEl();
+    }
+};
+
+static const AccessibilityNode* NamedRole(Window* win, AccessibilityRole role,
+                                          Str name) {
+    for (int i = 0; i < win->accessibility.len; i++) {
+        const AccessibilityNode* node = &win->accessibility[i];
+        if (node->info.role == role && StrEq(node->info.label, name)) {
+            return node;
+        }
+    }
+    return nullptr;
+}
+
+static void BoolSettingsAreNamedAfterTheirTitles() {
+    App* app = TestAppNew();
+    Init(app);
+    Entity<BoolSettingsView> view = EntityNew<BoolSettingsView>(app);
+    BoolSettingsView* self = view.Get(app);
+    self->state = EntityNewState<SettingsState>(app);
+    Window* win = TestWindowOpen(app, view, 800, 600);
+    utassert(NamedRole(win, AccessibilityRole::Switch, StrL("Dark Mode")));
+    utassert(
+        NamedRole(win, AccessibilityRole::CheckBox, StrL("Auto Switch Theme")));
+    TestAppFree(app);
+}
+
 void TestSetting() {
     TestSuite("setting");
+    BoolSettingsAreNamedAfterTheirTitles();
     TheQueryMatchesTitleDescriptionAndKeywords();
     AGroupIsShownWhenAnythingInItIs();
     APageIsShownWhenAnyGroupIs();

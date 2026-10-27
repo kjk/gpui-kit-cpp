@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `45c70d4d7d804f7eb61915f9a303abb2e87da7c3` (2026-10-18,
-text: editor_host, a public API for external editors (#3580)).
-An external editor marks a paragraph, heading, cell, list item or code
-block and reads that leaf's bounds and caret map after the frame. A
-fence keeps the info string after its language, and a link definition
-stays in the block list.
+Processed through `e949d3e5d42c749f02add3c12c3615744cad3938` (2026-10-18,
+setting: Name bool fields after their setting's title (#3524)).
+A settings checkbox or switch has no visible text of its own, so the
+setting title is the name a screen reader announces.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

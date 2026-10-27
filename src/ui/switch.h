@@ -33,7 +33,9 @@ struct Switch {
     Switch* Label(Str s);
     // Set the name a screen reader announces, when the visible label is not
     // it. A switch's name comes from its Label by default; setting this
-    // replaces the announced name without changing what is displayed.
+    // replaces the announced name without changing what is displayed. A
+    // switch without a label has no accessible name, so set this whenever
+    // the switch is drawn without visible text.
     Switch* AccessibilityLabel(Str s);
     Switch* Checked(bool v);
     Switch* Disabled(bool v);
