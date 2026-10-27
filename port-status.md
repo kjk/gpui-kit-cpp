@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2eedb69cd8fcdd233b3f12c6b1e02007b0e2b689` (2026-10-19,
-text: Add SelectionFormat::SourceAcrossStyles (#3517)).
-A selection that stays in one block and one mark group copies the
-rendered text. A second block, a second mark group, or an inline
-object copies Markdown source. Select-all still copies the source.
+Processed through `85c05bf6d977d38383e5b2a919a0abb1429f39d0` (2026-10-19,
+release: Publish GPUI with crates.io wgpu 30.0.1 (#3600)).
+The GPUI publish script stages wgpu 30.0.1. This tree does not
+publish gpui-pre and does not carry that script.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
