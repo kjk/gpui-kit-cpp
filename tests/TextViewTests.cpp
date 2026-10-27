@@ -393,6 +393,31 @@ static void TestPreTextStaysText(Arena* a) {
     }
 }
 
+// html.rs test_pre_keeps_whitespace_in_nested_elements. Text under pre
+// keeps its spaces one level down, and a line feed after <code> stays.
+static void TestPreKeepsWhitespaceInNestedElements(Arena* a) {
+    const char* html[] = {
+        "<pre><code>fn main() {\n    one();\n}</code></pre>",
+        "<pre><code><b>one</b>  <i>two\n\tthree</i></code></pre>",
+        "<pre><code>\none</code></pre>",
+        "<pre><code>&lt;b&gt; &amp;amp;</code></pre>",
+        "<p><code>one\n   two</code></p>",
+    };
+    const char* text[] = {
+        "fn main() {\n    one();\n}",
+        "one  two\n\tthree",
+        "\none",
+        "<b> &amp;",
+        "one two",
+    };
+    for (int i = 0; i < 5; i++) {
+        MdNode* doc = HtmlParse(a, Str(html[i]));
+        MdNode* block = Child(doc, 0);
+        utassert(block != nullptr);
+        utassert(TextIs(a, block, text[i]));
+    }
+}
+
 static void TestHtmlTable(Arena* a) {
     MdNode* doc = HtmlParse(
         a, StrL("<table><thead><tr><th>h</th></tr></thead>"
@@ -7064,6 +7089,7 @@ void TestTextView() {
     TestOrderedListStarts(a);
     TestHtmlPre(a);
     TestPreTextStaysText(a);
+    TestPreKeepsWhitespaceInNestedElements(a);
     TestHtmlTable(a);
     TestHtmlImageAlt(a);
     TestHtmlUnbalanced(a);

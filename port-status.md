@@ -16,13 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `114c0d99d436b9da55ce6309f51c049680588691` (2026-10-18,
-text: Keep `<pre>` text as text through the HTML minifier (#3570)).
-Rust re-escapes pre and textarea text after the minifier decodes it,
-and writes back the line feed the parser drops after the tag. This
-tree parses the HTML once, so escaped markup stays text. The line
-feed right after pre is dropped once; a comment before it keeps the
-line feed.
+Processed through `49fb39ebc8f838b341e5e46bd240c6b62aa047fa` (2026-10-18,
+text: Keep whitespace in `<pre><code>` through the HTML minifier (#3581)).
+Whitespace under a pre stays as typed, including text nested in code.
+A line feed right after a nested code tag is kept. Outside pre, a
+code span still collapses its whitespace.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
