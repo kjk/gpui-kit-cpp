@@ -686,6 +686,8 @@ void LeafComponentsRejectAnIncompatiblePayload() {
 
 // ─── Host tests ────────────────────────────────────────────────────────────
 
+El* FindById(El* element, Str id);
+
 El* FindText(El* element, Str text) {
     if (!element) return nullptr;
     if (element->kind == ElKind::Text && StrEq(element->text, text))
@@ -766,6 +768,108 @@ struct Host {
         AppGlobalClear(&app);
     }
 };
+
+// public_host.rs
+// an_embedding_host_registers_its_own_component_beside_the_catalog
+struct HostBadgePayload {
+    Str label;
+};
+
+int gHostInitCalls = 0;
+int gHostBadgeCount = 0;
+Str gHostBadgeLabel;
+
+void HostCatalogInit(App* app) {
+    component_shell::Init(app);
+    gHostInitCalls++;
+}
+
+bool HostBadgeConstruct(shell::PayloadBuild* build,
+                        const shell::ComponentArgument* args, int) {
+    if (args[0].kind != shell::ComponentArgumentKind::String)
+        return build->Fail(StrL("HostBadge expects a label"));
+    build->New<HostBadgePayload>()->label = args[0].string;
+    return true;
+}
+
+El* HostBadgeMaterialize(shell::MaterializeRequest* request) {
+    const HostBadgePayload* payload = request->PayloadAs<HostBadgePayload>();
+    if (!payload) return request->Fail(StrL("HostBadge payload"));
+    if (gHostBadgeLabel.s) StrFree(gHostBadgeLabel);
+    gHostBadgeLabel = StrDup(payload->label);
+    gHostBadgeCount++;
+    return request->Finish(Div(request->cx->a)
+                               ->Id(StrL("HostBadge"))
+                               ->Child(TextEl(request->cx->a, payload->label)));
+}
+
+El* FindKind(El* element, ElKind kind) {
+    if (!element) return nullptr;
+    if (element->kind == kind) return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FindKind(child, kind)) return found;
+    }
+    return nullptr;
+}
+
+void AnEmbeddingHostRegistersItsOwnComponentBesideTheCatalog() {
+    gHostInitCalls = 0;
+    gHostBadgeCount = 0;
+    if (gHostBadgeLabel.s) StrFree(gHostBadgeLabel);
+    gHostBadgeLabel = {};
+
+    static constexpr shell::ArgumentDescriptor kLabel[] = {
+        {"label", shell::SchemaString()}};
+    static constexpr shell::ConstructorDescriptor kSpinnerCtor[] = {
+        {"Spinner", kLabel, &HostBadgeConstruct}};
+    static constexpr shell::ComponentDescriptor kDuplicate = {
+        "HostSpinner", kSpinnerCtor, {}, nullptr, &HostBadgeMaterialize};
+    static constexpr shell::ConstructorDescriptor kBadgeCtor[] = {
+        {"HostBadge", kLabel, &HostBadgeConstruct}};
+    static constexpr shell::ComponentDescriptor kBadge = {
+        "HostBadge", kBadgeCtor, {}, nullptr, &HostBadgeMaterialize};
+
+    ComponentRegistry registry;
+    RegistryError error;
+    utassert(component_shell::Registry(&registry, &error));
+    registry.WithInitializer(&HostCatalogInit);
+    utassert(!registry.Register(&kDuplicate, &error));
+    RegistryError duplicate = Error(RegistryErrorKind::DuplicateExport);
+    duplicate.callable = "Spinner";
+    utassert(error == duplicate);
+    utassert(registry.Register(&kBadge, &error));
+
+    FrozenComponentRegistry frozen;
+    registry.Freeze(&frozen);
+    utassert(frozen.Find(StrL("Spinner")) != nullptr);
+    utassert(frozen.Find(StrL("HostBadge")) != nullptr);
+    utassert(frozen.Initializer() == &HostCatalogInit);
+
+    App started;
+    ShellInitWithComponents(&started, &frozen);
+    utassert(gHostInitCalls == 1);
+    AppGlobalClear(&started);
+
+    Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                   "import { HostBadge, Spinner } from 'gpui-component';\n"
+                   "export default class ExtendedCatalog extends View {\n"
+                   "  render() {\n"
+                   "    return div().child(new Spinner().size('small'))\n"
+                   "      .child(new HostBadge('ready'));\n"
+                   "  }\n"
+                   "}\n"),
+              &frozen);
+    El* root = host.Render();
+    utassert(root != nullptr && !host.error.IsSet());
+    utassert(len(host.ViewError()) == 0);
+    utassert(FindKind(root, ElKind::Icon) != nullptr);
+    utassert(FindById(root, StrL("HostBadge")) != nullptr);
+    utassert(FindText(root, StrL("ready")) != nullptr);
+    utassert(gHostBadgeCount == 1);
+    utassert(StrEq(gHostBadgeLabel, StrL("ready")));
+    StrFree(gHostBadgeLabel);
+    gHostBadgeLabel = {};
+}
 
 void LeafComponentsMaterializeFromAScript() {
     Host host(
@@ -8042,6 +8146,7 @@ void TestComponentShell() {
     ComponentDeclarationsMatchRust();
     LeafComponentsRejectAnIncompatiblePayload();
     LeafComponentsMaterializeFromAScript();
+    AnEmbeddingHostRegistersItsOwnComponentBesideTheCatalog();
     RegisteredCallsAreValidatedAgainstTheirSchemas();
 
     TestSuite("controls");

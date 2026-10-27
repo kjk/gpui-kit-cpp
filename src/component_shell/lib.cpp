@@ -83,6 +83,16 @@ static void Initializer(App* app) {
     Init(app);
 }
 
+bool Registry(shell::ComponentRegistry* registry, shell::RegistryError* error) {
+    if (!registry || !registry->Open(shell::kComponentRegistryApiVersion,
+                                     shell::kDefaultComponentModule, error)) {
+        return false;
+    }
+    registry->WithInitializer(&Initializer);
+    registry->WithWindowOpener(&OpenWindowWithRoot);
+    return Register(registry, error);
+}
+
 const shell::FrozenComponentRegistry* Components() {
     static shell::FrozenComponentRegistry frozen;
     static bool built = false;
@@ -90,13 +100,7 @@ const shell::FrozenComponentRegistry* Components() {
     built = true;
     shell::ComponentRegistry registry;
     shell::RegistryError error;
-    if (!registry.Open(shell::kComponentRegistryApiVersion,
-                       shell::kDefaultComponentModule, &error)) {
-        return &frozen;
-    }
-    registry.WithInitializer(&Initializer);
-    registry.WithWindowOpener(&OpenWindowWithRoot);
-    if (!Register(&registry, &error)) {
+    if (!Registry(&registry, &error) && error.IsSet()) {
         Arena* a = ArenaNew();
         logf("gpui-component-shell: %s\n",
              shell::RegistryErrorMessage(a, error));

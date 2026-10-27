@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9ad9d92391138bdbedb3827fe6dfdaa68f3cc91d` (2026-10-16,
-shell: Add script methods to MessageScrollerState (#3541)).
-A script can append, prepend, splice, reset, remeasure and scroll a
-message transcript in place. Reads are allowed during render. A count
-that is not a whole non-negative number throws, and a range outside
-the rows returns false. The shell README's method table is not copied.
+Processed through `3aeb5e770685732067d9860051a4deded11483a0` (2026-10-16,
+shell: Let an embedding host extend the gpui-component catalog (#3542)).
+`component_shell::Registry` fills the catalog and leaves it unfrozen, so
+a host can register another component beside it and freeze the result.
+`Components` is that registry frozen. A duplicate export is rejected.
+The shell README and gpui-shell doc are not copied.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

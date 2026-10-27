@@ -17,7 +17,15 @@ namespace gpui::component_shell {
 // startup, before any script runs.
 void Init(App* app);
 
-// lib.rs `components`: builds and freezes the catalog, once per process. The
+// lib.rs `registry`: the `gpui-component` catalog before it is frozen, so an
+// embedding host can register its own components and states beside it. They
+// share the `"gpui-component"` module; an export name the catalog already
+// uses is rejected. The initializer is `Init`. A host whose components need
+// their own startup replaces it with a function that calls `Init` first,
+// then `Freeze`s the registry itself.
+bool Registry(shell::ComponentRegistry* registry, shell::RegistryError* error);
+
+// lib.rs `components`: `Registry` then `Freeze`, once per process. The
 // catalog is static data and outlives every runtime built over it.
 const shell::FrozenComponentRegistry* Components();
 
