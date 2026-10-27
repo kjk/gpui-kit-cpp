@@ -717,7 +717,9 @@ El* Button::IntoEl() {
                 ->Role(role)
                 ->AriaDisabled(!interactive)
                 ->TabIndex(tabIndex)
-                ->TabStop(tabStop)
+                // Base already drops a disabled button out of the tab order.
+                // Restoring the caller's stop here would put it back.
+                ->TabStop(tabStop && interactive)
                 ->FocusRing(focusRing)
                 ->FocusLineStyle(focusLine,
                                  RgbaOpacity(normalFg, kFocusLineOpacity))

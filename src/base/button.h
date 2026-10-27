@@ -15,8 +15,10 @@ namespace gpui {
 // composed control does not flicker its ring on every press — and it gives up
 // Enter and Space with it, so use it only where a focused sibling already
 // exposes the action to the keyboard, the way a number input's step buttons
-// do. A disabled button keeps its element id and takes neither focus nor the
-// click.
+// do. A disabled button keeps its element id and does not activate. A
+// focusable one stays in the focus list as a non-stop, so a button that
+// disables itself while focused does not fall out of Tab in either
+// direction, and Tab does not land on it again until it is enabled.
 // ButtonStyles, which is what `Button::styles(|s| s.selected(..).disabled(..))`
 // builds. `resolve_style` puts them in the one fixed order — the value state,
 // then disabled — so no two buttons drift apart, and both land at layout, so

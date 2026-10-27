@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ade05d05b7b02e5c303a4fdd43f91a4df3bd58e8` (2026-10-20,
-input: Measure the horizontal scroll extent from laid-out lines (#3604)).
-An unwrapped field's horizontal range is the wider of the byte-longest
-line and the widest line laid out this frame, and that width stays when
-the wide line scrolls away. A placeholder on an empty field does not
-extend it. Soft-wrapped fields still use the viewport width.
+Processed through `4d63c733f77b6803a57d2ff56fa6f85cb751c9b4` (2026-10-20,
+button: preserve Tab traversal when the focused control becomes disabled
+(#3606)). A focusable button that is disabled stays in the focus list and
+is not a tab stop, so Tab can leave a button that disabled itself and
+does not land on it again until it is enabled. It still does not activate.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

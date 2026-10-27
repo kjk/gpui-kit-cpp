@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ade05d05b7b02e5c303a4fdd43f91a4df3bd58e8",
+  sha: "4d63c733f77b6803a57d2ff56fa6f85cb751c9b4",
   date: "2026-10-20",
-  subject: "input: Measure the horizontal scroll extent from laid-out lines (#3604)",
+  subject: "button: preserve Tab traversal when the focused control becomes disabled (#3606)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

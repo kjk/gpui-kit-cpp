@@ -226,6 +226,84 @@ static void LongLabelsPreserveTrackSizeInNarrowContainers() {
     ArenaDelete(a);
 }
 
+// button.rs disabling_focused_button_preserves_bidirectional_traversal.
+// Three buttons in paint order. The middle one disables itself on click.
+struct DisableDuringFocus {
+    bool disabled = false;
+    int activations = 0;
+
+    static void OnDisable(DisableDuringFocus* self, Ctx* cx,
+                          const ClickEvent*) {
+        self->disabled = true;
+        self->activations++;
+        Notify(cx);
+    }
+
+    static El* Render(DisableDuringFocus* self, Ctx* cx) {
+        return Div(cx->a)
+            ->SizeFull()
+            ->Flex()
+            ->Gap(8)
+            ->Child(Button::New(cx, StrL("before"))->W(80)->H(28))
+            ->Child(Button::New(cx, StrL("disable-self"), self->disabled,
+                                Listen(cx, &DisableDuringFocus::OnDisable))
+                        ->W(80)
+                        ->H(28))
+            ->Child(Button::New(cx, StrL("after"))->W(80)->H(28));
+    }
+};
+
+static void PressTransitionKey(Window* win, int key, bool shift) {
+    WindowKeyDown(win, key, shift, false, false);
+    WindowKeyUp(win, key, shift, false, false);
+    TestDraw(win);
+}
+
+static void DisablingFocusedButtonPreservesBidirectionalTraversal() {
+    struct Dir {
+        bool shift;
+        int expected;
+        bool backShift;
+        int opposite;
+    };
+    // tab -> after, shift-tab skips back to before; and the reverse.
+    const Dir dirs[] = {{false, 2, true, 0}, {true, 0, false, 2}};
+    for (const Dir& dir : dirs) {
+        App* app = TestAppNew();
+        Entity<DisableDuringFocus> controls =
+            EntityNew<DisableDuringFocus>(app);
+        Window* win = TestWindowOpen(app, controls);
+        utassert(win->focusEls.len == 3);
+        int ids[3] = {win->focusEls[0].id, win->focusEls[1].id,
+                      win->focusEls[2].id};
+        WindowSetFocusId(win, ids[0]);
+        TestDraw(win);
+        utassert(win->focusId == ids[0]);
+        PressTransitionKey(win, KeyTab, false);
+        utassert(win->focusId == ids[1]);
+        PressTransitionKey(win, KeySpace, false);
+        DisableDuringFocus* self = controls.Get(app);
+        utassert(self && self->disabled && self->activations == 1);
+        utassert(win->focusId == ids[1]);
+        utassert(win->focusEls.len == 3 && !win->focusEls[1].tabStop);
+        PressTransitionKey(win, KeyReturn, false);
+        PressTransitionKey(win, KeySpace, false);
+        utassert(controls.Get(app)->activations == 1);
+        PressTransitionKey(win, KeyTab, dir.shift);
+        utassert(win->focusId == ids[dir.expected]);
+        PressTransitionKey(win, KeyTab, dir.backShift);
+        utassert(win->focusId == ids[dir.opposite]);
+        self = controls.Get(app);
+        self->disabled = false;
+        NotifyEntity(app, controls.id, win);
+        TestDraw(win);
+        utassert(win->focusEls.len == 3 && win->focusEls[1].tabStop);
+        PressTransitionKey(win, KeyTab, dir.shift);
+        utassert(win->focusId == ids[1]);
+        TestAppFree(app);
+    }
+}
+
 // A listener's argument is 64 bits on every target: a page or a count past
 // 2^31 that a component hands it arrives whole, wasm32 included.
 static void AListenerArgumentIsSixtyFourBits() {
@@ -251,5 +329,6 @@ void TestClick() {
     CheckboxActivationProducesTheControlledNextState();
     SwitchActivationProducesTheControlledNextValue();
     LongLabelsPreserveTrackSizeInNarrowContainers();
+    DisablingFocusedButtonPreservesBidirectionalTraversal();
     AListenerArgumentIsSixtyFourBits();
 }

@@ -36,6 +36,12 @@ El* Button::New(Ctx* cx, Str id, bool disabled, Listener onClick,
                 ->AriaDisabled(disabled);
     ApplyStyles(e, styles, selected, disabled);
     if (disabled) {
+        // A focused button that disables itself has to stay in the focus
+        // list, or the next Tab starts at the first stop instead of the
+        // neighbor. It is not a stop, and it does not take the click.
+        if (focusable) {
+            e->PathId(id)->TabStop(false);
+        }
         return e;
     }
     if (focusable) {
