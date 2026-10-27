@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e949d3e5d42c749f02add3c12c3615744cad3938` (2026-10-18,
-setting: Name bool fields after their setting's title (#3524)).
-A settings checkbox or switch has no visible text of its own, so the
-setting title is the name a screen reader announces.
+Processed through `41acc8a40b3c85c43ea80b972be9925d06b567a9` (2026-10-18,
+shell: Add with_follow_mode to make a list follow its tail (#3548)).
+`list(...).with_follow_mode("tail")` opens at the end and stays there as
+items are added and as the last one grows, until the reader scrolls up.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

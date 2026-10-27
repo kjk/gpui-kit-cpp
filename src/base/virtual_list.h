@@ -242,6 +242,11 @@ struct VirtualList {
     static El* New(Ctx* cx, Str id, const VirtualListOpts& o);
 };
 
+// The paint user `VirtualList::New` stored. A prePaint wrapped around the
+// list's own sets the logical top for this frame before that prePaint binds
+// the rows. `paintUser` is that user, not the wrapper's.
+void VirtualListSetLogicalTop(void* paintUser, int item, float into);
+
 // Pixel offset of logical (item, into). Unmeasured (non-positive) sizes stop
 // the walk, matching ListState scrolling only through what it has measured.
 float VirtualListPixelFromLogical(const float* sizes, int count, int item,

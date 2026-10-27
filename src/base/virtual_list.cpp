@@ -320,6 +320,13 @@ struct VirtualListPaint {
     Window* win = nullptr;
 };
 
+void VirtualListSetLogicalTop(void* paintUser, int item, float into) {
+    auto* paint = (VirtualListPaint*)paintUser;
+    if (!paint) return;
+    paint->opts.topItem = item;
+    paint->opts.topInto = into;
+}
+
 static void VirtualListAfterPaint(PaintCtx* ctx, El* e, void* user) {
     auto* paint = (VirtualListPaint*)user;
     const VirtualListOpts& o = paint->opts;

@@ -2815,6 +2815,203 @@ static const char kOlderPageSource[] =
     "  }\n"
     "}\n";
 
+static El* RowCovering(LazyListFixture* fixture, float yInBox) {
+    El* list = fixture->Box();
+    if (!list) return nullptr;
+    float y = list->y + yInBox;
+    for (El* row = list->first; row; row = row->next) {
+        if (row->h > 0 && y >= row->y - 0.5f && y < row->y + row->h - 0.5f) {
+            return row;
+        }
+    }
+    return nullptr;
+}
+
+static float ListMaxOffset(LazyListFixture* fixture) {
+    El* list = fixture->Box();
+    if (!list) return 0;
+    float most = list->contentH - list->h;
+    return most > 0 ? most : 0;
+}
+
+// render.rs
+// a_list_following_its_tail_stays_at_the_end_until_the_reader_scrolls_up. The
+// transcript, plus a control that grows the last row, and the list following
+// its tail.
+static const char kTailSource[] =
+    "import { div, View, list } from 'gpui-kit';\n"
+    "import { v_flex } from 'gpui-base';\n"
+    "globalThis.rowKey = '';\n"
+    "export default class Transcript extends View {\n"
+    "  init() {\n"
+    "    this.items = [];\n"
+    "    for (let index = 0; index < 100; index++)\n"
+    "      this.items.push('m' + index);\n"
+    "    this.pages = 0;\n"
+    "    this.tall = '';\n"
+    "  }\n"
+    "  control(label, change) {\n"
+    "    return div().h(40).on_click((_event, cx) => {\n"
+    "      change(); cx.notify();\n"
+    "    }).child(label);\n"
+    "  }\n"
+    "  render(cx) {\n"
+    "    return v_flex().w(300).h(400).child(v_flex().h(200).child(\n"
+    "      list('rows', this.items.length,\n"
+    "        (index) => this.items[index],\n"
+    "        (index) => div().h(this.items[index] === this.tall ? 60 : 20)\n"
+    "          .child(this.items[index]))\n"
+    "      .with_follow_mode('tail')\n"
+    "      .on_item_click((key) => { globalThis.rowKey = key; })))\n"
+    "      .child(this.control('older', () => {\n"
+    "        const page = [];\n"
+    "        for (let index = 0; index < 10; index++)\n"
+    "          page.push('p' + this.pages + '-' + index);\n"
+    "        this.pages += 1;\n"
+    "        this.items = page.concat(this.items);\n"
+    "      }))\n"
+    "      .child(this.control('newer', () => {\n"
+    "        this.items = this.items.concat(['m' + (this.items.length + "
+    "1000)]);\n"
+    "      }))\n"
+    "      .child(this.control('take out m7', () => {\n"
+    "        this.items = this.items.filter((key) => key !== 'm7');\n"
+    "      }))\n"
+    "      .child(this.control('grow the last', () => {\n"
+    "        this.tall = this.items[this.items.length - 1];\n"
+    "      }));\n"
+    "  }\n"
+    "}\n";
+
+static void AListFollowingItsTailStaysAtTheEndUntilTheReaderScrollsUp() {
+    LazyListFixture fixture{Str(kTailSource)};
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    utassert(RowKeyIs(&fixture, RowCovering(&fixture, 195.f), "m99"));
+    utassert(RowKeyIs(&fixture, RowCovering(&fixture, 5.f), "m90"));
+
+    ClickEl(&fixture, NthEl(fixture.root, 2));
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    utassert(RowKeyIs(&fixture, RowCovering(&fixture, 195.f), "m1100"));
+
+    ClickEl(&fixture, NthEl(fixture.root, 4));
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    utassert(RowKeyIs(&fixture, RowCovering(&fixture, 145.f), "m1100"));
+
+    float most = ListMaxOffset(&fixture);
+    fixture.ScrollTo(most - 60.f);
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    El* reading = RowCovering(&fixture, 5.f);
+    utassert(reading != nullptr);
+    ClickEl(&fixture, reading);
+    utassert(fixture.Check(StrL(
+        "globalThis.reading = globalThis.rowKey;\n"
+        "if (!globalThis.reading) throw new Error('no row at the top');")));
+    ClickEl(&fixture, NthEl(fixture.root, 2));
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    utassert(fixture
+                 .Check(StrL("if (globalThis.rowKey !== '') {}\n"
+                             "const top = globalThis.reading;\n"
+                             "if (!top) throw new Error('lost the row');")));
+    El* still = RowCovering(&fixture, 5.f);
+    utassert(still != nullptr);
+    ClickEl(&fixture, still);
+    utassert(fixture.Check(StrL(
+        "if (globalThis.rowKey !== globalThis.reading) throw new Error("
+        "'pulled to ' + globalThis.rowKey + ' from ' + globalThis.reading);")));
+
+    fixture.ScrollTo(ListMaxOffset(&fixture) + 1000.f);
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    ClickEl(&fixture, NthEl(fixture.root, 2));
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    utassert(RowKeyIs(&fixture, RowCovering(&fixture, 195.f), "m1102"));
+}
+
+// render.rs a_follow_mode_other_than_normal_or_tail_is_refused.
+static void AFollowModeOtherThanNormalOrTailIsRefused() {
+    LazyListFixture fixture{
+        StrL("import { div, View, list } from 'gpui-kit';\n"
+             "export default class Transcript extends View {\n"
+             "  render() {\n"
+             "    return list('rows', 1, () => 'only', () => div())\n"
+             "      .with_follow_mode('bottom');\n"
+             "  }\n"
+             "}\n")};
+    utassert(fixture.Draw() != nullptr);
+    ScriptView* view = fixture.view.Get(&fixture.app);
+    utassert(view && view->error.IsSet());
+    utassert(view && StrContains(view->error.message,
+                                 StrL("with_follow_mode(mode) expects")));
+    utassert(view && StrContains(view->error.message, StrL("\"normal\"")));
+    utassert(view && StrContains(view->error.message, StrL("\"tail\"")));
+}
+
+// render.rs a_list_reports_its_visible_range_while_following_its_tail.
+static const char kReportingTailSource[] =
+    "import { div, View, list } from 'gpui-kit';\n"
+    "import { Scrollbar, v_flex } from 'gpui-base';\n"
+    "globalThis.reported = 'none';\n"
+    "export default class Rows extends View {\n"
+    "  init() { this.count = 100; }\n"
+    "  render(cx) {\n"
+    "    return v_flex().w(300).h(400).child(\n"
+    "      v_flex().relative().h(200).child(\n"
+    "        list('rows', this.count, (index) => 'r' + index, (index) =>\n"
+    "          div().h(20).child('row ' + index))\n"
+    "        .with_follow_mode('tail')\n"
+    "        .on_visible_range_change((range, count, cx) => {\n"
+    "          globalThis.reported = range.start + '..' + range.end + ' of ' "
+    "+\n"
+    "            count;\n"
+    "          cx.notify();\n"
+    "        }))\n"
+    "      "
+    ".child(Scrollbar.vertical('rows').mode('always').absolute().inset_0()))\n"
+    "    .child(div().h(40).on_click((_event, cx) => {\n"
+    "      this.count += 1; cx.notify();\n"
+    "    }).child('one more'));\n"
+    "  }\n"
+    "}\n";
+
+static void AListReportsItsVisibleRangeWhileFollowingItsTail() {
+    LazyListFixture fixture{Str(kReportingTailSource)};
+    SettleList(&fixture);
+    utassert(!fixture.error.IsSet());
+    utassert(ReportedIs(&fixture, 90, 100, 100));
+
+    ClickEl(&fixture, NthEl(fixture.root, 1));
+    SettleList(&fixture);
+    utassert(ReportedIs(&fixture, 91, 101, 101));
+
+    fixture.ScrollTo(ListMaxOffset(&fixture) - 60.f);
+    SettleList(&fixture);
+    utassert(fixture.Check(
+        StrL("{\n"
+             "const seen = /^(\\d+)\\.\\.(\\d+) of "
+             "(\\d+)$/.exec(globalThis.reported);\n"
+             "if (!seen || Number(seen[2]) >= Number(seen[3])) throw new "
+             "Error('still following ' + globalThis.reported);\n"
+             "globalThis.rangeStart = Number(seen[1]);\n"
+             "globalThis.rangeEnd = Number(seen[2]);\n"
+             "}")));
+
+    ClickEl(&fixture, NthEl(fixture.root, 1));
+    SettleList(&fixture);
+    utassert(fixture.Check(
+        StrL("{\n"
+             "const seen = /^(\\d+)\\.\\.(\\d+) of "
+             "(\\d+)$/.exec(globalThis.reported);\n"
+             "if (!seen || Number(seen[1]) !== globalThis.rangeStart || "
+             "Number(seen[2]) !== globalThis.rangeEnd || Number(seen[3]) !== "
+             "102) throw new Error('moved ' + globalThis.reported);\n"
+             "}")));
+
+    fixture.ScrollTo(ListMaxOffset(&fixture) + 1000.f);
+    SettleList(&fixture);
+    ClickEl(&fixture, NthEl(fixture.root, 1));
+    SettleList(&fixture);
+    utassert(ReportedIs(&fixture, 93, 103, 103));
+}
+
 static void AListCanLoadOlderItemsWhenTheReaderReachesTheTop() {
     LazyListFixture fixture{Str(kOlderPageSource)};
     SettleList(&fixture);
@@ -6177,6 +6374,9 @@ void TestShellCore() {
     AListReportsItsVisibleRangeHoweverItChanged();
     AListReportsOnlyItemsVisibleAfterItsPadding();
     AListCanLoadOlderItemsWhenTheReaderReachesTheTop();
+    AListFollowingItsTailStaysAtTheEndUntilTheReaderScrollsUp();
+    AFollowModeOtherThanNormalOrTailIsRefused();
+    AListReportsItsVisibleRangeWhileFollowingItsTail();
     ATextareaThatSubmitsOnEnterKeepsTheLineBreakForShiftEnter();
     LazyListsShareTheItemBudgetAndRefuseNesting();
     EveryCloseDismissesBeforeItCloses();

@@ -2465,7 +2465,7 @@ static bool IsBehavior(Str name) {
         "open\0default_open\0overlay_closable\0anchor\0mouse_button\0"
         "open_delay\0close_delay\0transition\0spring\0selectable\0"
         "scrollable\0"
-        "with_item_to_measure_index\0close\0"
+        "with_item_to_measure_index\0with_follow_mode\0close\0"
         "key_context\0aria_level\0keep_mounted\0"
         "readonly\0invalid\0focus_ring\0aria_label\0masked\0placeholder\0"
         "content_type\0align\0label\0icon\0variant\0loading\0outline\0"
@@ -4318,6 +4318,20 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                     len(name), name.s);
                 ArenaDelete(arena);
                 return thrown;
+            }
+        }
+        if (StrEq(name, StrL("with_follow_mode"))) {
+            // Anything else would leave the list in whichever mode it was
+            // in, with nothing on screen to say why it is not following.
+            Str mode =
+                argCount == 1 && op.args[0].kind == shell::BridgedKind::String
+                    ? op.args[0].string
+                    : Str{};
+            if (!StrEq(mode, StrL("normal")) && !StrEq(mode, StrL("tail"))) {
+                ArenaDelete(arena);
+                return JS_ThrowTypeError(
+                    ctx,
+                    "with_follow_mode(mode) expects \"normal\" or \"tail\"");
             }
         }
         if (StrEq(name, StrL("role"))) {

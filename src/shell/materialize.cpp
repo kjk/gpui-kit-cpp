@@ -50,6 +50,15 @@
 
 namespace gpui {
 
+// GPUI's FollowMode. Unset is the default, which is Normal, and is distinct
+// from an explicit "normal": only a call the script wrote warns on a list
+// that has no follow mode.
+enum class ShellFollowMode : uint8_t {
+    Unset,
+    Normal,
+    Tail
+};
+
 struct MaterialBehavior {
     Str key;
     Str accessibilityLabel;
@@ -86,6 +95,7 @@ struct MaterialBehavior {
     bool hasPosition = false;
     int itemToMeasure = 0;
     bool hasItemToMeasure = false;
+    ShellFollowMode followMode = ShellFollowMode::Unset;
     PopupAnchor anchor = PopupAnchor::TopLeft;
     bool hasAnchor = false;
     float fpsFrameBudget = 0;
@@ -464,6 +474,12 @@ static void ResolveBehavior(const shell::SpecNode* node,
         } else if (StrEq(op.name, StrL("with_item_to_measure_index"))) {
             out->itemToMeasure = (int)AsNumber(op, 0);
             out->hasItemToMeasure = true;
+        } else if (StrEq(op.name, StrL("with_follow_mode"))) {
+            Str mode = AsString(op, 0);
+            if (StrEq(mode, StrL("tail")))
+                out->followMode = ShellFollowMode::Tail;
+            else if (StrEq(mode, StrL("normal")))
+                out->followMode = ShellFollowMode::Normal;
         } else if (StrEq(op.name, StrL("key_context"))) {
             out->keyContext = AsString(op, 0);
         } else if (StrEq(op.name, StrL("aria_level"))) {
@@ -1197,6 +1213,13 @@ static const float kListOverdraw = 160;
 // `UniformListScrollHandle` for one list and `ListState` for the other, which
 // upstream files under `use_keyed_state` so they outlive the description.
 // Window keyed state under the list's id does the same here.
+// GPUI's FollowState, without the third "paused but still Tail" being its
+// own enum: Tail plus `following` is that case.
+enum class ListFollow : uint8_t {
+    Normal,
+    Tail
+};
+
 struct LazyListState {
     // ListState's logical top: the item at the viewport's start and how far
     // into it. Pixel offset is derived from measured heights, so unmeasured
@@ -1212,6 +1235,15 @@ struct LazyListState {
     // False until the first build, which adopts the script's count the way
     // ListState::new(item_count) does. A later change is a splice.
     bool placed = false;
+    // FollowMode::Tail, and whether the reader is still at the end. Setting
+    // Tail scrolls to the end, so `followsTail` records the last request and
+    // the mode is applied only when that request changes. Scrolling up clears
+    // `following` without clearing the mode; arriving back at the end sets it
+    // again. `viewport` is the last laid-out height, so a scroll can clamp.
+    ListFollow follow = ListFollow::Normal;
+    bool following = false;
+    bool followsTail = false;
+    float viewport = 0;
     // The item at the top after the last build, by the key get_key returned.
     // A new get_key callback means the script rendered again, so the key is
     // asked for again.
@@ -1402,10 +1434,140 @@ static void OnLazyListScroll(ScriptView*, Ctx* cx, const ScrollEvent* event,
                              int64_t key) {
     LazyListState* state = KeyedState<LazyListState>(cx, (uint32_t)key);
     if (!state || !event) return;
-    state->offset = event->offsetY;
+    // The window clamps a wheel to the measured content. Do the same here so
+    // a scroll handed the unclamped distance still lands on an item.
+    float next = event->offsetY;
+    if (next < 0) next = 0;
+    if (state->viewport > 0) {
+        float content = VirtualListContentSize(
+            state->measured.len ? state->measured.els : nullptr,
+            state->itemCount);
+        float most = content - state->viewport;
+        if (most < 0) most = 0;
+        if (next > most) next = most;
+    }
+    // Scrolling toward the start pauses tail following. Scrolling on toward
+    // the end does not: arriving back at the end resumes it on the next
+    // layout, which is what FollowMode::Tail does.
+    bool towardStart = next + 0.5f < state->offset;
+    state->offset = next;
     VirtualListLogicalFromPixel(
         state->measured.len ? state->measured.els : nullptr, state->itemCount,
-        state->rowH, event->offsetY, &state->topItem, &state->topInto);
+        state->rowH, next, &state->topItem, &state->topInto);
+    if (state->follow == ListFollow::Tail && towardStart) {
+        state->following = false;
+    }
+}
+
+// Runs ahead of the list's own prePaint while FollowMode is Tail. The
+// viewport is known here, which is when GPUI's layout walks back from the
+// end and pins the last item to the bottom. Measuring goes through the same
+// item renderer the list binds with; the sizes land in the retained table
+// the list reads.
+struct ListFollowHook {
+    void (*inner)(PaintCtx*, El*, void*) = nullptr;
+    void* innerUser = nullptr;
+    LazyListState* state = nullptr;
+    ShellRuntime* runtime = nullptr;
+    shell::CallbackId render = 0;
+    shell::CallbackId getKey = 0;
+    shell::CallbackId onItemClick = 0;
+    shell::CallbackId onItemSecondaryClick = 0;
+    Arena* arena = nullptr;
+    App* app = nullptr;
+    Window* window = nullptr;
+};
+
+static float MeasureFollowItem(PaintCtx* ctx, ListFollowHook* hook, int ix) {
+    Ctx cx = {};
+    cx.app = hook->app;
+    cx.win = hook->window;
+    cx.a = hook->arena;
+    El* probe = nullptr;
+    if (hook->runtime) {
+        hook->runtime->RenderVirtualItems(
+            hook->render, hook->getKey, hook->onItemClick,
+            hook->onItemSecondaryClick, ix, ix + 1, &cx, &probe);
+    }
+    if (!probe) return 1.f;
+    float got = MeasureEl(ctx, probe).h;
+    if (got <= 0) got = 1.f;
+    return got;
+}
+
+// ListState::scroll_to_end: the logical top is past the last item, and layout
+// walks backward until the viewport is full, so the bottom of the last item
+// stays in view while that item grows. The overdraw above is measured too,
+// or a wheel would have no measured ground to scroll into.
+static void StickListToTail(PaintCtx* ctx, ListFollowHook* hook,
+                            float viewport) {
+    LazyListState* state = hook->state;
+    int count = state->itemCount;
+    float* sizes = state->measured.len ? state->measured.els : nullptr;
+    if (count <= 0 || !sizes) {
+        state->topItem = 0;
+        state->topInto = 0;
+        state->offset = 0;
+        return;
+    }
+    float budget = viewport + kListOverdraw;
+    if (budget < viewport) budget = viewport;
+    float filled = 0;
+    int ix = count;
+    while (ix > 0 && filled < budget) {
+        ix--;
+        float h = MeasureFollowItem(ctx, hook, ix);
+        sizes[ix] = h;
+        filled += h;
+    }
+    float content = VirtualListContentSize(sizes, count);
+    float most = content - viewport;
+    if (most < 0) most = 0;
+    int top = 0;
+    float into = 0;
+    VirtualListLogicalFromPixel(sizes, count, 0, most, &top, &into);
+    state->topItem = top;
+    state->topInto = into;
+    state->offset = most;
+}
+
+static bool ListAtMeasuredEnd(const LazyListState* state, float viewport) {
+    if (!state) return false;
+    const float* sizes = state->measured.len ? state->measured.els : nullptr;
+    float content = VirtualListContentSize(sizes, state->itemCount);
+    float pixel = VirtualListPixelFromLogical(sizes, state->itemCount,
+                                              state->topItem, state->topInto);
+    // GPUI checks after the visible items have been measured. A splice drops
+    // every height, so the pixel offset from before that drop is not a
+    // position in the new table.
+    return pixel + viewport >= content - 1.f;
+}
+
+static void ListFollowPrePaint(PaintCtx* ctx, El* e, void* user) {
+    auto* hook = (ListFollowHook*)user;
+    if (!hook) return;
+    float viewport = e && e->h > 0 ? e->h : 0;
+    if (hook->state) hook->state->viewport = viewport;
+    LazyListState* state = hook->state;
+    bool wasFollowing = state && state->following;
+    if (wasFollowing) {
+        StickListToTail(ctx, hook, viewport);
+        VirtualListSetLogicalTop(hook->innerUser, state->topItem,
+                                 state->topInto);
+    }
+    if (hook->inner) hook->inner(ctx, e, hook->innerUser);
+    // At the bottom of what this frame measured, Tail starts again. Snapping
+    // to the real end is this same frame: the rows just bound were the ones
+    // the reader had scrolled to, and a following list does not stay there.
+    if (!wasFollowing && state && state->follow == ListFollow::Tail &&
+        ListAtMeasuredEnd(state, viewport)) {
+        state->following = true;
+        StickListToTail(ctx, hook, viewport);
+        VirtualListSetLogicalTop(hook->innerUser, state->topItem,
+                                 state->topInto);
+        if (hook->inner) hook->inner(ctx, e, hook->innerUser);
+    }
+    if (state && e) state->offset = e->scrollY;
 }
 
 static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
@@ -1426,6 +1588,12 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
         logf(
             "shell: on_visible_range_change is ignored on a uniform_list: it "
             "is list that reports its visible range after the frame\n");
+    }
+    if (uniform && behavior.followMode != ShellFollowMode::Unset) {
+        logf(
+            "shell: with_follow_mode is ignored on a uniform_list: GPUI's "
+            "uniform list has no follow mode. It is list that follows its "
+            "tail\n");
     }
     if (!uniform && behavior.hasItemToMeasure) {
         logf(
@@ -1479,10 +1647,27 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
         return VirtualList::New(cx, spec->id, opts)->SizeFull();
     }
 
+    // Only when the request changes. Setting Tail scrolls to the end, so
+    // doing it every frame would undo the scroll that paused following.
+    bool wantTail = behavior.followMode == ShellFollowMode::Tail;
+    if (state->followsTail != wantTail) {
+        state->followsTail = wantTail;
+        if (wantTail) {
+            state->follow = ListFollow::Tail;
+            state->following = true;
+            state->topItem = count;
+            state->topInto = 0;
+        } else {
+            state->follow = ListFollow::Normal;
+            state->following = false;
+        }
+    }
     if (!state->placed) {
         state->placed = true;
-        if (state->topItem >= count) state->topItem = 0;
-    } else if (state->itemCount != count) {
+        if (!state->following && state->topItem >= count) state->topItem = 0;
+    } else if (state->itemCount != count && !state->following) {
+        // A list that is following is put at the end by its own layout.
+        // Scrolling it to the remembered item would stop it following.
         SpliceListCount(runtime, state, spec->getKey, count, cx);
     }
     if (state->itemCount != count) {
@@ -1490,7 +1675,10 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
         for (int i = 0; i < count; i++) VecAppend(state->measured, 0.f);
         state->itemCount = count;
     }
-    RememberListTop(runtime, state, spec->getKey, count, cx);
+    if (state->following)
+        ClearListTop(state);
+    else
+        RememberListTop(runtime, state, spec->getKey, count, cx);
     VirtualListOpts opts;
     opts.count = count;
     opts.sizes = state->measured.len ? state->measured.els : nullptr;
@@ -1504,6 +1692,22 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
     opts.scrollId = scrollId;
     opts.onScroll = onScroll;
     El* list = VirtualList::New(cx, spec->id, opts)->SizeFull();
+    if (state->follow == ListFollow::Tail) {
+        auto* follow = ArenaNew<ListFollowHook>(cx->a);
+        follow->inner = list->prePaint;
+        follow->innerUser = list->customUser;
+        follow->state = state;
+        follow->runtime = runtime;
+        follow->render = spec->renderItems;
+        follow->getKey = spec->getKey;
+        follow->onItemClick = behavior.onItemClick;
+        follow->onItemSecondaryClick = behavior.onItemSecondaryClick;
+        follow->arena = cx->a;
+        follow->app = cx->app;
+        follow->window = cx->win;
+        list->prePaint = &ListFollowPrePaint;
+        list->customUser = follow;
+    }
     if (behavior.onVisibleRangeChange || state->hasReported) {
         auto* hook = ArenaNew<ListRangeHook>(cx->a);
         hook->inner = list->prePaint;
@@ -2287,6 +2491,16 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                 logf(
                     "shell: on_visible_range_change is ignored on a %s: it "
                     "is list that reports its visible range after the frame\n",
+                    list->axis == Axis::Horizontal ? StrL("h_virtual_list")
+                                                   : StrL("v_virtual_list"));
+            }
+            if (behavior.followMode != ShellFollowMode::Unset) {
+                logf(
+                    "shell: with_follow_mode is ignored on a %s: it places "
+                    "rows by the sizes the script states and has no follow "
+                    "mode. `scroll_to_bottom` on its "
+                    "VirtualListScrollHandle is how a script keeps it at "
+                    "the end\n",
                     list->axis == Axis::Horizontal ? StrL("h_virtual_list")
                                                    : StrL("v_virtual_list"));
             }
