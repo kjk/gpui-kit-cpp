@@ -38,6 +38,9 @@ float PlatCaretWidth() {
 bool PlatScrollBounce() {
     return true;
 }
+bool PlatCleanOnEscape() {
+    return false;
+}
 bool PlatScrollBounceTouch() {
     return true;
 }

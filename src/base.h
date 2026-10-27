@@ -202,6 +202,9 @@ bool PlatTitleBarCloseIsElement();
 // caret onto the device pixel grid so that width stays one device pixel.
 float PlatCaretWidth();
 bool PlatScrollBounce();
+// Android delivers its back button as Escape, so clean_on_escape must not
+// clear the field there. iOS has no back button; Escape still clears.
+bool PlatCleanOnEscape();
 // The UIScrollView feel (tracking 0.55, no stretch cap). iOS and Android.
 // macOS bounces too, with the NSScrollView feel, so this is not that.
 bool PlatScrollBounceTouch();

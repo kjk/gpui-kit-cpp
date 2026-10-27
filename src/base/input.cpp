@@ -8752,7 +8752,9 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                 InputDismissTouchSelection(s, app, win);
                 return true;
             }
-            if (s->cleanOnEscape) {
+            // Android's back arrives as Escape and leaves the text alone, so
+            // the app's own back handling can run. Other platforms still clear.
+            if (s->cleanOnEscape && PlatCleanOnEscape()) {
                 InputClean(s, app, win);
                 return true;
             }

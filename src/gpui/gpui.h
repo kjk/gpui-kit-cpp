@@ -5161,6 +5161,8 @@ struct InputState {
     // Atomic inline tokens. Owned; created on first use. Coordinates are
     // UTF-8 byte ranges of `text`.
     struct InlineTokenStore* tokens = nullptr;
+    // Escape clears the field. Not on Android, where Escape is also back
+    // (PlatCleanOnEscape).
     bool cleanOnEscape = false;
     bool submitOnEnter = false;
     // Input/Editor/Textarea::on_paste. The current frame's themed facade sets

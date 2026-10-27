@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `83e84e458c3d5e25bed1a53dda92076a14e6bf32` (2026-10-16,
-input: Report a masked input as a password field to screen readers (#3555)).
-A masked input with no content type is a password field to screen
-readers. An explicit content type, or a role override, still wins, and
-revealing the text keeps the plain text role.
+Processed through `7a279cdba80ca34e5c4e1c10a649aec4596c324e` (2026-10-16,
+input: Keep the text on Android's back button with clean_on_escape (#3556)).
+On Android, Escape is the back button, so a field set to clear on
+Escape leaves the text and lets the key propagate. Other platforms,
+iOS included, still clear.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
