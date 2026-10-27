@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `41acc8a40b3c85c43ea80b972be9925d06b567a9` (2026-10-18,
-shell: Add with_follow_mode to make a list follow its tail (#3548)).
-`list(...).with_follow_mode("tail")` opens at the end and stays there as
-items are added and as the last one grows, until the reader scrolls up.
+Processed through `7f46cdf26ecfd5aece89bb30fb22e4a7d33aa615` (2026-10-18,
+text: Break the line where an HTML `<br>` stands (#3569)).
+A `<br>` is a newline in the paragraph being built. One trailing break at
+the end of a text block adds no line, and a break on its own stays.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

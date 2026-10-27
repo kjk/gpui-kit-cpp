@@ -459,11 +459,101 @@ static void TestHtmlComments(Arena* a) {
     utassert(TextIs(a, Child(doc, 0), "shown"));
 }
 
-// <br> is a hard break inside the flow, which the renderer starts a new row
-// on; the tree carries it as a newline in the run.
+// The node whose runs hold the text of one HTML text block. A list item and
+// a table cell keep theirs on the item and the cell.
+static MdNode* HtmlTextBlock(MdNode* doc) {
+    MdNode* node = Child(doc, 0);
+    if (node && node->kind == MdKind::List) node = Child(node, 0);
+    if (node && node->kind == MdKind::Table) {
+        node = Child(Child(node, 0), 0);
+    }
+    return node;
+}
+
+// html.rs test_br_breaks_the_line_where_it_stands. A <br> is a newline where
+// it stands. One that ends a block adds no line, and a break on its own stays.
 static void TestHtmlBreak(Arena* a) {
-    MdNode* doc = HtmlParse(a, StrL("<p>one<br>two</p>"));
-    utassert(TextIs(a, Child(doc, 0), "one\ntwo"));
+    utassert(TextIs(a, Child(HtmlParse(a, StrL("<p>one<br>two</p>")), 0),
+                    "one\ntwo"));
+    utassert(TextIs(a, Child(HtmlParse(a, StrL("one<br>two<br><br>three")), 0),
+                    "one\ntwo\n\nthree"));
+    utassert(TextIs(a, Child(HtmlParse(a, StrL("<b>one<br>two</b>")), 0),
+                    "one\ntwo"));
+    utassert(TextIs(a, Child(HtmlParse(a, StrL("<p>one <br> two</p>")), 0),
+                    "one\ntwo"));
+    utassert(TextIs(a, Child(HtmlParse(a, StrL("<p>one<br></p>")), 0), "one"));
+    utassert(
+        TextIs(a, Child(HtmlParse(a, StrL("<p>one<br><br></p>")), 0), "one\n"));
+    utassert(TextIs(a, Child(HtmlParse(a, StrL("<br>")), 0), "\n"));
+}
+
+// html.rs test_br_that_ends_inline_markup. The break joins the text before
+// it, and at the end of the block it still adds no line. The mark covers
+// the text that stayed.
+static void TestHtmlBreakEndsInlineMarkup(Arena* a) {
+    const char* tags[] = {"b", "span"};
+    for (const char* tag : tags) {
+        Str name = Str(tag);
+        Str closed = fmt("<p><%s>one<br></%s></p>", name, name);
+        Str twice = fmt("<p><%s>one<br><br></%s></p>", name, name);
+        Str split = fmt("<p><%s>one<br>two</%s></p>", name, name);
+        utassert(TextIs(a, Child(HtmlParse(a, closed), 0), "one"));
+        utassert(TextIs(a, Child(HtmlParse(a, twice), 0), "one\n"));
+        utassert(TextIs(a, Child(HtmlParse(a, split), 0), "one\ntwo"));
+    }
+    utassert(TextIs(a, Child(HtmlParse(a, StrL("<p>one<b><br></b></p>")), 0),
+                    "one"));
+    utassert(TextIs(
+        a, Child(HtmlParse(a, StrL("<p><b>one<br></b><br></p>")), 0), "one\n"));
+    MdNode* marked = Child(HtmlParse(a, StrL("<p><b>one<br></b></p>")), 0);
+    utassert(TextIs(a, marked, "one"));
+    utassert(MarksOf(marked, "one") == MdBold);
+}
+
+// html.rs test_literal_trailing_line_feeds_are_preserved. A typed line feed
+// stays. Only an HTML break that ends the block is dropped.
+static void TestHtmlLiteralTrailingLineFeeds(Arena* a) {
+    const char* html[] = {
+        "<pre>one\n</pre>",           "<pre>one\n\n</pre>",
+        "<pre>one\n<br></pre>",       "<pre>one<br>\n</pre>",
+        "<textarea>one\n</textarea>",
+    };
+    const char* want[] = {"one\n", "one\n\n", "one\n", "one\n\n", "one\n"};
+    for (int i = 0; i < 5; i++) {
+        utassert(TextIs(a, Child(HtmlParse(a, Str(html[i])), 0), want[i]));
+    }
+}
+
+// html.rs test_trailing_breaks_at_text_block_boundaries.
+static void TestHtmlTrailingBreaksAtTextBlocks(Arena* a) {
+    const char* tags[] = {"p", "h1", "h6", "td", "th", "li"};
+    const char* content[] = {
+        "one<br>",        "one<br><br>",
+        "<b>one<br></b>", "<span>one<br><br></span>",
+        "one<br>two",     "one<br><span></span>",
+    };
+    const char* want[] = {"one", "one\n", "one", "one\n", "one\ntwo", "one"};
+    for (const char* tag : tags) {
+        for (int i = 0; i < 6; i++) {
+            Str name = Str(tag);
+            Str inner = Str(content[i]);
+            Str html;
+            if (StrEq(name, "td") || StrEq(name, "th")) {
+                html = fmt("<table><tr><%s>%s</%s></tr></table>", name, inner,
+                           name);
+            } else if (StrEq(name, "li")) {
+                html = fmt("<ul><li>%s</li></ul>", inner);
+            } else {
+                html = fmt("<%s>%s</%s>", name, inner, name);
+            }
+            MdNode* block = HtmlTextBlock(HtmlParse(a, html));
+            utassert(TextIs(a, block, want[i]));
+            for (MdRun* run = block ? block->runFirst : nullptr; run;
+                 run = run->next) {
+                utassert(len(run->text) > 0 || len(run->imgSrc) > 0);
+            }
+        }
+    }
 }
 
 static void TestMarkdownSoftBreak(Arena* a) {
@@ -7434,6 +7524,9 @@ void TestTextView() {
     TestHtmlUnbalanced(a);
     TestHtmlComments(a);
     TestHtmlBreak(a);
+    TestHtmlBreakEndsInlineMarkup(a);
+    TestHtmlLiteralTrailingLineFeeds(a);
+    TestHtmlTrailingBreaksAtTextBlocks(a);
     TestMarkdownHardBreak(a);
     TestMarkdownSoftBreak(a);
     TestHtmlImage(a);

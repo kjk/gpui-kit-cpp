@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "41acc8a40b3c85c43ea80b972be9925d06b567a9",
+  sha: "7f46cdf26ecfd5aece89bb30fb22e4a7d33aa615",
   date: "2026-10-18",
-  subject: "shell: Add with_follow_mode to make a list follow its tail (#3548)",
+  subject: "text: Break the line where an HTML `<br>` stands (#3569)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

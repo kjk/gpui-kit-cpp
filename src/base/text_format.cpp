@@ -309,6 +309,9 @@ struct Project {
     // comment or element before that text means the line feed stays.
     bool rawDropLf = false;
     bool tableHead = false;
+    // The open text block's last addition was an HTML <br>. take() drops
+    // that one break; a literal line feed does not set this.
+    bool endsWithBreak = false;
 };
 
 static MdNode* NewMd(Project* p, MdKind kind) {
@@ -323,14 +326,78 @@ static MdNode* NewMd(Project* p, MdKind kind) {
     return node;
 }
 
+static bool TextKind(MdKind kind) {
+    return kind == MdKind::Paragraph || kind == MdKind::Heading ||
+           kind == MdKind::Cell || kind == MdKind::Code || kind == MdKind::Item;
+}
+
+// The node receiving runs, without opening a paragraph to find it.
+static MdNode* OpenText(Project* p) {
+    if (TextKind(p->cur->kind)) return p->cur;
+    return p->para;
+}
+
 static MdNode* TextTarget(Project* p) {
-    MdKind kind = p->cur->kind;
-    if (kind == MdKind::Paragraph || kind == MdKind::Heading ||
-        kind == MdKind::Cell || kind == MdKind::Code || kind == MdKind::Item) {
-        return p->cur;
-    }
+    if (TextKind(p->cur->kind)) return p->cur;
     if (!p->para) p->para = NewMd(p, MdKind::Paragraph);
     return p->para;
+}
+
+static void DropLastRun(MdNode* node) {
+    if (!node || !node->runFirst) return;
+    if (node->runFirst == node->runLast) {
+        node->runFirst = nullptr;
+        node->runLast = nullptr;
+        return;
+    }
+    MdRun* prev = node->runFirst;
+    while (prev->next && prev->next != node->runLast) prev = prev->next;
+    prev->next = nullptr;
+    node->runLast = prev;
+}
+
+static void ShortenRun(MdRun* run) {
+    if (!run || len(run->text) <= 0) return;
+    run->text = Str(run->text.s, len(run->text) - 1);
+}
+
+// html.rs trim_trailing_break. A paragraph that is only the break stays,
+// so Markdown's inline-HTML parser still sees a lone <br>.
+static void TrimTrailingBreak(MdNode* node) {
+    if (!node || !node->runLast) return;
+    MdRun* only = node->runFirst;
+    if (only == node->runLast && len(only->imgSrc) == 0 &&
+        len(only->text) == 1 && only->text.s[0] == '\n') {
+        return;
+    }
+    MdRun* last = node->runLast;
+    if (len(last->imgSrc) > 0 || len(last->text) <= 0) return;
+    if (last->text.s[len(last->text) - 1] != '\n') return;
+    if (len(last->text) == 1)
+        DropLastRun(node);
+    else
+        ShortenRun(last);
+}
+
+static void FlushBreak(Project* p) {
+    if (!p->endsWithBreak) return;
+    TrimTrailingBreak(OpenText(p));
+    p->endsWithBreak = false;
+}
+
+// The minifier treats <br> as a block, so the spaces on either side are
+// not content. This pass does not minify first; it drops that one space.
+static void StripSpaceBeforeBreak(Project* p) {
+    if (p->raw) return;
+    MdNode* node = OpenText(p);
+    if (!node || !node->runLast) return;
+    MdRun* last = node->runLast;
+    if (len(last->imgSrc) > 0 || len(last->text) <= 0) return;
+    if (last->text.s[len(last->text) - 1] != ' ') return;
+    if (len(last->text) == 1)
+        DropLastRun(node);
+    else
+        ShortenRun(last);
 }
 
 static bool TargetEmpty(Project* p) {
@@ -356,6 +423,7 @@ static void AddRun(Project* p, Str text) {
     else
         target->runFirst = run;
     target->runLast = run;
+    p->endsWithBreak = false;
 }
 
 static void AddText(Project* p, Str text) {
@@ -384,7 +452,12 @@ static void AddText(Project* p, Str text) {
     }
     bool empty = TargetEmpty(p);
     int start = empty && n > 0 && out[0] == ' ' ? 1 : 0;
+    // A space after <br> is the gap the minifier trims, not a word.
+    if (p->endsWithBreak) {
+        while (start < n && out[start] == ' ') start++;
+    }
     if (n - start == 1 && out[start] == ' ' && empty) return;
+    if (n - start <= 0) return;
     out[n] = 0;
     AddRun(p, Str(out + start, n - start));
 }
@@ -461,10 +534,25 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
         return;
     }
     if (StrEqI(name, "br")) {
+        StripSpaceBeforeBreak(p);
         AddRun(p, StrL("\n"));
+        p->endsWithBreak = true;
+        return;
+    }
+    if (StrEqI(name, "textarea")) {
+        // html5ever keeps a textarea's line feeds. A collapsed pass would
+        // turn the trailing one into a space.
+        bool oldRaw = p->raw;
+        bool oldDrop = p->rawDropLf;
+        p->raw = true;
+        p->rawDropLf = true;
+        ProjectChildren(p, source);
+        p->raw = oldRaw;
+        p->rawDropLf = oldDrop;
         return;
     }
     if (StrEqI(name, "hr")) {
+        FlushBreak(p);
         p->para = nullptr;
         NewMd(p, MdKind::Rule);
         return;
@@ -484,6 +572,7 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
     MdKind kind = MdKind::Group;
     uint8_t level = 0;
     if (BlockKind(p->a, source, &kind, &level)) {
+        FlushBreak(p);
         p->para = nullptr;
         MdNode* parent = p->cur;
         MdNode* node = NewMd(p, kind);
@@ -517,6 +606,7 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
             }
         }
         ProjectChildren(p, source);
+        FlushBreak(p);
         p->cur = parent;
         p->para = nullptr;
         p->raw = oldRaw;
@@ -571,6 +661,7 @@ void HtmlParseInto(Arena* a, MdNode* parent, Str source) {
     project.a = a;
     project.cur = parent;
     ProjectNode(&project, dom);
+    FlushBreak(&project);
 }
 
 MdNode* HtmlParse(Arena* a, Str source) {
@@ -584,6 +675,7 @@ MdNode* HtmlParse(Arena* a, Str source) {
     project.a = a;
     project.cur = doc;
     ProjectNode(&project, dom);
+    FlushBreak(&project);
     return doc;
 }
 
