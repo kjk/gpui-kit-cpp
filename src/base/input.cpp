@@ -9136,9 +9136,17 @@ void InputSetSearchQuery(InputState* s, App* app, Window* win, Str query,
     if (!s) {
         return;
     }
+    // A changed query or case mode starts at the viewport. The same query
+    // and case again keep the occurrence the reader is already on.
+    bool queryChanged = !StrEq(query, s->search.query) ||
+                        insensitive != s->search.caseInsensitive;
+    s->search.anchorOffset = queryChanged ? FirstVisibleOffset(s) : -1;
     s->search.active = true;
     SearchSessionSetQuery(&s->search, query, insensitive);
     SearchMatcherUpdate(&s->search.matcher, InputValue(s));
+    if (queryChanged && s->search.anchorOffset >= 0) {
+        SearchMatcherCursorByOffset(&s->search.matcher, s->search.anchorOffset);
+    }
     Notify(app, win);
 }
 

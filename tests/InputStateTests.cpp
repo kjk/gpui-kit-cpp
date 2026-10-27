@@ -4429,6 +4429,105 @@ static void ACancelledPreeditSeparatesTyping() {
     utassert(ValueIs(s, ""));
 }
 
+static Str NeedleRows() {
+    StrBuilder text;
+    for (int row = 0; row < 180; row++) {
+        if (row) {
+            text.AppendChar('\n');
+        }
+        if (row == 20 || row == 90) {
+            text.Append(fmt("Needle on row %d", row));
+        } else if (row == 140) {
+            text.Append(fmt("needle on row %d", row));
+        } else {
+            text.Append(fmt("line %d", row));
+        }
+    }
+    return text.TakeStr();
+}
+
+static int FindSpan(Str text, const char* needle) {
+    int n = (int)strlen(needle);
+    for (int i = 0; i + n <= len(text); i++) {
+        if (memcmp(text.s + i, needle, (size_t)n) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// editor.rs custom_search_fresh_query_replaces_viewport_match_and_undoes,
+// and custom_search_case_change_reanchors_replacement_to_viewport.
+// set_search_query anchors a new query or a case change at the scrolled row.
+static void CustomSearchAnchorsAChangedQueryToTheViewport() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    s.searchable = false;
+    Str doc = NeedleRows();
+    InputSetValue(&s, doc);
+    s.lastLineH = 20;
+    s.scrollY = 80.f * 20.f;
+    int middle = FindSpan(doc, "Needle on row 90");
+    int first = FindSpan(doc, "Needle on row 20");
+    utassert(middle > first && first >= 0);
+
+    InputSetSearchQuery(&s, nullptr, nullptr, StrL("needle"), true);
+    utassert(s.search.active);
+    utassert(!s.search.open);
+    Selection cur = {};
+    utassert(SearchMatcherCurrent(&s.search.matcher, &cur));
+    utassert(cur.start == middle);
+    utassert(InputSearchReplaceOne(&s, nullptr, nullptr, StrL("found")));
+    Str after = InputValue(&s);
+    utassert(memcmp(after.s + middle, "found", 5) == 0);
+    utassert(memcmp(after.s + first, "Needle", 6) == 0);
+
+    InputSetValue(&s, doc);
+    s.scrollY = 0;
+    InputSetSearchQuery(&s, nullptr, nullptr, StrL("Needle"), true);
+    s.scrollY = 80.f * 20.f;
+    InputSetSearchQuery(&s, nullptr, nullptr, StrL("Needle"), false);
+    utassert(SearchMatcherLen(&s.search.matcher) == 2);
+    utassert(!s.search.open);
+    utassert(SearchMatcherCurrent(&s.search.matcher, &cur));
+    utassert(cur.start == middle);
+    utassert(InputSearchReplaceOne(&s, nullptr, nullptr, StrL("found")));
+    after = InputValue(&s);
+    utassert(memcmp(after.s + middle, "found", 5) == 0);
+    utassert(memcmp(after.s + first, "Needle", 6) == 0);
+    StrFree(doc);
+}
+
+// editor.rs
+// custom_search_retained_query_resumes_navigation_after_manual_scroll.
+static void CustomSearchKeepsTheOccurrenceWhenTheQueryDoesNotChange() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    s.searchable = false;
+    Str doc = NeedleRows();
+    InputSetValue(&s, doc);
+    s.lastLineH = 20;
+    int middle = FindSpan(doc, "Needle on row 90");
+    int last = FindSpan(doc, "needle on row 140");
+    InputSetSearchQuery(&s, nullptr, nullptr, StrL("needle"), true);
+    Selection range = {};
+    utassert(InputSearchNext(&s, nullptr, nullptr, &range));
+    utassert(range.start == middle && range.end == middle + 6);
+    utassert(InputSearchNext(&s, nullptr, nullptr, &range));
+    utassert(range.start == last && range.end == last + 6);
+    utassert(InputSearchPrev(&s, nullptr, nullptr, &range));
+    utassert(range.start == middle && range.end == middle + 6);
+    InputCloseSearch(&s, nullptr, nullptr);
+    s.scrollY = 10000;
+    InputSetSearchQuery(&s, nullptr, nullptr, StrL("needle"), true);
+    utassert(SearchMatcherIndex(&s.search.matcher) == 1);
+    utassert(!s.search.open);
+    utassert(InputSearchReplaceOne(&s, nullptr, nullptr, StrL("found")));
+    Str after = InputValue(&s);
+    utassert(memcmp(after.s + middle, "found", 5) == 0);
+    StrFree(doc);
+}
+
 // state.rs test_closed_search_resyncs_matches_after_edits (#3260): a closed
 // search does not rescan on each edit, and navigating it rescans first.
 static void ClosedSearchResyncsMatchesAfterEdits() {
@@ -11572,6 +11671,8 @@ void TestInputState() {
     AHandledConfirmClosesTheMenus();
     ACancelledPreeditSeparatesTyping();
     ClosedSearchResyncsMatchesAfterEdits();
+    CustomSearchAnchorsAChangedQueryToTheViewport();
+    CustomSearchKeepsTheOccurrenceWhenTheQueryDoesNotChange();
     RequestingCodeActionsAgainReplacesTheOpenMenu();
     TheHostSeesTheDocumentFirst();
     DefinitionResponsesGrowPastTheOldBuffer();

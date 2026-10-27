@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6706b2152b856f69a8a2461b0926a7f880c33d7c` (2026-10-19,
-input: keep caret rows visible in constrained viewports (#3583)).
-Caret follow reserves the visual row before any surrounding-line
-padding, so a one-row field keeps the edited line inside. A focused
-caret that was on screen stays vertically visible across a resize
-until a scroll moves the offset.
+Processed through `0660be4cc6b8edc783e6c833f20d509c9a8ed270` (2026-10-19,
+input: anchor custom search queries to the viewport (#3584)).
+A custom Find that changes its query or case mode starts at the first
+visible row. Setting the same query and case again keeps the occurrence
+the reader is already on, including after the panel is closed and the
+document is scrolled by hand.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6706b2152b856f69a8a2461b0926a7f880c33d7c",
+  sha: "0660be4cc6b8edc783e6c833f20d509c9a8ed270",
   date: "2026-10-19",
-  subject: "input: keep caret rows visible in constrained viewports (#3583)",
+  subject: "input: anchor custom search queries to the viewport (#3584)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

@@ -6047,7 +6047,9 @@ void InputCloseSearch(InputState* s, App* app, Window* win);
 bool InputIsReplaceable(const InputState* s);
 void InputSetSearchReplaceMode(InputState* s, App* app, Window* win, bool on);
 // set_search_query: highlight matches. This is the entry point for a custom
-// search UI: it needs neither searchable nor the built-in panel.
+// search UI: it needs neither searchable nor the built-in panel. A changed
+// query or case mode starts at the current viewport. The same query and
+// case again keep the current occurrence.
 void InputSetSearchQuery(InputState* s, App* app, Window* win, Str query,
                          bool insensitive);
 // next_search_match / previous_search_match: the cursor moves, wrapping, and
