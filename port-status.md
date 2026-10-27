@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3aeb5e770685732067d9860051a4deded11483a0` (2026-10-16,
-shell: Let an embedding host extend the gpui-component catalog (#3542)).
-`component_shell::Registry` fills the catalog and leaves it unfrozen, so
-a host can register another component beside it and freeze the result.
-`Components` is that registry frozen. A duplicate export is rejected.
-The shell README and gpui-shell doc are not copied.
+Processed through `747bf66f98fd0de8b998fe7fe5970366974135b8` (2026-10-16,
+shell: Declare the component catalog under its registry's module specifier (#3543)).
+Generated declarations name the catalog's module, and a directory whose
+scripts import only that module still receives gpui-kit.d.ts. An empty
+registry keeps `gpui-component`. The gpui-shell doc is not copied.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

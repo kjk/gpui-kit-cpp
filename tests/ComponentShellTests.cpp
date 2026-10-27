@@ -7659,6 +7659,73 @@ void BundleAndDevCommandsParseAsTheHostDoes() {
     StrFree(error);
 }
 
+// typings.rs `host_native_catalog`: one component and one state imported
+// from "host-native" rather than "gpui-component".
+bool FillHostNativeCatalog(FrozenComponentRegistry* frozen,
+                           RegistryError* error) {
+    static constexpr ConstructorDescriptor kCtors[] = {
+        {"Terminal", {}, &EmptyPayload}};
+    static constexpr ComponentDescriptor kTerminal = {
+        "Terminal", kCtors, {}, nullptr, &EmptyMaterialize};
+    static StateDescriptor state = State("TerminalState", "TerminalState");
+    ComponentRegistry registry;
+    if (!registry
+             .Open(shell::kComponentRegistryApiVersion, "host-native", error))
+        return false;
+    if (!registry.Register(&kTerminal, error)) return false;
+    if (!registry.RegisterState(&state, error)) return false;
+    registry.Freeze(frozen);
+    return true;
+}
+
+// a_catalog_is_declared_under_its_own_module_specifier
+void ACatalogIsDeclaredUnderItsOwnModuleSpecifier() {
+    FrozenComponentRegistry frozen;
+    RegistryError error;
+    utassert(FillHostNativeCatalog(&frozen, &error));
+    StrBuilder out;
+    ShellTypeDeclarations(&out, nullptr, &frozen);
+    Str text = out.TakeStr();
+    utassert(StrContains(text, StrL("declare module \"host-native\" {\n")));
+    utassert(
+        StrContains(text, StrL(" | import(\"host-native\").TerminalElement")));
+    utassert(StrContains(text, StrL("export const TerminalState: ")));
+    utassert(!StrContains(text, StrL("\"gpui-component\"")));
+    StrFree(text);
+}
+
+// a_directory_importing_only_the_catalog_gets_the_declarations
+void ADirectoryImportingOnlyTheCatalogGetsTheDeclarations() {
+    TempApp dir(StrL("export default 1;\n"));
+    if (!Ready(dir)) return;
+    utassert(TempApp::Fs(FsOperation::MakeDirectory, dir.Directory(),
+                         StrL("panels")));
+    utassert(TempApp::Fs(FsOperation::Write, dir.Directory(),
+                         StrL("panels/terminal.js"),
+                         StrL("import { Terminal } from \"host-native\";\n")));
+    FrozenComponentRegistry frozen;
+    RegistryError error;
+    utassert(FillHostNativeCatalog(&frozen, &error));
+    ShellError shellError = {};
+    int written = 0;
+    utassert(ShellWriteTypeDeclarations(dir.Directory(), nullptr, &written,
+                                        &shellError, &frozen));
+    utassert(!shellError.IsSet() && written >= 2);
+    FsResult result;
+    Str fsError;
+    utassert(FsRun(FsOperation::Read, dir.Directory(),
+                   StrL("panels/gpui-kit.d.ts"), {}, false, &result, &fsError));
+    utassert(StrContains(result.bytes, StrL("declare module \"host-native\"")));
+    result.Free();
+    StrFree(fsError);
+    dir.Remove(StrL("panels/terminal.js"));
+    dir.Remove(StrL("panels/gpui-kit.d.ts"));
+    TempApp::Fs(FsOperation::RemoveDirectory, dir.Directory(), StrL("panels"));
+    dir.Remove(StrL("gpui-kit.d.ts"));
+    dir.Remove(StrL("jsconfig.json"));
+    ShellErrorClear(&shellError);
+}
+
 // types_uses_the_adapter_component_registry: `types` writes the declarations
 // of the catalog the host carries.
 void TypesUsesTheComponentCatalog() {
@@ -8396,6 +8463,8 @@ void TestComponentShell() {
     HelpIsAnsweredBeforeAnyOtherArgument();
     InvalidArgumentsAreRefusedWithTheSentenceToPrint();
     BundleAndDevCommandsParseAsTheHostDoes();
+    ACatalogIsDeclaredUnderItsOwnModuleSpecifier();
+    ADirectoryImportingOnlyTheCatalogGetsTheDeclarations();
     TypesUsesTheComponentCatalog();
 
     TestSuite("inventory");

@@ -27,18 +27,31 @@ static TempStr JoinPathTemp(Str directory, Str name) {
     return fmt("%s%c%s", directory, base::PlatPathSep(), name);
 }
 
-static bool SourceImportsBuiltins(Str source) {
-    static const char* specifiers[] = {"gpui-kit",   "gpui",
-                                       "gpui-base",  "gpui-component",
+// typings.rs `component_module`. Kept beside the import scan; the declaration
+// writer has the same fallback in component_registry.cpp.
+static const char* CatalogModule(const FrozenComponentRegistry* components) {
+    const char* name = components ? components->ModuleSpecifier() : nullptr;
+    if (!name || name[0] == 0) return kDefaultComponentModule;
+    return name;
+}
+
+static bool SourceQuotes(Str source, const char* specifier) {
+    TempStr quoted = fmt("\"%s\"", Str(specifier));
+    if (StrContains(source, quoted)) return true;
+    quoted = fmt("'%s'", Str(specifier));
+    return StrContains(source, quoted);
+}
+
+static bool SourceImportsBuiltins(Str source, const char* componentModule) {
+    // gpui-component is not in this list: it is the catalog's own specifier,
+    // which a host may have replaced.
+    static const char* specifiers[] = {"gpui-kit", "gpui", "gpui-base",
                                        "gpui-shell", "gpui-fps"};
     for (int i = 0; i < (int)(sizeof(specifiers) / sizeof(specifiers[0]));
          i++) {
-        TempStr quoted = fmt("\"%s\"", Str(specifiers[i]));
-        if (StrContains(source, quoted)) return true;
-        quoted = fmt("'%s'", Str(specifiers[i]));
-        if (StrContains(source, quoted)) return true;
+        if (SourceQuotes(source, specifiers[i])) return true;
     }
-    return false;
+    return componentModule && SourceQuotes(source, componentModule);
 }
 
 static bool IsScript(Str name) {
@@ -372,7 +385,8 @@ bool ShellWriteTypeDeclarations(Str root, const HostModules* modules,
                         ? ReadBoundedFileTemp(sourcePath, kTypesMaxSourceBytes)
                         : TempStr{};
                 if (source.s) {
-                    imports = SourceImportsBuiltins(source);
+                    imports = SourceImportsBuiltins(source,
+                                                    CatalogModule(components));
                 }
             }
         }

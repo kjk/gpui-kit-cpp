@@ -469,9 +469,10 @@ class FrozenComponentRegistry {
 // Whether `name` is a JavaScript identifier that is not a reserved word.
 bool IsJavaScriptIdentifier(Str name);
 
-// The `declare module "gpui-component"` block of gpui-kit.d.ts, generated
-// from the catalog the way typings.rs writes it, and the `Element` union's
-// registered half (` | import("gpui-component").XElement` per descriptor).
+// The catalog's `declare module` block of gpui-kit.d.ts, generated from the
+// catalog the way typings.rs writes it, and the `Element` union's registered
+// half (` | import("<module>").XElement` per descriptor). `<module>` is the
+// registry's specifier, or `gpui-component` when the registry has none.
 void AppendComponentDeclarations(StrBuilder* out,
                                  const FrozenComponentRegistry* components,
                                  Str inlineTokenTypes);

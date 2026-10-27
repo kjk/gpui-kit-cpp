@@ -725,10 +725,19 @@ static void AppendJsdoc(StrBuilder* out, const char* documentation,
     out->Append(StrL(" */\n"));
 }
 
+// typings.rs `component_module`: the registry's specifier, or the default
+// when a catalog was never opened (the bare runtime's empty registry).
+static const char* CatalogModule(const FrozenComponentRegistry* components) {
+    const char* name = components ? components->ModuleSpecifier() : nullptr;
+    if (!name || name[0] == 0) return kDefaultComponentModule;
+    return name;
+}
+
 void AppendComponentElementUnion(StrBuilder* out,
                                  const FrozenComponentRegistry* components) {
+    TempStr prefix = fmt(" | import(\"%s\").", Str(CatalogModule(components)));
     for (int i = 0; components && i < components->DescriptorCount(); i++) {
-        out->Append(StrL(" | import(\"gpui-component\")."));
+        out->Append(prefix);
         out->Append(S(components->Descriptor((uint32_t)i)->name));
         out->Append(StrL("Element"));
     }
@@ -737,7 +746,8 @@ void AppendComponentElementUnion(StrBuilder* out,
 void AppendComponentDeclarations(StrBuilder* out,
                                  const FrozenComponentRegistry* components,
                                  Str inlineTokenTypes) {
-    out->Append(StrL("declare module \"gpui-component\" {\n"));
+    out->Append(
+        fmt("declare module \"%s\" {\n", Str(CatalogModule(components))));
     out
         ->Append(StrL("  import { ClickEvent, Context, Element, NativeElement "
                       "} from \"gpui-kit\";\n"));
