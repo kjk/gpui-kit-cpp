@@ -1045,14 +1045,17 @@ El* Input::IntoEl() {
     }
     bool password = masked || (state && state->masked) ||
                     InputContentIsSecret(hasContentType, contentType);
+    // Without a content type, a masked input is a password field to screen
+    // readers. An explicit content type, or a role override, still wins, and
+    // a revealed field keeps the plain text role.
+    bool maskedNow = masked || (state && state->masked);
+    bool roleHasType = hasContentType || maskedNow;
+    InputContentType roleType =
+        hasContentType ? contentType : InputContentType::Password;
     AccessibilityRole role =
-        hasAccessibilityRole
-            ? accessibilityRole
-            : InputAccessibilityRole(hasContentType, contentType);
-    El* field = InputBase::New(cx, id, !disabled,
-                               password && !hasAccessibilityRole
-                                   ? AccessibilityRole::PasswordInput
-                                   : role)
+        hasAccessibilityRole ? accessibilityRole
+                             : InputAccessibilityRole(roleHasType, roleType);
+    El* field = InputBase::New(cx, id, !disabled, role)
                     ->BindInput(disabled ? nullptr : state)
                     ->FlexRow()
                     ->W(col ? kFill : width)

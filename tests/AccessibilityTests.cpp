@@ -394,6 +394,26 @@ static void ConditionalAndCompositeRolesMatchUpstream() {
     FreeAccessibilityFrame(&f);
 }
 
+// kit tests/integration/input.rs masked_input_is_a_password_field. A mask
+// with no content type is a password field. A plain field stays a text field.
+static void MaskedInputIsAPasswordField() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    InputState secret;
+    InputState plain;
+    El* root = Div(f.arena)
+                   ->Child(component::Input::New(&f.cx, StrL("secret"), &secret)
+                               ->Masked(true)
+                               ->IntoEl())
+                   ->Child(component::Input::New(&f.cx, StrL("first"), &plain)
+                               ->IntoEl());
+    IdsCollect(root);
+    AccessibilityCollect(root, &f.win->accessibility);
+    utassert(RoleNode(f.win->accessibility, AccessibilityRole::PasswordInput));
+    utassert(RoleNode(f.win->accessibility, AccessibilityRole::TextInput));
+    FreeAccessibilityFrame(&f);
+}
+
 // kit tests/integration/input.rs clear_button_is_named. The clear button is
 // icon-only, so its accessible name is the localized Input.Clear string.
 static void ClearButtonIsNamed() {
@@ -950,6 +970,7 @@ void TestAccessibility() {
     ConditionalAndCompositeRolesMatchUpstream();
     AccordionPreservesDisabledItemsWhenTheGroupIsEnabled();
     ASettledClosedPanelUnmountsItsContent();
+    MaskedInputIsAPasswordField();
     ClearButtonIsNamed();
     InputContentTypesAndSecretsProjectSafely();
 }

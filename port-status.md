@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6b104d1fe1adf29064f17cc020cd1877231a7436` (2026-10-16,
-input: Name the clear button for screen readers (#3554)).
-The clear button on an input, select, and date picker is named Clear,
-localized with the other Input strings, so a screen reader does not
-announce an unnamed button.
+Processed through `83e84e458c3d5e25bed1a53dda92076a14e6bf32` (2026-10-16,
+input: Report a masked input as a password field to screen readers (#3555)).
+A masked input with no content type is a password field to screen
+readers. An explicit content type, or a role override, still wins, and
+revealing the text keeps the plain text role.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
