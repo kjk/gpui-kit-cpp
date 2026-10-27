@@ -13,9 +13,16 @@ void PopoverInitKeys() {
         return;
     }
     generation = current;
+    // Content stays a descendant of the trigger's dispatch node. Its own
+    // context keeps Enter and Space for the focused control: the binding
+    // matches, nothing handles it, and an outer Confirm does not run.
+    // A deeper input context still wins, so a field keeps its own keys.
     KeyBinding bindings[] = {
         {"enter", action::Confirm(), "Popover"},
         {"space", action::Confirm(), "Popover"},
+        {"escape", action::Cancel(), "PopoverContent"},
+        {"enter", action::NoAction(), "PopoverContent"},
+        {"space", action::NoAction(), "PopoverContent"},
     };
     KeymapBind(bindings, dimof(bindings));
 }
@@ -103,6 +110,18 @@ void PopoverConfirm(PopoverState* self, Ctx* cx, const ActionEvent* ev) {
         return;
     }
     PopoverSetOpenFocused(self, cx, !self->open);
+    Notify(cx);
+}
+
+// on_action_cancel: Escape in the content dismisses an open popover. A
+// closed one leaves the key to whatever is further out — content stays
+// mounted here after the first frame, and Rust only mounts it while open.
+void PopoverCancel(PopoverState* self, Ctx* cx, const ActionEvent* ev) {
+    if (!self || ev->action != action::Cancel() || !self->open) {
+        const_cast<ActionEvent*>(ev)->propagate = true;
+        return;
+    }
+    PopoverSetOpenFocused(self, cx, false);
     Notify(cx);
 }
 
@@ -234,6 +253,11 @@ Popover* Popover::Content(El* e) {
         // track_focus, not focus_ring_style: the surface takes focus and
         // does not draw a ring around itself for it.
         e->TrackFocus(focus)->FocusRing(false);
+        if (state.IsValid()) {
+            PopoverInitKeys();
+            e->KeyContext(StrL("PopoverContent"))
+                ->OnAction(action::Cancel(), ListenTo(state, &PopoverCancel));
+        }
         if (overlayClosable && state.IsValid()) {
             e->OnMouseDownOut(ListenTo(state, &PopoverDismissOnMouseDown));
         }

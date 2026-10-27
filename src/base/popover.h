@@ -68,6 +68,10 @@ void PopoverDismiss(PopoverState* self, Ctx* cx, const ClickEvent* ev);
 void PopoverDismissOnMouseDown(PopoverState* self, Ctx* cx,
                                const MouseDownEvent* ev);
 
+// Enter and Space on the trigger toggle the popover. Inside its content
+// those keys belong to the focused control; Escape dismisses it and
+// restores the previous focus.
+//
 // The popover. The trigger takes the *press*, not the click, and on whichever
 // button was asked for — `Popover::mouse_button`, which is what a right-click
 // popover is. `overlayClosable` is Rust's on_mouse_down_out.

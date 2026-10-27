@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `57aff71ef446e9cbd702a0e462c5813e2fd9a7b7` (2026-10-19,
-motion: Preserve transition and presence duration precision (#3590)).
-Rust multiplies a `Duration` in f64 so a reversing run keeps
-sub-millisecond precision. Durations here are float milliseconds, so
-that rounding does not apply. Release notes are not ported.
+Processed through `af456ddb2fe7bc57f040bb94064135cf353488d6` (2026-10-19,
+popover: Preserve keyboard activation in content (#3586)).
+Popover content has its own key context. Escape still dismisses it.
+Enter and Space stay with the focused control, so a button inside
+the popover activates instead of toggling the popover shut.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

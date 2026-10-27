@@ -22,6 +22,9 @@ namespace gpui {
 namespace action {
 
 uint32_t Confirm();
+// gpui::NoAction: a binding that matches and is not handled, so an outer
+// context does not take the key and the focused control still can.
+uint32_t NoAction();
 // The payload `ui::Confirm { secondary: true }` carries. A binding writes it
 // as its `arg`; a handler reads `ev->arg == kConfirmSecondary`.
 constexpr int64_t kConfirmSecondary = 1;

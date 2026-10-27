@@ -420,13 +420,16 @@ static void PopoverOwnsOpenCallbacksAndOutsideDismissal() {
 
     // Enter and Space are Confirm in the Popover context. The action lives on
     // Popup's wrapper, so a focused trigger finds it along its focus path.
+    El* keyboardContent = Div(a)->W(100)->H(100);
     El* keyboardRoot =
         gpui::Popover::New(&cx, StrL("keyboard"), state)
             ->OnOpenChange(Listen(&cx, &PopoverRecorder::OnOpenChange))
             ->Trigger(Div(a)->W(50)->H(20))
-            ->Content(Div(a)->W(100)->H(100))
+            ->Content(keyboardContent)
             ->IntoEl();
     utassert(keyboardRoot->style.keyContext == KeyContextOf(StrL("Popover")));
+    utassert(keyboardContent->style
+                 .keyContext == KeyContextOf(StrL("PopoverContent")));
     ActionSlot* confirm = keyboardRoot->actions;
     while (confirm && confirm->action != action::Confirm()) {
         confirm = confirm->next;
@@ -436,6 +439,22 @@ static void PopoverOwnsOpenCallbacksAndOutsideDismissal() {
     ListenerCall(&app, win, confirm->fn, &ev);
     utassert(PopoverIsOpen(&cx, state));
     utassert(seen->changes == 5 && seen->lastOpen);
+
+    // Content keeps Escape and leaves Enter and Space to the focused control.
+    uint32_t stack[2] = {KeyContextOf(StrL("PopoverContent")),
+                         KeyContextOf(StrL("Popover"))};
+    KeyChord enter;
+    KeyChord space;
+    KeyChord escape;
+    utassert(KeyChordParse(StrL("enter"), &enter));
+    utassert(KeyChordParse(StrL("space"), &space));
+    utassert(KeyChordParse(StrL("escape"), &escape));
+    utassert(KeymapMatch(enter, stack, 2).action == action::NoAction());
+    utassert(KeymapMatch(space, stack, 2).action == action::NoAction());
+    utassert(KeymapMatch(escape, stack, 2).action == action::Cancel());
+    uint32_t triggerOnly = KeyContextOf(StrL("Popover"));
+    utassert(KeymapMatch(enter, &triggerOnly, 1).action == action::Confirm());
+    utassert(KeymapMatch(space, &triggerOnly, 1).action == action::Confirm());
 
     VecReset(win->paint.hits);
     AppGlobalClear(&app);
@@ -1051,6 +1070,69 @@ static void APressOnARemovedTriggerEndsWhenThePointerMovesAway() {
     TestAppFree(w.app);
 }
 
+// Enter on a focused child of open popover content activates that child
+// and leaves the popover open. The trigger's Confirm binding used to win
+// first and toggle the popover instead.
+struct PopoverKeyView {
+    int applied = 0;
+    FocusHandle applyFocus = {};
+    Entity<PopoverState> pop = {};
+
+    static void OnApply(PopoverKeyView* self, Ctx* cx, const ClickEvent*) {
+        self->applied++;
+        Notify(cx);
+    }
+
+    static El* Render(PopoverKeyView* self, Ctx* cx) {
+        if (!self->applyFocus.IsValid()) {
+            self->applyFocus = FocusHandleNew(cx);
+        }
+        if (!self->pop.IsValid()) {
+            self->pop = EntityNewState<PopoverState>(cx->app);
+        }
+        El* apply = Button::New(cx, StrL("keyboard-apply"), false,
+                                Listen(cx, &PopoverKeyView::OnApply))
+                        ->W(120)
+                        ->H(28)
+                        ->TrackFocus(self->applyFocus);
+        El* content = Div(cx->a)
+                          ->Id(StrL("keyboard-content"))
+                          ->W(280)
+                          ->H(80)
+                          ->Child(apply);
+        El* trigger = Div(cx->a)->Id(StrL("keyboard-trigger"))->W(80)->H(28);
+        return gpui::Popover::New(cx, StrL("keyboard-popover"), self->pop)
+            ->Trigger(trigger)
+            ->Content(content)
+            ->IntoEl();
+    }
+};
+
+static void EnterInPopoverContentActivatesTheChild() {
+    App* app = TestAppNew();
+    auto view = EntityNew<PopoverKeyView>(app);
+    Window* win = TestWindowOpen(app, view, 600, 400, 1);
+    PopoverKeyView* self = view.Get(app);
+    // The first frame only captures the trigger. The next one mounts content.
+    TestDraw(win);
+    Ctx cx = {app, win, win->frameArena, view.id};
+    PopoverSetOpen(&cx, self->pop, true);
+    TestDraw(win);
+    TestFocus(win, self->applyFocus);
+    utassert(win->focusId == self->applyFocus.id);
+    TestSimulateKeystrokes(win, "enter");
+    WindowKeyUp(win, KeyReturn, false, false, false, false, false);
+    TestFlushEffects(app);
+    utassert(self->applied == 1);
+    utassert(PopoverIsOpen(&cx, self->pop));
+    TestSimulateKeystrokes(win, "space");
+    WindowKeyUp(win, KeySpace, false, false, false, false, false);
+    TestFlushEffects(app);
+    utassert(self->applied == 2);
+    utassert(PopoverIsOpen(&cx, self->pop));
+    TestAppFree(app);
+}
+
 void TestPopup() {
     TestSuite("popup");
     APressDismissesTheTooltipUntilThePointerLeaves();
@@ -1075,6 +1157,7 @@ void TestPopup() {
     TriggerCaptureEnablesContentOnTheNextFrame();
     PopoverOpenStateOwnsItsDeferredRegistration();
     PopoverOwnsOpenCallbacksAndOutsideDismissal();
+    EnterInPopoverContentActivatesTheChild();
     TooltipOverlayOwnsRequestsTransitionsAndPositioning();
     TooltipDelayOwnsAndCancelsPendingText();
     ShowDelayFollowsDefaultsAndRequestOverride();
