@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "74939dc7adcbf8db021d580be82379f3b9fbe3ee",
+  sha: "2c113652507ca3545da1ec81b2bd546a811f3580",
   date: "2026-10-19",
-  subject: "tab_bar: run a tab's own on_click from the overflow menu (#3568)",
+  subject: "text: Prevent stale selections from returning after remount (#3588)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

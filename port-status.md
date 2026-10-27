@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `74939dc7adcbf8db021d580be82379f3b9fbe3ee` (2026-10-19,
-tab_bar: run a tab's own on_click from the overflow menu (#3568)).
-An overflow-menu row runs the same handler as the visible tab. That is
-the bar callback when one is set, and otherwise the tab's own, including
-the reveal into view. A pointer click on a menu row keeps the event
-that hit it.
+Processed through `2c113652507ca3545da1ec81b2bd546a811f3580` (2026-10-19,
+text: Prevent stale selections from returning after remount (#3588)).
+When a frame drops the participant that owns the selection's anchor or
+cursor, the window gesture is cleared with it. Painting that participant
+again does not bring the old selection back. Removing some other
+participant leaves the selection in place.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

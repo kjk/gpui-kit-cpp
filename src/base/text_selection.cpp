@@ -1412,6 +1412,18 @@ bool WindowSelectionLayerLive(const Window* win) {
            win->sel->layerFrame >= win->frameSeq;
 }
 
+static bool SelectionIdListed(const Vec<EntityId>& ids, EntityId id) {
+    if (!id.IsValid()) {
+        return false;
+    }
+    for (int i = 0; i < len(ids); i++) {
+        if (ids[i] == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void WindowSelectionFinishFrame(Window* win) {
     WindowSelection* selection = win ? win->sel : nullptr;
     if (selection) {
@@ -1425,8 +1437,30 @@ void WindowSelectionFinishFrame(Window* win) {
     // cleanup callbacks can re-enter selection code, so do not walk the live
     // participant vector while invoking them.
     Vec<EntityId> participants;
+    Vec<EntityId> stale;
     for (int i = 0; i < len(selection->participants); i++) {
-        VecAppend(participants, selection->participants[i]);
+        EntityId id = selection->participants[i];
+        VecAppend(participants, id);
+        TextSelectionParticipantState* participant =
+            (TextSelectionParticipantState*)EntityGet(win->app, id);
+        if (participant && participant->window == win &&
+            participant->registrationGeneration == selection->frameGeneration) {
+            continue;
+        }
+        VecAppend(stale, id);
+    }
+    // An endpoint that left this frame owns the gesture. Clearing only that
+    // participant's snapshot would republish the window's anchor and cursor
+    // when the same retained entity registered again.
+    bool endpointDeparted =
+        SelectionIdListed(stale, selection->anchorParticipant);
+    if (!endpointDeparted && selection->hasWindowPoints) {
+        EntityId cursorId = {};
+        ParticipantAt(win, selection->cursorPoint, &cursorId);
+        endpointDeparted = SelectionIdListed(stale, cursorId);
+    }
+    if (endpointDeparted) {
+        WindowSelectionClear(win);
     }
     for (int i = 0; i < len(participants); i++) {
         EntityId id = participants[i];

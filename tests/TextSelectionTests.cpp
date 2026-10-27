@@ -1642,40 +1642,105 @@ static void BlankOnlyDragNeverPublishesOrCopiesSelection() {
     utassert(!f.Snapshot(participant, nullptr));
 }
 
-// text_selection.rs stale_live_participants_are_removed_when_the_next_frame_
-// begins: alive, but not painted again.
-static void StaleLiveParticipantsAreRemovedWhenTheNextFrameBegins() {
+// text_selection.rs unmounted_selection_does_not_revive_when_the_participant_
+// returns. Two missed frames drop the gesture, and painting the same
+// participant again does not put it back.
+static void UnmountedSelectionDoesNotReviveWhenTheParticipantReturns() {
     SelectionFixture f;
     FakeParticipant* participant = f.Add("stale", 0);
     f.Begin(1, 1);
     f.Update(8, 1);
     f.End();
+    utassert(f.SelectedIs("stale"));
 
     participant->shown = false;
     f.Draw();
     f.Draw();
     utassert(f.SelectedIs(""));
     utassert(!f.Snapshot(participant, nullptr));
+
+    participant->shown = true;
+    f.Draw();
+    utassert(f.SelectedIs(""));
+    utassert(!f.Snapshot(participant, nullptr));
+
+    f.Begin(1, 1);
+    f.Update(8, 1);
+    f.End();
+    utassert(f.SelectedIs("stale"));
 }
 
-// text_selection.rs clear_stops_anchor_auto_scroll_before_discarding_the_
-// anchor.
-static void ClearStopsAnchorAutoScrollBeforeDiscardingTheAnchor() {
+// text_selection.rs removing_an_unselected_participant_preserves_the_current_
+// selection.
+static void RemovingAnUnselectedParticipantPreservesTheCurrentSelection() {
     SelectionFixture f;
-    FakeParticipant* participant = f.Add("scroll", 0);
-    Entity<SelectionObserver> observer = f.Observe(participant);
-    TestRunUntilParked(f.app);
+    f.Add("selected", 0, 0, 0);
+    FakeParticipant* unrelated = f.Add("unrelated", 20, 0, 1);
     f.Begin(1, 1);
-    f.Update(1, 25);
-    WindowSelectionClear(f.win);
-    TestRunUntilParked(f.app);
-    SelectionObserver* o = observer.Get(f.app);
-    bool any = false;
-    for (int i = 0; i < o->nScroll; i++) {
-        any = any || o->scroll[i];
+    f.Update(8, 1);
+    f.End();
+    utassert(f.SelectedIs("selected"));
+
+    unrelated->shown = false;
+    f.Draw();
+    utassert(f.SelectedIs("selected"));
+    unrelated->shown = true;
+    f.Draw();
+    utassert(f.SelectedIs("selected"));
+}
+
+// text_selection.rs removing_either_range_endpoint_discards_the_shared_
+// selection.
+static void RemovingEitherRangeEndpointDiscardsTheSharedSelection() {
+    for (int removeAnchor = 1; removeAnchor >= 0; removeAnchor--) {
+        SelectionFixture f;
+        FakeParticipant* anchor = f.Add("anchor", 0, 0, 0);
+        FakeParticipant* cursor = f.Add("cursor", 20, 0, 1);
+        f.Begin(1, 1);
+        f.Update(8, 21);
+        f.End();
+        utassert(f.SelectedIs("anchor\ncursor"));
+
+        if (removeAnchor) {
+            anchor->shown = false;
+        } else {
+            cursor->shown = false;
+        }
+        f.Draw();
+        utassert(f.SelectedIs(""));
+        anchor->shown = true;
+        cursor->shown = true;
+        f.Draw();
+        utassert(f.SelectedIs(""));
     }
-    utassert(any);
-    utassert(o->nScroll > 0 && !o->scroll[o->nScroll - 1]);
+}
+
+// text_selection.rs clear_or_unmount_stops_auto_scroll_before_discarding_the_
+// anchor. Clearing and sweeping the anchor both stop the scroll first.
+static void ClearOrUnmountStopsAutoScrollBeforeDiscardingTheAnchor() {
+    for (int unmount = 0; unmount < 2; unmount++) {
+        SelectionFixture f;
+        FakeParticipant* participant = f.Add("scroll", 0);
+        Entity<SelectionObserver> observer = f.Observe(participant);
+        TestRunUntilParked(f.app);
+        f.Begin(1, 1);
+        f.Update(1, 25);
+        if (unmount) {
+            participant->shown = false;
+            f.Draw();
+            f.Draw();
+        } else {
+            WindowSelectionClear(f.win);
+        }
+        TestRunUntilParked(f.app);
+        SelectionObserver* o = observer.Get(f.app);
+        bool any = false;
+        for (int i = 0; i < o->nScroll; i++) {
+            any = any || o->scroll[i];
+        }
+        utassert(any);
+        utassert(o->nScroll > 0 && !o->scroll[o->nScroll - 1]);
+    }
 }
 
 // text_selection.rs drag_auto_scroll_stops_when_the_content_mask_collapses:
@@ -1835,7 +1900,6 @@ static void RetainedSelectionStateReleasesAndDoesNotResurrectSelection() {
     utassert(!TextSelection::HasSelection(win, app));
     utassert(TextSelection::SelectedText(win, app, buf, 16) == 0);
     utassert(!selection.HasLocalSelection(app));
-    TextSelection::Clear(win, app);
 
     view.Get(app)->enabled = true;
     AppInvalidate(win);
@@ -2170,8 +2234,10 @@ static void TestTextSelectionWindow() {
     CrossParticipantSelectionExcludesParticipantsOutsideItsDocumentInterval();
     ChangingScopeClearsThePreviousScopeSelection();
     BlankOnlyDragNeverPublishesOrCopiesSelection();
-    StaleLiveParticipantsAreRemovedWhenTheNextFrameBegins();
-    ClearStopsAnchorAutoScrollBeforeDiscardingTheAnchor();
+    UnmountedSelectionDoesNotReviveWhenTheParticipantReturns();
+    RemovingAnUnselectedParticipantPreservesTheCurrentSelection();
+    RemovingEitherRangeEndpointDiscardsTheSharedSelection();
+    ClearOrUnmountStopsAutoScrollBeforeDiscardingTheAnchor();
     DragAutoScrollStopsWhenTheContentMaskCollapsesInAWindow();
     PointerMovesAfterAClickDoNotAutoScroll();
     ProxyEndpointsBreakEqualPositionTiesByDocumentOrder();
