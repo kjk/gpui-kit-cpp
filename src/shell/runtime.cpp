@@ -14224,6 +14224,149 @@ void ShellRuntime::DispatchOtpEvent(shell::EntityHandle handle,
     VecReset(callbacks);
 }
 
+static bool JsString(JSContext* ctx, JSValueConst value, Arena* arena,
+                     Str* out);
+
+static void LogListKeyError(ShellRuntimeImpl* impl) {
+    Arena* arena = ArenaNew();
+    Str message = ExceptionText(arena, impl->context);
+    if (!message.s) message = StrL("");
+    logf("shell: error in a list's get_key: %s\n", message);
+    ArenaDelete(arena);
+}
+
+// One layout-scoped pass over a list's get_key. `ask` is called with each
+// index the caller wants; it returns false to stop. A throw logs and stops
+// the pass.
+typedef bool (*ListKeyAsk)(void* user, JSContext* ctx, JSValue function,
+                           int index, Arena* keys);
+
+static bool WithListKeys(ShellRuntime* runtime, ShellRuntimeImpl* impl,
+                         shell::CallbackId keyId, Ctx* cx, ListKeyAsk ask,
+                         void* user) {
+    if (!runtime || !impl || !cx || !cx->win || !cx->app || !ask) return false;
+    CallbackEntry* key = impl->callbacks.Get(keyId);
+    if (!key) return false;
+    if (key->view.IsValid() && !EntityGet(cx->app, key->view)) return false;
+    double started = TimeNow();
+    {
+        shell::CallScopeGuard scope =
+            shell::ScopeEnter(cx->win, cx->app, ScopePhase::Layout, key->view,
+                              key->policy, runtime, key->application);
+        shell::ScopeAdopt(key->registeredIn);
+        BeginExecution(impl);
+        Arena* keys = ArenaNew();
+        bool failed = false;
+        if (!ask(user, impl->context, key->function, 0, keys) &&
+            JS_HasException(impl->context)) {
+            failed = true;
+        }
+        // `ask` reports failure by leaving an exception, including a type
+        // error it threw itself. One log covers the whole pass.
+        if (JS_HasException(impl->context)) failed = true;
+        if (failed) LogListKeyError(impl);
+        ArenaDelete(keys);
+        if (failed) {
+            double elapsed = TimeNow() - started;
+            shell::MetricsAdd(&impl->metrics,
+                              shell::MetricsTimerKind::FrameScript,
+                              elapsed <= 0 ? 0 : (uint64_t)(elapsed * 1e9));
+            return false;
+        }
+    }
+    double elapsed = TimeNow() - started;
+    shell::MetricsAdd(&impl->metrics, shell::MetricsTimerKind::FrameScript,
+                      elapsed <= 0 ? 0 : (uint64_t)(elapsed * 1e9));
+    return true;
+}
+
+struct OneKeyAsk {
+    int index = 0;
+    Str key = {};
+    bool ok = false;
+};
+
+static bool AskOneKey(void* user, JSContext* ctx, JSValue function, int,
+                      Arena* keys) {
+    OneKeyAsk* ask = (OneKeyAsk*)user;
+    JSValue value = JS_NewInt32(ctx, ask->index);
+    JSValue result = JS_Call(ctx, function, JS_UNDEFINED, 1, &value);
+    JS_FreeValue(ctx, value);
+    if (JS_IsException(result)) {
+        JS_FreeValue(ctx, result);
+        return false;
+    }
+    Str text;
+    bool parsed = JsString(ctx, result, keys, &text);
+    JS_FreeValue(ctx, result);
+    if (!parsed) {
+        if (!JS_HasException(ctx)) {
+            JS_ThrowTypeError(ctx, "a list's get_key must return a string");
+        }
+        return false;
+    }
+    ask->key = StrDup(text);
+    ask->ok = ask->key.s != nullptr;
+    return false;
+}
+
+struct FindKeyAsk {
+    Str want = {};
+    ListKeySearch search = {};
+    int found = -1;
+};
+
+static bool AskFindKey(void* user, JSContext* ctx, JSValue function, int,
+                       Arena* keys) {
+    FindKeyAsk* ask = (FindKeyAsk*)user;
+    for (;;) {
+        int candidate = ListKeySearchNext(&ask->search);
+        if (candidate < 0) return false;
+        JSValue value = JS_NewInt32(ctx, candidate);
+        JSValue result = JS_Call(ctx, function, JS_UNDEFINED, 1, &value);
+        JS_FreeValue(ctx, value);
+        if (JS_IsException(result)) {
+            JS_FreeValue(ctx, result);
+            ask->found = -1;
+            return false;
+        }
+        Str text;
+        bool parsed = JsString(ctx, result, keys, &text);
+        JS_FreeValue(ctx, result);
+        if (!parsed) {
+            if (!JS_HasException(ctx)) {
+                JS_ThrowTypeError(ctx, "a list's get_key must return a string");
+            }
+            ask->found = -1;
+            return false;
+        }
+        if (StrEq(text, ask->want)) {
+            ask->found = candidate;
+            return false;
+        }
+    }
+}
+
+Str ShellRuntime::ListItemKey(shell::CallbackId getKey, int index, Ctx* cx) {
+    OneKeyAsk ask;
+    ask.index = index;
+    if (!WithListKeys(this, impl, getKey, cx, &AskOneKey, &ask) || !ask.ok) {
+        StrFree(ask.key);
+        return {};
+    }
+    return ask.key;
+}
+
+int ShellRuntime::FindListItemKey(shell::CallbackId getKey, Str want, int index,
+                                  int oldCount, int newCount, Ctx* cx) {
+    if (!want.s || newCount <= 0) return -1;
+    FindKeyAsk ask;
+    ask.want = want;
+    ListKeySearchInit(&ask.search, index, oldCount, newCount);
+    if (!WithListKeys(this, impl, getKey, cx, &AskFindKey, &ask)) return -1;
+    return ask.found;
+}
+
 void ShellRuntime::RenderVirtualItems(shell::CallbackId renderId,
                                       shell::CallbackId keyId,
                                       shell::CallbackId onItemClick,

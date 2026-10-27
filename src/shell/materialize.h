@@ -26,6 +26,24 @@ void ShellApplyNodeStyle(Ctx* cx, const shell::SpecArena* specs,
                          shell::SpecId id, El* target,
                          ShellError* error = nullptr);
 
+// The order a `list` looks for the item that was at `index` after the count
+// went from `oldCount` to `newCount`: that index, then the index shifted by
+// how many items were added or removed, then outward. Every index below
+// `newCount` comes up once. `ListKeySearchNext` returns -1 when it is done.
+struct ListKeySearch {
+    int index = 0;
+    int newCount = 0;
+    int shifted = -1;
+    int phase = 0;
+    int distance = 1;
+    int maxDistance = 0;
+    int side = 0;
+};
+
+void ListKeySearchInit(ListKeySearch* search, int index, int oldCount,
+                       int newCount);
+int ListKeySearchNext(ListKeySearch* search);
+
 namespace shell {
 
 // materialize/text_view.rs, the seams its tests reach.

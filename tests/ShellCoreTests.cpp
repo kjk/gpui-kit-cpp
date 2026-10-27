@@ -2540,6 +2540,140 @@ static void AListMeasuresEachItemAndFollowsTheScroll() {
     utassertnear(first ? first->h : -1.f, 40.f);
 }
 
+static void TheSearchTriesTheLikelyPlacesFirstAndEveryIndexOnce() {
+    ListKeySearch search;
+    ListKeySearchInit(&search, 4, 20, 30);
+    int first = ListKeySearchNext(&search);
+    int second = ListKeySearchNext(&search);
+    utassert(first == 4 && second == 14);
+    bool seen[30] = {};
+    seen[first] = true;
+    seen[second] = true;
+    int count = 2;
+    for (int candidate = ListKeySearchNext(&search); candidate >= 0;
+         candidate = ListKeySearchNext(&search)) {
+        utassert(candidate < 30 && !seen[candidate]);
+        seen[candidate] = true;
+        count++;
+    }
+    utassert(count == 30);
+
+    ListKeySearchInit(&search, 50, 60, 10);
+    bool shrunk[10] = {};
+    int shrunkCount = 0;
+    for (int candidate = ListKeySearchNext(&search); candidate >= 0;
+         candidate = ListKeySearchNext(&search)) {
+        utassert(candidate < 10 && !shrunk[candidate]);
+        shrunk[candidate] = true;
+        shrunkCount++;
+    }
+    utassert(shrunkCount == 10);
+}
+
+// render.rs a_list_keeps_the_reader_on_their_item_when_the_count_changes.
+// A hundred 20px rows in a 200px list, scrolled 150px so m7 is at the top
+// with 10px of it past the fold.
+static const char kTranscriptSource[] =
+    "import { div, View, list } from 'gpui-kit';\n"
+    "import { v_flex } from 'gpui-base';\n"
+    "globalThis.rowKey = '';\n"
+    "export default class Transcript extends View {\n"
+    "  init() {\n"
+    "    this.items = [];\n"
+    "    for (let index = 0; index < 100; index++)\n"
+    "      this.items.push('m' + index);\n"
+    "    this.pages = 0;\n"
+    "  }\n"
+    "  control(label, change) {\n"
+    "    return div().h(40).on_click((_event, cx) => {\n"
+    "      change(); cx.notify();\n"
+    "    }).child(label);\n"
+    "  }\n"
+    "  render(cx) {\n"
+    "    return v_flex().w(300).h(400).child(v_flex().h(200).child(\n"
+    "      list('rows', this.items.length,\n"
+    "        (index) => this.items[index],\n"
+    "        (index) => div().h(20).child(this.items[index]))\n"
+    "      .on_item_click((key) => { globalThis.rowKey = key; })))\n"
+    "      .child(this.control('older', () => {\n"
+    "        const page = [];\n"
+    "        for (let index = 0; index < 10; index++)\n"
+    "          page.push('p' + this.pages + '-' + index);\n"
+    "        this.pages += 1;\n"
+    "        this.items = page.concat(this.items);\n"
+    "      }))\n"
+    "      .child(this.control('newer', () => {\n"
+    "        this.items = this.items.concat(['m' + (this.items.length + "
+    "1000)]);\n"
+    "      }))\n"
+    "      .child(this.control('take out m7', () => {\n"
+    "        this.items = this.items.filter((key) => key !== 'm7');\n"
+    "      }));\n"
+    "  }\n"
+    "}\n";
+
+static El* NthEl(El* parent, int index) {
+    El* child = parent ? parent->first : nullptr;
+    for (int i = 0; child && i < index; i++) child = child->next;
+    return child;
+}
+
+static void ClickEl(LazyListFixture* fixture, El* element) {
+    utassert(element && element->listener.IsValid());
+    if (!element || !element->listener.IsValid()) return;
+    ClickEvent click = {};
+    ListenerCall(&fixture->app, &fixture->window, element->listener, &click);
+}
+
+static bool RowKeyIs(LazyListFixture* fixture, El* row, const char* key) {
+    ClickEl(fixture, row);
+    char script[160];
+    snprintf(script, sizeof(script),
+             "if (globalThis.rowKey !== '%s') throw new Error('row ' + "
+             "globalThis.rowKey);",
+             key);
+    return fixture->Check(Str(script));
+}
+
+// The first drawn row is the item at the top. 150px into 20px rows leaves
+// 10px of it above the fold, so its box starts 10px before the list.
+static void ExpectReading(LazyListFixture* fixture, const char* top,
+                          const char* next) {
+    El* list = fixture->Box();
+    El* row = list ? list->first : nullptr;
+    El* following = row ? row->next : nullptr;
+    utassert(list && row && following);
+    if (!list || !row || !following) return;
+    utassertnear(row->y, list->y - 10.f);
+    utassertnear(row->h, 20.f);
+    utassertnear(following->y, list->y + 10.f);
+    utassert(RowKeyIs(fixture, row, top));
+    utassert(RowKeyIs(fixture, following, next));
+}
+
+static void AListKeepsTheReaderOnTheirItemWhenTheCountChanges() {
+    LazyListFixture fixture{Str(kTranscriptSource)};
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    fixture.ScrollTo(150.f);
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    ExpectReading(&fixture, "m7", "m8");
+
+    // Ten older items above. A splice that forgets the key shows p0-0.
+    ClickEl(&fixture, NthEl(fixture.root, 1));
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    ExpectReading(&fixture, "m7", "m8");
+
+    ClickEl(&fixture, NthEl(fixture.root, 2));
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    ExpectReading(&fixture, "m7", "m8");
+
+    // The item at the top is gone, so the index stays and the next item
+    // occupies it. Ten pixels of that item are still above the fold.
+    ClickEl(&fixture, NthEl(fixture.root, 3));
+    utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
+    ExpectReading(&fixture, "m8", "m9");
+}
+
 static void AListReportsWhichItemWasClicked() {
     LazyListFixture f{Str(kMeasuredListSource)};
     utassert(f.Draw() != nullptr && !f.error.IsSet());
@@ -5764,6 +5898,8 @@ void TestShellCore() {
     AUniformListReportsWhichRowWasClicked();
     AListMeasuresEachItemAndFollowsTheScroll();
     AListReportsWhichItemWasClicked();
+    TheSearchTriesTheLikelyPlacesFirstAndEveryIndexOnce();
+    AListKeepsTheReaderOnTheirItemWhenTheCountChanges();
     LazyListsShareTheItemBudgetAndRefuseNesting();
     EveryCloseDismissesBeforeItCloses();
     ScriptThemesCarryATypeScale();

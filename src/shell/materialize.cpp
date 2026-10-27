@@ -1112,6 +1112,67 @@ static void MaterialVirtualRange(void* user, Ctx* cx, int first, int end,
 // Neither takes a VirtualListScrollHandle: the position is the list's own
 // state, kept under the id the list was built with. That id is also the name
 // a `Scrollbar` pairs with.
+//
+// A `list` keeps the reader's place by key. GPUI's measurements are by
+// index, and replacing them when the count changes would put the viewport
+// back on the first item. After each build the list remembers the key of
+// the item at the top; when the count changes it looks for that key near
+// the item's old index and scrolls back to it, the same distance into it.
+// `get_key` runs here, under the layout scope, and must stay a plain lookup.
+
+void ListKeySearchInit(ListKeySearch* search, int index, int oldCount,
+                       int newCount) {
+    if (!search) return;
+    *search = {};
+    search->index = index;
+    search->newCount = newCount;
+    search->distance = 1;
+    search->maxDistance = index > newCount ? index : newCount;
+    // index + new_count - old_count, when that does not overflow and is not
+    // the index itself. A change wholly above the item lands there.
+    if (oldCount >= 0 &&
+        (long long)index + (long long)newCount >= (long long)oldCount) {
+        long long shifted =
+            (long long)index + (long long)newCount - (long long)oldCount;
+        if (shifted != index && shifted >= 0 && shifted <= 0x7fffffffLL) {
+            search->shifted = (int)shifted;
+        }
+    }
+}
+
+int ListKeySearchNext(ListKeySearch* search) {
+    if (!search) return -1;
+    int limit = search->maxDistance * 4 + 8;
+    if (limit < 8) limit = 8;
+    for (int guard = 0; guard < limit; guard++) {
+        int candidate = -1;
+        if (search->phase == 0) {
+            candidate = search->index;
+            search->phase = 1;
+        } else if (search->phase == 1) {
+            search->phase = 2;
+            if (search->shifted < 0) continue;
+            candidate = search->shifted;
+        } else {
+            if (search->distance > search->maxDistance) return -1;
+            if (search->side == 0) {
+                long long added = (long long)search->index + search->distance;
+                search->side = 1;
+                if (added > 0x7fffffffLL) continue;
+                candidate = (int)added;
+            } else {
+                long long below = (long long)search->index - search->distance;
+                search->side = 0;
+                search->distance++;
+                if (below < 0) continue;
+                candidate = (int)below;
+            }
+            if (candidate == search->shifted) continue;
+        }
+        if (candidate >= 0 && candidate < search->newCount) return candidate;
+    }
+    return -1;
+}
 
 // How far past the viewport a `list` draws and measures, in pixels.
 //
@@ -1141,9 +1202,87 @@ struct LazyListState {
     Vec<float> measured;
     // `uniform_list` only: the height the measured item came out at.
     float rowH = 0;
+    // False until the first build, which adopts the script's count the way
+    // ListState::new(item_count) does. A later change is a splice.
+    bool placed = false;
+    // The item at the top after the last build, by the key get_key returned.
+    // A new get_key callback means the script rendered again, so the key is
+    // asked for again.
+    bool hasTop = false;
+    int topKeyIndex = -1;
+    shell::CallbackId topGetKey = 0;
+    Str topKey = {};
 
-    ~LazyListState() { VecReset(measured); }
+    ~LazyListState() {
+        VecReset(measured);
+        StrFree(topKey);
+    }
 };
+
+static void ClearListTop(LazyListState* state) {
+    if (!state || !state->hasTop) return;
+    StrFree(state->topKey);
+    state->topKey = {};
+    state->hasTop = false;
+    state->topKeyIndex = -1;
+    state->topGetKey = 0;
+}
+
+static void RememberListTop(ShellRuntime* runtime, LazyListState* state,
+                            shell::CallbackId getKey, int count, Ctx* cx) {
+    if (!state) return;
+    if (state->topItem < 0 || state->topItem >= count) {
+        ClearListTop(state);
+        return;
+    }
+    if (state->hasTop && state->topKeyIndex == state->topItem &&
+        state->topGetKey == getKey) {
+        return;
+    }
+    Str key =
+        runtime ? runtime->ListItemKey(getKey, state->topItem, cx) : Str{};
+    if (!key.s) {
+        ClearListTop(state);
+        return;
+    }
+    ClearListTop(state);
+    state->topKey = key;
+    state->hasTop = true;
+    state->topKeyIndex = state->topItem;
+    state->topGetKey = getKey;
+}
+
+// splice_item_count: drop every measurement, and keep the reader on the item
+// they were reading. A position past the last item is the end of the list.
+static void SpliceListCount(ShellRuntime* runtime, LazyListState* state,
+                            shell::CallbackId getKey, int count, Ctx* cx) {
+    int oldCount = state->itemCount;
+    int position = state->topItem;
+    float into = state->topInto;
+    if (position >= oldCount) {
+        state->topItem = count;
+        state->topInto = 0;
+    } else if (state->hasTop && runtime) {
+        int found = runtime->FindListItemKey(
+            getKey, state->topKey, state->topKeyIndex, oldCount, count, cx);
+        if (found >= 0) {
+            long long at = (long long)found + (long long)position -
+                           (long long)state->topKeyIndex;
+            if (at < 0) at = 0;
+            if (at > count) at = count;
+            state->topItem = (int)at;
+        } else if (position > count) {
+            state->topItem = count;
+        }
+        state->topInto = into;
+    } else {
+        if (position < 0) position = 0;
+        if (position > count) position = count;
+        state->topItem = position;
+        state->topInto = into;
+    }
+    ClearListTop(state);
+}
 
 static uint32_t LazyListKey(Str id) {
     return KeyedKey((uint32_t)HashClickId(id),
@@ -1229,12 +1368,18 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
         return VirtualList::New(cx, spec->id, opts)->SizeFull();
     }
 
+    if (!state->placed) {
+        state->placed = true;
+        if (state->topItem >= count) state->topItem = 0;
+    } else if (state->itemCount != count) {
+        SpliceListCount(runtime, state, spec->getKey, count, cx);
+    }
     if (state->itemCount != count) {
         VecClear(state->measured);
         for (int i = 0; i < count; i++) VecAppend(state->measured, 0.f);
         state->itemCount = count;
-        if (state->topItem >= count) state->topItem = 0;
     }
+    RememberListTop(runtime, state, spec->getKey, count, cx);
     VirtualListOpts opts;
     opts.count = count;
     opts.sizes = state->measured.len ? state->measured.els : nullptr;

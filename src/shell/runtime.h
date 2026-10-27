@@ -218,6 +218,14 @@ class ShellRuntime {
                             shell::CallbackId onItemClick,
                             shell::CallbackId onItemSecondaryClick, int first,
                             int end, Ctx* cx, El** out);
+    // A list's get_key, from inside layout. Empty when the callback is gone
+    // or throws; a throw is logged and no further key should be asked for.
+    // The returned string is heap-owned.
+    Str ListItemKey(shell::CallbackId getKey, int index, Ctx* cx);
+    // The first index in ListKeySearch order whose key equals `want`, or -1
+    // when it is gone or get_key throws.
+    int FindListItemKey(shell::CallbackId getKey, Str want, int index,
+                        int oldCount, int newCount, Ctx* cx);
     // Token chips are built while materializing, not while describing. A
     // dedicated generation holds callbacks the renderer registers (a nested
     // button's on_click) and is retired at the next materialize, after last

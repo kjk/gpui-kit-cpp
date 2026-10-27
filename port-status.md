@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4dda232896db53ce726596179e7c12fd55ea47ca` (2026-10-16,
-dock: Report the user's dock toggles with DockToggleEvent (#3546)).
-A collapse button, a tab on a collapsed dock strip, and a resize handle
-dragged across the closed strip report that the user opened or closed a
-dock. A toggle made by code, a refused non-collapsible toggle, and a
-resize that leaves the dock open do not.
+Processed through `01640916d332874f84e3a2d3af13aab311ab9530` (2026-10-16,
+shell: Keep a list's reading position when its item count changes (#3547)).
+When a script list's item count changes, the reader stays on the item
+that was at the top of the viewport, found again by its key, the same
+distance into it. A missing item keeps the old index. A position past
+the last item stays at the end.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
