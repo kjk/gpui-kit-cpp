@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9254c58028cebe8122b989c30e15f9139e0b2569` (2026-10-18,
-setting: Name dropdown, number and text fields after their setting's title (#3582)).
-A text field and a number field take the setting's title as their
-accessible name. A dropdown's button is named with the title and
-the selected option. Website notes are not ported.
+Processed through `f692bb846ab5eb6e393ab71ec4a006e974735ed8` (2026-10-18,
+ci: Quote the tooltip test command so the workflow parses (#3592)).
+The quote is in upstream's workflow file, which this tree does not
+carry.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
