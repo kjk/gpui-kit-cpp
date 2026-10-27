@@ -16,6 +16,9 @@ void SelectInitKeys() {
     bound = KeymapGeneration();
     const char* ctx = "Select";
     KeyBinding bindings[] = {
+        // Space confirms a select, but not while a search field has the
+        // key: "Select && !Input" leaves the character for the input.
+        {"space", action::Confirm(), "Select && !Input"},
         {"up", action::SelectUp(), ctx},
         {"down", action::SelectDown(), ctx},
         {"enter", action::Confirm(), ctx},

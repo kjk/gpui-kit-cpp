@@ -1,7 +1,9 @@
 /* Ported from crates/base/src/select.rs.
  *
- * Rust binds up, down, enter, secondary-enter and escape in the select's key
- * context and hangs an on_action off each. Every one of those handlers is a
+ * Rust binds space, up, down, enter, secondary-enter and escape in the
+ * select's key. Space is "Select && !Input", so a search field keeps the
+ * character. The context hangs an on_action off each. Every one of those
+ * handlers is a
  * few lines of rules over `open` and `disabled`; this walks the chord in
  * through the keymap and pins what comes out. The focus transfer each handler
  * also does is the pair of handles the state keeps — the trigger's and the
@@ -47,12 +49,12 @@ static void ADisabledSelectAnswersToNothing() {
     utassert(ForChord("down", false, true) == SelectAction::None);
     utassert(ForChord("up", true, true) == SelectAction::None);
     utassert(ForChord("enter", true, true) == SelectAction::None);
+    utassert(ForChord("space", false, true) == SelectAction::None);
     utassert(ForChord("escape", true, true) == SelectAction::None);
 }
 
 static void OtherKeysAreNotTheSelects() {
     utassert(ForChord("tab", true, false) == SelectAction::None);
-    utassert(ForChord("space", true, false) == SelectAction::None);
     utassert(ForChord("backspace", false, false) == SelectAction::None);
 }
 
@@ -571,6 +573,135 @@ static void SelectAccessibilityValueTracksPlaceholderAndSelection() {
     EntityDropAll(&app);
 }
 
+// select.rs space_opens_and_confirms_a_non_searchable_select.
+static void SpaceOpensAndConfirmsANonSearchableSelect() {
+    utassert(ForChord("space", false, false) == SelectAction::Open);
+    utassert(ForChord("space", true, false) == SelectAction::Confirm);
+}
+
+// select.rs space_in_a_select_search_input_remains_text. The binding's
+// context is Select && !Input, so a focused search field does not take it.
+static void SpaceInASelectSearchInputRemainsText() {
+    SelectInitKeys();
+    KeyChord chord = {};
+    utassert(KeyChordParse(Str("space"), &chord));
+    uint32_t input = KeyContextOf(StrL("Input"));
+    uint32_t select = KeyContextOf(SelectContext());
+    uint32_t stack[] = {input, select};
+    utassert(KeymapMatch(chord, stack, 2).action == 0);
+}
+
+// select.rs confirm_is_consumed_when_opening_and_accepting. A handled
+// confirm does not propagate to a parent. A disabled select still does,
+// because it never claims the key.
+static void ConfirmIsConsumedWhenOpeningAndAccepting() {
+    using namespace gpui::component;
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {&app, win, nullptr, {}};
+    Entity<SelectState> state = SelectState::New(&app);
+    SelectState* s = state.Get(&app);
+    SearchableItem items[] = {{StrL("Main"), StrL("main")}};
+    s->SetItems(items, 1);
+
+    ActionEvent ev = {};
+    ev.action = action::Confirm();
+    SearchableListState::OnAction(&s->state, &cx, &ev);
+    utassert(!ev.propagate);
+    utassert(s->state.open);
+
+    ev.propagate = false;
+    s->state.list.selected = 0;
+    SearchableListState::OnAction(&s->state, &cx, &ev);
+    utassert(!ev.propagate);
+    utassert(!s->state.open);
+
+    delete win;
+    EntityDropAll(&app);
+}
+
+// select.rs replacing_items_reconciles_the_cursor_and_selection.
+static void ReplacingItemsReconcilesTheCursorAndSelection() {
+    using namespace gpui::component;
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {&app, win, nullptr, {}};
+    Entity<SelectState> state = SelectState::New(&app);
+    SelectState* s = state.Get(&app);
+    SearchableItem first[] = {
+        {StrL("main"), StrL("main")},
+        {StrL("topic"), StrL("topic")},
+        {StrL("release"), StrL("release")},
+    };
+    s->SetItems(first, 3);
+    IndexPath zero = IndexPathNew(0);
+    s->SetSelectedIndex(&zero, &cx);
+    // The list cursor moves on its own. The committed value stays main.
+    s->state.list.selected = 1;
+
+    SearchableItem second[] = {
+        {StrL("release"), StrL("release")},
+        {StrL("main"), StrL("main")},
+        {StrL("topic"), StrL("topic")},
+    };
+    s->SetItems(second, 3);
+    IndexPath cursor;
+    utassert(s->SelectedIndex(&cursor));
+    utassert(cursor == IndexPathNew(2));
+    utassert(base::StrEq(s->SelectedValue(), StrL("main")));
+    utassert(s->state.selected.len == 1 && s->state.selected[0] == 1);
+
+    SearchableItem third[] = {
+        {StrL("main"), StrL("main")},
+        {StrL("replacement"), StrL("replacement")},
+    };
+    s->SetItems(third, 2);
+    utassert(!s->SelectedIndex(nullptr));
+    utassert(base::StrEq(s->SelectedValue(), StrL("main")));
+
+    SearchableItem fourth[] = {
+        {StrL("replacement"), StrL("replacement")},
+        {StrL("other"), StrL("other")},
+    };
+    s->SetItems(fourth, 2);
+    utassert(!s->SelectedValue().s);
+    utassert(s->state.selected.len == 0);
+
+    delete win;
+    EntityDropAll(&app);
+}
+
+// select.rs disabled_items_cannot_be_confirmed. A disabled row does not
+// close the menu; an enabled one does.
+static void DisabledItemsCannotBeConfirmed() {
+    using namespace gpui::component;
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {&app, win, nullptr, {}};
+    Entity<SelectState> state = SelectState::New(&app);
+    SelectState* s = state.Get(&app);
+    SearchableItem items[] = {{StrL("Main"), StrL("main")}};
+    items[0].disabled = true;
+    s->SetItems(items, 1);
+    s->SetOpen(true, &cx);
+    s->state.list.selected = 0;
+    ActionEvent ev = {};
+    ev.action = action::Confirm();
+    SearchableListState::OnAction(&s->state, &cx, &ev);
+    utassert(s->state.open);
+
+    items[0].disabled = false;
+    ev.propagate = false;
+    SearchableListState::OnAction(&s->state, &cx, &ev);
+    utassert(!s->state.open);
+
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestSelect() {
     TestSuite("select");
     TheRootProjectsApplicationOwnedAccessibleState();
@@ -580,6 +711,11 @@ void TestSelect() {
     EscapeOnlyCountsWhileOpen();
     ADisabledSelectAnswersToNothing();
     OtherKeysAreNotTheSelects();
+    SpaceOpensAndConfirmsANonSearchableSelect();
+    SpaceInASelectSearchInputRemainsText();
+    ConfirmIsConsumedWhenOpeningAndAccepting();
+    ReplacingItemsReconcilesTheCursorAndSelection();
+    DisabledItemsCannotBeConfirmed();
     TheListInsideASelectIsTheContentHandle();
     CaretKeepsTheSourceSizeScale();
     SelectStateOwnsCommittedSelectionAndEvents();

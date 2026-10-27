@@ -71,6 +71,7 @@ struct SelectState {
     void SetSelectedIndex(const IndexPath* selected, Ctx* cx);
     void SetSelectedIndex(int flatIndex, Ctx* cx);
     void SetSelectedValue(Str value, Ctx* cx);
+    // The highlighted row (list.selected_index), not the committed value.
     bool SelectedIndex(IndexPath* out) const;
     Str SelectedValue() const;
     void Focus(Window* win) const;

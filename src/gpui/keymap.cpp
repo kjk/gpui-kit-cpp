@@ -579,11 +579,17 @@ static int PredParse(Str spec, bool* ok) {
 
 // `levels` is the ancestry from the level being tried outwards, innermost
 // first; the innermost is the one an identifier or a comparison is read
-// against, which is Rust's `contexts.last()`.
-static bool PredEval(int ix, const CtxLevel* levels, int n) {
+// against, which is Rust's `contexts.last()`. `all` is the whole stack, which
+// negation reads at every depth.
+static bool PredEval(int ix, const CtxLevel* levels, int n, const CtxLevel* all,
+                     int nAll) {
     if (ix < 0 || n <= 0) {
         // Rust reads nothing out of an empty stack, negation included.
         return false;
+    }
+    if (!all) {
+        all = levels;
+        nAll = n;
     }
     const PredNode p = gPreds[ix];
     uint32_t val = 0;
@@ -597,15 +603,26 @@ static bool PredEval(int ix, const CtxLevel* levels, int n) {
             // which is `context.get(k) != Some(v)`.
             return !ContextValue(levels[0], p.a, &val) || val != p.b;
         case PredOp::Not:
-            return !PredEval(p.l, levels, n);
+            // `!Input` is false when Input is any context on the stack, not
+            // only the level being tried. Otherwise "Select && !Input" would
+            // match again once the walk stepped out of the field.
+            for (int i = 0; i < nAll; i++) {
+                if (PredEval(p.l, all + i, nAll - i, all, nAll)) {
+                    return false;
+                }
+            }
+            return true;
         case PredOp::And:
-            return PredEval(p.l, levels, n) && PredEval(p.r, levels, n);
+            return PredEval(p.l, levels, n, all, nAll) &&
+                   PredEval(p.r, levels, n, all, nAll);
         case PredOp::Or:
-            return PredEval(p.l, levels, n) || PredEval(p.r, levels, n);
+            return PredEval(p.l, levels, n, all, nAll) ||
+                   PredEval(p.r, levels, n, all, nAll);
         case PredOp::Child:
             // The right half against this level, the left half against what
             // encloses it.
-            return PredEval(p.r, levels, n) && PredEval(p.l, levels + 1, n - 1);
+            return PredEval(p.r, levels, n, all, nAll) &&
+                   PredEval(p.l, levels + 1, n - 1, all, nAll);
     }
     return false;
 }
@@ -761,22 +778,24 @@ void KeymapBind(const KeyBinding* bindings, int n) {
 // Whether a binding is in play at this level. A scoped pass wants a predicate
 // that holds here; the unscoped pass, which runs last, is the bindings that
 // named no context at all.
-static bool BindingApplies(const BoundKey& b, const CtxLevel* levels, int n) {
+static bool BindingApplies(const BoundKey& b, const CtxLevel* levels, int n,
+                           const CtxLevel* all, int nAll) {
     if (n == 0) {
         return b.pred < 0;
     }
-    return b.pred >= 0 && PredEval(b.pred, levels, n);
+    return b.pred >= 0 && PredEval(b.pred, levels, n, all, nAll);
 }
 
 // One level of the stack, or — with nothing passed — the unscoped pass. The
 // last binding for a chord wins, so the search runs backwards. Answers the
 // action of a binding this chord completes, and notes on the way whether one
 // it only begins is left waiting.
-static uint32_t MatchIn(const CtxLevel* levels, int n, bool* pending,
-                        int64_t* arg) {
+static uint32_t MatchIn(const CtxLevel* levels, int n, const CtxLevel* all,
+                        int nAll, bool* pending, int64_t* arg) {
     for (int i = len(gBindings) - 1; i >= 0; i--) {
         const BoundKey& b = gBindings[i];
-        if (!BindingApplies(b, levels, n) || b.nStrokes < gNPending) {
+        if (!BindingApplies(b, levels, n, all, nAll) ||
+            b.nStrokes < gNPending) {
             continue;
         }
         bool begins = true;
@@ -806,20 +825,22 @@ static uint32_t MatchIn(const CtxLevel* levels, int n, bool* pending,
 static uint32_t MatchStack(const CtxLevel* levels, int n, bool* pending,
                            int64_t* arg) {
     for (int lvl = 0; lvl < n; lvl++) {
-        uint32_t action = MatchIn(levels + lvl, n - lvl, pending, arg);
+        uint32_t action =
+            MatchIn(levels + lvl, n - lvl, levels, n, pending, arg);
         if (action) {
             return action;
         }
     }
-    return MatchIn(nullptr, 0, pending, arg);
+    return MatchIn(nullptr, 0, levels, n, pending, arg);
 }
 
 // Whether `b` is in play at this level and names `action`, and if so what its
 // first chord is.
 static bool BindingNames(const BoundKey& b, uint32_t action,
-                         const CtxLevel* levels, int n, KeyChord* out) {
+                         const CtxLevel* levels, int n, const CtxLevel* all,
+                         int nAll, KeyChord* out) {
     if (b.action != action || b.nStrokes <= 0 ||
-        !BindingApplies(b, levels, n)) {
+        !BindingApplies(b, levels, n, all, nAll)) {
         return false;
     }
     *out = b.strokes[0];
@@ -847,13 +868,14 @@ bool KeymapBindingForAction(uint32_t action, const uint32_t* contexts,
     for (int lvl = 0; lvl < nContexts; lvl++) {
         for (int i = len(gBindings) - 1; i >= 0; i--) {
             if (BindingNames(gBindings[i], action, levels + lvl,
-                             nContexts - lvl, out)) {
+                             nContexts - lvl, levels, nContexts, out)) {
                 return true;
             }
         }
     }
     for (int i = len(gBindings) - 1; i >= 0; i--) {
-        if (BindingNames(gBindings[i], action, nullptr, 0, out)) {
+        if (BindingNames(gBindings[i], action, nullptr, 0, levels, nContexts,
+                         out)) {
             return true;
         }
     }

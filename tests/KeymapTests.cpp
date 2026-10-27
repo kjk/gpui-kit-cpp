@@ -205,6 +205,10 @@ static void APredicateReadsTheInnermostContext() {
     KeymapBind(b4, 1);
     utassert(KeymapMatch(Chord("enter"), &plain, 1).action == 0);
     utassert(KeymapMatch(Chord("enter"), &term, 1).action == act);
+    // Negation reads the whole stack. An Editor outside a Terminal still
+    // makes `!Editor` fail, which is what `Select && !Input` relies on.
+    uint32_t both[] = {term, plain};
+    utassert(KeymapMatch(Chord("enter"), both, 2).action == 0);
 
     // A predicate that cannot be read drops the binding, the same as a chord
     // that cannot be read.

@@ -691,6 +691,11 @@ void SearchableListState::OnRowClick(SearchableListState* self, Ctx* cx,
     }
     self->list.selected = m;
     int index = self->matches[m];
+    // adapter.rs confirm: a missing or disabled row is not a choice. The
+    // menu stays open and the shared callback does not run.
+    if (!SearchableListIsEnabled(self, self->items, self->nItems, index)) {
+        return;
+    }
     // The changes the mode came to are applied here, since the list is what
     // holds both the selection and the items. What the caller hears is what
     // was picked, once it has been.

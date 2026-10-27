@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `60c292d1d890293ce7673f24d4d70593dda79808` (2026-10-15,
-focus_trap: Keep focus contained and preserve accessibility (#3443)).
-Tab inside a trap walks that trap's own stops, with no attempt cap, and
-an empty trap keeps focus on its container. The trap id on the focused
-element is the innermost scope. The trap refines its element in place,
-so the element's accessibility role, label and description stay on it.
+Processed through `70465ac7413920a8cc7b5fb71920280f7bfb5c85` (2026-10-15,
+select: Correct keyboard confirmation and item reconciliation (#3446)).
+Space confirms a select unless a search field has the key. A handled
+confirm is not propagated. Replacing items follows each value to its
+new index and drops a value the new list does not have. A disabled or
+missing row cannot be confirmed.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

@@ -88,7 +88,57 @@ void SelectState::Searchable(bool value) {
 }
 
 void SelectState::SetItems(const SearchableItem* items, int nItems) {
+    // The highlighted row and the committed values follow item identity.
+    // An index into the old list would name a different row after a
+    // reorder, and a value the new list does not have is dropped.
+    Str cursorValue = {};
+    bool hadCursor = false;
+    if (state.items && state.list.selected >= 0 &&
+        state.list.selected < state.matches.len) {
+        int ix = state.matches[state.list.selected];
+        if (ix >= 0 && ix < state.nItems) {
+            cursorValue = state.items[ix].value;
+            hadCursor = true;
+        }
+    }
+    Vec<int> kept;
+    if (state.items) {
+        for (int i = 0; i < state.selected.len; i++) {
+            int old = state.selected[i];
+            if (old < 0 || old >= state.nItems) {
+                continue;
+            }
+            Str value = state.items[old].value;
+            for (int j = 0; j < nItems; j++) {
+                if (items && base::StrEq(items[j].value, value)) {
+                    VecAppend(kept, j);
+                    break;
+                }
+            }
+        }
+    }
+    int cursor = -1;
+    if (hadCursor) {
+        for (int j = 0; j < nItems; j++) {
+            if (items && base::StrEq(items[j].value, cursorValue)) {
+                cursor = j;
+                break;
+            }
+        }
+    }
     SearchableListSearch(&state, items, nItems, Str{});
+    VecClear(state.selected);
+    for (int i = 0; i < kept.len; i++) {
+        VecAppend(state.selected, kept[i]);
+    }
+    state.list.selected = -1;
+    for (int i = 0; i < state.matches.len; i++) {
+        if (state.matches[i] == cursor) {
+            state.list.selected = i;
+            break;
+        }
+    }
+    VecReset(kept);
 }
 
 void SelectState::SetSelectedIndex(const IndexPath* selected, Ctx* cx) {
@@ -131,10 +181,12 @@ void SelectState::SetSelectedValue(Str value, Ctx* cx) {
 }
 
 bool SelectState::SelectedIndex(IndexPath* out) const {
-    if (state.selected.len <= 0) {
+    // list.selected_index: the highlighted row, not the committed value.
+    // set_items can move one without the other.
+    if (state.list.selected < 0 || state.list.selected >= state.matches.len) {
         return false;
     }
-    IndexPath path = SelectPath(&state, state.selected[0]);
+    IndexPath path = SelectPath(&state, state.matches[state.list.selected]);
     if (path.row < 0) {
         return false;
     }

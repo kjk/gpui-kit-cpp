@@ -93,7 +93,7 @@ uint32_t KeyContextOf(Str name);
 //   "Editor"                  the innermost context declares it
 //   "Editor && mode == full"  and carries mode=full
 //   "mode != full"            and does not
-//   "!Editor"                 does not declare it
+//   "!Editor"                 no context on the stack declares it
 //   "Editor || Terminal"      either one
 //   "Workspace > Editor"      an Editor whose parent context is a Workspace
 //
