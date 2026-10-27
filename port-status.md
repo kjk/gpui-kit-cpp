@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2154ba84afd2e771f117fd17e55c060dd5e03fd4` (2026-10-18,
-table: Let DataTable turn off its focus ring with focus_ring(false) (#3565)).
-A keyboard-focused table still draws its focus ring. FocusRing(false)
-leaves that outline off. The selected row is unchanged.
+Processed through `3a1eaf1583958b38a9e3f5a98eb58d5ab6cc014e` (2026-10-18,
+website: Update Native Shell domain and add project logos (#3579)).
+The story README now links Native Shell at nsh.dev. The website nav
+and its project logos are not part of this tree.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
