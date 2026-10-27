@@ -16,15 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `50dac1cafb34a4d453c92715219c0458d9a4727b` (2026-10-14,
-shell: Fix more runtime gaps found by the benchmark apps (#3510)).
-A virtual-list row may register its own handlers for the frame that
-drew it. The QuickJS heap has no ceiling, and a long error is kept
-whole. `process.spawn` streams a child, and `process.run` takes a
-working directory and a timeout. `cx.open_path` opens a path the script
-may read, once it exists, with the system.
+Processed through `6220fc1584b32589d1f15942f883e64c059e5e3f` (2026-10-15,
+shell: Gate the process probe helper to Unix (#3530)).
+The shell's process tests gate their Unix `probe` helper so Windows
+builds do not see an unused function. This tree has no counterpart of
+that helper.
 The current update target is
-`50dac1cafb34a4d453c92715219c0458d9a4727b`.
+`c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
 ## Known gaps vs Rust
 
