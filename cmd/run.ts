@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "49fb39ebc8f838b341e5e46bd240c6b62aa047fa",
+  sha: "86b4ac581754fb8ffd1ad7ff55827b8589838648",
   date: "2026-10-18",
-  subject: "text: Keep whitespace in `<pre><code>` through the HTML minifier (#3581)",
+  subject: "tree: select and toggle entries on click instead of mouse down (#3567)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

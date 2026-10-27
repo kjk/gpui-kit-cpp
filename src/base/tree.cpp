@@ -363,8 +363,12 @@ void TreePerform(TreeState* s, Ctx* cx, TreeAction act) {
     Notify(cx);
 }
 
-void TreeState::OnRowClick(TreeState* self, Ctx* cx, const ClickEvent*,
+void TreeState::OnRowClick(TreeState* self, Ctx* cx, const ClickEvent* ev,
                            int64_t entryIx) {
+    // A right click records rightClicked from the press and does not select.
+    if (ev && ev->button != MouseButton::Left) {
+        return;
+    }
     TreeClickEntry(self, cx, (int)entryIx);
 }
 
@@ -424,6 +428,9 @@ static El* TreeRows(Ctx* cx, Entity<TreeState> state, TreeRowFn row, void* user,
                                    ListenerArg(click, i))
                        ->FlexCol()
                        ->W(kFill);
+        // The left button selects on a full click (the OnClick above), the
+        // way a list row does. The press only records a right click, so a
+        // drag that starts on the row leaves the entry alone.
         if (!it->disabled) {
             wrap->OnMouseDown(ListenerArg(down, i));
         }

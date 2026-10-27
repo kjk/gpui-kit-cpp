@@ -295,6 +295,128 @@ static void ATreeWithoutAHeightFillsItsBox() {
     EntityDropAll(&app);
 }
 
+// tree.rs entries_select_and_toggle_on_click_not_mouse_down and the three
+// tests beside it. The row is the click target; its content can be dragged.
+struct TreeClickView {
+    Entity<TreeState> state;
+    bool draggable = false;
+    El* box = nullptr;
+
+    static El* Row(void* user, Ctx* cx, int, const TreeEntry&, TreeEntryState) {
+        TreeClickView* self = (TreeClickView*)user;
+        El* row = Div(cx->a)->W(kFill)->H(34);
+        if (self && self->draggable) {
+            row->OnDrag(StrL("tree-entry"));
+        }
+        return row;
+    }
+
+    static El* Render(TreeClickView* self, Ctx* cx) {
+        self->box = TreeList::New(cx, StrL("tree"), self->state, 200,
+                                  &TreeClickView::Row, self);
+        return self->box;
+    }
+};
+
+static Point TreeRowCenter(TreeClickView* view) {
+    El* rows = view && view->box ? view->box->first : nullptr;
+    El* row = rows ? rows->first : nullptr;
+    utassert(row != nullptr);
+    if (row && row->h < 1.f && row->first) {
+        row = row->first;
+    }
+    if (!row) {
+        return {};
+    }
+    Bounds b = row->Bounds();
+    return {b.x + b.w / 2.f, b.y + b.h / 2.f};
+}
+
+static TreeClickView* OpenClickTree(App* app, bool draggable, bool disabled,
+                                    Window** winOut) {
+    Entity<TreeState> state = EntityNewState<TreeState>(app);
+    TreeState* s = state.Get(app);
+    int root = TreeAddItem(s, StrL("src"), StrL("src"), -1);
+    TreeAddItem(s, StrL("src/lib.rs"), StrL("lib.rs"), root);
+    if (disabled) {
+        s->items[root].disabled = true;
+    }
+    TreeRebuild(s);
+    Entity<TreeClickView> view = EntityNew<TreeClickView>(app);
+    TreeClickView* live = view.Get(app);
+    live->state = state;
+    live->draggable = draggable;
+    *winOut = TestWindowOpen(app, view, 320, 240);
+    TestDraw(*winOut);
+    return live;
+}
+
+static void EntriesSelectAndToggleOnClickNotMouseDown() {
+    App* app = TestAppNew();
+    Window* win = nullptr;
+    TreeClickView* view = OpenClickTree(app, false, false, &win);
+    TreeState* s = view->state.Get(app);
+    Point entry = TreeRowCenter(view);
+
+    TestSimulateMouseDown(win, entry, MouseButton::Left);
+    utassert(s->selected < 0);
+    utassert(s->entries.len == 1);
+
+    TestSimulateMouseUp(win, {10.f, 500.f}, MouseButton::Left);
+    utassert(s->selected < 0);
+
+    entry = TreeRowCenter(view);
+    TestSimulateClick(win, entry);
+    utassert(s->selected == 0);
+    utassert(s->entries.len == 2);
+    TestAppFree(app);
+}
+
+static void DraggingAnEntryDoesNotSelectOrToggleIt() {
+    App* app = TestAppNew();
+    Window* win = nullptr;
+    TreeClickView* view = OpenClickTree(app, true, false, &win);
+    TreeState* s = view->state.Get(app);
+    Point entry = TreeRowCenter(view);
+
+    TestSimulateMouseDown(win, entry, MouseButton::Left);
+    TestSimulateMouseMove(win, {entry.x + 8.f, entry.y}, true,
+                          MouseButton::Left);
+    TestDraw(win);
+    TestSimulateMouseUp(win, entry, MouseButton::Left);
+    utassert(s->selected < 0);
+    utassert(s->entries.len == 1);
+    TestAppFree(app);
+}
+
+static void RightClickNeitherSelectsNorToggles() {
+    App* app = TestAppNew();
+    Window* win = nullptr;
+    TreeClickView* view = OpenClickTree(app, false, false, &win);
+    TreeState* s = view->state.Get(app);
+    Point entry = TreeRowCenter(view);
+
+    TestSimulateMouseDown(win, entry, MouseButton::Right);
+    TestSimulateMouseUp(win, entry, MouseButton::Right);
+    utassert(s->rightClicked == 0);
+    utassert(s->selected < 0);
+    utassert(s->entries.len == 1);
+    TestAppFree(app);
+}
+
+static void ClickingADisabledEntryDoesNothing() {
+    App* app = TestAppNew();
+    Window* win = nullptr;
+    TreeClickView* view = OpenClickTree(app, false, true, &win);
+    TreeState* s = view->state.Get(app);
+    Point entry = TreeRowCenter(view);
+
+    TestSimulateClick(win, entry);
+    utassert(s->selected < 0);
+    utassert(s->entries.len == 1);
+    TestAppFree(app);
+}
+
 void TestTree() {
     TestSuite("tree");
     TheKeyTable();
@@ -312,4 +434,8 @@ void TestTree() {
     TheStateOwnsTheStringsItIsGiven();
     SelectingHiddenItemExpandsItsAncestors();
     ATreeWithoutAHeightFillsItsBox();
+    EntriesSelectAndToggleOnClickNotMouseDown();
+    DraggingAnEntryDoesNotSelectOrToggleIt();
+    RightClickNeitherSelectsNorToggles();
+    ClickingADisabledEntryDoesNothing();
 }

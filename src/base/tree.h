@@ -182,8 +182,8 @@ int TreeRevealItem(TreeState* s, Ctx* cx, Str id, ScrollStrategy strategy);
 void TreeScrollToItem(TreeState* s, int entryIx, ScrollStrategy strategy);
 void TreeSetSelected(TreeState* s, Ctx* cx, int entryIx);
 void TreeSetSelectedItem(TreeState* s, Ctx* cx, Str id);
-// on_entry_click: select the row, then toggle it — so a press on a folder
-// opens it and a press on a leaf only selects.
+// on_entry_click: select the row, then toggle it — so a click on a folder
+// opens it and a click on a leaf only selects.
 void TreeClickEntry(TreeState* s, Ctx* cx, int entryIx);
 void TreePerform(TreeState* s, Ctx* cx, TreeAction act);
 
@@ -216,8 +216,9 @@ struct TreeList {
     static El* New(Ctx* cx, Str id, Entity<TreeState> state, float h,
                    TreeRowFn row, void* user);
 };
-// on_entry_click selects the entry and toggles it, so a press on a folder's
-// row opens it and a press on a leaf just selects.
+// on_entry_click selects the entry and toggles it, so a click on a folder's
+// row opens it and a click on a leaf just selects. A press that turns into
+// a drag is not a click.
 struct TreeItemEl {
     static El* New(Ctx* cx, Str id = {}, Listener onClick = {});
 };
