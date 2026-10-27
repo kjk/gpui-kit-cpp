@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "2062380587752a0095b4f49ca870cfde54d701c6",
+  sha: "2154ba84afd2e771f117fd17e55c060dd5e03fd4",
   date: "2026-10-18",
-  subject: "input: share display_map and prewrap across text modes (#3564)",
+  subject: "table: Let DataTable turn off its focus ring with focus_ring(false) (#3565)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

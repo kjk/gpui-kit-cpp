@@ -141,6 +141,9 @@ struct DataTable {
     // TableOptions::bordered: the rounded 1px border round the table, on by
     // default as in Rust.
     bool bordered = true;
+    // FocusableExt::focus_ring. On by default. The selected row already
+    // shows keyboard position, so a table can turn the outline off.
+    bool focusRingEnabled = true;
     // TableOptions::fixed_cols_border: the hairline on the right of the
     // fixed columns, in the header and on each body row. Off when those
     // cells draw the edge themselves.
@@ -206,6 +209,8 @@ struct DataTable {
                     El* (*cell)(Ctx* cx, void* data, int row, int col));
     DataTable* Stripe(bool v);
     DataTable* Bordered(bool v);
+    // FocusableExt::focus_ring. False skips the keyboard focus outline.
+    DataTable* FocusRing(bool v);
     DataTable* FixedColsBorder(bool v);
     DataTable* ScrollbarVisible(bool vertical, bool horizontal);
     // Bounce the rows at the vertical boundaries. Headers and scrollbars

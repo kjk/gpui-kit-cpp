@@ -1585,6 +1585,38 @@ static void AResizeDragAfterAFitWaitsForTheNextPress() {
     TestAppFree(app);
 }
 
+// data_table.rs data_table_draws_the_focus_ring_by_default and
+// data_table_focus_ring_can_be_turned_off. Keyboard focus asks for the
+// ring unless focus_ring(false) turned it off.
+static void DataTableFocusRingFollowsTheBuilder() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->lastInputKeyboard = true;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    TableState* live = state.Get(&app);
+    live->rowCount = 3;
+    live->colCount = 1;
+    const component::TableColumn cols[] = {{StrL("Name")}};
+    El* on = component::DataTable::New(&cx, StrL("on"), state)
+                 ->Columns(cols, 1)
+                 ->Rows(3, nullptr, nullptr)
+                 ->IntoEl();
+    El* off = component::DataTable::New(&cx, StrL("off"), state)
+                  ->Columns(cols, 1)
+                  ->Rows(3, nullptr, nullptr)
+                  ->FocusRing(false)
+                  ->IntoEl();
+    utassert(on && on->style.focusRing);
+    utassert(off && !off->style.focusRing);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestDataTable() {
     AFittedColumnHoldsItsContentOnWholeDevicePixels();
     AFitStaysWithinTheColumnAndEmitsOnlyOnAChange();
@@ -1608,6 +1640,7 @@ void TestDataTable() {
     TableHomeAndEndSelectTheFirstAndLastRow();
     ARightClickMarksARowOrACellButNeverBoth();
     ARightClickedCellClearsOnTheNextClick();
+    DataTableFocusRingFollowsTheBuilder();
     ACellIsOneNumber();
     AColumnKeepsItsWidthOnceItHasOne();
     ColumnResizeBoundsPreserveInitialWidths();

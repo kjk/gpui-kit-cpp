@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2062380587752a0095b4f49ca870cfde54d701c6` (2026-10-18,
-input: share display_map and prewrap across text modes (#3564)).
-Rust moved display_map and prewrap from the editor onto every text
-mode. This tree already keeps both on InputState. A textarea can
-prepare its content rows before the first layout, and soft wrap still
-decides whether a long line wraps. The website notes are not ported.
+Processed through `2154ba84afd2e771f117fd17e55c060dd5e03fd4` (2026-10-18,
+table: Let DataTable turn off its focus ring with focus_ring(false) (#3565)).
+A keyboard-focused table still draws its focus ring. FocusRing(false)
+leaves that outline off. The selected row is unchanged.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

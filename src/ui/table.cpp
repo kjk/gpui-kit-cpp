@@ -439,6 +439,10 @@ DataTable* DataTable::Bordered(bool v) {
     bordered = v;
     return this;
 }
+DataTable* DataTable::FocusRing(bool v) {
+    focusRingEnabled = v;
+    return this;
+}
 DataTable* DataTable::FixedColsBorder(bool v) {
     fixedColsBorder = v;
     return this;
@@ -1539,11 +1543,12 @@ El* DataTable::BuildEl() {
         }
         box->TrackFocus(s->focus);
     }
-    // data_table.rs: `.when(focus_handle.is_focused(window) &&
+    // data_table.rs: `.when(focus_ring_enabled && focus_handle.is_focused &&
     // window.last_input_was_keyboard(), focus_ring_style)`. Clicking a row
     // focuses the table too, so only keyboard focus shows it, as CSS
     // `:focus-visible` does; the runtime paints it only while focused.
-    box->FocusRing(WindowLastInputWasKeyboard(cx->win))->FocusOnPress();
+    box->FocusRing(focusRingEnabled && WindowLastInputWasKeyboard(cx->win))
+        ->FocusOnPress();
     TableBindKeys(cx, box, state);
     return box;
 }
