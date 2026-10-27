@@ -1,6 +1,7 @@
 #include "ui/menu.h"
 #include "base/actions.h"
 #include "base/focus_trap.h"
+#include "base/scrollable_mask.h"
 #include "base/text_selection.h"
 #include "gpui/keymap.h"
 #include "ui/kbd.h"
@@ -861,6 +862,12 @@ void AppMenuBarSelect(AppMenuBarState* s, Ctx* cx, int ix) {
     Notify(cx);
 }
 
+void AppMenuBarState::OnScroll(AppMenuBarState* self, Ctx* cx,
+                               const ScrollEvent* ev) {
+    self->scrollX = ev->offsetX;
+    Notify(cx);
+}
+
 void AppMenuBarState::OnMenuClick(AppMenuBarState* self, Ctx* cx,
                                   const ClickEvent*, int64_t ix) {
     // A second click on the open menu closes it.
@@ -928,6 +935,14 @@ El* AppMenuBar::IntoEl() {
                   ->Gap(2)
                   ->H(28)
                   ->W(kFill);
+    // overflow_x_scroll + lock_scroll_axis, with ScrollableMask::vertical_wheel
+    // over the row so a plain wheel moves it sideways and then the page.
+    if (s) {
+        bar->ScrollX(s->scrollX)
+            ->ScrollFromPath()
+            ->OnScroll(ListenTo(state, &AppMenuBarState::OnScroll));
+        ScrollableMask::ApplyVerticalWheel(bar);
+    }
     if (s) {
         Listener actionListener = ListenTo(state, &AppMenuBarState::OnAction);
         bar->KeyContext(AppMenuBarContext())

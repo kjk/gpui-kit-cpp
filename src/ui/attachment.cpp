@@ -951,10 +951,11 @@ El* AttachmentGroup::IntoEl() {
                   ->ClipX()
                   ->ScrollX(offset)
                   ->ScrollId(scrollId)
-                  // lock_scroll_axis: the row takes a horizontal-dominant
-                  // wheel gesture and lets a vertical one reach the scroller
-                  // around it.
+                  // lock_scroll_axis, plus ScrollableMask::vertical_wheel so
+                  // a plain wheel's vertical lines move the row and, at the
+                  // edge, reach the scroller around it.
                   ->ScrollMask(Axis::Horizontal);
+    ScrollableMask::ApplyVerticalWheel(row);
     if (report.IsValid()) {
         row->OnScroll(report);
     }

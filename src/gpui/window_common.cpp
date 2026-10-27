@@ -2879,7 +2879,51 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
         if (!s.onScroll.IsValid() || !s.bounds.Contains({in.x, in.y})) {
             continue;
         }
-        if (s.maskAxes) {
+        // ScrollableMask::vertical_wheel. A plain wheel has no horizontal
+        // axis, so its vertical lines move this scroller sideways. Once it
+        // cannot move, the same event reaches the parent. Trackpad pixels
+        // and a horizontal wheel fall through to the scroller below.
+        if (s.maskAxes & 4) {
+            // Occluded the same way as the other masks: an overlay keeps the
+            // wheel off this strip and off the scroller under it.
+            if (!ScrollMaskIsTopmost(win, s, in.x, in.y)) {
+                AppInvalidate(win);
+                return;
+            }
+        }
+        if ((s.maskAxes & 4) && in.deltaX == 0) {
+            float dy = in.deltaY;
+            bool finite = dy == dy && (dy - dy) == 0.f;
+            if (!in.precise && dy != 0 && finite) {
+                float axisMax = s.contentW - s.bounds.w;
+                if (axisMax < 0) {
+                    axisMax = 0;
+                }
+                float current = s.scrollX;
+                if (current < 0) {
+                    current = 0;
+                }
+                if (current > axisMax) {
+                    current = axisMax;
+                }
+                // Rust stores a negative offset and adds pixel_delta.y. The
+                // offset here grows as the strip scrolls toward its end, and
+                // a notch toward the user is a negative deltaY.
+                float next = current - dy;
+                if (next < 0) {
+                    next = 0;
+                }
+                if (next > axisMax) {
+                    next = axisMax;
+                }
+                if (next != current) {
+                    ScrollbarEmit(win, &s, next, s.scrollY);
+                    return;
+                }
+            }
+            continue;
+        }
+        if (s.maskAxes & 3) {
             // A dialog/menu above the mask blocks the whole gesture; letting
             // the search continue would scroll the ancestor underneath the
             // same overlay instead.
@@ -2938,12 +2982,13 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
         if (!canY && !canX) {
             continue;
         }
-        // A wheel with no sideways delta over a box that only scrolls
-        // sideways scrolls it anyway, which is what a mouse without a tilt
-        // wheel needs.
         float dx = in.deltaX;
         float dy = in.deltaY;
-        if (canX && !canY && dx == 0) {
+        // A vertical_wheel scroller keeps its axis lock: a vertical pixel
+        // gesture was already handed to the parent above. Every other
+        // horizontal-only box still reads a wheel with no sideways delta as
+        // sideways, which is what a mouse without a tilt wheel needs.
+        if (canX && !canY && dx == 0 && (s.maskAxes & 4) == 0) {
             dx = dy;
             dy = 0;
         }

@@ -78,7 +78,10 @@ El* Scrollable::IntoEl() {
     }
     // A horizontal-only area does not bounce. Every other axis owns its
     // vertical wheel, stretch or not, so a nested scroller stops at its end.
+    // A plain mouse wheel has only a vertical axis, which the locked
+    // horizontal area above would ignore.
     if (axis == ScrollAxis::Horizontal) {
+        ScrollableMask::ApplyVerticalWheel(box);
         return box;
     }
     Entity<ScrollBounceMetrics> met =

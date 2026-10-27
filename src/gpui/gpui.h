@@ -2895,7 +2895,9 @@ struct El {
     ImageLoadState imageLoadState = ImageLoadState::Loading;
     // The bar this box shows. Unnamed, it is the theme's mode.
     ScrollbarMode scrollMode = ScrollbarMode::Always;
-    // ScrollableMask axes: horizontal is bit 0, vertical bit 1.
+    // ScrollableMask axes: horizontal is bit 0, vertical bit 1. Bit 2 is
+    // ScrollableMask::vertical_wheel (a plain vertical line wheel moves this
+    // horizontal scroller and chains at the edge).
     uint8_t scrollMaskAxes = 0;
     uint8_t measCount = 0;
     uint8_t measNext = 0;

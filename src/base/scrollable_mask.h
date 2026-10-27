@@ -27,9 +27,18 @@ struct ScrollableMask {
     El* element = nullptr;
     Str id = {};
     bool debug = false;
+    // ScrollableMask::vertical_wheel: a plain wheel's vertical lines move a
+    // horizontal scroller sideways. Trackpad pixels and a horizontal wheel
+    // stay with the scroller. At the edge the line wheel reaches the parent.
+    bool verticalWheel = false;
 
     static ScrollableMask* New(Ctx* cx, Axis axis, El* element);
+    // `ScrollableMask::vertical_wheel(handle)`. The mask is the scroller
+    // itself here, so this marks that element rather than painting a sibling.
+    static ScrollableMask* VerticalWheel(Ctx* cx, El* element);
     static El* Apply(El* element, Axis axis);
+    // Bit 2 of `El::scrollMaskAxes`. Not an axis the old mask traps.
+    static El* ApplyVerticalWheel(El* element);
     ScrollableMask* Id(Str v);
     ScrollableMask* Debug(bool v = true);
     El* IntoEl();

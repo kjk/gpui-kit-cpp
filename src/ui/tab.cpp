@@ -3,6 +3,7 @@
 #include "ui/styled.h"
 #include "base/dock.h"
 #include "base/motion.h"
+#include "base/scrollable_mask.h"
 #include "gpui/paint.h"
 
 namespace gpui {
@@ -962,6 +963,10 @@ El* TabBar::IntoEl() {
                     ->ScrollX(activeScrollX)
                     ->ScrollId(activeScrollId)
                     ->OnScroll(activeOnScroll);
+    // Outside the tracked tab children, so tab indices stay unchanged.
+    // ScrollableMask::vertical_wheel: a plain wheel scrolls the strip, then
+    // the page once the strip is at its end.
+    ScrollableMask::ApplyVerticalWheel(strip);
     if (scrollState) {
         strip->customPaint = &TabBarScrollState::RecordStrip;
         strip->customUser = scrollState;

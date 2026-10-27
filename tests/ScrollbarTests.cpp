@@ -141,6 +141,14 @@ static void ScrollableElementPreservesTheSourceElementAndMask() {
     utassert(direct->style.overflowY == Overflow::Hidden);
     utassertnear(direct->scrollX, 9);
 
+    // horizontal_scrollable_scrolls_with_a_vertical_mouse_wheel: the themed
+    // horizontal Scrollable wears the vertical-wheel mask.
+    El* wheeled = component::Scrollable::New(&cx, Div(a)->W(300)->H(40),
+                                             ScrollAxis::Horizontal)
+                      ->IntoEl();
+    utassert((wheeled->scrollMaskAxes & 4) != 0);
+    utassert((wheeled->scrollMaskAxes & 1) == 0);
+
     El* masked = component::ScrollableMask::New(&cx, Axis::Horizontal, result)
                      ->Id(StrL("horizontal-mask"))
                      ->IntoEl();
@@ -317,6 +325,97 @@ static void ScrollableMasksChainAndTrapLikeTheSource() {
     int calls = state->innerCalls + state->outerCalls;
     DispatchWheel(win, -40, 0);
     utassert(state->innerCalls + state->outerCalls == calls);
+
+    VecReset(win->paint.hits);
+    VecReset(win->paint.scrolls);
+    delete win;
+    EntityDropAll(&app);
+}
+
+// scrollable_mask.rs vertical_wheel_scrolls_the_strip_and_then_the_parent
+// and vertical_wheel_leaves_trackpads_and_horizontal_wheels_to_the_scroller.
+// A 100px strip of 300px content inside a vertical page. Deltas are already
+// pixels: the platform turns a line notch into DIPs before dispatch.
+static void vertical_wheel_scrolls_the_strip_and_then_the_parent() {
+    App app = {};
+    Window* win = new Window();
+    win->app = &app;
+    Entity<ScrollRecorder> entity = EntityNewState<ScrollRecorder>(&app);
+    ScrollRecorder* state = entity.Get(&app);
+    const float line = 16.f;
+
+    ScrollRect page = TestScrollRect(1, {0, 0, 100, 60}, 100, 260, 0, -1,
+                                     ListenTo(entity, &ScrollRecorder::Outer));
+    ScrollRect strip = TestScrollRect(2, {0, 0, 100, 40}, 300, 40, 4, -1,
+                                      ListenTo(entity, &ScrollRecorder::Inner));
+    VecAppend(win->paint.scrolls, page);
+    VecAppend(win->paint.scrolls, strip);
+
+    DispatchWheel(win, 0, -line);
+    utassertnear(state->innerX, line);
+    utassertnear(state->outerY, 0);
+
+    // Past the strip's end, that event still stops on the strip. The next
+    // one scrolls the page.
+    DispatchWheel(win, 0, -100.f * line);
+    utassertnear(state->innerX, 200);
+    utassertnear(state->outerY, 0);
+    DispatchWheel(win, 0, -line);
+    utassertnear(state->innerX, 200);
+    utassert(state->outerY > 0);
+
+    uint32_t nanBits = 0x7fc00000u;
+    float nan = 0;
+    memcpy(&nan, &nanBits, sizeof(nan));
+    float held = state->innerX;
+    DispatchWheel(win, 0, nan);
+    utassertnear(state->innerX, held);
+
+    VecReset(win->paint.scrolls);
+    delete win;
+    EntityDropAll(&app);
+}
+
+static void
+vertical_wheel_leaves_trackpads_and_horizontal_wheels_to_the_scroller() {
+    App app = {};
+    Window* win = new Window();
+    win->app = &app;
+    Entity<ScrollRecorder> entity = EntityNewState<ScrollRecorder>(&app);
+    ScrollRecorder* state = entity.Get(&app);
+    const float line = 16.f;
+
+    ScrollRect page = TestScrollRect(1, {0, 0, 100, 60}, 100, 260, 0, -1,
+                                     ListenTo(entity, &ScrollRecorder::Outer));
+    ScrollRect strip = TestScrollRect(2, {0, 0, 100, 40}, 300, 40, 4, -1,
+                                      ListenTo(entity, &ScrollRecorder::Inner));
+    VecAppend(win->paint.scrolls, page);
+    VecAppend(win->paint.scrolls, strip);
+
+    // A vertical trackpad swipe keeps the strip's axis lock.
+    DispatchWheel(win, 0, -20, true);
+    utassertnear(state->innerX, 0);
+    utassertnear(state->outerY, 20);
+
+    // A horizontal wheel reaches the strip's own listener.
+    state->outerY = 0;
+    DispatchWheel(win, -line, 0);
+    utassertnear(state->innerX, line);
+    utassertnear(state->outerY, 0);
+
+    // An overlay hit keeps the wheel off the strip and off the page.
+    HitRect stripHit = {};
+    stripHit.bounds = {0, 0, 100, 40};
+    VecAppend(win->paint.hits, stripHit);
+    win->paint.scrolls[1].maskHit = 0;
+    HitRect overlay = {};
+    overlay.bounds = {0, 0, 100, 40};
+    VecAppend(win->paint.hits, overlay);
+    float heldX = state->innerX;
+    float heldY = state->outerY;
+    DispatchWheel(win, 0, -line);
+    utassertnear(state->innerX, heldX);
+    utassertnear(state->outerY, heldY);
 
     VecReset(win->paint.hits);
     VecReset(win->paint.scrolls);
@@ -566,6 +665,8 @@ void TestScrollbar() {
     ScrollableElementPreservesTheSourceElementAndMask();
     corner_notch_paths_stay_inside_their_corner_squares();
     ScrollableMasksChainAndTrapLikeTheSource();
+    vertical_wheel_scrolls_the_strip_and_then_the_parent();
+    vertical_wheel_leaves_trackpads_and_horizontal_wheels_to_the_scroller();
     ATrackPressPagesAndShiftPressJumps();
     AThumbPressOnAnInputScrollerDragsEvenWithoutAScrollId();
     ATouchThumbDragMovesDownAndCancelReleasesIt();

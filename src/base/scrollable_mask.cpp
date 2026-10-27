@@ -138,11 +138,30 @@ ScrollableMask* ScrollableMask::New(Ctx* cx, Axis axis, El* element) {
     return mask;
 }
 
+ScrollableMask* ScrollableMask::VerticalWheel(Ctx* cx, El* element) {
+    ScrollableMask* mask = New(cx, Axis::Horizontal, element);
+    mask->verticalWheel = true;
+    return mask;
+}
+
 El* ScrollableMask::Apply(El* element, Axis axis) {
     if (!element) {
         return nullptr;
     }
     element->ScrollMask(axis);
+    if (!element->scrollId && !element->scrollFromPath) {
+        element->ScrollFromPath();
+    }
+    return element;
+}
+
+El* ScrollableMask::ApplyVerticalWheel(El* element) {
+    if (!element) {
+        return nullptr;
+    }
+    // Bit 2. The axis bits stay clear: this mask does not trap the gesture
+    // the way a horizontal ScrollableMask does.
+    element->scrollMaskAxes |= 4;
     if (!element->scrollId && !element->scrollFromPath) {
         element->ScrollFromPath();
     }
@@ -160,7 +179,8 @@ ScrollableMask* ScrollableMask::Debug(bool v) {
 }
 
 El* ScrollableMask::IntoEl() {
-    El* result = Apply(element, axis);
+    El* result =
+        verticalWheel ? ApplyVerticalWheel(element) : Apply(element, axis);
     if (!result) {
         return Div(a);
     }

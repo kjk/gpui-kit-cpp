@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `70465ac7413920a8cc7b5fb71920280f7bfb5c85` (2026-10-15,
-select: Correct keyboard confirmation and item reconciliation (#3446)).
-Space confirms a select unless a search field has the key. A handled
-confirm is not propagated. Replacing items follows each value to its
-new index and drops a value the new list does not have. A disabled or
-missing row cannot be confirmed.
+Processed through `9b7655158f5581c58025af7f8fe1753de274e291` (2026-10-15,
+scroll: Scroll horizontal strips with a vertical mouse wheel (#3518)).
+A plain mouse wheel's vertical lines move a horizontal strip sideways
+and, once that strip is at its end, scroll the page. Trackpad pixels
+and a horizontal wheel stay with the strip. The tab bar, attachment
+row, app menu bar and horizontal Scrollable use that mask.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

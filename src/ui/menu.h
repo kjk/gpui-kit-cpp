@@ -191,9 +191,11 @@ struct ContextMenuExt {
 struct AppMenuBarState {
     int selected = -1;
     int count = 0;
+    float scrollX = 0;
     FocusHandle focus = {};
     FocusHandle previousFocus = {};
 
+    static void OnScroll(AppMenuBarState* self, Ctx* cx, const ScrollEvent* ev);
     static void OnMenuClick(AppMenuBarState* self, Ctx* cx,
                             const ClickEvent* ev, int64_t ix);
     // Once one menu is open, moving over another switches to it, which is
