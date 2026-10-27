@@ -390,6 +390,8 @@ static int PanelForName(DockState* s, const PanelStateNode* saved, Arena* a,
             return DockAddPanelDef(s, built);
         }
     }
+    // The type name is for the log. The panel on screen does not show it.
+    logf("the `%s` panel type is not registered in PanelRegistry", name);
     DockPanelDef def;
     def.name = StrDup(a, name);
     def.title = def.name;
@@ -426,6 +428,12 @@ static int LoadNode(DockState* s, const DockAreaState* st, int ix, Arena* a,
         }
         return node;
     }
+    // The same empty-container defect as a TabPanel that carries leaf info.
+    // An empty split, not a placeholder that would write the defect back.
+    if (sn.kind == PanelInfoKind::Panel &&
+        StrEq(sn.panelName, StrL("StackPanel"))) {
+        return DockNewSplit(s, Axis::Horizontal);
+    }
     // Tabs, or a leaf panel on its own: either way the live tree wants a tab
     // group, since a panel here is never a node of its own.
     int node = DockNewTabs(s);
@@ -438,6 +446,12 @@ static int LoadNode(DockState* s, const DockAreaState* st, int ix, Arena* a,
             // Rust flattens a tab group's children into their panels and
             // ignores anything that is not one.
             if (leaf.kind != PanelInfoKind::Panel) {
+                continue;
+            }
+            // TabPanel and StackPanel here are empty containers the old
+            // writer saved as leaves. Building them would keep the defect.
+            if (StrEq(leaf.panelName, StrL("TabPanel")) ||
+                StrEq(leaf.panelName, StrL("StackPanel"))) {
                 continue;
             }
             int panelIx =

@@ -79,21 +79,17 @@ void DockSkin::SetCloseButtonVisible(App* app, Window* win, bool visible) {
 }
 
 El* DockInvalidPanelRender(Ctx* cx, void* data) {
+    (void)data;
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
-    auto* info = (DockInvalidPanel*)data;
-    Str name = info ? info->name : StrL("");
-    // my_6, centred, muted: Rust's sentence, with the name it was asked for.
+    // my_6, centred, muted. The type name is logged, not shown.
     return Div(a)
         ->SizeFull()
         ->PadY(Rems(cx, 1.5f))
         ->FlexCol()
         ->ItemsCenter()
         ->JustifyCenter()
-        ->Child(TextEl(a, StrDup(a, fmt("The `%s` panel type is not "
-                                        "registered in PanelRegistry.",
-                                        name)))
-                    ->Fg(th.mutedFg));
+        ->Child(TextEl(a, Tr("Dock.Unavailable Panel"))->Fg(th.mutedFg));
 }
 
 DockArea* DockArea::New(Ctx* cx, Str id, Entity<DockState> state) {

@@ -290,6 +290,13 @@ static const char* const kV_Dock_Collapse[] = {"Collapse", "隐藏",     "隱藏
                                                "收合",     "Nascondi", nullptr};
 static const char* const kV_Dock_Expand[] = {"Expand", "展开",    "展開",
                                              "展開",   "Espandi", nullptr};
+static const char* const kV_Dock_Unavailable_Panel[] = {
+    "This panel isn’t available in this version.",
+    "当前版本无法显示该面板。",
+    "目前版本無法顯示此面板。",
+    "目前版本無法顯示此面板。",
+    "Questo pannello non è disponibile in questa versione.",
+    nullptr};
 static const char* const kV_Dock_Unnamed[] = {"Unnamed", "未命名",     "未命名",
                                               "未命名",  "Senza nome", nullptr};
 static const char* const kV_Dock_Zoom_In[] = {"Zoom In", "放大",    "放大",
@@ -468,6 +475,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Dock.Close", kV_Dock_Close},
     {"Dock.Collapse", kV_Dock_Collapse},
     {"Dock.Expand", kV_Dock_Expand},
+    {"Dock.Unavailable Panel", kV_Dock_Unavailable_Panel},
     {"Dock.Unnamed", kV_Dock_Unnamed},
     {"Dock.Zoom In", kV_Dock_Zoom_In},
     {"Dock.Zoom Out", kV_Dock_Zoom_Out},
@@ -503,7 +511,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Speech.Unavailable", kV_Speech_Unavailable},
     {"Table.SortBy", kV_Table_SortBy},
 };
-extern const int kLocaleRowCount = 119;
+extern const int kLocaleRowCount = 120;
 
 } // namespace component
 } // namespace gpui

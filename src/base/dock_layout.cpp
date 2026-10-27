@@ -6,6 +6,7 @@ namespace gpui {
 static uint64_t gNextPaneNodeId = 1;
 
 static const char kTabPanelName[] = "TabPanel";
+static const char kStackPanelName[] = "StackPanel";
 
 PaneNode* PaneNode::Split(NodeId id, Axis axis) {
     PaneNode* node = new PaneNode();
@@ -696,6 +697,12 @@ static PaneNode* BuildStateNode(PaneTree* tree, const DockAreaState* st, int ix,
         node->activeIx = sn.activeIndex;
         return node;
     }
+    // A StackPanel carrying leaf info is the old empty-split writer. An
+    // empty horizontal split, so a placeholder cannot dump the defect back.
+    if (sn.kind == PanelInfoKind::Panel &&
+        StrEq(sn.panelName, kStackPanelName)) {
+        return PaneNode::Split(id, Axis::Horizontal);
+    }
     PaneNode* node = PaneNode::Tabs(id);
     if (StrEq(sn.panelName, kTabPanelName)) {
         return node;
@@ -722,8 +729,11 @@ static void CollectTabPanels(const DockAreaState* st, int ix,
             CollectTabPanels(st, childIx, builder, out);
             continue;
         }
+        // A container name carrying leaf info is the empty-container defect.
+        // Dropping it is what lets a layout already saved that way heal.
         if (child.kind == PanelInfoKind::Panel &&
-            StrEq(child.panelName, kTabPanelName)) {
+            (StrEq(child.panelName, kTabPanelName) ||
+             StrEq(child.panelName, kStackPanelName))) {
             continue;
         }
         if (builder.build) {

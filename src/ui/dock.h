@@ -74,8 +74,8 @@ struct DockSkin {
 };
 
 // InvalidPanel::render: what stands in for a panel a saved layout names and
-// the registry cannot build. Hand it to DockLoad; it is given the
-// DockInvalidPanel holding the name that was asked for.
+// the registry cannot build. Hand it to DockLoad. The type name is logged
+// when the placeholder is built; the panel shows Dock.Unavailable Panel.
 El* DockInvalidPanelRender(Ctx* cx, void* data);
 
 // The tab bar of a tab group (TabPanel::render_title_bar).

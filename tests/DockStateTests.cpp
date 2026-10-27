@@ -367,6 +367,95 @@ static void ASplitRootIsForcedWhenTheStateIsATabGroup() {
     utassert(tree.Root()->children[0]->paneKind == PaneKind::Tabs);
 }
 
+static Str RecordingName(void* data, PanelId id) {
+    auto* self = (RecordingBuilder*)data;
+    uint64_t n = id.AsU64();
+    if (n == 0 || n > (uint64_t)self->n || n > 8) {
+        return StrL("");
+    }
+    return self->names[n - 1];
+}
+
+// the_legacy_empty_stack_panel_is_read_as_an_empty_split.
+static void TheLegacyEmptyStackPanelIsReadAsAnEmptySplit() {
+    static const char* kJson = R"JSON({
+  "center": {
+    "panel_name": "StackPanel",
+    "children": [],
+    "info": { "panel": null }
+  }
+})JSON";
+    Arena* a = ArenaNew();
+    DockAreaState s;
+    utassert(DockAreaStateParse(a, Str(kJson), &s));
+    RecordingBuilder rec;
+    PaneBuilder builder;
+    builder.data = &rec;
+    builder.build = RecordingBuilder::Build;
+    PaneTree tree(RootKind::Split);
+    tree.FromState(&s, s.center, builder);
+    utassert(rec.n == 0);
+    PanelSource source;
+    DockAreaState out;
+    int root = tree.ToState(source, &out);
+    utassert(root >= 0);
+    utassert(StrEq(out.nodes[root].panelName, StrL("StackPanel")));
+    utassert(out.nodes[root].kind == PanelInfoKind::Stack);
+    utassert(out.nodes[root].children.len == 0);
+    ArenaDelete(a);
+}
+
+// an_empty_stack_panel_saved_inside_a_tab_group_is_dropped.
+static void AnEmptyStackPanelSavedInsideATabGroupIsDropped() {
+    static const char* kJson = R"JSON({
+  "center": {
+    "panel_name": "StackPanel",
+    "children": [
+      {
+        "panel_name": "TabPanel",
+        "children": [
+          {
+            "panel_name": "StackPanel",
+            "children": [],
+            "info": { "panel": null }
+          },
+          {
+            "panel_name": "Alpha",
+            "children": [],
+            "info": { "panel": null }
+          }
+        ],
+        "info": { "tabs": { "active_index": 0 } }
+      }
+    ],
+    "info": { "stack": { "sizes": [0.0], "axis": 0 } }
+  }
+})JSON";
+    Arena* a = ArenaNew();
+    DockAreaState s;
+    utassert(DockAreaStateParse(a, Str(kJson), &s));
+    RecordingBuilder rec;
+    PaneBuilder builder;
+    builder.data = &rec;
+    builder.build = RecordingBuilder::Build;
+    PaneTree tree(RootKind::Split);
+    tree.FromState(&s, s.center, builder);
+    PanelSource source;
+    source.data = &rec;
+    source.panelName = RecordingName;
+    DockAreaState out;
+    int root = tree.ToState(source, &out);
+    utassert(root >= 0);
+    utassert(out.nodes[root].children.len == 1);
+    const PanelStateNode& group = out.nodes[out.nodes[root].children[0]];
+    utassert(StrEq(group.panelName, StrL("TabPanel")));
+    utassert(group.kind == PanelInfoKind::Tabs);
+    utassert(group.activeIndex == 0);
+    utassert(group.children.len == 1);
+    utassert(StrEq(out.nodes[group.children[0]].panelName, StrL("Alpha")));
+    ArenaDelete(a);
+}
+
 // an_empty_tab_group_serializes_as_tabs_not_as_a_panel.
 static void AnEmptyTabGroupSerializesAsTabs() {
     PaneTree tree(RootKind::Any);
@@ -412,6 +501,8 @@ void TestDockState() {
     NestedTabGroupsAreFlattened();
     ABarePanelLeafIsWrappedInATabGroup();
     ATabPanelCarryingPanelInfoIsAnEmptyGroup();
+    TheLegacyEmptyStackPanelIsReadAsAnEmptySplit();
+    AnEmptyStackPanelSavedInsideATabGroupIsDropped();
     ASplitRootIsForcedWhenTheStateIsATabGroup();
     AnEmptyTabGroupSerializesAsTabs();
     AnEmptyCenterSerializesAsAStackPanel();

@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6c13c1fcd73fa4b2b67e6c6ceaec3ab608e65501` (2026-10-20,
-typos: Ignore the two release-notes contributor handles (#3608)).
-The typos config ignores two contributor handles in the release notes.
-This tree does not run that checker, and the notes themselves are not
-ported.
+Processed through `77ff6f794dca3bcee2e90977cedf12a64aed17e4` (2026-10-20,
+dock: Read the legacy empty `StackPanel` as an empty split (#3610)).
+A `StackPanel` saved with leaf info is an empty horizontal split, and
+the same node inside a tab group is dropped so the next save can heal.
+An unregistered panel shows `Dock.Unavailable Panel`; its type name is
+logged.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
