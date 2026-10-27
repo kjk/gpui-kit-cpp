@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1676826d9d49b90f4d7b6808b69924f58796f6f1` (2026-10-19,
-release: Prepare v0.8.0 (#3602)).
-The workspace crates move from 0.7.3 to 0.8.0. The optional GPUI Fast
-backend and the wasm-bindgen pin are not ours, gpui-pre stays at 0.3.9,
-and the release notes are not ported. No Rust API changed.
+Processed through `6c13c1fcd73fa4b2b67e6c6ceaec3ab608e65501` (2026-10-20,
+typos: Ignore the two release-notes contributor handles (#3608)).
+The typos config ignores two contributor handles in the release notes.
+This tree does not run that checker, and the notes themselves are not
+ported.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
