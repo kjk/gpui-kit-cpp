@@ -11259,6 +11259,127 @@ static void PrewrapDoesNothingOnceLaidOut() {
     InputViewFree(&v);
 }
 
+// completions.rs tests, plus lsp/mod.rs test_lsp_builder and
+// completion_menu.rs highlight_ranges_are_ordered_and_do_not_overlap.
+static CompletionItem HighlightItem(const char* label, const char* filter,
+                                    bool hasFilter) {
+    CompletionItem item = {};
+    item.label = Str(label);
+    item.hasFilterText = hasFilter;
+    if (hasFilter) {
+        item.filterText = Str(filter ? filter : "");
+    }
+    return item;
+}
+
+static void ExpectHighlight(CompletionHighlightFn fn, const char* query,
+                            const char* label, const char* filter,
+                            bool hasFilter, const int* pairs, int nPairs) {
+    CompletionItem item = HighlightItem(label, filter, hasFilter);
+    ByteRange got[8];
+    int n = fn(nullptr, Str(query), &item, got, 8);
+    utassert(n == nPairs);
+    for (int i = 0; i < nPairs && i < n; i++) {
+        utassert(got[i].start == pairs[i * 2]);
+        utassert(got[i].end == pairs[i * 2 + 1]);
+    }
+}
+
+static void ExpectRetained(const char* label, const ByteRange* in, int n,
+                           const int* pairs, int nPairs) {
+    ByteRange got[8];
+    int kept = RetainHighlightRanges(Str(label), in, n, got, 8);
+    utassert(kept == nPairs);
+    for (int i = 0; i < nPairs && i < kept; i++) {
+        utassert(got[i].start == pairs[i * 2]);
+        utassert(got[i].end == pairs[i * 2 + 1]);
+    }
+}
+
+static void PrefixUsesTheQueryLengthUnlessFilterTextIsSet() {
+    const int fl[] = {0, 2};
+    const int f[] = {0, 1};
+    const int flag[] = {0, 4};
+    ExpectHighlight(HighlightPrefix, "fl", "flag", nullptr, false, fl, 1);
+    ExpectHighlight(HighlightPrefix, "fl", "flag", "f", true, f, 1);
+    ExpectHighlight(HighlightPrefix, "flagpole", "flag", nullptr, false, flag,
+                    1);
+    ExpectHighlight(HighlightPrefix, "", "flag", nullptr, false, nullptr, 0);
+}
+
+static void PrefixDoesNotSplitACharacter() {
+    // "你" is 3 bytes, "你好" is 6.
+    const char* ni = "\xE4\xBD\xA0";
+    const char* niHao = "\xE4\xBD\xA0\xE5\xA5\xBD";
+    const int three[] = {0, 3};
+    ExpectHighlight(HighlightPrefix, ni, niHao, nullptr, false, three, 1);
+    ExpectHighlight(HighlightPrefix, "a", ni, nullptr, false, nullptr, 0);
+}
+
+static void ContainsHighlightsTheFirstContiguousMatch() {
+    const int dialog[] = {3, 6};
+    const int catalog[] = {4, 7};
+    // "好世" inside "你好世界" is bytes [3, 9).
+    const char* haoShi = "\xE5\xA5\xBD\xE4\xB8\x96";
+    const char* niHaoShiJie =
+        "\xE4\xBD\xA0\xE5\xA5\xBD\xE4\xB8\x96\xE7\x95\x8C";
+    const int hao[] = {3, 9};
+    ExpectHighlight(HighlightContains, "log", "dialog_log", nullptr, false,
+                    dialog, 1);
+    ExpectHighlight(HighlightContains, "LOG", "dialog_log", nullptr, false,
+                    dialog, 1);
+    ExpectHighlight(HighlightContains, "log", "catalog", nullptr, false,
+                    catalog, 1);
+    ExpectHighlight(HighlightContains, haoShi, niHaoShiJie, nullptr, false, hao,
+                    1);
+    ExpectHighlight(HighlightContains, "log", "flag", nullptr, false, nullptr,
+                    0);
+    ExpectHighlight(HighlightContains, "", "flag", nullptr, false, nullptr, 0);
+}
+
+static void CharactersHighlightGapsAndMergeAdjacentHits() {
+    const int fl[] = {0, 2};
+    const int file[] = {0, 1, 2, 3};
+    const char* niShi = "\xE4\xBD\xA0\xE4\xB8\x96";
+    const char* niHaoShiJie =
+        "\xE4\xBD\xA0\xE5\xA5\xBD\xE4\xB8\x96\xE7\x95\x8C";
+    const int niShiRanges[] = {0, 3, 6, 9};
+    ExpectHighlight(HighlightCharacters, "fl", "flag", nullptr, false, fl, 1);
+    ExpectHighlight(HighlightCharacters, "fl", "file_loader", nullptr, false,
+                    file, 2);
+    ExpectHighlight(HighlightCharacters, niShi, niHaoShiJie, nullptr, false,
+                    niShiRanges, 2);
+    ExpectHighlight(HighlightCharacters, "fx", "flag", nullptr, false, nullptr,
+                    0);
+    ExpectHighlight(HighlightCharacters, "", "flag", nullptr, false, nullptr,
+                    0);
+}
+
+static void TestLspBuilder() {
+    Lsp lsp;
+    utassert(lsp.GetCompletionHighlighter().fn == HighlightPrefix);
+    lsp.WithCompletionHighlighter({nullptr, HighlightContains});
+    utassert(lsp.GetCompletionHighlighter().fn == HighlightContains);
+    lsp.SetCompletionHighlighter({nullptr, HighlightCharacters});
+    utassert(lsp.GetCompletionHighlighter().fn == HighlightCharacters);
+}
+
+static void HighlightRangesAreOrderedAndDoNotOverlap() {
+    ByteRange swapped[] = {{2, 3}, {0, 1}};
+    const int ordered[] = {0, 1, 2, 3};
+    ExpectRetained("flag", swapped, 2, ordered, 2);
+    ByteRange overlap[] = {{0, 3}, {2, 4}};
+    const int merged[] = {0, 4};
+    ExpectRetained("flag", overlap, 2, merged, 1);
+    ByteRange past[] = {{0, 1}, {1, 2}, {5, 9}, {2, 3}};
+    const int three[] = {0, 3};
+    ExpectRetained("flag", past, 4, three, 1);
+    ByteRange split[] = {{0, 1}, {0, 3}};
+    const char* ni = "\xE4\xBD\xA0";
+    const int whole[] = {0, 3};
+    ExpectRetained(ni, split, 2, whole, 1);
+}
+
 void TestInputState() {
     TextareaPrewrapPreparesContentRowsBeforeLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
@@ -11320,6 +11441,12 @@ void TestInputState() {
     CompletionResponsesGrowPastTheOldBuffer();
     ShowCompletionsAsksWithoutTyping();
     TheProviderSaysWhenTheMenuOpens();
+    PrefixUsesTheQueryLengthUnlessFilterTextIsSet();
+    PrefixDoesNotSplitACharacter();
+    ContainsHighlightsTheFirstContiguousMatch();
+    CharactersHighlightGapsAndMergeAdjacentHits();
+    TestLspBuilder();
+    HighlightRangesAreOrderedAndDoNotOverlap();
     DocumentationIsResolvedOnce();
     TheSuggestionWaitsForTheDebounce();
     ASuggestionThatMissedItsMomentIsDropped();

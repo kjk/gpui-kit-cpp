@@ -100,7 +100,92 @@ enum {
     EditorActFamily = 3510,
     // + index into kFontSizes.
     EditorActSize = 3520,
+    // + index into Prefix / Contains / Characters.
+    EditorActHighlight = 3530,
 };
+
+// StoryCompletionHighlight. Words chosen so `fl` and `log` light different
+// spans under each matcher.
+enum class StoryCompletionHighlight : uint8_t {
+    Prefix = 0,
+    Contains,
+    Characters,
+};
+
+static const char* kCompletionWords[] = {
+    "flag", "profile", "file_loader", "fallback", "dialog_log", "catalog",
+};
+
+static bool StoryStartsWithIgnoreCase(Str label, Str query) {
+    if (len(query) > len(label) || !label.s || !query.s) {
+        return len(query) == 0;
+    }
+    for (int i = 0; i < len(query); i++) {
+        unsigned char a = (unsigned char)label.s[i];
+        unsigned char b = (unsigned char)query.s[i];
+        if (a >= 'A' && a <= 'Z') {
+            a = (unsigned char)(a + 32);
+        }
+        if (b >= 'A' && b <= 'Z') {
+            b = (unsigned char)(b + 32);
+        }
+        if (a != b) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool StoryHighlightMatches(StoryCompletionHighlight mode, Str query,
+                                  Str label) {
+    if (len(query) == 0) {
+        return true;
+    }
+    if (mode == StoryCompletionHighlight::Prefix) {
+        return StoryStartsWithIgnoreCase(label, query);
+    }
+    CompletionItem item = {};
+    item.label = label;
+    ByteRange range;
+    CompletionHighlightFn fn = mode == StoryCompletionHighlight::Contains
+                                   ? HighlightContains
+                                   : HighlightCharacters;
+    return fn(nullptr, query, &item, &range, 1) > 0;
+}
+
+static int StoryCompletions(void* data, Str, int, Str query,
+                            const CompletionContext*, CompletionItem* out,
+                            int cap) {
+    StoryCompletionHighlight mode = data ? *(StoryCompletionHighlight*)data
+                                         : StoryCompletionHighlight::Prefix;
+    int n = 0;
+    for (int i = 0; i < 6; i++) {
+        Str label = Str(kCompletionWords[i]);
+        if (!StoryHighlightMatches(mode, query, label)) {
+            continue;
+        }
+        if (out && n < cap) {
+            out[n] = {};
+            out[n].label = label;
+        }
+        n++;
+    }
+    return n;
+}
+
+static CompletionTrigger StoryCompletionAlways(void*, Str, int, Str) {
+    return CompletionTrigger::Open;
+}
+
+static CompletionHighlightFn StoryHighlightFn(StoryCompletionHighlight mode) {
+    if (mode == StoryCompletionHighlight::Contains) {
+        return HighlightContains;
+    }
+    if (mode == StoryCompletionHighlight::Characters) {
+        return HighlightCharacters;
+    }
+    return HighlightPrefix;
+}
 
 struct EditorStory {
     int tab = 0;
@@ -114,6 +199,9 @@ struct EditorStory {
     // One EditorState per tab, the way the Rust story keeps one per document.
     InputState code;
     InputState decorations;
+    InputState completions;
+    StoryCompletionHighlight completionHighlight =
+        StoryCompletionHighlight::Prefix;
     // create_range_decorations_collection: geometry is a separate owner
     // from text styling. Both follow edits, including newlines inserted
     // before these ranges.
@@ -136,6 +224,20 @@ static void EditorAct(EditorStory* self, Ctx* cx, const ClickEvent*,
         self->fontSize = kFontSizes[act - EditorActSize];
     } else if (act >= EditorActFamily && act < EditorActFamily + 4) {
         self->fontFamily = (int)(act - EditorActFamily) - 1;
+    } else if (act >= EditorActHighlight && act < EditorActHighlight + 3) {
+        self->completionHighlight =
+            (StoryCompletionHighlight)(act - EditorActHighlight);
+        self->completions.completionHighlight
+            .fn = StoryHighlightFn(self->completionHighlight);
+        if (self->completions.completion.open) {
+            CompletionItem items[6];
+            int n = StoryCompletions(&self->completionHighlight, {}, 0,
+                                     self->completions.completion.query,
+                                     nullptr, items, 6);
+            InputPresentCompletionItems(
+                &self->completions, self->completions.completion.triggerStart,
+                self->completions.completion.query, items, n);
+        }
     }
     StoryToolbarApply(&self->toolbar, nullptr,
                       act >= EditorActReadonly ? ToolbarCloseAll : (int)act);
@@ -151,6 +253,11 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
         self->decorations.kind = InputKind::Editor;
         InputSetValue(&self->code, Str(kEditorCode));
         InputSetValue(&self->decorations, Str(kDecorationText));
+        self->completions.kind = InputKind::Editor;
+        self->completions.completionProvider = &StoryCompletions;
+        self->completions.completionData = &self->completionHighlight;
+        self->completions.completionTrigger = &StoryCompletionAlways;
+        self->completions.completionHighlight.fn = HighlightPrefix;
         Str text = Str(kDecorationText);
         Str fill = StrL("marks a tracked range.");
         Str frame = StrL("outlines a tracked range.");
@@ -166,25 +273,27 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
     }
     self->code.readonly = self->readOnly;
     self->decorations.readonly = self->readOnly;
+    self->completions.readonly = self->readOnly;
     // v_flex().size_full(): StoryContainerBody gives this page the pane's
     // height, and the editor takes what the tab row leaves.
     El* page = Div(a)->FlexCol()->Gap(12)->SizeFull();
 
     // The tab bar on the left, the Options menu on the right.
     El* head = Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween();
-    // TabBar::new(..).w_64().underline()
-    // TabBar::new(..).w_64(): the bar is 256 wide, not the row it sits in.
+    // TabBar::new(..).w(px(420)).underline(): three tabs, Code,
+    // Decorations and Completions.
     head->Child(Div(a)->Child(component::Tabs::New(cx)
-                                  ->W(256)
+                                  ->W(420)
                                   ->Underline()
                                   ->Tab(StrL("Code"))
                                   ->Tab(StrL("Decorations"))
+                                  ->Tab(StrL("Completions"))
                                   ->Selected(self->tab)
                                   ->OnChange(Listen(cx, &SetEditorTab))
                                   ->IntoEl()));
     // render_toolbar: Readonly, then the families under a "Font family"
     // label and the sizes under "Font size".
-    StoryToolbarOpt opts[11];
+    StoryToolbarOpt opts[16];
     int nOpts = 0;
     opts[nOpts++] = {"Readonly", self->readOnly, EditorActReadonly};
     opts[nOpts] = {"Font family", false, 0};
@@ -203,6 +312,18 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
         opts[nOpts++] = {kSizeLabels[i], self->fontSize == kFontSizes[i],
                          EditorActSize + i};
     }
+    static const char* const kHighlightLabels[] = {"Prefix", "Contains",
+                                                   "Characters"};
+    opts[nOpts] = {"Completion highlight", false, 0};
+    opts[nOpts].sep = true;
+    opts[nOpts++].heading = true;
+    for (int i = 0; i < 3; i++) {
+        opts[nOpts++] = {
+            kHighlightLabels[i],
+            (int)self->completionHighlight == i,
+            EditorActHighlight + i,
+        };
+    }
     head->Child(StoryToolbarOptions(cx, self, opts, nOpts,
                                     Listen(cx, &EditorAct), false));
     page->Child(head);
@@ -214,9 +335,22 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
     // tab row above it rather than the flex_1 Rust leaves to layout.
     // `.when_some(self.font_family, |this, family| this.font_family(family))`:
     // a family that is not installed draws in the platform's mono face.
-    component::Editor* ed = component::Editor::New(
-        cx, StrL("editor"), self->tab == 0 ? &self->code : &self->decorations);
-    ed->H(WindowSize(cx->win).dipH - 262)
+    InputState* edited = &self->code;
+    if (self->tab == 1) {
+        edited = &self->decorations;
+    } else if (self->tab == 2) {
+        edited = &self->completions;
+    }
+    component::Editor* ed = component::Editor::New(cx, StrL("editor"), edited);
+    float editorH = WindowSize(cx->win).dipH - 262;
+    if (self->tab == 2) {
+        // Label::new("Type fl or log to compare highlights.").text_sm()
+        box->Child(TextEl(a, StrL("Type fl or log to compare highlights."))
+                       ->Font(14)
+                       ->Fg(th.mutedFg));
+        editorH -= 28.f;
+    }
+    ed->H(editorH)
         ->Font(self->fontSize)
         ->FontFamily(self->fontFamily >= 0
                          ? Str(kFontFamilies[self->fontFamily])
@@ -227,7 +361,7 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
         // The Rust tab is the code editor, which is where folding is on
         // upstream: a chevron in the gutter beside every brace block.
         ed->Language(StrL("rust"))->Folding();
-    } else {
+    } else if (self->tab == 1) {
         // create_decorations_collection: the four runs, found in the text by
         // the words they cover, as Rust finds them.
         Str text = Str(kDecorationText);

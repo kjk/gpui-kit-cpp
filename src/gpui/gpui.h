@@ -4646,6 +4646,39 @@ struct TextEditItem {
 void InputApplyEdits(InputState* s, App* app, Window* win,
                      const TextEditItem* edits, int n);
 
+// A byte range of a completion label. `end` is exclusive.
+struct ByteRange {
+    int start = 0;
+    int end = 0;
+};
+
+struct CompletionItem;
+
+// CompletionHighlighter: which bytes of a label the menu paints as the
+// match. Writes the first `cap` ranges and returns how many there are.
+// `highlight_prefix`, `highlight_contains` and `highlight_characters`.
+using CompletionHighlightFn = int (*)(void* data, Str query,
+                                      const CompletionItem* item,
+                                      ByteRange* out, int cap);
+
+// Rc<dyn CompletionHighlighter>: the function plus the host's capture.
+// The built-in matchers pass a null `data`.
+struct CompletionHighlighter {
+    void* data = nullptr;
+    CompletionHighlightFn fn = nullptr;
+};
+
+int HighlightPrefix(void* data, Str query, const CompletionItem* item,
+                    ByteRange* out, int cap);
+int HighlightContains(void* data, Str query, const CompletionItem* item,
+                      ByteRange* out, int cap);
+int HighlightCharacters(void* data, Str query, const CompletionItem* item,
+                        ByteRange* out, int cap);
+// retained_highlight_ranges: drop empty ranges, ranges past the label and
+// ranges that split a character, then sort and merge overlaps.
+int RetainHighlightRanges(Str label, const ByteRange* ranges, int n,
+                          ByteRange* out, int cap);
+
 struct CompletionItem {
     // What is shown, and what the query is matched against.
     Str label = {};
@@ -4664,6 +4697,13 @@ struct CompletionItem {
     // goes in at the caret. Applied with the insert, as one undo step.
     const TextEditItem* additionalEdits = nullptr;
     int nAdditionalEdits = 0;
+    // CompletionItem::filter_text. None uses the query's length for a
+    // prefix highlight; Some, even Some(""), uses this string's length.
+    // An empty `filterText` cannot say which, so `hasFilterText` does.
+    // Kept last so existing positional item lists stay label, detail,
+    // insert text, documentation, deprecated.
+    Str filterText = {};
+    bool hasFilterText = false;
 };
 
 // lsp_types::CompletionTriggerKind. A typed trigger carries the query as its
@@ -5393,6 +5433,9 @@ struct InputState {
     CompletionResolveFn completionResolve = nullptr;
     // CompletionMenuOptions::max_width, which the menu is drawn to.
     float completionMenuMaxW = kCompletionMenuMaxW;
+    // Lsp::completion_highlighter. Defaults to highlight_prefix. The menu
+    // reads it every frame, so swapping it repaints an open menu.
+    CompletionHighlighter completionHighlight = {nullptr, HighlightPrefix};
     // The box the rows were laid out in as a whole, which is the scrolled
     // height once soft wrap has had its say.
     Bounds contentBox = {};

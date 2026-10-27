@@ -134,6 +134,9 @@ struct Lsp {
     DocumentRangeSemanticTokensProvider semanticTokensProvider = {};
     ShowDocumentHandler showDocument = {};
     CompletionMenuOptions completionMenu = {};
+    // completion_highlighter. Private in Rust; the three methods below are
+    // how a host reads and replaces it. Defaults to highlight_prefix.
+    CompletionHighlighter completionHighlighter = {nullptr, HighlightPrefix};
 
     Lsp() = default;
     Lsp(const Lsp&) = delete;
@@ -147,6 +150,12 @@ struct Lsp {
     Lsp& SemanticTokens(const DocumentRangeSemanticTokensProvider& provider);
     Lsp& ShowDocuments(const ShowDocumentHandler& handler);
     Lsp& CompletionMenu(const CompletionMenuOptions& options);
+    // with_completion_highlighter / set_completion_highlighter /
+    // completion_highlighter. Set copies the matcher onto an installed
+    // editor and asks that window to repaint an open menu.
+    Lsp& WithCompletionHighlighter(CompletionHighlighter highlighter);
+    void SetCompletionHighlighter(CompletionHighlighter highlighter);
+    CompletionHighlighter GetCompletionHighlighter() const;
     void Install(InputState* input);
     void Update();
     void Reset();

@@ -350,48 +350,105 @@ static El* CompletionMenuContent(CompletionMenu* self, Ctx* cx, float maxW,
     Entity<InputMenuViewState> view =
         InputMenuView(cx, editor, "completion-menu");
 
-    El* list = PopoverSurface(
-        cx,
-        // editor_popover: p_1.
-        Div(a)->FlexCol()->MinW(120)->MaxW(maxW)->MaxH(240)->ClipY()->Pad(
-            Rems(cx, 0.25f)));
+    El* list =
+        PopoverSurface(cx,
+                       // editor_popover is p_1 and text_xs. The completion menu
+                       // overrides that to text_sm, and pb_0p5 because each row
+                       // already carries the inter-item gap (mb_0p5).
+                       Div(a)
+                           ->FlexCol()
+                           ->MinW(120)
+                           ->MaxW(maxW)
+                           ->MaxH(240)
+                           ->ClipY()
+                           ->Font(14)
+                           ->PadT(Rems(cx, 0.25f))
+                           ->PadL(Rems(cx, 0.25f))
+                           ->PadR(Rems(cx, 0.25f))
+                           ->PadB(Rems(cx, 0.125f)));
+    CompletionHighlightFn highlight = editor->completionHighlight.fn
+                                          ? editor->completionHighlight.fn
+                                          : HighlightPrefix;
+    void* highlightData = editor->completionHighlight.data;
     for (int i = 0; i < editor->completion.items.len; i++) {
         const CompletionItem& item = editor->completion.items[i];
         bool selected = i == editor->completion.selected;
+        // MenuItemElement: text_sm, py_0, px_2, h(rems(26/16)), mb_0p5,
+        // rounded(theme.radius). Hover and the selected row share the
+        // accent fill. The label's match is theme.blue.
         El* row = Div(a)
                       ->FlexRow()
-                      // gap_2 / p_1
-                      ->Gap(Rems(cx, 0.5f))
-                      ->Pad(Rems(cx, 0.25f))
+                      ->W(kFill)
+                      ->H(Rems(cx, 26.f / 16.f))
+                      ->PadX(Rems(cx, 0.5f))
+                      ->PadY(0)
+                      ->MarginB(Rems(cx, 0.125f))
                       ->ItemsCenter()
-                      ->Radius(theme.radius * 0.5f)
-                      ->Font(12)
-                      ->HoverBg(BackgroundOpacity(theme.tokens.accent, 0.8f))
+                      ->Radius(theme.radius)
+                      ->Font(14)
+                      ->AriaLabel(item.label)
+                      ->HoverBg(theme.tokens.accent)
+                      ->HoverFg(theme.accentFg)
                       ->OnClick(ListenTo(
                           view, &InputMenuViewState::CompletionClick, i))
                       ->OnHover(ListenTo(
                           view, &InputMenuViewState::CompletionHover, i));
-        if (selected) row->Bg(theme.tokens.accent)->Fg(theme.accentFg);
-        El* label = TextEl(a, item.label)->LineHeight(1.f);
-        int matched = len(editor->completion.query);
-        if (matched > len(item.label)) matched = len(item.label);
-        if (matched > 0) {
-            TextSpan* prefix = ArenaNew<TextSpan>(a);
-            prefix->lo = 0;
-            prefix->hi = matched;
-            prefix->color = theme.blue;
-            label->Spans(prefix, 1);
+        if (selected) {
+            row->Bg(theme.tokens.accent)->Fg(theme.accentFg);
         }
-        if (item.deprecated) label->Strikethrough();
-        row->Child(label);
+        El* inner = Div(a)
+                        ->FlexRow()
+                        ->W(kFill)
+                        ->Gap(Rems(cx, 0.75f))
+                        ->ItemsCenter()
+                        ->JustifyBetween();
+        El* label = TextEl(a, item.label)->LineHeight(1.f);
+        int nRaw = highlight(highlightData, editor->completion.query, &item,
+                             nullptr, 0);
+        if (nRaw > 0) {
+            ByteRange* raw =
+                (ByteRange*)Alloc(a, nRaw * (int)sizeof(ByteRange));
+            if (raw) {
+                highlight(highlightData, editor->completion.query, &item, raw,
+                          nRaw);
+                int nKept =
+                    RetainHighlightRanges(item.label, raw, nRaw, nullptr, 0);
+                if (nKept > 0) {
+                    ByteRange* kept =
+                        (ByteRange*)Alloc(a, nKept * (int)sizeof(ByteRange));
+                    TextSpan* spans =
+                        (TextSpan*)Alloc(a, nKept * (int)sizeof(TextSpan));
+                    if (kept && spans) {
+                        RetainHighlightRanges(item.label, raw, nRaw, kept,
+                                              nKept);
+                        for (int s = 0; s < nKept; s++) {
+                            spans[s].lo = kept[s].start;
+                            spans[s].hi = kept[s].end;
+                            spans[s].color = theme.blue;
+                            spans[s].bg = Rgba{0, 0, 0, 0};
+                            spans[s].underline = false;
+                            spans[s].wavy = false;
+                        }
+                        label->Spans(spans, nKept);
+                    }
+                }
+            }
+        }
+        if (item.deprecated) {
+            label->Strikethrough();
+        }
+        inner->Child(label);
         if (len(item.detail) > 0) {
             El* detail = TextEl(a, item.detail)
                              ->LineHeight(1.f)
                              ->Italic()
                              ->Fg(selected ? theme.accentFg : theme.mutedFg);
-            if (item.deprecated) detail->Strikethrough();
-            row->Child(detail);
+            if (item.deprecated) {
+                detail->Strikethrough();
+            }
+            inner->Child(detail);
         }
+        row->Child(inner);
         list->Child(row);
     }
     El* menu = Div(a)->Gap(gap)->ItemsStart()->Child(list);
@@ -418,7 +475,7 @@ static El* CompletionMenuContent(CompletionMenu* self, Ctx* cx, float maxW,
                                        ->PadX(Rems(cx, 0.5f))
                                        ->PadY(Rems(cx, 0.25f)))
                         ->Child(TextView::New(cx, documentation)
-                                    ->Font(12)
+                                    ->Font(14)
                                     ->Style(textStyle)
                                     ->Selectable()
                                     ->IntoEl()));

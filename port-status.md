@@ -16,15 +16,21 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `85c05bf6d977d38383e5b2a919a0abb1429f39d0` (2026-10-19,
-release: Publish GPUI with crates.io wgpu 30.0.1 (#3600)).
-The GPUI publish script stages wgpu 30.0.1. This tree does not
-publish gpui-pre and does not carry that script.
+Processed through `eb80cbf752566226b9fabda641fb346363a619f9` (2026-10-19,
+input: Let hosts choose how completion labels are highlighted (#3496)).
+A host picks prefix, contains, or character ranges for a completion
+label. The menu paints those ranges in blue, and the editor story's
+Options menu switches matchers while the menu is open.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
 ## Known gaps vs Rust
 
+- **Completion case-folding is the simple 1:1 map.** `highlight_contains`
+  and `highlight_characters` compare with ASCII case and the same
+  one-code-point lowercase `LabelLower` uses (`input_lsp.cpp`). Rust's
+  `char::to_lowercase` covers the rest of Unicode. Folds that expand a
+  character are not a single-code-point match there either.
 - **An external editor's leaf is one shaped run.** `editor_host` reports a
   keyed plain paragraph, heading, table cell, list item or unhighlighted
   code block as one `LeafGeometry` (`text.cpp`). A mixed paragraph — words
