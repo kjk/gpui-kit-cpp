@@ -3478,6 +3478,12 @@ struct ScrollRect {
     float scrollY = 0;
     float contentW = 0;
     float scrollX = 0;
+    // 0 means the painted track is the scroll viewport. A textarea sets the
+    // vertical one to the unpadded content box: the track includes the
+    // field's padding and the range does not. scrollbar.rs
+    // scroll_viewport_size.
+    float viewportW = 0;
+    float viewportH = 0;
     ScrollbarMode mode = ScrollbarMode::Always;
     // Which of the two bars this box shows, from El::HideScrollbar and its
     // per-axis pair: a bar that is not painted is not there to grab either.

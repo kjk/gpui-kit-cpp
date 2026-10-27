@@ -141,20 +141,23 @@ static El* ApplyScrollbarTheme(Ctx* cx, El* box) {
 // Rust's floor on the thumb: below this there is nothing left to aim at.
 static const float kMinThumb = 48.f;
 
-ScrollbarThumbGeometry ScrollbarGeometry(float origin, float container,
-                                         float content, float marginEnd,
-                                         float inset, float minLength) {
+ScrollbarThumbGeometry ScrollbarGeometry(float origin, float trackSize,
+                                         float viewport, float content,
+                                         float marginEnd, float inset,
+                                         float minLength) {
     ScrollbarThumbGeometry out;
     out.origin = origin;
-    float track = container - marginEnd;
+    float track = trackSize - marginEnd;
     if (track < 0) track = 0;
-    float logical = content > 0 ? container / content * container : 0;
+    // ThumbGeometry::new: the thumb is sized against the painted track, and
+    // the distance it scrolls is the content minus the unpadded viewport.
+    float logical = content > 0 ? viewport / content * track : 0;
     logical = ClampF(logical, minLength, track);
     float maxInset = logical * .5f;
     out.inset = ClampF(inset, 0, maxInset);
     out.length = logical - out.inset * 2.f;
     out.travel = track - logical;
-    out.extent = content - container;
+    out.extent = content - viewport;
     return out;
 }
 
@@ -213,7 +216,8 @@ float ScrollbarThumbPos(float track, float thumb, float offset, float container,
 
 AxisPrepaintState ScrollbarPrepaintAxis(Axis axis, Bounds track, float offset,
                                         float containerSize, float contentSize,
-                                        const ScrollbarThumbStyle& style) {
+                                        const ScrollbarThumbStyle& style,
+                                        float viewportSize) {
     AxisPrepaintState out;
     out.axis = axis;
     out.barHitbox = track;
@@ -222,17 +226,18 @@ AxisPrepaintState ScrollbarPrepaintAxis(Axis axis, Bounds track, float offset,
     out.containerSize = containerSize;
     out.trackWidth = axis == Axis::Vertical ? track.w : track.h;
 
+    float viewport = viewportSize > 0 ? viewportSize : containerSize;
     float trackLength = axis == Axis::Vertical ? track.h : track.w;
-    if (trackLength <= 0 || containerSize <= 0 ||
-        contentSize <= containerSize) {
+    if (trackLength <= 0 || containerSize <= 0 || viewport <= 0 ||
+        contentSize <= viewport) {
         return out;
     }
 
     float minLength = style.hasMinLength ? style.minLength : kMinThumb;
     float inset = style.hasInset ? style.inset : 4.f;
-    ScrollbarThumbGeometry geometry =
-        ScrollbarGeometry(axis == Axis::Vertical ? track.y : track.x,
-                          containerSize, contentSize, 0, inset, minLength);
+    ScrollbarThumbGeometry geometry = ScrollbarGeometry(
+        axis == Axis::Vertical ? track.y : track.x, containerSize, viewport,
+        contentSize, 0, inset, minLength);
     float thumbStart = geometry.Start(offset);
     float thumbLength = geometry.length;
     float thumbWidth = style.hasWidth ? style.width : 6.f;

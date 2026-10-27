@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "319b56cf555d4d6794a77b8b39054adb1b6c628d",
+  sha: "1319484e43a6ff70d5b534ceccfbbe59e3380f00",
   date: "2026-10-16",
-  subject: "scrollbar: Leave presses and hover over an occluding element to it (#3526)",
+  subject: "input: Let the textarea scrollbar drag reach the content end (#3527)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

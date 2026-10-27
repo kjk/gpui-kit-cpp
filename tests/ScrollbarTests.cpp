@@ -71,8 +71,10 @@ static void NothingToScrollMeansNoOffset() {
 }
 
 static void SharedGeometryKeepsThePaintedGrabPoint() {
-    ScrollbarThumbGeometry normal = ScrollbarGeometry(30, 240, 500, 16, 6, 64);
-    ScrollbarThumbGeometry active = ScrollbarGeometry(30, 240, 500, 16, 3, 72);
+    ScrollbarThumbGeometry normal =
+        ScrollbarGeometry(30, 240, 240, 500, 16, 6, 64);
+    ScrollbarThumbGeometry active =
+        ScrollbarGeometry(30, 240, 240, 500, 16, 3, 72);
     float offset = 100;
     float pointer = normal.Start(offset) + normal.length * .5f;
     float grab = pointer - normal.Start(offset);
@@ -88,7 +90,7 @@ static void SharedGeometryKeepsThePaintedGrabPoint() {
 
     // A minimum thumb which fills the track has nowhere to travel and must
     // leave the existing offset alone.
-    ScrollbarThumbGeometry full = ScrollbarGeometry(20, 40, 500, 0, 4, 64);
+    ScrollbarThumbGeometry full = ScrollbarGeometry(20, 40, 40, 500, 0, 4, 64);
     utassertnear(full.DragOffset(50, 8, 100), 100.f);
 }
 
@@ -684,6 +686,63 @@ struct CoveredBar {
     }
 };
 
+// scrollbar.rs thumb_geometry_maps_content_viewport_to_padded_track.
+// Offsets here are positive-down, so Rust's px(-80) is 80.
+static void ThumbGeometryMapsContentViewportToPaddedTrack() {
+    ScrollbarThumbGeometry geometry =
+        ScrollbarGeometry(20, 96, 80, 160, 0, 0, 0);
+    utassertnear(geometry.length, 48.f);
+    utassertnear(geometry.travel, 48.f);
+    utassertnear(geometry.extent, 80.f);
+    utassertnear(geometry.DragOffset(68, 0, 0), 80.f);
+
+    ScrollbarThumbGeometry barely = ScrollbarGeometry(20, 96, 80, 85, 0, 0, 0);
+    utassertnear(barely.extent, 5.f);
+    utassert(barely.travel > 0.f);
+    utassertnear(barely.DragOffset(20.f + barely.travel, 0, 0), 5.f);
+}
+
+// scrollbar.rs thumb_drag_reaches_content_end_when_track_includes_padding.
+// The editor has no separate scrollbar element: the field's document and
+// unpadded viewport are what the bar scrolls, and the track is the element.
+struct PaddedTrackDrag {
+    InputState field;
+    float y = 0;
+
+    static void OnScroll(PaddedTrackDrag* self, Ctx*, const ScrollEvent* ev) {
+        self->y = ev->offsetY;
+    }
+    static El* Render(PaddedTrackDrag* self, Ctx* cx) {
+        self->field.contentH = 160;
+        // PadY 10 leaves an 80-tall content viewport inside the 100-tall
+        // track. Paint writes that viewport onto the field.
+        return Div(cx->a)
+            ->W(100)
+            ->H(100)
+            ->PadY(10)
+            ->BindInput(&self->field)
+            ->ScrollY(self->y)
+            ->ScrollId(11)
+            ->ScrollMode(ScrollbarMode::Always)
+            ->OnScroll(Listen(cx, &PaddedTrackDrag::OnScroll))
+            ->Child(Div(cx->a)->W(80)->H(160));
+    }
+};
+
+static void ThumbDragReachesContentEndWhenTrackIncludesPadding() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<PaddedTrackDrag> view = EntityNew<PaddedTrackDrag>(app);
+    Window* win = TestWindowOpen(app, view, 200, 200, 1);
+    TestSimulateMouseDown(win, Point{95, 20});
+    TestSimulateMouseMove(win, Point{95, 99}, true);
+    TestSimulateMouseUp(win, Point{95, 99});
+    // content 160 minus the unpadded viewport 80. The track is the 100-tall
+    // element, which used to stop the drag short of this.
+    utassertnear(view.Get(app)->field.scrollY, 80.f);
+    TestAppFree(app);
+}
+
 static void APressOnAnElementOverTheTrackIsLeftToIt() {
     App* app = TestAppNew();
     component::Init(app);
@@ -731,6 +790,8 @@ void TestScrollbar() {
     ATouchThumbDragMovesDownAndCancelReleasesIt();
     ATouchReleaseKeepsItsFinalDisplacement();
     TheHighlighterScrollerHasAStableScrollId();
+    ThumbGeometryMapsContentViewportToPaddedTrack();
+    ThumbDragReachesContentEndWhenTrackIncludesPadding();
     APressOnAnElementOverTheTrackIsLeftToIt();
     HoveringAnElementOverAHoverScrollbarDoesNotRevealIt();
 }

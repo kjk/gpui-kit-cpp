@@ -1554,11 +1554,20 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
 
 // Whether a box scrolls at all along one axis, which is what decides if it
 // has a bar to aim at.
+// 0 keeps the painted track as the viewport. scroll_viewport_size is the
+// other case: the range is shorter than the bar.
+static float ScrollViewportH(const ScrollRect& s) {
+    return s.viewportH > 0 ? s.viewportH : s.bounds.h;
+}
+static float ScrollViewportW(const ScrollRect& s) {
+    return s.viewportW > 0 ? s.viewportW : s.bounds.w;
+}
+
 static bool ScrollsY(const ScrollRect& s) {
-    return s.contentH > s.bounds.h + 1.f;
+    return s.contentH > ScrollViewportH(s) + 1.f;
 }
 static bool ScrollsX(const ScrollRect& s) {
-    return s.contentW > s.bounds.w + 1.f;
+    return s.contentW > ScrollViewportW(s) + 1.f;
 }
 
 // An offset that stays inside the content, which is Rust's clamp on the
@@ -1649,8 +1658,8 @@ static void NoteScrollbarOcclusion(Window* win) {
 
 static void ScrollbarStore(Window* win, ScrollRect* s, float offsetX,
                            float offsetY) {
-    offsetX = ClampScroll(offsetX, s->contentW, s->bounds.w);
-    offsetY = ClampScroll(offsetY, s->contentH, s->bounds.h);
+    offsetX = ClampScroll(offsetX, s->contentW, ScrollViewportW(*s));
+    offsetY = ClampScroll(offsetY, s->contentH, ScrollViewportH(*s));
     s->scrollX = offsetX;
     s->scrollY = offsetY;
     // A text field owns its own offset — Rust's editor scrollbar reaches the
@@ -1747,13 +1756,15 @@ enum class ScrollbarPressKind : uint8_t {
 static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
                            bool horizontal, ScrollbarPressKind kind) {
     float track = horizontal ? s->bounds.w : s->bounds.h;
+    float viewport = horizontal ? ScrollViewportW(*s) : ScrollViewportH(*s);
     float content = horizontal ? s->contentW : s->contentH;
     float origin = horizontal ? s->bounds.x : s->bounds.y;
     float at = horizontal ? x : y;
     float marginEnd = horizontal && s->barY && ScrollsY(*s) ? s->trackWidth : 0;
     float current = horizontal ? s->scrollX : s->scrollY;
-    ScrollbarThumbGeometry geometry = ScrollbarGeometry(
-        origin, track, content, marginEnd, s->thumbInset, s->thumbMinLength);
+    ScrollbarThumbGeometry geometry =
+        ScrollbarGeometry(origin, track, viewport, content, marginEnd,
+                          s->thumbInset, s->thumbMinLength);
     float thumbStart = geometry.Start(current);
     float thumbLength = geometry.length;
     bool crossInside = horizontal ? y <= s->bounds.Bottom() - s->thumbInset
@@ -1764,7 +1775,7 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         // The painted hover thumb is wider than the resting one. A press on
         // the extra pixels is still a grab, not a jump down the track.
         ScrollbarThumbGeometry hover =
-            ScrollbarGeometry(origin, track, content, marginEnd,
+            ScrollbarGeometry(origin, track, viewport, content, marginEnd,
                               s->thumbHoverInset, s->thumbHoverMinLength);
         float hoverStart = hover.Start(current);
         float hoverLength = hover.length;
@@ -1782,7 +1793,7 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         // that state's potentially different inset and minimum before
         // retaining the grab point.
         geometry =
-            ScrollbarGeometry(origin, track, content, marginEnd,
+            ScrollbarGeometry(origin, track, viewport, content, marginEnd,
                               s->thumbHoverInset, s->thumbHoverMinLength);
         thumbStart = geometry.Start(current);
         thumbLength = geometry.length;
@@ -1803,7 +1814,7 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         // that geometry now so the painted grab point remains under the
         // pointer on the first active frame.
         ScrollbarThumbGeometry active =
-            ScrollbarGeometry(origin, track, content, marginEnd,
+            ScrollbarGeometry(origin, track, viewport, content, marginEnd,
                               s->thumbActiveInset, s->thumbActiveMinLength);
         float off = active.DragOffset(at, win->scrollDragGrab, current);
         ScrollbarQueueDrag(win, s, horizontal ? off : s->scrollX,
@@ -1818,8 +1829,8 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         off = geometry.DragOffset(at, geometry.length * .5f, current);
     } else {
         float direction = at < thumbStart ? -1.f : 1.f;
-        float viewport = horizontal ? s->bounds.w : s->bounds.h;
-        off = current + direction * viewport;
+        float page = horizontal ? s->bounds.w : s->bounds.h;
+        off = current + direction * page;
     }
     ScrollbarEmit(win, s, horizontal ? off : s->scrollX,
                   horizontal ? s->scrollY : off);
@@ -1876,13 +1887,14 @@ static bool ScrollbarDrag(Window* win, float x, float y,
     }
     bool horizontal = win->scrollDragHorizontal;
     float track = horizontal ? s->bounds.w : s->bounds.h;
+    float viewport = horizontal ? ScrollViewportW(*s) : ScrollViewportH(*s);
     float content = horizontal ? s->contentW : s->contentH;
     float origin = horizontal ? s->bounds.x : s->bounds.y;
     float at = horizontal ? x : y;
     float marginEnd = horizontal && s->barY && ScrollsY(*s) ? s->trackWidth : 0;
     float current = horizontal ? s->scrollX : s->scrollY;
     ScrollbarThumbGeometry geometry =
-        ScrollbarGeometry(origin, track, content, marginEnd,
+        ScrollbarGeometry(origin, track, viewport, content, marginEnd,
                           s->thumbActiveInset, s->thumbActiveMinLength);
     float off = geometry.DragOffset(at, win->scrollDragGrab, current);
     if (off == current && !immediate) return false;
@@ -3016,8 +3028,8 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
                 return;
             }
             if (takeY) {
-                float offY =
-                    ClampScroll(s.scrollY - vertical.y, s.contentH, s.bounds.h);
+                float offY = ClampScroll(s.scrollY - vertical.y, s.contentH,
+                                         ScrollViewportH(s));
                 if (offY == s.scrollY) {
                     // Vertical scroll chaining: the parent gets the wheel at
                     // the edge or when this viewport has no overflow.
@@ -3044,10 +3056,12 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
             dx = dy;
             dy = 0;
         }
-        float offY = canY ? ClampScroll(s.scrollY - dy, s.contentH, s.bounds.h)
-                          : s.scrollY;
-        float offX = canX ? ClampScroll(s.scrollX - dx, s.contentW, s.bounds.w)
-                          : s.scrollX;
+        float offY =
+            canY ? ClampScroll(s.scrollY - dy, s.contentH, ScrollViewportH(s))
+                 : s.scrollY;
+        float offX =
+            canX ? ClampScroll(s.scrollX - dx, s.contentW, ScrollViewportW(s))
+                 : s.scrollX;
         if (offX == s.scrollX && offY == s.scrollY) {
             AppInvalidate(win);
             return;
@@ -3592,15 +3606,17 @@ bool WindowScrollApply(Window* win, float x, float y, float dx, float dy) {
         if (!s.onScroll.IsValid() || !s.bounds.Contains({x, y})) {
             continue;
         }
-        bool canY = s.contentH > s.bounds.h + 1.f;
-        bool canX = s.contentW > s.bounds.w + 1.f;
+        bool canY = s.contentH > ScrollViewportH(s) + 1.f;
+        bool canX = s.contentW > ScrollViewportW(s) + 1.f;
         if (!canY && !canX) {
             continue;
         }
-        float offY = canY ? ClampScroll(s.scrollY - dy, s.contentH, s.bounds.h)
-                          : s.scrollY;
-        float offX = canX ? ClampScroll(s.scrollX - dx, s.contentW, s.bounds.w)
-                          : s.scrollX;
+        float offY =
+            canY ? ClampScroll(s.scrollY - dy, s.contentH, ScrollViewportH(s))
+                 : s.scrollY;
+        float offX =
+            canX ? ClampScroll(s.scrollX - dx, s.contentW, ScrollViewportW(s))
+                 : s.scrollX;
         if (offX == s.scrollX && offY == s.scrollY) {
             return false;
         }

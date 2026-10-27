@@ -7754,6 +7754,14 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         sr.scrollY = e->scrollY;
         sr.contentW = e->contentW;
         sr.scrollX = e->scrollX;
+        // EditorScrollbarLayout::scroll_viewport_size. The field's document
+        // and its unpadded viewport are the range; the bar is painted on the
+        // padded element. Ordinary boxes leave both at the track.
+        if (e->input && e->style.overflowY == Overflow::Scroll &&
+            e->input->contentH > 0 && e->input->viewH > 0) {
+            sr.contentH = e->input->contentH;
+            sr.viewportH = e->input->viewH;
+        }
         sr.mode = ElScrollMode(e, ctx->app);
         sr.barX = !e->noScrollbar && !e->noScrollbarX;
         sr.barY = !e->noScrollbar && !e->noScrollbarY;
@@ -7894,6 +7902,14 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 if (vh > 0) {
                     e->input->viewH = vh;
                 }
+            }
+            // The scroll rect was recorded before this viewport existed.
+            // A padded field's range is the document inside that viewport;
+            // the bar stays on the padded track.
+            if (scrollSlot >= 0 && e->style.overflowY == Overflow::Scroll &&
+                e->input->contentH > 0 && e->input->viewH > 0) {
+                ctx->scrolls[scrollSlot].contentH = e->input->contentH;
+                ctx->scrolls[scrollSlot].viewportH = e->input->viewH;
             }
             // scroll_size.width: how wide the longest row came out, which is
             // what a sideways scroll clamps against. Only a box that scrolls
@@ -8347,9 +8363,18 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->scrollThemeSet ? e->scrollMotion : ScrollbarMotionFor(barMode);
     float trackW = ScrollbarTrackWidth(e);
     if (trackW < 0) trackW = 0;
+    // Same split as the ScrollRect above: a textarea's range is the field's
+    // document inside the unpadded viewport, not the padded track.
+    float scrollContentH = e->contentH;
+    float scrollViewportH = e->h;
+    if (e->input && e->style.overflowY == Overflow::Scroll &&
+        e->input->contentH > 0 && e->input->viewH > 0) {
+        scrollContentH = e->input->contentH;
+        scrollViewportH = e->input->viewH;
+    }
     bool canVertical = !e->noScrollbarY &&
                        e->style.overflowY == Overflow::Scroll &&
-                       e->contentH > e->h + 1.f && e->h > 0;
+                       scrollContentH > scrollViewportH + 1.f && e->h > 0;
     bool canHorizontal = !e->noScrollbarX &&
                          e->style.overflowX == Overflow::Scroll &&
                          e->contentW > e->w + 1.f && e->w > 0;
@@ -8429,7 +8454,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         bool onBar = overBox && !covered && ctx->mouseX >= e->x + e->w - trackW;
         float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
         ScrollbarThumbGeometry normal = ScrollbarGeometry(
-            e->y, e->h, e->contentH, 0, normalInset,
+            e->y, e->h, scrollViewportH, scrollContentH, 0, normalInset,
             ScrollbarThumbMinLength(e, ScrollbarPaintState::Normal));
         float normalStart = normal.Start(e->scrollY);
         bool pointerOnThumb = onBar &&
@@ -8445,8 +8470,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                                            : ScrollbarPaintState::Normal));
         float inset = ScrollbarThumbInset(e, state);
         ScrollbarThumbGeometry geometry =
-            ScrollbarGeometry(e->y, e->h, e->contentH, 0, inset,
-                              ScrollbarThumbMinLength(e, state));
+            ScrollbarGeometry(e->y, e->h, scrollViewportH, scrollContentH, 0,
+                              inset, ScrollbarThumbMinLength(e, state));
         float thumbH = geometry.length;
         float wantW = ScrollbarThumbWidth(e, state);
         float thumbW = wantW;
@@ -8475,7 +8500,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         float marginEnd = hasVertical ? trackW : 0;
         float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
         ScrollbarThumbGeometry normal = ScrollbarGeometry(
-            e->x, e->w, e->contentW, marginEnd, normalInset,
+            e->x, e->w, e->w, e->contentW, marginEnd, normalInset,
             ScrollbarThumbMinLength(e, ScrollbarPaintState::Normal));
         float normalStart = normal.Start(e->scrollX);
         bool pointerOnThumb = onBar &&
@@ -8491,7 +8516,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                                            : ScrollbarPaintState::Normal));
         float inset = ScrollbarThumbInset(e, state);
         ScrollbarThumbGeometry geometry =
-            ScrollbarGeometry(e->x, e->w, e->contentW, marginEnd, inset,
+            ScrollbarGeometry(e->x, e->w, e->w, e->contentW, marginEnd, inset,
                               ScrollbarThumbMinLength(e, state));
         float thumbW = geometry.length;
         float wantH = ScrollbarThumbWidth(e, state);

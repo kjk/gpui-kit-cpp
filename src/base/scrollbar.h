@@ -179,17 +179,19 @@ struct ScrollbarThumbGeometry {
     float DragOffset(float position, float grab, float current) const;
 };
 
-ScrollbarThumbGeometry ScrollbarGeometry(float origin, float container,
-                                         float content, float marginEnd,
-                                         float inset, float minLength);
+// `track` is the painted length and `viewport` the size the content scrolls
+// inside. A textarea's track includes its padding, so those two differ;
+// every other bar passes the same number for both. `content` is the scrolled
+// size. Offsets here run positive-down, the way El::ScrollY does; Rust's run
+// negative because it offsets the content rather than the view.
+ScrollbarThumbGeometry ScrollbarGeometry(float origin, float track,
+                                         float viewport, float content,
+                                         float marginEnd, float inset,
+                                         float minLength);
 
 // The three legacy arithmetic seams below project the same geometry along one
 // axis. Rust branches on `is_vertical` and does the same thing to y or x, so
 // the caller passes whichever pair the axis names.
-//
-// `track` is the bar's length, `container` the visible size, and `content` the
-// scrolled size. Offsets here run positive-down, the way El::ScrollY does;
-// Rust's run negative because it offsets the content rather than the view.
 
 // The thumb's length. It shrinks with the ratio of what is visible, and stops
 // at a floor so a very long document still leaves something to grab.
@@ -264,9 +266,12 @@ struct PrepaintState {
     int statesLen = 0;
 };
 
+// `viewportSize` <= 0 means the container: the painted track is the scroll
+// range. A padded editor passes the unpadded content box instead.
 AxisPrepaintState ScrollbarPrepaintAxis(Axis axis, Bounds track, float offset,
                                         float containerSize, float contentSize,
-                                        const ScrollbarThumbStyle& style);
+                                        const ScrollbarThumbStyle& style,
+                                        float viewportSize = 0);
 
 struct Scrollbar {
     // The bare box, for a caller that wires the scroll itself.
