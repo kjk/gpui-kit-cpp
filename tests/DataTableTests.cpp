@@ -1585,6 +1585,46 @@ static void AResizeDragAfterAFitWaitsForTheNextPress() {
     TestAppFree(app);
 }
 
+// data_table.rs test_data_table_builder. The focus ring is on until a
+// builder turns it off, and turning it back on composes with the other
+// options.
+static void TestDataTableBuilder() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    component::DataTable* plain =
+        component::DataTable::New(&cx, StrL("builder"), state);
+    utassert(plain->focusRingEnabled);
+
+    component::DataTable* table =
+        component::DataTable::New(&cx, StrL("builder"), state)
+            ->Stripe(true)
+            ->Bordered(false)
+            ->ScrollBounce(false)
+            ->HeaderRowHeight(32)
+            ->FixedColsBorder(false)
+            ->ScrollbarVisible(false, true)
+            ->WithSize(UiSize::Small)
+            ->FocusRing(false);
+    utassert(table->stripe);
+    utassert(!table->bordered);
+    utassert(table->scrollBounce == 0);
+    utassert(table->headerRowHeight == 32.f);
+    utassert(!table->fixedColsBorder);
+    utassert(!table->scrollbarV);
+    utassert(table->scrollbarH);
+    utassert(table->size == UiSize::Small);
+    utassert(!table->focusRingEnabled);
+    utassert(table->FocusRing(true)->focusRingEnabled);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 // data_table.rs data_table_draws_the_focus_ring_by_default and
 // data_table_focus_ring_can_be_turned_off. Keyboard focus asks for the
 // ring unless focus_ring(false) turned it off.
@@ -1640,6 +1680,7 @@ void TestDataTable() {
     TableHomeAndEndSelectTheFirstAndLastRow();
     ARightClickMarksARowOrACellButNeverBoth();
     ARightClickedCellClearsOnTheNextClick();
+    TestDataTableBuilder();
     DataTableFocusRingFollowsTheBuilder();
     ACellIsOneNumber();
     AColumnKeepsItsWidthOnceItHasOne();

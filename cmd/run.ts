@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "e971783ac90fa46637bc1fa48790f29a4fa3831d",
+  sha: "f68b254cb6a561bb1da1e1b0eb9229bc74bcfeec",
   date: "2026-10-18",
-  subject: "tab: Draw the sliding indicator on the frame after a bar's first (#3574)",
+  subject: "table: Cover DataTable builder and focus ring configuration (#3572)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

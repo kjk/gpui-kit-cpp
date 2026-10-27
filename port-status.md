@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e971783ac90fa46637bc1fa48790f29a4fa3831d` (2026-10-18,
-tab: Draw the sliding indicator on the frame after a bar's first (#3574)).
-A segmented, pill or underline bar asks for one more frame when the
-selected tab is measured somewhere other than its indicator. A bar
-with no width asks for none.
+Processed through `f68b254cb6a561bb1da1e1b0eb9229bc74bcfeec` (2026-10-18,
+table: Cover DataTable builder and focus ring configuration (#3572)).
+The focus ring stays on until a builder turns it off, and the other
+table options compose with that switch.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
