@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d4c56812984d5fb2640ed922fe230c3113479563` (2026-10-17,
-website: Link to Native Shell from the nav and READMEs (#3571)).
-The story introduction is upstream's README, so the new Native Shell
-section is copied with it. The website nav and the Chinese README are
-not part of this tree.
+Processed through `14f59330a4aa0cb5becf140e067d64a616328612` (2026-10-17,
+shell: Act on the link itself for lstat, readlink, unlink, rmdir and rename (#3561)).
+Rust stopped canonicalizing the last component of an absolute path, so
+those five operations no longer follow a symlink into its target. This
+tree never canonicalizes that component: the opener keeps the leaf and
+acts on it with the no-follow calls.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
