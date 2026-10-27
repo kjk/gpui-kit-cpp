@@ -640,10 +640,83 @@ static void TestDiffListFillsItsHeight() {
     TestAppFree(app);
 }
 
+// diff/scroll_tests.rs. A 300-line patch, every line changed, in a 400×200
+// window. The scroll extent is the whole patch, not the rows painted so far.
+struct LongDiffView {
+    Entity<DiffState> state;
+    bool loaded = false;
+
+    static El* Render(LongDiffView* self, Ctx* cx) {
+        if (!self->loaded) {
+            self->state = EntityNew<DiffState>(cx->app);
+            DiffState* st = self->state.Get(cx);
+            st->Bind(cx->app, self->state);
+            StrBuilder patch;
+            patch.Append(StrL("--- a/long.txt\n+++ b/long.txt\n"));
+            patch.Append(StrL("@@ -1,300 +1,300 @@\n"));
+            for (int line = 0; line < 300; line++) {
+                patch.Append(fmt("-old %d\n+new %d\n", line, line));
+            }
+            Vec<DiffFile*> files;
+            DiffParseError error = {};
+            if (DiffFile::Parse(Str(patch.els, patch.len), &files, &error)) {
+                st->SetFiles(files.els, len(files), cx);
+            }
+            self->loaded = true;
+        }
+        return Diff::New(cx, self->state)->IntoEl()->SizeFull();
+    }
+};
+
+static void OpenLongDiff(App** appOut, Window** winOut, DiffState** stateOut) {
+    App* app = TestAppNew();
+    Init(app);
+    Entity<LongDiffView> view = EntityNew<LongDiffView>(app);
+    Window* win = TestWindowOpen(app, view, 400, 200);
+    for (int i = 0; i < 3; i++) TestDraw(win);
+    LongDiffView* self = view.Get(app);
+    *appOut = app;
+    *winOut = win;
+    *stateOut = self ? self->state.Get(app) : nullptr;
+}
+
+static void TheWholePatchKeepsItsHeightAfterTheFirstLayout() {
+    App* app = nullptr;
+    Window* win = nullptr;
+    DiffState* st = nullptr;
+    OpenLongDiff(&app, &win, &st);
+    utassert(st && st->listScroll.viewport > 0.f);
+    if (st) {
+        float max = st->listScroll.contentSize - st->listScroll.viewport;
+        utassert(max > st->listScroll.viewport * 10.f);
+    }
+    TestAppFree(app);
+}
+
+static void TheWheelScrollsPastTheRowsRenderedSoFar() {
+    App* app = nullptr;
+    Window* win = nullptr;
+    DiffState* st = nullptr;
+    OpenLongDiff(&app, &win, &st);
+    utassert(st && st->listScroll.itemsCount > 0);
+    for (int i = 0; i < 50; i++) {
+        TestSimulateScrollWheel(win, Point{100, 120}, Point{0, -40});
+    }
+    if (st && st->listScroll.itemsCount > 0) {
+        float row = st->listScroll.contentSize / (float)st->listScroll
+                                                     .itemsCount;
+        int top = row > 0 ? (int)(st->listScroll.offset / row) : 0;
+        utassert(top > 40);
+    }
+    TestAppFree(app);
+}
+
 void TestDiff() {
     TestParser();
     TestConflictsAndLanguage();
     TestInlineAndRows();
     NextChangeWrapsOnceTheListIsScrolledToItsEnd();
     TestDiffListFillsItsHeight();
+    TheWholePatchKeepsItsHeightAfterTheFirstLayout();
+    TheWheelScrollsPastTheRowsRenderedSoFar();
 }

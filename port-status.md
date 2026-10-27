@@ -16,12 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ce040801ad58727396041f145798dd339b5fdfb0` (2026-10-16,
-shell: Add `on_visible_range_change` to report what a list shows (#3549)).
-A script `list` reports the items in its viewport, and how many it
-has, after a frame that changed either. The handler runs once the
-frame is done, so it can load another page. `uniform_list` and the
-virtual lists ignore it.
+Processed through `eec1208dd57d8bc8abc769fd833d181d297790f9` (2026-10-16,
+diff: Keep the row-height hint after the list lays out at a new width (#3563)).
+Rust reapplies a row-height hint after a diff list lays out at a new
+width, because that layout had forgotten every unmeasured row and the
+wheel stopped at the first screen. This tree sizes every diff row up
+front, so the scroll extent is the whole patch from the first layout.
+The two scroll tests pin that.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

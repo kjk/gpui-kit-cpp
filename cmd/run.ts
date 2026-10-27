@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ce040801ad58727396041f145798dd339b5fdfb0",
+  sha: "eec1208dd57d8bc8abc769fd833d181d297790f9",
   date: "2026-10-16",
-  subject: "shell: Add `on_visible_range_change` to report what a list shows (#3549)",
+  subject: "diff: Keep the row-height hint after the list lays out at a new width (#3563)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",
