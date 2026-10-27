@@ -138,6 +138,25 @@ void StateDescriptorsValidateExportKindAndArguments() {
     delete registry;
 }
 
+// registry_rejects_a_state_method_named_release
+bool ProbeRelease(shell::StateCall*, void*, const shell::ComponentDataValue*,
+                  int) {
+    return false;
+}
+
+void RegistryRejectsAStateMethodNamedRelease() {
+    ComponentRegistry* registry = OpenRegistry();
+    RegistryError error;
+    static constexpr shell::StateMethodDescriptor kRelease[] = {
+        {"release", "(): void", false, &ProbeRelease}};
+    StateDescriptor state = State("ProbeState", "ProbeState");
+    state.methods = kRelease;
+    utassert(!registry->RegisterState(&state, &error));
+    utassert(error ==
+             Error(RegistryErrorKind::InvalidMethod, "ProbeState", "release"));
+    delete registry;
+}
+
 // frozen_registry_module_declares_state_exports
 void FrozenRegistryModuleDeclaresStateExports() {
     ComponentRegistry* registry = OpenRegistry();
@@ -8184,12 +8203,95 @@ void RegisteredInventoryMatchesTheFrozenComponentCatalog() {
     utassert(states.Equals(actualStates));
     ArenaDelete(a);
 }
+int gProbeDrops = 0;
+
+struct ProbeDrop {
+    ~ProbeDrop() { gProbeDrops++; }
+};
+
+bool ProbeFactory(shell::StateBuild* build, const shell::ComponentArgument*,
+                  int) {
+    build->New<ProbeDrop>();
+    return true;
+}
+
+bool ProbeLabel(shell::StateCall* call, void*, const shell::ComponentDataValue*,
+                int) {
+    call->out = shell::ComponentDataValue::String(StrL("live"));
+    return true;
+}
+
+// state_release_host.rs
+// a_script_releases_component_state_before_its_application
+void AScriptReleasesComponentStateBeforeItsApplication() {
+    gProbeDrops = 0;
+    static constexpr shell::StateMethodDescriptor kLabel[] = {
+        {"label", "(): string", true, &ProbeLabel}};
+    static StateDescriptor state = State("ProbeState", "ProbeState");
+    state.factory = &ProbeFactory;
+    state.methods = kLabel;
+
+    ComponentRegistry registry;
+    RegistryError error;
+    utassert(registry.Open(shell::kComponentRegistryApiVersion,
+                           shell::kDefaultComponentModule, &error));
+    utassert(registry.RegisterState(&state, &error));
+    FrozenComponentRegistry frozen;
+    registry.Freeze(&frozen);
+
+    Host host(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import { ProbeState } from 'gpui-component';\n"
+             "const outcome = (call) => {\n"
+             "  try { return String(call()); } catch (error) {\n"
+             "    if (error.message.includes('during render')) return "
+             "'refused';\n"
+             "    if (error.message.includes('has been released')) return "
+             "'released';\n"
+             "    return 'threw';\n"
+             "  }\n"
+             "};\n"
+             "export default class Releases extends View {\n"
+             "  init() { this.kept = ProbeState(); this.dropped = "
+             "ProbeState(); this.results = 'none'; }\n"
+             "  run() {\n"
+             "    const first = this.dropped.release();\n"
+             "    const second = this.dropped.release();\n"
+             "    this.results = [first, second, outcome(() => "
+             "this.dropped.label()), this.kept.label()].join('-');\n"
+             "  }\n"
+             "  render() {\n"
+             "    const during = outcome(() => this.kept.release());\n"
+             "    return div()\n"
+             "      .child(div().id('render-' + during))\n"
+             "      .child(div().id('results-' + this.results))\n"
+             "      .child(div().id('run').w(200).h(40)\n"
+             "        .on_click((_event, cx) => { this.run(); cx.notify(); "
+             "}));\n"
+             "  }\n"
+             "}\n"),
+        &frozen);
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindById(root, StrL("render-refused")) != nullptr);
+    utassert(gProbeDrops == 0);
+    El* run = FindById(root, StrL("run"));
+    utassert(run != nullptr);
+    Click(host, run);
+    root = host.Render();
+    utassert(FindById(root, StrL("results-true-false-released-live")) !=
+             nullptr);
+    utassert(FindById(root, StrL("render-refused")) != nullptr);
+    utassert(gProbeDrops == 1);
+}
+
 } // namespace
 
 void TestComponentShell() {
     TestSuite("component_registry");
     StateExportsShareTheComponentExportNamespace();
     StateDescriptorsValidateExportKindAndArguments();
+    RegistryRejectsAStateMethodNamedRelease();
     FrozenRegistryModuleDeclaresStateExports();
     RetainedStateStoreEnforcesItsLimit();
     DuplicateMethodsAreRejectedWithTheComponentName();
@@ -8214,6 +8316,7 @@ void TestComponentShell() {
     LeafComponentsRejectAnIncompatiblePayload();
     LeafComponentsMaterializeFromAScript();
     AnEmbeddingHostRegistersItsOwnComponentBesideTheCatalog();
+    AScriptReleasesComponentStateBeforeItsApplication();
     RegisteredCallsAreValidatedAgainstTheirSchemas();
 
     TestSuite("controls");

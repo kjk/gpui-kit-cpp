@@ -512,6 +512,9 @@ class ComponentStateStore {
     const char* Kind(uint64_t handle) const;
     // The value when `handle` is live and of `kind`, else null with `error`.
     void* Get(uint64_t handle, const char* kind, Str* error, Arena* a) const;
+    // Drops one state ahead of its application, with its subscriptions.
+    // False when the handle was already gone or was a different kind.
+    bool Remove(uint64_t handle, const char* kind);
     void ReleaseApplication(void* application);
     void Clear();
 

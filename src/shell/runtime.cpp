@@ -3766,6 +3766,42 @@ static JSValue NativeRegisteredState(JSContext* ctx, JSValueConst, int argc,
     return JS_NewFloat64(ctx, (double)handle);
 }
 
+// `__gpui_components["Export.release"](proof, handle)`. `magic` is the
+// state's place in the catalog. Every registered state answers it, so a
+// descriptor may not declare a method of the same name.
+static JSValue NativeRegisteredStateRelease(JSContext* ctx, JSValueConst,
+                                            int argc, JSValueConst* argv,
+                                            int magic) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    const shell::StateDescriptor* descriptor =
+        impl && impl->components && magic >= 0 &&
+                magic < impl->components->StateCount()
+            ? impl->components->State(magic)
+            : nullptr;
+    if (!descriptor || argc < 2)
+        return JS_ThrowTypeError(ctx, "unknown registered state operation");
+    Arena* a = ArenaNew();
+    Str proof;
+    double handle = 0;
+    if (!JS_IsString(argv[0]) || !JsString(ctx, argv[0], a, &proof) ||
+        !StrEq(proof, impl->componentStateProof) ||
+        JS_ToFloat64(ctx, &handle, argv[1]) < 0) {
+        ArenaDelete(a);
+        return JS_ThrowTypeError(ctx, "state belongs to another runtime");
+    }
+    ScopePhase phase = shell::ScopeCurrentPhase();
+    if (shell::ScopeHasCurrent() &&
+        (phase == ScopePhase::Render || phase == ScopePhase::Layout)) {
+        ArenaDelete(a);
+        return JS_ThrowTypeError(
+            ctx, "state cannot be released during render or layout");
+    }
+    bool removed = impl->componentStates
+                       .Remove((uint64_t)handle, descriptor->kind);
+    ArenaDelete(a);
+    return removed ? JS_TRUE : JS_FALSE;
+}
+
 // `__gpui_components["Export.method"](proof, handle, args)`. `magic` is the
 // method's place among every state's methods (StateMethodAt).
 static JSValue NativeRegisteredStateMethod(JSContext* ctx, JSValueConst,
@@ -3871,6 +3907,11 @@ static void InstallComponentCatalog(ShellRuntimeImpl* impl) {
             ctx, module, state->exportName,
             JS_NewCFunctionMagic(ctx, NativeRegisteredState, state->exportName,
                                  1, JS_CFUNC_generic_magic, s));
+        TempStr release = fmt("%s.release", Str(state->exportName));
+        JS_SetPropertyStr(
+            ctx, module, release.s,
+            JS_NewCFunctionMagic(ctx, NativeRegisteredStateRelease, release.s,
+                                 2, JS_CFUNC_generic_magic, s));
     }
     int flatConstructor = 0;
     for (int d = 0; components && d < components->DescriptorCount(); d++) {

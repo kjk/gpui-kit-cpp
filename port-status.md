@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `747bf66f98fd0de8b998fe7fe5970366974135b8` (2026-10-16,
-shell: Declare the component catalog under its registry's module specifier (#3543)).
-Generated declarations name the catalog's module, and a directory whose
-scripts import only that module still receives gpui-kit.d.ts. An empty
-registry keeps `gpui-component`. The gpui-shell doc is not copied.
+Processed through `b539b2f88e0512d4251a6a4c2526271c12ff3c87` (2026-10-16,
+shell: Let a script release retained component state (#3544)).
+Every registered state answers `release()`, which drops the value and
+its subscriptions before the application does. A second call returns
+false, a later method throws, and render or layout refuses it. A
+descriptor may not declare its own method of that name. The design
+doc's retained-state section is not copied.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

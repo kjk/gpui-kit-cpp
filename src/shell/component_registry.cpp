@@ -494,7 +494,9 @@ bool ComponentRegistry::RegisterState(const StateDescriptor* d,
             if (strcmp(d->methods[j].name, d->methods[i].name) == 0)
                 repeated = true;
         }
-        if (!IsJavaScriptIdentifier(S(d->methods[i].name)) || repeated) {
+        // Every state object already answers `release()`.
+        if (!IsJavaScriptIdentifier(S(d->methods[i].name)) || repeated ||
+            strcmp(d->methods[i].name, "release") == 0) {
             RegistryError e;
             e.kind = RegistryErrorKind::InvalidMethod;
             e.component = d->kind;
@@ -613,6 +615,9 @@ Str FrozenComponentRegistry::JavaScriptModuleSource(Str stateProof) const {
                 StrL("on:(event,handler)=>globalThis.__component_input_on("
                      "__stateProof,handle,event,handler),"));
         }
+        source.Append(StrL("release:()=>globalThis.__gpui_components["));
+        AppendQuoted(&source, fmt("%s.release", Str(state->exportName)));
+        source.Append(StrL("](__stateProof, handle),"));
         source
             .Append(StrL("}); __stateHandles.set(value, handle); return "
                          "value; }\n"));
@@ -778,6 +783,12 @@ void AppendComponentDeclarations(StrBuilder* out,
                 "\"blur\", handler: (event: InputEvent, cx: Context) => "
                 "void): boolean"));
         }
+        out->Append(StrL(
+            ";\n    /** Releases the state and its subscriptions now rather "
+            "than with the application. Returns `false` when it was already "
+            "released; a method called afterwards throws. Not allowed during "
+            "render. */\n"
+            "    release(): boolean"));
         out->Append(StrL(" }\n"));
         AppendJsdoc(out, state->documentation, nullptr, "  ");
         // State.new is the form gpui-base uses; the plain call is kept.
@@ -992,6 +1003,20 @@ void* ComponentStateStore::Get(uint64_t handle, const char* kind, Str* error,
     if (error)
         *error = StrDup(a, StrL("retained state handle has been released"));
     return nullptr;
+}
+
+bool ComponentStateStore::Remove(uint64_t handle, const char* kind) {
+    if (!kind) return false;
+    for (int i = 0; i < len(entries); i++) {
+        if (entries[i].handle != handle) continue;
+        if (strcmp(entries[i].kind, kind) != 0) return false;
+        Entry entry = entries[i];
+        if (entry.destroy) entry.destroy(entry.value);
+        for (int j = i + 1; j < len(entries); j++) entries[j - 1] = entries[j];
+        entries.len--;
+        return true;
+    }
+    return false;
 }
 
 void ComponentStateStore::ReleaseApplication(void* application) {
