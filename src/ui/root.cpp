@@ -1,4 +1,5 @@
 #include "ui/root.h"
+#include "ui/dialog.h"
 #include "ui/window_border.h"
 #include "ui/global_state.h"
 #include "ui/touch_selection.h"
@@ -8,14 +9,24 @@ namespace gpui {
 
 namespace component {
 
-int RootDialogOverlayIndex(const bool* wantsOverlay, int n) {
-    int ix = -1;
+int RootDialogOverlayIndex(const bool* wantsOverlay, const bool* closing,
+                           int n) {
+    int openIx = -1;
+    int anyIx = -1;
     for (int i = 0; i < n; i++) {
-        if (wantsOverlay && wantsOverlay[i]) {
-            ix = i;
+        if (!wantsOverlay || !wantsOverlay[i]) {
+            continue;
+        }
+        anyIx = i;
+        if (!closing || !closing[i]) {
+            openIx = i;
         }
     }
-    return ix;
+    return openIx >= 0 ? openIx : anyIx;
+}
+
+int RootDialogOverlayIndex(const bool* wantsOverlay, int n) {
+    return RootDialogOverlayIndex(wantsOverlay, nullptr, n);
 }
 
 Edges RootNotificationInsets(bool hasSheet, SheetPlacement placement,
@@ -77,10 +88,75 @@ El* WindowStateLayers(Ctx* cx) {
             add(s->Deferred());
         }
     }
-    // The dialogs draw over the sheet, in the order they were opened.
+    // A closing dialog keeps its layer only to finish leaving. Focus that
+    // landed inside one is put back where it was before that dialog opened.
     for (int i = 0; i < wl->dialogs.len; i++) {
-        if (El* d = EntityRender(cx->app, cx->win, a, wl->dialogs[i].view)) {
-            add(d->Deferred());
+        WindowLayer& dialog = wl->dialogs[i];
+        if (!dialog.closing || !dialog.trapFocus) {
+            continue;
+        }
+        int focused = cx->win->focusId;
+        if (focused != dialog.trapFocus &&
+            !WindowFocusContains(cx->win, dialog.trapFocus, focused)) {
+            continue;
+        }
+        if (dialog.previousFocus.IsValid()) {
+            FocusHandleRestore(cx->win, dialog.previousFocus);
+        } else {
+            WindowSetFocusId(cx->win, 0);
+        }
+    }
+    // The overlay belongs to the newest dialog still open. With none left,
+    // the newest closing dialog keeps the dim so it fades instead of
+    // switching off. A closing dialog under an open one paints no dim.
+    Vec<bool> wantsOverlay;
+    Vec<bool> closing;
+    int topOpen = -1;
+    for (int i = 0; i < wl->dialogs.len; i++) {
+        VecAppend(wantsOverlay, wl->dialogs[i].overlay);
+        VecAppend(closing, wl->dialogs[i].closing);
+        if (!wl->dialogs[i].closing) {
+            topOpen = i;
+        }
+    }
+    int overlaySlot =
+        RootDialogOverlayIndex(wantsOverlay.els, closing.els, wl->dialogs.len);
+    Vec<uint32_t> dropIds;
+    for (int i = 0; i < wl->dialogs.len; i++) {
+        DialogMount mount;
+        mount.bound = true;
+        mount.id = wl->dialogs[i].id;
+        mount.layerIx = i;
+        mount.closing = wl->dialogs[i].closing;
+        mount.topmost = i == topOpen;
+        mount.showOverlay = i == overlaySlot;
+        DialogBindMount(&mount);
+        El* dialog = EntityRender(cx->app, cx->win, a, wl->dialogs[i].view);
+        DialogBindMount(nullptr);
+        wl->dialogs[i].exitEnabled = mount.exitEnabled;
+        wl->dialogs[i].visibility = mount.visibility;
+        wl->dialogs[i].surfaceY = mount.surfaceY;
+        wl->dialogs[i].trapFocus = mount.trapFocus;
+        if (mount.unmount) {
+            VecAppend(dropIds, wl->dialogs[i].id);
+            continue;
+        }
+        if (dialog) {
+            add(dialog->Deferred());
+        }
+    }
+    // Unmount after the view has returned. Dropping it mid-render would free
+    // the entity whose Render is still on the stack.
+    for (int d = 0; d < len(dropIds); d++) {
+        for (int i = wl->dialogs.len - 1; i >= 0; i--) {
+            if (wl->dialogs[i].id != dropIds[d] || !wl->dialogs[i].closing) {
+                continue;
+            }
+            EntityId view = wl->dialogs[i].view;
+            VecRemoveAt(wl->dialogs, i);
+            EntityDrop(cx->app, view);
+            Notify(cx);
+            break;
         }
     }
     return layers;

@@ -23,10 +23,14 @@ namespace component {
 // pub use gpui_base::Root.
 using Root = gpui::Root;
 
-// Which dialog shows the overlay: the last one that asked for one, so a stack
-// of dialogs tints the page once, under the topmost of them. -1 when none of
-// them wants one.
+// Which dialog shows the overlay. The newest one still open that asked for
+// one, so a stack tints the page once. When every dialog that asked is
+// already leaving, the newest of those keeps the dim through its exit.
+// `closing` may be null, which is a stack where nothing is leaving. -1 when
+// none of them wants one.
 int RootDialogOverlayIndex(const bool* wantsOverlay, int n);
+int RootDialogOverlayIndex(const bool* wantsOverlay, const bool* closing,
+                           int n);
 
 // notification_layer: the notifications fill the window, less the room an
 // open sheet takes on its own edge — so a sheet on the right pushes them

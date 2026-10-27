@@ -785,6 +785,319 @@ static void DialogEntrancesFollowTheResolvedSurface() {
     delete win;
 }
 
+namespace {
+
+struct ExitPage {
+    int clicks = 0;
+    static void OnClick(ExitPage* self, Ctx*, const ClickEvent*) {
+        self->clicks++;
+    }
+    static El* Render(ExitPage* self, Ctx* cx) {
+        (void)self;
+        return Div(cx->a)->SizeFull()->Child(
+            Div(cx->a)->Absolute()->Top(0)->Left(0)->W(kFill)->H(200)->OnClick(
+                Listen(cx, &ExitPage::OnClick)));
+    }
+};
+
+struct ExitDialog {
+    component::DialogEntrance entrance = component::DialogEntrance::SlideDown;
+    float marginTop = 300;
+    bool hasMargin = true;
+    bool overlayClosable = true;
+    bool withButton = false;
+    int buttonClicks = 0;
+
+    static void OnButton(ExitDialog* self, Ctx*, const ClickEvent*) {
+        self->buttonClicks++;
+    }
+    static El* Render(ExitDialog* self, Ctx* cx) {
+        component::Dialog* dialog =
+            component::Dialog::New(cx)
+                ->Open(true)
+                ->Title(StrL("Closing"))
+                ->Entrance(self->entrance)
+                ->OverlayClosable(self->overlayClosable);
+        if (self->hasMargin) {
+            dialog->MarginTop(self->marginTop);
+        }
+        if (self->withButton) {
+            dialog->Footer(Div(cx->a)->W(120)->H(32)->Click(4242)->OnClick(
+                Listen(cx, &ExitDialog::OnButton)));
+        }
+        return dialog->IntoEl(WindowSize(cx->win));
+    }
+};
+
+static Window* OpenExitWindow(App* app, Entity<ExitPage> page) {
+    // Root::New captures the window plugins, including the dialog stack, only
+    // when the window already exists. Opening the page as the window root and
+    // wrapping it afterwards leaves that stack unregistered.
+    Window* win = WindowAlloc(app, WinOpts{});
+    win->paint.dpi = 96;
+    win->paint.viewW = 1000;
+    win->paint.viewH = 800;
+    Entity<gpui::Root> root = gpui::Root::New(app, win, page.id);
+    win->root = root.id;
+    TestDraw(win);
+    return win;
+}
+
+static bool HitCenter(Window* win, int id, Point* out) {
+    for (int i = 0; i < len(win->paint.hits); i++) {
+        if (win->paint.hits[i].id != id) {
+            continue;
+        }
+        Bounds b = win->paint.hits[i].bounds;
+        *out = {b.x + b.w * 0.5f, b.y + b.h * 0.5f};
+        return b.w > 0 && b.h > 0;
+    }
+    return false;
+}
+
+} // namespace
+
+// dialog.rs closing_plays_the_entrance_backwards_before_the_dialog_unmounts,
+// reduced_motion_closes_in_a_single_frame,
+// zero_theme_duration_closes_fade_entrances_immediately,
+// reopening_during_the_exit_keeps_the_new_dialog,
+// closing_the_top_dialog_leaves_the_one_below_mounted,
+// closing_dialog_does_not_block_input_beneath_it,
+// exiting_content_rejects_clicks_focus_and_text_input (the press half).
+static void ClosingPlaysTheEntranceBackOut() {
+    App* app = TestAppNew();
+    component::Init(app);
+    MotionSetReduced(false);
+    Entity<ExitPage> page = EntityNew<ExitPage>(app);
+    Window* win = OpenExitWindow(app, page);
+    Ctx cx = {app, win, nullptr, {}};
+
+    Entity<ExitDialog> first = EntityNew<ExitDialog>(app);
+    first.Get(app)->marginTop = 300;
+    WindowOpenDialog(&cx, first);
+    TestDraw(win);
+    TestAdvanceClock(app, 250);
+    WindowCloseDialog(&cx);
+    TestDraw(win);
+    WindowLayers* layers = WindowLayersOf(win);
+    utassert(layers && WindowDialogCount(&cx) == 1);
+    utassert(!WindowHasActiveDialog(&cx));
+    utassert(layers->dialogs[0].closing);
+    utassert(fabsf(layers->dialogs[0].surfaceY - 300.f) <= 1.f);
+
+    TestAdvanceClock(app, 125);
+    layers = WindowLayersOf(win);
+    utassert(layers && WindowDialogCount(&cx) == 1);
+    float halfway = layers->dialogs[0].surfaceY;
+    utassert(halfway > 0.f && halfway < 300.f);
+
+    // The animation clock arms a frame every 16ms. Landing between two of
+    // those ticks does not draw, so sample the finished exit explicitly.
+    TestAdvanceClock(app, 130);
+    TestDraw(win);
+    utassert(WindowDialogCount(&cx) == 0);
+    utassert(!WindowHasActiveDialog(&cx));
+    utassert(!first.Get(app));
+
+    MotionSetReduced(true);
+    Entity<ExitDialog> reduced = EntityNew<ExitDialog>(app);
+    WindowOpenDialog(&cx, reduced);
+    TestDraw(win);
+    WindowCloseDialog(&cx);
+    utassert(WindowDialogCount(&cx) == 0);
+    utassert(!reduced.Get(app));
+
+    MotionSetReduced(false);
+    ThemeUpdate(app, [](Theme* theme) { theme->motion.durationNormalMs = 0; });
+    component::DialogEntrance fades[] = {component::DialogEntrance::Fade,
+                                         component::DialogEntrance::FadeSlide};
+    for (component::DialogEntrance entrance : fades) {
+        Entity<ExitDialog> immediate = EntityNew<ExitDialog>(app);
+        immediate.Get(app)->entrance = entrance;
+        immediate.Get(app)->hasMargin = false;
+        WindowOpenDialog(&cx, immediate);
+        TestDraw(win);
+        WindowCloseDialog(&cx);
+        utassert(WindowDialogCount(&cx) == 0);
+        utassert(!immediate.Get(app));
+    }
+    ThemeUpdate(app,
+                [](Theme* theme) { theme->motion.durationNormalMs = 180; });
+
+    MotionSetReduced(false);
+    Entity<ExitDialog> leaving = EntityNew<ExitDialog>(app);
+    WindowOpenDialog(&cx, leaving);
+    TestDraw(win);
+    TestAdvanceClock(app, 250);
+    WindowCloseDialog(&cx);
+    TestDraw(win);
+    Entity<ExitDialog> again = EntityNew<ExitDialog>(app);
+    again.Get(app)->hasMargin = false;
+    WindowOpenDialog(&cx, again);
+    TestDraw(win);
+    layers = WindowLayersOf(win);
+    utassert(layers && WindowDialogCount(&cx) == 2);
+    utassert(layers->dialogs[0].closing);
+    utassert(!layers->dialogs[1].closing);
+    utassert(WindowHasActiveDialog(&cx));
+    TestAdvanceClock(app, 260);
+    TestDraw(win);
+    layers = WindowLayersOf(win);
+    utassert(layers && WindowDialogCount(&cx) == 1);
+    utassert(!layers->dialogs[0].closing);
+    utassert(WindowHasActiveDialog(&cx));
+    utassert(!leaving.Get(app));
+    utassert(again.Get(app));
+    WindowCloseAllDialogs(&cx);
+    TestAdvanceClock(app, 260);
+    TestDraw(win);
+
+    Entity<ExitDialog> lower = EntityNew<ExitDialog>(app);
+    Entity<ExitDialog> upper = EntityNew<ExitDialog>(app);
+    lower.Get(app)->hasMargin = false;
+    upper.Get(app)->hasMargin = false;
+    WindowOpenDialog(&cx, lower);
+    WindowOpenDialog(&cx, upper);
+    TestDraw(win);
+    TestAdvanceClock(app, 250);
+    WindowCloseDialog(&cx);
+    TestDraw(win);
+    layers = WindowLayersOf(win);
+    utassert(layers && WindowDialogCount(&cx) == 2);
+    utassert(WindowHasActiveDialog(&cx));
+    utassert(!layers->dialogs[0].closing);
+    utassert(layers->dialogs[1].closing);
+    TestAdvanceClock(app, 260);
+    TestDraw(win);
+    layers = WindowLayersOf(win);
+    utassert(layers && WindowDialogCount(&cx) == 1);
+    utassert(WindowHasActiveDialog(&cx));
+    utassert(lower.Get(app));
+    utassert(!upper.Get(app));
+    WindowCloseAllDialogs(&cx);
+    TestAdvanceClock(app, 260);
+    TestDraw(win);
+
+    page.Get(app)->clicks = 0;
+    Entity<ExitDialog> covered = EntityNew<ExitDialog>(app);
+    covered.Get(app)->marginTop = 300;
+    covered.Get(app)->overlayClosable = false;
+    WindowOpenDialog(&cx, covered);
+    TestDraw(win);
+    TestAdvanceClock(app, 250);
+    TestSimulateClick(win, {100, 60});
+    utassert(page.Get(app)->clicks == 0);
+    WindowCloseDialog(&cx);
+    TestDraw(win);
+    TestSimulateClick(win, {100, 60});
+    utassert(page.Get(app)->clicks == 1);
+    WindowCloseAllDialogs(&cx);
+    TestAdvanceClock(app, 260);
+    TestDraw(win);
+
+    Entity<ExitDialog> form = EntityNew<ExitDialog>(app);
+    form.Get(app)->hasMargin = false;
+    form.Get(app)->withButton = true;
+    WindowOpenDialog(&cx, form);
+    TestDraw(win);
+    TestAdvanceClock(app, 250);
+    Point button = {};
+    utassert(HitCenter(win, 4242, &button));
+    TestSimulateClick(win, button);
+    utassert(form.Get(app)->buttonClicks == 1);
+    WindowCloseDialog(&cx);
+    TestDraw(win);
+    utassert(HitCenter(win, 4242, &button));
+    TestSimulateClick(win, button);
+    utassert(form.Get(app)->buttonClicks == 1);
+    WindowCloseAllDialogs(&cx);
+    TestAdvanceClock(app, 260);
+
+    MotionResetReduceForTest();
+    TestAppFree(app);
+}
+
+// dialog.rs closing_fades_the_dialog_surface. The base host paints the popup
+// in a deferred pass, so the fade has to be on the surface itself.
+static void ClosingFadesTheDialogSurface() {
+    App app;
+    component::Init(&app);
+    MotionSetReduced(false);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    component::DialogMount mount;
+    mount.bound = true;
+    mount.id = 7;
+    mount.showOverlay = true;
+    mount.topmost = true;
+    win->frameNow = 1;
+    component::DialogBindMount(&mount);
+    El* entering = component::Dialog::New(&cx)
+                       ->Open(true)
+                       ->Title(StrL("Fading"))
+                       ->MarginTop(300)
+                       ->Entrance(component::DialogEntrance::Fade)
+                       ->IntoEl(WinSize{1000, 800});
+    component::DialogBindMount(nullptr);
+    El* panel = DialogPanel(entering);
+    utassert(panel && panel->style.opacity < 1.f);
+
+    win->frameNow = 1.2;
+    mount = {};
+    mount.bound = true;
+    mount.id = 7;
+    mount.showOverlay = true;
+    mount.topmost = true;
+    component::DialogBindMount(&mount);
+    El* open = component::Dialog::New(&cx)
+                   ->Open(true)
+                   ->Title(StrL("Fading"))
+                   ->MarginTop(300)
+                   ->Entrance(component::DialogEntrance::Fade)
+                   ->IntoEl(WinSize{1000, 800});
+    component::DialogBindMount(nullptr);
+    panel = DialogPanel(open);
+    utassert(panel && fabsf(panel->style.opacity - 1.f) <= 0.001f);
+
+    mount.closing = true;
+    mount.topmost = false;
+    win->frameNow = 1.2;
+    component::DialogBindMount(&mount);
+    El* leaving = component::Dialog::New(&cx)
+                      ->Open(true)
+                      ->Title(StrL("Fading"))
+                      ->MarginTop(300)
+                      ->Entrance(component::DialogEntrance::Fade)
+                      ->IntoEl(WinSize{1000, 800});
+    component::DialogBindMount(nullptr);
+    panel = DialogPanel(leaving);
+    utassert(panel && fabsf(panel->style.opacity - 1.f) <= 0.001f);
+    utassert(!mount.unmount);
+
+    win->frameNow = 1.29;
+    component::DialogBindMount(&mount);
+    El* mid = component::Dialog::New(&cx)
+                  ->Open(true)
+                  ->Title(StrL("Fading"))
+                  ->MarginTop(300)
+                  ->Entrance(component::DialogEntrance::Fade)
+                  ->IntoEl(WinSize{1000, 800});
+    component::DialogBindMount(nullptr);
+    panel = DialogPanel(mid);
+    utassert(panel && panel->style.opacity > 0.f && panel->style.opacity < 1.f);
+
+    MotionResetReduceForTest();
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestDialog() {
     TestSuite("dialog");
     ButtonPropsMergeWithWhatTheDialogAlreadyCarries();
@@ -801,4 +1114,6 @@ void TestDialog() {
     ThemedPartsAndAlertDefaultsMatchTheSource();
     margin_top_moves_the_alert_surface_off_the_default_offset();
     DialogEntrancesFollowTheResolvedSurface();
+    ClosingPlaysTheEntranceBackOut();
+    ClosingFadesTheDialogSurface();
 }

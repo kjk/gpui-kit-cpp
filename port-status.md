@@ -16,18 +16,26 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4abf41ca599cc07cc072495c94f6846556058f68` (2026-10-20,
-input: align accessibility semantics with editor focus (#3585)).
-The text role, label, placeholder and value sit on the editor element
-that owns keyboard focus. The frame stays presentational, so a prefix
-or suffix is not a second text node. Password content types do not
-expose the value. Docs, the website and the native AppKit probe are
-not ported.
+Processed through `41b63524b58a7f19512f51c0d1d62b84994e35c4` (2026-10-20,
+dialog: Animate the exit to match the entrance (#3603)).
+Closing keeps the dialog mounted until its entrance plays back out.
+SlideDown returns to the top, FadeSlide reverses its travel, and the
+surface and dim fade together. A dialog that is leaving is no longer
+active. Reduced motion, no entrance, and a zero theme duration still
+close in one frame. The website notes are not ported. A dialog built
+outside the window stack still eases in on its own clock and unmounts
+when it closes.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
 ## Known gaps vs Rust
 
+- **A dialog outside the window stack eases in on its own clock.**
+  `Dialog::IntoEl` still runs the entrance when no window layer supplied
+  a presence sample (`dialog.cpp`). Rust takes that clock only from the
+  window dialog layer, so a trigger dialog there appears at rest and
+  closes by unmounting. The window stack keeps a closing dialog mounted
+  and plays the entrance back out.
 - **Completion case-folding is the simple 1:1 map.** `highlight_contains`
   and `highlight_characters` compare with ASCII case and the same
   one-code-point lowercase `LabelLower` uses (`input_lsp.cpp`). Rust's

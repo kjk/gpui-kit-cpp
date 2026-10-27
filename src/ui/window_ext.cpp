@@ -61,12 +61,33 @@ void WindowOpenDialog(Ctx* cx, EntityId view, bool overlay) {
     WindowLayer layer;
     layer.view = view;
     layer.overlay = overlay;
+    layer.id = l->nextDialogId++;
+    layer.previousFocus = WindowFocused(cx->win);
     VecAppend(l->dialogs, layer);
     Notify(cx);
 }
 
+static int NewestOpenDialog(const WindowLayers* l) {
+    if (!l) {
+        return -1;
+    }
+    for (int i = l->dialogs.len - 1; i >= 0; i--) {
+        if (!l->dialogs[i].closing) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void RestoreDialogFocus(Ctx* cx, FocusHandle previous) {
+    if (previous.IsValid()) {
+        FocusHandleRestore(cx->win, previous);
+    }
+}
+
 bool WindowHasActiveDialog(Ctx* cx) {
-    return WindowDialogCount(cx) > 0;
+    WindowLayers* l = LayersOf(cx);
+    return NewestOpenDialog(l) >= 0;
 }
 
 int WindowDialogCount(Ctx* cx) {
@@ -76,11 +97,21 @@ int WindowDialogCount(Ctx* cx) {
 
 void WindowCloseDialog(Ctx* cx) {
     WindowLayers* l = LayersOf(cx);
-    if (!l || l->dialogs.len == 0) {
+    int ix = NewestOpenDialog(l);
+    if (ix < 0) {
         return;
     }
-    l->dialogs.len--;
-    EntityDrop(cx->app, l->dialogs[l->dialogs.len].view);
+    FocusHandle previous = l->dialogs[ix].previousFocus;
+    if (l->dialogs[ix].exitEnabled) {
+        // The dialog stays mounted. The next frames sample the exit, and the
+        // layer drops it once the presence clock says it is gone.
+        l->dialogs[ix].closing = true;
+    } else {
+        EntityId view = l->dialogs[ix].view;
+        VecRemoveAt(l->dialogs, ix);
+        EntityDrop(cx->app, view);
+    }
+    RestoreDialogFocus(cx, previous);
     Notify(cx);
 }
 
@@ -89,10 +120,17 @@ void WindowCloseAllDialogs(Ctx* cx) {
     if (!l || l->dialogs.len == 0) {
         return;
     }
-    for (int i = 0; i < l->dialogs.len; i++) {
-        EntityDrop(cx->app, l->dialogs[i].view);
+    FocusHandle previous = l->dialogs[0].previousFocus;
+    for (int i = l->dialogs.len - 1; i >= 0; i--) {
+        if (l->dialogs[i].closing || l->dialogs[i].exitEnabled) {
+            l->dialogs[i].closing = true;
+            continue;
+        }
+        EntityId view = l->dialogs[i].view;
+        VecRemoveAt(l->dialogs, i);
+        EntityDrop(cx->app, view);
     }
-    l->dialogs.len = 0;
+    RestoreDialogFocus(cx, previous);
     Notify(cx);
 }
 

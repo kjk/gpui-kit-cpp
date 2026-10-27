@@ -13,14 +13,35 @@ namespace component {
 // uses milliseconds rather than std::time::Duration.
 constexpr float ANIMATION_DURATION = 250.f;
 
-// dialog/entrance.rs. Closing stays immediate. Reduced motion shows the
-// final state for every option. SlideDown is the default.
+// dialog/entrance.rs. Closing plays the entrance back out. Reduced motion,
+// DialogEntrance::None and a zero theme duration open and close in one frame.
+// SlideDown is the default.
 enum class DialogEntrance : uint8_t {
     SlideDown,
     Fade,
     FadeSlide,
     None,
 };
+
+// One frame of the window dialog layer, filled in before the dialog's view
+// renders and read back for the exit clock. A dialog built on its own leaves
+// `bound` clear and keeps the entrance clock it already had.
+struct DialogMount {
+    bool bound = false;
+    uint32_t id = 0;
+    int layerIx = 0;
+    bool closing = false;
+    bool topmost = true;
+    bool showOverlay = true;
+    bool exitEnabled = false;
+    bool unmount = false;
+    float visibility = 1;
+    float surfaceY = 0;
+    int trapFocus = 0;
+};
+
+// The layer sets this for the view it is about to render, then clears it.
+void DialogBindMount(DialogMount* mount);
 
 // EntranceSurface::prepaint. `top` is the resolved resting top. Travel
 // shrinks to the space above `topLimit`, and the result is a y offset

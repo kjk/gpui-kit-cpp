@@ -35,8 +35,23 @@ namespace gpui {
 // `placement` and `size`.
 struct WindowLayer {
     EntityId view = {};
+    // Stable for this dialog's life, including the exit. The stack index is
+    // not: a dialog under a closing one moves up when the exit unmounts.
+    uint32_t id = 0;
     // Dialog::has_overlay — whether this one tints the page under it.
     bool overlay = true;
+    // Set once the entrance kind is known. None, reduced motion and a zero
+    // theme duration leave it clear, and those close in the same frame.
+    bool exitEnabled = false;
+    // Retained until the exit transition finishes.
+    bool closing = false;
+    // What had the focus before this dialog opened. Close puts it back.
+    FocusHandle previousFocus = {};
+    // The focus trap sampled last frame, so a closing dialog can refuse focus.
+    int trapFocus = 0;
+    // The presence sample from the last frame that still painted.
+    float visibility = 1;
+    float surfaceY = 0;
     component::SheetPlacement placement = component::SheetPlacement::Right;
     float size = 0;
 };
@@ -46,8 +61,11 @@ struct WindowLayer {
 struct WindowLayers {
     App* app = nullptr;
     Window* win = nullptr;
-    // As many as are open, in the order they were opened.
+    // As many as are mounted, in the order they were opened. A dialog that
+    // is playing its exit stays here until that transition finishes.
     Vec<WindowLayer> dialogs;
+    // Next stable dialog id. Independent of the stack position.
+    uint32_t nextDialogId = 0;
     WindowLayer sheet = {};
     bool hasSheet = false;
     // Created the first time something pushes one, along with the timer that
@@ -84,9 +102,13 @@ template <typename T>
 inline void WindowOpenAlertDialog(Ctx* cx, Entity<T> e, bool overlay = true) {
     WindowOpenDialog(cx, e.id, overlay);
 }
+// True when a dialog is still open. One that is playing its exit is mounted
+// but no longer active: it takes no input and leaves when the transition ends.
 bool WindowHasActiveDialog(Ctx* cx);
+// How many dialogs are mounted, exits included.
 int WindowDialogCount(Ctx* cx);
-// close_dialog: the topmost one. close_all_dialogs: the lot.
+// close_dialog: the newest dialog that is not already leaving.
+// close_all_dialogs: every one that is still open.
 void WindowCloseDialog(Ctx* cx);
 void WindowCloseAllDialogs(Ctx* cx);
 

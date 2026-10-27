@@ -131,6 +131,13 @@ static void TheLastDialogThatWantsAnOverlayShowsIt() {
     const bool none[] = {false, false};
     utassert(RootDialogOverlayIndex(none, 2) == -1);
     utassert(RootDialogOverlayIndex(nullptr, 0) == -1);
+    // Closing the top hands the dim back to the dialog that is still open.
+    const bool stacked[] = {true, true};
+    const bool topLeaving[] = {false, true};
+    utassert(RootDialogOverlayIndex(stacked, topLeaving, 2) == 0);
+    // With nothing still open, the newest leaving dialog keeps the dim.
+    const bool bothLeaving[] = {true, true};
+    utassert(RootDialogOverlayIndex(stacked, bothLeaving, 2) == 1);
 }
 
 static void AnOpenSheetPushesTheNotificationsIn() {

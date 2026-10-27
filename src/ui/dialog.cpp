@@ -1,6 +1,7 @@
 #include "ui/i18n.h"
 #include "ui/dialog.h"
 #include "base/motion.h"
+#include "base/focus_trap.h"
 #include "ui/button.h"
 
 namespace gpui {
@@ -24,6 +25,12 @@ static float DialogEnterEase(float t) {
     // The delta drives opacity and shadow alpha, so an overshooting theme
     // curve stays in range.
     return ClampF01(gDialogEnterEase.Sample(t));
+}
+
+static DialogMount* gDialogMount = nullptr;
+
+void DialogBindMount(DialogMount* mount) {
+    gDialogMount = mount;
 }
 
 float DialogFadeSlideOffset(float top, float topLimit, float travel,
@@ -602,6 +609,10 @@ El* Dialog::IntoEl(WinSize size) {
         return Div(a);
     }
     const Theme& th = ThemeNow(cx->app);
+    DialogMount* mountEarly = gDialogMount;
+    if (mountEarly && mountEarly->bound) {
+        layerIx = mountEarly->layerIx;
+    }
     Edges windowPadding = WindowPaddings(cx->win);
     float viewW = size.dipW - windowPadding.left - windowPadding.right;
     float viewH = size.dipH - windowPadding.top - windowPadding.bottom;
@@ -639,6 +650,7 @@ El* Dialog::IntoEl(WinSize size) {
         panel->Child(Header());
         panel->Child(Actions());
     }
+    panel->Id(StrL("surface"));
     if (closeButton) {
         // `DialogClose::new().absolute().top(top).right(right).trigger(..)`:
         // a small ghost icon button with the accessible name "Close" and
@@ -656,17 +668,56 @@ El* Dialog::IntoEl(WinSize size) {
     // covers and centers on the window rather than on whatever page element
     // happens to contain it.
     //
-    // entrance.rs: None, reduced motion, and a zero theme duration (for every
-    // entrance except SlideDown) show the resting surface immediately.
-    // SlideDown keeps ANIMATION_DURATION and DialogEase. Fade and FadeSlide
-    // use the theme's normal duration and enter easing. Closing is still
-    // immediate — this clock only runs while the dialog is open.
+    // The window layer samples one presence clock for the entrance and the
+    // exit, keyed by the dialog's stable id, and keeps the dialog mounted
+    // until that clock finishes. A dialog built on its own still eases in
+    // with the entrance clock and closes by unmounting.
+    // None, reduced motion, and a zero theme duration (for every entrance
+    // except SlideDown) show the resting surface on the first frame and
+    // close in that same frame.
+    DialogMount* mount = gDialogMount;
+    bool mounted = mount && mount->bound;
+    bool closing = mounted && mount->closing;
     bool reduce = MotionReduced();
-    bool animated = entrance != DialogEntrance::None && !reduce &&
+    float exitMs = 0;
+    if (!reduce) {
+        if (entrance == DialogEntrance::SlideDown) {
+            exitMs = ANIMATION_DURATION;
+        } else if (entrance != DialogEntrance::None) {
+            exitMs = th.motion.durationNormalMs;
+        }
+    }
+    if (mounted) {
+        mount->exitEnabled = exitMs > 0;
+    }
+    bool animated = !mounted && entrance != DialogEntrance::None && !reduce &&
                     (entrance == DialogEntrance::SlideDown ||
                      th.motion.durationNormalMs != 0);
     float delta = 1.f;
-    if (animated) {
+    if (mounted) {
+        motion::Transition transition = motion::Transition::New(exitMs);
+        if (entrance == DialogEntrance::SlideDown) {
+            transition = transition.Ease(DialogEase);
+        } else {
+            gDialogEnterEase = th.motion.easingEnter;
+            transition = transition.Ease(DialogEnterEase);
+        }
+        uint32_t key =
+            MotionId(StrL("dialog-presence"), fmt("%u", (unsigned)mount->id));
+        PresenceSample sample =
+            Presence::New(key, !closing).Transition(transition).Sample(cx);
+        if (closing && !sample.ShouldRender()) {
+            mount->unmount = true;
+        }
+        delta = sample.progress;
+        if (delta < 0) {
+            delta = 0;
+        }
+        if (delta > 1) {
+            delta = 1;
+        }
+        mount->visibility = delta;
+    } else if (animated) {
         uint32_t key = MotionId(StrL("dialog"), StrDup(a, fmt("%d", layerIx)));
         if (entrance == DialogEntrance::SlideDown) {
             delta = MotionAppear(cx, key, ANIMATION_DURATION, DialogEase);
@@ -676,19 +727,45 @@ El* Dialog::IntoEl(WinSize size) {
                                  DialogEnterEase);
         }
     }
-    DialogShadow(panel, animated ? delta : 1.f);
+    float shade = mounted || animated ? delta : 1.f;
+    DialogShadow(panel, shade);
+    if (mounted) {
+        // The popup paints in a deferred pass, where an ancestor's opacity
+        // no longer reaches it. The surface carries the fade itself.
+        panel->Opacity(delta);
+    }
+    bool paintOverlay = overlay;
+    bool closable = overlayClosable;
+    if (mounted) {
+        paintOverlay = overlay && mount->showOverlay;
+        closable = overlayClosable && !closing && mount->topmost;
+    }
     El* backdrop = DialogBackdrop::New(cx)
                        ->Fixed()
                        ->Top(windowPadding.top)
                        ->Left(windowPadding.left)
                        ->W(viewW)
                        ->H(viewH);
-    if (overlay) {
+    if (paintOverlay) {
         backdrop->Bg(th.tokens.overlay);
+        if (closing) {
+            backdrop->Opacity(delta);
+        }
     }
-    if (overlayClosable) {
+    if (closable) {
         backdrop->PathClick(LayerId(StrL("dialog-backdrop")))
             ->OnClickAction(action::Cancel());
+    }
+    if (closing) {
+        // Painted after the content, so a press on the leaving surface hits
+        // the shield rather than a button or a field under it.
+        panel->Child(Div(a)
+                         ->Absolute()
+                         ->Left(0)
+                         ->Top(0)
+                         ->Right(0)
+                         ->Bottom(0)
+                         ->StopMouseDown());
     }
     // DialogProps::margin_top: a tenth of the viewport down from the top,
     // not centered in it — through the viewport-aware corner positioner,
@@ -696,13 +773,20 @@ El* Dialog::IntoEl(WinSize size) {
     // only entrance that moves that requested corner. FadeSlide travels
     // after the clamp, from the resolved top.
     Point resting = {windowPadding.left + panelX, windowPadding.top + y};
+    float drawnY = resting.y;
+    if ((mounted || animated) && entrance == DialogEntrance::SlideDown) {
+        drawnY = windowPadding.top + y * delta;
+    }
+    if (mounted) {
+        mount->surfaceY = drawnY;
+    }
     Positioner* positioner = Positioner::Corner(cx, Anchor::TopLeft, resting)
                                  ->Margin(viewportMargin);
-    if (animated && entrance == DialogEntrance::SlideDown) {
-        positioner->Position({resting.x, windowPadding.top + y * delta});
+    if ((mounted || animated) && entrance == DialogEntrance::SlideDown) {
+        positioner->Position({resting.x, drawnY});
     }
     El* placed = positioner->Child(panel)->IntoEl();
-    if (animated && entrance == DialogEntrance::FadeSlide) {
+    if ((mounted || animated) && entrance == DialogEntrance::FadeSlide) {
         DialogFadeSlideHook* hook = ArenaNew<DialogFadeSlideHook>(a);
         float rem = WindowRemSize(cx->win);
         hook->travel = th.motion.distanceShort * (rem > 0 ? rem / 16.f : 1.f);
@@ -720,11 +804,20 @@ El* Dialog::IntoEl(WinSize size) {
                     ->W(viewW)
                     ->H(viewH)
                     ->Child(placed);
+    // A closing dialog must not swallow a press aimed at the page. The
+    // shield on the surface still covers the popup's own box.
+    if (closing) {
+        popup->stopMouseDown = false;
+    }
     Str trap = StrDup(a, fmt("dialog-%d", layerIx));
+    if (mounted) {
+        mount->trapFocus = FocusTrapId(trap);
+    }
     // The escape and enter bindings, on the popup that traps the focus. They
     // run the same two handlers the Cancel and OK buttons carry, which is
-    // what Rust's on_action pair does with a ClickEvent::default().
-    if (keyboard) {
+    // what Rust's on_action pair does with a ClickEvent::default(). A dialog
+    // that is already leaving ignores both.
+    if (keyboard && !closing) {
         DialogBindKeys(cx, popup, trap, buttonProps.onCancel, buttonProps.onOk,
                        buttonProps.onClose);
     }
@@ -742,9 +835,11 @@ El* Dialog::IntoEl(WinSize size) {
                    ->Popup(popup)
                    ->IntoEl();
     }
-    // `.with_animation("fade-in", .., |this, delta| this.opacity(delta))`:
-    // the backdrop and the panel fade in together, as one layer. An entrance
-    // that is not animated leaves the layer opaque.
+    // The layer fades with the surface. An entrance that is not animated
+    // leaves the layer opaque.
+    if (mounted) {
+        return host->Opacity(delta);
+    }
     return animated ? host->Opacity(delta) : host;
 }
 
