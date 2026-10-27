@@ -6,6 +6,57 @@
 namespace gpui {
 
 static const float kNotchPi = 3.14159265f;
+// Offsets closer than this count as unchanged, so a sub-pixel residue
+// left at an edge does not read as room to scroll.
+static const float kClaimEpsilon = 0.5f;
+
+static bool gHasHorizontalClaim = false;
+static HorizontalScrollClaim gHorizontalClaim = {};
+
+float HorizontalScrollMoved(float rustOffset, float deltaX, float axisMax) {
+    if (axisMax < 0) {
+        axisMax = 0;
+    }
+    float current = rustOffset;
+    if (current < -axisMax) {
+        current = -axisMax;
+    }
+    if (current > 0) {
+        current = 0;
+    }
+    float next = rustOffset + deltaX;
+    if (next < -axisMax) {
+        next = -axisMax;
+    }
+    if (next > 0) {
+        next = 0;
+    }
+    return next - current;
+}
+
+void NoteHorizontalScrollClaim(float moved) {
+    if (moved < kClaimEpsilon && moved > -kClaimEpsilon) {
+        return;
+    }
+    gHasHorizontalClaim = true;
+    gHorizontalClaim.at = TimeNow();
+    gHorizontalClaim.deltaX = moved;
+}
+
+bool LastHorizontalScrollClaim(HorizontalScrollClaim* out) {
+    if (!gHasHorizontalClaim) {
+        return false;
+    }
+    if (out) {
+        *out = gHorizontalClaim;
+    }
+    return true;
+}
+
+void ClearHorizontalScrollClaim() {
+    gHasHorizontalClaim = false;
+    gHorizontalClaim = {};
+}
 
 CornerNotch CornerNotchGeometry(float cornerX, float cornerY, float xDir,
                                 float yDir, float radius) {

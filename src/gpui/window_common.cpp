@@ -15,6 +15,7 @@
 #include "base/focus_trap.h"
 #include "base/global_state.h"
 #include "base/input.h"
+#include "base/scrollable_mask.h"
 #include "base/text_selection.h"
 #include "base/tooltip.h"
 
@@ -3022,6 +3023,15 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
                 takeY = !takeX;
             }
             if (takeX) {
+                // last_horizontal_scroll_claim: the clamped change, Rust's
+                // sign. The offset stored below is already clamped, so a
+                // transient past-edge value is not kept for the next event.
+                if (horizontal.x != 0) {
+                    float axisMax = s.contentW - s.bounds.w;
+                    float moved = HorizontalScrollMoved(-s.scrollX,
+                                                        horizontal.x, axisMax);
+                    NoteHorizontalScrollClaim(moved);
+                }
                 float offX = ClampScroll(s.scrollX - horizontal.x, s.contentW,
                                          s.bounds.w);
                 if (offX != s.scrollX) {

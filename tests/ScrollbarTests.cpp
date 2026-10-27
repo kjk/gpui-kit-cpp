@@ -770,6 +770,71 @@ static void HoveringAnElementOverAHoverScrollbarDoesNotRevealIt() {
     TestAppFree(app);
 }
 
+// scrollable_mask.rs horizontal_scroll_area_claims_only_steps_that_move.
+// A 100px strip of 300px content. Deltas are Rust's sign. The stored
+// offset is clamped on the wheel, so the upstream overscroll seed (raw
+// +40, then -10, still past the edge) is the comparison below rather than
+// a second event.
+static void horizontal_scroll_area_claims_only_steps_that_move() {
+    const float axisMax = 200.f;
+    utassertnear(HorizontalScrollMoved(0, 40, axisMax), 0);
+    utassertnear(HorizontalScrollMoved(40, -10, axisMax), 0);
+    utassertnear(HorizontalScrollMoved(30, -40, axisMax), -10);
+    utassertnear(HorizontalScrollMoved(-10, -0.25f, axisMax), -0.25f);
+
+    ClearHorizontalScrollClaim();
+    App app = {};
+    Window* win = new Window();
+    win->app = &app;
+    Entity<ScrollRecorder> entity = EntityNewState<ScrollRecorder>(&app);
+    ScrollRecorder* state = entity.Get(&app);
+    ScrollRect strip = TestScrollRect(1, {0, 0, 100, 40}, 300, 40, 1, -1,
+                                      ListenTo(entity, &ScrollRecorder::Inner));
+    VecAppend(win->paint.scrolls, strip);
+
+    // At the left edge, a swipe toward the start has no room.
+    DispatchWheel(win, 40, 0);
+    utassert(!LastHorizontalScrollClaim(nullptr));
+    utassertnear(state->innerX, 0);
+
+    // A step inside the range is recorded with Rust's delta.
+    DispatchWheel(win, -40, 0);
+    HorizontalScrollClaim claim = {};
+    utassert(LastHorizontalScrollClaim(&claim));
+    utassertnear(claim.deltaX, -40);
+    utassertnear(state->innerX, 40);
+
+    // Only the part that stays inside the range counts.
+    win->paint.scrolls[0].scrollX = 190;
+    DispatchWheel(win, -40, 0);
+    utassert(LastHorizontalScrollClaim(&claim));
+    utassertnear(claim.deltaX, -10);
+    utassertnear(state->innerX, 200);
+
+    // An edge, a vertical wheel, and a sub-pixel residue keep that claim.
+    double at = claim.at;
+    DispatchWheel(win, -40, 0);
+    win->paint.scrolls[0].scrollX = 10;
+    DispatchWheel(win, 0, -40);
+    DispatchWheel(win, -0.25f, 0);
+    HorizontalScrollClaim held = {};
+    utassert(LastHorizontalScrollClaim(&held));
+    utassertnear(held.deltaX, -10);
+    utassert(held.at == at);
+    utassertnear(state->innerX, 10.25f);
+
+    // Half a pixel is enough to replace the claim.
+    DispatchWheel(win, -0.5f, 0);
+    utassert(LastHorizontalScrollClaim(&claim));
+    utassertnear(claim.deltaX, -0.5f);
+    utassertnear(state->innerX, 10.75f);
+
+    VecReset(win->paint.scrolls);
+    delete win;
+    EntityDropAll(&app);
+    ClearHorizontalScrollClaim();
+}
+
 void TestScrollbar() {
     TestSuite("scrollbar");
     AScrollableFlexItemShrinksBelowItsContent();
@@ -785,6 +850,7 @@ void TestScrollbar() {
     ScrollableMasksChainAndTrapLikeTheSource();
     vertical_wheel_scrolls_the_strip_and_then_the_parent();
     vertical_wheel_leaves_trackpads_and_horizontal_wheels_to_the_scroller();
+    horizontal_scroll_area_claims_only_steps_that_move();
     ATrackPressPagesAndShiftPressJumps();
     AThumbPressOnAnInputScrollerDragsEvenWithoutAScrollId();
     ATouchThumbDragMovesDownAndCancelReleasesIt();

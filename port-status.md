@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8b3631f020a85675dca2a7ba251fdeff1c867fc7` (2026-10-21,
-diff: Let the application supply the syntax highlighter (#3618)).
-DiffState takes a highlighter for one hunk side at a time and paints
-the styles it returns. Clearing it returns to the line scanner. A range
-that splits a character is dropped, and `text` is not highlighted.
+Processed through `da8b2ba47567437051c371b87e86ebfbedba13d8` (2026-10-22,
+scroll: Expose the last horizontal strip scroll step a mask claimed (#3621)).
+A horizontal mask records a step when the clamped offset moves by at
+least half a pixel. The record is the time and Rust's signed delta.
+A step that only presses an edge leaves the previous record in place.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

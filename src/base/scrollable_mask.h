@@ -90,5 +90,27 @@ struct RoundedFrameCover {
 // sibling, so those corners stay put while the track scrolls.
 El* HorizontalScrollArea(Ctx* cx, Str id, El* viewport);
 
+// The last horizontal step a ScrollableMask used to move its content.
+// `deltaX` is Rust's sign: positive moves the content right (reveals what
+// is on the left). `at` is `TimeNow()` seconds. A step whose clamped
+// offset changes by less than half a pixel is not recorded, and neither
+// is one that only presses an edge. Input is dispatched on the main
+// thread, so the record is process-wide.
+struct HorizontalScrollClaim {
+    double at = 0;
+    float deltaX = 0;
+};
+
+// Clamped change in Rust's content offset for one horizontal step.
+// `rustOffset` is the negation of `scrollX`. Content wider than the
+// viewport by `axisMax` (already `max(content - viewport, 0)`).
+float HorizontalScrollMoved(float rustOffset, float deltaX, float axisMax);
+
+// Writes the claim when `moved` is at least half a pixel. A smaller
+// change leaves the previous claim in place.
+void NoteHorizontalScrollClaim(float moved);
+bool LastHorizontalScrollClaim(HorizontalScrollClaim* out);
+void ClearHorizontalScrollClaim();
+
 } // namespace gpui
 #endif // GPUI_BASE_SCROLLABLE_MASK_H_
