@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7a279cdba80ca34e5c4e1c10a649aec4596c324e",
+  sha: "4c469234932dee249e975cb61066a66bd9511fdb",
   date: "2026-10-16",
-  subject: "input: Keep the text on Android's back button with clean_on_escape (#3556)",
+  subject: "input: Name the mask toggle (#3562)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

@@ -309,6 +309,8 @@ static const char* const kV_Input_Decrement[] = {"Decrement", "减少",  "減少
 static const char* const kV_Input_Go_to_Definition[] = {
     "Go to Definition", "跳转到定义", "跳轉到定義",
     "前往定義",         nullptr,      nullptr};
+static const char* const kV_Input_Hide_Password[] = {
+    "Hide password", "隐藏密码", "隱藏密碼", "隱藏密碼", nullptr, nullptr};
 static const char* const kV_Input_Increment[] = {"Increment", "增加",  "增加",
                                                  "增加",      nullptr, nullptr};
 static const char* const kV_Input_Paste[] = {"Paste", "粘贴",  "貼上",
@@ -322,6 +324,8 @@ static const char* const kV_Input_Select_All[] = {
 static const char* const kV_Input_Show_Code_Actions[] = {
     "Show Code Actions", "显示代码操作", "顯示代碼操作",
     "顯示程式碼動作",    nullptr,        nullptr};
+static const char* const kV_Input_Show_Password[] = {
+    "Show password", "显示密码", "顯示密碼", "顯示密碼", nullptr, nullptr};
 static const char* const kV_List_search_placeholder[] = {
     "Search...", "搜索...", "搜索...", "搜尋...", "Ricerca...", nullptr};
 static const char* const kV_Pagination_next[] = {"Next",   "下一页", "下一頁",
@@ -473,12 +477,14 @@ extern const LocaleRow kLocaleRows[] = {
     {"Input.Cut", kV_Input_Cut},
     {"Input.Decrement", kV_Input_Decrement},
     {"Input.Go to Definition", kV_Input_Go_to_Definition},
+    {"Input.Hide Password", kV_Input_Hide_Password},
     {"Input.Increment", kV_Input_Increment},
     {"Input.Paste", kV_Input_Paste},
     {"Input.Replace", kV_Input_Replace},
     {"Input.Replace All", kV_Input_Replace_All},
     {"Input.Select All", kV_Input_Select_All},
     {"Input.Show Code Actions", kV_Input_Show_Code_Actions},
+    {"Input.Show Password", kV_Input_Show_Password},
     {"List.search_placeholder", kV_List_search_placeholder},
     {"Pagination.next", kV_Pagination_next},
     {"Pagination.previous", kV_Pagination_previous},
@@ -497,7 +503,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Speech.Unavailable", kV_Speech_Unavailable},
     {"Table.SortBy", kV_Table_SortBy},
 };
-extern const int kLocaleRowCount = 117;
+extern const int kLocaleRowCount = 119;
 
 } // namespace component
 } // namespace gpui

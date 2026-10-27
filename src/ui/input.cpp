@@ -1118,14 +1118,19 @@ El* Input::IntoEl() {
         field->Child(gpui::Input::New(cx, state, editor));
     }
     if (maskToggle) {
-        field->Child(Button::New(cx, StrL("mask"))
-                         ->Text()
-                         ->WithSize(UiSize::XSmall)
-                         ->Icon(IconName::Eye)
-                         ->TabStop(false)
-                         ->OnClick(onToggleMask)
-                         ->IntoEl()
-                         ->StopClick());
+        // Icon-only. The name is the action: show while the value is masked,
+        // hide once it is revealed.
+        field->Child(
+            Button::New(cx, StrL("mask"))
+                ->Text()
+                ->WithSize(UiSize::XSmall)
+                ->Icon(IconName::Eye)
+                ->TabStop(false)
+                ->AccessibilityLabel(Tr(maskedNow ? "Input.Show Password"
+                                                  : "Input.Hide Password"))
+                ->OnClick(onToggleMask)
+                ->IntoEl()
+                ->StopClick());
     }
     if (cleanable && hasValue && !disabled) {
         // clear_button.rs: `.tab_stop(false)`. The X belongs to the field, and

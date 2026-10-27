@@ -394,6 +394,47 @@ static void ConditionalAndCompositeRolesMatchUpstream() {
     FreeAccessibilityFrame(&f);
 }
 
+// kit tests/integration/input.rs
+// mask_toggle_is_named_for_the_action_it_takes. The eye button is named for
+// what the next click does.
+static void MaskToggleIsNamedForTheActionItTakes() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    InputState state;
+    El* masked = component::Input::New(&f.cx, StrL("secret"), &state)
+                     ->Masked(true)
+                     ->MaskToggle()
+                     ->IntoEl();
+    IdsCollect(masked);
+    AccessibilityCollect(masked, &f.win->accessibility);
+    const AccessibilityNode* show = nullptr;
+    for (int i = 0; i < f.win->accessibility.len; i++) {
+        const AccessibilityNode* node = &f.win->accessibility[i];
+        if (node->info.role == AccessibilityRole::Button &&
+            base::StrEq(node->info.label, StrL("Show password"))) {
+            show = node;
+        }
+    }
+    utassert(show != nullptr);
+    VecClear(f.win->accessibility);
+    El* revealed = component::Input::New(&f.cx, StrL("secret"), &state)
+                       ->Masked(false)
+                       ->MaskToggle()
+                       ->IntoEl();
+    IdsCollect(revealed);
+    AccessibilityCollect(revealed, &f.win->accessibility);
+    const AccessibilityNode* hide = nullptr;
+    for (int i = 0; i < f.win->accessibility.len; i++) {
+        const AccessibilityNode* node = &f.win->accessibility[i];
+        if (node->info.role == AccessibilityRole::Button &&
+            base::StrEq(node->info.label, StrL("Hide password"))) {
+            hide = node;
+        }
+    }
+    utassert(hide != nullptr);
+    FreeAccessibilityFrame(&f);
+}
+
 // kit tests/integration/input.rs masked_input_is_a_password_field. A mask
 // with no content type is a password field. A plain field stays a text field.
 static void MaskedInputIsAPasswordField() {
@@ -970,6 +1011,7 @@ void TestAccessibility() {
     ConditionalAndCompositeRolesMatchUpstream();
     AccordionPreservesDisabledItemsWhenTheGroupIsEnabled();
     ASettledClosedPanelUnmountsItsContent();
+    MaskToggleIsNamedForTheActionItTakes();
     MaskedInputIsAPasswordField();
     ClearButtonIsNamed();
     InputContentTypesAndSecretsProjectSafely();

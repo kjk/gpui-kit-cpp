@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7a279cdba80ca34e5c4e1c10a649aec4596c324e` (2026-10-16,
-input: Keep the text on Android's back button with clean_on_escape (#3556)).
-On Android, Escape is the back button, so a field set to clear on
-Escape leaves the text and lets the key propagate. Other platforms,
-iOS included, still clear.
+Processed through `4c469234932dee249e975cb61066a66bd9511fdb` (2026-10-16,
+input: Name the mask toggle (#3562)).
+The show/hide button on a masked input is named for the action it
+takes: Show password while the value is hidden, Hide password once it
+is revealed.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
