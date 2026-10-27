@@ -5850,6 +5850,99 @@ static void ShellProcessSpawnStreamsAndRunTakesOptions() {
 #endif
 }
 
+// render.rs
+// a_textarea_that_submits_on_enter_keeps_the_line_break_for_shift_enter.
+// Enter submits the text as it stands. Shift+Enter still inserts a break
+// and still reports submit, with shift set. The action is dispatched
+// rather than the Enter key: a test window types `\n` for an unhandled
+// Enter, and base passes a submitting Enter on, which would put the break
+// back. The line the view paints is also left on globalThis, because a
+// release frame drops the element tree before the test can read it.
+static void ATextareaThatSubmitsOnEnterKeepsTheLineBreakForShiftEnter() {
+    App* app = TestAppNew();
+    component::Init(app);
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(app, &error);
+    Str source = StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { Textarea, TextareaState } from 'gpui-base';\n"
+        "export default class Composer extends View {\n"
+        "  init() {\n"
+        "    this.draft = TextareaState.new({ rows: 4 });\n"
+        "    this.draft.set_submit_on_enter(true);\n"
+        "    this.submits = [];\n"
+        "    this.draft.on('submit', (event, cx) => {\n"
+        "      const text = this.draft.value().replace(/\\n/g, '|');\n"
+        "      this.submits.push(`${event.shift ? 'shift' : "
+        "'enter'}=${text}`);\n"
+        "      cx.notify();\n"
+        "    });\n"
+        "  }\n"
+        "  render() {\n"
+        "    globalThis.line = `submits:${this.submits.join(',')};`;\n"
+        "    return div()\n"
+        "      .child(Textarea.new(this.draft).w(300).h(100))\n"
+        "      .child(globalThis.line);\n"
+        "  }\n"
+        "}\n");
+    ViewType* type =
+        runtime ? runtime->LoadSource(StrL("composer.js"), source, &error)
+                : nullptr;
+    Entity<ScriptView> view =
+        type ? ScriptView::New(app, runtime, type) : Entity<ScriptView>{};
+    ViewTypeRelease(type);
+    Window* win =
+        view.IsValid() ? TestWindowOpen(app, view, 400, 200) : nullptr;
+    utassert(win != nullptr && !error.IsSet());
+    if (error.IsSet()) {
+        fprintf(stderr, "textarea-submit load: %.*s\n", len(error.message),
+                error.message.s ? error.message.s : "");
+    }
+    InputState* state = nullptr;
+    if (win) {
+        for (int i = 0; i < win->accessibility.len; i++) {
+            InputState* field = win->accessibility[i].input;
+            if (field && InputIsMultiLine(field)) state = field;
+        }
+    }
+    utassert(state && state->submitOnEnter);
+    if (state) InputFocus(state, app, win);
+    TestDraw(win);
+    TestSimulateInput(win, StrL("send"));
+    TestDispatchAction(win, input::Enter(), 0);
+    TestDraw(win);
+    bool entered =
+        runtime &&
+        runtime->Eval(StrL("if (globalThis.line !== 'submits:enter=send;') "
+                           "throw new Error(String(globalThis.line));"),
+                      StrL("textarea-submit-enter.js"), &error);
+    if (!entered && error.IsSet()) {
+        fprintf(stderr, "textarea-submit enter: %.*s\n", len(error.message),
+                error.message.s ? error.message.s : "");
+    }
+    utassert(entered);
+    ShellErrorClear(&error);
+    TestDispatchAction(win, input::Enter(), 2);
+    TestSimulateInput(win, StrL("two"));
+    TestDispatchAction(win, input::Enter(), 0);
+    TestDraw(win);
+    bool after =
+        runtime &&
+        runtime->Eval(StrL("if (globalThis.line !== "
+                           "'submits:enter=send,shift=send|,enter=send|two;') "
+                           "throw new Error(String(globalThis.line));"),
+                      StrL("textarea-submit-shift.js"), &error);
+    if (!after && error.IsSet()) {
+        fprintf(stderr, "textarea-submit shift: %.*s\n", len(error.message),
+                error.message.s ? error.message.s : "");
+    }
+    utassert(after);
+    utassert(state && StrEq(InputValue(state), StrL("send\ntwo")));
+    TestAppFree(app);
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+}
+
 void TestShellCore() {
     TestSuite("shell_core");
     BridgedValuesMatchJavaScriptConversions();
@@ -5900,6 +5993,7 @@ void TestShellCore() {
     AListReportsWhichItemWasClicked();
     TheSearchTriesTheLikelyPlacesFirstAndEveryIndexOnce();
     AListKeepsTheReaderOnTheirItemWhenTheCountChanges();
+    ATextareaThatSubmitsOnEnterKeepsTheLineBreakForShiftEnter();
     LazyListsShareTheItemBudgetAndRefuseNesting();
     EveryCloseDismissesBeforeItCloses();
     ScriptThemesCarryATypeScale();

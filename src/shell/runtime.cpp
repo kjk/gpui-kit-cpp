@@ -5697,6 +5697,11 @@ static JSValue NativeTextareaRows(JSContext* ctx, JSValueConst, int argc,
         return JS_ThrowTypeError(ctx, "textarea setter needs a live host call");
     if (magic == 2) {
         entry->input->softWrap = JS_ToBool(ctx, argv[1]) != 0;
+    } else if (magic == 3) {
+        // Base already has the flag. Enter then inserts nothing and still
+        // reports submit; Shift+Enter still inserts a break and reports
+        // submit with shift set. Default stays off.
+        entry->input->submitOnEnter = JS_ToBool(ctx, argv[1]) != 0;
     } else {
         int32_t first = 0, second = 0;
         if (JS_ToInt32(ctx, &first, argv[1]) < 0 || first <= 0) {
@@ -10524,6 +10529,7 @@ globalThis.__gpui = (() => {
     set_rows: (rows) => __textarea_set_rows(handle, Number(rows)),
     set_auto_grow: (min, max) => __textarea_set_auto_grow(handle, Number(min), Number(max)),
     set_soft_wrap: (value) => __textarea_set_soft_wrap(handle, Boolean(value)),
+    set_submit_on_enter: (submit) => __textarea_set_submit_on_enter(handle, Boolean(submit)),
     on: (event, handler) => __textarea_on(handle, String(event), handler),
     release: () => __textarea_release(handle),
   });
@@ -12808,6 +12814,9 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
                            NativeTextareaRows, 3, 1);
     SetGlobalMagicFunction(impl->context, global, "__textarea_set_soft_wrap",
                            NativeTextareaRows, 2, 2);
+    SetGlobalMagicFunction(impl->context, global,
+                           "__textarea_set_submit_on_enter", NativeTextareaRows,
+                           2, 3);
     SetGlobalFunction(impl->context, global, "__slider_state_new",
                       NativeSliderStateNew, 5);
     SetGlobalFunction(impl->context, global, "__slider_value",

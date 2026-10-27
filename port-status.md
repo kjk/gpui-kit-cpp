@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `01640916d332874f84e3a2d3af13aab311ab9530` (2026-10-16,
-shell: Keep a list's reading position when its item count changes (#3547)).
-When a script list's item count changes, the reader stays on the item
-that was at the top of the viewport, found again by its key, the same
-distance into it. A missing item keeps the old index. A position past
-the last item stays at the end.
+Processed through `16a7488cdf1aac4edecf0cb3a51f72fb58a86c80` (2026-10-16,
+shell: Let a script textarea submit on Enter (#3550)).
+A script textarea can make Enter submit instead of starting a new line.
+Shift+Enter still inserts a break and still reports submit, with shift
+set. The default stays off.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
