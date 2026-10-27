@@ -540,6 +540,7 @@ El* TimeField::IntoEl() {
                    ->PathId(id)
                    ->Role(AccessibilityRole::TimeInput)
                    ->AriaValue(TimeFormat(a, format, editor.time))
+                   ->AriaDisabled(disabled)
                    ->TrackFocus(st->focus)
                    ->TabStop(!disabled);
     if (!disabled) {

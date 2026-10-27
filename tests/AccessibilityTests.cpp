@@ -426,6 +426,71 @@ static void InputContentTypesAndSecretsProjectSafely() {
     FreeAccessibilityFrame(&f);
 }
 
+// crates/base/src/a11y_disabled.rs
+// a_disabled_control_marks_its_node_disabled. The wrapper there only sets
+// the flag GPUI's element had no setter for. El::AriaDisabled is that
+// setter, and a disabled slider already drops Increment with it.
+static void ADisabledControlMarksItsNodeDisabled() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    SliderState slider = SliderStateNew(0, 10, SliderSingle(4), 1);
+    Entity<TimeFieldState> time =
+        TimeFieldStateNew(&f.cx, TimePrecision::Minute, HourCycle::H23);
+
+    struct Case {
+        AccessibilityRole role;
+        bool slider;
+        El* el;
+    };
+    for (int pass = 0; pass < 2; pass++) {
+        bool disabled = pass == 1;
+        Case cases[] = {
+            {AccessibilityRole::Button, false,
+             Button::New(&f.cx, StrL("button"), disabled)},
+            {AccessibilityRole::Link, false,
+             Link::New(&f.cx, StrL("link"), disabled)},
+            {AccessibilityRole::Switch, false,
+             Switch::New(&f.cx, StrL("switch"), false, disabled)},
+            {AccessibilityRole::RadioButton, false,
+             Radio::New(&f.cx, StrL("radio"), false, disabled)},
+            {AccessibilityRole::Button, false,
+             Toggle::New(&f.cx, StrL("toggle"), false, disabled)},
+            {AccessibilityRole::CheckBox, false,
+             Checkbox::New(&f.cx, StrL("checkbox"), CheckboxState::Unchecked,
+                           disabled)},
+            {AccessibilityRole::ComboBox, false,
+             Select::New(&f.cx, StrL("select"), false, disabled)},
+            {AccessibilityRole::Tab, false,
+             Tab::New(&f.cx, StrL("tab"), disabled)},
+            {AccessibilityRole::ComboBox, false,
+             DatePicker::New(&f.cx, StrL("date-picker"), disabled)},
+            {AccessibilityRole::TimeInput, false,
+             TimeField::New(&f.cx, StrL("time-field"), time)
+                 ->Disabled(disabled)
+                 ->IntoEl()},
+            {AccessibilityRole::Slider, true,
+             component::Slider::New(&f.cx, StrL("slider"), &slider)
+                 ->Disabled(disabled)
+                 ->IntoEl()},
+        };
+        for (int i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); i++) {
+            AccessibilityCollect(cases[i].el, &f.win->accessibility);
+            const AccessibilityNode* node =
+                RoleNode(f.win->accessibility, cases[i].role);
+            utassert(node);
+            if (!node) {
+                continue;
+            }
+            utassert((node->info.disabled != 0) == disabled);
+            if (cases[i].slider) {
+                utassert(((node->actions & AccessibilityActionIncrement) !=
+                          0) != disabled);
+            }
+        }
+    }
+    FreeAccessibilityFrame(&f);
+}
+
 static void BaseControlsProjectTheirControlledState() {
     AccessibilityFrame f = NewAccessibilityFrame();
     El* root = Div(f.arena)
@@ -848,6 +913,7 @@ void TestAccessibility() {
     ClipboardReportsDefaultAndExplicitAccessibilityNames();
     ExplicitOnlyNamesReachTheAnnouncedControl();
     ExplicitAriaFieldsSurviveCollection();
+    ADisabledControlMarksItsNodeDisabled();
     BaseControlsProjectTheirControlledState();
     TablesKeepCountsAndOneBasedIndices();
     SliderActionsUseTheSlidersOwnStep();

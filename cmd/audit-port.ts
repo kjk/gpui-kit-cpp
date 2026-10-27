@@ -17,10 +17,10 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "b914e5acbf7e7a6fc93ed057b5c9380bd90c6ebe";
+const pinnedGpuiComponent = "2963d6d880b9dffe59b48b0533bdc83c03201209";
 
 const baseModules = `
-accordion actions alert_dialog animation async_util auto_scroll avatar button
+accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
 calendar checkbox collapsible color_picker combobox component_traits
 date_picker dialog dock element_ext event focus_trap geometry global_state
 history hover_card index_path input link list_settings macos_accessibility
@@ -78,6 +78,9 @@ const declarationReviewReason =
 
 const baseOverrides: Record<string, string[]> = {
   async_util: [],
+  // Private wrapper. GPUI here already has El::AriaDisabled, which is the
+  // setter the wrapper exists to supply. The controls write it themselves.
+  a11y_disabled: ["src/gpui/gpui.h", "src/gpui/gpui.cpp", "src/base/time_field.cpp"],
   dock: [
     "src/base/dock.h",
     "src/base/dock.cpp",
@@ -192,6 +195,7 @@ const errors: string[] = [];
 // projected through this table individually; the digest then makes additions,
 // removals and renames at the pinned checkout deliberate review events.
 const testTargets: Record<string, string[]> = {
+  "base/a11y_disabled": ["tests/AccessibilityTests.cpp"],
   "base/accordion": ["tests/AccessibilityTests.cpp", "tests/BuilderCapacityTests.cpp"],
   "base/actions": ["tests/ClickTests.cpp", "tests/FocusTrapTests.cpp"],
   "base/alert_dialog": ["tests/DialogTests.cpp", "tests/AccessibilityTests.cpp"],
@@ -611,7 +615,7 @@ const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256
   base: {
     declaration: { count: 562, sha256: "e7bae46cb363909860175784c36c1dd16665b70565bba78ac05c37acf6305200" },
     "pub-use": { count: 169, sha256: "c290abea497898c61169557849c55bdd449fe590cd551ed736432ddd12f1ad1c" },
-    test: { count: 1380, sha256: "979faa86056f885efba7b72ac0cc644d63b2d2edbfbe0ee190cfaa947cedce48" },
+    test: { count: 1382, sha256: "443b04d343140da4bbcf7dd99f1ab368b4ee8aab97a69b8d87bfb0eeabd5904a" },
   },
   ui: {
     declaration: { count: 467, sha256: "25acb3cf968f941750ad4713bbfbacd136dc46acf38d6250d86f77f641bde232" },

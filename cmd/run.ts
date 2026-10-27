@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b914e5acbf7e7a6fc93ed057b5c9380bd90c6ebe",
+  sha: "2963d6d880b9dffe59b48b0533bdc83c03201209",
   date: "2026-10-16",
-  subject: "shell: Accept a Background in bg and add a shadow style (#3534)",
+  subject: "base: Mark disabled controls disabled on their accessibility node (#3531)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",
