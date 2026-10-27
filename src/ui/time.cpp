@@ -1408,6 +1408,7 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
                                   ->Text()
                                   ->WithSize(UiSize::XSmall)
                                   ->Icon(IconName::X)
+                                  ->AccessibilityLabel(Tr("Input.Clear"))
                                   ->OnClick(clear)
                                   ->IntoEl()
                                   ->StopClick());
@@ -1575,6 +1576,7 @@ El* DatePicker::IntoEl() {
                            ->Text()
                            ->WithSize(UiSize::XSmall)
                            ->Icon(IconName::X)
+                           ->AccessibilityLabel(Tr("Input.Clear"))
                            ->OnClick(onClear)
                            ->IntoEl()
                            ->StopClick());

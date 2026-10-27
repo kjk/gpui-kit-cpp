@@ -394,6 +394,31 @@ static void ConditionalAndCompositeRolesMatchUpstream() {
     FreeAccessibilityFrame(&f);
 }
 
+// kit tests/integration/input.rs clear_button_is_named. The clear button is
+// icon-only, so its accessible name is the localized Input.Clear string.
+static void ClearButtonIsNamed() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    InputState state;
+    InputSetValue(&state, StrL("query"));
+    El* field = component::Input::New(&f.cx, StrL("query"), &state)
+                    ->Cleanable()
+                    ->W(240)
+                    ->IntoEl();
+    IdsCollect(field);
+    AccessibilityCollect(field, &f.win->accessibility);
+    const AccessibilityNode* button = nullptr;
+    for (int i = 0; i < f.win->accessibility.len; i++) {
+        const AccessibilityNode* node = &f.win->accessibility[i];
+        if (node->info.role == AccessibilityRole::Button &&
+            base::StrEq(node->info.label, StrL("Clear"))) {
+            button = node;
+        }
+    }
+    utassert(button != nullptr);
+    FreeAccessibilityFrame(&f);
+}
+
 static void InputContentTypesAndSecretsProjectSafely() {
     AccessibilityFrame f = NewAccessibilityFrame();
     component::Init(&f.app);
@@ -925,5 +950,6 @@ void TestAccessibility() {
     ConditionalAndCompositeRolesMatchUpstream();
     AccordionPreservesDisabledItemsWhenTheGroupIsEnabled();
     ASettledClosedPanelUnmountsItsContent();
+    ClearButtonIsNamed();
     InputContentTypesAndSecretsProjectSafely();
 }

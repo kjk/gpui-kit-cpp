@@ -663,6 +663,7 @@ El* Select::IntoEl() {
                            ->Text()
                            ->WithSize(UiSize::XSmall)
                            ->Icon(IconName::X)
+                           ->AccessibilityLabel(Tr("Input.Clear"))
                            ->OnClick(onClear)
                            ->IntoEl()
                            ->StopClick());

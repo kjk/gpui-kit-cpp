@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `16a7488cdf1aac4edecf0cb3a51f72fb58a86c80` (2026-10-16,
-shell: Let a script textarea submit on Enter (#3550)).
-A script textarea can make Enter submit instead of starting a new line.
-Shift+Enter still inserts a break and still reports submit, with shift
-set. The default stays off.
+Processed through `6b104d1fe1adf29064f17cc020cd1877231a7436` (2026-10-16,
+input: Name the clear button for screen readers (#3554)).
+The clear button on an input, select, and date picker is named Clear,
+localized with the other Input strings, so a screen reader does not
+announce an unnamed button.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

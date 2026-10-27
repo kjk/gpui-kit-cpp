@@ -298,6 +298,8 @@ static const char* const kV_Dock_Zoom_Out[] = {"Zoom Out", "缩小",     "縮小
                                                "縮小",     "Zoom Out", nullptr};
 static const char* const kV_DropdownButton_more_options[] = {
     "More options", "更多选项", "更多選項", "更多選項", nullptr, nullptr};
+static const char* const kV_Input_Clear[] = {"Clear", "清除",  "清除",
+                                             "清除",  nullptr, nullptr};
 static const char* const kV_Input_Copy[] = {"Copy", "复制",  "複製",
                                             "複製", nullptr, nullptr};
 static const char* const kV_Input_Cut[] = {"Cut",  "剪切",  "剪切",
@@ -466,6 +468,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Dock.Zoom In", kV_Dock_Zoom_In},
     {"Dock.Zoom Out", kV_Dock_Zoom_Out},
     {"DropdownButton.more_options", kV_DropdownButton_more_options},
+    {"Input.Clear", kV_Input_Clear},
     {"Input.Copy", kV_Input_Copy},
     {"Input.Cut", kV_Input_Cut},
     {"Input.Decrement", kV_Input_Decrement},
@@ -494,7 +497,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Speech.Unavailable", kV_Speech_Unavailable},
     {"Table.SortBy", kV_Table_SortBy},
 };
-extern const int kLocaleRowCount = 116;
+extern const int kLocaleRowCount = 117;
 
 } // namespace component
 } // namespace gpui

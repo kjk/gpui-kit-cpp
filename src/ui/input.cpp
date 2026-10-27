@@ -1127,11 +1127,13 @@ El* Input::IntoEl() {
     if (cleanable && hasValue && !disabled) {
         // clear_button.rs: `.tab_stop(false)`. The X belongs to the field, and
         // Tab should move to the next field rather than stop at it.
+        // Icon-only: screen readers have nothing else to announce.
         field->Child(Button::New(cx, StrL("clean"))
                          ->Text()
                          ->WithSize(UiSize::XSmall)
                          ->Icon(IconName::X)
                          ->TabStop(false)
+                         ->AccessibilityLabel(Tr("Input.Clear"))
                          ->OnClick(onClear)
                          ->IntoEl()
                          ->StopClick());
