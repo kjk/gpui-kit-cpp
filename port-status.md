@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f7a1dfbefcd46244baff7232ca53e20b14fec4e7` (2026-10-18,
-tooltip: Dismiss the tooltip when its trigger is removed (#3528)).
-A pending or visible tooltip is cancelled when the frame no longer
-contains its trigger, without waiting for the pointer to move.
+Processed through `e971783ac90fa46637bc1fa48790f29a4fa3831d` (2026-10-18,
+tab: Draw the sliding indicator on the frame after a bar's first (#3574)).
+A segmented, pill or underline bar asks for one more frame when the
+selected tab is measured somewhere other than its indicator. A bar
+with no width asks for none.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

@@ -738,6 +738,34 @@ static void RecordTabBound(PaintCtx*, El* e, void* user) {
     }
 }
 
+// tab_bar.rs TabIndicatorBounds::placed, plus the strip it is measured
+// against. Render writes where it put the indicator. The selected tab's
+// prepaint asks for another frame when the measurement disagrees, which
+// is the bar's first frame and any later move. A bar with no width asks
+// for none: render leaves the indicator where it was.
+struct TabIndicatorWatch {
+    float placedX = 0;
+    float placedW = 0;
+    El* strip = nullptr;
+    Window* win = nullptr;
+    void* paintUser = nullptr;
+};
+
+static void TabIndicatorPrePaint(PaintCtx*, El* e, void* user) {
+    auto* watch = (TabIndicatorWatch*)user;
+    if (!watch || !watch->strip || !watch->win) return;
+    if (!(watch->strip->w > 0)) return;
+    float rel = e->x - watch->strip->x;
+    if (rel != watch->placedX || e->w != watch->placedW) {
+        WindowRequestAnimationFrame(watch->win);
+    }
+}
+
+static void RecordTabBoundWatched(PaintCtx* ctx, El* e, void* user) {
+    auto* watch = (TabIndicatorWatch*)user;
+    RecordTabBound(ctx, e, watch ? watch->paintUser : nullptr);
+}
+
 // How much of the neighbouring tab a click leaves showing.
 static float TabRevealPeek(UiSize size) {
     switch (size) {
@@ -996,19 +1024,31 @@ El* TabBar::IntoEl() {
     Spring indSpring = th.motion.springMove;
     float indX = 0;
     float indW = 0;
-    bool sliding = false;
     // A folder tab paints its own selected shape. It does not share the
     // sliding indicator, so the shape is there on the first frame.
-    if (!folder && selBox && selBox->w > 0) {
+    // The indicator is drawn from the bounds the previous frame measured.
+    // On the bar's first frame those are empty, so nothing is drawn and the
+    // selected tab asks for the frame that places it.
+    bool showIndicator = !folder && selBox && selBox->w > 0 && stripBox;
+    if (showIndicator) {
         indX = SpringValue(cx, MotionId(StrL("tab-ind-x"), id), selBox->x,
                            indSpring);
         indW = SpringValue(cx, MotionId(StrL("tab-ind-w"), id), selBox->w,
                            indSpring);
-        // In flight: the tab it belongs to holds back its own selected look
-        // while the indicator is on its way, which is what Rust does too.
-        float dx = indX - selBox->x;
-        float dw = indW - selBox->w;
-        sliding = (dx < -0.5f || dx > 0.5f) || (dw < -0.5f || dw > 0.5f);
+    }
+    TabIndicatorWatch* indicator = nullptr;
+    if (!folder) {
+        indicator = ArenaNew<TabIndicatorWatch>(a);
+        indicator->strip = strip;
+        indicator->win = cx->win;
+        // Where render placed the indicator: the selected tab's left edge
+        // from the strip, and its width. Zero before the first measure.
+        // Compared with this frame's tab, not with the spring, so a slide
+        // that is still in flight does not ask for a frame of its own.
+        if (showIndicator) {
+            indicator->placedX = selBox->x - stripBox->x;
+            indicator->placedW = selBox->w;
+        }
     }
     Entity<FolderHover> folderHover = {};
     int folderHovered = -1;
@@ -1023,12 +1063,13 @@ El* TabBar::IntoEl() {
     for (const component::Tab& item : items) {
         i++;
         bool on = selected >= 0 ? i == selected : item.selected;
-        TabStyle st = item.disabled      ? TabDisabled(variant, on, th)
-                      : (on && !sliding) ? TabSelected(variant, th)
-                                         : TabNormal(variant, th);
-        if (on && sliding && !item.disabled) {
-            // The label keeps the colour it is going to end up with; it is the
-            // box behind it that the indicator is carrying.
+        // While the indicator is drawn it alone carries the selected box,
+        // including once the spring has arrived. The label keeps the colour
+        // it is going to end up with.
+        TabStyle st = item.disabled            ? TabDisabled(variant, on, th)
+                      : (on && !showIndicator) ? TabSelected(variant, th)
+                                               : TabNormal(variant, th);
+        if (on && showIndicator && !item.disabled) {
             st.fg = TabSelected(variant, th).fg;
         }
         Str tabId = StrDup(a, fmt("%d", i));
@@ -1227,13 +1268,21 @@ El* TabBar::IntoEl() {
                 tab->customPaint = &RecordTabBound;
                 tab->customUser = &scrollState->tabs[i];
             }
+            if (on && indicator) {
+                indicator->paintUser = tab->customUser;
+                if (tab->customPaint) {
+                    tab->customPaint = &RecordTabBoundWatched;
+                }
+                tab->customUser = indicator;
+                tab->prePaint = &TabIndicatorPrePaint;
+            }
             strip->Child(tab);
         }
     }
     if ((suffix || menu) && lastEmptySpace) {
         strip->Child(lastEmptySpace);
     }
-    if (sliding && stripBox) {
+    if (showIndicator) {
         // The indicator itself, which is whatever the selected tab would have
         // painted: the raised inner box for a folder or a segmented strip, the
         // filled pill, or the two-pixel rule under an underline tab.

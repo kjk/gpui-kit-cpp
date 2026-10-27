@@ -600,6 +600,73 @@ static void RevealAnimatesAndYieldsToManualScrolling() {
     MotionResetReduceForTest();
 }
 
+struct LateBar {
+    bool shown = false;
+    float width = 300;
+
+    static El* Render(LateBar* self, Ctx* cx) {
+        El* box = Div(cx->a)->W(self->width)->MaxW(self->width)->ClipX();
+        if (self->shown) {
+            box->Child(TabBar::New(cx, StrL("late-tabs"))
+                           ->Underline()
+                           ->Selected(0)
+                           ->Tab(StrL("First"))
+                           ->Tab(StrL("Second"))
+                           ->IntoEl());
+        }
+        return box;
+    }
+};
+
+static El* FindUnderlineIndicator(El* e) {
+    if (!e) return nullptr;
+    if (e->style.absolute && e->style.height == 2.f) return e;
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = FindUnderlineIndicator(c)) return hit;
+    }
+    return nullptr;
+}
+
+static Window* ShowLateBar(App* app, Entity<LateBar> bar) {
+    Window* win = TestWindowOpen(app, bar, 300, 80);
+    TestDraw(win);
+    bar.Get(app)->shown = true;
+    NotifyEntity(app, bar.id, win);
+    TestDraw(win);
+    return win;
+}
+
+// a_bar_shown_later_draws_its_indicator_on_the_next_frame.
+static void ABarShownLaterDrawsItsIndicatorOnTheNextFrame() {
+    App* app = TestAppNew();
+    ThemeSet(app, ThemeMode::Light);
+    component::Init(app);
+    Entity<LateBar> bar = EntityNew<LateBar>(app);
+    Window* win = ShowLateBar(app, bar);
+    utassert(win->animFrame);
+    TestDraw(win);
+    utassert(!win->animFrame);
+    El* root = EntityRender(app, win, win->frameArena, bar.id);
+    El* indicator = FindUnderlineIndicator(root);
+    utassert(indicator != nullptr);
+    utassert(indicator && indicator->style.width > 0);
+    utassert(indicator &&
+             indicator->style.absLeft + indicator->style.width <= 150.f);
+    TestAppFree(app);
+}
+
+// a_bar_with_no_width_asks_for_no_frames.
+static void ABarWithNoWidthAsksForNoFrames() {
+    App* app = TestAppNew();
+    ThemeSet(app, ThemeMode::Light);
+    component::Init(app);
+    Entity<LateBar> bar = EntityNew<LateBar>(app);
+    bar.Get(app)->width = 0;
+    Window* win = ShowLateBar(app, bar);
+    utassert(!win->animFrame);
+    TestAppFree(app);
+}
+
 void TestTab() {
     TestSuite("tab");
     UnderlineIsTallerThanEveryOtherVariant();
@@ -616,4 +683,6 @@ void TestTab() {
     ClickingAClippedTabRevealsItAndPartOfTheNext();
     ClickingTheLastTabRevealsTheEndOfTheBar();
     RevealAnimatesAndYieldsToManualScrolling();
+    ABarShownLaterDrawsItsIndicatorOnTheNextFrame();
+    ABarWithNoWidthAsksForNoFrames();
 }
