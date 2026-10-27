@@ -16,13 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `eec1208dd57d8bc8abc769fd833d181d297790f9` (2026-10-16,
-diff: Keep the row-height hint after the list lays out at a new width (#3563)).
-Rust reapplies a row-height hint after a diff list lays out at a new
-width, because that layout had forgotten every unmeasured row and the
-wheel stopped at the first screen. This tree sizes every diff row up
-front, so the scroll extent is the whole patch from the first layout.
-The two scroll tests pin that.
+Processed through `f8cf0bd964f9ef2e5b7be79f3a8fc391371feb4a` (2026-10-16,
+input: Tell the platform's keyboard how to assist each input (#3557)).
+An input answers the platform's text-input configuration. Assistance
+stays off until asked. A single-line field's action key is Done, and a
+multi-line field that does not submit on enter is Enter. Suggestions
+follow autocorrect. Revealing a masked field does not turn assistance
+on. This tree stores that on InputState. Desktop does not feed an IME.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

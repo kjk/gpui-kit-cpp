@@ -98,6 +98,66 @@ static void AMaskedValueStaysInTheField() {
     utassert(InputIsCopyable(&s));
 }
 
+static bool ConfigEq(const TextInputConfiguration& a,
+                     const TextInputConfiguration& b) {
+    return a.inputAction == b.inputAction && a.autocorrect == b.autocorrect &&
+           a.autocapitalize == b.autocapitalize &&
+           a.suggestions == b.suggestions;
+}
+
+static bool ConfigIs(const TextInputConfiguration& c, TextInputAction action,
+                     bool autocorrect, Autocapitalize caps, bool suggestions) {
+    TextInputConfiguration want;
+    want.inputAction = action;
+    want.autocorrect = autocorrect;
+    want.autocapitalize = caps;
+    want.suggestions = suggestions;
+    return ConfigEq(c, want);
+}
+
+// state.rs revealing_a_password_keeps_text_assistance_disabled. Flipping the
+// mask is the reveal button's transition, and the configuration ignores it.
+static void RevealingAPasswordKeepsTextAssistanceDisabled() {
+    InputState s;
+    s.masked = true;
+    TextInputConfiguration hidden = InputTextInputConfiguration(&s);
+    utassert(!hidden.autocorrect && !hidden.suggestions);
+    utassert(hidden.autocapitalize == Autocapitalize::None);
+
+    s.masked = !s.masked;
+    utassert(ConfigEq(InputTextInputConfiguration(&s), hidden));
+    s.masked = !s.masked;
+    utassert(ConfigEq(InputTextInputConfiguration(&s), hidden));
+}
+
+// state.rs text_input_configuration_follows_the_input.
+static void TextInputConfigurationFollowsTheInput() {
+    InputState plain;
+    InputState masked;
+    masked.masked = true;
+    InputState textarea;
+    textarea.kind = InputKind::Textarea;
+    InputState search;
+    InputSetInputAction(&search, TextInputAction::Search);
+    InputSetAutocorrect(&search, true);
+    InputSetAutocapitalize(&search, Autocapitalize::Words);
+
+    utassert(ConfigIs(InputTextInputConfiguration(&plain),
+                      TextInputAction::Done, false, Autocapitalize::None,
+                      false));
+    utassert(ConfigIs(InputTextInputConfiguration(&masked),
+                      TextInputAction::Done, false, Autocapitalize::None,
+                      false));
+    utassert(ConfigIs(InputTextInputConfiguration(&textarea),
+                      TextInputAction::Enter, false, Autocapitalize::None,
+                      false));
+    TextInputConfiguration got = InputTextInputConfiguration(&search);
+    utassert(got.inputAction == TextInputAction::Search);
+    utassert(got.autocapitalize == Autocapitalize::Words);
+    utassert(got.autocorrect);
+    utassert(got.suggestions);
+}
+
 // A field taken out of the tree while it had the keyboard takes its
 // registration with it: the window points at nothing rather than at a state
 // that has been freed.
@@ -11198,6 +11258,8 @@ void TestInputState() {
     MaskPatternAcceptsNonAsciiText();
     MaskedRedoRestoresActualCursor();
     AMaskedValueStaysInTheField();
+    RevealingAPasswordKeepsTextAssistanceDisabled();
+    TextInputConfigurationFollowsTheInput();
     AFocusedFieldGoingTakesItsRegistrationWithIt();
     WordMovement();
     DeleteToWordAndLineBoundaries();

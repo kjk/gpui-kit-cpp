@@ -4178,6 +4178,36 @@ Str MaskPlaceholder(Arena* a, const MaskPattern& p);
 // their ASCII equivalents, so `123。5` reaches the parser as `123.5`.
 Str NormalizeNumberInput(Arena* a, Str text);
 
+// gpui platform.rs. What a software keyboard shows on its enter key. The
+// variants are the HTML enterkeyhint set. Unspecified means emit no hint.
+enum class TextInputAction : uint8_t {
+    Unspecified,
+    Enter,
+    Done,
+    Go,
+    Next,
+    Previous,
+    Search,
+    Send,
+};
+
+// How a software keyboard capitalizes. None is the default.
+enum class Autocapitalize : uint8_t {
+    None,
+    Words,
+    Sentences,
+    Characters,
+};
+
+// The assistance a platform IME should give the focused field. The default
+// disables all of it and requests no particular action key.
+struct TextInputConfiguration {
+    bool autocorrect = false;
+    Autocapitalize autocapitalize = Autocapitalize::None;
+    bool suggestions = false;
+    TextInputAction inputAction = TextInputAction::Unspecified;
+};
+
 // kind.rs. Which of the three states this is. Rust fixes it at the type level;
 // `InputIsMultiLine` is its `MULTI_LINE` associated constant.
 enum class InputKind : uint8_t {
@@ -5165,6 +5195,15 @@ struct InputState {
     // (PlatCleanOnEscape).
     bool cleanOnEscape = false;
     bool submitOnEnter = false;
+    // Overrides for InputTextInputConfiguration. Unset keeps assistance off.
+    // The action key is Done unless the field is multi-line and does not
+    // submit on enter, in which case it is Enter.
+    bool hasInputAction = false;
+    TextInputAction inputAction = TextInputAction::Unspecified;
+    bool hasAutocorrect = false;
+    bool autocorrect = false;
+    bool hasAutocapitalize = false;
+    Autocapitalize autocapitalize = Autocapitalize::None;
     // Input/Editor/Textarea::on_paste. The current frame's themed facade sets
     // this before BindInput points the window at the state. Returning true
     // consumes the action; false falls through to normal text insertion.
@@ -5570,6 +5609,15 @@ void InputSetPlaceholder(InputState* s, Str value);
 void TextareaSetAutoGrow(InputState* s, int minRows, int maxRows);
 void TextareaSetRows(InputState* s, int rows);
 void InputSetMaskPattern(InputState* s, MaskPattern pattern);
+// input_action / autocorrect / autocapitalize. Each stores an override.
+// The action key still emits PressEnter. Autocorrect also enables word
+// suggestions. Capitalization is independent of autocorrect.
+void InputSetInputAction(InputState* s, TextInputAction action);
+void InputSetAutocorrect(InputState* s, bool autocorrect);
+void InputSetAutocapitalize(InputState* s, Autocapitalize mode);
+// text_input_configuration. Masking is presentation, not content type, so
+// revealing a password does not turn assistance on.
+TextInputConfiguration InputTextInputConfiguration(const InputState* s);
 // clean(): empties the field.
 void InputClean(InputState* s, App* app, Window* win);
 // insert() / replace(): a programmatic edit, recorded as one atomic step.

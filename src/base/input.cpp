@@ -6018,6 +6018,39 @@ void InputSetMaskPattern(InputState* s, MaskPattern pattern) {
     }
 }
 
+void InputSetInputAction(InputState* s, TextInputAction action) {
+    s->hasInputAction = true;
+    s->inputAction = action;
+}
+
+void InputSetAutocorrect(InputState* s, bool autocorrect) {
+    s->hasAutocorrect = true;
+    s->autocorrect = autocorrect;
+}
+
+void InputSetAutocapitalize(InputState* s, Autocapitalize mode) {
+    s->hasAutocapitalize = true;
+    s->autocapitalize = mode;
+}
+
+TextInputConfiguration InputTextInputConfiguration(const InputState* s) {
+    // Masking is a presentation choice, not a content type: a revealed
+    // password must not acquire text assistance. Assistance stays opt-in.
+    TextInputConfiguration c;
+    c.autocorrect = s->hasAutocorrect && s->autocorrect;
+    c.suggestions = c.autocorrect;
+    c.autocapitalize =
+        s->hasAutocapitalize ? s->autocapitalize : Autocapitalize::None;
+    if (s->hasInputAction) {
+        c.inputAction = s->inputAction;
+    } else if (InputIsMultiLine(s) && !s->submitOnEnter) {
+        c.inputAction = TextInputAction::Enter;
+    } else {
+        c.inputAction = TextInputAction::Done;
+    }
+    return c;
+}
+
 // ─── completion ───────────────────────────────────────────────────────────
 
 static bool CompletionWordChar(char c) {
