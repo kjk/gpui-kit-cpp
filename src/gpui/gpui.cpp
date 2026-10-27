@@ -4863,6 +4863,12 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     e->h = l.size.h;
     e->contentW = l.contentSize.w;
     e->contentH = l.contentSize.h;
+    // An empty field lays the placeholder out, and that run is not
+    // scrollable content (element.rs widest_laid_out_line).
+    if (e->input && e->style.overflowX == Overflow::Scroll &&
+        len(e->input->text) == 0 && e->contentW > e->w) {
+        e->contentW = e->w;
+    }
     ResolveRelLengths(e, l);
 
     // The shaped run paint wants, taken from the text cache at the size

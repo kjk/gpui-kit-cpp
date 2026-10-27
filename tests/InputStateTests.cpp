@@ -11020,8 +11020,89 @@ static void TheInsetsFollowTheSize() {
     }
 }
 
+// element.rs horizontal_scroll_extent_excludes_placeholder and
+// horizontal_scroll_extent_covers_the_widest_laid_out_line.
+static Str RepeatChar(char ch, int n) {
+    StrBuilder sb;
+    for (int i = 0; i < n; i++) {
+        sb.AppendChar(ch);
+    }
+    return sb.TakeStr();
+}
+
+static Str NarrowThenWide(int wides) {
+    StrBuilder sb;
+    sb.AppendChar('e');
+    for (int i = 0; i < 200; i++) {
+        sb.Append(StrL("\xCC\x81"));
+    }
+    sb.AppendChar('\n');
+    for (int i = 0; i < wides; i++) {
+        sb.AppendChar('W');
+    }
+    return sb.TakeStr();
+}
+
+static void ScrollCaretToEnd(InputState* editor, int end) {
+    editor->selectedRange = {end, end};
+    float most = editor->contentW - editor->viewW;
+    if (most < 0) {
+        most = 0;
+    }
+    editor->scrollX = most;
+}
+
+static void HorizontalScrollExtentExcludesPlaceholder() {
+    DecorationEditor d = DecorationEditorOpen("", false);
+    TestDraw(d.win);
+    float empty = d.editor->contentW;
+    Str longCue = RepeatChar('W', 300);
+    InputSetPlaceholder(d.editor, longCue);
+    TestDraw(d.win);
+    utassertnear(d.editor->contentW, empty);
+    StrFree(longCue);
+    InputSetPlaceholder(d.editor, StrL("Short hint"));
+    TestDraw(d.win);
+    utassertnear(d.editor->contentW, empty);
+    TestAppFree(d.app);
+}
+
+static void HorizontalScrollExtentCoversTheWidestLaidOutLine() {
+    Str text = NarrowThenWide(300);
+    DecorationEditor d = DecorationEditorOpen("", false);
+    InputSetValue(d.editor, text);
+    TestDraw(d.win);
+    ScrollCaretToEnd(d.editor, len(text));
+    TestDraw(d.win);
+    float right = d.editor->inputBounds.x + d.editor->inputBounds.w;
+    utassert(d.editor->caretWinX <= right + 1.f);
+
+    Str wider = NarrowThenWide(400);
+    InputSetValue(d.editor, wider);
+    TestDraw(d.win);
+    ScrollCaretToEnd(d.editor, len(wider));
+    TestDraw(d.win);
+    right = d.editor->inputBounds.x + d.editor->inputBounds.w;
+    utassert(d.editor->caretWinX <= right + 1.f);
+
+    float before = d.editor->contentW;
+    WindowSetRemSize(d.win, 24.f);
+    TestDraw(d.win);
+    utassert(d.editor->contentW > before);
+    ScrollCaretToEnd(d.editor, len(wider));
+    TestDraw(d.win);
+    right = d.editor->inputBounds.x + d.editor->inputBounds.w;
+    utassert(d.editor->caretWinX <= right + 1.f);
+
+    StrFree(text);
+    StrFree(wider);
+    TestAppFree(d.app);
+}
+
 static void RunElementWindowTests() {
     TheInsetsFollowTheSize();
+    HorizontalScrollExtentExcludesPlaceholder();
+    HorizontalScrollExtentCoversTheWidestLaidOutLine();
     EditorLineNumberGutterResizesWithDocumentLines();
     GeometricDecorationsClipScrolledViewportAndCullOffscreenRanges();
     GeometricDecorationsUseShapedWrapBoundariesAndNewlineCells();

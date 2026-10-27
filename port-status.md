@@ -16,15 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `41b63524b58a7f19512f51c0d1d62b84994e35c4` (2026-10-20,
-dialog: Animate the exit to match the entrance (#3603)).
-Closing keeps the dialog mounted until its entrance plays back out.
-SlideDown returns to the top, FadeSlide reverses its travel, and the
-surface and dim fade together. A dialog that is leaving is no longer
-active. Reduced motion, no entrance, and a zero theme duration still
-close in one frame. The website notes are not ported. A dialog built
-outside the window stack still eases in on its own clock and unmounts
-when it closes.
+Processed through `ade05d05b7b02e5c303a4fdd43f91a4df3bd58e8` (2026-10-20,
+input: Measure the horizontal scroll extent from laid-out lines (#3604)).
+An unwrapped field's horizontal range is the wider of the byte-longest
+line and the widest line laid out this frame, and that width stays when
+the wide line scrolls away. A placeholder on an empty field does not
+extend it. Soft-wrapped fields still use the viewport width.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

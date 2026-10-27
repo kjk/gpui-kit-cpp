@@ -5478,6 +5478,18 @@ struct InputState {
     float caretX = 0;
     float contentW = 0;
     float contentH = 0;
+    // longest_line_width: the widest unwrapped line for this document and
+    // font. The byte-longest line is only a candidate; a shorter visible
+    // line can render wider, and the stored width does not shrink when
+    // that line scrolls out of view. Empty text stays 0 so a placeholder
+    // is not scrollable content. element.rs LongestLineKey.
+    bool longestLineSet = false;
+    uint64_t longestLineDoc = 0;
+    int longestLineRow = -1;
+    int longestLineLen = 0;
+    float longestLineFont = 0;
+    uint16_t longestLineWord = 0;
+    float longestLineW = 0;
     // scroll_bounce: precise scrolling stretches a multi-line field past its
     // ends. A line wheel only scrolls. The default follows the platform.
     bool scrollBounce = base::PlatScrollBounce();

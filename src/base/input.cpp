@@ -1999,6 +1999,69 @@ bool InputLastActiveLine(const InputState* s, const Window* win, Bounds* out) {
     return true;
 }
 
+// element.rs LongestLineKey. The byte-longest line is measured when the
+// document or the font changes. Visible lines raise the stored width and
+// never lower it, so scrolling the wide line away keeps the extent.
+static void NoteUnwrappedExtent(InputState* state, PaintCtx* paint,
+                                float laidFont, uint16_t word, int firstRow,
+                                int endRow) {
+    if (!state || state->softWrap) {
+        return;
+    }
+    const Vec<int>& starts = InputLineStarts(state);
+    int n = len(starts);
+    int total = len(state->text);
+    int row = 0;
+    int bestLen = -1;
+    for (int i = 0; i < n; i++) {
+        int a = starts[i];
+        int b = i + 1 < n ? starts[i + 1] - 1 : total;
+        int lineLen = b - a;
+        if (lineLen > bestLen) {
+            bestLen = lineLen;
+            row = i;
+        }
+    }
+    Str longest = InputSliceLine(state, row);
+    bool same =
+        state->longestLineSet && state->longestLineDoc == state->docVersion &&
+        state->longestLineRow == row && state->longestLineLen == len(longest) &&
+        state->longestLineFont == laidFont && state->longestLineWord == word;
+    float width = 0;
+    if (len(state->text) == 0) {
+        width = 0;
+    } else if (same) {
+        width = state->longestLineW;
+    } else if (len(longest) > 0) {
+        width = MeasureText(paint, longest, laidFont, 0, false, word).w;
+    }
+    if (len(state->text) > 0) {
+        int lo = firstRow < 0 ? 0 : firstRow;
+        int hi = endRow > n ? n : endRow;
+        for (int i = lo; i < hi; i++) {
+            if (LayoutModeIsFolding(state->mode) &&
+                FoldMapLineHidden(&state->folds, i)) {
+                continue;
+            }
+            Str line = InputSliceLine(state, i);
+            if (len(line) <= 0) {
+                continue;
+            }
+            float w = MeasureText(paint, line, laidFont, 0, false, word).w;
+            if (w > width) {
+                width = w;
+            }
+        }
+    }
+    state->longestLineSet = true;
+    state->longestLineDoc = state->docVersion;
+    state->longestLineRow = row;
+    state->longestLineLen = len(longest);
+    state->longestLineFont = laidFont;
+    state->longestLineWord = word;
+    state->longestLineW = width;
+}
+
 El* Textarea::New(Ctx* cx, InputState* state) {
     return New(cx, state, InputEditorStyle{});
 }
@@ -2920,6 +2983,26 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     }
     if (padBottom > 0) {
         col->Child(Div(a)->W(kFill)->Shrink0()->H(padBottom));
+    }
+    // element.rs: the unwrapped scroll extent is the wider of the
+    // byte-longest line and the widest line laid out this frame. The
+    // stored width does not shrink when the wide line scrolls away.
+    // Soft wrap keeps the viewport width and does not come through here.
+    if (!state->softWrap) {
+        float rem = cx->win ? WindowRemSize(cx->win) : 16.f;
+        float laidFont = font * (rem / 16.f);
+        NoteUnwrappedExtent(state, cx->win ? &cx->win->paint : nullptr,
+                            laidFont, InputFontWord(style), firstRow, endRow);
+        if (state->longestLineW > 0) {
+            float gutter = 0;
+            if (lineNumbers) {
+                gutter = numW + kLineNumberRightMargin + foldW;
+            }
+            // RIGHT_MARGIN rides along once the line overflows, which is
+            // the scroll width element.rs publishes. A minimum on the
+            // column keeps that width when the wide line is not built.
+            col->MinW(state->longestLineW + gutter + kEditorRightMargin);
+        }
     }
 
     // layout_inline_completion: the suggestion in front of the caret, in the
