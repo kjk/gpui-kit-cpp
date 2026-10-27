@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8a83be7eb6ec9cc4055298fa340ab738c313af7a",
+  sha: "9ad9d92391138bdbedb3827fe6dfdaa68f3cc91d",
   date: "2026-10-16",
-  subject: "base: Skip shared heading callbacks when comparing text styles (#3536)",
+  subject: "shell: Add script methods to MessageScrollerState (#3541)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

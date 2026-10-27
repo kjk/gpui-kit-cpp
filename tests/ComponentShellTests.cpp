@@ -3052,6 +3052,59 @@ void MessageScrollerRendersScriptRows() {
     utassert(FindText(root, StrL("second")) != nullptr);
 }
 
+// chat_host.rs message_scroller_state_is_edited_from_script.
+void MessageScrollerStateIsEditedFromScript() {
+    Host host(StrL(
+        "import { div, View } from 'gpui-kit';\n"
+        "import { MessageScroller, MessageScrollerState } from "
+        "'gpui-component';\n"
+        "const rejects = (call) => { try { call(); return 'ok'; } catch { "
+        "return 'err'; } };\n"
+        "export default class Edits extends View {\n"
+        "  init() { this.scroller = MessageScrollerState.new(2); this.results "
+        "= 'none'; }\n"
+        "  run() {\n"
+        "    const s = this.scroller;\n"
+        "    const out = [];\n"
+        "    out.push(s.append(3), s.item_count());\n"
+        "    out.push(s.prepend(1), s.item_count());\n"
+        "    out.push(s.splice({ start: 0, end: 2 }, 1), s.item_count());\n"
+        "    out.push(s.splice({ start: 4, end: 9 }, 1), s.item_count());\n"
+        "    out.push(s.remeasure_items({ start: 0, end: 2 }), "
+        "s.remeasure_items({ start: 4, end: 9 }));\n"
+        "    out.push(s.scroll_to_item(1), s.logical_scroll_top().item_ix, "
+        "s.scroll_to_item(5));\n"
+        "    s.remeasure();\n"
+        "    s.reset(4);\n"
+        "    out.push(s.item_count(), s.is_following_tail());\n"
+        "    out.push(rejects(() => s.append(-1)), rejects(() => "
+        "s.append(1.5)), rejects(() => s.splice(1, 2, 1)));\n"
+        "    this.results = out.join('-');\n"
+        "  }\n"
+        "  render() {\n"
+        "    return div()\n"
+        "      .child(div().child('count-' + this.scroller.item_count()))\n"
+        "      .child(div().child('results-' + this.results))\n"
+        "      .child(div().id('run').w(200).h(40)\n"
+        "        .on_click((_event, cx) => { this.run(); cx.notify(); }))\n"
+        "      .child(new MessageScroller('messages', this.scroller, "
+        "(index) => div().h(30).child('row ' + index)).w(200).h(120));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("count-2")) != nullptr);
+    El* run = FindById(root, StrL("run"));
+    utassert(run != nullptr);
+    Click(host, run);
+    root = host.Render();
+    utassert(
+        FindText(root,
+                 StrL("results-true-5-true-6-true-5-false-5-true-false-true-1-"
+                      "false-4-true-err-err-err")) != nullptr);
+    utassert(FindText(root, StrL("count-4")) != nullptr);
+}
+
 // ─── media/: mod.rs, image.rs, editor.rs ───────────────────────────────────
 
 // image.rs image_sources_are_confined_to_the_asset_root
@@ -8075,6 +8128,7 @@ void TestComponentShell() {
     ChatComponentsMaterializeThroughThePublicHost();
     ChatRecordersRefuseWhatRustRefuses();
     MessageScrollerRendersScriptRows();
+    MessageScrollerStateIsEditedFromScript();
 
     TestSuite("empty");
     EmptyPublishesAllPartsWithClosedDocumentedMethods();

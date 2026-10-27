@@ -470,6 +470,207 @@ static bool RecordJumpButtonLabel(PayloadBuild* build,
     return true;
 }
 
+// A row index or count: finite, whole and non-negative. Anything else is a
+// throw, not a rounded or clamped number. row_number.
+static bool RowNumber(const shell::ComponentDataValue* value, int* out) {
+    if (!value || value->kind != shell::DataKind::Number) return false;
+    double n = value->number;
+    if (!isfinite(n) || n != floor(n) || n < 0.0 || n > (double)INT_MAX)
+        return false;
+    *out = (int)n;
+    return true;
+}
+
+// An ItemRange (`{ start, end }`) of row indices. item_range.
+static bool ItemRange(const shell::ComponentDataValue* value, int* start,
+                      int* end) {
+    if (!value || value->kind != shell::DataKind::Object) return false;
+    return RowNumber(value->Get(StrL("start")), start) &&
+           RowNumber(value->Get(StrL("end")), end);
+}
+
+static component::MessageScrollerState* ScrollerOf(void* state) {
+    EntityState<component::MessageScrollerState>* held =
+        (EntityState<component::MessageScrollerState>*)state;
+    if (!held || !held->app) return nullptr;
+    return held->entity.Get(held->app);
+}
+
+static Ctx CallCtx(shell::StateCall* call) {
+    Ctx cx;
+    cx.app = call->app;
+    cx.win = call->window;
+    cx.a = call->a;
+    return cx;
+}
+
+static bool NoArgs(shell::StateCall* call, int count, const char* context) {
+    if (count == 0) return true;
+    return call->Fail(fmt("%s expects no arguments", Str(context)));
+}
+
+static bool OneRow(shell::StateCall* call,
+                   const shell::ComponentDataValue* args, int count, int* out,
+                   const char* context) {
+    if (count == 1 && RowNumber(args, out)) return true;
+    return call->Fail(fmt("%s expects a non-negative integer", Str(context)));
+}
+
+static bool ItemCount(shell::StateCall* call, void* state,
+                      const shell::ComponentDataValue*, int count) {
+    if (!NoArgs(call, count, "MessageScrollerState.item_count")) return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    call->out = shell::ComponentDataValue::Number(s->ItemCount());
+    return true;
+}
+
+static bool IsFollowingTail(shell::StateCall* call, void* state,
+                            const shell::ComponentDataValue*, int count) {
+    if (!NoArgs(call, count, "MessageScrollerState.is_following_tail"))
+        return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    call->out = shell::ComponentDataValue::Boolean(s->IsFollowingTail());
+    return true;
+}
+
+static bool IsScrolledUp(shell::StateCall* call, void* state,
+                         const shell::ComponentDataValue*, int count) {
+    if (!NoArgs(call, count, "MessageScrollerState.is_scrolled_up"))
+        return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    call->out = shell::ComponentDataValue::Boolean(s->IsScrolledUp());
+    return true;
+}
+
+static bool LogicalScrollTop(shell::StateCall* call, void* state,
+                             const shell::ComponentDataValue*, int count) {
+    if (!NoArgs(call, count, "MessageScrollerState.logical_scroll_top"))
+        return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    component::ListOffset top = s->LogicalScrollTop();
+    shell::ComponentDataValue* items = (shell::ComponentDataValue*)Alloc(
+        call->a, (int)sizeof(shell::ComponentDataValue) * 2);
+    Str* keys = (Str*)Alloc(call->a, (int)sizeof(Str) * 2);
+    items[0] = shell::ComponentDataValue::Number(top.itemIx);
+    items[1] = shell::ComponentDataValue::Number(top.offsetInItem);
+    keys[0] = StrL("item_ix");
+    keys[1] = StrL("offset_in_item");
+    call->out.kind = shell::DataKind::Object;
+    call->out.items = items;
+    call->out.keys = keys;
+    call->out.count = 2;
+    return true;
+}
+
+static bool ResetCount(shell::StateCall* call, void* state,
+                       const shell::ComponentDataValue* args, int count) {
+    int n = 0;
+    if (!OneRow(call, args, count, &n, "MessageScrollerState.reset"))
+        return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    Ctx cx = CallCtx(call);
+    s->Reset(&cx, n);
+    call->out = shell::ComponentDataValue::Null();
+    return true;
+}
+
+static bool SpliceRows(shell::StateCall* call, void* state,
+                       const shell::ComponentDataValue* args, int count) {
+    int start = 0, end = 0, n = 0;
+    if (count != 2 || !ItemRange(args, &start, &end) ||
+        !RowNumber(args + 1, &n)) {
+        return call->Fail(
+            StrL("MessageScrollerState.splice expects an ItemRange and a "
+                 "non-negative integer count"));
+    }
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    Ctx cx = CallCtx(call);
+    call->out =
+        shell::ComponentDataValue::Boolean(s->Splice(&cx, start, end, n));
+    return true;
+}
+
+static bool AppendRows(shell::StateCall* call, void* state,
+                       const shell::ComponentDataValue* args, int count) {
+    int n = 0;
+    if (!OneRow(call, args, count, &n, "MessageScrollerState.append"))
+        return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    Ctx cx = CallCtx(call);
+    call->out = shell::ComponentDataValue::Boolean(s->Append(&cx, n));
+    return true;
+}
+
+static bool PrependRows(shell::StateCall* call, void* state,
+                        const shell::ComponentDataValue* args, int count) {
+    int n = 0;
+    if (!OneRow(call, args, count, &n, "MessageScrollerState.prepend"))
+        return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    Ctx cx = CallCtx(call);
+    call->out = shell::ComponentDataValue::Boolean(s->Prepend(&cx, n));
+    return true;
+}
+
+static bool RemeasureAll(shell::StateCall* call, void* state,
+                         const shell::ComponentDataValue*, int count) {
+    if (!NoArgs(call, count, "MessageScrollerState.remeasure")) return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    Ctx cx = CallCtx(call);
+    s->Remeasure(&cx);
+    call->out = shell::ComponentDataValue::Null();
+    return true;
+}
+
+static bool RemeasureRange(shell::StateCall* call, void* state,
+                           const shell::ComponentDataValue* args, int count) {
+    int start = 0, end = 0;
+    if (count != 1 || !ItemRange(args, &start, &end)) {
+        return call->Fail(
+            StrL("MessageScrollerState.remeasure_items expects an ItemRange of "
+                 "non-negative integer start and end"));
+    }
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    Ctx cx = CallCtx(call);
+    call->out =
+        shell::ComponentDataValue::Boolean(s->RemeasureItems(&cx, start, end));
+    return true;
+}
+
+static bool ScrollToItem(shell::StateCall* call, void* state,
+                         const shell::ComponentDataValue* args, int count) {
+    int n = 0;
+    if (!OneRow(call, args, count, &n, "MessageScrollerState.scroll_to_item"))
+        return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    Ctx cx = CallCtx(call);
+    call->out = shell::ComponentDataValue::Boolean(s->ScrollToItem(&cx, n));
+    return true;
+}
+
+static bool ScrollToEnd(shell::StateCall* call, void* state,
+                        const shell::ComponentDataValue*, int count) {
+    if (!NoArgs(call, count, "MessageScrollerState.scroll_to_end"))
+        return false;
+    component::MessageScrollerState* s = ScrollerOf(state);
+    if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    Ctx cx = CallCtx(call);
+    s->ScrollToEnd(&cx);
+    call->out = shell::ComponentDataValue::Null();
+    return true;
+}
+
 static bool NewMessageScrollerState(shell::StateBuild* build,
                                     const ComponentArgument* args, int count) {
     // `*value <= usize::MAX as f64`, and then an item count the state holds
@@ -608,13 +809,32 @@ static constexpr ComponentDescriptor kShimmerText = {
 // MessageScrollerState
 static constexpr ArgumentDescriptor kStateArgs[] = {
     {"item_count", SchemaNumber()}};
+static constexpr shell::StateMethodDescriptor kScrollerStateMethods[] = {
+    {"item_count", "(): number", true, &ItemCount},
+    {"is_following_tail", "(): boolean", true, &IsFollowingTail},
+    {"is_scrolled_up", "(): boolean", true, &IsScrolledUp},
+    {"logical_scroll_top", "(): { item_ix: number; offset_in_item: number }",
+     true, &LogicalScrollTop},
+    {"reset", "(item_count: number): void", false, &ResetCount},
+    {"splice",
+     "(range: import(\"gpui-kit\").ItemRange, count: number): boolean", false,
+     &SpliceRows},
+    {"append", "(count: number): boolean", false, &AppendRows},
+    {"prepend", "(count: number): boolean", false, &PrependRows},
+    {"remeasure", "(): void", false, &RemeasureAll},
+    {"remeasure_items", "(range: import(\"gpui-kit\").ItemRange): boolean",
+     false, &RemeasureRange},
+    {"scroll_to_item", "(index: number): boolean", false, &ScrollToItem},
+    {"scroll_to_end", "(): void", false, &ScrollToEnd},
+};
 static constexpr shell::StateDescriptor kMessageScrollerState = {
     "MessageScrollerState",
     "MessageScrollerState",
     kStateArgs,
     "Retained virtual-list and tail-following state for a message transcript.",
     &NewMessageScrollerState,
-    {}};
+    kScrollerStateMethods,
+};
 
 // MessageScroller
 static constexpr ArgumentDescriptor kScrollerArgs[] = {

@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8a83be7eb6ec9cc4055298fa340ab738c313af7a` (2026-10-16,
-base: Skip shared heading callbacks when comparing text styles (#3536)).
-Two text styles that share a heading callback compare equal without
-calling it. Distinct callbacks are still compared by what they answer
-for heading levels 1 through 6.
+Processed through `9ad9d92391138bdbedb3827fe6dfdaa68f3cc91d` (2026-10-16,
+shell: Add script methods to MessageScrollerState (#3541)).
+A script can append, prepend, splice, reset, remeasure and scroll a
+message transcript in place. Reads are allowed during render. A count
+that is not a whole non-negative number throws, and a range outside
+the rows returns false. The shell README's method table is not copied.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
