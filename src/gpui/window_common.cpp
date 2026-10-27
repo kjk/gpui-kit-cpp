@@ -376,6 +376,8 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
 
 // The hit rects under a point, innermost first; defined with the dispatch.
 static void HitChain(Window* win, float x, float y, Vec<int>* out);
+// Last frame's occluders over a scrollbar band. Defined with the bar.
+static void NoteScrollbarOcclusion(Window* win);
 
 // `headless` is the test platform's frame (gpui/test_app.h): the whole
 // pipeline runs — render, layout, prepaint, paint — with no target bound, so
@@ -439,6 +441,9 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         VecReset(chain);
     }
 #endif
+    // The bar's hover is decided while painting, before a later occluder
+    // exists. Last frame's hits still say whether the pointer is on one.
+    NoteScrollbarOcclusion(win);
     VecClear(win->paint.hits);
     // Last frame's scroll boxes are kept one frame more, for a lazy list to
     // read the viewport it was given before it decides how many rows to
@@ -1598,6 +1603,50 @@ static ScrollRect* ScrollbarAt(PaintCtx* ctx, float x, float y,
     return nullptr;
 }
 
+// A hit painted above the bar that occludes. Content under the bar is a
+// hit from before barHit, and the bar still takes that press.
+static bool ScrollbarCovered(const PaintCtx& paint, const ScrollRect& s,
+                             float x, float y) {
+    if (s.barHit < 0) {
+        return false;
+    }
+    int leaf = -1;
+    for (int i = paint.hits.len - 1; i >= 0; i--) {
+        if (paint.hits[i].bounds.Contains({x, y})) {
+            leaf = i;
+            break;
+        }
+    }
+    for (int i = leaf; i >= 0; i = paint.hits[i].parent) {
+        if (i >= s.barHit && paint.hits[i].stopMouseDown) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void NoteScrollbarOcclusion(Window* win) {
+    VecClear(win->scrollbarOccluded);
+    for (int i = 0; i < win->paint.scrolls.len; i++) {
+        const ScrollRect& s = win->paint.scrolls[i];
+        if (s.id == 0) {
+            continue;
+        }
+        bool onY = s.barY && ScrollsY(s) && win->mouseY >= s.bounds.y &&
+                   win->mouseY <= s.bounds.Bottom() &&
+                   win->mouseX >= s.bounds.Right() - s.trackWidth &&
+                   win->mouseX <= s.bounds.Right();
+        bool onX = s.barX && ScrollsX(s) && win->mouseX >= s.bounds.x &&
+                   win->mouseX <= s.bounds.Right() &&
+                   win->mouseY >= s.bounds.Bottom() - s.trackWidth &&
+                   win->mouseY <= s.bounds.Bottom();
+        if ((onY || onX) &&
+            ScrollbarCovered(win->paint, s, win->mouseX, win->mouseY)) {
+            VecAppend(win->scrollbarOccluded, s.id);
+        }
+    }
+}
+
 static void ScrollbarStore(Window* win, ScrollRect* s, float offsetX,
                            float offsetY) {
     offsetX = ClampScroll(offsetX, s->contentW, s->bounds.w);
@@ -2443,6 +2492,9 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     }
     bool barHorizontal = false;
     ScrollRect* bar = ScrollbarAt(&win->paint, x, y, &barHorizontal);
+    if (bar && ScrollbarCovered(win->paint, *bar, x, y)) {
+        bar = nullptr;
+    }
     if (bar) {
         SetMouseDown(win, true);
         ScrollbarPressKind kind = in.modifiers.shift
@@ -3050,6 +3102,11 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                 ScrollRect* bar =
                     ScrollbarAt(&win->paint, touch.startPosition.x,
                                 touch.startPosition.y, &horizontal);
+                if (bar &&
+                    ScrollbarCovered(win->paint, *bar, touch.startPosition.x,
+                                     touch.startPosition.y)) {
+                    bar = nullptr;
+                }
                 win->touchScrollbarDrag =
                     bar && ScrollbarPress(win, bar, touch.startPosition.x,
                                           touch.startPosition.y, horizontal,
@@ -3599,6 +3656,10 @@ void WindowTouchMove(Window* win, float x, float y) {
         bool horizontal = false;
         ScrollRect* bar = ScrollbarAt(&win->paint, win->touchHostStart.x,
                                       win->touchHostStart.y, &horizontal);
+        if (bar && ScrollbarCovered(win->paint, *bar, win->touchHostStart.x,
+                                    win->touchHostStart.y)) {
+            bar = nullptr;
+        }
         if (bar) {
             win->touchHost = TouchHostKind::BarDrag;
             TouchHostEmitDrag(win, TouchPhase::Started, win->touchHostStart);
@@ -4105,6 +4166,7 @@ static void AppRelease(App* app, bool platform) {
         VecReset(w->plotAppearScopes);
         VecReset(w->debugViewRoots);
         VecReset(w->debugHoveredPaths);
+        VecReset(w->scrollbarOccluded);
         WindowKeyedFree(w);
         WindowMotionFree(w);
         delete w;

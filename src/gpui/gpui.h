@@ -3502,6 +3502,10 @@ struct ScrollRect {
     // not below this node occludes the mask, so wheel input must not reach the
     // scroller underneath it.
     int maskHit = -1;
+    // Hits at this index and after were painted above the bar. An occluding
+    // hit among them keeps the press and the hover; content under the bar
+    // does not. -1 until the bar has been painted.
+    int barHit = -1;
     Listener onScroll;
     // The text field this box scrolls, when it is one. An InputState is not
     // an entity and so cannot be the target of a Listener; the element names
@@ -6586,6 +6590,10 @@ struct Window {
     // answers with the box the last layout gave it. Virtual lists bind rows
     // in prePaint from this frame's laid-out box, so they do not read this.
     Vec<ScrollRect> prevScrolls;
+    // Scroll ids whose bar the pointer covers with an occluder painted above
+    // it, taken from the frame that just finished. Hover mode reads this
+    // while painting, before that occluder exists again.
+    Vec<int> scrollbarOccluded;
     // Rebuilt after layout from the frame's element tree. Platform adapters
     // read this; it owns no strings or callbacks beyond the frame arena.
     Vec<AccessibilityNode> accessibility;

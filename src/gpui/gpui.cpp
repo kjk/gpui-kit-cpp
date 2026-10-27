@@ -7744,6 +7744,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // pass through, which is the chain the two phases walk.
         ctx->hitParent = ctx->hits.len - 1;
     }
+    int scrollSlot = -1;
     if (e->style.overflowY == Overflow::Scroll ||
         e->style.overflowX == Overflow::Scroll) {
         ScrollRect sr;
@@ -7772,6 +7773,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         sr.maskHit = e->scrollMaskAxes ? ctx->hitParent : -1;
         sr.onScroll = e->onScroll;
         sr.input = e->input;
+        scrollSlot = ctx->scrolls.len;
         VecAppend(ctx->scrolls, sr);
     }
 
@@ -8331,6 +8333,15 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // click meant for the page.
     ScrollbarMode barMode = ElScrollMode(e, ctx->app);
     bool overBox = e->Bounds().Contains({ctx->mouseX, ctx->mouseY});
+    bool covered = false;
+    if (e->scrollId != 0 && ctx->window) {
+        for (int i = 0; i < ctx->window->scrollbarOccluded.len; i++) {
+            if (ctx->window->scrollbarOccluded[i] == e->scrollId) {
+                covered = true;
+                break;
+            }
+        }
+    }
     bool dragging = ctx->scrollDragId != 0 && ctx->scrollDragId == e->scrollId;
     ScrollbarMotion barMotion =
         e->scrollThemeSet ? e->scrollMotion : ScrollbarMotionFor(barMode);
@@ -8342,9 +8353,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     bool canHorizontal = !e->noScrollbarX &&
                          e->style.overflowX == Overflow::Scroll &&
                          e->contentW > e->w + 1.f && e->w > 0;
-    bool onBand =
-        overBox && ((canVertical && ctx->mouseX >= e->x + e->w - trackW) ||
-                    (canHorizontal && ctx->mouseY >= e->y + e->h - trackW));
+    // An occluder above the bar is not a hover on the bar. The drag still
+    // holds it up: that press started on the bar itself.
+    bool onBand = overBox && !covered &&
+                  ((canVertical && ctx->mouseX >= e->x + e->w - trackW) ||
+                   (canHorizontal && ctx->mouseY >= e->y + e->h - trackW));
     bool barVisible = !e->noScrollbar;
     float barAlpha = 1.f;
     float barSlide = 0.f;
@@ -8397,6 +8410,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             }
         }
     }
+    // Children are already painted. Hits from here on are above the bar.
+    if (scrollSlot >= 0 && scrollSlot < ctx->scrolls.len) {
+        ctx->scrolls[scrollSlot].barHit = ctx->hits.len;
+    }
     // style_for_normal / style_for_hovered_bar / style_for_hovered_thumb /
     // style_for_active. Hovering the track keeps the normal thumb style;
     // hovering the thumb or dragging selects its own full style tuple.
@@ -8409,7 +8426,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     bool hasVertical = barVisible && canVertical;
     bool hasHorizontal = barVisible && canHorizontal;
     if (hasVertical) {
-        bool onBar = overBox && ctx->mouseX >= e->x + e->w - trackW;
+        bool onBar = overBox && !covered && ctx->mouseX >= e->x + e->w - trackW;
         float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
         ScrollbarThumbGeometry normal = ScrollbarGeometry(
             e->y, e->h, e->contentH, 0, normalInset,
@@ -8454,7 +8471,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // The horizontal bar is the same arithmetic along the other axis,
         // which is how Rust writes it: one path, `is_vertical` picking the
         // pair of numbers it reads.
-        bool onBar = overBox && ctx->mouseY >= e->y + e->h - trackW;
+        bool onBar = overBox && !covered && ctx->mouseY >= e->y + e->h - trackW;
         float marginEnd = hasVertical ? trackW : 0;
         float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
         ScrollbarThumbGeometry normal = ScrollbarGeometry(

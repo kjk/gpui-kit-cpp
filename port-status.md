@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e929d9833095988b47899d69f0011df601244a84` (2026-10-16,
-table: Add `TableState::select_on_modifier_click` (#3523)).
-A row click with the secondary modifier or Shift still selects the row
-unless `SelectOnModifierClick(false)`. The click still stops. A modified
-re-click of a selected cell does not take the row when that is off.
-The DataTable website pages are not ported.
+Processed through `319b56cf555d4d6794a77b8b39054adb1b6c628d` (2026-10-16,
+scrollbar: Leave presses and hover over an occluding element to it (#3526)).
+A press on an element that occludes the bar is left to that element, and
+hover mode does not reveal the bar under it. A drag that already started
+on the bar still follows the pointer. The uncovered track still jumps.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

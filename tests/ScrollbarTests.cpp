@@ -652,6 +652,65 @@ static void AScrollableFlexItemShrinksBelowItsContent() {
     EntityDropAll(&app);
 }
 
+// scrollbar.rs: a press or a hover on an element that occludes the bar
+// belongs to that element. The uncovered track still jumps.
+struct CoveredBar {
+    float y = 0;
+    ScrollbarMode mode = ScrollbarMode::Always;
+    float coverTop = 60;
+    float coverH = 40;
+
+    static void OnScroll(CoveredBar* self, Ctx*, const ScrollEvent* ev) {
+        self->y = ev->offsetY;
+    }
+    static El* Render(CoveredBar* self, Ctx* cx) {
+        Arena* a = cx->a;
+        El* scroller = Div(a)
+                           ->W(100)
+                           ->H(100)
+                           ->ScrollY(self->y)
+                           ->ScrollId(7)
+                           ->ScrollMode(self->mode)
+                           ->OnScroll(Listen(cx, &CoveredBar::OnScroll))
+                           ->Child(Div(a)->W(80)->H(500));
+        El* cover = Div(a)
+                        ->Absolute()
+                        ->Left(50)
+                        ->Top(self->coverTop)
+                        ->W(50)
+                        ->H(self->coverH)
+                        ->StopMouseDown();
+        return Div(a)->W(100)->H(100)->Child(scroller)->Child(cover);
+    }
+};
+
+static void APressOnAnElementOverTheTrackIsLeftToIt() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<CoveredBar> view = EntityNew<CoveredBar>(app);
+    Window* win = TestWindowOpen(app, view, 200, 200, 1);
+    TestSimulateClick(win, Point{98, 80});
+    utassert(view.Get(app)->y == 0);
+    TestSimulateClick(win, Point{98, 50});
+    utassert(view.Get(app)->y > 0);
+    TestAppFree(app);
+}
+
+static void HoveringAnElementOverAHoverScrollbarDoesNotRevealIt() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<CoveredBar> view = EntityNew<CoveredBar>(app);
+    CoveredBar* self = view.Get(app);
+    self->mode = ScrollbarMode::Hover;
+    self->coverTop = 0;
+    self->coverH = 50;
+    Window* win = TestWindowOpen(app, view, 200, 200, 1);
+    TestSimulateMouseMove(win, Point{98, 20});
+    TestSimulateClick(win, Point{98, 80});
+    utassert(self->y == 0);
+    TestAppFree(app);
+}
+
 void TestScrollbar() {
     TestSuite("scrollbar");
     AScrollableFlexItemShrinksBelowItsContent();
@@ -672,6 +731,8 @@ void TestScrollbar() {
     ATouchThumbDragMovesDownAndCancelReleasesIt();
     ATouchReleaseKeepsItsFinalDisplacement();
     TheHighlighterScrollerHasAStableScrollId();
+    APressOnAnElementOverTheTrackIsLeftToIt();
+    HoveringAnElementOverAHoverScrollbarDoesNotRevealIt();
 }
 
 // The timing a styled layer projects, which is what these assert against.
