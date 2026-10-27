@@ -12,6 +12,9 @@ El* FocusTrapContainer::New(Ctx* cx, Str id, FocusHandle focus, El* child) {
     if (!cx || !child || !focus.IsValid()) {
         return child;
     }
+    // In-place, so the element's accessibility role, label and description
+    // stay on the node GPUI's wrapper would forward through a11y_role and
+    // write_a11y_info. The wrapper's id is this element's id.
     return child->Id(id)->TrackFocus(focus)->TrapId(focus.id);
 }
 
@@ -35,11 +38,42 @@ int FocusTrapActive(const Window* win) {
     return FocusTrapOf(win, win->focusId);
 }
 
+// A rendered tab stop inside the trap. Non-stops still hold focus; they are
+// not where Tab lands.
+static bool TrapOffersTabStop(const Window* win, int trapId) {
+    for (int i = 0; i < win->focusEls.len; i++) {
+        if (win->focusEls[i].trapId == trapId && win->focusEls[i].tabStop) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int FocusTrapTab(Window* win, bool backward) {
-    // Rust reads the trap first and only then moves, so a Tab that would
-    // leave the container comes back to its other end instead. FocusNext
-    // takes the trap for the same reason.
-    return FocusNext(win, FocusTrapActive(win), backward);
+    // Root::advance_focus. The active trap is the innermost one: CollectFocus
+    // writes the trap it is inside as it descends, so a child scope confines
+    // Tab even when an ancestor was registered first. The walk is that trap's
+    // own stops. There is no attempt cap — a page of background controls
+    // cannot strand the key inside a modal, and those controls never take
+    // focus on the way around.
+    int trap = FocusTrapActive(win);
+    if (!trap) {
+        return FocusNext(win, 0, backward);
+    }
+    if (TrapOffersTabStop(win, trap)) {
+        return FocusNext(win, trap, backward);
+    }
+    // The trap has no rendered tab stops. Its container remains a focus
+    // target even when that container is excluded from ordinary tab order.
+    if (win->focusId != trap) {
+        for (int i = 0; i < win->focusEls.len; i++) {
+            if (win->focusEls[i].id == trap) {
+                WindowSetFocusId(win, trap);
+                break;
+            }
+        }
+    }
+    return win->focusId;
 }
 
 bool FocusTrapEnter(Window* win, int trapId, bool backward) {

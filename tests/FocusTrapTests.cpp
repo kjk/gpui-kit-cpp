@@ -290,6 +290,142 @@ static void AHandleParksFocusAndPutsItBack() {
     delete win;
 }
 
+// root.rs focus_trap_wraps_forward_past_more_than_100_background_stops and
+// focus_trap_wraps_backward_past_more_than_100_background_stops. Tab inside
+// the modal wraps its own controls and never visits the page behind it.
+static void TabWrapsPastMoreThan100BackgroundStops() {
+    int ids[260];
+    int traps[260];
+    for (int i = 0; i < 256; i++) {
+        ids[i] = 1000 + i;
+        traps[i] = 0;
+    }
+    ids[256] = 11;
+    ids[257] = 12;
+    traps[256] = 7;
+    traps[257] = 7;
+    Window* win = WindowWithFocusables(ids, traps, 258);
+
+    win->focusId = 12;
+    utassert(FocusTrapTab(win, false) == 11);
+    utassert(FocusTrapTab(win, false) == 12);
+    win->focusId = 11;
+    utassert(FocusTrapTab(win, true) == 12);
+    utassert(FocusTrapTab(win, true) == 11);
+    utassert(FocusTrapActive(win) == 7);
+    delete win;
+}
+
+// root.rs focus_trap_without_tab_stops_keeps_its_container_focused.
+// No rendered tab stop: Tab keeps the container focused, both ways.
+static void AnEmptyTrapKeepsItsContainerFocused() {
+    int ids[] = {1, 7};
+    int traps[] = {0, 7};
+    Window* win = WindowWithFocusables(ids, traps, 2);
+    win->focusEls[1].tabStop = false;
+
+    win->focusId = 7;
+    utassert(FocusTrapTab(win, false) == 7);
+    utassert(FocusTrapTab(win, true) == 7);
+    utassert(FocusTrapActive(win) == 7);
+
+    // A non-stop inside the same trap is not a place to stay. Focus returns
+    // to the container, which is what still hears Escape.
+    int withChild[] = {1, 7, 11};
+    int childTraps[] = {0, 7, 7};
+    Window* held = WindowWithFocusables(withChild, childTraps, 3);
+    held->focusEls[1].tabStop = false;
+    held->focusEls[2].tabStop = false;
+    held->focusId = 11;
+    utassert(FocusTrapTab(held, false) == 7);
+    utassert(FocusTrapTab(held, true) == 7);
+    delete win;
+    delete held;
+}
+
+// root.rs nested_traps_keep_the_innermost_scope_across_close_and_reopen.
+// The focused control's trap id is the innermost scope, so closing and
+// reopening an inner scope cannot leave an ancestor in charge.
+static void NestedTrapsKeepTheInnermostScope() {
+    App app;
+    Window* win = new Window();
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+
+    El* child = Div(a);
+    for (int index = 5; index >= 0; index--) {
+        FocusHandle container = {100 + index};
+        El* node = Div(a)->TabStop(false);
+        node->Child(Div(a)->FocusId(200 + index * 2));
+        node->Child(child);
+        node->Child(Div(a)->FocusId(200 + index * 2 + 1));
+        child = FocusTrapContainer::New(&cx, fmt("nested-%d", index), container,
+                                        node);
+    }
+    FocusCollect(win, child);
+
+    win->focusId = 200 + 5 * 2 + 1;
+    utassert(FocusTrapActive(win) == 105);
+    utassert(FocusTrapTab(win, false) == 200 + 5 * 2);
+    utassert(FocusTrapTab(win, true) == 200 + 5 * 2 + 1);
+
+    // The inner three scopes are gone. What remains of the tree is the
+    // outer three, and Tab stays in the new innermost.
+    ArenaDelete(a);
+    a = ArenaNew();
+    cx.a = a;
+    child = Div(a);
+    for (int index = 2; index >= 0; index--) {
+        FocusHandle container = {100 + index};
+        El* node = Div(a)->TabStop(false);
+        node->Child(Div(a)->FocusId(200 + index * 2));
+        node->Child(child);
+        node->Child(Div(a)->FocusId(200 + index * 2 + 1));
+        child = FocusTrapContainer::New(&cx, fmt("nested-%d", index), container,
+                                        node);
+    }
+    FocusCollect(win, child);
+    win->focusId = 200 + 2 * 2 + 1;
+    utassert(FocusTrapActive(win) == 102);
+    utassert(FocusTrapTab(win, false) == 200 + 2 * 2);
+    utassert(FocusTrapActive(win) == 102);
+    delete win;
+    ArenaDelete(a);
+}
+
+// focus_trap.rs trap_exports_inner_semantics_through_the_outer_native_hooks.
+// The trap
+// refines the element in place, so the role, name and description set on it
+// are the ones the accessibility node carries.
+static void TheTrapKeepsTheElementsAccessibility() {
+    App app;
+    Window* win = new Window();
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    FocusHandle focus = {77};
+    El* dialog = Div(a)
+                     ->Role(AccessibilityRole::Dialog)
+                     ->AriaLabel(StrL("Edit server"))
+                     ->AriaDescription(StrL("Server settings"));
+    El* trap = FocusTrapContainer::New(&cx, StrL("outer-trap"), focus, dialog);
+    utassert(trap == dialog);
+    utassert(StrEqI(trap->id, "outer-trap"));
+    utassert(trap->accessibility.role == AccessibilityRole::Dialog);
+    utassert(StrEqI(trap->accessibility.label, "Edit server"));
+    utassert(StrEqI(trap->accessibility.description, "Server settings"));
+
+    El* alert = Div(a)
+                    ->Role(AccessibilityRole::AlertDialog)
+                    ->AriaLabel(StrL("Delete server?"))
+                    ->AriaDescription(StrL("Server settings"));
+    trap = FocusTrapContainer::New(&cx, StrL("outer-trap"), focus, alert);
+    utassert(trap->accessibility.role == AccessibilityRole::AlertDialog);
+    utassert(StrEqI(trap->accessibility.label, "Delete server?"));
+    utassert(StrEqI(trap->accessibility.description, "Server settings"));
+    delete win;
+    ArenaDelete(a);
+}
+
 void TestFocusTrap() {
     TestSuite("focus_trap");
     TabInsideATrapCyclesWithinIt();
@@ -306,4 +442,8 @@ void TestFocusTrap() {
     ATrapFocusesItsOwnContainer();
     TheTabIndexGroupsTheTraversal();
     AHandleParksFocusAndPutsItBack();
+    TabWrapsPastMoreThan100BackgroundStops();
+    AnEmptyTrapKeepsItsContainerFocused();
+    NestedTrapsKeepTheInnermostScope();
+    TheTrapKeepsTheElementsAccessibility();
 }

@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6220fc1584b32589d1f15942f883e64c059e5e3f` (2026-10-15,
-shell: Gate the process probe helper to Unix (#3530)).
-The shell's process tests gate their Unix `probe` helper so Windows
-builds do not see an unused function. This tree has no counterpart of
-that helper.
+Processed through `60c292d1d890293ce7673f24d4d70593dda79808` (2026-10-15,
+focus_trap: Keep focus contained and preserve accessibility (#3443)).
+Tab inside a trap walks that trap's own stops, with no attempt cap, and
+an empty trap keeps focus on its container. The trap id on the focused
+element is the innermost scope. The trap refines its element in place,
+so the element's accessibility role, label and description stay on it.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

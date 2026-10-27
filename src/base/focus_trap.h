@@ -34,9 +34,9 @@ struct FocusTrapContainer {
 // pass its own id and get a trap of its own without inventing a number.
 int FocusTrapId(Str name);
 
-// FocusTrapManager::find_active_trap: the trap the focused element sits in,
-// or 0 when focus is outside every trap. A trap with nothing focusable in it
-// is never active, which is what makes an empty container harmless.
+// FocusTrapManager::find_active_trap: the innermost trap the focused element
+// sits in, or 0 when focus is outside every trap. A child scope confines
+// navigation even when an ancestor contains the same element.
 int FocusTrapActive(const Window* win);
 
 // The trap `focusId` belongs to, or 0.
