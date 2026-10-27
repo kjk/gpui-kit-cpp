@@ -300,6 +300,9 @@ enum class MdKind : uint8_t {
     Row,
     Cell,
     Rule,
+    // BlockNode::Definition. It stays in the tree so an editor can see the
+    // reference, and it renders nothing. `raw` is the identifier.
+    Definition,
     // A raw HTML block inside markdown. Its children are what
     // base/text_format.cpp
     // made of the raw text; Rust reaches the same place through
@@ -332,8 +335,11 @@ struct MdNode {
     // Inline content, for Paragraph, Heading, Cell and Code.
     MdRun* runFirst = nullptr;
     MdRun* runLast = nullptr;
-    // Code: the fence's info string, e.g. "cpp".
+    // Code: the fence's language, the first word of the info string.
     Str lang = {};
+    // CodeBlock::meta: the rest of the fence info string. Empty when the
+    // fence named none. It round-trips and is not drawn.
+    Str meta = {};
     // Html: the block's raw source, kept after MdExpandHtml has turned it
     // into children — a plugin matches on the tag it names, which is what
     // Rust's `Node::Html(raw)` arm reads.
@@ -359,6 +365,10 @@ struct MdNode {
     // it has none, which leaves the text out of every range highlight.
     int leafStart = -1;
     int leafOrdinal = 0;
+    // Paragraph::with_leaf_key / CodeBlock::with_leaf_key. Zero is a key,
+    // so hasEditorKey is the Option.
+    bool hasEditorKey = false;
+    uint64_t editorKey = 0;
     // A top-level block's source start (BlockNode::span), what an append
     // parses again from; -1 for a block whose source is not known.
     int blockStart = -1;
@@ -1121,6 +1131,58 @@ struct TextViewLinkBinding {
     const char* href = nullptr;
 };
 
+// editor_host.rs. An external editor marks a leaf and reads where it was
+// laid out. The geometry is a snapshot of that frame's shaped run.
+struct RenderContext {
+    TextViewStyle style = {};
+    CodeBlockHighlighterFn codeHighlighter = nullptr;
+    void* codeHighlighterData = nullptr;
+    ImageSourceFn imageSource = nullptr;
+    void* imageSourceData = nullptr;
+};
+
+// Where a block stands among its siblings. The first takes no gap above
+// and the last none below.
+struct FlowPosition {
+    bool isFirst = true;
+    bool isLast = true;
+};
+
+struct LeafGeometry {
+    uint64_t key = 0;
+    Bounds bounds = {};
+    int textLen = 0;
+    float lineHeight = 0;
+    float caretHeight = 0;
+    Str text = {};
+    float font = 0;
+    float lineH = 0;
+    float maxW = 0;
+    uint16_t weight = 0;
+    bool wrap = false;
+    PaintCtx* paint = nullptr;
+    float originX = 0;
+    float originY = 0;
+
+    int len() const { return textLen; }
+    bool isEmpty() const { return textLen == 0; }
+    Point PositionForIndex(int index) const;
+    int IndexForPosition(Point at) const;
+};
+
+// parse_markdown. The same parse TextView uses.
+MdNode* ParseMarkdown(Arena* a, Str source);
+void MdSetLeafKey(MdNode* n, uint64_t key);
+// collect_leaf_geometry. Begin before the frame that renders the keyed
+// leaves, read them after it, then End. Scopes nest: End restores the
+// scope outside it. This tree has no exceptions, so a panic cannot be
+// the thing that restores the scope.
+void EditorHostBegin();
+void EditorHostEnd();
+bool EditorHostActive();
+const LeafGeometry* EditorHostLeaf(uint64_t key);
+int EditorHostLeafCount();
+
 struct TextView {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
@@ -1306,6 +1368,8 @@ struct TextView {
     TextView* Plugin(const MarkdownPlugin& plugin);
     TextView* Plugin(const TextViewPlugin& plugin);
     El* IntoEl();
+    // editor_host.rs BlockNode::render of a document the caller built.
+    El* RenderDocument(MdNode* doc);
 
   private:
     void AppendTableCells(El* row, MdNode* r, const float* maxW,

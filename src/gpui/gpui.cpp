@@ -2623,7 +2623,7 @@ Str FontFamilyName(uint8_t id) {
     return gFontFamilies[id];
 }
 
-static uint16_t ElTextWeight(const El* e) {
+uint16_t ElTextWeight(const El* e) {
     uint16_t w = kFontWeightNormal;
     switch ((FontWeight)e->style.fontWeight) {
         case FontWeight::Thin:

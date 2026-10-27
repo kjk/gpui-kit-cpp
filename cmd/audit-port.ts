@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "86b4ac581754fb8ffd1ad7ff55827b8589838648";
+const pinnedGpuiComponent = "45c70d4d7d804f7eb61915f9a303abb2e87da7c3";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
@@ -476,6 +476,28 @@ const declarationMappings: Record<string, DeclarationMapping> = {
     collapse:
       "the pre-wired segment is the El handed to the TimeFieldSegmentRenderer, already carrying its id, press handler and label; clear_children is TimeFieldSegmentClearChildren",
   },
+  "base/text/editor_host.rs::fn collect_leaf_geometry": {
+    spellings: ["EditorHostBegin", "EditorHostEnd", "EditorHostLeaf"],
+  },
+  "base/text/node.rs::enum BlockNode": {
+    spellings: ["MdNode", "MdKind"],
+  },
+  "base/text/node.rs::enum ColumnumnAlign": {
+    spellings: ["MdAlign"],
+  },
+  "base/text/node.rs::struct BlockState": {
+    collapse:
+      "block interaction state stays on the window selection and the MdNode; there is no separate retained BlockState",
+  },
+  "base/text/node.rs::struct InlineNode": {
+    spellings: ["MdRun"],
+  },
+  "base/text/node.rs::struct Paragraph": {
+    spellings: ["MdNode"],
+  },
+  "base/text/node.rs::struct Table": {
+    spellings: ["MdNode"],
+  },
   "base/text/text_view.rs::struct TextViewPrepaintState": {
     collapse:
       "C++ fuses element prepaint into El painting: the ordinary hit-test entry and line-clamp clip bottom are resolved by the shared paint walk rather than retained in a TextView-specific state",
@@ -613,9 +635,9 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 562, sha256: "e7bae46cb363909860175784c36c1dd16665b70565bba78ac05c37acf6305200" },
-    "pub-use": { count: 169, sha256: "c290abea497898c61169557849c55bdd449fe590cd551ed736432ddd12f1ad1c" },
-    test: { count: 1396, sha256: "2be532e444545980eb8c163931daf31dad8e769f44294e87170e653b74c170d9" },
+    declaration: { count: 574, sha256: "4f996708b5d1b74a88bd3d8847cb69728cc76f8680b37549e5a16ca90a93f409" },
+    "pub-use": { count: 170, sha256: "d1f6c70aa2dacba1f137cd5bec0d5ec09e10daa66193f9caa33af6e24e5c8612" },
+    test: { count: 1413, sha256: "c4d1d17490cee9f34c8adf7686a624cb35f8ac11ddb424550d85c796a7739aac" },
   },
   ui: {
     declaration: { count: 468, sha256: "173c4b972fe01b997cf2e243842278b374482248f9734d8abbc0b1d21f02f3eb" },

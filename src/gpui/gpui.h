@@ -6183,6 +6183,9 @@ void TextMeasClear(PaintCtx* ctx);
 // advances differently from the proportional face, and one mono family from
 // another, so measuring a code editor's row without them answers for a line
 // of text that was never drawn.
+// The font word MeasureText uses for this element: weight, mono, italic.
+uint16_t ElTextWeight(const El* e);
+
 bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                  int off, float* outX, float* outY, float* outH,
                  uint16_t font = 0, float lineHeight = 0,

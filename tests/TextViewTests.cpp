@@ -7065,9 +7065,348 @@ static void TableKeepsNarrowColumnsOnOneLine() {
     }
 }
 
+struct EditorHostView {
+    MdNode* doc = nullptr;
+
+    static El* Render(EditorHostView* self, Ctx* cx) {
+        return Div(cx->a)->W(kFill)->FlexCol()->Child(
+            TextView::New(cx, StrL(""))->RenderDocument(self->doc));
+    }
+};
+
+static MdRun* HostRun(Arena* a, const char* text) {
+    MdRun* run = ArenaNew<MdRun>(a);
+    run->text = Str(text, (int)strlen(text));
+    return run;
+}
+
+static MdNode* HostNode(Arena* a, MdKind kind) {
+    MdNode* n = ArenaNew<MdNode>(a);
+    n->kind = kind;
+    return n;
+}
+
+static void HostAdd(MdNode* parent, MdNode* child) {
+    child->parent = parent;
+    if (!parent->first) {
+        parent->first = child;
+    } else {
+        parent->last->next = child;
+    }
+    parent->last = child;
+}
+
+static MdNode* HostPara(Arena* a, const char* text, bool keyed, uint64_t key) {
+    MdNode* n = HostNode(a, MdKind::Paragraph);
+    if (text && text[0]) {
+        n->runFirst = n->runLast = HostRun(a, text);
+    }
+    if (keyed) {
+        MdSetLeafKey(n, key);
+    }
+    return n;
+}
+
+static EditorHostView* OpenEditorHost(App* app, MdNode* doc, float width,
+                                      Window** winOut) {
+    Entity<EditorHostView> view = EntityNew<EditorHostView>(app);
+    view.Get(app)->doc = doc;
+    EditorHostBegin();
+    *winOut = TestWindowOpen(app, view, width, 800);
+    return view.Get(app);
+}
+
+static void KeyedLeavesReportGeometryAndUnkeyedLeavesDoNot() {
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    MdNode* title = HostNode(a, MdKind::Heading);
+    title->level = 1;
+    title->runFirst = title->runLast = HostRun(a, "Title");
+    MdSetLeafKey(title, 1);
+    HostAdd(doc, title);
+    HostAdd(doc, HostPara(a, "first", true, 2));
+    HostAdd(doc, HostPara(a, "not an editor leaf", false, 0));
+    MdNode* code = HostNode(a, MdKind::Code);
+    code->lang = StrL("rust");
+    code->runFirst = code->runLast = HostRun(a, "let x = 1;");
+    MdSetLeafKey(code, 3);
+    HostAdd(doc, code);
+    MdNode* table = HostNode(a, MdKind::Table);
+    const char* cells[] = {"a", "b", "c", "d"};
+    uint64_t keys[] = {4, 5, 6, 7};
+    uint8_t aligns[] = {MdAlignDefault, MdAlignRight, MdAlignDefault,
+                        MdAlignRight};
+    for (int row = 0; row < 2; row++) {
+        MdNode* r = HostNode(a, MdKind::Row);
+        r->head = row == 0;
+        for (int col = 0; col < 2; col++) {
+            MdNode* cell =
+                HostPara(a, cells[row * 2 + col], true, keys[row * 2 + col]);
+            cell->kind = MdKind::Cell;
+            cell->align = aligns[col];
+            HostAdd(r, cell);
+        }
+        HostAdd(table, r);
+    }
+    HostAdd(doc, table);
+    MdNode* list = HostNode(a, MdKind::List);
+    MdNode* item = HostNode(a, MdKind::Item);
+    HostAdd(item, HostPara(a, "item", true, 8));
+    HostAdd(list, item);
+    HostAdd(doc, list);
+
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 300, &win);
+    utassert(win != nullptr);
+    utassert(EditorHostLeafCount() == 8);
+    for (uint64_t key = 1; key <= 8; key++) {
+        utassert(EditorHostLeaf(key) != nullptr);
+    }
+    utassert(EditorHostLeaf(1)->bounds.h > 0);
+    utassert(EditorHostLeaf(2)->bounds.h > 0);
+    utassert(EditorHostLeaf(3)->bounds.h > 0);
+    utassert(EditorHostLeaf(8)->bounds.h > 0);
+    utassert(EditorHostLeaf(1)->len() == 5);
+    utassert(EditorHostLeaf(3)->len() == 10);
+    float top1 = EditorHostLeaf(1)->bounds.y;
+    float top2 = EditorHostLeaf(2)->bounds.y;
+    float top3 = EditorHostLeaf(3)->bounds.y;
+    float top4 = EditorHostLeaf(4)->bounds.y;
+    float top7 = EditorHostLeaf(7)->bounds.y;
+    float top8 = EditorHostLeaf(8)->bounds.y;
+    utassert(top1 < top2 && top2 < top3 && top3 < top4 && top7 < top8);
+    utassert(EditorHostLeaf(4)->bounds.y == EditorHostLeaf(5)->bounds.y);
+    utassert(EditorHostLeaf(5)
+                 ->bounds.x > EditorHostLeaf(4)->bounds.Right() - 1.f);
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
+static void WrappedLeafMapsIndicesAndPositions() {
+    const char* text =
+        "the quick brown fox jumps over the lazy dog and keeps running far "
+        "away";
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    HostAdd(doc, HostPara(a, text, true, 1));
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 120, &win);
+    utassert(win != nullptr);
+    const LeafGeometry* leaf = EditorHostLeaf(1);
+    utassert(leaf != nullptr);
+    utassert(leaf->len() == (int)strlen(text));
+    utassert(!leaf->isEmpty());
+    utassert(leaf->lineHeight > 0 && leaf->caretHeight <= leaf->lineHeight);
+    float lastY = -1;
+    int lines = 0;
+    float seenY = -1000;
+    for (int index = 0; index <= leaf->len(); index++) {
+        Point caret = leaf->PositionForIndex(index);
+        utassert(caret.y >= lastY - 0.01f);
+        lastY = caret.y;
+        if (caret.y > seenY + 0.5f) {
+            lines++;
+            seenY = caret.y;
+        }
+        int hit =
+            leaf->IndexForPosition({caret.x, caret.y + leaf->lineHeight / 2.f});
+        Point back = leaf->PositionForIndex(hit);
+        utassert(back.x == caret.x && back.y == caret.y);
+    }
+    utassert(lines >= 3);
+    utassert(leaf->IndexForPosition({-500, -500}) == 0);
+    utassert(leaf->IndexForPosition({5000, 5000}) == leaf->len());
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
+static void RekeyingClonedLeavesPreservesEachIdentity() {
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    HostAdd(doc, HostPara(a, "shared source", true, 1));
+    HostAdd(doc, HostPara(a, "shared source", true, 2));
+    MdNode* code = HostNode(a, MdKind::Code);
+    code->runFirst = code->runLast = HostRun(a, "let x = 1;");
+    MdSetLeafKey(code, 3);
+    HostAdd(doc, code);
+    MdNode* copy = HostNode(a, MdKind::Code);
+    copy->runFirst = copy->runLast = HostRun(a, "let x = 1;");
+    MdSetLeafKey(copy, 4);
+    HostAdd(doc, copy);
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 300, &win);
+    utassert(win != nullptr);
+    utassert(EditorHostLeafCount() == 4);
+    utassert(EditorHostLeaf(1)->len() == (int)strlen("shared source"));
+    utassert(EditorHostLeaf(3)->len() == 10);
+    utassert(EditorHostLeaf(1)->bounds.y < EditorHostLeaf(2)->bounds.y);
+    utassert(EditorHostLeaf(3)->bounds.y < EditorHostLeaf(4)->bounds.y);
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
+static void GeometryIsAnImmutableSnapshot() {
+    const char* text =
+        "a long sentence that wraps when the viewport gets narrower";
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    HostAdd(doc, HostPara(a, text, true, 1));
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 600, &win);
+    const LeafGeometry* live = EditorHostLeaf(1);
+    utassert(live != nullptr);
+    LeafGeometry old = *live;
+    old.text = StrDup(live->text);
+    Bounds before = old.bounds;
+    EditorHostEnd();
+    EditorHostBegin();
+    TestSimulateResize(win, 80, 800);
+    const LeafGeometry* next = EditorHostLeaf(1);
+    utassert(next != nullptr);
+    utassert(next->bounds.h > before.h);
+    utassert(old.bounds.x == before.x && old.bounds.y == before.y &&
+             old.bounds.w == before.w && old.bounds.h == before.h);
+    Point origin = old.PositionForIndex(0);
+    utassert(origin.x == before.x && origin.y == before.y);
+    StrFree(old.text);
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
+static void EmptyKeyedLeafHasALineBox() {
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    HostAdd(doc, HostPara(a, "", false, 0));
+    HostAdd(doc, HostPara(a, "", true, 9));
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 300, &win);
+    utassert(win != nullptr);
+    utassert(EditorHostLeafCount() == 1);
+    const LeafGeometry* leaf = EditorHostLeaf(9);
+    utassert(leaf != nullptr && leaf->isEmpty());
+    utassert(leaf->bounds.h > 0);
+    utassert(leaf->PositionForIndex(0).x == leaf->bounds.x);
+    utassert(leaf->IndexForPosition({50, leaf->bounds.y}) == 0);
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
+static void CollectLeafGeometryNestsAndRestores() {
+    utassert(!EditorHostActive());
+    EditorHostBegin();
+    utassert(EditorHostActive());
+    EditorHostBegin();
+    utassert(EditorHostActive());
+    EditorHostEnd();
+    utassert(EditorHostActive());
+    EditorHostEnd();
+    utassert(!EditorHostActive());
+}
+
+static MdNode* FindKind(MdNode* n, MdKind kind) {
+    for (MdNode* c = n ? n->first : nullptr; c; c = c->next) {
+        if (c->kind == kind) {
+            return c;
+        }
+    }
+    return nullptr;
+}
+
+static void ParseMarkdownReadsWhatAnEditorRoundTrips(Arena* a) {
+    MdNode* doc = ParseMarkdown(
+        a, StrL("```rust title=\"x\"\nfn main() {}\n```\n\n"
+                "| a | b | c | d |\n|---|:--|:-:|--:|\n| 1 | 2 | 3 | 4 |\n\n"
+                "[ref]: https://example.com \"Title\"\n"));
+    utassert(doc != nullptr);
+    MdNode* code = FindKind(doc, MdKind::Code);
+    utassert(code != nullptr);
+    utassert(StrEq(code->lang, "rust"));
+    utassert(StrEq(code->meta, "title=\"x\""));
+    MdNode* table = FindKind(doc, MdKind::Table);
+    utassert(table != nullptr);
+    MdNode* header = table->first;
+    utassert(header != nullptr);
+    MdNode* cell = header->first;
+    uint8_t wantAlign[] = {MdAlignDefault, MdAlignLeft, MdAlignCenter,
+                           MdAlignRight};
+    const char* wantText[] = {"a", "b", "c", "d"};
+    for (int i = 0; i < 4; i++) {
+        utassert(cell != nullptr);
+        utassert(cell->align == wantAlign[i]);
+        utassert(TextIs(a, cell, wantText[i]));
+        cell = cell->next;
+    }
+    MdNode* body = header->next;
+    utassert(body != nullptr);
+    cell = body->first;
+    const char* wantBody[] = {"1", "2", "3", "4"};
+    for (int i = 0; i < 4; i++) {
+        utassert(cell != nullptr);
+        utassert(TextIs(a, cell, wantBody[i]));
+        cell = cell->next;
+    }
+    MdNode* def = FindKind(doc, MdKind::Definition);
+    utassert(def != nullptr && StrEq(def->raw, "ref"));
+    for (MdNode* c = doc->first; c; c = c->next) {
+        utassert(c->blockStart >= 0);
+    }
+}
+
+static void ParseMarkdownMatchesTextViewParse(Arena* a) {
+    Str source = StrL(
+        "# Title\n\nSome **bold** and `code` and ==mark==.\n\n- one\n- two\n");
+    MdNode* parsed = ParseMarkdown(a, source);
+    MdNode* direct = MdParse(a, source);
+    utassert(parsed != nullptr && direct != nullptr);
+    utassert(Children(parsed) == Children(direct));
+    utassert(TextIs(a, Child(parsed, 0), "Title"));
+    utassert(TextIs(a, Child(direct, 0), "Title"));
+}
+
+static void TableAndParagraphBuildersReadBack(Arena* a) {
+    MdNode* paragraph = HostPara(a, "hi", false, 0);
+    paragraph->runFirst->marks = MdBold;
+    utassert(StrEq(paragraph->runFirst->text, "hi"));
+    utassert(paragraph->runFirst->marks & MdBold);
+    utassert(len(paragraph->runFirst->imgSrc) == 0);
+    utassert(!paragraph->runFirst->hasCustom);
+    MdNode* table = HostNode(a, MdKind::Table);
+    MdNode* row = HostNode(a, MdKind::Row);
+    MdNode* cell = HostPara(a, "hi", false, 0);
+    cell->kind = MdKind::Cell;
+    cell->align = MdAlignCenter;
+    HostAdd(row, cell);
+    HostAdd(table, row);
+    int rows = 0;
+    for (MdNode* r = table->first; r; r = r->next) {
+        rows++;
+    }
+    utassert(rows == 1);
+    utassert(table->first->first->align == MdAlignCenter);
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
+    KeyedLeavesReportGeometryAndUnkeyedLeavesDoNot();
+    WrappedLeafMapsIndicesAndPositions();
+    RekeyingClonedLeavesPreservesEachIdentity();
+    GeometryIsAnImmutableSnapshot();
+    EmptyKeyedLeafHasALineBox();
+    CollectLeafGeometryNestsAndRestores();
+    ParseMarkdownReadsWhatAnEditorRoundTrips(a);
+    ParseMarkdownMatchesTextViewParse(a);
+    TableAndParagraphBuildersReadBack(a);
     TestMarkdownBlocks(a);
 #if GPUI_MARKDOWN_FULL
     TestMarkdownTableAlign(a);

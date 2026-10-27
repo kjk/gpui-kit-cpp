@@ -16,16 +16,25 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `86b4ac581754fb8ffd1ad7ff55827b8589838648` (2026-10-18,
-tree: select and toggle entries on click instead of mouse down (#3567)).
-A tree entry selects and toggles on a full click. A press, a drag, and
-a right click leave the selection where it was. The right click still
-records the entry.
+Processed through `45c70d4d7d804f7eb61915f9a303abb2e87da7c3` (2026-10-18,
+text: editor_host, a public API for external editors (#3580)).
+An external editor marks a paragraph, heading, cell, list item or code
+block and reads that leaf's bounds and caret map after the frame. A
+fence keeps the info string after its language, and a link definition
+stays in the block list.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
 ## Known gaps vs Rust
 
+- **An external editor's leaf is one shaped run.** `editor_host` reports a
+  keyed plain paragraph, heading, table cell, list item or unhighlighted
+  code block as one `LeafGeometry` (`text.cpp`). A mixed paragraph — words
+  beside an image or a custom inline, including an image-only keyed leaf —
+  is still a flow of elements and does not report atom boxes, empty lines
+  or per-piece hits. Decorations are not painted. The collection scope
+  nests and restores; there are no exceptions, so a panic cannot be what
+  restores it.
 - **High-DPI on Windows is Direct2D only.** A window draws at its monitor's
   dpi and follows `WM_DPICHANGED` (`window_win.cpp`, `SetDpi` in
   `paint_win.cpp`). The D3D11 / D3D12 renderers place geometry in device

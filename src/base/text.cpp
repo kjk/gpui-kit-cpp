@@ -2317,6 +2317,9 @@ static void MdCodeBlock(MdBuild* b, Str value, Str lang,
                         const md::Node* node = nullptr) {
     MdNode* n = Push(b, MdKind::Code);
     n->lang = lang;
+    if (node) {
+        n->meta = V(b, node, md::NodeStrKind::Meta);
+    }
     MdSetLeaf(b, n, node);
     Vec<SourceSegment> segments;
     if (node) {
@@ -2525,8 +2528,14 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
             Pop(b);
             break;
         }
-        case md::NodeKind::Definition:
-            // Collected before the walk; it renders as nothing.
+        case md::NodeKind::Definition: {
+            // Still collected for reference links. The node stays in the
+            // block list (BlockNode::Definition) and renders nothing.
+            MdNode* d = Push(b, MdKind::Definition);
+            d->raw = V(b, n, md::NodeStrKind::Identifier);
+            Pop(b);
+            break;
+        }
         default:
             break;
     }
@@ -3273,8 +3282,223 @@ static El* AlignRow(El* row, uint8_t align) {
     return row;
 }
 
+// The frame-local editor_host sink. UI layout runs on the main thread.
+// A scope owns the leaves reported while it is the innermost one. Nested
+// Begin/End pairs restore the outer scope. There is no panic path: this
+// tree does not use exceptions, so editor_seam's Drop-on-unwind is the
+// nest itself.
+struct EditorHostScope {
+    int leafBegin = 0;
+};
+
+static Vec<EditorHostScope> gEditorHostScopes;
+static Vec<LeafGeometry> gEditorLeaves;
+
+static bool EditorHostOn() {
+    return len(gEditorHostScopes) > 0;
+}
+
+static void EditorHostFreeRange(int begin, int end) {
+    for (int i = begin; i < end; i++) {
+        StrFree(gEditorLeaves[i].text);
+        gEditorLeaves[i].text = {};
+    }
+}
+
+void EditorHostBegin() {
+    if (!EditorHostOn()) {
+        EditorHostFreeRange(0, len(gEditorLeaves));
+        VecReset(gEditorLeaves);
+    }
+    EditorHostScope scope;
+    scope.leafBegin = len(gEditorLeaves);
+    VecAppend(gEditorHostScopes, scope);
+}
+
+void EditorHostEnd() {
+    if (!EditorHostOn()) {
+        return;
+    }
+    int begin = gEditorHostScopes[len(gEditorHostScopes) - 1].leafBegin;
+    EditorHostFreeRange(begin, len(gEditorLeaves));
+    if (begin < len(gEditorLeaves)) {
+        VecRemoveAtN(gEditorLeaves, begin, len(gEditorLeaves) - begin);
+    }
+    VecPop(gEditorHostScopes);
+}
+
+bool EditorHostActive() {
+    return EditorHostOn();
+}
+
+static int EditorHostLeafBegin() {
+    if (!EditorHostOn()) {
+        return 0;
+    }
+    return gEditorHostScopes[len(gEditorHostScopes) - 1].leafBegin;
+}
+
+const LeafGeometry* EditorHostLeaf(uint64_t key) {
+    for (int i = EditorHostLeafBegin(); i < len(gEditorLeaves); i++) {
+        if (gEditorLeaves[i].key == key) {
+            return &gEditorLeaves[i];
+        }
+    }
+    return nullptr;
+}
+
+int EditorHostLeafCount() {
+    return len(gEditorLeaves) - EditorHostLeafBegin();
+}
+
+void MdSetLeafKey(MdNode* n, uint64_t key) {
+    if (!n) {
+        return;
+    }
+    n->hasEditorKey = true;
+    n->editorKey = key;
+}
+
+MdNode* ParseMarkdown(Arena* a, Str source) {
+    return MdParse(a, source);
+}
+
+Point LeafGeometry::PositionForIndex(int index) const {
+    if (!paint || !text.s) {
+        return {originX, originY};
+    }
+    if (index < 0) {
+        index = 0;
+    }
+    if (index > textLen) {
+        index = textLen;
+    }
+    float x = 0;
+    float y = 0;
+    float h = 0;
+    if (!TextPointAt(paint, text, font, maxW, wrap, index, &x, &y, &h, weight,
+                     lineH)) {
+        return {originX, originY};
+    }
+    return {originX + x, originY + y};
+}
+
+int LeafGeometry::IndexForPosition(Point at) const {
+    if (!paint || textLen <= 0) {
+        return 0;
+    }
+    if (at.y < bounds.y && at.x < bounds.x) {
+        return 0;
+    }
+    if (at.y > bounds.Bottom() && at.x > bounds.Right()) {
+        return textLen;
+    }
+    float relX = at.x - originX;
+    float relY = at.y - originY;
+    if (relX < 0) {
+        relX = 0;
+    }
+    if (relY < 0) {
+        relY = 0;
+    }
+    int hit = TextIndexAt(paint, text, font, maxW, wrap, relX, relY, weight,
+                          lineH, TextAlign::Left);
+    if (hit < 0) {
+        return 0;
+    }
+    if (hit > textLen) {
+        return textLen;
+    }
+    return hit;
+}
+
+static void EditorHostFill(LeafGeometry* g, PaintCtx* ctx, El* e,
+                           uint64_t key) {
+    g->key = key;
+    g->text = StrDup(e->text);
+    g->textLen = len(g->text);
+    g->bounds = e->Bounds();
+    g->font = e->laidFont > 0 ? e->laidFont : e->style.fontSize;
+    g->lineH = e->style.lineHeight;
+    g->maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
+    g->weight = ElTextWeight(e);
+    g->wrap = e->style.wrap;
+    g->paint = ctx;
+    g->originX = e->x;
+    g->originY = e->y;
+    float x = 0;
+    float y = 0;
+    float h = 0;
+    if (ctx && TextPointAt(ctx, g->text, g->font, g->maxW, g->wrap, 0, &x, &y,
+                           &h, g->weight, g->lineH)) {
+        g->lineHeight = h;
+    }
+    if (g->lineHeight <= 0) {
+        float ratio = g->lineH > 0 ? g->lineH : kLineHeight;
+        g->lineHeight = g->font * ratio;
+    }
+    if (g->lineHeight <= 0) {
+        g->lineHeight = e->h;
+    }
+    // ascent + descent when the shaper did not split them: 0.85 of the line,
+    // never taller than the line.
+    g->caretHeight = g->lineHeight * 0.85f;
+    if (g->caretHeight > g->lineHeight) {
+        g->caretHeight = g->lineHeight;
+    }
+}
+
+static void EditorHostOnPrepaint(PaintCtx* ctx, El* e, void* user) {
+    if (!EditorHostOn() || !e || !user) {
+        return;
+    }
+    uint64_t key = *(uint64_t*)user;
+    int begin = gEditorHostScopes[len(gEditorHostScopes) - 1].leafBegin;
+    for (int i = begin; i < len(gEditorLeaves); i++) {
+        if (gEditorLeaves[i].key == key) {
+            StrFree(gEditorLeaves[i].text);
+            gEditorLeaves[i] = {};
+            EditorHostFill(&gEditorLeaves[i], ctx, e, key);
+            return;
+        }
+    }
+    LeafGeometry g = {};
+    EditorHostFill(&g, ctx, e, key);
+    VecAppend(gEditorLeaves, g);
+}
+
+// A plain run or an unhighlighted code block is one TextEl, so the leaf is
+// one piece. A mixed paragraph (words beside an image or a custom inline)
+// is a flow of elements; those pieces are not reported. See port-status.md.
+static void EditorHostWatch(Arena* a, El* el, MdNode* n) {
+    if (!EditorHostOn() || !a || !el || !n || !n->hasEditorKey) {
+        return;
+    }
+    if (el->prePaint) {
+        return;
+    }
+    uint64_t* key = ArenaNew<uint64_t>(a);
+    if (!key) {
+        return;
+    }
+    *key = n->editorKey;
+    el->prePaint = EditorHostOnPrepaint;
+    el->customUser = key;
+}
+
 El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                      uint8_t align) {
+    // An editor leaf is laid out even when empty, so the editor gets a
+    // line box for the caret. A plain empty paragraph stays empty.
+    if (!n->runFirst) {
+        if (!n->hasEditorKey || !EditorHostOn()) {
+            return Div(a);
+        }
+        El* t = TextEl(a, StrL(""))->Font(font)->Wrap()->W(kFill);
+        t->MinH(FontLen(cx, font * kLineHeight));
+        EditorHostWatch(a, t, n);
+        return t;
+    }
     // The common case is one unmarked stretch of source. Keeping it as a
     // single TextEl lets the text engine break the line on its own metrics,
     // which is both better looking and cheaper than a row of word elements.
@@ -3301,7 +3525,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         } else if (align == MdAlignRight) {
             t->TextRight();
         }
-        return t->W(kFill)->ReportLineSpan(FontLen(cx, font * kLineHeight));
+        t->W(kFill)->ReportLineSpan(FontLen(cx, font * kLineHeight));
+        EditorHostWatch(a, t, n);
+        return t;
     }
     // Otherwise the flow is a column of wrapping rows — a hard break ends a
     // row — and each row is a run of styled words. Every word carries its own
@@ -3739,7 +3965,9 @@ El* TextView::CodeBlock(MdNode* n) {
         if (RevealIn(n, &reveal)) {
             RevealMark(t, 0, reveal);
         }
-        box->Child(t->ReportLineSpan(FontLen(cx, codeFont * 1.6f)));
+        t->ReportLineSpan(FontLen(cx, codeFont * 1.6f));
+        EditorHostWatch(a, t, n);
+        box->Child(t);
     }
     El* actionsBox = nullptr;
     if (codeActions) {
@@ -4783,6 +5011,7 @@ struct RenderedIndexBuilder {
             case MdKind::Row:
             case MdKind::Cell:
             case MdKind::Rule:
+            case MdKind::Definition:
                 break;
         }
         if (len(text) > start) {
@@ -6352,6 +6581,7 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
         case MdKind::Row:
         case MdKind::Cell:
         case MdKind::Custom:
+        case MdKind::Definition:
             return nullptr;
     }
     return nullptr;
@@ -6377,6 +6607,14 @@ void TextView::PrepareInheritedColor(PaintCtx*, El* element, Rgba inherited,
     element->style.color = resolved->style.color;
     element->style.hasColor = resolved->style.hasColor;
     element->lifecycle = resolved->lifecycle;
+}
+
+El* TextView::RenderDocument(MdNode* doc) {
+    El* col = Div(a)->FlexCol()->W(kFill);
+    if (doc) {
+        Blocks(col, doc, 0, false);
+    }
+    return col;
 }
 
 El* TextView::IntoEl() {
