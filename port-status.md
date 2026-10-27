@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b539b2f88e0512d4251a6a4c2526271c12ff3c87` (2026-10-16,
-shell: Let a script release retained component state (#3544)).
-Every registered state answers `release()`, which drops the value and
-its subscriptions before the application does. A second call returns
-false, a later method throws, and render or layout refuses it. A
-descriptor may not declare its own method of that name. The design
-doc's retained-state section is not copied.
+Processed through `cbb6e382bf68c76649c2bcbe0e7a39fd31b9de02` (2026-10-16,
+docs: Correct three gpui-shell script-facing docs (#3545)).
+`show_fps_monitor`'s declaration says to call it from an event handler
+or a task, because `init()` runs before the window has a root. The
+styled `new` template constructs with `TitleBar.new()` and
+`Button.new(...)`. The `Background.stop` range was already documented.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

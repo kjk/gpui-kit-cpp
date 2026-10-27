@@ -22126,7 +22126,8 @@ declare module "gpui-fps" {
    * whether and where, and nothing the script renders can move it, rebuild
    * it, or count against it. Calling it again moves or reconfigures the HUD
    * that is already up; the monitor behind it keeps its history across a hide
-   * and a show. Needs a live host call: `init()`, an event handler or a task.
+   * and a show. Call it from an event handler or a task: `init()` runs before
+   * the window has its root, so it throws there.
    */
   export function show_fps_monitor(options?: FpsMonitorOptions): void;
   /** Takes the HUD down. `true` if one was up. */
@@ -22302,10 +22303,10 @@ declare module "fs/promises" {
     birthtimeMs: number;
     mtime: Date;
     atime: Date;
-    birthtime: Date;
-  }
 )GPUI_DTS";
-static const char kShellTypes66[] = R"GPUI_DTS(  export function readFile(path: string): Promise<Uint8Array>;
+static const char kShellTypes66[] = R"GPUI_DTS(    birthtime: Date;
+  }
+  export function readFile(path: string): Promise<Uint8Array>;
   export function readFile(path: string, encoding: "utf8" | { encoding: "utf8" }): Promise<string>;
   export function writeFile(path: string, contents: string | Uint8Array): Promise<void>;
   export function readdir(path: string): Promise<string[]>;

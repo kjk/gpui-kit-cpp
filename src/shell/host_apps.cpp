@@ -430,7 +430,7 @@ static Str EntryText(Str name, bool styled) {
                  "      .size_full()\n"
                  "      .bg(cx.theme().colors.background)\n"
                  "      .child(\n"
-                 "        new TitleBar().child(\n"
+                 "        TitleBar.new().child(\n"
                  "          "
                  "div().text_size(13).font_medium().text_color(cx.theme()."
                  "colors.foreground).child("));
@@ -449,7 +449,7 @@ static Str EntryText(Str name, bool styled) {
             ".child(div().text_color(cx.theme().colors.foreground).child(`"
             "Clicked ${this.count} times`))\n"
             "          .child(\n"
-            "            new Button(\"increment\").primary().label(\"Click "
+            "            Button.new(\"increment\").primary().label(\"Click "
             "me\").on_click((_event, cx) => {\n"
             "              this.count += 1;\n"
             "              cx.notify();\n"
