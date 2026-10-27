@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1a01f92586fa7fde478e5f0e5749240159355837",
+  sha: "1b6059c13315dc5c304759ad3aa666e0b6e301d8",
   date: "2026-10-15",
-  subject: "shell: Add WebView and WebViewState to the component catalog (#3532)",
+  subject: "window_border: Don't offer resizing for a window that isn't resizable (#3525)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

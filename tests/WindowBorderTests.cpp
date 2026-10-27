@@ -236,6 +236,19 @@ static void OnlyClientDecoratedWindowsUseTheClientBorder() {
     delete window;
 }
 
+// window_border.rs: the prepaint returns, and the hit zones are omitted,
+// when the window is not resizable or tiled on every side.
+static void AFixedWindowDoesNotOfferResize() {
+    WindowTiling none;
+    WindowTiling all;
+    all.top = all.bottom = all.left = all.right = true;
+    utassert(WindowBorderOffersResize(true, true, none));
+    utassert(!WindowBorderOffersResize(true, false, none));
+    utassert(!WindowBorderOffersResize(false, true, none));
+    utassert(!WindowBorderOffersResize(false, false, none));
+    utassert(!WindowBorderOffersResize(true, true, all));
+}
+
 void TestWindowBorder() {
     TestSuite("window_border");
     TilingTakesTheShadowOffThatSide();
@@ -247,4 +260,5 @@ void TestWindowBorder() {
     BuilderPublishesPlatformResizeSettings();
     BuilderCarriesTheExactTwoSourceShadows();
     OnlyClientDecoratedWindowsUseTheClientBorder();
+    AFixedWindowDoesNotOfferResize();
 }

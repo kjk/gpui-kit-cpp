@@ -68,6 +68,14 @@ enum class WindowEdge : int8_t {
 WindowEdge WindowResizeEdge(float x, float y, float w, float h, Edges insets,
                             WindowTiling tiling, float hitSize);
 
+// window_border.rs returns before it starts a resize, and omits the hit
+// zones, when the window is not resizable or every side is tiled. The edge
+// grab here is the platform hit-test, which asks this before it looks.
+inline bool WindowBorderOffersResize(bool clientDecorated, bool resizable,
+                                     WindowTiling tiling) {
+    return clientDecorated && resizable && !tiling.AllTiled();
+}
+
 struct WindowBorder {
     Arena* a = nullptr;
     Ctx* cx = nullptr;

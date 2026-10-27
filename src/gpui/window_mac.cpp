@@ -2202,15 +2202,21 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         return nullptr;
     }
     @autoreleasepool {
-        NSWindowStyleMask style =
-            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-            NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+        NSWindowStyleMask style = NSWindowStyleMaskTitled |
+                                  NSWindowStyleMaskClosable |
+                                  NSWindowStyleMaskMiniaturizable;
+        if (opts.resizable) {
+            style |= NSWindowStyleMaskResizable;
+        }
         if (opts.clientTitleBar) {
             style |= NSWindowStyleMaskFullSizeContentView;
         }
         if (opts.borderless) {
-            style = NSWindowStyleMaskBorderless | NSWindowStyleMaskResizable |
-                    NSWindowStyleMaskMiniaturizable;
+            style =
+                NSWindowStyleMaskBorderless | NSWindowStyleMaskMiniaturizable;
+            if (opts.resizable) {
+                style |= NSWindowStyleMaskResizable;
+            }
         }
         // Bounds::centered clamps to the display's visible bounds: the work
         // area below the menu bar and above the Dock. [window center] below

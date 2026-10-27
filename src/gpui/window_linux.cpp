@@ -769,7 +769,12 @@ static bool ClientDecorated(Window* win) {
 // way _NET_WM_MOVERESIZE numbers its directions.
 static int ResizeEdge(Window* win, int x, int y) {
     PlatWindow* pw = win->plat;
-    if (!pw || !ClientDecorated(win) || win->maximized) {
+    // A maximized window is tiled on every side. A window that is not
+    // resizable never starts a resize, which is window_border.rs's prepaint
+    // returning before resize_edge.
+    if (!pw || win->maximized ||
+        !component::WindowBorderOffersResize(
+            ClientDecorated(win), win->opts.resizable, win->tiling)) {
         return -1;
     }
     // No shadow padding here: the frame is the window, so the inner frame is
@@ -2430,6 +2435,15 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
                     (unsigned char*)&xdndVersion, 1);
     if (opts.borderless || opts.clientTitleBar) {
         SetUndecorated(pw->xwin);
+    }
+    // WindowOptions::is_resizable == false. The edge band also refuses the
+    // grab; the hints stop the window manager from resizing it another way.
+    if (!opts.resizable) {
+        XSizeHints hints = {};
+        hints.flags = PMinSize | PMaxSize;
+        hints.min_width = hints.max_width = dipW;
+        hints.min_height = hints.max_height = dipH;
+        XSetWMNormalHints(gDpy, pw->xwin, &hints);
     }
     AppSetTitle(win, title);
 

@@ -6368,6 +6368,10 @@ struct WinOpts {
     // and — off macOS — the minimize / maximize / close controls, which is
     // what component::TitleBar builds.
     bool clientTitleBar = false;
+    // GPUI's WindowOptions::is_resizable. A window that is not resizable does
+    // not grow a thick frame, and a client-decorated one does not start a
+    // resize from its edge band. The default matches GPUI: resizable.
+    bool resizable = true;
     // GPUI's WindowBackgroundAppearance::Transparent: the window is cleared
     // to nothing each frame and keeps the alpha of what is drawn, so a root
     // with a translucent background, or none, lets what is behind the window

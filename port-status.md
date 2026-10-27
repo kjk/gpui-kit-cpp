@@ -16,14 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1a01f92586fa7fde478e5f0e5749240159355837` (2026-10-15,
-shell: Add WebView and WebViewState to the component catalog (#3532)).
-A script can embed a native page: `WebViewState` owns it and
-`WebView` places it. Only http(s) and `about:` navigate. Page messages
-and finished loads are queued and delivered to the script. The page
-follows the application theme unless `set_theme` overrides it, and
-`set_zoom` is the engine zoom. On Linux that zoom multiplies the scale
-match, and the theme is GTK's prefer-dark setting.
+Processed through `1b6059c13315dc5c304759ad3aa666e0b6e301d8` (2026-10-15,
+window_border: Don't offer resizing for a window that isn't resizable (#3525)).
+`WinOpts::resizable` is GPUI's `is_resizable` and defaults to true. A
+client-decorated window starts a resize only when that is set and the
+window is not tiled on every side. Linux refuses the edge grab and pins
+the size hints; Windows drops `WS_THICKFRAME` and the client top band;
+macOS omits `NSWindowStyleMaskResizable`.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

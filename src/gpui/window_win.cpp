@@ -827,7 +827,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             // WM_NCCALCSIZE gave the top frame to the client, so the resize
             // band along it is ours to report. The other three sides are
             // still the default handler's, which answered above.
-            if (ClientDecorated(win) && !IsZoomed(hwnd) && pt.y < BorderYPx()) {
+            // The top band is client-drawn. A window that is not resizable
+            // does not offer it, matching window_border.rs.
+            if (ClientDecorated(win) && win->opts.resizable &&
+                !IsZoomed(hwnd) && pt.y < BorderYPx()) {
                 RECT rc = {};
                 GetClientRect(hwnd, &rc);
                 if (pt.x < BorderPx()) {
@@ -1979,13 +1982,20 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     win->plat = new PlatWindow();
 
     DWORD style = WS_OVERLAPPEDWINDOW;
+    if (!opts.resizable) {
+        style &= ~WS_THICKFRAME;
+    }
     if (ClientDecorated(win)) {
         // No caption, but every other part of a normal frame: the thick
         // frame keeps the resize borders, the drop shadow, snapping and the
         // minimize / maximize animations. WM_NCCALCSIZE above then pulls the
-        // client area up over the band the caption would have used.
+        // client area up over the band the caption would have used. A window
+        // that is not resizable keeps the rest and drops the thick frame.
         style = WS_OVERLAPPEDWINDOW & ~WS_CAPTION;
-        style |= WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+        style |= WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+        if (opts.resizable) {
+            style |= WS_THICKFRAME;
+        }
     }
     // Bounds::centered: the primary display's visible bounds — the work area
     // clear of the taskbar — is what the window is centred in and clamped
