@@ -3089,15 +3089,32 @@ void DiffIsAnExactLeaf() {
     utassert(StrEq(error, StrL("Diff does not accept children")));
 }
 
+// webview.rs only_web_documents_are_navigable
+void OnlyWebDocumentsAreNavigable() {
+    using component_shell::media::webview::WebDocumentNavigable;
+    const char* allowed[] = {"https://gpui-kit.com",
+                             "http://localhost:3000/index.html", "about:blank"};
+    for (const char* url : allowed) utassert(WebDocumentNavigable(Str(url)));
+    const char* denied[] = {"",
+                            "gpui-kit.com",
+                            "file:///etc/passwd",
+                            "javascript:alert(1)",
+                            "data:text/html,<p>x</p>",
+                            "mailto:me@example.com",
+                            "https://"};
+    for (const char* url : denied) utassert(!WebDocumentNavigable(Str(url)));
+}
+
 // media_public_host.rs catalog_exposes_only_renderable_media_surfaces
 void CatalogExposesOnlyRenderableMediaSurfaces() {
     FamilyCatalog catalog(&component_shell::RegisterMedia);
     utassert(catalog.ok);
-    const char* names[] = {"Image", "Editor", "Diff"};
-    utassert(catalog.NamesAre(names, 3));
-    utassert(catalog.frozen.StateCount() == 2 &&
+    const char* names[] = {"Image", "Editor", "Diff", "WebView"};
+    utassert(catalog.NamesAre(names, 4));
+    utassert(catalog.frozen.StateCount() == 3 &&
              strcmp(catalog.frozen.State(0)->exportName, "EditorState") == 0 &&
-             strcmp(catalog.frozen.State(1)->exportName, "DiffState") == 0);
+             strcmp(catalog.frozen.State(1)->exportName, "DiffState") == 0 &&
+             strcmp(catalog.frozen.State(2)->exportName, "WebViewState") == 0);
 }
 
 // media_public_host.rs's EditorProbe: what each render saw of the state.
@@ -6583,11 +6600,11 @@ void QuestionnaireRefusesWhatRustRefuses() {
 // With every family registered, the catalog's whole `declare module
 // "gpui-component"` block and its Element union are byte for byte what the
 // Rust catalog writes: every export in the same order, nothing missing and
-// nothing extra (132 element types and 15 state exports).
+// nothing extra (133 element types and 16 state exports).
 void WholeCatalogDeclarationsEqualRust() {
     const FrozenComponentRegistry* frozen = component_shell::Components();
-    utassert(frozen->DescriptorCount() == 132);
-    utassert(frozen->StateCount() == 15);
+    utassert(frozen->DescriptorCount() == 133);
+    utassert(frozen->StateCount() == 16);
 
     StrBuilder rust;
     AppendRustComponentDeclarations(&rust);
@@ -8118,6 +8135,7 @@ void TestComponentShell() {
     ImageSourcesAreConfinedToTheAssetRoot();
     EditorIsAnExactLeaf();
     DiffIsAnExactLeaf();
+    OnlyWebDocumentsAreNavigable();
     CatalogExposesOnlyRenderableMediaSurfaces();
     LocalImageAndRetainedEditorCrossThePublicHost();
     MediaRecordersRefuseWhatRustRefuses();

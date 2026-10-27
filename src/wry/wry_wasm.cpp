@@ -73,6 +73,9 @@ bool WebViewFocusParent(WebView*) {
 bool WebViewZoom(WebView*, double) {
     return false;
 }
+bool WebViewSetUserZoom(WebView*, double) {
+    return false;
+}
 bool WebViewMatchPageScale(WebView*, float) {
     return false;
 }

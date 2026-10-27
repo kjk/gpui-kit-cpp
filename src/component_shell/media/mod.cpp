@@ -16,7 +16,8 @@ bool RegisterMedia(shell::ComponentRegistry* registry,
                    shell::RegistryError* error) {
     return RegisterMediaImage(registry, error) &&
            RegisterMediaEditor(registry, error) &&
-           RegisterMediaDiff(registry, error);
+           RegisterMediaDiff(registry, error) &&
+           RegisterMediaWebView(registry, error);
 }
 
 } // namespace gpui::component_shell

@@ -120,11 +120,15 @@ static bool EnsureGtk() {
     // The host already chose its locale; GTK would only call setlocale again.
     gtk_disable_setlocale();
     if (!gtk_init_check(nullptr, nullptr)) {
+        // The sentence the shell matches on contains "X11", which the log
+        // line historically did not: a Wayland session fails here.
+        WebViewSetLastError("GTK could not open an X11 display");
         logf("wry: GTK could not open the X display\n");
         return false;
     }
     GdkDisplay* display = gdk_display_get_default();
     if (!display || !GDK_IS_X11_DISPLAY(display)) {
+        WebViewSetLastError("GTK did not open an X11 display");
         logf("wry: GTK did not open an X11 display\n");
         return false;
     }
@@ -252,6 +256,11 @@ struct WebView {
     bool followsParent = false;
 
     bool inspectorOpen = false;
+    // The page zoom the application asked for. `match_scale_factor` multiplies
+    // it by GPUI's scale over GDK's integer one, and a later scale match must
+    // not wipe it.
+    double userZoom = 1;
+    float matchedScale = 1;
 
     // `pending_scripts`: an eval before the first navigation commits has
     // nothing to run in, so it is held and replayed on commit. Rust keeps an
@@ -1294,6 +1303,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     ::Window parent = (::Window)(uintptr_t)parentWindow;
     if (!parent) {
         // `Error::UnsupportedWindowHandle`.
+        WebViewSetLastError("a webview needs an X11 window to go in");
         logf("wry: a webview needs an X11 window to go in\n");
         return nullptr;
     }
@@ -1305,6 +1315,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
 
     ::Window container = CreateContainer(xdpy, parent, attrs, asChild);
     if (!container) {
+        WebViewSetLastError("could not make the webview's X11 window");
         logf("wry: could not make the webview's X11 window\n");
         return nullptr;
     }
@@ -1329,6 +1340,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
         WebViewSetVisible(wv, false);
     }
     wv->hasX11 = true;
+    WebViewSetLastError(nullptr);
     if (!asChild) {
         XTrap trap(display);
         XSelectInput(xdpy, parent, StructureNotifyMask);
@@ -1580,6 +1592,14 @@ bool WebViewZoom(WebView* wv, double scaleFactor) {
     return true;
 }
 
+bool WebViewSetUserZoom(WebView* wv, double zoom) {
+    if (!wv || !(zoom > 0)) {
+        return false;
+    }
+    wv->userZoom = zoom;
+    return WebViewMatchPageScale(wv, wv->matchedScale);
+}
+
 bool WebViewMatchPageScale(WebView* wv, float gpuiScale) {
     if (!wv || !wv->webview) {
         return false;
@@ -1591,7 +1611,10 @@ bool WebViewMatchPageScale(WebView* wv, float gpuiScale) {
     if (gpuiScale <= 0) {
         gpuiScale = 1;
     }
-    return WebViewZoom(wv, (double)gpuiScale / (double)gdk);
+    wv->matchedScale = gpuiScale;
+    // `match_scale_factor`: GPUI's scale over GDK's integer one, times the
+    // page zoom the application asked for.
+    return WebViewZoom(wv, (double)gpuiScale / (double)gdk * wv->userZoom);
 }
 
 void WebViewSetPageClick(WebView* wv, WebViewPageClick fn, void* user) {
@@ -1612,9 +1635,17 @@ bool WebViewSetBackgroundColor(WebView* wv, Rgba color) {
     return true;
 }
 
-// `WebViewExtWindows` / `WebViewExtMacOS`: nothing of the kind on Linux.
-bool WebViewSetTheme(WebView*, Theme) {
-    return false;
+// GTK 3 does not read prefer-dark from the desktop, so WebKitGTK would
+// otherwise answer `prefers-color-scheme: light` for every page. The setting
+// is process-wide: every webview in the application follows it. `Auto` and
+// `Light` clear it, which is what Rust's `matches!(theme, Dark)` does.
+bool WebViewSetTheme(WebView*, Theme theme) {
+    GtkSettings* settings = gtk_settings_get_default();
+    if (settings) {
+        g_object_set(settings, "gtk-application-prefer-dark-theme",
+                     theme == Theme::Dark, nullptr);
+    }
+    return true;
 }
 bool WebViewSetMemoryUsageLevel(WebView*, MemoryUsageLevel) {
     return false;
@@ -1909,6 +1940,7 @@ static void Unsupported() {
 }
 
 WebView* WebViewNew(void*, const WebViewAttributes*, bool) {
+    WebViewSetLastError("built without WebKitGTK, so there is no webview here");
     Unsupported();
     return nullptr;
 }
@@ -1953,6 +1985,9 @@ bool WebViewFocusParent(WebView*) {
     return false;
 }
 bool WebViewZoom(WebView*, double) {
+    return false;
+}
+bool WebViewSetUserZoom(WebView*, double) {
     return false;
 }
 bool WebViewMatchPageScale(WebView*, float) {

@@ -231,4 +231,14 @@ Str SyntheticMouseEventJsTemp(const SyntheticMouseEvent* ev) {
     return b.TakeStr();
 }
 
+static const char* gWebViewLastError = nullptr;
+
+Str WebViewLastError() {
+    return gWebViewLastError ? Str(gWebViewLastError) : Str();
+}
+
+void WebViewSetLastError(const char* message) {
+    gWebViewLastError = message;
+}
+
 } // namespace wry

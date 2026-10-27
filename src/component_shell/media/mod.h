@@ -39,4 +39,11 @@ namespace gpui::component_shell::media::diff {
 bool RequireLeaf(int children, Str* error);
 
 } // namespace gpui::component_shell::media::diff
+
+namespace gpui::component_shell::media::webview {
+
+// webview.rs `is_navigable`: `about:` or an http(s) URL with a host.
+bool WebDocumentNavigable(Str url);
+
+} // namespace gpui::component_shell::media::webview
 #endif // GPUI_COMPONENT_SHELL_MEDIA_MOD_H_

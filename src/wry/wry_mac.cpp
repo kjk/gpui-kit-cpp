@@ -21,8 +21,9 @@
  *     gets key events; the content view here is the gpui view that draws
  *     everything else and owns the window's input, so evicting it would take
  *     the application with it.
- *   - **`set_theme` and `set_memory_usage_level` answer false.** Both are
- *     `WebViewExtWindows` in Rust and have no WKWebView counterpart.
+ *   - **`set_memory_usage_level` answers false.** It is
+ *     `WebViewExtWindows` and has no WKWebView counterpart. `set_theme`
+ *     is the view's `NSAppearance` (`composition.rs`).
  *   - **`reparent` is ours**, not the crate's — Rust has it on Windows only.
  *     It is `removeFromSuperview` plus `addSubview`, which is what the one
  *     caller (a webview following its gpui window) means by it.
@@ -1468,6 +1469,10 @@ bool WebViewZoom(WebView* wv, double scaleFactor) {
     return true;
 }
 
+bool WebViewSetUserZoom(WebView* wv, double zoom) {
+    return WebViewZoom(wv, zoom);
+}
+
 // Linux matches the page to a fractional GPUI scale. WKWebView already shares
 // the window's scale, so the page is left alone.
 bool WebViewMatchPageScale(WebView*, float) {
@@ -1484,9 +1489,20 @@ bool WebViewSetBackgroundColor(WebView*, Rgba) {
     return true;
 }
 
-// WebViewExtWindows, both of them: no WKWebView counterpart.
-bool WebViewSetTheme(WebView*, Theme) {
-    return false;
+// `composition::set_theme`: the view's appearance. `Auto` clears it so the
+// window's appearance shows through again.
+bool WebViewSetTheme(WebView* wv, Theme theme) {
+    if (!wv || !wv->webview) {
+        return false;
+    }
+    NSAppearanceName name = nil;
+    if (theme == Theme::Dark) {
+        name = NSAppearanceNameDarkAqua;
+    } else if (theme == Theme::Light) {
+        name = NSAppearanceNameAqua;
+    }
+    wv->webview.appearance = name ? [NSAppearance appearanceNamed:name] : nil;
+    return true;
 }
 
 bool WebViewSetMemoryUsageLevel(WebView*, MemoryUsageLevel) {

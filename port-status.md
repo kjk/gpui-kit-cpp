@@ -16,12 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9b7655158f5581c58025af7f8fe1753de274e291` (2026-10-15,
-scroll: Scroll horizontal strips with a vertical mouse wheel (#3518)).
-A plain mouse wheel's vertical lines move a horizontal strip sideways
-and, once that strip is at its end, scroll the page. Trackpad pixels
-and a horizontal wheel stay with the strip. The tab bar, attachment
-row, app menu bar and horizontal Scrollable use that mask.
+Processed through `1a01f92586fa7fde478e5f0e5749240159355837` (2026-10-15,
+shell: Add WebView and WebViewState to the component catalog (#3532)).
+A script can embed a native page: `WebViewState` owns it and
+`WebView` places it. Only http(s) and `about:` navigate. Page messages
+and finished loads are queued and delivered to the script. The page
+follows the application theme unless `set_theme` overrides it, and
+`set_zoom` is the engine zoom. On Linux that zoom multiplies the scale
+match, and the theme is GTK's prefer-dark setting.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
@@ -348,9 +350,11 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   physical pixels because lb-wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor
   for the X11 child, so the kit conversion is not applied again. Page
-  zoom is `WebViewMatchPageScale`. Wayland is unsupported here as
-  upstream: the window is X11, which is the backend WebKitGTK can embed
-  into.
+  zoom is `WebViewMatchPageScale`, which multiplies the script's zoom
+  so a later scale match does not reset it. Wayland is unsupported here
+  as upstream: the window is X11, which is the backend WebKitGTK can
+  embed into. A failed create whose reason names X11 tells the script
+  to start the shell with `WAYLAND_DISPLAY=` empty.
 - **macOS webview drag positions account for the child view.** The pinned
   Wry backend flips a window-relative point using the view's height; this
   port first converts it into the child view, then normalizes the top-left

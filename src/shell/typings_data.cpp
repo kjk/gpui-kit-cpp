@@ -394,7 +394,8 @@ declare module "gpui-kit" {
 
     /**
      * Calls `body(cx)` and adopts the promise it returns, so a rejection is
-     * reported rather than swallowed. `App::spawn`.
+)GPUI_DTS";
+static const char kShellTypes1[] = R"GPUI_DTS(     * reported rather than swallowed. `App::spawn`.
      *
      * The `cx` the body receives is an [`AsyncContext`] — valid across `await`,
      * the way GPUI's `AsyncApp` is — so the whole body can keep using it.
@@ -411,8 +412,7 @@ declare module "gpui-kit" {
   /**
    * A context that may be held across an `await`.
    *
-)GPUI_DTS";
-static const char kShellTypes1[] = R"GPUI_DTS(   * The mirror of GPUI's `AsyncApp`. An ordinary [`Context`] speaks for one
+   * The mirror of GPUI's `AsyncApp`. An ordinary [`Context`] speaks for one
    * host call and reports clearly once that call has returned — which is what
    * catches a `cx` stashed in a closure. This one names no call at all: it
    * resolves whichever is running when a member is used, and refuses only when
@@ -676,7 +676,8 @@ static const char kShellTypes1[] = R"GPUI_DTS(   * The mirror of GPUI's `AsyncAp
     /** Fills an `Avatar`'s `fallback` slot, which takes an `AvatarFallback`. */
     fallback<Self extends Element>(this: Self, element: Element): Self;
     /** Fills an `AccordionItem`'s `header` slot, which takes an `AccordionHeader`. */
-    header<Self extends Element>(this: Self, element: Element): Self;
+)GPUI_DTS";
+static const char kShellTypes2[] = R"GPUI_DTS(    header<Self extends Element>(this: Self, element: Element): Self;
     /** Fills a component's named `footer` slot. */
     footer<Self extends Element>(this: Self, element: Element): Self;
     /** Fills an `AccordionItem`'s `panel` slot, which takes an `AccordionPanel`. */
@@ -686,8 +687,7 @@ static const char kShellTypes1[] = R"GPUI_DTS(   * The mirror of GPUI's `AsyncAp
      * that is on screen while the surface is closed, and that opens it.
      *
      * Consumed exactly as `content` is. A surface with no trigger draws
-)GPUI_DTS";
-static const char kShellTypes2[] = R"GPUI_DTS(     * nothing at all. A `Popup` takes its trigger in `Popup.new(id, trigger)`
+     * nothing at all. A `Popup` takes its trigger in `Popup.new(id, trigger)`
      * instead, because its trigger's bounds are what the content is anchored
      * to.
      */
@@ -21434,9 +21434,9 @@ static const char kShellTypes62[] = R"GPUI_DTS(   * dismissal, no open state. Th
      * about them.
      */
     set_step(step: number | null): void;
-    /** The lowest value stepping and blurring clamp to. `null` removes it. */
 )GPUI_DTS";
-static const char kShellTypes63[] = R"GPUI_DTS(    set_min(min: number | null): void;
+static const char kShellTypes63[] = R"GPUI_DTS(    /** The lowest value stepping and blurring clamp to. `null` removes it. */
+    set_min(min: number | null): void;
     /** The highest value stepping and blurring clamp to. `null` removes it. */
     set_max(max: number | null): void;
     /** Draws the text as a password. */
@@ -21722,12 +21722,12 @@ static const char kShellTypes63[] = R"GPUI_DTS(    set_min(min: number | null): 
     readonly locked: boolean;
     readonly draggable: boolean;
     readonly droppable: boolean;
-    readonly closable: boolean;
+)GPUI_DTS";
+static const char kShellTypes64[] = R"GPUI_DTS(    readonly closable: boolean;
     readonly tabs: readonly DockTab[];
   }
 
-)GPUI_DTS";
-static const char kShellTypes64[] = R"GPUI_DTS(  /** One dock, as the `dock` handler is given it. */
+  /** One dock, as the `dock` handler is given it. */
   export interface DockRegion {
     readonly placement: DockPlacement;
     /** Its extent along its own axis: width for left and right, height for bottom. */
@@ -21995,13 +21995,13 @@ declare module "gpui-component" {
   }
   export interface InlineTokenHoverEvent extends InlineTokenSpan {
     hovered: boolean;
-    bounds: { x: number; y: number; width: number; height: number };
+)GPUI_DTS";
+static const char kShellTypes65[] = R"GPUI_DTS(    bounds: { x: number; y: number; width: number; height: number };
   }
 }
 
 declare module "gpui-shell" {
-)GPUI_DTS";
-static const char kShellTypes65[] = R"GPUI_DTS(  /** The string forms accepted by gpui-shell's length bridge. */
+  /** The string forms accepted by gpui-shell's length bridge. */
   export type LengthString = `${number}px` | `${number}rem` | `${number}%`;
 
   /** The gpui-shell call scope reported by `cx.phase()`; unrelated to gpui::DispatchPhase. */
@@ -22297,7 +22297,8 @@ declare module "net" {
   export default net;
 }
 declare module "websocket" {
-  export interface WebSocketSocket {
+)GPUI_DTS";
+static const char kShellTypes66[] = R"GPUI_DTS(  export interface WebSocketSocket {
     /** Waits for the next text or binary message. */
     read(): Promise<string | Uint8Array>;
     /** Sends a text or binary message. */
@@ -22367,8 +22368,7 @@ interface ImportMeta {
  * unlike `cx`, nothing hands it to you.
  *
  * Ambient: every call reads the host call that is running now, and throws
-)GPUI_DTS";
-static const char kShellTypes66[] = R"GPUI_DTS( * outside one. There is no handle to hold, so there is nothing to hold past the
+ * outside one. There is no handle to hold, so there is nothing to hold past the
  * call that would have made it stale.
  *
  * An overlay belongs to the window rather than to the view that opened it —

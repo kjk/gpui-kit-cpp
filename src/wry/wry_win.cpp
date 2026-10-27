@@ -5122,6 +5122,10 @@ bool WebViewZoom(WebView* wv, double scaleFactor) {
     return SUCCEEDED(wv->controller->put_ZoomFactor(scaleFactor));
 }
 
+bool WebViewSetUserZoom(WebView* wv, double zoom) {
+    return WebViewZoom(wv, zoom);
+}
+
 // Linux matches the page to a fractional GPUI scale. WebView2 already shares
 // the window's scale, so the page is left alone.
 bool WebViewMatchPageScale(WebView*, float) {

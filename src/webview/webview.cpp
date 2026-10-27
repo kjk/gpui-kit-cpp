@@ -170,6 +170,29 @@ void WebViewForward(WebView* self) {
     }
 }
 
+bool WebViewSetPageZoom(WebView* self, double zoom) {
+    wry::WebView* raw = WebViewRaw(self);
+    if (!self || !raw) {
+        return false;
+    }
+    // Stored first, as Rust's `zoom` cell is, so a later scale match on
+    // Linux multiplies this factor even when the engine call fails.
+    self->zoom = zoom;
+    return wry::WebViewSetUserZoom(raw, zoom);
+}
+
+double WebViewPageZoom(const WebView* self) {
+    return self ? self->zoom : 1;
+}
+
+bool WebViewSetPageTheme(WebView* self, wry::Theme theme) {
+    wry::WebView* raw = WebViewRaw(self);
+    if (!raw) {
+        return false;
+    }
+    return wry::WebViewSetTheme(raw, theme);
+}
+
 struct PageClickJob {
     App* app = nullptr;
     EntityId id = {};
@@ -292,8 +315,9 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
         return;
     }
     // `match_scale_factor`: GDK's factor is an integer, so a fractional
-    // GPUI scale would otherwise draw the page large. Other platforms
-    // return without changing the zoom.
+    // GPUI scale would otherwise draw the page large. The script's page
+    // zoom multiplies that factor. Other platforms return without
+    // changing the zoom.
     float gpuiScale = ctx && ctx->dpi > 0 ? ctx->dpi / 96.f : 1.f;
     if (!self->hasPageScale || self->pageScale != gpuiScale) {
         if (wry::WebViewMatchPageScale(raw, gpuiScale)) {

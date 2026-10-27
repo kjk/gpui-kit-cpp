@@ -84,6 +84,9 @@ struct WebView {
     // to. Other platforms share the window scale and skip the zoom.
     float pageScale = 0;
     bool hasPageScale = false;
+    // `WebView::zoom`: the page zoom last asked for, before display-scale
+    // compensation. `1` is the page's natural size.
+    double zoom = 1;
     // The window the page-click forward posts into, and this entity, so a
     // click queued from GTK is dropped once either is gone.
     Window* window = nullptr;
@@ -140,6 +143,12 @@ void WebViewLoadUrl(WebView* self, Str url);
 void WebViewBack(WebView* self);
 /** `WebView::forward` — `history.forward()`, the same way as `back`. */
 void WebViewForward(WebView* self);
+/** `WebView::set_zoom` / `zoom`. The engine keeps the factor across
+    navigations. On Linux it multiplies the scale match. */
+bool WebViewSetPageZoom(WebView* self, double zoom);
+double WebViewPageZoom(const WebView* self);
+/** `WebView::set_theme`. */
+bool WebViewSetPageTheme(WebView* self, wry::Theme theme);
 /** `WebView::raw`: the wry webview, for everything this façade does not
     wrap. Null until one has been made. */
 wry::WebView* WebViewRaw(const WebView* self);

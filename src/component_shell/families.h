@@ -153,6 +153,7 @@ bool RegisterLayoutResizable(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterMediaImage(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterMediaEditor(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterMediaDiff(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterMediaWebView(shell::ComponentRegistry*, shell::RegistryError*);
 
 // scroll/mod.rs
 bool RegisterScrollScroll(shell::ComponentRegistry*, shell::RegistryError*);

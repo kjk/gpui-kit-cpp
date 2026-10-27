@@ -444,10 +444,19 @@ bool WebViewFocus(WebView* webview);
 bool WebViewFocusParent(WebView* webview);
 /** `WebView::zoom`. */
 bool WebViewZoom(WebView* webview, double scaleFactor);
-/** Linux page zoom so CSS pixels match GPUI's scale. GDK's factor is an
-    integer, so a fractional GPUI scale would otherwise draw the page large.
-    Other platforms already share the window scale and leave the page alone. */
+/** The page zoom a script asked for (`WebView::set_zoom`). On Linux that
+    factor multiplies the GPUI-scale match; elsewhere it is `WebViewZoom`.
+    `1` is the page's natural size. */
+bool WebViewSetUserZoom(WebView* webview, double zoom);
+/** Linux page zoom so CSS pixels match GPUI's scale, times the user zoom.
+    GDK's factor is an integer, so a fractional GPUI scale would otherwise
+    draw the page large. Other platforms already share the window scale and
+    leave the page alone. */
 bool WebViewMatchPageScale(WebView* webview, float gpuiScale);
+/** Why the last `WebViewNew` failed, or empty. A static sentence. */
+Str WebViewLastError();
+/** Sets `WebViewLastError`. `message` is a literal, or null to clear it. */
+void WebViewSetLastError(const char* message);
 /** A press on the page, in the webview's own coordinates, with GDK's scale.
     Linux forwards it so an overlay that closes on an outside click hears
     the page. Other platforms leave this unset. */
@@ -456,7 +465,10 @@ typedef void (*WebViewPageClick)(void* user, int button, float x, float y,
 void WebViewSetPageClick(WebView* webview, WebViewPageClick fn, void* user);
 /** `WebView::set_background_color`. */
 bool WebViewSetBackgroundColor(WebView* webview, Rgba color);
-/** `WebViewExtWindows::set_theme`. */
+/** The colour scheme the page sees in `prefers-color-scheme`. Windows is
+    WebView2's preferred colour scheme, macOS the view's `NSAppearance`,
+    Linux GTK's process-wide prefer-dark setting. `Theme::Auto` follows the
+    system again. */
 bool WebViewSetTheme(WebView* webview, Theme theme);
 /** `WebViewExtWindows::set_memory_usage_level`. */
 bool WebViewSetMemoryUsageLevel(WebView* webview, MemoryUsageLevel level);
