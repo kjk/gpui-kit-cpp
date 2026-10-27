@@ -538,16 +538,16 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d476c7635ce03e4100cec67b6cac88014cb79de0",
+  sha: "1676826d9d49b90f4d7b6808b69924f58796f6f1",
   date: "2026-10-19",
-  subject: "text: Copy the current TextView selection before repaint (#3589)",
+  subject: "release: Prepare v0.8.0 (#3602)",
   crates: {
-    "gpui-kit": "0.7.3",
-    "gpui-base": "0.7.3",
-    "gpui-component": "0.7.3",
-    "gpui-component-story": "0.7.3",
-    "gpui-webview": "0.7.3",
-    "gpui-shell": "0.7.3",
+    "gpui-kit": "0.8.0",
+    "gpui-base": "0.8.0",
+    "gpui-component": "0.8.0",
+    "gpui-component-story": "0.8.0",
+    "gpui-webview": "0.8.0",
+    "gpui-shell": "0.8.0",
   },
   dir: ".work/gpui-component",
 } as const;
