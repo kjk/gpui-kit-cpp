@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0660be4cc6b8edc783e6c833f20d509c9a8ed270` (2026-10-19,
-input: anchor custom search queries to the viewport (#3584)).
-A custom Find that changes its query or case mode starts at the first
-visible row. Setting the same query and case again keeps the occurrence
-the reader is already on, including after the panel is closed and the
-document is scrolled by hand.
+Processed through `74939dc7adcbf8db021d580be82379f3b9fbe3ee` (2026-10-19,
+tab_bar: run a tab's own on_click from the overflow menu (#3568)).
+An overflow-menu row runs the same handler as the visible tab. That is
+the bar callback when one is set, and otherwise the tab's own, including
+the reveal into view. A pointer click on a menu row keeps the event
+that hit it.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

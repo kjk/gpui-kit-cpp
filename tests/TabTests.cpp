@@ -667,6 +667,75 @@ static void ABarWithNoWidthAsksForNoFrames() {
     TestAppFree(app);
 }
 
+struct OverflowMenuTabs {
+    bool group = false;
+    int tabs = 0;
+    int bars = 0;
+    int ix = -1;
+
+    static void OnTab(OverflowMenuTabs* self, Ctx*, const ClickEvent*,
+                      int64_t ix) {
+        self->tabs++;
+        self->ix = (int)ix;
+    }
+    static void OnBar(OverflowMenuTabs* self, Ctx*, const ClickEvent*,
+                      int64_t ix) {
+        self->bars++;
+        self->ix = (int)ix;
+    }
+    static El* Render(OverflowMenuTabs* self, Ctx* cx) {
+        TabBar* bar = TabBar::New(cx, StrL("menu-tabs"))->W(240)->Menu(true);
+        bar->Child(component::Tab::New(cx, StrL("First"))
+                       ->OnClick(Listen(cx, &OverflowMenuTabs::OnTab, 0)));
+        bar->Child(component::Tab::New(cx, StrL("Second"))
+                       ->OnClick(Listen(cx, &OverflowMenuTabs::OnTab, 1)));
+        if (self->group) {
+            bar->OnClick(Listen(cx, &OverflowMenuTabs::OnBar));
+        }
+        return Div(cx->a)->SizeFull()->Child(bar->IntoEl());
+    }
+};
+
+// overflow_menu_runs_the_tab_callback_without_a_bar_callback and
+// overflow_menu_prefers_the_bar_callback. The menu's first row is First.
+static void ChooseFirstOverflowItem(bool group, int* tabs, int* bars, int* ix) {
+    App* app = TestAppNew();
+    Init(app);
+    Entity<OverflowMenuTabs> view = EntityNew<OverflowMenuTabs>(app);
+    view.Get(app)->group = group;
+    Window* win = TestWindowOpen(app, view, 400, 240);
+    El* root = LaidOut(win);
+    El* btn = FindTabId(root, "more-btn");
+    utassert(btn);
+    if (btn) {
+        TestSimulateClick(win,
+                          {btn->x + btn->w * 0.5f, btn->y + btn->h * 0.5f});
+    }
+    TestDispatchAction(win, action::SelectDown());
+    TestDispatchAction(win, action::Confirm());
+    OverflowMenuTabs* self = view.Get(app);
+    *tabs = self->tabs;
+    *bars = self->bars;
+    *ix = self->ix;
+    TestAppFree(app);
+}
+
+static void OverflowMenuRunsTheTabCallbackWithoutABarCallback() {
+    int tabs = 0;
+    int bars = 0;
+    int ix = -1;
+    ChooseFirstOverflowItem(false, &tabs, &bars, &ix);
+    utassert(tabs == 1 && bars == 0 && ix == 0);
+}
+
+static void OverflowMenuPrefersTheBarCallback() {
+    int tabs = 0;
+    int bars = 0;
+    int ix = -1;
+    ChooseFirstOverflowItem(true, &tabs, &bars, &ix);
+    utassert(tabs == 0 && bars == 1 && ix == 0);
+}
+
 void TestTab() {
     TestSuite("tab");
     UnderlineIsTallerThanEveryOtherVariant();
@@ -685,4 +754,6 @@ void TestTab() {
     RevealAnimatesAndYieldsToManualScrolling();
     ABarShownLaterDrawsItsIndicatorOnTheNextFrame();
     ABarWithNoWidthAsksForNoFrames();
+    OverflowMenuRunsTheTabCallbackWithoutABarCallback();
+    OverflowMenuPrefersTheBarCallback();
 }

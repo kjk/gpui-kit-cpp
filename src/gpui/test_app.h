@@ -80,10 +80,10 @@ void TestSimulateMouseMove(Window* win, Point position, bool pressed = false,
                            Modifiers modifiers = {});
 void TestSimulateMouseDown(Window* win, Point position,
                            MouseButton button = MouseButton::Left,
-                           Modifiers modifiers = {});
+                           Modifiers modifiers = {}, int clickCount = 1);
 void TestSimulateMouseUp(Window* win, Point position,
                          MouseButton button = MouseButton::Left,
-                         Modifiers modifiers = {});
+                         Modifiers modifiers = {}, int clickCount = 1);
 // A left press and its release at the same point.
 void TestSimulateClick(Window* win, Point position, Modifiers modifiers = {});
 // cx.simulate_event(ScrollWheelEvent { position, delta: Pixels(delta) }):

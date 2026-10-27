@@ -129,7 +129,8 @@ void PopupMenuDismissAll(PopupMenuState* s, Ctx* cx) {
     }
 }
 
-void PopupMenuConfirm(PopupMenuState* s, Ctx* cx, int ix) {
+void PopupMenuConfirm(PopupMenuState* s, Ctx* cx, int ix,
+                      const ClickEvent* ev) {
     // Copied out first. Dismiss clears the focus a context names, and the
     // handler below can rebuild the rows before the action is sent.
     PopupMenuRow row = {};
@@ -137,15 +138,16 @@ void PopupMenuConfirm(PopupMenuState* s, Ctx* cx, int ix) {
     if (have) {
         row = s->rows[ix];
     }
-    // `handler(&ClickEvent::default(), window, cx)`: the row's own handler,
-    // for a click and for Enter alike. An action row has none.
+    // activate(event): the click that hit the row, or ClickEvent::default()
+    // when Enter confirmed it. The handler used to see a fresh empty event
+    // either way, so a shift-click arrived as a plain one.
+    ClickEvent fallback = {};
+    const ClickEvent* use = ev ? ev : &fallback;
     if (have && row.handler.IsValid()) {
-        ClickEvent ev = {};
-        ListenerCall(cx->app, cx->win, row.handler, &ev);
+        ListenerCall(cx->app, cx->win, row.handler, use);
     }
     if (s->onConfirm.IsValid()) {
-        ClickEvent ev = {};
-        ListenerCall(cx->app, cx->win, ListenerFill(s->onConfirm, ix), &ev);
+        ListenerCall(cx->app, cx->win, ListenerFill(s->onConfirm, ix), use);
     }
     // The action, in place of the handler. A click and Enter both arrive
     // here; the row carries the focus the click used to attach, so the two
@@ -294,9 +296,9 @@ void PopupMenuState::OnAction(PopupMenuState* self, Ctx* cx,
 }
 
 void PopupMenuState::OnItemClick(PopupMenuState* self, Ctx* cx,
-                                 const ClickEvent*, int64_t ix) {
+                                 const ClickEvent* ev, int64_t ix) {
     self->selected = (int)ix;
-    PopupMenuConfirm(self, cx, (int)ix);
+    PopupMenuConfirm(self, cx, (int)ix, ev);
 }
 
 void PopupMenuState::OnTriggerClick(PopupMenuState* self, Ctx* cx,

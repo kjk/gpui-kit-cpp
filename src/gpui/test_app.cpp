@@ -399,14 +399,15 @@ void TestSimulateMouseMove(Window* win, Point position, bool pressed,
 }
 
 void TestSimulateMouseDown(Window* win, Point position, MouseButton button,
-                           Modifiers modifiers) {
-    Simulate(win, InputMouseDown(button, position.x, position.y, modifiers, 1,
-                                 false));
+                           Modifiers modifiers, int clickCount) {
+    Simulate(win, InputMouseDown(button, position.x, position.y, modifiers,
+                                 clickCount, false));
 }
 
 void TestSimulateMouseUp(Window* win, Point position, MouseButton button,
-                         Modifiers modifiers) {
-    Simulate(win, InputMouseUp(button, position.x, position.y, modifiers, 1));
+                         Modifiers modifiers, int clickCount) {
+    Simulate(win, InputMouseUp(button, position.x, position.y, modifiers,
+                               clickCount));
 }
 
 void TestSimulateScrollWheel(Window* win, Point position, Point delta,

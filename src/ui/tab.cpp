@@ -610,48 +610,6 @@ static TabStyle TabDisabled(TabVariant v, bool selected, const Theme& th) {
     return s;
 }
 
-// TabBar::menu's "more" button: an xsmall ghost with a caret, whose dropdown
-// is the tab list itself. The rows are the tabs in order, so the index the
-// menu confirms is the index the bar's on_click wants.
-static El* TabMenuButton(TabBar* tabs, const Theme&, float, Listener confirm) {
-    Ctx* cx = tabs->cx;
-    // The button and its menu are built inside the bar, so the bar's name is
-    // what tells one strip's overflow menu from another's.
-    IdScope scope(cx, tabs->id);
-    Str menuId = StrL("menu");
-    Entity<PopupMenuState> st = PopupMenuStateFor(cx, menuId);
-    if (PopupMenuState* s = st.Get(cx)) {
-        s->onConfirm = confirm.IsValid() ? confirm : tabs->onChange;
-    }
-    PopupMenu* menu = PopupMenu::New(cx, menuId, st)->Scrollable();
-    int i = -1;
-    for (const component::Tab& it : tabs->items) {
-        i++;
-        // A tab with no label is an icon-only one; Rust puts the icon in the
-        // row, and falls back to "Unnamed" when there is neither.
-        if (it.label.s) {
-            menu->MenuWithCheck(it.label, i == tabs->selected);
-        } else if (it.icon != IconName::None) {
-            menu->Element(IconEl(cx->a, it.icon, Rems(cx, 1.f)));
-            menu->Checked(i == tabs->selected);
-        } else {
-            menu->MenuWithCheck(Tr("Dock.Unnamed"), i == tabs->selected);
-        }
-        if (it.disabled) {
-            menu->Disabled(true);
-        }
-    }
-    return DropdownMenu::New(cx, StrL("more"))
-        ->Trigger(Button::New(cx, StrL("more-btn"))
-                      ->Ghost()
-                      ->WithSize(UiSize::XSmall)
-                      ->DropdownCaret()
-                      ->IntoEl())
-        ->Menu(menu)
-        ->AnchorRight()
-        ->IntoEl();
-}
-
 // Room between two folder tabs. The separator sits in the middle of it.
 static constexpr float kFolderTabGap = 4.f;
 
@@ -784,7 +742,6 @@ struct TabBarScrollState {
     TabRevealRun run = {};
     float peek = 32.f;
     uint32_t motionKey = 0;
-    Listener onBarClick = {};
     Vec<Listener> clicks;
     Vec<Bounds> tabs;
     Bounds viewport = {};
@@ -865,17 +822,57 @@ struct TabBarScrollState {
             ListenerCall(cx->app, cx->win, self->clicks[ix], ev);
         }
     }
+};
 
-    static void OnMenu(TabBarScrollState* self, Ctx* cx, const ClickEvent* ev,
-                       int64_t packed) {
-        int ix = (int)packed;
-        Start(self, cx, ix);
-        if (self->onBarClick.IsValid()) {
-            ListenerCall(cx->app, cx->win, ListenerFill(self->onBarClick, ix),
-                         ev);
+// TabBar::menu's "more" button: an xsmall ghost with a caret, whose dropdown
+// is the tab list itself. Each row runs the same handler as the visible
+// tab: the bar's callback when one is set, otherwise the tab's own, and
+// the reveal into view that both already go through.
+static El* TabMenuButton(TabBar* tabs, const Theme&, float,
+                         Entity<TabBarScrollState> scroll) {
+    Ctx* cx = tabs->cx;
+    // The button and its menu are built inside the bar, so the bar's name is
+    // what tells one strip's overflow menu from another's.
+    IdScope scope(cx, tabs->id);
+    Str menuId = StrL("menu");
+    Entity<PopupMenuState> st = PopupMenuStateFor(cx, menuId);
+    if (PopupMenuState* s = st.Get(cx)) {
+        // No window means no scroll entity to reveal through. The bar
+        // callback is then the only one the menu can reach.
+        if (!scroll.IsValid()) {
+            s->onConfirm = tabs->onChange;
         }
     }
-};
+    PopupMenu* menu = PopupMenu::New(cx, menuId, st)->Scrollable();
+    int i = -1;
+    for (const component::Tab& it : tabs->items) {
+        i++;
+        // A tab with no label is an icon-only one; Rust puts the icon in the
+        // row, and falls back to "Unnamed" when there is neither.
+        if (it.label.s) {
+            menu->MenuWithCheck(it.label, i == tabs->selected);
+        } else if (it.icon != IconName::None) {
+            menu->Element(IconEl(cx->a, it.icon, Rems(cx, 1.f)));
+            menu->Checked(i == tabs->selected);
+        } else {
+            menu->MenuWithCheck(Tr("Dock.Unnamed"), i == tabs->selected);
+        }
+        if (it.disabled) {
+            menu->Disabled(true);
+        } else if (scroll.IsValid()) {
+            menu->OnClick(ListenTo(scroll, &TabBarScrollState::OnTabClick, i));
+        }
+    }
+    return DropdownMenu::New(cx, StrL("more"))
+        ->Trigger(Button::New(cx, StrL("more-btn"))
+                      ->Ghost()
+                      ->WithSize(UiSize::XSmall)
+                      ->DropdownCaret()
+                      ->IntoEl())
+        ->Menu(menu)
+        ->AnchorRight()
+        ->IntoEl();
+}
 
 El* TabBar::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
@@ -975,7 +972,6 @@ El* TabBar::IntoEl() {
             }
         }
         scrollState->peek = TabRevealPeek(size);
-        scrollState->onBarClick = onChange;
         VecResize(scrollState->tabs, items.len);
         VecResize(scrollState->clicks, items.len);
         for (int c = 0; c < scrollState->clicks.len; c++) {
@@ -1319,11 +1315,7 @@ El* TabBar::IntoEl() {
     viewport->Child(strip);
     bar->Child(viewport);
     if (menu) {
-        Listener menuClick = {};
-        if (scrollState && onChange.IsValid()) {
-            menuClick = ListenTo(scrollEntity, &TabBarScrollState::OnMenu);
-        }
-        bar->Child(TabMenuButton(this, th, font, menuClick));
+        bar->Child(TabMenuButton(this, th, font, scrollEntity));
     }
     if (suffix) {
         bar->Child(suffix);

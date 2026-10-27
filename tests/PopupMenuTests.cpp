@@ -1130,6 +1130,72 @@ static void ConfirmInASubmenuUsesTheRootPreviousFocus() {
     TestAppFree(app);
 }
 
+struct ClickEventMenu {
+    int n = 0;
+    ClickEvent ev = {};
+
+    static void OnItem(ClickEventMenu* self, Ctx*, const ClickEvent* ev) {
+        self->n++;
+        if (ev) {
+            self->ev = *ev;
+        }
+    }
+    static El* Render(ClickEventMenu* self, Ctx* cx) {
+        (void)self;
+        El* content =
+            Div(cx->a)->Id(StrL("custom-menu-content"))->W(100)->H(20);
+        return PopupMenu::New(cx, StrL("event-menu"))
+            ->Element(content)
+            ->OnClick(Listen(cx, &ClickEventMenu::OnItem))
+            ->IntoEl();
+    }
+};
+
+static El* FindMenuContent(El* e) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->id.s && StrEq(e->id, StrL("custom-menu-content"))) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = FindMenuContent(c)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+// custom_menu_item_preserves_mouse_event. The row's handler sees the click
+// that landed on it, including a double click's count and its modifiers.
+static void CustomMenuItemPreservesMouseEvent() {
+    App* app = TestAppNew();
+    Entity<ClickEventMenu> view = EntityNew<ClickEventMenu>(app);
+    Window* win = TestWindowOpen(app, view, 400, 240);
+    El* root = EntityRender(app, win, win->frameArena, view.id);
+    const RuntimeStyle& th = RuntimeStyleNow(app);
+    LayoutEl(&win->paint, root, 0, 0, win->paint.viewW, win->paint.viewH,
+             th.fontSize, th.foreground);
+    El* item = FindMenuContent(root);
+    utassert(item && item->w > 0 && item->h > 0);
+    if (!item) {
+        TestAppFree(app);
+        return;
+    }
+    Point at = {item->x + item->w * 0.5f, item->y + item->h * 0.5f};
+    Modifiers shift = {};
+    shift.shift = true;
+    TestSimulateMouseDown(win, at, MouseButton::Left, shift, 2);
+    TestSimulateMouseUp(win, at, MouseButton::Left, shift, 2);
+    ClickEventMenu* self = view.Get(app);
+    utassert(self->n == 1);
+    utassert(self->ev.keyboard == false);
+    utassert(self->ev.clickCount == 2);
+    utassert(self->ev.modifiers.shift);
+    utassert(TestNear(self->ev.x, at.x) && TestNear(self->ev.y, at.y));
+    TestAppFree(app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     TheWalkStepsOverWhatCannotBeClicked();
@@ -1157,4 +1223,5 @@ void TestPopupMenu() {
     AppMenuBarBindsAndHandlesItsSourceActions();
     RootPopupPropagatesUnusedHorizontalActionsToTheMenuBar();
     OpenWithoutDismissReleasesTheMenu();
+    CustomMenuItemPreservesMouseEvent();
 }

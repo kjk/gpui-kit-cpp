@@ -172,9 +172,10 @@ void PopupMenuPerformRows(PopupMenuState* s, Ctx* cx, PopupMenuAction act);
 void PopupMenuBeginRows(PopupMenuState* s);
 void PopupMenuAddRow(PopupMenuState* s, const PopupMenuRow& row);
 
-// confirm: run the item and dismiss the menu, which is what Rust does for
-// both a keyboard Enter and a click.
-void PopupMenuConfirm(PopupMenuState* s, Ctx* cx, int ix);
+// confirm: run the item and dismiss the menu. A pointer click passes the
+// event that hit the row. Enter passes null, which is ClickEvent::default().
+void PopupMenuConfirm(PopupMenuState* s, Ctx* cx, int ix,
+                      const ClickEvent* ev = nullptr);
 
 } // namespace gpui
 #endif // GPUI_BASE_POPUP_MENU_H_
