@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "da8b2ba47567437051c371b87e86ebfbedba13d8",
+  sha: "a64a609d9ffa6821c84e411b7ccee7f32b79ca4a",
   date: "2026-10-22",
-  subject: "scroll: Expose the last horizontal strip scroll step a mask claimed (#3621)",
+  subject: "story: Add an application-owned completion menu to the Input story (#3607)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

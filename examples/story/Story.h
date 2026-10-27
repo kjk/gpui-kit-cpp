@@ -94,6 +94,11 @@ enum {
 struct TokenExample;
 EntityId TokenExampleNew(App* app, bool multiline);
 
+// crates/story/src/stories/input_completion.rs. The Input page's
+// Completion section. The application owns the menu.
+struct CompletionExample;
+EntityId CompletionExampleNew(App* app);
+
 struct StoryApp {
     static El* Render(StoryApp* self, Ctx* cx);
 

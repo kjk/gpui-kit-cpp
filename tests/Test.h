@@ -103,6 +103,7 @@ void TestQuestionnaire();
 void TestSheet();
 void TestMotion();
 void TestScrollbar();
+void TestInputCompletion();
 void TestScrollBounce();
 void TestTouchSelection();
 void TestThemeSettings();

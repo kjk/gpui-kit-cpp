@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `da8b2ba47567437051c371b87e86ebfbedba13d8` (2026-10-22,
-scroll: Expose the last horizontal strip scroll step a mask claimed (#3621)).
-A horizontal mask records a step when the clamped offset moves by at
-least half a pixel. The record is the time and Rust's signed delta.
-A step that only presses an edge leaves the previous record in place.
+Processed through `a64a609d9ffa6821c84e411b7ccee7f32b79ca4a` (2026-10-22,
+story: Add an application-owned completion menu to the Input story (#3607)).
+The Input story's Completion section owns the candidates, the menu and
+the keys it captures. Typing `$` completes a variable. `InputState`
+gains no completion state.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

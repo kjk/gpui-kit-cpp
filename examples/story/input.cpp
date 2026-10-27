@@ -110,6 +110,7 @@ struct InputStory {
     StoryToolbarState toolbar;
     bool seeded = false;
     EntityId tokens;
+    EntityId completion;
     // The custom context menu's rows report here; bound each render, since
     // the menu is built later, under the input's own menu state.
     Listener customMenuSelect = {};
@@ -440,6 +441,18 @@ El* InputStory::Render(InputStory* self, Ctx* cx) {
     StorySectionAdd(tokens,
                     EntityRender(cx->app, cx->win, cx->a, self->tokens));
     page->Child(tokens);
+
+    if (!self->completion.IsValid()) {
+        self->completion = CompletionExampleNew(cx->app);
+    }
+    El* completion = StorySection(
+        cx, "Completion",
+        "The application owns the candidates, the menu and the keys it "
+        "captures; type $ to complete a variable.");
+    StorySectionBody(completion)->W(512);
+    StorySectionAdd(completion,
+                    EntityRender(cx->app, cx->win, cx->a, self->completion));
+    page->Child(completion);
     return page;
 }
 
