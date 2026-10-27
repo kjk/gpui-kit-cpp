@@ -423,6 +423,13 @@ void TestSimulateClick(Window* win, Point position, Modifiers modifiers) {
 
 // ─── actions, clipboard, focus ────────────────────────────────────────────
 
+void TestDispatchInputRaw(Window* win, const PlatformInput& input) {
+    if (!win) {
+        return;
+    }
+    WindowDispatchInput(win, &input);
+}
+
 bool TestDispatchAction(Window* win, uint32_t action, int64_t arg) {
     if (!win || !action) {
         return false;

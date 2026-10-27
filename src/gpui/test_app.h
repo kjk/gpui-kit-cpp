@@ -95,6 +95,9 @@ void TestSimulateScrollWheel(Window* win, Point position, Point delta,
 // to it would — the focused field first, then the element chain out from the
 // focus, then the application's handlers. True when something took it.
 bool TestDispatchAction(Window* win, uint32_t action, int64_t arg = 0);
+// One input packet and no frame after it. A simulated mouse event draws
+// when it returns, which hides a copy that must read the gesture first.
+void TestDispatchInputRaw(Window* win, const PlatformInput& input);
 
 // cx.write_to_clipboard / cx.read_from_clipboard.
 void TestWriteToClipboard(Str text);

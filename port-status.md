@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2c113652507ca3545da1ec81b2bd546a811f3580` (2026-10-19,
-text: Prevent stale selections from returning after remount (#3588)).
-When a frame drops the participant that owns the selection's anchor or
-cursor, the window gesture is cleared with it. Painting that participant
-again does not bring the old selection back. Removing some other
-participant leaves the selection in place.
+Processed through `d476c7635ce03e4100cec67b6cac88014cb79de0` (2026-10-19,
+text: Copy the current TextView selection before repaint (#3589)).
+Copy reads the gesture against the runs the last frame painted, so a drag
+and a copy in the same update take the new range. A full replacement copies
+nothing until its parse commits. This tree paints the whole document, so a
+block that has scrolled away stays in that run list.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

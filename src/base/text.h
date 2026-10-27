@@ -1015,6 +1015,11 @@ struct TextViewState {
     void SetSelectionFormat(gpui::SelectionFormat value, App* app,
                             Window* window = nullptr);
     int SelectedText(Window* window, char* out, int cap) const;
+    // A full replacement keeps the previous document on screen until its
+    // parse commits. That document must not supply the clipboard.
+    bool CopyDocumentReady() const {
+        return committedRevision >= fullUpdateRevision;
+    }
     // state.rs selected_source_range: the byte range of the Markdown source
     // behind the rendered selection, so identical text maps to the
     // occurrence actually selected. One contiguous range, taking in any

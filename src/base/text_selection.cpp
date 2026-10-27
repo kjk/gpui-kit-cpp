@@ -2,6 +2,7 @@
 #include "base/auto_scroll.h"
 #include "base/element_ext.h"
 #include "base/global_state.h"
+#include "base/text.h"
 #include "gpui/paint.h"
 
 namespace gpui {
@@ -876,6 +877,7 @@ void WindowSelectionClear(Window* win) {
         VecReset(participants);
     }
     s->clearing = false;
+    WindowSelectionApply(win);
 }
 
 bool WindowSelectionHas(const Window* win) {
@@ -1004,6 +1006,7 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
             participant->focus(participant->focusUser, win, win->app);
         }
         WindowSelectionPublish(win);
+        WindowSelectionApply(win);
         return;
     }
     WindowSelectionClear(win);
@@ -1094,6 +1097,9 @@ void WindowSelectionDrag(Window* win, float x, float y) {
     }
     ParticipantAutoScroll(win, {x, y}, false);
     WindowSelectionPublish(win);
+    // Copy reads this frame's runs. The points have to match the gesture
+    // before the next paint, or a block still answers for the previous one.
+    WindowSelectionApply(win);
 }
 
 void WindowSelectionRelease(Window* win) {
@@ -1102,6 +1108,7 @@ void WindowSelectionRelease(Window* win) {
         ParticipantAutoScroll(win, s->cursorPoint, true);
         TextSelectionEnd(&s->gesture);
         WindowSelectionPublish(win);
+        WindowSelectionApply(win);
     }
 }
 
@@ -1312,6 +1319,32 @@ int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
     VecReset(active);
     out[written] = 0;
     if (written > 0) return written;
+    // A TextView full replacement leaves the previous runs painted. Copy
+    // must not read them until the replacement's parse has committed.
+    if (selection && app && WindowSelectionHas(window)) {
+        int lo = selection->anchor < selection->cursor ? selection->anchor
+                                                       : selection->cursor;
+        int hi = selection->anchor < selection->cursor ? selection->cursor
+                                                       : selection->anchor;
+        for (int i = 0; i < window->paint.texts.len; i++) {
+            const TextHit& hit = window->paint.texts[i];
+            if (selection->scope && hit.scope != selection->scope) {
+                continue;
+            }
+            int hitEnd = hit.docOff + (hit.atom ? 1 : len(hit.text));
+            if (hitEnd <= lo || hit.docOff >= hi) {
+                continue;
+            }
+            if (!EntityHasDrop(app, hit.owner, &EntityDropT<TextViewState>)) {
+                continue;
+            }
+            TextViewState* view = (TextViewState*)EntityGet(app, hit.owner);
+            if (view && !view->CopyDocumentReady()) {
+                out[0] = 0;
+                return 0;
+            }
+        }
+    }
     return WindowSelectionText(window, out, cap);
 }
 

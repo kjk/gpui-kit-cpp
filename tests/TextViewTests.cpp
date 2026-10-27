@@ -6997,7 +6997,295 @@ static void MalformedRangesAndHtmlViewsAreRejectedInAWindow() {
     TswClose(&html);
 }
 
+// text_view.rs copy_before_paint. The gesture updates the window selection
+// against the last completed frame. Copy reads that, with no paint between
+// the move and the read. A full replacement copies nothing until its parse
+// commits, including a drag over the document still on screen.
+static void RawMouse(Window* win, PlatformInputKind kind, Point p,
+                     bool pressed) {
+    PlatformInput in = {};
+    in.kind = kind;
+    if (kind == PlatformInputKind::MouseDown) {
+        in.mouseDown.button = MouseButton::Left;
+        in.mouseDown.x = p.x;
+        in.mouseDown.y = p.y;
+        in.mouseDown.clickCount = 1;
+    } else if (kind == PlatformInputKind::MouseUp) {
+        in.mouseUp.button = MouseButton::Left;
+        in.mouseUp.x = p.x;
+        in.mouseUp.y = p.y;
+        in.mouseUp.clickCount = 1;
+    } else {
+        in.mouseMove.x = p.x;
+        in.mouseMove.y = p.y;
+        in.mouseMove.pressed = pressed;
+        in.mouseMove.pressedButton = MouseButton::Left;
+    }
+    TestDispatchInputRaw(win, in);
+}
+
+struct TswEnds {
+    Point start = {};
+    Point firstEnd = {};
+    Point last = {};
+    bool ok = false;
+};
+
+static TswEnds TswRowEnds(Window* win) {
+    TswEnds ends;
+    const TextHit* first = nullptr;
+    const TextHit* firstLine = nullptr;
+    const TextHit* last = nullptr;
+    for (int i = 0; i < win->paint.texts.len; i++) {
+        const TextHit& hit = win->paint.texts[i];
+        if (hit.atom || hit.blockPlugin || !hit.text.s || len(hit.text) <= 0) {
+            continue;
+        }
+        if (!first) {
+            first = &hit;
+            firstLine = &hit;
+        }
+        if (hit.bounds.y < first->bounds.y + first->bounds.h) {
+            firstLine = &hit;
+        }
+        last = &hit;
+    }
+    if (!first || !firstLine || !last) {
+        return ends;
+    }
+    ends.ok = true;
+    ends.start = {first->bounds.x + 0.1f,
+                  first->bounds.y + first->bounds.h * 0.5f};
+    ends.firstEnd = {firstLine->bounds.Right() - 0.1f,
+                     firstLine->bounds.y + firstLine->bounds.h * 0.5f};
+    ends.last = {last->bounds.Right() - 0.1f,
+                 last->bounds.y + last->bounds.h * 0.5f};
+    return ends;
+}
+
+static Str TswCopy(Arena* a, const TswView& v) {
+    const int cap = 256 * 1024;
+    char* buf = (char*)Alloc(a, cap);
+    int n = TextSelection::SelectedText(v.win, v.app, buf, cap);
+    if (n < 0) {
+        n = 0;
+    }
+    return Str(buf, n);
+}
+
+static const char kCopyMd[] =
+    "\u4e2d\u6587 **caf\u00e9**\n\n\u03b2eta `\u2009code\u2009`\n\n\u7d42\u308f"
+    "\u308a";
+
+static void ANewRangeCopiesBeforeItsFirstSelectionPaint() {
+    TswView v = TswOpen(kCopyMd, TswContainer::Window);
+    TestDraw(v.win);
+    TswEnds ends = TswRowEnds(v.win);
+    utassert(ends.ok);
+    Arena* a = ArenaNew();
+    RawMouse(v.win, PlatformInputKind::MouseDown, ends.start, false);
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.last, true);
+    Str got = StrTrimAscii(TswCopy(a, v));
+    utassert(base::StrContains(got, StrL("\u4e2d\u6587")));
+    utassert(base::StrContains(got, StrL("caf\u00e9")));
+    utassert(base::StrContains(got, StrL("\u03b2eta")));
+    utassert(base::StrContains(got, StrL("\u7d42\u308f\u308a")));
+    char buf[4096];
+    int n = v.State()->SelectedText(v.win, buf, (int)sizeof(buf));
+    utassert(n > 0 &&
+             base::StrContains(Str(buf, n), StrL("\u7d42\u308f\u308a")));
+    ArenaDelete(a);
+    TswClose(&v);
+}
+
+static void AnEstablishedRangeExtendsAndRetractsWithoutPaint() {
+    TswView v = TswOpen(kCopyMd, TswContainer::Window);
+    TestDraw(v.win);
+    TswEnds ends = TswRowEnds(v.win);
+    utassert(ends.ok);
+    Arena* a = ArenaNew();
+    RawMouse(v.win, PlatformInputKind::MouseDown, ends.start, false);
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.firstEnd, true);
+    TestDraw(v.win);
+    Str first = StrTrimAscii(TswCopy(a, v));
+    utassert(base::StrContains(first, StrL("caf\u00e9")));
+    utassert(!base::StrContains(first, StrL("\u7d42\u308f\u308a")));
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.last, true);
+    Str full = StrTrimAscii(TswCopy(a, v));
+    utassert(base::StrContains(full, StrL("\u7d42\u308f\u308a")));
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.firstEnd, true);
+    Str back = StrTrimAscii(TswCopy(a, v));
+    utassert(base::StrContains(back, StrL("caf\u00e9")));
+    utassert(!base::StrContains(back, StrL("\u7d42\u308f\u308a")));
+    ArenaDelete(a);
+    TswClose(&v);
+}
+
+static void SourceCopyProjectsTheCurrentRangeWithoutPaint() {
+    TswView v = TswOpen(kCopyMd, TswContainer::Window);
+    v.State()->SetSelectionFormat(gpui::SelectionFormat::Source, v.app, v.win);
+    TestDraw(v.win);
+    TswEnds ends = TswRowEnds(v.win);
+    utassert(ends.ok);
+    Arena* a = ArenaNew();
+    RawMouse(v.win, PlatformInputKind::MouseDown, ends.start, false);
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.firstEnd, true);
+    Str first = TswCopy(a, v);
+    utassert(base::StrContains(first, StrL("**caf\u00e9**")));
+    utassert(!base::StrContains(first, StrL("\u7d42\u308f\u308a")));
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.last, true);
+    Str full = TswCopy(a, v);
+    utassert(base::StrContains(full, StrL("**caf\u00e9**")));
+    utassert(base::StrContains(full, StrL("`")));
+    utassert(base::StrContains(full, StrL("\u7d42\u308f\u308a")));
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.firstEnd, true);
+    Str back = TswCopy(a, v);
+    utassert(!base::StrContains(back, StrL("\u7d42\u308f\u308a")));
+    ArenaDelete(a);
+    TswClose(&v);
+}
+
+static void ABlankGestureDoesNotReuseThePreviousRange() {
+    TswView v = TswOpen(kCopyMd, TswContainer::Window);
+    TestDraw(v.win);
+    TswEnds ends = TswRowEnds(v.win);
+    utassert(ends.ok);
+    Arena* a = ArenaNew();
+    RawMouse(v.win, PlatformInputKind::MouseDown, ends.start, false);
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.last, true);
+    utassert(base::StrContains(TswCopy(a, v), StrL("\u7d42\u308f\u308a")));
+    RawMouse(v.win, PlatformInputKind::MouseUp, ends.last, false);
+    Point blank = {ends.firstEnd.x + 20.f, ends.firstEnd.y};
+    RawMouse(v.win, PlatformInputKind::MouseDown, blank, false);
+    RawMouse(v.win, PlatformInputKind::MouseMove,
+             Point{blank.x + 40.f, blank.y}, true);
+    utassert(!base::StrContains(TswCopy(a, v), StrL("\u7d42\u308f\u308a")));
+    ArenaDelete(a);
+    TswClose(&v);
+}
+
+static void ReplacingSourceCannotReprojectOldContent() {
+    for (int large = 0; large < 2; large++) {
+        TswView v = TswOpen(kCopyMd, TswContainer::Window);
+        v.State()->SetSelectionFormat(large ? gpui::SelectionFormat::Source
+                                            : gpui::SelectionFormat::Plain,
+                                      v.app, v.win);
+        TestDraw(v.win);
+        TswEnds ends = TswRowEnds(v.win);
+        utassert(ends.ok);
+        Arena* a = ArenaNew();
+        RawMouse(v.win, PlatformInputKind::MouseDown, ends.start, false);
+        RawMouse(v.win, PlatformInputKind::MouseMove, ends.last, true);
+        utassert(len(StrTrimAscii(TswCopy(a, v))) > 0);
+        Str replacement = StrL("replacement");
+        if (large) {
+            StrBuilder sb(a);
+            for (int i = 0; i < 500; i++) {
+                sb.Append(StrL("replacement "));
+            }
+            replacement = sb.TakeStr();
+        }
+        v.State()->SetText(replacement, v.app, v.win);
+        char buf[64];
+        utassert(v.State()->SelectedText(v.win, buf, (int)sizeof(buf)) == 0);
+        utassert(len(TswCopy(a, v)) == 0);
+        // A large parse is still pending. The previous document is what a
+        // hit test sees, and it must not come back onto the clipboard.
+        if (large) {
+            RawMouse(v.win, PlatformInputKind::MouseDown, ends.start, false);
+            RawMouse(v.win, PlatformInputKind::MouseMove, ends.last, true);
+            utassert(v.State()
+                         ->SelectedText(v.win, buf, (int)sizeof(buf)) == 0);
+            utassert(len(TswCopy(a, v)) == 0);
+        }
+        ArenaDelete(a);
+        TswClose(&v);
+    }
+}
+
+static void ScrollingBeforePaintKeepsTheCompletedFrame() {
+    TswView v = TswOpen(
+        "alpha beta gamma delta epsilon zeta "
+        "alpha beta gamma delta epsilon zeta",
+        TswContainer::Scrollable);
+    TestDraw(v.win);
+    utassert(v.win->paint.texts.len > 0);
+    const TextHit* hit = nullptr;
+    for (int i = 0; i < v.win->paint.texts.len; i++) {
+        const TextHit& h = v.win->paint.texts[i];
+        if (h.text.s && len(h.text) >= 5 && !h.atom && !h.blockPlugin) {
+            hit = &h;
+            break;
+        }
+    }
+    utassert(hit != nullptr);
+    float ox = 0;
+    float oy = 0;
+    float oh = 0;
+    utassert(TextPointAt(&v.win->paint, hit->text, hit->font,
+                         hit->maxW > 0 ? hit->maxW : hit->bounds.w, hit->wrap,
+                         5, &ox, &oy, &oh));
+    Point start = {hit->bounds.x + 0.1f, hit->bounds.y + oh * 0.5f};
+    Point end = {hit->bounds.x + ox, hit->bounds.y + oy + oh * 0.5f};
+    RawMouse(v.win, PlatformInputKind::MouseDown, start, false);
+    RawMouse(v.win, PlatformInputKind::MouseMove, end, true);
+    TestDraw(v.win);
+    Arena* a = ArenaNew();
+    Str before = StrDup(StrTrimAscii(TswCopy(a, v)));
+    utassert(base::StrContains(before, StrL("alpha")));
+    utassert(!base::StrContains(before, StrL("gamma")));
+    v.State()->scrollY = 80;
+    Str after = StrTrimAscii(TswCopy(a, v));
+    utassert(StrEq(after, before));
+    StrFree(before);
+    ArenaDelete(a);
+    TswClose(&v);
+}
+
+static void UnicodeParagraphCopyExtendsBeforePaint() {
+    Arena* built = ArenaNew();
+    StrBuilder sb(built);
+    for (int i = 0; i < 180; i++) {
+        if (i > 0) {
+            sb.Append(StrL("\n\n"));
+        }
+        sb.Append(Str(fmt("p%03d **caf\u00e9**", i)));
+    }
+    Str markdown = sb.TakeStr();
+    TswView v = TswOpen(markdown.s, TswContainer::Window);
+    ArenaDelete(built);
+    TestSimulateResize(v.win, 800, 12000);
+    TestDraw(v.win);
+    TswEnds ends = TswRowEnds(v.win);
+    utassert(ends.ok);
+    utassert(ends.last.y > ends.start.y + 3000.f);
+    Arena* a = ArenaNew();
+    RawMouse(v.win, PlatformInputKind::MouseDown, ends.start, false);
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.firstEnd, true);
+    Str shortSel = StrTrimAscii(TswCopy(a, v));
+    utassert(base::StrContains(shortSel, StrL("p000")));
+    utassert(!base::StrContains(shortSel, StrL("p179")));
+    TestDraw(v.win);
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.last, true);
+    Str full = StrTrimAscii(TswCopy(a, v));
+    utassert(base::StrContains(full, StrL("p000")));
+    utassert(base::StrContains(full, StrL("p179")));
+    RawMouse(v.win, PlatformInputKind::MouseMove, ends.firstEnd, true);
+    Str back = StrTrimAscii(TswCopy(a, v));
+    utassert(base::StrContains(back, StrL("p000")));
+    utassert(!base::StrContains(back, StrL("p179")));
+    ArenaDelete(a);
+    TswClose(&v);
+}
+
 static void TestTextStateWindow() {
+    ANewRangeCopiesBeforeItsFirstSelectionPaint();
+    AnEstablishedRangeExtendsAndRetractsWithoutPaint();
+    SourceCopyProjectsTheCurrentRangeWithoutPaint();
+    ABlankGestureDoesNotReuseThePreviousRange();
+    ReplacingSourceCannotReprojectOldContent();
+    ScrollingBeforePaintKeepsTheCompletedFrame();
+    UnicodeParagraphCopyExtendsBeforePaint();
     PushStrFadesOnlyTheAppendedText();
     OvertakenParsePreservesTheRemainingChunksFade();
     OvertakenParsePreservesARemainingBlocksFade();

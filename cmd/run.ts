@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "2c113652507ca3545da1ec81b2bd546a811f3580",
+  sha: "d476c7635ce03e4100cec67b6cac88014cb79de0",
   date: "2026-10-19",
-  subject: "text: Prevent stale selections from returning after remount (#3588)",
+  subject: "text: Copy the current TextView selection before repaint (#3589)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

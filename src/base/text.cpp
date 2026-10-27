@@ -720,6 +720,12 @@ void TextViewState::SetSelectionFormat(gpui::SelectionFormat value, App* app,
 }
 
 int TextViewState::SelectedText(Window* window, char* out, int cap) const {
+    if (!CopyDocumentReady()) {
+        if (out && cap > 0) {
+            out[0] = 0;
+        }
+        return 0;
+    }
     const WindowSelection* selection = window ? window->sel : nullptr;
     // Select-all copies the source for every format other than Plain,
     // SourceAcrossStyles included.
@@ -1034,6 +1040,11 @@ void TextViewState::OnAction(TextViewState* state, Ctx* cx,
         return;
     }
     if (event->action == input::Copy()) {
+        // The gesture may already cover the replacement. Copy nothing until
+        // the parse that owns that text has committed.
+        if (!state->CopyDocumentReady()) {
+            return;
+        }
         if (!WindowSelectionCopy(cx->win)) {
             const_cast<ActionEvent*>(event)->propagate = true;
         }
