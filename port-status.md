@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7f46cdf26ecfd5aece89bb30fb22e4a7d33aa615` (2026-10-18,
-text: Break the line where an HTML `<br>` stands (#3569)).
-A `<br>` is a newline in the paragraph being built. One trailing break at
-the end of a text block adds no line, and a break on its own stays.
+Processed through `f7a1dfbefcd46244baff7232ca53e20b14fec4e7` (2026-10-18,
+tooltip: Dismiss the tooltip when its trigger is removed (#3528)).
+A pending or visible tooltip is cancelled when the frame no longer
+contains its trigger, without waiting for the pointer to move.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

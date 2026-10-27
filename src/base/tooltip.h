@@ -137,6 +137,8 @@ void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
                         int showDelayMs = -1);
 void TooltipRequestHide(Window* win);
 void TooltipHide(Window* win);
+// The hovered trigger left the tree without a pointer event. Hide at once.
+void TooltipDismissRemoved(Window* win);
 const TooltipOverlay* TooltipShowing(Window* win);
 
 } // namespace gpui

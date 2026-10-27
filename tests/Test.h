@@ -97,6 +97,7 @@ void TestOtpInput();
 void TestTimeField();
 void TestSelect();
 void TestDialog();
+void TestTooltip();
 void TestDiff();
 void TestQuestionnaire();
 void TestSheet();

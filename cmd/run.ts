@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7f46cdf26ecfd5aece89bb30fb22e4a7d33aa615",
+  sha: "f7a1dfbefcd46244baff7232ca53e20b14fec4e7",
   date: "2026-10-18",
-  subject: "text: Break the line where an HTML `<br>` stands (#3569)",
+  subject: "tooltip: Dismiss the tooltip when its trigger is removed (#3528)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

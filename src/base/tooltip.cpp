@@ -407,6 +407,21 @@ void TooltipRequestHide(Window* win) {
     }
 }
 
+void TooltipDismissRemoved(Window* win) {
+    if (!win || !win->tooltipOwner) return;
+    const TooltipOverlay* showing = TooltipShowing(win);
+    if (!showing || (!showing->hasContent && !showing->hasPending)) {
+        win->tooltipOwner = false;
+        return;
+    }
+    for (int i = 0; i < win->paint.hits.len; i++) {
+        const HitRect& hr = win->paint.hits[i];
+        if (hr.pathId == win->tooltipOwnerPath && hr.tooltip.s) return;
+    }
+    TooltipHide(win);
+    win->tooltipOwner = false;
+}
+
 void TooltipHide(Window* win) {
     if (TooltipOverlay* overlay = TooltipWindowOverlay(win)) {
         Ctx cx = TooltipContext(win, win->tooltip);

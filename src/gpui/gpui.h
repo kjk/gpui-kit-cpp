@@ -6668,6 +6668,11 @@ struct Window {
     // tooltip_pressed_trigger. A press keeps that trigger's tooltip
     // dismissed until the pointer moves outside these bounds. w < 0 is none.
     Bounds tooltipPressedTrigger = {0, 0, -1, 0};
+    // The trigger that owns the pending or visible tooltip, by its
+    // path id. A frame that no longer paints that trigger drops the
+    // tooltip, which is the leave a removed element never reports.
+    bool tooltipOwner = false;
+    uint32_t tooltipOwnerPath = 0;
     // Window::last_input_modality == Keyboard: set by a key press, cleared by
     // a pointer move or press. A modifier on its own is not a key press, as
     // GPUI reads it as ModifiersChanged.

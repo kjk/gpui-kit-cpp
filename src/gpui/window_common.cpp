@@ -680,6 +680,9 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     WindowMotionSweep(win);
     // So is what an element kept in frame-scoped keyed state.
     WindowKeyedSweep(win);
+    // A trigger that was not painted has no hover-leave to send. The
+    // overlay it opened is cancelled here, once this frame's hits exist.
+    TooltipDismissRemoved(win);
 
     // A picture is still on its way: this frame asked image.h for it and got
     // nothing. Nothing else need be keeping the window awake, so arm the
@@ -2094,10 +2097,13 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
                         win->tooltipPressedTrigger.w == tipAt.w &&
                         win->tooltipPressedTrigger.h == tipAt.h;
             if (!held) {
+                win->tooltipOwner = true;
+                win->tooltipOwnerPath = now->pathId;
                 TooltipRequestShow(win, tip, tipAt, tipPlacement, tipRoot,
                                    tipDelay);
             }
         } else {
+            win->tooltipOwner = false;
             TooltipRequestHide(win);
         }
         AppInvalidate(win);
