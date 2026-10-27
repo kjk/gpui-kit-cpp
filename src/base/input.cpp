@@ -35,6 +35,96 @@ InputEditorStyle InputEditorStyleResolve(const InputEditorStyle& projected,
     return out;
 }
 
+InputAccessibility InputAccessibility::New(const AccessibilityRole* role) {
+    InputAccessibility out;
+    if (role && *role != AccessibilityRole::None) {
+        out.hasRole = true;
+        out.role = *role;
+    }
+    return out;
+}
+
+InputAccessibility InputAccessibility::WithLabel(Str value) const {
+    InputAccessibility out = *this;
+    out.label = value;
+    return out;
+}
+
+InputAccessibility InputAccessibility::WithPlaceholder(Str value) const {
+    InputAccessibility out = *this;
+    out.placeholder = value;
+    return out;
+}
+
+InputAccessibility InputAccessibility::WithAccessibilityId(Str value) const {
+    InputAccessibility out = *this;
+    out.accessibilityId = value;
+    return out;
+}
+
+InputAccessibility InputAccessibility::WithValueExposed(bool exposed) const {
+    InputAccessibility out = *this;
+    out.valueExposed = exposed;
+    return out;
+}
+
+void InputSetAccessibility(InputState* state, const InputAccessibility& value) {
+    if (!state) {
+        return;
+    }
+    state->accessibilitySet = true;
+    state->accessibilityHasRole = value.hasRole;
+    state->accessibilityRole = value.role;
+    state->accessibilityLabel = value.label;
+    state->accessibilityPlaceholder = value.placeholder;
+    state->accessibilityAuthorId = value.accessibilityId;
+    state->accessibilityValueExposed = value.valueExposed;
+}
+
+void InputAccessibilityFocus(InputState* state, Window* win) {
+    if (!state || state->disabled || !win) {
+        return;
+    }
+    FocusHandleFocus(win, state->focus);
+}
+
+bool InputAccessibilitySetValue(InputState* state, App* app, Window* win,
+                                const Str* value) {
+    if (!state || !value || !InputIsEditable(state)) {
+        return false;
+    }
+    InputReplaceAll(state, app, win, *value);
+    return true;
+}
+
+// The editor element is the one focus handle. Role, name, placeholder and
+// value live here, not on the frame around it.
+static void ApplyEditorAccessibility(El* el, const InputState* state,
+                                     bool masked, Str value) {
+    if (!el || !state || !state->accessibilitySet) {
+        return;
+    }
+    el->Id(StrL("input-state"));
+    if (state->accessibilityHasRole) {
+        el->Role(state->accessibilityRole);
+    }
+    if (state->accessibilityLabel.s) {
+        el->AriaLabel(state->accessibilityLabel);
+    }
+    if (state->accessibilityPlaceholder.s) {
+        el->AriaPlaceholder(state->accessibilityPlaceholder);
+    }
+    if (state->accessibilityAuthorId.s) {
+        el->AccessibilityId(state->accessibilityAuthorId);
+    }
+    if (state->accessibilityValueExposed && !masked) {
+        el->AriaValue(value.s ? value : StrL(""));
+    }
+    if (state->disabled) {
+        el->AriaDisabled(true);
+    }
+}
+
 El* InputBase::New(Ctx* cx, Str id, bool interactive, AccessibilityRole role) {
     Arena* a = cx->a;
     return (interactive ? Div(a)->PathId(id) : Div(a)->Id(id))
@@ -1353,6 +1443,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     } else if (style.align == 2) {
         row->W(kFill)->JustifyEnd();
     }
+    ApplyEditorAccessibility(row, state, masked, text);
 
     if (len(text) == 0) {
         // The cue takes the muted color and the caret sits at the left edge of
@@ -1949,6 +2040,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
 
     El* col = Div(a)->FlexCol()->W(kFill)->BindInput(state);
     col->BoundsOut(&state->contentBox);
+    ApplyEditorAccessibility(col, state, style.mask || state->masked, text);
     if (len(text) == 0) {
         if (caret) {
             col->Caret(0, style.caret);

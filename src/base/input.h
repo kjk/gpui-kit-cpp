@@ -27,6 +27,30 @@ struct InputBase {
                    const InputStyles& styles = {});
 };
 
+// InputAccessibility: data for the editor's keyboard-focus boundary. The
+// frame keeps geometry and addon controls. None means presentational.
+struct InputAccessibility {
+    bool hasRole = false;
+    AccessibilityRole role = AccessibilityRole::None;
+    Str label = {};
+    Str placeholder = {};
+    Str accessibilityId = {};
+    bool valueExposed = true;
+
+    static InputAccessibility New(const AccessibilityRole* role);
+    InputAccessibility WithLabel(Str value) const;
+    InputAccessibility WithPlaceholder(Str value) const;
+    InputAccessibility WithAccessibilityId(Str value) const;
+    InputAccessibility WithValueExposed(bool exposed) const;
+};
+
+void InputSetAccessibility(InputState* state, const InputAccessibility& value);
+// A missing value is ActionData other than Value. Disabled and read-only
+// are read when the action runs.
+void InputAccessibilityFocus(InputState* state, Window* win);
+bool InputAccessibilitySetValue(InputState* state, App* app, Window* win,
+                                const Str* value);
+
 // gpui_base::input::InputEditorStyle. The base draws the text, the selection
 // and the caret; what they look like is pushed in by the themed layer above
 // it, the way Rust calls state.set_editor_style(...) before rendering.

@@ -687,13 +687,16 @@ El* Editor::IntoEl() {
     InputSizeMetrics(cx, size, &unusedH, &padX, &padY, &unusedFont);
     float left = padX < 6.f ? padX : 6.f;
     highlighter->editorPad = Edges::New(left, padX, padY, padY);
+    InputAccessibility access = InputAccessibility::New(&accessibilityRole)
+                                    .WithValueExposed(true);
+    if (ariaLabel.s) {
+        access = access.WithLabel(ariaLabel);
+    }
+    InputSetAccessibility(state, access);
     El* element = highlighter->IntoEl();
 
     const Theme& theme = ThemeNow(cx->app);
-    element->TabIndex(tabIndex)
-        ->Role(accessibilityRole)
-        ->AriaDisabled(disabled);
-    if (ariaLabel.s) element->AriaLabel(ariaLabel);
+    element->TabIndex(tabIndex);
     if (appearance) element->Bg(theme.inputBg);
     if (bordered) element->Border(1, theme.inputBorder)->Radius(theme.radius);
     if (disabled) element->Opacity(0.5f);
@@ -1043,8 +1046,6 @@ El* Input::IntoEl() {
     if (disabled) {
         editor.foreground = th.mutedFg;
     }
-    bool password = masked || (state && state->masked) ||
-                    InputContentIsSecret(hasContentType, contentType);
     // Without a content type, a masked input is a password field to screen
     // readers. An explicit content type, or a role override, still wins, and
     // a revealed field keeps the plain text role.
@@ -1055,7 +1056,29 @@ El* Input::IntoEl() {
     AccessibilityRole role =
         hasAccessibilityRole ? accessibilityRole
                              : InputAccessibilityRole(roleHasType, roleType);
-    El* field = InputBase::New(cx, id, !disabled, role)
+    // Password content types stay private after the mask is revealed. A
+    // mask that is only on right now is omitted by the editor itself.
+    bool valueExposed = !InputContentIsSecret(hasContentType, contentType);
+    if (state) {
+        InputAccessibility access = InputAccessibility::New(&role);
+        Str aria = ariaLabel.s ? ariaLabel : label;
+        if (!aria.s && state->placeholder.s) {
+            aria = state->placeholder;
+        }
+        if (aria.s) {
+            access = access.WithLabel(aria);
+        }
+        if (state->placeholder.s) {
+            access = access.WithPlaceholder(state->placeholder);
+        }
+        if (accessibilityId.s) {
+            access = access.WithAccessibilityId(accessibilityId);
+        }
+        InputSetAccessibility(state, access.WithValueExposed(valueExposed));
+    }
+    // The frame is presentational. The editor owns the text role and the
+    // one focus registration.
+    El* field = InputBase::New(cx, id, !disabled, AccessibilityRole::None)
                     ->BindInput(disabled ? nullptr : state)
                     ->FlexRow()
                     ->W(col ? kFill : width)
@@ -1069,24 +1092,6 @@ El* Input::IntoEl() {
                     // than spilling out past whatever is next to it.
                     ->ClipX();
     if (!disabled) InputTrackFrameFocus(cx, field, state);
-    if (state) {
-        if (state->placeholder.s) {
-            field->AriaPlaceholder(state->placeholder);
-        }
-        if (!password) {
-            field->AriaValue(InputValue(state));
-        }
-    }
-    if (accessibilityId.s) {
-        field->AccessibilityId(accessibilityId);
-    }
-    if (ariaLabel.s) {
-        field->AriaLabel(ariaLabel);
-    } else if (label.s) {
-        field->AriaLabel(label);
-    } else if (state && state->placeholder.s) {
-        field->AriaLabel(state->placeholder);
-    }
     // input.rs gates the whole focus appearance on `appearance`: a field with
     // none of its own is one somebody else has framed — a NumberInput's
     // editor, sitting inside a frame that shows the focus for it — and a ring
@@ -1315,7 +1320,26 @@ El* Textarea::IntoEl() {
         state->viewH = vh;
     }
     bool interactive = state && !state->disabled && !disabled;
-    El* box = InputBase::New(cx, id, interactive, accessibilityRole)
+    if (state) {
+        InputAccessibility access = InputAccessibility::New(&accessibilityRole)
+                                        .WithValueExposed(true);
+        Str aria = ariaLabel;
+        if (!aria.s && state->placeholder.s) {
+            aria = state->placeholder;
+        }
+        if (aria.s) {
+            access = access.WithLabel(aria);
+        }
+        if (state->placeholder.s) {
+            access = access.WithPlaceholder(state->placeholder);
+        }
+        if (accessibilityId.s) {
+            access = access.WithAccessibilityId(accessibilityId);
+        }
+        InputSetAccessibility(state, access);
+    }
+    // Presentational frame. The rows carry the text role.
+    El* box = InputBase::New(cx, id, interactive, AccessibilityRole::None)
                   ->BindInput(interactive ? state : nullptr)
                   ->W(kFill)
                   ->H(h)
@@ -1335,27 +1359,12 @@ El* Textarea::IntoEl() {
     if (stretch != 0) text->PaintOffset(0, stretch);
     box->Child(text);
     if (interactive) InputTrackFrameFocus(cx, box, state);
-    if (accessibilityId.s) {
-        box->AccessibilityId(accessibilityId);
-    }
     if (appearance) {
         box->Radius(th.radius)->Bg(th.inputBg);
         if (bordered) {
             box->Border(1, focused ? th.ring : th.inputBorder)
                 ->FocusRing(focusRing);
         }
-    }
-    if (state) {
-        box->AriaValue(InputValue(state));
-        if (state->placeholder.s) {
-            box->AriaPlaceholder(state->placeholder);
-            if (!ariaLabel.s) {
-                box->AriaLabel(state->placeholder);
-            }
-        }
-    }
-    if (ariaLabel.s) {
-        box->AriaLabel(ariaLabel);
     }
     InputTouchSelectionLayer(cx, box, id, state);
     BindInputContextMenu(cx, box, id, state, disabled, contextMenu,

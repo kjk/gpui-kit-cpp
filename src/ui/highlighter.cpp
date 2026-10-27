@@ -1409,15 +1409,14 @@ El* Highlighter::IntoEl() {
         // scrollId stays 0 and a grab does not move. A field that wraps has
         // nothing to reach sideways; one that does not is as wide as its
         // longest row, the way Textarea::IntoEl hangs ScrollX off !softWrap.
-        scroller =
-            InputBase::New(cx, id, true, AccessibilityRole::MultilineTextInput)
-                ->BindInputText(state)
-                ->FlexCol()
-                ->W(kFill)
-                ->H(h)
-                ->ClipY()
-                ->ScrollY(state ? state->scrollY : 0)
-                ->ScrollFromPath();
+        scroller = InputBase::New(cx, id, true, AccessibilityRole::None)
+                       ->BindInputText(state)
+                       ->FlexCol()
+                       ->W(kFill)
+                       ->H(h)
+                       ->ClipY()
+                       ->ScrollY(state ? state->scrollY : 0)
+                       ->ScrollFromPath();
         if (state && !state->softWrap) {
             scroller->ScrollX(state->scrollX);
         }

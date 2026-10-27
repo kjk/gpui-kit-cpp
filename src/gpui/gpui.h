@@ -5143,6 +5143,14 @@ struct InputState {
     // anywhere inside it — on the editor or on a prefix or suffix control.
     // Not a tab stop. Made by the first frame that draws one.
     FocusHandle frameFocus = {};
+    // InputAccessibility, copied for this frame. The strings are not owned.
+    bool accessibilitySet = false;
+    bool accessibilityHasRole = false;
+    AccessibilityRole accessibilityRole = AccessibilityRole::None;
+    Str accessibilityLabel = {};
+    Str accessibilityPlaceholder = {};
+    Str accessibilityAuthorId = {};
+    bool accessibilityValueExposed = true;
     // Rust's `Rope`. NUL-terminated past `len` so a `const char*` reader still
     // works; the terminator is not counted.
     Vec<char> text;

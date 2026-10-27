@@ -16,12 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `77ff6f794dca3bcee2e90977cedf12a64aed17e4` (2026-10-20,
-dock: Read the legacy empty `StackPanel` as an empty split (#3610)).
-A `StackPanel` saved with leaf info is an empty horizontal split, and
-the same node inside a tab group is dropped so the next save can heal.
-An unregistered panel shows `Dock.Unavailable Panel`; its type name is
-logged.
+Processed through `4abf41ca599cc07cc072495c94f6846556058f68` (2026-10-20,
+input: align accessibility semantics with editor focus (#3585)).
+The text role, label, placeholder and value sit on the editor element
+that owns keyboard focus. The frame stays presentational, so a prefix
+or suffix is not a second text node. Password content types do not
+expose the value. Docs, the website and the native AppKit probe are
+not ported.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

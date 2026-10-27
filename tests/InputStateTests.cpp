@@ -2521,8 +2521,29 @@ static void TheUiInputFacadeKeepsTheSourceShapes() {
     utassert(state.mode.folding);
     utassert(state.readonly && state.disabled);
     utassert(editor->style.tabIndex == 3);
-    utassert(editor->accessibility
-                 .role == AccessibilityRole::MultilineTextInput);
+    // The frame is presentational. The editor row owns the text role.
+    utassert(editor->accessibility.role == AccessibilityRole::None);
+    El* semantic = nullptr;
+    {
+        El* stack[64];
+        int n = 0;
+        stack[n++] = editor;
+        while (n > 0) {
+            El* here = stack[--n];
+            if (here->accessibility
+                    .role == AccessibilityRole::MultilineTextInput) {
+                semantic = here;
+                break;
+            }
+            for (El* child = here->first; child; child = child->next) {
+                if (n < 64) {
+                    stack[n++] = child;
+                }
+            }
+        }
+    }
+    utassert(semantic);
+    utassert(StrEq(semantic->accessibility.label, StrL("Source")));
     utassert((editor->StyleStates()->refineSet & StyleFieldWidth) != 0);
     utassert(state.focus.IsValid());
     // editor.rs: `.font_family(cx.theme().mono_font_family)` under the
@@ -11586,6 +11607,106 @@ static void HighlightRangesAreOrderedAndDoNotOverlap() {
     ExpectRetained(ni, split, 2, whole, 1);
 }
 
+// state.rs accessibility_actions_recheck_live_editability.
+static void AccessibilityActionsRecheckLiveEditability() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputSetValue(s, StrL("initial")); });
+    TestDraw(view.win);
+    utassert(
+        !InputAccessibilitySetValue(view.input, view.app, view.win, nullptr));
+    InputAccessibilityFocus(view.input, view.win);
+    utassert(FocusHandleIsFocused(view.win, view.input->focus));
+    utassert(ViewValueIs(view, "initial"));
+    Str updated = StrL("updated🦀");
+    utassert(
+        InputAccessibilitySetValue(view.input, view.app, view.win, &updated));
+    utassert(ViewValueIs(view, "updated🦀"));
+    for (int i = 0; i < 2; i++) {
+        bool disabled = i == 1;
+        view.input->disabled = disabled;
+        view.input->readonly = !disabled;
+        InputBlur(view.input, view.app, view.win);
+        InputAccessibilityFocus(view.input, view.win);
+        utassert(FocusHandleIsFocused(view.win, view.input->focus) ==
+                 !disabled);
+        Str rejected = StrL("rejected");
+        utassert(!InputAccessibilitySetValue(view.input, view.app, view.win,
+                                             &rejected));
+        utassert(ViewValueIs(view, "updated🦀"));
+    }
+    view.input->disabled = false;
+    view.input->readonly = false;
+    InputAccessibilityFocus(view.input, view.win);
+    TestDraw(view.win);
+    utassert(ViewAct(view, InputAction::Undo));
+    utassert(ViewValueIs(view, "initial"));
+    view.input->masked = true;
+    utassert(
+        InputAccessibilitySetValue(view.input, view.app, view.win, &updated));
+    utassert(ViewValueIs(view, "updated🦀"));
+    InputViewFree(&view);
+}
+
+static El* FindRole(El* root, AccessibilityRole role) {
+    El* stack[64];
+    int n = 0;
+    if (root) {
+        stack[n++] = root;
+    }
+    while (n > 0) {
+        El* here = stack[--n];
+        if (here->accessibility.role == role) {
+            return here;
+        }
+        for (El* child = here->first; child; child = child->next) {
+            if (n < 64) {
+                stack[n++] = child;
+            }
+        }
+    }
+    return nullptr;
+}
+
+// input.rs password_content_types_keep_accessibility_values_private.
+static void PasswordContentTypesKeepAccessibilityValuesPrivate() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    InputState secret;
+    InputSetValue(&secret, StrL("secret"));
+    El* password = component::Input::New(&cx, StrL("pw"), &secret)
+                       ->ContentType(component::InputContentType::Password)
+                       ->IntoEl();
+    El* passwordNode = FindRole(password, AccessibilityRole::PasswordInput);
+    utassert(passwordNode && !passwordNode->accessibility.value.s);
+    InputState created;
+    InputSetValue(&created, StrL("secret"));
+    El* newer = component::Input::New(&cx, StrL("np"), &created)
+                    ->ContentType(component::InputContentType::NewPassword)
+                    ->IntoEl();
+    El* newerNode = FindRole(newer, AccessibilityRole::PasswordInput);
+    utassert(newerNode && !newerNode->accessibility.value.s);
+    InputState plain;
+    InputSetValue(&plain, StrL("hello"));
+    El* field = component::Input::New(&cx, StrL("q"), &plain)->IntoEl();
+    El* textNode = FindRole(field, AccessibilityRole::TextInput);
+    utassert(textNode && StrEq(textNode->accessibility.value, StrL("hello")));
+    ArenaDelete(a);
+}
+
+// state.rs accessibility_set_value_preserves_exact_editor_text.
+static void AccessibilitySetValuePreservesExactEditorText() {
+    InputView view = InputViewBuildEditor(nullptr);
+    TestDraw(view.win);
+    Str paren = StrL("(");
+    utassert(
+        InputAccessibilitySetValue(view.input, view.app, view.win, &paren));
+    utassert(ViewValueIs(view, "("));
+    InputViewFree(&view);
+}
+
 void TestInputState() {
     TextareaPrewrapPreparesContentRowsBeforeLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
@@ -11593,6 +11714,9 @@ void TestInputState() {
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
+    AccessibilityActionsRecheckLiveEditability();
+    AccessibilitySetValuePreservesExactEditorText();
+    PasswordContentTypesKeepAccessibilityValuesPrivate();
     WhitespaceMarksFollowTheShapedGlyphs();
     IndentGuidesStandAtTheMeasuredIndentWidth();
     EachRowCarriesItsIndentGuides();
