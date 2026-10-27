@@ -200,6 +200,9 @@ class ShellRuntime {
     void DispatchItemSecondaryClick(shell::CallbackId callback, Str key,
                                     const MouseDownEvent& event, Window* window,
                                     App* app);
+    // list on_visible_range_change: {start, end} then the item count, then cx.
+    void DispatchVisibleRange(shell::CallbackId callback, int start, int end,
+                              int count, Window* window, App* app);
     void DispatchInputEvent(shell::EntityHandle handle, const InputEvent& event,
                             Window* window, App* app);
     // A gpui-component InputState / TextareaState subscription. The payload

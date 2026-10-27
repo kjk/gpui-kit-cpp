@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4c469234932dee249e975cb61066a66bd9511fdb",
+  sha: "ce040801ad58727396041f145798dd339b5fdfb0",
   date: "2026-10-16",
-  subject: "input: Name the mask toggle (#3562)",
+  subject: "shell: Add `on_visible_range_change` to report what a list shows (#3549)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",

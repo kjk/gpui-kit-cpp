@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4c469234932dee249e975cb61066a66bd9511fdb` (2026-10-16,
-input: Name the mask toggle (#3562)).
-The show/hide button on a masked input is named for the action it
-takes: Show password while the value is hidden, Hide password once it
-is revealed.
+Processed through `ce040801ad58727396041f145798dd339b5fdfb0` (2026-10-16,
+shell: Add `on_visible_range_change` to report what a list shows (#3549)).
+A script `list` reports the items in its viewport, and how many it
+has, after a frame that changed either. The handler runs once the
+frame is done, so it can load another page. `uniform_list` and the
+virtual lists ignore it.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

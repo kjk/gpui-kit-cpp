@@ -2396,7 +2396,7 @@ static JSValue NativeSlot(JSContext* ctx, JSValueConst, int argc,
 static bool IsCallbackMethod(Str name) {
     static const char names[] =
         "on_click\0on_mouse_move\0on_hover\0on_item_click\0"
-        "on_item_secondary_click\0on_change\0"
+        "on_item_secondary_click\0on_visible_range_change\0on_change\0"
         "on_open_change\0on_confirm\0on_dismiss\0on_step\0on_resize\0"
         "on_key_down\0on_key_up\0on_mouse_down_out\0on_scroll_wheel\0"
         // The name is accepted so a script can pass the handler. There is
@@ -13834,6 +13834,18 @@ void ShellRuntime::DispatchItemSecondaryClick(shell::CallbackId callback,
                       ModifiersObject(impl->context, event.modifiers));
     JSValue leading[2] = {
         JS_NewStringLen(impl->context, key.s, (size_t)len(key)), payload};
+    DispatchArgs(this, callback, leading, 2, window, app);
+}
+
+void ShellRuntime::DispatchVisibleRange(shell::CallbackId callback, int start,
+                                        int end, int count, Window* window,
+                                        App* app) {
+    JSValue range = JS_NewObject(impl->context);
+    JS_SetPropertyStr(impl->context, range, "start",
+                      JS_NewInt32(impl->context, start));
+    JS_SetPropertyStr(impl->context, range, "end",
+                      JS_NewInt32(impl->context, end));
+    JSValue leading[2] = {range, JS_NewInt32(impl->context, count)};
     DispatchArgs(this, callback, leading, 2, window, app);
 }
 

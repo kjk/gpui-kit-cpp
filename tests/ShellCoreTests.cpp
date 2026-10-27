@@ -2651,6 +2651,187 @@ static void ExpectReading(LazyListFixture* fixture, const char* top,
     utassert(RowKeyIs(fixture, following, next));
 }
 
+// render.rs a_list_reports_its_visible_range_however_it_changed. A hundred
+// 20px rows in a 200px list. The handler runs after the frame, so its
+// notify is on screen the next time the tree is drawn.
+static const char kReportingListSource[] =
+    "import { div, View, list } from 'gpui-kit';\n"
+    "import { Scrollbar, v_flex } from 'gpui-base';\n"
+    "globalThis.reported = 'none';\n"
+    "export default class Rows extends View {\n"
+    "  init() { this.count = 100; }\n"
+    "  render(cx) {\n"
+    "    return v_flex().w(300).h(400).child(\n"
+    "      v_flex().relative().h(200).child(\n"
+    "        list('rows', this.count, (index) => 'r' + index, (index) =>\n"
+    "          div().h(20).child('row ' + index))\n"
+    "        .on_visible_range_change((range, count, cx) => {\n"
+    "          globalThis.reported = range.start + '..' + range.end + ' of ' "
+    "+\n"
+    "            count;\n"
+    "          cx.notify();\n"
+    "        }))\n"
+    "      "
+    ".child(Scrollbar.vertical('rows').mode('always').absolute().inset_0()))\n"
+    "    .child(div().h(40).on_click((_event, cx) => {\n"
+    "      this.count += 1; cx.notify();\n"
+    "    }).child('one more'));\n"
+    "  }\n"
+    "}\n";
+
+static const char kReportingListPadSource[] =
+    "import { div, View, list } from 'gpui-kit';\n"
+    "import { v_flex } from 'gpui-base';\n"
+    "globalThis.reported = 'none';\n"
+    "export default class Rows extends View {\n"
+    "  init() { this.count = 100; }\n"
+    "  render(cx) {\n"
+    "    return v_flex().w(300).h(400).child(\n"
+    "      v_flex().h(200).child(\n"
+    "        list('rows', this.count, (index) => 'r' + index, (index) =>\n"
+    "          div().h(20).child('row ' + index))\n"
+    "        .pt(20).on_visible_range_change((range, count, cx) => {\n"
+    "          globalThis.reported = range.start + '..' + range.end + ' of ' "
+    "+\n"
+    "            count;\n"
+    "          cx.notify();\n"
+    "        })));\n"
+    "  }\n"
+    "}\n";
+
+static const char kReportingListPadFullSource[] =
+    "import { div, View, list } from 'gpui-kit';\n"
+    "import { v_flex } from 'gpui-base';\n"
+    "globalThis.reported = 'none';\n"
+    "export default class Rows extends View {\n"
+    "  init() { this.count = 100; }\n"
+    "  render(cx) {\n"
+    "    return v_flex().w(300).h(400).child(\n"
+    "      v_flex().h(200).child(\n"
+    "        list('rows', this.count, (index) => 'r' + index, (index) =>\n"
+    "          div().h(20).child('row ' + index))\n"
+    "        .pt(100).pb(100).on_visible_range_change((range, count, cx) => {\n"
+    "          globalThis.reported = range.start + '..' + range.end + ' of ' "
+    "+\n"
+    "            count;\n"
+    "          cx.notify();\n"
+    "        })));\n"
+    "  }\n"
+    "}\n";
+
+// The deferred handler's notify lands on a later frame. A few draws drain
+// that post and the frame it asks for.
+static void SettleList(LazyListFixture* fixture) {
+    for (int i = 0; i < 4; i++) {
+        fixture->Draw();
+        ExecDrain();
+    }
+}
+
+static bool ReportedIs(LazyListFixture* fixture, int start, int end,
+                       int count) {
+    char script[256];
+    snprintf(script, sizeof(script),
+             "if (globalThis.reported !== '%d..%d of %d') throw new Error("
+             "'reported ' + globalThis.reported);",
+             start, end, count);
+    return fixture->Check(Str(script));
+}
+
+static void AListReportsItsVisibleRangeHoweverItChanged() {
+    LazyListFixture fixture{Str(kReportingListSource)};
+    SettleList(&fixture);
+    utassert(!fixture.error.IsSet());
+    utassert(ReportedIs(&fixture, 0, 10, 100));
+
+    fixture.ScrollTo(100.f);
+    SettleList(&fixture);
+    utassert(ReportedIs(&fixture, 5, 15, 100));
+
+    ClickEl(&fixture, NthEl(fixture.root, 1));
+    SettleList(&fixture);
+    utassert(ReportedIs(&fixture, 5, 15, 101));
+
+    // A later position, the way a press on the track below the thumb jumps
+    // the list without a wheel event. The harness hands the list the offset
+    // that press would have produced.
+    fixture.ScrollTo(400.f);
+    SettleList(&fixture);
+    utassert(ReportedIs(&fixture, 20, 30, 101));
+}
+
+// render.rs a_list_reports_only_items_visible_after_its_padding.
+static void AListReportsOnlyItemsVisibleAfterItsPadding() {
+    LazyListFixture padded{Str(kReportingListPadSource)};
+    SettleList(&padded);
+    utassert(!padded.error.IsSet());
+    utassert(ReportedIs(&padded, 0, 9, 100));
+    padded.ScrollTo(100.f);
+    SettleList(&padded);
+    utassert(ReportedIs(&padded, 5, 14, 100));
+    padded.ScrollTo(110.f);
+    SettleList(&padded);
+    utassert(ReportedIs(&padded, 5, 15, 100));
+
+    LazyListFixture filled{Str(kReportingListPadFullSource)};
+    SettleList(&filled);
+    utassert(!filled.error.IsSet());
+    utassert(ReportedIs(&filled, 0, 0, 100));
+}
+
+// render.rs a_list_can_load_older_items_when_the_reader_reaches_the_top.
+static const char kOlderPageSource[] =
+    "import { div, View, list } from 'gpui-kit';\n"
+    "import { v_flex } from 'gpui-base';\n"
+    "globalThis.reported = 'none';\n"
+    "globalThis.rowKey = '';\n"
+    "export default class History extends View {\n"
+    "  init() {\n"
+    "    this.items = [];\n"
+    "    for (let index = 0; index < 100; index++)\n"
+    "      this.items.push('m' + index);\n"
+    "    this.pages = 0;\n"
+    "  }\n"
+    "  render(cx) {\n"
+    "    return v_flex().w(300).h(400).child(\n"
+    "      v_flex().h(200).child(\n"
+    "        list('rows', this.items.length,\n"
+    "          (index) => this.items[index],\n"
+    "          (index) => div().h(20).child(this.items[index]))\n"
+    "        .on_item_click((key) => { globalThis.rowKey = key; })\n"
+    "        .on_visible_range_change((range, count, cx) => {\n"
+    "          globalThis.reported = range.start + '..' + range.end + ' of ' "
+    "+\n"
+    "            count;\n"
+    "          if (range.start === 0) {\n"
+    "            const page = [];\n"
+    "            for (let index = 0; index < 10; index++)\n"
+    "              page.push('p' + this.pages + '-' + index);\n"
+    "            this.pages += 1;\n"
+    "            this.items = page.concat(this.items);\n"
+    "          }\n"
+    "          cx.notify();\n"
+    "        })));\n"
+    "  }\n"
+    "}\n";
+
+static void AListCanLoadOlderItemsWhenTheReaderReachesTheTop() {
+    LazyListFixture fixture{Str(kOlderPageSource)};
+    SettleList(&fixture);
+    utassert(!fixture.error.IsSet());
+    utassert(ReportedIs(&fixture, 10, 20, 110));
+    utassert(RowKeyIs(&fixture, fixture.Row(0), "m0"));
+
+    // The page above is 200px and the list has measured 160 of it, so the
+    // first step lands inside the page and the next one reaches its top.
+    fixture.ScrollTo(60.f);
+    SettleList(&fixture);
+    fixture.ScrollTo(0.f);
+    SettleList(&fixture);
+    utassert(ReportedIs(&fixture, 10, 20, 120));
+    utassert(RowKeyIs(&fixture, fixture.Row(0), "p0-0"));
+}
+
 static void AListKeepsTheReaderOnTheirItemWhenTheCountChanges() {
     LazyListFixture fixture{Str(kTranscriptSource)};
     utassert(fixture.Draw() != nullptr && !fixture.error.IsSet());
@@ -5993,6 +6174,9 @@ void TestShellCore() {
     AListReportsWhichItemWasClicked();
     TheSearchTriesTheLikelyPlacesFirstAndEveryIndexOnce();
     AListKeepsTheReaderOnTheirItemWhenTheCountChanges();
+    AListReportsItsVisibleRangeHoweverItChanged();
+    AListReportsOnlyItemsVisibleAfterItsPadding();
+    AListCanLoadOlderItemsWhenTheReaderReachesTheTop();
     ATextareaThatSubmitsOnEnterKeepsTheLineBreakForShiftEnter();
     LazyListsShareTheItemBudgetAndRefuseNesting();
     EveryCloseDismissesBeforeItCloses();

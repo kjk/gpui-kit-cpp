@@ -1,5 +1,6 @@
 #include "shell/materialize.h"
 
+#include "sys/executor.h"
 #include "base/accordion.h"
 #include "gpui/image.h"
 #include "base/avatar.h"
@@ -121,6 +122,10 @@ struct MaterialBehavior {
     // released with the batch. The list-level callbacks stay, one for every
     // row.
     shell::CallbackId onItemSecondaryClick = 0;
+    // Reports which items a list shows, and how many it has, after a frame
+    // in which either changed. Deferred to after the frame: the handler may
+    // change state, and nothing inside layout may.
+    shell::CallbackId onVisibleRangeChange = 0;
     shell::CallbackId onToken = 0;
     shell::CallbackId onTokenClick = 0;
     shell::CallbackId onTokenHover = 0;
@@ -264,6 +269,8 @@ static void ResolveBehavior(const shell::SpecNode* node,
                 out->onTokenHover = op.callback;
             else if (StrEq(op.name, StrL("on_item_secondary_click")))
                 out->onItemSecondaryClick = op.callback;
+            else if (StrEq(op.name, StrL("on_visible_range_change")))
+                out->onVisibleRangeChange = op.callback;
             else if (StrEq(op.name, StrL("on_key_down")))
                 out->onKeyDown = op.callback;
             else if (StrEq(op.name, StrL("on_key_up")))
@@ -1212,6 +1219,12 @@ struct LazyListState {
     int topKeyIndex = -1;
     shell::CallbackId topGetKey = 0;
     Str topKey = {};
+    // The visible range and count last reported. Cleared when the handler
+    // goes away, so a handler added later reports the list as it is then.
+    bool hasReported = false;
+    int reportedStart = 0;
+    int reportedEnd = 0;
+    int reportedCount = 0;
 
     ~LazyListState() {
         VecReset(measured);
@@ -1289,6 +1302,99 @@ static uint32_t LazyListKey(Str id) {
                     (uint32_t)HashClickId(StrL("gpui-shell-lazy-list")));
 }
 
+// Posted after the frame. The handler runs as an event, so it may change
+// state; layout itself may not. The runtime is retained until the post runs.
+struct VisibleRangePost {
+    ShellRuntime* runtime = nullptr;
+    shell::CallbackId callback = 0;
+    int start = 0;
+    int end = 0;
+    int count = 0;
+    Window* window = nullptr;
+    App* app = nullptr;
+};
+
+static void RunVisibleRangePost(VisibleRangePost* post) {
+    if (post->runtime) {
+        post->runtime
+            ->DispatchVisibleRange(post->callback, post->start, post->end,
+                                   post->count, post->window, post->app);
+        post->runtime->Release();
+    }
+    Free(nullptr, post);
+}
+
+// The items whose tops sit above the viewport's bottom, from the item at the
+// top. Padding is inside the border box. A padding that fills the viewport
+// shows nothing, which is what GPUI paints in that case.
+static void ListVisibleRange(const LazyListState* state, float height,
+                             float padTop, float padBottom, int* startOut,
+                             int* endOut) {
+    int count = state->itemCount;
+    int start = state->topItem;
+    if (start < 0) start = 0;
+    if (start > count) start = count;
+    int end = start;
+    if (height > padTop + padBottom) {
+        float room = height - padTop - padBottom;
+        float along = -state->topInto;
+        while (end < count) {
+            if (along >= room) break;
+            float h = end < state->measured.len ? state->measured[end] : 0;
+            if (h <= 0) break;
+            end++;
+            along += h;
+        }
+    }
+    *startOut = start;
+    *endOut = end;
+}
+
+struct ListRangeHook {
+    void (*inner)(PaintCtx*, El*, void*) = nullptr;
+    void* innerUser = nullptr;
+    ShellRuntime* runtime = nullptr;
+    LazyListState* state = nullptr;
+    shell::CallbackId callback = 0;
+    Window* window = nullptr;
+    App* app = nullptr;
+};
+
+static void ListRangePrePaint(PaintCtx* ctx, El* e, void* user) {
+    auto* hook = (ListRangeHook*)user;
+    if (hook->inner) hook->inner(ctx, e, hook->innerUser);
+    LazyListState* state = hook->state;
+    if (!state) return;
+    if (!hook->callback) {
+        state->hasReported = false;
+        return;
+    }
+    int start = 0;
+    int end = 0;
+    ListVisibleRange(state, e->h, e->style.pad.top, e->style.pad.bottom, &start,
+                     &end);
+    int count = state->itemCount;
+    if (state->hasReported && state->reportedStart == start &&
+        state->reportedEnd == end && state->reportedCount == count) {
+        return;
+    }
+    state->hasReported = true;
+    state->reportedStart = start;
+    state->reportedEnd = end;
+    state->reportedCount = count;
+    if (!hook->runtime || !hook->window || !hook->app) return;
+    auto* post = AllocArray<VisibleRangePost>(1);
+    if (!post) return;
+    post->runtime = hook->runtime->Retain();
+    post->callback = hook->callback;
+    post->start = start;
+    post->end = end;
+    post->count = count;
+    post->window = hook->window;
+    post->app = hook->app;
+    ExecPost(MkFunc0(RunVisibleRangePost, post));
+}
+
 // The wheel, or a bar the list shares its name with, moved the list. The
 // window has already asked for a repaint; the description is untouched, so
 // the next frame re-materializes the same snapshot at the new offset.
@@ -1315,6 +1421,11 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
             "GPUI's own, filed under the id it was built with, which is where "
             "a Scrollbar of that name finds it\n",
             name);
+    }
+    if (uniform && behavior.onVisibleRangeChange) {
+        logf(
+            "shell: on_visible_range_change is ignored on a uniform_list: it "
+            "is list that reports its visible range after the frame\n");
     }
     if (!uniform && behavior.hasItemToMeasure) {
         logf(
@@ -1392,7 +1503,20 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
     opts.user = user;
     opts.scrollId = scrollId;
     opts.onScroll = onScroll;
-    return VirtualList::New(cx, spec->id, opts)->SizeFull();
+    El* list = VirtualList::New(cx, spec->id, opts)->SizeFull();
+    if (behavior.onVisibleRangeChange || state->hasReported) {
+        auto* hook = ArenaNew<ListRangeHook>(cx->a);
+        hook->inner = list->prePaint;
+        hook->innerUser = list->customUser;
+        hook->runtime = runtime;
+        hook->state = state;
+        hook->callback = behavior.onVisibleRangeChange;
+        hook->window = cx->win;
+        hook->app = cx->app;
+        list->prePaint = &ListRangePrePaint;
+        list->customUser = hook;
+    }
+    return list;
 }
 
 // `dock_area` — the one element whose contents the description does not
@@ -2159,6 +2283,13 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             user->getKey = list->getKey;
             user->onItemClick = behavior.onItemClick;
             user->onItemSecondaryClick = behavior.onItemSecondaryClick;
+            if (behavior.onVisibleRangeChange) {
+                logf(
+                    "shell: on_visible_range_change is ignored on a %s: it "
+                    "is list that reports its visible range after the frame\n",
+                    list->axis == Axis::Horizontal ? StrL("h_virtual_list")
+                                                   : StrL("v_virtual_list"));
+            }
             VirtualListOpts opts;
             opts.count = list->sizeCount;
             opts.sizes = sizes;

@@ -134,9 +134,12 @@ float VirtualListPixelFromLogical(const float* sizes, int count, int item,
     item = ClampI(item, 0, count);
     float pixel = 0;
     if (sizes) {
+        // A size that is still 0 has not been drawn. Those sit in a prefix
+        // ahead of the measured band, or past it: they add nothing, and the
+        // walk continues so a logical top inside the band still has a pixel
+        // offset. A measured row is at least 1px.
         for (int i = 0; i < item && i < count; i++) {
-            if (sizes[i] <= 0) return pixel;
-            pixel += sizes[i];
+            if (sizes[i] > 0) pixel += sizes[i];
         }
     }
     return pixel + (into > 0 ? into : 0);
@@ -148,12 +151,20 @@ void VirtualListLogicalFromPixel(const float* sizes, int count, float rowH,
     int ix = 0;
     float rest = pixel;
     if (sizes) {
-        while (ix < count) {
-            float h = sizes[ix];
-            if (h <= 0) break;
-            if (rest < h) break;
-            rest -= h;
-            ix++;
+        // The unmeasured prefix does not occupy scroll space. Once a measured
+        // row has been passed, the next unmeasured row is the end of what a
+        // scroll can land on.
+        int first = 0;
+        while (first < count && sizes[first] <= 0) first++;
+        if (first < count) {
+            ix = first;
+            while (ix < count) {
+                float h = sizes[ix];
+                if (h <= 0) break;
+                if (rest < h) break;
+                rest -= h;
+                ix++;
+            }
         }
     } else if (rowH > 0 && count > 0) {
         ix = (int)(pixel / rowH);
@@ -386,8 +397,42 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
     if (o.logicalScroll) {
         int ix = o.topItem;
         if (ix < 0) ix = 0;
+        if (ix > o.count) ix = o.count;
         float along = -o.topInto;
         float origin = offset + along;
+        // GPUI's list overdraw is on both sides of the viewport. The band
+        // above is what a later wheel can scroll into: a page spliced in
+        // above the reader has no height until it is measured, and a scroll
+        // stops at the last measured row.
+        if (o.overdraw > 0 && o.sizes && ix > 0) {
+            float back = along;
+            int above = ix;
+            while (above > 0 && back > -o.overdraw) {
+                int prev = above - 1;
+                float extent =
+                    prev < layout->sizes.len ? layout->sizes[prev] : 0;
+                if (extent <= 0) {
+                    El* made = nullptr;
+                    if (o.row) {
+                        made = o.row(o.user, &cx, prev);
+                    } else if (o.range) {
+                        El* one = nullptr;
+                        o.range(o.user, &cx, prev, prev + 1, &one);
+                        made = one;
+                    }
+                    if (made) {
+                        extent =
+                            VirtualListMeasureItem(ctx, e, made, axis, o.rowH);
+                        const_cast<float*>(o.sizes)[prev] = extent;
+                        if (prev < layout->sizes.len)
+                            layout->sizes[prev] = extent;
+                    }
+                }
+                if (extent <= 0) break;
+                back -= extent;
+                above = prev;
+            }
+        }
         while (ix < o.count && along < viewport + o.overdraw) {
             El* made = nullptr;
             if (o.row) {
