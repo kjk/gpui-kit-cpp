@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f8c867872812bd8f3a035fda73fd1e3305019b79` (2026-10-19,
-webview: Support gpui-pre and make `gpui-fast` optional again (#3591)).
-Without a composition surface, a partly clipped webview keeps its
-full document bounds and extends past the container. It is hidden
-only when the clip misses it. Cargo features and the CI job are
-not ported.
+Processed through `57aff71ef446e9cbd702a0e462c5813e2fd9a7b7` (2026-10-19,
+motion: Preserve transition and presence duration precision (#3590)).
+Rust multiplies a `Duration` in f64 so a reversing run keeps
+sub-millisecond precision. Durations here are float milliseconds, so
+that rounding does not apply. Release notes are not ported.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
