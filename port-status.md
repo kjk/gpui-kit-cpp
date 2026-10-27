@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4cf4de5095cf3e7ea68bd8c33a0037d7ae07c6f8` (2026-10-18,
-slider: Write the indicator's bounds only when they moved (#3575)).
-The rail writes its box only when that box changed. A second draw of
-the same slider leaves the box as it was.
+Processed through `8aa9f29c4c275320bd66d3e33c9eb9634cbadc70` (2026-10-18,
+list: Notify from set_searchable only when it changes (#3576)).
+Select and combobox already write the searchable flag without
+notifying, so a render that sets the same flag does not rebuild
+the page.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

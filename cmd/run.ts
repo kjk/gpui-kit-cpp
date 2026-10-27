@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4cf4de5095cf3e7ea68bd8c33a0037d7ae07c6f8",
+  sha: "8aa9f29c4c275320bd66d3e33c9eb9634cbadc70",
   date: "2026-10-18",
-  subject: "slider: Write the indicator's bounds only when they moved (#3575)",
+  subject: "list: Notify from set_searchable only when it changes (#3576)",
   crates: {
     "gpui-kit": "0.7.3",
     "gpui-base": "0.7.3",
