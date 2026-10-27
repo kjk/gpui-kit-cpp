@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `af456ddb2fe7bc57f040bb94064135cf353488d6` (2026-10-19,
-popover: Preserve keyboard activation in content (#3586)).
-Popover content has its own key context. Escape still dismisses it.
-Enter and Space stay with the focused control, so a button inside
-the popover activates instead of toggling the popover shut.
+Processed through `2eedb69cd8fcdd233b3f12c6b1e02007b0e2b689` (2026-10-19,
+text: Add SelectionFormat::SourceAcrossStyles (#3517)).
+A selection that stays in one block and one mark group copies the
+rendered text. A second block, a second mark group, or an inline
+object copies Markdown source. Select-all still copies the source.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

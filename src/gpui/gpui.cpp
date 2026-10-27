@@ -8988,6 +8988,55 @@ static bool AtomReached(PaintCtx* ctx, int i, int a, int b, EntityId owner) {
     return a < pos - 1 && b >= pos - 1;
 }
 
+// SelectionFormat::SourceAcrossStyles. One style is one block and one mark
+// group, and no inline object: that copies as the rendered text. A second
+// block, a second mark group, or an object copies as source. A block that
+// never painted is not in this list; source copy is the non-scrollable path,
+// where every block the selection covers has painted.
+static bool AcrossStylesUsesSource(PaintCtx* ctx, int a, int b, int scope,
+                                   EntityId owner) {
+    const SelBlock* blk = nullptr;
+    const SelSource* grp = nullptr;
+    bool saw = false;
+    for (int i = 0; i < ctx->texts.len; i++) {
+        const TextHit& t = ctx->texts[i];
+        if ((scope >= 0 && t.scope != scope) ||
+            !TextHitOwnerMatches(t, owner)) {
+            continue;
+        }
+        bool take = false;
+        bool object = false;
+        if (t.blockPlugin) {
+            take = BlockPluginHitSelected(ctx, t, a, b);
+            object = take;
+        } else {
+            int pos = t.docOff;
+            int plen = len(t.text);
+            int lo = a > pos ? a : pos;
+            int hi = b < pos + plen ? b : pos + plen;
+            bool atom = t.atom && t.src && AtomReached(ctx, i, a, b, owner);
+            take = (lo < hi && t.text.s) || atom;
+            object = atom;
+        }
+        if (!take) {
+            continue;
+        }
+        const SelBlock* want = t.src ? t.src->block : nullptr;
+        const SelSource* mark = t.src;
+        if (!saw) {
+            saw = true;
+            blk = want;
+            grp = mark;
+        } else if (want != blk || mark != grp) {
+            return true;
+        }
+        if (object) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
                                 EntityId owner, char* out, int cap,
                                 SelectionFormat fmt) {
@@ -9002,6 +9051,11 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         int t = a;
         a = b;
         b = t;
+    }
+    if (fmt == SelectionFormat::SourceAcrossStyles) {
+        fmt = AcrossStylesUsesSource(ctx, a, b, scope, owner)
+                  ? SelectionFormat::Source
+                  : SelectionFormat::Plain;
     }
     bool src = fmt == SelectionFormat::Source;
     CopyOut o = {out, cap, 0};

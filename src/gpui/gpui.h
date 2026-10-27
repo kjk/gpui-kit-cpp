@@ -2126,9 +2126,13 @@ struct ActionEvent {
 // text/state.rs SelectionFormat: what a copy of the window's selection says.
 // Plain is the rendered text, which is all a run knows by itself. Source
 // rebuilds the Markdown the run was rendered from, out of the affixes below.
+// SourceAcrossStyles is Plain while the selection stays in one style — one
+// block and one mark group, with no inline object — and Source as soon as
+// it takes in several. Select-all still copies the source verbatim.
 enum class SelectionFormat : uint8_t {
     Plain = 0,
-    Source
+    Source,
+    SourceAcrossStyles,
 };
 
 // The block a selectable run belongs to, for SelectionFormat::Source. Rust

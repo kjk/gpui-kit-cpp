@@ -731,16 +731,96 @@ static TempStr SrcCopyTemp(SrcDoc* d, SelectionFormat fmt) {
     return buf;
 }
 
-static TempStr SrcRangeCopyTemp(SrcDoc* d, int start, int end) {
+static TempStr SrcRangeCopyTemp(SrcDoc* d, int start, int end,
+                                SelectionFormat fmt = SelectionFormat::Source) {
     TempStr buf = AllocStrTemp(511);
-    buf.len = CopyTextHitsIn(&d->ctx, start, end, -1, buf.s, len(buf) + 1,
-                             SelectionFormat::Source);
+    buf.len = CopyTextHitsIn(&d->ctx, start, end, -1, buf.s, len(buf) + 1, fmt);
     return buf;
 }
 
 // A mark group split over several word elements wraps once, not per word —
 // which is what reconstruct_markdown gets from walking mark ranges rather
 // than words.
+// source_across_styles_*: rendered text inside one style, source once the
+// selection takes in a second mark group, a second block, or an object.
+// The run copier does not add the paragraph newline document.selected_text
+// appends; a single style matches Plain, and several match Source.
+static void TestSourceAcrossStyles() {
+    SelBlock para = {};
+    SelSource plain = {{}, {}, &para};
+    SelSource bold = {StrL("**"), StrL("**"), &para};
+    SrcDoc d;
+    d.Run("This has ", &plain, false);
+    d.Run("bold", &bold, true);
+    d.Run(" text.", &plain, true);
+    utassert(base::StrEq(SrcCopyTemp(&d, SelectionFormat::SourceAcrossStyles),
+                         SrcCopyTemp(&d, SelectionFormat::Source)));
+    // "bold" sits at document offset 10, after "This has " and its gap.
+    utassert(base::StrEq(
+        SrcRangeCopyTemp(&d, 10, 14, SelectionFormat::SourceAcrossStyles),
+        StrL("bold")));
+    utassert(base::StrEq(SrcRangeCopyTemp(&d, 10, 14), StrL("**bold**")));
+    utassert(base::StrEq(
+        SrcRangeCopyTemp(&d, 0, 9, SelectionFormat::SourceAcrossStyles),
+        StrL("This has ")));
+    utassert(base::StrEq(
+        SrcRangeCopyTemp(&d, 5, 12, SelectionFormat::SourceAcrossStyles),
+        SrcRangeCopyTemp(&d, 5, 12)));
+
+    SelSource link = {StrL("["), StrL("](https://example.com)"), &para};
+    SrcDoc linked;
+    linked.Run("the docs", &link, false);
+    utassert(
+        base::StrEq(SrcCopyTemp(&linked, SelectionFormat::SourceAcrossStyles),
+                    StrL("the docs")));
+
+    SelBlock head = {StrL("## "), {}, {}, false};
+    SelSource title = {{}, {}, &head};
+    SrcDoc heading;
+    heading.Run("Title", &title, false);
+    utassert(
+        base::StrEq(SrcCopyTemp(&heading, SelectionFormat::SourceAcrossStyles),
+                    StrL("Title")));
+
+    SelBlock fence = {StrL("```rust\n"), StrL("\n```"), {}, false};
+    SelSource code = {{}, {}, &fence};
+    SrcDoc fenced;
+    fenced.Run("let a = 1;", &code, false);
+    utassert(
+        base::StrEq(SrcCopyTemp(&fenced, SelectionFormat::SourceAcrossStyles),
+                    StrL("let a = 1;")));
+
+    SelBlock item = {StrL("- "), {}, StrL("  "), false};
+    SelSource one = {{}, {}, &item};
+    SrcDoc single;
+    single.Run("one", &one, false);
+    utassert(
+        base::StrEq(SrcCopyTemp(&single, SelectionFormat::SourceAcrossStyles),
+                    StrL("one")));
+    SelBlock item2 = {StrL("- "), {}, StrL("  "), false};
+    SelSource two = {{}, {}, &item2};
+    SrcDoc both;
+    both.Run("one", &one, false);
+    both.Run("two", &two, false);
+    utassert(
+        base::StrEq(SrcCopyTemp(&both, SelectionFormat::SourceAcrossStyles),
+                    SrcCopyTemp(&both, SelectionFormat::Source)));
+
+    SelSource words = {{}, {}, &para};
+    SelSource img = {StrL("$x$"), {}, &para};
+    SrcDoc object;
+    object.Image(&img, false);
+    // A lone image occupies one document slot. The whole-document copy stops
+    // one short of the gap after the last run, which would be an empty range.
+    utassert(base::StrEq(
+        SrcRangeCopyTemp(&object, 0, 1, SelectionFormat::SourceAcrossStyles),
+        StrL("$x$")));
+    object.Run(" after", &words, true);
+    utassert(
+        base::StrEq(SrcCopyTemp(&object, SelectionFormat::SourceAcrossStyles),
+                    SrcCopyTemp(&object, SelectionFormat::Source)));
+}
+
 static void TestSourceMarks() {
     SelBlock para = {};
     SelSource bold = {StrL("**"), StrL("**"), &para};
@@ -7532,6 +7612,7 @@ void TestTextView() {
     TestHtmlImage(a);
     TestImageSrc();
     TestSourceMarks();
+    TestSourceAcrossStyles();
     TestSourcePartialMark();
     TestSourceCodeAndLink();
     TestSourceHeading();

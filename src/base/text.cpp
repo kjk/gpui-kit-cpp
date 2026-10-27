@@ -721,8 +721,10 @@ void TextViewState::SetSelectionFormat(gpui::SelectionFormat value, App* app,
 
 int TextViewState::SelectedText(Window* window, char* out, int cap) const {
     const WindowSelection* selection = window ? window->sel : nullptr;
+    // Select-all copies the source for every format other than Plain,
+    // SourceAcrossStyles included.
     if (format == TextViewFormat::Markdown &&
-        selectionFormat == SelectionFormat::Source && out && cap > 0 &&
+        selectionFormat != SelectionFormat::Plain && out && cap > 0 &&
         selection && selectAllAnchor >= 0 &&
         selection->anchor == selectAllAnchor &&
         selection->cursor == selectAllCursor) {
