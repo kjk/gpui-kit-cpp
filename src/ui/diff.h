@@ -341,6 +341,42 @@ struct DiffResolution {
     DiffConflictResolution kind = DiffConflictResolution::Current;
 };
 
+// One style an application highlighter returns for a byte range of one
+// hunk side. `weight` 0 leaves the face alone. `hasColor` false leaves
+// the colour alone. Ranges are UTF-8 offsets into that hunk's text.
+struct DiffSyntaxStyle {
+    int start = 0;
+    int end = 0;
+    uint16_t weight = 0;
+    bool italic = false;
+    bool hasColor = false;
+    Rgba color = {};
+    bool hasBackground = false;
+    Rgba background = {};
+    bool underline = false;
+};
+
+// Called once per hunk side with the file's language and that side's
+// text. Appends styles to `out`. A range that splits a character is ignored.
+using DiffSyntaxHighlighter = void (*)(void* data, Str language, Str text,
+                                       Vec<DiffSyntaxStyle>* out);
+
+// One prepared style, already mapped onto a line's display text.
+struct DiffSyntaxSpan {
+    int file = 0;
+    uint8_t side = 0;
+    int line = 0;
+    int start = 0;
+    int end = 0;
+    uint16_t weight = 0;
+    bool italic = false;
+    bool hasColor = false;
+    Rgba color = {};
+    bool hasBackground = false;
+    Rgba background = {};
+    bool underline = false;
+};
+
 struct DiffState {
     App* app = nullptr;
     Vec<DiffFile*> files;
@@ -374,6 +410,10 @@ struct DiffState {
     int syntaxMaxLineLength = 1000;
     Vec<DiffEvent> emitted;
     Entity<DiffState> self = {};
+    DiffSyntaxHighlighter syntaxFn = nullptr;
+    void* syntaxData = nullptr;
+    bool syntaxPrepared = false;
+    Vec<DiffSyntaxSpan> syntaxSpans;
 
     DiffState() = default;
     ~DiffState();
@@ -412,6 +452,15 @@ struct DiffState {
     void SetInlineUnit(bool on, DiffInlineUnit unit, Ctx* cx);
     void SetInlineMaxLineLength(int length, Ctx* cx);
     void SetSyntaxMaxLineLength(int length, Ctx* cx);
+    // HighlightStyle over one byte range of a hunk side. `weight` 0 and
+    // `hasColor` false leave those fields unset. A range that splits a
+    // UTF-8 sequence is dropped.
+    DiffState* WithSyntaxHighlighter(DiffSyntaxHighlighter fn, void* data);
+    void SetSyntaxHighlighter(DiffSyntaxHighlighter fn, void* data, Ctx* cx);
+    void ClearSyntaxHighlighter(Ctx* cx);
+    int SyntaxStyleCount(int file, DiffSide side, int line) const;
+    DiffSyntaxStyle SyntaxStyleAt(int file, DiffSide side, int line,
+                                  int ix) const;
     void ExpandUnchanged(Ctx* cx);
     void CollapseUnchanged(Ctx* cx);
     void SetFileCollapsed(Str path, bool collapsed, Ctx* cx);
@@ -436,6 +485,7 @@ struct DiffState {
     void DragLineSelection(DiffLinePosition position, Ctx* cx);
     void EndLineSelection(Ctx* cx);
     void EnsurePresentation();
+    void EnsureSyntax();
     int RowCount() const { return len(rows); }
     const DiffRow* Rows() const { return rows.els; }
     int ScrollItem() const { return scrollItem; }

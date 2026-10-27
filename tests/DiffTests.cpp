@@ -711,10 +711,162 @@ static void TheWheelScrollsPastTheRowsRenderedSoFar() {
     TestAppFree(app);
 }
 
+struct HighlightCalls {
+    int n = 0;
+    char language[8][32];
+    char text[8][160];
+};
+
+static void Remember(HighlightCalls* calls, Str language, Str text) {
+    if (!calls || calls->n >= 8) return;
+    int i = calls->n++;
+    int n = language.len < 31 ? language.len : 31;
+    if (language.s && n > 0) memcpy(calls->language[i], language.s, (size_t)n);
+    calls->language[i][n] = 0;
+    n = text.len < 159 ? text.len : 159;
+    if (text.s && n > 0) memcpy(calls->text[i], text.s, (size_t)n);
+    calls->text[i][n] = 0;
+}
+
+static bool HasBoth(const char* text) {
+    return strstr(text, "open") && strstr(text, "close");
+}
+
+static void HighlightLet(void* data, Str language, Str text,
+                         Vec<DiffSyntaxStyle>* out) {
+    Remember((HighlightCalls*)data, language, text);
+    int i = 0;
+    while (i + 3 <= text.len) {
+        if (text.s[i] == 'l' && text.s[i + 1] == 'e' && text.s[i + 2] == 't') {
+            DiffSyntaxStyle style;
+            style.start = i;
+            style.end = i + 3;
+            style.weight = (uint16_t)FontWeight::Bold;
+            VecAppend(*out, style);
+            i += 3;
+        } else {
+            i++;
+        }
+    }
+}
+
+static void HighlightSplit(void*, Str, Str, Vec<DiffSyntaxStyle>* out) {
+    int starts[] = {0, 5, 4};
+    int ends[] = {3, 6, 6};
+    for (int i = 0; i < 3; i++) {
+        DiffSyntaxStyle style;
+        style.start = starts[i];
+        style.end = ends[i];
+        style.weight = (uint16_t)FontWeight::Bold;
+        VecAppend(*out, style);
+    }
+}
+
+struct WordWeight {
+    uint16_t weight = 0;
+};
+
+static void HighlightFirstWord(void* data, Str, Str text,
+                               Vec<DiffSyntaxStyle>* out) {
+    int end = text.len;
+    for (int i = 0; i < text.len; i++) {
+        if (text.s[i] == ' ') {
+            end = i;
+            break;
+        }
+    }
+    DiffSyntaxStyle style;
+    style.start = 0;
+    style.end = end;
+    style.weight = ((WordWeight*)data)->weight;
+    VecAppend(*out, style);
+}
+
+// presentation.rs an_application_highlighter_styles_each_hunk_side_on_its_own
+// and tests.rs
+// setting_or_clearing_a_syntax_highlighter_prepares_the_files_again. The
+// tree-sitter half of the second test is the scanner gap.
+static void AnApplicationHighlighterStylesEachHunkSide() {
+    const char* patch =
+        "--- a/a.rs\n+++ b/a.rs\n@@ -1,2 +1,2 @@\n-let a = 1;\n+let a = "
+        "2;\n /* open\n@@ -10,2 +10,2 @@\n close */\n-let old = 0;\n+let new "
+        "= 0;\n";
+    Vec<DiffFile*> files;
+    utassert(Parse(patch, &files) && len(files) == 1);
+    files[0]->WithLanguage(StrL("rust"));
+    HighlightCalls calls;
+    DiffFix fix;
+    DiffFile* one[] = {files[0]};
+    fix.state->SetFiles(one, 1, &fix.cx);
+    files.len = 0;
+    fix.state->WithSyntaxHighlighter(HighlightLet, &calls);
+    fix.state->EnsurePresentation();
+    utassert(calls.n == 4);
+    for (int i = 0; i < calls.n; i++) {
+        utassert(strcmp(calls.language[i], "rust") == 0);
+        utassert(!HasBoth(calls.text[i]));
+    }
+    utassert(fix.state->SyntaxStyleCount(0, DiffSide::Modified, 0) == 1);
+    DiffSyntaxStyle letStyle = fix.state
+                                   ->SyntaxStyleAt(0, DiffSide::Modified, 0, 0);
+    utassert(letStyle.start == 0 && letStyle.end == 3 &&
+             letStyle.weight == (uint16_t)FontWeight::Bold);
+    utassert(fix.state->SyntaxStyleCount(0, DiffSide::Original, 3) == 1);
+    utassert(fix.state->SyntaxStyleCount(0, DiffSide::Modified, 1) == 0);
+
+    calls.n = 0;
+    fix.state->WithSyntaxMaxLineLength(5);
+    fix.state->EnsurePresentation();
+    utassert(fix.state->SyntaxStyleCount(0, DiffSide::Modified, 0) == 0);
+
+    Vec<DiffFile*> accent;
+    utassert(Parse("--- a/a.rs\n+++ b/a.rs\n@@ -1 +1 @@\n-let \xC3\xA9 = "
+                   "1;\n+let \xC3\xA9 = 2;\n",
+                   &accent) &&
+             len(accent) == 1);
+    accent[0]->WithLanguage(StrL("rust"));
+    DiffFile* accented[] = {accent[0]};
+    fix.state->SetFiles(accented, 1, &fix.cx);
+    accent.len = 0;
+    fix.state->WithSyntaxMaxLineLength(1000);
+    fix.state->WithSyntaxHighlighter(HighlightSplit, nullptr);
+    fix.state->EnsurePresentation();
+    utassert(fix.state->SyntaxStyleCount(0, DiffSide::Modified, 0) == 2);
+    DiffSyntaxStyle kept = fix.state
+                               ->SyntaxStyleAt(0, DiffSide::Modified, 0, 0);
+    DiffSyntaxStyle whole = fix.state
+                                ->SyntaxStyleAt(0, DiffSide::Modified, 0, 1);
+    utassert(kept.start == 0 && kept.end == 3);
+    utassert(whole.start == 4 && whole.end == 6);
+
+    WordWeight weight;
+    weight.weight = (uint16_t)FontWeight::Bold;
+    Vec<DiffFile*> again;
+    utassert(Parse("--- a/a.rs\n+++ b/a.rs\n@@ -1 +1 @@\n-let a = 1;\n+let a "
+                   "= 2;\n",
+                   &again) &&
+             len(again) == 1);
+    again[0]->WithLanguage(StrL("rust"));
+    DiffFile* doc[] = {again[0]};
+    fix.state->SetFiles(doc, 1, &fix.cx);
+    again.len = 0;
+    fix.state->WithSyntaxHighlighter(HighlightFirstWord, &weight);
+    fix.state->EnsurePresentation();
+    utassert(fix.state->SyntaxStyleAt(0, DiffSide::Modified, 0, 0)
+                 .weight == (uint16_t)FontWeight::Bold);
+    weight.weight = (uint16_t)FontWeight::Light;
+    fix.state->SetSyntaxHighlighter(HighlightFirstWord, &weight, &fix.cx);
+    utassert(fix.state->SyntaxStyleAt(0, DiffSide::Modified, 0, 0)
+                 .weight == (uint16_t)FontWeight::Light);
+    fix.state->ClearSyntaxHighlighter(&fix.cx);
+    utassert(fix.state->SyntaxStyleCount(0, DiffSide::Modified, 0) == 0);
+}
+
 void TestDiff() {
     TestParser();
     TestConflictsAndLanguage();
     TestInlineAndRows();
+    AnApplicationHighlighterStylesEachHunkSide();
     NextChangeWrapsOnceTheListIsScrolledToItsEnd();
     TestDiffListFillsItsHeight();
     TheWholePatchKeepsItsHeightAfterTheFirstLayout();

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f5480ca692c2c86db8aa2c23ce8ea543b39fd464",
+  sha: "8b3631f020a85675dca2a7ba251fdeff1c867fc7",
   date: "2026-10-21",
-  subject: "table: Apply Column::text_right and text_center in DataTable (#3617)",
+  subject: "diff: Let the application supply the syntax highlighter (#3618)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

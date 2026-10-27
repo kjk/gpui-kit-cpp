@@ -2316,7 +2316,166 @@ static void Rebuild(DiffState* state, bool reset) {
     (void)anchor;
 }
 
+static bool Utf8Boundary(Str text, int i) {
+    if (i < 0 || i > text.len) return false;
+    if (i == text.len) return true;
+    return ((unsigned char)text.s[i] & 0xc0) != 0x80;
+}
+
+static int DisplayOff(const DiffFileSide* side, const DiffSourceLine& line,
+                      int sourceOff) {
+    if (sourceOff < 0) sourceOff = 0;
+    if (sourceOff > line.text.len) sourceOff = line.text.len;
+    int prev = -1;
+    for (int i = 0; i < line.tabCount; i++) {
+        const DiffDisplayTab& tab = side->tabs[line.tabBegin + i];
+        if (tab.sourceOffset < sourceOff)
+            prev = i;
+        else
+            break;
+    }
+    int expansion = 0;
+    if (prev >= 0) {
+        const DiffDisplayTab& tab = side->tabs[line.tabBegin + prev];
+        expansion = tab.displayOffset + tab.width - tab.sourceOffset - 1;
+    }
+    return sourceOff + expansion;
+}
+
+static Str SyntaxLanguage(const DiffFile* file, const DiffFileSide* side) {
+    if (file->hasLanguage) return file->language;
+    if (side->hasPath) return DetectedLanguage(side->path);
+    return file->Language();
+}
+
+static void CollectSyntaxSide(const DiffFile* file, int fileIx, DiffSide side,
+                              int maxLen, DiffSyntaxHighlighter fn, void* data,
+                              Vec<DiffSyntaxSpan>* out) {
+    const DiffFileSide* src =
+        side == DiffSide::Original ? &file->original : &file->modified;
+    int nLines = len(src->lines);
+    if (nLines == 0 || !fn) return;
+    Str language = SyntaxLanguage(file, src);
+    if (!language.s || language.len == 0 || StrEq(language, "text")) return;
+    int nHunks = len(file->hunks);
+    int ranges = nHunks == 0 ? 1 : nHunks;
+    for (int h = 0; h < ranges; h++) {
+        int begin = 0;
+        int end = nLines;
+        if (nHunks > 0) {
+            begin = side == DiffSide::Original ? file->hunks[h].originalStart
+                                               : file->hunks[h].modifiedStart;
+            end = side == DiffSide::Original ? file->hunks[h].originalEnd
+                                             : file->hunks[h].modifiedEnd;
+        }
+        if (begin < 0) begin = 0;
+        if (end > nLines) end = nLines;
+        if (begin >= end) continue;
+        int base = src->lines[begin].sourceStart;
+        int last = src->lines[end - 1].sourceEnd;
+        Str text = Slice(src->source, base, last);
+        Vec<DiffSyntaxStyle> hits;
+        fn(data, language, text, &hits);
+        for (int k = 0; k < len(hits); k++) {
+            int hs = hits[k].start;
+            int he = hits[k].end;
+            if (hs < 0 || he < hs || he > text.len) continue;
+            if (!Utf8Boundary(text, hs) || !Utf8Boundary(text, he)) continue;
+            int absStart = hs + base;
+            int absEnd = he + base;
+            int count = end - begin;
+            int lo = 0;
+            int hi = count;
+            while (lo < hi) {
+                int mid = (lo + hi) / 2;
+                if (src->lines[begin + mid].sourceEnd <= absStart)
+                    lo = mid + 1;
+                else
+                    hi = mid;
+            }
+            for (int offset = lo; begin + offset < end; offset++) {
+                const DiffSourceLine& line = src->lines[begin + offset];
+                if (line.sourceStart >= absEnd) break;
+                if (line.contentEnd - line.sourceStart > maxLen) continue;
+                int start =
+                    absStart > line.sourceStart ? absStart : line.sourceStart;
+                int stop = absEnd < line.contentEnd ? absEnd : line.contentEnd;
+                if (start >= stop) continue;
+                DiffSyntaxSpan span;
+                span.file = fileIx;
+                span.side = (uint8_t)side;
+                span.line = begin + offset;
+                span.start = DisplayOff(src, line, start - line.sourceStart);
+                span.end = DisplayOff(src, line, stop - line.sourceStart);
+                span.weight = hits[k].weight;
+                span.italic = hits[k].italic;
+                span.hasColor = hits[k].hasColor;
+                span.color = hits[k].color;
+                span.hasBackground = hits[k].hasBackground;
+                span.background = hits[k].background;
+                span.underline = hits[k].underline;
+                VecAppend(*out, span);
+            }
+        }
+    }
+}
+
+void DiffState::EnsureSyntax() {
+    if (syntaxPrepared) return;
+    VecClear(syntaxSpans);
+    syntaxPrepared = true;
+    if (!syntaxFn) return;
+    // Rust prepares this on the background executor. The inline runs above
+    // are already computed on this thread, and so is the highlighter.
+    for (int i = 0; i < len(files); i++) {
+        CollectSyntaxSide(files[i], i, DiffSide::Original, syntaxMaxLineLength,
+                          syntaxFn, syntaxData, &syntaxSpans);
+        CollectSyntaxSide(files[i], i, DiffSide::Modified, syntaxMaxLineLength,
+                          syntaxFn, syntaxData, &syntaxSpans);
+    }
+}
+
+static DiffSyntaxStyle StyleOf(const DiffSyntaxSpan& span) {
+    DiffSyntaxStyle style;
+    style.start = span.start;
+    style.end = span.end;
+    style.weight = span.weight;
+    style.italic = span.italic;
+    style.hasColor = span.hasColor;
+    style.color = span.color;
+    style.hasBackground = span.hasBackground;
+    style.background = span.background;
+    style.underline = span.underline;
+    return style;
+}
+
+int DiffState::SyntaxStyleCount(int file, DiffSide side, int line) const {
+    int n = 0;
+    for (int i = 0; i < len(syntaxSpans); i++) {
+        const DiffSyntaxSpan& span = syntaxSpans[i];
+        if (span.file == file && span.side == (uint8_t)side &&
+            span.line == line)
+            n++;
+    }
+    return n;
+}
+
+DiffSyntaxStyle DiffState::SyntaxStyleAt(int file, DiffSide side, int line,
+                                         int ix) const {
+    int n = 0;
+    for (int i = 0; i < len(syntaxSpans); i++) {
+        const DiffSyntaxSpan& span = syntaxSpans[i];
+        if (span.file != file || span.side != (uint8_t)side ||
+            span.line != line)
+            continue;
+        if (n == ix) return StyleOf(span);
+        n++;
+    }
+    return {};
+}
+
 void DiffState::EnsurePresentation() {
+    EnsureSyntax();
     if (!inlineOn) {
         for (int i = 0; i < len(files); i++) {
             VecClear(files[i]->inlineRuns[0]);
@@ -2367,6 +2526,7 @@ void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
     hasAnchor = false;
     hasCursor = false;
     selecting = false;
+    syntaxPrepared = false;
     Rebuild(this, true);
     EnsurePresentation();
     if (cx) Notify(cx);
@@ -2403,7 +2563,33 @@ DiffState* DiffState::WithInlineMaxLineLength(int length) {
 
 DiffState* DiffState::WithSyntaxMaxLineLength(int length) {
     syntaxMaxLineLength = length < 0 ? 0 : length;
+    syntaxPrepared = false;
     return this;
+}
+
+DiffState* DiffState::WithSyntaxHighlighter(DiffSyntaxHighlighter fn,
+                                            void* data) {
+    syntaxFn = fn;
+    syntaxData = data;
+    syntaxPrepared = false;
+    return this;
+}
+
+void DiffState::SetSyntaxHighlighter(DiffSyntaxHighlighter fn, void* data,
+                                     Ctx* cx) {
+    syntaxFn = fn;
+    syntaxData = data;
+    syntaxPrepared = false;
+    EnsureSyntax();
+    if (cx) Notify(cx);
+}
+
+void DiffState::ClearSyntaxHighlighter(Ctx* cx) {
+    syntaxFn = nullptr;
+    syntaxData = nullptr;
+    syntaxPrepared = false;
+    EnsureSyntax();
+    if (cx) Notify(cx);
 }
 
 DiffFile** DiffState::Files(int* count) const {
@@ -2473,8 +2659,9 @@ void DiffState::SetSyntaxMaxLineLength(int length, Ctx* cx) {
     if (length < 0) length = 0;
     if (syntaxMaxLineLength == length) return;
     syntaxMaxLineLength = length;
-    // The scanner reads this limit while painting. There is no prepared
-    // syntax cache to drop.
+    // The scanner reads this limit while painting. An application
+    // highlighter has a prepared cache, so that one is dropped.
+    syntaxPrepared = false;
     if (cx) Notify(cx);
 }
 
@@ -3014,10 +3201,45 @@ static void OnChoose(DiffState* self, Ctx* cx, const ClickEvent*,
         self->ChooseConflict(file, ix, true, DiffConflictResolution::Both, cx);
 }
 
-static El* CodeText(Ctx* cx, const DiffFile* file, DiffSide side, int ix,
-                    bool syntax) {
+static void PaintSyntaxRun(Ctx* cx, El* row, Str text,
+                           const DiffSyntaxSpan* span) {
+    El* bit = TextEl(cx->a, text)->Mono();
+    if (span) {
+        if (span->weight) bit->Weight((FontWeight)span->weight);
+        if (span->italic) bit->Italic();
+        if (span->hasColor) bit->Fg(span->color);
+        if (span->hasBackground) bit->Bg(span->background);
+        if (span->underline) bit->Underline();
+    }
+    row->Child(bit);
+}
+
+static El* CodeText(Ctx* cx, const DiffState* state, int fileIx,
+                    const DiffFile* file, DiffSide side, int ix, bool syntax) {
     const DiffSourceLine& line = SideOf(file, side)->lines[ix];
     El* row = Div(cx->a)->FlexRow();
+    if (syntax && state && state->syntaxFn) {
+        int at = 0;
+        for (int i = 0; i < len(state->syntaxSpans); i++) {
+            const DiffSyntaxSpan& span = state->syntaxSpans[i];
+            if (span.file != fileIx || span.side != (uint8_t)side ||
+                span.line != ix)
+                continue;
+            int lo = span.start;
+            int hi = span.end;
+            if (lo < at) lo = at;
+            if (hi > line.display.len) hi = line.display.len;
+            if (lo > at)
+                PaintSyntaxRun(cx, row, Slice(line.display, at, lo), nullptr);
+            if (lo < hi)
+                PaintSyntaxRun(cx, row, Slice(line.display, lo, hi), &span);
+            if (hi > at) at = hi;
+        }
+        if (at < line.display.len)
+            PaintSyntaxRun(cx, row, Slice(line.display, at, line.display.len),
+                           nullptr);
+        return row;
+    }
     if (!syntax) {
         row->Child(TextEl(cx->a, line.display)->Mono());
         return row;
@@ -3238,7 +3460,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                 side == DiffSide::Original ? theme.danger : theme.success));
         }
         box->Child(CodeText(
-            cx, file, side, line,
+            cx, state, row.file, file, side, line,
             diff->syntaxHighlight && SideOf(file, side)->lines[line].text.len <=
                                          state->syntaxMaxLineLength));
         // Annotation content shares the uniform row. Rust remeasures the row
@@ -3430,6 +3652,7 @@ El* Diff::IntoEl() {
     DiffInitKeys();
     DiffState* st = state.Get(cx);
     if (!st) return Div(a);
+    st->EnsureSyntax();
     st->listScroll.itemsCount = len(st->rows);
     // A column so the caller's height (the story's 32rem) reaches the list.
     // The list is height 100%, which collapses when its parent is only as

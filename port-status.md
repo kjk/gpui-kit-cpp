@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f5480ca692c2c86db8aa2c23ce8ea543b39fd464` (2026-10-21,
-table: Apply Column::text_right and text_center in DataTable (#3617)).
-A column's text alignment is inherited by its header and its cells, so a
-delegate that returns plain text lines up. A cell that lays itself out
-still aligns that layout itself.
+Processed through `8b3631f020a85675dca2a7ba251fdeff1c867fc7` (2026-10-21,
+diff: Let the application supply the syntax highlighter (#3618)).
+DiffState takes a highlighter for one hunk side at a time and paints
+the styles it returns. Clearing it returns to the line scanner. A range
+that splits a character is dropped, and `text` is not highlighted.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
@@ -307,7 +307,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   selects source lines and copies them. It does not drive GPUI's
   `TextSelection`, so the hit-tested caret, word sweeps and chunk clipping
   in `selection_tests.rs` and `header_tests.rs` are not ported. Inline
-  emphasis is computed on the frame that asks, and a rebuild keeps the
+  emphasis is computed on the frame that asks. An application syntax
+  highlighter is prepared there too, once per hunk side, rather than on
+  the background executor. A rebuild keeps the
   scroll index rather than the source line that was at the top. Soft wrap
   is stored and not applied. The viewer's body is a vertical list, so
   the horizontal `ScrollableMask` that keeps a vertical wheel on the
