@@ -1759,17 +1759,18 @@ static void SeedScroll(InputState* s) {
 static void ScrollToBringsTheCaretIntoView() {
     InputState s;
     SeedScroll(&s);
-    // A caret inside the box moves nothing.
+    // A caret inside the box moves nothing. Minimal padding reserves the
+    // row and nothing above it.
     InputScrollToCaret(&s, 0, 40, InputMoveDir::None);
     utassertnear(s.scrollY, 0.f);
 
-    // Past the bottom: the line comes in with a line's clearance under it.
+    // Past the bottom: the row's top sits at viewH - rowH (120), flush.
     InputScrollToCaret(&s, 0, 200, InputMoveDir::None);
-    utassertnear(s.scrollY, 140.f);
+    utassertnear(s.scrollY, 120.f);
 
-    // Back above the top: a line's clearance over it.
+    // Back above the top: the row's start aligns with the viewport.
     InputScrollToCaret(&s, 0, 100, InputMoveDir::None);
-    utassertnear(s.scrollY, 80.f);
+    utassertnear(s.scrollY, 100.f);
 }
 
 static void AVerticalWalkDoesNotFightItself() {
@@ -1830,6 +1831,112 @@ static void CursorSurroundingPaddingMatchesRust() {
 
     utassertnear(InputCursorSurroundingPadding(false, 50, 10, lineH), 100.f);
     utassertnear(InputCursorSurroundingPadding(false, 3, 40, lineH), 60.f);
+}
+
+// element.rs row_reveal_contains_the_whole_row_and_has_a_stable_offset.
+// Rust's offset is negative-down, so each previous sample is negated and
+// the painted top is rowTop - scrollY.
+static void RowRevealContainsTheWholeRowAndHasAStableOffset() {
+    float lineH = 20;
+    float rowTop = 1000;
+    float views[] = {20, 30, 600};
+    for (float viewH : views) {
+        for (int autoGrow = 0; autoGrow < 2; autoGrow++) {
+            int surroundings[] = {-1, 0, 50};
+            for (int surrounding : surroundings) {
+                int visible = (int)(viewH / lineH);
+                float pad = InputCursorSurroundingPadding(
+                    autoGrow != 0, surrounding, visible, lineH);
+                float previous[] = {1500, 1000, 0};
+                for (float scrollY : previous) {
+                    float y =
+                        InputRevealRow(scrollY, rowTop, lineH, viewH, pad);
+                    utassert(rowTop - y >= -0.01f);
+                    utassert(rowTop - y + lineH <= viewH + 0.01f);
+                    utassertnear(InputRevealRow(y, rowTop, lineH, viewH, pad),
+                                 y);
+                }
+            }
+        }
+    }
+}
+
+// element.rs undersized_row_reveal_aligns_the_start_without_oscillating.
+static void UndersizedRowRevealAlignsTheStartWithoutOscillating() {
+    float y = InputRevealRow(0, 80, 20, 10, 60);
+    utassertnear(80.f - y, 0.f);
+    utassertnear(InputRevealRow(y, 80, 20, 10, 60), y);
+}
+
+// A one-row viewport used to ask for a line of clearance and push the
+// edited row partly past the bottom. reveal_row aligns its start instead.
+static void OneRowViewportKeepsTheEditedRowInside() {
+    InputState s;
+    SeedScroll(&s);
+    s.viewH = 20;
+    s.contentH = 400;
+    InputScrollToCaret(&s, -1, 80, InputMoveDir::None);
+    utassertnear(s.scrollY, 80.f);
+    InputScrollToCaret(&s, -1, 80, InputMoveDir::None);
+    utassertnear(s.scrollY, 80.f);
+}
+
+// layout_cursors: shrinking keeps a visible caret, and does not touch x.
+// A scroll between the two sizes cancels the pending reveal.
+static void ResizeKeepsAVisibleCaretUntilTheScrollChanges() {
+    InputState s;
+    SeedScroll(&s);
+    s.focused = true;
+    s.kind = InputKind::Textarea;
+    StrBuilder text;
+    for (int i = 0; i < 20; i++) {
+        if (i) {
+            text.AppendChar('\n');
+        }
+        text.Append(fmt("line %d", i));
+    }
+    Str joined = text.TakeStr();
+    InputSetValue(&s, joined);
+    StrFree(joined);
+    int offset = 0;
+    Str value = InputValue(&s);
+    for (int i = 0; i < len(value) - 6; i++) {
+        if (value.s[i] == 'l' && value.s[i + 1] == 'i' &&
+            value.s[i + 5] == '8') {
+            offset = i;
+            break;
+        }
+    }
+    s.selectedRange = SelectionAt(offset);
+    s.lastLineH = 20;
+    s.viewW = 200;
+    s.viewH = 80;
+    s.contentH = 400;
+    s.scrollY = 8.f * 20.f;
+    s.scrollX = 12;
+    s.caretX = 20;
+    InputRememberCaretGeometry(&s);
+    float x = s.scrollX;
+    utassert(InputRevealCaretOnResize(&s, 200, 20, 20));
+    utassertnear(s.scrollX, x);
+    utassert(s.resizeRevealOwned);
+    float row = 8.f * 20.f;
+    utassert(row - s.scrollY >= -0.01f);
+    utassert(row - s.scrollY + 20.f <= 20.f + 0.01f);
+    // The next size still owns the reveal while the scroll is the one the
+    // resize stored.
+    float ownedY = s.scrollY;
+    utassert(InputRevealCaretOnResize(&s, 200, 40, 20));
+    utassertnear(s.scrollX, x);
+    utassert(s.resizeRevealOwned);
+    // A wheel (or any scroll) before the next paint drops ownership.
+    s.scrollY = 0;
+    s.scrollX = 0;
+    utassert(!InputRevealCaretOnResize(&s, 200, 20, 20));
+    utassertnear(s.scrollY, 0.f);
+    utassertnear(s.scrollX, 0.f);
+    utassert(!s.resizeRevealOwned);
+    (void)ownedY;
 }
 
 static void CodeEditorSurroundingUsesTheOverride() {
@@ -11483,6 +11590,10 @@ void TestInputState() {
     ActionForKey();
     LayoutModeRowsClamp();
     ScrollToBringsTheCaretIntoView();
+    RowRevealContainsTheWholeRowAndHasAStableOffset();
+    UndersizedRowRevealAlignsTheStartWithoutOscillating();
+    OneRowViewportKeepsTheEditedRowInside();
+    ResizeKeepsAVisibleCaretUntilTheScrollChanges();
     AVerticalWalkDoesNotFightItself();
     TheOffsetStaysInsideTheContent();
     EmptyBottomHeightMatchesRust();

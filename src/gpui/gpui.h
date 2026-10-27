@@ -5494,6 +5494,21 @@ struct InputState {
     // offset alone cannot distinguish the previous row's end from the next
     // row's start.
     bool cursorLineEndAffinity = false;
+    // prepaint_caret_geometry. Document coordinates: y is the caret top with
+    // no vertical scroll applied, x is the content x. A resize keeps owning
+    // the vertical reveal while the new row is still unshaped, until a scroll
+    // moves the offset (a wheel packet included, even before the next paint).
+    bool caretGeomValid = false;
+    bool resizeRevealOwned = false;
+    float caretGeomX = 0;
+    float caretGeomY = 0;
+    float caretGeomW = 0;
+    float caretGeomH = 0;
+    float caretGeomScrollX = 0;
+    float caretGeomScrollY = 0;
+    float caretGeomViewW = 0;
+    float caretGeomViewH = 0;
+    float caretGeomLineH = 0;
     // touch.rs TouchSelection: the range the last touch gesture left, the
     // edit menu, and the handle a finger is dragging. `touchLive` is Rust's
     // `range.is_some()`; the handles and the menu are gone the moment the
@@ -5518,13 +5533,25 @@ enum class InputMoveDir : uint8_t {
 };
 
 // scroll_to: the offset that brings the caret into view, from where the field
-// is now. `caretY` is the top of the caret's line and `caretX` its position
-// across the run; the answer keeps the caret a line's clearance from either
-// edge and never scrolls past the content. A move that went up will not be
-// answered with a downward scroll, and the other way about — Rust clamps the
-// same way, so a vertical walk does not fight itself.
+// is now. `caretY` is the top of the caret's visual row and `caretX` its
+// position across the run. reveal_row keeps that whole row inside the
+// viewport, then the content clamp. A move that went up will not be answered
+// with a downward scroll, and the other way about.
 void InputScrollToCaret(InputState* s, float caretX, float caretY,
                         InputMoveDir dir);
+// reveal_row. Positive-down: Rust's offset is this value negated. The row
+// occupies [rowTop, rowTop + lineH]. A viewport shorter than a row aligns
+// the row's start and stays there when asked again.
+float InputRevealRow(float scrollY, float rowTop, float lineH, float viewH,
+                     float edge);
+// layout_cursors' resize half. Vertical only: a focused caret that was fully
+// inside the previous viewport (or a resize that still owns it, and whose
+// scroll has not moved) is revealed when the view size or the line height
+// changes. `lineH` <= 0 uses the field's last line height.
+bool InputRevealCaretOnResize(InputState* s, float newViewW, float newViewH,
+                              float lineH);
+// The caret box paint just measured, kept for the next resize check.
+void InputRememberCaretGeometry(InputState* s);
 // ScrollPadding: the vertical clearance to retain when revealing a text
 // position. `scroll_to` picks SurroundingLines for a directed move and Minimal
 // otherwise; search picks the two on its own.

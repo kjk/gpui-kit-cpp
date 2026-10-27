@@ -1308,7 +1308,11 @@ El* Textarea::IntoEl() {
     // build every row of it. The builder knows the box it is about to make,
     // so it says so here and paint refreshes it.
     if (state && h > 0) {
-        state->viewH = h - 2 * padY;
+        // The rows read scrollY while they are built. Reveal before that,
+        // so a resize this frame moves the caret's row with the first paint.
+        float vh = h - 2 * padY;
+        InputRevealCaretOnResize(state, state->viewW, vh, state->lastLineH);
+        state->viewH = vh;
     }
     bool interactive = state && !state->disabled && !disabled;
     El* box = InputBase::New(cx, id, interactive, accessibilityRole)

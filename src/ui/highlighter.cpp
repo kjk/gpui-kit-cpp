@@ -1377,7 +1377,9 @@ El* Highlighter::IntoEl() {
     // The rows are virtualized against the box they scroll in, and paint only
     // learns its height a frame later; the builder knows it now.
     if (state && h > 0) {
-        state->viewH = h - editorPad.top - editorPad.bottom;
+        float vh = h - editorPad.top - editorPad.bottom;
+        InputRevealCaretOnResize(state, state->viewW, vh, state->lastLineH);
+        state->viewH = vh;
     }
     // The wash under the caret's row reaches over the left padding too.
     style.activeLineBleedL = editorPad.left;

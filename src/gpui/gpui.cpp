@@ -7892,7 +7892,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         if (!seen) {
             e->input->inputBounds = e->Bounds();
             // The box the field scrolls inside, less what it pads by.
-            e->input->viewW = e->w - e->style.pad.HorizontalAxisSum();
+            float viewW = e->w - e->style.pad.HorizontalAxisSum();
+            float viewH = e->input->viewH;
             // The viewport is the clipping/scrolling box. An inner content
             // column laid out to the document height must not replace it —
             // that made the next frame treat every line as visible.
@@ -7900,9 +7901,19 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 e->style.overflowY == Overflow::Hidden) {
                 float vh = e->h - e->style.pad.VerticalAxisSum();
                 if (vh > 0) {
-                    e->input->viewH = vh;
+                    viewH = vh;
                 }
             }
+            // layout_cursors: a focused caret that was on screen stays on
+            // screen when this box changes size. Vertical only.
+            float lineH = e->input->lastLineH;
+            InputRevealCaretOnResize(e->input, viewW, viewH, lineH);
+            e->input->viewW = viewW;
+            if (viewH > 0 && (e->style.overflowY == Overflow::Scroll ||
+                              e->style.overflowY == Overflow::Hidden)) {
+                e->input->viewH = viewH;
+            }
+            InputRememberCaretGeometry(e->input);
             // The scroll rect was recorded before this viewport existed.
             // A padded field's range is the document inside that viewport;
             // the bar stays on the padded track.

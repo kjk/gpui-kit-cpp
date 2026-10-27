@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `eb80cbf752566226b9fabda641fb346363a619f9` (2026-10-19,
-input: Let hosts choose how completion labels are highlighted (#3496)).
-A host picks prefix, contains, or character ranges for a completion
-label. The menu paints those ranges in blue, and the editor story's
-Options menu switches matchers while the menu is open.
+Processed through `6706b2152b856f69a8a2461b0926a7f880c33d7c` (2026-10-19,
+input: keep caret rows visible in constrained viewports (#3583)).
+Caret follow reserves the visual row before any surrounding-line
+padding, so a one-row field keeps the edited line inside. A focused
+caret that was on screen stays vertically visible across a resize
+until a scroll moves the offset.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

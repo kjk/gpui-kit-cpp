@@ -3986,10 +3986,170 @@ float InputCursorSurroundingPadding(bool isAutoGrow, int overrideLines,
     return raw < half ? raw : half;
 }
 
+// reveal_row, positive-down. Rust clamps a negative-down offset into
+// [top - rowTop, viewH - bottom - rowTop] and then to <= 0.
+float InputRevealRow(float scrollY, float rowTop, float lineH, float viewH,
+                     float edge) {
+    if (!(viewH > 0)) {
+        return scrollY < 0 ? 0 : scrollY;
+    }
+    float rowH = lineH < viewH ? lineH : viewH;
+    if (rowH < 0) {
+        rowH = 0;
+    }
+    float bottom = edge > rowH ? edge : rowH;
+    if (bottom > viewH) {
+        bottom = viewH;
+    }
+    float room = viewH - bottom;
+    if (room < 0) {
+        room = 0;
+    }
+    float top = edge < room ? edge : room;
+    float lo = rowTop - (viewH - bottom);
+    float hi = rowTop - top;
+    if (scrollY < lo) {
+        scrollY = lo;
+    }
+    if (scrollY > hi) {
+        scrollY = hi;
+    }
+    if (scrollY < 0) {
+        scrollY = 0;
+    }
+    return scrollY;
+}
+
+// Document y of `offset`: the visible line's start, plus the soft-wrap row
+// the caret is on. A folded line is the fold header (this fold map is
+// line-level, so it has no wrap-row hidden runs to project through).
+// line_end_affinity_at: only the live caret carries the affinity.
+static float InputOffsetDisplayY(const InputState* s, int offset, float lineH) {
+    if (!s || lineH <= 0) {
+        return 0;
+    }
+    int row = RopeOffsetToPoint(InputValue(s), offset).row;
+    if (FoldMapLineHidden(&s->folds, row)) {
+        row = FoldMapNearestVisibleLine(&s->folds, row);
+        return DisplayRowDocY(s, row, lineH);
+    }
+    float y = DisplayRowDocY(s, row, lineH);
+    // Read the rows the last layout stored. Catching the map up here would
+    // rewrap during the edit, before the frame that owns the new width.
+    const InputWrapMap* m = &s->wrap;
+    if (!s->softWrap || !m->valid || m->width <= 0 || row < 0 ||
+        row >= m->tree.LineCount()) {
+        return y;
+    }
+    const InputWrapLine& item = *m->tree.Line(row);
+    if (item.nRows > 1 && item.starts) {
+        bool affinity = offset == InputCursor(s) && s->cursorLineEndAffinity;
+        int lineStart = RopeLineStartOffset(InputValue(s), row);
+        int local = offset - lineStart;
+        if (local < 0) {
+            local = 0;
+        }
+        y += (float)WrapRowOfOffset(item.starts, item.nRows, local, affinity) *
+             lineH;
+    }
+    return y;
+}
+
+static float InputLayoutCursorEdge(const InputState* s, float lineH,
+                                   float viewH) {
+    int visible = lineH > 0 ? (int)(viewH / lineH) : 0;
+    bool autoGrow = s->mode.kind == LayoutModeKind::AutoGrow;
+    return InputCursorSurroundingPadding(autoGrow, s->cursorSurroundingLines,
+                                         visible, lineH);
+}
+
+static bool InputRangeIsWholeText(const InputState* s) {
+    int n = len(InputValue(s));
+    return s->selectedRange.end - s->selectedRange.start == n;
+}
+
+static void InputClampScrollY(InputState* s, float viewH) {
+    float mostY = s->contentH - viewH;
+    if (mostY < 0) {
+        mostY = 0;
+    }
+    if (s->scrollY > mostY) {
+        s->scrollY = mostY;
+    }
+    if (s->scrollY < 0) {
+        s->scrollY = 0;
+    }
+}
+
+bool InputRevealCaretOnResize(InputState* s, float newViewW, float newViewH,
+                              float lineH) {
+    if (!s) {
+        return false;
+    }
+    if (lineH <= 0) {
+        lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
+    }
+    bool resized = s->caretGeomValid && (newViewW != s->caretGeomViewW ||
+                                         newViewH != s->caretGeomViewH ||
+                                         lineH != s->caretGeomLineH);
+    if (!resized) {
+        return false;
+    }
+    bool revealed = false;
+    if (s->focused && !s->autoScroll.IsActive() && newViewH > 0 &&
+        !InputRangeIsWholeText(s)) {
+        bool same = s->scrollX == s->caretGeomScrollX &&
+                    s->scrollY == s->caretGeomScrollY;
+        bool visible = false;
+        if (!s->resizeRevealOwned) {
+            float top = s->caretGeomY - s->scrollY;
+            float left = s->caretGeomX - s->scrollX;
+            visible = top >= 0 && top + s->caretGeomH <= s->caretGeomViewH &&
+                      left >= 0 && left + s->caretGeomW <= s->caretGeomViewW;
+        }
+        if (s->resizeRevealOwned ? same : visible) {
+            float y = InputOffsetDisplayY(s, InputCursor(s), lineH);
+            float edge = InputLayoutCursorEdge(s, lineH, newViewH);
+            float wasX = s->scrollX;
+            s->scrollY = InputRevealRow(s->scrollY, y, lineH, newViewH, edge);
+            InputClampScrollY(s, newViewH);
+            s->scrollX = wasX;
+            s->caretGeomScrollX = s->scrollX;
+            s->caretGeomScrollY = s->scrollY;
+            s->caretGeomViewW = newViewW;
+            s->caretGeomViewH = newViewH;
+            s->caretGeomLineH = lineH;
+            revealed = true;
+        }
+    }
+    s->resizeRevealOwned = revealed;
+    return revealed;
+}
+
+void InputRememberCaretGeometry(InputState* s) {
+    if (!s) {
+        return;
+    }
+    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
+    float caretH = 0.85f * lineH;
+    float docY = InputOffsetDisplayY(s, InputCursor(s), lineH);
+    s->caretGeomX = s->caretX;
+    s->caretGeomY = docY + (lineH - caretH) * 0.5f;
+    s->caretGeomW = base::PlatCaretWidth();
+    s->caretGeomH = caretH;
+    s->caretGeomScrollX = s->scrollX;
+    s->caretGeomScrollY = s->scrollY;
+    s->caretGeomViewW = s->viewW;
+    s->caretGeomViewH = s->viewH;
+    s->caretGeomLineH = lineH;
+    s->caretGeomValid = true;
+}
+
 void InputScrollToCaret(InputState* s, float caretX, float caretY,
                         InputMoveDir dir) {
-    // scroll_to: a directed move keeps the surrounding lines, a plain reveal
-    // keeps one line's clearance.
+    // scroll_to: a directed move asks for surrounding lines (a code editor
+    // takes them; anything else reveals the row with no extra edge). A plain
+    // reveal is minimal.
     InputScrollToCaretWithPadding(s, caretX, caretY, dir,
                                   dir != InputMoveDir::None
                                       ? InputScrollPadding::SurroundingLines
@@ -4025,42 +4185,23 @@ void InputScrollToCaretWithPadding(InputState* s, float caretX, float caretY,
         }
     }
 
-    // Down the page: the caret's whole line has to be inside the box, with a
-    // line's clearance at whichever edge it came in from. A code editor
-    // walking with Up/Down uses cursor_surrounding_lines instead, the way
-    // scroll_to and layout_cursor share one helper in Rust.
+    // reveal_row, shared with layout_cursors. A code editor's directed move
+    // keeps cursor_surrounding_lines; every other scroll_to reveals the row
+    // itself, so a one-row viewport cannot be asked for a line of clearance
+    // it does not have.
     if (s->viewH > 0) {
-        bool surrounding = padding == InputScrollPadding::SurroundingLines &&
-                           s->mode.kind == LayoutModeKind::CodeEditor;
-        if (surrounding) {
-            int visible = lineH > 0 ? (int)(s->viewH / lineH) : 0;
-            float edge = InputCursorSurroundingPadding(
-                false, s->cursorSurroundingLines, visible, lineH);
-            if (caretY - edge + lineH < s->scrollY) {
-                s->scrollY = caretY - edge + lineH;
-            } else if (caretY + edge > s->scrollY + s->viewH) {
-                s->scrollY = caretY + edge - s->viewH;
-            }
-        } else if (caretY - lineH < s->scrollY) {
-            s->scrollY = caretY - lineH;
-        } else if (caretY + lineH + lineH > s->scrollY + s->viewH) {
-            s->scrollY = caretY + lineH + lineH - s->viewH;
+        float edge = 0;
+        if (padding == InputScrollPadding::SurroundingLines &&
+            s->mode.kind == LayoutModeKind::CodeEditor) {
+            edge = InputLayoutCursorEdge(s, lineH, s->viewH);
         }
+        s->scrollY = InputRevealRow(s->scrollY, caretY, lineH, s->viewH, edge);
         // A move that went up is never answered by scrolling down.
         if ((dir == InputMoveDir::Up && s->scrollY > wasY) ||
             (dir == InputMoveDir::Down && s->scrollY < wasY)) {
             s->scrollY = wasY;
         }
-        float mostY = s->contentH - s->viewH;
-        if (mostY < 0) {
-            mostY = 0;
-        }
-        if (s->scrollY > mostY) {
-            s->scrollY = mostY;
-        }
-        if (s->scrollY < 0) {
-            s->scrollY = 0;
-        }
+        InputClampScrollY(s, s->viewH);
     }
 }
 
@@ -4069,13 +4210,9 @@ void InputScrollToCursor(InputState* s, InputMoveDir dir) {
         return;
     }
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    int row = RopeOffsetToPoint(InputValue(s), InputCursor(s)).row;
-    // A caret inside a closed fold reads as the fold's own line, which is
-    // where the frame draws it.
-    row = FoldMapNearestVisibleLine(&s->folds, row);
-    // Where that row actually starts: a wrapping editor's rows are uneven, so
-    // the arithmetic only holds when nothing wrapped.
-    float caretY = DisplayRowDocY(s, row, lineH);
+    // offset_to_display_row: the soft-wrap row, with the caret's line-end
+    // affinity, projected through a closed fold.
+    float caretY = InputOffsetDisplayY(s, InputCursor(s), lineH);
     InputScrollToCaret(s, s->caretX, caretY, dir);
 }
 
@@ -4229,9 +4366,7 @@ void InputScrollToOffsetWithPadding(InputState* s, int offset, InputMoveDir dir,
         return;
     }
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    int row = RopeOffsetToPoint(InputValue(s), offset).row;
-    row = FoldMapNearestVisibleLine(&s->folds, row);
-    float y = DisplayRowDocY(s, row, lineH);
+    float y = InputOffsetDisplayY(s, offset, lineH);
     InputScrollToCaretWithPadding(s, -1, y, dir, padding);
 }
 
@@ -4239,20 +4374,12 @@ static void InputScrollToSearchOffset(InputState* s, Window* win, int offset) {
     if (!s) {
         return;
     }
-    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    int row = RopeOffsetToPoint(InputValue(s), offset).row;
-    row = FoldMapNearestVisibleLine(&s->folds, row);
-    float y = DisplayRowDocY(s, row, lineH);
-    if (WrapMapOf(s, win ? &win->paint : nullptr)) {
-        // The display row the offset is on: line_and_position_for_offset
-        // answers whole rows.
-        int lineStart = RopeLineStartOffset(InputValue(s), row);
-        const int* starts = nullptr;
-        int nRows = InputWrapRows(s, row, &starts, nullptr);
-        int k = WrapRowOfOffset(starts, nRows, std::max(0, offset - lineStart),
-                                false);
-        y += (float)k * lineH;
+    // Shape the dirty lines against the paint context before reading a row.
+    if (win) {
+        WrapMapOf(s, &win->paint);
     }
+    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
+    float y = InputOffsetDisplayY(s, offset, lineH);
     InputScrollToCaretWithPadding(s, -1, y, InputMoveDir::None,
                                   InputScrollPadding::SurroundingLines);
 }
@@ -5470,11 +5597,20 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         InputScheduleInlineCompletion(s);
     }
     // element.rs layout_cursors follows the caret on the frame an edit moved
-    // it, straight to the viewport edge (upstream 03490654) rather than a line
-    // at a time, so typing at a caret far off screen brings it back at once.
-    // Only the vertical half: the caret's x is last frame's until it paints.
+    // it. The edge is cursor_surrounding_padding — the same one resize reveal
+    // uses — and reveal_row keeps the whole visual row inside even when that
+    // padding is larger than the viewport. Only the vertical half: the
+    // caret's x is last frame's until it paints.
     if (InputIsMultiLine(s)) {
-        InputScrollToOffset(s, InputCursor(s), InputMoveDir::None);
+        float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
+        float y = InputOffsetDisplayY(s, InputCursor(s), lineH);
+        float edge = InputLayoutCursorEdge(s, lineH, s->viewH);
+        float wasX = s->scrollX;
+        if (s->viewH > 0) {
+            s->scrollY = InputRevealRow(s->scrollY, y, lineH, s->viewH, edge);
+            InputClampScrollY(s, s->viewH);
+        }
+        s->scrollX = wasX;
     }
     highlightChange.Finish();
     Emit(s, app, win, InputEvent{InputEventKind::Change});
