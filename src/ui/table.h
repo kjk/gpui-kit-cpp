@@ -48,6 +48,8 @@ struct TableColumn {
     TableColumn Sortable() const;
     TableColumn Ascending() const;
     TableColumn Descending() const;
+    // Header and cells. A cell that lays itself out, such as a flex row,
+    // still aligns that layout itself.
     TableColumn TextCenter() const;
     TableColumn TextRight() const;
     TableColumn Paddings(Edges value) const;

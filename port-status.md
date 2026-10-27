@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4d63c733f77b6803a57d2ff56fa6f85cb751c9b4` (2026-10-20,
-button: preserve Tab traversal when the focused control becomes disabled
-(#3606)). A focusable button that is disabled stays in the focus list and
-is not a tab stop, so Tab can leave a button that disabled itself and
-does not land on it again until it is enabled. It still does not activate.
+Processed through `f5480ca692c2c86db8aa2c23ce8ea543b39fd464` (2026-10-21,
+table: Apply Column::text_right and text_center in DataTable (#3617)).
+A column's text alignment is inherited by its header and its cells, so a
+delegate that returns plain text lines up. A cell that lays itself out
+still aligns that layout itself.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

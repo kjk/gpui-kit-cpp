@@ -1125,6 +1125,13 @@ El* DataTable::BuildEl() {
                       ->FlexRow()
                       ->Shrink0()
                       ->W(ColWidth(s, c));
+        // The header cell is render_cell: text alignment is inherited by the
+        // name. A sortable column keeps its icon at the end of the row.
+        if (col.center) {
+            th_->TextCenter();
+        } else if (col.right) {
+            th_->TextRight();
+        }
         if (s) {
             // The box a drop position is worked out against, which Rust reads
             // off its col_groups.
@@ -1148,22 +1155,27 @@ El* DataTable::BuildEl() {
         El* content =
             Div(a)->FlexRow()->Flex1()->ItemsCenter()->JustifyBetween();
         TableColumnPadding(content, col);
-        if (!col.sortable) {
-            if (col.center) {
-                content->JustifyCenter();
-            } else if (col.right) {
-                content->JustifyEnd();
-            }
+        // render_cell's text alignment. It is inherited, so the header name
+        // lines up with the column. A head that lays itself out, such as a
+        // flex row, still aligns that layout itself. The sort icon stays the
+        // other end of this row.
+        if (col.center) {
+            content->TextCenter();
+        } else if (col.right) {
+            content->TextRight();
         }
         El* customHead = hasDelegate && delegate.renderTh
                              ? delegate.renderTh(cx, data, c)
                              : nullptr;
-        content->Child(customHead ? customHead
-                                  : TextEl(a, colLabel)
-                                        ->Font(UiTableCellFontPx(size) > 0
-                                                   ? UiTableCellFontPx(size)
-                                                   : 14.f)
-                                        ->LineHeight(1.f));
+        El* label = customHead ? customHead
+                               : TextEl(a, colLabel)
+                                     ->Font(UiTableCellFontPx(size) > 0
+                                                ? UiTableCellFontPx(size)
+                                                : 14.f)
+                                     ->LineHeight(1.f);
+        // Default render_th is size_full, so the name's box is the cell and
+        // the alignment above has a width to sit in.
+        content->Child(label->Flex1());
         if (col.selectable) {
             BindPathClick(content,
                           ElementIdNamed(a, StrL("col-header"), (uint64_t)c),
@@ -1387,10 +1399,13 @@ El* DataTable::BuildEl() {
             if (float font = UiTableCellFontPx(size)) {
                 td->Font(font);
             }
-            if (columns[c].right) {
-                td->JustifyEnd();
-            } else if (columns[c].center) {
-                td->JustifyCenter();
+            // render_cell applies the column's text alignment. Inherited, so
+            // a delegate that returns plain text lines up, and a cell that
+            // lays itself out (a flex row) still aligns that layout itself.
+            if (columns[c].center) {
+                td->TextCenter();
+            } else if (columns[c].right) {
+                td->TextRight();
             }
             if (s && TableSelectedCol(s) == c) {
                 td->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
@@ -1426,7 +1441,11 @@ El* DataTable::BuildEl() {
                         ? columns[c].paddings.left + columns[c].paddings.right
                         : 16.f;
                 float inner = ColWidth(s, c) - padding;
-                cellEl->MaxW(inner > 1 ? inner : 1)->Truncate();
+                // The cell is a flex row so its content stays vertically
+                // centered. The delegate's element fills that row, which is
+                // the width a block cell would have given it, and the text
+                // alignment above then sits inside that box.
+                cellEl->Flex1()->MaxW(inner > 1 ? inner : 1)->Truncate();
                 td->Child(cellEl);
             }
             (d < nFixed ? rowFixed : rowScroll)->Child(td);

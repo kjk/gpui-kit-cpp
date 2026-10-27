@@ -1657,6 +1657,74 @@ static void DataTableFocusRingFollowsTheBuilder() {
     AppGlobalClear(&app);
 }
 
+static int AlignColumns(Ctx*, void*) {
+    return 3;
+}
+static int AlignRows(Ctx*, void*) {
+    return 1;
+}
+static component::TableColumn AlignColumn(Ctx*, void*, int col) {
+    component::TableColumn out = component::Column::New(StrL("n"), StrL("N"))
+                                     .Width(80);
+    if (col == 1) {
+        return out.TextCenter();
+    }
+    if (col == 2) {
+        // Sortable used to keep the header on the left so the icon could
+        // sit at the end. The alignment still applies.
+        return out.TextRight().Sortable();
+    }
+    return out;
+}
+static El* AlignTd(Ctx* cx, void*, int, int) {
+    return Div(cx->a)->Child(TextEl(cx->a, StrL("1")));
+}
+
+static void CollectAlign(El* e, AccessibilityRole role, uint8_t* out, int* n) {
+    if (!e || *n >= 3) {
+        return;
+    }
+    if (e->accessibility.role == role) {
+        out[(*n)++] = e->style.textAlign;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        CollectAlign(c, role, out, n);
+    }
+}
+
+// state.rs render_cell: Column::text_center and text_right are the cell's
+// text alignment, header and body. There is no upstream test.
+static void ColumnTextAlignmentReachesTheHeaderAndTheCells() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    Ctx cx = {&app, win, a, state.id};
+    component::TableDelegate delegate = {};
+    delegate.columnsCount = AlignColumns;
+    delegate.rowsCount = AlignRows;
+    delegate.column = AlignColumn;
+    delegate.renderTd = AlignTd;
+    El* root = component::DataTable::New(&cx, StrL("align"), state)
+                   ->Delegate(delegate)
+                   ->BuildEl();
+    uint8_t heads[3] = {};
+    uint8_t cells[3] = {};
+    int nHeads = 0;
+    int nCells = 0;
+    CollectAlign(root, AccessibilityRole::ColumnHeader, heads, &nHeads);
+    CollectAlign(root, AccessibilityRole::Cell, cells, &nCells);
+    utassert(nHeads == 3 && nCells == 3);
+    uint8_t center = (uint8_t)TextAlign::Center + 1;
+    uint8_t right = (uint8_t)TextAlign::Right + 1;
+    utassert(heads[0] == 0 && heads[1] == center && heads[2] == right);
+    utassert(cells[0] == 0 && cells[1] == center && cells[2] == right);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestDataTable() {
     AFittedColumnHoldsItsContentOnWholeDevicePixels();
     AFitStaysWithinTheColumnAndEmitsOnlyOnAChange();
@@ -1667,6 +1735,7 @@ void TestDataTable() {
     SourceColumnBuildersKeepEveryField();
     EachColumnHasItsOwnResizeBounds();
     TheSourceDelegateDrivesTheTable();
+    ColumnTextAlignmentReachesTheHeaderAndTheCells();
     ADumpRangeIsClampedToTheTable();
     TwoTablesOnOnePageAreTwoTables();
     TheDelegateHearsAboutTheRangeOnlyWhenItMoves();
