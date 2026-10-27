@@ -3629,7 +3629,10 @@ enum StyleField : uint32_t {
     StyleFieldMinWidth = 1u << 19,
     StyleFieldMinHeight = 1u << 20,
     StyleFieldMaxWidth = 1u << 21,
-    StyleFieldMaxHeight = 1u << 22
+    StyleFieldMaxHeight = 1u << 22,
+    // box_shadow. A hover that sets `shadow([])` must copy a count of zero
+    // so the shadows that were there are cleared.
+    StyleFieldShadow = 1u << 23
 };
 
 // StyleRefinement::refine, over the fields `fields` names and no others. The

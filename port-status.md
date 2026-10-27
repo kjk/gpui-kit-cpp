@@ -16,13 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1b6059c13315dc5c304759ad3aa666e0b6e301d8` (2026-10-15,
-window_border: Don't offer resizing for a window that isn't resizable (#3525)).
-`WinOpts::resizable` is GPUI's `is_resizable` and defaults to true. A
-client-decorated window starts a resize only when that is set and the
-window is not tiled on every side. Linux refuses the edge grab and pins
-the size hints; Windows drops `WS_THICKFRAME` and the client top band;
-macOS omits `NSWindowStyleMaskResizable`.
+Processed through `b914e5acbf7e7a6fc93ed057b5c9380bd90c6ebe` (2026-10-16,
+shell: Accept a Background in bg and add a shadow style (#3534)).
+`bg` takes a colour or a `Background`. `shadow([...])` takes CSS-like
+records: the first paints on top, `blur` is halved into GPUI's sigma,
+and `[]` clears. Both replay through hover, active, focus and template
+slots. Pattern and checkerboard fills still paint as their solid colour.
+`docs/gpui-shell.md` is not ported.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

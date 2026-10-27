@@ -1,5 +1,6 @@
 #include "shell/value.h"
 
+#include "shell/spec.h"
 #include "shell/theme_tokens.h"
 
 #include <math.h>
@@ -31,6 +32,21 @@ Bridged Bridged::String(Str value) {
     return out;
 }
 
+Bridged Bridged::Background(const BackgroundSpec* spec) {
+    Bridged out;
+    out.kind = BridgedKind::Background;
+    out.background = spec;
+    return out;
+}
+
+Bridged Bridged::Shadows(const ShadowSpec* specs, int count) {
+    Bridged out;
+    out.kind = BridgedKind::Shadows;
+    out.shadows = specs;
+    out.shadowCount = count;
+    return out;
+}
+
 Str BridgedDescribe(Arena* arena, const Bridged& value) {
     switch (value.kind) {
         case BridgedKind::Nil:
@@ -43,6 +59,10 @@ Str BridgedDescribe(Arena* arena, const Bridged& value) {
             return StrDup(arena, fmt("number (%g)", value.number));
         case BridgedKind::String:
             return StrDup(arena, fmt("string (\"%s\")", value.string));
+        case BridgedKind::Background:
+            return StrDup(arena, StrL("a Background"));
+        case BridgedKind::Shadows:
+            return StrDup(arena, StrL("a shadow list"));
     }
     return {};
 }
@@ -144,6 +164,99 @@ bool BridgedAsColor(const Bridged& value, Hsla* out, ShellError* error) {
     return false;
 }
 
+static bool ColorLiteral(Str text, Hsla* out, ShellError* error) {
+    return BridgedAsColor(Bridged::String(text), out, error);
+}
+
+bool BackgroundSpecResolve(const BackgroundSpec& spec, ::gpui::Background* out,
+                           ShellError* error) {
+    if (!out) return false;
+    Hsla first = {};
+    Str literal = spec.kind == BackgroundKind::LinearGradient ? spec.fromColor
+                                                              : spec.color;
+    if (!ColorLiteral(literal, &first, error)) return false;
+    ::gpui::Background result = HslaToRgba(first);
+    if (spec.kind == BackgroundKind::LinearGradient) {
+        Hsla second = {};
+        if (!ColorLiteral(spec.toColor, &second, error)) return false;
+        result = BackgroundLinear(
+            spec.angle, ColorStopAt(HslaToRgba(first), spec.fromPosition),
+            ColorStopAt(HslaToRgba(second), spec.toPosition));
+    }
+    // PatternSlash and Checkerboard have no brush on an element fill. They
+    // keep their colour, which is the same fallback paint_path already used.
+    *out = BackgroundOpacity(result, spec.opacity);
+    return true;
+}
+
+bool BridgedAsBackground(const Bridged& value, ::gpui::Background* out,
+                         ShellError* error) {
+    if (value.kind == BridgedKind::Background) {
+        if (!value.background) {
+            ShellErrorSet(error, StrL("expected a color or a Background"));
+            return false;
+        }
+        return BackgroundSpecResolve(*value.background, out, error);
+    }
+    if (value.kind == BridgedKind::String) {
+        Hsla color = {};
+        if (!BridgedAsColor(value, &color, error)) return false;
+        if (out) *out = HslaToRgba(color);
+        return true;
+    }
+    if (error) {
+        Arena* arena = GetTempArena();
+        Str got = BridgedDescribe(arena, value);
+        ShellErrorSet(error,
+                      fmt("expected a color or a Background, got %s", got));
+    }
+    return false;
+}
+
+bool BridgedAsShadows(const Bridged& value, ::gpui::BoxShadow* out, int cap,
+                      int* count, ShellError* error) {
+    if (value.kind != BridgedKind::Shadows) {
+        if (error) {
+            Arena* arena = GetTempArena();
+            Str got = BridgedDescribe(arena, value);
+            ShellErrorSet(error,
+                          fmt("expected an array of shadows, got %s", got));
+        }
+        return false;
+    }
+    int n = value.shadowCount;
+    if (n < 0) n = 0;
+    if (count) *count = n;
+    if (n == 0) return true;
+    if (!out || cap < n || !value.shadows) {
+        ShellErrorSet(error, StrL("shadow list is too large"));
+        return false;
+    }
+    // CSS paints the first shadow on top. GPUI paints the last on top, so
+    // the list is stored reversed. Errors still name the script's index.
+    for (int i = 0; i < n; i++) {
+        int from = n - 1 - i;
+        const ShadowSpec& spec = value.shadows[from];
+        Hsla color = {};
+        ShellError colorError;
+        if (!ColorLiteral(spec.color, &color, &colorError)) {
+            ShellErrorSet(error,
+                          fmt("shadow %d: %s", from, colorError.message));
+            ShellErrorClear(&colorError);
+            return false;
+        }
+        ::gpui::BoxShadow shadow = {};
+        shadow.x = spec.x;
+        shadow.y = spec.y;
+        shadow.blur = spec.blur / 2.f;
+        shadow.spread = spec.spread;
+        shadow.color = HslaToRgba(color);
+        shadow.inset = spec.inset;
+        out[i] = shadow;
+    }
+    return true;
+}
+
 bool BridgedIsTruthy(const Bridged& value) {
     switch (value.kind) {
         case BridgedKind::Nil:
@@ -154,6 +267,9 @@ bool BridgedIsTruthy(const Bridged& value) {
             return value.number != 0.0 && !isnan(value.number);
         case BridgedKind::String:
             return len(value.string) != 0;
+        case BridgedKind::Background:
+        case BridgedKind::Shadows:
+            return true;
     }
     return false;
 }

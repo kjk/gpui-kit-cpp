@@ -319,6 +319,31 @@ Component SpecArena::CopyComponent(const Component& source) {
     return out;
 }
 
+static Bridged DupBridged(Arena* arena, const Bridged& source) {
+    Bridged out = source;
+    if (out.kind == BridgedKind::String) {
+        out.string = StrDup(arena, source.string);
+    } else if (out.kind == BridgedKind::Background && source.background) {
+        BackgroundSpec* spec = ArenaNew<BackgroundSpec>(arena);
+        *spec = *source.background;
+        spec->color = StrDup(arena, source.background->color);
+        spec->fromColor = StrDup(arena, source.background->fromColor);
+        spec->toColor = StrDup(arena, source.background->toColor);
+        spec->colorSpace = StrDup(arena, source.background->colorSpace);
+        out.background = spec;
+    } else if (out.kind == BridgedKind::Shadows && source.shadowCount > 0 &&
+               source.shadows) {
+        ShadowSpec* specs = (ShadowSpec*)Alloc(
+            arena, source.shadowCount * (int)sizeof(ShadowSpec));
+        for (int i = 0; i < source.shadowCount; i++) {
+            specs[i] = source.shadows[i];
+            specs[i].color = StrDup(arena, source.shadows[i].color);
+        }
+        out.shadows = specs;
+    }
+    return out;
+}
+
 SpecOp SpecArena::CopyOp(const SpecOp& source) {
     SpecOp out = source;
     out.name = StrDup(arena, source.name);
@@ -326,10 +351,7 @@ SpecOp SpecArena::CopyOp(const SpecOp& source) {
         out.args = (Bridged*)Alloc(
             arena, (int)(sizeof(Bridged) * (size_t)source.argCount));
         for (int i = 0; i < source.argCount; i++) {
-            out.args[i] = source.args[i];
-            if (out.args[i].kind == BridgedKind::String) {
-                out.args[i].string = StrDup(arena, source.args[i].string);
-            }
+            out.args[i] = DupBridged(arena, source.args[i]);
         }
     }
     return out;
@@ -545,11 +567,7 @@ bool SpecArena::WriteSlot(SpecId base, const Slot& slot, const SlotValue& value,
             SetSpecError(error, SpecErrorKind::Expired);
             return false;
         }
-        Bridged written = value.value;
-        if (written.kind == BridgedKind::String) {
-            written.string = StrDup(arena, written.string);
-        }
-        op.args[slot.site.argument] = written;
+        op.args[slot.site.argument] = DupBridged(arena, value.value);
         return true;
     }
     if (slot.site.kind == SlotSiteKind::Handler &&
@@ -595,6 +613,24 @@ static void AppendBridged(StrBuilder* out, const Bridged& value) {
             out->AppendChar('"');
             out->Append(value.string);
             out->AppendChar('"');
+            break;
+        case BridgedKind::Background:
+            out->Append(StrL("Background("));
+            if (value.background) {
+                const BackgroundSpec& spec = *value.background;
+                if (spec.kind == BackgroundKind::LinearGradient) {
+                    out->Append(fmt("linear-gradient %g %s@%g %s@%g",
+                                    (double)spec.angle, spec.fromColor,
+                                    (double)spec.fromPosition, spec.toColor,
+                                    (double)spec.toPosition));
+                } else {
+                    out->Append(spec.color);
+                }
+            }
+            out->AppendChar(')');
+            break;
+        case BridgedKind::Shadows:
+            out->Append(fmt("Shadows([%d])", value.shadowCount));
             break;
     }
 }

@@ -1425,6 +1425,10 @@ void StyleApplyFields(Style* into, const Style& over, uint32_t fields) {
         into->bg = over.bg;
         into->hasBg = true;
     }
+    if (fields & StyleFieldShadow) {
+        into->shadows = over.shadows;
+        into->shadowCount = over.shadowCount;
+    }
     if (fields & StyleFieldColor) {
         into->color = over.color;
         into->hasColor = true;

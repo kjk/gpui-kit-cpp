@@ -85,8 +85,9 @@ static void ReadDeclaredStyles(Str dts, DeclaredStyles* out) {
             if (StrEq(type, StrL("Length")) ||
                 StrEq(type, StrL("DefiniteLength")) ||
                 StrEq(type, StrL("AbsoluteLength")) ||
-                StrEq(type, StrL("Color")) || StrEq(type, StrL("number")) ||
-                StrEq(type, StrL("string"))) {
+                StrStartsWith(type, StrL("Color")) ||
+                StrContains(type, StrL("BoxShadow")) ||
+                StrEq(type, StrL("number")) || StrEq(type, StrL("string"))) {
                 VecAppend(out->param, name);
                 VecAppend(out->paramType, type);
                 continue;
@@ -139,9 +140,9 @@ static void EveryDeclaredStyleIsAccepted() {
     utassert(refused == 0);
     utassert(behaviors == (int)dimof(kNullaryBehaviors));
 
-    // Style.rs PARAM_STYLES: 59 names, each bound, each accepting a value of
-    // the type its declaration names.
-    utassert(len(declared.param) == 59);
+    // Style.rs PARAM_STYLES: bg, shadow and the length/colour methods. Each
+    // is bound and accepts a value of the type its declaration names.
+    utassert(len(declared.param) == 60);
     int paramRefused = 0;
     for (int i = 0; i < len(declared.param); i++) {
         Str name = declared.param[i];
@@ -158,8 +159,10 @@ static void EveryDeclaredStyleIsAccepted() {
         } else if (StrEq(type, StrL("AbsoluteLength"))) {
             values[count++] = Bridged::Number(8);
             values[count++] = Bridged::String(StrL("0.5rem"));
-        } else if (StrEq(type, StrL("Color"))) {
+        } else if (StrStartsWith(type, StrL("Color"))) {
             values[count++] = Bridged::String(StrL("#ff0000"));
+        } else if (StrContains(type, StrL("BoxShadow"))) {
+            values[count++] = Bridged::Shadows(nullptr, 0);
         } else if (StrEq(type, StrL("number"))) {
             values[count++] =
                 Bridged::Number(StrEq(name, StrL("font_weight")) ? 600 : 1);
@@ -468,8 +471,8 @@ static void ParamStylesFollowTheLengthGrammar() {
     utassert(ParamRefused(arena, "font_weight", Bridged::Number(901),
                           "between 100 and 900"));
     // a_wrongly_typed_argument_names_the_expected_type
-    utassert(
-        ParamRefused(arena, "bg", Bridged::Number(1), "expected a string"));
+    utassert(ParamRefused(arena, "bg", Bridged::Number(1),
+                          "expected a color or a Background"));
     utassert(ParamRefused(arena, "p", Bridged::String(StrL("auto")),
                           "definite length"));
     utassert(ParamRefused(arena, "gap_x", Bridged::String(StrL("auto")),
@@ -511,6 +514,81 @@ static void ParamStylesFollowTheLengthGrammar() {
     SpecOp unknown = ParamOp(StrL("tooltip"), &one, 1);
     utassert(!ApplyParamStyle(Div(arena), unknown, &error));
     utassert(!error.IsSet());
+    ArenaDelete(arena);
+}
+
+// style.rs: bg takes a Background, and shadow takes CSS records. The first
+// record paints on top, so it is stored last, and the CSS blur is halved.
+static void BgTakesABackgroundAndShadowHalvesTheBlur() {
+    Arena* arena = ArenaNew();
+    ShellError error;
+    BackgroundSpec gradient = {};
+    gradient.kind = BackgroundKind::LinearGradient;
+    gradient.angle = 180;
+    gradient.fromColor = StrL("#f7da74");
+    gradient.fromPosition = 0;
+    gradient.toColor = StrL("#fdcd12");
+    gradient.toPosition = 1;
+    gradient.opacity = 1;
+    El* filled = Div(arena);
+    utassert(ApplyParamValue(filled, StrL("bg"), Bridged::Background(&gradient),
+                             &error));
+    utassert(filled->style.bg.gradient);
+    utassertnear(filled->style.bg.angle, 180);
+    utassert(filled->style.bg.from.color.r == 0xf7);
+    utassert(filled->style.bg.to.color.r == 0xfd);
+    utassert(!error.IsSet());
+
+    BackgroundSpec bad = gradient;
+    bad.fromColor = StrL("gold");
+    utassert(!ApplyParamValue(Div(arena), StrL("bg"), Bridged::Background(&bad),
+                              &error));
+    utassert(StrContains(error.message, StrL("gold")));
+    ShellErrorClear(&error);
+
+    ShadowSpec specs[2] = {};
+    specs[0].y = 1;
+    specs[0].blur = 4;
+    specs[0].spread = -1;
+    specs[0].color = StrL("#0d0d0f");
+    specs[1].y = 1;
+    specs[1].blur = 4;
+    specs[1].spread = -1;
+    specs[1].color = StrL("#ffffff10");
+    specs[1].inset = true;
+    El* shadowed = Div(arena);
+    utassert(ApplyNullaryStyle(shadowed, StrL("shadow_md")));
+    utassert(shadowed->style.shadowCount > 0);
+    utassert(ApplyParamValue(shadowed, StrL("shadow"),
+                             Bridged::Shadows(specs, 2), &error));
+    utassert(shadowed->style.shadowCount == 2);
+    const BoxShadow* top = &shadowed->style.shadows[1];
+    const BoxShadow* under = &shadowed->style.shadows[0];
+    utassertnear(top->y, 1);
+    utassertnear(top->blur, 2);
+    utassertnear(top->spread, -1);
+    utassert(!top->inset);
+    utassert(under->inset);
+    utassert(!error.IsSet());
+
+    utassert(ApplyParamValue(shadowed, StrL("shadow"),
+                             Bridged::Shadows(nullptr, 0), &error));
+    utassert(shadowed->style.shadowCount == 0);
+
+    specs[1].color = StrL("black");
+    utassert(!ApplyParamValue(Div(arena), StrL("shadow"),
+                              Bridged::Shadows(specs, 2), &error));
+    utassert(StrContains(error.message, StrL("shadow 1")));
+    ShellErrorClear(&error);
+    utassert(!ApplyParamValue(Div(arena), StrL("shadow"),
+                              Bridged::String(StrL("#000")), &error));
+    utassert(StrContains(error.message, StrL("expected an array of shadows")));
+    ShellErrorClear(&error);
+    utassert(!ApplyParamValue(Div(arena), StrL("border_color"),
+                              Bridged::Shadows(nullptr, 0), &error));
+    utassert(StrContains(error.message, StrL("got a shadow list")));
+    ShellErrorClear(&error);
+    utassert(StyleFieldsOf(StrL("shadow")) == StyleFieldShadow);
     ArenaDelete(arena);
 }
 
@@ -1023,6 +1101,7 @@ void TestShellStyle() {
     shell_style_tests::EveryDeclaredStyleIsAccepted();
     shell_style_tests::NullaryStylesCarryGpuiValues();
     shell_style_tests::ParamStylesFollowTheLengthGrammar();
+    shell_style_tests::BgTakesABackgroundAndShadowHalvesTheBlur();
     shell_style_tests::AScriptMayCallEveryDeclaredStyle();
     shell_style_tests::ACloseTypoGetsASuggestion();
     shell_style_tests::FractionsOfMinMaxPaddingMarginAndGapApply();

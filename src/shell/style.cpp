@@ -1292,6 +1292,7 @@ static const ParamName kOtherParamNames[] = {
     {"flex_grow"},   {"flex_shrink"}, {"flex_basis"}, {"bg"},
     {"text_color"},  {"text_bg"},     {"text_size"},  {"font_family"},
     {"font_weight"}, {"line_height"}, {"opacity"},    {"border_color"},
+    {"shadow"},
 };
 
 static bool IsOtherParam(Str name) {
@@ -1412,8 +1413,27 @@ static bool ApplyOtherParam(El* e, Str name, const Bridged& value,
         s.flexBasisFrac = l.kind == LenKind::Frac ? l.v : 0;
         s.flexBasisPercent = l.kind == LenKind::Frac;
     } else if (StrEq(name, StrL("bg"))) {
-        if (!Color(value, &color, error)) return false;
-        e->Bg(color);
+        Background fill;
+        if (!BridgedAsBackground(value, &fill, error)) return false;
+        if (e) e->Bg(fill);
+    } else if (StrEq(name, StrL("shadow"))) {
+        if (value.kind != BridgedKind::Shadows) {
+            if (error) {
+                Arena* arena = GetTempArena();
+                ShellErrorSet(error, fmt("expected an array of shadows, got %s",
+                                         BridgedDescribe(arena, value)));
+            }
+            return false;
+        }
+        BoxShadow stack[32];
+        int count = 0;
+        if (value.shadowCount > (int)dimof(stack)) {
+            ShellErrorSet(error, StrL("shadow list is too large"));
+            return false;
+        }
+        if (!BridgedAsShadows(value, stack, (int)dimof(stack), &count, error))
+            return false;
+        if (e) e->Shadows(count > 0 ? stack : nullptr, count);
     } else if (StrEq(name, StrL("text_color"))) {
         if (!Color(value, &color, error)) return false;
         e->Fg(color);
@@ -1745,6 +1765,7 @@ bool ApplyParamStyle(El* element, const SpecOp& op, ShellError* error,
 
 uint32_t StyleFieldsOf(Str name) {
     if (StrEq(name, StrL("bg"))) return StyleFieldBg;
+    if (StrEq(name, StrL("shadow"))) return StyleFieldShadow;
     if (StrEq(name, StrL("text_color"))) return StyleFieldColor;
     if (StrEq(name, StrL("border_color"))) return StyleFieldBorderColor;
     if (StrEq(name, StrL("opacity"))) return StyleFieldOpacity;

@@ -690,26 +690,11 @@ static void PathEllipticalArc(Path* path, Point from, Point to, float rx,
 
 static bool MaterialPathBackground(const shell::BackgroundSpec& spec,
                                    Background* out) {
-    Hsla first = {}, second = {};
-    shell::Bridged value = shell::Bridged::String(
-        spec.kind == shell::BackgroundKind::LinearGradient ? spec.fromColor
-                                                           : spec.color);
-    if (!shell::BridgedAsColor(value, &first)) return false;
-    Background result = HslaToRgba(first);
-    if (spec.kind == shell::BackgroundKind::LinearGradient) {
-        if (!shell::BridgedAsColor(shell::Bridged::String(spec.toColor),
-                                   &second))
-            return false;
-        result = BackgroundLinear(
-            spec.angle, ColorStopAt(HslaToRgba(first), spec.fromPosition),
-            ColorStopAt(HslaToRgba(second), spec.toPosition));
-    }
-    // The renderer's Background currently has solid and linear-gradient
-    // fills. PatternSlash and Checkerboard retain their geometry in the
-    // snapshot for a future patterned path brush and use their declared
-    // colour as the portable fallback today.
-    *out = BackgroundOpacity(result, spec.opacity);
-    return true;
+    // An invalid colour draws nothing, as a path always has.
+    ShellError ignored;
+    bool ok = shell::BackgroundSpecResolve(spec, out, &ignored);
+    ShellErrorClear(&ignored);
+    return ok;
 }
 
 static void PaintMaterialPath(PaintCtx* ctx, El* element, void* user) {

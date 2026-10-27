@@ -2180,6 +2180,73 @@ static bool JsArrayString(JSContext* ctx, JSValueConst array, uint32_t index,
     return ok;
 }
 
+static bool ParseFiniteText(Str text, float* out);
+
+// background_spec: the one parser for the prelude's Background builder.
+// Colours stay as written and are checked when the value is used.
+static bool FillBackgroundSpec(Str kind, Str* values, int count, float opacity,
+                               Str colorSpace, shell::BackgroundSpec* out,
+                               const char** error) {
+    if (!isfinite(opacity) || opacity < 0) {
+        *error = "background opacity must be finite and non-negative";
+        return false;
+    }
+    *out = {};
+    out->opacity = opacity;
+    out->colorSpace = colorSpace;
+    if (StrEq(kind, StrL("solid"))) {
+        if (count < 1) {
+            *error = "solid background needs a color";
+            return false;
+        }
+        out->kind = shell::BackgroundKind::Solid;
+        out->color = values[0];
+        return true;
+    }
+    if (StrEq(kind, StrL("linear-gradient"))) {
+        float angle = 0, from = 0, to = 0;
+        if (count < 5 || !ParseFiniteText(values[0], &angle) ||
+            !ParseFiniteText(values[2], &from) ||
+            !ParseFiniteText(values[4], &to)) {
+            *error = "gradient angle, colors and stop positions must be finite";
+            return false;
+        }
+        out->kind = shell::BackgroundKind::LinearGradient;
+        out->angle = angle;
+        out->fromColor = values[1];
+        out->fromPosition = from;
+        out->toColor = values[3];
+        out->toPosition = to;
+        return true;
+    }
+    if (StrEq(kind, StrL("pattern-slash"))) {
+        float width = 0, interval = 0;
+        if (count < 3 || !ParseFiniteText(values[1], &width) ||
+            !ParseFiniteText(values[2], &interval)) {
+            *error = "slash pattern width and interval must be finite";
+            return false;
+        }
+        out->kind = shell::BackgroundKind::PatternSlash;
+        out->color = values[0];
+        out->width = width;
+        out->interval = interval;
+        return true;
+    }
+    if (StrEq(kind, StrL("checkerboard"))) {
+        float size = 0;
+        if (count < 2 || !ParseFiniteText(values[1], &size)) {
+            *error = "checkerboard size must be finite";
+            return false;
+        }
+        out->kind = shell::BackgroundKind::Checkerboard;
+        out->color = values[0];
+        out->size = size;
+        return true;
+    }
+    *error = "unknown Background kind";
+    return false;
+}
+
 static bool ParseFiniteText(Str text, float* out) {
     if (!text.s || len(text) <= 0 || len(text) >= 64) return false;
     TempStr buf = StrDupTemp(text);
@@ -2224,41 +2291,12 @@ static JSValue NativePath(JSContext* ctx, JSValueConst, int argc,
     component.kind = JS_ToBool(ctx, argv[0]) ? shell::ComponentKind::PathFill
                                              : shell::ComponentKind::PathStroke;
     component.strokeWidth = (float)width;
-    component.background.opacity = (float)opacity;
-    component.background.colorSpace = colorSpace;
-    bool valid = true;
-    if (StrEq(kind, StrL("solid"))) {
-        component.background.kind = shell::BackgroundKind::Solid;
-        valid = count64 >= 1;
-        if (valid) component.background.color = values[0];
-    } else if (StrEq(kind, StrL("linear-gradient"))) {
-        component.background.kind = shell::BackgroundKind::LinearGradient;
-        valid =
-            count64 >= 5 &&
-            ParseFiniteText(values[0], &component.background.angle) &&
-            ParseFiniteText(values[2], &component.background.fromPosition) &&
-            ParseFiniteText(values[4], &component.background.toPosition);
-        if (valid) {
-            component.background.fromColor = values[1];
-            component.background.toColor = values[3];
-        }
-    } else if (StrEq(kind, StrL("pattern-slash"))) {
-        component.background.kind = shell::BackgroundKind::PatternSlash;
-        valid = count64 >= 3 &&
-                ParseFiniteText(values[1], &component.background.width) &&
-                ParseFiniteText(values[2], &component.background.interval);
-        if (valid) component.background.color = values[0];
-    } else if (StrEq(kind, StrL("checkerboard"))) {
-        component.background.kind = shell::BackgroundKind::Checkerboard;
-        valid = count64 >= 2 &&
-                ParseFiniteText(values[1], &component.background.size);
-        if (valid) component.background.color = values[0];
-    } else {
-        valid = false;
-    }
-    if (!valid) {
+    const char* why = nullptr;
+    if (!FillBackgroundSpec(kind, values, (int)count64, (float)opacity,
+                            colorSpace, &component.background, &why)) {
         ArenaDelete(arena);
-        return JS_ThrowTypeError(ctx, "invalid path Background description");
+        return JS_ThrowTypeError(
+            ctx, "%s", why ? why : "invalid path Background description");
     }
     shell::SpecId id = impl->scratch->Push(component);
     ArenaDelete(arena);
@@ -2438,6 +2476,174 @@ static bool IsBehavior(Str name) {
     return false;
 }
 
+static bool ShadowFieldKnown(const char* key) {
+    return key && (strcmp(key, "x") == 0 || strcmp(key, "y") == 0 ||
+                   strcmp(key, "blur") == 0 || strcmp(key, "spread") == 0 ||
+                   strcmp(key, "color") == 0 || strcmp(key, "inset") == 0);
+}
+
+static bool ShadowNumber(JSContext* ctx, JSValueConst object, const char* field,
+                         bool nonNegative, int index, float* out) {
+    JSValue value = JS_GetPropertyStr(ctx, object, field);
+    if (JS_IsUndefined(value)) {
+        JS_FreeValue(ctx, value);
+        *out = 0;
+        return true;
+    }
+    double number = 0;
+    bool ok = JS_IsNumber(value) && JS_ToFloat64(ctx, &number, value) == 0 &&
+              isfinite(number) && (!nonNegative || number >= 0);
+    JS_FreeValue(ctx, value);
+    if (!ok) {
+        JS_ThrowTypeError(ctx,
+                          "shadow %d: `%s` must be a finite%s number of pixels",
+                          index, field, nonNegative ? ", non-negative" : "");
+        return false;
+    }
+    *out = (float)number;
+    return true;
+}
+
+static bool BridgeShadowList(JSContext* ctx, JSValueConst array, Arena* arena,
+                             shell::Bridged* out) {
+    int64_t length = 0;
+    if (JS_GetLength(ctx, array, &length) < 0) return false;
+    if (length > 32) {
+        JS_ThrowTypeError(ctx, "shadow list is too large");
+        return false;
+    }
+    shell::ShadowSpec* specs =
+        length > 0
+            ? (shell::ShadowSpec*)Alloc(
+                  arena, (int)(sizeof(shell::ShadowSpec) * (size_t)length))
+            : nullptr;
+    for (int64_t i = 0; i < length; i++) {
+        JSValue entry = JS_GetPropertyUint32(ctx, array, (uint32_t)i);
+        bool object = JS_IsObject(entry) && !JS_IsArray(entry) &&
+                      !JS_IsFunction(ctx, entry);
+        if (!object) {
+            JS_FreeValue(ctx, entry);
+            JS_ThrowTypeError(ctx,
+                              "shadow %d: expected an object like { y: 1, "
+                              "blur: 2, color: \"#00000066\" }",
+                              (int)i);
+            return false;
+        }
+        JSPropertyEnum* properties = nullptr;
+        uint32_t count = 0;
+        if (JS_GetOwnPropertyNames(ctx, &properties, &count, entry,
+                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0) {
+            JS_FreeValue(ctx, entry);
+            return false;
+        }
+        bool known = true;
+        for (uint32_t p = 0; known && p < count; p++) {
+            const char* key = JS_AtomToCString(ctx, properties[p].atom);
+            known = ShadowFieldKnown(key);
+            if (!known) {
+                JS_ThrowTypeError(ctx,
+                                  "shadow %d: unknown field `%s`; a shadow "
+                                  "takes x, y, blur, spread, color, inset",
+                                  (int)i, key ? key : "");
+            }
+            JS_FreeCString(ctx, key);
+        }
+        JS_FreePropertyEnum(ctx, properties, count);
+        if (!known) {
+            JS_FreeValue(ctx, entry);
+            return false;
+        }
+        shell::ShadowSpec spec = {};
+        if (!ShadowNumber(ctx, entry, "x", false, (int)i, &spec.x) ||
+            !ShadowNumber(ctx, entry, "y", false, (int)i, &spec.y) ||
+            !ShadowNumber(ctx, entry, "blur", true, (int)i, &spec.blur) ||
+            !ShadowNumber(ctx, entry, "spread", false, (int)i, &spec.spread)) {
+            JS_FreeValue(ctx, entry);
+            return false;
+        }
+        JSValue color = JS_GetPropertyStr(ctx, entry, "color");
+        Str text;
+        bool colorOk = JS_IsString(color) && JsString(ctx, color, arena, &text);
+        JS_FreeValue(ctx, color);
+        if (!colorOk) {
+            JS_FreeValue(ctx, entry);
+            JS_ThrowTypeError(ctx,
+                              "shadow %d: `color` is required and must be a "
+                              "#rgb, #rrggbb or #rrggbbaa string",
+                              (int)i);
+            return false;
+        }
+        spec.color = text;
+        JSValue inset = JS_GetPropertyStr(ctx, entry, "inset");
+        if (JS_IsUndefined(inset)) {
+            spec.inset = false;
+        } else if (JS_IsBool(inset)) {
+            spec.inset = JS_ToBool(ctx, inset) != 0;
+        } else {
+            JS_FreeValue(ctx, inset);
+            JS_FreeValue(ctx, entry);
+            JS_ThrowTypeError(ctx, "shadow %d: `inset` must be a boolean",
+                              (int)i);
+            return false;
+        }
+        JS_FreeValue(ctx, inset);
+        JS_FreeValue(ctx, entry);
+        specs[i] = spec;
+    }
+    *out = shell::Bridged::Shadows(specs, (int)length);
+    return true;
+}
+
+static bool BridgeBackgroundObject(JSContext* ctx, JSValueConst value,
+                                   Arena* arena, shell::Bridged* out) {
+    if (!JS_IsObject(value) || JS_IsArray(value) || JS_IsFunction(ctx, value))
+        return false;
+    JSValue marker = JS_GetPropertyStr(ctx, value, "__background");
+    bool isBackground = !JS_IsException(marker) && !JS_IsUndefined(marker) &&
+                        JS_ToBool(ctx, marker) != 0;
+    if (JS_IsException(marker)) {
+        JS_FreeValue(ctx, marker);
+        return false;
+    }
+    JS_FreeValue(ctx, marker);
+    if (!isBackground) return false;
+
+    JSValue kindV = JS_GetPropertyStr(ctx, value, "kind");
+    JSValue valuesV = JS_GetPropertyStr(ctx, value, "values");
+    JSValue opacityV = JS_GetPropertyStr(ctx, value, "opacityFactor");
+    JSValue spaceV = JS_GetPropertyStr(ctx, value, "colorSpace");
+    Str kind, colorSpace;
+    double opacity = 0;
+    int64_t count = 0;
+    bool ok = JsString(ctx, kindV, arena, &kind) && JS_IsArray(valuesV) &&
+              JS_GetLength(ctx, valuesV, &count) == 0 && count >= 0 &&
+              count <= 8 && JS_ToFloat64(ctx, &opacity, opacityV) == 0 &&
+              JsString(ctx, spaceV, arena, &colorSpace);
+    Str values[8] = {};
+    for (int i = 0; ok && i < (int)count; i++) {
+        ok = JsArrayString(ctx, valuesV, (uint32_t)i, arena, &values[i]);
+    }
+    JS_FreeValue(ctx, kindV);
+    JS_FreeValue(ctx, valuesV);
+    JS_FreeValue(ctx, opacityV);
+    JS_FreeValue(ctx, spaceV);
+    if (!ok) {
+        if (!JS_HasException(ctx)) {
+            JS_ThrowTypeError(ctx, "invalid Background description");
+        }
+        return false;
+    }
+    shell::BackgroundSpec* spec = ArenaNew<shell::BackgroundSpec>(arena);
+    const char* why = nullptr;
+    if (!FillBackgroundSpec(kind, values, (int)count, (float)opacity,
+                            colorSpace, spec, &why)) {
+        JS_ThrowTypeError(ctx, "%s", why ? why : "invalid Background");
+        return false;
+    }
+    *out = shell::Bridged::Background(spec);
+    return true;
+}
+
 static bool BridgeValue(JSContext* ctx, JSValueConst value, Arena* arena,
                         shell::Bridged* out) {
     if (JS_IsUndefined(value) || JS_IsNull(value)) {
@@ -2460,10 +2666,48 @@ static bool BridgeValue(JSContext* ctx, JSValueConst value, Arena* arena,
         *out = shell::Bridged::String(text);
         return true;
     }
+    if (BridgeBackgroundObject(ctx, value, arena, out)) return true;
+    if (JS_HasException(ctx)) return false;
     JS_ThrowTypeError(ctx,
-                      "script values crossing into an element method must be "
-                      "nil, boolean, number or string");
+                      "unsupported argument type; expected null, boolean, "
+                      "number, string, Background or function");
     return false;
+}
+
+// A parametric style's argument. `shadow` is the one method that reads an
+// array; every other style refuses one by name.
+static bool BridgeStyleValue(JSContext* ctx, Str name, JSValueConst value,
+                             Arena* arena, shell::Bridged* out) {
+    if (StrEq(name, StrL("shadow"))) {
+        if (JS_IsArray(value)) return BridgeShadowList(ctx, value, arena, out);
+        if (JS_IsObject(value)) {
+            JS_ThrowTypeError(
+                ctx,
+                "`shadow` expects an array of shadows; wrap a single one in "
+                "[ ]: shadow([{ y: 1, blur: 2, color: \"#00000066\" }])");
+            return false;
+        }
+    } else if (JS_IsArray(value)) {
+        JS_ThrowTypeError(ctx, "`%.*s` does not take an array", len(name),
+                          name.s);
+        return false;
+    }
+    return BridgeValue(ctx, value, arena, out);
+}
+
+static bool StyleArgumentAccepts(JSContext* ctx, const shell::SpecOp& op) {
+    Arena* arena = ArenaNew();
+    El* element = Div(arena);
+    ShellError error;
+    bool ok = shell::ApplyParamStyle(element, op, &error);
+    if (!ok) {
+        const char* message =
+            error.message.s ? error.message.s : "invalid style";
+        JS_ThrowTypeError(ctx, "%s", message);
+    }
+    ShellErrorClear(&error);
+    ArenaDelete(arena);
+    return ok;
 }
 
 // A description recorded once, and filled per call.
@@ -2742,8 +2986,9 @@ static JSValue NativeTemplateEnd(JSContext* ctx, JSValueConst, int argc,
 
 // Converts one argument for the position it fills.
 static bool SlotValueOf(JSContext* ctx, ShellRuntimeImpl* impl,
-                        const shell::Slot& slot, JSValueConst argument,
-                        Arena* arena, shell::SlotValue* out) {
+                        const shell::Template* tmpl, const shell::Slot& slot,
+                        JSValueConst argument, Arena* arena,
+                        shell::SlotValue* out) {
     switch (slot.site.kind) {
         case shell::SlotSiteKind::Text: {
             // Validated through the bridge first, so that an object or a
@@ -2752,7 +2997,9 @@ static bool SlotValueOf(JSContext* ctx, ShellRuntimeImpl* impl,
             // a number has to read the same whichever path recorded it.
             shell::Bridged bridged = {};
             if (!BridgeValue(ctx, argument, arena, &bridged)) return false;
-            if (bridged.kind == shell::BridgedKind::Nil) {
+            if (bridged.kind == shell::BridgedKind::Nil ||
+                bridged.kind == shell::BridgedKind::Background ||
+                bridged.kind == shell::BridgedKind::Shadows) {
                 JS_ThrowTypeError(ctx,
                                   "this template argument fills a text child "
                                   "and must be a string, a number or a "
@@ -2764,7 +3011,27 @@ static bool SlotValueOf(JSContext* ctx, ShellRuntimeImpl* impl,
         }
         case shell::SlotSiteKind::Argument: {
             out->kind = shell::SlotValueKind::Value;
-            return BridgeValue(ctx, argument, arena, &out->value);
+            const shell::SpecNode* node =
+                tmpl && tmpl->arena ? tmpl->arena->Node(slot.node) : nullptr;
+            Str styleName = {};
+            if (node && (int)slot.site.op < node->ops.len &&
+                node->ops[slot.site.op].kind == shell::SpecOpKind::ParamStyle) {
+                styleName = node->ops[slot.site.op].name;
+            }
+            bool ok = styleName.s
+                          ? BridgeStyleValue(ctx, styleName, argument, arena,
+                                             &out->value)
+                          : BridgeValue(ctx, argument, arena, &out->value);
+            if (!ok) return false;
+            if (styleName.s) {
+                shell::SpecOp op = {};
+                op.kind = shell::SpecOpKind::ParamStyle;
+                op.name = styleName;
+                op.args = &out->value;
+                op.argCount = 1;
+                if (!StyleArgumentAccepts(ctx, op)) return false;
+            }
+            return true;
         }
         case shell::SlotSiteKind::Handler: {
             if (!JS_IsFunction(ctx, argument)) {
@@ -2837,9 +3104,9 @@ static JSValue NativeTemplateInstantiate(JSContext* ctx, JSValueConst, int argc,
     for (int i = 0; i < len(tmpl->slots); i++) {
         JSValue argument =
             JS_GetPropertyUint32(ctx, argv[1], tmpl->slots[i].argument);
-        bool ok =
-            !JS_IsException(argument) &&
-            SlotValueOf(ctx, impl, tmpl->slots[i], argument, arena, &values[i]);
+        bool ok = !JS_IsException(argument) &&
+                  SlotValueOf(ctx, impl, tmpl, tmpl->slots[i], argument, arena,
+                              &values[i]);
         JS_FreeValue(ctx, argument);
         if (!ok) {
             ArenaDelete(arena);
@@ -3971,7 +4238,11 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                     slotSite = shell::SlotSiteKind::Argument;
                     continue;
                 }
-                if (!BridgeValue(ctx, value, arena, &op.args[i])) {
+                bool bridged =
+                    op.kind == shell::SpecOpKind::ParamStyle
+                        ? BridgeStyleValue(ctx, name, value, arena, &op.args[i])
+                        : BridgeValue(ctx, value, arena, &op.args[i]);
+                if (!bridged) {
                     JS_FreeValue(ctx, value);
                     ArenaDelete(arena);
                     return JS_EXCEPTION;
@@ -4032,6 +4303,11 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                 return thrown;
             }
         }
+    }
+    if (op.kind == shell::SpecOpKind::ParamStyle && slotPosition < 0 &&
+        !StyleArgumentAccepts(ctx, op)) {
+        ArenaDelete(arena);
+        return JS_EXCEPTION;
     }
     shell::SpecError failure = {};
     if (!impl->scratch->PushOp(id, op, &failure)) {

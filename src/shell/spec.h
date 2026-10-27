@@ -68,6 +68,17 @@ struct BackgroundSpec {
     float size = 0;
 };
 
+// One CSS-like box shadow, as a script wrote it. `blur` stays the CSS radius
+// and is halved when it becomes a GPUI shadow.
+struct ShadowSpec {
+    float x = 0;
+    float y = 0;
+    float blur = 0;
+    float spread = 0;
+    Str color;
+    bool inset = false;
+};
+
 enum class ComponentKind : uint8_t {
     Div,
     HFlex,
