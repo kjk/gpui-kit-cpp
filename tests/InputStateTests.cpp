@@ -11167,6 +11167,45 @@ static void RunTouchWindowTests() {
     ScrollingClosesTheMenuAndKeepsTheHandles();
 }
 
+// state.rs test_textarea_prewrap_prepares_content_rows_before_layout.
+static void TextareaPrewrapPreparesContentRowsBeforeLayout() {
+    const char* values[] = {"", "one\ntwo"};
+    int expected[] = {1, 2};
+    for (int i = 0; i < 2; i++) {
+        InputState s;
+        s.kind = InputKind::Textarea;
+        TextareaSetRows(&s, 12);
+        if (values[i][0]) {
+            InputSetValue(&s, Str(values[i]));
+        }
+        utassert(InputWrapRowCount(InputDisplayMap(&s)) == 0);
+        InputPrewrap(&s, nullptr, 14, 0, 120);
+        utassert(InputWrapRowCount(InputDisplayMap(&s)) == expected[i]);
+        utassert(ValueIs(s, values[i]));
+    }
+}
+
+// state.rs test_textarea_prewrap_respects_soft_wrap_before_layout.
+static void TextareaPrewrapRespectsSoftWrapBeforeLayout() {
+    const char* text =
+        "select id, name, email, phone from users where active\nlimit 10";
+    for (int i = 0; i < 2; i++) {
+        bool soft = i == 0;
+        InputState s;
+        s.kind = InputKind::Textarea;
+        s.softWrap = soft;
+        TextareaSetRows(&s, 1);
+        InputSetValue(&s, Str(text));
+        InputPrewrap(&s, nullptr, 14, 0, 120);
+        int rows = InputWrapRowCount(InputDisplayMap(&s));
+        utassert((rows > 2) == soft);
+        if (!soft) {
+            utassert(rows == 2);
+        }
+        utassert(ValueIs(s, text));
+    }
+}
+
 // state.rs test_prewrap_counts_wrapped_rows_before_the_first_paint.
 static void PrewrapCountsWrappedRowsBeforeTheFirstPaint() {
     const char* text =
@@ -11221,6 +11260,8 @@ static void PrewrapDoesNothingOnceLaidOut() {
 }
 
 void TestInputState() {
+    TextareaPrewrapPreparesContentRowsBeforeLayout();
+    TextareaPrewrapRespectsSoftWrapBeforeLayout();
     PrewrapCountsWrappedRowsBeforeTheFirstPaint();
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();

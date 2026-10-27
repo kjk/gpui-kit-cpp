@@ -182,8 +182,11 @@ bool InputLastActiveLine(const InputState* s, const Window* win, Bounds* out);
 // last laid out; a test calls it to wrap without drawing.
 void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
                         float fontSize, uint16_t fontWord);
-// EditorState::display_map. Read-only: wrapped rows, and the positions the
-// editor already maps. Text is prepared during layout or by InputPrewrap.
+// InputState::display_map, on every text mode. Read-only: wrapped rows, and
+// the positions the field already maps. Reading it does not prepare text.
+// Before the first layout the count can be 0; prepared empty text has one
+// row. The count is content, not the row limit or the viewport. Text is
+// prepared during layout or by InputPrewrap.
 struct InputDisplayMapRef {
     const InputState* state = nullptr;
 };
@@ -193,10 +196,12 @@ InputDisplayMapRef InputDisplayMap(const InputState* s);
 // laid-out editor whose soft wrap never built the map still has one row
 // per logical line.
 int InputWrapRowCount(InputDisplayMapRef map);
-// EditorState::prewrap. `width` is the text area. Before the first layout
-// this wraps a little short of it, with the state's soft wrap and wrapping
-// indent, so DisplayMap::wrap_row_count is known on the first frame. Once
-// the column has been laid out this does nothing.
+// InputState::prewrap, on every text mode. `width` is the text area: the
+// field's width less its padding, and less the line-number gutter when an
+// editor shows line numbers. Before the first layout this wraps a little
+// short of it, with the state's soft wrap and wrapping indent, so
+// wrap_row_count is known on the first frame. The font must be the field's
+// text style. Once the column has been laid out this does nothing.
 void InputPrewrap(InputState* s, PaintCtx* ctx, float fontSize,
                   uint16_t fontWord, float width);
 // The rows of logical line `line`, as byte offsets into it (row 0's is 0),
