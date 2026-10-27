@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8aa9f29c4c275320bd66d3e33c9eb9634cbadc70` (2026-10-18,
-list: Notify from set_searchable only when it changes (#3576)).
-Select and combobox already write the searchable flag without
-notifying, so a render that sets the same flag does not rebuild
-the page.
+Processed through `9254c58028cebe8122b989c30e15f9139e0b2569` (2026-10-18,
+setting: Name dropdown, number and text fields after their setting's title (#3582)).
+A text field and a number field take the setting's title as their
+accessible name. A dropdown's button is named with the title and
+the selected option. Website notes are not ported.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

@@ -785,8 +785,11 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
             out.dirty = it.boolValue && *it.boolValue != it.defBool;
             break;
         case SettingFieldKind::Input:
+            // The field shows the value, not the setting's title. The title
+            // is the name a screen reader announces.
             out.el = Input::New(cx, id, input)
                          ->W(w)
+                         ->AriaLabel(it.title)
                          ->Disabled(options.disabled)
                          ->WithSize(options.size)
                          ->IntoEl();
@@ -798,6 +801,7 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
             // user types and clamps only on blur.
             out.el = NumberInput::New(cx, id, input)
                          ->W(w)
+                         ->AccessibilityLabel(it.title)
                          ->Disabled(options.disabled)
                          ->WithSize(options.size)
                          ->Step(it.num.step)
@@ -815,8 +819,14 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
             Str label = current >= 0 && current < it.nItems
                             ? it.items[current].title
                             : Str{};
+            // The button shows only the selected option, so its name puts
+            // the setting's title in front of that option.
+            Str title = it.title.s ? it.title : StrL("");
+            Str option = label.s ? label : StrL("");
+            Str name = StrDup(cx->a, fmt("%s: %s", title, option));
             Button* btn = Button::New(cx, StrL("btn"))
                               ->Label(label)
+                              ->AccessibilityLabel(name)
                               ->DropdownCaret(true)
                               ->Outline()
                               ->Disabled(options.disabled)

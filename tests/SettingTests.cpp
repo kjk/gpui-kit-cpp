@@ -793,6 +793,48 @@ static const AccessibilityNode* NamedRole(Window* win, AccessibilityRole role,
     return nullptr;
 }
 
+struct ValueSettingsView {
+    Entity<SettingsState> state;
+    Entity<SearchableListState> themes;
+
+    static El* Render(ValueSettingsView* self, Ctx* cx) {
+        static const SearchableItem kThemes[] = {
+            {StrL("Dark"), StrL("dark")},
+            {StrL("Light"), StrL("light")},
+        };
+        return Settings::New(cx, StrL("value-settings"), self->state)
+            ->Page(StrL("General"))
+            ->PageDefaultOpen(true)
+            ->Group({})
+            ->Item(StrL("Theme"), {})
+            ->DropdownField(self->themes, kThemes, 2, 0)
+            ->Item(StrL("Font size"), {})
+            ->NumberField(StrL("14"))
+            ->Item(StrL("User name"), {})
+            ->InputField(StrL("Ada"))
+            ->IntoEl();
+    }
+};
+
+// controls.rs value_settings_are_named_after_their_titles. A dropdown's
+// button shows only the selected option, so its name has both.
+static void ValueSettingsAreNamedAfterTheirTitles() {
+    App* app = TestAppNew();
+    Init(app);
+    Entity<ValueSettingsView> view = EntityNew<ValueSettingsView>(app);
+    ValueSettingsView* self = view.Get(app);
+    self->state = EntityNewState<SettingsState>(app);
+    self->themes = EntityNewState<SearchableListState>(app);
+    if (SearchableListState* list = self->themes.Get(app)) {
+        VecAppend(list->selected, 0);
+    }
+    Window* win = TestWindowOpen(app, view, 800, 600);
+    utassert(NamedRole(win, AccessibilityRole::Button, StrL("Theme: Dark")));
+    utassert(NamedRole(win, AccessibilityRole::SpinButton, StrL("Font size")));
+    utassert(NamedRole(win, AccessibilityRole::TextInput, StrL("User name")));
+    TestAppFree(app);
+}
+
 static void BoolSettingsAreNamedAfterTheirTitles() {
     App* app = TestAppNew();
     Init(app);
@@ -809,6 +851,7 @@ static void BoolSettingsAreNamedAfterTheirTitles() {
 void TestSetting() {
     TestSuite("setting");
     BoolSettingsAreNamedAfterTheirTitles();
+    ValueSettingsAreNamedAfterTheirTitles();
     TheQueryMatchesTitleDescriptionAndKeywords();
     AGroupIsShownWhenAnythingInItIs();
     APageIsShownWhenAnyGroupIs();

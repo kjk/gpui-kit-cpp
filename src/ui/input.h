@@ -562,6 +562,9 @@ struct NumberInput {
     bool disabled = false;
     bool appearance = true;
     bool focusRing = true;
+    // NumberInput::accessibility_label. A number input has no visible text
+    // of its own, so the name is set by the caller.
+    Str accessibilityLabel = {};
     El* suffix = nullptr;
     Background bg = {};
     bool hasBg = false;
@@ -587,6 +590,8 @@ struct NumberInput {
     NumberInput* Appearance(bool v);
     // FocusableExt::focus_ring: no focus appearance on this control.
     NumberInput* FocusRing(bool v);
+    // The name a screen reader announces. It does not change what is shown.
+    NumberInput* AccessibilityLabel(Str label);
     NumberInput* Suffix(El* el);
     NumberInput* Bg(Background c);
     NumberInput* TextColor(Rgba c);

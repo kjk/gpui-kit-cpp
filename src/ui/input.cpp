@@ -1398,6 +1398,10 @@ NumberInput* NumberInput::FocusRing(bool v) {
     focusRing = v;
     return this;
 }
+NumberInput* NumberInput::AccessibilityLabel(Str label) {
+    accessibilityLabel = label;
+    return this;
+}
 NumberInput* NumberInput::Suffix(El* el) {
     suffix = el;
     return this;
@@ -1567,6 +1571,11 @@ El* NumberInput::IntoEl() {
     El* content = gpui::NumberInput::Compose(
         cx, base, state, disabled, dec,
         Div(a)->H(kFill)->Child(editor->IntoEl()), inc);
+    // Base NumberInput::accessibility_label, on the spin button. The
+    // element Compose returns is that button.
+    if (accessibilityLabel.s) {
+        content->AriaLabel(accessibilityLabel);
+    }
     if (onInc.IsValid()) {
         content->OnAccessibilityIncrement(onInc);
     } else {
