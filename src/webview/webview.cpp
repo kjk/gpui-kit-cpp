@@ -303,9 +303,9 @@ static void HideNative(WebView* self, wry::WebView* raw) {
 // same frame reads the webview's bounds.
 //
 // `set_geometry`: the content mask is the clip. An empty clip hides the
-// native view and leaves the page loaded. A partial clip does the same on
-// macOS and Linux, because there is no composition container to clip
-// without resizing the page. Windows keeps the full document bounds.
+// native view and leaves the page loaded. A partial clip keeps the full
+// document bounds, so the native view extends past its container. There
+// is no composition surface to clip it without resizing the page.
 static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
     WebView* self = (WebView*)user;
     Bounds document = e->Bounds();
@@ -333,21 +333,12 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
                          ? ClipIntersect(document, ctx->hitMask)
                          : document;
     bool empty = visible.w <= 0.f || visible.h <= 0.f;
-    bool partial = !empty && !BoundsSame(visible, document);
-    if (empty || (partial && PlatWebViewPartialClipHides())) {
-        if (partial && !self->clipWarned) {
-            self->clipWarned = true;
-            logf(
-                "webview: a partial clip needs a native composition "
-                "surface, so the view is hidden\n");
-        }
+    if (empty) {
         HideNative(self, raw);
         return;
     }
     bool same = self->hasApplied && BoundsSame(self->applied, document);
-    if (!same) {
-        self->applied = document;
-        self->hasApplied = true;
+    if (!same || self->geometryFailed) {
         // Logical DIPs. Upstream Linux passes device pixels because lb-wry
         // then multiplies by GDK's factor. `WebViewSetBounds` on Linux
         // already does that conversion for the X11 child, so doing it here
@@ -355,7 +346,17 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
         wry::Rect r;
         r.position = wry::LogicalPosition(document.x, document.y);
         r.size = wry::LogicalSize(document.w, document.h);
-        wry::WebViewSetBounds(raw, r);
+        if (!wry::WebViewSetBounds(raw, r)) {
+            if (!self->geometryFailed) {
+                self->geometryFailed = true;
+                logf("WebView geometry update failed\n");
+            }
+            HideNative(self, raw);
+            return;
+        }
+        self->applied = document;
+        self->hasApplied = true;
+        self->geometryFailed = false;
     }
     if (!self->nativeShown) {
         wry::WebViewSetVisible(raw, true);

@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5591a658e460a404568ab1372aa589c1b5fdad41` (2026-10-18,
-tests: Accept USERPROFILE as the default home variable on Windows (#3593)).
-process.env already exports each default home variable the host
-sets, HOME or USERPROFILE, and leaves out one the host does not.
+Processed through `f8c867872812bd8f3a035fda73fd1e3305019b79` (2026-10-19,
+webview: Support gpui-pre and make `gpui-fast` optional again (#3591)).
+Without a composition surface, a partly clipped webview keeps its
+full document bounds and extends past the container. It is hidden
+only when the clip misses it. Cargo features and the CI job are
+not ported.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
@@ -352,10 +354,12 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `gpui-fast` feature is a no-op; composition is not optional. This
   tree has one engine and parents the webview on the window
   (`src/webview/webview.cpp`). Without that container, a content mask
-  cannot clip the page without resizing it. On macOS and Linux a
-  partial clip hides the native view and leaves the page loaded;
-  Windows keeps the full document bounds. The hit box is already the
-  masked intersection.
+  cannot clip the page without resizing it. A partial clip keeps the
+  full document bounds, so the native view extends past its container
+  and covers overlays in that box. It is hidden only when the clip
+  misses it entirely, or the application hides it. A failed geometry
+  update is logged once, until a later update succeeds. The hit box
+  is already the masked intersection.
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because lb-wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor

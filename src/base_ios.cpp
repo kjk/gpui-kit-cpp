@@ -40,9 +40,6 @@ bool PlatCleanOnEscape() {
 bool PlatScrollBounceTouch() {
     return true;
 }
-bool PlatWebViewPartialClipHides() {
-    return false;
-}
 const char* PlatMonoFontName() {
     return "DejaVu Sans Mono";
 }

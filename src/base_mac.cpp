@@ -84,9 +84,6 @@ bool PlatCleanOnEscape() {
 bool PlatScrollBounceTouch() {
     return false;
 }
-bool PlatWebViewPartialClipHides() {
-    return true;
-}
 const char* PlatMonoFontName() {
     return "Menlo";
 }

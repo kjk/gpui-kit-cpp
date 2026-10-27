@@ -73,7 +73,9 @@ struct WebView {
     bool visible = true;
     // The OS view, which a clip can hide without changing `visible`.
     bool nativeShown = true;
-    bool clipWarned = false;
+    // The last geometry update failed. The failure is logged once, until
+    // a later update succeeds.
+    bool geometryFailed = false;
     // Where the element last was, which is the box the OS control is moved
     // to. Rust keeps this too, filled by the `canvas` in its render.
     Bounds bounds = {};

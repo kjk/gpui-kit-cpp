@@ -208,10 +208,6 @@ bool PlatCleanOnEscape();
 // The UIScrollView feel (tracking 0.55, no stretch cap). iOS and Android.
 // macOS bounces too, with the NSScrollView feel, so this is not that.
 bool PlatScrollBounceTouch();
-// macOS and Linux hide a webview whose content mask is a strict subset of
-// its box. Clipping it without resizing the page needs the composition
-// surface this tree does not have. Other platforms keep the full box.
-bool PlatWebViewPartialClipHides();
 const char* PlatMonoFontName();
 const char* PlatShellDataDir();
 const char* PlatShellPlatformName();
