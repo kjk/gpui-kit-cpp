@@ -372,6 +372,27 @@ static void TestHtmlPre(Arena* a) {
     utassert(TextIs(a, code, "int a;\n  int b;\n"));
 }
 
+// html.rs test_pre_text_stays_text. Escaped markup inside pre is text, and
+// the parser drops only the line feed right after the tag.
+static void TestPreTextStaysText(Arena* a) {
+    const char* html[] = {
+        "<pre>&lt;b&gt;bold&lt;/b&gt; &amp;amp;</pre>",
+        "<pre>  one\n\n\ttwo  </pre>",
+        "<pre>\none</pre>",
+        "<pre>\n\none</pre>",
+        "<pre><!-- note -->\none</pre>",
+    };
+    const char* text[] = {
+        "<b>bold</b> &amp;", "  one\n\n\ttwo  ", "one", "\none", "\none",
+    };
+    for (int i = 0; i < 5; i++) {
+        MdNode* doc = HtmlParse(a, Str(html[i]));
+        MdNode* block = Child(doc, 0);
+        utassert(block != nullptr);
+        utassert(TextIs(a, block, text[i]));
+    }
+}
+
 static void TestHtmlTable(Arena* a) {
     MdNode* doc = HtmlParse(
         a, StrL("<table><thead><tr><th>h</th></tr></thead>"
@@ -7042,6 +7063,7 @@ void TestTextView() {
     TestListItemPrefix(a);
     TestOrderedListStarts(a);
     TestHtmlPre(a);
+    TestPreTextStaysText(a);
     TestHtmlTable(a);
     TestHtmlImageAlt(a);
     TestHtmlUnbalanced(a);

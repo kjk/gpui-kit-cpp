@@ -305,6 +305,9 @@ struct Project {
     bool hasHighlight = false;
     Str href = {};
     bool raw = false;
+    // HTML drops one line feed that is the first token after <pre>. A
+    // comment or element before that text means the line feed stays.
+    bool rawDropLf = false;
     bool tableHead = false;
 };
 
@@ -358,8 +361,11 @@ static void AddRun(Project* p, Str text) {
 static void AddText(Project* p, Str text) {
     if (len(text) <= 0) return;
     if (p->raw) {
-        if (!p->cur->runFirst && text.s[0] == '\n') {
-            text = Str(text.s + 1, len(text) - 1);
+        if (p->rawDropLf) {
+            p->rawDropLf = false;
+            if (text.s[0] == '\n') {
+                text = Str(text.s + 1, len(text) - 1);
+            }
         }
         AddRun(p, text);
         return;
@@ -441,6 +447,9 @@ static void ProjectChildren(Project* p, const html5ever::Node* source) {
 }
 
 static void ProjectElement(Project* p, const html5ever::Node* source) {
+    // Anything other than text before the first run of a <pre> is not the
+    // line feed the parser drops right after the tag.
+    if (p->rawDropLf) p->rawDropLf = false;
     Str name = html5ever::NodeName(p->a, source);
     if (StrEqI(name, "head") || StrEqI(name, "title") ||
         StrEqI(name, "script") || StrEqI(name, "style")) {
@@ -494,7 +503,9 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
             if (StrEqI(name, "th") && node->parent) node->parent->head = true;
         }
         bool oldRaw = p->raw;
+        bool oldDropLf = p->rawDropLf;
         p->raw = kind == MdKind::Code;
+        p->rawDropLf = p->raw;
         p->cur = node;
         const html5ever::Node* first = html5ever::NodeFirst(p->a, source);
         if (kind == MdKind::Code && first &&
@@ -509,6 +520,7 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
         p->cur = parent;
         p->para = nullptr;
         p->raw = oldRaw;
+        p->rawDropLf = oldDropLf;
         return;
     }
     uint8_t oldMarks = p->marks;
@@ -542,6 +554,8 @@ static void ProjectNode(Project* p, const html5ever::Node* source) {
         AddText(p, html5ever::NodeData(p->a, source));
     } else if (source->kind == html5ever::NodeKind::Element) {
         ProjectElement(p, source);
+    } else if (source->kind == html5ever::NodeKind::Comment) {
+        if (p->rawDropLf) p->rawDropLf = false;
     } else if (source->kind == html5ever::NodeKind::Document) {
         ProjectChildren(p, source);
     }

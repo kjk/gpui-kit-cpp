@@ -16,10 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3a1eaf1583958b38a9e3f5a98eb58d5ab6cc014e` (2026-10-18,
-website: Update Native Shell domain and add project logos (#3579)).
-The story README now links Native Shell at nsh.dev. The website nav
-and its project logos are not part of this tree.
+Processed through `114c0d99d436b9da55ce6309f51c049680588691` (2026-10-18,
+text: Keep `<pre>` text as text through the HTML minifier (#3570)).
+Rust re-escapes pre and textarea text after the minifier decodes it,
+and writes back the line feed the parser drops after the tag. This
+tree parses the HTML once, so escaped markup stays text. The line
+feed right after pre is dropped once; a comment before it keeps the
+line feed.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
