@@ -6108,8 +6108,14 @@ void SliderSetStep(SliderState* s, float step);
 void SliderSetScale(SliderState* s, SliderScale scale);
 // `.default_value()` / `set_value()`.
 void SliderSetValue(SliderState* s, SliderValue v);
-// set_bounds, the box a position maps against.
+// set_bounds, the box a position maps against. The same box is left
+// alone: Rust skips the entity update so a retained reader is not built
+// again, and assigning it here would change nothing either.
 inline void SliderSetBounds(SliderState* s, Bounds b) {
+    if (s->bounds.x == b.x && s->bounds.y == b.y && s->bounds.w == b.w &&
+        s->bounds.h == b.h) {
+        return;
+    }
     s->bounds = b;
 }
 

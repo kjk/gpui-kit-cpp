@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f68b254cb6a561bb1da1e1b0eb9229bc74bcfeec` (2026-10-18,
-table: Cover DataTable builder and focus ring configuration (#3572)).
-The focus ring stays on until a builder turns it off, and the other
-table options compose with that switch.
+Processed through `4cf4de5095cf3e7ea68bd8c33a0037d7ae07c6f8` (2026-10-18,
+slider: Write the indicator's bounds only when they moved (#3575)).
+The rail writes its box only when that box changed. A second draw of
+the same slider leaves the box as it was.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
