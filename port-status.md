@@ -16,13 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f8cf0bd964f9ef2e5b7be79f3a8fc391371feb4a` (2026-10-16,
-input: Tell the platform's keyboard how to assist each input (#3557)).
-An input answers the platform's text-input configuration. Assistance
-stays off until asked. A single-line field's action key is Done, and a
-multi-line field that does not submit on enter is Enter. Suggestions
-follow autocorrect. Revealing a masked field does not turn assistance
-on. This tree stores that on InputState. Desktop does not feed an IME.
+Processed through `d4c56812984d5fb2640ed922fe230c3113479563` (2026-10-17,
+website: Link to Native Shell from the nav and READMEs (#3571)).
+The story introduction is upstream's README, so the new Native Shell
+section is copied with it. The website nav and the Chinese README are
+not part of this tree.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
