@@ -6,6 +6,7 @@
    draws it. */
 
 #include "base/input_core.h"
+#include "base/scrollbar.h"
 #include "base/input_editor.h"
 #include "base/input_lsp.h"
 #include "base/input_rope.h"
@@ -15,6 +16,30 @@
 namespace gpui {
 
 struct SemanticThemeTokens;
+
+// crates/base/src/input/scrollbar_presentation.rs. The track is the padded
+// editor; the scroll range is the content minus the unpadded viewport.
+struct EditorScrollbarContext {
+    InputState* state = nullptr;
+    Bounds viewport = {};
+    Size scrollViewport = {};
+    Size content = {};
+    ScrollbarAxis axis = ScrollbarAxis::Both;
+
+    ScrollbarAxis Axis() const { return axis; }
+    Size ScrollViewportSize() const { return scrollViewport; }
+    Bounds ViewportBounds() const { return viewport; }
+    // ScrollHandle's offset is negative-down. The state stores positive-down.
+    Point Offset() const;
+    void SetOffset(Point value) const;
+    // content plus the padding the track adds around the scroll viewport.
+    Size ContentSize() const;
+};
+
+void InputSetEditorPaddings(InputState* s, Edges paddings);
+void SetScrollbarRenderer(InputState* s, EditorScrollbarRenderer renderer,
+                          void* user = nullptr, void (*drop)(void*) = nullptr);
+void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void* user);
 
 // `InputBase::new(id)`: the frame is a stateful element, so its click and
 // focus ids are the fold of the name down from the root rather than a hash of

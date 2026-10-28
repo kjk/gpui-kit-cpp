@@ -3468,6 +3468,9 @@ InputState::~InputState() {
     if (contextMenuDrop && contextMenuData) {
         contextMenuDrop(contextMenuData);
     }
+    if (scrollbarRendererDrop && scrollbarRendererUser) {
+        scrollbarRendererDrop(scrollbarRendererUser);
+    }
     InputSyntaxCacheFree(this);
     // A field removed from the tree while it had the keyboard: the window
     // still points at it, and nothing would ever render it again to say
@@ -4844,6 +4847,73 @@ float InputBouncePaint(InputState* s, Window* win) {
         return 0;
     }
     return s->overscroll->Offset();
+}
+
+Point EditorScrollbarContext::Offset() const {
+    if (!state) return {};
+    return {-state->scrollX, -state->scrollY};
+}
+
+void EditorScrollbarContext::SetOffset(Point value) const {
+    if (!state) return;
+    state->scrollX = -value.x;
+    state->scrollY = -value.y;
+}
+
+Size EditorScrollbarContext::ContentSize() const {
+    return {content.w + (viewport.w - scrollViewport.w),
+            content.h + (viewport.h - scrollViewport.h)};
+}
+
+void InputSetEditorPaddings(InputState* s, Edges paddings) {
+    if (!s) return;
+    s->editorPaddings = paddings;
+    s->editorPaddingsSet = true;
+}
+
+void SetScrollbarRenderer(InputState* s, EditorScrollbarRenderer renderer,
+                          void* user, void (*drop)(void*)) {
+    if (!s) return;
+    if (s->scrollbarRendererDrop && s->scrollbarRendererUser &&
+        s->scrollbarRendererUser != user) {
+        s->scrollbarRendererDrop(s->scrollbarRendererUser);
+    }
+    if (!renderer) {
+        user = nullptr;
+        drop = nullptr;
+    }
+    s->scrollbarRenderer = renderer;
+    s->scrollbarRendererUser = user;
+    s->scrollbarRendererDrop = drop;
+}
+
+// EditorScrollbarLayout: the track grows by the padding, and the scroll
+// viewport stays the text box. A renderer replaces the integrated bar.
+void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void*) {
+    if (!e || !e->input || !e->input->scrollbarRenderer) return;
+    InputState* s = e->input;
+    e->noScrollbar = true;
+    Edges pad = s->editorPaddingsSet ? s->editorPaddings : Edges{};
+    Bounds outer = e->Bounds();
+    Bounds inputBounds = {outer.x + pad.left, outer.y + pad.top,
+                          outer.w - pad.left - pad.right,
+                          outer.h - pad.top - pad.bottom};
+    if (inputBounds.w < 0) inputBounds.w = 0;
+    if (inputBounds.h < 0) inputBounds.h = 0;
+    EditorScrollbarContext presented;
+    presented.state = s;
+    presented.viewport = {inputBounds.x, inputBounds.y - pad.top,
+                          inputBounds.w + pad.right,
+                          inputBounds.h + pad.top + pad.bottom};
+    presented.scrollViewport = {presented.viewport.w, inputBounds.h};
+    presented.content = {s->contentW, s->contentH};
+    presented
+        .axis = s->softWrap ? ScrollbarAxis::Vertical : ScrollbarAxis::Both;
+    if (!ctx || !ctx->window || !ctx->window->frameArena) return;
+    Ctx cx = {ctx->app, ctx->window, ctx->window->frameArena, {}};
+    El* bar = s->scrollbarRenderer(s->scrollbarRendererUser, &presented, &cx);
+    if (!bar) return;
+    e->Child(bar);
 }
 
 void InputSetScrollBounce(InputState* s, bool on) {

@@ -5131,6 +5131,15 @@ using InputContextMenuFn = void (*)(void* data, NativeMenu* menu,
                                     const InputContextMenuCapabilities& caps,
                                     Point position, App* app, Window* win);
 
+// input::EditorScrollbarContext. The full record lives with the editor;
+// the state only stores the renderer that receives it.
+struct EditorScrollbarContext;
+// input::EditorScrollbarRenderer. A frame element, or null to keep the
+// integrated bar. The pointer is the caller's and is not notified.
+using EditorScrollbarRenderer = El* (*)(void* user,
+                                        EditorScrollbarContext* context,
+                                        Ctx* cx);
+
 struct InputState {
     InputKind kind = InputKind::Input;
     LayoutMode mode = {};
@@ -5230,6 +5239,14 @@ struct InputState {
     // Frees contextMenuData when the handler is replaced or the state goes:
     // what the handler captured is the state's, as Rust's closure is.
     void (*contextMenuDrop)(void* data) = nullptr;
+    // set_editor_paddings. The track includes them; the scroll range does not.
+    Edges editorPaddings = {};
+    bool editorPaddingsSet = false;
+    // set_scrollbar_renderer. Null keeps the integrated bar. Not notified,
+    // so a render pass can install it.
+    EditorScrollbarRenderer scrollbarRenderer = nullptr;
+    void* scrollbarRendererUser = nullptr;
+    void (*scrollbarRendererDrop)(void* data) = nullptr;
     // pending_context_menu: a right press waiting for its release, where it
     // was and the offset it landed on.
     bool hasPendingContextMenu = false;

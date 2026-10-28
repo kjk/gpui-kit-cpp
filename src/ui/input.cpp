@@ -683,10 +683,14 @@ El* Editor::IntoEl() {
     // and on the left input_px held to 6, where the gutter is. The size
     // changes those insets. It does not change the code font or the line
     // height, which the highlighter keeps as the mono face at 1.5.
-    float unusedH = 0, padX = 0, padY = 0, unusedFont = 0;
-    InputSizeMetrics(cx, size, &unusedH, &padX, &padY, &unusedFont);
-    float left = padX < 6.f ? padX : 6.f;
-    highlighter->editorPad = Edges::New(left, padX, padY, padY);
+    if (state->editorPaddingsSet) {
+        highlighter->editorPad = state->editorPaddings;
+    } else {
+        float unusedH = 0, padX = 0, padY = 0, unusedFont = 0;
+        InputSizeMetrics(cx, size, &unusedH, &padX, &padY, &unusedFont);
+        float left = padX < 6.f ? padX : 6.f;
+        highlighter->editorPad = Edges::New(left, padX, padY, padY);
+    }
     InputAccessibility access = InputAccessibility::New(&accessibilityRole)
                                     .WithValueExposed(true);
     if (ariaLabel.s) {
@@ -1353,6 +1357,9 @@ El* Textarea::IntoEl() {
                   // The rows clamp the offset, including a target past the
                   // end, so the box has to read it after they are built.
                   ->ScrollY(state ? state->scrollY : 0);
+    if (state && state->scrollbarRenderer) {
+        box->prePaint = &EditorScrollbarPrePaint;
+    }
     El* text = gpui::Textarea::New(cx, state, editor);
     // The stretch moves the text inside the frame. The bar stays put.
     float stretch = InputBouncePaint(state, cx->win);

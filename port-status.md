@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9da3516a192870903a7a0cb16946b61351dadec2` (2026-10-23,
-dialog: add centered() to seat a dialog in the middle of the window (#3635)).
-Dialog and AlertDialog can seat their surface by its left-center at the
-vertical middle of the viewport. Without that, the top edge still sits
-at margin_top, or a tenth of the viewport. The positioner still clamps
-a tall surface inside the window margin.
+Processed through `627ba35afc08ffb49c34affd0af587b2ccf8d836` (2026-10-23,
+input: Let an editor supply its own scrollbar (#3644)).
+An editor can paint a caller-supplied element in place of its bar. The
+context gives that element the padded track and the unpadded scroll
+range, so a drag to the end meets the same offset as the wheel. With
+no renderer, the integrated bar stays.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

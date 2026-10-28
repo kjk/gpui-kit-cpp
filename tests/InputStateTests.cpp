@@ -12086,6 +12086,97 @@ static void FocusedInputAsksItsScrollContainerToRevealIt() {
     TestAppFree(app);
 }
 
+struct ScrollRangeView {
+    InputState editor;
+    EditorScrollbarContext presented = {};
+    bool has = false;
+    EntityId self = {};
+
+    static El* Record(void* user, EditorScrollbarContext* context, Ctx* cx) {
+        ScrollRangeView* view = (ScrollRangeView*)user;
+        view->presented = *context;
+        view->has = true;
+        El* thumb = Div(cx->a)->Click(0x5b01);
+        const Bounds& track = context->viewport;
+        thumb->x = track.Right() - 12.f;
+        thumb->y = track.y;
+        thumb->w = 12.f;
+        thumb->h = track.h;
+        Listener drag;
+        drag.view = view->self;
+        drag.SetFn(&ScrollRangeView::OnThumbDrag);
+        thumb->OnDragMove(drag);
+        return thumb;
+    }
+
+    static void OnThumbDrag(ScrollRangeView* self, Ctx*,
+                            const DragMoveEvent* ev) {
+        const EditorScrollbarContext& c = self->presented;
+        float max = c.content.h - c.scrollViewport.h;
+        if (max < 0) max = 0;
+        float span = c.viewport.h;
+        float pct = span > 0 ? (ev->event.y - c.viewport.y) / span : 1.f;
+        if (ev->event.y >= c.viewport.Bottom() - 1.f) pct = 1.f;
+        if (pct < 0) pct = 0;
+        if (pct > 1.f) pct = 1.f;
+        c.SetOffset({-self->editor.scrollX, -pct * max});
+    }
+
+    static El* Render(ScrollRangeView* self, Ctx* cx) {
+        self->editor.softWrap = true;
+        InputSetScrollBounce(&self->editor, false);
+        InputSetEditorPaddings(&self->editor, Edges::New(0, 0, 10, 10));
+        SetScrollbarRenderer(&self->editor, &ScrollRangeView::Record, self);
+        return Div(cx->a)->W(kFill)->H(kFill)->Child(
+            component::Editor::New(cx, StrL("editor"), &self->editor)
+                ->H(140)
+                ->Searchable(false)
+                ->Appearance(false)
+                ->Bordered(false)
+                ->Folding(false)
+                ->IntoEl());
+    }
+};
+
+// element.rs scrollbar_renderer_receives_the_editors_scroll_range.
+static void ScrollbarRendererReceivesTheEditorsScrollRange() {
+    App* app = TestAppNew();
+    component::Init(app);
+    ThemeSet(app, ThemeMode::Light);
+    Entity<ScrollRangeView> view = EntityNew<ScrollRangeView>(app);
+    ScrollRangeView* v = view.Get(app);
+    v->self = view.id;
+    StrBuilder text;
+    for (int i = 0; i < 60; i++) {
+        if (i) text.Append(StrL("\n"));
+        text.Append(fmt("line %d", i));
+    }
+    Str owned = text.TakeStr();
+    InputSetValue(&v->editor, owned);
+    StrFree(owned);
+    Window* win = TestWindowOpen(app, view, 240, 140);
+    TestDraw(win);
+    utassert(v->has);
+    Bounds track = v->presented.ViewportBounds();
+    TestSimulateScrollWheel(win, {track.x + 20.f, track.y + 20.f}, {0, -10000});
+    utassert(v->presented.Offset().y < 0);
+    utassert(fabsf(track.h - v->presented.ScrollViewportSize().h - 20.f) <
+             0.01f);
+    Point wheelEnd = v->presented.Offset();
+    utassert(fabsf(v->presented.ContentSize().h - track.h + wheelEnd.y) <
+             0.01f);
+    v->presented.SetOffset({});
+    TestDraw(win);
+    Point grab = {track.Right() - 5.f, track.y + 10.f};
+    Point end = {grab.x, track.Bottom() - 1.f};
+    TestSimulateMouseDown(win, grab);
+    TestSimulateMouseMove(win, end, true);
+    TestSimulateMouseUp(win, end);
+    utassert(fabsf(v->editor.scrollY + wheelEnd.y) < 0.01f);
+    utassert(fabsf(v->editor.scrollX + wheelEnd.x) < 0.01f);
+    TestAppFree(app);
+}
+
 void TestInputState() {
     TextareaPrewrapPreparesContentRowsBeforeLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
@@ -12095,6 +12186,7 @@ void TestInputState() {
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
+    ScrollbarRendererReceivesTheEditorsScrollRange();
     FocusedInputAsksItsScrollContainerToRevealIt();
     TapAsksForTheVirtualKeyboard();
     AccessibilityActionsRecheckLiveEditability();

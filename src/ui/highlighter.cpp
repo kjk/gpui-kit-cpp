@@ -1,4 +1,5 @@
 #include "ui/highlighter.h"
+#include "base/input.h"
 #include "ui/input.h"
 #include "ui/popover.h"
 #include "ui/text.h"
@@ -1419,6 +1420,9 @@ El* Highlighter::IntoEl() {
                        ->ScrollFromPath();
         if (state && !state->softWrap) {
             scroller->ScrollX(state->scrollX);
+        }
+        if (state && state->scrollbarRenderer) {
+            scroller->prePaint = &EditorScrollbarPrePaint;
         }
         scroller->Child(editor);
         if (padded) {
