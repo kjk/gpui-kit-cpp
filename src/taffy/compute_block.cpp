@@ -1421,15 +1421,16 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
             (IsSome(margin.left) ? 0 : 1) + (IsSome(margin.right) ? 0 : 1);
         int autoH =
             (IsSome(margin.top) ? 0 : 1) + (IsSome(margin.bottom) ? 0 : 1);
+        // Distribute leftover space using the clamped size. A declared size
+        // larger than max-width still leaves free space once the used size
+        // is the max, and that space is what centres the box.
         SizeF autoMarginSize;
-        if (autoW == 2 &&
-            (!IsSome(styleSize.w) || styleSize.w >= freeSpace.w)) {
+        if (autoW == 2 && freeSpace.w <= 0.0f) {
             autoMarginSize.w = 0.0f;
         } else if (autoW > 0) {
             autoMarginSize.w = freeSpace.w / (float)autoW;
         }
-        if (autoH == 2 &&
-            (!IsSome(styleSize.h) || styleSize.h >= freeSpace.h)) {
+        if (autoH == 2 && freeSpace.h <= 0.0f) {
             autoMarginSize.h = 0.0f;
         } else if (autoH > 0) {
             autoMarginSize.h = freeSpace.h / (float)autoH;

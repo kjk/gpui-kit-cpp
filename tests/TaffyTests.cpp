@@ -1327,6 +1327,61 @@ static void TestBlockLayout() {
         utassertnear(tree.GetLayout(inner).location.y, 20.0f);
         tree.Free();
     }
+
+    {
+        // block_absolute_margin_auto_left_and_right_max_width.
+        // width 180 clamped by max-width 100 still centres in the 200px
+        // containing block: the leftover 100px splits into 50px margins.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.size = SizeDim::FromLengths(180.0f, 40.0f);
+        absStyle.maxSize.width = Dimension::Length(100.0f);
+        absStyle.margin = RectLpa::Auto();
+        absStyle.inset = {LengthPercentageAuto::Length(0.0f),
+                          LengthPercentageAuto::Length(0.0f),
+                          LengthPercentageAuto::Length(20.0f),
+                          LengthPercentageAuto::Auto()};
+        TaffyNodeId child = tree.NewLeaf(absStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(child).location.x, 50.0f);
+        utassertnear(tree.GetLayout(child).location.y, 20.0f);
+        utassertnear(tree.GetLayout(child).size.w, 100.0f);
+        utassertnear(tree.GetLayout(child).size.h, 40.0f);
+        tree.Free();
+    }
+
+    {
+        // block_absolute_margin_auto_top_and_bottom_max_height.
+        // height 90 clamped by max-height 40 centres vertically: y = 30.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.size = SizeDim::FromLengths(100.0f, 90.0f);
+        absStyle.maxSize.height = Dimension::Length(40.0f);
+        absStyle.margin = RectLpa::Auto();
+        absStyle.inset = {LengthPercentageAuto::Length(20.0f),
+                          LengthPercentageAuto::Auto(),
+                          LengthPercentageAuto::Length(0.0f),
+                          LengthPercentageAuto::Length(0.0f)};
+        TaffyNodeId child = tree.NewLeaf(absStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(child).location.x, 20.0f);
+        utassertnear(tree.GetLayout(child).location.y, 30.0f);
+        utassertnear(tree.GetLayout(child).size.w, 100.0f);
+        utassertnear(tree.GetLayout(child).size.h, 40.0f);
+        tree.Free();
+    }
 }
 
 // ─── src/compute/grid/explicit_grid.rs ───────────────────────────────────
