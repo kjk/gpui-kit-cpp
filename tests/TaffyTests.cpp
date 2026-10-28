@@ -8174,6 +8174,40 @@ static void TestBlockAlignContentNestedFloat() {
     tree.Free();
 }
 
+// taffy 4142c9d8. A percentage min size on an auto track is cyclic, so
+// the minimum contribution treats the indefinite area as zero. The
+// grid's own 50px size wins over the 100px grandchild.
+static void TestGridCyclicPercentMinContribution() {
+    TestSuite("taffy grid cyclic percent min");
+    for (int withPreferred = 0; withPreferred < 2; withPreferred++) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style grand;
+        grand.size = SizeDim::FromLengths(100.0f, 100.0f);
+        TaffyNodeId grandNode = tree.NewLeaf(grand);
+        taffy::Style mid;
+        mid.display = taffy::Display::Grid;
+        mid.minSize = SizeDim::FromPercent(1.0f, 1.0f);
+        if (withPreferred) {
+            mid.size = SizeDim::FromPercent(1.0f, 1.0f);
+        }
+        TaffyNodeId midNode = tree.NewWithChildren(mid, &grandNode, 1);
+        GridTemplateComponent track =
+            GridTemplateComponent::Single(TrackSizingFunction::Auto());
+        taffy::Style root;
+        root.display = taffy::Display::Grid;
+        root.size = SizeDim::FromLengths(50.0f, 50.0f);
+        root.gridTemplateColumns = GridTemplateOf(&track, 1);
+        root.gridTemplateRows = GridTemplateOf(&track, 1);
+        TaffyNodeId rootNode = tree.NewWithChildren(root, &midNode, 1);
+        tree.ComputeLayout(rootNode, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(rootNode), 0.0f, 0.0f, 50.0f, 50.0f);
+        AssertBox(tree.GetLayout(midNode), 0.0f, 0.0f, 50.0f, 50.0f);
+        AssertBox(tree.GetLayout(grandNode), 0.0f, 0.0f, 100.0f, 100.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -8251,6 +8285,7 @@ void TestTaffy() {
     gGridArena = gpui::ArenaNew();
     TestNegativeAvailableSpace();
     TestGridBlockItemHeightCache();
+    TestGridCyclicPercentMinContribution();
     TestGridUnaffectedTracksNotMeasured();
     TestGridFrRowUsesColumnWidth();
     TestExplicitGridSizing();

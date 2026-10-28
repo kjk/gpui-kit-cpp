@@ -1843,9 +1843,14 @@ float ItemMinimumContribution(GridItem* item, TaffyTree* tree,
                              boxSizingAdjustment),
                     axis);
     if (!IsSome(size)) {
-        size = Get(MaybeAdd(MaybeApplyAspectRatio(
-                                item->minSize.MaybeResolve(gridAreaSize, calc),
-                                item->aspectRatio),
+        // A percentage minimum is cyclic when the area it is a percentage of
+        // is the track this contribution is sizing. An indefinite area
+        // resolves that percentage against zero.
+        SizeFOpt cyclicMinBasis = {Some(UnwrapOr(gridAreaSize.w, 0.0f)),
+                                   Some(UnwrapOr(gridAreaSize.h, 0.0f))};
+        size = Get(MaybeAdd(MaybeApplyAspectRatio(item->minSize.MaybeResolve(
+                                                      cyclicMinBasis, calc),
+                                                  item->aspectRatio),
                             boxSizingAdjustment),
                    axis);
     }
