@@ -538,6 +538,8 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
                                  MaybeIntoAutomaticMinSize(child.overflow.y)};
         Optf styleMinMainSize = Main(Or(child.minSize, automaticMin), dir);
 
+        // A specified minimum is already the resolved minimum. Measuring
+        // min-content would not change it.
         if (IsSome(styleMinMainSize)) {
             child.resolvedMinimumMainSize = styleMinMainSize;
         } else {

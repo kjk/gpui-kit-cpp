@@ -3465,6 +3465,34 @@ static void TestOverflowPastScrollOrigin() {
 }
 
 // leaf_content_size_excludes_the_own_padding_of_a_non_scroll_container.
+// explicit_min_main_size_skips_min_content_measurement. A flex item
+// with a length min-width is not measured at min-content.
+static taffy::LayoutOutput AssertNotMinContentMeasure(
+    const taffy::LayoutInput& inputs, TaffyNodeId node, void* nodeContext,
+    const taffy::Style* style, void* userData) {
+    (void)node;
+    (void)nodeContext;
+    (void)style;
+    (void)userData;
+    utassert(inputs.availableSpace.width
+                 .kind != taffy::AvailableSpace::Kind::MinContent);
+    return taffy::LayoutOutput::FromOuterSize({10.0f, 10.0f});
+}
+
+static void TestExplicitMinSkipsMinContent() {
+    TestSuite("taffy flex explicit min skips min-content");
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style childStyle;
+    childStyle.minSize.width = taffy::Dimension::Length(10.0f);
+    TaffyNodeId child = tree.NewLeaf(childStyle);
+    TaffyNodeId root = tree.NewWithChildren(taffy::Style{}, &child, 1);
+    tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                  AssertNotMinContentMeasure, nullptr);
+    utassertnear(tree.GetLayout(child).size.w, 10.0f);
+    tree.Free();
+}
+
 static void TestLeafContentSizeEndPadding() {
     TestSuite("taffy leaf content size end padding");
     SizeF measured = {100.0f, 1000.0f};
@@ -3845,6 +3873,7 @@ void TestTaffy() {
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();
+    TestExplicitMinSkipsMinContent();
     TestLeafContentSizeEndPadding();
     TestOverflowPastScrollOrigin();
     TestContentSizeEndPadding();
