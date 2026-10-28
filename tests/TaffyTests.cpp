@@ -4456,6 +4456,105 @@ static void TestGridAutoFitCollapsedGutters() {
     tree.Free();
 }
 
+// taffy 4f18a82e. Named lines are resolved before the implicit-track
+// estimate, so a missing name or a span to a named line only creates the
+// tracks that placement actually needs.
+static void TestGridNamedLineImplicitTracks() {
+    TestSuite("taffy grid named line implicit tracks");
+
+    auto namedGrid = [](bool columnFlow, const NamedBox* boxes, int n,
+                        float rootW, float rootH) {
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId nodes[4];
+        for (int i = 0; i < n; i++) {
+            taffy::Style child;
+            child.gridColumn = boxes[i].column;
+            child.gridRow = boxes[i].row;
+            nodes[i] = tree.NewLeaf(child);
+        }
+        float colPx[2] = {50.0f, 100.0f};
+        float rowPx[2] = {20.0f, 40.0f};
+        GridTemplateComponent cols[2];
+        GridTemplateComponent rows[2];
+        for (int i = 0; i < 2; i++) {
+            cols[i] = GridTemplateComponent::Single(
+                TrackSizingFunction::Length(colPx[i]));
+            rows[i] = GridTemplateComponent::Single(
+                TrackSizingFunction::Length(rowPx[i]));
+        }
+        LineNameSet colNames[3] = {NameSet("first"), NameSet("mid"),
+                                   NameSet("last")};
+        LineNameSet rowNames[3] = {NameSet("first"), NameSet("mid"),
+                                   NameSet("last")};
+        TrackSizingFunction autoCol = TrackSizingFunction::Length(5.0f);
+        TrackSizingFunction autoRow = TrackSizingFunction::Length(10.0f);
+        taffy::Style root;
+        root.display = taffy::Display::Grid;
+        if (columnFlow) {
+            root.gridAutoFlow = taffy::GridAutoFlow::Column;
+        }
+        root.gridTemplateColumns = GridTemplateOf(cols, 2);
+        root.gridTemplateRows = GridTemplateOf(rows, 2);
+        root.gridTemplateColumnNames = SliceDup(gGridArena, colNames, 3);
+        root.gridTemplateRowNames = SliceDup(gGridArena, rowNames, 3);
+        root.gridAutoColumns = SliceDup(gGridArena, &autoCol, 1);
+        root.gridAutoRows = SliceDup(gGridArena, &autoRow, 1);
+        TaffyNodeId rootNode = tree.NewWithChildren(root, nodes, n);
+        tree.ComputeLayout(rootNode, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(rootNode), 0.0f, 0.0f, rootW, rootH);
+        for (int i = 0; i < n; i++) {
+            AssertBox(tree.GetLayout(nodes[i]), boxes[i].x, boxes[i].y,
+                      boxes[i].w, boxes[i].h);
+        }
+        tree.Free();
+    };
+
+    NamedBox rowFlow[4];
+    rowFlow[0] = {{GNamed("foo", 0), GridPlacement::FromLineIndex(1)},
+                  {GridPlacement::FromLineIndex(1), GNamed("foo", 0)},
+                  0.0f,
+                  10.0f,
+                  155.0f,
+                  70.0f};
+    rowFlow[1] = {{GridPlacement::FromSpan(2), GNamed("last", 0)},
+                  {GridPlacement::FromSpan(3), GNamed("last", 0)},
+                  0.0f,
+                  0.0f,
+                  150.0f,
+                  70.0f};
+    rowFlow[2] = {{GNamed("mid", 0), GridPlacement::FromLineIndex(1)},
+                  {GNamed("last", 0), GNamed("first", 0)},
+                  0.0f,
+                  10.0f,
+                  50.0f,
+                  60.0f};
+    rowFlow[3] = {{}, {}, 150.0f, 0.0f, 5.0f, 10.0f};
+    namedGrid(false, rowFlow, 4, 155.0f, 80.0f);
+
+    NamedBox colFlow[4];
+    colFlow[0] = {{GridPlacement::FromLineIndex(1), GNamed("foo", 0)},
+                  {GNamed("foo", 0), GridPlacement::FromLineIndex(1)},
+                  5.0f,
+                  0.0f,
+                  155.0f,
+                  70.0f};
+    colFlow[1] = {{GridPlacement::FromSpan(3), GNamed("last", 0)},
+                  {GridPlacement::FromSpan(2), GNamed("last", 0)},
+                  0.0f,
+                  0.0f,
+                  155.0f,
+                  60.0f};
+    colFlow[2] = {{GNamed("last", 0), GNamed("first", 0)},
+                  {GNamed("mid", 0), GridPlacement::FromLineIndex(1)},
+                  5.0f,
+                  0.0f,
+                  150.0f,
+                  20.0f};
+    colFlow[3] = {{}, {}, 0.0f, 60.0f, 5.0f, 10.0f};
+    namedGrid(true, colFlow, 4, 160.0f, 70.0f);
+}
+
 // A non-finite flex factor or container size used to keep the fr-size and
 // space-distribution loops from ever deciding they were done.
 static void TestGridNonFiniteStylesTerminate() {
@@ -9033,6 +9132,7 @@ void TestTaffy() {
     TestGridNamedLineResolution();
     TestAbsposSafeStaticImcb();
     TestGridAutoFitCollapsedGutters();
+    TestGridNamedLineImplicitTracks();
     TestGridNonFiniteStylesTerminate();
     TestGridZeroSpanTerminates();
     TestGridMinmaxAutoFixedZero();

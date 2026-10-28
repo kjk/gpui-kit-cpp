@@ -1210,18 +1210,26 @@ struct MinMaxSpan {
     uint16_t span = 0;
 };
 
+// One in-flow child whose named lines are already resolved to origin-zero.
+struct PlacementChild {
+    int index = 0;
+    NodeId node;
+    LinePlain horizontal;
+    LinePlain vertical;
+
+    LinePlain Get(AbsoluteAxis a) const {
+        return a == AbsoluteAxis::Horizontal ? horizontal : vertical;
+    }
+};
+
 // A conservative estimate of the greatest and smallest grid lines one item
-// uses, in OriginZero coordinates.
-MinMaxSpan ChildMinLineMaxLineSpan(LinePlacement line,
-                                   uint16_t explicitTrackCount) {
+// uses. `oz` is already in origin-zero coordinates, named lines included.
+MinMaxSpan ChildMinLineMaxLineSpan(LinePlain oz) {
     // 8.3.1 Grid Placement Conflict Handling:
     //   A. Two lines with the start further end-ward than the end: swap them.
     //   B. Start equal to end: remove the end line.
     //   C. Two spans: remove the one from the end property.
     //   D. Only a span for a named line: replace it with a span of 1.
-    //
-    // Named lines are accounted for separately, so they are ignored here.
-    LinePlain oz = line.IntoOriginZeroIgnoringNamed(explicitTrackCount);
     OriginZeroLine t1 = oz.start.Ozl();
     OriginZeroLine t2 = oz.end.Ozl();
 
@@ -1256,18 +1264,13 @@ MinMaxSpan ChildMinLineMaxLineSpan(LinePlacement line,
     return out;
 }
 
-// One child's grid placement, as the estimate and the placement pass see it.
-struct ChildPlacementStyles {
-    LinePlacement column;
-    LinePlacement row;
-};
-
 // Estimate the number of rows and columns in the implicit grid. The explicit
 // and negative implicit counts are exact; the positive implicit count is a
-// lower bound, since auto-placement can add to it.
+// lower bound, since auto-placement can add to it. Named lines are already
+// resolved on `children`, so a named line counts as the track it names.
 void ComputeGridSizeEstimate(uint16_t explicitColCount,
                              uint16_t explicitRowCount,
-                             const ChildPlacementStyles* children, int n,
+                             const PlacementChild* children, int n,
                              TrackCounts* outCols, TrackCounts* outRows) {
     OriginZeroLine colMin{0};
     OriginZeroLine colMax{0};
@@ -1277,10 +1280,8 @@ void ComputeGridSizeEstimate(uint16_t explicitColCount,
     uint16_t rowMaxSpan = 0;
 
     for (int i = 0; i < n; i++) {
-        MinMaxSpan colEst =
-            ChildMinLineMaxLineSpan(children[i].column, explicitColCount);
-        MinMaxSpan rowEst =
-            ChildMinLineMaxLineSpan(children[i].row, explicitRowCount);
+        MinMaxSpan colEst = ChildMinLineMaxLineSpan(children[i].horizontal);
+        MinMaxSpan rowEst = ChildMinLineMaxLineSpan(children[i].vertical);
 
         if (colEst.minLine < colMin) {
             colMin = colEst.minLine;
@@ -2202,17 +2203,6 @@ LineOzl ClampSpanToLimitedGrid(LineOzl span) {
 }
 
 // One child, as the placement algorithm sees it.
-struct PlacementChild {
-    int index = 0;
-    NodeId node;
-    LinePlain horizontal;
-    LinePlain vertical;
-
-    LinePlain Get(AbsoluteAxis a) const {
-        return a == AbsoluteAxis::Horizontal ? horizontal : vertical;
-    }
-};
-
 void RecordGridPlacement(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
                          TaffyTree* tree, NodeId node, int index,
                          AlignItems parentAlignItems,
@@ -4402,9 +4392,9 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     nameResolver.explicitColumnCount = explicitColCount;
     nameResolver.explicitRowCount = explicitRowCount;
 
-    // The in-flow children, with their names already resolved.
+    // The in-flow children, with their names already resolved. The same
+    // placements drive the size estimate and item placement.
     Vec<PlacementChild> children;
-    Vec<ChildPlacementStyles> childPlacements;
     int childCount = tree->ChildCount(node);
 
     for (int i = 0; i < childCount; i++) {
@@ -4422,16 +4412,14 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         pc.vertical = nameResolver.ResolveRowNames(cs.gridRow)
                           .IntoOriginZero(explicitRowCount);
         VecAppend(children, pc);
-        VecAppend(childPlacements, {cs.gridColumn, cs.gridRow});
     }
 
     // 3. Estimate the implicit track counts, which pre-sizes the occupancy
     //    matrix and is a necessary step in auto-placement.
     TrackCounts estColCounts;
     TrackCounts estRowCounts;
-    ComputeGridSizeEstimate(explicitColCount, explicitRowCount,
-                            childPlacements.els, len(childPlacements),
-                            &estColCounts, &estRowCounts);
+    ComputeGridSizeEstimate(explicitColCount, explicitRowCount, children.els,
+                            len(children), &estColCounts, &estRowCounts);
 
     // 4. Grid item placement. Columns stay in logical order; RTL is applied
     // when offsets and item edges are resolved.
@@ -4501,7 +4489,6 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         VecReset(columns);
         VecReset(rows);
         VecReset(children);
-        VecReset(childPlacements);
         cellOccupancyMatrix.Free();
         nameResolver.Free();
         return LayoutOutput::FromOuterSize({width, 0.0f});
@@ -4546,7 +4533,6 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         VecReset(columns);
         VecReset(rows);
         VecReset(children);
-        VecReset(childPlacements);
         cellOccupancyMatrix.Free();
         nameResolver.Free();
         return LayoutOutput::FromOuterSize(containerBorderBox);
@@ -4978,7 +4964,6 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     VecReset(columns);
     VecReset(rows);
     VecReset(children);
-    VecReset(childPlacements);
     VecReset(oofPool);
     cellOccupancyMatrix.Free();
     nameResolver.Free();
@@ -5118,7 +5103,8 @@ void GridExplicitSizeForTest(const Style& style, Optf autoFitContainerSize,
 void GridChildMinMaxSpanForTest(LinePlacement line, uint16_t explicitTrackCount,
                                 int16_t* outMinLine, int16_t* outMaxLine,
                                 uint16_t* outSpan) {
-    MinMaxSpan r = ChildMinLineMaxLineSpan(line, explicitTrackCount);
+    MinMaxSpan r = ChildMinLineMaxLineSpan(
+        line.IntoOriginZeroIgnoringNamed(explicitTrackCount));
     *outMinLine = r.minLine.v;
     *outMaxLine = r.maxLine.v;
     *outSpan = r.span;
@@ -5129,9 +5115,13 @@ void GridSizeEstimateForTest(uint16_t explicitColCount,
                              const LinePlacement* columns,
                              const LinePlacement* rows, int n,
                              uint16_t* outColCounts, uint16_t* outRowCounts) {
-    Vec<ChildPlacementStyles> children;
+    Vec<PlacementChild> children;
     for (int i = 0; i < n; i++) {
-        VecAppend(children, {columns[i], rows[i]});
+        PlacementChild pc;
+        pc.horizontal = columns[i]
+                            .IntoOriginZeroIgnoringNamed(explicitColCount);
+        pc.vertical = rows[i].IntoOriginZeroIgnoringNamed(explicitRowCount);
+        VecAppend(children, pc);
     }
     TrackCounts cols;
     TrackCounts rws;
@@ -5176,7 +5166,6 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
     nameResolver.explicitRowCount = explicitRowCount;
 
     Vec<PlacementChild> children;
-    Vec<ChildPlacementStyles> childPlacements;
     int childCount = tree->ChildCount(parent);
     for (int i = 0; i < childCount; i++) {
         NodeId child = tree->GetChildId(parent, i);
@@ -5193,14 +5182,12 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
         pc.vertical = nameResolver.ResolveRowNames(cs.gridRow)
                           .IntoOriginZero(explicitRowCount);
         VecAppend(children, pc);
-        VecAppend(childPlacements, {cs.gridColumn, cs.gridRow});
     }
 
     TrackCounts estCols;
     TrackCounts estRows;
-    ComputeGridSizeEstimate(explicitColCount, explicitRowCount,
-                            childPlacements.els, len(childPlacements), &estCols,
-                            &estRows);
+    ComputeGridSizeEstimate(explicitColCount, explicitRowCount, children.els,
+                            len(children), &estCols, &estRows);
 
     Vec<GridItem> items;
     CellOccupancyMatrix matrix;
@@ -5227,7 +5214,6 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
 
     VecReset(items);
     VecReset(children);
-    VecReset(childPlacements);
     matrix.Free();
     nameResolver.Free();
     return n;
