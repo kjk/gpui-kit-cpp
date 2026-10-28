@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `596a2d3c70ba0ca419d6664daf131b30831c56b2` (2026-10-28,
-input: give editor popups POPUP_PRIORITY so they paint above dialogs (#3700)).
-Rust defers the completion menu, code-action menu and hover popover
-at `POPUP_PRIORITY` so they sort above a dialog. This frame paints a
-menu that is fixed inside a dialog with that dialog, after the
-editor, so it is already above the surface. Scroll events and
+Processed through `089bcd5bf43b260cccb02a3cc8d03d39176661e2` (2026-10-28,
+message_scroller: Let the scrollbar reach the end of padded content (#3615)).
+The list's vertical padding is measured on the first and last rows,
+separate from row style, and a splice at the start remeasures the
+rows whose first-row inset changed. The scrollbar extent then reaches
+the padded end. Website docs are not ported. Scroll events and
 `secondary-` chords keep their C++ names. Scrollbar idle stays 2s and
 exit 500ms as constants. Links are always underlined. A textarea has
 no decoration extras, and linked text is gone. Image source, list and

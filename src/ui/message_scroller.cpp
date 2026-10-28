@@ -126,6 +126,19 @@ bool MessageScrollerState::Splice(Ctx* cx, int start, int end, int count) {
             needsMeasure[neighbor] = 1;
         }
     }
+    // A surviving former first row may have lost its list inset, or a
+    // surviving row may have become the first after a removal. `count` is
+    // the first row after a prefix insert.
+    if (start == 0) {
+        int marks[2] = {0, count};
+        for (int m = 0; m < 2; m++) {
+            int index = marks[m];
+            if (index >= 0 && index < heights.len && index != last) {
+                heights[index] = kMessageScrollerEstimatedRowHeight;
+                needsMeasure[index] = 1;
+            }
+        }
+    }
     if (cx) {
         Notify(cx);
     }
@@ -304,37 +317,45 @@ struct MessageScrollerRowCtx {
     int count = 0;
     float insetL = 0;
     float insetR = 0;
-    float padTop = 0;
-    float padBottom = 0;
+    float listTop = 0;
+    float listBottom = 0;
+    // StyleFieldPad was set, so the vertical insets replace pt_2 / pb_2
+    // even when a side is zero. Horizontal insets override px_3 the same way.
+    bool hasListPad = false;
 };
 
 static El* MessageScrollerRow(void* user, Ctx* cx, int index) {
     MessageScrollerRowCtx* rc = (MessageScrollerRowCtx*)user;
     Arena* a = cx->a;
-    El* row = Div(a)->W(kFill)->MinW(0)->PadX(Rems(cx, 0.75f));
-    if (rc->insetL > 0) {
+    // The inner wrapper is the row. List padding stays on the outer box so
+    // with_row_style cannot replace it, and so it is part of the measured
+    // item rather than padding on the list, which the scrollbar range omits.
+    El* inner = Div(a)->W(kFill)->MinW(0)->PadX(Rems(cx, 0.75f));
+    if (rc->hasListPad) {
         // Rust's .pl(left) overrides .px_3 rather than adding to it.
-        row->PadL(rc->insetL);
+        inner->PadL(rc->insetL);
+        inner->PadR(rc->insetR);
     }
-    if (rc->insetR > 0) {
-        row->PadR(rc->insetR);
-    }
-    // Spacing between rows only, like a CSS gap: the list's own bottom
-    // padding owns the gap after the last row.
+    // Spacing between rows only, like a CSS gap.
     if (index + 1 < rc->count) {
-        row->PadB(Rems(cx, 2.f));
-    }
-    if (index == 0 && rc->padTop > 0) {
-        row->PadT(rc->padTop);
-    }
-    if (index + 1 == rc->count && rc->padBottom > 0) {
-        row->PadB(rc->padBottom);
+        inner->PadB(Rems(cx, 2.f));
     }
     if (rc->scroller->rowStyleSet) {
-        row->Refine(rc->scroller->rowStyle, rc->scroller->rowStyleSet);
+        inner->Refine(rc->scroller->rowStyle, rc->scroller->rowStyleSet);
     }
     if (rc->scroller->renderer) {
-        row->Child(rc->scroller->renderer(rc->scroller->user, cx, index));
+        inner->Child(rc->scroller->renderer(rc->scroller->user, cx, index));
+    }
+    El* row = Div(a)->W(kFill)->Child(inner);
+    bool first = index == 0;
+    bool last = index + 1 == rc->count;
+    if (first) {
+        float top = rc->hasListPad ? rc->listTop : Rems(cx, 0.5f);
+        row->PadT(top);
+    }
+    if (last) {
+        float bottom = rc->hasListPad ? rc->listBottom : Rems(cx, 0.5f);
+        row->PadB(bottom);
     }
     return row;
 }
@@ -350,14 +371,17 @@ El* MessageScroller::IntoEl() {
     // GPUI's `list` lays rows out at the full list width and offsets them
     // only by vertical padding, so the horizontal component of the list
     // style is carried by every row wrapper instead.
-    float py2 = Rems(cx, 0.5f);
-    float insetL = 0, insetR = 0, padTop = py2, padBottom = py2;
-    if (listStyleSet & StyleFieldPad) {
+    //
+    // The vertical padding rides on the rows as well. A list measures its
+    // scroll extent from its items alone, so a list that carries padding of
+    // its own reports a scroll range that stops short of its end.
+    float insetL = 0, insetR = 0, listTop = 0, listBottom = 0;
+    bool hasListPad = (listStyleSet & StyleFieldPad) != 0;
+    if (hasListPad) {
         insetL = listStyle.pad.left;
         insetR = listStyle.pad.right;
-        // py_2 plus whatever the caller added.
-        padTop = py2 + listStyle.pad.top;
-        padBottom = py2 + listStyle.pad.bottom;
+        listTop = listStyle.pad.top;
+        listBottom = listStyle.pad.bottom;
     }
 
     // Following the tail is a standing request to sit at the newest row, so
@@ -371,8 +395,9 @@ El* MessageScroller::IntoEl() {
     rc->count = count;
     rc->insetL = insetL;
     rc->insetR = insetR;
-    rc->padTop = padTop;
-    rc->padBottom = padBottom;
+    rc->listTop = listTop;
+    rc->listBottom = listBottom;
+    rc->hasListPad = hasListPad;
 
     El* list = VirtualList::New(cx, count)
                    ->Id(id)

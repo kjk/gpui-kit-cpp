@@ -59,7 +59,9 @@ static void ASpliceKeepsTheSurvivingRowHeights() {
     utassert(state.ItemCount() == 6);
     utassertnear(state.heights[0], kMessageScrollerEstimatedRowHeight);
     utassertnear(state.heights[1], kMessageScrollerEstimatedRowHeight);
-    utassertnear(state.heights[2], 100.f);
+    // The old first row lost its list inset, so it is remeasured.
+    utassertnear(state.heights[2], kMessageScrollerEstimatedRowHeight);
+    utassertnear(state.heights[3], 101.f);
     utassertnear(state.heights[4], 102.f);
     // The last row is remeasured: it lost its inter-row padding.
     utassertnear(state.heights[5], kMessageScrollerEstimatedRowHeight);
@@ -230,6 +232,104 @@ static void TheLogicalScrollTopReportsTheRowAtTheTop() {
     TestAppFree(app);
 }
 
+// the_scrollbar_drag_range_reaches_the_end_of_the_content. The thumb's
+// range is the list's scroll extent. An extent that stops short of the
+// padded end leaves the reader above the last row.
+struct ScrollEndView {
+    Entity<MessageScrollerState> state;
+
+    static El* Row(void*, Ctx* cx, int) { return Div(cx->a)->H(40); }
+
+    static El* Render(ScrollEndView* self, Ctx* cx) {
+        return Div(cx->a)->W(400)->H(400)->Child(
+            MessageScroller::New(cx, StrL("messages"), self->state, &Row,
+                                 nullptr)
+                ->Scrollbar(false)
+                ->JumpButton(false)
+                ->IntoEl());
+    }
+};
+
+static void TheScrollbarDragRangeReachesTheEndOfTheContent() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<ScrollEndView> view = EntityNew<ScrollEndView>(app);
+    ScrollEndView* self = view.Get(app);
+    self->state = EntityNewState<MessageScrollerState>(app);
+    MessageScrollerState::Init(self->state.Get(app), 10);
+    Window* win = TestWindowOpen(app, view, 400, 400, 1);
+    TestDraw(win);
+
+    MessageScrollerState* st = self->state.Get(app);
+    float max = st->handle.contentSize - st->handle.viewport;
+    if (max < 0) {
+        max = 0;
+    }
+    Ctx cx = {app, win, nullptr, view.id};
+    ScrollEvent ev = {};
+    ev.offsetY = max;
+    MessageScrollerState::OnScroll(st, &cx, &ev);
+    TestDraw(win);
+
+    st = self->state.Get(app);
+    float end = st->handle.contentSize - st->handle.viewport;
+    utassert(end <= 0 || st->handle.offset >= end - 0.5f);
+    utassert(st->IsFollowingTail());
+    utassert(!st->IsScrolledUp());
+    TestAppFree(app);
+}
+
+// a_custom_list_padding_rides_on_the_first_and_the_last_row. The list's
+// vertical padding is measured with the first and last rows. Row padding
+// is a different box, so it does not replace the list inset.
+struct PaddedScrollerView {
+    Entity<MessageScrollerState> state;
+    float listTop = 0;
+    float listBottom = 0;
+
+    static El* Row(void*, Ctx* cx, int) { return Div(cx->a)->H(40); }
+
+    static El* Render(PaddedScrollerView* self, Ctx* cx) {
+        Style list = {};
+        list.pad.top = self->listTop;
+        list.pad.bottom = self->listBottom;
+        Style row = {};
+        row.pad.top = 6;
+        row.pad.bottom = 6;
+        return Div(cx->a)->W(400)->H(400)->Child(
+            MessageScroller::New(cx, StrL("messages"), self->state, &Row,
+                                 nullptr)
+                ->Scrollbar(false)
+                ->JumpButton(false)
+                ->WithListStyle(list, StyleFieldPad)
+                ->WithRowStyle(row, StyleFieldPad)
+                ->IntoEl());
+    }
+};
+
+static float PaddedExtent(App* app, float listTop, float listBottom) {
+    Entity<PaddedScrollerView> view = EntityNew<PaddedScrollerView>(app);
+    PaddedScrollerView* self = view.Get(app);
+    self->state = EntityNewState<MessageScrollerState>(app);
+    MessageScrollerState::Init(self->state.Get(app), 10);
+    self->listTop = listTop;
+    self->listBottom = listBottom;
+    Window* win = TestWindowOpen(app, view, 400, 400, 1);
+    TestDraw(win);
+    return self->state.Get(app)->handle.contentSize;
+}
+
+static void ACustomListPaddingRidesOnTheFirstAndTheLastRow() {
+    App* app = TestAppNew();
+    component::Init(app);
+    float first = PaddedExtent(app, 20, 40);
+    float second = PaddedExtent(app, 20, 20);
+    float third = PaddedExtent(app, 40, 20);
+    utassertnear(first - second, 20.f);
+    utassertnear(third - second, 20.f);
+    TestAppFree(app);
+}
+
 void TestMessageScroller() {
     TestSuite("message_scroller");
     TheStateSplicesScrollsAndFollowsItsTail();
@@ -237,4 +337,6 @@ void TestMessageScroller() {
     TheBuilderCarriesEveryOption();
     AScrollerWithoutAHeightFillsItsBox();
     TheLogicalScrollTopReportsTheRowAtTheTop();
+    TheScrollbarDragRangeReachesTheEndOfTheContent();
+    ACustomListPaddingRidesOnTheFirstAndTheLastRow();
 }
