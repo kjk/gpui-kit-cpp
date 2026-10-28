@@ -1812,18 +1812,19 @@ float ItemMinimumContribution(GridItem* item, TaffyTree* tree,
                 minimumContribution =
                     MaybeMin(MaybeMin(minimumContribution, pref), mx);
             }
-            size = Some(minimumContribution);
+            // The content-based minimum is clamped by the fixed max track
+            // sizing functions the item spans. That clamp does not apply to
+            // an explicitly specified preferred or minimum size, and a
+            // fit-content() argument does not clamp the way a fixed max does.
+            Optf limit = SpannedFixedTrackLimit(*item, axis, axisTracks,
+                                                Get(innerNodeSize, axis), calc);
+            size = Some(MaybeMin(minimumContribution, limit));
         } else {
             size = Some(0.0f);
         }
     }
 
-    // In all cases the suggestion is clamped by the maximum size in the axis,
-    // when that is definite. A fit-content() argument does not clamp the
-    // content-based minimum the way a fixed max sizing function does.
-    Optf limit = SpannedFixedTrackLimit(*item, axis, axisTracks,
-                                        Get(innerNodeSize, axis), calc);
-    return MaybeMin(size, limit);
+    return UnwrapOr(size, 0.0f);
 }
 
 float ItemMinimumContributionCached(GridItem* item, TaffyTree* tree,
@@ -3422,10 +3423,15 @@ void TrackSizingAlgorithm(TaffyTree* tree, AbstractAxis axis, Optf axisMinSize,
         ResolveItemBaselines(tree, axis, items, nItems, innerNodeSize);
     }
 
-    // Every track already at its growth limit means there is nothing to do.
+    // A fixed min that already equals its growth limit is final. An
+    // intrinsic min can still grow past a fixed max, as minmax(auto, 0px)
+    // does, so those tracks are not skipped.
     bool allAtLimit = true;
     for (int i = 0; i < nAxisTracks; i++) {
-        if (axisTracks[i].baseSize != axisTracks[i].growthLimit) {
+        const GridTrack& t = axisTracks[i];
+        if (t.baseSize != t.growthLimit ||
+            !IsSome(t.minTrackSizingFunction
+                        .DefiniteValue(percentageBasis, tree->calc))) {
             allAtLimit = false;
             break;
         }

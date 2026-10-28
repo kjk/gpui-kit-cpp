@@ -1595,6 +1595,59 @@ static void TestGridZeroSpanTerminates() {
     }
 }
 
+// minmax(auto, 0px) still takes the item's intrinsic size. A fixed max
+// does not let the track-sizing pass skip an intrinsic min.
+static void TestGridMinmaxAutoFixedZero() {
+    TestSuite("taffy::grid minmax auto fixed");
+
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    float xs[2] = {0.0f, 40.0f};
+    for (int i = 0; i < 2; i++) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style wide;
+        wide.boxSizing = BoxSizing::ContentBox;
+        wide.direction = directions[i];
+        wide.size.width = Dimension::Length(60.0f);
+        TaffyNodeId a = tree.NewLeaf(wide);
+        taffy::Style empty;
+        empty.boxSizing = BoxSizing::ContentBox;
+        empty.direction = directions[i];
+        TaffyNodeId b = tree.NewLeaf(empty);
+
+        TrackSizingFunction col;
+        col.min = MinTrackSizingFunction::Auto();
+        col.max = MaxTrackSizingFunction::Length(0.0f);
+        TrackSizingFunction rowPx = TrackSizingFunction::Length(10.0f);
+        GridTemplateComponent colC = GridTemplateComponent::Single(col);
+        GridTemplateComponent rowC[2] = {GridTemplateComponent::Single(rowPx),
+                                         GridTemplateComponent::Single(rowPx)};
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.direction = directions[i];
+        rootStyle.size.width = Dimension::Length(100.0f);
+        rootStyle.gridTemplateColumns = GridTemplateOf(&colC, 1);
+        rootStyle.gridTemplateRows = GridTemplateOf(rowC, 2);
+        TaffyNodeId kids[2] = {a, b};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        utassertnear(tree.GetLayout(root).size.w, 100.0f);
+        utassertnear(tree.GetLayout(root).size.h, 20.0f);
+        utassertnear(tree.GetLayout(a).location.x, xs[i]);
+        utassertnear(tree.GetLayout(a).location.y, 0.0f);
+        utassertnear(tree.GetLayout(a).size.w, 60.0f);
+        utassertnear(tree.GetLayout(a).size.h, 10.0f);
+        utassertnear(tree.GetLayout(b).location.x, xs[i]);
+        utassertnear(tree.GetLayout(b).location.y, 10.0f);
+        utassertnear(tree.GetLayout(b).size.w, 60.0f);
+        utassertnear(tree.GetLayout(b).size.h, 10.0f);
+        tree.Free();
+    }
+}
+
 // Rust's `(width, height, cols, rows).into_grid()`: a grid of `1fr` tracks.
 static taffy::Style GridParent(float w, float h, int cols, int rows) {
     taffy::Style s;
@@ -2470,6 +2523,7 @@ void TestTaffy() {
     TestGridRepetitionLineNames();
     TestGridNonFiniteStylesTerminate();
     TestGridZeroSpanTerminates();
+    TestGridMinmaxAutoFixedZero();
     TestTaffy013Regressions();
     gpui::ArenaDelete(gGridArena);
     gGridArena = nullptr;
