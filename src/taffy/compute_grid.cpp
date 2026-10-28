@@ -3800,13 +3800,16 @@ void TrackSizingAlgorithm(TaffyTree* tree, AbstractAxis axis, Optf axisMinSize,
     // The last two expansion steps should only expand into space the grid
     // container's own size generates, not any available space, so definite
     // available space is mapped to max-content when the inner node size is
-    // unknown.
+    // unknown. A min-content constraint on the block axis is also mapped to
+    // max-content: a grid's min-content block size is its max-content block
+    // size.
     AvailableSpace axisAvailableSpaceForExpansion;
     Optf innerAxis = Get(innerNodeSize, axis);
     if (IsSome(innerAxis)) {
         axisAvailableSpaceForExpansion = AvailableSpace::Definite(innerAxis);
-    } else if (availableGridSpace.Get(axis)
-                   .kind == AvailableSpace::Kind::MinContent) {
+    } else if (axis == AbstractAxis::Inline &&
+               availableGridSpace.Get(axis)
+                       .kind == AvailableSpace::Kind::MinContent) {
         axisAvailableSpaceForExpansion = AvailableSpace::MinContent();
     } else {
         axisAvailableSpaceForExpansion = AvailableSpace::MaxContent();

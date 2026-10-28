@@ -5098,6 +5098,93 @@ static void TestGridMinContributionClampedByMinMax() {
     }
 }
 
+// A 1fr row expands under a min-content block-size constraint, because a
+// grid's min-content block size is its max-content block size.
+// grid_fr_rows_flex_item_min_content_block_size and
+// grid_fr_rows_nested_min_content_block_size, border-box.
+static void TestGridFrRowsMinContentBlockSize() {
+    TestSuite("taffy::grid fr min-content block");
+
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    float tallX[2] = {0.0f, 100.0f};
+    for (int i = 0; i < 2; i++) {
+        TrackSizingFunction fixed = TrackSizingFunction::Length(50.0f);
+        TrackSizingFunction flex = TrackSizingFunction::Fr(1.0f);
+        GridTemplateComponent rows[2] = {GridTemplateComponent::Single(fixed),
+                                         GridTemplateComponent::Single(flex)};
+
+        auto makeInner = [&](TaffyTree& tree, TaffyNodeId* empty,
+                             TaffyNodeId* scroller, TaffyNodeId* tall) {
+            taffy::Style tallStyle;
+            tallStyle.direction = directions[i];
+            tallStyle.position = taffy::Position::Relative;
+            tallStyle.size.height = taffy::Dimension::Length(400.0f);
+            *tall = tree.NewLeaf(tallStyle);
+
+            taffy::Style scrollStyle;
+            scrollStyle.direction = directions[i];
+            scrollStyle.position = taffy::Position::Relative;
+            scrollStyle
+                .overflow = {taffy::Overflow::Hidden, taffy::Overflow::Hidden};
+            scrollStyle.scrollbarWidth = 15.0f;
+            *scroller = tree.NewWithChildren(scrollStyle, tall, 1);
+
+            taffy::Style emptyStyle;
+            emptyStyle.direction = directions[i];
+            emptyStyle.position = taffy::Position::Relative;
+            *empty = tree.NewLeaf(emptyStyle);
+
+            taffy::Style gridStyle;
+            gridStyle.display = taffy::Display::Grid;
+            gridStyle.direction = directions[i];
+            gridStyle.position = taffy::Position::Relative;
+            gridStyle.gridTemplateRows = GridTemplateOf(rows, 2);
+            TaffyNodeId kids[2] = {*empty, *scroller};
+            return tree.NewWithChildren(gridStyle, kids, 2);
+        };
+
+        {
+            TaffyTree tree;
+            tree.Init();
+            TaffyNodeId empty, scroller, tall;
+            TaffyNodeId grid = makeInner(tree, &empty, &scroller, &tall);
+            taffy::Style flexRoot;
+            flexRoot.display = taffy::Display::Flex;
+            flexRoot.flexDirection = taffy::FlexDirection::Column;
+            flexRoot.direction = directions[i];
+            flexRoot.position = taffy::Position::Absolute;
+            flexRoot.size = SizeDim::FromLengths(100.0f, 200.0f);
+            TaffyNodeId root = tree.NewWithChildren(flexRoot, &grid, 1);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 200.0f);
+            AssertBox(tree.GetLayout(grid), 0.0f, 0.0f, 100.0f, 450.0f);
+            AssertBox(tree.GetLayout(empty), 0.0f, 0.0f, 100.0f, 50.0f);
+            AssertBox(tree.GetLayout(scroller), 0.0f, 50.0f, 100.0f, 400.0f);
+            AssertBox(tree.GetLayout(tall), tallX[i], 0.0f, 0.0f, 400.0f);
+            tree.Free();
+        }
+        {
+            TaffyTree tree;
+            tree.Init();
+            TaffyNodeId empty, scroller, tall;
+            TaffyNodeId grid = makeInner(tree, &empty, &scroller, &tall);
+            taffy::Style outer;
+            outer.display = taffy::Display::Grid;
+            outer.direction = directions[i];
+            outer.position = taffy::Position::Absolute;
+            outer.size = SizeDim::FromLengths(100.0f, 200.0f);
+            TaffyNodeId root = tree.NewWithChildren(outer, &grid, 1);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 200.0f);
+            AssertBox(tree.GetLayout(grid), 0.0f, 0.0f, 100.0f, 450.0f);
+            AssertBox(tree.GetLayout(empty), 0.0f, 0.0f, 100.0f, 50.0f);
+            AssertBox(tree.GetLayout(scroller), 0.0f, 50.0f, 100.0f, 400.0f);
+            AssertBox(tree.GetLayout(tall), tallX[i], 0.0f, 0.0f, 400.0f);
+            tree.Free();
+        }
+    }
+}
+
 // Width and height sizing keywords on a grid item. The fixed tracks make the
 // area definite, so stretch is the area minus margins and the intrinsic
 // keywords measure the fixture text (min 20x20, max 40x10).
@@ -9559,6 +9646,7 @@ void TestTaffy() {
     TestGridAutoMinFloorPaddingBorder();
     TestGridReplacedNormalDoesNotStretch();
     TestGridMinContributionClampedByMinMax();
+    TestGridFrRowsMinContentBlockSize();
     TestGridSizingKeywords();
     TestTaffy013Regressions();
     gpui::ArenaDelete(gGridArena);
