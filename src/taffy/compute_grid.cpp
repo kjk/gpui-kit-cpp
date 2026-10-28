@@ -3952,16 +3952,20 @@ struct AlignedItem {
     int oofCount = 0;
 };
 
-// Align and size a grid item into its final position.
+// Align and size a grid item into its final position. containingBlock is the
+// percentage basis for the item's styles. Grid passes the grid area size;
+// grid lanes (css-grid-3) items have the container's content box as their
+// containing block in the stacking axis.
 AlignedItem AlignAndPositionItem(
     TaffyTree* tree, NodeId node, uint32_t order, RectF gridArea,
-    AlignItems containerJustifyItems, AlignItems containerAlignItems,
-    float baselineShim, Direction direction, float containerBorderBoxWidth,
-    RectF containerBorder, bool containerIsScrollContainer,
-    Vec<OofCandidate>* oofPool) {
+    SizeF containingBlock, AlignItems containerJustifyItems,
+    AlignItems containerAlignItems, float baselineShim, Direction direction,
+    float containerBorderBoxWidth, RectF containerBorder,
+    bool containerIsScrollContainer, Vec<OofCandidate>* oofPool) {
     CalcResolver calc = tree->calc;
     SizeF gridAreaSize = {gridArea.right - gridArea.left,
                           gridArea.bottom - gridArea.top};
+    SizeFOpt containingOpt = AsOptional(containingBlock);
 
     const Style& style = tree->GetStyle(node);
     PointOverflow overflow = style.overflow;
@@ -3978,29 +3982,27 @@ AlignedItem AlignAndPositionItem(
                             style.direction, direction, false);
     Position position = style.position;
 
-    RectFOpt inset = style.inset
-                         .MaybeResolveZip(AsOptional(gridAreaSize), calc);
-    RectF padding = style.padding.ResolveOrZero(Some(gridAreaSize.w), calc);
-    RectF border = style.border.ResolveOrZero(Some(gridAreaSize.w), calc);
+    RectFOpt inset = style.inset.MaybeResolveZip(containingOpt, calc);
+    RectF padding = style.padding.ResolveOrZero(Some(containingBlock.w), calc);
+    RectF border = style.border.ResolveOrZero(Some(containingBlock.w), calc);
     SizeF paddingBorderSize = (padding + border).SumAxes();
     SizeF boxSizingAdjustment = style.boxSizing == BoxSizing::ContentBox
                                     ? paddingBorderSize
                                     : SizeF::Zero();
 
-    SizeFOpt gridAreaOpt = AsOptional(gridAreaSize);
     SizeDim sizeStyle = style.size;
     SizeFOpt inherentSize =
         MaybeAdd(MaybeApplyAspectRatio(
-                     sizeStyle.MaybeResolve(gridAreaOpt, calc), aspectRatio),
+                     sizeStyle.MaybeResolve(containingOpt, calc), aspectRatio),
                  boxSizingAdjustment);
     SizeFOpt minSize = MaybeApplyAspectRatio(
-        MaybeMax(Or(MaybeAdd(style.minSize.MaybeResolve(gridAreaOpt, calc),
+        MaybeMax(Or(MaybeAdd(style.minSize.MaybeResolve(containingOpt, calc),
                              boxSizingAdjustment),
                     AsOptional(paddingBorderSize)),
                  paddingBorderSize),
         aspectRatio);
     SizeFOpt maxSize = MaybeAdd(
-        MaybeApplyAspectRatio(style.maxSize.MaybeResolve(gridAreaOpt, calc),
+        MaybeApplyAspectRatio(style.maxSize.MaybeResolve(containingOpt, calc),
                               aspectRatio),
         boxSizingAdjustment);
 
@@ -4026,8 +4028,8 @@ AlignedItem AlignAndPositionItem(
     }
 
     // Not a bug: the CSS spec has both horizontal and vertical margins resolve
-    // against the *width* of the grid area.
-    RectFOpt margin = style.margin.MaybeResolve(Some(gridAreaSize.w), calc);
+    // against the *width* of the containing block.
+    RectFOpt margin = style.margin.MaybeResolve(Some(containingBlock.w), calc);
 
     SizeF gridAreaMinusItemMarginsSize = {
         F32Max(MaybeSub(MaybeSub(gridAreaSize.w, margin.left), margin.right),
@@ -4040,13 +4042,13 @@ AlignedItem AlignAndPositionItem(
     if (!IsSome(inherentSize.w)) {
         keywordWidth = ResolveSizingKeyword(
             sizeStyle.width, Some(gridAreaMinusItemMarginsSize.w),
-            Some(gridAreaSize.w), calc);
+            Some(containingBlock.w), calc);
     }
     SizingKeywordResolution keywordHeight;
     if (!IsSome(inherentSize.h)) {
         keywordHeight = ResolveSizingKeyword(
             sizeStyle.height, Some(gridAreaMinusItemMarginsSize.h),
-            Some(gridAreaSize.h), calc);
+            Some(containingBlock.h), calc);
     }
     // One measure covers both axes. An absolute item is measured later, once
     // its insets have had a chance to fill a missing axis.
@@ -4055,7 +4057,7 @@ AlignedItem AlignAndPositionItem(
         keywordWidth.kind == SizingKeywordKind::Measure &&
         keywordHeight.kind == SizingKeywordKind::Measure) {
         keywordMeasured = AsOptional(tree->MeasureChildSizeBoth(
-            node, SizeFOptNone(), gridAreaOpt,
+            node, SizeFOptNone(), containingOpt,
             {keywordWidth.measure, keywordHeight.measure},
             SizingMode::InherentSize, LineBool::False()));
     }
@@ -4074,7 +4076,7 @@ AlignedItem AlignAndPositionItem(
                 width = keywordMeasured.w;
             } else {
                 width = Some(tree->MeasureChildSize(
-                    node, SizeFOptNone(), gridAreaOpt,
+                    node, SizeFOptNone(), containingOpt,
                     {keywordWidth.measure,
                      AvailableSpace::Definite(gridAreaMinusItemMarginsSize.h)},
                     SizingMode::InherentSize, AbsoluteAxis::Horizontal,
@@ -4107,7 +4109,7 @@ AlignedItem AlignAndPositionItem(
                                   : AvailableSpace::Definite(
                                         gridAreaMinusItemMarginsSize.w);
                 height = Some(tree->MeasureChildSize(
-                    node, {width, None()}, gridAreaOpt,
+                    node, {width, None()}, containingOpt,
                     {widthAvail, keywordHeight.measure},
                     SizingMode::InherentSize, AbsoluteAxis::Vertical,
                     LineBool::False()));
@@ -4125,13 +4127,13 @@ AlignedItem AlignAndPositionItem(
     SizeFOpt size = sized;
     if (IsOutOfFlow(position) && (!IsSome(sized.w) || !IsSome(sized.h))) {
         SizeF measured = tree->MeasureChildSizeBoth(
-            node, sized, gridAreaOpt, avail, SizingMode::InherentSize,
+            node, sized, containingOpt, avail, SizingMode::InherentSize,
             LineBool::False());
         size = AsOptional(measured);
     }
 
     LayoutOutput layoutOutput =
-        tree->PerformChildLayout(node, size, gridAreaOpt, avail,
+        tree->PerformChildLayout(node, size, containingOpt, avail,
                                  SizingMode::InherentSize, LineBool::False());
 
     SizeF finalSize =
@@ -4752,10 +4754,14 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         RectF gridArea = {gridLeft, gridRight,
                           rows[(int)item.rowIndexes.start + 1].offset,
                           rows[(int)item.rowIndexes.end].offset};
+        // Grid's containing block is the area. A lanes item would pass the
+        // container content box on the stacking axis instead.
+        SizeF containingBlock = {gridArea.right - gridArea.left,
+                                 gridArea.bottom - gridArea.top};
         AlignedItem placed = AlignAndPositionItem(
-            tree, item.node, (uint32_t)index, gridArea, justifyItems,
-            alignItems, item.baselineShim, direction, containerBorderBox.w,
-            border, isScrollContainer, &oofPool);
+            tree, item.node, (uint32_t)index, gridArea, containingBlock,
+            justifyItems, alignItems, item.baselineShim, direction,
+            containerBorderBox.w, border, isScrollContainer, &oofPool);
         item.yPosition = placed.yPosition;
         item.height = placed.height;
         item.oofStart = placed.oofStart;
