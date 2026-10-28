@@ -1,6 +1,6 @@
 /* Geometric primitives useful for layout — taffy/src/geometry.rs
  *
- * Part of the C++ port of taffy 0.13.0 (see src/taffy/readme.md).
+ * Part of the C++ port of taffy 0.15.0 (see src/taffy/readme.md).
  *
  * Deviations from the Rust, both forced by this tree's rules:
  *   - Rust's `Point<T>`, `Size<T>`, `Rect<T>` and `Line<T>` are generic over

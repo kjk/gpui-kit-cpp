@@ -1,6 +1,6 @@
 # src/taffy — the taffy layout crate, ported to C++
 
-This is a port of [taffy](https://github.com/DioxusLabs/taffy) **0.13.0**, the
+This is a port of [taffy](https://github.com/DioxusLabs/taffy) **0.15.0**, the
 layout crate Zed's GPUI uses and therefore the one gpui-kit's layout is
 defined by. Everything in `src/gpui` that has a box lays it out through here.
 

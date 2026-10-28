@@ -577,8 +577,8 @@ export const zedGpui = {
  */
 export const taffy = {
   repo: "https://github.com/DioxusLabs/taffy",
-  version: "0.13.0",
-  crateSha256: "c034e05f6ee85a12daa63863c2245797715075c70649947aa0da54f3f2ab1d0f",
+  version: "0.15.0",
+  crateSha256: "3c8480887e8803986d96a7173729565520d4bbb721ad6b7ad6941a22897207aa",
   dir: "src/taffy",
 } as const;
 
