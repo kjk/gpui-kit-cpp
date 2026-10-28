@@ -2916,47 +2916,53 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                         break;
                 }
 
-                bool haveGrowthLimitMinContent =
-                    !IsScrollContainer(axisOverflow);
-                float growthLimitMinContent =
-                    haveGrowthLimitMinContent
-                        ? sizer.MinContentContribution(item, axisTracks)
-                        : 0.0f;
-                float growthLimitMaxContent =
-                    sizer.MaxContentContribution(item, axisTracks);
-                float growthLimitIntrinsicMinContent =
-                    sizer.MinContentContribution(item, axisTracks);
-
                 GridTrack& t = axisTracks[trackIndex];
                 t.baseSize = newBaseSize;
 
-                if (t.maxTrackSizingFunction.IsFitContent()) {
-                    // An item that is not a scroll container raises the growth
-                    // limit to at least its min-content contribution.
-                    if (haveGrowthLimitMinContent) {
-                        t.growthLimitPlannedIncrease =
-                            F32Max(t.growthLimitPlannedIncrease,
-                                   growthLimitMinContent);
-                    }
-                    // And always to at least the fit-content-limited
-                    // max-content contribution.
+                // Contributions call into the child, so they are computed
+                // only when a sizing function uses them. Min-content is still
+                // computed for every item in an intrinsic track: the re-run
+                // check compares against the value cached by that call.
+                MaxTrackSizingFunction maxFn = t.maxTrackSizingFunction;
+                bool hasMinContent = t.HasIntrinsicSizingFunction();
+                float minContentContribution = 0.0f;
+                if (hasMinContent) {
+                    minContentContribution =
+                        sizer.MinContentContribution(item, axisTracks);
+                }
+                bool havePlanned = false;
+                float planned = 0.0f;
+                if (maxFn.IsFitContent()) {
                     float fitContentLimit =
                         t.FitContentLimit(axisInnerNodeSize);
                     float maxContentContribution =
-                        F32Min(growthLimitMaxContent, fitContentLimit);
-                    t.growthLimitPlannedIncrease = F32Max(
-                        t.growthLimitPlannedIncrease, maxContentContribution);
-                } else if (t.maxTrackSizingFunction.IsMaxContentAlike() ||
-                           (t.maxTrackSizingFunction.UsesPercentage() &&
+                        F32Min(sizer.MaxContentContribution(item, axisTracks),
+                               fitContentLimit);
+                    // A non-scroll item also raises the limit to its
+                    // min-content contribution.
+                    if (hasMinContent && !IsScrollContainer(axisOverflow)) {
+                        planned = F32Max(minContentContribution,
+                                         maxContentContribution);
+                    } else {
+                        planned = maxContentContribution;
+                    }
+                    havePlanned = true;
+                } else if (maxFn.IsMaxContentAlike() ||
+                           (maxFn.UsesPercentage() &&
                             !IsSome(axisInnerNodeSize))) {
                     // An indefinite, not-yet-resolved container size makes a
                     // percentage track behave as auto, matching Chrome.
-                    t.growthLimitPlannedIncrease = F32Max(
-                        t.growthLimitPlannedIncrease, growthLimitMaxContent);
-                } else if (t.maxTrackSizingFunction.IsIntrinsic()) {
+                    planned = sizer.MaxContentContribution(item, axisTracks);
+                    havePlanned = true;
+                } else if (maxFn.IsIntrinsic()) {
+                    if (hasMinContent) {
+                        planned = minContentContribution;
+                        havePlanned = true;
+                    }
+                }
+                if (havePlanned) {
                     t.growthLimitPlannedIncrease =
-                        F32Max(t.growthLimitPlannedIncrease,
-                               growthLimitIntrinsicMinContent);
+                        F32Max(t.growthLimitPlannedIncrease, planned);
                 }
             }
 

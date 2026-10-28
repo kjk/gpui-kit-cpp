@@ -6717,6 +6717,40 @@ static void TestGridKnownWidthSkipsMeasure() {
     tree.Free();
 }
 
+// taffy 29ad0410. An item in a fixed track is not measured to size that
+// track, even when another track in the axis is intrinsic. The leaf is
+// measured 5 times without the short-circuit and 3 times with it.
+static void TestGridFixedTrackSkipsMeasure() {
+    TestSuite("taffy grid fixed track skips measure");
+    TaffyTree tree;
+    tree.Init();
+    int hits = 0;
+    taffy::Style item;
+    item.justifySelf = taffy::OptAlignSelf(taffy::AlignItems{});
+    item.gridColumn.start = GridPlacement::FromLineIndex(1);
+    TaffyNodeId leaf = tree.NewLeafWithContext(item, &hits);
+    taffy::Style sibling;
+    sibling.size.width = taffy::Dimension::Length(50.0f);
+    sibling.size.height = taffy::Dimension::Length(50.0f);
+    sibling.gridColumn.start = GridPlacement::FromLineIndex(2);
+    TaffyNodeId sib = tree.NewLeaf(sibling);
+    TaffyNodeId kids[2] = {leaf, sib};
+    GridTemplateComponent cols[2] = {
+        GridTemplateComponent::Single(TrackSizingFunction::Length(100.0f)),
+        GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+    };
+    taffy::Style grid;
+    grid.display = taffy::Display::Grid;
+    grid.gridTemplateColumns = GridTemplateOf(cols, 2);
+    TaffyNodeId root = tree.NewWithChildren(grid, kids, 2);
+    tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                  AhemQuadMeasure, nullptr);
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 150.0f, 50.0f);
+    AssertBox(tree.GetLayout(leaf), 0.0f, 0.0f, 80.0f, 50.0f);
+    utassert(hits == 3);
+    tree.Free();
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6741,6 +6775,7 @@ void TestTaffy() {
     TestGridSkipsRowsWhenOnlyWidthRequested();
     TestFlexSkipsCrossSizeWhenOnlyMainRequested();
     TestGridKnownWidthSkipsMeasure();
+    TestGridFixedTrackSkipsMeasure();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();
