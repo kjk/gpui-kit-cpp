@@ -118,6 +118,10 @@ struct GridTrack {
     float growthLimitPlannedIncrease = 0.0f;
     // https://www.w3.org/TR/css3-grid-layout/#infinitely-growable
     bool infinitelyGrowable = false;
+    // The resolved fit-content() limit. Infinity when this track is not
+    // fit-content(), or the limit is a percentage or calc() and the container
+    // size is indefinite. Filled once per track-sizing pass.
+    float fitContentLimit = INFINITY;
 
     static GridTrack New(MinTrackSizingFunction mn, MaxTrackSizingFunction mx) {
         GridTrack t;
@@ -137,6 +141,7 @@ struct GridTrack {
         isCollapsed = true;
         minTrackSizingFunction = MinTrackSizingFunction::Zero();
         maxTrackSizingFunction = MaxTrackSizingFunction::Zero();
+        fitContentLimit = INFINITY;
     }
     bool IsFlexible() const { return maxTrackSizingFunction.IsFr(); }
     bool UsesPercentage() const {
@@ -147,21 +152,14 @@ struct GridTrack {
         return minTrackSizingFunction.raw.IsIntrinsic() ||
                maxTrackSizingFunction.IsIntrinsic();
     }
-    float FitContentLimit(Optf axisAvailableGridSpace) const {
-        switch (maxTrackSizingFunction.raw.Tag()) {
-            case CompactLength::kFitContentPxTag:
-                return maxTrackSizingFunction.raw.Value();
-            case CompactLength::kFitContentPercentTag:
-                return IsSome(axisAvailableGridSpace)
-                           ? axisAvailableGridSpace * maxTrackSizingFunction.raw
-                                                          .Value()
-                           : INFINITY;
-            default:
-                return INFINITY;
-        }
+    void ResolveFitContentLimit(Optf axisInnerNodeSize, CalcResolver calc) {
+        fitContentLimit = UnwrapOr(
+            maxTrackSizingFunction.FitContentLimit(axisInnerNodeSize, calc),
+            INFINITY);
     }
-    float FitContentLimitedGrowthLimit(Optf axisAvailableGridSpace) const {
-        return F32Min(growthLimit, FitContentLimit(axisAvailableGridSpace));
+    float FitContentLimit() const { return fitContentLimit; }
+    float FitContentLimitedGrowthLimit() const {
+        return F32Min(growthLimit, fitContentLimit);
     }
     float FlexFactor() const {
         return maxTrackSizingFunction.IsFr()
@@ -1600,7 +1598,8 @@ SizeFOpt ItemKnownDimensions(const GridItem& item, TaffyTree* tree,
         // itself is an exact size; the others resolve while measuring.
         if (item.size.width.IsSizingKeyword()) {
             SizingKeywordResolution keyword = ResolveSizingKeyword(
-                item.size.width, gridAreaMinusItemMargins.w, gridAreaSize.w);
+                item.size.width, gridAreaMinusItemMargins.w, gridAreaSize.w,
+                calc);
             if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
                 width = Some(keyword.exact);
             }
@@ -1616,7 +1615,8 @@ SizeFOpt ItemKnownDimensions(const GridItem& item, TaffyTree* tree,
     if (!IsSome(height)) {
         if (item.size.height.IsSizingKeyword()) {
             SizingKeywordResolution keyword = ResolveSizingKeyword(
-                item.size.height, gridAreaMinusItemMargins.h, gridAreaSize.h);
+                item.size.height, gridAreaMinusItemMargins.h, gridAreaSize.h,
+                calc);
             if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
                 height = Some(keyword.exact);
             }
@@ -1717,8 +1717,8 @@ SizeAvail KeywordAdjustedAvailableSpace(const GridItem& item,
         }
         Optf stretch = MaybeMax(
             MaybeSub(Get(gridAreaSize, axis), Some(Get(margins, axis))), 0.0f);
-        SizingKeywordResolution keyword =
-            ResolveSizingKeyword(sizeStyle, stretch, Get(gridAreaSize, axis));
+        SizingKeywordResolution keyword = ResolveSizingKeyword(
+            sizeStyle, stretch, Get(gridAreaSize, axis), tree->calc);
         if (keyword.isSome && keyword.kind == SizingKeywordKind::Measure) {
             adjusted.Set(axis, keyword.measure);
         }
@@ -2622,8 +2622,7 @@ template <typename Affected, typename Proportion, typename Limit>
 void DistributeItemSpaceToBaseSizeInner(
     float space, GridTrack* tracks, int n, Affected trackIsAffected,
     Proportion trackDistributionProportion, Limit trackLimit,
-    IntrinsicContributionType intrinsicContributionType,
-    Optf axisInnerNodeSize) {
+    IntrinsicContributionType intrinsicContributionType) {
     if (space == 0.0f) {
         return;
     }
@@ -2692,9 +2691,8 @@ void DistributeItemSpaceToBaseSizeInner(
         };
         DistributeSpaceUpToLimits(
             extraSpace, tracks, n, filter, trackDistributionProportion,
-            getBaseSize, [&](const GridTrack& t) {
-                return t.FitContentLimit(axisInnerNodeSize);
-            });
+            getBaseSize,
+            [](const GridTrack& t) { return t.FitContentLimit(); });
     }
 
     // 4. Roll each track's item-incurred increase into its planned increase.
@@ -2711,8 +2709,7 @@ template <typename Affected, typename Limit>
 void DistributeItemSpaceToBaseSize(
     bool isFlex, bool, float space, GridTrack* tracks, int n,
     Affected trackIsAffected, Limit trackLimit,
-    IntrinsicContributionType intrinsicContributionType,
-    Optf axisInnerNodeSize) {
+    IntrinsicContributionType intrinsicContributionType) {
     auto one = [](const GridTrack&) { return 1.0f; };
     if (isFlex) {
         auto filter = [&](const GridTrack& t) {
@@ -2726,26 +2723,24 @@ void DistributeItemSpaceToBaseSize(
         }
         if (flexFactorSum > 0.0f) {
             auto flexFactor = [](const GridTrack& t) { return t.FlexFactor(); };
-            DistributeItemSpaceToBaseSizeInner(
-                space, tracks, n, filter, flexFactor, trackLimit,
-                intrinsicContributionType, axisInnerNodeSize);
+            DistributeItemSpaceToBaseSizeInner(space, tracks, n, filter,
+                                               flexFactor, trackLimit,
+                                               intrinsicContributionType);
         } else {
-            DistributeItemSpaceToBaseSizeInner(
-                space, tracks, n, filter, one, trackLimit,
-                intrinsicContributionType, axisInnerNodeSize);
+            DistributeItemSpaceToBaseSizeInner(space, tracks, n, filter, one,
+                                               trackLimit,
+                                               intrinsicContributionType);
         }
         return;
     }
     DistributeItemSpaceToBaseSizeInner(space, tracks, n, trackIsAffected, one,
-                                       trackLimit, intrinsicContributionType,
-                                       axisInnerNodeSize);
+                                       trackLimit, intrinsicContributionType);
 }
 
 // The same, simplified, for growth limits.
 template <typename Affected>
 void DistributeItemSpaceToGrowthLimit(float space, GridTrack* tracks, int n,
-                                      Affected trackIsAffected,
-                                      Optf axisInnerNodeSize) {
+                                      Affected trackIsAffected) {
     if (space == 0.0f) {
         return;
     }
@@ -2776,8 +2771,8 @@ void DistributeItemSpaceToGrowthLimit(float space, GridTrack* tracks, int n,
         return t.growthLimit == INFINITY ? t.baseSize : t.growthLimit;
     };
     auto one = [](const GridTrack&) { return 1.0f; };
-    auto fitContentLimit = [&](const GridTrack& t) {
-        return t.FitContentLimit(axisInnerNodeSize);
+    auto fitContentLimit = [](const GridTrack& t) {
+        return t.FitContentLimit();
     };
     auto growable = [&](const GridTrack& t) {
         return trackIsAffected(t) &&
@@ -2956,8 +2951,7 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                 bool havePlanned = false;
                 float planned = 0.0f;
                 if (maxFn.IsFitContent()) {
-                    float fitContentLimit =
-                        t.FitContentLimit(axisInnerNodeSize);
+                    float fitContentLimit = t.FitContentLimit();
                     float maxContentContribution =
                         F32Min(sizer.MaxContentContribution(item, axisTracks),
                                fitContentLimit);
@@ -3065,17 +3059,16 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                     DistributeItemSpaceToBaseSize(
                         isFlex, useFlexFactorForDistribution, space,
                         axisTracks + from, count, hasIntrinsicMin,
-                        [&](const GridTrack& t) {
-                            return t.FitContentLimitedGrowthLimit(
-                                axisInnerNodeSize);
+                        [](const GridTrack& t) {
+                            return t.FitContentLimitedGrowthLimit();
                         },
-                        IntrinsicContributionType::Minimum, axisInnerNodeSize);
+                        IntrinsicContributionType::Minimum);
                 } else {
                     DistributeItemSpaceToBaseSize(
                         isFlex, useFlexFactorForDistribution, space,
                         axisTracks + from, count, hasIntrinsicMin,
                         [](const GridTrack& t) { return t.growthLimit; },
-                        IntrinsicContributionType::Minimum, axisInnerNodeSize);
+                        IntrinsicContributionType::Minimum);
                 }
             }
         }
@@ -3102,17 +3095,16 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                     DistributeItemSpaceToBaseSize(
                         isFlex, useFlexFactorForDistribution, space,
                         axisTracks + from, count, hasMinOrMaxContentMin,
-                        [&](const GridTrack& t) {
-                            return t.FitContentLimitedGrowthLimit(
-                                axisInnerNodeSize);
+                        [](const GridTrack& t) {
+                            return t.FitContentLimitedGrowthLimit();
                         },
-                        IntrinsicContributionType::Minimum, axisInnerNodeSize);
+                        IntrinsicContributionType::Minimum);
                 } else {
                     DistributeItemSpaceToBaseSize(
                         isFlex, useFlexFactorForDistribution, space,
                         axisTracks + from, count, hasMinOrMaxContentMin,
                         [](const GridTrack& t) { return t.growthLimit; },
-                        IntrinsicContributionType::Minimum, axisInnerNodeSize);
+                        IntrinsicContributionType::Minimum);
                 }
             }
         }
@@ -3178,16 +3170,15 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                         isFlex, useFlexFactorForDistribution, space,
                         axisTracks + from, count, hasMaxContentMin,
                         [](const GridTrack&) { return INFINITY; },
-                        IntrinsicContributionType::Maximum, axisInnerNodeSize);
+                        IntrinsicContributionType::Maximum);
                 } else {
                     DistributeItemSpaceToBaseSize(
                         isFlex, useFlexFactorForDistribution, space,
                         axisTracks + from, count, hasAutoMin,
-                        [&](const GridTrack& t) {
-                            return t.FitContentLimitedGrowthLimit(
-                                axisInnerNodeSize);
+                        [](const GridTrack& t) {
+                            return t.FitContentLimitedGrowthLimit();
                         },
-                        IntrinsicContributionType::Maximum, axisInnerNodeSize);
+                        IntrinsicContributionType::Maximum);
                 }
             }
             FlushPlannedBaseSizeIncreases(axisTracks, nAxisTracks);
@@ -3212,7 +3203,7 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                     isFlex, useFlexFactorForDistribution, space,
                     axisTracks + from, count, hasMaxContentMinFn,
                     [](const GridTrack& t) { return t.growthLimit; },
-                    IntrinsicContributionType::Maximum, axisInnerNodeSize);
+                    IntrinsicContributionType::Maximum);
             }
         }
         FlushPlannedBaseSizeIncreases(axisTracks, nAxisTracks);
@@ -3243,8 +3234,7 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                 int count = item->TrackRangeEnd(axis) - from;
                 if (space > 0.0f && count > 0) {
                     DistributeItemSpaceToGrowthLimit(space, axisTracks + from,
-                                                     count, hasIntrinsicMax,
-                                                     axisInnerNodeSize);
+                                                     count, hasIntrinsicMax);
                 }
             }
             // Tracks whose growth limit went from infinite to finite here are
@@ -3269,8 +3259,7 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                 int count = item->TrackRangeEnd(axis) - from;
                 if (space > 0.0f && count > 0) {
                     DistributeItemSpaceToGrowthLimit(space, axisTracks + from,
-                                                     count, hasMaxContentMax,
-                                                     axisInnerNodeSize);
+                                                     count, hasMaxContentMax);
                 }
             }
             FlushPlannedGrowthLimitIncreases(axisTracks, nAxisTracks, false);
@@ -3290,7 +3279,7 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
 
 // 11.6 Maximise Tracks: distribute free space to tracks with finite growth
 // limits, up to those limits.
-void MaximiseTracks(GridTrack* axisTracks, int n, Optf axisInnerNodeSize,
+void MaximiseTracks(GridTrack* axisTracks, int n,
                     AvailableSpace axisAvailableGridSpace) {
     float usedSpace = 0.0f;
     for (int i = 0; i < n; i++) {
@@ -3306,8 +3295,8 @@ void MaximiseTracks(GridTrack* axisTracks, int n, Optf axisInnerNodeSize,
             freeSpace, axisTracks, n, [](const GridTrack&) { return true; },
             [](const GridTrack&) { return 1.0f; },
             [](const GridTrack& t) { return t.baseSize; },
-            [&](const GridTrack& t) {
-                return t.FitContentLimitedGrowthLimit(axisInnerNodeSize);
+            [](const GridTrack& t) {
+                return t.FitContentLimitedGrowthLimit();
             });
         for (int i = 0; i < n; i++) {
             axisTracks[i].baseSize += axisTracks[i].itemIncurredIncrease;
@@ -3511,6 +3500,13 @@ void TrackSizingAlgorithm(TaffyTree* tree, AbstractAxis axis, Optf axisMinSize,
     Optf percentageBasis = Or(Get(innerNodeSize, axis), axisMinSize);
     InitializeTrackSizes(tree, axisTracks, nAxisTracks, percentageBasis);
 
+    // fit-content() limits are fixed for the rest of this pass. A percentage
+    // or calc() limit stays infinite while the container's inner size is not.
+    Optf axisInnerNodeSize = Get(innerNodeSize, axis);
+    for (int i = 0; i < nAxisTracks; i++) {
+        axisTracks[i].ResolveFitContentLimit(axisInnerNodeSize, tree->calc);
+    }
+
     // 11.5.1 Shim item baselines.
     if (hasBaselineAlignedItem) {
         ResolveItemBaselines(tree, axis, items, nItems, innerNodeSize);
@@ -3551,8 +3547,7 @@ void TrackSizingAlgorithm(TaffyTree* tree, AbstractAxis axis, Optf axisMinSize,
         availableGridSpace.Get(axis), innerNodeSize, estimate);
 
     // 11.6 Maximise Tracks.
-    MaximiseTracks(axisTracks, nAxisTracks, Get(innerNodeSize, axis),
-                   availableGridSpace.Get(axis));
+    MaximiseTracks(axisTracks, nAxisTracks, availableGridSpace.Get(axis));
 
     // The last two expansion steps should only expand into space the grid
     // container's own size generates, not any available space, so definite
@@ -3841,13 +3836,13 @@ AlignedItem AlignAndPositionItem(
     if (!IsSome(inherentSize.w)) {
         keywordWidth = ResolveSizingKeyword(
             sizeStyle.width, Some(gridAreaMinusItemMarginsSize.w),
-            Some(gridAreaSize.w));
+            Some(gridAreaSize.w), calc);
     }
     SizingKeywordResolution keywordHeight;
     if (!IsSome(inherentSize.h)) {
         keywordHeight = ResolveSizingKeyword(
             sizeStyle.height, Some(gridAreaMinusItemMarginsSize.h),
-            Some(gridAreaSize.h));
+            Some(gridAreaSize.h), calc);
     }
     // One measure covers both axes. An absolute item is measured later, once
     // its insets have had a chance to fill a missing axis.

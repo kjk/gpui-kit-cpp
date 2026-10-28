@@ -31,10 +31,11 @@ namespace taffy {
 
 // ─── CompactLength ───────────────────────────────────────────────────────
 //
-// A length as a compact 64-bit tagged word. The low 8 bits are the tag; a
-// numeric variant keeps its f32 in the high 32 bits, and a calc() variant is
-// a pointer whose low 3 bits (its tag) are zero. Rust stores this in a tagged
-// `*const ()` and gets the same layout on a 64-bit target.
+// A length as a compact 64-bit tagged word. A numeric variant keeps its f32
+// in the high 32 bits and its tag in the low byte. A calc() variant is an
+// aligned pointer with the tag in the low 3 bits: 0 for a plain calc(), 0x06
+// for fit-content(calc()). Numeric tags stay the distinct bytes they have
+// always been.
 
 struct CompactLength {
     uint64_t bits = 0;
@@ -49,6 +50,9 @@ struct CompactLength {
     static constexpr uint64_t kMaxContentTag = 0x0f;
     static constexpr uint64_t kFitContentPxTag = 0x17;
     static constexpr uint64_t kFitContentPercentTag = 0x1f;
+    // fit-content(calc()). Lives in the low 3 bits of an aligned pointer,
+    // so it is not a low-byte numeric tag. 0x06 is unused by those tags.
+    static constexpr uint64_t kFitContentCalcTag = 0x06;
     // A plain `fit-content` keyword, with no limit argument.
     static constexpr uint64_t kFitContentKeywordTag = 0x27;
     static constexpr uint64_t kStretchTag = 0x2f;
@@ -58,15 +62,32 @@ struct CompactLength {
     static constexpr uint64_t kTagMask = 0xff;
     static constexpr uint64_t kCalcTagMask = 0x07;
 
-    uint64_t Tag() const { return bits & kTagMask; }
+    // Numeric tags report the low byte. A calc pointer reports only its low
+    // 3 bits, which are 0 or kFitContentCalcTag. No numeric tag has those
+    // low 3 bits, so the two never collide.
+    uint64_t Tag() const {
+        uint64_t low3 = bits & kCalcTagMask;
+        if (low3 == 0 || low3 == kFitContentCalcTag) {
+            return low3;
+        }
+        return bits & kTagMask;
+    }
     // Inline, and so is FromVal: style.cpp's resolve helpers call this once
     // per dimension per node per layout pass, and it is one bit-cast.
     float Value() const {
         return __builtin_bit_cast(float, (uint32_t)(bits >> 32));
     }
-    const void* CalcValue() const { return (const void*)(uintptr_t)bits; }
+    // Clears the low 3 tag bits. A plain calc pointer already has them zero.
+    const void* CalcValue() const {
+        return (const void*)(uintptr_t)(bits & ~kCalcTagMask);
+    }
 
+    // A plain calc(), not fit-content(calc()). Length resolution uses this.
     bool IsCalc() const { return (bits & kCalcTagMask) == 0; }
+    bool IsFitContentCalc() const {
+        return (bits & kCalcTagMask) == kFitContentCalcTag;
+    }
+    bool HasCalc() const { return IsCalc() || IsFitContentCalc(); }
     bool IsZero() const { return bits == FromVal(0.0f, kLengthTag).bits; }
     bool IsLengthOrPercentage() const {
         uint64_t t = Tag();
@@ -77,7 +98,8 @@ struct CompactLength {
     bool IsMaxContent() const { return Tag() == kMaxContentTag; }
     bool IsFitContent() const {
         uint64_t t = Tag();
-        return t == kFitContentPxTag || t == kFitContentPercentTag;
+        return t == kFitContentPxTag || t == kFitContentPercentTag ||
+               IsFitContentCalc();
     }
     // min-content, max-content, fit-content, fit-content(...), or stretch.
     // The plain keyword is not a fit-content() limit, so IsFitContent stays
@@ -86,21 +108,22 @@ struct CompactLength {
         uint64_t t = Tag();
         return t == kMinContentTag || t == kMaxContentTag ||
                t == kFitContentKeywordTag || t == kFitContentPxTag ||
-               t == kFitContentPercentTag || t == kStretchTag;
+               t == kFitContentPercentTag || t == kStretchTag ||
+               IsFitContentCalc();
     }
     bool IsStretch() const { return Tag() == kStretchTag; }
     bool IsContent() const { return Tag() == kContentTag; }
     bool IsMaxOrFitContent() const {
         uint64_t t = Tag();
         return t == kMaxContentTag || t == kFitContentPxTag ||
-               t == kFitContentPercentTag;
+               t == kFitContentPercentTag || IsFitContentCalc();
     }
     // "In all cases, treat auto and fit-content() as max-content, except where
     // specified otherwise for fit-content()."
     bool IsMaxContentAlike() const {
         uint64_t t = Tag();
         return t == kAutoTag || t == kMaxContentTag || t == kFitContentPxTag ||
-               t == kFitContentPercentTag;
+               t == kFitContentPercentTag || IsFitContentCalc();
     }
     bool IsMinOrMaxContent() const {
         uint64_t t = Tag();
@@ -109,13 +132,14 @@ struct CompactLength {
     bool IsIntrinsic() const {
         uint64_t t = Tag();
         return t == kAutoTag || t == kMinContentTag || t == kMaxContentTag ||
-               t == kFitContentPxTag || t == kFitContentPercentTag;
+               t == kFitContentPxTag || t == kFitContentPercentTag ||
+               IsFitContentCalc();
     }
     bool IsFr() const { return Tag() == kFrTag; }
     // Whether the value depends on the size of the parent node.
     bool UsesPercentage() const {
         uint64_t t = Tag();
-        return t == kPercentTag || t == kFitContentPercentTag || IsCalc();
+        return t == kPercentTag || t == kFitContentPercentTag || HasCalc();
     }
 
     static CompactLength FromVal(float v, uint64_t tag) {
@@ -153,6 +177,11 @@ struct CompactLength {
     // The low 3 bits are the tag and must be zero; callers align their calc
     // nodes. Rust asserts the same thing.
     static CompactLength Calc(const void* p) { return FromPtr(p); }
+    // fit-content(calc()). The pointer's low 3 bits must be zero; they hold
+    // the tag on the way out and CalcValue clears them.
+    static CompactLength FitContentCalc(const void* p) {
+        return CompactLength{(uint64_t)(uintptr_t)p | kFitContentCalcTag};
+    }
 };
 
 inline bool operator==(CompactLength a, CompactLength b) {
@@ -252,6 +281,9 @@ struct Dimension {
     static Dimension FitContentPercent(float limit) {
         return {CompactLength::FitContentPercent(limit)};
     }
+    static Dimension FitContentCalc(const void* p) {
+        return {CompactLength::FitContentCalc(p)};
+    }
     static Dimension Stretch() { return {CompactLength::Stretch()}; }
     // Automatic size from the box's content. Only flex-basis honors it;
     // everywhere else this resolves as auto.
@@ -262,6 +294,7 @@ struct Dimension {
     static Dimension From(LengthPercentageAuto lp) { return {lp.raw}; }
 
     bool IsAuto() const { return raw.IsAuto(); }
+    bool IsFitContentCalc() const { return raw.IsFitContentCalc(); }
     bool IsSizingKeyword() const { return raw.IsSizingKeyword(); }
     bool IsStretch() const { return raw.IsStretch(); }
     bool IsContent() const { return raw.IsContent(); }
@@ -1234,10 +1267,17 @@ struct MaxTrackSizingFunction {
     static MaxTrackSizingFunction FitContentPercent(float v) {
         return {CompactLength::FitContentPercent(v)};
     }
+    static MaxTrackSizingFunction FitContentCalc(const void* p) {
+        return {CompactLength::FitContentCalc(p)};
+    }
     static MaxTrackSizingFunction FitContent(LengthPercentage lp) {
-        return lp.raw.Tag() == CompactLength::kPercentTag
-                   ? FitContentPercent(lp.raw.Value())
-                   : FitContentPx(lp.raw.Value());
+        if (lp.raw.Tag() == CompactLength::kPercentTag) {
+            return FitContentPercent(lp.raw.Value());
+        }
+        if (lp.raw.IsCalc()) {
+            return FitContentCalc(lp.raw.CalcValue());
+        }
+        return FitContentPx(lp.raw.Value());
     }
     static MaxTrackSizingFunction Fr(float v) { return {CompactLength::Fr(v)}; }
     static MaxTrackSizingFunction Zero() { return {CompactLength::Zero()}; }
@@ -1267,6 +1307,23 @@ struct MaxTrackSizingFunction {
 
     bool HasDefiniteValue(Optf parentSize) const;
     Optf DefiniteValue(Optf parentSize, CalcResolver calc) const;
+    // The fit-content() limit, or None when this is not fit-content() or the
+    // percentage or calc() argument has no definite parent size.
+    Optf FitContentLimit(Optf parentSize, CalcResolver calc) const {
+        switch (raw.Tag()) {
+            case CompactLength::kFitContentPxTag:
+                return Some(raw.Value());
+            case CompactLength::kFitContentPercentTag:
+                return IsSome(parentSize) ? Some(raw.Value() * parentSize)
+                                          : None();
+            default:
+                break;
+        }
+        if (raw.IsFitContentCalc() && IsSome(parentSize)) {
+            return Some(calc.Resolve(raw.CalcValue(), parentSize));
+        }
+        return None();
+    }
     // A fixed track size, a percentage against definite space, or the argument
     // of a fit-content(). Everything else is None.
     Optf DefiniteLimit(Optf parentSize, CalcResolver calc) const;
@@ -1303,7 +1360,8 @@ struct MinTrackSizingFunction {
         uint64_t t = v.raw.Tag();
         if (t == CompactLength::kFitContentPxTag ||
             t == CompactLength::kFitContentPercentTag ||
-            t == CompactLength::kFitContentKeywordTag || v.raw.IsStretch() ||
+            t == CompactLength::kFitContentKeywordTag ||
+            v.raw.IsFitContentCalc() || v.raw.IsStretch() ||
             v.raw.IsContent()) {
             return Auto();
         }

@@ -511,6 +511,41 @@ static void TestCompactLength() {
     MinTrackSizingFunction fitPctMin;
     fitPctMin.raw = CompactLength::FitContentPercent(0.5f);
     utassert(fitPctMin.UsesPercentage());
+
+    // 49152ca2: fit-content(calc()) is a pointer tag, not a plain calc().
+    alignas(8) static const int kCalcMark = 1;
+    const void* ptr = &kCalcMark;
+    CompactLength fitCalc = CompactLength::FitContentCalc(ptr);
+    utassert(fitCalc.Tag() == CompactLength::kFitContentCalcTag);
+    utassert(fitCalc.IsFitContentCalc());
+    utassert(fitCalc.HasCalc());
+    utassert(!fitCalc.IsCalc());
+    utassert(fitCalc.CalcValue() == ptr);
+    utassert(fitCalc.IsFitContent());
+    utassert(fitCalc.IsSizingKeyword());
+    utassert(fitCalc.IsMaxOrFitContent());
+    utassert(fitCalc.IsMaxContentAlike());
+    utassert(fitCalc.IsIntrinsic());
+    utassert(fitCalc.UsesPercentage());
+    utassert(!fitCalc.IsLengthOrPercentage());
+    CompactLength plainCalc = CompactLength::Calc(ptr);
+    utassert(plainCalc.IsCalc());
+    utassert(plainCalc.HasCalc());
+    utassert(!plainCalc.IsFitContentCalc());
+    utassert(!plainCalc.IsFitContent());
+    utassert(plainCalc.CalcValue() == ptr);
+    utassert(plainCalc.UsesPercentage());
+    utassert(Dimension::FitContentCalc(ptr).IsFitContentCalc());
+    utassert(Dimension::FitContentCalc(ptr).IsSizingKeyword());
+    utassert(MinTrackSizingFunction::From(Dimension::FitContentCalc(ptr))
+                 .IsAuto());
+    utassert(MinTrackSizingFunction::From(
+                 MaxTrackSizingFunction::FitContentCalc(ptr))
+                 .IsAuto());
+    utassert(MaxTrackSizingFunction::FitContent(LengthPercentage::Calc(ptr))
+                 .raw == MaxTrackSizingFunction::FitContentCalc(ptr).raw);
+    utassert(!MaxTrackSizingFunction::FitContentCalc(ptr)
+                  .HasDefiniteValue(Some(100.0f)));
 }
 
 // ─── src/tree/taffy_tree.rs ──────────────────────────────────────────────
@@ -7318,6 +7353,170 @@ static void TestGridFitContentGrowthLimit() {
     }
 }
 
+// A calc() of `pct * basis + px`. 8-byte aligned so the address can be tagged.
+struct FitCalc {
+    float px;
+    float pct;
+};
+
+static float FitCalcResolve(const void* handle, float basis, void*) {
+    const FitCalc* c = (const FitCalc*)handle;
+    return c->pct * basis + c->px;
+}
+
+struct FitLeaf {
+    float minWidth;
+    float maxWidth;
+    float height;
+};
+
+static SizeF FitLeafInner(SizeFOpt known, SizeAvail space, void* ctx) {
+    FitLeaf* leaf = (FitLeaf*)ctx;
+    float width;
+    if (IsSome(known.w)) {
+        width = known.w;
+    } else if (space.width.kind == AvailableSpace::Kind::MinContent) {
+        width = leaf->minWidth;
+    } else if (space.width.kind == AvailableSpace::Kind::MaxContent) {
+        width = leaf->maxWidth;
+    } else {
+        width =
+            F32Min(leaf->maxWidth, F32Max(leaf->minWidth, space.width.value));
+    }
+    float height = IsSome(known.h) ? known.h : leaf->height;
+    return {width, height};
+}
+
+static taffy::LayoutOutput FitLeafMeasure(const taffy::LayoutInput& inputs,
+                                          TaffyNodeId node, void* nodeContext,
+                                          const taffy::Style* style,
+                                          void* userData) {
+    (void)node;
+    (void)userData;
+    taffy::CalcResolver resolver;
+    resolver.fn = FitCalcResolve;
+    return taffy::ComputeLeafLayout(inputs, *style, resolver, FitLeafInner,
+                                    nodeContext);
+}
+
+// taffy 49152ca2 tests/hand_written/fit_content_calc.rs.
+static void TestFitContentCalc() {
+    TestSuite("taffy fit-content calc");
+    bool ownArena = gGridArena == nullptr;
+    if (ownArena) {
+        gGridArena = gpui::ArenaNew();
+    }
+
+    alignas(8) FitCalc rowCalc{5.0f, 0.1f};
+    {
+        TaffyTree tree;
+        tree.Init();
+        tree.calc.fn = FitCalcResolve;
+        taffy::Style item;
+        item.minSize.height = taffy::Dimension::Length(0.0f);
+        FitLeaf leaf{0.0f, 0.0f, 400.0f};
+        TaffyNodeId child = tree.NewLeafWithContext(item, &leaf);
+        GridTemplateComponent row = GridTemplateComponent::Single(
+            TrackSizingFunction::FitContent(LengthPercentage::Calc(&rowCalc)));
+        taffy::Style grid;
+        grid.display = taffy::Display::Grid;
+        grid.size.width = taffy::Dimension::Length(100.0f);
+        grid.size.height = taffy::Dimension::Length(300.0f);
+        grid.gridTemplateRows = GridTemplateOf(&row, 1);
+        TaffyNodeId root = tree.NewWithChildren(grid, &child, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      FitLeafMeasure, nullptr);
+        utassertnear(tree.GetLayout(child).size.h, 35.0f);
+        tree.Free();
+    }
+
+    alignas(8) FitCalc widthCalc{70.0f, 0.1f};
+    {
+        TaffyTree tree;
+        tree.Init();
+        tree.calc.fn = FitCalcResolve;
+        taffy::Style childStyle;
+        childStyle.size.width = taffy::Dimension::FitContentCalc(&widthCalc);
+        FitLeaf leaf{50.0f, 400.0f, 10.0f};
+        TaffyNodeId child = tree.NewLeafWithContext(childStyle, &leaf);
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.size.width = taffy::Dimension::Length(300.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, &child, 1);
+        tree.ComputeLayoutWithMeasure(node, SizeAvail::MaxContent(),
+                                      FitLeafMeasure, nullptr);
+        utassertnear(tree.GetLayout(child).size.w, 100.0f);
+        tree.Free();
+    }
+
+    auto column = [](TrackSizingFunction col, taffy::Dimension width,
+                     AvailableSpace availW, float* containerW, float* itemW) {
+        TaffyTree tree;
+        tree.Init();
+        tree.calc.fn = FitCalcResolve;
+        FitLeaf leaf{50.0f, 150.0f, 10.0f};
+        TaffyNodeId child = tree.NewLeafWithContext(taffy::Style{}, &leaf);
+        GridTemplateComponent comp = GridTemplateComponent::Single(col);
+        taffy::Style grid;
+        grid.display = taffy::Display::Grid;
+        grid.size.width = width;
+        grid.size.height = taffy::Dimension::Length(40.0f);
+        grid.gridTemplateColumns = GridTemplateOf(&comp, 1);
+        TaffyNodeId root = tree.NewWithChildren(grid, &child, 1);
+        SizeAvail space;
+        space.width = availW;
+        space.height = AvailableSpace::MaxContent();
+        tree.ComputeLayoutWithMeasure(root, space, FitLeafMeasure, nullptr);
+        *containerW = tree.GetLayout(root).size.w;
+        *itemW = tree.GetLayout(child).size.w;
+        tree.Free();
+    };
+
+    alignas(8) FitCalc fifty{10.0f, 0.2f};
+    float calcContainer = 0.0f;
+    float calcItem = 0.0f;
+    float pxContainer = 0.0f;
+    float pxItem = 0.0f;
+    column(TrackSizingFunction::FitContent(LengthPercentage::Calc(&fifty)),
+           taffy::Dimension::Length(200.0f), AvailableSpace::MaxContent(),
+           &calcContainer, &calcItem);
+    column(TrackSizingFunction::FitContent(LengthPercentage::Length(50.0f)),
+           taffy::Dimension::Length(200.0f), AvailableSpace::MaxContent(),
+           &pxContainer, &pxItem);
+    utassertnear(calcContainer, pxContainer);
+    utassertnear(calcItem, pxItem);
+    utassertnear(calcItem, 50.0f);
+
+    alignas(8) FitCalc half{0.0f, 0.5f};
+    AvailableSpace widths[3] = {AvailableSpace::Definite(200.0f),
+                                AvailableSpace::MaxContent(),
+                                AvailableSpace::MinContent()};
+    for (int i = 0; i < 3; i++) {
+        float calcW = 0.0f;
+        float calcI = 0.0f;
+        float pctW = 0.0f;
+        float pctI = 0.0f;
+        column(TrackSizingFunction::FitContent(LengthPercentage::Calc(&half)),
+               taffy::Dimension::Auto(), widths[i], &calcW, &calcI);
+        column(TrackSizingFunction::FitContent(LengthPercentage::Percent(0.5f)),
+               taffy::Dimension::Auto(), widths[i], &pctW, &pctI);
+        utassertnear(calcW, pctW);
+        utassertnear(calcI, pctI);
+    }
+    float containerW = 0.0f;
+    float itemW = 0.0f;
+    column(TrackSizingFunction::FitContent(LengthPercentage::Calc(&half)),
+           taffy::Dimension::Auto(), AvailableSpace::MaxContent(), &containerW,
+           &itemW);
+    utassertnear(containerW, 150.0f);
+    utassertnear(itemW, 75.0f);
+
+    if (ownArena) {
+        gpui::ArenaDelete(gGridArena);
+        gGridArena = nullptr;
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -7350,6 +7549,7 @@ void TestTaffy() {
     TestGridPercentRowsIndefiniteContainer();
     TestGridFitContentGrowthLimit();
     TestCompactLength();
+    TestFitContentCalc();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();
     TestTaffyTreeStyleAndDirty();

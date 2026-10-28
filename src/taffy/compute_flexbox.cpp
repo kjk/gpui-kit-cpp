@@ -517,7 +517,7 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
             // the flex base size.
         } else if (flexBasisStyle.IsSizingKeyword()) {
             SizingKeywordResolution keyword = ResolveSizingKeyword(
-                flexBasisStyle, mainStretch, percentResolutionMainSize);
+                flexBasisStyle, mainStretch, percentResolutionMainSize, calc);
             if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
                 child.flexBasisIsDefinite = true;
                 child.flexBasis = keyword.exact;
@@ -533,7 +533,7 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
         } else {
             SizingKeywordResolution keyword =
                 ResolveSizingKeyword(child.sizeStyle.Main(dir), mainStretch,
-                                     percentResolutionMainSize);
+                                     percentResolutionMainSize, calc);
             if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
                 child.flexBasisIsDefinite = true;
                 child.flexBasis = keyword.exact;
@@ -1348,7 +1348,7 @@ void DetermineHypotheticalCrossSize(TaffyTree* tree, FlexLine* line,
             MaybeSub(innerCross, Some(CrossAxisSum(child.margin, dir))), 0.0f);
         SizingKeywordResolution crossKeyword =
             ResolveSizingKeyword(child.sizeStyle.Cross(dir), crossStretch,
-                                 Cross(c.nodeInnerSize, dir));
+                                 Cross(c.nodeInnerSize, dir), tree->calc);
         if (crossKeyword.isSome &&
             crossKeyword.kind == SizingKeywordKind::Measure) {
             childAvailableCross = crossKeyword.measure;

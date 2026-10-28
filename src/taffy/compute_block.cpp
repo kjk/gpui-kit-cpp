@@ -864,10 +864,10 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
 // In the block axis, min-content, max-content and fit-content are the content
 // size an auto height already resolves to. Only stretch is a definite height.
 Optf ResolveStretchHeight(Dimension heightStyle, Optf containerInnerHeight,
-                          float itemYMarginSum) {
+                          float itemYMarginSum, CalcResolver calc) {
     SizingKeywordResolution resolved = ResolveSizingKeyword(
         heightStyle, MaybeSub(containerInnerHeight, Some(itemYMarginSum)),
-        containerInnerHeight);
+        containerInnerHeight, calc);
     if (resolved.isSome && resolved.kind == SizingKeywordKind::Exact) {
         return Some(resolved.exact);
     }
@@ -901,8 +901,8 @@ float DetermineContentBasedContainerWidth(TaffyTree* tree,
             width = knownDimensions.w;
         } else {
             SizeAvail childAvail = availableSpace;
-            SizingKeywordResolution keyword =
-                ResolveSizingKeyword(item.sizeStyle.width, None(), None());
+            SizingKeywordResolution keyword = ResolveSizingKeyword(
+                item.sizeStyle.width, None(), None(), calc);
             if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
                 childAvail.width = AvailableSpace::Definite(keyword.exact);
             } else if (keyword.isSome) {
@@ -1020,7 +1020,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                 AvailableSpace::Definite(availableWidth);
             SizingKeywordResolution keywordWidth =
                 ResolveSizingKeyword(item.sizeStyle.width, Some(availableWidth),
-                                     Some(containerInnerWidth));
+                                     Some(containerInnerWidth), calc);
             if (keywordWidth.isSome &&
                 keywordWidth.kind == SizingKeywordKind::Measure) {
                 itemAvailableWidth = keywordWidth.measure;
@@ -1031,7 +1031,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
             Optf itemKnownHeight = ResolveStretchHeight(
                 item.sizeStyle.height, percentageResolutionHeight,
-                itemNonAutoMargin.VerticalAxisSum());
+                itemNonAutoMargin.VerticalAxisSum(), calc);
             LayoutOutput itemLayout = tree->PerformChildLayout(
                 item.nodeId, {itemKnownWidth, itemKnownHeight}, parentSize,
                 {itemAvailableWidth, AvailableSpace::MaxContent()},
@@ -1146,7 +1146,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             Optf keywordWidth = None();
             SizingKeywordResolution keyword =
                 ResolveSizingKeyword(item.sizeStyle.width, Some(stretchWidth),
-                                     Some(containerInnerWidth));
+                                     Some(containerInnerWidth), calc);
             if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
                 keywordWidth = Some(keyword.exact);
             } else if (keyword.isSome) {
@@ -1158,7 +1158,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
             Optf keywordHeight = ResolveStretchHeight(
                 item.sizeStyle.height, percentageResolutionHeight,
-                itemNonAutoMargin.VerticalAxisSum());
+                itemNonAutoMargin.VerticalAxisSum(), calc);
             SizeFOpt sized = item.size;
             sized.w = Some(
                 MaybeClamp(UnwrapOr(Or(sized.w, keywordWidth), stretchWidth),

@@ -324,8 +324,14 @@ Optf MaxTrackSizingFunction::DefiniteLimit(Optf parentSize,
         case CompactLength::kFitContentPercentTag:
             return IsSome(parentSize) ? Some(raw.Value() * parentSize) : None();
         default:
-            return DefiniteValue(parentSize, calc);
+            break;
     }
+    if (raw.IsFitContentCalc()) {
+        return IsSome(parentSize)
+                   ? Some(calc.Resolve(raw.CalcValue(), parentSize))
+                   : None();
+    }
+    return DefiniteValue(parentSize, calc);
 }
 
 Optf MinTrackSizingFunction::DefiniteValue(Optf parentSize,

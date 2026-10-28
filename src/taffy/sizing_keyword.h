@@ -28,11 +28,12 @@ struct SizingKeywordResolution {
 };
 
 // `stretchSize` is the size the item would take if it filled the available
-// space (available minus margins). `percentBasis` resolves a percentage
-// fit-content() limit.
+// space (available minus margins). `percentBasis` resolves a percentage or
+// calc() fit-content() limit.
 inline SizingKeywordResolution ResolveSizingKeyword(Dimension style,
                                                     Optf stretchSize,
-                                                    Optf percentBasis) {
+                                                    Optf percentBasis,
+                                                    CalcResolver calc) {
     SizingKeywordResolution out;
     switch (style.raw.Tag()) {
         case CompactLength::kMinContentTag:
@@ -56,6 +57,14 @@ inline SizingKeywordResolution ResolveSizingKeyword(Dimension style,
                 out.kind = SizingKeywordKind::Measure;
                 out.measure =
                     AvailableSpace::Definite(percentBasis * style.Value());
+            }
+            break;
+        case CompactLength::kFitContentCalcTag:
+            if (IsSome(percentBasis)) {
+                out.isSome = true;
+                out.kind = SizingKeywordKind::Measure;
+                out.measure = AvailableSpace::Definite(
+                    calc.Resolve(style.raw.CalcValue(), percentBasis));
             }
             break;
         case CompactLength::kFitContentKeywordTag:
@@ -97,12 +106,12 @@ inline void ResolveAbsoluteSizingKeywords(TaffyTree* tree, NodeId node,
     SizingKeywordResolution keywordWidth;
     if (!IsSome(knownDimensions->w)) {
         keywordWidth = ResolveSizingKeyword(sizeStyle.width, Some(stretchW),
-                                            Some(areaSize.w));
+                                            Some(areaSize.w), tree->calc);
     }
     SizingKeywordResolution keywordHeight;
     if (!IsSome(knownDimensions->h)) {
         keywordHeight = ResolveSizingKeyword(sizeStyle.height, Some(stretchH),
-                                             Some(areaSize.h));
+                                             Some(areaSize.h), tree->calc);
     }
 
     bool bothMeasure = keywordWidth.isSome && keywordHeight.isSome &&
