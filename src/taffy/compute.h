@@ -98,7 +98,7 @@ void GridChildMinMaxSpanForTest(LinePlacement line, uint16_t explicitTrackCount,
 // `compute_grid_size_estimate`. Each of the three out arrays takes the
 // negative-implicit, explicit and positive-implicit counts.
 void GridSizeEstimateForTest(uint16_t explicitColCount,
-                             uint16_t explicitRowCount, Direction direction,
+                             uint16_t explicitRowCount,
                              const LinePlacement* columns,
                              const LinePlacement* rows, int n,
                              uint16_t* outColCounts, uint16_t* outRowCounts);

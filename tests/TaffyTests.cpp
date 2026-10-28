@@ -3468,8 +3468,7 @@ static void TestGridImplicitSizing() {
         LinePlacement rows[2] = {{GLine(2), GAuto()}, {GLine(-2), GAuto()}};
         uint16_t colCounts[3];
         uint16_t rowCounts[3];
-        GridSizeEstimateForTest(6, 8, Direction::Ltr, cols, rows, 2, colCounts,
-                                rowCounts);
+        GridSizeEstimateForTest(6, 8, cols, rows, 2, colCounts, rowCounts);
         utassert(colCounts[0] == 0);
         utassert(colCounts[1] == 6);
         utassert(colCounts[2] == 0);
@@ -3484,8 +3483,7 @@ static void TestGridImplicitSizing() {
         LinePlacement rows[2] = {{GLine(-8), GAuto()}, {GLine(3), GAuto()}};
         uint16_t colCounts[3];
         uint16_t rowCounts[3];
-        GridSizeEstimateForTest(4, 4, Direction::Ltr, cols, rows, 2, colCounts,
-                                rowCounts);
+        GridSizeEstimateForTest(4, 4, cols, rows, 2, colCounts, rowCounts);
         utassert(colCounts[0] == 1);
         utassert(colCounts[1] == 4);
         utassert(colCounts[2] == 0);

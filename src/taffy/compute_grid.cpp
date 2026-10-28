@@ -341,8 +341,7 @@ struct CellOccupancyMatrix {
     // container shape.
     OptOriginZeroLine LineAreaCollisionJump(AbsoluteAxis primaryAxis,
                                             LineOzl primarySpan,
-                                            LineOzl secondarySpan,
-                                            bool reversed) const {
+                                            LineOzl secondarySpan) const {
         const TrackCounts& pc = Counts(primaryAxis);
         const TrackCounts& sc = Counts(OtherAxis(primaryAxis));
         int primaryStart = pc.OzLineToNextTrack(primarySpan.start);
@@ -370,36 +369,21 @@ struct CellOccupancyMatrix {
                     continue;
                 }
 
+                // The end of the last overlapping run. Every search position
+                // before that extent also collides.
                 int extent = primary;
-                if (reversed) {
-                    while (extent > 0) {
-                        int r = primaryAxis == AbsoluteAxis::Horizontal
-                                    ? secondary
-                                    : extent - 1;
-                        int c = primaryAxis == AbsoluteAxis::Horizontal
-                                    ? extent - 1
-                                    : secondary;
-                        if (Get(r, c) == CellOccupancyState::Unoccupied) {
-                            break;
-                        }
-                        extent--;
+                while (extent + 1 < primaryLen) {
+                    int r = primaryAxis == AbsoluteAxis::Horizontal
+                                ? secondary
+                                : extent + 1;
+                    int c = primaryAxis == AbsoluteAxis::Horizontal ? extent + 1
+                                                                    : secondary;
+                    if (Get(r, c) == CellOccupancyState::Unoccupied) {
+                        break;
                     }
-                    best = !found || extent < best ? extent : best;
-                } else {
-                    while (extent + 1 < primaryLen) {
-                        int r = primaryAxis == AbsoluteAxis::Horizontal
-                                    ? secondary
-                                    : extent + 1;
-                        int c = primaryAxis == AbsoluteAxis::Horizontal
-                                    ? extent + 1
-                                    : secondary;
-                        if (Get(r, c) == CellOccupancyState::Unoccupied) {
-                            break;
-                        }
-                        extent++;
-                    }
-                    best = !found || extent > best ? extent : best;
+                    extent++;
                 }
+                best = !found || extent > best ? extent : best;
                 found = true;
             }
         }
@@ -407,7 +391,7 @@ struct CellOccupancyMatrix {
             return OptOriginZeroLine();
         }
         OriginZeroLine line = pc.TrackToPrevOzLine((uint16_t)best);
-        int32_t next = (int32_t)line.v + (reversed ? -1 : 1);
+        int32_t next = (int32_t)line.v + 1;
         next = next < INT16_MIN   ? INT16_MIN
                : next > INT16_MAX ? INT16_MAX
                                   : next;
@@ -456,34 +440,6 @@ struct CellOccupancyMatrix {
                 return OptOriginZeroLine();
             }
             for (int r = nRows - 1; r >= 0; r--) {
-                if (Get(r, idx) == kind) {
-                    return OptOriginZeroLine(tc.TrackToPrevOzLine((uint16_t)r));
-                }
-            }
-        }
-        return OptOriginZeroLine();
-    }
-
-    // The first cell of the given state in the track, searching forwards.
-    OptOriginZeroLine FirstOfType(AbsoluteAxis trackType,
-                                  OriginZeroLine startAt,
-                                  CellOccupancyState kind) const {
-        const TrackCounts& tc = Counts(OtherAxis(trackType));
-        int idx = tc.OzLineToNextTrack(startAt);
-        if (trackType == AbsoluteAxis::Horizontal) {
-            if (idx < 0 || idx >= nRows) {
-                return OptOriginZeroLine();
-            }
-            for (int c = 0; c < nCols; c++) {
-                if (Get(idx, c) == kind) {
-                    return OptOriginZeroLine(tc.TrackToPrevOzLine((uint16_t)c));
-                }
-            }
-        } else {
-            if (idx < 0 || idx >= nCols) {
-                return OptOriginZeroLine();
-            }
-            for (int r = 0; r < nRows; r++) {
                 if (Get(r, idx) == kind) {
                     return OptOriginZeroLine(tc.TrackToPrevOzLine((uint16_t)r));
                 }
@@ -1042,7 +998,7 @@ struct ChildPlacementStyles {
 // and negative implicit counts are exact; the positive implicit count is a
 // lower bound, since auto-placement can add to it.
 void ComputeGridSizeEstimate(uint16_t explicitColCount,
-                             uint16_t explicitRowCount, Direction direction,
+                             uint16_t explicitRowCount,
                              const ChildPlacementStyles* children, int n,
                              TrackCounts* outCols, TrackCounts* outRows) {
     OriginZeroLine colMin{0};
@@ -1058,16 +1014,6 @@ void ComputeGridSizeEstimate(uint16_t explicitColCount,
         MinMaxSpan rowEst =
             ChildMinLineMaxLineSpan(children[i].row, explicitRowCount);
 
-        // Placement mirrors horizontal spans in RTL, so the known column
-        // bounds are mirrored here too, to keep the pre-sizing consistent.
-        if (IsRtl(direction) && (colEst.minLine != OriginZeroLine{0} ||
-                                 colEst.maxLine != OriginZeroLine{0})) {
-            int16_t endLine = (int16_t)explicitColCount;
-            OriginZeroLine mirroredMin{(int16_t)(endLine - colEst.maxLine.v)};
-            OriginZeroLine mirroredMax{(int16_t)(endLine - colEst.minLine.v)};
-            colEst.minLine = mirroredMin;
-            colEst.maxLine = mirroredMax;
-        }
         if (colEst.minLine < colMin) {
             colMin = colEst.minLine;
         }
@@ -1901,72 +1847,36 @@ float ItemMinimumContributionCached(GridItem* item, TaffyTree* tree,
 
 // ─── placement.rs ────────────────────────────────────────────────────────
 
-bool AxisIsReversed(Direction direction, AbsoluteAxis axis) {
-    return IsRtl(direction) && axis == AbsoluteAxis::Horizontal;
-}
-
-OriginZeroLine AdvancePosition(OriginZeroLine position, bool reversed) {
-    int32_t value = (int32_t)position.v + (reversed ? -1 : 1);
+OriginZeroLine AdvancePosition(OriginZeroLine position) {
+    int32_t value = (int32_t)position.v + 1;
     value = value < INT16_MIN   ? INT16_MIN
             : value > INT16_MAX ? INT16_MAX
                                 : value;
     return OriginZeroLine{(int16_t)value};
 }
 
-OriginZeroLine SearchStartLine(OriginZeroLine gridStartLine,
-                               OriginZeroLine gridEndLine, bool reversed) {
-    return reversed ? gridEndLine - (uint16_t)1 : gridStartLine;
-}
-
-LineOzl ResolveIndefiniteGridSpan(OriginZeroLine position, uint16_t span,
-                                  bool reversed) {
+LineOzl ResolveIndefiniteGridSpan(OriginZeroLine position, uint16_t span) {
     auto line = [](int32_t value) {
         value = value < INT16_MIN   ? INT16_MIN
                 : value > INT16_MAX ? INT16_MAX
                                     : value;
         return OriginZeroLine{(int16_t)value};
     };
-    if (reversed) {
-        return {line((int32_t)position.v - span + 1),
-                line((int32_t)position.v + 1)};
-    }
     return {position, line((int32_t)position.v + span)};
 }
 
-LineOzl ClampSpanToLimitedGrid(LineOzl span, int16_t minLine, int16_t maxLine) {
+// Items placed outside the limited grid are clamped into it.
+// https://www.w3.org/TR/css-grid-1/#overlarge-grids
+LineOzl ClampSpanToLimitedGrid(LineOzl span) {
     int32_t start = span.start.v;
-    start = start<minLine ? minLine : start>(int32_t) maxLine - 1
-                ? (int32_t)maxLine - 1
+    start = start<kMinOzLine ? kMinOzLine : start>(int32_t) kMaxOzLine - 1
+                ? (int32_t)kMaxOzLine - 1
                 : start;
     int32_t end = span.end.v;
-    end = end < start + 1 ? start + 1 : end > maxLine ? maxLine : end;
+    end = end<start + 1 ? start + 1 : end>(int32_t) kMaxOzLine
+              ? (int32_t)kMaxOzLine
+              : end;
     return {OriginZeroLine{(int16_t)start}, OriginZeroLine{(int16_t)end}};
-}
-
-LineOzl MirrorHorizontalSpan(LineOzl span, uint16_t explicitColCount) {
-    int16_t endLine = (int16_t)explicitColCount;
-    return {OriginZeroLine{(int16_t)(endLine - span.end.v)},
-            OriginZeroLine{(int16_t)(endLine - span.start.v)}};
-}
-
-LineOzl MaybeMirrorSpan(LineOzl span, AbsoluteAxis axis, Direction direction,
-                        uint16_t explicitColCount) {
-    if (axis == AbsoluteAxis::Horizontal && IsRtl(direction)) {
-        return MirrorHorizontalSpan(
-            ClampSpanToLimitedGrid(span, kMinOzLine, kMaxOzLine),
-            explicitColCount);
-    }
-    return span;
-}
-
-LineOzl ClampSpanForAxis(LineOzl span, AbsoluteAxis axis, Direction direction,
-                         uint16_t explicitColCount) {
-    if (axis == AbsoluteAxis::Horizontal && IsRtl(direction)) {
-        int16_t explicitEnd = (int16_t)explicitColCount;
-        return ClampSpanToLimitedGrid(span, (int16_t)(explicitEnd - kMaxOzLine),
-                                      (int16_t)(explicitEnd - kMinOzLine));
-    }
-    return ClampSpanToLimitedGrid(span, kMinOzLine, kMaxOzLine);
 }
 
 // One child, as the placement algorithm sees it.
@@ -1985,14 +1895,11 @@ void RecordGridPlacement(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
                          TaffyTree* tree, NodeId node, int index,
                          AlignItems parentAlignItems,
                          AlignItems parentJustifyItems,
-                         AbsoluteAxis primaryAxis, Direction direction,
-                         uint16_t explicitColCount, LineOzl primarySpan,
+                         AbsoluteAxis primaryAxis, LineOzl primarySpan,
                          LineOzl secondarySpan,
                          CellOccupancyState placementType) {
-    primarySpan =
-        ClampSpanForAxis(primarySpan, primaryAxis, direction, explicitColCount);
-    secondarySpan = ClampSpanForAxis(secondarySpan, OtherAxis(primaryAxis),
-                                     direction, explicitColCount);
+    primarySpan = ClampSpanToLimitedGrid(primarySpan);
+    secondarySpan = ClampSpanToLimitedGrid(secondarySpan);
     matrix->MarkAreaAs(primaryAxis, primarySpan, secondarySpan, placementType);
 
     LineOzl colSpan =
@@ -2022,10 +1929,8 @@ void RecordGridPlacement(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
 }
 
 LineOzl PlaceDefiniteGridItemAxis(const PlacementChild& child,
-                                  AbsoluteAxis axis, Direction direction,
-                                  uint16_t explicitColCount) {
-    return MaybeMirrorSpan(child.Get(axis).ResolveDefiniteGridLines(), axis,
-                           direction, explicitColCount);
+                                  AbsoluteAxis axis) {
+    return child.Get(axis).ResolveDefiniteGridLines();
 }
 
 struct SpanPair {
@@ -2035,44 +1940,32 @@ struct SpanPair {
 
 SpanPair PlaceDefiniteSecondaryAxisItem(const CellOccupancyMatrix& matrix,
                                         const PlacementChild& child,
-                                        GridAutoFlow autoFlow,
-                                        Direction direction,
-                                        uint16_t explicitColCount) {
+                                        GridAutoFlow autoFlow) {
     AbsoluteAxis primaryAxis = PrimaryAxis(autoFlow);
     AbsoluteAxis secondaryAxis = OtherAxis(primaryAxis);
-    bool primaryReversed = AxisIsReversed(direction, primaryAxis);
     OriginZeroLine primaryStart = matrix.Counts(primaryAxis)
                                       .ImplicitStartLine();
-    OriginZeroLine primaryEnd = matrix.Counts(primaryAxis).ImplicitEndLine();
 
-    LineOzl secondaryPlacement =
-        MaybeMirrorSpan(child.Get(secondaryAxis).ResolveDefiniteGridLines(),
-                        secondaryAxis, direction, explicitColCount);
+    LineOzl secondaryPlacement = child.Get(secondaryAxis)
+                                     .ResolveDefiniteGridLines();
 
-    OriginZeroLine startingPosition;
-    if (IsDense(autoFlow)) {
-        startingPosition =
-            SearchStartLine(primaryStart, primaryEnd, primaryReversed);
-    } else {
+    OriginZeroLine startingPosition = primaryStart;
+    if (!IsDense(autoFlow)) {
         OptOriginZeroLine lookup =
-            primaryReversed
-                ? matrix.FirstOfType(primaryAxis, secondaryPlacement.start,
-                                     CellOccupancyState::AutoPlaced)
-                : matrix.LastOfType(primaryAxis, secondaryPlacement.start,
-                                    CellOccupancyState::AutoPlaced);
-        startingPosition =
-            lookup.IsSome()
-                ? lookup.val
-                : SearchStartLine(primaryStart, primaryEnd, primaryReversed);
+            matrix.LastOfType(primaryAxis, secondaryPlacement.start,
+                              CellOccupancyState::AutoPlaced);
+        if (lookup.IsSome()) {
+            startingPosition = lookup.val;
+        }
     }
     uint16_t primarySpanLen = child.Get(primaryAxis).IndefiniteSpan();
 
     OriginZeroLine position = startingPosition;
     while (true) {
-        LineOzl primaryPlacement = ResolveIndefiniteGridSpan(
-            position, primarySpanLen, primaryReversed);
+        LineOzl primaryPlacement =
+            ResolveIndefiniteGridSpan(position, primarySpanLen);
         OptOriginZeroLine collision = matrix.LineAreaCollisionJump(
-            primaryAxis, primaryPlacement, secondaryPlacement, primaryReversed);
+            primaryAxis, primaryPlacement, secondaryPlacement);
         if (!collision.IsSome()) {
             return {primaryPlacement, secondaryPlacement};
         }
@@ -2084,13 +1977,9 @@ SpanPair PlaceIndefinitelyPositionedItem(const CellOccupancyMatrix& matrix,
                                          const PlacementChild& child,
                                          GridAutoFlow autoFlow,
                                          OriginZeroLine gridPrimary,
-                                         OriginZeroLine gridSecondary,
-                                         Direction direction,
-                                         uint16_t explicitColCount) {
+                                         OriginZeroLine gridSecondary) {
     AbsoluteAxis primaryAxis = PrimaryAxis(autoFlow);
     AbsoluteAxis secondaryAxis = OtherAxis(primaryAxis);
-    bool primaryReversed = AxisIsReversed(direction, primaryAxis);
-    bool secondaryReversed = AxisIsReversed(direction, secondaryAxis);
 
     LinePlain primaryStyle = child.Get(primaryAxis);
     LinePlain secondaryStyle = child.Get(secondaryAxis);
@@ -2103,36 +1992,23 @@ SpanPair PlaceIndefinitelyPositionedItem(const CellOccupancyMatrix& matrix,
                                         .ImplicitEndLine();
     OriginZeroLine secondaryGridStart = matrix.Counts(secondaryAxis)
                                             .ImplicitStartLine();
-    OriginZeroLine secondaryGridEnd = matrix.Counts(secondaryAxis)
-                                          .ImplicitEndLine();
-    OriginZeroLine primaryStartPosition =
-        SearchStartLine(primaryGridStart, primaryGridEnd, primaryReversed);
-    OriginZeroLine secondaryStartPosition = SearchStartLine(
-        secondaryGridStart, secondaryGridEnd, secondaryReversed);
 
     OriginZeroLine primaryIdx = gridPrimary;
     OriginZeroLine secondaryIdx = gridSecondary;
 
     if (hasDefinitePrimary) {
-        LineOzl primarySpan =
-            MaybeMirrorSpan(primaryStyle.ResolveDefiniteGridLines(),
-                            primaryAxis, direction, explicitColCount);
+        LineOzl primarySpan = primaryStyle.ResolveDefiniteGridLines();
         if (IsDense(autoFlow)) {
-            secondaryIdx = secondaryStartPosition;
-        } else {
-            bool shouldAdvance = primaryReversed
-                                     ? primarySpan.start > primaryIdx
-                                     : primarySpan.start < primaryIdx;
-            if (shouldAdvance) {
-                secondaryIdx = AdvancePosition(secondaryIdx, secondaryReversed);
-            }
+            secondaryIdx = secondaryGridStart;
+        } else if (primarySpan.start < primaryIdx) {
+            secondaryIdx = AdvancePosition(secondaryIdx);
         }
         // A fixed primary position: step the secondary axis until it fits.
         while (true) {
-            LineOzl secondarySpan = ResolveIndefiniteGridSpan(
-                secondaryIdx, secondarySpanLen, secondaryReversed);
+            LineOzl secondarySpan =
+                ResolveIndefiniteGridSpan(secondaryIdx, secondarySpanLen);
             OptOriginZeroLine collision = matrix.LineAreaCollisionJump(
-                secondaryAxis, secondarySpan, primarySpan, secondaryReversed);
+                secondaryAxis, secondarySpan, primarySpan);
             if (!collision.IsSome()) {
                 return {primarySpan, secondarySpan};
             }
@@ -2144,27 +2020,24 @@ SpanPair PlaceIndefinitelyPositionedItem(const CellOccupancyMatrix& matrix,
     // Neither axis is fixed: walk the primary axis until the end of the
     // existing tracks, then reset it and step the secondary axis.
     while (true) {
-        LineOzl primarySpan = ResolveIndefiniteGridSpan(
-            primaryIdx, primarySpanLen, primaryReversed);
-        LineOzl secondarySpan = ResolveIndefiniteGridSpan(
-            secondaryIdx, secondarySpanLen, secondaryReversed);
+        LineOzl primarySpan =
+            ResolveIndefiniteGridSpan(primaryIdx, primarySpanLen);
+        LineOzl secondarySpan =
+            ResolveIndefiniteGridSpan(secondaryIdx, secondarySpanLen);
 
-        bool primaryOutOfBounds = primaryReversed
-                                      ? primarySpan.start < primaryGridStart
-                                      : primarySpan.end > primaryGridEnd;
-        if (primaryOutOfBounds) {
+        if (primarySpan.end > primaryGridEnd) {
             // A span that does not fit even at the search start can never
             // fit: searching only moves it further from the start. Return
             // and let the placement record clamp it into the limited grid.
-            if (primaryIdx == primaryStartPosition) {
+            if (primaryIdx == primaryGridStart) {
                 return {primarySpan, secondarySpan};
             }
-            secondaryIdx = AdvancePosition(secondaryIdx, secondaryReversed);
-            primaryIdx = primaryStartPosition;
+            secondaryIdx = AdvancePosition(secondaryIdx);
+            primaryIdx = primaryGridStart;
             continue;
         }
         OptOriginZeroLine collision = matrix.LineAreaCollisionJump(
-            primaryAxis, primarySpan, secondarySpan, primaryReversed);
+            primaryAxis, primarySpan, secondarySpan);
         if (collision.IsSome()) {
             primaryIdx = collision.val;
             continue;
@@ -2177,12 +2050,10 @@ SpanPair PlaceIndefinitelyPositionedItem(const CellOccupancyMatrix& matrix,
 // https://www.w3.org/TR/css-grid-2/#auto-placement-algo
 void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
                     TaffyTree* tree, const Vec<PlacementChild>& children,
-                    Direction direction, GridAutoFlow gridAutoFlow,
-                    AlignItems alignItems, AlignItems justifyItems) {
+                    GridAutoFlow gridAutoFlow, AlignItems alignItems,
+                    AlignItems justifyItems) {
     AbsoluteAxis primaryAxis = PrimaryAxis(gridAutoFlow);
     AbsoluteAxis secondaryAxis = OtherAxis(primaryAxis);
-    uint16_t explicitColCount = matrix->Counts(AbsoluteAxis::Horizontal)
-                                    .explicitCount;
 
     // 1. Children with definite positions in both axes.
     for (int i = 0; i < len(children); i++) {
@@ -2190,13 +2061,11 @@ void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
         if (!c.horizontal.IsDefinite() || !c.vertical.IsDefinite()) {
             continue;
         }
-        LineOzl primarySpan = PlaceDefiniteGridItemAxis(
-            c, primaryAxis, direction, explicitColCount);
-        LineOzl secondarySpan = PlaceDefiniteGridItemAxis(
-            c, secondaryAxis, direction, explicitColCount);
+        LineOzl primarySpan = PlaceDefiniteGridItemAxis(c, primaryAxis);
+        LineOzl secondarySpan = PlaceDefiniteGridItemAxis(c, secondaryAxis);
         RecordGridPlacement(matrix, items, tree, c.node, c.index, alignItems,
-                            justifyItems, primaryAxis, direction,
-                            explicitColCount, primarySpan, secondarySpan,
+                            justifyItems, primaryAxis, primarySpan,
+                            secondarySpan,
                             CellOccupancyState::DefinitelyPlaced);
     }
 
@@ -2207,27 +2076,23 @@ void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
                                                       .IsDefinite()) {
             continue;
         }
-        SpanPair spans = PlaceDefiniteSecondaryAxisItem(
-            *matrix, c, gridAutoFlow, direction, explicitColCount);
+        SpanPair spans =
+            PlaceDefiniteSecondaryAxisItem(*matrix, c, gridAutoFlow);
         RecordGridPlacement(matrix, items, tree, c.node, c.index, alignItems,
-                            justifyItems, primaryAxis, direction,
-                            explicitColCount, spans.primary, spans.secondary,
-                            CellOccupancyState::AutoPlaced);
+                            justifyItems, primaryAxis, spans.primary,
+                            spans.secondary, CellOccupancyState::AutoPlaced);
     }
 
     // 3. Determining the number of columns in the implicit grid is already
     //    covered: the size estimate pre-sizes the matrix, and MarkAreaAs
     //    expands it as needed.
 
-    // 4. The remaining items.
-    bool primaryReversed = AxisIsReversed(direction, primaryAxis);
-    OriginZeroLine startPrimary = SearchStartLine(
-        matrix->Counts(primaryAxis).ImplicitStartLine(),
-        matrix->Counts(primaryAxis).ImplicitEndLine(), primaryReversed);
-    OriginZeroLine startSecondary =
-        SearchStartLine(matrix->Counts(secondaryAxis).ImplicitStartLine(),
-                        matrix->Counts(secondaryAxis).ImplicitEndLine(),
-                        AxisIsReversed(direction, secondaryAxis));
+    // 4. The remaining items. Placement stays in logical order; RTL is a
+    //    matter of which physical edge a logical line maps to.
+    OriginZeroLine startPrimary = matrix->Counts(primaryAxis)
+                                      .ImplicitStartLine();
+    OriginZeroLine startSecondary = matrix->Counts(secondaryAxis)
+                                        .ImplicitStartLine();
     OriginZeroLine posPrimary = startPrimary;
     OriginZeroLine posSecondary = startSecondary;
 
@@ -2237,12 +2102,10 @@ void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
             continue;
         }
         SpanPair spans = PlaceIndefinitelyPositionedItem(
-            *matrix, c, gridAutoFlow, posPrimary, posSecondary, direction,
-            explicitColCount);
+            *matrix, c, gridAutoFlow, posPrimary, posSecondary);
         RecordGridPlacement(matrix, items, tree, c.node, c.index, alignItems,
-                            justifyItems, primaryAxis, direction,
-                            explicitColCount, spans.primary, spans.secondary,
-                            CellOccupancyState::AutoPlaced);
+                            justifyItems, primaryAxis, spans.primary,
+                            spans.secondary, CellOccupancyState::AutoPlaced);
 
         // Dense packing restarts from the beginning for the next item; sparse
         // packing carries on from this one.
@@ -2250,8 +2113,7 @@ void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
             posPrimary = startPrimary;
             posSecondary = startSecondary;
         } else {
-            posPrimary =
-                primaryReversed ? spans.primary.start : spans.primary.end;
+            posPrimary = spans.primary.end;
             posSecondary = spans.secondary.start;
         }
     }
@@ -3598,9 +3460,11 @@ void AlignTracks(float gridContainerContentBoxSize, LineF padding, LineF border,
             : 0.0f;
     float totalOffset = origin + emptyGridOffset;
     bool seenNonCollapsedTrack = false;
-    for (int i = 0; i < n; i++) {
-        GridTrack& track = tracks[i];
-        // Gutters sit at even indices, since the vector starts with one.
+    // Tracks stay in logical order. RTL assigns physical offsets from the
+    // inline-end by walking the vector backwards. Gutters are still the
+    // even slots of that walk, because the vector both starts and ends on
+    // a gutter.
+    auto positionTrack = [&](int i, GridTrack& track) {
         bool isGutter = (i % 2) == 0;
         bool isNonCollapsedTrack = !isGutter && !track.isCollapsed;
         bool isFirst = isNonCollapsedTrack && !seenNonCollapsedTrack;
@@ -3614,6 +3478,15 @@ void AlignTracks(float gridContainerContentBoxSize, LineF padding, LineF border,
         totalOffset = totalOffset + offset + track.baseSize;
         if (isNonCollapsedTrack) {
             seenNonCollapsedTrack = true;
+        }
+    };
+    if (axisIsReversed) {
+        for (int i = 0; i < n; i++) {
+            positionTrack(i, tracks[n - 1 - i]);
+        }
+    } else {
+        for (int i = 0; i < n; i++) {
+            positionTrack(i, tracks[i]);
         }
     }
 }
@@ -3938,59 +3811,6 @@ AlignedItem AlignAndPositionItem(
 
 // ─── mod.rs ──────────────────────────────────────────────────────────────
 
-// Reverses only the non-gutter column tracks, keeping the line/gutter slots.
-void ReverseNonGutterTracks(GridTrack* tracks, int n, TrackCounts trackCounts) {
-    // With zero or one explicit track, RTL mirroring is entirely a matter of
-    // the implicit tracks, so every non-gutter track reverses.
-    if (trackCounts.explicitCount <= 1) {
-        const int kMinTrackVecLenToReverseColumns = 5;
-        if (n < kMinTrackVecLenToReverseColumns) {
-            return;
-        }
-        int left = 1;
-        int right = n - 2;
-        while (left < right) {
-            GridTrack tmp = tracks[left];
-            tracks[left] = tracks[right];
-            tracks[right] = tmp;
-            left += 2;
-            right = right >= 2 ? right - 2 : 0;
-        }
-        return;
-    }
-
-    int explicitTrackCount = (int)trackCounts.explicitCount;
-    if (explicitTrackCount < 2) {
-        return;
-    }
-    int left = (int)trackCounts.negativeImplicit;
-    int right = left + explicitTrackCount - 1;
-    while (left < right) {
-        int li = 2 * left + 1;
-        int ri = 2 * right + 1;
-        GridTrack tmp = tracks[li];
-        tracks[li] = tracks[ri];
-        tracks[ri] = tmp;
-        left += 1;
-        right = right >= 1 ? right - 1 : 0;
-    }
-}
-
-// Maps an initialised column index to an occupancy-matrix index, for auto-fit
-// collapsing in RTL.
-int RtlColumnOccupancyIndexForInitialization(int columnIndex,
-                                             TrackCounts trackCounts) {
-    if (trackCounts.explicitCount <= 1) {
-        return trackCounts.Len() - columnIndex - 1;
-    }
-    int explicitStart = (int)trackCounts.negativeImplicit;
-    int explicitEnd = explicitStart + (int)trackCounts.explicitCount;
-    if (columnIndex >= explicitStart && columnIndex < explicitEnd) {
-        return explicitStart + (explicitEnd - columnIndex - 1);
-    }
-    return columnIndex;
-}
-
 } // namespace
 
 // The CSS Grid layout algorithm, in four phases: resolve the explicit grid,
@@ -4184,19 +4004,19 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     //    matrix and is a necessary step in auto-placement.
     TrackCounts estColCounts;
     TrackCounts estRowCounts;
-    ComputeGridSizeEstimate(explicitColCount, explicitRowCount, direction,
+    ComputeGridSizeEstimate(explicitColCount, explicitRowCount,
                             childPlacements.els, len(childPlacements),
                             &estColCounts, &estRowCounts);
 
-    // 4. Grid item placement.
+    // 4. Grid item placement. Columns stay in logical order; RTL is applied
+    // when offsets and item edges are resolved.
     Vec<GridItem> items;
     CellOccupancyMatrix cellOccupancyMatrix;
     cellOccupancyMatrix.Init(estColCounts, estRowCounts);
-    PlaceGridItems(&cellOccupancyMatrix, &items, tree, children, direction,
-                   style.gridAutoFlow,
-                   alignItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}),
-                   justifyItems
-                       .UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}));
+    PlaceGridItems(
+        &cellOccupancyMatrix, &items, tree, children, style.gridAutoFlow,
+        alignItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}),
+        justifyItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}));
 
     // Auto-placement can add tracks, so the counts are read back here.
     TrackCounts finalColCounts = cellOccupancyMatrix
@@ -4207,29 +4027,15 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     // 5. Initialise the tracks and gutters, resolving their sizing functions.
     Vec<GridTrack> columns;
     Vec<GridTrack> rows;
-    TrackCounts columnTrackCountsForInit = finalColCounts;
-    if (IsRtl(direction) && finalColCounts.explicitCount <= 1) {
-        columnTrackCountsForInit.negativeImplicit = finalColCounts
-                                                        .positiveImplicit;
-        columnTrackCountsForInit.positiveImplicit = finalColCounts
-                                                        .negativeImplicit;
-    }
-    InitializeGridTracks(
-        &columns, columnTrackCountsForInit, style, AbsoluteAxis::Horizontal,
-        [&](int columnIndex) {
-            int occupancyIndex = IsRtl(direction)
-                                     ? RtlColumnOccupancyIndexForInitialization(
-                                           columnIndex, finalColCounts)
-                                     : columnIndex;
-            return cellOccupancyMatrix.ColumnIsOccupied(occupancyIndex);
-        });
+    InitializeGridTracks(&columns, finalColCounts, style,
+                         AbsoluteAxis::Horizontal, [&](int columnIndex) {
+                             return cellOccupancyMatrix
+                                 .ColumnIsOccupied(columnIndex);
+                         });
     InitializeGridTracks(&rows, finalRowCounts, style, AbsoluteAxis::Vertical,
                          [&](int rowIndex) {
                              return cellOccupancyMatrix.RowIsOccupied(rowIndex);
                          });
-    if (IsRtl(direction)) {
-        ReverseNonGutterTracks(columns.els, len(columns), finalColCounts);
-    }
 
     // 6. Track sizing.
     ResolveItemTrackIndexes(items.els, len(items), finalColCounts,
@@ -4507,8 +4313,17 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
 
     for (int index = 0; index < len(items); index++) {
         GridItem& item = items[index];
-        RectF gridArea = {columns[(int)item.columnIndexes.start + 1].offset,
-                          columns[(int)item.columnIndexes.end].offset,
+        // Logical column lines. In RTL the physical left edge is the logical
+        // end line and the physical right edge is the logical start line,
+        // because offsets were assigned right-to-left.
+        float gridLeft = IsRtl(direction)
+                             ? columns[(int)item.columnIndexes.end - 1].offset
+                             : columns[(int)item.columnIndexes.start + 1]
+                                   .offset;
+        float gridRight = IsRtl(direction)
+                              ? columns[(int)item.columnIndexes.start].offset
+                              : columns[(int)item.columnIndexes.end].offset;
+        RectF gridArea = {gridLeft, gridRight,
                           rows[(int)item.rowIndexes.start + 1].offset,
                           rows[(int)item.rowIndexes.end].offset};
         AlignedItem placed = AlignAndPositionItem(
@@ -4546,25 +4361,11 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         int colStartIdx = -1;
         int colEndIdx = -1;
         if (colLines.start.IsSome()) {
-            OriginZeroLine l = colLines.start.val;
-            if (IsRtl(direction)) {
-                l = OriginZeroLine{
-                    (int16_t)((int16_t)finalColCounts.explicitCount - l.v)};
-            }
-            TryIntoTrackVecIndex(l, finalColCounts, &colStartIdx);
+            TryIntoTrackVecIndex(colLines.start.val, finalColCounts,
+                                 &colStartIdx);
         }
         if (colLines.end.IsSome()) {
-            OriginZeroLine l = colLines.end.val;
-            if (IsRtl(direction)) {
-                l = OriginZeroLine{
-                    (int16_t)((int16_t)finalColCounts.explicitCount - l.v)};
-            }
-            TryIntoTrackVecIndex(l, finalColCounts, &colEndIdx);
-        }
-        if (IsRtl(direction)) {
-            int tmp = colStartIdx;
-            colStartIdx = colEndIdx;
-            colEndIdx = tmp;
+            TryIntoTrackVecIndex(colLines.end.val, finalColCounts, &colEndIdx);
         }
 
         LineOptOzl rowLines = nameResolver.ResolveRowNames(cs.gridRow)
@@ -4590,6 +4391,26 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             }
             return tracks[index].offset;
         };
+        // RTL keeps logical track order. A line used as an inline-start edge
+        // is the physical right of the track that follows it. A line used as
+        // an inline-end edge is the physical left of the track that precedes
+        // it. When nothing follows the line, the line itself is that left
+        // edge: the trailing gutter's offset is assigned before alignment.
+        auto rtlLineAsStartEdge = [](const Vec<GridTrack>& tracks, int index) {
+            if (index + 1 < len(tracks)) {
+                return tracks[index].offset;
+            }
+            if (index == 0) {
+                return tracks[0].offset;
+            }
+            return tracks[index - 1].offset;
+        };
+        auto rtlLineAsEndEdge = [](const Vec<GridTrack>& tracks, int index) {
+            if (index == 0) {
+                return tracks[0].offset;
+            }
+            return tracks[index - 1].offset;
+        };
 
         RectF gridArea;
         gridArea.top =
@@ -4598,17 +4419,22 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             rowEndIdx >= 0
                 ? lineAsEndEdge(rows, rowEndIdx)
                 : containerBorderBox.h - border.bottom - scrollbarGutter.y;
-        gridArea
-            .left = colStartIdx >= 0
-                        ? lineAsStartEdge(columns, colStartIdx)
-                        : (IsRtl(direction) ? border.left + scrollbarGutter.x
-                                            : border.left);
-        gridArea.right =
-            colEndIdx >= 0
-                ? lineAsEndEdge(columns, colEndIdx)
-                : (IsRtl(direction) ? containerBorderBox.w - border.right
-                                    : containerBorderBox.w - border.right -
-                                          scrollbarGutter.x);
+        if (IsRtl(direction)) {
+            gridArea.left = colEndIdx >= 0
+                                ? rtlLineAsEndEdge(columns, colEndIdx)
+                                : border.left + scrollbarGutter.x;
+            gridArea.right = colStartIdx >= 0
+                                 ? rtlLineAsStartEdge(columns, colStartIdx)
+                                 : containerBorderBox.w - border.right;
+        } else {
+            gridArea.left = colStartIdx >= 0
+                                ? lineAsStartEdge(columns, colStartIdx)
+                                : border.left;
+            gridArea.right =
+                colEndIdx >= 0
+                    ? lineAsEndEdge(columns, colEndIdx)
+                    : containerBorderBox.w - border.right - scrollbarGutter.x;
+        }
 
         // TODO(taffy): baseline alignment for absolutely positioned items.
         AlignedItem placed = AlignAndPositionItem(
@@ -4704,7 +4530,7 @@ void GridChildMinMaxSpanForTest(LinePlacement line, uint16_t explicitTrackCount,
 }
 
 void GridSizeEstimateForTest(uint16_t explicitColCount,
-                             uint16_t explicitRowCount, Direction direction,
+                             uint16_t explicitRowCount,
                              const LinePlacement* columns,
                              const LinePlacement* rows, int n,
                              uint16_t* outColCounts, uint16_t* outRowCounts) {
@@ -4714,8 +4540,8 @@ void GridSizeEstimateForTest(uint16_t explicitColCount,
     }
     TrackCounts cols;
     TrackCounts rws;
-    ComputeGridSizeEstimate(explicitColCount, explicitRowCount, direction,
-                            children.els, len(children), &cols, &rws);
+    ComputeGridSizeEstimate(explicitColCount, explicitRowCount, children.els,
+                            len(children), &cols, &rws);
     VecReset(children);
     outColCounts[0] = cols.negativeImplicit;
     outColCounts[1] = cols.explicitCount;
@@ -4777,14 +4603,14 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
 
     TrackCounts estCols;
     TrackCounts estRows;
-    ComputeGridSizeEstimate(explicitColCount, explicitRowCount, Direction::Ltr,
+    ComputeGridSizeEstimate(explicitColCount, explicitRowCount,
                             childPlacements.els, len(childPlacements), &estCols,
                             &estRows);
 
     Vec<GridItem> items;
     CellOccupancyMatrix matrix;
     matrix.Init(estCols, estRows);
-    PlaceGridItems(&matrix, &items, tree, children, Direction::Ltr, flow,
+    PlaceGridItems(&matrix, &items, tree, children, flow,
                    AlignItems{AlignItemsKeyword::Start},
                    AlignItems{AlignItemsKeyword::Start});
 
