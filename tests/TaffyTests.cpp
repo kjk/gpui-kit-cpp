@@ -5041,6 +5041,33 @@ static void TestContainment() {
     utassertnear(painted.top, 0.0f);
 }
 
+// A column's intrinsic height floors by the flex basis first, then adds a
+// negative main-axis margin. Flooring after the margin would cancel it.
+static void TestFlexMarginAfterBasisFloor() {
+    TestSuite("taffy flex margin after basis floor");
+
+    auto run = [](float flexShrink) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style child;
+        child.flexGrow = 1.0f;
+        child.flexShrink = flexShrink;
+        child.size = SizeDim::FromLengths(100.0f, 100.0f);
+        child.margin.top = LengthPercentageAuto::Length(-24.0f);
+        TaffyNodeId childNode = tree.NewLeaf(child);
+        taffy::Style rootStyle;
+        rootStyle.flexDirection = FlexDirection::Column;
+        rootStyle.size.width = Dimension::Length(300.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &childNode, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 300.0f, 76.0f);
+        AssertBox(tree.GetLayout(childNode), 0.0f, -24.0f, 100.0f, 100.0f);
+        tree.Free();
+    };
+    run(0.0f);
+    run(1.0f);
+}
+
 // A stretched definite cross size transfers through the aspect ratio into
 // the flex base size, so an auto main size is that transferred length.
 static void TestFlexAspectRatioStretch() {
@@ -5251,6 +5278,7 @@ void TestTaffy() {
     TestFlexboxLayout();
     TestFlexNegativeMarginIntrinsic();
     TestFlexAspectRatioStretch();
+    TestFlexMarginAfterBasisFloor();
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();

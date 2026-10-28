@@ -863,15 +863,18 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                         // a cache entry with the content-size pass.
                         float itemPbMain = MainAxisSum(item.padding, dir) +
                                            MainAxisSum(item.border, dir);
-                        float contentMainSize =
-                            F32Max(stylePreferred, itemPbMain) +
-                            MainAxisSum(item.margin, dir);
+                        float innerMainSize =
+                            F32Max(stylePreferred, itemPbMain);
+                        float marginSum = MainAxisSum(item.margin, dir);
+                        // The flex-basis floor applies to the inner size.
+                        // A negative margin is added after that floor.
                         if (c->isRow) {
-                            contentContribution =
-                                MaybeClamp(contentMainSize, styleMin, styleMax);
+                            contentContribution = MaybeClamp(
+                                innerMainSize + marginSum, styleMin, styleMax);
                         } else {
                             contentContribution = MaybeClamp(
-                                F32Max(contentMainSize, item.flexBasis),
+                                F32Max(innerMainSize, item.flexBasis) +
+                                    marginSum,
                                 styleMin, styleMax);
                         }
                     } else {
@@ -916,15 +919,14 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                         // A known cross size transfers through the aspect
                         // ratio and floors the measured content size.
                         Optf cross = Cross(childKnownDimensions, dir);
-                        float contentMainSize = measuredMainSize;
+                        float innerMainSize = measuredMainSize;
                         if (IsSome(item.aspectRatio) && IsSome(cross)) {
                             float transferred = c->isRow
                                                     ? cross * item.aspectRatio
                                                     : cross / item.aspectRatio;
-                            contentMainSize =
-                                F32Max(contentMainSize, transferred);
+                            innerMainSize = F32Max(innerMainSize, transferred);
                         }
-                        contentMainSize += MainAxisSum(item.margin, dir);
+                        float marginSum = MainAxisSum(item.margin, dir);
 
                         // Asymmetrical between rows and columns. This likely
                         // relates to
@@ -932,13 +934,15 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                         // — "the automatic block size of a block-level flex
                         // container is its max-content size" — but it was
                         // found by matching Webkit/Firefox output rather than
-                        // by reading the spec.
+                        // by reading the spec. The flex-basis floor is on the
+                        // inner size; the main-axis margin is applied after.
                         if (c->isRow) {
-                            contentContribution =
-                                MaybeClamp(contentMainSize, styleMin, styleMax);
+                            contentContribution = MaybeClamp(
+                                innerMainSize + marginSum, styleMin, styleMax);
                         } else {
                             contentContribution = MaybeClamp(
-                                F32Max(contentMainSize, item.flexBasis),
+                                F32Max(innerMainSize, item.flexBasis) +
+                                    marginSum,
                                 styleMin, styleMax);
                         }
                     }
