@@ -1293,8 +1293,8 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
         }
 
-        if (!IsSome(res.firstBaseline) && IsSome(itemLayout.firstBaselines.y)) {
-            res.firstBaseline = Some(location.y + itemLayout.firstBaselines.y);
+        if (!IsSome(res.firstBaseline) && IsSome(itemLayout.baselines.first)) {
+            res.firstBaseline = Some(location.y + itemLayout.baselines.first);
         }
 
         // Held back so the align-content pass can shift location.y before the
@@ -1813,7 +1813,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
 
     LayoutOutput output;
     output.size = finalOuterSize;
-    output.firstBaselines.y = inFlow.firstBaseline;
+    output.baselines = BaselinesFromFirst(inFlow.firstBaseline);
     output.topMargin =
         ownMarginsCollapseWithChildren.start
             ? inFlow.firstChildTopMarginSet

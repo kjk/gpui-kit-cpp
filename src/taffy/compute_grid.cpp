@@ -2567,7 +2567,7 @@ void ResolveItemBaselines(TaffyTree* tree, AbstractAxis axis, GridItem* items,
             float marginTop = topOnly.ResolveOrZero(innerNodeSize.w, tree->calc)
                                   .top;
             item.baseline =
-                Some(UnwrapOr(out.firstBaselines.y, out.size.h) + marginTop);
+                Some(UnwrapOr(out.baselines.first, out.size.h) + marginTop);
         }
 
         float rowMaxBaseline = 0.0f;
@@ -4627,7 +4627,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             chosen->yPosition + UnwrapOr(chosen->baseline, chosen->height);
         out = LayoutOutput::FromSizesAndBaselines(
             containerBorderBox, finalContentSize,
-            PointFOpt{None(), Some(gridContainerBaseline)});
+            BaselinesFromFirst(Some(gridContainerBaseline)));
     }
 
     VecReset(items);

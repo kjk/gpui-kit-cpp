@@ -139,17 +139,35 @@ struct LayoutInput {
     }
 };
 
+// First and last baselines on the horizontal axis, measured from the top
+// edge of the border box. `last` is reserved for later commits; this one
+// only fills `first`.
+struct Baselines {
+    Optf first = None();
+    Optf last = None();
+};
+
+inline Baselines BaselinesNone() {
+    return {};
+}
+
+inline Baselines BaselinesFromFirst(Optf first) {
+    Baselines b;
+    b.first = first;
+    return b;
+}
+
 // The result of laying out a single node, handed back up to the parent.
 //
 // A baseline is the line text sits on. A node likely has one if it is a text
 // node or contains children that may be. A node with no baseline (or one that
-// is not sure how to compute it) reports PointFOptNone().
+// is not sure how to compute it) reports BaselinesNone().
 struct LayoutOutput {
     SizeF size;
     // The size of the content within the node.
     SizeF contentSize;
-    // The first baseline in each dimension, if any.
-    PointFOpt firstBaselines = PointFOptNone();
+    // The first and last baselines on the horizontal axis, if any.
+    Baselines baselines;
     // Margins that can be collapsed with, for block layout. Zero elsewhere.
     CollapsibleMarginSet topMargin;
     CollapsibleMarginSet bottomMargin;
@@ -161,15 +179,15 @@ struct LayoutOutput {
     static LayoutOutput Hidden() { return {}; }
 
     static LayoutOutput FromSizesAndBaselines(SizeF size, SizeF contentSize,
-                                              PointFOpt firstBaselines) {
+                                              Baselines baselines) {
         LayoutOutput out;
         out.size = size;
         out.contentSize = contentSize;
-        out.firstBaselines = firstBaselines;
+        out.baselines = baselines;
         return out;
     }
     static LayoutOutput FromSizes(SizeF size, SizeF contentSize) {
-        return FromSizesAndBaselines(size, contentSize, PointFOptNone());
+        return FromSizesAndBaselines(size, contentSize, BaselinesNone());
     }
     static LayoutOutput FromOuterSize(SizeF size) {
         return FromSizes(size, SizeF::Zero());

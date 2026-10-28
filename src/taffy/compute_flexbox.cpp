@@ -1261,7 +1261,7 @@ void CalculateChildrenBaseLines(TaffyTree* tree, SizeFOpt nodeSize,
             LayoutOutput out = tree->ComputeChildLayout(
                 child.node, ItemLayoutInput(c, child, RunMode::PerformLayout,
                                             RequestedAxis::Both, known, avail));
-            float baseline = UnwrapOr(out.firstBaselines.y, out.size.h);
+            float baseline = UnwrapOr(out.baselines.first, out.size.h);
             if (IsScrollContainer(child.overflow.y)) {
                 baseline = F32Max(0.0f, F32Min(baseline, out.size.h));
             }
@@ -1715,7 +1715,7 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
         totalOffsetCross + item->offsetCross + effectiveLineOffsetCross +
         CrossStart(item->margin, direction) + crossRelativeInset;
 
-    float innerBaseline = UnwrapOr(layoutOutput.firstBaselines.y, size.h);
+    float innerBaseline = UnwrapOr(layoutOutput.baselines.first, size.h);
     if (IsRow(direction) && IsScrollContainer(item->overflow.y)) {
         innerBaseline = F32Max(0.0f, F32Min(innerBaseline, size.h));
     }
@@ -2334,7 +2334,7 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
 
     return LayoutOutput::FromSizesAndBaselines(
         constants.containerSize, Max(inflowContentSize, absoluteContentSize),
-        PointFOpt{None(), firstVerticalBaseline});
+        BaselinesFromFirst(firstVerticalBaseline));
 }
 
 } // namespace

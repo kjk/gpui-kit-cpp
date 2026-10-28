@@ -630,7 +630,7 @@ static taffy::LayoutOutput BaselineMeasure(const taffy::LayoutInput& inputs,
     }
     BaselineContext* c = (BaselineContext*)nodeContext;
     return taffy::LayoutOutput::FromSizesAndBaselines(
-        c->size, SizeF::Zero(), PointFOpt{None(), Some(c->baselineY)});
+        c->size, SizeF::Zero(), taffy::BaselinesFromFirst(Some(c->baselineY)));
 }
 
 static void TestTaffyTreeBasics() {
@@ -960,6 +960,12 @@ static void TestTaffyTreeMeasure() {
     }
 
     {
+        // Baselines carries a first baseline and an unset last one.
+        taffy::Baselines onlyFirst = taffy::BaselinesFromFirst(Some(4.0f));
+        utassert(OptfEq(onlyFirst.first, Some(4.0f)));
+        utassert(!IsSome(onlyFirst.last));
+        utassert(!IsSome(taffy::BaselinesNone().first));
+
         // flex_baseline_alignment_uses_measure_function_baseline.
         // The item whose baseline sits closer to its top shifts down so the
         // two baselines meet.
