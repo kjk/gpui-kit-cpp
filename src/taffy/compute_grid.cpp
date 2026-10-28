@@ -9,6 +9,8 @@
  * Deviations from the Rust:
  *   - `detailed_layout_info` is not produced. It exists for consumers that
  *     want the computed track sizes back out; nothing in this tree reads it.
+ *     A private track-position snapshot is stored on the node so the
+ *     out-of-flow pass can resolve a grid area. That is not the public API.
  *   - The `NamedLineResolver` keys its maps on `Str` plus a `-start`/`-end`
  *     marker rather than building the joined string, so resolving a named line
  *     allocates nothing.
@@ -497,6 +499,10 @@ struct GridItem {
     // Final position and height, for the container's baseline.
     float yPosition = 0.0f;
     float height = 0.0f;
+    // Bubbled out-of-flow candidates, translated by this item's location.
+    // A range into the pass's pool: GridItem lives in a Vec.
+    int oofStart = 0;
+    int oofCount = 0;
 
     // css-align-3 §9.5: an auto margin on the block axis opts the item
     // out of baseline alignment.
@@ -3693,6 +3699,8 @@ struct AlignedItem {
     RectF overflowContribution;
     float yPosition = 0.0f;
     float height = 0.0f;
+    int oofStart = 0;
+    int oofCount = 0;
 };
 
 // Align and size a grid item into its final position.
@@ -3700,7 +3708,8 @@ AlignedItem AlignAndPositionItem(
     TaffyTree* tree, NodeId node, uint32_t order, RectF gridArea,
     OptAlignItems containerJustifyItems, OptAlignItems containerAlignItems,
     float baselineShim, Direction direction, float containerBorderBoxWidth,
-    RectF containerBorder, bool containerIsScrollContainer) {
+    RectF containerBorder, bool containerIsScrollContainer,
+    Vec<OofCandidate>* oofPool) {
     CalcResolver calc = tree->calc;
     SizeF gridAreaSize = {gridArea.right - gridArea.left,
                           gridArea.bottom - gridArea.top};
@@ -3918,10 +3927,48 @@ AlignedItem AlignAndPositionItem(
          yr.start - containerBorder.top},
         finalSize, layoutOutput.scrollableOverflowRect, overflow, contain,
         containerIsScrollContainer);
-    return {contribution, yr.start, finalSize.h};
+    OofCandRange range;
+    OofAppendRange(oofPool, &range, layoutOutput.oofCandidates);
+    if (range.count > 0) {
+        OofTranslateRange(oofPool, range, {xr.start, yr.start});
+    }
+    return {contribution, yr.start, finalSize.h, range.start, range.count};
 }
 
 // ─── mod.rs ──────────────────────────────────────────────────────────────
+
+// Track start/end positions for the out-of-flow pass. Only real tracks are
+// stored; a gutter is the gap between them. An empty axis stores nothing
+// and the pass falls back to the padding box.
+void StoreGridOofSnapshot(TaffyTree* tree, NodeId node, uint16_t colAuto,
+                          uint16_t rowAuto, TrackCounts colCounts,
+                          TrackCounts rowCounts, const Vec<GridTrack>& columns,
+                          const Vec<GridTrack>& rows) {
+    NodeData* d = tree->Get(node);
+    if (!d) {
+        return;
+    }
+    auto fill = [](GridAxisPositions* axis, uint16_t autoRep,
+                   TrackCounts counts, const Vec<GridTrack>& tracks) {
+        axis->negativeImplicit = counts.negativeImplicit;
+        axis->explicitCount = counts.explicitCount;
+        axis->positiveImplicit = counts.positiveImplicit;
+        axis->autoRepetitions = autoRep;
+        for (int i = 0; i < len(tracks); i++) {
+            if (tracks[i].kind != GridTrackKind::Track) {
+                continue;
+            }
+            GridTrackSpan span;
+            span.start = tracks[i].offset;
+            span.end = tracks[i].offset + tracks[i].baseSize;
+            VecAppend(axis->spans, span);
+        }
+    };
+    d->gridOof.Clear();
+    d->gridOof.live = true;
+    fill(&d->gridOof.columns, colAuto, colCounts, columns);
+    fill(&d->gridOof.rows, rowAuto, rowCounts, rows);
+}
 
 } // namespace
 
@@ -4414,9 +4461,16 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                 {padding.top, padding.bottom}, {border.top, border.bottom},
                 rows.els, len(rows), alignContent, false);
 
-    // 9. Size, align and position the grid items.
+    // 9. Size, align and position the in-flow items. Out-of-flow children are
+    // candidates, interleaved in document order with candidates bubbled from
+    // in-flow subtrees. The positioning pass lays out the ones this grid
+    // claims, resolving their grid areas from the snapshot stored here.
     RectF itemOverflowRect = RectF::Zero();
-    RectF absoluteOverflowRect = RectF::Zero();
+    Vec<OofCandidate> oofPool;
+    OofCandidates oofCandidates;
+    StoreGridOofSnapshot(tree, node, colSize.autoRepetitionCount,
+                         rowSize.autoRepetitionCount, finalColCounts,
+                         finalRowCounts, columns, rows);
 
     // Back into source order, so items line up with their styles again.
     StableSort(items.els, len(items), [](const GridItem& a, const GridItem& b) {
@@ -4441,18 +4495,72 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         AlignedItem placed = AlignAndPositionItem(
             tree, item.node, (uint32_t)index, gridArea, justifyItems,
             alignItems, item.baselineShim, direction, containerBorderBox.w,
-            border, isScrollContainer);
+            border, isScrollContainer, &oofPool);
         item.yPosition = placed.yPosition;
         item.height = placed.height;
+        item.oofStart = placed.oofStart;
+        item.oofCount = placed.oofCount;
         itemOverflowRect = itemOverflowRect.Union(placed.overflowContribution);
     }
 
-    // Hidden and absolutely positioned children.
+    int itemCursor = 0;
     uint32_t order = (uint32_t)len(items);
+    ContainingBlockClaims claims = ContainingBlockFor(style.position);
+    auto lineAsStartEdge = [](const Vec<GridTrack>& tracks, int index) {
+        return index + 1 < len(tracks) ? tracks[index + 1].offset
+                                       : tracks[index].offset;
+    };
+    auto lineAsEndEdge = [](const Vec<GridTrack>& tracks, int index) {
+        if (index == 0) {
+            return len(tracks) > 1 ? tracks[1].offset : tracks[0].offset;
+        }
+        return tracks[index].offset;
+    };
+    auto rtlLineAsStartEdge = [](const Vec<GridTrack>& tracks, int index) {
+        if (index + 1 < len(tracks)) {
+            return tracks[index].offset;
+        }
+        if (index == 0) {
+            return tracks[0].offset;
+        }
+        return tracks[index - 1].offset;
+    };
+    auto rtlLineAsEndEdge = [](const Vec<GridTrack>& tracks, int index) {
+        if (index == 0) {
+            return tracks[0].offset;
+        }
+        return tracks[index - 1].offset;
+    };
+    auto staticEdge = [](AlignItemsKeyword keyword, bool axisIsRtl) {
+        if (keyword == AlignItemsKeyword::Center) {
+            return AxisStaticEdge::Center;
+        }
+        bool endish = keyword == AlignItemsKeyword::End ||
+                      keyword == AlignItemsKeyword::FlexEnd;
+        bool startPosition = (!endish) != axisIsRtl;
+        return startPosition ? AxisStaticEdge::Start : AxisStaticEdge::End;
+    };
+    auto staticAlign = [&](AlignItems alignment, bool axisIsRtl) {
+        AxisStaticAlign align;
+        align.keyword = staticEdge(alignment.keyword, axisIsRtl);
+        align.safety = alignment.safety;
+        align.fallback =
+            staticEdge(ResolveSelfAlignmentSafety(alignment, true), axisIsRtl);
+        return align;
+    };
+
     for (int index = 0; index < childCount; index++) {
+        if (itemCursor < len(items) &&
+            items[itemCursor].sourceOrder == (uint16_t)index) {
+            OofCandRange range = {items[itemCursor].oofStart, items[itemCursor]
+                                                                  .oofCount};
+            OofAppendPoolRange(&oofCandidates, oofPool, range);
+            itemCursor += 1;
+            continue;
+        }
+
         NodeId child = tree->GetChildId(node, index);
         const Style& cs = tree->GetStyle(child);
-
         if (cs.BoxGenMode() == BoxGenerationMode::None) {
             tree->SetUnroundedLayout(child, Layout::WithOrder(order));
             tree->PerformChildLayout(
@@ -4465,109 +4573,129 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             continue;
         }
 
-        // grid-column-{start,end} as optional indexes into the column vector.
-        // A None is an auto or an unresolvable span.
-        LineOptOzl colLines = nameResolver.ResolveColumnNames(cs.gridColumn)
-                                  .IntoOriginZero(finalColCounts.explicitCount)
-                                  .ResolveAbsolutelyPositionedGridTracks();
-        int colStartIdx = -1;
-        int colEndIdx = -1;
-        if (colLines.start.IsSome()) {
-            TryIntoTrackVecIndex(colLines.start.val, finalColCounts,
-                                 &colStartIdx);
-        }
-        if (colLines.end.IsSome()) {
-            TryIntoTrackVecIndex(colLines.end.val, finalColCounts, &colEndIdx);
-        }
-
-        LineOptOzl rowLines = nameResolver.ResolveRowNames(cs.gridRow)
-                                  .IntoOriginZero(finalRowCounts.explicitCount)
-                                  .ResolveAbsolutelyPositionedGridTracks();
-        int rowStartIdx = -1;
-        int rowEndIdx = -1;
-        if (rowLines.start.IsSome()) {
-            TryIntoTrackVecIndex(rowLines.start.val, finalRowCounts,
-                                 &rowStartIdx);
-        }
-        if (rowLines.end.IsSome()) {
-            TryIntoTrackVecIndex(rowLines.end.val, finalRowCounts, &rowEndIdx);
-        }
-
-        auto lineAsStartEdge = [](const Vec<GridTrack>& tracks, int index) {
-            return index + 1 < len(tracks) ? tracks[index + 1].offset
-                                           : tracks[index].offset;
-        };
-        auto lineAsEndEdge = [](const Vec<GridTrack>& tracks, int index) {
-            if (index == 0) {
-                return len(tracks) > 1 ? tracks[1].offset : tracks[0].offset;
+        RectF area;
+        if (claims.ForPosition(cs.position)) {
+            LineOptOzl colLines =
+                nameResolver.ResolveColumnNames(cs.gridColumn)
+                    .IntoOriginZero(finalColCounts.explicitCount)
+                    .ResolveAbsolutelyPositionedGridTracks();
+            int colStartIdx = -1;
+            int colEndIdx = -1;
+            if (colLines.start.IsSome()) {
+                TryIntoTrackVecIndex(colLines.start.val, finalColCounts,
+                                     &colStartIdx);
             }
-            return tracks[index].offset;
-        };
-        // RTL keeps logical track order. A line used as an inline-start edge
-        // is the physical right of the track that follows it. A line used as
-        // an inline-end edge is the physical left of the track that precedes
-        // it. When nothing follows the line, the line itself is that left
-        // edge: the trailing gutter's offset is assigned before alignment.
-        auto rtlLineAsStartEdge = [](const Vec<GridTrack>& tracks, int index) {
-            if (index + 1 < len(tracks)) {
-                return tracks[index].offset;
+            if (colLines.end.IsSome()) {
+                TryIntoTrackVecIndex(colLines.end.val, finalColCounts,
+                                     &colEndIdx);
             }
-            if (index == 0) {
-                return tracks[0].offset;
+            LineOptOzl rowLines =
+                nameResolver.ResolveRowNames(cs.gridRow)
+                    .IntoOriginZero(finalRowCounts.explicitCount)
+                    .ResolveAbsolutelyPositionedGridTracks();
+            int rowStartIdx = -1;
+            int rowEndIdx = -1;
+            if (rowLines.start.IsSome()) {
+                TryIntoTrackVecIndex(rowLines.start.val, finalRowCounts,
+                                     &rowStartIdx);
             }
-            return tracks[index - 1].offset;
-        };
-        auto rtlLineAsEndEdge = [](const Vec<GridTrack>& tracks, int index) {
-            if (index == 0) {
-                return tracks[0].offset;
+            if (rowLines.end.IsSome()) {
+                TryIntoTrackVecIndex(rowLines.end.val, finalRowCounts,
+                                     &rowEndIdx);
             }
-            return tracks[index - 1].offset;
-        };
-
-        RectF gridArea;
-        gridArea.top =
-            rowStartIdx >= 0 ? lineAsStartEdge(rows, rowStartIdx) : border.top;
-        gridArea.bottom =
-            rowEndIdx >= 0
-                ? lineAsEndEdge(rows, rowEndIdx)
-                : containerBorderBox.h - border.bottom - scrollbarGutter.y;
-        if (IsRtl(direction)) {
-            gridArea.left = colEndIdx >= 0
+            area.top = rowStartIdx >= 0 ? lineAsStartEdge(rows, rowStartIdx)
+                                        : border.top;
+            area.bottom =
+                rowEndIdx >= 0
+                    ? lineAsEndEdge(rows, rowEndIdx)
+                    : containerBorderBox.h - border.bottom - scrollbarGutter.y;
+            if (IsRtl(direction)) {
+                area.left = colEndIdx >= 0
                                 ? rtlLineAsEndEdge(columns, colEndIdx)
                                 : border.left + scrollbarGutter.x;
-            gridArea.right = colStartIdx >= 0
+                area.right = colStartIdx >= 0
                                  ? rtlLineAsStartEdge(columns, colStartIdx)
                                  : containerBorderBox.w - border.right;
-        } else {
-            gridArea.left = colStartIdx >= 0
+            } else {
+                area.left = colStartIdx >= 0
                                 ? lineAsStartEdge(columns, colStartIdx)
                                 : border.left;
-            gridArea.right =
-                colEndIdx >= 0
-                    ? lineAsEndEdge(columns, colEndIdx)
-                    : containerBorderBox.w - border.right - scrollbarGutter.x;
+                area.right = colEndIdx >= 0
+                                 ? lineAsEndEdge(columns, colEndIdx)
+                                 : containerBorderBox.w - border.right -
+                                       scrollbarGutter.x;
+            }
+        } else {
+            // Not the containing block: the static position is the content
+            // box, as if the child were the sole item of that area.
+            area.left = border.left + padding.left +
+                        (IsRtl(direction) ? scrollbarGutter.x : 0.0f);
+            area.right = containerBorderBox.w - border.right - padding.right -
+                         (IsRtl(direction) ? 0.0f : scrollbarGutter.x);
+            area.top = border.top + padding.top;
+            area.bottom = containerBorderBox.h - border.bottom -
+                          padding.bottom - scrollbarGutter.y;
         }
 
-        // TODO(taffy): baseline alignment for absolutely positioned items.
-        AlignedItem placed = AlignAndPositionItem(
-            tree, child, order, gridArea, justifyItems, alignItems, 0.0f,
-            direction, containerBorderBox.w, border, isScrollContainer);
-        absoluteOverflowRect = absoluteOverflowRect
-                                   .Union(placed.overflowContribution);
+        OptAlignItems justifySelf = cs.justifySelf;
+        if (justifySelf.IsSome()) {
+            justifySelf.val = ResolveSelfRelative(justifySelf.val, cs.direction,
+                                                  direction, true);
+        }
+        OptAlignItems alignSelf = cs.alignSelf;
+        if (alignSelf.IsSome()) {
+            alignSelf.val = ResolveSelfRelative(alignSelf.val, cs.direction,
+                                                direction, false);
+        }
+        OptAlignItems containerJustify = justifyItems;
+        if (containerJustify.IsSome()) {
+            containerJustify.val = ResolveSelfRelative(
+                containerJustify.val, cs.direction, direction, true);
+        }
+        OptAlignItems containerAlign = alignItems;
+        if (containerAlign.IsSome()) {
+            containerAlign.val = ResolveSelfRelative(
+                containerAlign.val, cs.direction, direction, false);
+        }
+        AlignItems xAlignment =
+            justifySelf.Or(containerJustify)
+                .UnwrapOr(AlignItems{AlignItemsKeyword::Start});
+        AlignItems yAlignment =
+            alignSelf.Or(containerAlign)
+                .UnwrapOr(AlignItems{AlignItemsKeyword::Start});
+
+        OofCandidate candidate;
+        candidate.node = child;
+        candidate.order = order;
+        candidate.position = cs.position;
+        candidate.staticX.start = area.left;
+        candidate.staticX.end = area.right;
+        candidate.staticX.align = staticAlign(xAlignment, IsRtl(direction));
+        candidate.staticY.start = area.top;
+        candidate.staticY.end = area.bottom;
+        candidate.staticY.align = staticAlign(yAlignment, false);
+        oofCandidates.Push(candidate);
         order += 1;
     }
 
+    RectF absolutePositionInset = border;
+    if (IsRtl(direction)) {
+        absolutePositionInset.left += scrollbarGutter.x;
+    } else {
+        absolutePositionInset.right += scrollbarGutter.x;
+    }
+    absolutePositionInset.bottom += scrollbarGutter.y;
+
     // End padding is part of a scroll container's overflow. Other boxes
-    // do not extend their overflow rect by their own padding. An
-    // absolute-only grid still reports that padding and the absolute
-    // children's overflow.
+    // do not extend their overflow rect by their own padding. Claimed
+    // out-of-flow boxes are unioned by the positioning pass.
     auto withEndPadding = [&](RectF overflowRect) {
         if (isScrollContainer) {
             overflowRect
                 .right += IsRtl(direction) ? padding.left : padding.right;
             overflowRect.bottom += padding.bottom;
         }
-        return overflowRect.Union(absoluteOverflowRect);
+        return overflowRect;
     };
 
     LayoutOutput out;
@@ -4604,14 +4732,104 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             BaselinesFromFirst(gridContainerBaseline));
     }
 
+    out.oofCandidates = oofCandidates;
+    out.hasOofPositioningArea = true;
+    out.oofPositioningArea.size = containerBorderBox - absolutePositionInset
+                                                           .SumAxes();
+    out.oofPositioningArea
+        .offset = {absolutePositionInset.left, absolutePositionInset.top};
+
     VecReset(items);
     VecReset(columns);
     VecReset(rows);
     VecReset(children);
     VecReset(childPlacements);
+    VecReset(oofPool);
     cellOccupancyMatrix.Free();
     nameResolver.Free();
     return out;
+}
+
+// The grid area of an out-of-flow child, from the track snapshot taken at
+// the end of grid layout. False when this node is not a grid containing
+// block (no snapshot). An empty axis has no stored line, so that edge
+// falls back to the padding box passed in.
+bool GridOofArea(TaffyTree* tree, NodeId grid, NodeId child, RectF paddingBox,
+                 RectF* out) {
+    NodeData* d = tree->Get(grid);
+    if (!d || !d->gridOof.live) {
+        return false;
+    }
+    const Style& gridStyle = tree->GetStyle(grid);
+    const Style& childStyle = tree->GetStyle(child);
+    const GridOofSnapshot& snap = d->gridOof;
+    NamedLineResolver resolver;
+    resolver.Init(gridStyle, snap.columns.autoRepetitions,
+                  snap.rows.autoRepetitions);
+    resolver.explicitColumnCount = snap.columns.explicitCount;
+    resolver.explicitRowCount = snap.rows.explicitCount;
+
+    auto spanIndex = [](OptOriginZeroLine line, TrackCounts counts) {
+        if (!line.IsSome()) {
+            return -1;
+        }
+        int16_t minLine = -(int16_t)counts.negativeImplicit;
+        int16_t maxLine =
+            (int16_t)(counts.explicitCount + counts.positiveImplicit);
+        if (line.val.v < minLine || line.val.v > maxLine) {
+            return -1;
+        }
+        int trackVec = 0;
+        if (!TryIntoTrackVecIndex(line.val, counts, &trackVec)) {
+            return -1;
+        }
+        return trackVec / 2;
+    };
+    auto resolveAxis = [&](LinePlacement placement,
+                           const GridAxisPositions& axis, float padStart,
+                           float padEnd, bool rows, bool reversed) {
+        TrackCounts counts;
+        counts.negativeImplicit = axis.negativeImplicit;
+        counts.explicitCount = axis.explicitCount;
+        counts.positiveImplicit = axis.positiveImplicit;
+        LinePlain plain = rows ? resolver.ResolveRowNames(placement)
+                               : resolver.ResolveColumnNames(placement);
+        LineOptOzl lines = plain.IntoOriginZero(axis.explicitCount)
+                               .ResolveAbsolutelyPositionedGridTracks();
+        int startIdx = spanIndex(lines.start, counts);
+        int endIdx = spanIndex(lines.end, counts);
+        float startPos;
+        float endPos;
+        if (startIdx >= 0 && startIdx < len(axis.spans)) {
+            startPos = reversed ? axis.spans[startIdx].end
+                                : axis.spans[startIdx].start;
+        } else if (startIdx >= 0 && len(axis.spans) > 0) {
+            const GridTrackSpan& last = axis.spans[len(axis.spans) - 1];
+            startPos = reversed ? last.start : last.end;
+        } else {
+            startPos = reversed ? padEnd : padStart;
+        }
+        if (endIdx > 0 && endIdx - 1 < len(axis.spans)) {
+            int prev = endIdx - 1;
+            endPos = reversed ? axis.spans[prev].start : axis.spans[prev].end;
+        } else if (endIdx >= 0 && len(axis.spans) > 0) {
+            endPos = reversed ? axis.spans[0].end : axis.spans[0].start;
+        } else {
+            endPos = reversed ? padStart : padEnd;
+        }
+        float lo = F32Min(startPos, endPos);
+        float hi = F32Max(startPos, endPos);
+        return RectF{lo, hi, 0.0f, 0.0f};
+    };
+
+    RectF cols =
+        resolveAxis(childStyle.gridColumn, snap.columns, paddingBox.left,
+                    paddingBox.right, false, IsRtl(gridStyle.direction));
+    RectF row = resolveAxis(childStyle.gridRow, snap.rows, paddingBox.top,
+                            paddingBox.bottom, true, false);
+    resolver.Free();
+    *out = {cols.left, cols.right, row.left, row.right};
+    return true;
 }
 
 // ─── test seams ──────────────────────────────────────────────────────────

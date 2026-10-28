@@ -4001,6 +4001,13 @@ static taffy::Style ToTaffyStyle(const El* e) {
                    ToInset(s.absRight, s.absRightRel),
                    ToInsetY(s.absTop, s.absTopRel),
                    ToInsetY(s.absBottom, s.absBottomRel)};
+    } else {
+        // An element's `absolute` child is positioned against that element.
+        // Taffy claims absolute descendants only for a positioned box, and
+        // leaves a static parent's insets to resolve against the root. Relative
+        // with the default auto inset is a zero offset and keeps the parent
+        // as the containing block. Fixed stays reparented onto the root.
+        t.position = taffy::Position::Relative;
     }
     return t;
 }
@@ -4744,7 +4751,8 @@ static void ShiftElTree(El* e, float dx, float dy) {
 static void WriteBackChildren(LayoutCache* lc, PaintCtx* ctx, El* e) {
     // A scrolled box slides its in-flow content; an out-of-flow child is
     // pinned to the box and does not move with it, which is what the old
-    // engine's PlaceOutOfFlow did.
+    // engine's PlaceOutOfFlow did. The parent is position:relative in taffy,
+    // so this child's location is already in the parent's border box.
     float inFlowX = e->x - e->scrollX;
     float inFlowY = e->y - e->scrollY;
     for (El* c = e->first; c; c = c->next) {

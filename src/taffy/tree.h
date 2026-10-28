@@ -157,12 +157,134 @@ inline Baselines BaselinesFromFirst(Optf first) {
     return b;
 }
 
+// One axis of an out-of-flow box's static position. Keywords are physical:
+// the layout algorithm that emits the candidate resolves flex, RTL and
+// self-start before recording them. A degenerate area (start == end) is an
+// anchor point, which is what block layout emits.
+enum class AxisStaticEdge : uint8_t {
+    Start,
+    Center,
+    End
+};
+
+struct AxisStaticAlign {
+    AxisStaticEdge keyword = AxisStaticEdge::Start;
+    AlignmentSafety safety = AlignmentSafety::Unsafe;
+    AxisStaticEdge fallback = AxisStaticEdge::Start;
+
+    static AxisStaticAlign FromKeyword(AxisStaticEdge keyword) {
+        AxisStaticAlign a;
+        a.keyword = keyword;
+        a.fallback = keyword;
+        return a;
+    }
+};
+
+struct AxisStaticPosition {
+    float start = 0.0f;
+    float end = 0.0f;
+    AxisStaticAlign align;
+
+    static AxisStaticPosition FromEdge(float anchor, AxisStaticEdge edge) {
+        AxisStaticPosition p;
+        p.start = anchor;
+        p.end = anchor;
+        p.align = AxisStaticAlign::FromKeyword(edge);
+        return p;
+    }
+};
+
+// An absolute or fixed box whose containing block has not laid it out yet.
+// Areas are relative to the border box of the node that currently holds the
+// candidate, translated by each ancestor's location as it bubbles.
+struct OofCandidate {
+    NodeId node;
+    uint32_t order = 0;
+    Position position = Position::Absolute;
+    AxisStaticPosition staticX;
+    AxisStaticPosition staticY;
+};
+
+// Empty lists allocate nothing. The vec is owned here, and `LayoutOutput` is
+// copied into the cache by value, so a hit replays the same candidates
+// without walking the subtree again.
+struct OofCandidates {
+    Vec<OofCandidate> inner;
+
+    bool IsEmpty() const { return len(inner) == 0; }
+    void Push(OofCandidate candidate) { VecAppend(inner, candidate); }
+    void Append(OofCandidates* other) {
+        if (!other || other->IsEmpty()) {
+            return;
+        }
+        for (int i = 0; i < len(other->inner); i++) {
+            VecAppend(inner, other->inner[i]);
+        }
+        VecReset(other->inner);
+    }
+    void Translate(PointF offset) {
+        for (int i = 0; i < len(inner); i++) {
+            inner[i].staticX.start += offset.x;
+            inner[i].staticX.end += offset.x;
+            inner[i].staticY.start += offset.y;
+            inner[i].staticY.end += offset.y;
+        }
+    }
+    void Clear() { VecReset(inner); }
+};
+
+// A slice of `OofCandidates` stored beside an item. The item itself stays
+// trivially copyable so it can live in a `Vec`.
+struct OofCandRange {
+    int start = 0;
+    int count = 0;
+};
+
+inline void OofAppendRange(Vec<OofCandidate>* pool, OofCandRange* range,
+                           const OofCandidates& src) {
+    range->start = len(*pool);
+    range->count = len(src.inner);
+    for (int i = 0; i < range->count; i++) {
+        VecAppend(*pool, src.inner[i]);
+    }
+}
+
+inline void OofTranslateRange(Vec<OofCandidate>* pool, OofCandRange range,
+                              PointF offset) {
+    for (int i = 0; i < range.count; i++) {
+        OofCandidate& c = (*pool)[range.start + i];
+        c.staticX.start += offset.x;
+        c.staticX.end += offset.x;
+        c.staticY.start += offset.y;
+        c.staticY.end += offset.y;
+    }
+}
+
+inline void OofAppendPoolRange(OofCandidates* dst,
+                               const Vec<OofCandidate>& pool,
+                               OofCandRange range) {
+    for (int i = 0; i < range.count; i++) {
+        dst->Push(pool[range.start + i]);
+    }
+}
+
+// Border box minus borders and scrollbar gutters. Insets of out-of-flow
+// boxes resolve against this. None on a leaf or a size-only pass.
+struct OofPositioningArea {
+    SizeF size;
+    PointF offset;
+};
+
 // The result of laying out a single node, handed back up to the parent.
 //
 // A baseline is the line text sits on. A node likely has one if it is a text
 // node or contains children that may be. A node with no baseline (or one that
 // is not sure how to compute it) reports BaselinesNone().
 struct LayoutOutput {
+    // Vec's default constructor is explicit, so this cannot be an aggregate:
+    // `return {}` and `CacheEntry`'s `content{}` would not compile.
+    LayoutOutput() = default;
+
     SizeF size;
     // The scrollable overflow rectangle of the node's content. Same
     // coordinate conventions as Layout::scrollableOverflowRect.
@@ -174,6 +296,14 @@ struct LayoutOutput {
     CollapsibleMarginSet bottomMargin;
     // Whether margins can collapse *through* this node. Block layout only.
     bool marginsCanCollapseThrough = false;
+    // Absolute and fixed descendants this node did not claim. PerformLayout
+    // only. The positioning pass replaces this with the unclaimed remainder
+    // before the result is cached.
+    OofCandidates oofCandidates;
+    // Set for a container PerformLayout. The positioning pass is a no-op
+    // when this is false (leaves and size-only runs).
+    bool hasOofPositioningArea = false;
+    OofPositioningArea oofPositioningArea;
 
     // An all-zero output, for hidden nodes. Rust's `HIDDEN` and `DEFAULT` are
     // the same value.

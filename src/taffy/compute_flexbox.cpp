@@ -78,6 +78,12 @@ struct FlexItem {
     // The position of the bottom edge of this item.
     float baseline = 0.0f;
 
+    // Bubbled out-of-flow candidates, translated to this container once the
+    // item's location is known. A range into the pass's pool, not a Vec:
+    // FlexItem lives in a Vec and must stay trivially copyable.
+    int oofStart = 0;
+    int oofCount = 0;
+
     // The relative position from the item's natural flow position, from
     // relative position values, alignment and justification. Excludes
     // margin/padding/border.
@@ -1798,7 +1804,8 @@ void AlignFlexLinesPerAlignContent(Vec<FlexLine>* lines, const AlgoConstants& c,
 
 void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
                        float totalOffsetCross, float lineOffsetCross,
-                       RectF* totalOverflowRect, const AlgoConstants& c) {
+                       RectF* totalOverflowRect, const AlgoConstants& c,
+                       Vec<OofCandidate>* oofPool) {
     FlexDirection direction = c.dir;
     Direction layoutDirection = c.layoutDirection;
     SizeF containerSize = c.containerSize;
@@ -1872,6 +1879,16 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
     layout.margin = item->margin;
     tree->SetUnroundedLayout(item->node, layout);
 
+    // Candidates from the item's subtree, translated from item-relative to
+    // container-relative coordinates.
+    OofCandRange range;
+    OofAppendRange(oofPool, &range, layoutOutput.oofCandidates);
+    if (range.count > 0) {
+        OofTranslateRange(oofPool, range, location);
+    }
+    item->oofStart = range.start;
+    item->oofCount = range.count;
+
     float advance = item->offsetMain + MainAxisSum(item->margin, direction) +
                     Main(size, direction);
     if (isRtlRow) {
@@ -1895,7 +1912,7 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
 
 void CalculateLayoutLine(TaffyTree* tree, FlexLine* line,
                          float* totalOffsetCross, RectF* overflowRect,
-                         const AlgoConstants& c) {
+                         const AlgoConstants& c, Vec<OofCandidate>* oofPool) {
     FlexDirection direction = c.dir;
     Direction layoutDirection = c.layoutDirection;
     SizeF containerSize = c.containerSize;
@@ -1916,7 +1933,7 @@ void CalculateLayoutLine(TaffyTree* tree, FlexLine* line,
                              ? &line->items[line->count - 1 - i]
                              : &line->items[i];
         CalculateFlexItem(tree, item, &totalOffsetMain, *totalOffsetCross,
-                          lineOffsetCross, overflowRect, c);
+                          lineOffsetCross, overflowRect, c, oofPool);
     }
 
     if (!isRtlColumn) {
@@ -1927,7 +1944,7 @@ void CalculateLayoutLine(TaffyTree* tree, FlexLine* line,
 // ─── final_layout_pass ───────────────────────────────────────────────────
 
 RectF FinalLayoutPass(TaffyTree* tree, Vec<FlexLine>* lines,
-                      const AlgoConstants& c) {
+                      const AlgoConstants& c, Vec<OofCandidate>* oofPool) {
     float totalOffsetCross =
         (c.isColumn && IsRtl(c.layoutDirection))
             ? c.containerSize.w - CrossEnd(c.contentBoxInset, c.dir)
@@ -1938,7 +1955,8 @@ RectF FinalLayoutPass(TaffyTree* tree, Vec<FlexLine>* lines,
     for (int i = 0; i < lines->len; i++) {
         FlexLine& line =
             c.isWrapReverse ? (*lines)[lines->len - 1 - i] : (*lines)[i];
-        CalculateLayoutLine(tree, &line, &totalOffsetCross, &overflowRect, c);
+        CalculateLayoutLine(tree, &line, &totalOffsetCross, &overflowRect, c,
+                            oofPool);
     }
 
     // End padding is part of a scroll container's overflow. Other boxes
@@ -1956,331 +1974,147 @@ RectF FinalLayoutPass(TaffyTree* tree, Vec<FlexLine>* lines,
     return overflowRect;
 }
 
-// ─── perform_absolute_layout_on_absolute_children ────────────────────────
+// Collect out-of-flow candidates in document order. Direct children get a
+// static position from flex alignment. In-flow items contribute the
+// candidates already translated onto this container. Sizing happens in
+// the shared positioning pass.
+void CollectOofCandidates(TaffyTree* tree, NodeId node, const AlgoConstants& c,
+                          Vec<FlexLine>* flexLines, Vec<OofCandidate>* pool,
+                          OofCandidates* candidates) {
+    int lineIx = 0;
+    int itemIx = 0;
+    auto nextWithCandidates = [&]() -> FlexItem* {
+        while (lineIx < len(*flexLines)) {
+            FlexLine& line = (*flexLines)[lineIx];
+            while (itemIx < line.count) {
+                FlexItem* item = &line.items[itemIx];
+                itemIx += 1;
+                if (item->oofCount > 0) {
+                    return item;
+                }
+            }
+            lineIx += 1;
+            itemIx = 0;
+        }
+        return nullptr;
+    };
+    FlexItem* next = nextWithCandidates();
 
-RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
-                                              const AlgoConstants& c) {
-    CalcResolver calc = tree->calc;
-    float containerWidth = c.containerSize.w;
-    float containerHeight = c.containerSize.h;
-    SizeF insetRelativeSize =
-        c.containerSize - c.border.SumAxes() - IntoSize(c.scrollbarGutter);
+    FlexDirection dir = c.dir;
+    bool mainIsRtl = c.isRow && IsRtl(c.layoutDirection);
+    bool crossIsRtl = !c.isRow && IsRtl(c.layoutDirection);
+    bool mainReversed = IsReverse(dir) != mainIsRtl;
+    bool crossReversed = c.isWrapReverse != crossIsRtl;
 
-    RectF overflowRect = RectF::Zero();
+    float mainStart = MainStart(c.contentBoxInset, dir);
+    float mainEnd =
+        Main(c.containerSize, dir) - MainEnd(c.contentBoxInset, dir);
+    float crossStart = CrossStart(c.contentBoxInset, dir);
+    float crossEnd =
+        Cross(c.containerSize, dir) - CrossEnd(c.contentBoxInset, dir);
+
+    auto crossEdge = [&](AlignItemsKeyword keyword) {
+        bool startPosition = true;
+        if (keyword == AlignItemsKeyword::Start ||
+            keyword == AlignItemsKeyword::Baseline) {
+            startPosition = !crossIsRtl;
+        } else if (keyword == AlignItemsKeyword::End) {
+            startPosition = crossIsRtl;
+        }
+        if (keyword == AlignItemsKeyword::Start ||
+            keyword == AlignItemsKeyword::End ||
+            keyword == AlignItemsKeyword::Baseline) {
+            return startPosition ? AxisStaticEdge::Start : AxisStaticEdge::End;
+        }
+        if (keyword == AlignItemsKeyword::Center) {
+            return AxisStaticEdge::Center;
+        }
+        if (keyword == AlignItemsKeyword::FlexEnd) {
+            return crossReversed ? AxisStaticEdge::Start : AxisStaticEdge::End;
+        }
+        // Stretch and FlexStart. Stretch does not apply to an absolutely
+        // positioned item; it falls back to flex-start.
+        return crossReversed ? AxisStaticEdge::End : AxisStaticEdge::Start;
+    };
 
     int n = tree->ChildCount(node);
     for (int order = 0; order < n; order++) {
         NodeId child = tree->GetChildId(node, order);
         const Style& cs = tree->GetStyle(child);
-
-        if (cs.BoxGenMode() == BoxGenerationMode::None ||
-            !IsOutOfFlow(cs.position)) {
+        if (cs.BoxGenMode() == BoxGenerationMode::None) {
+            continue;
+        }
+        if (!IsOutOfFlow(cs.position)) {
+            if (next && next->order == (uint32_t)order) {
+                OofCandRange range = {next->oofStart, next->oofCount};
+                OofAppendPoolRange(candidates, *pool, range);
+                next = nextWithCandidates();
+            }
             continue;
         }
 
-        PointOverflow overflow = cs.overflow;
-        Contain contain = cs.contain;
-        float scrollbarWidth = cs.scrollbarWidth;
-        Optf aspectRatio = cs.aspectRatio;
-        AlignSelf alignSelf =
+        AlignItems alignSelf =
             ResolveSelfRelative(cs.alignSelf.UnwrapOr(c.alignItems),
                                 cs.direction, c.layoutDirection, c.isColumn);
-        RectFOpt margin = cs.margin
-                              .MaybeResolve(Some(insetRelativeSize.w), calc);
-        RectF padding = cs.padding
-                            .ResolveOrZero(Some(insetRelativeSize.w), calc);
-        RectF border = cs.border.ResolveOrZero(Some(insetRelativeSize.w), calc);
-        SizeF paddingBorderSum = (padding + border).SumAxes();
-        SizeF boxSizingAdjustment = cs.boxSizing == BoxSizing::ContentBox
-                                        ? paddingBorderSum
-                                        : SizeF::Zero();
-
-        // Insets resolve against the container size minus its border.
-        RectFOpt inset =
-            cs.inset.MaybeResolveZip(AsOptional(insetRelativeSize), calc);
-        Optf left = inset.left;
-        Optf right = inset.right;
-        Optf top = inset.top;
-        Optf bottom = inset.bottom;
-
-        SizeFOpt styleSize = MaybeAdd(
-            MaybeApplyAspectRatio(
-                cs.size.MaybeResolve(AsOptional(insetRelativeSize), calc),
-                aspectRatio),
-            boxSizingAdjustment);
-        SizeFOpt minSize =
-            MaybeMax(Or(MaybeAdd(MaybeApplyAspectRatio(
-                                     cs.minSize.MaybeResolve(
-                                         AsOptional(insetRelativeSize), calc),
-                                     aspectRatio),
-                                 boxSizingAdjustment),
-                        AsOptional(paddingBorderSum)),
-                     paddingBorderSum);
-        SizeFOpt maxSize = MaybeAdd(
-            MaybeApplyAspectRatio(
-                cs.maxSize.MaybeResolve(AsOptional(insetRelativeSize), calc),
-                aspectRatio),
-            boxSizingAdjustment);
-        SizeFOpt knownDimensions = MaybeClamp(styleSize, minSize, maxSize);
-
-        // A sizing keyword beats the inset-derived size below. Flex absolute
-        // children are measured in content-size mode; the parent's own size
-        // styles are applied around that measure.
-        if (cs.size.width.IsSizingKeyword() || cs.size.height
-                                                   .IsSizingKeyword()) {
-            ResolveAbsoluteSizingKeywords(tree, child, &knownDimensions,
-                                          cs.size, insetRelativeSize, inset,
-                                          margin, SizingMode::ContentSize);
-            knownDimensions =
-                MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
-                           minSize, maxSize);
+        AlignContentKeyword mainKeyword =
+            c.justifyContent
+                .UnwrapOr(AlignContent{AlignContentKeyword::FlexStart})
+                .Keyword();
+        bool mainStartPosition = true;
+        if (mainKeyword == AlignContentKeyword::Start) {
+            mainStartPosition = !mainIsRtl;
+        } else if (mainKeyword == AlignContentKeyword::End) {
+            mainStartPosition = mainIsRtl;
+        }
+        AxisStaticEdge mainEdge = AxisStaticEdge::Center;
+        switch (mainKeyword) {
+            case AlignContentKeyword::SpaceBetween:
+            case AlignContentKeyword::Stretch:
+            case AlignContentKeyword::FlexStart:
+                mainEdge =
+                    mainReversed ? AxisStaticEdge::End : AxisStaticEdge::Start;
+                break;
+            case AlignContentKeyword::FlexEnd:
+                mainEdge =
+                    mainReversed ? AxisStaticEdge::Start : AxisStaticEdge::End;
+                break;
+            case AlignContentKeyword::Start:
+            case AlignContentKeyword::End:
+                mainEdge = mainStartPosition ? AxisStaticEdge::Start
+                                             : AxisStaticEdge::End;
+                break;
+            default:
+                mainEdge = AxisStaticEdge::Center;
+                break;
         }
 
-        // Fill in the width from left/right (and reapply the aspect ratio) if
-        // the width is not known and both insets are set.
-        if (!IsSome(knownDimensions.w) && IsSome(left) && IsSome(right)) {
-            float newWidthRaw =
-                MaybeSub(MaybeSub(insetRelativeSize.w, margin.left),
-                         margin.right) -
-                left - right;
-            knownDimensions.w = Some(F32Max(newWidthRaw, 0.0f));
-            knownDimensions =
-                MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
-                           minSize, maxSize);
-        }
-        if (!IsSome(knownDimensions.h) && IsSome(top) && IsSome(bottom)) {
-            float newHeightRaw =
-                MaybeSub(MaybeSub(insetRelativeSize.h, margin.top),
-                         margin.bottom) -
-                top - bottom;
-            knownDimensions.h = Some(F32Max(newHeightRaw, 0.0f));
-            knownDimensions =
-                MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
-                           minSize, maxSize);
-        }
+        AxisStaticAlign crossAlign;
+        crossAlign.keyword = crossEdge(alignSelf.keyword);
+        crossAlign.safety = alignSelf.safety;
+        crossAlign
+            .fallback = crossEdge(ResolveSelfAlignmentSafety(alignSelf, true));
+        AxisStaticPosition mainPos;
+        mainPos.start = mainStart;
+        mainPos.end = mainEnd;
+        mainPos.align = AxisStaticAlign::FromKeyword(mainEdge);
+        AxisStaticPosition crossPos;
+        crossPos.start = crossStart;
+        crossPos.end = crossEnd;
+        crossPos.align = crossAlign;
 
-        SizeAvail childAvail = {AvailableSpace::Definite(MaybeClamp(
-                                    containerWidth, minSize.w, maxSize.w)),
-                                AvailableSpace::Definite(MaybeClamp(
-                                    containerHeight, minSize.h, maxSize.h))};
-
-        // Both axes already known: the content measurement would not
-        // change the used size.
-        SizeF finalSize;
-        if (IsSome(knownDimensions.w) && IsSome(knownDimensions.h)) {
-            finalSize = {knownDimensions.w, knownDimensions.h};
+        OofCandidate candidate;
+        candidate.node = child;
+        candidate.order = (uint32_t)order;
+        candidate.position = cs.position;
+        if (c.isRow) {
+            candidate.staticX = mainPos;
+            candidate.staticY = crossPos;
         } else {
-            SizeF measuredSize = tree->MeasureChildSizeBoth(
-                child, knownDimensions, c.nodeInnerSize, childAvail,
-                SizingMode::ContentSize, LineBool::False());
-            finalSize = UnwrapOr(knownDimensions, measuredSize);
+            candidate.staticX = crossPos;
+            candidate.staticY = mainPos;
         }
-        finalSize = MaybeClamp(finalSize, minSize, maxSize);
-
-        LayoutOutput layoutOutput = tree->PerformChildLayout(
-            child, AsOptional(finalSize), c.nodeInnerSize, childAvail,
-            SizingMode::ContentSize, LineBool::False());
-
-        RectF nonAutoMargin = {
-            UnwrapOr(margin.left, 0.0f), UnwrapOr(margin.right, 0.0f),
-            UnwrapOr(margin.top, 0.0f), UnwrapOr(margin.bottom, 0.0f)};
-
-        SizeF freeSpace = Max(SizeF{c.containerSize.w - finalSize.w -
-                                        nonAutoMargin.HorizontalAxisSum(),
-                                    c.containerSize.h - finalSize.h -
-                                        nonAutoMargin.VerticalAxisSum()},
-                              SizeF::Zero());
-
-        // Expand auto margins to fill the available space.
-        int autoW =
-            (IsSome(margin.left) ? 0 : 1) + (IsSome(margin.right) ? 0 : 1);
-        int autoH =
-            (IsSome(margin.top) ? 0 : 1) + (IsSome(margin.bottom) ? 0 : 1);
-        SizeF autoMarginSize = {autoW > 0 && IsSome(left) && IsSome(right)
-                                    ? freeSpace.w / (float)autoW
-                                    : 0.0f,
-                                autoH > 0 && IsSome(top) && IsSome(bottom)
-                                    ? freeSpace.h / (float)autoH
-                                    : 0.0f};
-        RectF resolvedMargin = {UnwrapOr(margin.left, autoMarginSize.w),
-                                UnwrapOr(margin.right, autoMarginSize.w),
-                                UnwrapOr(margin.top, autoMarginSize.h),
-                                UnwrapOr(margin.bottom, autoMarginSize.h)};
-
-        // Flex-relative insets.
-        Optf startMain = c.isRow ? left : top;
-        Optf endMain = c.isRow ? right : bottom;
-        Optf startCross = c.isRow ? top : left;
-        Optf endCross = c.isRow ? bottom : right;
-        bool mainIsRtl = c.isRow && IsRtl(c.layoutDirection);
-        bool crossIsRtl = !c.isRow && IsRtl(c.layoutDirection);
-        bool mainAxisFlexStartReversed = IsReverse(c.dir) != mainIsRtl;
-        bool crossAxisFlexStartReversed = c.isWrapReverse != crossIsRtl;
-        float mainStartScrollbarOffset =
-            mainIsRtl ? Main(c.scrollbarGutter, c.dir) : 0.0f;
-        float crossStartScrollbarOffset =
-            crossIsRtl ? Cross(c.scrollbarGutter, c.dir) : 0.0f;
-        float mainEndScrollbarOffset =
-            mainIsRtl ? 0.0f : Main(c.scrollbarGutter, c.dir);
-        float crossEndScrollbarOffset =
-            crossIsRtl ? 0.0f : Cross(c.scrollbarGutter, c.dir);
-
-        float alignedToMainEnd =
-            Main(c.containerSize, c.dir) - MainEnd(c.border, c.dir) -
-            mainEndScrollbarOffset - Main(finalSize, c.dir) -
-            UnwrapOr(endMain, 0.0f) - MainEnd(resolvedMargin, c.dir);
-        float offsetMain;
-        if (IsSome(startMain) || IsSome(endMain)) {
-            if (IsSome(startMain) && !(mainIsRtl && IsSome(endMain))) {
-                offsetMain = startMain + MainStart(c.border, c.dir) +
-                             mainStartScrollbarOffset +
-                             MainStart(resolvedMargin, c.dir);
-            } else {
-                offsetMain = alignedToMainEnd;
-            }
-        } else {
-            // Stretch is invalid for justify_content in flexbox, so it is
-            // treated as unset (FlexStart).
-            //
-            // The `safe` overflow-position keyword is deliberately NOT applied
-            // here even when the item overflows the main axis: Chrome does not
-            // apply the safe fallback to justify-content on absolutely
-            // positioned flex items (only cross-axis align-self does).
-            float startPos = MainStart(c.contentBoxInset, c.dir) +
-                             MainStart(resolvedMargin, c.dir);
-            float endPos = Main(c.containerSize, c.dir) -
-                           MainEnd(c.contentBoxInset, c.dir) -
-                           Main(finalSize, c.dir) -
-                           MainEnd(resolvedMargin, c.dir);
-            AlignContentKeyword jc =
-                c.justifyContent
-                    .UnwrapOr(AlignContent{AlignContentKeyword::FlexStart})
-                    .Keyword();
-            bool rev = mainAxisFlexStartReversed;
-            bool startPosition = jc == AlignContentKeyword::Start ? !mainIsRtl
-                                 : jc == AlignContentKeyword::End ? mainIsRtl
-                                                                  : true;
-            switch (jc) {
-                case AlignContentKeyword::SpaceBetween:
-                case AlignContentKeyword::Stretch:
-                case AlignContentKeyword::FlexStart:
-                    offsetMain = rev ? endPos : startPos;
-                    break;
-                case AlignContentKeyword::FlexEnd:
-                    offsetMain = rev ? startPos : endPos;
-                    break;
-                case AlignContentKeyword::Start:
-                case AlignContentKeyword::End:
-                    offsetMain = startPosition ? startPos : endPos;
-                    break;
-                default: // SpaceEvenly, SpaceAround, Center
-                    offsetMain = (Main(c.containerSize, c.dir) +
-                                  MainStart(c.contentBoxInset, c.dir) -
-                                  MainEnd(c.contentBoxInset, c.dir) -
-                                  Main(finalSize, c.dir) +
-                                  MainStart(resolvedMargin, c.dir) -
-                                  MainEnd(resolvedMargin, c.dir)) /
-                                 2.0f;
-                    break;
-            }
-        }
-
-        float alignedToCrossEnd =
-            Cross(c.containerSize, c.dir) - CrossEnd(c.border, c.dir) -
-            crossEndScrollbarOffset - Cross(finalSize, c.dir) -
-            UnwrapOr(endCross, 0.0f) - CrossEnd(resolvedMargin, c.dir);
-        float offsetCross;
-        if (IsSome(startCross) || IsSome(endCross)) {
-            if (IsSome(startCross) && !(crossIsRtl && IsSome(endCross))) {
-                offsetCross = startCross + CrossStart(c.border, c.dir) +
-                              crossStartScrollbarOffset +
-                              CrossStart(resolvedMargin, c.dir);
-            } else {
-                offsetCross = alignedToCrossEnd;
-            }
-        } else {
-            bool crossOverflows =
-                Cross(finalSize, c.dir) + CrossAxisSum(resolvedMargin, c.dir) >
-                Cross(c.containerSize, c.dir) -
-                    CrossAxisSum(c.contentBoxInset, c.dir);
-            AlignItemsKeyword ck =
-                ResolveSelfAlignmentSafety(alignSelf, crossOverflows);
-            float startPos = CrossStart(c.contentBoxInset, c.dir) +
-                             CrossStart(resolvedMargin, c.dir);
-            float endPos = Cross(c.containerSize, c.dir) -
-                           CrossEnd(c.contentBoxInset, c.dir) -
-                           Cross(finalSize, c.dir) -
-                           CrossEnd(resolvedMargin, c.dir);
-            bool rev = crossAxisFlexStartReversed;
-            bool startPosition = ck == AlignItemsKeyword::Start ||
-                                         ck == AlignItemsKeyword::Baseline
-                                     ? !crossIsRtl
-                                 : ck == AlignItemsKeyword::End ? crossIsRtl
-                                                                : true;
-            switch (ck) {
-                case AlignItemsKeyword::Start:
-                case AlignItemsKeyword::End:
-                case AlignItemsKeyword::Baseline:
-                    offsetCross = startPosition ? startPos : endPos;
-                    break;
-                case AlignItemsKeyword::Center:
-                    offsetCross = (Cross(c.containerSize, c.dir) +
-                                   CrossStart(c.contentBoxInset, c.dir) -
-                                   CrossEnd(c.contentBoxInset, c.dir) -
-                                   Cross(finalSize, c.dir) +
-                                   CrossStart(resolvedMargin, c.dir) -
-                                   CrossEnd(resolvedMargin, c.dir)) /
-                                  2.0f;
-                    break;
-                case AlignItemsKeyword::FlexEnd:
-                    offsetCross = rev ? startPos : endPos;
-                    break;
-                default:
-                    // Stretch and FlexStart. Stretch alignment does
-                    // not apply to absolutely positioned items; see "Example
-                    // 3" at https://www.w3.org/TR/css-flexbox-1/#abspos-items
-                    offsetCross = rev ? endPos : startPos;
-                    break;
-            }
-        }
-
-        PointF location = c.isRow ? PointF{offsetMain, offsetCross}
-                                  : PointF{offsetCross, offsetMain};
-        SizeF scrollbarSize = {
-            overflow.y == Overflow::Scroll ? scrollbarWidth : 0.0f,
-            overflow.x == Overflow::Scroll ? scrollbarWidth : 0.0f};
-
-        Layout layout;
-        layout.order = (uint32_t)order;
-        layout.size = finalSize;
-        layout.scrollableOverflowRect = layoutOutput.scrollableOverflowRect;
-        layout.scrollbarSize = scrollbarSize;
-        layout.location = location;
-        layout.padding = padding;
-        layout.border = border;
-        layout.margin = resolvedMargin;
-        tree->SetUnroundedLayout(child, layout);
-
-        // Location is measured from the scroll origin (inline-start; the
-        // right side in RTL).
-        PointF absoluteAreaOffset = {
-            c.border.left +
-                (IsRtl(c.layoutDirection) ? c.scrollbarGutter.x : 0.0f),
-            c.border.top};
-        PointF relativeLocation = {location.x - absoluteAreaOffset.x,
-                                   location.y - absoluteAreaOffset.y};
-        PointF contributionLocation =
-            IsRtl(c.layoutDirection)
-                ? PointF{insetRelativeSize.w - relativeLocation.x - finalSize.w,
-                         relativeLocation.y}
-                : relativeLocation;
-        overflowRect = overflowRect.Union(ComputeScrollableOverflowContribution(
-            contributionLocation, finalSize,
-            layoutOutput.scrollableOverflowRect, overflow, contain,
-            c.isScrollContainer));
+        candidates->Push(candidate);
     }
-
-    return overflowRect;
 }
 
 // ─── compute_preliminary ─────────────────────────────────────────────────
@@ -2418,10 +2252,13 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
     // 16. Align all flex lines per align-content.
     AlignFlexLinesPerAlignContent(&flexLines, constants, totalLineCrossSize);
 
-    RectF inflowOverflowRect = FinalLayoutPass(tree, &flexLines, constants);
+    Vec<OofCandidate> oofPool;
+    RectF inflowOverflowRect =
+        FinalLayoutPass(tree, &flexLines, constants, &oofPool);
 
-    RectF absoluteOverflowRect =
-        PerformAbsoluteLayoutOnAbsoluteChildren(tree, node, constants);
+    OofCandidates candidates;
+    CollectOofCandidates(tree, node, constants, &flexLines, &oofPool,
+                         &candidates);
 
     // display:none children still get a zeroed layout.
     int nChildren = tree->ChildCount(node);
@@ -2464,12 +2301,27 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
         firstVerticalBaseline = Some(chosen->baseline);
     }
 
+    RectF areaInset = constants.border;
+    if (IsRtl(constants.layoutDirection)) {
+        areaInset.left += constants.scrollbarGutter.x;
+    } else {
+        areaInset.right += constants.scrollbarGutter.x;
+    }
+    areaInset.bottom += constants.scrollbarGutter.y;
+
     VecReset(flexItems);
     VecReset(flexLines);
+    VecReset(oofPool);
 
-    return LayoutOutput::FromSizesAndBaselines(
-        constants.containerSize, inflowOverflowRect.Union(absoluteOverflowRect),
+    LayoutOutput output = LayoutOutput::FromSizesAndBaselines(
+        constants.containerSize, inflowOverflowRect,
         BaselinesFromFirst(firstVerticalBaseline));
+    output.oofCandidates = candidates;
+    output.hasOofPositioningArea = true;
+    output.oofPositioningArea.size = constants.containerSize - areaInset
+                                                                   .SumAxes();
+    output.oofPositioningArea.offset = {areaInset.left, areaInset.top};
+    return output;
 }
 
 } // namespace

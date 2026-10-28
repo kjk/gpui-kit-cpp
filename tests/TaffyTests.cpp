@@ -3977,6 +3977,7 @@ static void TestOverflowPastScrollOrigin() {
 
     taffy::Style midStyle;
     midStyle.display = taffy::Display::Block;
+    midStyle.position = taffy::Position::Relative;
     midStyle.size = SizeDim::FromLengths(40.0f, 20.0f);
     midStyle.margin.left = LengthPercentageAuto::Length(60.0f);
     TaffyNodeId mid = tree.NewWithChildren(midStyle, &abs, 1);
@@ -4151,6 +4152,7 @@ static taffy::Layout AbsoluteChildLayout(taffy::Display display,
     TaffyNodeId child = tree.NewLeaf(childStyle);
     taffy::Style nodeStyle;
     nodeStyle.display = display;
+    nodeStyle.position = taffy::Position::Relative;
     nodeStyle.direction = direction;
     nodeStyle.size = SizeDim::FromLengths(kContainer, kContainer);
     nodeStyle.overflow = {overflow, overflow};
@@ -4207,6 +4209,7 @@ static void TestScrollableOverflow() {
         TaffyNodeId abs = tree.NewLeaf(absStyle);
         taffy::Style padStyle;
         padStyle.display = d;
+        padStyle.position = taffy::Position::Relative;
         padStyle.overflow = {taffy::Overflow::Scroll, taffy::Overflow::Scroll};
         padStyle.padding.right = LengthPercentage::Length(20.0f);
         padStyle.padding.bottom = LengthPercentage::Length(30.0f);
@@ -4232,6 +4235,7 @@ static void TestScrollableOverflow() {
             TaffyNodeId grand = nestedTree.NewLeaf(grandStyle);
             taffy::Style childStyle;
             childStyle.display = d;
+            childStyle.position = taffy::Position::Relative;
             childStyle.size = SizeDim::FromLengths(kContainer, kContainer);
             childStyle.overflow = {x, y};
             TaffyNodeId child = nestedTree
@@ -5083,6 +5087,7 @@ static void TestContainment() {
         TaffyNodeId abs = tree.NewLeaf(absStyle);
         taffy::Style midStyle;
         midStyle.display = taffy::Display::Block;
+        midStyle.position = taffy::Position::Relative;
         midStyle.contain = contain;
         midStyle.size = SizeDim::FromLengths(50.0f, 50.0f);
         TaffyNodeId mid = tree.NewWithChildren(midStyle, &abs, 1);
@@ -5695,6 +5700,387 @@ static void TestNegativeAvailableSpace() {
     AssertMarginsFloorAtZero(taffy::Display::Grid, FlexDirection::Row);
 }
 
+// oof.rs resolve_static_offset. Area is start 10, end 110.
+static void TestResolveStaticOffset() {
+    TestSuite("taffy resolve static offset");
+    AxisStaticPosition start;
+    start.start = 10.0f;
+    start.end = 110.0f;
+    start.align = AxisStaticAlign::FromKeyword(AxisStaticEdge::Start);
+    utassertnear(ResolveStaticOffsetAxis(start, 20.0f, 0.0f, 0.0f), 10.0f);
+    utassertnear(ResolveStaticOffsetAxis(start, 20.0f, 5.0f, 15.0f), 15.0f);
+
+    AxisStaticPosition end = start;
+    end.align = AxisStaticAlign::FromKeyword(AxisStaticEdge::End);
+    utassertnear(ResolveStaticOffsetAxis(end, 20.0f, 0.0f, 0.0f), 90.0f);
+    utassertnear(ResolveStaticOffsetAxis(end, 20.0f, 5.0f, 15.0f), 75.0f);
+
+    AxisStaticPosition center = start;
+    center.align = AxisStaticAlign::FromKeyword(AxisStaticEdge::Center);
+    utassertnear(ResolveStaticOffsetAxis(center, 20.0f, 0.0f, 0.0f), 50.0f);
+    utassertnear(ResolveStaticOffsetAxis(center, 20.0f, 5.0f, 15.0f), 45.0f);
+
+    AxisStaticPosition safe = start;
+    safe.align.keyword = AxisStaticEdge::End;
+    safe.align.safety = AlignmentSafety::Safe;
+    safe.align.fallback = AxisStaticEdge::Start;
+    utassertnear(ResolveStaticOffsetAxis(safe, 20.0f, 0.0f, 0.0f), 90.0f);
+    utassertnear(ResolveStaticOffsetAxis(safe, 100.0f, 0.0f, 0.0f), 10.0f);
+    utassertnear(ResolveStaticOffsetAxis(safe, 120.0f, 0.0f, 0.0f), 10.0f);
+    utassertnear(ResolveStaticOffsetAxis(safe, 90.0f, 5.0f, 15.0f), 15.0f);
+
+    AxisStaticPosition unsafeEnd = safe;
+    unsafeEnd.align.safety = AlignmentSafety::Unsafe;
+    utassertnear(ResolveStaticOffsetAxis(unsafeEnd, 120.0f, 0.0f, 0.0f),
+                 -10.0f);
+
+    AxisStaticPosition anchor =
+        AxisStaticPosition::FromEdge(40.0f, AxisStaticEdge::Start);
+    utassertnear(ResolveStaticOffsetAxis(anchor, 20.0f, 0.0f, 0.0f), 40.0f);
+    AxisStaticPosition anchorEnd =
+        AxisStaticPosition::FromEdge(40.0f, AxisStaticEdge::End);
+    utassertnear(ResolveStaticOffsetAxis(anchorEnd, 20.0f, 0.0f, 0.0f), 20.0f);
+}
+
+static taffy::Style OofLeaf(float w, float h) {
+    taffy::Style s;
+    s.size = SizeDim::FromLengths(w, h);
+    return s;
+}
+
+static void AssertLoc(const TaffyTree& tree, TaffyNodeId node, float x,
+                      float y) {
+    utassertnear(tree.GetLayout(node).location.x, x);
+    utassertnear(tree.GetLayout(node).location.y, y);
+}
+
+// tests/hand_written/oof_hoisting.rs. Absolute and fixed boxes are laid out
+// by their containing block, and the location is relative to that block.
+static void TestOofHoisting() {
+    TestSuite("taffy out-of-flow hoisting");
+    taffy::Display displays[] = {taffy::Display::Block, taffy::Display::Flex,
+                                 taffy::Display::Grid};
+
+    for (taffy::Display d : displays) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.left = LengthPercentageAuto::Length(10.0f);
+        absStyle.inset.top = LengthPercentageAuto::Length(20.0f);
+        absStyle.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        taffy::Style parent = OofLeaf(50.0f, 50.0f);
+        parent.display = d;
+        parent.margin.left = LengthPercentageAuto::Length(40.0f);
+        parent.margin.top = LengthPercentageAuto::Length(40.0f);
+        TaffyNodeId staticParent = tree.NewWithChildren(parent, &abs, 1);
+        taffy::Style cbStyle = OofLeaf(200.0f, 200.0f);
+        cbStyle.display = d;
+        cbStyle.position = taffy::Position::Relative;
+        TaffyNodeId cb = tree.NewWithChildren(cbStyle, &staticParent, 1);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 10.0f, 20.0f);
+        utassertnear(tree.GetLayout(abs).size.w, 30.0f);
+        utassertnear(tree.GetLayout(abs).size.h, 30.0f);
+        tree.Free();
+    }
+
+    for (taffy::Display d : displays) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.size = SizeDim::FromLengths(10.0f, 10.0f);
+        taffy::Style inflow = OofLeaf(20.0f, 20.0f);
+        inflow.display = d;
+        TaffyNodeId directA = tree.NewLeaf(absStyle);
+        TaffyNodeId nestedB = tree.NewLeaf(absStyle);
+        TaffyNodeId staticB = tree.NewWithChildren(inflow, &nestedB, 1);
+        TaffyNodeId nestedC = tree.NewLeaf(absStyle);
+        TaffyNodeId staticC = tree.NewWithChildren(inflow, &nestedC, 1);
+        TaffyNodeId directD = tree.NewLeaf(absStyle);
+        TaffyNodeId nestedE = tree.NewLeaf(absStyle);
+        TaffyNodeId staticE = tree.NewWithChildren(inflow, &nestedE, 1);
+        TaffyNodeId kids[] = {directA, staticB, staticC, directD, staticE};
+        taffy::Style cbStyle = OofLeaf(50.0f, 200.0f);
+        cbStyle.display = d;
+        cbStyle.position = taffy::Position::Relative;
+        cbStyle.flexWrap = FlexWrap::WrapReverse;
+        cbStyle.flexDirection = FlexDirection::RowReverse;
+        TaffyNodeId cb = tree.NewWithChildren(cbStyle, kids, 5);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        utassert(tree.HoistedChildCount(cb) == 5);
+        utassert(tree.HoistedChildAt(cb, 0) == directA);
+        utassert(tree.HoistedChildAt(cb, 1) == nestedB);
+        utassert(tree.HoistedChildAt(cb, 2) == nestedC);
+        utassert(tree.HoistedChildAt(cb, 3) == directD);
+        utassert(tree.HoistedChildAt(cb, 4) == nestedE);
+        tree.Free();
+    }
+
+    for (taffy::Display d : displays) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        TaffyNodeId sibling = tree.NewLeaf(OofLeaf(50.0f, 50.0f));
+        TaffyNodeId pair[] = {sibling, abs};
+        taffy::Style parent = OofLeaf(100.0f, 100.0f);
+        parent.display = d;
+        parent.margin.left = LengthPercentageAuto::Length(40.0f);
+        parent.margin.top = LengthPercentageAuto::Length(40.0f);
+        TaffyNodeId staticParent = tree.NewWithChildren(parent, pair, 2);
+        taffy::Style cbStyle = OofLeaf(200.0f, 200.0f);
+        cbStyle.display = d;
+        cbStyle.position = taffy::Position::Relative;
+        TaffyNodeId cb = tree.NewWithChildren(cbStyle, &staticParent, 1);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        if (d == taffy::Display::Block) {
+            AssertLoc(tree, abs, 40.0f, 90.0f);
+        } else {
+            AssertLoc(tree, abs, 40.0f, 40.0f);
+        }
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style fixedStyle;
+        fixedStyle.position = taffy::Position::Fixed;
+        fixedStyle.inset.left = LengthPercentageAuto::Length(5.0f);
+        fixedStyle.inset.top = LengthPercentageAuto::Length(5.0f);
+        fixedStyle.size = SizeDim::FromLengths(10.0f, 10.0f);
+        TaffyNodeId fixed = tree.NewLeaf(fixedStyle);
+        taffy::Style parent = OofLeaf(50.0f, 50.0f);
+        parent.position = taffy::Position::Relative;
+        parent.margin.left = LengthPercentageAuto::Length(50.0f);
+        parent.margin.top = LengthPercentageAuto::Length(50.0f);
+        TaffyNodeId positioned = tree.NewWithChildren(parent, &fixed, 1);
+        TaffyNodeId root =
+            tree.NewWithChildren(OofLeaf(200.0f, 200.0f), &positioned, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertLoc(tree, fixed, 5.0f, 5.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style innerStyle;
+        innerStyle.position = taffy::Position::Absolute;
+        innerStyle.inset.right = LengthPercentageAuto::Length(0.0f);
+        innerStyle.inset.bottom = LengthPercentageAuto::Length(0.0f);
+        innerStyle.size = SizeDim::FromLengths(10.0f, 10.0f);
+        TaffyNodeId inner = tree.NewLeaf(innerStyle);
+        taffy::Style outerStyle;
+        outerStyle.position = taffy::Position::Absolute;
+        outerStyle.inset.left = LengthPercentageAuto::Length(20.0f);
+        outerStyle.inset.top = LengthPercentageAuto::Length(20.0f);
+        outerStyle.size = SizeDim::FromLengths(50.0f, 50.0f);
+        TaffyNodeId outer = tree.NewWithChildren(outerStyle, &inner, 1);
+        TaffyNodeId root =
+            tree.NewWithChildren(OofLeaf(200.0f, 200.0f), &outer, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertLoc(tree, outer, 20.0f, 20.0f);
+        AssertLoc(tree, inner, 40.0f, 40.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style fixedStyle;
+        fixedStyle.position = taffy::Position::Fixed;
+        fixedStyle.inset.left = LengthPercentageAuto::Length(1.0f);
+        fixedStyle.inset.top = LengthPercentageAuto::Length(2.0f);
+        fixedStyle.size = SizeDim::FromLengths(10.0f, 10.0f);
+        TaffyNodeId fixed = tree.NewLeaf(fixedStyle);
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.left = LengthPercentageAuto::Length(20.0f);
+        absStyle.inset.top = LengthPercentageAuto::Length(20.0f);
+        absStyle.size = SizeDim::FromLengths(50.0f, 50.0f);
+        TaffyNodeId abs = tree.NewWithChildren(absStyle, &fixed, 1);
+        taffy::Style cbStyle = OofLeaf(100.0f, 100.0f);
+        cbStyle.position = taffy::Position::Relative;
+        cbStyle.margin.left = LengthPercentageAuto::Length(30.0f);
+        cbStyle.margin.top = LengthPercentageAuto::Length(30.0f);
+        TaffyNodeId cb = tree.NewWithChildren(cbStyle, &abs, 1);
+        TaffyNodeId root =
+            tree.NewWithChildren(OofLeaf(200.0f, 200.0f), &cb, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 20.0f, 20.0f);
+        AssertLoc(tree, fixed, 1.0f, 2.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.left = LengthPercentageAuto::Length(10.0f);
+        absStyle.inset.top = LengthPercentageAuto::Length(20.0f);
+        absStyle.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        TaffyNodeId ancestor =
+            tree.NewWithChildren(OofLeaf(50.0f, 50.0f), &abs, 1);
+        for (int i = 0; i < 3; i++) {
+            ancestor =
+                tree.NewWithChildren(OofLeaf(50.0f, 50.0f), &ancestor, 1);
+        }
+        taffy::Style cbStyle = OofLeaf(200.0f, 200.0f);
+        cbStyle.position = taffy::Position::Relative;
+        TaffyNodeId cb = tree.NewWithChildren(cbStyle, &ancestor, 1);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 10.0f, 20.0f);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 10.0f, 20.0f);
+        tree.MarkDirty(cb);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 10.0f, 20.0f);
+        taffy::Style moved = tree.GetStyle(abs);
+        moved.inset.left = LengthPercentageAuto::Length(15.0f);
+        tree.SetStyle(abs, moved);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 15.0f, 20.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style fixedStyle = OofLeaf(30.0f, 30.0f);
+        fixedStyle.position = taffy::Position::Fixed;
+        TaffyNodeId fixed = tree.NewLeaf(fixedStyle);
+        TaffyNodeId inner =
+            tree.NewWithChildren(OofLeaf(50.0f, 50.0f), &fixed, 1);
+        TaffyNodeId root =
+            tree.NewWithChildren(OofLeaf(200.0f, 200.0f), &inner, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassert(tree.HoistedChildCount(root) == 1);
+        utassert(tree.HoistedChildAt(root, 0) == fixed);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassert(tree.HoistedChildCount(root) == 1);
+        utassert(tree.HoistedChildAt(root, 0) == fixed);
+        tree.MarkDirty(root);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassert(tree.HoistedChildCount(root) == 1);
+        utassert(tree.HoistedChildAt(root, 0) == fixed);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        tree.EnableRounding();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.left = LengthPercentageAuto::Length(10.6f);
+        absStyle.inset.top = LengthPercentageAuto::Length(10.6f);
+        absStyle.size = SizeDim::FromLengths(10.0f, 10.0f);
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        TaffyNodeId staticParent =
+            tree.NewWithChildren(OofLeaf(50.0f, 50.0f), &abs, 1);
+        taffy::Style cbStyle = OofLeaf(100.0f, 100.0f);
+        cbStyle.position = taffy::Position::Relative;
+        cbStyle.margin.left = LengthPercentageAuto::Length(20.3f);
+        cbStyle.margin.top = LengthPercentageAuto::Length(20.3f);
+        TaffyNodeId cb = tree.NewWithChildren(cbStyle, &staticParent, 1);
+        TaffyNodeId root =
+            tree.NewWithChildren(OofLeaf(200.0f, 200.0f), &cb, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertLoc(tree, cb, 20.0f, 20.0f);
+        AssertLoc(tree, abs, 11.0f, 11.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.left = LengthPercentageAuto::Length(10.0f);
+        absStyle.inset.top = LengthPercentageAuto::Length(20.0f);
+        absStyle.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        taffy::Style middleStyle = OofLeaf(50.0f, 50.0f);
+        middleStyle.margin.left = LengthPercentageAuto::Length(40.0f);
+        middleStyle.margin.top = LengthPercentageAuto::Length(40.0f);
+        TaffyNodeId middle = tree.NewWithChildren(middleStyle, &abs, 1);
+        taffy::Style cbStyle = OofLeaf(200.0f, 200.0f);
+        cbStyle.position = taffy::Position::Relative;
+        TaffyNodeId cb = tree.NewWithChildren(cbStyle, &middle, 1);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 10.0f, 20.0f);
+        taffy::Style positioned = middleStyle;
+        positioned.position = taffy::Position::Relative;
+        tree.SetStyle(middle, positioned);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 10.0f, 20.0f);
+        AssertLoc(tree, middle, 40.0f, 40.0f);
+        tree.SetStyle(middle, middleStyle);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 10.0f, 20.0f);
+        AssertLoc(tree, middle, 40.0f, 40.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style fixedStyle = OofLeaf(10.0f, 10.0f);
+        fixedStyle.position = taffy::Position::Fixed;
+        fixedStyle.inset.left = LengthPercentageAuto::Length(5.0f);
+        fixedStyle.inset.top = LengthPercentageAuto::Length(5.0f);
+        TaffyNodeId fixed = tree.NewLeaf(fixedStyle);
+        taffy::Style absStyle = OofLeaf(80.0f, 80.0f);
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.left = LengthPercentageAuto::Length(50.0f);
+        absStyle.inset.top = LengthPercentageAuto::Length(50.0f);
+        TaffyNodeId abs = tree.NewWithChildren(absStyle, &fixed, 1);
+        TaffyNodeId root =
+            tree.NewWithChildren(OofLeaf(200.0f, 200.0f), &abs, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertLoc(tree, fixed, 5.0f, 5.0f);
+        AssertLoc(tree, abs, 50.0f, 50.0f);
+        taffy::Style moved = tree.GetStyle(fixed);
+        moved.inset.left = LengthPercentageAuto::Length(7.0f);
+        tree.SetStyle(fixed, moved);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertLoc(tree, fixed, 7.0f, 5.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId inner = tree.NewLeaf(OofLeaf(10.0f, 10.0f));
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.left = LengthPercentageAuto::Length(10.0f);
+        absStyle.inset.top = LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId abs = tree.NewWithChildren(absStyle, &inner, 1);
+        TaffyNodeId staticParent =
+            tree.NewWithChildren(OofLeaf(50.0f, 50.0f), &abs, 1);
+        taffy::Style cbStyle = OofLeaf(200.0f, 200.0f);
+        cbStyle.position = taffy::Position::Relative;
+        TaffyNodeId cb = tree.NewWithChildren(cbStyle, &staticParent, 1);
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(abs).size.w, 10.0f);
+        utassertnear(tree.GetLayout(abs).size.h, 10.0f);
+        tree.SetStyle(inner, OofLeaf(20.0f, 30.0f));
+        tree.ComputeLayout(cb, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(abs).size.w, 20.0f);
+        utassertnear(tree.GetLayout(abs).size.h, 30.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -5708,6 +6094,8 @@ void TestTaffy() {
     TestFlexDirection();
     TestStyleDefaults();
     TestPositionStaticSticky();
+    TestResolveStaticOffset();
+    TestOofHoisting();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

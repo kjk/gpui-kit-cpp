@@ -67,6 +67,20 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
         }
     }
 
+    LayoutInput rootInput;
+    rootInput.knownDimensions = knownDimensions;
+    rootInput.parentSize = availableSpace.IntoOptions();
+    rootInput.availableSpace = availableSpace;
+    rootInput.sizingMode = SizingMode::InherentSize;
+    rootInput.axis = RequestedAxis::Both;
+    rootInput.runMode = RunMode::PerformLayout;
+    rootInput.verticalMarginsAreCollapsible = LineBool::False();
+    LayoutOutput cachedProbe;
+    // A cached root already recorded its hoisted children, including the
+    // ones this pass adds below. Laying the candidates out again is fine;
+    // appending them again is not.
+    bool rootIsCached = tree->CacheGet(root, rootInput, &cachedProbe);
+
     LayoutOutput output = tree->PerformChildLayout(
         root, knownDimensions, availableSpace.IntoOptions(), availableSpace,
         SizingMode::InherentSize, LineBool::False());
@@ -97,6 +111,29 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
     // TODO(taffy): support auto margins for the root node?
     layout.margin = margin;
     tree->SetUnroundedLayout(root, layout);
+
+    // The root is the initial containing block. A static root's own pass
+    // claims nothing, so absolute and fixed boxes are still on `output`.
+    // Overflow from this pass is not folded back into the root layout; a
+    // positioned root already claimed its absolutes inside the child pass.
+    if (!output.oofCandidates.IsEmpty()) {
+        RectF areaInset = border;
+        areaInset.right += scrollbarSize.w;
+        areaInset.bottom += scrollbarSize.h;
+        SizeF areaSize = output.size - areaInset.SumAxes();
+        PointF areaOffset = {areaInset.left, areaInset.top};
+        Vec<NodeId> hoisted;
+        OofCandidates unclaimed;
+        RectF overflow = RectF::Zero();
+        bool scroll = IsScrollContainer(style.overflow.x) ||
+                      IsScrollContainer(style.overflow.y);
+        PerformOofLayout(tree, root, output.oofCandidates, areaSize, areaOffset,
+                         style.direction, ContainingBlockClaims::All(), scroll,
+                         &hoisted, &unclaimed, &overflow);
+        if (!rootIsCached) {
+            tree->AddHoistedChildren(root, hoisted);
+        }
+    }
 }
 
 // ─── compute_hidden_layout ───────────────────────────────────────────────
@@ -176,9 +213,19 @@ static void RoundLayoutInner(TaffyTree* tree, NodeId nodeId, float cumulativeX,
 
     tree->SetFinalLayout(nodeId, layout);
 
+    // Out-of-flow children are rounded from the containing block's hoisted
+    // list, so their cumulative offset matches the block their location is
+    // relative to. Walking them here as well would round them twice.
     int n = tree->ChildCount(nodeId);
     for (int i = 0; i < n; i++) {
-        RoundLayoutInner(tree, tree->GetChildId(nodeId, i), cumulativeX,
+        NodeId child = tree->GetChildId(nodeId, i);
+        if (!IsOutOfFlow(tree->GetStyle(child).position)) {
+            RoundLayoutInner(tree, child, cumulativeX, cumulativeY);
+        }
+    }
+    int hoisted = tree->HoistedChildCount(nodeId);
+    for (int i = 0; i < hoisted; i++) {
+        RoundLayoutInner(tree, tree->HoistedChildAt(nodeId, i), cumulativeX,
                          cumulativeY);
     }
 }

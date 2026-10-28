@@ -29,6 +29,30 @@ LayoutOutput ComputeHiddenLayout(TaffyTree* tree, NodeId node);
 // `unroundedLayout` and writes `finalLayout`, so rounding never compounds.
 void RoundLayout(TaffyTree* tree, NodeId node);
 
+// Lay out the candidates in `output` for which `node` is the containing
+// block. PerformLayout only, and only when the positioning area is set.
+// Called inside the cache-miss path so a hit already carries the remainder.
+void ComputeOofLayout(TaffyTree* tree, NodeId node, LayoutOutput* output);
+
+// Lays out `candidates`, appending claimed nodes to `hoisted` and the rest
+// to `unclaimed`. `overflowOut` is the scrollable overflow of the claimed
+// boxes, relative to the positioning area's origin.
+void PerformOofLayout(TaffyTree* tree, NodeId nodeId, OofCandidates candidates,
+                      SizeF areaSize, PointF areaOffset, Direction direction,
+                      ContainingBlockClaims claims, bool isScrollContainer,
+                      Vec<NodeId>* hoisted, OofCandidates* unclaimed,
+                      RectF* overflowOut);
+
+// Static-position alignment for one axis. Exported for the unit tests.
+float ResolveStaticOffsetAxis(AxisStaticPosition position, float size,
+                              float marginStart, float marginEnd);
+
+// The grid area of `child` inside `grid`, or false when `grid` has no
+// track snapshot. `paddingBox` is the inset-resolution area (border box
+// minus borders and scrollbar gutters).
+bool GridOofArea(TaffyTree* tree, NodeId grid, NodeId child, RectF paddingBox,
+                 RectF* out);
+
 // Measures a leaf's intrinsic size. Rust passes a closure; the void* is what
 // it would have captured.
 using LeafMeasureFn = SizeF (*)(SizeFOpt knownDimensions,

@@ -104,6 +104,8 @@ static NodeId InsertNode(TaffyTree* tree, const Style& style) {
     d->generation = generation;
     d->alive = true;
     d->children.len = 0;
+    d->hoisted.len = 0;
+    d->gridOof.Clear();
     d->parent = NodeId{};
     d->hasParent = false;
 
@@ -564,6 +566,36 @@ void TaffyTree::CacheClear(NodeId node) {
     }
 }
 
+void TaffyTree::ClearHoistedChildren(NodeId node) {
+    NodeData* d = Get(node);
+    if (d) {
+        VecReset(d->hoisted);
+    }
+}
+
+void TaffyTree::AddHoistedChildren(NodeId node, const Vec<NodeId>& ids) {
+    NodeData* d = Get(node);
+    if (!d) {
+        return;
+    }
+    for (int i = 0; i < len(ids); i++) {
+        VecAppend(d->hoisted, ids[i]);
+    }
+}
+
+int TaffyTree::HoistedChildCount(NodeId node) const {
+    NodeData* d = Get(node);
+    return d ? len(d->hoisted) : 0;
+}
+
+NodeId TaffyTree::HoistedChildAt(NodeId node, int index) const {
+    NodeData* d = Get(node);
+    if (!d || index < 0 || index >= len(d->hoisted)) {
+        return NodeId{};
+    }
+    return d->hoisted[index];
+}
+
 // ─── compute_child_layout ────────────────────────────────────────────────
 
 LayoutOutput TaffyTree::ComputeBlockChildLayout(NodeId node, LayoutInput inputs,
@@ -591,6 +623,10 @@ LayoutOutput TaffyTree::ComputeBlockChildLayout(NodeId node, LayoutInput inputs,
 
     Display displayMode = d->style.display;
     bool hasChildren = d->children.len > 0;
+
+    // A previous grid snapshot must not answer a pass that is not a grid
+    // PerformLayout. The grid algorithm fills it again before returning.
+    d->gridOof.Clear();
 
     LayoutOutput out;
     if (displayMode == Display::None) {
@@ -620,6 +656,13 @@ LayoutOutput TaffyTree::ComputeBlockChildLayout(NodeId node, LayoutInput inputs,
                 out = ComputeFlexboxLayout(this, node, inputs);
                 break;
         }
+    }
+
+    // Claim out-of-flow candidates before the result is cached, so a later
+    // hit returns the already-processed remainder and does not lay them out
+    // again. Size-only runs leave the positioning area unset.
+    if (inputs.runMode == RunMode::PerformLayout) {
+        ComputeOofLayout(this, node, &out);
     }
 
     d->cache.StoreWithKey(key, inputs, out);

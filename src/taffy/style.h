@@ -541,6 +541,37 @@ inline bool IsPositioned(Position p) {
     return p != Position::Static;
 }
 
+// Which out-of-flow boxes a node lays out. Absolute follows `position`;
+// fixed is claimed only by the root pass. taffy `ContainingBlockClaims`.
+struct ContainingBlockClaims {
+    bool absolute = false;
+    bool fixed = false;
+
+    static ContainingBlockClaims None() { return {}; }
+    static ContainingBlockClaims All() {
+        ContainingBlockClaims c;
+        c.absolute = true;
+        c.fixed = true;
+        return c;
+    }
+    bool ForPosition(Position p) const {
+        if (p == Position::Absolute) {
+            return absolute;
+        }
+        if (p == Position::Fixed) {
+            return fixed;
+        }
+        return false;
+    }
+};
+
+// Plain CSS: a positioned box claims absolute descendants and never fixed.
+inline ContainingBlockClaims ContainingBlockFor(Position p) {
+    ContainingBlockClaims c;
+    c.absolute = IsPositioned(p);
+    return c;
+}
+
 // Whether size styles apply to the content box or the border box.
 enum class BoxSizing : uint8_t {
     BorderBox,

@@ -29,6 +29,36 @@ namespace taffy {
 
 struct BlockContext;
 
+// Track start/end positions a grid keeps so a later out-of-flow pass can
+// resolve `grid-row` / `grid-column` on a box it claims. This is not the
+// public `detailed_layout_info` feature; nothing outside that pass reads it.
+struct GridTrackSpan {
+    float start = 0.0f;
+    float end = 0.0f;
+};
+
+struct GridAxisPositions {
+    uint16_t negativeImplicit = 0;
+    uint16_t explicitCount = 0;
+    uint16_t positiveImplicit = 0;
+    uint16_t autoRepetitions = 0;
+    Vec<GridTrackSpan> spans;
+
+    void Clear() { VecReset(spans); }
+};
+
+struct GridOofSnapshot {
+    bool live = false;
+    GridAxisPositions columns;
+    GridAxisPositions rows;
+
+    void Clear() {
+        live = false;
+        columns.Clear();
+        rows.Clear();
+    }
+};
+
 // Lays out a leaf. Rust passes a closure that captures the tree; the context
 // and userData here are what it would have captured. The function returns a
 // LayoutOutput directly. ComputeLeafLayout is not called around it, so a
@@ -59,6 +89,10 @@ struct NodeData {
     bool alive = false;
 
     Vec<NodeId> children;
+    // Out-of-flow boxes this node laid out, in document order. Their
+    // `Layout::location` is relative to this node, not to their DOM parent.
+    Vec<NodeId> hoisted;
+    GridOofSnapshot gridOof;
     NodeId parent;
     bool hasParent = false;
 };
@@ -190,6 +224,11 @@ struct TaffyTree {
     LayoutOutput ComputeChildLayout(NodeId node, LayoutInput inputs);
     LayoutOutput ComputeBlockChildLayout(NodeId node, LayoutInput inputs,
                                          BlockContext* blockCtx);
+
+    void ClearHoistedChildren(NodeId node);
+    void AddHoistedChildren(NodeId node, const Vec<NodeId>& ids);
+    int HoistedChildCount(NodeId node) const;
+    NodeId HoistedChildAt(NodeId node, int index) const;
 
     // Rust's `LayoutPartialTreeExt` conveniences.
     float MeasureChildSize(NodeId node, SizeFOpt knownDimensions,
