@@ -516,9 +516,15 @@ void CollectFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
     AvailableSpace mainAxisAvailableSpace;
     Optf maxMain = Main(c.maxSize, c.dir);
     if (IsSome(maxMain)) {
+        float available =
+            UnwrapOr(availableSpace.Main(c.dir).IntoOption(), maxMain);
+        // An indefinite main size is at most the max main size, so items
+        // wrap against that max rather than against the available space.
+        if (!c.hasDefiniteMainSize) {
+            available = F32Min(available, maxMain);
+        }
         mainAxisAvailableSpace = AvailableSpace::Definite(
-            MaybeMax(UnwrapOr(availableSpace.Main(c.dir).IntoOption(), maxMain),
-                     Main(c.minSize, c.dir)));
+            MaybeMax(available, Main(c.minSize, c.dir)));
     } else {
         mainAxisAvailableSpace = availableSpace.Main(c.dir);
     }

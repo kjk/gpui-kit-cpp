@@ -1118,6 +1118,51 @@ static void TestFlexboxLayout() {
         utassertnear(tree.GetLayout(grand).size.h, 200.0f);
         tree.Free();
     }
+
+    {
+        // An indefinite width with max-width 20 wraps a row against that
+        // max, not against the 200px available space. The 110px height
+        // then stretches the two lines, so the second starts at y=40.
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style aStyle;
+            aStyle.boxSizing = BoxSizing::ContentBox;
+            aStyle.direction = directions[i];
+            aStyle.size = SizeDim::FromLengths(20.0f, 10.0f);
+            TaffyNodeId a = tree.NewLeaf(aStyle);
+            taffy::Style bStyle;
+            bStyle.boxSizing = BoxSizing::ContentBox;
+            bStyle.direction = directions[i];
+            bStyle.size = SizeDim::FromLengths(20.0f, 40.0f);
+            TaffyNodeId b = tree.NewLeaf(bStyle);
+
+            taffy::Style rootStyle;
+            rootStyle.boxSizing = BoxSizing::ContentBox;
+            rootStyle.direction = directions[i];
+            rootStyle.flexWrap = FlexWrap::Wrap;
+            rootStyle.size.height = Dimension::Length(110.0f);
+            rootStyle.maxSize.width = Dimension::Length(20.0f);
+            TaffyNodeId kids[2] = {a, b};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            SizeAvail space = {AvailableSpace::Definite(200.0f),
+                               AvailableSpace::MaxContent()};
+            tree.ComputeLayout(root, space);
+
+            utassertnear(tree.GetLayout(root).size.w, 20.0f);
+            utassertnear(tree.GetLayout(root).size.h, 110.0f);
+            utassertnear(tree.GetLayout(a).location.x, 0.0f);
+            utassertnear(tree.GetLayout(a).location.y, 0.0f);
+            utassertnear(tree.GetLayout(a).size.w, 20.0f);
+            utassertnear(tree.GetLayout(a).size.h, 10.0f);
+            utassertnear(tree.GetLayout(b).location.x, 0.0f);
+            utassertnear(tree.GetLayout(b).location.y, 40.0f);
+            utassertnear(tree.GetLayout(b).size.w, 20.0f);
+            utassertnear(tree.GetLayout(b).size.h, 40.0f);
+            tree.Free();
+        }
+    }
 }
 
 // ─── block end-to-end ────────────────────────────────────────────────────
