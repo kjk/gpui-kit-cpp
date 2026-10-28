@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `74b105c99021577c2b2d9e4a868ed376431f005d` (2026-10-24,
-website: Fix OtpInput examples and event documentation (#3645)).
-The change is website markdown for the OTP input examples and events.
-Those pages are not ported.
+Processed through `ae8d232884fda962442f39c825840784a9c46e53` (2026-10-24,
+focus_trap: End the Tab search at the first repeated stop (#3642)).
+Tab inside a trap already walks that trap's own stops, so a short
+cycle in the window order cannot hang the search. A trap with no
+reachable stop already focuses its container.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

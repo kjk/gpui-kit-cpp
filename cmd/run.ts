@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "74b105c99021577c2b2d9e4a868ed376431f005d",
+  sha: "ae8d232884fda962442f39c825840784a9c46e53",
   date: "2026-10-24",
-  subject: "website: Fix OtpInput examples and event documentation (#3645)",
+  subject: "focus_trap: End the Tab search at the first repeated stop (#3642)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",
