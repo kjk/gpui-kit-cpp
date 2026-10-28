@@ -615,6 +615,14 @@ void CollectFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
         }
         mainAxisAvailableSpace = AvailableSpace::Definite(
             MaybeMax(available, Main(c.minSize, c.dir)));
+    } else if (!c.isRow && !c.hasDefiniteMainSize &&
+               availableSpace.Main(c.dir)
+                       .kind == AvailableSpace::Kind::Definite) {
+        // A column's automatic main size is content-based. Definite
+        // available space from an ancestor does not decide where lines
+        // wrap. A row still wraps against that space, because an
+        // automatic width resolves against it.
+        mainAxisAvailableSpace = AvailableSpace::MaxContent();
     } else {
         mainAxisAvailableSpace = availableSpace.Main(c.dir);
     }
@@ -680,6 +688,10 @@ void CollectBalancedFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
             }
             mainAxisAvailableSpace = AvailableSpace::Definite(
                 MaybeMax(available, Main(c.minSize, c.dir)));
+        } else if (!c.isRow && !c.hasDefiniteMainSize &&
+                   availableSpace.Main(c.dir)
+                           .kind == AvailableSpace::Kind::Definite) {
+            mainAxisAvailableSpace = AvailableSpace::MaxContent();
         } else {
             mainAxisAvailableSpace = availableSpace.Main(c.dir);
         }

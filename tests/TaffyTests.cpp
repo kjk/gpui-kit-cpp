@@ -5067,6 +5067,30 @@ static void TestContainment() {
     utassertnear(painted.top, 0.0f);
 }
 
+// An auto-height wrapping column does not wrap against a definite height
+// handed down as available space. The two items stay in one column.
+static void TestFlexColumnWrapIgnoresAncestorHeight() {
+    TestSuite("taffy flex column wrap ancestor height");
+
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style item;
+    item.size = SizeDim::FromLengths(20.0f, 60.0f);
+    TaffyNodeId a = tree.NewLeaf(item);
+    TaffyNodeId b = tree.NewLeaf(item);
+    TaffyNodeId kids[] = {a, b};
+    taffy::Style rootStyle;
+    rootStyle.flexDirection = FlexDirection::Column;
+    rootStyle.flexWrap = FlexWrap::Wrap;
+    rootStyle.size.width = Dimension::Length(40.0f);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+    tree.ComputeLayout(root, SizeAvail::Definite({40.0f, 100.0f}));
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 40.0f, 120.0f);
+    AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 20.0f, 60.0f);
+    AssertBox(tree.GetLayout(b), 0.0f, 60.0f, 20.0f, 60.0f);
+    tree.Free();
+}
+
 // A column's intrinsic height floors by the flex basis first, then adds a
 // negative main-axis margin. Flooring after the margin would cancel it.
 static void TestFlexMarginAfterBasisFloor() {
@@ -5305,6 +5329,7 @@ void TestTaffy() {
     TestFlexNegativeMarginIntrinsic();
     TestFlexAspectRatioStretch();
     TestFlexMarginAfterBasisFloor();
+    TestFlexColumnWrapIgnoresAncestorHeight();
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();
