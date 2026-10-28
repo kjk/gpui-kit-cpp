@@ -1168,6 +1168,29 @@ static void TestBlockLayout() {
         utassertnear(tree.GetLayout(leaf).location.x, 20.0f);
         tree.Free();
     }
+
+    {
+        // align-content shifts a floated child. A 20px float in a 100px
+        // flow-root with align-content: flex-end sits at y = 80.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated;
+        floated.display = taffy::Display::Block;
+        floated.floatMode = taffy::Float::Left;
+        floated.size = SizeDim::FromLengths(20.0f, 20.0f);
+        TaffyNodeId child = tree.NewLeaf(floated);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::FlowRoot;
+        rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+        rootStyle.alignContent =
+            OptAlignContent(AlignContent{AlignContentKeyword::FlexEnd});
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.h, 100.0f);
+        utassertnear(tree.GetLayout(child).location.y, 80.0f);
+        utassertnear(tree.GetLayout(child).location.x, 0.0f);
+        tree.Free();
+    }
 }
 
 // ─── src/compute/grid/explicit_grid.rs ───────────────────────────────────

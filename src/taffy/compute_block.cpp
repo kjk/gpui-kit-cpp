@@ -759,8 +759,8 @@ struct BlockItem {
     PointF staticPosition;
     bool canBeCollapsedThrough = false;
 
-    // Pending layout for in-flow non-floated items, held back from the tree so
-    // the post-loop align-content pass can shift location.y first.
+    // Pending layout, held back from the tree so the post-loop align-content
+    // pass can shift location.y first. Floats are held the same way.
     bool hasFinalLayout = false;
     Layout finalLayout;
 };
@@ -971,16 +971,18 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             location.y += itemNonAutoMargin.top;
             location.x += itemNonAutoMargin.left;
 
-            Layout layout;
-            layout.order = item.order;
-            layout.size = itemLayout.size;
-            layout.contentSize = itemLayout.contentSize;
-            layout.scrollbarSize = scrollbarSize;
-            layout.location = location;
-            layout.padding = item.padding;
-            layout.border = item.border;
-            layout.margin = itemNonAutoMargin;
-            tree->SetUnroundedLayout(item.nodeId, layout);
+            // Deferred to the post-loop pass in ComputeInner, the same way
+            // in-flow items are, so align-content can shift location.y
+            // before the layout is committed.
+            item.hasFinalLayout = true;
+            item.finalLayout.order = item.order;
+            item.finalLayout.size = itemLayout.size;
+            item.finalLayout.contentSize = itemLayout.contentSize;
+            item.finalLayout.scrollbarSize = scrollbarSize;
+            item.finalLayout.location = location;
+            item.finalLayout.padding = item.padding;
+            item.finalLayout.border = item.border;
+            item.finalLayout.margin = itemNonAutoMargin;
 
             res.inflowContentSize = Max(
                 res.inflowContentSize,
@@ -1658,11 +1660,11 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     bool ownBottomMarginCollapsesWithChildren =
         ownMarginsCollapseWithChildren.end && !heightConstrainedByMinHeight;
 
-    // Apply align-content to the in-flow non-floated items. Block layout
-    // treats the whole stack of in-flow children as one alignment subject, so
-    // the distribution keywords must take the single-subject fallback
-    // unconditionally — which is what passing numItems = 1 does. The group
-    // then shifts by one offset, with no inter-item gap.
+    // Apply align-content to the deferred children, floats included. Block
+    // layout treats the whole stack as one alignment subject, so the
+    // distribution keywords take the single-subject fallback. Passing
+    // numItems = 1 does that. The group then shifts by one offset, with
+    // no inter-item gap.
     if (alignContent.IsSome()) {
         float containerInnerHeight =
             containerOuterHeight - resolvedContentBoxInset.VerticalAxisSum();
@@ -1743,7 +1745,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         return output;
     }
 
-    // Commit the deferred in-flow layouts. Floated items already wrote theirs.
+    // Commit the deferred child layouts.
     for (int i = 0; i < len(items); i++) {
         if (items[i].hasFinalLayout) {
             tree->SetUnroundedLayout(items[i].nodeId, items[i].finalLayout);
