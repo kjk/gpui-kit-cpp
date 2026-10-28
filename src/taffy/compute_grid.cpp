@@ -4308,9 +4308,6 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     for (int i = 0; i < len(rows); i++) {
         initialRowSum += rows[i].baseSize;
     }
-    if (!IsSome(innerNodeSize.h)) {
-        innerNodeSize.h = Some(initialRowSum);
-    }
 
     // 6. Container size.
     SizeFOpt resolvedStyleSize = Or(knownDimensions, preferredSize);
@@ -4340,6 +4337,11 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         nameResolver.Free();
         return LayoutOutput::FromOuterSize(containerBorderBox);
     }
+
+    // The container's size is now determined, so a later track-sizing re-run
+    // resolves percentages against its content box. This is a no-op when that
+    // size was already known.
+    innerNodeSize = {Some(containerContentBox.w), Some(containerContentBox.h)};
 
     // 7. Re-resolve percentage track base sizes. An indefinitely sized
     // container resolves them to zero during "Initialise Tracks", so they are
@@ -4382,7 +4384,9 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             break;
         }
     }
-    bool parentWidthIndefinite = !availableSpace.width.IsDefinite();
+    // The container's own size, not the available space. A shrink-to-fit
+    // grid can have a definite available width and an indefinite size.
+    bool parentWidthIndefinite = !IsSome(outerNodeSize.w);
     bool rerunColumnSizing = parentWidthIndefinite && hasPercentageColumn;
     bool intrinsicColumnContributionChanged = false;
 
@@ -4432,7 +4436,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             len(columns), rows.els, len(rows), items.els, len(items),
             TrackSizeEstimate::BaseSize, hasBaselineAlignedItem);
 
-        bool parentHeightIndefinite = !availableSpace.height.IsDefinite();
+        bool parentHeightIndefinite = !IsSome(outerNodeSize.h);
         bool rerunRowSizing = parentHeightIndefinite && hasPercentageRow;
 
         if (!rerunRowSizing) {

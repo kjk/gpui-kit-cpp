@@ -791,6 +791,38 @@ static SizeF AhemTenPairInner(SizeFOpt known, SizeAvail available, void*) {
     return {inlineSize, block};
 }
 
+// Three runs of two "H", Ahem 10px. Max-content width is 60px.
+static SizeF AhemThreePairInner(SizeFOpt known, SizeAvail available, void*) {
+    const float kH = 10.0f;
+    const float kMax = 60.0f;
+    const float kMin = 20.0f;
+    float inlineSize;
+    if (IsSome(known.w)) {
+        inlineSize = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        inlineSize = kMin;
+    } else if (available.width.kind == AvailableSpace::Kind::MaxContent) {
+        inlineSize = kMax;
+    } else {
+        inlineSize = F32Min(available.width.value, kMax);
+    }
+    if (inlineSize < kMin) {
+        inlineSize = kMin;
+    }
+    float block = IsSome(known.h) ? known.h : kH;
+    return {inlineSize, block};
+}
+
+static taffy::LayoutOutput AhemThreePairMeasure(
+    const taffy::LayoutInput& inputs, TaffyNodeId node, void* nodeContext,
+    const taffy::Style* style, void* userData) {
+    (void)node;
+    (void)nodeContext;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    AhemThreePairInner, nullptr);
+}
+
 static taffy::LayoutOutput AhemTenPairMeasure(const taffy::LayoutInput& inputs,
                                               TaffyNodeId node,
                                               void* nodeContext,
@@ -7036,6 +7068,38 @@ static void TestShrinkToFitExcludesMargin() {
     }
 }
 
+// taffy d145df5e. A fit-content(50%) column resolves against the grid's
+// own size. That size is indefinite for a shrink-to-fit grid even when the
+// available width is a definite 200px, so the column is re-run and the
+// item is 30px inside a 60px grid. The same numbers hold for max-content.
+static void TestGridPercentRerunIndefiniteContainer() {
+    TestSuite("taffy grid percentage re-run");
+    AvailableSpace widths[2] = {AvailableSpace::MaxContent(),
+                                AvailableSpace::Definite(200.0f)};
+    for (int i = 0; i < 2; i++) {
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId item = tree.NewLeaf(taffy::Style{});
+        GridTemplateComponent col = GridTemplateComponent::Single(
+            TrackSizingFunction::FitContent(LengthPercentage::Percent(0.5f)));
+        GridTemplateComponent row =
+            GridTemplateComponent::Single(TrackSizingFunction::Length(40.0f));
+        taffy::Style grid;
+        grid.display = taffy::Display::Grid;
+        grid.gridTemplateColumns = GridTemplateOf(&col, 1);
+        grid.gridTemplateRows = GridTemplateOf(&row, 1);
+        TaffyNodeId root = tree.NewWithChildren(grid, &item, 1);
+        SizeAvail space;
+        space.width = widths[i];
+        space.height = AvailableSpace::MaxContent();
+        tree.ComputeLayoutWithMeasure(root, space, AhemThreePairMeasure,
+                                      nullptr);
+        utassertnear(tree.GetLayout(root).size.w, 60.0f);
+        utassertnear(tree.GetLayout(item).size.w, 30.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -7064,6 +7128,7 @@ void TestTaffy() {
     TestGridAutoMinIgnoresUnspannedFlex();
     TestGridRerunColumnSizingMultipleItems();
     TestShrinkToFitExcludesMargin();
+    TestGridPercentRerunIndefiniteContainer();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();
