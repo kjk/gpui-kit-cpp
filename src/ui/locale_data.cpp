@@ -458,6 +458,22 @@ static const char* const kV_Select_placeholder[] = {
 static const char* const kV_Settings_Reset_All[] = {
     "Reset All", "Restaurar tudo", "重置全部", "重置全部",
     "全部重設",  "Resetta Tutto",  nullptr};
+static const char* const kV_Settings_no_results[] = {
+    "No matching settings",
+    "Nenhuma configuração encontrada",
+    "没有匹配的设置",
+    "沒有相符的設定",
+    "沒有相符的設定",
+    "Nessuna impostazione corrispondente",
+    nullptr};
+static const char* const kV_Settings_no_results_description[] = {
+    "Try a different keyword.",
+    "Tente outra palavra-chave.",
+    "请尝试其他关键词。",
+    "請嘗試其他關鍵字。",
+    "請嘗試其他關鍵字。",
+    "Prova con un'altra parola chiave.",
+    nullptr};
 static const char* const kV_Settings_search_placeholder[] = {
     "Search...", "Buscar…",    "搜索...", "搜索...",
     "搜尋...",   "Ricerca...", nullptr};
@@ -597,13 +613,15 @@ extern const LocaleRow kLocaleRows[] = {
     {"Questionnaire.submit", kV_Questionnaire_submit},
     {"Select.placeholder", kV_Select_placeholder},
     {"Settings.Reset All", kV_Settings_Reset_All},
+    {"Settings.no_results", kV_Settings_no_results},
+    {"Settings.no_results_description", kV_Settings_no_results_description},
     {"Settings.search_placeholder", kV_Settings_search_placeholder},
     {"Speech.Start", kV_Speech_Start},
     {"Speech.Stop", kV_Speech_Stop},
     {"Speech.Unavailable", kV_Speech_Unavailable},
     {"Table.SortBy", kV_Table_SortBy},
 };
-extern const int kLocaleRowCount = 120;
+extern const int kLocaleRowCount = 122;
 
 } // namespace component
 } // namespace gpui

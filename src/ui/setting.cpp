@@ -3,6 +3,7 @@
 #include "base/scroll_bounce.h"
 #include "ui/button.h"
 #include "ui/checkbox.h"
+#include "ui/empty.h"
 #include "ui/input.h"
 #include "ui/menu.h"
 #include "ui/resizable.h"
@@ -204,26 +205,115 @@ void SettingsState::OnPageScroll(SettingsState* self, Ctx* cx,
 
 // What the page's scroll hangs on at paint: its state, and the element the
 // group being scrolled to starts with.
+// One visible group row, in the order the page lays them out. `groupIx` is
+// the source index; `titled` is a group the sidebar can mark.
+struct SettingsGroupRow {
+    int groupIx = 0;
+    uint8_t titled = 0;
+    El* row = nullptr;
+};
+
 struct SettingsPageScroll {
     Entity<SettingsState> state = {};
     El* target = nullptr;
+    // A user scroll since the previous render. The group's place is only
+    // known once the page has been laid out, which is this paint.
+    bool userScrolled = false;
+    int selectedGroup = -1;
+    int nGroups = 0;
+    SettingsGroupRow* groups = nullptr;
 };
+
+// page.rs group_at_scroll_top: the titled group at or above the viewport.
+// At the end of the page the last groups cannot reach the top, so a group
+// selected below the top stays marked, and the last titled group is marked
+// otherwise. -1 marks the page itself.
+static int GroupAtScrollTop(const SettingsGroupRow* groups, int n,
+                            int selectedGroup, int topItemIx, bool atEnd) {
+    int selectedPos = -1;
+    if (selectedGroup >= 0) {
+        for (int i = 0; i < n; i++) {
+            if (groups[i].groupIx == selectedGroup) {
+                selectedPos = i;
+                break;
+            }
+        }
+    }
+    if (atEnd && selectedPos >= 0 && selectedPos > topItemIx) {
+        return selectedGroup;
+    }
+    if (n <= 0) {
+        return -1;
+    }
+    int topPos = atEnd ? n - 1 : topItemIx;
+    if (topPos < 0) {
+        return -1;
+    }
+    if (topPos >= n) {
+        topPos = n - 1;
+    }
+    for (int i = topPos; i >= 0; i--) {
+        if (groups[i].titled) {
+            return groups[i].groupIx;
+        }
+    }
+    return -1;
+}
+
+// The visible group's place in content coordinates: the scroll offset that
+// puts its top at the top of the page. The last one that has reached the
+// viewport is ListOffset::item_ix.
+static int TopGroupItem(El* e, const SettingsGroupRow* groups, int n) {
+    float scroll = e->scrollY;
+    int topIx = 0;
+    for (int i = 0; i < n; i++) {
+        El* row = groups[i].row;
+        if (!row) {
+            continue;
+        }
+        float top = row->y - (e->y - e->scrollY) - e->style.pad.top;
+        if (top <= scroll + 0.5f) {
+            topIx = i;
+        }
+    }
+    return topIx;
+}
 
 // ListState::scroll_to(ListOffset { item_ix, offset_in_item: 0 }): the group
 // at the top of the page, clamped at the end. Scrolling by the group's own
 // laid-out position rather than a measured list is what keeps a page that was
-// just switched to from resolving to the top.
+// just switched to from resolving to the top. A user scroll then marks the
+// titled group at that top; the sidebar has already been built this frame.
 static void SettingsPageScrollPaint(PaintCtx* ctx, El* e, void* user) {
     auto* m = (SettingsPageScroll*)user;
     SettingsState* st = m ? m->state.Get(ctx->app) : nullptr;
-    if (!st || st->pendingScrollGroup < 0 || !m->target) {
+    if (!st) {
         return;
     }
-    float top = m->target->y - (e->y - e->scrollY) - e->style.pad.top;
-    float most = e->contentH - e->h;
-    most = most > 0 ? most : 0;
-    st->scrollY = top < 0 ? 0 : (top > most ? most : top);
-    st->pendingScrollGroup = -1;
+    bool notify = false;
+    if (st->pendingScrollGroup >= 0 && m->target) {
+        float top = m->target->y - (e->y - e->scrollY) - e->style.pad.top;
+        float most = e->contentH - e->h;
+        most = most > 0 ? most : 0;
+        st->scrollY = top < 0 ? 0 : (top > most ? most : top);
+        st->pendingScrollGroup = -1;
+        notify = true;
+    }
+    if (m->userScrolled && m->nGroups > 0 && m->groups) {
+        float most = e->contentH - e->h;
+        most = most > 0 ? most : 0;
+        bool atEnd = e->scrollY >= most - 0.5f;
+        int topIx = TopGroupItem(e, m->groups, m->nGroups);
+        int group = GroupAtScrollTop(m->groups, m->nGroups, m->selectedGroup,
+                                     topIx, atEnd);
+        if (group != st->group) {
+            st->group = group;
+            notify = true;
+        }
+    }
+    if (!notify) {
+        return;
+    }
     Ctx cx = {ctx->app, ctx->window, nullptr, m->state.id};
     Notify(&cx);
 }
@@ -246,10 +336,12 @@ struct SettingsContainerQuery {
     // The field bindings before the page's: a page built again binds its
     // fields again, at the same indices.
     int fieldsLen = 0;
+    bool userScrolled = false;
 };
 
 static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
-                              Str query, Axis pageLayout, int scrollGroup);
+                              Str query, Axis pageLayout, int scrollGroup,
+                              bool userScrolled);
 
 // container_query's size, once layout has given the panel one. A width on
 // the other side of the line from the layout this frame used builds the page
@@ -281,7 +373,7 @@ static void SettingsContainerPrePaint(PaintCtx* ctx, El* e, void* user) {
     e->last = nullptr;
     Ctx cx = q->cx;
     SettingsBuildPage(&cx, q->settings, e, q->selected, q->query, want,
-                      q->scrollGroup);
+                      q->scrollGroup, q->userScrolled);
     IdsCollectChildren(e);
     LayoutEl(ctx, e, e->x, e->y, e->w, e->h, e->laidFont, e->style.color);
 }
@@ -960,7 +1052,8 @@ static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
 // chose. Built again at prepaint, inside the same pane, when the width
 // layout gave the panel puts it on the other side of the line.
 static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
-                              Str query, Axis pageLayout, int scrollGroup) {
+                              Str query, Axis pageLayout, int scrollGroup,
+                              bool userScrolled) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     Entity<SettingsState> state = s->state;
@@ -972,6 +1065,13 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
     bool anyDirty = false;
     SettingsPageScroll* scroll = ArenaNew<SettingsPageScroll>(a);
     scroll->state = state;
+    scroll->userScrolled = userScrolled;
+    scroll->selectedGroup = st ? st->group : -1;
+    int nGroups = p.groups.len;
+    if (nGroups > 0) {
+        scroll->groups = (SettingsGroupRow*)Alloc(
+            a, nGroups * (int)sizeof(SettingsGroupRow));
+    }
     // `div().flex_1().w_full()` around the list. The page's px_4 lives on
     // each row, inside the clip, so a focus ring can pass the group's edge
     // without leaving the viewport.
@@ -1060,6 +1160,13 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
         if (g == scrollGroup) {
             scroll->target = row;
         }
+        if (scroll->groups && scroll->nGroups < nGroups) {
+            SettingsGroupRow* mark = &scroll->groups[scroll->nGroups];
+            mark->groupIx = g;
+            mark->titled = grp.title.s ? 1 : 0;
+            mark->row = row;
+            scroll->nGroups++;
+        }
         body->Child(row);
     }
 
@@ -1121,6 +1228,27 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
     }
     pane->Child(head);
     pane->Child(body);
+}
+
+// settings.rs render_no_results: the content area when the filter matches
+// nothing. The debug id is what the search test looks up.
+static El* SettingsNoResults(Ctx* cx) {
+    Arena* a = cx->a;
+    return Div(a)
+        ->Id(StrL("settings-no-results"))
+        ->SizeFull()
+        ->Child(
+            Empty::New(cx)
+                ->Header(
+                    EmptyHeader::New(cx)
+                        ->Media(EmptyMedia::New(cx)
+                                    ->WithVariant(EmptyMediaVariant::Icon)
+                                    ->Child(IconEl(a, IconName::Search)))
+                        ->Title(EmptyTitle::New(cx)->Child(
+                            TextEl(a, Tr("Settings.no_results"))))
+                        ->Description(EmptyDescription::New(cx)->Child(
+                            TextEl(a, Tr("Settings.no_results_description")))))
+                ->IntoEl());
 }
 
 El* Settings::IntoEl() {
@@ -1252,21 +1380,41 @@ El* Settings::IntoEl() {
         // The page's list state is its own and starts over whenever the page
         // or the groups the query leaves on it change; the group to scroll
         // to is the one a click deferred, or on such a change the selected
-        // one.
+        // one. The first frame only adopts the state: Rust's keyed PageState
+        // is created already holding this query and these groups, so that
+        // frame is not a programmatic scroll.
         int scrollGroup = -1;
+        bool userScrolled = false;
         if (st) {
             uint32_t queryKey = IdFoldName(0, query);
-            bool changed =
-                st->listPage != selected || st->listQuery != queryKey;
-            if (changed) {
+            bool hadList = st->listPage >= 0;
+            bool changed = hadList && (st->listPage != selected ||
+                                       st->listQuery != queryKey);
+            if (!hadList || changed) {
                 st->listPage = selected;
                 st->listQuery = queryKey;
-                st->scrollY = 0;
+                if (changed) {
+                    st->scrollY = 0;
+                }
             }
+            // Adopting the list still scrolls to a selected group, which is
+            // the first frame this tree has a place to jump to. That jump
+            // is programmatic; an untitled selection jumps nowhere.
             scrollGroup = st->deferredScrollGroup >= 0
                               ? st->deferredScrollGroup
-                              : (changed ? st->group : -1);
+                              : ((changed || !hadList) ? st->group : -1);
             st->deferredScrollGroup = -1;
+            // changed, or a scroll-to-group: the page moved itself. The
+            // offset recorded below is the one before that scroll's paint
+            // clamps it; scrolledProgrammatically keeps the next frame from
+            // reading the clamp as the user.
+            bool programmatic = changed || scrollGroup >= 0;
+            userScrolled = !programmatic && !st->scrolledProgrammatically &&
+                           st->scrollFollowValid &&
+                           st->scrollFollowY != st->scrollY;
+            st->scrolledProgrammatically = programmatic;
+            st->scrollFollowY = st->scrollY;
+            st->scrollFollowValid = true;
         }
         query_->settings = this;
         query_->cx = *cx;
@@ -1274,8 +1422,23 @@ El* Settings::IntoEl() {
         query_->query = query;
         query_->scrollGroup = scrollGroup;
         query_->fieldsLen = st ? st->fields.len : 0;
+        query_->userScrolled = userScrolled;
         SettingsBuildPage(cx, this, pane, selected, query, pageLayout,
-                          scrollGroup);
+                          scrollGroup, userScrolled);
+    } else {
+        // No visible page: an empty state, not a blank pane. Clearing the
+        // query renders the page the selection still names. A selected page
+        // that still has a match never takes this branch.
+        bool anyMatch = false;
+        for (const SettingPage& p : pages) {
+            if (PageHasMatchingGroup(p, query)) {
+                anyMatch = true;
+                break;
+            }
+        }
+        if (!anyMatch) {
+            pane->Child(SettingsNoResults(cx));
+        }
     }
 
     // h_resizable(id): the sidebar's panel at its width, kept inside its

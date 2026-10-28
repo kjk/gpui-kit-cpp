@@ -16,14 +16,16 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `611b55e331170ca375214d580b6c5409db858f83` (2026-10-26,
-input: Reuse measured wraps during live resize (#3691)). A width
-change keeps a soft-wrapped line whose measured breaks stay valid,
-and caches slice widths until the text, font, tab size or indent
-changes. Scroll events and `secondary-` chords keep their C++ names.
-Scrollbar idle stays 2s and exit 500ms as constants. Links are always
-underlined. A textarea has no decoration extras, and linked text is
-gone. Image source, list and blockquote refinements, and selection stay.
+Processed through `64e6aaffbcd3760fc9d000f86655495c4978931c` (2026-10-27,
+setting: Show an empty state for unmatched searches and follow scrolling
+in the sidebar (#3701)). A search that matches nothing shows an empty
+state in the page, and scrolling the page marks the titled group at the
+top of the viewport. A click, a page change, or a search does not move
+that highlight. Scroll events and `secondary-` chords keep their C++
+names. Scrollbar idle stays 2s and exit 500ms as constants. Links are
+always underlined. A textarea has no decoration extras, and linked text
+is gone. Image source, list and blockquote refinements, and selection
+stay.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

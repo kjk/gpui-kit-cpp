@@ -359,6 +359,13 @@ struct SettingsState {
     int listPage = -1;
     uint32_t listQuery = 0;
     float scrollY = 0;
+    // page.rs PageState: the offset the last render compared, and whether
+    // that render scrolled the page itself (a click, a page change, a
+    // search). The clamp the next layout applies is not the user moving
+    // through the page, so it does not move the sidebar highlight.
+    float scrollFollowY = 0;
+    bool scrollFollowValid = false;
+    bool scrolledProgrammatically = false;
     int pendingScrollGroup = -1;
     // The width the page's panel was laid out at last frame, which is what
     // the container query decides the stacked layout by. -1 until known.

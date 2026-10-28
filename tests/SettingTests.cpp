@@ -433,10 +433,12 @@ static void SearchRenderKeepsOriginalItemIndexes() {
     root = SearchTestSettings(&cx, state)->IntoEl();
     utassert(settings->page == 1);
     utassert(!FindSettingElement(root, "1-2-1"));
+    utassert(FindSettingElement(root, "settings-no-results"));
 
     InputSetValue(&settings->search, StrL(""));
     root = SearchTestSettings(&cx, state)->IntoEl();
     utassert(settings->page == 1);
+    utassert(!FindSettingElement(root, "settings-no-results"));
 
     WindowKeyedFree(win);
     EntityDropAll(&app);
@@ -765,6 +767,46 @@ static void SelectingAGroupFromAnotherPageScrollsToIt() {
     delete win;
 }
 
+// tests.rs scrolling_marks_the_group_at_the_top. Wheel scrolling is an
+// absolute offset here: OnPageScroll reports where the page should be, and
+// the paint after layout marks the titled group at that top.
+static void ScrollingMarksTheGroupAtTheTop() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+    DrawTallColors(&cx, win, state);
+    SettingsState* settings = state.Get(&app);
+    utassert(settings && settings->page == 1 && settings->group == -1);
+
+    auto scrollTo = [&](float offsetY) {
+        ScrollEvent ev;
+        ev.offsetY = offsetY;
+        SettingsState::OnPageScroll(settings, &cx, &ev);
+        DrawTallColors(&cx, win, state);
+    };
+    // Past the untitled first group, Colors reaches the top.
+    scrollTo(200);
+    utassert(settings->page == 1 && settings->group == 1);
+    // At the end of the list, the last group is marked.
+    scrollTo(2000);
+    utassert(settings->page == 1 && settings->group == 2);
+    // Back at the top, the untitled group marks the page itself.
+    scrollTo(0);
+    utassert(settings->page == 1 && settings->group == -1);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 struct BoolSettingsView {
     bool dark = false;
     bool autoTheme = true;
@@ -867,5 +909,6 @@ void TestSetting() {
     ElementItemsAndFieldsWithoutADefault();
     GroupVariantOverridesTheSettingsDefault();
     SelectingAGroupFromAnotherPageScrollsToIt();
+    ScrollingMarksTheGroupAtTheTop();
     ANarrowPageStacksOnTheFrameItIsLaidOut();
 }

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "611b55e331170ca375214d580b6c5409db858f83",
-  date: "2026-10-26",
-  subject: "input: Reuse measured wraps during live resize (#3691)",
+  sha: "64e6aaffbcd3760fc9d000f86655495c4978931c",
+  date: "2026-10-27",
+  subject: "setting: Show an empty state for unmatched searches and follow scrolling in the sidebar (#3701)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",
