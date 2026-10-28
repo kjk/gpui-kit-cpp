@@ -553,20 +553,20 @@ export const gpuiComponent = {
 } as const;
 
 /**
- * Zed reference snapshot recorded in gpui-pre 0.3.9's package metadata.
+ * Zed reference snapshot recorded in gpui-pre 0.3.10's package metadata.
  * Cargo.lock now resolves registry packages rather than a Zed git source.
  */
 export const zedGpui = {
   repo: "https://github.com/zed-industries/zed",
-  sha: "93d745668805029476e6d7fbb19652116fed51de",
-  date: "2026-10-10",
-  subject: "git_ui: Fix commit editor button hover colors (#65448)",
+  sha: "08cbb88a152c3751a43e853425a70e9f631a5918",
+  date: "2026-10-25",
+  subject: "git_ui: Fix git graph lagging when toggling commit details panel (#66132)",
   crates: {
-    "gpui-pre": "0.3.9",
-    "gpui-pre-platform": "0.3.9",
-    "gpui-pre-macros": "0.3.9",
+    "gpui-pre": "0.3.10",
+    "gpui-pre-platform": "0.3.10",
+    "gpui-pre-macros": "0.3.10",
   },
-  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.9",
+  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.10",
 } as const;
 
 /**

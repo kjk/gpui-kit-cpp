@@ -87,7 +87,7 @@ The current update target is
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
-  The GPUI reference is `gpui-pre` 0.3.9 (Zed `93d745668805`). Layout is
+  The GPUI reference is `gpui-pre` 0.3.10 (Zed `08cbb88a152c`). Layout is
   taffy 0.15.0. The other ported dependency versions are unchanged.
 - **Base Root's Tab and copy actions are the runtime's.** Base Root's Tab /
   shift-Tab / copy actions are the runtime's for every window (`FocusNext`,
