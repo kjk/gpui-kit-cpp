@@ -16,13 +16,15 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9d5cd7c41041c9bb500fc3e76f5a71677fcb75bc` (2026-10-28,
-text: Fix application shutdown deadlock during layout cleanup (#3697)).
-Rust keeps the foreground executor on the retained-layout cleanup
-global so closing its channel cannot wake a task whose scheduler is
-already gone. This tree has no channel-backed sweep task, so quit
-does not take that path. The native_shutdown harness is a kit process
-test and is not ported. Scroll events and
+Processed through `58ba3db28f77a0c9e731dacc74daf2569261c440` (2026-10-28,
+selectable_text: Avoid resolving window selection during paint (#3699)).
+Rust's selectable-text paint compares this participant's projected
+copy text around `update_runs` instead of resolving the window
+selection, which ran every copy callback. This frame never asks for
+that text while painting, and
+`paint_does_not_resolve_window_selected_text` locks a redraw at zero
+callbacks. `projected_copy_text` stays crate-private and has no paint
+caller here. Scroll events and
 `secondary-` chords keep their C++ names. Scrollbar idle stays 2s and
 exit 500ms as constants. Links are always underlined. A textarea has
 no decoration extras, and linked text is gone. Image source, list and

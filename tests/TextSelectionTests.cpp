@@ -2347,8 +2347,63 @@ static void TestTextSelectionWindow() {
     SelectionLayerHandlesRealDoubleAndTripleClickEvents();
 }
 
+struct CopyCount {
+    int n = 0;
+};
+
+static int CountGammaCopy(void* user, App*, char* out, int cap) {
+    ((CopyCount*)user)->n++;
+    const char* value = "gamma";
+    int n = 5;
+    if (cap <= 0) {
+        return 0;
+    }
+    if (n > cap - 1) {
+        n = cap - 1;
+    }
+    memcpy(out, value, (size_t)n);
+    out[n] = 0;
+    return n;
+}
+
+// selectable_text.rs paint_does_not_resolve_window_selected_text. Rust's
+// Element::paint used to call TextSelection::selected_text around
+// update_runs, and each call runs every participant's copy callback. A
+// second draw of a selected copy_with run must stay at zero. This frame
+// never resolves window selected text while painting.
+struct CopyCallbackTestView {
+    TextSelectionHandle handle = {};
+
+    static El* Render(CopyCallbackTestView* self, Ctx* cx) {
+        return Div(cx->a)
+            ->SizeFull()
+            ->Child(TextSelectionLayer::New(cx))
+            ->Child(SelectableText::New(cx, StrL("local"), StrL("alpha beta"))
+                        ->IntoEl())
+            ->Child(SelectableText::WithHandle(cx, StrL("custom"), self->handle,
+                                               StrL("gamma"))
+                        ->IntoEl());
+    }
+};
+
+static void PaintDoesNotResolveWindowSelectedText() {
+    App* app = TestAppNew();
+    CopyCount copies;
+    TextSelectionHandle handle = TextSelectionHandle::New(StrL("gamma"), app);
+    handle.CopyWith(&CountGammaCopy, &copies, app);
+    handle.SetLocalSelection(true, app);
+    Entity<CopyCallbackTestView> view = EntityNew<CopyCallbackTestView>(app);
+    view.Get(app)->handle = handle;
+    Window* win = TestWindowOpen(app, view, 400, 300);
+    copies.n = 0;
+    TestDraw(win);
+    utassert(copies.n == 0);
+    TestAppFree(app);
+}
+
 void TestTextSelection() {
     TestSuite("text_selection");
+    PaintDoesNotResolveWindowSelectedText();
     WrappedSelectionPaintsFullWidthMiddleLines();
     SelectionBandDecidesWholeRuns();
     SelectableTextJoinsTheDocumentItsHandleOwns();
