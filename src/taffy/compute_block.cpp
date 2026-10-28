@@ -1568,16 +1568,19 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
 
     bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
                              IsScrollContainer(style.overflow.y);
+    // css-align-3 §5.1.1: a non-normal align-content makes a block container
+    // establish an independent formatting context.
+    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome();
 
     LineBool ownMarginsCollapseWithChildren = {
-        verticalMarginsAreCollapsible.start && !isScrollContainer &&
+        verticalMarginsAreCollapsible.start && !establishesNewBfc &&
             style.position == Position::Relative && padding.top == 0.0f &&
             border.top == 0.0f,
-        verticalMarginsAreCollapsible.end && !isScrollContainer &&
+        verticalMarginsAreCollapsible.end && !establishesNewBfc &&
             style.position == Position::Relative && padding.bottom == 0.0f &&
             border.bottom == 0.0f && !IsSome(size.h)};
     bool hasStylesPreventingBeingCollapsedThrough =
-        !style.IsBlock() || blockCtx->IsBfcRoot() || isScrollContainer ||
+        !style.IsBlock() || blockCtx->IsBfcRoot() || establishesNewBfc ||
         style.position == Position::Absolute || padding.top > 0.0f ||
         padding.bottom > 0.0f || border.top > 0.0f || border.bottom > 0.0f ||
         (IsSome(size.h) && size.h > 0.0f) ||
@@ -1639,8 +1642,8 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     SizeF inflowContentSize = inFlow.inflowContentSize;
     float intrinsicOuterHeight = inFlow.intrinsicOuterHeight;
 
-    // A root BFC contains its floats.
-    if (blockCtx->IsBfcRoot() || isScrollContainer) {
+    // A root BFC contains its floats. A non-normal align-content does too.
+    if (blockCtx->IsBfcRoot() || establishesNewBfc) {
         intrinsicOuterHeight = F32Max(
             intrinsicOuterHeight, blockCtx->FloatedContentHeightContribution());
     }
@@ -1796,6 +1799,9 @@ LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
 
     bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
                              IsScrollContainer(style.overflow.y);
+    // css-align-3 §5.1.1: a non-normal align-content makes a block container
+    // establish an independent formatting context.
+    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome();
     Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
@@ -1852,8 +1858,8 @@ LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
     next.knownDimensions = styledBasedKnownDimensions;
 
     // Use the block formatting context that was passed down, unless this node
-    // is a scroll container, in which case it starts one of its own.
-    if (blockCtx && !isScrollContainer) {
+    // establishes its own (a scroll container, or a non-normal align-content).
+    if (blockCtx && !establishesNewBfc) {
         return ComputeInner(tree, nodeId, next, blockCtx);
     }
     BlockFormattingContext rootBfc;

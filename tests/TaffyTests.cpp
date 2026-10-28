@@ -1191,6 +1191,64 @@ static void TestBlockLayout() {
         utassertnear(tree.GetLayout(child).location.x, 0.0f);
         tree.Free();
     }
+
+    {
+        // A non-normal align-content establishes a BFC, so a plain block
+        // contains its float. A 20x30 left float makes the block 30 tall.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated;
+        floated.display = taffy::Display::Block;
+        floated.floatMode = taffy::Float::Left;
+        floated.size = SizeDim::FromLengths(20.0f, 30.0f);
+        TaffyNodeId child = tree.NewLeaf(floated);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        rootStyle.alignContent =
+            OptAlignContent(AlignContent{AlignContentKeyword::FlexStart});
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.h, 30.0f);
+        utassertnear(tree.GetLayout(child).location.y, 0.0f);
+        utassertnear(tree.GetLayout(child).location.x, 0.0f);
+        tree.Free();
+    }
+
+    {
+        // The same BFC stops the block's margin from collapsing with its
+        // child's. The child's 20px top margin stays inside the block.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style innerStyle;
+        innerStyle.display = taffy::Display::Block;
+        innerStyle.size.height = Dimension::Length(10.0f);
+        innerStyle.margin.top = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId inner = tree.NewLeaf(innerStyle);
+
+        taffy::Style midStyle;
+        midStyle.display = taffy::Display::Block;
+        midStyle.alignContent =
+            OptAlignContent(AlignContent{AlignContentKeyword::FlexStart});
+        TaffyNodeId midKids[] = {inner};
+        TaffyNodeId mid = tree.NewWithChildren(midStyle, midKids, 1);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        rootStyle.border = {
+            LengthPercentage::Length(1.0f), LengthPercentage::Length(1.0f),
+            LengthPercentage::Length(1.0f), LengthPercentage::Length(1.0f)};
+        TaffyNodeId rootKids[] = {mid};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, rootKids, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        utassertnear(tree.GetLayout(root).size.h, 32.0f);
+        utassertnear(tree.GetLayout(mid).location.y, 1.0f);
+        utassertnear(tree.GetLayout(mid).size.h, 30.0f);
+        utassertnear(tree.GetLayout(inner).location.y, 20.0f);
+        tree.Free();
+    }
 }
 
 // ─── src/compute/grid/explicit_grid.rs ───────────────────────────────────
