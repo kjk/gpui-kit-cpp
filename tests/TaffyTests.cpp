@@ -3427,6 +3427,43 @@ static float ContentHeightFor(taffy::Display display, float top, float bottom,
     return h;
 }
 
+// block_overflow_start_edge_absolute_child. An absolute child that
+// hangs off the start edge does not enlarge the scrollable overflow.
+static void TestOverflowPastScrollOrigin() {
+    TestSuite("taffy overflow past scroll origin");
+
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style absStyle;
+    absStyle.display = taffy::Display::Block;
+    absStyle.position = taffy::Position::Absolute;
+    absStyle.size = SizeDim::FromLengths(80.0f, 40.0f);
+    absStyle.inset.top = LengthPercentageAuto::Zero();
+    absStyle.inset.right = LengthPercentageAuto::Zero();
+    TaffyNodeId abs = tree.NewLeaf(absStyle);
+
+    taffy::Style midStyle;
+    midStyle.display = taffy::Display::Block;
+    midStyle.size = SizeDim::FromLengths(40.0f, 20.0f);
+    midStyle.margin.left = LengthPercentageAuto::Length(60.0f);
+    TaffyNodeId mid = tree.NewWithChildren(midStyle, &abs, 1);
+
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::Block;
+    rootStyle.overflow = {taffy::Overflow::Hidden, taffy::Overflow::Hidden};
+    rootStyle.scrollbarWidth = 15.0f;
+    rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, &mid, 1);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+    utassertnear(tree.GetLayout(abs).location.x, -40.0f);
+    utassertnear(tree.GetLayout(abs).location.y, 0.0f);
+    utassertnear(tree.GetLayout(mid).contentSize.w, 40.0f);
+    utassertnear(tree.GetLayout(mid).location.x, 60.0f);
+    utassertnear(tree.GetLayout(root).contentSize.w, 100.0f);
+    tree.Free();
+}
+
 static void TestContentSizeEndPadding() {
     TestSuite("taffy content size end padding");
     taffy::Display displays[] = {taffy::Display::Block, taffy::Display::Flex,
@@ -3776,6 +3813,7 @@ void TestTaffy() {
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();
+    TestOverflowPastScrollOrigin();
     TestContentSizeEndPadding();
 
     // The grid tests build styles whose track lists live in an arena of their

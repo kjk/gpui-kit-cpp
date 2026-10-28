@@ -391,11 +391,10 @@ SizeF ComputeContentSizeContribution(PointF location, SizeF size,
         overflow.y == Overflow::Visible ? F32Max(size.h, contentSize.h)
                                         : size.h};
     if (contribution.w > 0.0f && contribution.h > 0.0f) {
-        float maxX = F32Max(location.x + contribution.w, 0.0f);
-        float minX = F32Min(location.x, 0.0f);
-        float maxY = F32Max(location.y + contribution.h, 0.0f);
-        float minY = F32Min(location.y, 0.0f);
-        return {maxX - minX, maxY - minY};
+        // location is measured from the scroll origin. Overflow on the
+        // negative side of that origin is not part of the scrollable region.
+        return {F32Max(location.x + contribution.w, 0.0f),
+                F32Max(location.y + contribution.h, 0.0f)};
     }
     return SizeF::Zero();
 }

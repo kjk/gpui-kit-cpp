@@ -1564,8 +1564,12 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
         layout.margin = resolvedMargin;
         tree->SetUnroundedLayout(item.nodeId, layout);
 
-        PointF relativeLocation = {location.x - areaOffset.x,
-                                   location.y - areaOffset.y};
+        // Location is measured from the scroll origin, which is the
+        // inline-start edge (the right side in RTL).
+        float relX = location.x - areaOffset.x;
+        PointF relativeLocation = {
+            IsRtl(direction) ? areaSize.w - relX - finalSize.w : relX,
+            location.y - areaOffset.y};
         absoluteContentSize = Max(absoluteContentSize,
                                   ComputeContentSizeContribution(
                                       relativeLocation, finalSize,
