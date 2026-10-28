@@ -513,9 +513,8 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
         //    size.
         // B. If the item has an intrinsic aspect ratio, a used flex basis of
         //    content and a definite cross size, the base size comes from its
-        //    inner cross size and the ratio. `child.size` was already resolved
-        //    against the aspect ratio in GenerateAnonymousFlexItems, so using
-        //    the main size covers this.
+        //    inner cross size and the ratio. That transfer is below, once the
+        //    cross size is known.
         Optf mainSize = Main(child.size, dir);
         Optf mainStretch =
             MaybeMax(MaybeSub(percentResolutionMainSize,
@@ -523,8 +522,9 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
                      0.0f);
         // A flex-basis keyword replaces the main size. `content`, and a
         // keyword that cannot be resolved here, measure the item and ignore
-        // the main size. A length or auto flex basis falls through to the
-        // main size, including a sizing keyword on width or height.
+        // the main size. An auto flex basis falls through to the main size,
+        // including a sizing keyword on width or height. A percentage that
+        // did not resolve does not: it is content, not the preferred size.
         bool measureBasis = true;
         AvailableSpace keywordMain = AvailableSpace::MaxContent();
         bool hasKeywordMain = false;
@@ -542,11 +542,12 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
                 keywordMain = keyword.measure;
                 hasKeywordMain = true;
             }
-        } else if (IsSome(Or(flexBasis, mainSize))) {
+        } else if (IsSome(flexBasis) ||
+                   (flexBasisStyle.IsAuto() && IsSome(mainSize))) {
             child.flexBasisIsDefinite = true;
-            child.flexBasis = Or(flexBasis, mainSize);
+            child.flexBasis = IsSome(flexBasis) ? flexBasis : mainSize;
             measureBasis = false;
-        } else {
+        } else if (flexBasisStyle.IsAuto()) {
             SizingKeywordResolution keyword =
                 ResolveSizingKeyword(child.sizeStyle.Main(dir), mainStretch,
                                      percentResolutionMainSize, calc);

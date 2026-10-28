@@ -2030,6 +2030,98 @@ static void TestFlexboxLayout() {
 
 // Negative margins shrink a flex container's intrinsic main size, and a
 // zero flex-shrink factor does not divide by a zero scaled factor.
+// An unresolved percentage flex basis is content, not the preferred main
+// size. blockflex_indefinite_percentage_flex_basis. A 0% basis in a column
+// with no definite height sizes to the 100px child, and the 100% sibling
+// stays 0. An auto basis uses the 200px height. A 0% basis in a 200px column
+// resolves and then grows to fill it.
+static void TestIndefinitePercentageFlexBasis() {
+    TestSuite("taffy::flex indefinite percentage basis");
+
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    for (int i = 0; i < 2; i++) {
+        TaffyTree tree;
+        tree.Init();
+
+        struct Section {
+            TaffyNodeId column;
+            TaffyNodeId item;
+            TaffyNodeId fixed;
+            TaffyNodeId percent;
+        };
+        auto section = [&](bool percentBasis, float itemHeight,
+                           bool containerHeight) {
+            taffy::Style fixedStyle;
+            fixedStyle.display = taffy::Display::Block;
+            fixedStyle.direction = directions[i];
+            fixedStyle.position = taffy::Position::Relative;
+            fixedStyle.size.height = taffy::Dimension::Length(100.0f);
+            TaffyNodeId fixed = tree.NewLeaf(fixedStyle);
+            taffy::Style percentStyle;
+            percentStyle.display = taffy::Display::Block;
+            percentStyle.direction = directions[i];
+            percentStyle.position = taffy::Position::Relative;
+            percentStyle.size.height = taffy::Dimension::Percent(1.0f);
+            TaffyNodeId percent = tree.NewLeaf(percentStyle);
+            TaffyNodeId kids[2] = {fixed, percent};
+            taffy::Style itemStyle;
+            itemStyle.display = taffy::Display::Block;
+            itemStyle.direction = directions[i];
+            itemStyle.position = taffy::Position::Relative;
+            itemStyle.flexGrow = 1.0f;
+            itemStyle.minSize.height = taffy::Dimension::Length(0.0f);
+            itemStyle.size.height = taffy::Dimension::Length(itemHeight);
+            if (percentBasis) {
+                itemStyle.flexBasis = taffy::Dimension::Percent(0.0f);
+            }
+            TaffyNodeId item = tree.NewWithChildren(itemStyle, kids, 2);
+            taffy::Style columnStyle;
+            columnStyle.direction = directions[i];
+            columnStyle.position = taffy::Position::Relative;
+            columnStyle.flexDirection = taffy::FlexDirection::Column;
+            if (containerHeight) {
+                columnStyle.size.height = taffy::Dimension::Length(200.0f);
+            }
+            TaffyNodeId column = tree.NewWithChildren(columnStyle, &item, 1);
+            return Section{column, item, fixed, percent};
+        };
+
+        Section unresolved = section(true, 100.0f, false);
+        Section automatic = section(false, 200.0f, false);
+        Section definite = section(true, 100.0f, true);
+        TaffyNodeId columns[3] = {unresolved.column, automatic.column,
+                                  definite.column};
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.direction = directions[i];
+        rootStyle.position = taffy::Position::Absolute;
+        rootStyle.size.width = taffy::Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, columns, 3);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 500.0f);
+        AssertBox(tree.GetLayout(unresolved.column), 0.0f, 0.0f, 100.0f,
+                  100.0f);
+        AssertBox(tree.GetLayout(unresolved.item), 0.0f, 0.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(unresolved.fixed), 0.0f, 0.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(unresolved.percent), 0.0f, 100.0f, 100.0f,
+                  0.0f);
+        AssertBox(tree.GetLayout(automatic.column), 0.0f, 100.0f, 100.0f,
+                  200.0f);
+        AssertBox(tree.GetLayout(automatic.item), 0.0f, 0.0f, 100.0f, 200.0f);
+        AssertBox(tree.GetLayout(automatic.fixed), 0.0f, 0.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(automatic.percent), 0.0f, 100.0f, 100.0f,
+                  200.0f);
+        AssertBox(tree.GetLayout(definite.column), 0.0f, 300.0f, 100.0f,
+                  200.0f);
+        AssertBox(tree.GetLayout(definite.item), 0.0f, 0.0f, 100.0f, 200.0f);
+        AssertBox(tree.GetLayout(definite.fixed), 0.0f, 0.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(definite.percent), 0.0f, 100.0f, 100.0f,
+                  200.0f);
+        tree.Free();
+    }
+}
+
 static void TestFlexNegativeMarginIntrinsic() {
     TestSuite("taffy flex negative margin intrinsic");
 
@@ -9680,6 +9772,7 @@ void TestTaffy() {
     TestTaffyTreeLayout();
     TestHiddenLayout();
     TestFlexboxLayout();
+    TestIndefinitePercentageFlexBasis();
     TestFlexNegativeMarginIntrinsic();
     TestFlexAspectRatioStretch();
     TestFlexMarginAfterBasisFloor();
