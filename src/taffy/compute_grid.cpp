@@ -3702,6 +3702,7 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
 
     const Style& style = tree->GetStyle(node);
     PointOverflow overflow = style.overflow;
+    Contain contain = style.contain;
     float scrollbarWidth = style.scrollbarWidth;
     Optf aspectRatio = style.aspectRatio;
     OptAlignItems justifySelf = style.justifySelf;
@@ -3910,7 +3911,7 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
                                 containerBorder.right
                           : xr.start - containerBorder.left,
          yr.start - containerBorder.top},
-        finalSize, layoutOutput.contentSize, overflow);
+        finalSize, layoutOutput.contentSize, overflow, contain);
     return {contribution, yr.start, finalSize.h};
 }
 
@@ -3973,9 +3974,11 @@ int RtlColumnOccupancyIndexForInitialization(int columnIndex,
 
 // The CSS Grid layout algorithm, in four phases: resolve the explicit grid,
 // place the items (which resolves the implicit grid), size the tracks, then
-// align and place.
-LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
-                               const LayoutInput& inputs) {
+// align and place. `ignoreChildren` is the as-if-empty pass of size
+// containment.
+static LayoutOutput ComputeGridLayoutInner(TaffyTree* tree, NodeId node,
+                                           const LayoutInput& inputs,
+                                           bool ignoreChildren) {
     CalcResolver calc = tree->calc;
     SizeFOpt knownDimensions = inputs.knownDimensions;
     SizeFOpt parentSize = inputs.parentSize;
@@ -4132,27 +4135,30 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     nameResolver.explicitColumnCount = explicitColCount;
     nameResolver.explicitRowCount = explicitRowCount;
 
-    // The in-flow children, with their names already resolved.
+    // The in-flow children, with their names already resolved. Size
+    // containment's as-if-empty pass places none of them.
     Vec<PlacementChild> children;
     Vec<ChildPlacementStyles> childPlacements;
     int childCount = tree->ChildCount(node);
 
-    for (int i = 0; i < childCount; i++) {
-        NodeId child = tree->GetChildId(node, i);
-        const Style& cs = tree->GetStyle(child);
-        if (cs.BoxGenMode() == BoxGenerationMode::None ||
-            cs.position == Position::Absolute) {
-            continue;
+    if (!ignoreChildren) {
+        for (int i = 0; i < childCount; i++) {
+            NodeId child = tree->GetChildId(node, i);
+            const Style& cs = tree->GetStyle(child);
+            if (cs.BoxGenMode() == BoxGenerationMode::None ||
+                cs.position == Position::Absolute) {
+                continue;
+            }
+            PlacementChild pc;
+            pc.index = i;
+            pc.node = child;
+            pc.horizontal = nameResolver.ResolveColumnNames(cs.gridColumn)
+                                .IntoOriginZero(explicitColCount);
+            pc.vertical = nameResolver.ResolveRowNames(cs.gridRow)
+                              .IntoOriginZero(explicitRowCount);
+            VecAppend(children, pc);
+            VecAppend(childPlacements, {cs.gridColumn, cs.gridRow});
         }
-        PlacementChild pc;
-        pc.index = i;
-        pc.node = child;
-        pc.horizontal = nameResolver.ResolveColumnNames(cs.gridColumn)
-                            .IntoOriginZero(explicitColCount);
-        pc.vertical = nameResolver.ResolveRowNames(cs.gridRow)
-                          .IntoOriginZero(explicitRowCount);
-        VecAppend(children, pc);
-        VecAppend(childPlacements, {cs.gridColumn, cs.gridRow});
     }
 
     // 3. Estimate the implicit track counts, which pre-sizes the occupancy
@@ -4160,18 +4166,21 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     TrackCounts estColCounts;
     TrackCounts estRowCounts;
     ComputeGridSizeEstimate(explicitColCount, explicitRowCount, direction,
-                            childPlacements.els, len(childPlacements),
+                            ignoreChildren ? nullptr : childPlacements.els,
+                            ignoreChildren ? 0 : len(childPlacements),
                             &estColCounts, &estRowCounts);
 
     // 4. Grid item placement.
     Vec<GridItem> items;
     CellOccupancyMatrix cellOccupancyMatrix;
     cellOccupancyMatrix.Init(estColCounts, estRowCounts);
-    PlaceGridItems(&cellOccupancyMatrix, &items, tree, children, direction,
-                   style.gridAutoFlow,
-                   alignItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}),
-                   justifyItems
-                       .UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}));
+    if (!ignoreChildren) {
+        PlaceGridItems(
+            &cellOccupancyMatrix, &items, tree, children, direction,
+            style.gridAutoFlow,
+            alignItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}),
+            justifyItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}));
+    }
 
     // Auto-placement can add tracks, so the counts are read back here.
     TrackCounts finalColCounts = cellOccupancyMatrix
@@ -4638,6 +4647,32 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     cellOccupancyMatrix.Free();
     nameResolver.Free();
     return out;
+}
+
+LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
+                               const LayoutInput& inputs) {
+    const Style& style = tree->GetStyle(node);
+    Contain contain = style.contain;
+    LayoutOutput output;
+    if (contain.Intersects(Contain::Size().Union(Contain::InlineSize()))) {
+        bool definiteW = false;
+        bool definiteH = false;
+        ContainedSizeIsDefinite(style, inputs, tree->calc, &definiteW,
+                                &definiteH);
+        output = ComputeContainedSizeLayout(
+            tree, node, inputs, contain, definiteW, definiteH,
+            [](TaffyTree* tree, NodeId node, const LayoutInput& inputs,
+               bool ignoreChildren) {
+                return ComputeGridLayoutInner(tree, node, inputs,
+                                              ignoreChildren);
+            });
+    } else {
+        output = ComputeGridLayoutInner(tree, node, inputs, false);
+    }
+    if (contain.SuppressesBaseline()) {
+        output.firstBaselines = PointFOptNone();
+    }
+    return output;
 }
 
 // ─── test seams ──────────────────────────────────────────────────────────

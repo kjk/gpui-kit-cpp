@@ -137,11 +137,14 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
 // ─── shared content size — taffy/src/compute/common/content_size.rs ──────
 
 // How much width/height a node contributes to its parent's content size.
+// Layout or paint containment keeps overflowing content out of that size.
 SizeF ComputeContentSizeContribution(PointF location, SizeF size,
-                                     SizeF contentSize, PointOverflow overflow);
+                                     SizeF contentSize, PointOverflow overflow,
+                                     Contain contain);
 
 } // namespace taffy
 
+#include "taffy/containment.h"
 #include "taffy/flex_balance.h"
 
 #endif // GPUI_TAFFY_COMPUTE_H_

@@ -354,6 +354,7 @@ bool operator==(const Style& a, const Style& b) {
            // Overflow
            a.overflow == b.overflow &&
            SameFloatBits(a.scrollbarWidth, b.scrollbarWidth) &&
+           a.contain == b.contain &&
            // Float
            a.floatMode == b.floatMode && a.clear == b.clear &&
            // Position

@@ -229,12 +229,14 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
     contentBoxInset.right += scrollbarGutter.x;
     contentBoxInset.bottom += scrollbarGutter.y;
 
+    Contain contain = style.contain;
     bool hasStylesPreventingBeingCollapsedThrough =
         !style.IsBlock() || IsScrollContainer(style.overflow.x) ||
         IsScrollContainer(style.overflow.y) ||
-        style.position == Position::Absolute || padding.top > 0.0f ||
-        padding.bottom > 0.0f || border.top > 0.0f || border.bottom > 0.0f ||
-        (IsSome(nodeSize.h) && nodeSize.h > 0.0f) ||
+        style.position == Position::Absolute ||
+        contain.EstablishesIndependentFormattingContext() ||
+        padding.top > 0.0f || padding.bottom > 0.0f || border.top > 0.0f ||
+        border.bottom > 0.0f || (IsSome(nodeSize.h) && nodeSize.h > 0.0f) ||
         (IsSome(nodeMinSize.h) && nodeMinSize.h > 0.0f);
 
     // Return early if both dimensions are already known.
@@ -274,6 +276,51 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
                                      contentBoxInset.VerticalAxisSum());
     }
 
+    // Size containment: the box is sized as if empty. Content is still
+    // measured into that fixed box for content size.
+    if (contain.Contains(Contain::Size())) {
+        SizeF clamped = MaybeClamp(
+            UnwrapOr(Or(knownDimensions, nodeSize), contentBoxInset.SumAxes()),
+            nodeMinSize, nodeMaxSize);
+        SizeF size = {clamped.w, F32Max(clamped.h, IsSome(aspectRatio)
+                                                       ? clamped.w / aspectRatio
+                                                       : 0.0f)};
+        size = MaybeMax(size, AsOptional(pbSum));
+        SizeF contentSize = SizeF::Zero();
+        if (inputs.runMode == RunMode::PerformLayout && measure) {
+            SizeF inner = {
+                F32Max(size.w - contentBoxInset.HorizontalAxisSum(), 0.0f),
+                F32Max(size.h - contentBoxInset.VerticalAxisSum(), 0.0f)};
+            SizeAvail innerAvail = SizeAvail::Definite(inner);
+            contentSize = measure(SizeFOptNone(), innerAvail, measureCtx) +
+                          padding.SumAxes();
+        }
+        LayoutOutput out;
+        out.size = size;
+        out.contentSize = contentSize;
+        out.marginsCanCollapseThrough =
+            !hasStylesPreventingBeingCollapsedThrough && size.h == 0.0f;
+        return out;
+    }
+
+    // Inline-size containment: width is as if empty. Height still follows
+    // the content laid out at that width.
+    bool hasInlineSize = contain.Contains(Contain::InlineSize());
+    if (hasInlineSize && inputs.runMode == RunMode::ComputeSize &&
+        inputs.axis == RequestedAxis::Horizontal) {
+        float width = MaybeClamp(UnwrapOr(Or(knownDimensions.w, nodeSize.w),
+                                          contentBoxInset.HorizontalAxisSum()),
+                                 nodeMinSize.w, nodeMaxSize.w);
+        width = F32Max(width, pbSum.w);
+        return LayoutOutput::FromOuterSize({width, 0.0f});
+    }
+    if (hasInlineSize && !IsSome(knownDimensions.w) && !IsSome(nodeSize.w)) {
+        float emptyWidth = MaybeClamp(contentBoxInset.HorizontalAxisSum(),
+                                      nodeMinSize.w, nodeMaxSize.w);
+        availableSpace.width = AvailableSpace::Definite(
+            F32Max(emptyWidth - contentBoxInset.HorizontalAxisSum(), 0.0f));
+    }
+
     // PerformHiddenLayout never reaches here; Rust spells that unreachable!().
     SizeFOpt measureKnown = inputs.runMode == RunMode::ComputeSize
                                 ? knownDimensions
@@ -281,10 +328,15 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
     SizeF measuredSize = measure
                              ? measure(measureKnown, availableSpace, measureCtx)
                              : SizeF::Zero();
+    // Inline-size containment: content does not contribute to the width.
+    SizeF sizingMeasured = measuredSize;
+    if (hasInlineSize) {
+        sizingMeasured.w = 0.0f;
+    }
 
     SizeF clampedSize =
         MaybeClamp(UnwrapOr(Or(knownDimensions, nodeSize),
-                            measuredSize + contentBoxInset.SumAxes()),
+                            sizingMeasured + contentBoxInset.SumAxes()),
                    nodeMinSize, nodeMaxSize);
     SizeF size = {
         clampedSize.w,
@@ -383,13 +435,17 @@ float ComputeAlignmentOffset(float freeSpace, int numItems, float gap,
 // ─── shared content size ─────────────────────────────────────────────────
 
 SizeF ComputeContentSizeContribution(PointF location, SizeF size,
-                                     SizeF contentSize,
-                                     PointOverflow overflow) {
-    SizeF contribution = {
-        overflow.x == Overflow::Visible ? F32Max(size.w, contentSize.w)
-                                        : size.w,
-        overflow.y == Overflow::Visible ? F32Max(size.h, contentSize.h)
-                                        : size.h};
+                                     SizeF contentSize, PointOverflow overflow,
+                                     Contain contain) {
+    // A box that contains its scrollable overflow contributes only its
+    // border box, whatever its overflow style.
+    bool overflowContributes = !contain.ContainsScrollableOverflow();
+    SizeF contribution = {overflow.x == Overflow::Visible && overflowContributes
+                              ? F32Max(size.w, contentSize.w)
+                              : size.w,
+                          overflow.y == Overflow::Visible && overflowContributes
+                              ? F32Max(size.h, contentSize.h)
+                              : size.h};
     if (contribution.w > 0.0f && contribution.h > 0.0f) {
         float maxX = F32Max(location.x + contribution.w, 0.0f);
         float minX = F32Min(location.x, 0.0f);

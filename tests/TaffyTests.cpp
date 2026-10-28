@@ -3538,6 +3538,276 @@ static void TestTaffy013Regressions() {
     }
 }
 
+// A leaf measure that reports a fixed border box and a larger content box.
+struct ContainOverflowContext {
+    SizeF size;
+    SizeF content;
+};
+
+static taffy::LayoutOutput ContainOverflowMeasure(
+    const taffy::LayoutInput& inputs, TaffyNodeId node, void* nodeContext,
+    const taffy::Style* style, void* userData) {
+    (void)inputs;
+    (void)node;
+    (void)style;
+    (void)userData;
+    ContainOverflowContext* c = (ContainOverflowContext*)nodeContext;
+    return taffy::LayoutOutput::FromSizes(c->size, c->content);
+}
+
+static SizeF ContainFixedMeasure(SizeFOpt known, SizeAvail available, void*) {
+    (void)known;
+    (void)available;
+    return {80.0f, 40.0f};
+}
+
+// CSS contain: size, inline-size, layout and paint. taffy 20f04b9f.
+static void TestContainLayout() {
+    TestSuite("taffy::compute::contain");
+
+    utassert(Contain::Strict() ==
+             (Contain::Size() | Contain::Layout() | Contain::Paint()));
+    utassert(Contain::Content() == (Contain::Layout() | Contain::Paint()));
+    utassert(Contain::Layout().SuppressesBaseline());
+    utassert(!Contain::Paint().SuppressesBaseline());
+    utassert(Contain::Paint().ContainsScrollableOverflow());
+    utassert(!Contain::Size().ContainsScrollableOverflow());
+    utassert(Contain::Layout().EstablishesIndependentFormattingContext());
+
+    {
+        // Size containment sizes a leaf as if it were empty. Padding remains.
+        taffy::Style style;
+        style.contain = Contain::Size();
+        style.padding = {
+            LengthPercentage::Length(10.0f), LengthPercentage::Length(10.0f),
+            LengthPercentage::Length(10.0f), LengthPercentage::Length(10.0f)};
+        taffy::LayoutInput in;
+        in.runMode = RunMode::PerformLayout;
+        in.sizingMode = SizingMode::InherentSize;
+        in.availableSpace = SizeAvail::MaxContent();
+        taffy::LayoutOutput out = ComputeLeafLayout(
+            in, style, taffy::CalcResolver{}, ContainFixedMeasure, nullptr);
+        utassertnear(out.size.w, 20.0f);
+        utassertnear(out.size.h, 20.0f);
+        // Content is still measured into the fixed box.
+        utassertnear(out.contentSize.w, 100.0f);
+        utassertnear(out.contentSize.h, 60.0f);
+    }
+
+    {
+        // Inline-size containment fixes the width and lets content set height.
+        taffy::Style style;
+        style.contain = Contain::InlineSize();
+        style.minSize.width = Dimension::Length(30.0f);
+        taffy::LayoutInput in;
+        in.runMode = RunMode::PerformLayout;
+        in.sizingMode = SizingMode::InherentSize;
+        in.availableSpace = SizeAvail::MaxContent();
+        taffy::LayoutOutput out = ComputeLeafLayout(
+            in, style, taffy::CalcResolver{}, ContainFixedMeasure, nullptr);
+        utassertnear(out.size.w, 30.0f);
+        utassertnear(out.size.h, 40.0f);
+    }
+
+    {
+        // A size-contained flex column keeps its child's height out of its
+        // own border box. The child still contributes to content size.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.size = SizeDim::FromLengths(40.0f, 80.0f);
+        // The container's used height is 0. Shrink would crush the child.
+        childStyle.flexShrink = 0.0f;
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Column;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        rootStyle.contain = Contain::Size();
+        TaffyNodeId kids[] = {child};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.w, 100.0f);
+        utassertnear(tree.GetLayout(root).size.h, 0.0f);
+        utassertnear(tree.GetLayout(root).contentSize.h, 80.0f);
+        utassertnear(tree.GetLayout(child).size.h, 80.0f);
+        tree.Free();
+    }
+
+    {
+        // Inline-size containment: the row's width ignores its child, and
+        // the height still follows that child.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.size = SizeDim::FromLengths(40.0f, 30.0f);
+        childStyle.flexShrink = 0.0f;
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Row;
+        rootStyle.contain = Contain::InlineSize();
+        TaffyNodeId kids[] = {child};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.w, 0.0f);
+        utassertnear(tree.GetLayout(root).size.h, 30.0f);
+        utassertnear(tree.GetLayout(child).size.w, 40.0f);
+        tree.Free();
+    }
+
+    {
+        // A used auto size from size containment is not a percentage basis.
+        // The child's 50% height stays indefinite and measures as 20.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.size.width = Dimension::Length(30.0f);
+        childStyle.size.height = Dimension::Percent(0.5f);
+        childStyle.flexShrink = 0.0f;
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Column;
+        rootStyle.size.width = Dimension::Length(200.0f);
+        rootStyle.contain = Contain::Size();
+        TaffyNodeId kids[] = {child};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      ContentTextMeasure, nullptr);
+        utassertnear(tree.GetLayout(root).size.h, 0.0f);
+        utassertnear(tree.GetLayout(child).size.h, 20.0f);
+        tree.Free();
+    }
+
+    {
+        // Layout containment drops the container's baseline. Paint does not.
+        // The outer row aligns baselines: a suppressed baseline is the
+        // item's bottom edge, so the contained item shifts by 10, not 30.
+        BaselineContext leafCtx = {{50.0f, 50.0f}, 40.0f};
+        BaselineContext innerCtx = {{30.0f, 30.0f}, 10.0f};
+        Contain kinds[] = {Contain::Layout(), Contain::Paint()};
+        float expectY[] = {10.0f, 30.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            TaffyNodeId leaf =
+                tree.NewLeafWithContext(taffy::Style{}, &leafCtx);
+            TaffyNodeId inner =
+                tree.NewLeafWithContext(taffy::Style{}, &innerCtx);
+            taffy::Style boxStyle;
+            boxStyle.display = taffy::Display::Flex;
+            boxStyle.flexDirection = FlexDirection::Column;
+            boxStyle.contain = kinds[i];
+            TaffyNodeId innerKids[] = {inner};
+            TaffyNodeId box = tree.NewWithChildren(boxStyle, innerKids, 1);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Flex;
+            rootStyle.flexDirection = FlexDirection::Row;
+            rootStyle.alignItems =
+                OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+            rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
+            TaffyNodeId kids[] = {leaf, box};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                          BaselineMeasure, nullptr);
+            utassertnear(tree.GetLayout(box).location.y, expectY[i]);
+            tree.Free();
+        }
+    }
+
+    {
+        // Layout containment keeps the child's overflowing content out of
+        // the parent's scrollable overflow.
+        TaffyTree tree;
+        tree.Init();
+        ContainOverflowContext ctx = {{20.0f, 20.0f}, {100.0f, 80.0f}};
+        taffy::Style childStyle;
+        childStyle.contain = Contain::Layout();
+        childStyle
+            .overflow = {taffy::Overflow::Visible, taffy::Overflow::Visible};
+        TaffyNodeId child = tree.NewLeafWithContext(childStyle, &ctx);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Column;
+        TaffyNodeId kids[] = {child};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      ContainOverflowMeasure, nullptr);
+        utassertnear(tree.GetLayout(root).size.w, 20.0f);
+        utassertnear(tree.GetLayout(root).size.h, 20.0f);
+        utassertnear(tree.GetLayout(root).contentSize.w, 20.0f);
+        utassertnear(tree.GetLayout(root).contentSize.h, 20.0f);
+        tree.Free();
+    }
+
+    {
+        // Paint containment establishes a BFC, so the inner margin stays
+        // inside the middle box. Without it the 20px margin collapses out
+        // and the middle box is only the inner border box.
+        auto Run = [](Contain contain, float* midH, float* innerY) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style innerStyle;
+            innerStyle.display = taffy::Display::Block;
+            innerStyle.size.height = Dimension::Length(10.0f);
+            innerStyle.margin.top = LengthPercentageAuto::Length(20.0f);
+            TaffyNodeId inner = tree.NewLeaf(innerStyle);
+            taffy::Style midStyle;
+            midStyle.display = taffy::Display::Block;
+            midStyle.contain = contain;
+            TaffyNodeId midKids[] = {inner};
+            TaffyNodeId mid = tree.NewWithChildren(midStyle, midKids, 1);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Block;
+            rootStyle.size.width = Dimension::Length(100.0f);
+            rootStyle.border = {
+                LengthPercentage::Length(1.0f), LengthPercentage::Length(1.0f),
+                LengthPercentage::Length(1.0f), LengthPercentage::Length(1.0f)};
+            TaffyNodeId rootKids[] = {mid};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, rootKids, 1);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            *midH = tree.GetLayout(mid).size.h;
+            *innerY = tree.GetLayout(inner).location.y;
+            tree.Free();
+        };
+        float plainH = 0.0f;
+        float plainY = 0.0f;
+        float paintH = 0.0f;
+        float paintY = 0.0f;
+        Run(Contain::None(), &plainH, &plainY);
+        Run(Contain::Paint(), &paintH, &paintY);
+        // The collapsed margin sits outside the middle box, so the inner
+        // border box starts at the middle box's top.
+        utassertnear(plainH, 10.0f);
+        utassertnear(plainY, 0.0f);
+        utassertnear(paintH, 30.0f);
+        utassertnear(paintY, 20.0f);
+    }
+
+    {
+        // An explicit auto row would grow to the child. Size containment
+        // sizes the grid as if that child were absent.
+        TrackSizingFunction col = TrackSizingFunction::Length(40.0f);
+        GridTemplateComponent colC = GridTemplateComponent::Single(col);
+        taffy::Style childStyle;
+        childStyle.size = SizeDim::FromLengths(100.0f, 80.0f);
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.contain = Contain::Size();
+        rootStyle.gridTemplateColumns = GridTemplateOf(&colC, 1);
+        TaffyNodeId kids[] = {child};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.w, 40.0f);
+        utassertnear(tree.GetLayout(root).size.h, 0.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -3565,6 +3835,7 @@ void TestTaffy() {
     // The grid tests build styles whose track lists live in an arena of their
     // own; a Style holds slices, not owned vectors.
     gGridArena = gpui::ArenaNew();
+    TestContainLayout();
     TestExplicitGridSizing();
     TestInitializeGridTracks();
     TestGridImplicitSizing();
