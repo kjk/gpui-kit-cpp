@@ -8223,6 +8223,52 @@ static void TestGridIndefinitePercentMinTrack() {
     }
 }
 
+// Sparse packing of a row-locked item continues after auto-placed items
+// that started on that row. An item that only spans into the row does not
+// move the cursor, so a later item can still use the free cell in front.
+static void TestGridSparseSpanningLockedItems() {
+    TestSuite("taffy grid sparse spanning locked items");
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    float xs[2][8] = {
+        {0.0f, 50.0f, 100.0f, 50.0f, 100.0f, 0.0f, 150.0f, 0.0f},
+        {150.0f, 100.0f, 50.0f, 100.0f, 50.0f, 150.0f, 0.0f, 150.0f}};
+    float ys[8] = {20.0f, 40.0f, 20.0f, 0.0f, 0.0f, 40.0f, 20.0f, 0.0f};
+    float hs[8] = {20.0f, 20.0f, 40.0f, 40.0f, 20.0f, 20.0f, 20.0f, 20.0f};
+    for (int d = 0; d < 2; d++) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style styles[8];
+        styles[0].gridRow.start = GLine(2);
+        styles[0].gridColumn.start = GLine(1);
+        styles[1].gridRow.start = GLine(3);
+        styles[1].gridColumn.start = GLine(2);
+        styles[2].gridRow = {GLine(2), GSpan(2)};
+        styles[3].gridRow = {GLine(1), GSpan(2)};
+        styles[4].gridRow.start = GLine(1);
+        styles[5].gridRow.start = GLine(3);
+        styles[6].gridRow.start = GLine(2);
+        TaffyNodeId kids[8];
+        for (int i = 0; i < 8; i++) {
+            styles[i].direction = directions[d];
+            kids[i] = tree.NewLeaf(styles[i]);
+        }
+        TrackSizingFunction col = TrackSizingFunction::Length(50.0f);
+        TrackSizingFunction row = TrackSizingFunction::Length(20.0f);
+        taffy::Style root;
+        root.display = taffy::Display::Grid;
+        root.direction = directions[d];
+        root.gridAutoColumns = SliceDup(gGridArena, &col, 1);
+        root.gridAutoRows = SliceDup(gGridArena, &row, 1);
+        TaffyNodeId rootNode = tree.NewWithChildren(root, kids, 8);
+        tree.ComputeLayout(rootNode, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(rootNode), 0.0f, 0.0f, 200.0f, 60.0f);
+        for (int i = 0; i < 8; i++) {
+            AssertBox(tree.GetLayout(kids[i]), xs[d][i], ys[i], 50.0f, hs[i]);
+        }
+        tree.Free();
+    }
+}
+
 static void TestGridCyclicPercentMinContribution() {
     TestSuite("taffy grid cyclic percent min");
     for (int withPreferred = 0; withPreferred < 2; withPreferred++) {
@@ -8331,6 +8377,7 @@ void TestTaffy() {
     gGridArena = gpui::ArenaNew();
     TestNegativeAvailableSpace();
     TestGridBlockItemHeightCache();
+    TestGridSparseSpanningLockedItems();
     TestGridIndefinitePercentMinTrack();
     TestGridCyclicPercentMinContribution();
     TestGridUnaffectedTracksNotMeasured();

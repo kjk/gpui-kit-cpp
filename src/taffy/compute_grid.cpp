@@ -176,14 +176,63 @@ enum class CellOccupancyState : uint8_t {
     AutoPlaced
 };
 
+// The furthest primary-axis end line of an auto-placed item that started in
+// this secondary-axis track. Unset until such an item is placed.
+struct SparseCursor {
+    bool set = false;
+    int16_t line = 0;
+};
+
 // A dynamically sized matrix tracking the occupancy of each cell during
 // auto-placement, plus how many tracks are implicit and explicit.
+// Sparse cursors are stored per secondary track, separate from occupancy:
+// an item that spans into a later track does not move that track's cursor.
 struct CellOccupancyMatrix {
     Vec<uint8_t> inner;
+    Vec<SparseCursor> rowCursor;
+    Vec<SparseCursor> colCursor;
     int nRows = 0;
     int nCols = 0;
     TrackCounts columns;
     TrackCounts rows;
+
+    static void ResetCursors(Vec<SparseCursor>& cursors, int count) {
+        VecReset(cursors);
+        if (count <= 0) {
+            return;
+        }
+        SparseCursor* p = VecAppendBlanks(cursors, count);
+        if (p) {
+            memset(p, 0, (size_t)count * sizeof(SparseCursor));
+        }
+    }
+    // Negative growth inserts empty tracks at the front. Cursor values are
+    // origin-zero lines, so they move with their track and do not change.
+    static void ShiftCursors(Vec<SparseCursor>& cursors, int oldCount,
+                             int reqNeg, int reqPos) {
+        if (reqNeg == 0 && reqPos == 0) {
+            return;
+        }
+        int newCount = oldCount + reqNeg + reqPos;
+        Vec<SparseCursor> next;
+        SparseCursor* p =
+            newCount > 0 ? VecAppendBlanks(next, newCount) : nullptr;
+        if (newCount > 0 && !p) {
+            return;
+        }
+        if (p) {
+            memset(p, 0, (size_t)newCount * sizeof(SparseCursor));
+            if (oldCount > 0 && cursors.els) {
+                memcpy(p + reqNeg, cursors.els,
+                       (size_t)oldCount * sizeof(SparseCursor));
+            }
+        }
+        VecReset(cursors);
+        cursors = next;
+        next.els = nullptr;
+        next.len = 0;
+        next.cap = 0;
+    }
 
     void Init(TrackCounts cols, TrackCounts rws) {
         columns = cols;
@@ -198,8 +247,14 @@ struct CellOccupancyMatrix {
                 memset(p, 0, (size_t)n);
             }
         }
+        ResetCursors(rowCursor, nRows);
+        ResetCursors(colCursor, nCols);
     }
-    void Free() { VecReset(inner); }
+    void Free() {
+        VecReset(inner);
+        VecReset(rowCursor);
+        VecReset(colCursor);
+    }
 
     CellOccupancyState Get(int row, int col) const {
         if (row < 0 || row >= nRows || col < 0 || col >= nCols) {
@@ -269,6 +324,37 @@ struct CellOccupancyMatrix {
             (uint16_t)(columns.negativeImplicit + reqNegCols);
         columns.positiveImplicit =
             (uint16_t)(columns.positiveImplicit + reqPosCols);
+        ShiftCursors(rowCursor, oldRowCount, reqNegRows, reqPosRows);
+        ShiftCursors(colCursor, oldColCount, reqNegCols, reqPosCols);
+    }
+
+    void AdvanceAutoPlacementCursor(AbsoluteAxis primaryAxis,
+                                    OriginZeroLine secondaryStart,
+                                    OriginZeroLine primaryEnd) {
+        int trackIndex = Counts(OtherAxis(primaryAxis))
+                             .OzLineToNextTrack(secondaryStart);
+        Vec<SparseCursor>& tracks =
+            primaryAxis == AbsoluteAxis::Horizontal ? rowCursor : colCursor;
+        if (trackIndex < 0 || trackIndex >= len(tracks)) {
+            return;
+        }
+        SparseCursor& cursor = tracks.els[trackIndex];
+        if (!cursor.set || primaryEnd.v > cursor.line) {
+            cursor.set = true;
+            cursor.line = primaryEnd.v;
+        }
+    }
+
+    // The sparse cursor for items whose secondary span starts on this line.
+    OptOriginZeroLine AutoPlacementCursor(AbsoluteAxis trackType,
+                                          OriginZeroLine startAt) const {
+        int idx = Counts(OtherAxis(trackType)).OzLineToNextTrack(startAt);
+        const Vec<SparseCursor>& tracks =
+            trackType == AbsoluteAxis::Horizontal ? rowCursor : colCursor;
+        if (idx < 0 || idx >= len(tracks) || !tracks.els[idx].set) {
+            return OptOriginZeroLine();
+        }
+        return OptOriginZeroLine(OriginZeroLine{tracks.els[idx].line});
     }
 
     void MarkAreaAs(AbsoluteAxis primaryAxis, LineOzl primarySpan,
@@ -292,6 +378,13 @@ struct CellOccupancyMatrix {
             colEnd = columns.OzLineToNextTrack(colSpan.end);
             rowStart = rows.OzLineToNextTrack(rowSpan.start);
             rowEnd = rows.OzLineToNextTrack(rowSpan.end);
+        }
+
+        if (value == CellOccupancyState::AutoPlaced &&
+            primarySpan.start < primarySpan.end &&
+            secondarySpan.start < secondarySpan.end) {
+            AdvanceAutoPlacementCursor(primaryAxis, secondarySpan.start,
+                                       primarySpan.end);
         }
 
         for (int x = rowStart; x < rowEnd; x++) {
@@ -419,33 +512,6 @@ struct CellOccupancyMatrix {
             }
         }
         return false;
-    }
-
-    // The last cell of the given state in the track, searching backwards.
-    OptOriginZeroLine LastOfType(AbsoluteAxis trackType, OriginZeroLine startAt,
-                                 CellOccupancyState kind) const {
-        const TrackCounts& tc = Counts(OtherAxis(trackType));
-        int idx = tc.OzLineToNextTrack(startAt);
-        if (trackType == AbsoluteAxis::Horizontal) {
-            if (idx < 0 || idx >= nRows) {
-                return OptOriginZeroLine();
-            }
-            for (int c = nCols - 1; c >= 0; c--) {
-                if (Get(idx, c) == kind) {
-                    return OptOriginZeroLine(tc.TrackToPrevOzLine((uint16_t)c));
-                }
-            }
-        } else {
-            if (idx < 0 || idx >= nCols) {
-                return OptOriginZeroLine();
-            }
-            for (int r = nRows - 1; r >= 0; r--) {
-                if (Get(r, idx) == kind) {
-                    return OptOriginZeroLine(tc.TrackToPrevOzLine((uint16_t)r));
-                }
-            }
-        }
-        return OptOriginZeroLine();
     }
 };
 
@@ -2036,8 +2102,7 @@ SpanPair PlaceDefiniteSecondaryAxisItem(const CellOccupancyMatrix& matrix,
     OriginZeroLine startingPosition = primaryStart;
     if (!IsDense(autoFlow)) {
         OptOriginZeroLine lookup =
-            matrix.LastOfType(primaryAxis, secondaryPlacement.start,
-                              CellOccupancyState::AutoPlaced);
+            matrix.AutoPlacementCursor(primaryAxis, secondaryPlacement.start);
         if (lookup.IsSome()) {
             startingPosition = lookup.val;
         }
