@@ -5001,6 +5001,43 @@ static void TestContainment() {
     utassertnear(painted.top, 0.0f);
 }
 
+// A stretched definite cross size transfers through the aspect ratio into
+// the flex base size, so an auto main size is that transferred length.
+static void TestFlexAspectRatioStretch() {
+    TestSuite("taffy flex aspect ratio stretch");
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style child;
+        child.aspectRatio = Some(2.0f);
+        TaffyNodeId childNode = tree.NewLeaf(child);
+        taffy::Style rootStyle;
+        rootStyle.size.height = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &childNode, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 200.0f, 100.0f);
+        AssertBox(tree.GetLayout(childNode), 0.0f, 0.0f, 200.0f, 100.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style child;
+        child.aspectRatio = Some(0.5f);
+        TaffyNodeId childNode = tree.NewLeaf(child);
+        taffy::Style rootStyle;
+        rootStyle.flexDirection = FlexDirection::Column;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &childNode, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 200.0f);
+        AssertBox(tree.GetLayout(childNode), 0.0f, 0.0f, 100.0f, 200.0f);
+        tree.Free();
+    }
+}
+
 // src/tree/cache.rs. A measure input whose known width is the cache key.
 static LayoutInput CacheMeasureInput(float width) {
     LayoutInput in;
@@ -5173,6 +5210,7 @@ void TestTaffy() {
     TestHiddenLayout();
     TestFlexboxLayout();
     TestFlexNegativeMarginIntrinsic();
+    TestFlexAspectRatioStretch();
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();

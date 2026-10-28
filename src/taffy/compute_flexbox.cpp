@@ -494,13 +494,18 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
                 hasKeywordMain = true;
             }
         }
-        if (measureBasis) {
-            // An aspect ratio plus a definite cross size makes the base size
-            // definite: the child's layout derives it from that cross size.
-            if (IsSome(child.aspectRatio) && childCrossSizeIsDefinite &&
-                IsSome(Cross(childKnownDimensions, dir))) {
+        if (measureBasis && childCrossSizeIsDefinite) {
+            // An aspect ratio plus a definite cross size transfers that cross
+            // size into a definite flex base size (case B).
+            Optf cross = Cross(childKnownDimensions, dir);
+            if (IsSome(child.aspectRatio) && IsSome(cross)) {
                 child.flexBasisIsDefinite = true;
+                child.flexBasis = c.isRow ? cross * child.aspectRatio
+                                          : cross / child.aspectRatio;
+                measureBasis = false;
             }
+        }
+        if (measureBasis) {
             // C is covered by E below, which passes the available space
             // constraint through to the child.
             // D would need vertical writing modes.
@@ -851,6 +856,24 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                     } else if (item.IsScroll()) {
                         contentContribution =
                             item.flexBasis + MainAxisSum(item.margin, dir);
+                    } else if (IsSome(stylePreferred)) {
+                        // A definite preferred main size is the content
+                        // contribution an inherent-size measure would return,
+                        // floored by padding and border. Measuring would share
+                        // a cache entry with the content-size pass.
+                        float itemPbMain = MainAxisSum(item.padding, dir) +
+                                           MainAxisSum(item.border, dir);
+                        float contentMainSize =
+                            F32Max(stylePreferred, itemPbMain) +
+                            MainAxisSum(item.margin, dir);
+                        if (c->isRow) {
+                            contentContribution =
+                                MaybeClamp(contentMainSize, styleMin, styleMax);
+                        } else {
+                            contentContribution = MaybeClamp(
+                                F32Max(contentMainSize, item.flexBasis),
+                                styleMin, styleMax);
+                        }
                     } else {
                         Optf crossAxisParentSize = Cross(c->nodeInnerSize, dir);
                         float crossAxisMarginSum = CrossAxisSum(c->margin, dir);
@@ -886,13 +909,22 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                                          CrossAxisSum(item.margin, dir)));
                         }
 
-                        float contentMainSize =
-                            tree->MeasureChildSize(
-                                item.node, childKnownDimensions,
-                                c->nodeInnerSize, childAvailableSpace,
-                                SizingMode::InherentSize, MainAxis(dir),
-                                LineBool::False()) +
-                            MainAxisSum(item.margin, dir);
+                        float measuredMainSize = tree->MeasureChildSize(
+                            item.node, childKnownDimensions, c->nodeInnerSize,
+                            childAvailableSpace, SizingMode::ContentSize,
+                            MainAxis(dir), LineBool::False());
+                        // A known cross size transfers through the aspect
+                        // ratio and floors the measured content size.
+                        Optf cross = Cross(childKnownDimensions, dir);
+                        float contentMainSize = measuredMainSize;
+                        if (IsSome(item.aspectRatio) && IsSome(cross)) {
+                            float transferred = c->isRow
+                                                    ? cross * item.aspectRatio
+                                                    : cross / item.aspectRatio;
+                            contentMainSize =
+                                F32Max(contentMainSize, transferred);
+                        }
+                        contentMainSize += MainAxisSum(item.margin, dir);
 
                         // Asymmetrical between rows and columns. This likely
                         // relates to
@@ -1946,12 +1978,13 @@ RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
         SizeFOpt knownDimensions = MaybeClamp(styleSize, minSize, maxSize);
 
         // A sizing keyword beats the inset-derived size below. Flex absolute
-        // children are measured in inherent-size mode.
+        // children are measured in content-size mode; the parent's own size
+        // styles are applied around that measure.
         if (cs.size.width.IsSizingKeyword() || cs.size.height
                                                    .IsSizingKeyword()) {
             ResolveAbsoluteSizingKeywords(tree, child, &knownDimensions,
                                           cs.size, insetRelativeSize, inset,
-                                          margin, SizingMode::InherentSize);
+                                          margin, SizingMode::ContentSize);
             knownDimensions =
                 MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
                            minSize, maxSize);
@@ -1993,14 +2026,14 @@ RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
         } else {
             SizeF measuredSize = tree->MeasureChildSizeBoth(
                 child, knownDimensions, c.nodeInnerSize, childAvail,
-                SizingMode::InherentSize, LineBool::False());
+                SizingMode::ContentSize, LineBool::False());
             finalSize = UnwrapOr(knownDimensions, measuredSize);
         }
         finalSize = MaybeClamp(finalSize, minSize, maxSize);
 
         LayoutOutput layoutOutput = tree->PerformChildLayout(
             child, AsOptional(finalSize), c.nodeInnerSize, childAvail,
-            SizingMode::InherentSize, LineBool::False());
+            SizingMode::ContentSize, LineBool::False());
 
         RectF nonAutoMargin = {
             UnwrapOr(margin.left, 0.0f), UnwrapOr(margin.right, 0.0f),
@@ -2352,7 +2385,7 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
             tree->SetUnroundedLayout(child, Layout::WithOrder((uint32_t)order));
             tree->PerformChildLayout(
                 child, SizeFOptNone(), SizeFOptNone(), SizeAvail::MaxContent(),
-                SizingMode::InherentSize, LineBool::False());
+                SizingMode::ContentSize, LineBool::False());
         }
     }
 
