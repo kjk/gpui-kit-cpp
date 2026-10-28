@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "afeb1fb2eec0883a3a75bb1032cac15c0a1a768b",
+  sha: "d2b473b6a6abc59e475beee904294fd46fa21041",
   date: "2026-10-24",
-  subject: "toolbar: Grow with content taller than the bar (#3651)",
+  subject: "hover_card: Apply trigger_style to the trigger container (#3653)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

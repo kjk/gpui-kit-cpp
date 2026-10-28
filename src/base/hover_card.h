@@ -78,6 +78,10 @@ struct HoverCard {
     // Mobile targets have no persistent hover. Tests may override this field
     // to exercise the touch policy on a desktop host.
     bool tapToOpen = GPUI_OS_IOS || GPUI_OS_ANDROID;
+    // Styled: the refinement of the trigger container, the element laid out
+    // in the parent and measured to anchor the card.
+    Style style = {};
+    uint32_t styleSet = 0;
 
     static HoverCard* New(Ctx* cx, Str id, Entity<HoverCardState> state = {});
     // Rust's content builder runs only when the card is open, so nothing is
@@ -87,6 +91,8 @@ struct HoverCard {
     HoverCard* Trigger(El* trigger);
     HoverCard* Content(El* content);
     HoverCard* OnOpenChange(Listener fn);
+    // Styles the trigger container. Only the fields in `fields` apply.
+    HoverCard* Refine(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 } // namespace gpui

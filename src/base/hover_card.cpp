@@ -191,7 +191,16 @@ HoverCard* HoverCard::OnOpenChange(Listener fn) {
     return this;
 }
 
+HoverCard* HoverCard::Refine(const Style& s, uint32_t fields) {
+    style = s;
+    styleSet = fields;
+    return this;
+}
+
 El* HoverCard::IntoEl() {
+    if (styleSet && root) {
+        root->Refine(style, styleSet);
+    }
     return root;
 }
 } // namespace gpui

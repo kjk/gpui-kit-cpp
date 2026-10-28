@@ -133,7 +133,58 @@ static void TapCardsToggleWithoutHoverAndDismissOutside() {
     EntityDropAll(&app);
 }
 
+// hover_card.rs trigger_style_is_applied_to_the_trigger_container: w_full
+// on the container stretches it across the row, and the card follows that
+// right edge. On the trigger itself it would only fill the content wrap.
+static Bounds HoverTriggerStyledContent(bool styled) {
+    App app;
+    Window* win = new Window();
+    Arena* a = ArenaNew();
+    win->app = &app;
+    win->frameArena = a;
+    component::Init(&app);
+    Ctx cx = {&app, win, a, {}};
+    PaintCtx ctx = {};
+    ctx.viewW = 1024;
+    ctx.viewH = 768;
+    El* content = nullptr;
+    El* root = nullptr;
+    for (int frame = 0; frame < 2; frame++) {
+        content = Div(a)->W(20)->H(20);
+        component::HoverCard* card =
+            component::HoverCard::New(&cx, StrL("trigger-style-hover-card"))
+                ->Open(true)
+                ->OpenDelay(0)
+                ->Anchor(PopupAnchor::TopRight)
+                ->Trigger(Div(a)->W(40)->H(40))
+                ->Content(content);
+        if (styled) {
+            Style full;
+            full.width = kFill;
+            card->TriggerStyle(full, StyleFieldWidth);
+        }
+        root = Div(a)->W(1024)->H(768)->Child(
+            Div(a)->Absolute()->Left(100)->Top(100)->W(200)->FlexRow()->Child(
+                card->IntoEl()));
+    }
+    LayoutEl(&ctx, root, 0, 0, 1024, 768, 14, Rgba{});
+    Bounds out = {content->x, content->y, content->w, content->h};
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(a);
+    EntityDropAll(&app);
+    return out;
+}
+
+static void TriggerStyleIsAppliedToTheTriggerContainer() {
+    Bounds plain = HoverTriggerStyledContent(false);
+    utassertnear(plain.x + plain.w, 140.f);
+    Bounds styled = HoverTriggerStyledContent(true);
+    utassertnear(styled.x + styled.w, 300.f);
+}
+
 void TestHoverCard() {
+    TriggerStyleIsAppliedToTheTriggerContainer();
     TestSuite("hover_card");
     EveryCardIdIsItsOwnStateAndKeepsIt();
     ACloseThatLandsOnAHoveredCardDoesNothing();

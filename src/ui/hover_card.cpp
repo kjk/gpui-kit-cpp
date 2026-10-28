@@ -55,6 +55,11 @@ HoverCard* HoverCard::Anchor(HoverCardAnchor v) {
     anchor = v;
     return this;
 }
+HoverCard* HoverCard::TriggerStyle(const Style& s, uint32_t fields) {
+    triggerStyle = s;
+    triggerStyleSet = fields;
+    return this;
+}
 
 El* HoverCard::IntoEl() {
     Str cardId = id.s ? id : StrL("hover-card");
@@ -80,11 +85,14 @@ El* HoverCard::IntoEl() {
         }
         PopupPlaceContent(card, anchor);
     }
-    return gpui::HoverCard::New(cx, cardId, st)
-        ->OnOpenChange(onOpenChange)
-        ->Trigger(trigger)
-        ->Content(card)
-        ->IntoEl();
+    gpui::HoverCard* base = gpui::HoverCard::New(cx, cardId, st)
+                                ->OnOpenChange(onOpenChange)
+                                ->Trigger(trigger)
+                                ->Content(card);
+    if (triggerStyleSet) {
+        base->Refine(triggerStyle, triggerStyleSet);
+    }
+    return base->IntoEl();
 }
 
 } // namespace component

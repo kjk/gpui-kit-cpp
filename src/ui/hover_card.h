@@ -38,6 +38,9 @@ struct HoverCard {
     Listener onOpenChange = {};
     // hover_card.rs: `anchor: Anchor::TopCenter`.
     HoverCardAnchor anchor = HoverCardAnchor::TopCenter;
+    // trigger_style: the container the parent lays out and the card anchors to.
+    Style triggerStyle = {};
+    uint32_t triggerStyleSet = 0;
 
     static HoverCard* New(Ctx* cx);
     static HoverCard* New(Ctx* cx, Str id);
@@ -49,6 +52,10 @@ struct HoverCard {
     HoverCard* CloseDelay(int ms);
     HoverCard* OnOpenChange(Listener fn);
     HoverCard* Anchor(HoverCardAnchor a);
+    // trigger_style: where w_full or flex_1 goes so the trigger fills its slot.
+    // Only the fields in `fields` apply. Styled on the card still styles
+    // content.
+    HoverCard* TriggerStyle(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 
