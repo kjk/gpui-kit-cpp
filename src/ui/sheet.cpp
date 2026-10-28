@@ -93,6 +93,21 @@ El* Sheet::IntoEl(WinSize win) {
     // title bar, rather than hanging into the shadow on one side and leaving
     // a border's gap on the other.
     Edges windowPadding = WindowContentInsets(cx->win);
+    // The larger of the frame and the area the system bars and the
+    // keyboard leave visible. On desktop the safe insets are zero.
+    Edges safe = WindowSafeInsets(cx->win);
+    if (safe.top > windowPadding.top) {
+        windowPadding.top = safe.top;
+    }
+    if (safe.right > windowPadding.right) {
+        windowPadding.right = safe.right;
+    }
+    if (safe.bottom > windowPadding.bottom) {
+        windowPadding.bottom = safe.bottom;
+    }
+    if (safe.left > windowPadding.left) {
+        windowPadding.left = safe.left;
+    }
     float viewW = win.dipW - windowPadding.left - windowPadding.right;
     float viewH = win.dipH - windowPadding.top - windowPadding.bottom;
     bool horizontal =
@@ -105,6 +120,8 @@ El* Sheet::IntoEl(WinSize win) {
     float marginTop =
         placement == SheetPlacement::Bottom ? 0.f : th.sheet.marginTop;
     El* surface = Div(a)
+                      ->Id(StrL("sheet-content"))
+                      ->Click(HashClickId(StrL("sheet-content")))
                       ->Absolute()
                       ->FlexCol()
                       ->Bg(th.tokens.background)

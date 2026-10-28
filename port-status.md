@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `978522adcec29cb1a1cbd6f861cd38d675876623` (2026-10-22,
-input: Ask for the virtual keyboard when an input is tapped (#3623)).
-A touch press on an editable field asks the platform for the virtual
-keyboard, including a tap that leaves focus where it is. Platforms
-without one ignore the request.
+Processed through `c565782b37d8f96d3b69f9161a9a9e466aa2051e` (2026-10-22,
+sheet, notification: Keep out from under the system bars and the keyboard (#3624)).
+A sheet and the notification layer take the larger of the window frame
+and the fully visible bounds, so a title and a toast stay out from under
+a system bar or the keyboard. Desktop reports the whole window, and the
+insets are zero.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

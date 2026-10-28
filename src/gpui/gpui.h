@@ -6922,6 +6922,14 @@ struct Window {
     // window.request_virtual_keyboard calls. A platform without a soft
     // keyboard ignores the request; the count is what a test reads.
     int virtualKeyboardRequests = 0;
+    // visual_viewport_bounds. Unset means the whole window, which is what
+    // a desktop reports. A host writes the visible rectangle when a
+    // keyboard or a zoom covers part of the layout area.
+    bool hasVisualViewport = false;
+    Bounds visualViewport = {};
+    // WindowInsets::safe_area and ime. Zero until a host reports them.
+    Edges safeAreaInsets = {};
+    Edges imeInsets = {};
     // Drag offsets are stored immediately, while the view notification is
     // coalesced to the scrollbar's 120 Hz default. A release flushes the
     // newest point and clears any trailing deadline.
@@ -7618,6 +7626,15 @@ T* WindowRoot(Window* win) {
 
 // Client size in DIPs; what onRender used to receive as WinSize.
 WinSize WindowSize(Window* win);
+// window.fully_visible_bounds: the layout viewport inset by the safe area
+// and the keyboard, then intersected with the visual viewport. Desktop
+// answers the whole window.
+Bounds WindowFullyVisibleBounds(const Window* win);
+// The platform sample WindowFullyVisibleBounds reads. A null window is
+// ignored. Clearing the viewport restores the whole window.
+void WindowSetVisualViewport(Window* win, Bounds bounds);
+void WindowClearVisualViewport(Window* win);
+void WindowSetInsets(Window* win, Edges safeArea, Edges ime);
 
 // FrameTimingCollector::collect_unseen: copy the frames drawn since *cursor
 // into `out` and advance the cursor. Frames dropped from the ring while the

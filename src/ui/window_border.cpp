@@ -53,6 +53,20 @@ Edges WindowContentInsets(Window* window) {
     return insets;
 }
 
+Edges WindowSafeInsets(Window* window) {
+    if (!window) {
+        return {};
+    }
+    WinSize view = WindowSize(window);
+    Bounds visible = WindowFullyVisibleBounds(window);
+    Edges insets = {};
+    insets.top = visible.y;
+    insets.left = visible.x;
+    insets.right = view.dipW - visible.Right();
+    insets.bottom = view.dipH - visible.Bottom();
+    return insets;
+}
+
 WindowEdge WindowResizeEdge(float x, float y, float w, float h, Edges insets,
                             WindowTiling tiling, float hitSize) {
     float innerLeft = insets.left;

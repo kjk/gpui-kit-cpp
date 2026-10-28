@@ -332,6 +332,90 @@ WinSize WindowSize(Window* win) {
     return ws;
 }
 
+static float ClampAxis(float v, float hi) {
+    if (v < 0) {
+        v = 0;
+    }
+    if (v > hi) {
+        v = hi;
+    }
+    return v;
+}
+
+// window.fully_visible_bounds. Safe-area and keyboard insets shrink the
+// layout viewport; the visual viewport then clips that rectangle.
+Bounds WindowFullyVisibleBounds(const Window* win) {
+    if (!win) {
+        return {};
+    }
+    float vw = win->paint.viewW;
+    float vh = win->paint.viewH;
+    float insetTop = win->safeAreaInsets.top > win->imeInsets.top
+                         ? win->safeAreaInsets.top
+                         : win->imeInsets.top;
+    float insetRight = win->safeAreaInsets.right > win->imeInsets.right
+                           ? win->safeAreaInsets.right
+                           : win->imeInsets.right;
+    float insetBottom = win->safeAreaInsets.bottom > win->imeInsets.bottom
+                            ? win->safeAreaInsets.bottom
+                            : win->imeInsets.bottom;
+    float insetLeft = win->safeAreaInsets.left > win->imeInsets.left
+                          ? win->safeAreaInsets.left
+                          : win->imeInsets.left;
+    float left = ClampAxis(insetLeft, vw);
+    float top = ClampAxis(insetTop, vh);
+    float right = vw - (insetRight > 0 ? insetRight : 0);
+    float bottom = vh - (insetBottom > 0 ? insetBottom : 0);
+    if (right < left) {
+        right = left;
+    }
+    if (bottom < top) {
+        bottom = top;
+    }
+    Bounds safe = {left, top, right - left, bottom - top};
+    Bounds visual =
+        win->hasVisualViewport ? win->visualViewport : Bounds{0, 0, vw, vh};
+    float x0 = safe.x > visual.x ? safe.x : visual.x;
+    float y0 = safe.y > visual.y ? safe.y : visual.y;
+    float x1 = safe.Right() < visual.Right() ? safe.Right() : visual.Right();
+    float y1 =
+        safe.Bottom() < visual.Bottom() ? safe.Bottom() : visual.Bottom();
+    if (x1 < x0) {
+        x1 = x0;
+    }
+    if (y1 < y0) {
+        y1 = y0;
+    }
+    return {x0, y0, x1 - x0, y1 - y0};
+}
+
+void WindowSetVisualViewport(Window* win, Bounds bounds) {
+    if (!win) {
+        return;
+    }
+    win->hasVisualViewport = true;
+    win->visualViewport = bounds;
+    AppInvalidate(win);
+}
+
+void WindowClearVisualViewport(Window* win) {
+    if (!win) {
+        return;
+    }
+    win->hasVisualViewport = false;
+    win->visualViewport = {};
+    AppInvalidate(win);
+}
+
+void WindowSetInsets(Window* win, Edges safeArea, Edges ime) {
+    if (!win) {
+        return;
+    }
+    win->safeAreaInsets = safeArea;
+    win->imeInsets = ime;
+    AppInvalidate(win);
+}
+
 const DragPayload* WindowActiveDrag(Ctx* cx) {
     if (!cx || !cx->win || !cx->win->activeDrag.IsValid()) {
         return nullptr;

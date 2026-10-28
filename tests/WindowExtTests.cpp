@@ -183,8 +183,75 @@ static void WindowCloseRequestCanBeVetoed() {
     utassert(calls == 1);
 }
 
+namespace {
+struct SafePage {
+    static El* Render(SafePage*, Ctx* cx) { return Div(cx->a)->SizeFull(); }
+};
+
+struct InspectSheet {
+    static El* Render(InspectSheet*, Ctx* cx) {
+        return component::Sheet::New(cx)
+            ->Open(true)
+            ->Title(StrL("Inspect"))
+            ->Size(320)
+            ->Placement(SheetPlacement::Right)
+            ->IntoEl(WindowSize(cx->win));
+    }
+};
+} // namespace
+
+// overlays.rs sheet_and_notifications_stay_in_the_fully_visible_area.
+// A status bar above and a keyboard below, simulated as the visual
+// viewport. The sheet and the toast sit inside it once their entrances
+// have finished.
+static void SheetAndNotificationsStayInTheFullyVisibleArea() {
+    App* app = TestAppNew();
+    Init(app);
+    ThemeSet(app, ThemeMode::Light);
+    Entity<SafePage> page = EntityNew<SafePage>(app);
+    Window* win = TestWindowOpen(app, page, 400, 800);
+    Entity<gpui::Root> root = gpui::Root::New(app, win, page.id);
+    win->root = root.id;
+    Ctx cx = {app, win, nullptr, {}};
+    WindowOpenSheet(&cx, EntityNew<InspectSheet>(app), 320);
+    WindowPushNotification(&cx, StrL("saved"));
+    Bounds visible = {0, 40, 400, 500};
+    WindowSetVisualViewport(win, visible);
+    TestAdvanceClock(app, 450);
+    TestDraw(win);
+
+    Bounds shown = WindowFullyVisibleBounds(win);
+    utassertnear(shown.x, visible.x);
+    utassertnear(shown.y, visible.y);
+    utassertnear(shown.w, visible.w);
+    utassertnear(shown.h, visible.h);
+
+    int sheetId = HashClickId(StrL("sheet-content"));
+    bool foundSheet = false;
+    Bounds sheet = {};
+    for (int i = 0; i < win->paint.hits.len; i++) {
+        if (win->paint.hits[i].id == sheetId) {
+            sheet = win->paint.hits[i].bounds;
+            foundSheet = true;
+            break;
+        }
+    }
+    utassert(foundSheet);
+    utassert(sheet.y >= visible.y);
+    utassert(sheet.Bottom() <= visible.Bottom() + 0.5f);
+
+    NotificationListState* notes = WindowNotifications(&cx).Get(app);
+    utassert(notes && notes->items.len >= 1);
+    Bounds toast = notes->items[0].measured;
+    utassert(toast.h > 1);
+    utassert(toast.y >= visible.y);
+    utassert(toast.Bottom() <= visible.Bottom() + 0.5f);
+    TestAppFree(app);
+}
+
 void TestWindowExt() {
     TestSuite("window ext");
+    SheetAndNotificationsStayInTheFullyVisibleArea();
     WindowOwnsDialogAndSheetEntities();
     AWindowWithoutARootPanics();
     TypedRemovalAndForwardingMethodsUseWindowState();

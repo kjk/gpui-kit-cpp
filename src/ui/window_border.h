@@ -47,6 +47,11 @@ Edges WindowPaddings(Window* window);
 // frame rather than a border's width out from it.
 Edges WindowContentInsets(Window* window);
 
+// window_safe_insets: the per-side inset from the window bounds to the
+// part that is fully visible, under no system bar, cutout or keyboard.
+// Zero on desktop.
+Edges WindowSafeInsets(Window* window);
+
 // ResizeEdge, numbered as _NET_WM_MOVERESIZE numbers its directions —
 // clockwise from the top-left corner — because that is what the X11 window
 // sends when one of them is grabbed. None is -1.

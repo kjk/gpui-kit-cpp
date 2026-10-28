@@ -74,13 +74,23 @@ El* WindowStateLayers(Ctx* cx) {
         El* list = NotificationList::New(cx, wl->notifications)->IntoEl();
         Edges in = RootNotificationInsets(wl->hasSheet, wl->sheet.placement,
                                           wl->sheet.size);
-        El* layer = Div(a)
+        // Keep toasts out from under the system bars and the keyboard.
+        // The sheet still pushes them off its own edge, inside that area.
+        Edges safe = WindowSafeInsets(cx->win);
+        El* inner = Div(a)
                         ->Absolute()
                         ->Left(in.left)
                         ->Top(in.top)
                         ->Right(in.right)
                         ->Bottom(in.bottom)
                         ->Child(list);
+        El* layer = Div(a)
+                        ->Absolute()
+                        ->Left(safe.left)
+                        ->Top(safe.top)
+                        ->Right(safe.right)
+                        ->Bottom(safe.bottom)
+                        ->Child(inner);
         add(layer->Deferred());
     }
     if (wl->hasSheet) {

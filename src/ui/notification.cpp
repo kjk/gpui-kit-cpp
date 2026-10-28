@@ -844,7 +844,11 @@ El* NotificationList::IntoEl() {
     }
 
     const Theme& th = ThemeNow(cx->app);
-    WinSize win = WindowSize(cx->win);
+    // The visible area, not the layout viewport: a toast anchored to the
+    // bottom sits above the keyboard.
+    Bounds visibleArea = WindowFullyVisibleBounds(cx->win);
+    float viewW = visibleArea.w;
+    float viewH = visibleArea.h;
     El* root = Div(a)->SizeFull();
     Spring geometry = SpringNew((float)kToastTransitionMs);
     geometry.epsilon = 0.1f;
@@ -886,7 +890,7 @@ El* NotificationList::IntoEl() {
                         ->Fixed()
                         ->W(settings.width)
                         ->H(stackH)
-                        ->MaxH(win.dipH)
+                        ->MaxH(viewH)
                         ->Id(stackId)
                         ->Click(HashClickId(stackId))
                         ->TrackFocus(s->stackFocus[aix])
@@ -898,13 +902,13 @@ El* NotificationList::IntoEl() {
                      anchor == Anchor::BottomRight;
         bool center =
             anchor == Anchor::TopCenter || anchor == Anchor::BottomCenter;
-        float left = right ? win.dipW - settings.width - settings.margins.right
-                           : (center ? (win.dipW - settings.width) * 0.5f
+        float left = right ? viewW - settings.width - settings.margins.right
+                           : (center ? (viewW - settings.width) * 0.5f
                                      : settings.margins.left);
-        float top = bottom ? win.dipH - stackH - settings.margins.bottom
+        float top = bottom ? viewH - stackH - settings.margins.bottom
                            : settings.margins.top;
         if (anchor == Anchor::LeftCenter || anchor == Anchor::RightCenter) {
-            top = (win.dipH - stackH) * 0.5f;
+            top = (viewH - stackH) * 0.5f;
         }
         layer->Left(left)->Top(top);
 
