@@ -1012,6 +1012,74 @@ static void TestTaffyTreeMeasure() {
         utassertnear(tree.GetLayout(childB).location.y, 0.0f);
         tree.Free();
     }
+
+    {
+        // align_baseline_child_auto_margin. A child with an auto cross margin
+        // does not join baseline alignment. The other two still line up, and
+        // the auto margin takes the leftover cross space.
+        auto column = [](TaffyTree& tree, float w, float h, float innerH) {
+            taffy::Style inner;
+            inner.size = SizeDim::FromLengths(w, innerH);
+            TaffyNodeId leaf = tree.NewLeaf(inner);
+            taffy::Style col;
+            col.flexDirection = FlexDirection::Column;
+            col.size = SizeDim::FromLengths(w, h);
+            return tree.NewWithChildren(col, &leaf, 1);
+        };
+
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId a = column(tree, 50.0f, 40.0f, 20.0f);
+        TaffyNodeId b = column(tree, 50.0f, 60.0f, 30.0f);
+        TaffyNodeId cLeaf;
+        {
+            taffy::Style inner;
+            inner.size = SizeDim::FromLengths(50.0f, 45.0f);
+            cLeaf = tree.NewLeaf(inner);
+            taffy::Style col;
+            col.flexDirection = FlexDirection::Column;
+            col.size = SizeDim::FromLengths(50.0f, 50.0f);
+            col.margin.top = LengthPercentageAuto::Auto();
+            TaffyNodeId c = tree.NewWithChildren(col, &cLeaf, 1);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Flex;
+            rootStyle.alignItems =
+                OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+            rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
+            TaffyNodeId kids[] = {a, b, c};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            utassertnear(tree.GetLayout(a).location.y, 10.0f);
+            utassertnear(tree.GetLayout(b).location.y, 0.0f);
+            utassertnear(tree.GetLayout(c).location.y, 50.0f);
+            utassertnear(tree.GetLayout(c).size.h, 50.0f);
+        }
+        tree.Free();
+
+        tree.Init();
+        a = column(tree, 50.0f, 40.0f, 20.0f);
+        b = column(tree, 50.0f, 60.0f, 30.0f);
+        taffy::Style inner;
+        inner.size = SizeDim::FromLengths(50.0f, 45.0f);
+        cLeaf = tree.NewLeaf(inner);
+        taffy::Style col;
+        col.flexDirection = FlexDirection::Column;
+        col.size = SizeDim::FromLengths(50.0f, 50.0f);
+        col.margin.bottom = LengthPercentageAuto::Auto();
+        TaffyNodeId c = tree.NewWithChildren(col, &cLeaf, 1);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId kids[] = {a, b, c};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(a).location.y, 10.0f);
+        utassertnear(tree.GetLayout(b).location.y, 0.0f);
+        utassertnear(tree.GetLayout(c).location.y, 0.0f);
+        tree.Free();
+    }
 }
 
 static void TestTaffyTreeLayout() {

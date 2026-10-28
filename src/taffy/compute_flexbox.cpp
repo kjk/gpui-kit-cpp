@@ -85,6 +85,14 @@ struct FlexItem {
     bool IsScroll() const {
         return IsScrollContainer(overflow.x) || IsScrollContainer(overflow.y);
     }
+
+    // An item participates when it is baseline-aligned and neither cross-axis
+    // margin is auto.
+    // https://www.w3.org/TR/css-flexbox-1/#baseline-participation
+    bool ParticipatesInBaselineAlignment(FlexDirection dir) const {
+        return alignSelf.keyword == AlignItemsKeyword::Baseline &&
+               !marginIsAuto.CrossStart(dir) && !marginIsAuto.CrossEnd(dir);
+    }
 };
 
 // A line of FlexItems. `items` points into the container's item vector, which
@@ -1235,8 +1243,7 @@ void CalculateChildrenBaseLines(TaffyTree* tree, SizeFOpt nodeSize,
         // participating items.
         int participating = 0;
         for (int i = 0; i < line.count; i++) {
-            if (line.items[i]
-                    .alignSelf.keyword == AlignItemsKeyword::Baseline) {
+            if (line.items[i].ParticipatesInBaselineAlignment(c.dir)) {
                 participating++;
             }
         }
@@ -1246,7 +1253,7 @@ void CalculateChildrenBaseLines(TaffyTree* tree, SizeFOpt nodeSize,
 
         for (int i = 0; i < line.count; i++) {
             FlexItem& child = line.items[i];
-            if (child.alignSelf.keyword != AlignItemsKeyword::Baseline) {
+            if (!child.ParticipatesInBaselineAlignment(c.dir)) {
                 continue;
             }
             SizeFOpt known = {c.isRow ? Some(child.targetSize.w)
@@ -1307,9 +1314,7 @@ void CalculateCrossSize(Vec<FlexLine>* lines, SizeFOpt nodeSize,
         for (int i = 0; i < line.count; i++) {
             FlexItem& child = line.items[i];
             float v;
-            if (child.alignSelf.keyword == AlignItemsKeyword::Baseline &&
-                !child.marginIsAuto.CrossStart(dir) &&
-                !child.marginIsAuto.CrossEnd(dir)) {
+            if (child.ParticipatesInBaselineAlignment(dir)) {
                 v = maxBaseline - child.baseline +
                     Cross(child.hypotheticalOuterSize, dir);
             } else {
@@ -1553,8 +1558,7 @@ void ResolveCrossAxisAutoMargins(Vec<FlexLine>* lines, const AlgoConstants& c) {
         float maxBaselineToBottomDistance = 0.0f;
         for (int i = 0; i < line.count; i++) {
             maxBaseline = F32Max(maxBaseline, line.items[i].baseline);
-            if (line.items[i]
-                    .alignSelf.keyword == AlignItemsKeyword::Baseline) {
+            if (line.items[i].ParticipatesInBaselineAlignment(c.dir)) {
                 maxBaselineToBottomDistance =
                     F32Max(maxBaselineToBottomDistance,
                            Cross(line.items[i].outerTargetSize, c.dir) -
@@ -2318,7 +2322,7 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
         for (int i = 0; i < firstLine.count; i++) {
             const FlexItem& item = firstLine.items[i];
             if (constants.isColumn ||
-                item.alignSelf.keyword == AlignItemsKeyword::Baseline) {
+                item.ParticipatesInBaselineAlignment(constants.dir)) {
                 chosen = &item;
                 break;
             }
