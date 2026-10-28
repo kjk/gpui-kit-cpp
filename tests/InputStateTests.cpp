@@ -8247,6 +8247,53 @@ static void UnfoldAt() {
 // but keeps the decorations. Both used to be dropped by one call, so
 // clicking away threw away decorations the application had installed and
 // never asked to remove.
+static bool TreeHasSpanColor(El* e, Rgba color) {
+    if (!e) {
+        return false;
+    }
+    for (int i = 0; i < e->nSpans; i++) {
+        if (e->spans && e->spans[i].color.r == color.r &&
+            e->spans[i].color.g == color.g && e->spans[i].color.b == color.b &&
+            e->spans[i].color.a == color.a) {
+            return true;
+        }
+    }
+    for (El* child = e->first; child; child = child->next) {
+        if (TreeHasSpanColor(child, color)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// TextareaState::create_decorations_collection paints over plain text, not
+// only over a highlighter's runs.
+static void TextareaDecorationsPaintOnPlainText() {
+    InputView view = InputViewBuildTextarea();
+    InputState* s = view.input;
+    InputSetValue(s, StrL("hello textarea"));
+    TextSpan marked;
+    marked.color = Rgba{1, 2, 3, 255};
+    TextDecoration decoration = TextDecoration::New({0, 5}, marked);
+    TextDecorationCollection collection =
+        InputCreateDecorationsCollection(s, &decoration, 1);
+    utassert(collection.IsValid());
+    utassert(TextareaExtras::Of(s).state == s);
+    Arena* a = ArenaNew();
+    Ctx cx = {view.app, view.win, a, {}};
+    // Soft wrap defers the rows until prepaint. Building them here is the
+    // same Textarea::New the prepaint calls once the column has a width.
+    s->wrap.buildingRows = true;
+    El* row = Textarea::New(&cx, s);
+    s->wrap.buildingRows = false;
+    utassert(TreeHasSpanColor(row, marked.color));
+    Selection ranges[2] = {};
+    utassert(collection.GetRanges(ranges, 2) == 1);
+    utassert(ranges[0].start == 0 && ranges[0].end == 5);
+    ArenaDelete(a);
+    InputViewFree(&view);
+}
+
 static void BlurKeepsDecorations() {
     InputView view = InputViewNew();
     InputState* s = view.input;
@@ -9100,6 +9147,7 @@ static void BackspacePairWithCjkPrefix() {
 static void RunWindowTestsC() {
     UnfoldAt();
     BlurKeepsDecorations();
+    TextareaDecorationsPaintOnPlainText();
     ContextMenuHandlerIsDeferredAndRespectsDisabled();
     ContextMenuHandlerCanReadItsInput();
     SetAutoGrowKeepsRowsFitted();

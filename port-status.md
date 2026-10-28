@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `627ba35afc08ffb49c34affd0af587b2ccf8d836` (2026-10-23,
-input: Let an editor supply its own scrollbar (#3644)).
-An editor can paint a caller-supplied element in place of its bar. The
-context gives that element the padded track and the unpadded scroll
-range, so a drag to the end meets the same offset as the wheel. With
-no renderer, the integrated bar stays.
+Processed through `25aae91a1df23bc333d3594ec59676722e983939` (2026-10-23,
+text: Add linked plain text and tracked text decorations (#2842)).
+Plain text can carry explicit link ranges, and a textarea keeps the
+same tracked decoration collections an editor does. Links underline at
+rest unless a style turns that off; a hover underline is off until asked.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

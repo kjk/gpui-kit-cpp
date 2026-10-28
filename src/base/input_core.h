@@ -25,6 +25,18 @@ struct TextareaMode {
     static constexpr bool CODE_EDITOR = false;
 };
 
+// kind.rs TextareaExtras. Ordinary multi-line text keeps the same
+// independently managed text decorations an editor does. The collections
+// live on the InputState (TextareaState is that state); this marker is the
+// mode's extras type.
+struct TextareaExtras {
+    const InputState* state = nullptr;
+
+    static TextareaExtras Of(const InputState* state) {
+        return TextareaExtras{state};
+    }
+};
+
 struct EditorMode {
     static constexpr InputKind KIND = InputKind::Editor;
     static constexpr bool MULTI_LINE = true;

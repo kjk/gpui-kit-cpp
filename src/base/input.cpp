@@ -2776,6 +2776,27 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             docSpans = hl;
             nDocSpans = nHl;
         }
+    } else {
+        // TextareaExtras::decoration_layers. A textarea has no highlighter,
+        // and its tracked decorations are still the runs the text paints.
+        int nOwn = InputDecorationSpans(state, nullptr, 0);
+        if (nOwn > 0) {
+            TextSpan* own = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * nOwn);
+            nOwn = own ? InputDecorationSpans(state, own, nOwn) : 0;
+            int cap = style.nSpans + 2 * nOwn;
+            auto* buf = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap);
+            auto* tmp = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap);
+            if (own && buf && tmp && nOwn > 0) {
+                int n = 0;
+                if (style.nSpans > 0 && style.spans) {
+                    memcpy(buf, style.spans,
+                           (size_t)style.nSpans * sizeof(TextSpan));
+                    n = style.nSpans;
+                }
+                nDocSpans = InputComposeSpans(buf, n, own, nOwn, cap, tmp);
+                docSpans = buf;
+            }
+        }
     }
     // layout_range_decorations: query separate buffer spans across folds
     // instead of scanning annotations in the hidden text between the first

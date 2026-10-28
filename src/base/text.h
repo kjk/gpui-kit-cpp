@@ -453,6 +453,10 @@ struct TextViewStyle {
     Rgba mutedForeground = {};
     // The colour of a link's words, and the wash behind selected text.
     Rgba link = {};
+    // with_link_underline / with_link_underline_on_hover. Resting links are
+    // underlined; hovering one is not, until a view asks.
+    bool linkUnderline = true;
+    bool linkUnderlineOnHover = false;
     Rgba selection = {};
     // Behind a fenced block, an inline code span and a table's header row.
     Rgba codeBackground = {};
@@ -497,6 +501,12 @@ struct TextViewStyle {
     TextViewStyle& WithForeground(Rgba color);
     TextViewStyle& WithMutedForeground(Rgba color);
     TextViewStyle& WithLink(Rgba color);
+    // Sets whether links are underlined at rest. Defaults to true.
+    TextViewStyle& WithLinkUnderline(bool underline);
+    // Sets whether links are underlined while hovered. Defaults to false.
+    TextViewStyle& WithLinkUnderlineOnHover(bool underline);
+    bool IsLinkUnderlined() const { return linkUnderline; }
+    bool IsLinkUnderlinedOnHover() const { return linkUnderlineOnHover; }
     TextViewStyle& WithSelection(Rgba color);
     TextViewStyle& WithCodeBackground(Rgba color);
     TextViewStyle& WithBorder(Rgba color);
@@ -591,7 +601,34 @@ struct TextViewDefaults {
 
 enum class TextViewFormat : uint8_t {
     Markdown,
-    Html
+    Html,
+    // Plain text with explicit link ranges.
+    LinkedText,
+};
+
+// A UTF-8 byte range in plain text rendered as a link. Links are applied in
+// order. Empty, overlapping, out-of-bounds, and non-character-boundary
+// ranges are ignored. `url` is borrowed from the caller at the call; a state
+// that keeps the link copies it.
+struct TextViewLink {
+    Span range = {};
+    Str url = {};
+
+    static TextViewLink New(Span range, Str url) {
+        TextViewLink link;
+        link.range = range;
+        link.url = url;
+        return link;
+    }
+    Span Range() const { return range; }
+    Str Url() const { return url; }
+};
+
+// One link a hover can underline, in source bytes. The view rebuilds the
+// list as it paints; the hovered index is the one the pointer is inside.
+struct TextViewLinkHover {
+    int start = 0;
+    int end = 0;
 };
 
 // stream_fade.rs motion policy. Durations use this port's established
@@ -916,6 +953,14 @@ struct TextViewState {
     EntityId self = {};
     Str text = {};
     TextViewFormat format = TextViewFormat::Markdown;
+    // linked_text_links. Owned urls. Empty for Markdown and HTML, and only
+    // a LinkedText parse reads them.
+    TextViewLink* links = nullptr;
+    int nLinks = 0;
+    // Hovered link, as an index into linkHovers. -1 is none. Cleared when
+    // the text changes, which is InlineState::set_text dropping a stale hover.
+    Vec<TextViewLinkHover> linkHovers;
+    int hoveredLink = -1;
     // The source a stateless TextView element handed over last frame. When
     // the same allocation and length arrive again and retained text still
     // has that length, no byte comparison is needed.
@@ -995,10 +1040,20 @@ struct TextViewState {
     ~TextViewState();
     static Entity<TextViewState> Markdown(App* app, Str text);
     static Entity<TextViewState> Html(App* app, Str text);
+    // Create a selectable plain-text view with explicit link ranges.
+    static Entity<TextViewState> LinkedText(App* app, Str text,
+                                            const TextViewLink* links, int n);
+    // Replace text and its link ranges atomically. On Markdown and HTML
+    // states the text updates in their existing format; the ranges apply
+    // only to a state created with LinkedText.
+    void SetLinkedText(Str value, const TextViewLink* links, int n, App* app,
+                       Window* window = nullptr);
     // state.rs source(): the text of the parse that landed last, which is
     // what renders. Text set since then is not in it until its parse lands;
     // `text` is the latest.
     Str Source() const;
+    // The document of the parse that landed, or null when none has.
+    const MdNode* ParsedDocument() const;
     // parsed_content.document.blocks.len(): how many top-level blocks the
     // parse that landed has.
     int ParsedBlockCount() const;
@@ -1099,6 +1154,9 @@ struct TextViewState {
                             const LineClampEvent* event);
     static void OnFadeTick(TextViewState* self, Ctx* cx,
                            const TickEvent* event);
+    // The pointer entered or left a link word. `arg` is its linkHovers index.
+    static void OnLinkHover(TextViewState* self, Ctx* cx, const HoverEvent* ev,
+                            int64_t arg);
 
   private:
     void Changed(App* app, Window* window, bool selectionCompatible);
@@ -1263,6 +1321,12 @@ struct TextView {
     // application's TextViewDefaults and then to the Base palette, which is
     // Rust's `Option<TextViewStyle>`.
     bool textViewStyleSet = false;
+    // TextView::link_underline / link_underline_on_hover. Unset leaves the
+    // style's own policy, which underlines at rest and not on hover.
+    bool linkUnderlineSet = false;
+    bool linkUnderline = true;
+    bool linkUnderlineOnHoverSet = false;
+    bool linkUnderlineOnHover = false;
     // The view follows a text color that inverts its style's surface, so the
     // installed highlighter — whose colors are made for the page — is left
     // out.
@@ -1303,6 +1367,10 @@ struct TextView {
     TextView* Font(float px);
     TextView* HeadingFont(float px);
     TextView* Style(const TextViewStyle& style);
+    // Set whether links are underlined at rest. Defaults to true.
+    TextView* LinkUnderline(bool underline);
+    // Set whether links are underlined while hovered. Defaults to false.
+    TextView* LinkUnderlineOnHover(bool underline);
     TextView* Refine(const gpui::Style& style, uint32_t fields);
     TextView* Selectable(bool on = true);
     // `.selection_format(..)`: whether a copy of the selection is the text as
@@ -1476,7 +1544,11 @@ struct TextView {
     // One styled word of a flow, with its marks applied and — for a link —
     // the click that opens it.
     El* Word(Str w, float font, Rgba color, uint8_t marks, int weight, Str href,
-             Rgba highlight = {}, bool hasHighlight = false);
+             Rgba highlight = {}, bool hasHighlight = false,
+             bool linkHovered = false);
+    // The hover slot for a link covering source bytes [start, end), or -1
+    // when hover underlines are off. Words of one link share a slot.
+    int EnsureLinkHover(int start, int end);
     // The inline flow of a block, as a column of wrapping rows — a hard break
     // starts a new row. `weight` is 0 normal, 1 medium, 2 semibold, 3 bold.
     El* Inline(MdNode* n, float font, Rgba color, int weight,
