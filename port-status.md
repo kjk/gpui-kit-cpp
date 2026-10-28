@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f8f5e4ac0cac468de6fd2bab2a184cd200527d3e` (2026-10-24,
-text: Preserve sparse Markdown table rows (#3673)).
-A Markdown table keeps a short row short. The header still sets the
-column count, extra cells are dropped, and an empty cell that was
-written stays where it was written. The renderer fills the gap.
+Processed through `7b14e03f2ed4b46fc4149a8a523c7f91bcad6560` (2026-10-24,
+test: Read accessibility descriptions and placeholders in element
+snapshots (#3672)).
+`ElementSnapshot` grows description and placeholder readers. This tree
+does not carry that test harness. Painted elements already store both
+on `AccessibilityInfo`. The website guides are not ported.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
