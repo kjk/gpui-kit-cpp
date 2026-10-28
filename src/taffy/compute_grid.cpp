@@ -4208,6 +4208,18 @@ void StoreGridOofSnapshot(TaffyTree* tree, NodeId node, uint16_t colAuto,
             if (tracks[i].kind != GridTrackKind::Track) {
                 continue;
             }
+            if (tracks[i].isCollapsed) {
+                int index = len(axis->spans);
+                if (len(axis->collapsed) > 0 &&
+                    axis->collapsed[len(axis->collapsed) - 1].end == index) {
+                    axis->collapsed[len(axis->collapsed) - 1].end = index + 1;
+                } else {
+                    CollapsedRun run;
+                    run.start = index;
+                    run.end = index + 1;
+                    VecAppend(axis->collapsed, run);
+                }
+            }
             GridTrackSpan span;
             span.start = tracks[i].offset;
             span.end = tracks[i].offset + tracks[i].baseSize;
@@ -5021,11 +5033,33 @@ bool GridOofArea(TaffyTree* tree, NodeId grid, NodeId child, RectF paddingBox,
                                .ResolveAbsolutelyPositionedGridTracks();
         int startIdx = spanIndex(lines.start, counts);
         int endIdx = spanIndex(lines.end, counts);
+        // A line inside a collapsed auto-fit run uses the track on the far
+        // side of that run, so the gutters on both sides are not both counted.
+        // A start edge follows the shared gutter; an end edge precedes it.
+        auto trackEdge = [&](int index, bool isStart) {
+            int nRuns = len(axis.collapsed);
+            int rangeIndex = 0;
+            while (rangeIndex < nRuns && axis.collapsed[rangeIndex]
+                                                 .end <= index) {
+                rangeIndex++;
+            }
+            int use = index;
+            if (rangeIndex < nRuns &&
+                index >= axis.collapsed[rangeIndex].start &&
+                index < axis.collapsed[rangeIndex].end) {
+                const CollapsedRun& range = axis.collapsed[rangeIndex];
+                int adjacent = isStart ? range.end : range.start - 1;
+                if (adjacent >= 0 && adjacent < len(axis.spans)) {
+                    use = adjacent;
+                }
+            }
+            const GridTrackSpan& track = axis.spans[use];
+            return (isStart != reversed) ? track.start : track.end;
+        };
         float startPos;
         float endPos;
         if (startIdx >= 0 && startIdx < len(axis.spans)) {
-            startPos = reversed ? axis.spans[startIdx].end
-                                : axis.spans[startIdx].start;
+            startPos = trackEdge(startIdx, true);
         } else if (startIdx >= 0 && len(axis.spans) > 0) {
             const GridTrackSpan& last = axis.spans[len(axis.spans) - 1];
             startPos = reversed ? last.start : last.end;
@@ -5033,16 +5067,24 @@ bool GridOofArea(TaffyTree* tree, NodeId grid, NodeId child, RectF paddingBox,
             startPos = reversed ? padEnd : padStart;
         }
         if (endIdx > 0 && endIdx - 1 < len(axis.spans)) {
-            int prev = endIdx - 1;
-            endPos = reversed ? axis.spans[prev].start : axis.spans[prev].end;
+            endPos = trackEdge(endIdx - 1, false);
         } else if (endIdx >= 0 && len(axis.spans) > 0) {
             endPos = reversed ? axis.spans[0].end : axis.spans[0].start;
         } else {
             endPos = reversed ? padStart : padEnd;
         }
-        float lo = F32Min(startPos, endPos);
-        float hi = F32Max(startPos, endPos);
-        return RectF{lo, hi, 0.0f, 0.0f};
+        // An area that sits entirely inside a collapsed run is zero-sized
+        // and stays on its logical start edge.
+        float left;
+        float right;
+        if (reversed) {
+            left = F32Min(startPos, endPos);
+            right = startPos;
+        } else {
+            left = startPos;
+            right = F32Max(startPos, endPos);
+        }
+        return RectF{left, right, 0.0f, 0.0f};
     };
 
     RectF cols =

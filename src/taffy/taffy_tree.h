@@ -37,14 +37,25 @@ struct GridTrackSpan {
     float end = 0.0f;
 };
 
+// Indexes into `GridAxisPositions::spans`. `end` is exclusive. A run is a
+// stretch of collapsed auto-fit tracks whose gutters overlap.
+struct CollapsedRun {
+    int start = 0;
+    int end = 0;
+};
+
 struct GridAxisPositions {
     uint16_t negativeImplicit = 0;
     uint16_t explicitCount = 0;
     uint16_t positiveImplicit = 0;
     uint16_t autoRepetitions = 0;
     Vec<GridTrackSpan> spans;
+    Vec<CollapsedRun> collapsed;
 
-    void Clear() { VecReset(spans); }
+    void Clear() {
+        VecReset(spans);
+        VecReset(collapsed);
+    }
 };
 
 struct GridOofSnapshot {

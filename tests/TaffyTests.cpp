@@ -4404,6 +4404,58 @@ static void TestAbsposSafeStaticImcb() {
     }
 }
 
+// taffy d7cb4642. An absolute grid line that lands in a collapsed auto-fit
+// run uses one shared gutter, not the gutter on both sides of the run. A
+// span that never leaves the run is a zero-size box on that gutter.
+static void TestGridAutoFitCollapsedGutters() {
+    TestSuite("taffy grid collapsed auto-fit gutters");
+    TaffyTree tree;
+    tree.Init();
+
+    auto placed = [](int colStart, int colEnd, int rowStart, int rowEnd,
+                     bool absolute) {
+        taffy::Style s;
+        s.position =
+            absolute ? taffy::Position::Absolute : taffy::Position::Relative;
+        s.gridColumn = {GridPlacement::FromLineIndex((int16_t)colStart),
+                        GridPlacement::FromLineIndex((int16_t)colEnd)};
+        s.gridRow = {GridPlacement::FromLineIndex((int16_t)rowStart),
+                     GridPlacement::FromLineIndex((int16_t)rowEnd)};
+        if (absolute) {
+            s.inset = RectLpa::Zero();
+        }
+        return s;
+    };
+    TaffyNodeId kids[6] = {tree.NewLeaf(placed(2, 4, 2, 4, false)),
+                           tree.NewLeaf(placed(2, 5, 2, 5, true)),
+                           tree.NewLeaf(placed(2, 6, 2, 6, true)),
+                           tree.NewLeaf(placed(4, 7, 4, 7, true)),
+                           tree.NewLeaf(placed(5, 7, 5, 7, true)),
+                           tree.NewLeaf(placed(4, 5, 4, 5, true))};
+
+    TrackSizingFunction thirty = TrackSizingFunction::Length(30.0f);
+    TrackSizingFunction fifty = TrackSizingFunction::Length(50.0f);
+    GridTemplateComponent tracks[2] = {
+        GridRepeat(RepetitionCount::AutoFit(), &thirty, 1),
+        GridTemplateComponent::Single(fifty)};
+    taffy::Style root;
+    root.display = taffy::Display::Grid;
+    root.position = taffy::Position::Relative;
+    root.size = SizeDim::FromLengths(250.0f, 250.0f);
+    root.gap = {LengthPercentage::Length(5.0f), LengthPercentage::Length(5.0f)};
+    root.gridTemplateColumns = GridTemplateOf(tracks, 2);
+    root.gridTemplateRows = GridTemplateOf(tracks, 2);
+    TaffyNodeId rootNode = tree.NewWithChildren(root, kids, 6);
+    tree.ComputeLayout(rootNode, SizeAvail::MaxContent());
+    AssertBox(tree.GetLayout(kids[0]), 0.0f, 0.0f, 65.0f, 65.0f);
+    AssertBox(tree.GetLayout(kids[1]), 0.0f, 0.0f, 65.0f, 65.0f);
+    AssertBox(tree.GetLayout(kids[2]), 0.0f, 0.0f, 65.0f, 65.0f);
+    AssertBox(tree.GetLayout(kids[3]), 70.0f, 70.0f, 50.0f, 50.0f);
+    AssertBox(tree.GetLayout(kids[4]), 70.0f, 70.0f, 50.0f, 50.0f);
+    AssertBox(tree.GetLayout(kids[5]), 70.0f, 70.0f, 0.0f, 0.0f);
+    tree.Free();
+}
+
 // A non-finite flex factor or container size used to keep the fr-size and
 // space-distribution loops from ever deciding they were done.
 static void TestGridNonFiniteStylesTerminate() {
@@ -8980,6 +9032,7 @@ void TestTaffy() {
     TestGridAreaEdges();
     TestGridNamedLineResolution();
     TestAbsposSafeStaticImcb();
+    TestGridAutoFitCollapsedGutters();
     TestGridNonFiniteStylesTerminate();
     TestGridZeroSpanTerminates();
     TestGridMinmaxAutoFixedZero();
