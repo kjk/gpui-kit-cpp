@@ -230,6 +230,10 @@ struct VirtualListOpts {
     VirtualRowFn row = nullptr;
     VirtualRangeFn range = nullptr;
     void* user = nullptr;
+    // The view that built the list. Rows are constructed at prepaint, and
+    // Listen reads cx->self, so a marker or row handler bound there has to
+    // name this view or the click is dropped.
+    EntityId view = {};
 };
 
 struct VirtualList {

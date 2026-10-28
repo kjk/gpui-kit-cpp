@@ -1,5 +1,7 @@
 #include "Story.h"
 
+#include "ui/window_ext.h"
+
 // crates/story/src/stories/diff_story.rs — the example patches, the
 // toolbar, and the pull-request review comment. Soft wrap is stored on
 // the diff and not applied; the add-annotation button is not painted.
@@ -140,6 +142,10 @@ struct DiffStory {
     int indicator = 0;
     bool commentResolved = false;
     component::DiffAnnotation note = {};
+    // A diagnostic on the changed delay line, and the marker that opens it.
+    component::DiffDecoration diagnostic = {};
+    component::DiffGutterMarker overflow = {};
+    bool diagnosticReady = false;
 
     static component::DiffState* State(DiffStory* self, Ctx* cx) {
         return self->state.Get(cx);
@@ -230,10 +236,29 @@ struct DiffStory {
         self->commentResolved = !self->commentResolved;
         Notify(cx);
     }
+    static void OnOverflow(DiffStory*, Ctx* cx, const ClickEvent*) {
+        WindowPushNotification(
+            cx, StrL("2_u32.pow(attempt) overflows for attempts above 31"));
+    }
     static El* RenderComment(Ctx* cx, const component::DiffAnnotation*,
                              void* user);
+    static El* RenderOverflow(Ctx* cx,
+                              const component::DiffGutterMarker* marker,
+                              void* user);
     static El* Render(DiffStory* self, Ctx* cx);
 };
+
+El* DiffStory::RenderOverflow(Ctx* cx,
+                              const component::DiffGutterMarker* marker,
+                              void*) {
+    return component::Button::New(cx, marker->Id())
+        ->Ghost()
+        ->WithSize(UiSize::XSmall)
+        ->Icon(IconName::TriangleAlert)
+        ->Tooltip(marker->Label())
+        ->OnClick(Listen(cx, &DiffStory::OnOverflow))
+        ->IntoEl();
+}
 
 El* DiffStory::RenderComment(Ctx* cx, const component::DiffAnnotation*,
                              void* user) {
@@ -501,7 +526,22 @@ El* DiffStory::Render(DiffStory* self, Ctx* cx) {
                                          : component::DiffHoverHighlight::None)
             ->SoftWrap(self->wrap);
     if (self->example == 0) {
-        diff->Annotations(&self->note, 1)
+        if (!self->diagnosticReady) {
+            component::DiffLinePosition at = component::DiffLinePosition::New(
+                StrL("src/retry.rs"), component::DiffSide::Modified, 21);
+            self->diagnostic =
+                component::DiffDecoration::New(component::DiffLineRange::New(
+                    StrL("src/retry.rs"), component::DiffSide::Modified, 21,
+                    21));
+            self->overflow =
+                component::DiffGutterMarker::New(StrL("overflow"), at)
+                    .WithLabel(StrL("Possible overflow"));
+            self->diagnosticReady = true;
+        }
+        diff->Decorations(&self->diagnostic, 1)
+            ->GutterMarkers(&self->overflow, 1)
+            ->RenderGutterMarker(&DiffStory::RenderOverflow, self)
+            ->Annotations(&self->note, 1)
             ->RenderAnnotation(&DiffStory::RenderComment, self);
     }
     El* body = Div(cx->a)->FlexCol()->W(kFill)->Gap(8);

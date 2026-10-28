@@ -975,6 +975,142 @@ static void AnApplicationHighlighterStylesEachHunkSide() {
     utassert(fix.state->SyntaxStyleCount(0, DiffSide::Modified, 0) == 0);
 }
 
+static const DiffDecoration* At(const DiffDecoration* items, const char* path,
+                                DiffSide side, int line) {
+    return DiffDecorationAt(items, 3,
+                            DiffLinePosition::New(Str(path), side, line));
+}
+
+// decoration_tests.rs: the last decoration covering a line is the one shown,
+// and a cross-side range runs from its start onward and up to its end.
+static void DecorationsCoverTheirRangeAndTheLastSuppliedWins() {
+    Rgba red = Rgb(255, 0, 0);
+    Rgba blue = Rgb(0, 0, 255);
+    DiffDecoration items[3];
+    items[0] = DiffDecoration::New(DiffLineRange::New(StrL("file.txt"),
+                                                      DiffSide::Modified, 2, 4))
+                   .WithBackground(red);
+    items[1] = DiffDecoration::New(DiffLineRange::New(StrL("file.txt"),
+                                                      DiffSide::Modified, 4, 4))
+                   .WithBackground(blue);
+    items[2] = DiffDecoration::New(
+        DiffLineRange::New(StrL("cross.txt"), DiffSide::Original, 8, 3)
+            .WithEndSide(DiffSide::Modified));
+    utassert(At(items, "file.txt", DiffSide::Modified, 1) == nullptr);
+    const DiffDecoration* line2 = At(items, "file.txt", DiffSide::Modified, 2);
+    utassert(line2 && line2->Background() && RgbaEq(*line2->Background(), red));
+    const DiffDecoration* line4 = At(items, "file.txt", DiffSide::Modified, 4);
+    utassert(line4 && line4->Background() &&
+             RgbaEq(*line4->Background(), blue));
+    utassert(At(items, "file.txt", DiffSide::Modified, 5) == nullptr);
+    utassert(At(items, "cross.txt", DiffSide::Original, 7) == nullptr);
+    const DiffDecoration* crossOld =
+        At(items, "cross.txt", DiffSide::Original, 9);
+    utassert(crossOld && crossOld->Background() == nullptr);
+    const DiffDecoration* crossNew =
+        At(items, "cross.txt", DiffSide::Modified, 3);
+    utassert(crossNew && crossNew->Background() == nullptr);
+    utassert(At(items, "cross.txt", DiffSide::Modified, 4) == nullptr);
+    utassert(At(items, "other.txt", DiffSide::Modified, 2) == nullptr);
+}
+
+struct MarkerHost {
+    Entity<DiffState> state;
+    bool loaded = false;
+    DiffDecoration decoration = {};
+    DiffGutterMarker markers[2] = {};
+    bool sawSecond = false;
+    bool placed = false;
+    float x = 0;
+    float y = 0;
+    int clicks = 0;
+    DiffLinePosition shown = {};
+    DiffLinePosition clicked = {};
+
+    static void Remember(PaintCtx*, El* e, void* user) {
+        MarkerHost* self = (MarkerHost*)user;
+        if (!e || e->w <= 0 || e->h <= 0) return;
+        self->x = e->x + e->w * 0.5f;
+        self->y = e->y + e->h * 0.5f;
+        self->placed = true;
+    }
+    static void OnClick(MarkerHost* self, Ctx* cx, const ClickEvent*) {
+        self->clicks++;
+        self->clicked = self->shown;
+        Notify(cx);
+    }
+    static El* RenderMarker(Ctx* cx, const DiffGutterMarker* marker,
+                            void* user) {
+        MarkerHost* self = (MarkerHost*)user;
+        if (StrEq(marker->Id(), StrL("second"))) {
+            self->sawSecond = true;
+            return Div(cx->a);
+        }
+        self->shown = marker->Position();
+        El* el = Div(cx->a)
+                     ->Id(StrL("marker-first"))
+                     ->W(12)
+                     ->H(12)
+                     ->OnClick(Listen(cx, &MarkerHost::OnClick));
+        el->prePaint = &MarkerHost::Remember;
+        el->customUser = self;
+        return el;
+    }
+    static El* Render(MarkerHost* self, Ctx* cx) {
+        if (!self->loaded) {
+            self->state = EntityNew<DiffState>(cx->app);
+            DiffState* st = self->state.Get(cx);
+            st->Bind(cx->app, self->state);
+            const char* patch =
+                "--- a/file.txt\n"
+                "+++ b/file.txt\n"
+                "@@ -1,3 +1,3 @@\n"
+                " one\n"
+                "-two\n"
+                "+TWO\n"
+                " three\n";
+            Vec<DiffFile*> files;
+            DiffParseError error = {};
+            if (DiffFile::Parse(Str(patch), &files, &error)) {
+                st->SetFiles(files.els, len(files), cx);
+            }
+            DiffLinePosition line =
+                DiffLinePosition::New(StrL("file.txt"), DiffSide::Modified, 2);
+            self->decoration = DiffDecoration::New(
+                DiffLineRange::New(StrL("file.txt"), DiffSide::Modified, 1, 3));
+            self->markers[0] = DiffGutterMarker::New(StrL("first"), line)
+                                   .WithLabel(StrL("Open comment"));
+            self->markers[1] = DiffGutterMarker::New(StrL("second"), line);
+            self->loaded = true;
+        }
+        return Diff::New(cx, self->state)
+            ->Decorations(&self->decoration, 1)
+            ->GutterMarkers(self->markers, 2)
+            ->RenderGutterMarker(&MarkerHost::RenderMarker, self)
+            ->IntoEl();
+    }
+};
+
+// decoration_tests.rs gutter_markers_activate_without_selecting_lines.
+static void GutterMarkersActivateWithoutSelectingLines() {
+    App* app = TestAppNew();
+    Init(app);
+    Entity<MarkerHost> view = EntityNew<MarkerHost>(app);
+    Window* win = TestWindowOpen(app, view, 600, 400);
+    for (int i = 0; i < 3; i++) TestDraw(win);
+    MarkerHost* self = view.Get(app);
+    utassert(self && !self->sawSecond && self->placed);
+    if (self && self->placed) {
+        TestSimulateClick(win, Point{self->x, self->y});
+    }
+    utassert(self && self->clicks == 1);
+    utassert(self && self->clicked.side == DiffSide::Modified &&
+             self->clicked.line == 2);
+    DiffState* st = self ? self->state.Get(app) : nullptr;
+    utassert(st && !st->HasSelectedLines());
+    TestAppFree(app);
+}
+
 void TestDiff() {
     TestParser();
     TestTruncatedHunks();
@@ -985,4 +1121,6 @@ void TestDiff() {
     TestDiffListFillsItsHeight();
     TheWholePatchKeepsItsHeightAfterTheFirstLayout();
     TheWheelScrollsPastTheRowsRenderedSoFar();
+    DecorationsCoverTheirRangeAndTheLastSuppliedWins();
+    GutterMarkersActivateWithoutSelectingLines();
 }

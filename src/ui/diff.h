@@ -143,6 +143,43 @@ struct DiffAnnotation {
     }
 };
 
+// A background on the lines of a range. It does not change the selection,
+// copying or layout. No background means the translucent warning fill.
+// Character-range decorations are not part of this surface.
+struct DiffDecoration {
+    DiffLineRange range = {};
+    bool hasBackground = false;
+    Rgba background = {};
+    static DiffDecoration New(DiffLineRange range);
+    DiffDecoration WithBackground(Rgba fill) const;
+    const DiffLineRange& Range() const { return range; }
+    const Rgba* Background() const {
+        return hasBackground ? &background : nullptr;
+    }
+};
+
+// One marker in the lane between the line numbers and the code. The
+// application renders it. The lane keeps the first marker supplied for a
+// line.
+struct DiffGutterMarker {
+    Str id = {};
+    DiffLinePosition position = {};
+    Str label = {};
+    static DiffGutterMarker New(Str id, DiffLinePosition position);
+    DiffGutterMarker WithLabel(Str text) const;
+    Str Id() const { return id; }
+    const DiffLinePosition& Position() const { return position; }
+    Str Label() const { return label; }
+};
+
+// The last supplied decoration that covers `position`, or null.
+const DiffDecoration* DiffDecorationAt(const DiffDecoration* items, int count,
+                                       const DiffLinePosition& position);
+// The first supplied marker on `position`, or null.
+const DiffGutterMarker* DiffGutterMarkerAt(const DiffGutterMarker* items,
+                                           int count,
+                                           const DiffLinePosition& position);
+
 // One conflict. `currentStart`..`incomingEnd` index the modified-side
 // lines with markers excluded (Rust `source_lines`). The one-based
 // ranges are working-file lines: `lines` includes markers, and a part
@@ -536,6 +573,14 @@ struct Diff {
     int annotationCount = 0;
     El* (*annotationContent)(Ctx*, const DiffAnnotation*, void*) = nullptr;
     void* annotationUser = nullptr;
+    // Supplied every render, the same way annotations are. The lane is
+    // shown only when there is at least one marker and a renderer.
+    const DiffDecoration* decorations = nullptr;
+    int decorationCount = 0;
+    const DiffGutterMarker* gutterMarkers = nullptr;
+    int gutterMarkerCount = 0;
+    El* (*gutterMarkerContent)(Ctx*, const DiffGutterMarker*, void*) = nullptr;
+    void* gutterMarkerUser = nullptr;
     El* (*header)(Ctx*, const DiffFile*, void*) = nullptr;
     El* (*headerPrefix)(Ctx*, const DiffFile*, void*) = nullptr;
     El* (*headerTitleSuffix)(Ctx*, const DiffFile*, void*) = nullptr;
@@ -560,6 +605,10 @@ struct Diff {
     Diff* Annotations(const DiffAnnotation* items, int count);
     Diff* RenderAnnotation(El* (*fn)(Ctx*, const DiffAnnotation*, void*),
                            void* user);
+    Diff* Decorations(const DiffDecoration* items, int count);
+    Diff* GutterMarkers(const DiffGutterMarker* items, int count);
+    Diff* RenderGutterMarker(El* (*fn)(Ctx*, const DiffGutterMarker*, void*),
+                             void* user);
     Diff* RenderHeader(El* (*fn)(Ctx*, const DiffFile*, void*), void* user);
     Diff* RenderHeaderPrefix(El* (*fn)(Ctx*, const DiffFile*, void*),
                              void* user);

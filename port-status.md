@@ -16,16 +16,21 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `64e6aaffbcd3760fc9d000f86655495c4978931c` (2026-10-27,
-setting: Show an empty state for unmatched searches and follow scrolling
-in the sidebar (#3701)). A search that matches nothing shows an empty
-state in the page, and scrolling the page marks the titled group at the
-top of the viewport. A click, a page change, or a search does not move
-that highlight. Scroll events and `secondary-` chords keep their C++
-names. Scrollbar idle stays 2s and exit 500ms as constants. Links are
-always underlined. A textarea has no decoration extras, and linked text
-is gone. Image source, list and blockquote refinements, and selection
-stay.
+Processed through `0e3ac79eeb7dc96a18d6cbd476f0660cfd10da95` (2026-10-27,
+diff: Add line decorations and interactive gutter markers (#3703)). A
+line decoration paints above the change fill and below the text; the
+last covering one wins, a selected line shows the selection instead,
+and an unset fill is the warning color at 0.2 opacity. A gutter marker
+lane, one row square, sits between the line numbers and the code when
+markers and a renderer are both set. The first marker on a line is
+shown, and a press in the lane does not start a line selection. Rows
+are fill-width, so the lane takes space from the row rather than
+growing a measured content width. Character-range decorations are not
+in this checkin. Scroll events and
+`secondary-` chords keep their C++ names. Scrollbar idle stays 2s and
+exit 500ms as constants. Links are always underlined. A textarea has
+no decoration extras, and linked text is gone. Image source, list and
+blockquote refinements, and selection stay.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
@@ -339,7 +344,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   scroll index rather than the source line that was at the top. Soft wrap
   is stored and not applied. The viewer's body is a vertical list, so
   the horizontal `ScrollableMask` that keeps a vertical wheel on the
-  rows is not applied, and the add-annotation button inset is not
+  rows is not applied. The gutter marker lane is one row square inside
+  that fill-width row; Rust adds the same width to the measured content
+  width, and this list does not measure code width. The add-annotation
+  button inset is not
   applied because that button is not painted. Annotation content is
   painted inside the uniform row, which does not grow with the comment.
   Gutter `TextSelection::Cleared` is not a separate path: clearing goes

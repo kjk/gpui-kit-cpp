@@ -91,6 +91,69 @@ DiffAnnotation DiffAnnotation::Line(Str id, DiffLinePosition position) {
     return a;
 }
 
+DiffDecoration DiffDecoration::New(DiffLineRange range) {
+    DiffDecoration d;
+    d.range = range;
+    return d;
+}
+
+DiffDecoration DiffDecoration::WithBackground(Rgba fill) const {
+    DiffDecoration d = *this;
+    d.hasBackground = true;
+    d.background = fill;
+    return d;
+}
+
+DiffGutterMarker DiffGutterMarker::New(Str id, DiffLinePosition position) {
+    DiffGutterMarker m;
+    m.id = id;
+    m.position = position;
+    return m;
+}
+
+DiffGutterMarker DiffGutterMarker::WithLabel(Str text) const {
+    DiffGutterMarker m = *this;
+    m.label = text;
+    return m;
+}
+
+static bool DecorationCovers(const DiffDecoration& decoration, DiffSide side,
+                             int line) {
+    const DiffLineRange& range = decoration.range;
+    if (range.IsSingleSide()) {
+        if (side != range.side) return false;
+        return line >= range.start && line <= range.end;
+    }
+    if (side == range.side) return line >= range.start;
+    return line <= range.end;
+}
+
+static bool SamePosition(const DiffLinePosition& a, const DiffLinePosition& b) {
+    return a.side == b.side && a.line == b.line && StrEq(a.path, b.path);
+}
+
+const DiffDecoration* DiffDecorationAt(const DiffDecoration* items, int count,
+                                       const DiffLinePosition& position) {
+    const DiffDecoration* found = nullptr;
+    if (!items || count <= 0) return nullptr;
+    for (int i = 0; i < count; i++) {
+        if (!StrEq(items[i].range.path, position.path)) continue;
+        if (DecorationCovers(items[i], position.side, position.line))
+            found = &items[i];
+    }
+    return found;
+}
+
+const DiffGutterMarker* DiffGutterMarkerAt(const DiffGutterMarker* items,
+                                           int count,
+                                           const DiffLinePosition& position) {
+    if (!items || count <= 0) return nullptr;
+    for (int i = 0; i < count; i++) {
+        if (SamePosition(items[i].position, position)) return &items[i];
+    }
+    return nullptr;
+}
+
 DiffAnnotation DiffAnnotation::File(Str id, Str path) {
     DiffAnnotation a;
     a.id = id;
@@ -3501,27 +3564,104 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         return head;
     }
     bool split = state->mode == DiffMode::Split && !file->IsSingleColumn();
-    auto cell = [&](DiffSide side, int line, bool changed, bool present) {
+    // The lane is one row square, between the line numbers and the code,
+    // on every code line once markers and a renderer are both set.
+    // Rows are fill-width, so the lane takes space from the row. Rust
+    // adds the same width to the measured content width; see port-status.md.
+    bool markerLane = diff->gutterMarkerContent && diff->gutterMarkerCount > 0;
+    auto lineSelected = [&](DiffSide side, int line) {
+        if (line < 0 || !state->hasSelection) return false;
+        int number = SideOf(file, side)->lines[line].lineNumber;
+        const DiffLineRange& range = state->selected;
+        if (!StrEq(range.path, file->path)) return false;
+        if (range.IsSingleSide()) {
+            if (side != range.side) return false;
+            int lo = range.start < range.end ? range.start : range.end;
+            int hi = range.start > range.end ? range.start : range.end;
+            return number >= lo && number <= hi;
+        }
+        if (side == range.side) return number >= range.start;
+        if (side == range.endSide) return number <= range.end;
+        return false;
+    };
+    auto decorationAt = [&](DiffSide side, int line) -> const DiffDecoration* {
+        if (line < 0 || !diff->decorations) return nullptr;
+        int number = SideOf(file, side)->lines[line].lineNumber;
+        DiffLinePosition pos = DiffLinePosition::New(file->path, side, number);
+        return DiffDecorationAt(diff->decorations, diff->decorationCount, pos);
+    };
+    auto markerAt = [&](DiffSide side, int line) -> const DiffGutterMarker* {
+        if (line < 0 || !diff->gutterMarkers) return nullptr;
+        int number = SideOf(file, side)->lines[line].lineNumber;
+        DiffLinePosition pos = DiffLinePosition::New(file->path, side, number);
+        return DiffGutterMarkerAt(diff->gutterMarkers, diff->gutterMarkerCount,
+                                  pos);
+    };
+    auto cell = [&](DiffSide side, int line, bool changed, bool present,
+                    const DiffDecoration* rowDeco,
+                    const DiffGutterMarker* rowMarker, bool useRowMarks) {
         El* box = Div(cx->a)->FlexRow()->H(24)->Grow()->ItemsCenter();
         if (!present) {
             // An empty split cell is one source row, the same height as
-            // the line beside it.
+            // the line beside it. It has no marker lane.
             box->Bg(Tint(theme.muted, 30));
             return box;
         }
         // px_2. The row's horizontal inset matches the width budget.
         box->PadX(8);
+        int number = SideOf(file, side)->lines[line].lineNumber;
+        bool selected = lineSelected(side, line);
         Rgba bg = changed ? (side == DiffSide::Original ? theme.danger
                                                         : theme.success)
                           : theme.background;
-        if (changed && diff->changeBackground) box->Bg(Tint(bg, 30));
+        if (selected) {
+            box->Bg(theme.selection);
+        } else if (changed && diff->changeBackground) {
+            box->Bg(Tint(bg, 30));
+        }
+        // Above the change fill and below the text. A selected line shows
+        // the selection instead. The last supplied decoration wins inside
+        // DiffDecorationAt; a unified row tries the original side first.
+        const DiffDecoration* deco = nullptr;
+        if (!selected) {
+            deco = useRowMarks ? rowDeco : decorationAt(side, line);
+        }
+        if (deco) {
+            Rgba fill = deco->hasBackground ? deco->background
+                                            : RgbaOpacity(theme.warning, 0.2f);
+            box->Child(Div(cx->a)
+                           ->Absolute()
+                           ->Top(0)
+                           ->Left(0)
+                           ->Right(0)
+                           ->Bottom(0)
+                           ->Bg(fill));
+        }
         if (diff->lineNumber) {
-            int number = SideOf(file, side)->lines[line].lineNumber;
             int width = file->lineNumberDigits * 8 + 12;
             box->Child(Div(cx->a)
                            ->W((float)width)
                            ->Child(TextEl(cx->a, fmt("%d", number))
                                        ->Fg(theme.mutedFg)));
+        }
+        if (markerLane) {
+            El* lane = Div(cx->a)
+                           ->Id(StrL("marker-lane"))
+                           ->W(24)
+                           ->H(24)
+                           ->Shrink(0)
+                           ->FlexRow()
+                           ->ItemsCenter()
+                           ->JustifyCenter()
+                           ->StopMouseDown();
+            const DiffGutterMarker* marker =
+                useRowMarks ? rowMarker : markerAt(side, line);
+            if (marker) {
+                El* child = diff->gutterMarkerContent(cx, marker,
+                                                      diff->gutterMarkerUser);
+                if (child) lane->Child(child);
+            }
+            box->Child(lane);
         }
         if (diff->changeIndicator == DiffChangeIndicator::Signs && changed) {
             box->Child(TextEl(cx->a, side == DiffSide::Original ? StrL("-")
@@ -3540,7 +3680,6 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         // Annotation content shares the uniform row. Rust remeasures the row
         // when the comment's height changes; see port-status.md.
         if (present && diff->annotationContent && diff->annotations) {
-            int number = SideOf(file, side)->lines[line].lineNumber;
             for (int i = 0; i < diff->annotationCount; i++) {
                 const DiffAnnotation& ann = diff->annotations[i];
                 if (!ann.hasPosition || !StrEq(ann.path, file->path)) continue;
@@ -3556,14 +3695,27 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
     if (split) {
         El* both = Div(cx->a)->FlexRow()->W(kFill);
         both->Child(cell(DiffSide::Original, row.original, row.changed,
-                         row.original >= 0));
+                         row.original >= 0, nullptr, nullptr, false));
         both->Child(cell(DiffSide::Modified, row.modified, row.changed,
-                         row.modified >= 0));
+                         row.modified >= 0, nullptr, nullptr, false));
         return both;
     }
     DiffSide side = row.modified >= 0 ? DiffSide::Modified : DiffSide::Original;
     int line = row.modified >= 0 ? row.modified : row.original;
-    return cell(side, line, row.changed, true)->W(kFill);
+    // Unified rows of an unchanged line carry both sides. The original
+    // side is asked first, matching the gutter order.
+    const DiffDecoration* deco = nullptr;
+    if (!lineSelected(side, line)) {
+        if (row.original >= 0)
+            deco = decorationAt(DiffSide::Original, row.original);
+        if (!deco && row.modified >= 0)
+            deco = decorationAt(DiffSide::Modified, row.modified);
+    }
+    const DiffGutterMarker* marker = nullptr;
+    if (row.original >= 0) marker = markerAt(DiffSide::Original, row.original);
+    if (!marker && row.modified >= 0)
+        marker = markerAt(DiffSide::Modified, row.modified);
+    return cell(side, line, row.changed, true, deco, marker, true)->W(kFill);
 }
 
 static uint32_t Act(const char* name) {
@@ -3654,6 +3806,22 @@ Diff* Diff::SoftWrap(bool v) {
 Diff* Diff::Annotations(const DiffAnnotation* items, int count) {
     annotations = items;
     annotationCount = count;
+    return this;
+}
+Diff* Diff::Decorations(const DiffDecoration* items, int count) {
+    decorations = items;
+    decorationCount = count;
+    return this;
+}
+Diff* Diff::GutterMarkers(const DiffGutterMarker* items, int count) {
+    gutterMarkers = items;
+    gutterMarkerCount = count;
+    return this;
+}
+Diff* Diff::RenderGutterMarker(El* (*fn)(Ctx*, const DiffGutterMarker*, void*),
+                               void* user) {
+    gutterMarkerContent = fn;
+    gutterMarkerUser = user;
     return this;
 }
 Diff* Diff::RenderAnnotation(El* (*fn)(Ctx*, const DiffAnnotation*, void*),

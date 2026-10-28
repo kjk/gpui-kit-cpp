@@ -403,6 +403,7 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
     cx.app = paint->app;
     cx.win = paint->win;
     cx.a = paint->a;
+    cx.self = o.view;
     e->first = nullptr;
     e->last = nullptr;
     if (o.logicalScroll) {
@@ -564,6 +565,7 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
         rowCx.app = paint->app;
         rowCx.win = paint->win;
         rowCx.a = paint->a;
+        rowCx.self = o.view;
         // A newly measured group can shrink enough to expose more rows.
         // Continue until the entire visible range has measured extents.
         for (int pass = 0; pass < o.count; pass++) {
@@ -690,6 +692,8 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
     }
     auto* paint = ArenaNew<VirtualListPaint>(a);
     paint->opts = o;
+    // Copy the view now. The caller's Ctx does not live until prepaint.
+    if (cx) paint->opts.view = cx->self;
     paint->a = a;
     paint->app = cx->app;
     paint->win = cx->win;
