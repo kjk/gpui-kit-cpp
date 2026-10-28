@@ -4251,6 +4251,40 @@ static void TestGridAutoMarginBaseline() {
         utassertnear(tree.GetLayout(innerBNode).size.h, 10.0f);
         tree.Free();
     }
+
+    {
+        // A fixed-height item shifts to share the row's baseline. A
+        // percentage height on the same intrinsic row is cyclic, so it
+        // stays at the start edge and does not push its sibling.
+        auto row = [](Dimension secondHeight, float firstY, float secondY) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style first;
+            first.size = SizeDim::FromLengths(40.0f, 30.0f);
+            TaffyNodeId firstNode = tree.NewLeaf(first);
+            taffy::Style second;
+            second.size.width = Dimension::Length(40.0f);
+            second.size.height = secondHeight;
+            TaffyNodeId secondNode = tree.NewLeaf(second);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.alignItems =
+                OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+            TrackSizingFunction col = TrackSizingFunction::Length(40.0f);
+            GridTemplateComponent cols[2] = {
+                GridTemplateComponent::Single(col),
+                GridTemplateComponent::Single(col)};
+            rootStyle.gridTemplateColumns = GridTemplateOf(cols, 2);
+            TaffyNodeId kids[] = {firstNode, secondNode};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            utassertnear(tree.GetLayout(firstNode).location.y, firstY);
+            utassertnear(tree.GetLayout(secondNode).location.y, secondY);
+            tree.Free();
+        };
+        row(Dimension::Length(10.0f), 0.0f, 20.0f);
+        row(Dimension::Percent(0.5f), 0.0f, 0.0f);
+    }
 }
 
 // A scroll container holding a column of fixed-height children: the column

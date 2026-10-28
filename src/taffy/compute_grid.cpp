@@ -500,9 +500,19 @@ struct GridItem {
 
     // css-align-3 §9.5: an auto margin on the block axis opts the item
     // out of baseline alignment.
+    bool HasAutoBlockMargin() const {
+        return margin.top.IsAuto() || margin.bottom.IsAuto();
+    }
+    // css-grid-1 §9.2: a percentage block size on an intrinsic or flexible
+    // row depends on the row size that baseline alignment itself affects,
+    // so the item uses its fallback alignment instead.
+    bool HasCyclicBlockSizeDependency() const {
+        return size.height.raw.UsesPercentage() &&
+               (crossesIntrinsicRow || crossesFlexibleRow);
+    }
     bool ParticipatesInBaselineAlignment() const {
         return alignSelf.keyword == AlignItemsKeyword::Baseline &&
-               !margin.top.IsAuto() && !margin.bottom.IsAuto();
+               !HasAutoBlockMargin() && !HasCyclicBlockSizeDependency();
     }
 
     LineOzl Placement(AbstractAxis axis) const {
