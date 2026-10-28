@@ -6935,6 +6935,9 @@ struct Window {
     // so something that has finished moving stops asking. `anim` is the other
     // thing — a window that draws back to back until it is turned off.
     bool animFrame = false;
+    bool inDrawFrame = false;
+    // A frame was asked for while one was being drawn.
+    bool redrawAfterFrame = false;
     // The instant this frame started. Every transition in it samples the same
     // `now`, which is what Rust gets from reading the executor's clock.
     double frameNow = 0;

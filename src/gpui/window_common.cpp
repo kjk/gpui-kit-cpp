@@ -721,13 +721,33 @@ bool WindowIsTransparent(const Window* win) {
     return win && win->paint.transparent;
 }
 
+// A call made while rendering (a shell API on Windows) can pump messages and
+// paint again; the nested frame would reset the arena the outer one builds in.
+static void DrawFrameOnce(Window* win, void* native, int pxW, int pxH,
+                          float dipW, float dipH, bool headless) {
+    if (!win) {
+        return;
+    }
+    if (win->inDrawFrame) {
+        win->redrawAfterFrame = true;
+        return;
+    }
+    win->inDrawFrame = true;
+    DrawFrame(win, native, pxW, pxH, dipW, dipH, headless);
+    win->inDrawFrame = false;
+    if (win->redrawAfterFrame) {
+        win->redrawAfterFrame = false;
+        AppInvalidate(win);
+    }
+}
+
 void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
                      float dipH) {
-    DrawFrame(win, native, pxW, pxH, dipW, dipH, false);
+    DrawFrameOnce(win, native, pxW, pxH, dipW, dipH, false);
 }
 
 void WindowDrawFrameHeadless(Window* win, float dipW, float dipH) {
-    DrawFrame(win, nullptr, 0, 0, dipW, dipH, true);
+    DrawFrameOnce(win, nullptr, 0, 0, dipW, dipH, true);
 }
 
 // The hit rect an element id painted, from the last frame. The tree is
