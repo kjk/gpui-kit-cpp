@@ -1672,6 +1672,94 @@ static void TestFlexboxLayout() {
     }
 }
 
+// Negative margins shrink a flex container's intrinsic main size, and a
+// zero flex-shrink factor does not divide by a zero scaled factor.
+static void TestFlexNegativeMarginIntrinsic() {
+    TestSuite("taffy flex negative margin intrinsic");
+
+    TaffyTree tree;
+    tree.Init();
+
+    taffy::Style colA;
+    colA.flexShrink = 0.0f;
+    colA.size = SizeDim::FromLengths(20.0f, 10.0f);
+    colA.margin.bottom = LengthPercentageAuto::Length(-0.5f);
+    TaffyNodeId colANode = tree.NewLeaf(colA);
+    taffy::Style colB;
+    colB.flexShrink = 0.0f;
+    colB.size = SizeDim::FromLengths(20.0f, 20.0f);
+    colB.margin.top = LengthPercentageAuto::Length(-5.0f);
+    TaffyNodeId colBNode = tree.NewLeaf(colB);
+    TaffyNodeId colKids[] = {colANode, colBNode};
+    taffy::Style col;
+    col.flexDirection = FlexDirection::Column;
+    col.flexShrink = 0.0f;
+    col.size.width = Dimension::Length(100.0f);
+    TaffyNodeId colNode = tree.NewWithChildren(col, colKids, 2);
+
+    taffy::Style rowA;
+    rowA.flexShrink = 0.0f;
+    rowA.size = SizeDim::FromLengths(10.0f, 20.0f);
+    rowA.margin.right = LengthPercentageAuto::Length(-0.5f);
+    TaffyNodeId rowANode = tree.NewLeaf(rowA);
+    taffy::Style rowB;
+    rowB.flexShrink = 0.0f;
+    rowB.size = SizeDim::FromLengths(20.0f, 20.0f);
+    rowB.margin.left = LengthPercentageAuto::Length(-5.0f);
+    TaffyNodeId rowBNode = tree.NewLeaf(rowB);
+    TaffyNodeId rowKids[] = {rowANode, rowBNode};
+    taffy::Style row;
+    row.flexShrink = 0.0f;
+    TaffyNodeId rowNode = tree.NewWithChildren(row, rowKids, 2);
+
+    taffy::Style text;
+    text.flexGrow = 1.0f;
+    text.flexShrink = 0.0f;
+    text.margin.left = LengthPercentageAuto::Length(-5.0f);
+    SizeF textSize = {40.0f, 10.0f};
+    TaffyNodeId textNode = tree.NewLeafWithContext(text, &textSize);
+    taffy::Style textRow;
+    textRow.flexShrink = 0.0f;
+    TaffyNodeId textRowNode = tree.NewWithChildren(textRow, &textNode, 1);
+
+    taffy::Style wrapA;
+    wrapA.size.width = Dimension::Length(100.0f);
+    TaffyNodeId wrapANode = tree.NewLeaf(wrapA);
+    taffy::Style wrapB;
+    wrapB.size.width = Dimension::Length(0.0f);
+    wrapB.margin.left = LengthPercentageAuto::Length(-10.0f);
+    TaffyNodeId wrapBNode = tree.NewLeaf(wrapB);
+    TaffyNodeId wrapKids[] = {wrapANode, wrapBNode};
+    taffy::Style wrap;
+    wrap.flexWrap = FlexWrap::Wrap;
+    wrap.flexShrink = 0.0f;
+    wrap.size.width = Dimension::MaxContent();
+    TaffyNodeId wrapNode = tree.NewWithChildren(wrap, wrapKids, 2);
+
+    TaffyNodeId kids[] = {colNode, rowNode, textRowNode, wrapNode};
+    taffy::Style rootStyle;
+    rootStyle.flexDirection = FlexDirection::Column;
+    rootStyle
+        .alignItems = OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 4);
+    tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                  SizeMeasureFunction, nullptr);
+
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 55.0f);
+    AssertBox(tree.GetLayout(colNode), 0.0f, 0.0f, 100.0f, 25.0f);
+    AssertBox(tree.GetLayout(colANode), 0.0f, 0.0f, 20.0f, 10.0f);
+    AssertBox(tree.GetLayout(colBNode), 0.0f, 5.0f, 20.0f, 20.0f);
+    AssertBox(tree.GetLayout(rowNode), 0.0f, 25.0f, 25.0f, 20.0f);
+    AssertBox(tree.GetLayout(rowANode), 0.0f, 0.0f, 10.0f, 20.0f);
+    AssertBox(tree.GetLayout(rowBNode), 5.0f, 0.0f, 20.0f, 20.0f);
+    AssertBox(tree.GetLayout(textRowNode), 0.0f, 45.0f, 35.0f, 10.0f);
+    AssertBox(tree.GetLayout(textNode), -5.0f, 0.0f, 40.0f, 10.0f);
+    AssertBox(tree.GetLayout(wrapNode), 0.0f, 55.0f, 100.0f, 0.0f);
+    AssertBox(tree.GetLayout(wrapANode), 0.0f, 0.0f, 100.0f, 0.0f);
+    AssertBox(tree.GetLayout(wrapBNode), 90.0f, 0.0f, 0.0f, 0.0f);
+    tree.Free();
+}
+
 // ─── flex-wrap: balance (1bade665) ───────────────────────────────────────
 
 static void TestFlexBalanceCounts() {
@@ -4933,6 +5021,7 @@ void TestTaffy() {
     TestTaffyTreeLayout();
     TestHiddenLayout();
     TestFlexboxLayout();
+    TestFlexNegativeMarginIntrinsic();
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();

@@ -917,7 +917,7 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                             diff / F32Max(1.0f, item.flexGrow);
                     } else if (diff < 0.0f) {
                         float scaledShrinkFactor =
-                            F32Max(1.0f, item.flexShrink * item.innerFlexBasis);
+                            F32Max(1.0f, item.flexShrink) * item.innerFlexBasis;
                         item.contentFlexFraction = diff / scaledShrinkFactor;
                     } else {
                         item.contentFlexFraction = 0.0f;
@@ -942,7 +942,10 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                     } else if (item.contentFlexFraction < 0.0f) {
                         float scaledShrinkFactor =
                             F32Max(1.0f, item.flexShrink) * item.innerFlexBasis;
-                        flexContribution = scaledShrinkFactor * flexFraction;
+                        flexContribution =
+                            scaledShrinkFactor == 0.0f
+                                ? 0.0f
+                                : scaledShrinkFactor * flexFraction;
                     }
                     float size = item.flexBasis + flexContribution;
                     SetMain(&item.outerTargetSize, dir, size);
