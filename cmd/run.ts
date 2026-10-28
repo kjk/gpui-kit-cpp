@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a64a609d9ffa6821c84e411b7ccee7f32b79ca4a",
+  sha: "296be8460b9018fb4f08592aed6aedb702b15186",
   date: "2026-10-22",
-  subject: "story: Add an application-owned completion menu to the Input story (#3607)",
+  subject: "scroll: Scroll content past a scrollable's maximum size (#3613)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

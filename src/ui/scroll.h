@@ -18,9 +18,11 @@ using ScrollAxis = ScrollbarAxis; // compatibility with the original C++ API
 struct Scrollable {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
-    // The source element remains the viewport. The Rust implementation needs
-    // an outer layout wrapper because its Scrollbar is a sibling element; the
-    // renderer owns the bar here, so that wrapper collapses away.
+    // The source element is the scroll area. When the vertical bounce wraps
+    // it, that wrap keeps the caller's size, minimum, maximum and flex, and
+    // the area fills the wrap with the maximum cleared on the scrolled axis
+    // (scrollable.rs). A horizontal area is not wrapped: it is already the
+    // viewport, so its maximum limits the area and the children overflow it.
     El* element = nullptr;
     Str id = {};
     float scrollY = 0;

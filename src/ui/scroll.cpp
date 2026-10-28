@@ -65,6 +65,57 @@ Scrollable* Scrollable::ScrollBounce(bool v) {
     return this;
 }
 
+// The bounce box is what the parent lays out. It keeps the caller's size,
+// minimum, maximum and flex; the scroll area fills that box and drops the
+// maximum on the scrolled axis, so the rows can grow past it (scrollable.rs).
+static void HoldScrollArea(El* wrap, El* area, ScrollAxis axis) {
+    Style& from = area->style;
+    Style& to = wrap->style;
+    to.width = from.width;
+    to.height = from.height;
+    to.widthFrac = from.widthFrac;
+    to.heightFrac = from.heightFrac;
+    to.minW = from.minW;
+    to.minH = from.minH;
+    to.maxW = from.maxW;
+    to.maxH = from.maxH;
+    to.flexGrow = from.flexGrow;
+    to.flexShrink = from.flexShrink;
+    to.flexBasis = from.flexBasis;
+    to.flexBasisFrac = from.flexBasisFrac;
+    to.flexBasisPercent = from.flexBasisPercent;
+    to.alignSelf = from.alignSelf;
+    to.hasAlignSelf = from.hasAlignSelf;
+    to.relLengths = (uint16_t)((to.relLengths &
+                                (uint16_t)~(kRelMinW | kRelMinH | kRelMaxH)) |
+                               (from.relLengths &
+                                (uint16_t)(kRelMinW | kRelMinH | kRelMaxH)));
+    wrap->FlexCol();
+    if (axis == ScrollAxis::Vertical || axis == ScrollAxis::Both) {
+        from.maxH = 1e9f;
+        from.height = kFill;
+        from.heightFrac = 0;
+        // min_h_full: 100% of the wrap, not the caller's minimum. kFill is
+        // that percentage; the relative bit would read the float as the
+        // fraction.
+        from.minH = kFill;
+        from.relLengths =
+            (uint16_t)(from.relLengths & (uint16_t)~(kRelMaxH | kRelMinH));
+    }
+    if (axis == ScrollAxis::Both) {
+        from.maxW = 1e9f;
+        from.width = kFill;
+        from.widthFrac = 0;
+        from.minW = kFill;
+        from.relLengths = (uint16_t)(from.relLengths & (uint16_t)~kRelMinW);
+    }
+    from.flexGrow = 0;
+    from.flexShrink = 1;
+    from.flexBasis = kAuto;
+    from.flexBasisFrac = 0;
+    from.flexBasisPercent = false;
+}
+
 El* Scrollable::IntoEl() {
     // The scrolled box is the base one — the clip, the offsets, the id and
     // the listener all come together there, so the themed wrapper cannot end
@@ -95,7 +146,9 @@ El* Scrollable::IntoEl() {
             ->Measure(&m->slot);
     if (scrollBounce >= 0) bounce->Enabled(scrollBounce == 1);
     if (onScroll.IsValid()) bounce->OnScroll(onScroll);
-    return bounce->IntoEl();
+    El* wrapped = bounce->IntoEl();
+    if (wrapped != box) HoldScrollArea(wrapped, box, axis);
+    return wrapped;
 }
 
 El* ScrollableElement::Scrollbar(Ctx* cx, El* element, Str id, float scrollY,

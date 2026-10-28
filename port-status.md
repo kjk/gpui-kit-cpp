@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a64a609d9ffa6821c84e411b7ccee7f32b79ca4a` (2026-10-22,
-story: Add an application-owned completion menu to the Input story (#3607)).
-The Input story's Completion section owns the candidates, the menu and
-the keys it captures. Typing `$` completes a variable. `InputState`
-gains no completion state.
+Processed through `296be8460b9018fb4f08592aed6aedb702b15186` (2026-10-22,
+scroll: Scroll content past a scrollable's maximum size (#3613)).
+The vertical bounce wrap keeps the caller's size, minimum, maximum and
+flex. The scroll area fills that wrap and drops the maximum on the
+scrolled axis, so the rows past the maximum can be scrolled into view.
+A horizontal area is not wrapped; it is already the viewport.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

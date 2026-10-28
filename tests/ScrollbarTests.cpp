@@ -569,6 +569,189 @@ static void TheHighlighterScrollerHasAStableScrollId() {
     ArenaDelete(a);
 }
 
+static El* FindScrollId(El* root, const char* name) {
+    if (!root) return nullptr;
+    if (root->id.s && StrEq(root->id, name)) return root;
+    for (El* c = root->first; c; c = c->next) {
+        if (El* hit = FindScrollId(c, name)) return hit;
+    }
+    return nullptr;
+}
+
+// A second layout of the view, in the window's box. The frame draw does not
+// keep its element tree, and the next draw frees the arena this one used.
+static El* LayoutScrollView(Window* win) {
+    El* root = EntityRender(win->app, win, win->frameArena, win->root);
+    const RuntimeStyle& th = RuntimeStyleNow(win->app);
+    float w = win->paint.viewW > 0 ? win->paint.viewW : 400.f;
+    float h = win->paint.viewH > 0 ? win->paint.viewH : 300.f;
+    LayoutEl(&win->paint, root, 0, 0, w, h, 14, th.foreground);
+    return root;
+}
+
+// scrollable.rs max_height_scrollable_scrolls_to_its_last_row.
+// Six rows of 50 in an area that may grow to 100, between two 20px blocks
+// in a content-sized column, in a row.
+struct MaxHeightScrollableTest {
+    float scrollY = 0;
+
+    static void OnScroll(MaxHeightScrollableTest* self, Ctx*,
+                         const ScrollEvent* ev) {
+        self->scrollY = ev->offsetY;
+    }
+    static El* Render(MaxHeightScrollableTest* self, Ctx* cx) {
+        Arena* a = cx->a;
+        El* area = VFlex(a)->W(kFill)->MaxH(100);
+        area->Child(Div(a)->Id(StrL("max-size-first-row"))->H(50)->Shrink0());
+        for (int i = 0; i < 4; i++) {
+            area->Child(Div(a)->H(50)->Shrink0());
+        }
+        area->Child(Div(a)->Id(StrL("max-size-last-row"))->H(50)->Shrink0());
+        El* scroller =
+            component::ScrollableElement::OverflowYScrollbar(cx, area)
+                ->ScrollY(self->scrollY)
+                ->OnScroll(Listen(cx, &MaxHeightScrollableTest::OnScroll))
+                ->IntoEl();
+        El* column =
+            VFlex(a)
+                ->W(kFill)
+                ->Child(Div(a)->H(20)->Shrink0())
+                ->Child(scroller)
+                ->Child(Div(a)->Id(StrL("max-size-below"))->H(20)->Shrink0());
+        return HFlex(a)->W(100)->Child(column);
+    }
+};
+
+static void max_height_scrollable_scrolls_to_its_last_row() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<MaxHeightScrollableTest> view =
+        EntityNew<MaxHeightScrollableTest>(app);
+    Window* win = TestWindowOpen(app, view, 400, 300, 1);
+    El* root = LayoutScrollView(win);
+    El* first = FindScrollId(root, "max-size-first-row");
+    El* below = FindScrollId(root, "max-size-below");
+    utassert(first && below);
+    float top = first ? first->y : 0;
+    // The area stops at its maximum height.
+    utassertnear(below && first ? below->y - top : 0, 100.f);
+    Point at = {first ? first->x + first->w * 0.5f : 0,
+                first ? first->y + first->h * 0.5f : 0};
+
+    TestSimulateScrollWheel(win, at, Point{0, -40});
+    root = LayoutScrollView(win);
+    first = FindScrollId(root, "max-size-first-row");
+    utassertnear(first ? first->y - top : 0, -40.f);
+
+    TestSimulateScrollWheel(win, at, Point{0, -1000});
+    root = LayoutScrollView(win);
+    El* last = FindScrollId(root, "max-size-last-row");
+    // The last row ends at the area's bottom edge.
+    utassertnear(last ? last->y + last->h - top : 0, 100.f);
+    TestAppFree(app);
+}
+
+// scrollable.rs max_width_scrollable_scrolls_what_overflows_it.
+struct MaxWidthScrollableTest {
+    float scrollX = 0;
+
+    static void OnScroll(MaxWidthScrollableTest* self, Ctx*,
+                         const ScrollEvent* ev) {
+        self->scrollX = ev->offsetX;
+    }
+    static El* Render(MaxWidthScrollableTest* self, Ctx* cx) {
+        Arena* a = cx->a;
+        El* strip = HFlex(a)->MaxW(100)->H(20);
+        strip->Child(
+            Div(a)->Id(StrL("max-size-first-item"))->W(50)->H(20)->Shrink0());
+        for (int i = 0; i < 5; i++) {
+            strip->Child(Div(a)->W(50)->H(20)->Shrink0());
+        }
+        El* scroller =
+            component::ScrollableElement::OverflowXScrollbar(cx, strip)
+                ->ScrollX(self->scrollX)
+                ->OnScroll(Listen(cx, &MaxWidthScrollableTest::OnScroll))
+                ->IntoEl();
+        return HFlex(a)->H(20)->Child(scroller);
+    }
+};
+
+static void max_width_scrollable_scrolls_what_overflows_it() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<MaxWidthScrollableTest> view =
+        EntityNew<MaxWidthScrollableTest>(app);
+    Window* win = TestWindowOpen(app, view, 400, 200, 1);
+    El* root = LayoutScrollView(win);
+    El* first = FindScrollId(root, "max-size-first-item");
+    utassert(first);
+    float left = first ? first->x : 0;
+    Point at = {first ? first->x + first->w * 0.5f : 0,
+                first ? first->y + first->h * 0.5f : 0};
+    TestSimulateScrollWheel(win, at, Point{-40, 0});
+    root = LayoutScrollView(win);
+    first = FindScrollId(root, "max-size-first-item");
+    utassertnear(first ? first->x - left : 0, -40.f);
+    TestAppFree(app);
+}
+
+// shell scroll.rs scrollable_flex_item_shrinks_below_its_content. The layout
+// half is AScrollableFlexItemShrinksBelowItsContent; this one also scrolls
+// the last row to the footer.
+struct FlexItemScrollView {
+    float scrollY = 0;
+
+    static void OnScroll(FlexItemScrollView* self, Ctx*,
+                         const ScrollEvent* ev) {
+        self->scrollY = ev->offsetY;
+    }
+    static El* Render(FlexItemScrollView* self, Ctx* cx) {
+        Arena* a = cx->a;
+        El* area = VFlex(a)->Flex1()->W(kFill);
+        for (int i = 0; i < 5; i++) {
+            area->Child(Div(a)->W(kFill)->H(50)->Shrink0());
+        }
+        area->Child(
+            Div(a)->Id(StrL("flex-scroll-last"))->W(kFill)->H(50)->Shrink0());
+        El* scroller =
+            component::ScrollableElement::OverflowYScrollbar(cx, area)
+                ->ScrollY(self->scrollY)
+                ->OnScroll(Listen(cx, &FlexItemScrollView::OnScroll))
+                ->IntoEl();
+        return VFlex(a)
+            ->W(100)
+            ->H(100)
+            ->Child(Div(a)
+                        ->Id(StrL("flex-scroll-header"))
+                        ->W(kFill)
+                        ->H(20)
+                        ->Shrink0())
+            ->Child(scroller)
+            ->Child(Div(a)
+                        ->Id(StrL("flex-scroll-footer"))
+                        ->W(kFill)
+                        ->H(20)
+                        ->Shrink0());
+    }
+};
+
+static void scrollable_flex_item_scrolls_to_its_last_row() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<FlexItemScrollView> view = EntityNew<FlexItemScrollView>(app);
+    Window* win = TestWindowOpen(app, view, 200, 200, 1);
+    El* root = LayoutScrollView(win);
+    El* header = FindScrollId(root, "flex-scroll-header");
+    El* footer = FindScrollId(root, "flex-scroll-footer");
+    utassertnear(header ? header->y : -1, 0.f);
+    utassertnear(footer ? footer->y : -1, 80.f);
+    TestSimulateScrollWheel(win, Point{50, 50}, Point{0, -1000});
+    root = LayoutScrollView(win);
+    El* last = FindScrollId(root, "flex-scroll-last");
+    utassertnear(last ? last->y + last->h : 0, 80.f);
+    TestAppFree(app);
+}
+
 // scrollable_flex_item_shrinks_below_its_content, and its horizontal twin.
 //
 // A flex item only drops its content-based automatic minimum size when its
@@ -838,6 +1021,9 @@ static void horizontal_scroll_area_claims_only_steps_that_move() {
 void TestScrollbar() {
     TestSuite("scrollbar");
     AScrollableFlexItemShrinksBelowItsContent();
+    max_height_scrollable_scrolls_to_its_last_row();
+    max_width_scrollable_scrolls_what_overflows_it();
+    scrollable_flex_item_scrolls_to_its_last_row();
     TheThumbShrinksWithWhatIsVisible();
     TheThumbSitsWhereTheOffsetSaysAndStopsAtTheEnds();
     AShiftTrackPressCentresTheThumbOnIt();
