@@ -6205,6 +6205,76 @@ static void TestAbsoluteReplacedDoesNotStretch() {
     }
 }
 
+// taffy tests/hand_written/initial_containing_block.rs. Boxes with no
+// nearer containing block are positioned against the viewport.
+static void TestInitialContainingBlock() {
+    TestSuite("taffy initial containing block");
+    SizeAvail viewport = {AvailableSpace::Definite(800.0f),
+                          AvailableSpace::Definite(600.0f)};
+    auto rootStyle = []() {
+        taffy::Style s;
+        s.display = taffy::Display::Block;
+        s.margin.left = taffy::LengthPercentageAuto::Length(10.0f);
+        s.margin.right = taffy::LengthPercentageAuto::Length(10.0f);
+        s.margin.top = taffy::LengthPercentageAuto::Length(20.0f);
+        s.margin.bottom = taffy::LengthPercentageAuto::Length(20.0f);
+        s.border.left = taffy::LengthPercentage::Length(5.0f);
+        s.border.right = taffy::LengthPercentage::Length(5.0f);
+        s.border.top = taffy::LengthPercentage::Length(5.0f);
+        s.border.bottom = taffy::LengthPercentage::Length(5.0f);
+        return s;
+    };
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId root = tree.NewLeaf(rootStyle());
+        tree.ComputeLayout(root, viewport);
+        AssertLoc(tree, root, 10.0f, 20.0f);
+        utassertnear(tree.GetLayout(root).size.w, 780.0f);
+        tree.Free();
+    }
+
+    taffy::Position positions[] = {taffy::Position::Absolute,
+                                   taffy::Position::Fixed};
+    for (taffy::Position position : positions) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style oof;
+        oof.position = position;
+        InsetAll(&oof, 0.0f);
+        TaffyNodeId child = tree.NewLeaf(oof);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle(), &child, 1);
+        tree.ComputeLayout(root, viewport);
+        AssertBox(tree.GetLayout(child), -10.0f, -20.0f, 800.0f, 600.0f);
+        tree.Free();
+    }
+    for (taffy::Position position : positions) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style oof = OofLeaf(50.0f, 50.0f);
+        oof.position = position;
+        oof.inset.right = taffy::LengthPercentageAuto::Length(0.0f);
+        oof.inset.bottom = taffy::LengthPercentageAuto::Length(0.0f);
+        TaffyNodeId child = tree.NewLeaf(oof);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle(), &child, 1);
+        tree.ComputeLayout(root, viewport);
+        AssertLoc(tree, child, 740.0f, 530.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style oof = OofLeaf(50.0f, 50.0f);
+        oof.position = taffy::Position::Absolute;
+        TaffyNodeId child = tree.NewLeaf(oof);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle(), &child, 1);
+        tree.ComputeLayout(root, viewport);
+        AssertLoc(tree, child, 5.0f, 5.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6222,6 +6292,7 @@ void TestTaffy() {
     TestOofHoisting();
     TestAbsposAutoMarginNeedsBothInsets();
     TestAbsoluteReplacedDoesNotStretch();
+    TestInitialContainingBlock();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

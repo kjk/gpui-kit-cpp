@@ -95,9 +95,11 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
     SizeF scrollbarSize = {
         style.overflow.y == Overflow::Scroll ? style.scrollbarWidth : 0.0f,
         style.overflow.x == Overflow::Scroll ? style.scrollbarWidth : 0.0f};
-    PointF location;
+    // The root's margin box sits at the origin of the initial containing
+    // block. RTL shifts it so the margin edge still meets the viewport.
+    PointF location = {margin.left, margin.top};
     if (IsRtl(style.direction) && IsSome(widthOpt)) {
-        location.x = widthOpt - output.size.w;
+        location.x = widthOpt - output.size.w - margin.right;
     }
 
     Layout layout;
@@ -112,16 +114,28 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
     layout.margin = margin;
     tree->SetUnroundedLayout(root, layout);
 
-    // The root is the initial containing block. A static root's own pass
-    // claims nothing, so absolute and fixed boxes are still on `output`.
-    // Overflow from this pass is not folded back into the root layout; a
-    // positioned root already claimed its absolutes inside the child pass.
+    // A static root's own pass claims nothing, so absolute and fixed boxes
+    // are still on `output`. Their containing block is the viewport, anchored
+    // at the canvas origin, not the root's border box. An indefinite axis
+    // falls back to the root's padding box. Overflow from this pass is not
+    // folded back into the root layout; a positioned root already claimed
+    // its absolutes inside the child pass.
     if (!output.oofCandidates.IsEmpty()) {
         RectF areaInset = border;
         areaInset.right += scrollbarSize.w;
         areaInset.bottom += scrollbarSize.h;
-        SizeF areaSize = output.size - areaInset.SumAxes();
+        SizeF rootPaddingBox = output.size - areaInset.SumAxes();
+        SizeF areaSize = rootPaddingBox;
         PointF areaOffset = {areaInset.left, areaInset.top};
+        if (IsSome(widthOpt)) {
+            areaSize.w = F32Max(widthOpt - scrollbarSize.w, 0.0f);
+            areaOffset.x = -location.x;
+        }
+        Optf heightOpt = availableSpace.height.IntoOption();
+        if (IsSome(heightOpt)) {
+            areaSize.h = F32Max(heightOpt - scrollbarSize.h, 0.0f);
+            areaOffset.y = -location.y;
+        }
         Vec<NodeId> hoisted;
         OofCandidates unclaimed;
         RectF overflow = RectF::Zero();
