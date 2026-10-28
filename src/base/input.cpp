@@ -149,9 +149,23 @@ El* InputBase::New(Ctx* cx, Str id, const InputPresentation& presentation,
 // walk over the rows carries on where the last one left off — `*at` is where
 // that is for the matches, and the colours are walked from the front, there
 // being a handful of them on a screen.
+// Source byte to the byte in a tab-expanded display line. No map is identity.
+static int MapTabOff(const int* map, int n, int src) {
+    if (!map) {
+        return src;
+    }
+    if (src < 0) {
+        return 0;
+    }
+    if (src > n) {
+        src = n;
+    }
+    return map[src];
+}
+
 static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
-                          const InputState* state, int start, int len,
-                          int* at) {
+                          const InputState* state, int start, int len, int* at,
+                          const int* tabMap) {
     int nColors = 0;
     if (state) {
         for (int i = 0; i < state->documentColors.len; i++) {
@@ -180,8 +194,8 @@ static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
             if (hi <= lo) {
                 continue;
             }
-            w[n].lo = lo;
-            w[n].hi = hi;
+            w[n].lo = MapTabOff(tabMap, len, lo);
+            w[n].hi = MapTabOff(tabMap, len, hi);
             w[n].bg = dc.color;
             n++;
         }
@@ -213,8 +227,8 @@ static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
         if (hi <= lo) {
             continue;
         }
-        w[n].lo = lo;
-        w[n].hi = hi;
+        w[n].lo = MapTabOff(tabMap, len, lo);
+        w[n].hi = MapTabOff(tabMap, len, hi);
         w[n].bg =
             ix == style.currentMatch ? style.currentMatchBg : style.matchBg;
         n++;
@@ -232,8 +246,8 @@ static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
         if (hi <= lo) {
             continue;
         }
-        w[n].lo = lo;
-        w[n].hi = hi;
+        w[n].lo = MapTabOff(tabMap, len, lo);
+        w[n].hi = MapTabOff(tabMap, len, hi);
         w[n].bg = dc.color;
         n++;
     }
@@ -570,11 +584,8 @@ static float WrapTokenWidth(WrapLineUser* u, int i) {
 // The shaped width of `text` on its own: what the row it would make paints
 // as. With nothing to shape against it is the sum of the characters'
 // estimates, as the wrapper's widths are.
-static float WrapShapedWidth(void* user, Str text) {
+static float WrapMeasureSlice(void* user, Str text) {
     WrapMeasure* wm = (WrapMeasure*)user;
-    if (len(text) <= 0) {
-        return 0;
-    }
     float w = 0;
     if (WrapAdvance(wm, text, &w)) {
         return w;
@@ -586,6 +597,223 @@ static float WrapShapedWidth(void* user, Str text) {
         at += n > 0 ? n : 1;
     }
     return w;
+}
+
+// The shaped width of `text` on its own: what the row it would make paints
+// as. Tabs are widened to the editor's stops, and each candidate is measured
+// from its own start, so a soft-wrapped row begins its stops over.
+static float WrapShapedWidth(void* user, Str text) {
+    WrapMeasure* wm = (WrapMeasure*)user;
+    if (len(text) <= 0) {
+        return 0;
+    }
+    float stop = 0;
+    if (wm->map && wm->map->tabSize > 0 && wm->map->spaceWidth > 0) {
+        stop = wm->map->spaceWidth * (float)wm->map->tabSize;
+    }
+    bool tab = false;
+    for (int i = 0; i < len(text); i++) {
+        if (text.s[i] == '\t') {
+            tab = true;
+            break;
+        }
+    }
+    if (tab && stop > 0) {
+        return TabExpandedWidth(text, stop, &WrapMeasureSlice, wm);
+    }
+    return WrapMeasureSlice(wm, text);
+}
+
+// A line with its tabs widened to spaces, plus the source-byte to display-byte
+// map. No map means the line was left alone. The spaces are the stop, so a
+// code font draws the indent the shaper would not.
+struct TabShown {
+    Str text = {};
+    int* map = nullptr;
+    int srcLen = 0;
+};
+
+static int MapTab(const TabShown& shown, int src) {
+    if (!shown.map) {
+        return src;
+    }
+    if (src < 0) {
+        return 0;
+    }
+    if (src > shown.srcLen) {
+        src = shown.srcLen;
+    }
+    return shown.map[src];
+}
+
+struct TabSliceMeasure {
+    PaintCtx* ctx = nullptr;
+    float font = 14;
+    uint16_t word = 0;
+};
+
+static float TabSliceWidth(void* user, Str text) {
+    TabSliceMeasure* m = (TabSliceMeasure*)user;
+    if (m->ctx && len(text) > 0) {
+        float x = 0, y = 0, h = 0;
+        if (TextPointAt(m->ctx, text, m->font, 0, false, len(text), &x, &y, &h,
+                        m->word)) {
+            return x;
+        }
+    }
+    float w = 0;
+    float em = m->font > 0 ? m->font * 0.6f : 8.f;
+    for (int i = 0; i < len(text);) {
+        uint32_t c = 0;
+        int n = Utf8At(text, i, &c);
+        w += em;
+        i += n > 0 ? n : 1;
+    }
+    return w;
+}
+
+static double TabFloorPos(double x) {
+    if (x <= 0) {
+        return 0;
+    }
+    return (double)(int64_t)x;
+}
+
+static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
+                         Str line) {
+    TabShown shown;
+    shown.text = line;
+    shown.srcLen = len(line);
+    if (!a || !s || len(line) <= 0) {
+        return shown;
+    }
+    bool tab = false;
+    for (int i = 0; i < len(line); i++) {
+        if (line.s[i] == '\t') {
+            tab = true;
+            break;
+        }
+    }
+    if (!tab) {
+        return shown;
+    }
+    int tabSize = s->mode.tabSize > 0 ? s->mode.tabSize : 2;
+    float font = s->lastFont > 0 ? s->lastFont : 14.f;
+    TabSliceMeasure measure = {ctx, font, s->lastFontWord};
+    float space = TabSliceWidth(&measure, StrL(" "));
+    if (space <= 0) {
+        space = font * 0.6f;
+    }
+    float stop = space * (float)tabSize;
+    int cap = len(line) * (tabSize + 1) + 8;
+    char* buf = (char*)Alloc(a, cap + 1);
+    int* map = (int*)Alloc(a, (int)sizeof(int) * (len(line) + 1));
+    if (!buf || !map) {
+        return shown;
+    }
+    int di = 0;
+    double shaped = 0;
+    double shift = 0;
+    int i = 0;
+    while (i < len(line)) {
+        map[i] = di;
+        if (line.s[i] == '\t') {
+            float tabW = TabSliceWidth(&measure, Str(line.s + i, 1));
+            double expanded = shaped + shift;
+            double end = shaped + (double)tabW;
+            double next =
+                (double)stop * (TabFloorPos(expanded / (double)stop) + 1.0);
+            int nsp = (int)((next - expanded) / (double)space + 0.5);
+            if (nsp < 1) {
+                nsp = 1;
+            }
+            if (di + nsp > cap) {
+                return shown;
+            }
+            for (int k = 0; k < nsp; k++) {
+                buf[di++] = ' ';
+            }
+            shift = next - end;
+            shaped = end;
+            i++;
+            continue;
+        }
+        int j = i + 1;
+        while (j < len(line) && line.s[j] != '\t') {
+            j++;
+        }
+        if (di + (j - i) > cap) {
+            return shown;
+        }
+        for (int k = i; k < j; k++) {
+            map[k] = di + (k - i);
+            buf[di + (k - i)] = line.s[k];
+        }
+        di += j - i;
+        shaped += (double)TabSliceWidth(&measure, Str(line.s + i, j - i));
+        i = j;
+    }
+    map[len(line)] = di;
+    buf[di] = 0;
+    shown.text = Str(buf, di);
+    shown.map = map;
+    return shown;
+}
+
+// The source byte a click at `x` lands on, once tabs occupy their stops.
+static int TabSourceAtX(PaintCtx* ctx, const InputState* s, Str text, float x) {
+    if (len(text) <= 0 || x <= 0) {
+        return 0;
+    }
+    int tabSize = s && s->mode.tabSize > 0 ? s->mode.tabSize : 2;
+    float font = s && s->lastFont > 0 ? s->lastFont : 14.f;
+    uint16_t word = s ? s->lastFontWord : 0;
+    TabSliceMeasure measure = {ctx, font, word};
+    float space = TabSliceWidth(&measure, StrL(" "));
+    if (space <= 0) {
+        space = font * 0.6f;
+    }
+    float stop = space * (float)tabSize;
+    double shaped = 0;
+    double shift = 0;
+    int i = 0;
+    while (i < len(text)) {
+        if (text.s[i] == '\t') {
+            float tabW = TabSliceWidth(&measure, Str(text.s + i, 1));
+            double expanded = shaped + shift;
+            double end = shaped + (double)tabW;
+            double next =
+                (double)stop * (TabFloorPos(expanded / (double)stop) + 1.0);
+            if (x < (float)next) {
+                return i;
+            }
+            shift = next - end;
+            shaped = end;
+            i++;
+            continue;
+        }
+        int j = i + 1;
+        while (j < len(text) && text.s[j] != '\t') {
+            j++;
+        }
+        Str run = Str(text.s + i, j - i);
+        float w = TabSliceWidth(&measure, run);
+        double runX = shaped + shift;
+        if (x < (float)(runX + (double)w)) {
+            int local =
+                TextIndexAt(ctx, run, font, 0, false, x - (float)runX, 0, word);
+            if (local < 0) {
+                local = 0;
+            }
+            if (local > len(run)) {
+                local = len(run);
+            }
+            return i + local;
+        }
+        shaped += (double)w;
+        i = j;
+    }
+    return len(text);
 }
 
 static void WrapLineFragments(void* user, Str slice, int base,
@@ -847,8 +1075,9 @@ void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
     }
     // set_wrap_width, set_font and set_wrapping_indent re-wrap every line;
     // an edit or a chip re-measured re-wraps the lines it touched.
+    int tabSize = s->mode.tabSize > 0 ? s->mode.tabSize : 2;
     bool same = m->valid && m->width == width && m->fontSize == fontSize &&
-                m->fontWord == fontWord &&
+                m->fontWord == fontWord && m->tabSize == tabSize &&
                 m->wrappingIndent == s->wrappingIndent;
     if (same) {
         WrapMapCatchUp(s, ctx);
@@ -857,6 +1086,7 @@ void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
     m->width = width;
     m->fontSize = fontSize;
     m->fontWord = fontWord;
+    m->tabSize = tabSize;
     m->wrappingIndent = s->wrappingIndent;
     WrapMapRebuild(s, ctx);
 }
@@ -934,7 +1164,8 @@ static int WrapRowOfOffset(const int* starts, int nRows, int local,
 // unless this is its line's last. The lists live in the frame arena.
 static void RowExtraCursors(Arena* a, El* el, const InputState* state,
                             const InputEditorStyle& style, int start, int len,
-                            bool caret, bool lastRow, bool showSel) {
+                            bool caret, bool lastRow, bool showSel,
+                            const int* tabMap) {
     int n = state->extraCursors.len;
     auto* sels = (Selection*)Alloc(a, n * (int)sizeof(Selection));
     auto* carets = (int*)Alloc(a, n * (int)sizeof(int));
@@ -954,12 +1185,13 @@ static void RowExtraCursors(Arena* a, El* el, const InputState* state,
             hi = len;
         }
         if (showSel && !c.IsEmpty() && lo < hi) {
-            sels[nSels++] = Selection{lo, hi};
+            sels[nSels++] = Selection{MapTabOff(tabMap, len, lo),
+                                      MapTabOff(tabMap, len, hi)};
         }
         int cur = c.Cursor();
         if (caret && cur >= start && cur <= start + len &&
             (lastRow || cur < start + len)) {
-            carets[nCarets++] = cur - start;
+            carets[nCarets++] = MapTabOff(tabMap, len, cur - start);
         }
     }
     if (nSels > 0) {
@@ -1491,7 +1723,13 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
                           sel, caret, cursor);
         return row->Child(line);
     }
-    El* el = TextEl(a, run)
+    TabShown shown;
+    shown.text = run;
+    shown.srcLen = len(run);
+    if (!masked) {
+        shown = ShowTabs(a, cx->win ? &cx->win->paint : nullptr, state, run);
+    }
+    El* el = TextEl(a, shown.text)
                  ->Font(font)
                  ->LineHeight(lineMult)
                  ->Fg(style.foreground)
@@ -1500,16 +1738,17 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     // A masked one is not searched: what it holds is not what it shows.
     if (!masked) {
         int matchAt = 0;
-        RowMatchWashes(a, el, style, state, 0, len(run), &matchAt);
+        RowMatchWashes(a, el, style, state, 0, len(run), &matchAt, shown.map);
     }
     if (!sel.IsEmpty()) {
-        el->SelRange(sel.start, sel.end, style.selection);
+        el->SelRange(MapTab(shown, sel.start), MapTab(shown, sel.end),
+                     style.selection);
     }
     if (marking) {
-        el->MarkRange(mark.start, mark.end);
+        el->MarkRange(MapTab(shown, mark.start), MapTab(shown, mark.end));
     }
     if (caret) {
-        el->Caret(cursor, style.caret);
+        el->Caret(MapTab(shown, cursor), style.caret);
     }
     return row->Child(el);
 }
@@ -2023,17 +2262,37 @@ static void NoteUnwrappedExtent(InputState* state, PaintCtx* paint,
         }
     }
     Str longest = InputSliceLine(state, row);
+    int tab = state->mode.tabSize > 0 ? state->mode.tabSize : 2;
     bool same =
         state->longestLineSet && state->longestLineDoc == state->docVersion &&
         state->longestLineRow == row && state->longestLineLen == len(longest) &&
-        state->longestLineFont == laidFont && state->longestLineWord == word;
+        state->longestLineFont == laidFont && state->longestLineWord == word &&
+        state->longestLineTab == tab;
+    struct ExtentMeasure {
+        PaintCtx* paint;
+        float font;
+        uint16_t word;
+    };
+    ExtentMeasure em = {paint, laidFont, word};
+    auto slice = [](void* user, Str text) -> float {
+        ExtentMeasure* m = (ExtentMeasure*)user;
+        return MeasureText(m->paint, text, m->font, 0, false, m->word).w;
+    };
+    float space = slice(&em, StrL(" "));
+    float stop = space * (float)tab;
+    auto widened = [&](Str line) -> float {
+        if (len(line) <= 0) {
+            return 0;
+        }
+        return TabExpandedWidth(line, stop, slice, &em);
+    };
     float width = 0;
     if (len(state->text) == 0) {
         width = 0;
     } else if (same) {
         width = state->longestLineW;
     } else if (len(longest) > 0) {
-        width = MeasureText(paint, longest, laidFont, 0, false, word).w;
+        width = widened(longest);
     }
     if (len(state->text) > 0) {
         int lo = firstRow < 0 ? 0 : firstRow;
@@ -2047,7 +2306,7 @@ static void NoteUnwrappedExtent(InputState* state, PaintCtx* paint,
             if (len(line) <= 0) {
                 continue;
             }
-            float w = MeasureText(paint, line, laidFont, 0, false, word).w;
+            float w = widened(line);
             if (w > width) {
                 width = w;
             }
@@ -2059,6 +2318,7 @@ static void NoteUnwrappedExtent(InputState* state, PaintCtx* paint,
     state->longestLineLen = len(longest);
     state->longestLineFont = laidFont;
     state->longestLineWord = word;
+    state->longestLineTab = tab;
     state->longestLineW = width;
 }
 
@@ -2633,6 +2893,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             int segHi = vis + 1 < nVis ? wrapStarts[vis + 1] : len(lineText);
             int start = lineStart + segLo;
             Str line = Str(lineText.s + segLo, segHi - segLo);
+            TabShown shown;
+            shown.text = line;
+            shown.srcLen = len(line);
             bool firstSeg = vis == 0;
             bool lastSeg = vis == nVis - 1;
             bool tokenLine =
@@ -2660,8 +2923,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 AppendTokenPieces(el, cx, state, style, font, lineMult, lineH,
                                   line, start, sel, caret, cursor);
             } else {
-                el = TextEl(a, line)->Font(font)->LineHeight(lineMult)->Fg(
-                    style.foreground);
+                shown = ShowTabs(a, cx->win ? &cx->win->paint : nullptr, state,
+                                 line);
+                el = TextEl(a, shown.text)
+                         ->Font(font)
+                         ->LineHeight(lineMult)
+                         ->Fg(style.foreground);
                 InputFace(el, style);
             }
             if (paintedRow) {
@@ -2704,8 +2971,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                             continue;
                         }
                         rowSpans[nRowSpans] = sp;
-                        rowSpans[nRowSpans].lo = lo;
-                        rowSpans[nRowSpans].hi = hi;
+                        rowSpans[nRowSpans].lo = MapTab(shown, lo);
+                        rowSpans[nRowSpans].hi = MapTab(shown, hi);
                         nRowSpans++;
                     }
                     if (nRowSpans > 0) {
@@ -2754,8 +3021,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                         if (c.a == 0) {
                             continue;
                         }
-                        runs[n].lo = lo;
-                        runs[n].hi = hi;
+                        runs[n].lo = MapTab(shown, lo);
+                        runs[n].hi = MapTab(shown, hi);
                         runs[n].color = c;
                         runs[n].bg = Rgba{0, 0, 0, 0};
                         runs[n].underline = true;
@@ -2786,8 +3053,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 if (hi > lo) {
                     auto* run = (TextSpan*)Alloc(a, (int)sizeof(TextSpan));
                     if (run) {
-                        run->lo = lo;
-                        run->hi = hi;
+                        run->lo = MapTab(shown, lo);
+                        run->hi = MapTab(shown, hi);
                         run->color = style.linkText;
                         run->bg = Rgba{0, 0, 0, 0};
                         run->underline = true;
@@ -2797,7 +3064,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     // Where it landed, for the hand cursor: measured on the
                     // row the symbol starts in.
                     if (sym.start >= start || firstSeg) {
-                        el->RangeOut(lo, hi, &state->hoverDef.bounds);
+                        el->RangeOut(MapTab(shown, lo), MapTab(shown, hi),
+                                     &state->hoverDef.bounds);
                     }
                 }
             }
@@ -2822,11 +3090,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     state->popoverTriggerBounds = {};
                     WindowRequestAnimationFrame(cx->win);
                 }
-                el->RangeOut(popoverLo, popoverHi,
+                el->RangeOut(MapTab(shown, popoverLo), MapTab(shown, popoverHi),
                              &state->popoverTriggerBounds);
             }
             if (!tokenLine) {
-                RowMatchWashes(a, el, style, state, start, len(line), &matchAt);
+                RowMatchWashes(a, el, style, state, start, len(line), &matchAt,
+                               shown.map);
             }
             // The first line's first row is the one the state measures
             // against; every row below it is a whole lastLineH further down.
@@ -2847,7 +3116,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 hi = len(line);
             }
             if (!tokenLine && !sel.IsEmpty() && lo < hi) {
-                el->SelRange(lo, hi, style.selection);
+                el->SelRange(MapTab(shown, lo), MapTab(shown, hi),
+                             style.selection);
             }
             // The caret on a soft-wrap boundary stands at the end of the row
             // the boundary closes with the line-end affinity, and at the
@@ -2866,8 +3136,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     el->Caret(0, style.caret);
                 }
             } else if (!tokenLine && caret && caretHere) {
-                el->Caret(cursor - start, style.caret, base::PlatCaretWidth(),
-                          state->cursorLineEndAffinity);
+                el->Caret(MapTab(shown, cursor - start), style.caret,
+                          base::PlatCaretWidth(), state->cursorLineEndAffinity);
                 // Where it lands is the anchor a completion menu hangs off.
                 el->CaretOut(&state->caretWinX, &state->caretWinY);
             } else if (!tokenLine && !caretFolded && caretHere) {
@@ -2875,13 +3145,13 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 // unfocused, or the dark half of the blink -- so
                 // cursor_layout() follows the selection all the same.
                 // Measured, not drawn.
-                el->Caret(cursor - start, Rgba{0, 0, 0, 0},
+                el->Caret(MapTab(shown, cursor - start), Rgba{0, 0, 0, 0},
                           base::PlatCaretWidth(), state->cursorLineEndAffinity);
                 el->CaretOut(&state->caretWinX, &state->caretWinY);
             }
             if (!tokenLine && state->extraCursors.len > 0) {
                 RowExtraCursors(a, el, state, style, start, len(line), caret,
-                                lastSeg, showSel);
+                                lastSeg, showSel, shown.map);
             }
             // indent_guides: a hairline every tab stop of the line's leading
             // whitespace (a tab counts as a whole stop), drawn by the line's
@@ -7654,6 +7924,23 @@ static float WrapFontOf(const InputState* s) {
 
 // The advance of a run of the row's text, as its own shaped run.
 static float WrapTextAdvance(PaintCtx* ctx, const InputState* s, Str text) {
+    bool tab = false;
+    for (int i = 0; i < len(text); i++) {
+        if (text.s[i] == '\t') {
+            tab = true;
+            break;
+        }
+    }
+    if (tab && s) {
+        int tabSize = s->mode.tabSize > 0 ? s->mode.tabSize : 2;
+        TabSliceMeasure measure = {ctx, WrapFontOf(s), s->lastFontWord};
+        float space = TabSliceWidth(&measure, StrL(" "));
+        if (space <= 0) {
+            space = WrapFontOf(s) * 0.6f;
+        }
+        return TabExpandedWidth(text, space * (float)tabSize, &TabSliceWidth,
+                                &measure);
+    }
     float x = 0, y = 0, h = 0;
     if (len(text) > 0 && ctx) {
         TextPointAt(ctx, text, WrapFontOf(s), 0, false, len(text), &x, &y, &h,
@@ -7751,6 +8038,16 @@ static int WrapRowIndexAt(PaintCtx* ctx, const InputState* s, Str line,
         Str text = Str(line.s + f.lo, f.hi - f.lo);
         float w = WrapTextAdvance(ctx, s, text);
         if (x < at + w || i == n - 1) {
+            bool tab = false;
+            for (int k = 0; k < len(text); k++) {
+                if (text.s[k] == '\t') {
+                    tab = true;
+                    break;
+                }
+            }
+            if (tab) {
+                return f.lo + TabSourceAtX(ctx, s, text, x - at);
+            }
             return f.lo + TextIndexAt(ctx, text, font, 0, false, x - at, 0,
                                       s->lastFontWord);
         }
@@ -9551,6 +9848,16 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
         }
         if (x <= b.x) {
             return 0;
+        }
+        bool tab = false;
+        for (int i = 0; i < len(t); i++) {
+            if (t.s[i] == '\t') {
+                tab = true;
+                break;
+            }
+        }
+        if (tab) {
+            return TabSourceAtX(ctx, s, t, x - b.x);
         }
         return TextIndexAt(ctx, t, font, 0, false, x - b.x, 0, s->lastFontWord);
     }

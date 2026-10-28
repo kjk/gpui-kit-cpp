@@ -11533,6 +11533,158 @@ static void PrewrapCountsWrappedRowsBeforeTheFirstPaint() {
     }
 }
 
+static bool TabNear(float a, float b) {
+    float d = a - b;
+    if (d < 0) {
+        d = -d;
+    }
+    return d < 0.001f;
+}
+
+struct TabAdv {
+    float advance = 0;
+    float tabAdvance = 0;
+};
+
+static float TabUniformMeasure(void* user, Str slice) {
+    TabAdv* a = (TabAdv*)user;
+    float w = 0;
+    for (int i = 0; i < len(slice);) {
+        uint32_t c = 0;
+        int n = Utf8At(slice, i, &c);
+        if (n <= 0) {
+            break;
+        }
+        w += c == '\t' ? a->tabAdvance : a->advance;
+        i += n;
+    }
+    return w;
+}
+
+// tab_stops.rs. Uniform advances stand in for a shaper: a tab's own width is
+// replaced by the distance to the next stop.
+static void TabStopsWidenToTheNextStop() {
+    float xs[8];
+    int n = 0;
+    float width = 0;
+    utassert(!TabExpandGlyphXs(StrL("abc"), 40, 10, 0, xs, 8, &n, &width));
+
+    utassert(TabExpandGlyphXs(StrL("\t\tx"), 40, 10, 0, xs, 8, &n, &width));
+    utassert(n == 3 && TabNear(xs[0], 0) && TabNear(xs[1], 40) &&
+             TabNear(xs[2], 80) && TabNear(width, 90));
+
+    utassert(TabExpandGlyphXs(StrL("ab\tc"), 40, 10, 0, xs, 8, &n, &width));
+    utassert(n == 4 && TabNear(xs[0], 0) && TabNear(xs[1], 10) &&
+             TabNear(xs[2], 20) && TabNear(xs[3], 40));
+
+    utassert(TabExpandGlyphXs(StrL("abcd\te"), 40, 10, 0, xs, 8, &n, &width));
+    utassert(TabNear(xs[5], 80));
+
+    utassert(TabExpandGlyphXs(StrL("\tx"), 40, 10, 28, xs, 8, &n, &width));
+    utassert(n == 2 && TabNear(xs[0], 0) && TabNear(xs[1], 40) &&
+             TabNear(width, 50));
+
+    utassert(TabExpandGlyphXs(StrL("a\t"), 40, 10, 0, xs, 8, &n, &width));
+    utassert(TabNear(width, 40));
+
+    // A stop that is not a whole pixel must keep consecutive tabs moving.
+    const float stops[] = {14.4f, 16.8f, 28.8f, 33.6f};
+    const float advances[] = {0.f, 28.f};
+    char text[258];
+    for (int i = 0; i < 256; i++) {
+        text[i] = '\t';
+    }
+    text[256] = 'x';
+    text[257] = 0;
+    float wide[257];
+    for (float stop : stops) {
+        for (float tabAdvance : advances) {
+            utassert(TabExpandGlyphXs(Str(text, 257), stop, 10, tabAdvance,
+                                      wide, 257, &n, &width));
+            utassert(n == 257);
+            for (int g = 0; g < n; g++) {
+                utassert(TabNear(wide[g], stop * (float)g));
+            }
+            TabAdv adv = {10.f, tabAdvance};
+            utassert(TabNear(width, TabExpandedWidth(Str(text, 257), stop,
+                                                     TabUniformMeasure, &adv)));
+        }
+    }
+
+    // One glyph per scalar, including a multibyte scalar. A stop of 0 keeps
+    // the shaped width. tab_stops.rs
+    // tab_stops_cross_shaped_runs_and_multibyte_characters.
+    {
+        Str mb = StrL("é\t中\t\tz\t");
+        float mbXs[8];
+        utassert(TabExpandGlyphXs(mb, 40, 10, 28, mbXs, 8, &n, &width));
+        utassert(n == 7);
+        float expect[] = {0.f, 10.f, 40.f, 50.f, 80.f, 120.f, 130.f};
+        for (int g = 0; g < 7; g++) {
+            utassert(TabNear(mbXs[g], expect[g]));
+        }
+        utassert(TabNear(width, 160));
+        TabAdv adv = {10.f, 28.f};
+        utassert(
+            TabNear(width, TabExpandedWidth(mb, 40, TabUniformMeasure, &adv)));
+        float shaped = TabUniformMeasure(&adv, mb);
+        utassert(
+            TabNear(TabExpandedWidth(mb, 0, TabUniformMeasure, &adv), shaped));
+        utassert(!TabExpandGlyphXs(mb, 0, 10, 28, mbXs, 8, &n, &width));
+        utassert(TabNear(width, shaped));
+    }
+
+    // expands_long_tab_separated_lines: 16384 copies of "\tx".
+    {
+        const int count = 16384;
+        char* buf = (char*)malloc((size_t)count * 2 + 1);
+        utassert(buf != nullptr);
+        for (int i = 0; i < count; i++) {
+            buf[i * 2] = '\t';
+            buf[i * 2 + 1] = 'x';
+        }
+        buf[count * 2] = 0;
+        Str longText = Str(buf, count * 2);
+        int glyphs = count * 2;
+        float* longXs = (float*)malloc(sizeof(float) * (size_t)glyphs);
+        utassert(longXs != nullptr);
+        utassert(
+            TabExpandGlyphXs(longText, 40, 10, 0, longXs, glyphs, &n, &width));
+        utassert(n == glyphs);
+        float expectedW = (float)count * 40.f + 10.f;
+        utassert(TabNear(width, expectedW));
+        TabAdv adv = {10.f, 0.f};
+        utassert(
+            TabNear(TabExpandedWidth(longText, 40, TabUniformMeasure, &adv),
+                    expectedW));
+        for (int ix = 0; ix < count; ix++) {
+            float tabStart = ix == 0 ? 0.f : (float)ix * 40.f + 10.f;
+            utassert(TabNear(longXs[ix * 2], tabStart));
+            utassert(TabNear(longXs[ix * 2 + 1], (float)(ix + 1) * 40.f));
+        }
+        free(longXs);
+        free(buf);
+    }
+}
+
+// state.rs test_prewrap_uses_the_configured_tab_stops.
+static void PrewrapUsesTheConfiguredTabStops() {
+    int tabs[] = {4, 2, 8};
+    int expected[] = {2, 1, 2};
+    for (int i = 0; i < 3; i++) {
+        InputState s;
+        s.kind = InputKind::Editor;
+        s.softWrap = true;
+        s.mode.tabSize = tabs[i];
+        InputSetValue(&s, StrL("\t\t"));
+        // Five spaces, plus the editor's right margin, is the rust width.
+        // Without a paint context a space is 0.6 of the font.
+        float space = 14.f * 0.6f;
+        InputPrewrap(&s, nullptr, 14, 0, space * 5.f + 10.f);
+        utassert(InputWrapRowCount(InputDisplayMap(&s)) == expected[i]);
+    }
+}
+
 // state.rs test_prewrap_wraps_with_the_wrapping_indent.
 static void PrewrapWrapsWithTheWrappingIndent() {
     const char* text =
@@ -11852,6 +12004,8 @@ void TestInputState() {
     TextareaPrewrapPreparesContentRowsBeforeLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
     PrewrapCountsWrappedRowsBeforeTheFirstPaint();
+    TabStopsWidenToTheNextStop();
+    PrewrapUsesTheConfiguredTabStops();
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");

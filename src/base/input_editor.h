@@ -21,6 +21,20 @@ struct TabSize {
     int IndentCount(Str line) const;
 };
 
+// tab_stops.rs. `measure` is the shaper width of a slice. A tab is measured
+// on its own so that width can be replaced; a stop of 0 leaves the slice
+// alone. The walk keeps the cumulative shift in double precision so a long
+// run of fractional stops does not land two tabs on one stop.
+float TabExpandedWidth(Str text, float stop,
+                       float (*measure)(void* user, Str text), void* user);
+
+// The same walk, writing one x per Unicode scalar into `xs` (uniform
+// advances, which is how the tab_stops unit tests build a line). Returns
+// false when there is no tab to widen. `width` is the expanded width, or
+// the shaped width when nothing was widened.
+bool TabExpandGlyphXs(Str text, float stop, float advance, float tabAdvance,
+                      float* xs, int cap, int* nOut, float* width);
+
 struct TextDecoration {
     Selection range = {};
     TextSpan style = {};

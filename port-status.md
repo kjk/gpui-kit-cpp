@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `219fc1a9bdd6236c3a58f07c810e1b87079890c1` (2026-10-23,
-resizable: Read active drag state when mouse events arrive (#3629)).
-A press, drag and release that arrive before the next paint resize the
-panels and emit once. A programmatic resize ends the gesture, so a move
-still queued from the painted drag does not reuse that handle.
+Processed through `0121c36b75fbe0652eda6fdd954f73df61581527` (2026-10-23,
+input: Lay out tabs to tab stops in the code editor (#3622)).
+A tab ends on the next multiple of `tab_size` spaces. Wrap measurement,
+the longest line, the caret and a click all use that width. The shared
+shaper does not hand glyph positions back, so the drawn line is spaces
+that reach the stop; the buffer still holds the tab. Token rows are
+left to the shaper, as upstream leaves them.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

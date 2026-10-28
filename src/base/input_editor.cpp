@@ -438,7 +438,7 @@ Str TabSize::ToString(Arena* a) const {
 }
 
 int TabSize::IndentCount(Str line) const {
-    int tab = std::max(1, tabSize);
+    int tab = tabSize;
     int count = 0;
     for (int i = 0; i < len(line);) {
         uint32_t c = 0;
@@ -447,7 +447,11 @@ int TabSize::IndentCount(Str line) const {
             break;
         }
         if (c == '\t') {
-            count += tab;
+            // The next stop, not another `tab_size` columns past the current
+            // one: two spaces and a tab of 4 land on column 4.
+            if (tab > 0) {
+                count += tab - count % tab;
+            }
         } else if (c == ' ') {
             count++;
         } else {
@@ -456,6 +460,162 @@ int TabSize::IndentCount(Str line) const {
         i += n;
     }
     return count;
+}
+
+namespace {
+
+struct TabGlyph {
+    int index = 0;
+    float x = 0;
+};
+
+double TabFloor(double x) {
+    if (x <= 0) {
+        return 0;
+    }
+    return (double)(int64_t)x;
+}
+
+} // namespace
+
+float TabExpandedWidth(Str text, float stop,
+                       float (*measure)(void* user, Str text), void* user) {
+    if (!measure || len(text) <= 0) {
+        return 0;
+    }
+    bool has = false;
+    for (int i = 0; i < len(text); i++) {
+        if (text.s[i] == '\t') {
+            has = true;
+            break;
+        }
+    }
+    if (!has || stop <= 0.f) {
+        return measure(user, text);
+    }
+    double shaped = 0;
+    double shift = 0;
+    int i = 0;
+    while (i < len(text)) {
+        if (text.s[i] == '\t') {
+            float tabW = measure(user, Str(text.s + i, 1));
+            double start = shaped + shift;
+            double end = shaped + (double)tabW;
+            double next = (double)stop * (TabFloor(start / (double)stop) + 1.0);
+            shift = next - end;
+            shaped = end;
+            i++;
+            continue;
+        }
+        int j = i + 1;
+        while (j < len(text) && text.s[j] != '\t') {
+            j++;
+        }
+        shaped += (double)measure(user, Str(text.s + i, j - i));
+        i = j;
+    }
+    return (float)(shaped + shift);
+}
+
+bool TabExpandGlyphXs(Str text, float stop, float advance, float tabAdvance,
+                      float* xs, int cap, int* nOut, float* width) {
+    struct Adv {
+        float advance;
+        float tabAdvance;
+    };
+    Adv adv = {advance, tabAdvance};
+    auto measure = [](void* user, Str slice) -> float {
+        Adv* a = (Adv*)user;
+        float w = 0;
+        for (int i = 0; i < len(slice);) {
+            uint32_t c = 0;
+            int n = Utf8At(slice, i, &c);
+            if (n <= 0) {
+                break;
+            }
+            w += c == '\t' ? a->tabAdvance : a->advance;
+            i += n;
+        }
+        return w;
+    };
+    float shapedW = measure(&adv, text);
+    if (width) {
+        *width = shapedW;
+    }
+    Vec<TabGlyph> glyphs;
+    float x = 0;
+    for (int i = 0; i < len(text);) {
+        uint32_t c = 0;
+        int n = Utf8At(text, i, &c);
+        if (n <= 0) {
+            break;
+        }
+        TabGlyph g;
+        g.index = i;
+        g.x = x;
+        VecAppend(glyphs, g);
+        x += c == '\t' ? tabAdvance : advance;
+        i += n;
+    }
+    if (nOut) {
+        *nOut = len(glyphs);
+    }
+    bool has = false;
+    for (int i = 0; i < len(text); i++) {
+        if (text.s[i] == '\t') {
+            has = true;
+            break;
+        }
+    }
+    if (!has || stop <= 0.f) {
+        if (xs) {
+            for (int i = 0; i < len(glyphs) && i < cap; i++) {
+                xs[i] = glyphs[i].x;
+            }
+        }
+        return false;
+    }
+    // Tab indexes only increase, so the glyph cursor walks forward once.
+    // Restarting the scan per tab is what makes a long line quadratic.
+    Vec<int> tabAt;
+    Vec<float> tabShift;
+    double shift = 0;
+    int gCursor = 0;
+    for (int i = 0; i < len(text); i++) {
+        if (text.s[i] != '\t') {
+            continue;
+        }
+        while (gCursor < len(glyphs) && glyphs[gCursor].index < i) {
+            gCursor++;
+        }
+        float startX = gCursor < len(glyphs) ? glyphs[gCursor].x : shapedW;
+        int gEnd = gCursor;
+        while (gEnd < len(glyphs) && glyphs[gEnd].index < i + 1) {
+            gEnd++;
+        }
+        float endX = gEnd < len(glyphs) ? glyphs[gEnd].x : shapedW;
+        double start = (double)startX + shift;
+        double next = (double)stop * (TabFloor(start / (double)stop) + 1.0);
+        shift = next - (double)endX;
+        VecAppend(tabAt, i);
+        VecAppend(tabShift, (float)shift);
+    }
+    if (xs) {
+        int t = 0;
+        float s = 0;
+        for (int i = 0; i < len(glyphs) && i < cap; i++) {
+            while (t < len(tabAt) && tabAt[t] < glyphs[i].index) {
+                s = tabShift[t];
+                t++;
+            }
+            xs[i] = glyphs[i].x + s;
+        }
+    }
+    if (width) {
+        *width =
+            shapedW + (len(tabShift) > 0 ? tabShift[len(tabShift) - 1] : 0.f);
+    }
+    return true;
 }
 
 TextDecoration TextDecoration::New(Selection range, const TextSpan& style) {

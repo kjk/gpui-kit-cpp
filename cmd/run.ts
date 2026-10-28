@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "219fc1a9bdd6236c3a58f07c810e1b87079890c1",
+  sha: "0121c36b75fbe0652eda6fdd954f73df61581527",
   date: "2026-10-23",
-  subject: "resizable: Read active drag state when mouse events arrive (#3629)",
+  subject: "input: Lay out tabs to tab stops in the code editor (#3622)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

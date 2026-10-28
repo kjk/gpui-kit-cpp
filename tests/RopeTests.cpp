@@ -180,14 +180,18 @@ static void TabSizeCountsAndBuildsIndent() {
     TabSize soft;
     soft.tabSize = 4;
     utassert(base::StrEq(soft.ToString(arena), StrL("    ")));
-    utassert(soft.IndentCount(StrL("  \tabc")) == 6);
+    utassert(soft.IndentCount(StrL("\tabc")) == 4);
+    utassert(soft.IndentCount(StrL("  \tabc")) == 4);
+    utassert(soft.IndentCount(StrL(" \t abc  ")) == 5);
+    utassert(soft.IndentCount(StrL(" \t \tabc")) == 8);
+    utassert(soft.IndentCount(StrL("    \tabc")) == 8);
     utassert(soft.IndentCount(StrL("abc")) == 0);
 
     TabSize hard;
     hard.tabSize = 8;
     hard.hardTabs = true;
     utassert(base::StrEq(hard.ToString(arena), StrL("\t")));
-    utassert(hard.IndentCount(StrL(" \t abc")) == 10);
+    utassert(hard.IndentCount(StrL(" \t abc")) == 9);
     ArenaDelete(arena);
 }
 

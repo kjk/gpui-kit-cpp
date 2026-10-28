@@ -4426,6 +4426,8 @@ struct InputWrapMap {
     float width = 0;
     float fontSize = 0;
     uint16_t fontWord = 0;
+    // Spaces per tab stop. Part of the wrap key: a new tab size rewraps.
+    int tabSize = 2;
     uint8_t wrappingIndent = 1;
     uint64_t tokenKey = 0;
     int totalRows = 0;
@@ -5489,6 +5491,7 @@ struct InputState {
     int longestLineLen = 0;
     float longestLineFont = 0;
     uint16_t longestLineWord = 0;
+    int longestLineTab = 0;
     float longestLineW = 0;
     // scroll_bounce: precise scrolling stretches a multi-line field past its
     // ends. A line wheel only scrolls. The default follows the platform.
