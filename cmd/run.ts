@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3b2f7bfd12f9c2ccb77e6828dd6546446c5ca4f0",
+  sha: "cf5b86398385dcf04b3c984324e09e0f79b73c62",
   date: "2026-10-24",
-  subject: "toolbar: Keep focus where it was when blank toolbar space is clicked (#3652)",
+  subject: "scroll_bounce: Avoid false overscroll at large offsets (#3661)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

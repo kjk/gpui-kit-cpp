@@ -489,12 +489,17 @@ struct OwnedScroll {
 static float OwnedScrollBy(void* user, float dy) {
     OwnedScroll* a = (OwnedScroll*)user;
     Point before = a->handle.Offset();
-    float y = before.y + dy;
+    // Only a clamp leaves unused input. At a large offset, subtracting the
+    // stored positions drops a fraction even when the request is in range,
+    // and Overscroll then reads that residue as an edge.
+    float requested = before.y + dy;
+    float y = requested;
     if (y < -a->max) y = -a->max;
     if (y > 0) y = 0;
     Point next = before;
     next.y = y;
     a->handle.SetOffset(next);
+    if (y == requested) return dy;
     return next.y - before.y;
 }
 

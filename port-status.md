@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3b2f7bfd12f9c2ccb77e6828dd6546446c5ca4f0` (2026-10-24,
-toolbar: Keep focus where it was when blank toolbar space is clicked (#3652)).
-A press on blank toolbar space does not take focus and does not blur
-the editor that had it. A focusable item in the bar still takes the
-press.
+Processed through `cf5b86398385dcf04b3c984324e09e0f79b73c62` (2026-10-24,
+scroll_bounce: Avoid false overscroll at large offsets (#3661)).
+A fractional wheel deep in a long list is consumed as scrolling. The
+stored offset still rounds, and a real edge still stretches.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

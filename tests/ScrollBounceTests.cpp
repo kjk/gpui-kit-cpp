@@ -527,6 +527,66 @@ static void MomentumBackIntoTheTextScrollsWhileTheEdgeReturns() {
     utassert(over.Offset() > before && over.Offset() < 0.f);
 }
 
+static void WheelOwned(ScrollOverscroll* over, OngoingScroll* lock,
+                       ScrollbarHandle handle, float dy, TouchPhase phase) {
+    ScrollWheelEvent ev;
+    ev.deltaY = dy;
+    ev.precise = true;
+    ev.phase = phase;
+    Ctx cx;
+    ScrollBounceOwnedWheel(over, lock, handle, true, &ev, &cx, {});
+}
+
+// fractional_wheel_input_keeps_scrolling_deep_in_a_long_list
+static void FractionalWheelInputKeepsScrollingDeepInALongList() {
+    bool reduced = MotionReduced();
+    MotionSetReduced(false);
+    App* app = TestAppNew();
+    for (int dir = 0; dir < 2; dir++) {
+        float delta = dir == 0 ? -0.09f : 0.09f;
+        float sign = delta < 0 ? -1.f : 1.f;
+        float offset = 1000000.f;
+        float viewport = 200.f;
+        float content = 2000000.f;
+        PositiveScroll slot;
+        slot.offset = &offset;
+        slot.viewport = &viewport;
+        slot.content = &content;
+        ScrollbarHandle handle = PositiveScrollHandle(&slot);
+        ScrollOverscroll over;
+        OngoingScroll lock;
+        float origin = handle.ViewportBounds().y;
+        WheelOwned(&over, &lock, handle, delta, TouchPhase::Started);
+        WheelOwned(&over, &lock, handle, sign * 20.f, TouchPhase::Moved);
+        WheelOwned(&over, &lock, handle, 0, TouchPhase::Ended);
+        TestAdvanceClock(app, 16);
+        WheelOwned(&over, &lock, handle, delta, TouchPhase::Moved);
+        WheelOwned(&over, &lock, handle, 0, TouchPhase::Started);
+        WheelOwned(&over, &lock, handle, sign * 20.f, TouchPhase::Moved);
+        // Each 0.09px step rounds to 0.0625px in the stored offset.
+        float expected = 1000000.f - sign * 40.125f;
+        utassert(fabsf(offset - expected) < 0.001f);
+        utassert(over.Offset() == 0.f);
+        utassert(handle.ViewportBounds().y == origin);
+    }
+    // A real edge still reports the clamped distance, so the stretch runs.
+    float offset = 0;
+    float viewport = 200.f;
+    float content = 2000000.f;
+    PositiveScroll slot;
+    slot.offset = &offset;
+    slot.viewport = &viewport;
+    slot.content = &content;
+    ScrollOverscroll over;
+    OngoingScroll lock;
+    WheelOwned(&over, &lock, PositiveScrollHandle(&slot), 50.f,
+               TouchPhase::Started);
+    utassert(offset == 0.f);
+    utassert(over.Offset() != 0.f);
+    TestAppFree(app);
+    MotionSetReduced(reduced);
+}
+
 static void ANewPreciseGestureTakesOverWithoutJumping() {
     ScrollOverscroll over;
     OverRoom room{0};
@@ -572,5 +632,6 @@ void TestScrollBounce() {
     AFlickAwayFromTheEdgesLeavesTheNextDragToTheText();
     AfterAPauseTheNextFlickThrowsTheEdgeAgain();
     MomentumBackIntoTheTextScrollsWhileTheEdgeReturns();
+    FractionalWheelInputKeepsScrollingDeepInALongList();
     ANewPreciseGestureTakesOverWithoutJumping();
 }
