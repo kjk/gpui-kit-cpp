@@ -1831,11 +1831,15 @@ float ItemMinimumContribution(GridItem* item, TaffyTree* tree,
     if (!IsSome(size)) {
         // The automatic minimum size is content-based only if the item spans
         // at least one track whose min sizing function is auto, and either it
-        // spans one track or none of the tracks it spans is flexible.
-        // Otherwise it is zero.
+        // spans one track or none of the tracks it spans is flexible. A
+        // flexible track elsewhere in the axis does not count. Otherwise the
+        // automatic minimum is zero.
+        (void)axisTrackCount;
         bool spansAutoMinTrack = false;
         bool spansAFlexibleTrack = false;
-        for (int i = 0; i < axisTrackCount; i++) {
+        int from = item->TrackRangeStart(axis);
+        int to = item->TrackRangeEnd(axis);
+        for (int i = from; i < to; i++) {
             if (axisTracks[i].minTrackSizingFunction.IsAuto()) {
                 spansAutoMinTrack = true;
             }

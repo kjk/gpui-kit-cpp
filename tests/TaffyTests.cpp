@@ -705,6 +705,56 @@ static SizeF AhemQuadInner(SizeFOpt known, SizeAvail available, void* ctx) {
     return {inlineSize, block};
 }
 
+// Two runs of eight "H" separated by ZWSP, Ahem 10px. The span-2 automatic
+// minimum test (taffy a25e1f76).
+static SizeF AhemEightPairInner(SizeFOpt known, SizeAvail available, void*) {
+    const int kLens[2] = {8, 8};
+    const float kH = 10.0f;
+    float inlineSize;
+    if (IsSome(known.w)) {
+        inlineSize = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        inlineSize = 80.0f;
+    } else if (available.width.kind == AvailableSpace::Kind::MaxContent) {
+        inlineSize = 160.0f;
+    } else {
+        inlineSize = F32Min(available.width.value, 160.0f);
+    }
+    if (inlineSize < 80.0f) {
+        inlineSize = 80.0f;
+    }
+    float block;
+    if (IsSome(known.h)) {
+        block = known.h;
+    } else {
+        int inlineChars = (int)(inlineSize / kH);
+        int lineCount = 1;
+        int current = 0;
+        for (int i = 0; i < 2; i++) {
+            if (current + kLens[i] > inlineChars) {
+                if (current > 0) {
+                    lineCount++;
+                }
+                current = kLens[i];
+            } else {
+                current += kLens[i];
+            }
+        }
+        block = (float)lineCount * kH;
+    }
+    return {inlineSize, block};
+}
+
+static taffy::LayoutOutput AhemEightPairMeasure(
+    const taffy::LayoutInput& inputs, TaffyNodeId node, void* nodeContext,
+    const taffy::Style* style, void* userData) {
+    (void)node;
+    (void)nodeContext;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    AhemEightPairInner, nullptr);
+}
+
 static taffy::LayoutOutput AhemQuadMeasure(const taffy::LayoutInput& inputs,
                                            TaffyNodeId node, void* nodeContext,
                                            const taffy::Style* style,
@@ -6751,6 +6801,44 @@ static void TestGridFixedTrackSkipsMeasure() {
     tree.Free();
 }
 
+// taffy a25e1f76. A span-2 item's automatic minimum looks only at the
+// tracks it spans. A 1fr track it does not span must not zero that
+// minimum. Columns resolve to 40, 40 and 60 inside a 100px grid, and the
+// text lays out at 80x20.
+static void TestGridAutoMinIgnoresUnspannedFlex() {
+    TestSuite("taffy grid auto min ignores unspanned flex");
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style text;
+    text.gridRow.start = GridPlacement::FromLineIndex(1);
+    text.gridColumn.start = GridPlacement::FromLineIndex(1);
+    text.gridColumn.end = GridPlacement::FromSpan(2);
+    TaffyNodeId spanned = tree.NewLeaf(text);
+    taffy::Style box;
+    box.size.width = taffy::Dimension::Length(60.0f);
+    box.size.height = taffy::Dimension::Length(10.0f);
+    box.gridRow.start = GridPlacement::FromLineIndex(1);
+    box.gridColumn.start = GridPlacement::FromLineIndex(3);
+    TaffyNodeId fixed = tree.NewLeaf(box);
+    TaffyNodeId kids[2] = {spanned, fixed};
+    GridTemplateComponent cols[3] = {
+        GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+        GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+        GridTemplateComponent::Single(TrackSizingFunction::Fr(1.0f)),
+    };
+    taffy::Style grid;
+    grid.display = taffy::Display::Grid;
+    grid.size.width = taffy::Dimension::Length(100.0f);
+    grid.gridTemplateColumns = GridTemplateOf(cols, 3);
+    TaffyNodeId root = tree.NewWithChildren(grid, kids, 2);
+    tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                  AhemEightPairMeasure, nullptr);
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 20.0f);
+    AssertBox(tree.GetLayout(spanned), 0.0f, 0.0f, 80.0f, 20.0f);
+    AssertBox(tree.GetLayout(fixed), 80.0f, 0.0f, 60.0f, 10.0f);
+    tree.Free();
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6776,6 +6864,7 @@ void TestTaffy() {
     TestFlexSkipsCrossSizeWhenOnlyMainRequested();
     TestGridKnownWidthSkipsMeasure();
     TestGridFixedTrackSkipsMeasure();
+    TestGridAutoMinIgnoresUnspannedFlex();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();
