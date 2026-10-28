@@ -1769,9 +1769,15 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     }
 
     // A min-height on its own is not a percentage basis. An indefinite
-    // height stays indefinite even when min-height is set.
+    // height stays indefinite even when min-height is set. Under
+    // ContentSize the box's own height and min-height are ignored, so they
+    // are not a percentage basis for children either: a content-size
+    // suggestion must not be influenced by the specified height.
+    Optf ownHeightBasis = inputs.sizingMode == SizingMode::InherentSize
+                              ? MaybeMax(size.h, minSize.h)
+                              : None();
     Optf containerPercentageResolutionHeight =
-        Or(percentageBasisDimensions.h, MaybeMax(size.h, minSize.h));
+        Or(percentageBasisDimensions.h, ownHeightBasis);
 
     // 3. Final item layout.
     // Percentage padding and borders resolve against the containing block's

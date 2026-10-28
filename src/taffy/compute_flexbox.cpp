@@ -838,11 +838,16 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                     Optf stylePreferred = Main(item.size, dir);
                     Optf styleMax = Main(item.maxSize, dir);
 
-                    // The spec reads as though `.maybe_max(style_preferred)`
-                    // should not be here, but this matches Chrome and Firefox.
+                    // A row's clamping basis is the flex base size raised to
+                    // the preferred main size, which matches Chrome and
+                    // Firefox. A column uses the flex base size alone: the
+                    // item's height must not inflate the container's
+                    // max-content size past the flex basis.
                     // https://www.w3.org/TR/css-flexbox-1/#change-2016-max-contribution
                     Optf clampingBasis =
-                        MaybeMax(Some(item.flexBasis), stylePreferred);
+                        c->isRow
+                            ? MaybeMax(Some(item.flexBasis), stylePreferred)
+                            : Some(item.flexBasis);
                     Optf flexBasisMin =
                         Filter(clampingBasis, item.flexShrink == 0.0f);
                     Optf flexBasisMax =

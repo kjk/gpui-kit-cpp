@@ -5067,6 +5067,35 @@ static void TestContainment() {
     utassertnear(painted.top, 0.0f);
 }
 
+// A column flex item's height is not a percentage basis while its content
+// size is measured, and it does not raise the column's max-content height
+// above the flex basis. The 200px block and its 100% child both end at 100.
+static void TestContentSizeIgnoresOwnHeightBasis() {
+    TestSuite("taffy content size ignores own height basis");
+
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style inner;
+    inner.display = taffy::Display::Block;
+    inner.size.height = Dimension::Percent(1.0f);
+    TaffyNodeId grandchild = tree.NewLeaf(inner);
+    taffy::Style block;
+    block.display = taffy::Display::Block;
+    block.flexBasis = Dimension::Length(100.0f);
+    block.size.height = Dimension::Length(200.0f);
+    TaffyNodeId child = tree.NewWithChildren(block, &grandchild, 1);
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::Flex;
+    rootStyle.flexDirection = FlexDirection::Column;
+    rootStyle.size.width = Dimension::Length(100.0f);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 100.0f);
+    AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 100.0f, 100.0f);
+    AssertBox(tree.GetLayout(grandchild), 0.0f, 0.0f, 100.0f, 100.0f);
+    tree.Free();
+}
+
 // An auto-height wrapping column does not wrap against a definite height
 // handed down as available space. The two items stay in one column.
 static void TestFlexColumnWrapIgnoresAncestorHeight() {
@@ -5528,6 +5557,7 @@ void TestTaffy() {
     TestFlexAspectRatioStretch();
     TestFlexMarginAfterBasisFloor();
     TestFlexColumnWrapIgnoresAncestorHeight();
+    TestContentSizeIgnoresOwnHeightBasis();
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();
