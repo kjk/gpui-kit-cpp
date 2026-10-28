@@ -3817,6 +3817,163 @@ static void TestGridRepetitionLineNames() {
     tree.Free();
 }
 
+// One child on a 4×10px column grid. `x / 10` is the column start line minus
+// one when every track, including implicit ones, is 10px.
+static Layout PlaceAreaEdgeChild(LineNameSet names[5], bool withArea,
+                                 LinePlacement column, LinePlacement row) {
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style child;
+    child.gridColumn = column;
+    child.gridRow = row;
+    TaffyNodeId node = tree.NewLeaf(child);
+
+    TrackSizingFunction ten = TrackSizingFunction::Length(10.0f);
+    GridTemplateComponent cols[4];
+    for (int i = 0; i < 4; i++) {
+        cols[i] = GridTemplateComponent::Single(ten);
+    }
+    GridTemplateComponent rowTrack = GridTemplateComponent::Single(ten);
+    taffy::Style root;
+    root.display = taffy::Display::Grid;
+    root.gridTemplateColumns = GridTemplateOf(cols, 4);
+    root.gridTemplateRows = GridTemplateOf(&rowTrack, 1);
+    root.gridTemplateColumnNames = SliceDup(gGridArena, names, 5);
+    root.gridAutoColumns = SliceDup(gGridArena, &ten, 1);
+    root.gridAutoRows = SliceDup(gGridArena, &ten, 1);
+    if (withArea) {
+        GridTemplateArea area;
+        area.name = StrL("area");
+        area.rowStart = 1;
+        area.rowEnd = 2;
+        area.columnStart = 2;
+        area.columnEnd = 4;
+        GridTemplateAreas areas;
+        areas.areas = SliceDup(gGridArena, &area, 1);
+        areas.rowCount = 1;
+        areas.columnCount = 4;
+        root.gridTemplateAreas = areas;
+    }
+    TaffyNodeId rootNode = tree.NewWithChildren(root, &node, 1);
+    tree.ComputeLayout(rootNode, SizeAvail::MaxContent());
+    Layout layout = tree.GetLayout(node);
+    tree.Free();
+    return layout;
+}
+
+static LineNameSet NameSet(const char* a) {
+    LineNameSet set;
+    Str name = Str(a);
+    set.names = SliceDup(gGridArena, &name, 1);
+    return set;
+}
+
+static GridPlacement GNamed(const char* name, int16_t index) {
+    return GridPlacement::FromNamedLine(Str(name), index);
+}
+static GridPlacement GNamedSpan(const char* name, uint16_t span) {
+    return GridPlacement::FromNamedSpan(Str(name), span);
+}
+
+static void TestGridAreaEdges() {
+    TestSuite("taffy grid area edges");
+    LineNameSet none[5];
+    Layout box;
+
+    box = PlaceAreaEdgeChild(none, true, {GNamed("area", 0), GNamed("area", 0)},
+                             {GNamed("area", 0), GNamed("area", 0)});
+    AssertBox(box, 10.0f, 0.0f, 20.0f, 10.0f);
+
+    LineNameSet implicit[5];
+    implicit[1] = NameSet("foo-start");
+    implicit[2] = NameSet("foo-start");
+    implicit[3] = NameSet("foo-end");
+    implicit[4] = NameSet("foo-end");
+    box = PlaceAreaEdgeChild(implicit, true,
+                             {GNamed("foo", 0), GNamed("foo", 0)}, {});
+    AssertBox(box, 10.0f, 0.0f, 20.0f, 10.0f);
+
+    box = PlaceAreaEdgeChild(
+        none, true, {GNamed("area-start", 0), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 10.0f);
+    box = PlaceAreaEdgeChild(
+        none, true, {GNamed("area-start", 2), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 50.0f);
+    box = PlaceAreaEdgeChild(
+        none, true, {GNamed("area-end", 1), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 30.0f);
+    box = PlaceAreaEdgeChild(
+        none, true, {GNamed("area-end", -1), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 30.0f);
+
+    LineNameSet merged[5];
+    merged[0] = NameSet("area-start");
+    merged[2] = NameSet("area-start");
+    merged[3] = NameSet("area-end");
+    merged[4] = NameSet("area-end");
+    float startX[5] = {0.0f, 10.0f, 20.0f, 20.0f, 50.0f};
+    int16_t startIdx[5] = {1, 2, 3, -1, 4};
+    for (int i = 0; i < 5; i++) {
+        box = PlaceAreaEdgeChild(
+            merged, true,
+            {GNamed("area-start", startIdx[i]), GridPlacement::Auto()}, {});
+        utassertnear(box.location.x, startX[i]);
+    }
+    box = PlaceAreaEdgeChild(
+        merged, true, {GNamed("area-end", 1), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 30.0f);
+    box = PlaceAreaEdgeChild(
+        merged, true, {GNamed("area-end", 2), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 40.0f);
+    box = PlaceAreaEdgeChild(
+        merged, true, {GNamed("area-end", 3), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 50.0f);
+    box = PlaceAreaEdgeChild(merged, true,
+                             {GNamed("area", 0), GNamed("area", 0)}, {});
+    AssertBox(box, 0.0f, 0.0f, 30.0f, 10.0f);
+    box = PlaceAreaEdgeChild(
+        merged, true,
+        {GridPlacement::FromLineIndex(1), GNamedSpan("area-start", 2)}, {});
+    AssertBox(box, 0.0f, 0.0f, 20.0f, 10.0f);
+
+    box = PlaceAreaEdgeChild(none, true,
+                             {GNamed("area", 1), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 50.0f);
+    box = PlaceAreaEdgeChild(none, true,
+                             {GNamed("area", 2), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 60.0f);
+    box = PlaceAreaEdgeChild(
+        none, true, {GridPlacement::FromLineIndex(1), GNamedSpan("area", 0)},
+        {});
+    AssertBox(box, 0.0f, 0.0f, 50.0f, 10.0f);
+
+    LineNameSet later[5];
+    later[2] = NameSet("area-start");
+    later[4] = NameSet("area-end");
+    box = PlaceAreaEdgeChild(later, true,
+                             {GNamed("area", 0), GNamed("area", 0)}, {});
+    AssertBox(box, 10.0f, 0.0f, 20.0f, 10.0f);
+    box = PlaceAreaEdgeChild(
+        later, true, {GNamed("area-start", 1), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 10.0f);
+    box = PlaceAreaEdgeChild(
+        later, true, {GNamed("area-start", 2), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 20.0f);
+    box = PlaceAreaEdgeChild(
+        later, true, {GNamed("area-end", 2), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 40.0f);
+
+    LineNameSet same[5];
+    same[1] = NameSet("area-start");
+    same[3] = NameSet("area-end");
+    box = PlaceAreaEdgeChild(
+        same, true, {GNamed("area-start", 2), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 50.0f);
+    box = PlaceAreaEdgeChild(
+        same, true, {GNamed("area-end", 2), GridPlacement::Auto()}, {});
+    utassertnear(box.location.x, 50.0f);
+}
+
 // A non-finite flex factor or container size used to keep the fr-size and
 // space-distribution loops from ever deciding they were done.
 static void TestGridNonFiniteStylesTerminate() {
@@ -8390,6 +8547,7 @@ void TestTaffy() {
     TestGridFrContentProportion();
     TestGridAutoMarginBaseline();
     TestGridRepetitionLineNames();
+    TestGridAreaEdges();
     TestGridNonFiniteStylesTerminate();
     TestGridZeroSpanTerminates();
     TestGridMinmaxAutoFixedZero();

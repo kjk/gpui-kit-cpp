@@ -11,9 +11,9 @@
  *     want the computed track sizes back out; nothing in this tree reads it.
  *     A private track-position snapshot is stored on the node so the
  *     out-of-flow pass can resolve a grid area. That is not the public API.
- *   - The `NamedLineResolver` keys its maps on `Str` plus a `-start`/`-end`
- *     marker rather than building the joined string, so resolving a named line
- *     allocates nothing.
+ *   - A line named `<area>-start` or `<area>-end` is recognized by splitting
+ *     that suffix off the existing string. Area edges live in their own map,
+ *     so the joined name is never allocated.
  *   - Rust's closures for "which tracks are affected" and "what is a track's
  *     limit" are C++ lambdas passed to function templates, which compile away
  *     the same way.
@@ -720,23 +720,55 @@ void StableSort(T* items, int n, Less less) {
 // Here the suffix is a field, so a lookup composes the comparison instead of
 // the string.
 
-enum class NameSuffix : uint8_t {
-    None,
-    Start,
-    End
-};
-
 struct LineNameEntry {
     Str name;
-    NameSuffix suffix = NameSuffix::None;
     Vec<uint32_t> lines;
 };
+
+// The first line that starts and ends a named area on each axis. Zero means
+// that edge has no line. An explicit `<area>-start` / `<area>-end` line keeps
+// the smaller line number.
+struct AreaLines {
+    Str name;
+    uint32_t rowStart = 0;
+    uint32_t rowEnd = 0;
+    uint32_t colStart = 0;
+    uint32_t colEnd = 0;
+
+    uint32_t Edge(GridAreaAxis axis, GridAreaEnd end) const {
+        if (axis == GridAreaAxis::Row) {
+            return end == GridAreaEnd::Start ? rowStart : rowEnd;
+        }
+        return end == GridAreaEnd::Start ? colStart : colEnd;
+    }
+    uint32_t& EdgeMut(GridAreaAxis axis, GridAreaEnd end) {
+        if (axis == GridAreaAxis::Row) {
+            return end == GridAreaEnd::Start ? rowStart : rowEnd;
+        }
+        return end == GridAreaEnd::Start ? colStart : colEnd;
+    }
+};
+
+// `<area>-start` or `<area>-end`. `area` aliases `name`; it is not allocated.
+bool SplitAreaEdgeName(Str name, Str* area, GridAreaEnd* end) {
+    if (StrEndsWith(name, "-start") && len(name) > 6) {
+        *area = Str(name.s, len(name) - 6);
+        *end = GridAreaEnd::Start;
+        return true;
+    }
+    if (StrEndsWith(name, "-end") && len(name) > 4) {
+        *area = Str(name.s, len(name) - 4);
+        *end = GridAreaEnd::End;
+        return true;
+    }
+    return false;
+}
 
 // Resolves named grid lines and areas into line numbers.
 struct NamedLineResolver {
     Vec<LineNameEntry> rowLines;
     Vec<LineNameEntry> columnLines;
-    Slice<GridTemplateArea> areas;
+    Vec<AreaLines> areaLines;
     uint16_t areaColumnCount = 0;
     uint16_t areaRowCount = 0;
     uint16_t explicitColumnCount = 0;
@@ -751,13 +783,55 @@ struct NamedLineResolver {
         }
         VecReset(rowLines);
         VecReset(columnLines);
+        VecReset(areaLines);
     }
 
-    static void Upsert(Vec<LineNameEntry>* map, Str name, NameSuffix suffix,
-                       uint32_t value) {
+    AreaLines* FindArea(Str name) {
+        for (int i = 0; i < len(areaLines); i++) {
+            if (base::StrEq(areaLines[i].name, name)) {
+                return &areaLines[i];
+            }
+        }
+        return nullptr;
+    }
+    const AreaLines* FindArea(Str name) const {
+        for (int i = 0; i < len(areaLines); i++) {
+            if (base::StrEq(areaLines[i].name, name)) {
+                return &areaLines[i];
+            }
+        }
+        return nullptr;
+    }
+    uint32_t AreaEdge(Str name, GridAreaAxis axis, GridAreaEnd end) const {
+        const AreaLines* area = FindArea(name);
+        return area ? area->Edge(axis, end) : 0;
+    }
+
+    // Record `value` under `name`. A `*-start` / `*-end` name also updates
+    // that area edge to the first such line. The first time the name is seen,
+    // an area edge that already existed is recorded in front of `value`;
+    // Init sorts and dedups afterwards.
+    void Upsert(Vec<LineNameEntry>* map, GridAreaAxis axis, Str name,
+                uint32_t value) {
+        uint32_t priorEdge = 0;
+        Str areaName;
+        GridAreaEnd edgeEnd;
+        if (SplitAreaEdgeName(name, &areaName, &edgeEnd)) {
+            AreaLines* area = FindArea(areaName);
+            if (!area) {
+                AreaLines created;
+                created.name = areaName;
+                VecAppend(areaLines, created);
+                area = &areaLines[len(areaLines) - 1];
+            }
+            uint32_t& edge = area->EdgeMut(axis, edgeEnd);
+            priorEdge = edge;
+            edge = priorEdge == 0 || value < priorEdge ? value : priorEdge;
+        }
+
         for (int i = 0; i < map->len; i++) {
             LineNameEntry& e = (*map)[i];
-            if (e.suffix == suffix && base::StrEq(e.name, name)) {
+            if (base::StrEq(e.name, name)) {
                 for (int k = 0; k < e.lines.len; k++) {
                     if (e.lines[k] == value) {
                         return;
@@ -769,20 +843,41 @@ struct NamedLineResolver {
         }
         LineNameEntry e;
         e.name = name;
-        e.suffix = suffix;
-        VecAppend(e.lines, value);
+        if (priorEdge != 0) {
+            VecAppend(e.lines, priorEdge);
+        }
+        if (priorEdge != value) {
+            VecAppend(e.lines, value);
+        }
         VecAppend(*map, e);
     }
 
-    static const Vec<uint32_t>* Find(const Vec<LineNameEntry>& map, Str name,
-                                     NameSuffix suffix) {
+    static const Vec<uint32_t>* Find(const Vec<LineNameEntry>& map, Str name) {
         for (int i = 0; i < len(map); i++) {
-            const LineNameEntry& e = map[i];
-            if (e.suffix == suffix && base::StrEq(e.name, name)) {
-                return &e.lines;
+            if (base::StrEq(map[i].name, name)) {
+                return &map[i].lines;
             }
         }
         return nullptr;
+    }
+
+    static void SortUnique(Vec<uint32_t>& lines) {
+        for (int i = 1; i < lines.len; i++) {
+            uint32_t v = lines[i];
+            int j = i;
+            while (j > 0 && lines[j - 1] > v) {
+                lines[j] = lines[j - 1];
+                j--;
+            }
+            lines[j] = v;
+        }
+        int w = 0;
+        for (int i = 0; i < lines.len; i++) {
+            if (w == 0 || lines[w - 1] != lines[i]) {
+                lines[w++] = lines[i];
+            }
+        }
+        lines.len = w;
     }
 
     void Init(const Style& style, uint16_t columnAutoRepetitions,
@@ -797,21 +892,31 @@ struct NamedLineResolver {
     // Rust takes a `filter_lines` closure; the two callers want either all the
     // lines, those strictly after a bound, or those strictly before one, so
     // the bound comes in as a range instead.
+    // `isSpan` is true for a named span. A bare ident (index 0, not a span)
+    // that matches no line name matches the area edge of that name.
     GridLine FindLineIndex(Str name, int32_t idx, GridAreaAxis axis,
-                           GridAreaEnd end, int filterFrom, int filterTo) const;
+                           GridAreaEnd end, bool isSpan, int filterFrom,
+                           int filterTo) const;
+    // Lines literally named `name`, or the single area edge when `name` is
+    // `<area>-start` / `<area>-end` and no line was given that name. `single`
+    // holds that one edge; the returned pointer may alias it.
+    int CollectLines(Str name, GridAreaAxis axis, const uint32_t** data,
+                     uint32_t* single) const;
 };
 
 void NamedLineResolver::Init(const Style& style, uint16_t columnAutoRepetitions,
                              uint16_t rowAutoRepetitions) {
-    areas = style.gridTemplateAreas.areas;
     areaColumnCount = style.gridTemplateAreas.columnCount;
     areaRowCount = style.gridTemplateAreas.rowCount;
-    for (int i = 0; i < areas.len; i++) {
-        const GridTemplateArea& area = areas[i];
-        Upsert(&columnLines, area.name, NameSuffix::Start, area.columnStart);
-        Upsert(&columnLines, area.name, NameSuffix::End, area.columnEnd);
-        Upsert(&rowLines, area.name, NameSuffix::Start, area.rowStart);
-        Upsert(&rowLines, area.name, NameSuffix::End, area.rowEnd);
+    for (int i = 0; i < style.gridTemplateAreas.areas.len; i++) {
+        const GridTemplateArea& area = style.gridTemplateAreas.areas[i];
+        AreaLines lines;
+        lines.name = area.name;
+        lines.rowStart = area.rowStart;
+        lines.rowEnd = area.rowEnd;
+        lines.colStart = area.columnStart;
+        lines.colEnd = area.columnEnd;
+        VecAppend(areaLines, lines);
     }
 
     // The line names between the tracks, walked alongside the template so a
@@ -821,11 +926,12 @@ void NamedLineResolver::Init(const Style& style, uint16_t columnAutoRepetitions,
         Slice<LineNameSet> names;
         uint16_t autoRepetitions;
         Vec<LineNameEntry>* map;
+        GridAreaAxis axis;
     };
     Axis axes[2] = {{style.gridTemplateColumns, style.gridTemplateColumnNames,
-                     columnAutoRepetitions, &columnLines},
+                     columnAutoRepetitions, &columnLines, GridAreaAxis::Column},
                     {style.gridTemplateRows, style.gridTemplateRowNames,
-                     rowAutoRepetitions, &rowLines}};
+                     rowAutoRepetitions, &rowLines, GridAreaAxis::Row}};
 
     for (const Axis& ax : axes) {
         uint32_t currentLine = 0;
@@ -834,7 +940,7 @@ void NamedLineResolver::Init(const Style& style, uint16_t columnAutoRepetitions,
             currentLine += 1;
             const LineNameSet& set = ax.names[i];
             for (int k = 0; k < set.names.len; k++) {
-                Upsert(ax.map, set.names[k], NameSuffix::None, currentLine);
+                Upsert(ax.map, ax.axis, set.names[k], currentLine);
             }
             if (trackIdx >= ax.tracks.len) {
                 continue;
@@ -862,7 +968,7 @@ void NamedLineResolver::Init(const Style& style, uint16_t columnAutoRepetitions,
                         uint32_t line = currentLine + (uint32_t)s;
                         const LineNameSet& ls = comp.repeat.lineNames[s];
                         for (int k = 0; k < ls.names.len; k++) {
-                            Upsert(ax.map, ls.names[k], NameSuffix::None, line);
+                            Upsert(ax.map, ax.axis, ls.names[k], line);
                         }
                     }
                 }
@@ -879,13 +985,44 @@ void NamedLineResolver::Init(const Style& style, uint16_t columnAutoRepetitions,
         }
     }
 
-    // Rust sorts and dedups each name's line list; Upsert already dedups, and
-    // the lines are appended in increasing order, so they are sorted already.
+    // An area edge recorded in front of a later explicit line can be out of
+    // order. Sort and dedup, matching the resolver's final pass.
+    for (int i = 0; i < len(columnLines); i++) {
+        SortUnique(columnLines[i].lines);
+    }
+    for (int i = 0; i < len(rowLines); i++) {
+        SortUnique(rowLines[i].lines);
+    }
+}
+
+int NamedLineResolver::CollectLines(Str name, GridAreaAxis axis,
+                                    const uint32_t** data,
+                                    uint32_t* single) const {
+    const Vec<LineNameEntry>& lookup =
+        axis == GridAreaAxis::Row ? rowLines : columnLines;
+    const Vec<uint32_t>* lines = Find(lookup, name);
+    if (lines && lines->len > 0) {
+        *data = lines->els;
+        return lines->len;
+    }
+    Str areaName;
+    GridAreaEnd edge;
+    if (SplitAreaEdgeName(name, &areaName, &edge)) {
+        uint32_t value = AreaEdge(areaName, axis, edge);
+        if (value != 0) {
+            *single = value;
+            *data = single;
+            return 1;
+        }
+    }
+    *data = nullptr;
+    return 0;
 }
 
 GridLine NamedLineResolver::FindLineIndex(Str name, int32_t idx,
                                           GridAreaAxis axis, GridAreaEnd end,
-                                          int filterFrom, int filterTo) const {
+                                          bool isSpan, int filterFrom,
+                                          int filterTo) const {
     int32_t explicitTrackCount =
         axis == GridAreaAxis::Row ? explicitRowCount : explicitColumnCount;
     auto gridLine = [](int64_t value) {
@@ -894,23 +1031,20 @@ GridLine NamedLineResolver::FindLineIndex(Str name, int32_t idx,
                                     : value;
         return GridLine{(int16_t)value};
     };
-    // An index of 0 means "no index specified".
+    // An index of 0 means "no index specified". Only a bare ident, not a
+    // span, then matches an area edge.
+    bool isBareIdent = idx == 0 && !isSpan;
     if (idx == 0) {
         idx = 1;
     }
 
-    const Vec<LineNameEntry>& lookup =
-        axis == GridAreaAxis::Row ? rowLines : columnLines;
-    const Vec<uint32_t>* lines = Find(lookup, name, NameSuffix::None);
-    if (!lines) {
-        lines = Find(
-            lookup, name,
-            end == GridAreaEnd::Start ? NameSuffix::Start : NameSuffix::End);
-    }
+    uint32_t single = 0;
+    const uint32_t* data = nullptr;
+    int n = CollectLines(name, axis, &data, &single);
 
-    if (lines) {
+    if (n > 0 && data) {
         int from = filterFrom < 0 ? 0 : filterFrom;
-        int to = filterTo < 0 || filterTo > lines->len ? lines->len : filterTo;
+        int to = filterTo < 0 || filterTo > n ? n : filterTo;
         int count = to - from;
         if (count < 0) {
             count = 0;
@@ -918,9 +1052,9 @@ GridLine NamedLineResolver::FindLineIndex(Str name, int32_t idx,
         uint32_t absIdx = idx < 0 ? (uint32_t)(-(int64_t)idx) : (uint32_t)idx;
         if (absIdx <= (uint32_t)count) {
             if (idx > 0) {
-                return gridLine((*lines)[from + (int)absIdx - 1]);
+                return gridLine(data[from + (int)absIdx - 1]);
             }
-            return gridLine((*lines)[from + count - (int)absIdx]);
+            return gridLine(data[from + count - (int)absIdx]);
         }
         int64_t remaining =
             (int64_t)(absIdx - (uint32_t)count) * (idx > 0 ? 1 : -1);
@@ -928,6 +1062,13 @@ GridLine NamedLineResolver::FindLineIndex(Str name, int32_t idx,
             return gridLine((int64_t)explicitTrackCount + 1 + remaining);
         }
         return gridLine(-((int64_t)explicitTrackCount + 1 + remaining));
+    }
+
+    if (isBareIdent) {
+        uint32_t edge = AreaEdge(name, axis, end);
+        if (edge != 0) {
+            return gridLine(edge);
+        }
     }
 
     // CSS Grid matches a non-existent line name to the first positive implicit
@@ -940,23 +1081,6 @@ GridLine NamedLineResolver::FindLineIndex(Str name, int32_t idx,
     return gridLine(-((int64_t)explicitTrackCount + 1 + idx));
 }
 
-// The partition point of a sorted line list: how many entries satisfy the
-// predicate `line <= bound` (or `line < bound`).
-int PartitionPoint(const Vec<uint32_t>* lines, uint32_t bound, bool inclusive) {
-    if (!lines) {
-        return 0;
-    }
-    int n = 0;
-    for (int i = 0; i < lines->len; i++) {
-        bool keep = inclusive ? ((*lines)[i] <= bound) : ((*lines)[i] < bound);
-        if (!keep) {
-            break;
-        }
-        n++;
-    }
-    return n;
-}
-
 LinePlain NamedLineResolver::ResolveLineNames(LinePlacement line,
                                               GridAreaAxis axis) const {
     GridPlacement start = line.start;
@@ -964,24 +1088,24 @@ LinePlain NamedLineResolver::ResolveLineNames(LinePlacement line,
 
     if (start.kind == GridPlacementKind::NamedLine) {
         start = GridPlacement::FromLineIndex(
-            FindLineIndex(start.name, start.line, axis, GridAreaEnd::Start, -1,
-                          -1)
+            FindLineIndex(start.name, start.line, axis, GridAreaEnd::Start,
+                          false, -1, -1)
                 .v);
     }
     if (end.kind == GridPlacementKind::NamedLine) {
-        end = GridPlacement::FromLineIndex(
-            FindLineIndex(end.name, end.line, axis, GridAreaEnd::End, -1, -1)
-                .v);
+        end = GridPlacement::FromLineIndex(FindLineIndex(end.name, end.line,
+                                                         axis, GridAreaEnd::End,
+                                                         false, -1, -1)
+                                               .v);
     }
 
     int16_t explicitTrackCount = axis == GridAreaAxis::Row
                                      ? (int16_t)explicitRowCount
                                      : (int16_t)explicitColumnCount;
-    const Vec<LineNameEntry>& lookup =
-        axis == GridAreaAxis::Row ? rowLines : columnLines;
 
     // A definite line paired with a named span resolves the span against the
-    // lines beyond (or before) that line.
+    // lines beyond (or before) that line. The line list includes an area
+    // edge when the span name is `<area>-start` or `<area>-end`.
     if (start.kind == GridPlacementKind::Line &&
         end.kind == GridPlacementKind::NamedSpan) {
         int16_t normalizedStart =
@@ -989,10 +1113,19 @@ LinePlain NamedLineResolver::ResolveLineNames(LinePlacement line,
                 ? start.line
                 : (int16_t)F32Max((float)(explicitTrackCount + 1 + start.line),
                                   0.0f);
-        const Vec<uint32_t>* lines = Find(lookup, end.name, NameSuffix::None);
-        int point = PartitionPoint(lines, (uint32_t)normalizedStart, true);
+        uint32_t single = 0;
+        const uint32_t* data = nullptr;
+        int n = CollectLines(end.name, axis, &data, &single);
+        int point = 0;
+        for (int i = 0; i < n; i++) {
+            if (data[i] <= (uint32_t)normalizedStart) {
+                point++;
+            } else {
+                break;
+            }
+        }
         GridLine endLine = FindLineIndex(end.name, (int32_t)end.span, axis,
-                                         GridAreaEnd::End, point, -1);
+                                         GridAreaEnd::End, true, point, -1);
         return {PlainPlacement::AtLine(start.line),
                 PlainPlacement::AtLine(endLine.v)};
     }
@@ -1003,10 +1136,20 @@ LinePlain NamedLineResolver::ResolveLineNames(LinePlacement line,
                 ? end.line
                 : (int16_t)F32Max((float)(explicitTrackCount + 1 + end.line),
                                   0.0f);
-        const Vec<uint32_t>* lines = Find(lookup, start.name, NameSuffix::None);
-        int point = PartitionPoint(lines, (uint32_t)normalizedEnd, false);
-        GridLine startLine = FindLineIndex(start.name, (int32_t)start.span,
-                                           axis, GridAreaEnd::Start, 0, point);
+        uint32_t single = 0;
+        const uint32_t* data = nullptr;
+        int n = CollectLines(start.name, axis, &data, &single);
+        int point = 0;
+        for (int i = 0; i < n; i++) {
+            if (data[i] < (uint32_t)normalizedEnd) {
+                point++;
+            } else {
+                break;
+            }
+        }
+        GridLine startLine =
+            FindLineIndex(start.name, (int32_t)start.span, axis,
+                          GridAreaEnd::Start, true, 0, point);
         return {PlainPlacement::AtLine(startLine.v),
                 PlainPlacement::AtLine(end.line)};
     }
