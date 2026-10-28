@@ -412,18 +412,48 @@ static void TestCompactLength() {
 
 // ─── src/tree/taffy_tree.rs ──────────────────────────────────────────────
 
-// Rust's `size_measure_function` from the same test module: the known
-// dimensions if given, else the size stashed in the node context.
-static SizeF SizeMeasureFunction(SizeFOpt knownDimensions,
-                                 SizeAvail availableSpace, TaffyNodeId node,
-                                 void* nodeContext, const taffy::Style* style,
-                                 void* userData) {
+// The size half of Rust's `size_measure_function`. ComputeLeafLayout applies
+// the style around it, which is what that function does after the measure
+// signature started returning LayoutOutput.
+static SizeF SizeMeasureInner(SizeFOpt knownDimensions,
+                              SizeAvail availableSpace, void* nodeContext) {
     (void)availableSpace;
+    SizeF ctx = nodeContext ? *(SizeF*)nodeContext : SizeF::Zero();
+    return UnwrapOr(knownDimensions, ctx);
+}
+
+static taffy::LayoutOutput SizeMeasureFunction(const taffy::LayoutInput& inputs,
+                                               TaffyNodeId node,
+                                               void* nodeContext,
+                                               const taffy::Style* style,
+                                               void* userData) {
+    (void)node;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    SizeMeasureInner, nodeContext);
+}
+
+// A measure that reports its own first baseline. The tree stores that
+// output as the leaf's layout, which flex baseline alignment then reads.
+struct BaselineContext {
+    SizeF size;
+    float baselineY;
+};
+
+static taffy::LayoutOutput BaselineMeasure(const taffy::LayoutInput& inputs,
+                                           TaffyNodeId node, void* nodeContext,
+                                           const taffy::Style* style,
+                                           void* userData) {
+    (void)inputs;
     (void)node;
     (void)style;
     (void)userData;
-    SizeF ctx = nodeContext ? *(SizeF*)nodeContext : SizeF::Zero();
-    return UnwrapOr(knownDimensions, ctx);
+    if (!nodeContext) {
+        return taffy::LayoutOutput::Hidden();
+    }
+    BaselineContext* c = (BaselineContext*)nodeContext;
+    return taffy::LayoutOutput::FromSizesAndBaselines(
+        c->size, SizeF::Zero(), PointFOpt{None(), Some(c->baselineY)});
 }
 
 static void TestTaffyTreeBasics() {
@@ -731,6 +761,54 @@ static void TestTaffyTreeMeasure() {
         tree.ComputeLayoutWithMeasure(node, SizeAvail::MaxContent(),
                                       SizeMeasureFunction, nullptr);
         utassertnear(tree.GetLayout(node).size.w, 100.0f);
+        tree.Free();
+    }
+
+    {
+        // flex_baseline_alignment_uses_measure_function_baseline.
+        // The item whose baseline sits closer to its top shifts down so the
+        // two baselines meet.
+        TaffyTree tree;
+        tree.Init();
+        BaselineContext aCtx = {{50.0f, 50.0f}, 40.0f};
+        BaselineContext bCtx = {{30.0f, 30.0f}, 20.0f};
+        TaffyNodeId childA = tree.NewLeafWithContext(taffy::Style{}, &aCtx);
+        TaffyNodeId childB = tree.NewLeafWithContext(taffy::Style{}, &bCtx);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Row;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId kids[] = {childA, childB};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      BaselineMeasure, nullptr);
+        utassertnear(tree.GetLayout(childA).location.y, 0.0f);
+        utassertnear(tree.GetLayout(childB).location.y, 20.0f);
+        tree.Free();
+    }
+
+    {
+        // flex_baseline_is_ignored_when_alignment_is_not_baseline.
+        TaffyTree tree;
+        tree.Init();
+        BaselineContext aCtx = {{50.0f, 50.0f}, 40.0f};
+        BaselineContext bCtx = {{30.0f, 30.0f}, 20.0f};
+        TaffyNodeId childA = tree.NewLeafWithContext(taffy::Style{}, &aCtx);
+        TaffyNodeId childB = tree.NewLeafWithContext(taffy::Style{}, &bCtx);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Row;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+        rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId kids[] = {childA, childB};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      BaselineMeasure, nullptr);
+        utassertnear(tree.GetLayout(childA).location.y, 0.0f);
+        utassertnear(tree.GetLayout(childB).location.y, 0.0f);
         tree.Free();
     }
 }

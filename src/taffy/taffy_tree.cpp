@@ -562,25 +562,6 @@ void TaffyTree::CacheClear(NodeId node) {
 
 // ─── compute_child_layout ────────────────────────────────────────────────
 
-// What the leaf measure closure would have captured in Rust.
-struct LeafMeasureCtx {
-    TaffyTree* tree;
-    NodeId node;
-    void* nodeContext;
-    const Style* style;
-};
-
-static SizeF LeafMeasureThunk(SizeFOpt knownDimensions,
-                              SizeAvail availableSpace, void* ctx) {
-    LeafMeasureCtx* c = (LeafMeasureCtx*)ctx;
-    if (!c->tree->measureFn) {
-        return SizeF::Zero();
-    }
-    return c->tree
-        ->measureFn(knownDimensions, availableSpace, c->node, c->nodeContext,
-                    c->style, c->tree->measureUserData);
-}
-
 LayoutOutput TaffyTree::ComputeBlockChildLayout(NodeId node, LayoutInput inputs,
                                                 BlockContext* blockCtx) {
     // PerformHiddenLayout means an ancestor is display:none, so this node is
@@ -611,9 +592,15 @@ LayoutOutput TaffyTree::ComputeBlockChildLayout(NodeId node, LayoutInput inputs,
     if (displayMode == Display::None) {
         out = ComputeHiddenLayout(this, node);
     } else if (!hasChildren) {
-        LeafMeasureCtx ctx = {this, node, d->hasContext ? d->context : nullptr,
-                              &d->style};
-        out = ComputeLeafLayout(inputs, d->style, calc, LeafMeasureThunk, &ctx);
+        // The measure function returns the layout itself. A null measure is
+        // the zero-size leaf ComputeLayout uses, still run through
+        // ComputeLeafLayout so style size, padding and min/max apply.
+        if (measureFn) {
+            out = measureFn(inputs, node, d->hasContext ? d->context : nullptr,
+                            &d->style, measureUserData);
+        } else {
+            out = ComputeLeafLayout(inputs, d->style, calc, nullptr, nullptr);
+        }
     } else {
         switch (displayMode) {
             case Display::Block:

@@ -29,12 +29,14 @@ namespace taffy {
 
 struct BlockContext;
 
-// Computes the intrinsic size of a leaf node. Rust passes a closure that
-// captures the tree; the context and userData here are what it would have
-// captured.
-using MeasureFn = SizeF (*)(SizeFOpt knownDimensions, SizeAvail availableSpace,
-                            NodeId node, void* nodeContext, const Style* style,
-                            void* userData);
+// Lays out a leaf. Rust passes a closure that captures the tree; the context
+// and userData here are what it would have captured. The function returns a
+// LayoutOutput directly. ComputeLeafLayout is not called around it, so a
+// measure that wants padding, border and min/max applied calls
+// ComputeLeafLayout itself.
+using MeasureFn = LayoutOutput (*)(const LayoutInput& inputs, NodeId node,
+                                   void* nodeContext, const Style* style,
+                                   void* userData);
 
 // The layout data for one node.
 struct NodeData {

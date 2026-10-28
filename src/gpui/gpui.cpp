@@ -9,6 +9,7 @@
 #include "base/positioner.h"
 #include "base/text_boundary.h"
 #include "gpui/svg.h"
+#include "taffy/compute.h"
 
 #include <math.h>
 
@@ -4009,6 +4010,7 @@ static taffy::Style ToTaffyStyle(const El* e) {
 // What a leaf's measure function is handed, beyond the node itself.
 struct LayoutMeasureCtx {
     PaintCtx* ctx;
+    taffy::CalcResolver calc;
 };
 
 // The width a text run may use: a known width wins, then a definite
@@ -4047,18 +4049,20 @@ static float TextMeasureWidth(const El* e, taffy::SizeFOpt known,
 // it quantises text boxes while the padding, gaps and borders around them
 // stay where they were. Whole model or none of it; the numbers are in the
 // paragraph above.
-static taffy::SizeF LayoutMeasure(taffy::SizeFOpt known, taffy::SizeAvail avail,
-                                  taffy::NodeId node, void* nodeContext,
-                                  const taffy::Style* nodeStyle,
-                                  void* userData) {
-    (void)node;
-    (void)nodeStyle;
+struct LayoutMeasureSizeCtx {
+    LayoutMeasureCtx* mc;
+    LayoutNode* rec;
+};
+
+static taffy::SizeF LayoutMeasureSize(taffy::SizeFOpt known,
+                                      taffy::SizeAvail avail, void* user) {
+    LayoutMeasureSizeCtx* sc = (LayoutMeasureSizeCtx*)user;
     // The context is the cache's record for this node, not the element:
     // telling taffy about a new El* would mark the node dirty, which is the
     // one thing the cache is there to avoid.
-    LayoutNode* rec = (LayoutNode*)nodeContext;
+    LayoutNode* rec = sc->rec;
     El* e = rec ? rec->el : nullptr;
-    LayoutMeasureCtx* mc = (LayoutMeasureCtx*)userData;
+    LayoutMeasureCtx* mc = sc->mc;
     if (!e) {
         return taffy::SizeF::Zero();
     }
@@ -4111,6 +4115,21 @@ static taffy::SizeF LayoutMeasure(taffy::SizeFOpt known, taffy::SizeAvail avail,
         default:
             return taffy::SizeF::Zero();
     }
+}
+
+// The tree no longer wraps a measure in ComputeLeafLayout. This one still
+// wants padding, border and min/max, so it calls that itself around the
+// content size.
+static taffy::LayoutOutput LayoutMeasure(const taffy::LayoutInput& inputs,
+                                         taffy::NodeId node, void* nodeContext,
+                                         const taffy::Style* nodeStyle,
+                                         void* userData) {
+    (void)node;
+    LayoutMeasureSizeCtx sc = {(LayoutMeasureCtx*)userData,
+                               (LayoutNode*)nodeContext};
+    taffy::CalcResolver calc = sc.mc ? sc.mc->calc : taffy::CalcResolver{};
+    return taffy::ComputeLeafLayout(inputs, *nodeStyle, calc, LayoutMeasureSize,
+                                    &sc);
 }
 
 // A childless Div is still a box with a size; only these kinds have content
@@ -5368,7 +5387,7 @@ static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
                                   : taffy::AvailableSpace::MaxContent();
     }
 
-    LayoutMeasureCtx mc = {ctx};
+    LayoutMeasureCtx mc = {ctx, lc->tree.calc};
     lc->tree.ComputeLayoutWithMeasure(root, space, LayoutMeasure, &mc);
 
     WriteBackEl(lc, ctx, e, x, y);
