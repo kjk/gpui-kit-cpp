@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e692bcb79a8a2cac37b392b43577852088adbc32` (2026-10-23,
-scroll: Throw the edge on release only when it is stretched (#3631)).
-Releasing a drag inside the text no longer throws the edge with the
-finger's speed. Momentum still scrolls the text, and the edge is thrown
-only when that momentum runs into it or the edge was already stretched.
+Processed through `9da3516a192870903a7a0cb16946b61351dadec2` (2026-10-23,
+dialog: add centered() to seat a dialog in the middle of the window (#3635)).
+Dialog and AlertDialog can seat their surface by its left-center at the
+vertical middle of the viewport. Without that, the top edge still sits
+at margin_top, or a tenth of the viewport. The positioner still clamps
+a tall surface inside the window margin.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

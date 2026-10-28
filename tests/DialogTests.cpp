@@ -593,6 +593,54 @@ static void margin_top_moves_the_alert_surface_off_the_default_offset() {
     delete win;
 }
 
+// alert_dialog.rs centered_seats_the_alert_surface_in_the_middle.
+// An 800x600 window seats the surface's center on y=300.
+static void centered_seats_the_alert_surface_in_the_middle() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    auto build = [&]() {
+        return component::AlertDialog::New(&cx)
+            ->Title(StrL("Unsaved changes"))
+            ->Description(StrL("Discard the draft?"))
+            ->Confirm()
+            ->Centered()
+            ->Open(true)
+            ->IntoEl(WinSize{800, 600});
+    };
+    win->frameNow = 1;
+    (void)build();
+    win->frameNow = 2;
+    arena->Reset();
+    El* host = build();
+    const RuntimeStyle& th = RuntimeStyleNow(&app);
+    win->paint.viewW = 800;
+    win->paint.viewH = 600;
+    LayoutEl(&win->paint, host, 0, 0, 800, 600, th.fontSize, th.foreground);
+    El* popup = host ? host->last : nullptr;
+    El* placed = popup ? popup->first : nullptr;
+    El* panel = placed ? placed->first : nullptr;
+    utassert(panel);
+    if (panel) {
+        float center = panel->y + panel->h * 0.5f;
+        if (fabsf(center - 300.f) > 0.5f) {
+            logf("alert center %f (y %f h %f)\n", center, panel->y, panel->h);
+        }
+        utassert(fabsf(center - 300.f) <= 0.5f);
+    }
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 static El* DialogPanel(El* host) {
     El* popup = host ? host->last : nullptr;
     El* placed = popup ? popup->first : nullptr;
@@ -1113,6 +1161,7 @@ void TestDialog() {
     ASharedHandleControlsTriggersAndHosts();
     ThemedPartsAndAlertDefaultsMatchTheSource();
     margin_top_moves_the_alert_surface_off_the_default_offset();
+    centered_seats_the_alert_surface_in_the_middle();
     DialogEntrancesFollowTheResolvedSurface();
     ClosingPlaysTheEntranceBackOut();
     ClosingFadesTheDialogSurface();

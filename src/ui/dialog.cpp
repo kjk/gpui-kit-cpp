@@ -392,6 +392,10 @@ Dialog* Dialog::MarginTop(float px) {
     marginTop = px;
     return this;
 }
+Dialog* Dialog::Centered() {
+    centered = true;
+    return this;
+}
 Dialog* Dialog::Entrance(DialogEntrance value) {
     entrance = value;
     return this;
@@ -623,7 +627,16 @@ El* Dialog::IntoEl(WinSize size) {
     // does not waste height its content could use.
     const float viewportMargin = 16.f;
     float layerOffset = (float)layerIx * 16.f;
-    float y = (hasMarginTop ? marginTop : viewH * 0.1f) + layerOffset;
+    // centered() anchors the left-center of the surface at the vertical
+    // middle. Otherwise the top-left sits at margin_top, or a tenth of
+    // the viewport.
+    Anchor anchor = Anchor::TopLeft;
+    float y = hasMarginTop ? marginTop : viewH * 0.1f;
+    if (centered) {
+        anchor = Anchor::LeftCenter;
+        y = viewH * 0.5f;
+    }
+    y += layerOffset;
     float panelW = std::min(width, std::max(0.f, viewW - viewportMargin * 2));
     float panelX = (viewW - panelW) * 0.5f;
     float panelMaxH = std::max(0.f, viewH - viewportMargin * 2 - layerOffset);
@@ -767,11 +780,9 @@ El* Dialog::IntoEl(WinSize size) {
                          ->Bottom(0)
                          ->StopMouseDown());
     }
-    // DialogProps::margin_top: a tenth of the viewport down from the top,
-    // not centered in it — through the viewport-aware corner positioner,
-    // which keeps an oversized panel inside the window. SlideDown is the
-    // only entrance that moves that requested corner. FadeSlide travels
-    // after the clamp, from the resolved top.
+    // The corner positioner keeps an oversized panel inside the window.
+    // SlideDown is the only entrance that moves the requested point.
+    // FadeSlide travels after the clamp, from the resolved top.
     Point resting = {windowPadding.left + panelX, windowPadding.top + y};
     float drawnY = resting.y;
     if ((mounted || animated) && entrance == DialogEntrance::SlideDown) {
@@ -780,7 +791,7 @@ El* Dialog::IntoEl(WinSize size) {
     if (mounted) {
         mount->surfaceY = drawnY;
     }
-    Positioner* positioner = Positioner::Corner(cx, Anchor::TopLeft, resting)
+    Positioner* positioner = Positioner::Corner(cx, anchor, resting)
                                  ->Margin(viewportMargin);
     if ((mounted || animated) && entrance == DialogEntrance::SlideDown) {
         positioner->Position({resting.x, drawnY});
@@ -877,6 +888,10 @@ AlertDialog* AlertDialog::W(float value) {
 }
 AlertDialog* AlertDialog::MarginTop(float value) {
     base->MarginTop(value);
+    return this;
+}
+AlertDialog* AlertDialog::Centered() {
+    base->Centered();
     return this;
 }
 AlertDialog* AlertDialog::Entrance(DialogEntrance value) {

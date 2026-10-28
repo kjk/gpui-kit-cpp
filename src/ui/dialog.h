@@ -174,6 +174,9 @@ struct Dialog {
     // DialogProps::margin_top. Unset keeps a tenth of the viewport height.
     bool hasMarginTop = false;
     float marginTop = 0;
+    // DialogProps::centered. The surface's left-center sits at the vertical
+    // middle of the viewport, in place of the margin_top offset.
+    bool centered = false;
     // DialogProps::entrance. SlideDown keeps the legacy quarter-second drop.
     DialogEntrance entrance = DialogEntrance::SlideDown;
     // DialogProps::overlay. The alert story's dialogs never tint the page.
@@ -228,6 +231,9 @@ struct Dialog {
     Dialog* W(float px);
     Dialog* H(float px);
     Dialog* MarginTop(float px);
+    // Centers the dialog vertically, whatever its height, in place of
+    // MarginTop.
+    Dialog* Centered();
     Dialog* Entrance(DialogEntrance value);
     Dialog* Overlay(bool v);
     Dialog* OverlayClosable(bool v);
@@ -282,6 +288,9 @@ struct AlertDialog {
     AlertDialog* H(float value);
     // Overrides the tenth-of-the-viewport top offset on the alert surface.
     AlertDialog* MarginTop(float value);
+    // Centers the alert vertically, whatever its height, in place of
+    // MarginTop.
+    AlertDialog* Centered();
     // The same entrance policy as Dialog::Entrance.
     AlertDialog* Entrance(DialogEntrance value);
     AlertDialog* Overlay(bool value);
