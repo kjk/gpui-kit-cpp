@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7c0746e8ec10eeb27214c41c880aeaa82fccbef1` (2026-10-23,
-input: Ask scroll containers to reveal a focused input (#3625)).
-A focused field asks its list to bring it into view when it gains focus
-and again when the window's fully visible bounds change. Scrolling away
-while it stays focused is left alone, and blurring clears that memory
-even if the field is not mounted. A single-line field asks for all of
-itself; a multi-line one asks for the caret's line, or its top 120px.
+Processed through `47e5a897ddca7bb0b6f4c03574f8d4edb5379bd3` (2026-10-23,
+text: Release the shaped text of dropped text views at the next frame
+(#3628)).
+Upstream keeps shaped paragraphs in a thread-local table and now drops
+a closed view's entries on the next frame. This tree reshapes from the
+parsed runs each frame, so a dropped view has no shaped text left.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
