@@ -773,6 +773,10 @@ struct BlockItem {
     float scrollbarWidth = 0.0f;
 
     Position position = Position::Static;
+    // Used to resolve self-start/self-end of an out-of-flow child.
+    Direction direction = Direction::Ltr;
+    OptAlignSelf alignSelf;
+    OptAlignSelf justifySelf;
     RectLpa inset;
     RectLpa margin;
     RectF padding;
@@ -825,6 +829,9 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
         item.floatMode = cs.floatMode;
         item.clear = cs.clear;
         item.position = cs.position;
+        item.direction = cs.direction;
+        item.alignSelf = cs.alignSelf;
+        item.justifySelf = cs.justifySelf;
         item.overflow = cs.overflow;
         item.contain = cs.contain;
         item.scrollbarWidth = cs.scrollbarWidth;
@@ -1538,6 +1545,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
 
     TextAlign textAlign = style.textAlign;
     OptAlignContent alignContent = style.alignContent;
+    OptAlignItems justifyItems = style.justifyItems;
 
     // 1. Generate items.
     Vec<BlockItem> items;
@@ -1633,26 +1641,26 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         float inflowContentHeight =
             intrinsicOuterHeight - resolvedContentBoxInset.VerticalAxisSum();
         float freeSpace = containerInnerHeight - inflowContentHeight;
+        // The offset is applied even when every child is out of flow: their
+        // static positions move with the in-flow content.
+        AlignContentKeyword keyword =
+            ApplyAlignmentFallback(freeSpace, 1, alignContent.val);
+        float groupOffset =
+            ComputeAlignmentOffset(freeSpace, 1, 0.0f, keyword, false, true);
+        if (IsSome(inFlow.firstBaseline)) {
+            inFlow.firstBaseline += groupOffset;
+        }
         bool anyInFlow = false;
         for (int i = 0; i < len(items); i++) {
             if (items[i].hasFinalLayout) {
+                items[i].finalLayout.location.y += groupOffset;
                 anyInFlow = true;
-                break;
+            }
+            if (IsOutOfFlow(items[i].position)) {
+                items[i].staticPosition.y += groupOffset;
             }
         }
         if (anyInFlow) {
-            AlignContentKeyword keyword =
-                ApplyAlignmentFallback(freeSpace, 1, alignContent.val);
-            float groupOffset = ComputeAlignmentOffset(freeSpace, 1, 0.0f,
-                                                       keyword, false, true);
-            if (IsSome(inFlow.firstBaseline)) {
-                inFlow.firstBaseline += groupOffset;
-            }
-            for (int i = 0; i < len(items); i++) {
-                if (items[i].hasFinalLayout) {
-                    items[i].finalLayout.location.y += groupOffset;
-                }
-            }
             inflowOverflowRect = RectF::Zero();
             for (int i = 0; i < len(items); i++) {
                 if (!items[i].hasFinalLayout) {
@@ -1730,12 +1738,28 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
             candidate.node = item.nodeId;
             candidate.order = item.order;
             candidate.position = item.position;
-            candidate.staticX = AxisStaticPosition::FromEdge(
-                item.staticPosition.x, direction == Direction::Rtl
-                                           ? AxisStaticEdge::End
-                                           : AxisStaticEdge::Start);
-            candidate.staticY = AxisStaticPosition::FromEdge(
-                item.staticPosition.y, AxisStaticEdge::Start);
+            // The static-position rectangle spans the content box on the
+            // inline axis and is a zero-height line at the child's
+            // hypothetical block position. justify-self: auto takes the
+            // container's justify-items. align-self is not filled from
+            // align-items.
+            float inlineStart = resolvedContentBoxInset.left;
+            float inlineEnd = containerOuterWidth - resolvedContentBoxInset
+                                                        .right;
+            OptAlignItems itemJustify = item.justifySelf.Or(justifyItems);
+            if (itemJustify.IsSome()) {
+                itemJustify.val = ResolveSelfRelative(
+                    itemJustify.val, item.direction, direction, true);
+            }
+            OptAlignItems itemAlign = item.alignSelf;
+            if (itemAlign.IsSome()) {
+                itemAlign.val = ResolveSelfRelative(
+                    itemAlign.val, item.direction, direction, false);
+            }
+            candidate.staticX = AxisStaticPosition::FromAlignment(
+                itemJustify, inlineStart, inlineEnd, IsRtl(direction));
+            candidate.staticY = AxisStaticPosition::FromAlignment(
+                itemAlign, item.staticPosition.y, item.staticPosition.y, false);
             candidates.Push(candidate);
         } else if (item.oofCount > 0) {
             OofCandRange range = {item.oofStart, item.oofCount};

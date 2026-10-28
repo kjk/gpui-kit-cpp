@@ -4579,24 +4579,6 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         }
         return tracks[index - 1].offset;
     };
-    auto staticEdge = [](AlignItemsKeyword keyword, bool axisIsRtl) {
-        if (keyword == AlignItemsKeyword::Center) {
-            return AxisStaticEdge::Center;
-        }
-        bool endish = keyword == AlignItemsKeyword::End ||
-                      keyword == AlignItemsKeyword::FlexEnd;
-        bool startPosition = (!endish) != axisIsRtl;
-        return startPosition ? AxisStaticEdge::Start : AxisStaticEdge::End;
-    };
-    auto staticAlign = [&](AlignItems alignment, bool axisIsRtl) {
-        AxisStaticAlign align;
-        align.keyword = staticEdge(alignment.keyword, axisIsRtl);
-        align.safety = alignment.safety;
-        align.fallback =
-            staticEdge(ResolveSelfAlignmentSafety(alignment, true), axisIsRtl);
-        return align;
-    };
-
     for (int index = 0; index < childCount; index++) {
         if (itemCursor < len(items) &&
             items[itemCursor].sourceOrder == (uint16_t)index) {
@@ -4685,43 +4667,27 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                           padding.bottom - scrollbarGutter.y;
         }
 
-        OptAlignItems justifySelf = cs.justifySelf;
+        // None stays none. from_alignment treats that as start, and the
+        // positioning pass treats an unset self-alignment as normal.
+        OptAlignItems justifySelf = cs.justifySelf.Or(justifyItems);
         if (justifySelf.IsSome()) {
             justifySelf.val = ResolveSelfRelative(justifySelf.val, cs.direction,
                                                   direction, true);
         }
-        OptAlignItems alignSelf = cs.alignSelf;
+        OptAlignItems alignSelf = cs.alignSelf.Or(alignItems);
         if (alignSelf.IsSome()) {
             alignSelf.val = ResolveSelfRelative(alignSelf.val, cs.direction,
                                                 direction, false);
         }
-        OptAlignItems containerJustify = justifyItems;
-        if (containerJustify.IsSome()) {
-            containerJustify.val = ResolveSelfRelative(
-                containerJustify.val, cs.direction, direction, true);
-        }
-        OptAlignItems containerAlign = alignItems;
-        if (containerAlign.IsSome()) {
-            containerAlign.val = ResolveSelfRelative(
-                containerAlign.val, cs.direction, direction, false);
-        }
-        AlignItems xAlignment =
-            justifySelf.Or(containerJustify)
-                .UnwrapOr(AlignItems{AlignItemsKeyword::Start});
-        AlignItems yAlignment =
-            alignSelf.Or(containerAlign)
-                .UnwrapOr(AlignItems{AlignItemsKeyword::Start});
 
         OofCandidate candidate;
         candidate.node = child;
         candidate.order = order;
         candidate.position = cs.position;
-        candidate.staticX.start = area.left;
-        candidate.staticX.end = area.right;
-        candidate.staticX.align = staticAlign(xAlignment, IsRtl(direction));
-        candidate.staticY.start = area.top;
-        candidate.staticY.end = area.bottom;
-        candidate.staticY.align = staticAlign(yAlignment, false);
+        candidate.staticX = AxisStaticPosition::FromAlignment(
+            justifySelf, area.left, area.right, IsRtl(direction));
+        candidate.staticY = AxisStaticPosition::FromAlignment(
+            alignSelf, area.top, area.bottom, false);
         oofCandidates.Push(candidate);
         order += 1;
     }

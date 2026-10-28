@@ -35,11 +35,12 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
             IsRtl(rootDirection) ? AxisStaticEdge::End : AxisStaticEdge::Start);
         self.staticY =
             AxisStaticPosition::FromEdge(0.0f, AxisStaticEdge::Start);
-        bool scroll = IsScrollContainer(tree->GetStyle(root).overflow.x) ||
-                      IsScrollContainer(tree->GetStyle(root).overflow.y);
-        OofBoxLayout box =
-            LayoutOofBox(tree, self, {icbSize.w, icbSize.h}, {0.0f, 0.0f},
-                         rootDirection, false, root, scroll, &rootIsCached);
+        // The initial containing block is not a scroll container, even when
+        // the root itself scrolls.
+        PointOverflow icbOverflow = {Overflow::Visible, Overflow::Visible};
+        OofBoxLayout box = LayoutOofBox(tree, self, {icbSize.w, icbSize.h},
+                                        {0.0f, 0.0f}, rootDirection, false,
+                                        root, icbOverflow, &rootIsCached);
         layout = box.layout;
         candidates = box.surfaced;
     } else {
@@ -200,11 +201,9 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
         Vec<NodeId> hoisted;
         OofCandidates unclaimed;
         RectF overflow = RectF::Zero();
-        bool scroll = IsScrollContainer(tailStyle.overflow.x) ||
-                      IsScrollContainer(tailStyle.overflow.y);
         PerformOofLayout(tree, root, candidates, areaSize, areaOffset,
-                         rootDirection, ContainingBlockClaims::All(), scroll,
-                         &hoisted, &unclaimed, &overflow);
+                         rootDirection, ContainingBlockClaims::All(),
+                         tailStyle.overflow, &hoisted, &unclaimed, &overflow);
         if (!rootIsCached) {
             tree->AddHoistedChildren(root, hoisted);
         }

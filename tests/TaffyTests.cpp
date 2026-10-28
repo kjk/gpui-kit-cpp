@@ -257,6 +257,9 @@ static void TestAlignment() {
     utassert(!(AlignItems{AlignItemsKeyword::Center}).IsSafe());
     utassert(!(AlignItems{AlignItemsKeyword::Baseline}).IsSafe());
     utassert(!(AlignItems{AlignItemsKeyword::Stretch}).IsSafe());
+    // A bare keyword carries Default, not Unsafe.
+    utassert((AlignItems{}).safety == AlignmentSafety::Default);
+    utassert((AlignContent{}).safety == AlignmentSafety::Default);
 
     // align_items_keyword_strips_safe
     utassert((AlignItems{AlignItemsKeyword::Start, kSafe})
@@ -6553,6 +6556,107 @@ static void TestAbsoluteReplacedDoesNotStretch() {
     }
 }
 
+// taffy a4dff69e. justify-self / align-self place an absolute box inside
+// its static-position rectangle, and inside the inset-modified containing
+// block when both insets are set. Default, safe and unsafe disagree once
+// the margin box overflows that block.
+static void TestAbsposSelfAlignment() {
+    TestSuite("taffy abspos self alignment");
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style abs = OofLeaf(40.0f, 10.0f);
+        abs.position = taffy::Position::Absolute;
+        abs.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::End});
+        TaffyNodeId absNode = tree.NewLeaf(abs);
+        taffy::Style flow;
+        flow.size.height = taffy::Dimension::Length(20.0f);
+        TaffyNodeId flowNode = tree.NewLeaf(flow);
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Relative;
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        root.alignContent = taffy::OptAlignContent(
+            taffy::AlignContent{taffy::AlignContentKeyword::End});
+        TaffyNodeId kids[2] = {absNode, flowNode};
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 2);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        // Content box is the border box. End puts the box at the inline
+        // end. align-content shifts the static line down with the in-flow
+        // child (free space 80).
+        AssertBox(tree.GetLayout(absNode), 160.0f, 80.0f, 40.0f, 10.0f);
+        AssertLoc(tree, flowNode, 0.0f, 80.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style abs = OofLeaf(40.0f, 20.0f);
+        abs.position = taffy::Position::Absolute;
+        abs.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::Center});
+        abs.inset.left = taffy::LengthPercentageAuto::Length(10.0f);
+        abs.inset.right = taffy::LengthPercentageAuto::Length(10.0f);
+        abs.inset.top = taffy::LengthPercentageAuto::Length(0.0f);
+        TaffyNodeId absNode = tree.NewLeaf(abs);
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Relative;
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, &absNode, 1);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        // IMCB is 10..190. The 40px box is centered in it, not at the
+        // left inset.
+        AssertBox(tree.GetLayout(absNode), 80.0f, 0.0f, 40.0f, 20.0f);
+        tree.Free();
+    }
+    auto overflowAt = [](taffy::AlignmentSafety safety) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style abs = OofLeaf(150.0f, 10.0f);
+        abs.position = taffy::Position::Absolute;
+        abs.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::End, safety});
+        abs.inset.left = taffy::LengthPercentageAuto::Length(10.0f);
+        abs.inset.right = taffy::LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId absNode = tree.NewLeaf(abs);
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Relative;
+        root.size = SizeDim::FromLengths(100.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, &absNode, 1);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        float x = tree.GetLayout(absNode).location.x;
+        tree.Free();
+        return x;
+    };
+    // IMCB is 10..90. The 150px box overflows it.
+    utassertnear(overflowAt(taffy::AlignmentSafety::Unsafe), -60.0f);
+    utassertnear(overflowAt(taffy::AlignmentSafety::Safe), 10.0f);
+    utassertnear(overflowAt(taffy::AlignmentSafety::Default), 0.0f);
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style abs;
+        abs.position = taffy::Position::Absolute;
+        abs.itemIsTable = true;
+        InsetAll(&abs, 10.0f);
+        TaffyNodeId absNode = tree.NewLeaf(abs);
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Relative;
+        root.size = SizeDim::FromLengths(400.0f, 300.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, &absNode, 1);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        // normal does not stretch a table between its insets.
+        utassertnear(tree.GetLayout(absNode).size.w, 0.0f);
+        utassertnear(tree.GetLayout(absNode).size.h, 0.0f);
+        tree.Free();
+    }
+}
+
 // taffy tests/hand_written/initial_containing_block.rs. Boxes with no
 // nearer containing block are positioned against the viewport.
 static void TestInitialContainingBlock() {
@@ -7534,6 +7638,7 @@ void TestTaffy() {
     TestOofHoisting();
     TestAbsposAutoMarginNeedsBothInsets();
     TestAbsoluteReplacedDoesNotStretch();
+    TestAbsposSelfAlignment();
     TestInitialContainingBlock();
     TestRootPositionAndInsets();
     TestFlexPercentagePaddingAgainstWidth();

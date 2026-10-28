@@ -45,12 +45,15 @@ struct OofBoxLayout {
 
 // Size and position one out-of-flow box. `resolveGridArea` looks up
 // `gridOwner`'s track snapshot; the root passes false because it is not a grid
-// item of itself. `cacheHit`, when set, records whether the final layout pass
-// was cached.
+// item of itself. `containerOverflow` is the containing block's overflow
+// style: a scroll container may align a box into its scrollable overflow.
+// The root's own out-of-flow pass passes Visible, because the initial
+// containing block is not a scroll container. `cacheHit`, when set, records
+// whether the final layout pass was cached.
 OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
                           SizeF areaSize, PointF areaOffset,
                           Direction direction, bool resolveGridArea,
-                          NodeId gridOwner, bool isScrollContainer,
+                          NodeId gridOwner, PointOverflow containerOverflow,
                           bool* cacheHit);
 
 // Lays out `candidates`, appending claimed nodes to `hoisted` and the rest
@@ -58,9 +61,9 @@ OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
 // boxes, relative to the positioning area's origin.
 void PerformOofLayout(TaffyTree* tree, NodeId nodeId, OofCandidates candidates,
                       SizeF areaSize, PointF areaOffset, Direction direction,
-                      ContainingBlockClaims claims, bool isScrollContainer,
-                      Vec<NodeId>* hoisted, OofCandidates* unclaimed,
-                      RectF* overflowOut);
+                      ContainingBlockClaims claims,
+                      PointOverflow containerOverflow, Vec<NodeId>* hoisted,
+                      OofCandidates* unclaimed, RectF* overflowOut);
 
 // Static-position alignment for one axis. Exported for the unit tests.
 float ResolveStaticOffsetAxis(AxisStaticPosition position, float size,

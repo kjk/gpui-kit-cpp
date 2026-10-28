@@ -169,12 +169,13 @@ enum class AxisStaticEdge : uint8_t {
 
 struct AxisStaticAlign {
     AxisStaticEdge keyword = AxisStaticEdge::Start;
-    AlignmentSafety safety = AlignmentSafety::Unsafe;
+    AlignmentSafety safety = AlignmentSafety::Default;
     AxisStaticEdge fallback = AxisStaticEdge::Start;
 
     static AxisStaticAlign FromKeyword(AxisStaticEdge keyword) {
         AxisStaticAlign a;
         a.keyword = keyword;
+        a.safety = AlignmentSafety::Default;
         a.fallback = keyword;
         return a;
     }
@@ -190,6 +191,35 @@ struct AxisStaticPosition {
         p.start = anchor;
         p.end = anchor;
         p.align = AxisStaticAlign::FromKeyword(edge);
+        return p;
+    }
+
+    // Align the box within [areaStart, areaEnd]. `alignment` is already
+    // resolved: auto replaced, and self-start/self-end mapped to the
+    // container direction. None is normal, which is start. Stretch falls
+    // back to start. `axisIsRtl` flips start and end.
+    static AxisStaticPosition FromAlignment(OptAlignItems alignment,
+                                            float areaStart, float areaEnd,
+                                            bool axisIsRtl) {
+        auto edgeFor = [](AlignItemsKeyword keyword, bool rtl) {
+            if (keyword == AlignItemsKeyword::Center) {
+                return AxisStaticEdge::Center;
+            }
+            bool endish = keyword == AlignItemsKeyword::End ||
+                          keyword == AlignItemsKeyword::FlexEnd;
+            bool startPosition = (!endish) != rtl;
+            return startPosition ? AxisStaticEdge::Start : AxisStaticEdge::End;
+        };
+        AlignItems resolved = alignment.UnwrapOr(AlignItems{});
+        AlignItemsKeyword fallbackKw = resolved.safety == AlignmentSafety::Safe
+                                           ? AlignItemsKeyword::Start
+                                           : resolved.keyword;
+        AxisStaticPosition p;
+        p.start = areaStart;
+        p.end = areaEnd;
+        p.align.keyword = edgeFor(resolved.keyword, axisIsRtl);
+        p.align.safety = resolved.safety;
+        p.align.fallback = edgeFor(fallbackKw, axisIsRtl);
         return p;
     }
 };

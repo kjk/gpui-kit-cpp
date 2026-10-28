@@ -449,16 +449,22 @@ constexpr AlignContentKeyword Reversed(AlignContentKeyword k) {
 
 // The overflow-position modifier per CSS Box Alignment §4.3. `Safe` falls
 // back to the start edge when the subject would overflow the container.
+// `Unsafe` keeps the requested alignment. `Default` (no overflow-position
+// keyword) behaves as `Unsafe`, except for an absolutely positioned box,
+// whose alignment is adjusted to minimize overflow (CSS Box Alignment
+// §4.4.1.2).
 enum class AlignmentSafety : uint8_t {
+    Default,
     Unsafe,
     Safe
 };
 
 // Rust's `AlignItems::START` is `AlignItems{AlignItemsKeyword::Start}` here;
 // its `SAFE_START` is `{AlignItemsKeyword::Start, AlignmentSafety::Safe}`.
+// A bare keyword carries `Default`, matching Rust's constants.
 struct AlignItems {
     AlignItemsKeyword keyword = AlignItemsKeyword::Start;
-    AlignmentSafety safety = AlignmentSafety::Unsafe;
+    AlignmentSafety safety = AlignmentSafety::Default;
 
     constexpr bool IsSafe() const { return safety == AlignmentSafety::Safe; }
     constexpr AlignItemsKeyword Keyword() const { return keyword; }
@@ -466,7 +472,7 @@ struct AlignItems {
 
 struct AlignContent {
     AlignContentKeyword keyword = AlignContentKeyword::Start;
-    AlignmentSafety safety = AlignmentSafety::Unsafe;
+    AlignmentSafety safety = AlignmentSafety::Default;
 
     constexpr bool IsSafe() const { return safety == AlignmentSafety::Safe; }
     constexpr AlignContentKeyword Keyword() const { return keyword; }
