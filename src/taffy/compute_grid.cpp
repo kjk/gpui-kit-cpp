@@ -2566,8 +2566,14 @@ void ResolveItemBaselines(TaffyTree* tree, AbstractAxis axis, GridItem* items,
                                LengthPercentageAuto::Zero()};
             float marginTop = topOnly.ResolveOrZero(innerNodeSize.w, tree->calc)
                                   .top;
-            item.baseline =
-                Some(UnwrapOr(out.baselines.first, out.size.h) + marginTop);
+            // A scroll container's baseline is its content at the initial
+            // scroll position, clamped to the border box.
+            // https://github.com/w3c/csswg-drafts/issues/7660
+            float baseline = UnwrapOr(out.baselines.first, out.size.h);
+            if (IsScrollContainer(item.overflow.y)) {
+                baseline = F32Max(0.0f, F32Min(baseline, out.size.h));
+            }
+            item.baseline = Some(baseline + marginTop);
         }
 
         float rowMaxBaseline = 0.0f;

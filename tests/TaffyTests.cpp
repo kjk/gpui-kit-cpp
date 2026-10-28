@@ -3367,6 +3367,67 @@ static void TestGridLayout() {
         utassertnear(tree.GetLayout(wide).size.w, 200.0f);
         tree.Free();
     }
+
+    {
+        // grid_align_items_baseline_overflow_scroll. A 20px scroll container
+        // whose content is 40px has its baseline clamped to the border box,
+        // so it shifts down 10px to meet a 60px sibling whose baseline is 30.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style innerTall;
+        innerTall.display = taffy::Display::Grid;
+        innerTall.size = SizeDim::FromLengths(10.0f, 40.0f);
+        TaffyNodeId tall = tree.NewLeaf(innerTall);
+
+        taffy::Style scrollerStyle;
+        scrollerStyle.display = taffy::Display::Grid;
+        scrollerStyle
+            .overflow = {taffy::Overflow::Scroll, taffy::Overflow::Scroll};
+        scrollerStyle.scrollbarWidth = 15.0f;
+        scrollerStyle.size = SizeDim::FromLengths(60.0f, 20.0f);
+        TaffyNodeId scroller = tree.NewWithChildren(scrollerStyle, &tall, 1);
+
+        taffy::Style innerShort;
+        innerShort.display = taffy::Display::Grid;
+        innerShort.size = SizeDim::FromLengths(60.0f, 30.0f);
+        TaffyNodeId shortChild = tree.NewLeaf(innerShort);
+
+        taffy::Style siblingStyle;
+        siblingStyle.display = taffy::Display::Grid;
+        siblingStyle.size = SizeDim::FromLengths(60.0f, 60.0f);
+        TaffyNodeId sibling =
+            tree.NewWithChildren(siblingStyle, &shortChild, 1);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.size = SizeDim::FromLengths(120.0f, 100.0f);
+        GridTemplateComponent cols[2] = {
+            GridTemplateComponent::Single(TrackSizingFunction::Length(60.0f)),
+            GridTemplateComponent::Single(TrackSizingFunction::Length(60.0f))};
+        rootStyle.gridTemplateColumns = GridTemplateOf(cols, 2);
+        TaffyNodeId kids[] = {scroller, sibling};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        const Layout& scrolled = tree.GetLayout(scroller);
+        utassertnear(scrolled.location.x, 0.0f);
+        utassertnear(scrolled.location.y, 10.0f);
+        utassertnear(scrolled.size.w, 60.0f);
+        utassertnear(scrolled.size.h, 20.0f);
+        const Layout& sib = tree.GetLayout(sibling);
+        utassertnear(sib.location.x, 60.0f);
+        utassertnear(sib.location.y, 0.0f);
+        utassertnear(sib.size.w, 60.0f);
+        utassertnear(sib.size.h, 60.0f);
+        utassertnear(tree.GetLayout(tall).location.x, 0.0f);
+        utassertnear(tree.GetLayout(tall).location.y, 0.0f);
+        utassertnear(tree.GetLayout(tall).size.w, 10.0f);
+        utassertnear(tree.GetLayout(tall).size.h, 40.0f);
+        utassertnear(tree.GetLayout(shortChild).size.h, 30.0f);
+        tree.Free();
+    }
 }
 
 // A scroll container holding a column of fixed-height children: the column
