@@ -6695,6 +6695,28 @@ static void TestFlexSkipsCrossSizeWhenOnlyMainRequested() {
     }
 }
 
+// taffy 9f02a528. A grid item with a definite width contributes that width
+// without being measured. The same leaf is measured 5 times without the
+// short-circuit, and 3 times with it. Both boxes are 40x20.
+static void TestGridKnownWidthSkipsMeasure() {
+    TestSuite("taffy grid known width skips measure");
+    TaffyTree tree;
+    tree.Init();
+    int hits = 0;
+    taffy::Style item;
+    item.size.width = taffy::Dimension::Length(40.0f);
+    TaffyNodeId leaf = tree.NewLeafWithContext(item, &hits);
+    taffy::Style grid;
+    grid.display = taffy::Display::Grid;
+    TaffyNodeId root = tree.NewWithChildren(grid, &leaf, 1);
+    tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                  AhemQuadMeasure, nullptr);
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 40.0f, 20.0f);
+    AssertBox(tree.GetLayout(leaf), 0.0f, 0.0f, 40.0f, 20.0f);
+    utassert(hits == 3);
+    tree.Free();
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6718,6 +6740,7 @@ void TestTaffy() {
     TestFlexColumnMeasuresAtMaxWidth();
     TestGridSkipsRowsWhenOnlyWidthRequested();
     TestFlexSkipsCrossSizeWhenOnlyMainRequested();
+    TestGridKnownWidthSkipsMeasure();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

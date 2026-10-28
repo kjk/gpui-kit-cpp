@@ -1578,10 +1578,14 @@ SizeFOpt ItemKnownDimensions(const GridItem& item, TaffyTree* tree,
         MaybeAdd(MaybeApplyAspectRatio(
                      item.size.MaybeResolve(gridAreaSize, calc), aspectRatio),
                  boxSizingAdjustment);
+    // The size of the item is floored by its padding and border. An
+    // unspecified minimum becomes that floor, and a smaller one is raised.
     SizeFOpt minSize = MaybeAdd(
         MaybeApplyAspectRatio(item.minSize.MaybeResolve(gridAreaSize, calc),
                               aspectRatio),
         boxSizingAdjustment);
+    minSize = Or(minSize, paddingBorderSize);
+    minSize = MaybeMax(minSize, paddingBorderSize);
     SizeFOpt maxSize = MaybeAdd(
         MaybeApplyAspectRatio(item.maxSize.MaybeResolve(gridAreaSize, calc),
                               aspectRatio),
@@ -1726,6 +1730,12 @@ float ItemMinContentContribution(const GridItem& item, AbstractAxis axis,
                                  TaffyTree* tree, SizeFOpt gridAreaSize,
                                  SizeFOpt availableSpace) {
     SizeFOpt knownDimensions = ItemKnownDimensions(item, tree, gridAreaSize);
+    // A size already known on this axis is the contribution. Measuring the
+    // child would only repeat it.
+    Optf known = Get(knownDimensions, axis);
+    if (IsSome(known)) {
+        return known;
+    }
     // The child sees the grid area as its containing block during intrinsic
     // measurement, so percentage box properties resolve against it.
     SizeAvail avail = {
@@ -1756,6 +1766,10 @@ float ItemMaxContentContribution(const GridItem& item, AbstractAxis axis,
                                  TaffyTree* tree, SizeFOpt gridAreaSize,
                                  SizeFOpt availableSpace) {
     SizeFOpt knownDimensions = ItemKnownDimensions(item, tree, gridAreaSize);
+    Optf known = Get(knownDimensions, axis);
+    if (IsSome(known)) {
+        return known;
+    }
     SizeAvail avail = {
         IsSome(availableSpace.w) ? AvailableSpace::Definite(availableSpace.w)
                                  : AvailableSpace::MaxContent(),
