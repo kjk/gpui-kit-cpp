@@ -671,6 +671,24 @@ static void TestTaffyTreeHierarchy() {
         utassert(tree.ChildCount(child) == 0);
         tree.Free();
     }
+
+    {
+        // remove() marks the ex-parent dirty, so the next layout drops
+        // the removed child's contribution.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.border.bottom = LengthPercentage::Length(1.0f);
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+        TaffyNodeId root = tree.NewWithChildren(taffy::Style{}, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MinContent());
+        utassertnear(tree.GetLayout(root).size.h, 1.0f);
+        tree.Remove(child);
+        utassert(tree.Dirty(root));
+        tree.ComputeLayout(root, SizeAvail::MinContent());
+        utassertnear(tree.GetLayout(root).size.h, 0.0f);
+        tree.Free();
+    }
 }
 
 static void TestTaffyTreeStyleAndDirty() {

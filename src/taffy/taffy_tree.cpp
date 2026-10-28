@@ -176,6 +176,10 @@ void TaffyTree::Remove(NodeId node) {
             }
             p->children.len = w;
         }
+        // remove_child marks the parent dirty. remove() has to as well,
+        // or an ancestor recomputes from a cache that still includes
+        // the node that just left.
+        MarkDirty(d->parent);
     }
     // Drop the "parent" back-reference from every child. Descendants stay
     // alive: the layout cache walks them with LayoutDropSubtree and gives
