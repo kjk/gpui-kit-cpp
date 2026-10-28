@@ -539,6 +539,58 @@ static taffy::LayoutOutput ContentTextMeasure(const taffy::LayoutInput& inputs,
                                     ContentTextInner, nullptr);
 }
 
+// Three runs of ten "H" separated by ZWSP, Ahem 10px, from the flex-line-count
+// tests. A definite inline size wraps on those boundaries.
+static SizeF AhemBalanceInner(SizeFOpt known, SizeAvail available, void*) {
+    const int kLens[3] = {10, 10, 10};
+    const float kH = 10.0f;
+    float inlineSize;
+    if (IsSome(known.w)) {
+        inlineSize = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        inlineSize = 100.0f;
+    } else if (available.width.kind == AvailableSpace::Kind::MaxContent) {
+        inlineSize = 300.0f;
+    } else {
+        inlineSize = F32Min(available.width.value, 300.0f);
+    }
+    if (inlineSize < 100.0f) {
+        inlineSize = 100.0f;
+    }
+    float block;
+    if (IsSome(known.h)) {
+        block = known.h;
+    } else {
+        int inlineChars = (int)(inlineSize / kH);
+        int lineCount = 1;
+        int current = 0;
+        for (int i = 0; i < 3; i++) {
+            if (current + kLens[i] > inlineChars) {
+                if (current > 0) {
+                    lineCount++;
+                }
+                current = kLens[i];
+            } else {
+                current += kLens[i];
+            }
+        }
+        block = (float)lineCount * kH;
+    }
+    return {inlineSize, block};
+}
+
+static taffy::LayoutOutput AhemBalanceMeasure(const taffy::LayoutInput& inputs,
+                                              TaffyNodeId node,
+                                              void* nodeContext,
+                                              const taffy::Style* style,
+                                              void* userData) {
+    (void)node;
+    (void)nodeContext;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    AhemBalanceInner, nullptr);
+}
+
 static void AssertBox(const Layout& layout, float x, float y, float w,
                       float h) {
     utassertnear(layout.location.x, x);
@@ -1501,6 +1553,306 @@ static void TestFlexboxLayout() {
             }
             AssertBox(tree.GetLayout(root), 0.0f, 0.0f, c.rootW, c.rootH);
             AssertBox(tree.GetLayout(child), c.x, 0.0f, c.w, c.h);
+            tree.Free();
+        }
+    }
+}
+
+// ─── flex-wrap: balance (1bade665) ───────────────────────────────────────
+
+static void TestFlexBalanceCounts() {
+    TestSuite("taffy::compute::flexbox (balance)");
+
+    {
+        float sizes[3] = {70.0f, 0.0f, 20.0f};
+        int out[3];
+        int n = taffy::BalancedLineItemCounts(sizes, 3, 100.0f, 10.0f, 1, out);
+        utassert(n == 2);
+        utassert(out[0] == 2 && out[1] == 1);
+    }
+    {
+        float sizes[3] = {150.0f, 0.0f, 30.0f};
+        int out[3];
+        int n = taffy::BalancedLineItemCounts(sizes, 3, 100.0f, 0.0f, 1, out);
+        utassert(n == 2);
+        utassert(out[0] == 1 && out[1] == 2);
+    }
+    {
+        float sizes[3] = {70.0f, 0.0f, 0.0f};
+        int out[3];
+        int n = taffy::BalancedLineItemCounts(sizes, 3, 100.0f, 0.0f, 2, out);
+        utassert(n == 2);
+        utassert(out[0] == 2 && out[1] == 1);
+    }
+
+    // The rust property test: the divide-and-conquer counts match the naive
+    // program on 5000 deterministic inputs.
+    uint64_t state = 0x243F6A8885A308D3ULL;
+    for (int c = 0; c < 5000; c++) {
+        auto next = [&](uint32_t bound) -> uint32_t {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            return (uint32_t)(state >> 32) % bound;
+        };
+        int itemCount = c % 20 == 0 ? (int)next(60) + 1 : (int)next(15) + 1;
+        float itemSizes[60];
+        for (int i = 0; i < itemCount; i++) {
+            uint32_t kind = next(8);
+            if (kind <= 1) {
+                itemSizes[i] = 0.0f;
+            } else if (kind == 2) {
+                itemSizes[i] = -10.0f;
+            } else {
+                itemSizes[i] = (float)next(8) * 25.0f;
+            }
+        }
+        float lineLimit = next(5) == 0 ? INFINITY : (float)next(10) * 30.0f;
+        float gap = (float)next(4) * 5.0f;
+        int minLines = (int)next((uint32_t)itemCount + 2);
+        int expected[60];
+        int actual[60];
+        int nExpect = taffy::NaiveBalancedLineItemCounts(
+            itemSizes, itemCount, lineLimit, gap, minLines, expected);
+        int nActual = taffy::BalancedLineItemCounts(
+            itemSizes, itemCount, lineLimit, gap, minLines, actual);
+        utassert(nExpect == nActual);
+        utassert(nExpect > 0);
+        for (int i = 0; i < nExpect; i++) {
+            utassert(expected[i] == actual[i]);
+        }
+    }
+}
+
+static void TestFlexBalanceLayout() {
+    TestSuite("taffy::compute::flexbox (balance layout)");
+
+    {
+        // balance_row, content-box. 31+32 and 33+34.
+        TaffyTree tree;
+        tree.Init();
+        float widths[4] = {31.0f, 32.0f, 33.0f, 34.0f};
+        TaffyNodeId kids[4];
+        for (int i = 0; i < 4; i++) {
+            taffy::Style child;
+            child.boxSizing = BoxSizing::ContentBox;
+            child.size.width = Dimension::Length(widths[i]);
+            child.size.height = Dimension::Length(30.0f);
+            kids[i] = tree.NewLeaf(child);
+        }
+        taffy::Style rootStyle;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.flexWrap = FlexWrap::Balance;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 4);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 60.0f);
+        AssertBox(tree.GetLayout(kids[0]), 0.0f, 0.0f, 31.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[1]), 31.0f, 0.0f, 32.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[2]), 0.0f, 30.0f, 33.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[3]), 33.0f, 30.0f, 34.0f, 30.0f);
+        tree.Free();
+    }
+
+    {
+        // balance_row_line_count: at least 3 lines.
+        TaffyTree tree;
+        tree.Init();
+        float widths[4] = {31.0f, 32.0f, 33.0f, 34.0f};
+        TaffyNodeId kids[4];
+        for (int i = 0; i < 4; i++) {
+            taffy::Style child;
+            child.boxSizing = BoxSizing::ContentBox;
+            child.size.width = Dimension::Length(widths[i]);
+            child.size.height = Dimension::Length(30.0f);
+            kids[i] = tree.NewLeaf(child);
+        }
+        taffy::Style rootStyle;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.flexWrap = FlexWrap::Balance;
+        rootStyle.flexLineCount = 3;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 4);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 90.0f);
+        AssertBox(tree.GetLayout(kids[0]), 0.0f, 0.0f, 31.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[1]), 31.0f, 0.0f, 32.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[2]), 0.0f, 30.0f, 33.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[3]), 0.0f, 60.0f, 34.0f, 30.0f);
+        tree.Free();
+    }
+
+    {
+        // balance_wrap_reverse_row: the same lines, stacked from the end.
+        TaffyTree tree;
+        tree.Init();
+        float widths[4] = {31.0f, 32.0f, 33.0f, 34.0f};
+        TaffyNodeId kids[4];
+        for (int i = 0; i < 4; i++) {
+            taffy::Style child;
+            child.boxSizing = BoxSizing::ContentBox;
+            child.size.width = Dimension::Length(widths[i]);
+            child.size.height = Dimension::Length(30.0f);
+            kids[i] = tree.NewLeaf(child);
+        }
+        taffy::Style rootStyle;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.flexWrap = FlexWrap::BalanceReverse;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 4);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 60.0f);
+        AssertBox(tree.GetLayout(kids[0]), 0.0f, 30.0f, 31.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[1]), 31.0f, 30.0f, 32.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[2]), 0.0f, 0.0f, 33.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[3]), 33.0f, 0.0f, 34.0f, 30.0f);
+        tree.Free();
+    }
+
+    {
+        // balance_column.
+        TaffyTree tree;
+        tree.Init();
+        float heights[4] = {31.0f, 32.0f, 33.0f, 34.0f};
+        TaffyNodeId kids[4];
+        for (int i = 0; i < 4; i++) {
+            taffy::Style child;
+            child.boxSizing = BoxSizing::ContentBox;
+            child.size.width = Dimension::Length(30.0f);
+            child.size.height = Dimension::Length(heights[i]);
+            kids[i] = tree.NewLeaf(child);
+        }
+        taffy::Style rootStyle;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.flexDirection = FlexDirection::Column;
+        rootStyle.flexWrap = FlexWrap::Balance;
+        rootStyle.size.height = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 4);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 60.0f, 100.0f);
+        AssertBox(tree.GetLayout(kids[0]), 0.0f, 0.0f, 30.0f, 31.0f);
+        AssertBox(tree.GetLayout(kids[1]), 0.0f, 31.0f, 30.0f, 32.0f);
+        AssertBox(tree.GetLayout(kids[2]), 30.0f, 0.0f, 30.0f, 33.0f);
+        AssertBox(tree.GetLayout(kids[3]), 30.0f, 33.0f, 30.0f, 34.0f);
+        tree.Free();
+    }
+
+    {
+        // balance_row_zero_sized_items. A zero-width item stays on the
+        // preceding line.
+        TaffyTree tree;
+        tree.Init();
+        float widths[5] = {40.0f, 0.0f, 40.0f, 0.0f, 40.0f};
+        float heights[5] = {30.0f, 10.0f, 30.0f, 10.0f, 30.0f};
+        float xs[5] = {0.0f, 40.0f, 40.0f, 80.0f, 0.0f};
+        float ys[5] = {0.0f, 0.0f, 0.0f, 0.0f, 30.0f};
+        TaffyNodeId kids[5];
+        for (int i = 0; i < 5; i++) {
+            taffy::Style child;
+            child.boxSizing = BoxSizing::ContentBox;
+            child.size.width = Dimension::Length(widths[i]);
+            child.size.height = Dimension::Length(heights[i]);
+            kids[i] = tree.NewLeaf(child);
+        }
+        taffy::Style rootStyle;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.flexWrap = FlexWrap::Balance;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 5);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 60.0f);
+        for (int i = 0; i < 5; i++) {
+            AssertBox(tree.GetLayout(kids[i]), xs[i], ys[i], widths[i],
+                      heights[i]);
+        }
+        tree.Free();
+    }
+
+    {
+        // flex-line-count does not wrap a nowrap container.
+        // balance_nowrap_line_count_no_effect.
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId kids[6];
+        for (int i = 0; i < 6; i++) {
+            taffy::Style child;
+            child.boxSizing = BoxSizing::ContentBox;
+            child.flexShrink = 0.0f;
+            child.size = SizeDim::FromLengths(20.0f, 20.0f);
+            kids[i] = tree.NewLeaf(child);
+        }
+        taffy::Style rootStyle;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.flexLineCount = 10000;
+        rootStyle.size.width = Dimension::Length(20.0f);
+        rootStyle.gap.width = LengthPercentage::Length(20.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 6);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 20.0f, 20.0f);
+        for (int i = 0; i < 6; i++) {
+            AssertBox(tree.GetLayout(kids[i]), (float)i * 40.0f, 0.0f, 20.0f,
+                      20.0f);
+        }
+        tree.Free();
+    }
+
+    {
+        // flex-line-count divides the cross size a measured item sees.
+        // (210 - 10) / 2 = 100, so the Ahem text wraps to 100x30. nowrap
+        // keeps the full 210 and wraps to 210x20.
+        FlexWrap wraps[2] = {FlexWrap::Wrap, FlexWrap::NoWrap};
+        float expectW[2] = {100.0f, 210.0f};
+        float expectH[2] = {30.0f, 20.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style childStyle;
+            TaffyNodeId child = tree.NewLeaf(childStyle);
+            taffy::Style rootStyle;
+            rootStyle.flexDirection = FlexDirection::Column;
+            rootStyle.flexWrap = wraps[i];
+            rootStyle.flexLineCount = 2;
+            rootStyle.size = SizeDim::FromLengths(210.0f, 100.0f);
+            rootStyle.gap.width = LengthPercentage::Length(10.0f);
+            rootStyle.alignItems =
+                OptAlignItems(AlignItems{AlignItemsKeyword::Start});
+            rootStyle.alignContent =
+                OptAlignContent(AlignContent{AlignContentKeyword::Start});
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+            tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                          AhemBalanceMeasure, nullptr);
+            AssertBox(tree.GetLayout(child), 0.0f, 0.0f, expectW[i],
+                      expectH[i]);
+            tree.Free();
+        }
+    }
+
+    {
+        // A bare fit-content cross size uses the same divided stretch size.
+        FlexWrap wraps[2] = {FlexWrap::Wrap, FlexWrap::NoWrap};
+        float expectW[2] = {100.0f, 210.0f};
+        float expectH[2] = {30.0f, 20.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style childStyle;
+            childStyle.size.width = Dimension::FitContent();
+            TaffyNodeId child = tree.NewLeaf(childStyle);
+            taffy::Style rootStyle;
+            rootStyle.flexDirection = FlexDirection::Column;
+            rootStyle.flexWrap = wraps[i];
+            rootStyle.flexLineCount = 2;
+            rootStyle.size = SizeDim::FromLengths(210.0f, 100.0f);
+            rootStyle.gap.width = LengthPercentage::Length(10.0f);
+            rootStyle.alignItems =
+                OptAlignItems(AlignItems{AlignItemsKeyword::Start});
+            rootStyle.alignContent =
+                OptAlignContent(AlignContent{AlignContentKeyword::Start});
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+            tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                          AhemBalanceMeasure, nullptr);
+            AssertBox(tree.GetLayout(child), 0.0f, 0.0f, expectW[i],
+                      expectH[i]);
             tree.Free();
         }
     }
@@ -3206,6 +3558,8 @@ void TestTaffy() {
     TestTaffyTreeLayout();
     TestHiddenLayout();
     TestFlexboxLayout();
+    TestFlexBalanceCounts();
+    TestFlexBalanceLayout();
     TestBlockLayout();
 
     // The grid tests build styles whose track lists live in an arena of their

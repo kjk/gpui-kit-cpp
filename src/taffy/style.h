@@ -594,8 +594,24 @@ enum class TextAlign : uint8_t {
 enum class FlexWrap : uint8_t {
     NoWrap,
     Wrap,
-    WrapReverse
+    WrapReverse,
+    // Lines wrap in flex-direction order, balanced so the largest line is
+    // as small as possible.
+    // https://drafts.csswg.org/css-flexbox-2/#balance-values
+    Balance,
+    // Like Balance, with lines stacked from the cross-end.
+    BalanceReverse
 };
+
+inline bool FlexWrapIsMultiLine(FlexWrap w) {
+    return w != FlexWrap::NoWrap;
+}
+inline bool FlexWrapIsReverse(FlexWrap w) {
+    return w == FlexWrap::WrapReverse || w == FlexWrap::BalanceReverse;
+}
+inline bool FlexWrapIsBalance(FlexWrap w) {
+    return w == FlexWrap::Balance || w == FlexWrap::BalanceReverse;
+}
 
 // FlexDirection lives in geometry.h — the containers there key their
 // main/cross helpers off it.
@@ -1423,6 +1439,11 @@ struct Style {
     // Flexbox container
     FlexDirection flexDirection = FlexDirection::Row;
     FlexWrap flexWrap = FlexWrap::NoWrap;
+    // Minimum line count for a multi-line container. Balance uses at least
+    // this many lines. Any multi-line container divides a definite cross
+    // size across this many lines when the value is greater than 1. 1 is
+    // the default, and the value is treated as at least 1.
+    uint16_t flexLineCount = 1;
 
     // Flexbox item
     Dimension flexBasis = Dimension::Auto();

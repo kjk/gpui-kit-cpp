@@ -142,4 +142,6 @@ SizeF ComputeContentSizeContribution(PointF location, SizeF size,
 
 } // namespace taffy
 
+#include "taffy/flex_balance.h"
+
 #endif // GPUI_TAFFY_COMPUTE_H_

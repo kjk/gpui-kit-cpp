@@ -373,6 +373,7 @@ bool operator==(const Style& a, const Style& b) {
            a.textAlign == b.textAlign &&
            // Flexbox container
            a.flexDirection == b.flexDirection && a.flexWrap == b.flexWrap &&
+           a.flexLineCount == b.flexLineCount &&
            // Flexbox item
            a.flexBasis == b.flexBasis &&
            SameFloatBits(a.flexGrow, b.flexGrow) &&

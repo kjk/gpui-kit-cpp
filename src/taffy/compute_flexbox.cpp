@@ -104,6 +104,18 @@ struct AlgoConstants {
     bool isColumn = false;
     bool isWrap = false;
     bool isWrapReverse = false;
+    bool isBalance = false;
+    // 0 is nowrap (no requested line count). Otherwise the minimum number
+    // of lines, at least 1.
+    int lineCount = 0;
+
+    float DividedCrossSpace(float crossAvailable) const {
+        if (lineCount > 1) {
+            float n = (float)lineCount;
+            return (crossAvailable - (n - 1.0f) * Cross(gap, dir)) / n;
+        }
+        return crossAvailable;
+    }
 
     SizeFOpt minSize = SizeFOptNone();
     SizeFOpt maxSize = SizeFOptNone();
@@ -161,9 +173,13 @@ AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
     c.dir = style.flexDirection;
     c.isRow = IsRow(c.dir);
     c.isColumn = IsColumn(c.dir);
-    c.isWrap = style.flexWrap == FlexWrap::Wrap ||
-               style.flexWrap == FlexWrap::WrapReverse;
-    c.isWrapReverse = style.flexWrap == FlexWrap::WrapReverse;
+    c.isWrap = FlexWrapIsMultiLine(style.flexWrap);
+    c.isWrapReverse = FlexWrapIsReverse(style.flexWrap);
+    c.isBalance = FlexWrapIsBalance(style.flexWrap);
+    c.lineCount = 0;
+    if (c.isWrap) {
+        c.lineCount = style.flexLineCount < 1 ? 1 : (int)style.flexLineCount;
+    }
 
     Optf aspectRatio = style.aspectRatio;
     c.margin = style.margin.ResolveOrZero(parentSize.w, calc);
@@ -356,7 +372,8 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
         switch (crossIn.kind) {
             case AvailableSpace::Kind::Definite:
                 crossAxisAvailableSpace = AvailableSpace::Definite(
-                    MaybeClamp(UnwrapOr(crossAxisParentSize, crossIn.value),
+                    MaybeClamp(c.DividedCrossSpace(UnwrapOr(crossAxisParentSize,
+                                                            crossIn.value)),
                                childMinCross, childMaxCross));
                 break;
             case AvailableSpace::Kind::MinContent:
@@ -612,6 +629,62 @@ void CollectFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
     }
 }
 
+// flex-wrap: balance. The largest line is as small as possible, and there
+// are at least flex-line-count lines.
+void CollectBalancedFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
+                              Vec<FlexItem>* flexItems, Vec<FlexLine>* lines) {
+    FlexItem* items = flexItems->els;
+    int total = flexItems->len;
+    if (total == 0) {
+        return;
+    }
+
+    AvailableSpace mainAxisAvailableSpace;
+    if (!c.knownMainSizeIsDefinite) {
+        mainAxisAvailableSpace = AvailableSpace::MaxContent();
+    } else {
+        Optf maxMain = Main(c.maxSize, c.dir);
+        if (IsSome(maxMain)) {
+            float available =
+                UnwrapOr(availableSpace.Main(c.dir).IntoOption(), maxMain);
+            if (!c.hasDefiniteMainSize) {
+                available = F32Min(available, maxMain);
+            }
+            mainAxisAvailableSpace = AvailableSpace::Definite(
+                MaybeMax(available, Main(c.minSize, c.dir)));
+        } else {
+            mainAxisAvailableSpace = availableSpace.Main(c.dir);
+        }
+    }
+
+    if (mainAxisAvailableSpace.kind == AvailableSpace::Kind::MinContent) {
+        for (int i = 0; i < total; i++) {
+            VecAppend(*lines, {items + i, 1, 0.0f, 0.0f});
+        }
+        return;
+    }
+
+    float lineBreak = mainAxisAvailableSpace
+                                  .kind == AvailableSpace::Kind::Definite
+                          ? mainAxisAvailableSpace.value
+                          : INFINITY;
+    Vec<float> itemSizes;
+    for (int i = 0; i < total; i++) {
+        VecAppend(itemSizes, Main(items[i].hypotheticalOuterSize, c.dir));
+    }
+    Vec<int> counts;
+    int* slots = VecAppendBlanks(counts, total);
+    int minLines = c.lineCount < 1 ? 1 : c.lineCount;
+    int nLines = BalancedLineItemCounts(itemSizes.els, total, lineBreak,
+                                        Main(c.gap, c.dir), minLines, slots);
+    int start = 0;
+    for (int i = 0; i < nLines; i++) {
+        int count = slots[i];
+        VecAppend(*lines, {items + start, count, 0.0f, 0.0f});
+        start += count;
+    }
+}
+
 // The sum of the items' target sizes on a line, floored per item by its
 // padding+border. Used twice by DetermineContainerMainSize.
 float LineTotalTargetSize(const FlexLine& line, const AlgoConstants& c) {
@@ -656,8 +729,55 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
         if (mainAvail.kind == AvailableSpace::Kind::Definite) {
             float longest = LongestLineLength(lines, *c);
             float size = longest + mainContentBoxInset;
-            outerMainSize =
-                lines->len > 1 ? F32Max(size, mainAvail.value) : size;
+            if (c->isBalance) {
+                // Lines that all fit (flex-line-count) still size fit-content
+                // from the longest line of an unlimited balance.
+                int itemCount = 0;
+                for (int i = 0; i < lines->len; i++) {
+                    itemCount += (*lines)[i].count;
+                }
+                if (itemCount == 0) {
+                    outerMainSize = size;
+                } else {
+                    Vec<float> itemLengths;
+                    for (int li = 0; li < lines->len; li++) {
+                        FlexLine& line = (*lines)[li];
+                        for (int ii = 0; ii < line.count; ii++) {
+                            const FlexItem& child = line.items[ii];
+                            float paddingBorderSum =
+                                MainAxisSum(child.padding + child.border, dir);
+                            float itemLen =
+                                F32Max(MaybeMax(child.flexBasis,
+                                                Main(child.minSize, dir)) +
+                                           MainAxisSum(child.margin, dir),
+                                       paddingBorderSum);
+                            VecAppend(itemLengths, itemLen);
+                        }
+                    }
+                    Vec<int> counts;
+                    int* slots = VecAppendBlanks(counts, itemCount);
+                    int minLines = c->lineCount < 1 ? 1 : c->lineCount;
+                    int nLines = BalancedLineItemCounts(
+                        itemLengths.els, itemCount, INFINITY, Main(c->gap, dir),
+                        minLines, slots);
+                    float widest = 0.0f;
+                    int index = 0;
+                    for (int li = 0; li < nLines; li++) {
+                        float lineLength = 0.0f;
+                        for (int k = 0; k < slots[li]; k++) {
+                            lineLength += itemLengths[index++];
+                        }
+                        lineLength += SumAxisGaps(Main(c->gap, dir), slots[li]);
+                        widest = F32Max(widest, lineLength);
+                    }
+                    float maxContent = widest + mainContentBoxInset;
+                    outerMainSize =
+                        F32Max(size, F32Min(maxContent, mainAvail.value));
+                }
+            } else {
+                outerMainSize =
+                    lines->len > 1 ? F32Max(size, mainAvail.value) : size;
+            }
         } else if (mainAvail.kind == AvailableSpace::Kind::MinContent &&
                    c->isWrap) {
             outerMainSize = LongestLineLength(lines, *c) + mainContentBoxInset;
@@ -719,9 +839,10 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                             availableSpace.Cross(dir);
                         if (crossAxisAvailableSpace
                                 .kind == AvailableSpace::Kind::Definite) {
-                            crossAxisAvailableSpace = AvailableSpace::Definite(
-                                UnwrapOr(crossAxisParentSize,
-                                         crossAxisAvailableSpace.value));
+                            crossAxisAvailableSpace =
+                                AvailableSpace::Definite(c->DividedCrossSpace(
+                                    UnwrapOr(crossAxisParentSize,
+                                             crossAxisAvailableSpace.value)));
                         }
                         crossAxisAvailableSpace =
                             MaybeClamp(crossAxisAvailableSpace, childMinCross,
@@ -1045,15 +1166,24 @@ void DetermineHypotheticalCrossSize(TaffyTree* tree, FlexLine* line,
                                 transferredMaxCross),
                      paddingBorderSum);
 
-        AvailableSpace childAvailableCross =
-            MaybeMax(MaybeClamp(availableSpace.Cross(dir), transferredMinCross,
-                                transferredMaxCross),
-                     paddingBorderSum);
+        AvailableSpace crossAvail = availableSpace.Cross(dir);
+        if (crossAvail.kind == AvailableSpace::Kind::Definite) {
+            crossAvail =
+                AvailableSpace::Definite(c.DividedCrossSpace(crossAvail.value));
+        }
+        AvailableSpace childAvailableCross = MaybeMax(
+            MaybeClamp(crossAvail, transferredMinCross, transferredMaxCross),
+            paddingBorderSum);
 
         // A cross-size keyword other than stretch picks the available space.
         // Stretch waits for the flex line, in DetermineUsedCrossSize.
-        Optf crossStretch = MaybeSub(Cross(c.nodeInnerSize, dir),
-                                     Some(CrossAxisSum(child.margin, dir)));
+        // fit-content measures against the per-line share of the cross size.
+        Optf innerCross = Cross(c.nodeInnerSize, dir);
+        if (IsSome(innerCross)) {
+            innerCross = Some(c.DividedCrossSpace(innerCross));
+        }
+        Optf crossStretch =
+            MaybeSub(innerCross, Some(CrossAxisSum(child.margin, dir)));
         SizingKeywordResolution crossKeyword =
             ResolveSizingKeyword(child.sizeStyle.Cross(dir), crossStretch,
                                  Cross(c.nodeInnerSize, dir));
@@ -2077,7 +2207,12 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
 
     // 9.3. Main Size Determination
     // 5. Collect flex items into flex lines.
-    CollectFlexLines(constants, availableSpace, &flexItems, &flexLines);
+    if (constants.isBalance) {
+        CollectBalancedFlexLines(constants, availableSpace, &flexItems,
+                                 &flexLines);
+    } else {
+        CollectFlexLines(constants, availableSpace, &flexItems, &flexLines);
+    }
 
     // If the container size is undefined, determine the container's main size
     // and then re-resolve the gaps against it.
