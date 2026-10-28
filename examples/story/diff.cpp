@@ -1,7 +1,5 @@
 #include "Story.h"
 
-#include "ui/window_ext.h"
-
 // crates/story/src/stories/diff_story.rs — the example patches, the
 // toolbar, and the pull-request review comment. Soft wrap is stored on
 // the diff and not applied; the add-annotation button is not painted.
