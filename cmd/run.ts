@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7b14e03f2ed4b46fc4149a8a523c7f91bcad6560",
-  date: "2026-10-24",
-  subject: "test: Read accessibility descriptions and placeholders in element snapshots (#3672)",
+  sha: "f6fe05cb3fd207057a0f5fd242ca20c8223bea8f",
+  date: "2026-10-26",
+  subject: "base: Report on_prepaint bounds from the element's corner (#3689)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7b14e03f2ed4b46fc4149a8a523c7f91bcad6560` (2026-10-24,
-test: Read accessibility descriptions and placeholders in element
-snapshots (#3672)).
-`ElementSnapshot` grows description and placeholder readers. This tree
-does not carry that test harness. Painted elements already store both
-on `AccessibilityInfo`. The website guides are not ported.
+Processed through `f6fe05cb3fd207057a0f5fd242ca20c8223bea8f` (2026-10-26,
+base: Report on_prepaint bounds from the element's corner (#3689)).
+Rust pins the measuring canvas to the element's top-left so padding
+does not shift the reported box. This tree reports the laid-out box,
+whose origin is already that corner.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
