@@ -4224,6 +4224,25 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         innerNodeSize.w = Some(initialColumnSum);
     }
 
+    // Only the container's width was requested. Row sizing measures every
+    // item's height, and column sizing is not re-run for a size-only pass.
+    // A known width has already returned above.
+    if (runMode == RunMode::ComputeSize &&
+        inputs.axis == RequestedAxis::Horizontal) {
+        float width = F32Max(
+            MaybeClamp(initialColumnSum + contentBoxInset.HorizontalAxisSum(),
+                       minSize.w, maxSize.w),
+            paddingBorderSize.w);
+        VecReset(items);
+        VecReset(columns);
+        VecReset(rows);
+        VecReset(children);
+        VecReset(childPlacements);
+        cellOccupancyMatrix.Free();
+        nameResolver.Free();
+        return LayoutOutput::FromOuterSize({width, 0.0f});
+    }
+
     for (int i = 0; i < len(items); i++) {
         items[i].hasGridAreaSizeCache = false;
     }

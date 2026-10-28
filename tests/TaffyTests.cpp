@@ -657,6 +657,21 @@ static SizeF AhemTwelveInner(SizeFOpt known, SizeAvail available, void*) {
     return {inlineSize, block};
 }
 
+static SizeF GridWidthSkipInner(SizeFOpt, SizeAvail, void* ctx) {
+    int* hits = (int*)ctx;
+    *hits += 1;
+    return {40.0f, 25.0f};
+}
+
+static taffy::LayoutOutput GridWidthSkipMeasure(
+    const taffy::LayoutInput& inputs, TaffyNodeId node, void* nodeContext,
+    const taffy::Style* style, void* userData) {
+    (void)node;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    GridWidthSkipInner, nodeContext);
+}
+
 static taffy::LayoutOutput AhemTwelveMeasure(const taffy::LayoutInput& inputs,
                                              TaffyNodeId node,
                                              void* nodeContext,
@@ -6562,6 +6577,36 @@ static void TestFlexColumnMeasuresAtMaxWidth() {
     tree.Free();
 }
 
+// taffy 9770a07a. A width-only grid measure sizes the columns and skips
+// the rows, so items are not measured for their height.
+static void TestGridSkipsRowsWhenOnlyWidthRequested() {
+    TestSuite("taffy grid width-only skips rows");
+    TaffyTree tree;
+    tree.Init();
+    int hits = 0;
+    TaffyNodeId child = tree.NewLeafWithContext(taffy::Style{}, &hits);
+    GridTemplateComponent col =
+        GridTemplateComponent::Single(TrackSizingFunction::Length(100.0f));
+    taffy::Style root;
+    root.display = taffy::Display::Grid;
+    root.gridTemplateColumns = GridTemplateOf(&col, 1);
+    TaffyNodeId grid = tree.NewWithChildren(root, &child, 1);
+    tree.measureFn = GridWidthSkipMeasure;
+    float width = tree.MeasureChildSize(
+        grid, SizeFOptNone(), SizeFOptNone(), SizeAvail::MaxContent(),
+        taffy::SizingMode::InherentSize, taffy::AbsoluteAxis::Horizontal,
+        taffy::LineBool::False());
+    utassertnear(width, 100.0f);
+    utassert(hits == 0);
+    tree.measureFn = nullptr;
+
+    tree.ComputeLayoutWithMeasure(grid, SizeAvail::MaxContent(),
+                                  GridWidthSkipMeasure, nullptr);
+    AssertBox(tree.GetLayout(grid), 0.0f, 0.0f, 100.0f, 25.0f);
+    AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 100.0f, 25.0f);
+    tree.Free();
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6583,6 +6628,7 @@ void TestTaffy() {
     TestRootPositionAndInsets();
     TestFlexPercentagePaddingAgainstWidth();
     TestFlexColumnMeasuresAtMaxWidth();
+    TestGridSkipsRowsWhenOnlyWidthRequested();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();
