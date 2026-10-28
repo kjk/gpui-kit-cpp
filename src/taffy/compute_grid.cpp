@@ -4021,6 +4021,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     // A node that scrolls vertically needs *horizontal* space reserved for its
     // scrollbar, hence the transposed axes.
     PointOverflow t = style.overflow.Transpose();
+    bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
+                             IsScrollContainer(style.overflow.y);
     PointF scrollbarGutter = {
         t.x == Overflow::Scroll ? style.scrollbarWidth : 0.0f,
         t.y == Overflow::Scroll ? style.scrollbarWidth : 0.0f};
@@ -4601,9 +4603,13 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         order += 1;
     }
 
-    itemContentSizeContribution
-        .w += IsRtl(direction) ? padding.left : padding.right;
-    itemContentSizeContribution.h += padding.bottom;
+    // End padding is part of a scroll container's overflow. Other boxes
+    // do not extend content size by their own padding.
+    if (isScrollContainer) {
+        itemContentSizeContribution
+            .w += IsRtl(direction) ? padding.left : padding.right;
+        itemContentSizeContribution.h += padding.bottom;
+    }
     SizeF finalContentSize =
         Max(itemContentSizeContribution, absoluteContentSize);
 

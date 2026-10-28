@@ -1848,9 +1848,13 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     SizeF absoluteContentSize = PerformAbsoluteLayoutOnAbsoluteChildren(
         tree, items, absolutePositionArea, absolutePositionOffset, direction);
 
-    inflowContentSize
-        .w += IsRtl(direction) ? resolvedPadding.left : resolvedPadding.right;
-    inflowContentSize.h += resolvedPadding.bottom;
+    // End padding is part of a scroll container's overflow. Other boxes
+    // do not extend content size by their own padding.
+    if (isScrollContainer) {
+        inflowContentSize.w +=
+            IsRtl(direction) ? resolvedPadding.left : resolvedPadding.right;
+        inflowContentSize.h += resolvedPadding.bottom;
+    }
     output.contentSize = Max(inflowContentSize, absoluteContentSize);
 
     // 5. Hidden children.

@@ -132,6 +132,8 @@ struct AlgoConstants {
     // padding + border + scrollbar gutter.
     RectF contentBoxInset;
     PointF scrollbarGutter;
+    // A scroll container includes its own end padding in content size.
+    bool isScrollContainer = false;
     SizeF gap;
     AlignItems alignItems;
     AlignContent alignContent;
@@ -208,6 +210,8 @@ AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
     // A node that scrolls vertically needs *horizontal* space reserved for a
     // scrollbar, hence the transposed axes.
     PointOverflow t = style.overflow.Transpose();
+    c.isScrollContainer = IsScrollContainer(style.overflow.x) ||
+                          IsScrollContainer(style.overflow.y);
     c.scrollbarGutter = {t.x == Overflow::Scroll ? style.scrollbarWidth : 0.0f,
                          t.y == Overflow::Scroll ? style.scrollbarWidth : 0.0f};
     c.contentBoxInset = padding + c.border;
@@ -1822,12 +1826,17 @@ SizeF FinalLayoutPass(TaffyTree* tree, Vec<FlexLine>* lines,
                             c.layoutDirection);
     }
 
-    contentSize.w +=
-        IsRtl(c.layoutDirection)
-            ? c.contentBoxInset.left - c.border.left - c.scrollbarGutter.x
-            : c.contentBoxInset.right - c.border.right - c.scrollbarGutter.x;
-    contentSize
-        .h += c.contentBoxInset.bottom - c.border.bottom - c.scrollbarGutter.y;
+    // End padding is part of a scroll container's overflow. Other boxes
+    // do not extend content size by their own padding.
+    if (c.isScrollContainer) {
+        contentSize.w +=
+            IsRtl(c.layoutDirection)
+                ? c.contentBoxInset.left - c.border.left - c.scrollbarGutter.x
+                : c.contentBoxInset.right - c.border.right -
+                      c.scrollbarGutter.x;
+        contentSize.h +=
+            c.contentBoxInset.bottom - c.border.bottom - c.scrollbarGutter.y;
+    }
 
     return contentSize;
 }

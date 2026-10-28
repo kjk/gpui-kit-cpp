@@ -3361,6 +3361,47 @@ static void TestGridPlacement() {
 
 // ─── grid end-to-end ─────────────────────────────────────────────────────
 
+// content_size_excludes_the_own_padding_of_a_non_scroll_container.
+// A scroll container's content size includes its own end padding. A box
+// that does not scroll reports only the content, whose start already
+// includes the start padding.
+static float ContentHeightFor(taffy::Display display, float top, float bottom,
+                              bool scroll) {
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style childStyle;
+    childStyle.size = SizeDim::FromLengths(100.0f, 1000.0f);
+    TaffyNodeId child = tree.NewLeaf(childStyle);
+    taffy::Style nodeStyle;
+    nodeStyle.display = display;
+    nodeStyle.boxSizing = taffy::BoxSizing::BorderBox;
+    nodeStyle.size = SizeDim::FromLengths(300.0f, 200.0f);
+    nodeStyle.padding.top = LengthPercentage::Length(top);
+    nodeStyle.padding.bottom = LengthPercentage::Length(bottom);
+    if (scroll) {
+        nodeStyle.overflow = {taffy::Overflow::Scroll, taffy::Overflow::Scroll};
+    }
+    TaffyNodeId node = tree.NewWithChildren(nodeStyle, &child, 1);
+    tree.ComputeLayout(node, SizeAvail::MaxContent());
+    float h = tree.GetLayout(node).contentSize.h;
+    tree.Free();
+    return h;
+}
+
+static void TestContentSizeEndPadding() {
+    TestSuite("taffy content size end padding");
+    taffy::Display displays[] = {taffy::Display::Block, taffy::Display::Flex,
+                                 taffy::Display::Grid};
+    for (taffy::Display d : displays) {
+        utassertnear(ContentHeightFor(d, 20.0f, 0.0f, false), 1020.0f);
+        utassertnear(ContentHeightFor(d, 0.0f, 20.0f, false), 1000.0f);
+        utassertnear(ContentHeightFor(d, 20.0f, 20.0f, false), 1020.0f);
+        utassertnear(ContentHeightFor(d, 0.0f, 0.0f, false), 1000.0f);
+        utassertnear(ContentHeightFor(d, 20.0f, 20.0f, true), 1040.0f);
+        utassertnear(ContentHeightFor(d, 0.0f, 20.0f, true), 1020.0f);
+    }
+}
+
 static void TestGridLayout() {
     TestSuite("taffy::compute::grid (layout)");
 
@@ -3696,6 +3737,7 @@ void TestTaffy() {
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();
+    TestContentSizeEndPadding();
 
     // The grid tests build styles whose track lists live in an arena of their
     // own; a Style holds slices, not owned vectors.
