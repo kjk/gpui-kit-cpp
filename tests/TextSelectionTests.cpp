@@ -575,6 +575,85 @@ static void FrameSweepDropsOnlyRegistrationsNotRenewed() {
     EntityDropAll(&app);
 }
 
+// text_selection.rs: a registration stores this participant's snapshot
+// immediately and does not republish the others. SelectionChanged waits
+// for the next window publication (the frame end, here). Retained-view
+// paint order has no counterpart; see port-status.md.
+static void RegistrationPublishesOneParticipantUntilTheFrameEnds() {
+    App app = {};
+    Window win;
+    win.app = &app;
+    AddRun(&win, 0, "first", 0);
+    AddRun(&win, 40, "second", 0);
+    Entity<SelectionParticipantHarness> firstWatch =
+        EntityNew<SelectionParticipantHarness>(&app);
+    Entity<SelectionParticipantHarness> secondWatch =
+        EntityNew<SelectionParticipantHarness>(&app);
+    Entity<SelectionParticipantHarness> joiningWatch =
+        EntityNew<SelectionParticipantHarness>(&app);
+    Arena* arena = ArenaNew();
+    Ctx layerCx = {&app, &win, arena, firstWatch.id};
+    TextSelectionLayer::New(&layerCx);
+    Ctx firstCx = {&app, &win, arena, firstWatch.id};
+    Ctx secondCx = {&app, &win, arena, secondWatch.id};
+    Ctx joiningCx = {&app, &win, arena, joiningWatch.id};
+
+    Bounds firstText[] = {{20, 0, 100, 20}};
+    TextSelectionRegistration firstRegistration =
+        TextSelectionRegistration::New({20, 0, 100, 20}, {20, 0, 100, 20})
+            .WithDocumentOrder(10)
+            .WithTextBounds(firstText, 1);
+    TextSelectionRegistration secondRegistration =
+        TextSelectionRegistration::New({20, 40, 100, 20}, {20, 40, 100, 20})
+            .WithDocumentOrder(30);
+    TextSelectionHandle first = TextSelectionHandle::New(StrL("first"), &app);
+    TextSelectionHandle second = TextSelectionHandle::New(StrL("second"), &app);
+    TextSelectionHandle joining =
+        TextSelectionHandle::New(StrL("joining"), &app);
+    first.Subscribe(&firstCx, &SelectionParticipantHarness::OnEvent);
+    second.Subscribe(&secondCx, &SelectionParticipantHarness::OnEvent);
+    joining.Subscribe(&joiningCx, &SelectionParticipantHarness::OnEvent);
+    first.Register(firstRegistration, &win, &app);
+    second.Register(secondRegistration, &win, &app);
+
+    WindowSelectionPress(&win, 25, 5, 1, false);
+    WindowSelectionDrag(&win, 25, 45);
+    TextSelectionSnapshot held;
+    utassert(first.Snapshot(&app, &held));
+    utassert(second.Snapshot(&app, &held));
+    int firstChanged = firstWatch.Get(&app)->changed;
+    int secondChanged = secondWatch.Get(&app)->changed;
+    utassert(firstChanged > 0 && secondChanged > 0);
+    utassert(joiningWatch.Get(&app)->changed == 0);
+
+    for (int i = 0; i < 4; i++) {
+        first.Register(firstRegistration, &win, &app);
+    }
+    utassert(first.Snapshot(&app, &held));
+    utassert(firstWatch.Get(&app)->changed == firstChanged);
+    utassert(secondWatch.Get(&app)->changed == secondChanged);
+
+    joining.Register(
+        TextSelectionRegistration::New({20, 20, 100, 20}, {20, 20, 100, 20})
+            .WithDocumentOrder(20),
+        &win, &app);
+    TextSelectionSnapshot joined;
+    utassert(joining.Snapshot(&app, &joined));
+    utassert(joined.Coverage() == TextSelectionCoverage::Full);
+    utassert(joiningWatch.Get(&app)->changed == 0);
+    utassert(firstWatch.Get(&app)->changed == firstChanged);
+    utassert(secondWatch.Get(&app)->changed == secondChanged);
+
+    WindowSelectionFinishFrame(&win);
+    utassert(joiningWatch.Get(&app)->changed == 1);
+    utassert(firstWatch.Get(&app)->changed == firstChanged);
+    utassert(secondWatch.Get(&app)->changed == secondChanged);
+
+    WindowSelectionFree(&win);
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+}
+
 // selectable_text.rs wrapped_selection_paints_full_width_middle_lines: a
 // selection that spans lines is the tail of the first, the whole of the ones
 // between and the head of the last.
@@ -2280,5 +2359,6 @@ void TestTextSelection() {
     AControlPressSuppressesWindowSelection();
     SourceParticipantContractsProjectAcrossAWindow();
     FrameSweepDropsOnlyRegistrationsNotRenewed();
+    RegistrationPublishesOneParticipantUntilTheFrameEnds();
     TestTextSelectionWindow();
 }

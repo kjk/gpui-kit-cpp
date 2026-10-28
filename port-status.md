@@ -16,16 +16,24 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f6fe05cb3fd207057a0f5fd242ca20c8223bea8f` (2026-10-26,
-base: Report on_prepaint bounds from the element's corner (#3689)).
-Rust pins the measuring canvas to the element's top-left so padding
-does not shift the reported box. This tree reports the laid-out box,
-whose origin is already that corner.
+Processed through `278e78da73d72f93efbd672bff938e971d32ef01` (2026-10-26,
+text: Publish selection snapshots once per frame (#3686)).
+A registration stores that participant's snapshot immediately and
+leaves SelectionChanged to the next window publication, so one
+registration no longer republishes every participant.
+`begin_selection_frame` is a no-op.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
 ## Known gaps vs Rust
 
+- **Selection order is the caller's document order.** Rust numbers
+  paint-order participants after a complete frame and refreshes once
+  when a partial redraw cannot place a retained sibling
+  (`text_selection.rs`). This runtime has no cached-view replay, so a
+  participant that misses a frame is gone (`text_selection.cpp`).
+  Callers pass `WithDocumentOrder`. `begin_selection_frame` is a no-op
+  and does not assign that order.
 - **Data table cell labels are built whenever a hook is set.** Rust
   calls `cell_label` only while assistive technology is connected
   (`window.is_a11y_active`). This tree has no such query, so the hook

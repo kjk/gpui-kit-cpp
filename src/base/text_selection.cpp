@@ -17,6 +17,11 @@ struct TextSelectionParticipantState {
     Window* window = nullptr;
     TextSelectionSnapshot snapshot = {};
     bool hasSnapshot = false;
+    // Set when Register stored a new snapshot without emitting. The next
+    // WindowSelectionPublish delivers that SelectionChanged. Rust's
+    // draw_changed map, kept on the participant because this window has no
+    // separate changed-id table.
+    bool drawChanged = false;
     bool localSelection = false;
     bool registered = false;
     bool hasProjectedCopyText = false;
@@ -337,24 +342,56 @@ static bool ComputeParticipantSnapshot(TextSelectionParticipantState* receiver,
     return true;
 }
 
-static void ParticipantSetSnapshot(TextSelectionParticipantState* state,
-                                   App* app, bool hasSnapshot,
-                                   const TextSelectionSnapshot& snapshot) {
-    if (!state) return;
-    if (state->hasSnapshot == hasSnapshot &&
-        (!hasSnapshot || SameSnapshot(state->snapshot, snapshot))) {
-        return;
-    }
+static bool ParticipantSnapshotSame(const TextSelectionParticipantState* state,
+                                    bool hasSnapshot,
+                                    const TextSelectionSnapshot& snapshot) {
+    return state->hasSnapshot == hasSnapshot &&
+           (!hasSnapshot || SameSnapshot(state->snapshot, snapshot));
+}
+
+static void ParticipantStoreSnapshot(TextSelectionParticipantState* state,
+                                     bool hasSnapshot,
+                                     const TextSelectionSnapshot& snapshot) {
     state->hasSnapshot = hasSnapshot;
     if (hasSnapshot) state->snapshot = snapshot;
     StrFree(state->projectedCopyText);
     state->projectedCopyText = {};
     state->hasProjectedCopyText = false;
+}
+
+static void ParticipantEmitChanged(TextSelectionParticipantState* state,
+                                   App* app,
+                                   const TextSelectionSnapshot& snapshot) {
+    state->drawChanged = false;
     TextSelectionEvent event;
     event.kind = TextSelectionEventKind::SelectionChanged;
-    event.hasSnapshot = hasSnapshot;
+    event.hasSnapshot = state->hasSnapshot;
     event.snapshot = snapshot;
     EntityEmit(app, state->window, state->self, &event);
+}
+
+static void ParticipantSetSnapshot(TextSelectionParticipantState* state,
+                                   App* app, bool hasSnapshot,
+                                   const TextSelectionSnapshot& snapshot) {
+    if (!state) return;
+    bool same = ParticipantSnapshotSame(state, hasSnapshot, snapshot);
+    // A registration stores its snapshot before the event. The next publish
+    // still notifies, including when the stored value already matches.
+    if (same && !state->drawChanged) return;
+    if (!same) ParticipantStoreSnapshot(state, hasSnapshot, snapshot);
+    ParticipantEmitChanged(state, app, snapshot);
+}
+
+// TextSelectionHandle::register's quiet half: the snapshot is readable
+// immediately, and SelectionChanged waits for WindowSelectionPublish.
+static void ParticipantRememberSnapshot(TextSelectionParticipantState* state,
+                                        bool hasSnapshot,
+                                        const TextSelectionSnapshot& snapshot) {
+    if (!state || ParticipantSnapshotSame(state, hasSnapshot, snapshot)) {
+        return;
+    }
+    ParticipantStoreSnapshot(state, hasSnapshot, snapshot);
+    state->drawChanged = true;
 }
 
 static void WindowSelectionPublish(Window* window) {
@@ -497,7 +534,13 @@ void TextSelectionHandle::Register(TextSelectionRegistration value,
         }
     }
     if (!found) VecAppend(selection->participants, state.id);
-    WindowSelectionPublish(window);
+    // Full publication belongs to input handling or the end of the frame,
+    // never to each participant's registration. This participant's snapshot
+    // is readable now; observers run on the next WindowSelectionPublish.
+    TextSelectionSnapshot snapshot;
+    bool has = ComputeParticipantSnapshot(participant, app, &snapshot);
+    participant = ParticipantState(*this, app);
+    ParticipantRememberSnapshot(participant, has, snapshot);
 }
 
 static bool PointInSelectionBand(Point position, float charWidth,
@@ -863,6 +906,7 @@ void WindowSelectionClear(Window* win) {
             TextSelectionClearFn clear = participant->clear;
             void* clearUser = participant->clearUser;
             participant->hasSnapshot = false;
+            participant->drawChanged = false;
             participant->localSelection = false;
             StrFree(participant->projectedCopyText);
             participant->projectedCopyText = {};
@@ -1553,6 +1597,7 @@ void WindowSelectionFinishFrame(Window* win) {
             participant->registered = false;
             participant->window = nullptr;
             participant->hasSnapshot = false;
+            participant->drawChanged = false;
             participant->localSelection = false;
             StrFree(participant->projectedCopyText);
             participant->projectedCopyText = {};

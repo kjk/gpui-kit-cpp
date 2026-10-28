@@ -11,9 +11,10 @@ void BaseGlobalStateInit(App* app) {
 }
 
 void BaseSelectionFrameBegin(App* app) {
-    if (BaseGlobalState* state = BaseGlobalStateOf(app)) {
-        state->selectionDocumentOrder = 1;
-    }
+    // Empty, matching GlobalState::begin_selection_frame. Automatic document
+    // order is no longer assigned here. Paint-order numbering of retained
+    // siblings is a known gap: this runtime has no cached-view replay.
+    (void)app;
 }
 
 static bool SamePoint(Point a, Point b) {

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f6fe05cb3fd207057a0f5fd242ca20c8223bea8f",
+  sha: "278e78da73d72f93efbd672bff938e971d32ef01",
   date: "2026-10-26",
-  subject: "base: Report on_prepaint bounds from the element's corner (#3689)",
+  subject: "text: Publish selection snapshots once per frame (#3686)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

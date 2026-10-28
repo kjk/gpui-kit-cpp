@@ -105,8 +105,9 @@ static void UiInitializationIsIdempotentAndIsolated() {
     utassert(component::UiSelectionNextDocumentOrder(&first) == 1);
     utassert(component::UiSelectionNextDocumentOrder(&first) == 2);
     utassert(component::UiSelectionNextDocumentOrder(&second) == 1);
+    // begin_selection_frame no longer restarts the counter.
     component::UiSelectionFrameBegin(&first);
-    utassert(component::UiSelectionNextDocumentOrder(&first) == 1);
+    utassert(component::UiSelectionNextDocumentOrder(&first) == 3);
 
     component::UiGlobalStateOf(&first)->selectionDocumentOrder = UINT64_MAX;
     utassert(component::UiSelectionNextDocumentOrder(&first) == UINT64_MAX);

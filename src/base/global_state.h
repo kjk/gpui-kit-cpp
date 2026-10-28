@@ -57,10 +57,13 @@ bool BaseIsTouchPress(const App* app);
 const MenuDef* BaseAppMenus(const App* app, int* count);
 void BaseSetAppMenus(App* app, const MenuDef* menus, int count);
 
-// `begin_selection_frame` / `next_selection_document_order`: the reading
-// order a frame's selectable runs are numbered in. The TextSelectionLayer
-// resets it as it prepaints, so a Base application needs no themed Root.
+// `begin_selection_frame` is an empty compatibility hook. It used to restart
+// the reading-order counter as the selection layer prepaints, which reversed
+// the first of two selected views against the previous frame. Callers that
+// still number a run pass that order themselves.
 void BaseSelectionFrameBegin(App* app);
+// `next_selection_document_order`. Rust dropped the counter. It stays here
+// for the legacy initialization test; production text does not read it.
 uint64_t BaseSelectionNextDocumentOrder(App* app);
 
 // confine_to_cell. A drag whose anchor lies in `cell` selects only inside
