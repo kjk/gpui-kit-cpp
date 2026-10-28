@@ -4021,6 +4021,112 @@ static void TestGridLayout() {
     }
 }
 
+// grid_align_items_baseline_child_auto_margin. An auto block-axis margin
+// opts the item out of baseline alignment, so it is not shimmed.
+static void TestGridAutoMarginBaseline() {
+    TestSuite("taffy grid auto margin baseline");
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style a;
+        a.display = taffy::Display::Grid;
+        a.size.height = Dimension::Length(20.0f);
+        taffy::Style b;
+        b.display = taffy::Display::Grid;
+        b.size.height = Dimension::Length(30.0f);
+        taffy::Style inner;
+        inner.display = taffy::Display::Grid;
+        inner.alignSelf = OptAlignSelf(AlignItems{AlignItemsKeyword::Start});
+        inner.size.height = Dimension::Length(5.0f);
+        TaffyNodeId innerNode = tree.NewLeaf(inner);
+        taffy::Style c;
+        c.display = taffy::Display::Grid;
+        c.size.height = Dimension::Length(25.0f);
+        c.margin.top = LengthPercentageAuto::Auto();
+        TaffyNodeId cNode = tree.NewWithChildren(c, &innerNode, 1);
+        TaffyNodeId aNode = tree.NewLeaf(a);
+        TaffyNodeId bNode = tree.NewLeaf(b);
+        TaffyNodeId kids[] = {aNode, bNode, cNode};
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.size.width = Dimension::Length(120.0f);
+        rootStyle.gridAutoFlow = taffy::GridAutoFlow::Column;
+        TrackSizingFunction col = TrackSizingFunction::Length(40.0f);
+        rootStyle.gridAutoColumns = SliceDup(gGridArena, &col, 1);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.w, 120.0f);
+        utassertnear(tree.GetLayout(root).size.h, 30.0f);
+        utassertnear(tree.GetLayout(aNode).location.y, 10.0f);
+        utassertnear(tree.GetLayout(bNode).location.y, 0.0f);
+        utassertnear(tree.GetLayout(cNode).location.x, 80.0f);
+        utassertnear(tree.GetLayout(cNode).location.y, 5.0f);
+        utassertnear(tree.GetLayout(cNode).size.h, 25.0f);
+        utassertnear(tree.GetLayout(innerNode).location.y, 0.0f);
+        tree.Free();
+    }
+
+    {
+        // The auto-margin item does not supply the container baseline, so
+        // the outer row aligns to the nested grid's first item.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style first;
+        first.display = taffy::Display::Grid;
+        first.size = SizeDim::FromLengths(50.0f, 30.0f);
+        TaffyNodeId firstNode = tree.NewLeaf(first);
+
+        taffy::Style innerA;
+        innerA.display = taffy::Display::Grid;
+        innerA.size.height = Dimension::Length(20.0f);
+        TaffyNodeId innerANode = tree.NewLeaf(innerA);
+        taffy::Style innerB;
+        innerB.display = taffy::Display::Grid;
+        innerB
+            .alignSelf = OptAlignSelf(AlignItems{AlignItemsKeyword::Baseline});
+        innerB.size.height = Dimension::Length(10.0f);
+        innerB.margin.top = LengthPercentageAuto::Auto();
+        TaffyNodeId innerBNode = tree.NewLeaf(innerB);
+        TaffyNodeId innerKids[] = {innerANode, innerBNode};
+        taffy::Style nested;
+        nested.display = taffy::Display::Grid;
+        nested.size.width = Dimension::Length(50.0f);
+        nested.gridAutoFlow = taffy::GridAutoFlow::Column;
+        TrackSizingFunction autoRow = TrackSizingFunction::Length(40.0f);
+        TrackSizingFunction autoCol = TrackSizingFunction::Length(25.0f);
+        nested.gridAutoRows = SliceDup(gGridArena, &autoRow, 1);
+        nested.gridAutoColumns = SliceDup(gGridArena, &autoCol, 1);
+        TaffyNodeId nestedNode = tree.NewWithChildren(nested, innerKids, 2);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.size = SizeDim::FromLengths(120.0f, 80.0f);
+        GridTemplateComponent cols[2] = {
+            GridTemplateComponent::Single(TrackSizingFunction::Length(60.0f)),
+            GridTemplateComponent::Single(TrackSizingFunction::Length(60.0f))};
+        rootStyle.gridTemplateColumns = GridTemplateOf(cols, 2);
+        TaffyNodeId kids[] = {firstNode, nestedNode};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(firstNode).location.y, 0.0f);
+        utassertnear(tree.GetLayout(firstNode).size.h, 30.0f);
+        utassertnear(tree.GetLayout(nestedNode).location.x, 60.0f);
+        utassertnear(tree.GetLayout(nestedNode).location.y, 10.0f);
+        utassertnear(tree.GetLayout(nestedNode).size.h, 40.0f);
+        utassertnear(tree.GetLayout(innerANode).location.y, 0.0f);
+        utassertnear(tree.GetLayout(innerANode).size.h, 20.0f);
+        utassertnear(tree.GetLayout(innerBNode).location.x, 25.0f);
+        utassertnear(tree.GetLayout(innerBNode).location.y, 30.0f);
+        utassertnear(tree.GetLayout(innerBNode).size.h, 10.0f);
+        tree.Free();
+    }
+}
+
 // A scroll container holding a column of fixed-height children: the column
 // overflows rather than shrinking, because its own automatic minimum size is
 // its min-content height, and that is the sum of three definite heights.
@@ -4236,6 +4342,7 @@ void TestTaffy() {
     TestGridImplicitSizing();
     TestGridPlacement();
     TestGridLayout();
+    TestGridAutoMarginBaseline();
     TestGridRepetitionLineNames();
     TestGridNonFiniteStylesTerminate();
     TestGridZeroSpanTerminates();

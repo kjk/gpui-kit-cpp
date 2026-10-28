@@ -542,6 +542,13 @@ struct GridItem {
     float yPosition = 0.0f;
     float height = 0.0f;
 
+    // css-align-3 §9.5: an auto margin on the block axis opts the item
+    // out of baseline alignment.
+    bool ParticipatesInBaselineAlignment() const {
+        return alignSelf.keyword == AlignItemsKeyword::Baseline &&
+               !margin.top.IsAuto() && !margin.bottom.IsAuto();
+    }
+
     LineOzl Placement(AbstractAxis axis) const {
         return axis == AbstractAxis::Block ? row : column;
     }
@@ -2546,7 +2553,7 @@ void ResolveItemBaselines(TaffyTree* tree, AbstractAxis axis, GridItem* items,
         // One or zero participating items makes baseline alignment a no-op.
         int baselineCount = 0;
         for (int i = start; i < end; i++) {
-            if (items[i].alignSelf.keyword == AlignItemsKeyword::Baseline) {
+            if (items[i].ParticipatesInBaselineAlignment()) {
                 baselineCount++;
             }
         }
@@ -2557,6 +2564,9 @@ void ResolveItemBaselines(TaffyTree* tree, AbstractAxis axis, GridItem* items,
 
         for (int i = start; i < end; i++) {
             GridItem& item = items[i];
+            if (!item.ParticipatesInBaselineAlignment()) {
+                continue;
+            }
             LayoutOutput out = tree->PerformChildLayout(
                 item.node, SizeFOptNone(), innerNodeSize,
                 SizeAvail::MinContent(), SizingMode::InherentSize,
@@ -2578,10 +2588,16 @@ void ResolveItemBaselines(TaffyTree* tree, AbstractAxis axis, GridItem* items,
 
         float rowMaxBaseline = 0.0f;
         for (int i = start; i < end; i++) {
+            if (!items[i].ParticipatesInBaselineAlignment()) {
+                continue;
+            }
             rowMaxBaseline =
                 F32Max(rowMaxBaseline, UnwrapOr(items[i].baseline, 0.0f));
         }
         for (int i = start; i < end; i++) {
+            if (!items[i].ParticipatesInBaselineAlignment()) {
+                continue;
+            }
             items[i].baselineShim =
                 rowMaxBaseline - UnwrapOr(items[i].baseline, 0.0f);
         }
@@ -4221,7 +4237,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
 
     bool hasBaselineAlignedItem = false;
     for (int i = 0; i < len(items); i++) {
-        if (items[i].alignSelf.keyword == AlignItemsKeyword::Baseline) {
+        if (items[i].ParticipatesInBaselineAlignment()) {
             hasBaselineAlignedItem = true;
             break;
         }
@@ -4632,7 +4648,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         }
         const GridItem* chosen = &items[0];
         for (int i = 0; i < rowEnd; i++) {
-            if (items[i].alignSelf.keyword == AlignItemsKeyword::Baseline) {
+            if (items[i].ParticipatesInBaselineAlignment()) {
                 chosen = &items[i];
                 break;
             }
