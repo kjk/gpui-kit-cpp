@@ -40,7 +40,6 @@ struct FlexItem {
     AlignSelf alignSelf;
 
     PointOverflow overflow;
-    Contain contain;
     float scrollbarWidth = 0.0f;
     float flexShrink = 0.0f;
     float flexGrow = 0.0f;
@@ -269,15 +268,11 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
         SizeF boxSizingAdjustment =
             cs.boxSizing == BoxSizing::ContentBox ? pbSum : SizeF::Zero();
 
-        // A known size derived from the container's own content (including
-        // size containment's as-if-empty pass) is indefinite, so item
-        // percentages do not resolve against it.
+        // A known main size derived from the container's own content is
+        // indefinite, so item percentages do not resolve against it.
         SizeFOpt percentResolutionSize = c.nodeInnerSize;
         if (!c.knownMainSizeIsDefinite) {
             SetMain(&percentResolutionSize, c.dir, None());
-        }
-        if (!c.hasDefiniteCrossSize) {
-            SetCross(&percentResolutionSize, c.dir, None());
         }
 
         FlexItem item;
@@ -307,7 +302,6 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
             ResolveSelfRelative(cs.alignSelf.UnwrapOr(c.alignItems),
                                 cs.direction, c.layoutDirection, c.isColumn);
         item.overflow = cs.overflow;
-        item.contain = cs.contain;
         item.scrollbarWidth = cs.scrollbarWidth;
         item.flexGrow = cs.flexGrow;
         item.flexShrink = cs.flexShrink;
@@ -1287,9 +1281,8 @@ void CalculateCrossSize(Vec<FlexLine>* lines, SizeFOpt nodeSize,
         return;
     }
     // A single-line container with a definite cross size gives its line the
-    // container's inner cross size. A used cross size from size containment
-    // is not definite.
-    if (!c.isWrap && IsSome(Cross(nodeSize, dir)) && c.hasDefiniteCrossSize) {
+    // container's inner cross size.
+    if (!c.isWrap && IsSome(Cross(nodeSize, dir))) {
         float crossAxisPaddingBorder = CrossAxisSum(c.contentBoxInset, dir);
         (*lines)[0].crossSize = UnwrapOr(
             MaybeMax(
@@ -1766,10 +1759,10 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
         IsRtl(layoutDirection)
             ? PointF{containerSize.w - (location.x + size.w), location.y}
             : location;
-    *totalContentSize = Max(
-        *totalContentSize,
-        ComputeContentSizeContribution(contributionLocation, size, contentSize,
-                                       item->overflow, item->contain));
+    *totalContentSize =
+        Max(*totalContentSize,
+            ComputeContentSizeContribution(contributionLocation, size,
+                                           contentSize, item->overflow));
 }
 
 // ─── calculate_layout_line ───────────────────────────────────────────────
@@ -1858,7 +1851,6 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
         }
 
         PointOverflow overflow = cs.overflow;
-        Contain contain = cs.contain;
         float scrollbarWidth = cs.scrollbarWidth;
         Optf aspectRatio = cs.aspectRatio;
         AlignSelf alignSelf =
@@ -2132,12 +2124,11 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
         layout.margin = resolvedMargin;
         tree->SetUnroundedLayout(child, layout);
 
-        bool overflowContributes = !contain.ContainsScrollableOverflow();
         SizeF sizeContribution = {
-            overflow.x == Overflow::Visible && overflowContributes
+            overflow.x == Overflow::Visible
                 ? F32Max(finalSize.w, layoutOutput.contentSize.w)
                 : finalSize.w,
-            overflow.y == Overflow::Visible && overflowContributes
+            overflow.y == Overflow::Visible
                 ? F32Max(finalSize.h, layoutOutput.contentSize.h)
                 : finalSize.h};
         if (HasNonZeroArea(sizeContribution)) {
@@ -2168,8 +2159,7 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
 // ─── compute_preliminary ─────────────────────────────────────────────────
 
 LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
-                                const LayoutInput& inputs,
-                                bool ignoreChildren) {
+                                const LayoutInput& inputs) {
     SizeFOpt knownDimensions = inputs.knownDimensions;
     SizeFOpt parentSize = inputs.parentSize;
     RunMode runMode = inputs.runMode;
@@ -2200,11 +2190,8 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
     VecUseExternalBuffer(flexLines, lineBuf);
 
     // 9.1. Initial Setup
-    // 1. Generate anonymous flex items. Size containment's as-if-empty pass
-    //    generates none.
-    if (!ignoreChildren) {
-        GenerateAnonymousFlexItems(tree, node, constants, &flexItems);
-    }
+    // 1. Generate anonymous flex items.
+    GenerateAnonymousFlexItems(tree, node, constants, &flexItems);
 
     // 9.2. Line Length Determination
     // 2. Determine the available main and cross space for the flex items.
@@ -2352,11 +2339,10 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
 
 } // namespace
 
-// ─── compute_flexbox_layout_inner ────────────────────────────────────────
+// ─── compute_flexbox_layout ──────────────────────────────────────────────
 
-static LayoutOutput ComputeFlexboxLayoutInner(TaffyTree* tree, NodeId node,
-                                              const LayoutInput& inputs,
-                                              bool ignoreChildren) {
+LayoutOutput ComputeFlexboxLayout(TaffyTree* tree, NodeId node,
+                                  const LayoutInput& inputs) {
     CalcResolver calc = tree->calc;
     SizeFOpt knownDimensions = inputs.knownDimensions;
     SizeFOpt parentSize = inputs.parentSize;
@@ -2427,35 +2413,7 @@ static LayoutOutput ComputeFlexboxLayoutInner(TaffyTree* tree, NodeId node,
         inputs.knownDimensionsAreDefiniteW || !IsSome(knownDimensions.w);
     next.knownDimensionsAreDefiniteH =
         inputs.knownDimensionsAreDefiniteH || !IsSome(knownDimensions.h);
-    return ComputePreliminary(tree, node, next, ignoreChildren);
-}
-
-// ─── compute_flexbox_layout ──────────────────────────────────────────────
-
-LayoutOutput ComputeFlexboxLayout(TaffyTree* tree, NodeId node,
-                                  const LayoutInput& inputs) {
-    const Style& style = tree->GetStyle(node);
-    Contain contain = style.contain;
-    LayoutOutput output;
-    if (contain.Intersects(Contain::Size().Union(Contain::InlineSize()))) {
-        bool definiteW = false;
-        bool definiteH = false;
-        ContainedSizeIsDefinite(style, inputs, tree->calc, &definiteW,
-                                &definiteH);
-        output = ComputeContainedSizeLayout(
-            tree, node, inputs, contain, definiteW, definiteH,
-            [](TaffyTree* tree, NodeId node, const LayoutInput& inputs,
-               bool ignoreChildren) {
-                return ComputeFlexboxLayoutInner(tree, node, inputs,
-                                                 ignoreChildren);
-            });
-    } else {
-        output = ComputeFlexboxLayoutInner(tree, node, inputs, false);
-    }
-    if (contain.SuppressesBaseline()) {
-        output.firstBaselines = PointFOptNone();
-    }
-    return output;
+    return ComputePreliminary(tree, node, next);
 }
 
 } // namespace taffy

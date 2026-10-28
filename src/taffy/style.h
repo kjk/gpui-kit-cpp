@@ -1385,73 +1385,6 @@ enum class GridAreaEnd : uint8_t {
     End
 };
 
-// The layout-affecting parts of CSS `contain`. `style` containment has no
-// layout effect and is not a flag. Parsing the keywords is omitted with the
-// parse feature; callers set the bits directly.
-// https://developer.mozilla.org/en-US/docs/Web/CSS/contain
-struct Contain {
-    uint8_t bits = 0;
-
-    static constexpr uint8_t kNone = 0;
-    static constexpr uint8_t kSize = 1u << 0;
-    static constexpr uint8_t kInlineSize = 1u << 1;
-    static constexpr uint8_t kLayout = 1u << 2;
-    static constexpr uint8_t kPaint = 1u << 3;
-
-    static constexpr Contain Of(uint8_t bits) {
-        Contain c;
-        c.bits = bits;
-        return c;
-    }
-    static constexpr Contain None() { return Of(kNone); }
-    static constexpr Contain Size() { return Of(kSize); }
-    static constexpr Contain InlineSize() { return Of(kInlineSize); }
-    static constexpr Contain Layout() { return Of(kLayout); }
-    static constexpr Contain Paint() { return Of(kPaint); }
-    // `contain: strict` is size, layout and paint. Style containment is
-    // ignored.
-    static constexpr Contain Strict() {
-        return Of((uint8_t)(kSize | kLayout | kPaint));
-    }
-    // `contain: content` is layout and paint.
-    static constexpr Contain Content() {
-        return Of((uint8_t)(kLayout | kPaint));
-    }
-
-    constexpr bool Contains(Contain other) const {
-        return (bits & other.bits) == other.bits;
-    }
-    constexpr bool Intersects(Contain other) const {
-        return (bits & other.bits) != 0;
-    }
-    constexpr Contain Union(Contain other) const {
-        return Of((uint8_t)(bits | other.bits));
-    }
-    // Layout and paint containment each establish an independent formatting
-    // context.
-    constexpr bool EstablishesIndependentFormattingContext() const {
-        return Intersects(Of((uint8_t)(kLayout | kPaint)));
-    }
-    // Layout containment suppresses the baseline. Paint containment does not.
-    constexpr bool SuppressesBaseline() const { return Contains(Of(kLayout)); }
-    // Layout containment treats overflowing content as ink overflow. Paint
-    // containment clips it. Either way it does not expand a parent's
-    // scrollable overflow.
-    constexpr bool ContainsScrollableOverflow() const {
-        return Intersects(Of((uint8_t)(kLayout | kPaint)));
-    }
-};
-
-constexpr bool operator==(Contain a, Contain b) {
-    return a.bits == b.bits;
-}
-constexpr bool operator!=(Contain a, Contain b) {
-    return !(a == b);
-}
-constexpr Contain operator|(Contain a, Contain b) {
-    return a.Union(b);
-}
-
 // ─── Style ───────────────────────────────────────────────────────────────
 
 // The CSS style information for a single node. Field for field the Rust
@@ -1469,8 +1402,6 @@ struct Style {
     // Overflow
     PointOverflow overflow;
     float scrollbarWidth = 0.0f;
-    // Layout-affecting CSS `contain`. None by default.
-    Contain contain = Contain::None();
 
     // Float
     Float floatMode = Float::None;

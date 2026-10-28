@@ -603,10 +603,8 @@ struct BlockContext {
     float insets[2] = {0.0f, 0.0f};
     // The x insets of the content box.
     float contentBoxInsets[2] = {0.0f, 0.0f};
-    // The height that floats take up in this element. -infinity means the
-    // subtree contains no floats, so a child with no floats does not raise
-    // its parent's contribution.
-    float floatContentContribution = -INFINITY;
+    // The height that floats take up in this element.
+    float floatContentContribution = 0.0f;
     bool isRoot = false;
     bool adjoiningFloats[2] = {false, false};
     bool topAdjoiningFloats[2] = {false, false};
@@ -751,7 +749,6 @@ struct BlockItem {
     SizeFOpt maxSize = SizeFOptNone();
 
     PointOverflow overflow;
-    Contain contain;
     float scrollbarWidth = 0.0f;
 
     Position position = Position::Relative;
@@ -803,19 +800,14 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
         item.clear = cs.clear;
         item.position = cs.position;
         item.overflow = cs.overflow;
-        item.contain = cs.contain;
         item.scrollbarWidth = cs.scrollbarWidth;
 
         bool isNotFloated = cs.floatMode == Float::None;
         bool isScrollContainer = IsScrollContainer(cs.overflow.x) ||
                                  IsScrollContainer(cs.overflow.y);
-        // Layout and paint containment establish an independent formatting
-        // context, so the child is not in this block's BFC.
-        bool independentFc = cs.contain
-                                 .EstablishesIndependentFormattingContext();
         item.isInSameBfc = cs.IsBlock() && !cs.itemIsTable &&
                            cs.position != Position::Absolute && isNotFloated &&
-                           !isScrollContainer && !independentFc;
+                           !isScrollContainer;
 
         item.sizeStyle = cs.size;
         item.size = MaybeAdd(
@@ -1043,8 +1035,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                                             resolvedBorder.right
                                       : location.x - resolvedBorder.left,
                      location.y - resolvedBorder.top},
-                    itemLayout.size, itemLayout.contentSize, item.overflow,
-                    item.contain));
+                    itemLayout.size, itemLayout.contentSize, item.overflow));
             continue;
         }
 
@@ -1326,8 +1317,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                                resolvedBorder.right
                          : location.x - resolvedBorder.left,
                      location.y - resolvedBorder.top},
-                    finalSize, itemLayout.contentSize, item.overflow,
-                    item.contain));
+                    finalSize, itemLayout.contentSize, item.overflow));
 
         if (isCollapsingWithFirstMarginSet && itemPushedBelowFloat) {
             isCollapsingWithFirstMarginSet = false;
@@ -1576,11 +1566,10 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
 
         PointF relativeLocation = {location.x - areaOffset.x,
                                    location.y - areaOffset.y};
-        absoluteContentSize =
-            Max(absoluteContentSize,
-                ComputeContentSizeContribution(relativeLocation, finalSize,
-                                               layoutOutput.contentSize,
-                                               item.overflow, item.contain));
+        absoluteContentSize = Max(absoluteContentSize,
+                                  ComputeContentSizeContribution(
+                                      relativeLocation, finalSize,
+                                      layoutOutput.contentSize, item.overflow));
     }
 
     return absoluteContentSize;
@@ -1589,8 +1578,7 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
 // ─── compute_inner ───────────────────────────────────────────────────────
 
 LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
-                          const LayoutInput& inputs, BlockContext* blockCtx,
-                          bool ignoreChildren) {
+                          const LayoutInput& inputs, BlockContext* blockCtx) {
     CalcResolver calc = tree->calc;
     SizeFOpt knownDimensionsIn = inputs.knownDimensions;
     SizeFOpt parentSize = inputs.parentSize;
@@ -1664,11 +1652,8 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
                              IsScrollContainer(style.overflow.y);
     // css-align-3 §5.1.1: a non-normal align-content makes a block container
-    // establish an independent formatting context. Layout and paint
-    // containment do too.
-    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome() ||
-                             style.contain
-                                 .EstablishesIndependentFormattingContext();
+    // establish an independent formatting context.
+    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome();
 
     LineBool ownMarginsCollapseWithChildren = {
         verticalMarginsAreCollapsible.start && !establishesNewBfc &&
@@ -1687,11 +1672,9 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     TextAlign textAlign = style.textAlign;
     OptAlignContent alignContent = style.alignContent;
 
-    // 1. Generate items. Size containment's as-if-empty pass generates none.
+    // 1. Generate items.
     Vec<BlockItem> items;
-    if (!ignoreChildren) {
-        GenerateItemList(tree, nodeId, containerContentBoxSize, &items);
-    }
+    GenerateItemList(tree, nodeId, containerContentBoxSize, &items);
 
     // 2. Compute the container width.
     float containerOuterWidth;
@@ -1809,8 +1792,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
                                    resolvedBorder.right
                              : l.location.x - resolvedBorder.left,
                          l.location.y - resolvedBorder.top},
-                        l.size, l.contentSize, items[i].overflow,
-                        items[i].contain));
+                        l.size, l.contentSize, items[i].overflow));
             }
         }
     }
@@ -1888,12 +1870,11 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
 
 } // namespace
 
-// ─── compute_block_layout_inner ──────────────────────────────────────────
+// ─── compute_block_layout ────────────────────────────────────────────────
 
-static LayoutOutput ComputeBlockLayoutInner(TaffyTree* tree, NodeId nodeId,
-                                            const LayoutInput& inputs,
-                                            BlockContext* blockCtx,
-                                            bool ignoreChildren) {
+LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
+                                const LayoutInput& inputs,
+                                BlockContext* blockCtx) {
     CalcResolver calc = tree->calc;
     SizeFOpt knownDimensions = inputs.knownDimensions;
     SizeFOpt parentSize = inputs.parentSize;
@@ -1903,11 +1884,8 @@ static LayoutOutput ComputeBlockLayoutInner(TaffyTree* tree, NodeId nodeId,
     bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
                              IsScrollContainer(style.overflow.y);
     // css-align-3 §5.1.1: a non-normal align-content makes a block container
-    // establish an independent formatting context. Layout and paint
-    // containment do too.
-    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome() ||
-                             style.contain
-                                 .EstablishesIndependentFormattingContext();
+    // establish an independent formatting context.
+    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome();
     Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
@@ -1966,48 +1944,17 @@ static LayoutOutput ComputeBlockLayoutInner(TaffyTree* tree, NodeId nodeId,
     // Use the block formatting context that was passed down, unless this node
     // establishes its own (a scroll container, or a non-normal align-content).
     if (blockCtx && !establishesNewBfc) {
-        return ComputeInner(tree, nodeId, next, blockCtx, ignoreChildren);
+        return ComputeInner(tree, nodeId, next, blockCtx);
     }
     BlockFormattingContext rootBfc;
     BlockContext rootCtx;
     rootCtx.bfc = &rootBfc;
     rootCtx.isRoot = true;
-    LayoutOutput out =
-        ComputeInner(tree, nodeId, next, &rootCtx, ignoreChildren);
+    LayoutOutput out = ComputeInner(tree, nodeId, next, &rootCtx);
     VecReset(rootBfc.floatContext.leftFloats);
     VecReset(rootBfc.floatContext.rightFloats);
     VecReset(rootBfc.floatContext.segments);
     return out;
-}
-
-LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
-                                const LayoutInput& inputs,
-                                BlockContext* blockCtx) {
-    const Style& style = tree->GetStyle(nodeId);
-    Contain contain = style.contain;
-    LayoutOutput output;
-    if (contain.Intersects(Contain::Size().Union(Contain::InlineSize()))) {
-        bool definiteW = false;
-        bool definiteH = false;
-        ContainedSizeIsDefinite(style, inputs, tree->calc, &definiteW,
-                                &definiteH);
-        output = ComputeContainedSizeLayout(
-            tree, nodeId, inputs, contain, definiteW, definiteH,
-            [&](TaffyTree* tree, NodeId nodeId, const LayoutInput& inputs,
-                bool ignoreChildren) {
-                // The as-if-empty pass must not disturb an inherited
-                // formatting context.
-                BlockContext* ctx = ignoreChildren ? nullptr : blockCtx;
-                return ComputeBlockLayoutInner(tree, nodeId, inputs, ctx,
-                                               ignoreChildren);
-            });
-    } else {
-        output = ComputeBlockLayoutInner(tree, nodeId, inputs, blockCtx, false);
-    }
-    if (contain.SuppressesBaseline()) {
-        output.firstBaselines = PointFOptNone();
-    }
-    return output;
 }
 
 } // namespace taffy
