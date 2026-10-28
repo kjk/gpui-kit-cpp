@@ -203,7 +203,11 @@ struct CellOccupancyMatrix {
         }
         SparseCursor* p = VecAppendBlanks(cursors, count);
         if (p) {
-            memset(p, 0, (size_t)count * sizeof(SparseCursor));
+            // SparseCursor has a default member initializer, so g++ rejects
+            // memset.
+            for (int i = 0; i < count; i++) {
+                p[i] = {};
+            }
         }
     }
     // Negative growth inserts empty tracks at the front. Cursor values are
@@ -221,10 +225,13 @@ struct CellOccupancyMatrix {
             return;
         }
         if (p) {
-            memset(p, 0, (size_t)newCount * sizeof(SparseCursor));
+            for (int i = 0; i < newCount; i++) {
+                p[i] = {};
+            }
             if (oldCount > 0 && cursors.els) {
-                memcpy(p + reqNeg, cursors.els,
-                       (size_t)oldCount * sizeof(SparseCursor));
+                for (int i = 0; i < oldCount; i++) {
+                    p[reqNeg + i] = cursors.els[i];
+                }
             }
         }
         VecReset(cursors);

@@ -753,7 +753,12 @@ static void WidthCachePut(InputWrapMap* map, Str text, float width) {
         cache->cap = kWidthCacheMaxEntries * 2;
         cache->slots = (WidthCache::Slot*)Alloc(
             nullptr, cache->cap * (int)sizeof(WidthCache::Slot));
-        memset(cache->slots, 0, (size_t)cache->cap * sizeof(WidthCache::Slot));
+        // Slot has a default member initializer, so g++ rejects memset.
+        if (cache->slots) {
+            for (int i = 0; i < cache->cap; i++) {
+                cache->slots[i] = {};
+            }
+        }
         cache->fifo =
             (int*)Alloc(nullptr, kWidthCacheMaxEntries * (int)sizeof(int));
     }
