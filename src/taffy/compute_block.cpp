@@ -910,10 +910,12 @@ float DetermineContentBasedContainerWidth(TaffyTree* tree,
             } else {
                 childAvail.width = MaybeSub(childAvail.width, itemXMarginSum);
             }
+            // The same collapsibility as the child's final layout, so the
+            // cache mode stays constant for the pass.
             width = tree->MeasureChildSize(
                 item.nodeId, knownDimensions, SizeFOptNone(), childAvail,
                 SizingMode::InherentSize, AbsoluteAxis::Horizontal,
-                LineBool::True());
+                item.isInSameBfc ? LineBool::True() : LineBool::False());
         }
         width = F32Max(width, item.paddingBorderSum.w) + itemXMarginSum;
 
@@ -1152,7 +1154,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                     item.nodeId, SizeFOptNone(), parentSize,
                     {keyword.measure, AvailableSpace::MaxContent()},
                     SizingMode::InherentSize, AbsoluteAxis::Horizontal,
-                    LineBool::True()));
+                    item.isInSameBfc ? LineBool::True() : LineBool::False()));
             }
             Optf keywordHeight = ResolveStretchHeight(
                 item.sizeStyle.height, percentageResolutionHeight,

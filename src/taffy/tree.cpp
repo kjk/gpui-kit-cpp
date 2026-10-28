@@ -93,6 +93,9 @@ bool CacheKey::SizeIsValidFor(CacheKey other) const {
 }
 
 bool Cache::Get(const LayoutInput& input, LayoutOutput* out) {
+    if (!ModeMatches(input)) {
+        return false;
+    }
     return GetWithKey(CacheKey::From(input), input.runMode, out);
 }
 
@@ -137,6 +140,15 @@ bool Cache::GetWithKey(CacheKey key, RunMode runMode, LayoutOutput* out) {
 
 void Cache::StoreWithKey(CacheKey key, const LayoutInput& input,
                          const LayoutOutput& output) {
+    // Hidden layout is not a result. It must not evict a real mode.
+    if (input.runMode == RunMode::PerformHiddenLayout) {
+        return;
+    }
+    uint8_t nextMode = CacheModeOf(input);
+    if (mode != nextMode) {
+        Clear();
+        mode = nextMode;
+    }
     switch (input.runMode) {
         case RunMode::PerformLayout:
             isEmpty = false;

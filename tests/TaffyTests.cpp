@@ -5514,6 +5514,35 @@ static void TestLayoutCache() {
         }
         utassert(cache.recentlyUsedEntries != 0);
     }
+
+    {
+        // A different sizing mode or margin collapsibility misses, and
+        // storing one drops the entries computed with the previous mode.
+        Cache cache;
+        cache.Store(CacheMeasureInput(1.0f), CacheMeasureOutput(1.0f));
+        LayoutInput other = CacheMeasureInput(1.0f);
+        other.sizingMode = SizingMode::ContentSize;
+        LayoutOutput missed;
+        utassert(!cache.Get(other, &missed));
+        other = CacheMeasureInput(1.0f);
+        other.verticalMarginsAreCollapsible.start = true;
+        utassert(!cache.Get(other, &missed));
+        SizeF got;
+        utassert(CacheGotSize(cache, 1.0f, &got));
+        utassertnear(got.w, 1.0f);
+
+        other = CacheMeasureInput(3.0f);
+        other.sizingMode = SizingMode::ContentSize;
+        cache.Store(other, CacheMeasureOutput(3.0f));
+        utassert(!CacheGotSize(cache, 1.0f, &got));
+        utassert(cache.Get(other, &missed));
+        utassertnear(missed.size.w, 3.0f);
+        utassert(CacheMeasureCount(cache) == 1);
+
+        cache.Store(LayoutInput::Hidden(), CacheMeasureOutput(9.0f));
+        utassert(cache.Get(other, &missed));
+        utassertnear(missed.size.w, 3.0f);
+    }
 }
 
 struct MeasureCount {

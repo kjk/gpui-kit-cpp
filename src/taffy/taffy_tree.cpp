@@ -617,7 +617,8 @@ LayoutOutput TaffyTree::ComputeBlockChildLayout(NodeId node, LayoutInput inputs,
     }
     CacheKey key = CacheKey::From(inputs);
     LayoutOutput cached;
-    if (d->cache.GetWithKey(key, inputs.runMode, &cached)) {
+    if (d->cache.ModeMatches(inputs) &&
+        d->cache.GetWithKey(key, inputs.runMode, &cached)) {
         return cached;
     }
 

@@ -444,6 +444,28 @@ struct Cache {
     uint8_t nextMeasureEntry = 0;
     // Tracks whether every entry is empty, so a clear can be skipped.
     bool isEmpty = true;
+    // Sizing mode and vertical margin collapsibility are not in `CacheKey`.
+    // Every entry was computed with this one mode. A get for another mode
+    // misses, and a store of another mode drops the entries. Bit 0 is
+    // inherent size, bit 1 the start margin, bit 2 the end margin.
+    uint8_t mode = 0;
+
+    static uint8_t CacheModeOf(const LayoutInput& input) {
+        uint8_t bits = 0;
+        if (input.sizingMode == SizingMode::InherentSize) {
+            bits = (uint8_t)(bits | 1u);
+        }
+        if (input.verticalMarginsAreCollapsible.start) {
+            bits = (uint8_t)(bits | 2u);
+        }
+        if (input.verticalMarginsAreCollapsible.end) {
+            bits = (uint8_t)(bits | 4u);
+        }
+        return bits;
+    }
+    bool ModeMatches(const LayoutInput& input) const {
+        return mode == CacheModeOf(input);
+    }
 
     static constexpr uint16_t kFinalBit = 1;
     static constexpr uint16_t MeasureBit(int i) {
