@@ -952,8 +952,9 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
     Vec<OofCandidate>* oofPool, float containerOuterWidth,
     Optf containerPercentageResolutionHeight, RectF contentBoxInset,
     RectF resolvedContentBoxInset, RectF resolvedBorder, TextAlign textAlign,
-    Direction direction, LineBool ownMarginsCollapseWithChildren,
-    bool isScrollContainer, BlockContext* blockCtx) {
+    OptAlignItems justifyItems, Direction direction,
+    LineBool ownMarginsCollapseWithChildren, bool isScrollContainer,
+    BlockContext* blockCtx) {
     CalcResolver calc = tree->calc;
     // Padding or border wider than the box floors the content width at zero.
     // A negative width would be passed down as a known size and available
@@ -1148,11 +1149,30 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
         }
 
+        // justify-self on an in-flow block (css-align-3 §6.1.1). auto takes
+        // the container's justify-items. normal (both unset) is the default
+        // block layout. stretch is that same stretch, except it also
+        // stretches tables and replaced boxes.
+        OptAlignItems justifySelf = item.justifySelf.Or(justifyItems);
+        if (justifySelf.IsSome()) {
+            justifySelf.val = ResolveSelfRelative(
+                justifySelf.val, item.direction, direction, true);
+        }
+        bool isStretch = justifySelf.IsSome() &&
+                         justifySelf.val.keyword == AlignItemsKeyword::Stretch;
+        bool hasNonStretchJustify = justifySelf.IsSome() && !isStretch;
+
         SizeFOpt knownDimensions = SizeFOptNone();
-        if (!item.isTable && !item.isReplaced) {
+        if (!(item.isTable || item.isReplaced) || isStretch) {
+            // A non-normal, non-stretch justify-self makes an auto width
+            // fit-content instead of stretch.
+            Dimension widthStyle = item.sizeStyle.width;
+            if (hasNonStretchJustify && widthStyle.IsAuto()) {
+                widthStyle = Dimension::FitContent();
+            }
             Optf keywordWidth = None();
             SizingKeywordResolution keyword =
-                ResolveSizingKeyword(item.sizeStyle.width, Some(stretchWidth),
+                ResolveSizingKeyword(widthStyle, Some(stretchWidth),
                                      Some(containerInnerWidth), calc);
             if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
                 keywordWidth = Some(keyword.exact);
@@ -1327,10 +1347,43 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                 floatAvoidingPosition.y + insetOffset.y};
         }
 
-        // Legacy text-align on the block container shifts the item.
+        // justify-self aligns the margin box. It wins over legacy
+        // text-align. An auto margin has already absorbed the free space
+        // and wins over justify-self.
         float itemOuterWidth = itemLayout.size.w + resolvedMargin
                                                        .HorizontalAxisSum();
-        if (itemOuterWidth < containerInnerWidth) {
+        bool hasAutoXMargin =
+            !IsSome(itemMargin.left) || !IsSome(itemMargin.right);
+        if (hasNonStretchJustify && !hasAutoXMargin) {
+            // A box beside a float aligns in the leftover slot. That slot
+            // is already inset by the item's margins.
+            float containerStart;
+            float freeX;
+            if (itemAvoidsFloats) {
+                containerStart = floatAvoidingPosition.x - resolvedMargin.left;
+                freeX = floatAvoidingWidth - itemLayout.size.w;
+            } else {
+                containerStart = resolvedContentBoxInset.left;
+                freeX = containerInnerWidth - itemOuterWidth;
+            }
+            AlignItemsKeyword keyword = justifySelf.val.keyword;
+            if (justifySelf.val.safety == AlignmentSafety::Safe &&
+                freeX < 0.0f) {
+                keyword = AlignItemsKeyword::Start;
+            }
+            float offset;
+            if (keyword == AlignItemsKeyword::Center) {
+                offset = freeX / 2.0f;
+            } else {
+                bool alignToEnd = keyword == AlignItemsKeyword::End ||
+                                  keyword == AlignItemsKeyword::FlexEnd ||
+                                  keyword == AlignItemsKeyword::SelfEnd;
+                offset = (alignToEnd != IsRtl(direction)) ? freeX : 0.0f;
+            }
+            location.x =
+                containerStart + resolvedMargin.left + insetOffset.x + offset;
+        } else if (!hasNonStretchJustify &&
+                   itemOuterWidth < containerInnerWidth) {
             float free = containerInnerWidth - itemOuterWidth;
             switch (textAlign) {
                 case TextAlign::LegacyLeft:
@@ -1617,8 +1670,8 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     InFlowResult inFlow = PerformFinalLayoutOnInFlowChildren(
         tree, runMode, &items, &oofPool, containerOuterWidth,
         containerPercentageResolutionHeight, contentBoxInset,
-        resolvedContentBoxInset, resolvedBorder, textAlign, direction,
-        ownMarginsCollapseWithChildren, isScrollContainer, blockCtx);
+        resolvedContentBoxInset, resolvedBorder, textAlign, justifyItems,
+        direction, ownMarginsCollapseWithChildren, isScrollContainer, blockCtx);
     RectF inflowOverflowRect = inFlow.inflowOverflowRect;
     float intrinsicOuterHeight = inFlow.intrinsicOuterHeight;
 

@@ -3287,6 +3287,305 @@ static void TestFloatAvoidingAutoMargins() {
     }
 }
 
+// taffy 0a529179. An in-flow block honors justify-self: an auto width
+// is fit-content, the margin box is aligned, and that wins over
+// text-align. Auto margins still win. stretch also stretches a replaced
+// box. safe falls back to start when the box overflows.
+static void TestBlockJustifySelf() {
+    TestSuite("taffy block justify-self");
+    auto leaf = [](float w, float h, taffy::AlignItemsKeyword keyword) {
+        taffy::Style s;
+        s.display = taffy::Display::Block;
+        s.size = SizeDim::FromLengths(w, h);
+        s.justifySelf = taffy::OptAlignSelf(taffy::AlignItems{keyword});
+        return s;
+    };
+    {
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId kids[3] = {
+            tree.NewLeaf(leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::Center)),
+            tree.NewLeaf(leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::End)),
+            tree.NewLeaf(leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::Start))};
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 3);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(kids[0]).location.x, 75.0f);
+        utassertnear(tree.GetLayout(kids[1]).location.x, 150.0f);
+        utassertnear(tree.GetLayout(kids[2]).location.x, 0.0f);
+        utassertnear(tree.GetLayout(kids[0]).location.y, 0.0f);
+        utassertnear(tree.GetLayout(kids[1]).location.y, 20.0f);
+        utassertnear(tree.GetLayout(kids[2]).location.y, 40.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style end = leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::End);
+        TaffyNodeId child = tree.NewLeaf(end);
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.direction = taffy::Direction::Rtl;
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, &child, 1);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        // Inline end in RTL is the physical left.
+        utassertnear(tree.GetLayout(child).location.x, 0.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::AlignItems safeCenter{taffy::AlignItemsKeyword::Center,
+                                     taffy::AlignmentSafety::Safe};
+        taffy::AlignItems unsafeCenter{taffy::AlignItemsKeyword::Center,
+                                       taffy::AlignmentSafety::Unsafe};
+        taffy::AlignItems safeEnd{taffy::AlignItemsKeyword::End,
+                                  taffy::AlignmentSafety::Safe};
+        taffy::AlignItems plainEnd{taffy::AlignItemsKeyword::End};
+        taffy::Style styles[4];
+        taffy::AlignItems aligns[4] = {safeCenter, unsafeCenter, safeEnd,
+                                       plainEnd};
+        TaffyNodeId kids[4];
+        for (int i = 0; i < 4; i++) {
+            styles[i].display = taffy::Display::Block;
+            styles[i].size = SizeDim::FromLengths(150.0f, 20.0f);
+            styles[i].justifySelf = taffy::OptAlignSelf(aligns[i]);
+            kids[i] = tree.NewLeaf(styles[i]);
+        }
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.size = SizeDim::FromLengths(100.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 4);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(kids[0]).location.x, 0.0f);
+        utassertnear(tree.GetLayout(kids[1]).location.x, -25.0f);
+        utassertnear(tree.GetLayout(kids[2]).location.x, 0.0f);
+        utassertnear(tree.GetLayout(kids[3]).location.x, -50.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style selfEnd;
+        selfEnd.display = taffy::Display::Block;
+        selfEnd.size = SizeDim::FromLengths(50.0f, 20.0f);
+        selfEnd.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::SelfEnd});
+        TaffyNodeId endNode = tree.NewLeaf(selfEnd);
+        taffy::Style selfStart = selfEnd;
+        selfStart.direction = taffy::Direction::Rtl;
+        selfStart.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::SelfStart});
+        TaffyNodeId startNode = tree.NewLeaf(selfStart);
+        TaffyNodeId kids[2] = {endNode, startNode};
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 2);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        // self-end matches the container. self-start on an RTL item in an
+        // LTR container flips to end.
+        utassertnear(tree.GetLayout(endNode).location.x, 150.0f);
+        utassertnear(tree.GetLayout(startNode).location.x, 150.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style endAuto =
+            leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::End);
+        endAuto.margin.right = LengthPercentageAuto::Auto();
+        taffy::Style startAuto =
+            leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::Start);
+        startAuto.margin.left = LengthPercentageAuto::Auto();
+        taffy::Style bothAuto = startAuto;
+        bothAuto.margin.right = LengthPercentageAuto::Auto();
+        TaffyNodeId kids[3] = {tree.NewLeaf(endAuto), tree.NewLeaf(startAuto),
+                               tree.NewLeaf(bothAuto)};
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 3);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(kids[0]).location.x, 0.0f);
+        utassertnear(tree.GetLayout(kids[0]).margin.right, 150.0f);
+        utassertnear(tree.GetLayout(kids[1]).location.x, 150.0f);
+        utassertnear(tree.GetLayout(kids[1]).margin.left, 150.0f);
+        utassertnear(tree.GetLayout(kids[2]).location.x, 75.0f);
+        utassertnear(tree.GetLayout(kids[2]).margin.left, 75.0f);
+        utassertnear(tree.GetLayout(kids[2]).margin.right, 75.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style start =
+            leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::Start);
+        taffy::Style center =
+            leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::Center);
+        taffy::Style plain;
+        plain.display = taffy::Display::Block;
+        plain.size = SizeDim::FromLengths(50.0f, 20.0f);
+        TaffyNodeId kids[3] = {tree.NewLeaf(start), tree.NewLeaf(center),
+                               tree.NewLeaf(plain)};
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.textAlign = taffy::TextAlign::LegacyRight;
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 3);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(kids[0]).location.x, 0.0f);
+        utassertnear(tree.GetLayout(kids[1]).location.x, 75.0f);
+        utassertnear(tree.GetLayout(kids[2]).location.x, 150.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style plain;
+        plain.display = taffy::Display::Block;
+        plain.size = SizeDim::FromLengths(50.0f, 20.0f);
+        taffy::Style center =
+            leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::Center);
+        TaffyNodeId kids[3] = {tree.NewLeaf(plain), tree.NewLeaf(center),
+                               tree.NewLeaf(plain)};
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.justifyItems = taffy::OptAlignItems(
+            taffy::AlignItems{taffy::AlignItemsKeyword::End});
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 3);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(kids[0]).location.x, 150.0f);
+        utassertnear(tree.GetLayout(kids[1]).location.x, 75.0f);
+        utassertnear(tree.GetLayout(kids[2]).location.x, 150.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style centered =
+            leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::Center);
+        centered.margin.left = LengthPercentageAuto::Length(10.0f);
+        centered.margin.right = LengthPercentageAuto::Length(30.0f);
+        taffy::Style ended = leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::End);
+        ended.margin.right = LengthPercentageAuto::Length(10.0f);
+        taffy::Style started =
+            leaf(50.0f, 20.0f, taffy::AlignItemsKeyword::Start);
+        started.margin.left = LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId kids[3] = {tree.NewLeaf(centered), tree.NewLeaf(ended),
+                               tree.NewLeaf(started)};
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 3);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(kids[0]).location.x, 65.0f);
+        utassertnear(tree.GetLayout(kids[1]).location.x, 140.0f);
+        utassertnear(tree.GetLayout(kids[2]).location.x, 10.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style inner;
+        inner.display = taffy::Display::Block;
+        inner.size = SizeDim::FromLengths(60.0f, 20.0f);
+        TaffyNodeId innerCenter = tree.NewLeaf(inner);
+        taffy::Style fitCenter;
+        fitCenter.display = taffy::Display::Block;
+        fitCenter.size.height = taffy::Dimension::Length(20.0f);
+        fitCenter.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::Center});
+        TaffyNodeId center = tree.NewWithChildren(fitCenter, &innerCenter, 1);
+        taffy::Style innerEnd;
+        innerEnd.display = taffy::Display::Block;
+        innerEnd.size = SizeDim::FromLengths(60.0f, 10.0f);
+        TaffyNodeId innerEndNode = tree.NewLeaf(innerEnd);
+        taffy::Style fitEnd;
+        fitEnd.display = taffy::Display::Block;
+        fitEnd.size.height = taffy::Dimension::Length(20.0f);
+        fitEnd.padding.left = taffy::LengthPercentage::Length(5.0f);
+        fitEnd.padding.right = taffy::LengthPercentage::Length(5.0f);
+        fitEnd.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::End});
+        TaffyNodeId end = tree.NewWithChildren(fitEnd, &innerEndNode, 1);
+        taffy::Style stretched;
+        stretched.display = taffy::Display::Block;
+        stretched.size.height = taffy::Dimension::Length(20.0f);
+        stretched.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::Stretch});
+        TaffyNodeId stretchNode = tree.NewLeaf(stretched);
+        TaffyNodeId kids[3] = {center, end, stretchNode};
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.size = SizeDim::FromLengths(200.0f, 100.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 3);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        Layout centerBox = tree.GetLayout(center);
+        utassertnear(centerBox.location.x, 70.0f);
+        utassertnear(centerBox.size.w, 60.0f);
+        Layout endBox = tree.GetLayout(end);
+        utassertnear(endBox.location.x, 130.0f);
+        utassertnear(endBox.size.w, 70.0f);
+        Layout stretchBox = tree.GetLayout(stretchNode);
+        utassertnear(stretchBox.location.x, 0.0f);
+        utassertnear(stretchBox.size.w, 200.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style replaced;
+        replaced.display = taffy::Display::Block;
+        replaced.itemIsReplaced = true;
+        replaced.size.height = taffy::Dimension::Length(10.0f);
+        replaced.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::Stretch});
+        TaffyNodeId stretchNode = tree.NewLeaf(replaced);
+        replaced.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::Start});
+        TaffyNodeId startNode = tree.NewLeaf(replaced);
+        TaffyNodeId kids[2] = {stretchNode, startNode};
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.size = SizeDim::FromLengths(200.0f, 40.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 2);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(stretchNode).size.w, 200.0f);
+        utassertnear(tree.GetLayout(startNode).size.w, 0.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated;
+        floated.display = taffy::Display::Block;
+        floated.floatMode = taffy::Float::Left;
+        floated.size = SizeDim::FromLengths(40.0f, 40.0f);
+        TaffyNodeId floatNode = tree.NewLeaf(floated);
+        taffy::Style beside;
+        beside.display = taffy::Display::FlowRoot;
+        beside.size = SizeDim::FromLengths(40.0f, 20.0f);
+        beside.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::End});
+        TaffyNodeId besideNode = tree.NewLeaf(beside);
+        TaffyNodeId kids[2] = {floatNode, besideNode};
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.size.width = taffy::Dimension::Length(200.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 2);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        // The leftover slot is 40..200. End places the 40px box at 160.
+        utassertnear(tree.GetLayout(besideNode).location.x, 160.0f);
+        utassertnear(tree.GetLayout(besideNode).location.y, 0.0f);
+        tree.Free();
+    }
+}
+
 // block_percentage_height_with_min_height_parent and the relative
 // percentage-inset fixtures. Min-height is not a percentage basis, and
 // a relative percentage inset resolves against the container's height.
@@ -7818,6 +8117,7 @@ void TestTaffy() {
     TestFloatClearIntrinsicWidth();
     TestFloatPercentSumFits();
     TestFloatAvoidingAutoMargins();
+    TestBlockJustifySelf();
     TestBlockPercentageBasis();
     TestBlockPercentPaddingUsesWidth();
     TestMarginCollapseThroughUsedHeight();
