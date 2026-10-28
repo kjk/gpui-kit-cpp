@@ -6351,6 +6351,78 @@ static void InlineObjectsConvertWholeAndStayUnpainted() {
     ArenaDelete(ext);
 }
 
+static const TextHit* HitContaining(Window* win, const char* text) {
+    Str want = Str(text);
+    for (int i = 0; i < win->paint.texts.len; i++) {
+        const TextHit& hit = win->paint.texts[i];
+        if (StrContains(hit.text, want)) {
+            return &hit;
+        }
+    }
+    return nullptr;
+}
+
+static Str Trimmed(char* buf, int n) {
+    Str selected(buf, n > 0 ? n : 0);
+    while (len(selected) > 0 && (selected.s[len(selected) - 1] == '\n' ||
+                                 selected.s[len(selected) - 1] == ' ')) {
+        selected.len--;
+    }
+    return selected;
+}
+
+// table_drag_from_a_cell_stays_in_that_cell
+// a_selection_in_one_table_cell_copies_only_that_cell
+static void TableDragFromACellStaysInThatCell() {
+    const char* markdown =
+        "Intro\n\n| Header 1 | Header 2 |\n| --- | --- |\n| "
+        "Cell A | Cell B |\n| Cell C | Cell D |\n\nAfter";
+    TswView v = TswOpen(markdown, TswContainer::Window);
+    TestDraw(v.win);
+    const TextHit* cell = HitContaining(v.win, "Cell A");
+    const TextHit* intro = HitContaining(v.win, "Intro");
+    utassert(cell != nullptr && cell->inCell);
+    utassert(intro != nullptr && !intro->inCell);
+    if (cell && intro) {
+        Point start = {cell->bounds.x + 1.f,
+                       cell->bounds.y + cell->bounds.h * 0.5f};
+        Point below = {cell->bounds.x + cell->bounds.w - 1.f,
+                       cell->bounds.y + 400.f};
+        TestSimulateMouseDown(v.win, start);
+        TestDraw(v.win);
+        TestSimulateMouseMove(v.win, below, true);
+        char buf[512];
+        int n = v.State()->SelectedText(v.win, buf, (int)sizeof(buf));
+        Str selected = Trimmed(buf, n);
+        utassert(StrEq(selected, StrL("Cell A")));
+        utassert(!StrContains(Str(buf, n > 0 ? n : 0), StrL("After")));
+        v.State()->SetSelectionFormat(SelectionFormat::Source, v.app, v.win);
+        TestDraw(v.win);
+        n = v.State()->SelectedText(v.win, buf, (int)sizeof(buf));
+        Str source = Trimmed(buf, n);
+        utassert(StrEq(source, StrL("Cell A")));
+        v.State()->SetSelectionFormat(SelectionFormat::Plain, v.app, v.win);
+        TestDraw(v.win);
+        Point from = {intro->bounds.x + 1.f,
+                      intro->bounds.y + intro->bounds.h * 0.5f};
+        const TextHit* last = HitContaining(v.win, "Cell D");
+        utassert(last != nullptr);
+        if (last) {
+            Point end = {last->bounds.x + last->bounds.w - 1.f,
+                         last->bounds.y + last->bounds.h * 0.5f};
+            TestSimulateMouseDown(v.win, from);
+            TestSimulateMouseMove(v.win, end, true);
+            n = v.State()->SelectedText(v.win, buf, (int)sizeof(buf));
+            Str through = Trimmed(buf, n);
+            utassert(StrContains(through, StrL("Intro")));
+            utassert(StrContains(through, StrL("Header 1")));
+            utassert(StrContains(through, StrL("Cell A")));
+            utassert(StrContains(through, StrL("Cell D")));
+        }
+    }
+    TswClose(&v);
+}
+
 // a_dragged_selection_highlights_through_its_source_range.
 static void ADraggedSelectionHighlightsThroughItsSourceRange() {
     const char* markdown = "hello **world** and `code` &amp; more";
@@ -7342,6 +7414,7 @@ static void TestTextStateWindow() {
     AppendedBlocksConvertAtTheirPlaceInTheWholeSource();
     ABackgroundParseConvertsOnceItLands();
     InlineObjectsConvertWholeAndStayUnpainted();
+    TableDragFromACellStaysInThatCell();
     ADraggedSelectionHighlightsThroughItsSourceRange();
     HtmlViewsConvertNoSource();
     ScrollingCodeBlockKeepsWheelFromTheList();

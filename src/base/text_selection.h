@@ -336,6 +336,9 @@ struct WindowSelection {
     // anchor whose participant has since been swept starts afresh instead.
     bool anchorInsideText = false;
     EntityId anchorParticipant = {};
+    // The table cell the anchor landed in. A later move stays inside it.
+    bool hasAnchorCell = false;
+    Bounds anchorCell = {};
     bool publishing = false;
     bool clearing = false;
     uint64_t frameGeneration = 0;

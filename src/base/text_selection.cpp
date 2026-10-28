@@ -847,6 +847,7 @@ void WindowSelectionClear(Window* win) {
     s->cursor = -1;
     s->scope = 0;
     s->hasWindowPoints = false;
+    s->hasAnchorCell = false;
     s->touchMenuOpen = false;
     s->hasTouchEdgeDrag = false;
     if (win->app) {
@@ -901,6 +902,25 @@ static bool AnchorResolves(Window* win, const WindowSelection* s) {
     return participant && participant->registered && participant->window == win;
 }
 
+static void ClampDragToAnchorCell(const WindowSelection* s, float* x,
+                                  float* y) {
+    if (!s || !s->hasAnchorCell || !x || !y) {
+        return;
+    }
+    Point anchorOut;
+    Point cursorOut;
+    if (!ConfineToCell(true, s->anchorPoint, s->anchorCell, true, s->anchorCell,
+                       s->anchorPoint, {*x, *y}, &anchorOut, &cursorOut)) {
+        return;
+    }
+    *x = cursorOut.x;
+    *y = cursorOut.y;
+}
+
+static const Bounds* AnchorCellOf(const WindowSelection* s) {
+    return s && s->hasAnchorCell ? &s->anchorCell : nullptr;
+}
+
 void WindowSelectionPress(Window* win, float x, float y, int clickCount,
                           bool extend) {
     if (win && BaseIsTextSelectionSuppressed(win->app)) {
@@ -922,6 +942,8 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
         Point anchorPoint = s->anchorPoint;
         bool anchorInsideText = s->anchorInsideText;
         EntityId anchorParticipant = s->anchorParticipant;
+        bool hasAnchorCell = s->hasAnchorCell;
+        Bounds anchorCell = s->anchorCell;
         WindowSelectionClear(win);
         if (keep) {
             s->anchor = anchor;
@@ -932,6 +954,8 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
             s->hasWindowPoints = true;
             s->anchorInsideText = anchorInsideText;
             s->anchorParticipant = anchorParticipant;
+            s->hasAnchorCell = hasAnchorCell;
+            s->anchorCell = anchorCell;
         }
     }
     PaintCtx* ctx = &win->paint;
@@ -941,10 +965,14 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
     // on, and it has hit text if either end did. An anchor whose participant
     // has since been swept no longer resolves, and the press starts afresh.
     if (extend && s->anchor >= 0 && AnchorResolves(win, s)) {
-        int off = TextHitOffsetIn(ctx, x, y, true, s->scope, nullptr);
+        float qx = x;
+        float qy = y;
+        ClampDragToAnchorCell(s, &qx, &qy);
+        int off = TextHitOffsetIn(ctx, qx, qy, true, s->scope, nullptr, 0,
+                                  AnchorCellOf(s));
         if (off >= 0) {
             s->cursor = off;
-            s->cursorPoint = {x, y};
+            s->cursorPoint = {qx, qy};
             s->hasWindowPoints = true;
             bool inside =
                 TextHitOffsetIn(ctx, x, y, false, s->scope, nullptr) >= 0;
@@ -976,6 +1004,7 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
         s->anchorInsideText = true;
         s->anchorParticipant = {};
         ParticipantAt(win, s->anchorPoint, &s->anchorParticipant);
+        s->hasAnchorCell = TextTableCellAt(ctx, x, y, &s->anchorCell);
         TextSelectionBegin(&s->gesture, true);
         TextSelectionEnd(&s->gesture);
         WindowSelectionPublish(win);
@@ -1002,6 +1031,7 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
         TextSelectionParticipantState* participant =
             ParticipantAt(win, s->anchorPoint, &participantId);
         s->anchorParticipant = participant ? participantId : EntityId{};
+        s->hasAnchorCell = TextTableCellAt(ctx, x, y, &s->anchorCell);
         if (participant && participant->focus) {
             participant->focus(participant->focusUser, win, win->app);
         }
@@ -1087,12 +1117,17 @@ void WindowSelectionDrag(Window* win, float x, float y) {
     // did_hit_text is the strict hit — whether *this* point is on a glyph —
     // while the offset the selection runs to is the nearest one either way,
     // so a drag through the margin keeps going along the line.
+    float qx = x;
+    float qy = y;
+    ClampDragToAnchorCell(s, &qx, &qy);
+    const Bounds* cell = AnchorCellOf(s);
     TextSelectionExtend(
-        &s->gesture, TextHitOffsetIn(ctx, x, y, false, s->scope, nullptr) >= 0);
-    int off = TextHitOffsetIn(ctx, x, y, true, s->scope, nullptr);
+        &s->gesture,
+        TextHitOffsetIn(ctx, qx, qy, false, s->scope, nullptr, 0, cell) >= 0);
+    int off = TextHitOffsetIn(ctx, qx, qy, true, s->scope, nullptr, 0, cell);
     if (off >= 0) {
         s->cursor = off;
-        s->cursorPoint = {x, y};
+        s->cursorPoint = {qx, qy};
         s->hasWindowPoints = true;
     }
     ParticipantAutoScroll(win, {x, y}, false);
@@ -1122,7 +1157,7 @@ int WindowSelectionTextAs(Window* win, char* out, int cap,
     }
     WindowSelection* s = win->sel;
     return CopyTextHitsIn(&win->paint, s->anchor, s->cursor, s->scope, out, cap,
-                          fmt);
+                          fmt, AnchorCellOf(s));
 }
 
 int WindowSelectionText(Window* win, char* out, int cap) {
@@ -1157,7 +1192,7 @@ int WindowSelectionTextForEntity(Window* win, EntityId owner, char* out,
     WindowSelection* selection = win->sel;
     return CopyTextHitsInEntity(&win->paint, selection->anchor,
                                 selection->cursor, selection->scope, owner, out,
-                                cap, fmt);
+                                cap, fmt, AnchorCellOf(selection));
 }
 
 void WindowSelectionSelectAll(Window* win, EntityId owner) {
@@ -1200,6 +1235,7 @@ void WindowSelectionSelectAll(Window* win, EntityId owner) {
     selection->cursorPoint = {lastBounds.x + lastBounds.w,
                               lastBounds.y + lastBounds.h};
     selection->hasWindowPoints = true;
+    selection->hasAnchorCell = false;
     TextSelectionBegin(&selection->gesture, true);
     TextSelectionEnd(&selection->gesture);
     WindowSelectionPublish(win);

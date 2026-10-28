@@ -16,6 +16,45 @@ void BaseSelectionFrameBegin(App* app) {
     }
 }
 
+static bool SamePoint(Point a, Point b) {
+    return a.x == b.x && a.y == b.y;
+}
+
+static bool SameBounds(Bounds a, Bounds b) {
+    return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+bool ConfineToCell(bool hasAnchor, Point cellAnchor, Bounds cell, bool painting,
+                   Bounds paintingCell, Point anchor, Point cursor,
+                   Point* outAnchor, Point* outCursor) {
+    if (!hasAnchor || !SamePoint(cellAnchor, anchor)) {
+        if (outAnchor) {
+            *outAnchor = anchor;
+        }
+        if (outCursor) {
+            *outCursor = cursor;
+        }
+        return true;
+    }
+    if (!painting || !SameBounds(paintingCell, cell)) {
+        return false;
+    }
+    Point clamped = cursor;
+    float right = cell.x + cell.w;
+    float bottom = cell.y + cell.h;
+    if (clamped.x < cell.x) clamped.x = cell.x;
+    if (clamped.x > right) clamped.x = right;
+    if (clamped.y < cell.y) clamped.y = cell.y;
+    if (clamped.y > bottom) clamped.y = bottom;
+    if (outAnchor) {
+        *outAnchor = anchor;
+    }
+    if (outCursor) {
+        *outCursor = clamped;
+    }
+    return true;
+}
+
 uint64_t BaseSelectionNextDocumentOrder(App* app) {
     BaseGlobalState* state = BaseGlobalStateOf(app);
     if (!state) {

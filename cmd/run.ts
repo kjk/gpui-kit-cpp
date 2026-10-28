@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cf5b86398385dcf04b3c984324e09e0f79b73c62",
+  sha: "40c3e50268ddbc293802570cac1d836adda3b693",
   date: "2026-10-24",
-  subject: "scroll_bounce: Avoid false overscroll at large offsets (#3661)",
+  subject: "text: Keep a drag that starts in a table cell in that cell (#3646)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

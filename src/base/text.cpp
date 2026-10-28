@@ -4601,6 +4601,7 @@ void TextView::AppendTableCells(El* row, MdNode* r, const float* maxW,
                        ->ClipX()
                        ->PadX(12)
                        ->PadY(7);
+        cell->selTableCell = true;
         if (tv->textViewStyle.tableCellFields) {
             cell->Refine(tv->textViewStyle.tableCell, tv->textViewStyle
                                                           .tableCellFields);

@@ -146,6 +146,52 @@ static void ReplacingAndRemovingReleaseOwnership() {
     AppGlobalClear(&app);
 }
 
+static Bounds CellAt(float x) {
+    return Bounds{x, 0, 100, 30};
+}
+
+static void ADragOutsideACellIsUnchanged() {
+    Point anchor = {5, 5};
+    Point cursor = {250, 80};
+    Point outA;
+    Point outC;
+    utassert(ConfineToCell(false, {}, {}, true, CellAt(0), anchor, cursor,
+                           &outA, &outC));
+    utassert(outA.x == anchor.x && outA.y == anchor.y && outC.x == cursor.x &&
+             outC.y == cursor.y);
+    Point oldAnchor = {50, 10};
+    utassert(ConfineToCell(true, oldAnchor, CellAt(0), false, {}, anchor,
+                           cursor, &outA, &outC));
+    utassert(outA.x == anchor.x && outC.x == cursor.x && outC.y == cursor.y);
+}
+
+static void ADragFromACellSelectsNothingOutsideIt() {
+    Point anchor = {10, 10};
+    Point cursor = {150, 20};
+    Point outA;
+    Point outC;
+    utassert(!ConfineToCell(true, anchor, CellAt(0), true, CellAt(100), anchor,
+                            cursor, &outA, &outC));
+    utassert(!ConfineToCell(true, anchor, CellAt(0), false, {}, anchor, cursor,
+                            &outA, &outC));
+}
+
+static void ADragFromACellIsClampedToIt() {
+    Point anchor = {10, 10};
+    Point outA;
+    Point outC;
+    utassert(ConfineToCell(true, anchor, CellAt(0), true, CellAt(0), anchor,
+                           {250, 80}, &outA, &outC));
+    utassert(outA.x == 10 && outA.y == 10 && outC.x == 100 && outC.y == 30);
+    utassert(ConfineToCell(true, anchor, CellAt(0), true, CellAt(0), anchor,
+                           {-20, -5}, &outA, &outC));
+    utassert(outC.x == 0 && outC.y == 0);
+    Point inside = {60, 12};
+    utassert(ConfineToCell(true, anchor, CellAt(0), true, CellAt(0), anchor,
+                           inside, &outA, &outC));
+    utassert(outC.x == inside.x && outC.y == inside.y);
+}
+
 void TestAppGlobals() {
     TestSuite("app globals");
     GlobalsBelongToOneApp();
@@ -153,4 +199,7 @@ void TestAppGlobals() {
     BaseInitializationIsIdempotentAndIsolated();
     BaseGlobalRetainsTheApplicationMenus();
     UiInitializationIsIdempotentAndIsolated();
+    ADragOutsideACellIsUnchanged();
+    ADragFromACellSelectsNothingOutsideIt();
+    ADragFromACellIsClampedToIt();
 }

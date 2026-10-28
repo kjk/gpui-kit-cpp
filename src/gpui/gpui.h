@@ -2874,6 +2874,8 @@ struct El {
     // A block MarkdownPlugin: the drag selects the whole block or none of
     // it, and the copy is its plain text or its markdown, not a slice.
     unsigned int selBlockPlugin : 1 = false;
+    // A markdown table cell. Its bounds confine a drag that starts inside it.
+    unsigned int selTableCell : 1 = false;
     unsigned int caretLineEndAffinity : 1 = false;
     // StyledImage::grayscale.
     unsigned int imageGrayscale : 1 = false;
@@ -3586,6 +3588,10 @@ struct TextHit {
     // PaintCtx::paintLayer when this run was recorded. Cursor I-beam ignores
     // runs behind the stacking layer the pointer is actually in.
     int paintLayer = 0;
+    // The markdown table cell this run painted in. A drag that starts in a
+    // cell selects only there; runs outside it are not part of that gesture.
+    bool inCell = false;
+    Bounds cell = {};
 };
 
 // Shaped-text cache (see TextMeas* in Gpui.cpp). Opaque slots. Entries stay
@@ -3824,6 +3830,10 @@ struct PaintCtx {
     Vec<El*> deferredPaint;
     Vec<ScrollRect> scrolls;
     Vec<TextHit> texts;
+    // Markdown table cells painted this frame, innermost last while painting.
+    Vec<Bounds> tableCells;
+    Bounds tableCell = {};
+    int tableCellDepth = 0;
     // The fields this frame painted, outermost box first, so a press can find
     // the one it landed in. A hit rect would shadow the click on the box
     // around it; these are a list of their own for the same reason GPUI
@@ -6473,7 +6483,10 @@ int TextHitOffsetAt(PaintCtx* ctx, float x, float y, bool nearest);
 // scope the point landed in. `minLayer` skips runs painted on a stacking
 // layer below it, so a popup does not inherit the I-beam of the page.
 int TextHitOffsetIn(PaintCtx* ctx, float x, float y, bool nearest, int scope,
-                    int* outScope, int minLayer = 0);
+                    int* outScope, int minLayer = 0,
+                    const Bounds* cell = nullptr);
+// The table cell painted around `x, y`, if the point is inside one.
+bool TextTableCellAt(const PaintCtx* ctx, float x, float y, Bounds* out);
 int CopyTextHits(PaintCtx* ctx, int selA, int selB, char* out, int cap);
 // node.rs custom_block_is_selected: a drag selects the whole block when it
 // starts or ends inside the box, or the box sits inside the drag. A click
@@ -6482,10 +6495,12 @@ bool CustomBlockIsSelected(Bounds bounds, Point start, Point end);
 // `fmt` is what each run contributes: its rendered text, or — where the run
 // carries a SelSource — the Markdown it was rendered from.
 int CopyTextHitsIn(PaintCtx* ctx, int selA, int selB, int scope, char* out,
-                   int cap, SelectionFormat fmt = SelectionFormat::Plain);
+                   int cap, SelectionFormat fmt = SelectionFormat::Plain,
+                   const Bounds* cell = nullptr);
 int CopyTextHitsInEntity(PaintCtx* ctx, int selA, int selB, int scope,
                          EntityId owner, char* out, int cap,
-                         SelectionFormat fmt = SelectionFormat::Plain);
+                         SelectionFormat fmt = SelectionFormat::Plain,
+                         const Bounds* cell = nullptr);
 // points_for_multi_click: the document range a press of `clickCount` selects
 // under (x, y) — 2 takes the word, 3 or more the whole run — in the same
 // offsets TextHitOffsetAt and CopyTextHits speak. False for a single click,

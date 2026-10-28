@@ -7989,6 +7989,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         th.map = e->selMap;
         th.scope = ElSelectionScope(ctx, e);
         th.paintLayer = ctx->paintLayer;
+        if (ctx->tableCellDepth > 0) {
+            th.inCell = true;
+            th.cell = ctx->tableCell;
+        }
         VecAppend(ctx->texts, th);
         ctx->textDocLen += 1;
     }
@@ -8004,6 +8008,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         th.atom = true;
         th.scope = ElSelectionScope(ctx, e);
         th.paintLayer = ctx->paintLayer;
+        if (ctx->tableCellDepth > 0) {
+            th.inCell = true;
+            th.cell = ctx->tableCell;
+        }
         VecAppend(ctx->texts, th);
         ctx->textDocLen += 1;
     }
@@ -8038,6 +8046,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             // TextSelectionScopeId a gesture inside it stays within.
             th.scope = ElSelectionScope(ctx, e);
             th.paintLayer = ctx->paintLayer;
+            if (ctx->tableCellDepth > 0) {
+                th.inCell = true;
+                th.cell = ctx->tableCell;
+            }
             VecAppend(ctx->texts, th);
             ctx->textDocLen += len(e->text) + 1;
             int a = ctx->selA;
@@ -8329,6 +8341,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (e->selBlockPlugin) {
         ctx->blockPluginDepth++;
     }
+    Bounds savedTableCell = ctx->tableCell;
+    int savedTableCellDepth = ctx->tableCellDepth;
+    if (e->selTableCell) {
+        VecAppend(ctx->tableCells, e->Bounds());
+        ctx->tableCell = e->Bounds();
+        ctx->tableCellDepth++;
+    }
     for (El* c = e->first; c; c = c->next) {
         if (c->style.zIndex != 0) {
             sorted = true;
@@ -8363,6 +8382,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (e->selBlockPlugin) {
         ctx->blockPluginDepth--;
     }
+    ctx->tableCell = savedTableCell;
+    ctx->tableCellDepth = savedTableCellDepth;
     // The selection wash goes over the plugin, as CustomBlockElement paints
     // its quad after the content.
     if (e->selBlockPlugin && e->selectable && ctx->selPoints &&
@@ -8722,9 +8743,18 @@ static float DistToInterval(float v, float lo, float hi) {
 // `scope` is a TextSelectionScopeId — the trap the run sits in — and -1 is
 // every one of them. A drag that began inside a dialog cannot reach the page
 // behind it, which is what Rust's activate_scope arranges.
+static bool TextHitInCell(const TextHit& hit, const Bounds* cell) {
+    if (!cell) {
+        return true;
+    }
+    return hit.inCell && hit.cell.x == cell->x && hit.cell.y == cell->y &&
+           hit.cell.w == cell->w && hit.cell.h == cell->h;
+}
+
 static const TextHit* TextHitFind(PaintCtx* ctx, float x, float y, bool nearest,
                                   Point* outRel, int scope = -1,
-                                  int minLayer = 0) {
+                                  int minLayer = 0,
+                                  const Bounds* cell = nullptr) {
     if (!ctx) {
         return nullptr;
     }
@@ -8736,6 +8766,9 @@ static const TextHit* TextHitFind(PaintCtx* ctx, float x, float y, bool nearest,
             continue;
         }
         if (scope >= 0 && h.scope != scope) {
+            continue;
+        }
+        if (!TextHitInCell(h, cell)) {
             continue;
         }
         if (h.bounds.Contains({x, y})) {
@@ -8785,14 +8818,28 @@ static int TextHitLocal(PaintCtx* ctx, const TextHit* h, Point rel) {
     return local;
 }
 
+bool TextTableCellAt(const PaintCtx* ctx, float x, float y, Bounds* out) {
+    if (!ctx || !out) {
+        return false;
+    }
+    for (int i = ctx->tableCells.len - 1; i >= 0; i--) {
+        if (ctx->tableCells[i].Contains({x, y})) {
+            *out = ctx->tableCells[i];
+            return true;
+        }
+    }
+    return false;
+}
+
 int TextHitOffsetAt(PaintCtx* ctx, float x, float y, bool nearest) {
     return TextHitOffsetIn(ctx, x, y, nearest, -1, nullptr);
 }
 
 int TextHitOffsetIn(PaintCtx* ctx, float x, float y, bool nearest, int scope,
-                    int* outScope, int minLayer) {
+                    int* outScope, int minLayer, const Bounds* cell) {
     Point rel = {};
-    const TextHit* h = TextHitFind(ctx, x, y, nearest, &rel, scope, minLayer);
+    const TextHit* h =
+        TextHitFind(ctx, x, y, nearest, &rel, scope, minLayer, cell);
     if (!h) {
         return -1;
     }
@@ -9093,7 +9140,7 @@ static bool AcrossStylesUsesSource(PaintCtx* ctx, int a, int b, int scope,
 
 static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
                                 EntityId owner, char* out, int cap,
-                                SelectionFormat fmt) {
+                                SelectionFormat fmt, const Bounds* cell) {
     if (!out || cap <= 0) {
         return 0;
     }
@@ -9127,7 +9174,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
     for (int i = 0; i < ctx->texts.len && o.n < cap - 1; i++) {
         const TextHit& t = ctx->texts[i];
         if ((scope >= 0 && t.scope != scope) ||
-            !TextHitOwnerMatches(t, owner)) {
+            !TextHitOwnerMatches(t, owner) || !TextHitInCell(t, cell)) {
             continue;
         }
         if (t.blockPlugin) {
@@ -9178,7 +9225,9 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         // however it is copied. Only the affixes are Markdown, and only
         // Source emits them.
         const SelSource* s = t.src;
-        const SelBlock* want = s ? s->block : nullptr;
+        // A selection confined to one table cell is that cell's source, not
+        // a one-cell table. The pipes and the delimiter row stay on the block.
+        const SelBlock* want = (cell || !s) ? nullptr : s->block;
         // The same record still open, continued: one mark group split over
         // several word elements, which closes once and not per word.
         if (!(src && s && s == grp && t.join)) {
@@ -9232,18 +9281,23 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
     if (any && sep) {
         CopyPut(&o, Str("\n", 1));
     }
+    if (cell && fmt == SelectionFormat::Source && any && o.n > 0 &&
+        out[o.n - 1] != '\n') {
+        CopyPut(&o, Str("\n", 1));
+    }
     out[o.n] = 0;
     return o.n;
 }
 
 int CopyTextHitsIn(PaintCtx* ctx, int a, int b, int scope, char* out, int cap,
-                   SelectionFormat fmt) {
-    return CopyTextHitsFiltered(ctx, a, b, scope, {}, out, cap, fmt);
+                   SelectionFormat fmt, const Bounds* cell) {
+    return CopyTextHitsFiltered(ctx, a, b, scope, {}, out, cap, fmt, cell);
 }
 
 int CopyTextHitsInEntity(PaintCtx* ctx, int a, int b, int scope, EntityId owner,
-                         char* out, int cap, SelectionFormat fmt) {
-    return CopyTextHitsFiltered(ctx, a, b, scope, owner, out, cap, fmt);
+                         char* out, int cap, SelectionFormat fmt,
+                         const Bounds* cell) {
+    return CopyTextHitsFiltered(ctx, a, b, scope, owner, out, cap, fmt, cell);
 }
 
 // A trap is a property of the container, the way Rust hangs it off the one

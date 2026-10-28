@@ -63,6 +63,14 @@ void BaseSetAppMenus(App* app, const MenuDef* menus, int count);
 void BaseSelectionFrameBegin(App* app);
 uint64_t BaseSelectionNextDocumentOrder(App* app);
 
+// confine_to_cell. A drag whose anchor lies in `cell` selects only inside
+// that cell: text painted in another cell is skipped, and the cursor is
+// clamped to the cell edge. `hasAnchor` is false when the drag did not start
+// in a cell. Returns false when `painting` is not the anchor cell.
+bool ConfineToCell(bool hasAnchor, Point cellAnchor, Bounds cell, bool painting,
+                   Bounds paintingCell, Point anchor, Point cursor,
+                   Point* outAnchor, Point* outCursor);
+
 // `text_view_state_stack`: the TextView whose document the runs being built
 // belong to, innermost last.
 void BaseTextViewStatePush(App* app, EntityId state);

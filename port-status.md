@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cf5b86398385dcf04b3c984324e09e0f79b73c62` (2026-10-24,
-scroll_bounce: Avoid false overscroll at large offsets (#3661)).
-A fractional wheel deep in a long list is consumed as scrolling. The
-stored offset still rounds, and a real edge still stretches.
+Processed through `40c3e50268ddbc293802570cac1d836adda3b693` (2026-10-24,
+text: Keep a drag that starts in a table cell in that cell (#3646)).
+A drag that starts in a table cell selects only that cell. A drag that
+starts outside the table still runs through it. Select-all still takes
+every cell.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
