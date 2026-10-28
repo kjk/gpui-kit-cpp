@@ -183,6 +183,42 @@ static void TriggerStyleIsAppliedToTheTriggerContainer() {
     utassertnear(styled.x + styled.w, 300.f);
 }
 
+// A trigger at the window's edge can be left by leaving the window, and the
+// card only closes if the trigger hears that it is no longer hovered.
+struct HoverExitHarness {
+    int hovers = 0;
+    bool hovered = false;
+
+    static void OnHover(HoverExitHarness* self, Ctx*, const HoverEvent* ev) {
+        self->hovers++;
+        self->hovered = ev->hovered;
+    }
+    static El* Render(HoverExitHarness*, Ctx* cx) {
+        return Div(cx->a)->W(200)->H(200)->Child(
+            Div(cx->a)->W(40)->H(40)->Click(7)->OnHover(
+                Listen(cx, &HoverExitHarness::OnHover)));
+    }
+};
+
+static void LeavingTheWindowUnhoversTheTrigger() {
+    App* app = TestAppNew();
+    utassert(app);
+    if (!app) {
+        return;
+    }
+    Entity<HoverExitHarness> view = EntityNew<HoverExitHarness>(app);
+    Window* win = TestWindowOpen(app, view, 200, 200);
+    TestDraw(win);
+    TestSimulateMouseMove(win, {10, 10});
+    HoverExitHarness* h = view.Get(app);
+    utassert(h->hovered);
+    TestDispatchInputRaw(
+        win, InputMouseExited(10, 10, false, MouseButton::Left, {}));
+    utassert(!h->hovered);
+    utassert(h->hovers == 2);
+    TestAppFree(app);
+}
+
 void TestHoverCard() {
     TriggerStyleIsAppliedToTheTriggerContainer();
     TestSuite("hover_card");
@@ -190,4 +226,5 @@ void TestHoverCard() {
     ACloseThatLandsOnAHoveredCardDoesNothing();
     DelayedTransitionsAnnounceWhenTheyLand();
     TapCardsToggleWithoutHoverAndDismissOutside();
+    LeavingTheWindowUnhoversTheTrigger();
 }

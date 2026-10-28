@@ -2852,6 +2852,11 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
 }
 
 static void DispatchMouseExited(Window* win, const MouseExitEvent& in) {
+    // leaving the window is leaving whatever was hovered, so its OnHover hears
+    // it
+    if (win->hoverId) {
+        WindowHoverChanged(win, win->hoverId, 0);
+    }
     win->hoverId = 0;
     if (win->onMouseExit.IsValid()) {
         ListenerCall(win->app, win, win->onMouseExit, &in);
