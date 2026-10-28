@@ -4149,6 +4149,118 @@ static void TestGridLayout() {
 
 // grid_align_items_baseline_child_auto_margin. An auto block-axis margin
 // opts the item out of baseline alignment, so it is not shimmed.
+// CSS Grid 2 §12.5. A flexible track receives only its flex-factor
+// share of an item's content, clamped at one. 0fr with min-height:0
+// collapses; a definite size still sizes a 0fr track.
+static void TestGridFrContentProportion() {
+    TestSuite("taffy grid fr content proportion");
+
+    auto rowsOf = [](const TrackSizingFunction* rows, int nRows) {
+        GridTemplateComponent comps[2];
+        for (int i = 0; i < nRows; i++) {
+            comps[i] = GridTemplateComponent::Single(rows[i]);
+        }
+        return GridTemplateOf(comps, nRows);
+    };
+    GridTemplateComponent col =
+        GridTemplateComponent::Single(TrackSizingFunction::Length(20.0f));
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style content;
+        content.size = SizeDim::FromLengths(20.0f, 100.0f);
+        TaffyNodeId contentNode = tree.NewLeaf(content);
+        taffy::Style item;
+        item.minSize.height = Dimension::Length(0.0f);
+        TaffyNodeId itemNode = tree.NewWithChildren(item, &contentNode, 1);
+        taffy::Style gridStyle;
+        gridStyle.display = taffy::Display::Grid;
+        TrackSizingFunction row = TrackSizingFunction::Fr(0.0f);
+        gridStyle.gridTemplateRows = rowsOf(&row, 1);
+        gridStyle.gridTemplateColumns = GridTemplateOf(&col, 1);
+        TaffyNodeId grid = tree.NewWithChildren(gridStyle, &itemNode, 1);
+        tree.ComputeLayout(grid, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(grid).size.w, 20.0f);
+        utassertnear(tree.GetLayout(grid).size.h, 0.0f);
+        utassertnear(tree.GetLayout(itemNode).size.h, 0.0f);
+        utassertnear(tree.GetLayout(contentNode).size.h, 100.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style content;
+        content.size = SizeDim::FromLengths(20.0f, 100.0f);
+        TaffyNodeId contentNode = tree.NewLeaf(content);
+        taffy::Style item;
+        item.minSize.height = Dimension::Length(0.0f);
+        TaffyNodeId itemNode = tree.NewWithChildren(item, &contentNode, 1);
+        taffy::Style gridStyle;
+        gridStyle.display = taffy::Display::Grid;
+        TrackSizingFunction row = TrackSizingFunction::Fr(2.0f);
+        gridStyle.gridTemplateRows = rowsOf(&row, 1);
+        gridStyle.gridTemplateColumns = GridTemplateOf(&col, 1);
+        TaffyNodeId grid = tree.NewWithChildren(gridStyle, &itemNode, 1);
+        tree.ComputeLayout(grid, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(grid).size.h, 100.0f);
+        utassertnear(tree.GetLayout(itemNode).size.h, 100.0f);
+        utassertnear(tree.GetLayout(contentNode).size.h, 100.0f);
+        tree.Free();
+    }
+
+    {
+        // The flex parent gives the grid a definite height on the second
+        // pass, so the 0.5fr row is half of the 100px content.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style content;
+        content.size = SizeDim::FromLengths(20.0f, 100.0f);
+        TaffyNodeId contentNode = tree.NewLeaf(content);
+        taffy::Style item;
+        item.minSize.height = Dimension::Length(0.0f);
+        TaffyNodeId itemNode = tree.NewWithChildren(item, &contentNode, 1);
+        taffy::Style gridStyle;
+        gridStyle.display = taffy::Display::Grid;
+        TrackSizingFunction row = TrackSizingFunction::Fr(0.5f);
+        gridStyle.gridTemplateRows = rowsOf(&row, 1);
+        gridStyle.gridTemplateColumns = GridTemplateOf(&col, 1);
+        TaffyNodeId grid = tree.NewWithChildren(gridStyle, &itemNode, 1);
+        taffy::Style flexStyle;
+        flexStyle
+            .alignItems = OptAlignItems(AlignItems{AlignItemsKeyword::Start});
+        flexStyle.size = SizeDim::FromLengths(20.0f, 150.0f);
+        TaffyNodeId flex = tree.NewWithChildren(flexStyle, &grid, 1);
+        tree.ComputeLayout(flex, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(flex).size.h, 150.0f);
+        utassertnear(tree.GetLayout(grid).size.h, 50.0f);
+        utassertnear(tree.GetLayout(itemNode).size.h, 25.0f);
+        utassertnear(tree.GetLayout(contentNode).size.h, 100.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style item;
+        item.size.height = Dimension::Length(100.0f);
+        item.gridRow = {GLine(1), GLine(2)};
+        TaffyNodeId itemNode = tree.NewLeaf(item);
+        taffy::Style gridStyle;
+        gridStyle.display = taffy::Display::Grid;
+        TrackSizingFunction rows[2] = {TrackSizingFunction::Fr(0.0f),
+                                       TrackSizingFunction::Fr(1.0f)};
+        gridStyle.gridTemplateRows = rowsOf(rows, 2);
+        gridStyle.gridTemplateColumns = GridTemplateOf(&col, 1);
+        TaffyNodeId grid = tree.NewWithChildren(gridStyle, &itemNode, 1);
+        tree.ComputeLayout(grid, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(grid).size.h, 200.0f);
+        utassertnear(tree.GetLayout(itemNode).size.h, 100.0f);
+        tree.Free();
+    }
+}
+
 static void TestGridAutoMarginBaseline() {
     TestSuite("taffy grid auto margin baseline");
 
@@ -4781,6 +4893,7 @@ void TestTaffy() {
     TestGridImplicitSizing();
     TestGridPlacement();
     TestGridLayout();
+    TestGridFrContentProportion();
     TestGridAutoMarginBaseline();
     TestGridRepetitionLineNames();
     TestGridNonFiniteStylesTerminate();

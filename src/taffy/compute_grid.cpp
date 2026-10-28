@@ -2745,6 +2745,28 @@ void DistributeItemSpaceToGrowthLimit(float space, GridTrack* tracks, int n,
 }
 
 // 11.5 Resolve Intrinsic Track Sizes
+// Sum of the flex factors of the flexible tracks an item spans. A 0fr
+// track is flexible and contributes zero.
+float CrossedFlexFactorSum(const GridTrack* tracks, int count) {
+    float sum = 0.0f;
+    for (int i = 0; i < count; i++) {
+        if (tracks[i].maxTrackSizingFunction.IsFr()) {
+            sum += tracks[i].FlexFactor();
+        }
+    }
+    return sum;
+}
+
+float InflexibleTrackBaseSizes(const GridTrack* tracks, int count) {
+    float sum = 0.0f;
+    for (int i = 0; i < count; i++) {
+        if (!tracks[i].maxTrackSizingFunction.IsFr()) {
+            sum += tracks[i].baseSize;
+        }
+    }
+    return sum;
+}
+
 void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                                 GridTrack* axisTracks, int nAxisTracks,
                                 const GridTrack* otherAxisTracks,
@@ -2941,8 +2963,27 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                     sizer.MinContentContribution(item, axisTracks);
                 Optf limit = SpannedTrackLimit(*item, axis, axisTracks,
                                                axisInnerNodeSize, calc);
-                space = F32Max(MaybeMin(axisMinContentSize, limit),
-                               axisMinimumSize);
+                float limitedMinContent = F32Max(
+                    MaybeMin(axisMinContentSize, limit), axisMinimumSize);
+                // CSS Grid 2 §12.5: an item crossing flexible tracks hands
+                // those tracks only its flex-factor share of the content
+                // left after the inflexible tracks, clamped at one. The
+                // minimum contribution floors that, so a definite size
+                // still fills a 0fr track while min-height:0 lets it
+                // collapse.
+                if (isFlex) {
+                    int from = item->TrackRangeStart(axis);
+                    int count = item->TrackRangeEnd(axis) - from;
+                    float inflexible =
+                        InflexibleTrackBaseSizes(axisTracks + from, count);
+                    float scale = F32Min(
+                        CrossedFlexFactorSum(axisTracks + from, count), 1.0f);
+                    float excess = F32Max(limitedMinContent - inflexible, 0.0f);
+                    space =
+                        F32Max(axisMinimumSize, inflexible + excess * scale);
+                } else {
+                    space = limitedMinContent;
+                }
             } else {
                 space = sizer
                             .MinimumContribution(item, axisTracks, nAxisTracks);
@@ -3027,6 +3068,20 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                 Optf limit = SpannedTrackLimit(*item, axis, axisTracks,
                                                axisInnerNodeSize, calc);
                 float space = MaybeMin(axisMaxContentSize, limit);
+                // Same proportion as the intrinsic minimums above. Anchor
+                // on the inflexible base sizes so this pass does not
+                // compound the scaling already applied there.
+                if (isFlex) {
+                    int fromFlex = item->TrackRangeStart(axis);
+                    int countFlex = item->TrackRangeEnd(axis) - fromFlex;
+                    float inflexible = InflexibleTrackBaseSizes(
+                        axisTracks + fromFlex, countFlex);
+                    float scale = F32Min(
+                        CrossedFlexFactorSum(axisTracks + fromFlex, countFlex),
+                        1.0f);
+                    space =
+                        inflexible + F32Max(space - inflexible, 0.0f) * scale;
+                }
                 int from = item->TrackRangeStart(axis);
                 int count = item->TrackRangeEnd(axis) - from;
                 if (space <= 0.0f || count <= 0) {
