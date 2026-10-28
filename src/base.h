@@ -1136,6 +1136,15 @@ struct RectF {
     constexpr float HorizontalAxisSum() const { return left + right; }
     constexpr float VerticalAxisSum() const { return top + bottom; }
     constexpr SizeF SumAxes() const { return {left + right, top + bottom}; }
+
+    // Smallest rectangle containing both, with left/top as the minimum
+    // edges and right/bottom as the maximum edges.
+    constexpr RectF Union(RectF other) const {
+        return {left < other.left ? left : other.left,
+                right > other.right ? right : other.right,
+                top < other.top ? top : other.top,
+                bottom > other.bottom ? bottom : other.bottom};
+    }
 };
 
 constexpr bool operator==(RectF a, RectF b) {

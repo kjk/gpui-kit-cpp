@@ -706,10 +706,13 @@ static void PrintNode(TaffyTree* tree, NodeId node, bool hasSibling,
     // `const char*`, so the line is built in two halves out of `Str`s.
     base::log(base::fmt(
         "%s%s%s [x: %-4g y: %-4g w: %-4g h: %-4g "
-        "content_w: %-4g content_h: %-4g",
+        "overflow: l:%g r:%g t:%g b:%g",
         Str(linesString), Str(fork), Str(displayStr), (double)layout.location.x,
         (double)layout.location.y, (double)layout.size.w, (double)layout.size.h,
-        (double)layout.contentSize.w, (double)layout.contentSize.h));
+        (double)layout.scrollableOverflowRect.left,
+        (double)layout.scrollableOverflowRect.right,
+        (double)layout.scrollableOverflowRect.top,
+        (double)layout.scrollableOverflowRect.bottom));
     base::log(
         base::fmt(" border: l:%g r:%g t:%g b:%g, "
                   "padding: l:%g r:%g t:%g b:%g] (%llu)\n",

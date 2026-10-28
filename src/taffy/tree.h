@@ -5,9 +5,9 @@
  *   - `NodeId` wraps a slotmap key there. The tree here keeps its own
  *     generational slots, so a NodeId is index + generation packed into the
  *     same u64 and converts to and from one the way Rust's does.
- *   - `LayoutOutput::content_size` and `Layout::content_size` are
- *     unconditional; the `content_size` feature is on in the build
- *     gpui-kit pins.
+ *   - `LayoutOutput::scrollable_overflow_rect` and
+ *     `Layout::scrollable_overflow_rect` are unconditional; the
+ *     `content_size` feature is on in the build gpui-kit pins.
  */
 
 #ifndef GPUI_TAFFY_TREE_H_
@@ -164,8 +164,9 @@ inline Baselines BaselinesFromFirst(Optf first) {
 // is not sure how to compute it) reports BaselinesNone().
 struct LayoutOutput {
     SizeF size;
-    // The size of the content within the node.
-    SizeF contentSize;
+    // The scrollable overflow rectangle of the node's content. Same
+    // coordinate conventions as Layout::scrollableOverflowRect.
+    RectF scrollableOverflowRect;
     // The first and last baselines on the horizontal axis, if any.
     Baselines baselines;
     // Margins that can be collapsed with, for block layout. Zero elsewhere.
@@ -178,19 +179,21 @@ struct LayoutOutput {
     // the same value.
     static LayoutOutput Hidden() { return {}; }
 
-    static LayoutOutput FromSizesAndBaselines(SizeF size, SizeF contentSize,
+    static LayoutOutput FromSizesAndBaselines(SizeF size,
+                                              RectF scrollableOverflowRect,
                                               Baselines baselines) {
         LayoutOutput out;
         out.size = size;
-        out.contentSize = contentSize;
+        out.scrollableOverflowRect = scrollableOverflowRect;
         out.baselines = baselines;
         return out;
     }
-    static LayoutOutput FromSizes(SizeF size, SizeF contentSize) {
-        return FromSizesAndBaselines(size, contentSize, BaselinesNone());
+    static LayoutOutput FromSizes(SizeF size, RectF scrollableOverflowRect) {
+        return FromSizesAndBaselines(size, scrollableOverflowRect,
+                                     BaselinesNone());
     }
     static LayoutOutput FromOuterSize(SizeF size) {
-        return FromSizes(size, SizeF::Zero());
+        return FromSizes(size, RectF::Zero());
     }
 };
 
@@ -204,9 +207,12 @@ struct Layout {
     // The top-left corner of the node.
     PointF location;
     SizeF size;
-    // The size of the content inside the node. Larger than `size` when the
-    // content overflows, which is what a scroll width/height is computed from.
-    SizeF contentSize;
+    // Scrollable overflow of the node, measured from the scroll origin: the
+    // padding-box corner at the block-start/inline-start edge (top-left in
+    // LTR, top-right in RTL). `left`/`top` are <= 0 (unreachable start
+    // overflow). `right`/`bottom` are >= 0 (the reachable extent a scroll
+    // width/height is computed from). Transforms are not included.
+    RectF scrollableOverflowRect;
     // Zero in each dimension that has no scrollbar.
     SizeF scrollbarSize;
     RectF border;
@@ -237,14 +243,16 @@ struct Layout {
     }
     float ContentBoxY() const { return location.y + border.top + padding.top; }
 
-    // Content width minus width, floored at zero.
+    // Reachable content extent minus the padding box, floored at zero.
     float ScrollWidth() const {
-        return F32Max(0.0f, contentSize.w + F32Min(scrollbarSize.w, size.w) -
-                                size.w + border.left + border.right);
+        return F32Max(0.0f, scrollableOverflowRect.right +
+                                F32Min(scrollbarSize.w, size.w) - size.w +
+                                border.left + border.right);
     }
     float ScrollHeight() const {
-        return F32Max(0.0f, contentSize.h + F32Min(scrollbarSize.h, size.h) -
-                                size.h + border.top + border.bottom);
+        return F32Max(0.0f, scrollableOverflowRect.bottom +
+                                F32Min(scrollbarSize.h, size.h) - size.h +
+                                border.top + border.bottom);
     }
 };
 

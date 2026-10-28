@@ -900,7 +900,7 @@ float DetermineContentBasedContainerWidth(TaffyTree* tree,
 // ─── perform_final_layout_on_in_flow_children ────────────────────────────
 
 struct InFlowResult {
-    SizeF inflowContentSize;
+    RectF inflowOverflowRect;
     float intrinsicOuterHeight = 0.0f;
     CollapsibleMarginSet firstChildTopMarginSet;
     CollapsibleMarginSet lastChildBottomMarginSet;
@@ -912,7 +912,8 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
     float containerOuterWidth, Optf containerPercentageResolutionHeight,
     RectF contentBoxInset, RectF resolvedContentBoxInset, RectF resolvedBorder,
     TextAlign textAlign, Direction direction,
-    LineBool ownMarginsCollapseWithChildren, BlockContext* blockCtx) {
+    LineBool ownMarginsCollapseWithChildren, bool isScrollContainer,
+    BlockContext* blockCtx) {
     CalcResolver calc = tree->calc;
     float containerInnerWidth = containerOuterWidth - resolvedContentBoxInset
                                                           .HorizontalAxisSum();
@@ -1020,22 +1021,23 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             item.hasFinalLayout = true;
             item.finalLayout.order = item.order;
             item.finalLayout.size = itemLayout.size;
-            item.finalLayout.contentSize = itemLayout.contentSize;
+            item.finalLayout
+                .scrollableOverflowRect = itemLayout.scrollableOverflowRect;
             item.finalLayout.scrollbarSize = scrollbarSize;
             item.finalLayout.location = location;
             item.finalLayout.padding = item.padding;
             item.finalLayout.border = item.border;
             item.finalLayout.margin = itemNonAutoMargin;
 
-            res.inflowContentSize = Max(
-                res.inflowContentSize,
-                ComputeContentSizeContribution(
+            res.inflowOverflowRect = res.inflowOverflowRect.Union(
+                ComputeScrollableOverflowContribution(
                     {IsRtl(direction) ? containerOuterWidth -
                                             (location.x + itemLayout.size.w) -
                                             resolvedBorder.right
                                       : location.x - resolvedBorder.left,
                      location.y - resolvedBorder.top},
-                    itemLayout.size, itemLayout.contentSize, item.overflow));
+                    itemLayout.size, itemLayout.scrollableOverflowRect,
+                    item.overflow, isScrollContainer));
             continue;
         }
 
@@ -1302,22 +1304,23 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         item.hasFinalLayout = true;
         item.finalLayout.order = item.order;
         item.finalLayout.size = itemLayout.size;
-        item.finalLayout.contentSize = itemLayout.contentSize;
+        item.finalLayout.scrollableOverflowRect = itemLayout
+                                                      .scrollableOverflowRect;
         item.finalLayout.scrollbarSize = scrollbarSize;
         item.finalLayout.location = location;
         item.finalLayout.padding = item.padding;
         item.finalLayout.border = item.border;
         item.finalLayout.margin = resolvedMargin;
 
-        res.inflowContentSize =
-            Max(res.inflowContentSize,
-                ComputeContentSizeContribution(
-                    {IsRtl(direction)
-                         ? containerOuterWidth - (location.x + finalSize.w) -
-                               resolvedBorder.right
-                         : location.x - resolvedBorder.left,
-                     location.y - resolvedBorder.top},
-                    finalSize, itemLayout.contentSize, item.overflow));
+        res.inflowOverflowRect =
+            res.inflowOverflowRect.Union(ComputeScrollableOverflowContribution(
+                {IsRtl(direction)
+                     ? containerOuterWidth - (location.x + finalSize.w) -
+                           resolvedBorder.right
+                     : location.x - resolvedBorder.left,
+                 location.y - resolvedBorder.top},
+                finalSize, itemLayout.scrollableOverflowRect, item.overflow,
+                isScrollContainer));
 
         if (isCollapsingWithFirstMarginSet && itemPushedBelowFloat) {
             isCollapsingWithFirstMarginSet = false;
@@ -1374,14 +1377,15 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
 
 // ─── perform_absolute_layout_on_absolute_children ────────────────────────
 
-SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
+RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
                                               const Vec<BlockItem>& items,
                                               SizeF areaSize, PointF areaOffset,
-                                              Direction direction) {
+                                              Direction direction,
+                                              bool isScrollContainer) {
     CalcResolver calc = tree->calc;
     float areaWidth = areaSize.w;
     float areaHeight = areaSize.h;
-    SizeF absoluteContentSize = SizeF::Zero();
+    RectF absoluteOverflowRect = RectF::Zero();
 
     for (int i = 0; i < len(items); i++) {
         const BlockItem& item = items[i];
@@ -1563,7 +1567,7 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
         Layout layout;
         layout.order = item.order;
         layout.size = finalSize;
-        layout.contentSize = layoutOutput.contentSize;
+        layout.scrollableOverflowRect = layoutOutput.scrollableOverflowRect;
         layout.scrollbarSize = scrollbarSize;
         layout.location = location;
         layout.padding = padding;
@@ -1577,13 +1581,14 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
         PointF relativeLocation = {
             IsRtl(direction) ? areaSize.w - relX - finalSize.w : relX,
             location.y - areaOffset.y};
-        absoluteContentSize = Max(absoluteContentSize,
-                                  ComputeContentSizeContribution(
-                                      relativeLocation, finalSize,
-                                      layoutOutput.contentSize, item.overflow));
+        absoluteOverflowRect = absoluteOverflowRect
+                                   .Union(ComputeScrollableOverflowContribution(
+                                       relativeLocation, finalSize,
+                                       layoutOutput.scrollableOverflowRect,
+                                       item.overflow, isScrollContainer));
     }
 
-    return absoluteContentSize;
+    return absoluteOverflowRect;
 }
 
 // ─── compute_inner ───────────────────────────────────────────────────────
@@ -1734,8 +1739,8 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         tree, runMode, &items, containerOuterWidth,
         containerPercentageResolutionHeight, contentBoxInset,
         resolvedContentBoxInset, resolvedBorder, textAlign, direction,
-        ownMarginsCollapseWithChildren, blockCtx);
-    SizeF inflowContentSize = inFlow.inflowContentSize;
+        ownMarginsCollapseWithChildren, isScrollContainer, blockCtx);
+    RectF inflowOverflowRect = inFlow.inflowOverflowRect;
     float intrinsicOuterHeight = inFlow.intrinsicOuterHeight;
 
     // A root BFC contains its floats. A non-normal align-content does too.
@@ -1790,21 +1795,21 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
                     items[i].finalLayout.location.y += groupOffset;
                 }
             }
-            inflowContentSize = SizeF::Zero();
+            inflowOverflowRect = RectF::Zero();
             for (int i = 0; i < len(items); i++) {
                 if (!items[i].hasFinalLayout) {
                     continue;
                 }
                 const Layout& l = items[i].finalLayout;
-                inflowContentSize = Max(
-                    inflowContentSize,
-                    ComputeContentSizeContribution(
+                inflowOverflowRect = inflowOverflowRect.Union(
+                    ComputeScrollableOverflowContribution(
                         {IsRtl(direction)
                              ? containerOuterWidth - (l.location.x + l.size.w) -
                                    resolvedBorder.right
                              : l.location.x - resolvedBorder.left,
                          l.location.y - resolvedBorder.top},
-                        l.size, l.contentSize, items[i].overflow));
+                        l.size, l.scrollableOverflowRect, items[i].overflow,
+                        isScrollContainer));
             }
         }
     }
@@ -1857,17 +1862,19 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
                                                       .SumAxes();
     PointF absolutePositionOffset = {absolutePositionInset.left,
                                      absolutePositionInset.top};
-    SizeF absoluteContentSize = PerformAbsoluteLayoutOnAbsoluteChildren(
-        tree, items, absolutePositionArea, absolutePositionOffset, direction);
+    RectF absoluteOverflowRect = PerformAbsoluteLayoutOnAbsoluteChildren(
+        tree, items, absolutePositionArea, absolutePositionOffset, direction,
+        isScrollContainer);
 
     // End padding is part of a scroll container's overflow. Other boxes
-    // do not extend content size by their own padding.
+    // do not extend their overflow rect by their own padding.
     if (isScrollContainer) {
-        inflowContentSize.w +=
+        inflowOverflowRect.right +=
             IsRtl(direction) ? resolvedPadding.left : resolvedPadding.right;
-        inflowContentSize.h += resolvedPadding.bottom;
+        inflowOverflowRect.bottom += resolvedPadding.bottom;
     }
-    output.contentSize = Max(inflowContentSize, absoluteContentSize);
+    output.scrollableOverflowRect = inflowOverflowRect
+                                        .Union(absoluteOverflowRect);
 
     // 5. Hidden children.
     int len = tree->ChildCount(nodeId);

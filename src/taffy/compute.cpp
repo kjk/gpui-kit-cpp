@@ -90,7 +90,7 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
     layout.order = 0;
     layout.location = location;
     layout.size = output.size;
-    layout.contentSize = output.contentSize;
+    layout.scrollableOverflowRect = output.scrollableOverflowRect;
     layout.scrollbarSize = scrollbarSize;
     layout.padding = padding;
     layout.border = border;
@@ -157,10 +157,18 @@ static void RoundLayoutInner(TaffyTree* tree, NodeId nodeId, float cumulativeX,
     layout.padding.bottom =
         F32Round(cumulativeY + unrounded.size.h) -
         F32Round(cumulativeY + unrounded.size.h - unrounded.padding.bottom);
-    layout.contentSize.w =
-        F32Round(cumulativeX + unrounded.contentSize.w) - F32Round(cumulativeX);
-    layout.contentSize.h =
-        F32Round(cumulativeY + unrounded.contentSize.h) - F32Round(cumulativeY);
+    layout.scrollableOverflowRect
+        .left = F32Round(cumulativeX + unrounded.scrollableOverflowRect.left) -
+                F32Round(cumulativeX);
+    layout.scrollableOverflowRect.right =
+        F32Round(cumulativeX + unrounded.scrollableOverflowRect.right) -
+        F32Round(cumulativeX);
+    layout.scrollableOverflowRect
+        .top = F32Round(cumulativeY + unrounded.scrollableOverflowRect.top) -
+               F32Round(cumulativeY);
+    layout.scrollableOverflowRect.bottom =
+        F32Round(cumulativeY + unrounded.scrollableOverflowRect.bottom) -
+        F32Round(cumulativeY);
 
     tree->SetFinalLayout(nodeId, layout);
 
@@ -301,8 +309,10 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
     bool isRtl = IsRtl(style.direction);
     float startPadding = isRtl ? padding.right : padding.left;
     float endPadding = isRtl ? padding.left : padding.right;
-    out.contentSize = {
+    out.scrollableOverflowRect = {
+        0.0f,
         startPadding + measuredSize.w + (isScrollContainer ? endPadding : 0.0f),
+        0.0f,
         padding.top + measuredSize.h +
             (isScrollContainer ? padding.bottom : 0.0f)};
     out.marginsCanCollapseThrough = !hasStylesPreventingBeingCollapsedThrough &&
@@ -390,23 +400,35 @@ float ComputeAlignmentOffset(float freeSpace, int numItems, float gap,
     }
 }
 
-// ─── shared content size ─────────────────────────────────────────────────
+// ─── scrollable overflow ─────────────────────────────────────────────────
 
-SizeF ComputeContentSizeContribution(PointF location, SizeF size,
-                                     SizeF contentSize,
-                                     PointOverflow overflow) {
-    SizeF contribution = {
-        overflow.x == Overflow::Visible ? F32Max(size.w, contentSize.w)
-                                        : size.w,
-        overflow.y == Overflow::Visible ? F32Max(size.h, contentSize.h)
-                                        : size.h};
-    if (contribution.w > 0.0f && contribution.h > 0.0f) {
-        // location is measured from the scroll origin. Overflow on the
-        // negative side of that origin is not part of the scrollable region.
-        return {F32Max(location.x + contribution.w, 0.0f),
-                F32Max(location.y + contribution.h, 0.0f)};
+RectF ComputeScrollableOverflowContribution(PointF location, SizeF size,
+                                            RectF scrollableOverflowRect,
+                                            PointOverflow overflow,
+                                            bool parentIsScrollContainer) {
+    bool isScrollContainer =
+        IsScrollContainer(overflow.x) || IsScrollContainer(overflow.y);
+    // Hidden or Scroll on either axis clips both. Clip clips only its axis.
+    // Visible is what lets a child's own overflow escape.
+    bool propagatesX = !isScrollContainer && overflow.x == Overflow::Visible;
+    bool propagatesY = !isScrollContainer && overflow.y == Overflow::Visible;
+    SizeF endExtent = {
+        propagatesX ? F32Max(size.w, scrollableOverflowRect.right) : size.w,
+        propagatesY ? F32Max(size.h, scrollableOverflowRect.bottom) : size.h};
+    if (endExtent.w <= 0.0f || endExtent.h <= 0.0f) {
+        return RectF::Zero();
     }
-    return SizeF::Zero();
+    PointF startExtent = {
+        propagatesX ? F32Min(0.0f, scrollableOverflowRect.left) : 0.0f,
+        propagatesY ? F32Min(0.0f, scrollableOverflowRect.top) : 0.0f};
+    RectF contribution = {location.x + startExtent.x, location.x + endExtent.w,
+                          location.y + startExtent.y, location.y + endExtent.h};
+    bool whollyUnreachable =
+        contribution.right <= 0.0f || contribution.bottom <= 0.0f;
+    if (parentIsScrollContainer && whollyUnreachable) {
+        return RectF::Zero();
+    }
+    return contribution;
 }
 
 } // namespace taffy

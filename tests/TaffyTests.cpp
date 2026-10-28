@@ -630,7 +630,7 @@ static taffy::LayoutOutput BaselineMeasure(const taffy::LayoutInput& inputs,
     }
     BaselineContext* c = (BaselineContext*)nodeContext;
     return taffy::LayoutOutput::FromSizesAndBaselines(
-        c->size, SizeF::Zero(), taffy::BaselinesFromFirst(Some(c->baselineY)));
+        c->size, RectF::Zero(), taffy::BaselinesFromFirst(Some(c->baselineY)));
 }
 
 static void TestTaffyTreeBasics() {
@@ -3572,13 +3572,14 @@ static float ContentHeightFor(taffy::Display display, float top, float bottom,
     }
     TaffyNodeId node = tree.NewWithChildren(nodeStyle, &child, 1);
     tree.ComputeLayout(node, SizeAvail::MaxContent());
-    float h = tree.GetLayout(node).contentSize.h;
+    float h = tree.GetLayout(node).scrollableOverflowRect.bottom;
     tree.Free();
     return h;
 }
 
-// block_overflow_start_edge_absolute_child. An absolute child that
-// hangs off the start edge does not enlarge the scrollable overflow.
+// block_overflow_start_edge_absolute_child. A visible parent keeps
+// start-side overflow in the rect. A scroll-container ancestor reports
+// the reachable extent.
 static void TestOverflowPastScrollOrigin() {
     TestSuite("taffy overflow past scroll origin");
 
@@ -3608,9 +3609,14 @@ static void TestOverflowPastScrollOrigin() {
 
     utassertnear(tree.GetLayout(abs).location.x, -40.0f);
     utassertnear(tree.GetLayout(abs).location.y, 0.0f);
-    utassertnear(tree.GetLayout(mid).contentSize.w, 40.0f);
+    // mid is overflow:visible, so the child's start overflow is kept.
+    utassertnear(tree.GetLayout(mid).scrollableOverflowRect.left, -40.0f);
+    utassertnear(tree.GetLayout(mid).scrollableOverflowRect.right, 40.0f);
     utassertnear(tree.GetLayout(mid).location.x, 60.0f);
-    utassertnear(tree.GetLayout(root).contentSize.w, 100.0f);
+    // The stored rect contains the scroll origin, so a contribution that
+    // starts at x=20 keeps left at 0. The reachable extent is 100.
+    utassertnear(tree.GetLayout(root).scrollableOverflowRect.left, 0.0f);
+    utassertnear(tree.GetLayout(root).scrollableOverflowRect.right, 100.0f);
     tree.Free();
 }
 
@@ -3711,7 +3717,7 @@ static void TestLeafContentSizeEndPadding() {
         TaffyNodeId node = tree.NewLeafWithContext(style, &measured);
         tree.ComputeLayoutWithMeasure(node, SizeAvail::MaxContent(),
                                       SizeMeasureFunction, nullptr);
-        float h = tree.GetLayout(node).contentSize.h;
+        float h = tree.GetLayout(node).scrollableOverflowRect.bottom;
         tree.Free();
         return h;
     };
@@ -3736,6 +3742,145 @@ static void TestContentSizeEndPadding() {
         utassertnear(ContentHeightFor(d, 0.0f, 0.0f, false), 1000.0f);
         utassertnear(ContentHeightFor(d, 20.0f, 20.0f, true), 1040.0f);
         utassertnear(ContentHeightFor(d, 0.0f, 20.0f, true), 1020.0f);
+    }
+}
+
+// scrollable_overflow.rs. The rect keeps start-side overflow. A scroll
+// container drops a box that sits wholly before the scroll origin, and
+// keeps the whole border box of one that only straddles it.
+static taffy::Layout AbsoluteChildLayout(taffy::Display display,
+                                         taffy::Overflow overflow,
+                                         taffy::Direction direction,
+                                         bool hasLeft, float insetLeft,
+                                         bool hasRight, float insetRight) {
+    constexpr float kContainer = 200.0f;
+    constexpr float kChild = 50.0f;
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style childStyle;
+    childStyle.position = taffy::Position::Absolute;
+    childStyle.inset.left = hasLeft ? LengthPercentageAuto::Length(insetLeft)
+                                    : LengthPercentageAuto::Auto();
+    childStyle.inset.right = hasRight ? LengthPercentageAuto::Length(insetRight)
+                                      : LengthPercentageAuto::Auto();
+    childStyle.inset.top = LengthPercentageAuto::Zero();
+    childStyle.inset.bottom = LengthPercentageAuto::Auto();
+    childStyle.size = SizeDim::FromLengths(kChild, kChild);
+    TaffyNodeId child = tree.NewLeaf(childStyle);
+    taffy::Style nodeStyle;
+    nodeStyle.display = display;
+    nodeStyle.direction = direction;
+    nodeStyle.size = SizeDim::FromLengths(kContainer, kContainer);
+    nodeStyle.overflow = {overflow, overflow};
+    TaffyNodeId node = tree.NewWithChildren(nodeStyle, &child, 1);
+    tree.ComputeLayout(node, SizeAvail::MaxContent());
+    taffy::Layout layout = tree.GetLayout(node);
+    tree.Free();
+    return layout;
+}
+
+static void TestScrollableOverflow() {
+    TestSuite("taffy scrollable overflow");
+    constexpr float kContainer = 200.0f;
+    constexpr float kChild = 50.0f;
+    taffy::Display displays[] = {taffy::Display::Block, taffy::Display::Flex,
+                                 taffy::Display::Grid};
+    for (taffy::Display d : displays) {
+        taffy::Layout wholly = AbsoluteChildLayout(d, taffy::Overflow::Scroll,
+                                                   taffy::Direction::Ltr, true,
+                                                   -100.0f, false, 0.0f);
+        utassertnear(wholly.scrollableOverflowRect.left, 0.0f);
+        utassertnear(wholly.scrollableOverflowRect.right, 0.0f);
+        utassertnear(wholly.scrollableOverflowRect.top, 0.0f);
+        utassertnear(wholly.scrollableOverflowRect.bottom, 0.0f);
+        utassertnear(wholly.ScrollWidth(), 0.0f);
+
+        taffy::Layout visible = AbsoluteChildLayout(d, taffy::Overflow::Visible,
+                                                    taffy::Direction::Ltr, true,
+                                                    -100.0f, false, 0.0f);
+        utassertnear(visible.scrollableOverflowRect.left, -100.0f);
+
+        taffy::Layout partial = AbsoluteChildLayout(d, taffy::Overflow::Scroll,
+                                                    taffy::Direction::Ltr, true,
+                                                    -25.0f, false, 0.0f);
+        utassertnear(partial.scrollableOverflowRect.left, -25.0f);
+        utassertnear(partial.scrollableOverflowRect.right, 25.0f);
+        utassertnear(partial.ScrollWidth(), 0.0f);
+
+        taffy::Layout end = AbsoluteChildLayout(d, taffy::Overflow::Scroll,
+                                                taffy::Direction::Ltr, true,
+                                                kContainer, false, 0.0f);
+        utassertnear(end.scrollableOverflowRect.right, kContainer + kChild);
+        utassertnear(end.ScrollWidth(), kChild);
+
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.left = LengthPercentageAuto::Zero();
+        absStyle.inset.right = LengthPercentageAuto::Auto();
+        absStyle.inset.top = LengthPercentageAuto::Zero();
+        absStyle.inset.bottom = LengthPercentageAuto::Auto();
+        absStyle.size = SizeDim::FromLengths(5.0f, 5.0f);
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        taffy::Style padStyle;
+        padStyle.display = d;
+        padStyle.overflow = {taffy::Overflow::Scroll, taffy::Overflow::Scroll};
+        padStyle.padding.right = LengthPercentage::Length(20.0f);
+        padStyle.padding.bottom = LengthPercentage::Length(30.0f);
+        padStyle.size = SizeDim::FromLengths(kContainer, kContainer);
+        TaffyNodeId padded = tree.NewWithChildren(padStyle, &abs, 1);
+        tree.ComputeLayout(padded, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(padded).scrollableOverflowRect.right,
+                     20.0f);
+        utassertnear(tree.GetLayout(padded).scrollableOverflowRect.bottom,
+                     30.0f);
+        tree.Free();
+
+        auto nested = [&](taffy::Overflow x, taffy::Overflow y) {
+            TaffyTree nestedTree;
+            nestedTree.Init();
+            taffy::Style grandStyle;
+            grandStyle.position = taffy::Position::Absolute;
+            grandStyle.inset.left = LengthPercentageAuto::Zero();
+            grandStyle.inset.right = LengthPercentageAuto::Auto();
+            grandStyle.inset.top = LengthPercentageAuto::Length(kContainer);
+            grandStyle.inset.bottom = LengthPercentageAuto::Auto();
+            grandStyle.size = SizeDim::FromLengths(kChild, kChild);
+            TaffyNodeId grand = nestedTree.NewLeaf(grandStyle);
+            taffy::Style childStyle;
+            childStyle.display = d;
+            childStyle.size = SizeDim::FromLengths(kContainer, kContainer);
+            childStyle.overflow = {x, y};
+            TaffyNodeId child = nestedTree
+                                    .NewWithChildren(childStyle, &grand, 1);
+            taffy::Style rootStyle;
+            rootStyle.display = d;
+            rootStyle.size = SizeDim::FromLengths(kContainer, kContainer);
+            TaffyNodeId root = nestedTree.NewWithChildren(rootStyle, &child, 1);
+            nestedTree.ComputeLayout(root, SizeAvail::MaxContent());
+            float bottom = nestedTree.GetLayout(root)
+                               .scrollableOverflowRect.bottom;
+            nestedTree.Free();
+            return bottom;
+        };
+        utassertnear(nested(taffy::Overflow::Hidden, taffy::Overflow::Visible),
+                     kContainer);
+        utassertnear(nested(taffy::Overflow::Clip, taffy::Overflow::Visible),
+                     kContainer + kChild);
+
+        taffy::Layout rtlWholly = AbsoluteChildLayout(
+            d, taffy::Overflow::Scroll, taffy::Direction::Rtl, false, 0.0f,
+            true, -100.0f);
+        utassertnear(rtlWholly.scrollableOverflowRect.left, 0.0f);
+        utassertnear(rtlWholly.scrollableOverflowRect.right, 0.0f);
+        utassertnear(rtlWholly.ScrollWidth(), 0.0f);
+
+        taffy::Layout rtlEnd = AbsoluteChildLayout(d, taffy::Overflow::Scroll,
+                                                   taffy::Direction::Rtl, true,
+                                                   -kChild, false, 0.0f);
+        utassertnear(rtlEnd.scrollableOverflowRect.right, kContainer + kChild);
+        utassertnear(rtlEnd.ScrollWidth(), kChild);
     }
 }
 
@@ -4026,7 +4171,7 @@ static void TestTaffy013Regressions() {
     {
         Layout l;
         l.size = {100.0f, 80.0f};
-        l.contentSize = {120.0f, 95.0f};
+        l.scrollableOverflowRect = {0.0f, 120.0f, 0.0f, 95.0f};
         l.border = {3.0f, 7.0f, 5.0f, 11.0f};
         utassertnear(l.ScrollWidth(), 30.0f);
         utassertnear(l.ScrollHeight(), 31.0f);
@@ -4081,6 +4226,7 @@ void TestTaffy() {
     TestLeafContentSizeEndPadding();
     TestOverflowPastScrollOrigin();
     TestContentSizeEndPadding();
+    TestScrollableOverflow();
 
     // The grid tests build styles whose track lists live in an arena of their
     // own; a Style holds slices, not owned vectors.

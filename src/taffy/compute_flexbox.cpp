@@ -1694,7 +1694,7 @@ void AlignFlexLinesPerAlignContent(Vec<FlexLine>* lines, const AlgoConstants& c,
 
 void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
                        float totalOffsetCross, float lineOffsetCross,
-                       SizeF* totalContentSize, const AlgoConstants& c) {
+                       RectF* totalOverflowRect, const AlgoConstants& c) {
     FlexDirection direction = c.dir;
     Direction layoutDirection = c.layoutDirection;
     SizeF containerSize = c.containerSize;
@@ -1715,7 +1715,7 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
     LayoutOutput layoutOutput =
         tree->ComputeChildLayout(item->node, childInput);
     SizeF size = layoutOutput.size;
-    SizeF contentSize = layoutOutput.contentSize;
+    RectF scrollableOverflowRect = layoutOutput.scrollableOverflowRect;
 
     bool isRtlRow = IsRow(direction) && IsRtl(layoutDirection);
     bool isRtlColumn = IsColumn(direction) && IsRtl(layoutDirection);
@@ -1781,7 +1781,7 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
     Layout layout;
     layout.order = item->order;
     layout.size = size;
-    layout.contentSize = contentSize;
+    layout.scrollableOverflowRect = scrollableOverflowRect;
     layout.scrollbarSize = scrollbarSize;
     layout.location = location;
     layout.padding = item->padding;
@@ -1799,18 +1799,19 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
 
     PointF contributionLocation =
         IsRtl(layoutDirection)
-            ? PointF{containerSize.w - (location.x + size.w), location.y}
-            : location;
-    *totalContentSize =
-        Max(*totalContentSize,
-            ComputeContentSizeContribution(contributionLocation, size,
-                                           contentSize, item->overflow));
+            ? PointF{containerSize.w - (location.x + size.w) - c.border.right,
+                     location.y - c.border.top}
+            : PointF{location.x - c.border.left, location.y - c.border.top};
+    *totalOverflowRect =
+        totalOverflowRect->Union(ComputeScrollableOverflowContribution(
+            contributionLocation, size, scrollableOverflowRect, item->overflow,
+            c.isScrollContainer));
 }
 
 // ─── calculate_layout_line ───────────────────────────────────────────────
 
 void CalculateLayoutLine(TaffyTree* tree, FlexLine* line,
-                         float* totalOffsetCross, SizeF* contentSize,
+                         float* totalOffsetCross, RectF* overflowRect,
                          const AlgoConstants& c) {
     FlexDirection direction = c.dir;
     Direction layoutDirection = c.layoutDirection;
@@ -1832,7 +1833,7 @@ void CalculateLayoutLine(TaffyTree* tree, FlexLine* line,
                              ? &line->items[line->count - 1 - i]
                              : &line->items[i];
         CalculateFlexItem(tree, item, &totalOffsetMain, *totalOffsetCross,
-                          lineOffsetCross, contentSize, c);
+                          lineOffsetCross, overflowRect, c);
     }
 
     if (!isRtlColumn) {
@@ -1842,39 +1843,39 @@ void CalculateLayoutLine(TaffyTree* tree, FlexLine* line,
 
 // ─── final_layout_pass ───────────────────────────────────────────────────
 
-SizeF FinalLayoutPass(TaffyTree* tree, Vec<FlexLine>* lines,
+RectF FinalLayoutPass(TaffyTree* tree, Vec<FlexLine>* lines,
                       const AlgoConstants& c) {
     float totalOffsetCross =
         (c.isColumn && IsRtl(c.layoutDirection))
             ? c.containerSize.w - CrossEnd(c.contentBoxInset, c.dir)
             : CrossStart(c.contentBoxInset, c.dir);
 
-    SizeF contentSize = SizeF::Zero();
+    RectF overflowRect = RectF::Zero();
 
     for (int i = 0; i < lines->len; i++) {
         FlexLine& line =
             c.isWrapReverse ? (*lines)[lines->len - 1 - i] : (*lines)[i];
-        CalculateLayoutLine(tree, &line, &totalOffsetCross, &contentSize, c);
+        CalculateLayoutLine(tree, &line, &totalOffsetCross, &overflowRect, c);
     }
 
     // End padding is part of a scroll container's overflow. Other boxes
-    // do not extend content size by their own padding.
+    // do not extend their overflow rect by their own padding.
     if (c.isScrollContainer) {
-        contentSize.w +=
+        overflowRect.right +=
             IsRtl(c.layoutDirection)
                 ? c.contentBoxInset.left - c.border.left - c.scrollbarGutter.x
                 : c.contentBoxInset.right - c.border.right -
                       c.scrollbarGutter.x;
-        contentSize.h +=
+        overflowRect.bottom +=
             c.contentBoxInset.bottom - c.border.bottom - c.scrollbarGutter.y;
     }
 
-    return contentSize;
+    return overflowRect;
 }
 
 // ─── perform_absolute_layout_on_absolute_children ────────────────────────
 
-SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
+RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
                                               const AlgoConstants& c) {
     CalcResolver calc = tree->calc;
     float containerWidth = c.containerSize.w;
@@ -1882,7 +1883,7 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
     SizeF insetRelativeSize =
         c.containerSize - c.border.SumAxes() - IntoSize(c.scrollbarGutter);
 
-    SizeF contentSize = SizeF::Zero();
+    RectF overflowRect = RectF::Zero();
 
     int n = tree->ChildCount(node);
     for (int order = 0; order < n; order++) {
@@ -2167,7 +2168,7 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
         Layout layout;
         layout.order = (uint32_t)order;
         layout.size = finalSize;
-        layout.contentSize = layoutOutput.contentSize;
+        layout.scrollableOverflowRect = layoutOutput.scrollableOverflowRect;
         layout.scrollbarSize = scrollbarSize;
         layout.location = location;
         layout.padding = padding;
@@ -2175,36 +2176,26 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
         layout.margin = resolvedMargin;
         tree->SetUnroundedLayout(child, layout);
 
-        SizeF sizeContribution = {
-            overflow.x == Overflow::Visible
-                ? F32Max(finalSize.w, layoutOutput.contentSize.w)
-                : finalSize.w,
-            overflow.y == Overflow::Visible
-                ? F32Max(finalSize.h, layoutOutput.contentSize.h)
-                : finalSize.h};
-        if (HasNonZeroArea(sizeContribution)) {
-            PointF absoluteAreaOffset = {
-                c.border.left +
-                    (IsRtl(c.layoutDirection) ? c.scrollbarGutter.x : 0.0f),
-                c.border.top};
-            PointF relativeLocation = {location.x - absoluteAreaOffset.x,
-                                       location.y - absoluteAreaOffset.y};
-            SizeF contribution;
-            if (IsRtl(c.layoutDirection)) {
-                float overflowExtraWidth =
-                    F32Max(sizeContribution.w - finalSize.w, 0.0f);
-                contribution.w =
-                    F32Max(insetRelativeSize.w - relativeLocation.x, 0.0f) +
-                    overflowExtraWidth;
-            } else {
-                contribution.w = relativeLocation.x + sizeContribution.w;
-            }
-            contribution.h = relativeLocation.y + sizeContribution.h;
-            contentSize = Max(contentSize, contribution);
-        }
+        // Location is measured from the scroll origin (inline-start; the
+        // right side in RTL).
+        PointF absoluteAreaOffset = {
+            c.border.left +
+                (IsRtl(c.layoutDirection) ? c.scrollbarGutter.x : 0.0f),
+            c.border.top};
+        PointF relativeLocation = {location.x - absoluteAreaOffset.x,
+                                   location.y - absoluteAreaOffset.y};
+        PointF contributionLocation =
+            IsRtl(c.layoutDirection)
+                ? PointF{insetRelativeSize.w - relativeLocation.x - finalSize.w,
+                         relativeLocation.y}
+                : relativeLocation;
+        overflowRect = overflowRect.Union(ComputeScrollableOverflowContribution(
+            contributionLocation, finalSize,
+            layoutOutput.scrollableOverflowRect, overflow,
+            c.isScrollContainer));
     }
 
-    return contentSize;
+    return overflowRect;
 }
 
 // ─── compute_preliminary ─────────────────────────────────────────────────
@@ -2342,9 +2333,9 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
     // 16. Align all flex lines per align-content.
     AlignFlexLinesPerAlignContent(&flexLines, constants, totalLineCrossSize);
 
-    SizeF inflowContentSize = FinalLayoutPass(tree, &flexLines, constants);
+    RectF inflowOverflowRect = FinalLayoutPass(tree, &flexLines, constants);
 
-    SizeF absoluteContentSize =
+    RectF absoluteOverflowRect =
         PerformAbsoluteLayoutOnAbsoluteChildren(tree, node, constants);
 
     // display:none children still get a zeroed layout.
@@ -2384,7 +2375,7 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
     VecReset(flexLines);
 
     return LayoutOutput::FromSizesAndBaselines(
-        constants.containerSize, Max(inflowContentSize, absoluteContentSize),
+        constants.containerSize, inflowOverflowRect.Union(absoluteOverflowRect),
         BaselinesFromFirst(firstVerticalBaseline));
 }
 

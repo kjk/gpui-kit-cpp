@@ -3689,19 +3689,17 @@ AlignedAxis AlignItemWithinArea(LineF gridArea, AlignSelf alignmentStyle,
 }
 
 struct AlignedItem {
-    SizeF contentSizeContribution;
+    RectF overflowContribution;
     float yPosition = 0.0f;
     float height = 0.0f;
 };
 
 // Align and size a grid item into its final position.
-AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
-                                 RectF gridArea,
-                                 OptAlignItems containerJustifyItems,
-                                 OptAlignItems containerAlignItems,
-                                 float baselineShim, Direction direction,
-                                 float containerBorderBoxWidth,
-                                 RectF containerBorder) {
+AlignedItem AlignAndPositionItem(
+    TaffyTree* tree, NodeId node, uint32_t order, RectF gridArea,
+    OptAlignItems containerJustifyItems, OptAlignItems containerAlignItems,
+    float baselineShim, Direction direction, float containerBorderBoxWidth,
+    RectF containerBorder, bool containerIsScrollContainer) {
     CalcResolver calc = tree->calc;
     SizeF gridAreaSize = {gridArea.right - gridArea.left,
                           gridArea.bottom - gridArea.top};
@@ -3903,7 +3901,7 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
     layout.order = order;
     layout.location = {xr.start, yr.start};
     layout.size = finalSize;
-    layout.contentSize = layoutOutput.contentSize;
+    layout.scrollableOverflowRect = layoutOutput.scrollableOverflowRect;
     layout.scrollbarSize = scrollbarSize;
     layout.padding = padding;
     layout.border = border;
@@ -3911,12 +3909,13 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
                      yr.margin.end};
     tree->SetUnroundedLayout(node, layout);
 
-    SizeF contribution = ComputeContentSizeContribution(
+    RectF contribution = ComputeScrollableOverflowContribution(
         {IsRtl(direction) ? containerBorderBoxWidth - (xr.start + finalSize.w) -
                                 containerBorder.right
                           : xr.start - containerBorder.left,
          yr.start - containerBorder.top},
-        finalSize, layoutOutput.contentSize, overflow);
+        finalSize, layoutOutput.scrollableOverflowRect, overflow,
+        containerIsScrollContainer);
     return {contribution, yr.start, finalSize.h};
 }
 
@@ -4480,8 +4479,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                 rows.els, len(rows), alignContent, false);
 
     // 9. Size, align and position the grid items.
-    SizeF itemContentSizeContribution = SizeF::Zero();
-    SizeF absoluteContentSize = SizeF::Zero();
+    RectF itemOverflowRect = RectF::Zero();
+    RectF absoluteOverflowRect = RectF::Zero();
 
     // Back into source order, so items line up with their styles again.
     StableSort(items.els, len(items), [](const GridItem& a, const GridItem& b) {
@@ -4494,14 +4493,13 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                           columns[(int)item.columnIndexes.end].offset,
                           rows[(int)item.rowIndexes.start + 1].offset,
                           rows[(int)item.rowIndexes.end].offset};
-        AlignedItem placed =
-            AlignAndPositionItem(tree, item.node, (uint32_t)index, gridArea,
-                                 justifyItems, alignItems, item.baselineShim,
-                                 direction, containerBorderBox.w, border);
+        AlignedItem placed = AlignAndPositionItem(
+            tree, item.node, (uint32_t)index, gridArea, justifyItems,
+            alignItems, item.baselineShim, direction, containerBorderBox.w,
+            border, isScrollContainer);
         item.yPosition = placed.yPosition;
         item.height = placed.height;
-        itemContentSizeContribution =
-            Max(itemContentSizeContribution, placed.contentSizeContribution);
+        itemOverflowRect = itemOverflowRect.Union(placed.overflowContribution);
     }
 
     // Hidden and absolutely positioned children.
@@ -4597,25 +4595,29 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         // TODO(taffy): baseline alignment for absolutely positioned items.
         AlignedItem placed = AlignAndPositionItem(
             tree, child, order, gridArea, justifyItems, alignItems, 0.0f,
-            direction, containerBorderBox.w, border);
-        absoluteContentSize =
-            Max(absoluteContentSize, placed.contentSizeContribution);
+            direction, containerBorderBox.w, border, isScrollContainer);
+        absoluteOverflowRect = absoluteOverflowRect
+                                   .Union(placed.overflowContribution);
         order += 1;
     }
 
     // End padding is part of a scroll container's overflow. Other boxes
-    // do not extend content size by their own padding.
-    if (isScrollContainer) {
-        itemContentSizeContribution
-            .w += IsRtl(direction) ? padding.left : padding.right;
-        itemContentSizeContribution.h += padding.bottom;
-    }
-    SizeF finalContentSize =
-        Max(itemContentSizeContribution, absoluteContentSize);
+    // do not extend their overflow rect by their own padding. An
+    // absolute-only grid still reports that padding and the absolute
+    // children's overflow.
+    auto withEndPadding = [&](RectF overflowRect) {
+        if (isScrollContainer) {
+            overflowRect
+                .right += IsRtl(direction) ? padding.left : padding.right;
+            overflowRect.bottom += padding.bottom;
+        }
+        return overflowRect.Union(absoluteOverflowRect);
+    };
 
     LayoutOutput out;
     if (len(items) == 0) {
-        out = LayoutOutput::FromOuterSize(containerBorderBox);
+        out = LayoutOutput::FromSizes(containerBorderBox,
+                                      withEndPadding(itemOverflowRect));
     } else {
         // The grid container's first baseline. Sort by row start so the items
         // of the first row are contiguous.
@@ -4638,7 +4640,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         float gridContainerBaseline =
             chosen->yPosition + UnwrapOr(chosen->baseline, chosen->height);
         out = LayoutOutput::FromSizesAndBaselines(
-            containerBorderBox, finalContentSize,
+            containerBorderBox, withEndPadding(itemOverflowRect),
             BaselinesFromFirst(Some(gridContainerBaseline)));
     }
 

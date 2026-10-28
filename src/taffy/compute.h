@@ -134,11 +134,18 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
                      GridPlacementForTest* out, int cap, uint16_t* outColCounts,
                      uint16_t* outRowCounts);
 
-// ─── shared content size — taffy/src/compute/common/content_size.rs ──────
+// ─── scrollable overflow — taffy/src/compute/common/scrollable_overflow.rs
 
-// How much width/height a node contributes to its parent's content size.
-SizeF ComputeContentSizeContribution(PointF location, SizeF size,
-                                     SizeF contentSize, PointOverflow overflow);
+// The rectangle a node contributes to its parent's scrollable overflow.
+// `location` is the border box measured from the parent's scroll origin.
+// A scroll container (Hidden or Scroll on either axis) clips both axes.
+// Clip clips only its own axis. Visible propagates the child's rect.
+// A box wholly before the scroll origin is dropped only when the parent
+// is itself a scroll container.
+RectF ComputeScrollableOverflowContribution(PointF location, SizeF size,
+                                            RectF scrollableOverflowRect,
+                                            PointOverflow overflow,
+                                            bool parentIsScrollContainer);
 
 } // namespace taffy
 

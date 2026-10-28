@@ -4919,8 +4919,10 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     e->y = originY + l.location.y;
     e->w = l.size.w;
     e->h = l.size.h;
-    e->contentW = l.contentSize.w;
-    e->contentH = l.contentSize.h;
+    // Reachable extent. Start-side overflow is negative and is not part
+    // of the scrollable content size.
+    e->contentW = l.scrollableOverflowRect.right;
+    e->contentH = l.scrollableOverflowRect.bottom;
     // An empty field lays the placeholder out, and that run is not
     // scrollable content (element.rs widest_laid_out_line).
     if (e->input && e->style.overflowX == Overflow::Scroll &&
