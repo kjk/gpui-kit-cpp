@@ -980,7 +980,9 @@ MinMaxSpan ChildMinLineMaxLineSpan(LinePlacement line,
         out.minLine = t1;
         out.maxLine = t1 + oz.end.span;
     } else if (oz.start.IsAuto() && oz.end.IsLine()) {
-        out.minLine = t2;
+        // A span of 1 ending at the definite line. Using the end line as the
+        // start as well invents a positive implicit track on an empty grid.
+        out.minLine = t2 - (uint16_t)1;
         out.maxLine = t2;
     } else if (oz.start.IsSpan() && oz.end.IsLine()) {
         out.minLine = t2 - oz.start.span;

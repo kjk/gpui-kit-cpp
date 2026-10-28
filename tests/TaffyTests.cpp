@@ -3654,6 +3654,32 @@ static void TestGridImplicitSizing() {
     }
 
     {
+        // auto start, definite end: one track ending at that line. On an
+        // empty grid that track is negative implicit, not a phantom
+        // positive track after the end line.
+        int16_t minCol = 0;
+        int16_t maxCol = 0;
+        uint16_t span = 0;
+        LinePlacement l = {GAuto(), GLine(1)};
+        GridChildMinMaxSpanForTest(l, 0, &minCol, &maxCol, &span);
+        utassert(minCol == -1);
+        utassert(maxCol == 0);
+        utassert(span == 1);
+
+        LinePlacement cols[1] = {{GAuto(), GLine(1)}};
+        LinePlacement rows[1] = {{GLine(1), GLine(2)}};
+        uint16_t colCounts[3];
+        uint16_t rowCounts[3];
+        GridSizeEstimateForTest(0, 1, cols, rows, 1, colCounts, rowCounts);
+        utassert(colCounts[0] == 1);
+        utassert(colCounts[1] == 0);
+        utassert(colCounts[2] == 0);
+        utassert(rowCounts[0] == 0);
+        utassert(rowCounts[1] == 1);
+        utassert(rowCounts[2] == 0);
+    }
+
+    {
         // explicit_grid_sizing_with_children
         LinePlacement cols[2] = {{GLine(1), GSpan(2)}, {GLine(-4), GAuto()}};
         LinePlacement rows[2] = {{GLine(2), GAuto()}, {GLine(-2), GAuto()}};
