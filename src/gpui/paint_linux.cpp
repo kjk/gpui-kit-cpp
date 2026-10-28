@@ -1451,13 +1451,16 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
         return 0;
     }
     (void)s;
-    float pad = BoxPad(tl);
     int n = 0;
+    int lineNo = 0;
     PangoLayoutIter* iter = pango_layout_get_iter(tl->layout);
     if (!iter) {
         return 0;
     }
     do {
+        // Count every line, including ones the range misses, so a later
+        // line's box starts at its own multiple of the line height.
+        int thisLine = lineNo++;
         PangoLayoutLine* line = pango_layout_iter_get_line_readonly(iter);
         if (!line) {
             continue;
@@ -1472,8 +1475,6 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
         int x0 = 0, x1 = 0;
         pango_layout_line_index_to_x(line, lo, FALSE, &x0);
         pango_layout_line_index_to_x(line, hi, FALSE, &x1);
-        int y0 = 0, y1 = 0;
-        pango_layout_iter_get_line_yrange(iter, &y0, &y1);
         // index_to_x is from the line's own left edge; the iterator's
         // extents say where an aligned line was put.
         PangoRectangle logical = {};
@@ -1485,10 +1486,14 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
             left = right;
             right = t;
         }
+        // The line box, from its top. Pango's y-range is the glyph box, and
+        // the half-leading pad sits above it; a rect from the glyphs reached
+        // into the next line. DirectWrite and Core Text report the box, so
+        // index 0 sits on the element's origin.
         out[n].x = left;
-        out[n].y = (float)y0 / PANGO_SCALE + pad;
+        out[n].y = (float)thisLine * tl->box;
         out[n].w = right - left;
-        out[n].h = (float)(y1 - y0) / PANGO_SCALE;
+        out[n].h = tl->box;
         n++;
     } while (n < max && pango_layout_iter_next_line(iter));
     pango_layout_iter_free(iter);

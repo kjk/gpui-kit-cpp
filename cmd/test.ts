@@ -54,4 +54,7 @@ const r = Bun.spawnSync([join(dir, outFileName(plat, "tests"))], {
   stdout: "inherit",
   stderr: "inherit",
 });
+if (r.signalCode) {
+  console.error(`tests killed by ${r.signalCode}`);
+}
 process.exit(r.exitCode ?? 1);

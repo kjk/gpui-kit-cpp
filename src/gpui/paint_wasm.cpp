@@ -996,7 +996,6 @@ EM_JS(int, GpJsTextRangeRects,
     const c = G.measurer();
     const prev = c.font;
     c.font = e.font;
-    const pad = (e.box - e.natural) * 0.5;
     let n = 0;
     for (let i = 0; i < e.lines.length && n < max; i++) {
         const line = e.lines[i];
@@ -1010,10 +1009,14 @@ EM_JS(int, GpJsTextRangeRects,
         const x0 = c.measureText(line.slice(0, G.u16at(line, lo - start))).width;
         const x1 = c.measureText(line.slice(0, G.u16at(line, hi - start))).width;
         const o = (out >> 2) + n * 4;
+        // The line box, from its top. The half-leading pad is where the
+        // glyphs sit inside that box; a rect from the glyphs reached into
+        // the next line, which is why DirectWrite and Core Text report the
+        // box. Index 0 then sits on the element's origin.
         HEAPF32[o] = x0 + e.dx[i];
-        HEAPF32[o + 1] = pad + i * e.box;
+        HEAPF32[o + 1] = i * e.box;
         HEAPF32[o + 2] = x1 - x0;
-        HEAPF32[o + 3] = e.natural;
+        HEAPF32[o + 3] = e.box;
         n++;
     }
     c.font = prev;

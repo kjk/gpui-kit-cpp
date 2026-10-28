@@ -21,6 +21,7 @@ void TestSuite(const char* name) {
 void TestFailed(const char* cond, const char* file, int line) {
     gTestFailures++;
     printf("FAIL %s: %s(%d): %s\n", gTestSuite, file, line, cond);
+    fflush(stdout);
 }
 
 bool TestNear(float a, float b) {

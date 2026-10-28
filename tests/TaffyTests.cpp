@@ -10196,6 +10196,12 @@ static void TestGridCyclicPercentMinContribution() {
 }
 
 void TestTaffy() {
+    // The grid tests build styles whose track lists live in an arena of
+    // their own; a Style holds slices, not owned vectors. That includes
+    // the width-only measure tests below, which run before the grid block.
+    // SliceNew calls Arena::Alloc as a member, so a null arena is undefined
+    // and clang deletes AllocBytes' null check.
+    gGridArena = gpui::ArenaNew();
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
     TestMaybeMathOptFloat();
@@ -10271,9 +10277,6 @@ void TestTaffy() {
     TestScrollableOverflow();
     TestLayoutCache();
 
-    // The grid tests build styles whose track lists live in an arena of their
-    // own; a Style holds slices, not owned vectors.
-    gGridArena = gpui::ArenaNew();
     TestNegativeAvailableSpace();
     TestGridBlockItemHeightCache();
     TestGridSparseSpanningLockedItems();

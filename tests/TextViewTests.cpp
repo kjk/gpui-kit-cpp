@@ -8277,7 +8277,13 @@ static void BlockquoteTypographyReachesNestedTableMeasurement() {
             whole += 1.f;
         }
         utassertnear(cell->style.maxW, whole / scale);
-        utassert(cell->style.maxW > plain.w + 24.f);
+        // The cell is measured in the quote's bold mono face. A shaper
+        // whose bold mono is wider than the UI face has to follow that
+        // measure. Canvas and some fallbacks give the two faces the same
+        // advance for these digits, so the width cannot tell them apart.
+        if (mono.w > plain.w + 0.01f) {
+            utassert(cell->style.maxW > plain.w + 24.f);
+        }
     }
     El* box = root ? BorderBoxEl(root, 1.5f) : nullptr;
     utassert(box && box->style.borderColor.b == 255);
