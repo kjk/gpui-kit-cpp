@@ -6,6 +6,7 @@
  */
 
 #include "taffy/compute.h"
+#include "taffy/sizing_keyword.h"
 
 namespace taffy {
 namespace {
@@ -31,6 +32,8 @@ struct FlexItem {
     uint32_t order = 0;
 
     SizeFOpt size = SizeFOptNone();
+    // Raw width/height, so a sizing keyword can be told from auto.
+    SizeDim sizeStyle;
     SizeFOpt minSize = SizeFOptNone();
     SizeFOpt maxSize = SizeFOptNone();
     Optf aspectRatio = None();
@@ -259,6 +262,7 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
         FlexItem item;
         item.node = child;
         item.order = (uint32_t)index;
+        item.sizeStyle = cs.size;
         item.size = MaybeAdd(
             MaybeApplyAspectRatio(
                 cs.size.MaybeResolve(percentResolutionSize, calc), aspectRatio),
@@ -425,20 +429,36 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
             // C is covered by E below, which passes the available space
             // constraint through to the child.
             // D would need vertical writing modes.
-            // E. Size the item into the available space using its used flex
-            //    basis in place of its main size, treating `content` as
-            //    max-content.
-            SizeAvail childAvailableSpace = SizeAvail::MaxContent();
-            childAvailableSpace
-                .SetMain(dir, availableSpace.Main(dir).kind ==
-                                      AvailableSpace::Kind::MinContent
-                                  ? AvailableSpace::MinContent()
-                                  : AvailableSpace::MaxContent());
-            childAvailableSpace.SetCross(dir, crossAxisAvailableSpace);
-            child.flexBasis = tree->MeasureChildSize(
-                child.node, childKnownDimensions, childParentSize,
-                childAvailableSpace, SizingMode::ContentSize, MainAxis(dir),
-                LineBool::False());
+            // A main-size keyword either is the flex base size (stretch) or
+            // picks the available space the item is measured under.
+            Optf mainStretch = MaybeSub(percentResolutionMainSize,
+                                        Some(MainAxisSum(child.margin, dir)));
+            SizingKeywordResolution keyword =
+                ResolveSizingKeyword(child.sizeStyle.Main(dir), mainStretch,
+                                     percentResolutionMainSize);
+            if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
+                child.flexBasisIsDefinite = true;
+                child.flexBasis = keyword.exact;
+            } else {
+                // E. Size the item into the available space using its used flex
+                //    basis in place of its main size, treating `content` as
+                //    max-content.
+                AvailableSpace mainAvailable =
+                    availableSpace.Main(dir)
+                                .kind == AvailableSpace::Kind::MinContent
+                        ? AvailableSpace::MinContent()
+                        : AvailableSpace::MaxContent();
+                if (keyword.isSome) {
+                    mainAvailable = keyword.measure;
+                }
+                SizeAvail childAvailableSpace = SizeAvail::MaxContent();
+                childAvailableSpace.SetMain(dir, mainAvailable);
+                childAvailableSpace.SetCross(dir, crossAxisAvailableSpace);
+                child.flexBasis = tree->MeasureChildSize(
+                    child.node, childKnownDimensions, childParentSize,
+                    childAvailableSpace, SizingMode::ContentSize, MainAxis(dir),
+                    LineBool::False());
+            }
         }
 
         // Floor the flex basis by the padding+border sum, which floors the
@@ -1005,6 +1025,18 @@ void DetermineHypotheticalCrossSize(TaffyTree* tree, FlexLine* line,
                                 transferredMaxCross),
                      paddingBorderSum);
 
+        // A cross-size keyword other than stretch picks the available space.
+        // Stretch waits for the flex line, in DetermineUsedCrossSize.
+        Optf crossStretch = MaybeSub(Cross(c.nodeInnerSize, dir),
+                                     Some(CrossAxisSum(child.margin, dir)));
+        SizingKeywordResolution crossKeyword =
+            ResolveSizingKeyword(child.sizeStyle.Cross(dir), crossStretch,
+                                 Cross(c.nodeInnerSize, dir));
+        if (crossKeyword.isSome &&
+            crossKeyword.kind == SizingKeywordKind::Measure) {
+            childAvailableCross = crossKeyword.measure;
+        }
+
         float childInnerCross;
         if (IsSome(childCross)) {
             childInnerCross = childCross;
@@ -1195,11 +1227,15 @@ void DetermineUsedCrossSize(TaffyTree* tree, Vec<FlexLine>* lines,
         for (int i = 0; i < line.count; i++) {
             FlexItem& child = line.items[i];
             const Style& cs = tree->GetStyle(child.node);
+            // `height: stretch` stretches to the flex line whatever align-self
+            // says. An auto cross size still stretches only for align-self.
+            bool crossIsStretch = child.sizeStyle.Cross(dir).IsStretch();
             float used;
-            if (child.alignSelf.keyword == AlignItemsKeyword::Stretch &&
-                !child.marginIsAuto.CrossStart(dir) &&
+            if (!child.marginIsAuto.CrossStart(dir) &&
                 !child.marginIsAuto.CrossEnd(dir) &&
-                cs.size.Cross(dir).IsAuto()) {
+                (crossIsStretch ||
+                 (child.alignSelf.keyword == AlignItemsKeyword::Stretch &&
+                  cs.size.Cross(dir).IsAuto()))) {
                 // This use of max_size is an exception to the rule that
                 // max_size transfers through the aspect ratio. Chrome and
                 // Firefox agree, and it is a reasonable reading of the spec.
@@ -1702,6 +1738,18 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
                 aspectRatio),
             boxSizingAdjustment);
         SizeFOpt knownDimensions = MaybeClamp(styleSize, minSize, maxSize);
+
+        // A sizing keyword beats the inset-derived size below. Flex absolute
+        // children are measured in inherent-size mode.
+        if (cs.size.width.IsSizingKeyword() || cs.size.height
+                                                   .IsSizingKeyword()) {
+            ResolveAbsoluteSizingKeywords(tree, child, &knownDimensions,
+                                          cs.size, insetRelativeSize, inset,
+                                          margin, SizingMode::InherentSize);
+            knownDimensions =
+                MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
+                           minSize, maxSize);
+        }
 
         // Fill in the width from left/right (and reapply the aspect ratio) if
         // the width is not known and both insets are set.

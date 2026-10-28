@@ -8,6 +8,7 @@
  */
 
 #include "taffy/compute.h"
+#include "taffy/sizing_keyword.h"
 
 namespace taffy {
 
@@ -740,6 +741,10 @@ struct BlockItem {
     Clear clear = Clear::None;
 
     SizeFOpt size = SizeFOptNone();
+    // Raw width/height, so a sizing keyword can be told from auto. In the
+    // block axis only stretch differs from auto; the intrinsic keywords are
+    // the content size an auto height already produces.
+    SizeDim sizeStyle;
     SizeFOpt minSize = SizeFOptNone();
     SizeFOpt maxSize = SizeFOptNone();
 
@@ -804,6 +809,7 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
                            cs.position != Position::Absolute && isNotFloated &&
                            !isScrollContainer;
 
+        item.sizeStyle = cs.size;
         item.size = MaybeAdd(
             MaybeApplyAspectRatio(cs.size.MaybeResolve(nodeInnerSize, calc),
                                   aspectRatio),
@@ -823,6 +829,19 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
         item.paddingBorderSum = pbSum;
         VecAppend(*items, item);
     }
+}
+
+// In the block axis, min-content, max-content and fit-content are the content
+// size an auto height already resolves to. Only stretch is a definite height.
+Optf ResolveStretchHeight(Dimension heightStyle, Optf containerInnerHeight,
+                          float itemYMarginSum) {
+    SizingKeywordResolution resolved = ResolveSizingKeyword(
+        heightStyle, MaybeSub(containerInnerHeight, Some(itemYMarginSum)),
+        containerInnerHeight);
+    if (resolved.isSome && resolved.kind == SizingKeywordKind::Exact) {
+        return Some(resolved.exact);
+    }
+    return None();
 }
 
 // ─── determine_content_based_container_width ─────────────────────────────
@@ -852,7 +871,15 @@ float DetermineContentBasedContainerWidth(TaffyTree* tree,
             width = knownDimensions.w;
         } else {
             SizeAvail childAvail = availableSpace;
-            childAvail.width = MaybeSub(childAvail.width, itemXMarginSum);
+            SizingKeywordResolution keyword =
+                ResolveSizingKeyword(item.sizeStyle.width, None(), None());
+            if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
+                childAvail.width = AvailableSpace::Definite(keyword.exact);
+            } else if (keyword.isSome) {
+                childAvail.width = keyword.measure;
+            } else {
+                childAvail.width = MaybeSub(childAvail.width, itemXMarginSum);
+            }
             width = tree->MeasureChildSize(
                 item.nodeId, knownDimensions, SizeFOptNone(), childAvail,
                 SizingMode::InherentSize, AbsoluteAxis::Horizontal,
@@ -949,10 +976,26 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             hasActiveFloats = true;
 
             float availableWidth = containerInnerWidth - itemNonAutoXMarginSum;
+            Optf itemKnownWidth = None();
+            AvailableSpace itemAvailableWidth =
+                AvailableSpace::Definite(availableWidth);
+            SizingKeywordResolution keywordWidth =
+                ResolveSizingKeyword(item.sizeStyle.width, Some(availableWidth),
+                                     Some(containerInnerWidth));
+            if (keywordWidth.isSome &&
+                keywordWidth.kind == SizingKeywordKind::Measure) {
+                itemAvailableWidth = keywordWidth.measure;
+            } else if (keywordWidth.isSome) {
+                itemKnownWidth = Some(keywordWidth.exact);
+                itemAvailableWidth =
+                    AvailableSpace::Definite(keywordWidth.exact);
+            }
+            Optf itemKnownHeight = ResolveStretchHeight(
+                item.sizeStyle.height, percentageResolutionHeight,
+                itemNonAutoMargin.VerticalAxisSum());
             LayoutOutput itemLayout = tree->PerformChildLayout(
-                item.nodeId, SizeFOptNone(), parentSize,
-                {AvailableSpace::Definite(availableWidth),
-                 AvailableSpace::MaxContent()},
+                item.nodeId, {itemKnownWidth, itemKnownHeight}, parentSize,
+                {itemAvailableWidth, AvailableSpace::MaxContent()},
                 SizingMode::InherentSize, LineBool::False());
             SizeF marginBox = itemLayout.size + itemNonAutoMargin.SumAxes();
 
@@ -1052,9 +1095,27 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
 
         SizeFOpt knownDimensions = SizeFOptNone();
         if (!item.isTable && !item.isReplaced) {
+            Optf keywordWidth = None();
+            SizingKeywordResolution keyword =
+                ResolveSizingKeyword(item.sizeStyle.width, Some(stretchWidth),
+                                     Some(containerInnerWidth));
+            if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
+                keywordWidth = Some(keyword.exact);
+            } else if (keyword.isSome) {
+                keywordWidth = Some(tree->MeasureChildSize(
+                    item.nodeId, SizeFOptNone(), parentSize,
+                    {keyword.measure, AvailableSpace::MaxContent()},
+                    SizingMode::InherentSize, AbsoluteAxis::Horizontal,
+                    LineBool::True()));
+            }
+            Optf keywordHeight = ResolveStretchHeight(
+                item.sizeStyle.height, percentageResolutionHeight,
+                itemNonAutoMargin.VerticalAxisSum());
             SizeFOpt sized = item.size;
-            sized.w = Some(MaybeClamp(UnwrapOr(sized.w, stretchWidth),
-                                      item.minSize.w, item.maxSize.w));
+            sized.w = Some(
+                MaybeClamp(UnwrapOr(Or(sized.w, keywordWidth), stretchWidth),
+                           item.minSize.w, item.maxSize.w));
+            sized.h = Or(sized.h, keywordHeight);
             knownDimensions = MaybeClamp(sized, item.minSize, item.maxSize);
         }
 
@@ -1365,6 +1426,18 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
                          aspectRatio),
                      boxSizingAdjustment);
         SizeFOpt knownDimensions = MaybeClamp(styleSize, minSize, maxSize);
+
+        // A sizing keyword beats the inset-derived size below. Block absolute
+        // children are measured in content-size mode.
+        if (cs.size.width.IsSizingKeyword() || cs.size.height
+                                                   .IsSizingKeyword()) {
+            ResolveAbsoluteSizingKeywords(tree, item.nodeId, &knownDimensions,
+                                          cs.size, areaSize, inset, margin,
+                                          SizingMode::ContentSize);
+            knownDimensions =
+                MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
+                           minSize, maxSize);
+        }
 
         if (!IsSome(knownDimensions.w) && IsSome(left) && IsSome(right)) {
             float newWidthRaw =

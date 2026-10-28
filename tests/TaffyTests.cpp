@@ -408,6 +408,36 @@ static void TestCompactLength() {
     utassert(!CompactLength::Length(1.0f).IsZero());
     utassert(CompactLength::Auto().IsIntrinsic());
     utassert(!CompactLength::Length(1.0f).IsIntrinsic());
+
+    // 446ba1ac: fit-content and stretch on width and height. The keyword is
+    // not a fit-content() limit, and neither new tag is intrinsic.
+    utassert(CompactLength::FitContentKeyword()
+                 .Tag() == CompactLength::kFitContentKeywordTag);
+    utassert(CompactLength::Stretch().Tag() == CompactLength::kStretchTag);
+    utassert(CompactLength::FitContentKeyword().IsSizingKeyword());
+    utassert(CompactLength::Stretch().IsSizingKeyword());
+    utassert(CompactLength::MinContent().IsSizingKeyword());
+    utassert(CompactLength::FitContentPx(8.0f).IsSizingKeyword());
+    utassert(!CompactLength::FitContentKeyword().IsFitContent());
+    utassert(!CompactLength::Stretch().IsFitContent());
+    utassert(!CompactLength::Stretch().IsIntrinsic());
+    utassert(!CompactLength::FitContentKeyword().IsMaxContentAlike());
+    utassert(Dimension::Stretch().IsStretch());
+    utassert(Dimension::FitContent().IsSizingKeyword());
+    utassert(!Dimension::Length(1.0f).IsSizingKeyword());
+    utassert(!Dimension::Auto().IsSizingKeyword());
+    utassert(MaxTrackSizingFunction::From(Dimension::Stretch()).IsAuto());
+    utassert(MaxTrackSizingFunction::From(Dimension::FitContent()).IsAuto());
+    utassert(MaxTrackSizingFunction::From(Dimension::MinContent())
+                 .IsMinContent());
+    utassert(MinTrackSizingFunction::From(Dimension::FitContentPx(10.0f))
+                 .IsAuto());
+    utassert(MinTrackSizingFunction::From(Dimension::FitContentPercent(0.5f))
+                 .IsAuto());
+    utassert(MinTrackSizingFunction::From(Dimension::Stretch()).IsAuto());
+    utassert(MinTrackSizingFunction::From(Dimension::FitContent()).IsAuto());
+    utassert(MinTrackSizingFunction::From(Dimension::MinContent())
+                 .IsMinContent());
 }
 
 // ─── src/tree/taffy_tree.rs ──────────────────────────────────────────────
@@ -420,6 +450,54 @@ static SizeF SizeMeasureInner(SizeFOpt knownDimensions,
     (void)availableSpace;
     SizeF ctx = nodeContext ? *(SizeF*)nodeContext : SizeF::Zero();
     return UnwrapOr(knownDimensions, ctx);
+}
+
+// "HH" + ZWSP + "HH" from the 446ba1ac fixtures: min-content 20x20,
+// max-content 40x10. A definite available size is the fit-content limit.
+static SizeF KeywordTextInner(SizeFOpt known, SizeAvail available, void*) {
+    const float kMinW = 20.0f;
+    const float kMaxW = 40.0f;
+    float width;
+    if (IsSome(known.w)) {
+        width = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        width = kMinW;
+    } else if (available.width.kind == AvailableSpace::Kind::MaxContent) {
+        width = kMaxW;
+    } else {
+        width = F32Max(kMinW, F32Min(kMaxW, available.width.value));
+    }
+    float lineH = width + 0.001f < kMaxW ? 20.0f : 10.0f;
+    float height;
+    if (IsSome(known.h)) {
+        height = known.h;
+    } else {
+        height = lineH;
+        if (available.height.kind == AvailableSpace::Kind::Definite) {
+            height = F32Max(lineH, F32Min(lineH, available.height.value));
+        }
+    }
+    return {width, height};
+}
+
+static taffy::LayoutOutput KeywordTextMeasure(const taffy::LayoutInput& inputs,
+                                              TaffyNodeId node,
+                                              void* nodeContext,
+                                              const taffy::Style* style,
+                                              void* userData) {
+    (void)node;
+    (void)nodeContext;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    KeywordTextInner, nullptr);
+}
+
+static void AssertBox(const Layout& layout, float x, float y, float w,
+                      float h) {
+    utassertnear(layout.location.x, x);
+    utassertnear(layout.location.y, y);
+    utassertnear(layout.size.w, w);
+    utassertnear(layout.size.h, h);
 }
 
 static taffy::LayoutOutput SizeMeasureFunction(const taffy::LayoutInput& inputs,
@@ -1163,6 +1241,146 @@ static void TestFlexboxLayout() {
             tree.Free();
         }
     }
+
+    {
+        // width:stretch fills the row after a flex-shrink:0 sibling takes
+        // its 30px. flex_item_width_stretch, content-box.
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        float stretchX[2] = {0.0f, 30.0f};
+        float fixedX[2] = {120.0f, 0.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style stretchStyle;
+            stretchStyle.boxSizing = BoxSizing::ContentBox;
+            stretchStyle.direction = directions[i];
+            stretchStyle.size.width = Dimension::Stretch();
+            stretchStyle.size.height = Dimension::Length(10.0f);
+            TaffyNodeId stretch = tree.NewLeaf(stretchStyle);
+            taffy::Style fixedStyle;
+            fixedStyle.boxSizing = BoxSizing::ContentBox;
+            fixedStyle.direction = directions[i];
+            fixedStyle.flexShrink = 0.0f;
+            fixedStyle.size.width = Dimension::Length(30.0f);
+            TaffyNodeId fixed = tree.NewLeaf(fixedStyle);
+
+            taffy::Style rootStyle;
+            rootStyle.boxSizing = BoxSizing::ContentBox;
+            rootStyle.direction = directions[i];
+            rootStyle.size.width = Dimension::Length(150.0f);
+            TaffyNodeId kids[2] = {stretch, fixed};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 150.0f, 10.0f);
+            AssertBox(tree.GetLayout(stretch), stretchX[i], 0.0f, 120.0f,
+                      10.0f);
+            AssertBox(tree.GetLayout(fixed), fixedX[i], 0.0f, 30.0f, 10.0f);
+            tree.Free();
+        }
+    }
+
+    {
+        // height:stretch ignores align-items:flex-start and subtracts the
+        // item's vertical margins. flex_item_height_stretch, content-box.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style plain;
+        plain.boxSizing = BoxSizing::ContentBox;
+        plain.size.width = Dimension::Length(40.0f);
+        plain.size.height = Dimension::Stretch();
+        TaffyNodeId a = tree.NewLeaf(plain);
+        taffy::Style margined = plain;
+        margined.margin.top = LengthPercentageAuto::Length(5.0f);
+        margined.margin.bottom = LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId b = tree.NewLeaf(margined);
+
+        taffy::Style rootStyle;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+        rootStyle.size = SizeDim::FromLengths(120.0f, 60.0f);
+        TaffyNodeId kids[2] = {a, b};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 120.0f, 60.0f);
+        AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 40.0f, 60.0f);
+        AssertBox(tree.GetLayout(b), 40.0f, 5.0f, 40.0f, 45.0f);
+        tree.Free();
+    }
+
+    {
+        // min-content / max-content / fit-content on a flex item's width.
+        // flex_item_width_keywords, content-box. The measure stands in for
+        // the fixture text (min 20x20, max 40x10).
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style minStyle;
+        minStyle.boxSizing = BoxSizing::ContentBox;
+        minStyle.size.width = Dimension::MinContent();
+        taffy::Style maxStyle = minStyle;
+        maxStyle.size.width = Dimension::MaxContent();
+        taffy::Style fitStyle = minStyle;
+        fitStyle.size.width = Dimension::FitContent();
+        TaffyNodeId a = tree.NewLeaf(minStyle);
+        TaffyNodeId b = tree.NewLeaf(maxStyle);
+        TaffyNodeId c = tree.NewLeaf(fitStyle);
+        taffy::Style rootStyle;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+        rootStyle.size.width = Dimension::Length(200.0f);
+        TaffyNodeId kids[3] = {a, b, c};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      KeywordTextMeasure, nullptr);
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 200.0f, 20.0f);
+        AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 20.0f, 20.0f);
+        AssertBox(tree.GetLayout(b), 20.0f, 0.0f, 40.0f, 10.0f);
+        AssertBox(tree.GetLayout(c), 60.0f, 0.0f, 40.0f, 10.0f);
+        tree.Free();
+    }
+
+    {
+        // An absolute stretch width subtracts insets and margins.
+        // flex_absolute_width_stretch_inset_margin, content-box.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style leftInset;
+        leftInset.boxSizing = BoxSizing::ContentBox;
+        leftInset.position = taffy::Position::Absolute;
+        leftInset.size.width = Dimension::Stretch();
+        leftInset.size.height = Dimension::Length(10.0f);
+        leftInset.margin.right = LengthPercentageAuto::Length(5.0f);
+        leftInset.inset.top = LengthPercentageAuto::Length(0.0f);
+        leftInset.inset.left = LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId a = tree.NewLeaf(leftInset);
+        taffy::Style rightInset;
+        rightInset.boxSizing = BoxSizing::ContentBox;
+        rightInset.position = taffy::Position::Absolute;
+        rightInset.size.width = Dimension::Stretch();
+        rightInset.size.height = Dimension::Length(10.0f);
+        rightInset.inset.top = LengthPercentageAuto::Length(40.0f);
+        rightInset.inset.right = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId b = tree.NewLeaf(rightInset);
+        taffy::Style tall;
+        tall.boxSizing = BoxSizing::ContentBox;
+        tall.position = taffy::Position::Absolute;
+        tall.size.width = Dimension::Length(20.0f);
+        tall.size.height = Dimension::Stretch();
+        tall.inset.top = LengthPercentageAuto::Length(0.0f);
+        tall.inset.left = LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId c = tree.NewLeaf(tall);
+        taffy::Style rootStyle;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.size = SizeDim::FromLengths(120.0f, 120.0f);
+        TaffyNodeId kids[3] = {a, b, c};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(a), 10.0f, 0.0f, 105.0f, 10.0f);
+        AssertBox(tree.GetLayout(b), 0.0f, 40.0f, 100.0f, 10.0f);
+        AssertBox(tree.GetLayout(c), 10.0f, 0.0f, 20.0f, 120.0f);
+        tree.Free();
+    }
 }
 
 // ─── block end-to-end ────────────────────────────────────────────────────
@@ -1509,6 +1727,169 @@ static void TestBlockLayout() {
         utassertnear(tree.GetLayout(child).size.h, 40.0f);
         tree.Free();
     }
+
+    {
+        // height:stretch fills the block after vertical margins.
+        // block_height_stretch, content-box.
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style childStyle;
+            childStyle.boxSizing = BoxSizing::ContentBox;
+            childStyle.direction = directions[i];
+            childStyle.size.height = Dimension::Stretch();
+            childStyle.margin.top = LengthPercentageAuto::Length(5.0f);
+            childStyle.margin.bottom = LengthPercentageAuto::Length(10.0f);
+            TaffyNodeId child = tree.NewLeaf(childStyle);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Block;
+            rootStyle.boxSizing = BoxSizing::ContentBox;
+            rootStyle.direction = directions[i];
+            rootStyle.size = SizeDim::FromLengths(100.0f, 80.0f);
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 80.0f);
+            AssertBox(tree.GetLayout(child), 0.0f, 5.0f, 100.0f, 65.0f);
+            tree.Free();
+        }
+    }
+
+    {
+        // A left float with width:stretch is the container's inner width.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated;
+        floated.display = taffy::Display::Block;
+        floated.boxSizing = BoxSizing::ContentBox;
+        floated.floatMode = taffy::Float::Left;
+        floated.size.width = Dimension::Stretch();
+        floated.size.height = Dimension::Length(10.0f);
+        TaffyNodeId child = tree.NewLeaf(floated);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        rootStyle.alignContent =
+            OptAlignContent(AlignContent{AlignContentKeyword::FlexStart});
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 100.0f, 10.0f);
+        utassertnear(tree.GetLayout(root).size.h, 10.0f);
+        tree.Free();
+    }
+
+    {
+        // block_width_keywords, content-box. Stretch is the container width.
+        // fit-content clamps the max-content size to that width. min-content
+        // wraps. RTL packs the shorter boxes against the right edge.
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        float fitX[2] = {0.0f, 80.0f};
+        float minX[2] = {0.0f, 100.0f};
+        float maxX[2] = {0.0f, 80.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style stretchStyle;
+            stretchStyle.boxSizing = BoxSizing::ContentBox;
+            stretchStyle.direction = directions[i];
+            stretchStyle.size.width = Dimension::Stretch();
+            taffy::Style fitStyle = stretchStyle;
+            fitStyle.size.width = Dimension::FitContent();
+            taffy::Style minStyle = stretchStyle;
+            minStyle.size.width = Dimension::MinContent();
+            taffy::Style maxStyle = stretchStyle;
+            maxStyle.size.width = Dimension::MaxContent();
+            TaffyNodeId a = tree.NewLeaf(stretchStyle);
+            TaffyNodeId b = tree.NewLeaf(fitStyle);
+            TaffyNodeId c = tree.NewLeaf(minStyle);
+            TaffyNodeId d = tree.NewLeaf(maxStyle);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Block;
+            rootStyle.boxSizing = BoxSizing::ContentBox;
+            rootStyle.direction = directions[i];
+            rootStyle.size.width = Dimension::Length(120.0f);
+            TaffyNodeId kids[4] = {a, b, c, d};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 4);
+            tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                          KeywordTextMeasure, nullptr);
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 120.0f, 50.0f);
+            AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 120.0f, 10.0f);
+            AssertBox(tree.GetLayout(b), fitX[i], 10.0f, 40.0f, 10.0f);
+            AssertBox(tree.GetLayout(c), minX[i], 20.0f, 20.0f, 20.0f);
+            AssertBox(tree.GetLayout(d), maxX[i], 40.0f, 40.0f, 10.0f);
+            tree.Free();
+        }
+    }
+
+    {
+        // fit-content(30px) limits the max-content size. fit-content(50%)
+        // resolves against the 120px container and does not shrink the
+        // 40px max-content size.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style pxStyle;
+        pxStyle.boxSizing = BoxSizing::ContentBox;
+        pxStyle.size.width = Dimension::FitContentPx(30.0f);
+        taffy::Style pctStyle;
+        pctStyle.boxSizing = BoxSizing::ContentBox;
+        pctStyle.size.width = Dimension::FitContentPercent(0.5f);
+        TaffyNodeId a = tree.NewLeaf(pxStyle);
+        TaffyNodeId b = tree.NewLeaf(pctStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.size.width = Dimension::Length(120.0f);
+        TaffyNodeId kids[2] = {a, b};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      KeywordTextMeasure, nullptr);
+        AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 30.0f, 20.0f);
+        AssertBox(tree.GetLayout(b), 0.0f, 20.0f, 40.0f, 10.0f);
+        tree.Free();
+    }
+
+    {
+        // block_absolute_width_stretch_inset_margin, content-box.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style leftInset;
+        leftInset.boxSizing = BoxSizing::ContentBox;
+        leftInset.position = taffy::Position::Absolute;
+        leftInset.size.width = Dimension::Stretch();
+        leftInset.size.height = Dimension::Length(10.0f);
+        leftInset.margin.right = LengthPercentageAuto::Length(5.0f);
+        leftInset.inset.top = LengthPercentageAuto::Length(0.0f);
+        leftInset.inset.left = LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId a = tree.NewLeaf(leftInset);
+        taffy::Style rightInset;
+        rightInset.boxSizing = BoxSizing::ContentBox;
+        rightInset.position = taffy::Position::Absolute;
+        rightInset.size.width = Dimension::Stretch();
+        rightInset.size.height = Dimension::Length(10.0f);
+        rightInset.inset.top = LengthPercentageAuto::Length(40.0f);
+        rightInset.inset.right = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId b = tree.NewLeaf(rightInset);
+        taffy::Style tall;
+        tall.boxSizing = BoxSizing::ContentBox;
+        tall.position = taffy::Position::Absolute;
+        tall.size.width = Dimension::Length(20.0f);
+        tall.size.height = Dimension::Stretch();
+        tall.inset.top = LengthPercentageAuto::Length(0.0f);
+        tall.inset.left = LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId c = tree.NewLeaf(tall);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.size = SizeDim::FromLengths(120.0f, 120.0f);
+        TaffyNodeId kids[3] = {a, b, c};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(a), 10.0f, 0.0f, 105.0f, 10.0f);
+        AssertBox(tree.GetLayout(b), 0.0f, 40.0f, 100.0f, 10.0f);
+        AssertBox(tree.GetLayout(c), 10.0f, 0.0f, 20.0f, 120.0f);
+        tree.Free();
+    }
 }
 
 // ─── src/compute/grid/explicit_grid.rs ───────────────────────────────────
@@ -1689,6 +2070,132 @@ static void TestGridMinmaxAutoFixedZero() {
         utassertnear(tree.GetLayout(b).location.y, 10.0f);
         utassertnear(tree.GetLayout(b).size.w, 60.0f);
         utassertnear(tree.GetLayout(b).size.h, 10.0f);
+        tree.Free();
+    }
+}
+
+// Width and height sizing keywords on a grid item. The fixed tracks make the
+// area definite, so stretch is the area minus margins and the intrinsic
+// keywords measure the fixture text (min 20x20, max 40x10).
+static void TestGridSizingKeywords() {
+    TestSuite("taffy::grid sizing keywords");
+
+    {
+        // grid_item_width_stretch_margin, content-box. Height is auto, so
+        // the row's stretch alignment subtracts the vertical margins.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.boxSizing = BoxSizing::ContentBox;
+        childStyle.size.width = Dimension::Stretch();
+        childStyle.margin.top = LengthPercentageAuto::Length(5.0f);
+        childStyle.margin.right = LengthPercentageAuto::Length(10.0f);
+        childStyle.margin.bottom = LengthPercentageAuto::Length(5.0f);
+        childStyle.margin.left = LengthPercentageAuto::Length(15.0f);
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+
+        TrackSizingFunction col = TrackSizingFunction::Length(120.0f);
+        TrackSizingFunction row = TrackSizingFunction::Length(40.0f);
+        GridTemplateComponent colC = GridTemplateComponent::Single(col);
+        GridTemplateComponent rowC = GridTemplateComponent::Single(row);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.gridTemplateColumns = GridTemplateOf(&colC, 1);
+        rootStyle.gridTemplateRows = GridTemplateOf(&rowC, 1);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 120.0f, 40.0f);
+        AssertBox(tree.GetLayout(child), 15.0f, 5.0f, 95.0f, 30.0f);
+        tree.Free();
+    }
+
+    {
+        // grid_item_width_keywords, content-box.
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        float fitX[2] = {0.0f, 80.0f};
+        float minX[2] = {0.0f, 100.0f};
+        float maxX[2] = {0.0f, 80.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style stretchStyle;
+            stretchStyle.boxSizing = BoxSizing::ContentBox;
+            stretchStyle.direction = directions[i];
+            stretchStyle.size.width = Dimension::Stretch();
+            taffy::Style fitStyle = stretchStyle;
+            fitStyle.size.width = Dimension::FitContent();
+            taffy::Style minStyle = stretchStyle;
+            minStyle.size.width = Dimension::MinContent();
+            taffy::Style maxStyle = stretchStyle;
+            maxStyle.size.width = Dimension::MaxContent();
+            TaffyNodeId a = tree.NewLeaf(stretchStyle);
+            TaffyNodeId b = tree.NewLeaf(fitStyle);
+            TaffyNodeId c = tree.NewLeaf(minStyle);
+            TaffyNodeId d = tree.NewLeaf(maxStyle);
+
+            TrackSizingFunction col = TrackSizingFunction::Length(120.0f);
+            TrackSizingFunction row = TrackSizingFunction::Length(30.0f);
+            GridTemplateComponent colC = GridTemplateComponent::Single(col);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.boxSizing = BoxSizing::ContentBox;
+            rootStyle.direction = directions[i];
+            rootStyle.gridTemplateColumns = GridTemplateOf(&colC, 1);
+            rootStyle.gridAutoRows = SliceDup(gGridArena, &row, 1);
+            TaffyNodeId kids[4] = {a, b, c, d};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 4);
+            tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                          KeywordTextMeasure, nullptr);
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 120.0f, 120.0f);
+            AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 120.0f, 30.0f);
+            AssertBox(tree.GetLayout(b), fitX[i], 30.0f, 40.0f, 30.0f);
+            AssertBox(tree.GetLayout(c), minX[i], 60.0f, 20.0f, 30.0f);
+            AssertBox(tree.GetLayout(d), maxX[i], 90.0f, 40.0f, 30.0f);
+            tree.Free();
+        }
+    }
+
+    {
+        // grid_item_height_keywords, content-box. The 40px column fits the
+        // text on one line, so every intrinsic height is 10.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style stretchStyle;
+        stretchStyle.boxSizing = BoxSizing::ContentBox;
+        stretchStyle.size.height = Dimension::Stretch();
+        taffy::Style fitStyle = stretchStyle;
+        fitStyle.size.height = Dimension::FitContent();
+        taffy::Style minStyle = stretchStyle;
+        minStyle.size.height = Dimension::MinContent();
+        taffy::Style maxStyle = stretchStyle;
+        maxStyle.size.height = Dimension::MaxContent();
+        TaffyNodeId a = tree.NewLeaf(stretchStyle);
+        TaffyNodeId b = tree.NewLeaf(fitStyle);
+        TaffyNodeId c = tree.NewLeaf(minStyle);
+        TaffyNodeId d = tree.NewLeaf(maxStyle);
+
+        TrackSizingFunction col = TrackSizingFunction::Length(40.0f);
+        TrackSizingFunction row = TrackSizingFunction::Length(60.0f);
+        GridTemplateComponent cols[4] = {GridTemplateComponent::Single(col),
+                                         GridTemplateComponent::Single(col),
+                                         GridTemplateComponent::Single(col),
+                                         GridTemplateComponent::Single(col)};
+        GridTemplateComponent rowC = GridTemplateComponent::Single(row);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.gridTemplateColumns = GridTemplateOf(cols, 4);
+        rootStyle.gridTemplateRows = GridTemplateOf(&rowC, 1);
+        TaffyNodeId kids[4] = {a, b, c, d};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 4);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      KeywordTextMeasure, nullptr);
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 160.0f, 60.0f);
+        AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 40.0f, 60.0f);
+        AssertBox(tree.GetLayout(b), 40.0f, 0.0f, 40.0f, 10.0f);
+        AssertBox(tree.GetLayout(c), 80.0f, 0.0f, 40.0f, 10.0f);
+        AssertBox(tree.GetLayout(d), 120.0f, 0.0f, 40.0f, 10.0f);
         tree.Free();
     }
 }
@@ -2569,6 +3076,7 @@ void TestTaffy() {
     TestGridNonFiniteStylesTerminate();
     TestGridZeroSpanTerminates();
     TestGridMinmaxAutoFixedZero();
+    TestGridSizingKeywords();
     TestTaffy013Regressions();
     gpui::ArenaDelete(gGridArena);
     gGridArena = nullptr;

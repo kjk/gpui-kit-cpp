@@ -18,6 +18,7 @@
  */
 
 #include "taffy/compute.h"
+#include "taffy/sizing_keyword.h"
 
 namespace taffy {
 namespace {
@@ -1604,19 +1605,35 @@ SizeFOpt ItemKnownDimensions(const GridItem& item, TaffyTree* tree,
     SizeFOpt gridAreaMinusItemMargins = MaybeSub(gridAreaSize, margins);
 
     Optf width = inherentSize.w;
-    if (!IsSome(width) && !item.margin.left.IsAuto() &&
-        !item.margin.right.IsAuto() &&
-        item.justifySelf.keyword == AlignItemsKeyword::Stretch) {
-        width = gridAreaMinusItemMargins.w;
+    if (!IsSome(width)) {
+        // A sizing keyword is not auto, so it does not stretch. Stretch
+        // itself is an exact size; the others resolve while measuring.
+        if (item.size.width.IsSizingKeyword()) {
+            SizingKeywordResolution keyword = ResolveSizingKeyword(
+                item.size.width, gridAreaMinusItemMargins.w, gridAreaSize.w);
+            if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
+                width = Some(keyword.exact);
+            }
+        } else if (!item.margin.left.IsAuto() && !item.margin.right.IsAuto() &&
+                   item.justifySelf.keyword == AlignItemsKeyword::Stretch) {
+            width = gridAreaMinusItemMargins.w;
+        }
     }
     SizeFOpt sized =
         MaybeApplyAspectRatio(SizeFOpt{width, inherentSize.h}, aspectRatio);
 
     Optf height = sized.h;
-    if (!IsSome(height) && !item.margin.top.IsAuto() &&
-        !item.margin.bottom.IsAuto() &&
-        item.alignSelf.keyword == AlignItemsKeyword::Stretch) {
-        height = gridAreaMinusItemMargins.h;
+    if (!IsSome(height)) {
+        if (item.size.height.IsSizingKeyword()) {
+            SizingKeywordResolution keyword = ResolveSizingKeyword(
+                item.size.height, gridAreaMinusItemMargins.h, gridAreaSize.h);
+            if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
+                height = Some(keyword.exact);
+            }
+        } else if (!item.margin.top.IsAuto() && !item.margin.bottom.IsAuto() &&
+                   item.alignSelf.keyword == AlignItemsKeyword::Stretch) {
+            height = gridAreaMinusItemMargins.h;
+        }
     }
     sized = MaybeApplyAspectRatio(SizeFOpt{sized.w, height}, aspectRatio);
     return MaybeClamp(sized, minSize, maxSize);
@@ -1689,6 +1706,36 @@ SizeFOpt ItemGridAreaSizeCached(GridItem* item, AbstractAxis axis,
     return s;
 }
 
+// A min-content, max-content or fit-content size measures under that
+// constraint. Stretch was already applied as a known size.
+SizeAvail KeywordAdjustedAvailableSpace(const GridItem& item,
+                                        SizeFOpt gridAreaSize,
+                                        SizeAvail available, TaffyTree* tree) {
+    if (!item.size.width.IsSizingKeyword() && !item.size.height
+                                                   .IsSizingKeyword()) {
+        return available;
+    }
+    SizeF margins =
+        MarginsAxisSumsWithBaselineShims(item, gridAreaSize.w, tree->calc);
+    SizeAvail adjusted = available;
+    AbstractAxis axes[2] = {AbstractAxis::Inline, AbstractAxis::Block};
+    for (int i = 0; i < 2; i++) {
+        AbstractAxis axis = axes[i];
+        Dimension sizeStyle = item.size.Get(axis);
+        if (!sizeStyle.IsSizingKeyword()) {
+            continue;
+        }
+        Optf stretch =
+            MaybeSub(Get(gridAreaSize, axis), Some(Get(margins, axis)));
+        SizingKeywordResolution keyword =
+            ResolveSizingKeyword(sizeStyle, stretch, Get(gridAreaSize, axis));
+        if (keyword.isSome && keyword.kind == SizingKeywordKind::Measure) {
+            adjusted.Set(axis, keyword.measure);
+        }
+    }
+    return adjusted;
+}
+
 float ItemMinContentContribution(const GridItem& item, AbstractAxis axis,
                                  TaffyTree* tree, SizeFOpt gridAreaSize,
                                  SizeFOpt availableSpace) {
@@ -1700,6 +1747,7 @@ float ItemMinContentContribution(const GridItem& item, AbstractAxis axis,
                                  : AvailableSpace::MinContent(),
         IsSome(availableSpace.h) ? AvailableSpace::Definite(availableSpace.h)
                                  : AvailableSpace::MinContent()};
+    avail = KeywordAdjustedAvailableSpace(item, gridAreaSize, avail, tree);
     return tree->MeasureChildSize(item.node, knownDimensions, gridAreaSize,
                                   avail, SizingMode::InherentSize,
                                   AsAbsNaive(axis), LineBool::False());
@@ -1727,6 +1775,7 @@ float ItemMaxContentContribution(const GridItem& item, AbstractAxis axis,
                                  : AvailableSpace::MaxContent(),
         IsSome(availableSpace.h) ? AvailableSpace::Definite(availableSpace.h)
                                  : AvailableSpace::MaxContent()};
+    avail = KeywordAdjustedAvailableSpace(item, gridAreaSize, avail, tree);
     return tree->MeasureChildSize(item.node, knownDimensions, gridAreaSize,
                                   avail, SizingMode::InherentSize,
                                   AsAbsNaive(axis), LineBool::False());
@@ -3685,9 +3734,10 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
                                     : SizeF::Zero();
 
     SizeFOpt gridAreaOpt = AsOptional(gridAreaSize);
+    SizeDim sizeStyle = style.size;
     SizeFOpt inherentSize =
         MaybeAdd(MaybeApplyAspectRatio(
-                     style.size.MaybeResolve(gridAreaOpt, calc), aspectRatio),
+                     sizeStyle.MaybeResolve(gridAreaOpt, calc), aspectRatio),
                  boxSizingAdjustment);
     SizeFOpt minSize = MaybeApplyAspectRatio(
         MaybeMax(Or(MaybeAdd(style.minSize.MaybeResolve(gridAreaOpt, calc),
@@ -3706,12 +3756,15 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
     // https://www.w3.org/TR/css-grid-1/#grid-item-sizing
     AlignItems horizontalAlignment =
         justifySelf.Or(containerJustifyItems)
-            .UnwrapOr(IsSome(inherentSize.w)
-                          ? AlignItems{AlignItemsKeyword::Start}
-                          : AlignItems{AlignItemsKeyword::Stretch});
+            .UnwrapOr(
+                (IsSome(inherentSize.w) || sizeStyle.width.IsSizingKeyword())
+                    ? AlignItems{AlignItemsKeyword::Start}
+                    : AlignItems{AlignItemsKeyword::Stretch});
     AlignItems verticalAlignment =
         alignSelf.Or(containerAlignItems)
-            .UnwrapOr((IsSome(inherentSize.h) || IsSome(aspectRatio))
+            .UnwrapOr((IsSome(inherentSize.h) ||
+                       sizeStyle.height.IsSizingKeyword() ||
+                       IsSome(aspectRatio))
                           ? AlignItems{AlignItemsKeyword::Start}
                           : AlignItems{AlignItemsKeyword::Stretch});
 
@@ -3724,6 +3777,31 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
         MaybeSub(MaybeSub(gridAreaSize.h, margin.top), margin.bottom) -
             baselineShim};
 
+    SizingKeywordResolution keywordWidth;
+    if (!IsSome(inherentSize.w)) {
+        keywordWidth = ResolveSizingKeyword(
+            sizeStyle.width, Some(gridAreaMinusItemMarginsSize.w),
+            Some(gridAreaSize.w));
+    }
+    SizingKeywordResolution keywordHeight;
+    if (!IsSome(inherentSize.h)) {
+        keywordHeight = ResolveSizingKeyword(
+            sizeStyle.height, Some(gridAreaMinusItemMarginsSize.h),
+            Some(gridAreaSize.h));
+    }
+    // One measure covers both axes. An absolute item is measured later, once
+    // its insets have had a chance to fill a missing axis.
+    SizeFOpt keywordMeasured = SizeFOptNone();
+    if (position != Position::Absolute && keywordWidth.isSome &&
+        keywordHeight.isSome &&
+        keywordWidth.kind == SizingKeywordKind::Measure &&
+        keywordHeight.kind == SizingKeywordKind::Measure) {
+        keywordMeasured = AsOptional(tree->MeasureChildSizeBoth(
+            node, SizeFOptNone(), gridAreaOpt,
+            {keywordWidth.measure, keywordHeight.measure},
+            SizingMode::InherentSize, LineBool::False()));
+    }
+
     Optf width = inherentSize.w;
     if (!IsSome(width)) {
         if (position == Position::Absolute && IsSome(inset.left) &&
@@ -3731,6 +3809,19 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
             width = Some(F32Max(
                 gridAreaMinusItemMarginsSize.w - inset.left - inset.right,
                 0.0f));
+        } else if (keywordWidth.isSome) {
+            if (keywordWidth.kind == SizingKeywordKind::Exact) {
+                width = Some(keywordWidth.exact);
+            } else if (IsSome(keywordMeasured.w)) {
+                width = keywordMeasured.w;
+            } else {
+                width = Some(tree->MeasureChildSize(
+                    node, SizeFOptNone(), gridAreaOpt,
+                    {keywordWidth.measure,
+                     AvailableSpace::Definite(gridAreaMinusItemMarginsSize.h)},
+                    SizingMode::InherentSize, AbsoluteAxis::Horizontal,
+                    LineBool::False()));
+            }
         } else if (IsSome(margin.left) && IsSome(margin.right) &&
                    horizontalAlignment.keyword == AlignItemsKeyword::Stretch &&
                    position != Position::Absolute) {
@@ -3747,6 +3838,22 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
             height = Some(F32Max(
                 gridAreaMinusItemMarginsSize.h - inset.top - inset.bottom,
                 0.0f));
+        } else if (keywordHeight.isSome) {
+            if (keywordHeight.kind == SizingKeywordKind::Exact) {
+                height = Some(keywordHeight.exact);
+            } else if (IsSome(keywordMeasured.h)) {
+                height = keywordMeasured.h;
+            } else {
+                AvailableSpace widthAvail =
+                    IsSome(width) ? AvailableSpace::Definite(width)
+                                  : AvailableSpace::Definite(
+                                        gridAreaMinusItemMarginsSize.w);
+                height = Some(tree->MeasureChildSize(
+                    node, {width, None()}, gridAreaOpt,
+                    {widthAvail, keywordHeight.measure},
+                    SizingMode::InherentSize, AbsoluteAxis::Vertical,
+                    LineBool::False()));
+            }
         } else if (IsSome(margin.top) && IsSome(margin.bottom) &&
                    verticalAlignment.keyword == AlignItemsKeyword::Stretch &&
                    position != Position::Absolute) {

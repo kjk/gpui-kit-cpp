@@ -22,6 +22,15 @@ static Optf MaybeResolveRaw(CompactLength raw, Optf context,
             return Some(raw.Value());
         case CompactLength::kPercentTag:
             return IsSome(context) ? Some(context * raw.Value()) : None();
+        // A sizing keyword has no definite size outside the layout algorithm
+        // that knows the available space. It behaves as auto here.
+        case CompactLength::kMinContentTag:
+        case CompactLength::kMaxContentTag:
+        case CompactLength::kFitContentPxTag:
+        case CompactLength::kFitContentPercentTag:
+        case CompactLength::kFitContentKeywordTag:
+        case CompactLength::kStretchTag:
+            return None();
         default:
             break;
     }
