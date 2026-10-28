@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ae8d232884fda962442f39c825840784a9c46e53` (2026-10-24,
-focus_trap: End the Tab search at the first repeated stop (#3642)).
-Tab inside a trap already walks that trap's own stops, so a short
-cycle in the window order cannot hang the search. A trap with no
-reachable stop already focuses its container.
+Processed through `afeb1fb2eec0883a3a75bb1032cac15c0a1a768b` (2026-10-24,
+toolbar: Grow with content taller than the bar (#3651)).
+The three toolbar sizes are minimum heights (28, 32 and 48). Content
+that fits keeps that height; taller content grows the bar. Website
+docs are not copied.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

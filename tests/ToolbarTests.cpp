@@ -263,7 +263,39 @@ static void StyledToolbarSizesItsControls() {
     AppGlobalClear(&f.app);
 }
 
+// toolbar.rs: the three sizes are minimums. A short bar stays at that
+// height; content taller than it grows the bar.
+static void ToolbarGrowsWithTallerContent() {
+    Fixture f;
+    component::Init(&f.app);
+    El* xs = component::Toolbar::New(&f.cx, StrL("xs"))
+                 ->WithSize(UiSize::XSmall)
+                 ->IntoEl();
+    utassert(xs->style.height == kAuto);
+    utassertnear(xs->style.minH, 28.f);
+    El* sm = component::Toolbar::New(&f.cx, StrL("sm"))->IntoEl();
+    utassertnear(sm->style.minH, 32.f);
+    El* md = component::Toolbar::New(&f.cx, StrL("md"))
+                 ->WithSize(UiSize::Medium)
+                 ->IntoEl();
+    utassertnear(md->style.minH, 48.f);
+
+    El* shortHost = Div(f.arena)->Child(xs);
+    LayoutEl(nullptr, shortHost, 0, 0, 400, 200, 16, Rgba{});
+    utassertnear(xs->h, 28.f);
+
+    El* tall = component::Toolbar::New(&f.cx, StrL("tall"))
+                   ->WithSize(UiSize::XSmall)
+                   ->Content(Div(f.arena)->H(80))
+                   ->IntoEl();
+    El* tallHost = Div(f.arena)->Child(tall);
+    LayoutEl(nullptr, tallHost, 0, 0, 400, 200, 16, Rgba{});
+    utassert(tall->h > 28.f);
+    AppGlobalClear(&f.app);
+}
+
 void TestToolbar() {
+    ToolbarGrowsWithTallerContent();
     TestSuite("toolbar");
     BaseToolbarBuilders();
     ArrowKeysRoveFocusAcrossItems();

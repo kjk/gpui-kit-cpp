@@ -98,22 +98,22 @@ El* Toolbar::IntoEl() {
     El* root = bar->root->FlexRow()->ItemsCenter()->Shrink0();
     switch (size.kind) {
         case UiSize::Kind::XSmall:
-            // h_7 p_1 gap_1 text_xs
-            root->H(Rems(cx, 1.75f))
+            // min_h_7 p_1 gap_1 text_xs
+            root->MinH(Rems(cx, 1.75f))
                 ->Pad(Rems(cx, 0.25f))
                 ->Gap(Rems(cx, 0.25f))
                 ->Font(12);
             break;
         case UiSize::Kind::Small:
-            // h_8 p_1 gap_1 text_sm
-            root->H(Rems(cx, 2.f))
+            // min_h_8 p_1 gap_1 text_sm
+            root->MinH(Rems(cx, 2.f))
                 ->Pad(Rems(cx, 0.25f))
                 ->Gap(Rems(cx, 0.25f))
                 ->Font(14);
             break;
         default:
-            // h_12 p_2 gap_2 text_sm
-            root->H(Rems(cx, 3.f))
+            // min_h_12 p_2 gap_2 text_sm
+            root->MinH(Rems(cx, 3.f))
                 ->Pad(Rems(cx, 0.5f))
                 ->Gap(Rems(cx, 0.5f))
                 ->Font(14);
