@@ -521,12 +521,25 @@ enum class BoxGenerationMode : uint8_t {
     None
 };
 
-// The positioning strategy for this item. Relative is the default here, in
-// contrast to CSS.
+// CSS position. Static is the default. Relative is an in-flow correction.
+// Absolute and Fixed are out of flow. Sticky stays in flow: its inset is a
+// scroll threshold, which this tree does not apply.
 enum class Position : uint8_t {
+    Static,
     Relative,
-    Absolute
+    Absolute,
+    Fixed,
+    Sticky
 };
+
+inline bool IsOutOfFlow(Position p) {
+    return p == Position::Absolute || p == Position::Fixed;
+}
+
+// Any value other than Static is a containing block for absolute descendants.
+inline bool IsPositioned(Position p) {
+    return p != Position::Static;
+}
 
 // Whether size styles apply to the content box or the border box.
 enum class BoxSizing : uint8_t {
@@ -1457,7 +1470,7 @@ struct Style {
     Clear clear = Clear::None;
 
     // Position
-    Position position = Position::Relative;
+    Position position = Position::Static;
     RectLpa inset = RectLpa::Auto();
 
     // Size. min and max stay Dimension: a sizing keyword is only valid on

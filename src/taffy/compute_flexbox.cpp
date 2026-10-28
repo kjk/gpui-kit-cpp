@@ -276,7 +276,7 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
     for (int index = 0; index < n; index++) {
         NodeId child = tree->GetChildId(node, index);
         const Style& cs = tree->GetStyle(child);
-        if (cs.position == Position::Absolute ||
+        if (IsOutOfFlow(cs.position) ||
             cs.BoxGenMode() == BoxGenerationMode::None) {
             continue;
         }
@@ -310,9 +310,11 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
             MaybeAdd(cs.maxSize.MaybeResolve(percentResolutionSize, calc),
                      boxSizingAdjustment);
         item.aspectRatio = aspectRatio;
-        // The inset resolves left/right against the width and top/bottom
-        // against the height, which is Rust's `zip_size`.
-        item.inset = cs.inset.MaybeResolveZip(c.nodeInnerSize, calc);
+        // Only relative position applies inset. Static and sticky stay put;
+        // sticky's inset is a scroll threshold the caller applies.
+        if (cs.position == Position::Relative) {
+            item.inset = cs.inset.MaybeResolveZip(c.nodeInnerSize, calc);
+        }
         item.margin = cs.margin.ResolveOrZero(c.nodeInnerSize.w, calc);
         item.marginIsAuto = {cs.margin.left.IsAuto(), cs.margin.right.IsAuto(),
                              cs.margin.top.IsAuto(), cs.margin.bottom.IsAuto()};
@@ -1957,7 +1959,7 @@ RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
         const Style& cs = tree->GetStyle(child);
 
         if (cs.BoxGenMode() == BoxGenerationMode::None ||
-            cs.position != Position::Absolute) {
+            !IsOutOfFlow(cs.position)) {
             continue;
         }
 

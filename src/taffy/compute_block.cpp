@@ -772,7 +772,7 @@ struct BlockItem {
     Contain contain;
     float scrollbarWidth = 0.0f;
 
-    Position position = Position::Relative;
+    Position position = Position::Static;
     RectLpa inset;
     RectLpa margin;
     RectF padding;
@@ -831,11 +831,10 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
                                  IsScrollContainer(cs.overflow.y);
         // Layout and paint containment establish an independent formatting
         // context, so the child is not in its parent's BFC.
-        item.isInSameBfc = cs.IsBlock() && !cs.itemIsTable &&
-                           cs.position != Position::Absolute && isNotFloated &&
-                           !isScrollContainer &&
-                           !cs.contain
-                                .EstablishesIndependentFormattingContext();
+        item.isInSameBfc =
+            cs.IsBlock() && !cs.itemIsTable && !IsOutOfFlow(cs.position) &&
+            isNotFloated && !isScrollContainer &&
+            !cs.contain.EstablishesIndependentFormattingContext();
 
         item.sizeStyle = cs.size;
         item.size = MaybeAdd(
@@ -886,7 +885,7 @@ float DetermineContentBasedContainerWidth(TaffyTree* tree,
 
     for (int i = 0; i < len(items); i++) {
         const BlockItem& item = items[i];
-        if (item.position == Position::Absolute) {
+        if (IsOutOfFlow(item.position)) {
             continue;
         }
         SizeFOpt knownDimensions =
@@ -985,7 +984,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
 
     for (int itemIdx = 0; itemIdx < items->len; itemIdx++) {
         BlockItem& item = (*items)[itemIdx];
-        if (item.position == Position::Absolute) {
+        if (IsOutOfFlow(item.position)) {
             float x = direction == Direction::Ltr
                           ? resolvedContentBoxInset.left
                           : containerOuterWidth - resolvedContentBoxInset.right;
@@ -1223,20 +1222,23 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                                 topMarginSet.Resolve(),
                                 bottomMarginSet.Resolve()};
 
-        RectFOpt inset = item.inset.MaybeResolveZip(
-            {Some(containerInnerWidth), percentageResolutionHeight}, calc);
-        Optf negRight = inset.right;
-        if (IsSome(negRight)) {
-            negRight = -negRight;
+        PointF insetOffset = {0.0f, 0.0f};
+        if (item.position == Position::Relative) {
+            RectFOpt inset = item.inset.MaybeResolveZip(
+                {Some(containerInnerWidth), percentageResolutionHeight}, calc);
+            Optf negRight = inset.right;
+            if (IsSome(negRight)) {
+                negRight = -negRight;
+            }
+            Optf negBottom = inset.bottom;
+            if (IsSome(negBottom)) {
+                negBottom = -negBottom;
+            }
+            insetOffset = {IsRtl(direction)
+                               ? UnwrapOr(Or(negRight, inset.left), 0.0f)
+                               : UnwrapOr(Or(inset.left, negRight), 0.0f),
+                           UnwrapOr(Or(inset.top, negBottom), 0.0f)};
         }
-        Optf negBottom = inset.bottom;
-        if (IsSome(negBottom)) {
-            negBottom = -negBottom;
-        }
-        PointF insetOffset = {IsRtl(direction)
-                                  ? UnwrapOr(Or(negRight, inset.left), 0.0f)
-                                  : UnwrapOr(Or(inset.left, negRight), 0.0f),
-                              UnwrapOr(Or(inset.top, negBottom), 0.0f)};
 
         if (item.isInSameBfc && (!isCollapsingWithFirstMarginSet ||
                                  !ownMarginsCollapseWithChildren.start)) {
@@ -1440,12 +1442,12 @@ RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
 
     for (int i = 0; i < len(items); i++) {
         const BlockItem& item = items[i];
-        if (item.position != Position::Absolute) {
+        if (!IsOutOfFlow(item.position)) {
             continue;
         }
         const Style& cs = tree->GetStyle(item.nodeId);
         if (cs.BoxGenMode() == BoxGenerationMode::None ||
-            cs.position != Position::Absolute) {
+            !IsOutOfFlow(cs.position)) {
             continue;
         }
 
@@ -1727,14 +1729,14 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
 
     LineBool ownMarginsCollapseWithChildren = {
         verticalMarginsAreCollapsible.start && !establishesNewBfc &&
-            style.position == Position::Relative && padding.top == 0.0f &&
+            !IsOutOfFlow(style.position) && padding.top == 0.0f &&
             border.top == 0.0f,
         verticalMarginsAreCollapsible.end && !establishesNewBfc &&
-            style.position == Position::Relative && padding.bottom == 0.0f &&
+            !IsOutOfFlow(style.position) && padding.bottom == 0.0f &&
             border.bottom == 0.0f && !IsSome(size.h)};
     bool hasStylesPreventingBeingCollapsedThrough =
         !style.IsBlock() || blockCtx->IsBfcRoot() || establishesNewBfc ||
-        style.position == Position::Absolute || padding.top > 0.0f ||
+        IsOutOfFlow(style.position) || padding.top > 0.0f ||
         padding.bottom > 0.0f || border.top > 0.0f || border.bottom > 0.0f;
 
     TextAlign textAlign = style.textAlign;
@@ -1877,8 +1879,8 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         if (IsFloated(items[i].floatMode)) {
             continue;
         }
-        if (items[i].position != Position::Absolute &&
-            !items[i].canBeCollapsedThrough) {
+        if (!IsOutOfFlow(items[i].position) && !items[i]
+                                                    .canBeCollapsedThrough) {
             allInFlowChildrenCanBeCollapsedThrough = false;
             break;
         }

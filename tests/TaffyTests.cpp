@@ -339,6 +339,43 @@ static void TestFlexDirection() {
 
 // ─── src/style/mod.rs (defaults_match) ───────────────────────────────────
 
+static void AssertInsetChild(taffy::Position position, taffy::Display display,
+                             float x, float y) {
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style childStyle;
+    childStyle.position = position;
+    childStyle.size = SizeDim::FromLengths(10.0f, 10.0f);
+    childStyle.inset.left = LengthPercentageAuto::Length(5.0f);
+    childStyle.inset.top = LengthPercentageAuto::Length(7.0f);
+    TaffyNodeId child = tree.NewLeaf(childStyle);
+    taffy::Style rootStyle;
+    rootStyle.display = display;
+    rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+    utassertnear(tree.GetLayout(child).location.x, x);
+    utassertnear(tree.GetLayout(child).location.y, y);
+    tree.Free();
+}
+
+// Static and sticky ignore inset. Relative applies it. Sticky is a
+// containing block and stays in flow; static is neither.
+static void TestPositionStaticSticky() {
+    TestSuite("taffy position static and sticky");
+    taffy::Display displays[] = {taffy::Display::Block, taffy::Display::Flex,
+                                 taffy::Display::Grid};
+    for (int i = 0; i < 3; i++) {
+        AssertInsetChild(taffy::Position::Static, displays[i], 0.0f, 0.0f);
+        AssertInsetChild(taffy::Position::Sticky, displays[i], 0.0f, 0.0f);
+        AssertInsetChild(taffy::Position::Relative, displays[i], 5.0f, 7.0f);
+    }
+    utassert(IsPositioned(taffy::Position::Sticky));
+    utassert(!IsOutOfFlow(taffy::Position::Sticky));
+    utassert(!IsPositioned(taffy::Position::Static));
+    utassert(IsOutOfFlow(taffy::Position::Fixed));
+}
+
 static void TestStyleDefaults() {
     TestSuite("taffy::style (defaults_match)");
 
@@ -354,7 +391,7 @@ static void TestStyleDefaults() {
     utassert(s.contain == Contain::None());
     utassert(s.floatMode == Float::None);
     utassert(s.clear == Clear::None);
-    utassert(s.position == taffy::Position::Relative);
+    utassert(s.position == taffy::Position::Static);
     utassert(s.inset == RectLpa::Auto());
     utassert(s.margin == RectLpa::Zero());
     utassert(s.padding == RectLp::Zero());
@@ -2817,6 +2854,7 @@ static void TestBlockPercentageBasis() {
         tree.Init();
         taffy::Style childStyle;
         childStyle.display = taffy::Display::Block;
+        childStyle.position = taffy::Position::Relative;
         childStyle.size = SizeDim::FromLengths(20.0f, 20.0f);
         childStyle.inset.top = LengthPercentageAuto::Percent(0.5f);
         TaffyNodeId child = tree.NewLeaf(childStyle);
@@ -2835,6 +2873,7 @@ static void TestBlockPercentageBasis() {
         tree.Init();
         taffy::Style childStyle;
         childStyle.display = taffy::Display::Block;
+        childStyle.position = taffy::Position::Relative;
         childStyle.size = SizeDim::FromLengths(20.0f, 20.0f);
         childStyle.inset.top = LengthPercentageAuto::Percent(0.5f);
         childStyle.inset.left = LengthPercentageAuto::Percent(0.1f);
@@ -5668,6 +5707,7 @@ void TestTaffy() {
     TestAlignment();
     TestFlexDirection();
     TestStyleDefaults();
+    TestPositionStaticSticky();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

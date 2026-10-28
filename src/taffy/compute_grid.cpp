@@ -3662,7 +3662,7 @@ AlignedAxis AlignItemWithinArea(LineF gridArea, AlignSelf alignmentStyle,
     }
 
     float offsetWithinArea = alignmentBasedOffset;
-    if (position == Position::Absolute) {
+    if (IsOutOfFlow(position)) {
         if (IsSome(insetStart) && IsSome(insetEnd)) {
             offsetWithinArea =
                 IsRtl(direction)
@@ -3800,8 +3800,7 @@ AlignedItem AlignAndPositionItem(
     // One measure covers both axes. An absolute item is measured later, once
     // its insets have had a chance to fill a missing axis.
     SizeFOpt keywordMeasured = SizeFOptNone();
-    if (position != Position::Absolute && keywordWidth.isSome &&
-        keywordHeight.isSome &&
+    if (!IsOutOfFlow(position) && keywordWidth.isSome && keywordHeight.isSome &&
         keywordWidth.kind == SizingKeywordKind::Measure &&
         keywordHeight.kind == SizingKeywordKind::Measure) {
         keywordMeasured = AsOptional(tree->MeasureChildSizeBoth(
@@ -3812,7 +3811,7 @@ AlignedItem AlignAndPositionItem(
 
     Optf width = inherentSize.w;
     if (!IsSome(width)) {
-        if (position == Position::Absolute && IsSome(inset.left) &&
+        if (IsOutOfFlow(position) && IsSome(inset.left) &&
             IsSome(inset.right)) {
             width = Some(F32Max(
                 gridAreaMinusItemMarginsSize.w - inset.left - inset.right,
@@ -3832,7 +3831,7 @@ AlignedItem AlignAndPositionItem(
             }
         } else if (IsSome(margin.left) && IsSome(margin.right) &&
                    horizontalAlignment.keyword == AlignItemsKeyword::Stretch &&
-                   position != Position::Absolute) {
+                   !IsOutOfFlow(position)) {
             width = Some(gridAreaMinusItemMarginsSize.w);
         }
     }
@@ -3841,7 +3840,7 @@ AlignedItem AlignAndPositionItem(
 
     Optf height = sized.h;
     if (!IsSome(height)) {
-        if (position == Position::Absolute && IsSome(inset.top) &&
+        if (IsOutOfFlow(position) && IsSome(inset.top) &&
             IsSome(inset.bottom)) {
             height = Some(F32Max(
                 gridAreaMinusItemMarginsSize.h - inset.top - inset.bottom,
@@ -3864,7 +3863,7 @@ AlignedItem AlignAndPositionItem(
             }
         } else if (IsSome(margin.top) && IsSome(margin.bottom) &&
                    verticalAlignment.keyword == AlignItemsKeyword::Stretch &&
-                   position != Position::Absolute) {
+                   !IsOutOfFlow(position)) {
             height = Some(gridAreaMinusItemMarginsSize.h);
         }
     }
@@ -3873,8 +3872,7 @@ AlignedItem AlignAndPositionItem(
 
     SizeAvail avail = SizeAvail::Definite(gridAreaMinusItemMarginsSize);
     SizeFOpt size = sized;
-    if (position == Position::Absolute &&
-        (!IsSome(sized.w) || !IsSome(sized.h))) {
+    if (IsOutOfFlow(position) && (!IsSome(sized.w) || !IsSome(sized.h))) {
         SizeF measured = tree->MeasureChildSizeBoth(
             node, sized, gridAreaOpt, avail, SizingMode::InherentSize,
             LineBool::False());
@@ -4100,7 +4098,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         NodeId child = tree->GetChildId(node, i);
         const Style& cs = tree->GetStyle(child);
         if (cs.BoxGenMode() == BoxGenerationMode::None ||
-            cs.position == Position::Absolute) {
+            IsOutOfFlow(cs.position)) {
             continue;
         }
         PlacementChild pc;
@@ -4463,7 +4461,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             order += 1;
             continue;
         }
-        if (cs.position != Position::Absolute) {
+        if (!IsOutOfFlow(cs.position)) {
             continue;
         }
 
@@ -4701,7 +4699,7 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
         NodeId child = tree->GetChildId(parent, i);
         const Style& cs = tree->GetStyle(child);
         if (cs.BoxGenMode() == BoxGenerationMode::None ||
-            cs.position == Position::Absolute) {
+            IsOutOfFlow(cs.position)) {
             continue;
         }
         PlacementChild pc;

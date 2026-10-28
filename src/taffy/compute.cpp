@@ -243,8 +243,7 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
 
     bool hasStylesPreventingBeingCollapsedThrough =
         !style.IsBlock() || IsScrollContainer(style.overflow.x) ||
-        IsScrollContainer(style.overflow.y) ||
-        style.position == Position::Absolute ||
+        IsScrollContainer(style.overflow.y) || IsOutOfFlow(style.position) ||
         style.contain.EstablishesIndependentFormattingContext() ||
         padding.top > 0.0f || padding.bottom > 0.0f || border.top > 0.0f ||
         border.bottom > 0.0f || (IsSome(nodeSize.h) && nodeSize.h > 0.0f) ||
