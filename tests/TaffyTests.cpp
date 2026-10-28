@@ -6081,6 +6081,42 @@ static void TestOofHoisting() {
     }
 }
 
+// taffy 3307c7e0. An auto margin on an absolute box absorbs free space
+// only when both insets on that axis are set. One inset leaves it at 0.
+static void TestAbsposAutoMarginNeedsBothInsets() {
+    TestSuite("taffy abspos auto margins");
+    taffy::Display displays[] = {taffy::Display::Block, taffy::Display::Flex,
+                                 taffy::Display::Grid};
+    for (taffy::Display d : displays) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle = OofLeaf(40.0f, 20.0f);
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.right = taffy::LengthPercentageAuto::Length(10.0f);
+        absStyle.inset.top = taffy::LengthPercentageAuto::Length(0.0f);
+        absStyle.margin.left = taffy::LengthPercentageAuto::Auto();
+        absStyle.margin.right = taffy::LengthPercentageAuto::Auto();
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        taffy::Style rootStyle = OofLeaf(200.0f, 200.0f);
+        rootStyle.display = d;
+        rootStyle.position = taffy::Position::Relative;
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &abs, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 150.0f, 0.0f);
+
+        absStyle.inset.left = taffy::LengthPercentageAuto::Length(10.0f);
+        tree.SetStyle(abs, absStyle);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 80.0f, 0.0f);
+
+        absStyle.inset.right = taffy::LengthPercentageAuto::Auto();
+        tree.SetStyle(abs, absStyle);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertLoc(tree, abs, 10.0f, 0.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6096,6 +6132,7 @@ void TestTaffy() {
     TestPositionStaticSticky();
     TestResolveStaticOffset();
     TestOofHoisting();
+    TestAbsposAutoMarginNeedsBothInsets();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

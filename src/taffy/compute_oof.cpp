@@ -169,14 +169,17 @@ void PerformOofLayout(TaffyTree* tree, NodeId nodeId, OofCandidates candidates,
             IsSome(top) ? UnwrapOr(margin.top, 0.0f) : 0.0f,
             IsSome(bottom) ? UnwrapOr(margin.bottom, 0.0f) : 0.0f};
 
-        PointF autoSpace = {
-            IsSome(right) ? usedArea.w - right - UnwrapOr(left, 0.0f)
-                          : finalSize.w,
-            IsSome(bottom) ? usedArea.h - bottom - UnwrapOr(top, 0.0f)
-                           : finalSize.h};
-        SizeF freeSpace = {
-            autoSpace.x - finalSize.w - nonAutoMargin.HorizontalAxisSum(),
-            autoSpace.y - finalSize.h - nonAutoMargin.VerticalAxisSum()};
+        // Auto margins absorb free space only when both insets on that axis
+        // are set. A single inset leaves them at 0.
+        SizeF freeSpace = {0.0f, 0.0f};
+        if (IsSome(left) && IsSome(right)) {
+            freeSpace.w = usedArea.w - left - right - finalSize.w -
+                          nonAutoMargin.HorizontalAxisSum();
+        }
+        if (IsSome(top) && IsSome(bottom)) {
+            freeSpace.h = usedArea.h - top - bottom - finalSize.h -
+                          nonAutoMargin.VerticalAxisSum();
+        }
         int autoW =
             (IsSome(margin.left) ? 0 : 1) + (IsSome(margin.right) ? 0 : 1);
         int autoH =
