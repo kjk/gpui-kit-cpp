@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `90d8517a49eaafe22843597a7dfe125d3bdf73ff` (2026-10-23,
-color_picker: Round hex channels instead of truncating them (#3640)).
-The hex field clamps each slider channel to 0–1 and rounds it, so an
-alpha of 0.5 reads as 80 rather than 7F. The rest of the tree still
-truncates a float colour when it stores a byte.
+Processed through `f209867ef067a234b0bc43cbdc4d33101f3c2a86` (2026-10-23,
+scroll: Ignore rounding in the part of a packet the text did not use (#3632)).
+A packet the text used except for an f32 residue no longer counts as
+hitting an edge. Up to 0.01 px of unused travel stays with the text, so
+a drag back off a far edge keeps scrolling instead of stretching.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

@@ -432,6 +432,46 @@ static void AStillReleaseReturnsAtFullSpeed() {
     ExpectIn(half, 0.45f, 0.55f);
 }
 
+// Text `end` px long whose offset is an f32, as a scroll handle's is.
+struct LongText {
+    float offset = 0;
+    float end = 0;
+};
+
+static float LongTextScroll(void* user, float dy) {
+    LongText* t = (LongText*)user;
+    float before = t->offset;
+    float next = before + dy;
+    if (next < -t->end) next = -t->end;
+    if (next > 0.f) next = 0.f;
+    t->offset = next;
+    return t->offset - before;
+}
+
+static void ADragBackOffAFarEdgeKeepsScrollingTheText() {
+    const float end = 8902.5f;
+    for (int returnedMs = 1; returnedMs < 60; returnedMs++) {
+        ScrollOverscroll over;
+        LongText text{-end, end};
+        double start = 0;
+        over.Packet(0, TouchPhase::Started, 600, start, LongTextScroll, &text);
+        over.Packet(-200, TouchPhase::Moved, 600, start, LongTextScroll, &text);
+        double lifted = start + 0.100;
+        over.Packet(0, TouchPhase::Ended, 600, lifted, LongTextScroll, &text);
+        double caught = lifted + (double)returnedMs / 1000.0;
+        over.Step(caught);
+        over.Packet(0, TouchPhase::Started, 600, caught, LongTextScroll, &text);
+        over.Packet(300, TouchPhase::Moved, 600, caught, LongTextScroll, &text);
+        float before = text.offset;
+        over.Packet(122, TouchPhase::Moved, 600, caught, LongTextScroll, &text);
+        if (over.Offset() != 0.f) {
+            logf("edge stays put (%d ms): %f\n", returnedMs, over.Offset());
+        }
+        utassert(over.Offset() == 0.f);
+        utassert(fabsf(text.offset - before - 122.f) < 0.01f);
+    }
+}
+
 static void AfterAPauseTheNextFlickThrowsTheEdgeAgain() {
     ScrollOverscroll over;
     OverRoom room{0};
@@ -506,6 +546,7 @@ void TestScrollBounce() {
     ATouchThatLiftsWithoutMovingLetsGoOfTheEdge();
     AStretchFollowsTheTravelAsNSScrollViewDoes();
     AStillReleaseReturnsAtFullSpeed();
+    ADragBackOffAFarEdgeKeepsScrollingTheText();
     AfterAPauseTheNextFlickThrowsTheEdgeAgain();
     MomentumBackIntoTheTextScrollsWhileTheEdgeReturns();
     ANewPreciseGestureTakesOverWithoutJumping();

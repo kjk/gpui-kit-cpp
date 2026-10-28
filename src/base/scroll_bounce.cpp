@@ -19,6 +19,10 @@ const float kOverscrollFrame = 1.f / 60.f;
 // How far back the stream's speed is read. Packets carry no timestamp, so a
 // frame that takes long hands over several at once.
 const double kOverscrollSpeedSpan = 0.05;
+// The most a packet's unused part can be and still be rounding. Far from
+// its start an f32 offset cannot hold every fraction, so text that used a
+// whole packet can report a hair more or less, which is not an edge.
+const float kOverscrollRounding = 0.01f;
 
 static const float kBounceTau = 6.2831853071795864769f;
 
@@ -250,7 +254,7 @@ bool ScrollOverscroll::Packet(float dy, TouchPhase phase, float extent,
         float rest = Offset() != 0 ? physics.Pull(dy) : dy;
         if (rest != 0 && scroll) {
             float unused = rest - scroll(user, rest);
-            if (unused != 0) physics.Pull(unused);
+            if (fabsf(unused) > kOverscrollRounding) physics.Pull(unused);
         }
         if (phase == TouchPhase::Ended || phase == TouchPhase::Cancelled) {
             bool moving = hasMoved && now - movedAt < kOverscrollStill;
@@ -264,7 +268,7 @@ bool ScrollOverscroll::Packet(float dy, TouchPhase phase, float extent,
         if (scroll) scroll(user, dy);
     } else if (scroll) {
         float unused = dy - scroll(user, dy);
-        if (unused != 0) {
+        if (fabsf(unused) > kOverscrollRounding) {
             physics.LetGo(velocity * kOverscrollCarry);
             thrown = true;
             spent = true;

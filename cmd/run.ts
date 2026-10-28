@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "90d8517a49eaafe22843597a7dfe125d3bdf73ff",
+  sha: "f209867ef067a234b0bc43cbdc4d33101f3c2a86",
   date: "2026-10-23",
-  subject: "color_picker: Round hex channels instead of truncating them (#3640)",
+  subject: "scroll: Ignore rounding in the part of a packet the text did not use (#3632)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",
