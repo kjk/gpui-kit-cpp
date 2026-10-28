@@ -529,6 +529,8 @@ struct GridItem {
     LineOzl column;
 
     bool isCompressibleReplaced = false;
+    // A replaced element is not stretched by normal alignment.
+    bool isReplaced = false;
     PointOverflow overflow;
     BoxSizing boxSizing = BoxSizing::BorderBox;
     SizeDim size;
@@ -543,6 +545,16 @@ struct GridItem {
     Optf baseline = None();
     // Acts like an extra top margin, for baseline alignment.
     float baselineShim = 0.0f;
+
+    // Stretch, or normal unless the item is replaced. Normal is stretch here
+    // even when the item has a preferred size or aspect ratio; final
+    // alignment uses the stricter rule.
+    bool IsStretchAligned(AlignSelf alignment) const {
+        if (alignment.keyword == AlignItemsKeyword::Stretch) {
+            return true;
+        }
+        return alignment.keyword == AlignItemsKeyword::Normal && !isReplaced;
+    }
 
     // The same placement as GridTrackVec indices.
     LineU16 rowIndexes;
@@ -1843,7 +1855,8 @@ SizeFOpt ItemKnownDimensions(const GridItem& item, TaffyTree* tree,
                 width = Some(keyword.exact);
             }
         } else if (!item.margin.left.IsAuto() && !item.margin.right.IsAuto() &&
-                   item.justifySelf.IsStretchOrNormal()) {
+                   item.IsStretchAligned(item.justifySelf)) {
+            // Normal stretches here unless the item is replaced.
             width = gridAreaMinusItemMargins.w;
         }
     }
@@ -1860,7 +1873,7 @@ SizeFOpt ItemKnownDimensions(const GridItem& item, TaffyTree* tree,
                 height = Some(keyword.exact);
             }
         } else if (!item.margin.top.IsAuto() && !item.margin.bottom.IsAuto() &&
-                   item.alignSelf.IsStretchOrNormal()) {
+                   item.IsStretchAligned(item.alignSelf)) {
             height = gridAreaMinusItemMargins.h;
         }
     }
@@ -2231,6 +2244,7 @@ void RecordGridPlacement(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
     item.row = rowSpan;
     item.column = colSpan;
     item.isCompressibleReplaced = s.IsCompressibleReplaced();
+    item.isReplaced = s.IsReplaced();
     item.overflow = s.overflow;
     item.boxSizing = s.boxSizing;
     item.size = s.size;
@@ -3977,6 +3991,7 @@ AlignedItem AlignAndPositionItem(
     Contain contain = style.contain;
     float scrollbarWidth = style.scrollbarWidth;
     Optf aspectRatio = style.aspectRatio;
+    bool isReplaced = style.IsReplaced();
     // none takes the container's justify-items / align-items, then
     // self-start and self-end resolve against the item's own direction.
     AlignItems justifySelf =
@@ -4014,20 +4029,21 @@ AlignedItem AlignAndPositionItem(
     // normal (the default when neither the parent nor the item sets another
     // keyword) stretches, unless this axis already has a preferred size.
     // An item with a preferred aspect ratio but no width or height stretches
-    // its width and derives its height from the ratio.
+    // its width and derives its height from the ratio. A replaced element is
+    // sized as start on both axes.
     // https://www.w3.org/TR/css-grid-1/#grid-item-sizing
     AlignItems horizontalAlignment = justifySelf;
     if (justifySelf.keyword == AlignItemsKeyword::Normal) {
-        horizontalAlignment =
-            (IsSome(inherentSize.w) || sizeStyle.width.IsSizingKeyword())
-                ? AlignItems{AlignItemsKeyword::Start}
-                : AlignItems{AlignItemsKeyword::Stretch};
+        horizontalAlignment = (IsSome(inherentSize.w) ||
+                               sizeStyle.width.IsSizingKeyword() || isReplaced)
+                                  ? AlignItems{AlignItemsKeyword::Start}
+                                  : AlignItems{AlignItemsKeyword::Stretch};
     }
     AlignItems verticalAlignment = alignSelf;
     if (alignSelf.keyword == AlignItemsKeyword::Normal) {
         verticalAlignment =
             (IsSome(inherentSize.h) || sizeStyle.height.IsSizingKeyword() ||
-             IsSome(aspectRatio))
+             IsSome(aspectRatio) || isReplaced)
                 ? AlignItems{AlignItemsKeyword::Start}
                 : AlignItems{AlignItemsKeyword::Stretch};
     }

@@ -4880,6 +4880,60 @@ static void TestGridAutoMinFloorPaddingBorder() {
     }
 }
 
+// A replaced grid item is not stretched by normal alignment. Explicit
+// stretch still fills the area, and a merely compressible item still
+// stretches under normal.
+static void TestGridReplacedNormalDoesNotStretch() {
+    TestSuite("taffy::grid replaced normal");
+
+    TrackSizingFunction col = TrackSizingFunction::Length(100.0f);
+    TrackSizingFunction row = TrackSizingFunction::Length(80.0f);
+    GridTemplateComponent colC = GridTemplateComponent::Single(col);
+    GridTemplateComponent rowC = GridTemplateComponent::Single(row);
+
+    auto grid = [&](taffy::Style child, Direction direction) {
+        TaffyTree tree;
+        tree.Init();
+        child.direction = direction;
+        child.position = taffy::Position::Relative;
+        TaffyNodeId node = tree.NewLeaf(child);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.direction = direction;
+        rootStyle.position = taffy::Position::Absolute;
+        rootStyle.size = SizeDim::FromLengths(100.0f, 80.0f);
+        rootStyle.gridTemplateColumns = GridTemplateOf(&colC, 1);
+        rootStyle.gridTemplateRows = GridTemplateOf(&rowC, 1);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &node, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        Layout box = tree.GetLayout(node);
+        tree.Free();
+        return box;
+    };
+
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    float startX[2] = {0.0f, 100.0f};
+    for (int i = 0; i < 2; i++) {
+        taffy::Style replaced;
+        replaced.itemIsReplaced = true;
+        AssertBox(grid(replaced, directions[i]), startX[i], 0.0f, 0.0f, 0.0f);
+
+        taffy::Style plain;
+        AssertBox(grid(plain, directions[i]), 0.0f, 0.0f, 100.0f, 80.0f);
+
+        taffy::Style stretched = replaced;
+        stretched.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::Stretch});
+        stretched.alignSelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::Stretch});
+        AssertBox(grid(stretched, directions[i]), 0.0f, 0.0f, 100.0f, 80.0f);
+
+        taffy::Style compressible;
+        compressible.itemIsCompressibleReplaced = true;
+        AssertBox(grid(compressible, directions[i]), 0.0f, 0.0f, 100.0f, 80.0f);
+    }
+}
+
 // Width and height sizing keywords on a grid item. The fixed tracks make the
 // area definite, so stretch is the area minus margins and the intrinsic
 // keywords measure the fixture text (min 20x20, max 40x10).
@@ -9338,6 +9392,7 @@ void TestTaffy() {
     TestGridZeroSpanTerminates();
     TestGridMinmaxAutoFixedZero();
     TestGridAutoMinFloorPaddingBorder();
+    TestGridReplacedNormalDoesNotStretch();
     TestGridSizingKeywords();
     TestTaffy013Regressions();
     gpui::ArenaDelete(gGridArena);
