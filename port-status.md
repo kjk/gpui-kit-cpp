@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `47ae1eff3a070d24c25ec223d2b619aef167b787` (2026-10-23,
-scrollable_mask: Dispatch the overscroll steps of the scroll claim test within one frame (#3648)).
-The claim test's two overscroll steps now share one update, because a
-simulated wheel was drawing and clamping between them. The wheel here
-does not draw between steps, and the overscroll comparison is the
-formula the clamp leaves behind.
+Processed through `219fc1a9bdd6236c3a58f07c810e1b87079890c1` (2026-10-23,
+resizable: Read active drag state when mouse events arrive (#3629)).
+A press, drag and release that arrive before the next paint resize the
+panels and emit once. A programmatic resize ends the gesture, so a move
+still queued from the painted drag does not reuse that handle.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

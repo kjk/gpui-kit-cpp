@@ -685,8 +685,145 @@ static void PanelMadeFixedInPlaceKeepsItsSizeAcrossAContainerResize() {
     ExecShutdown();
 }
 
+// The two regressions in mod.rs: a gesture that arrives before the next
+// paint, and a queued move after the drag was cancelled. Both panels are the
+// harness sizes, 150 and 250, in a 400 by 100 group.
+struct DragGesturePage {
+    Entity<ResizableState> state;
+    int resizes = 0;
+
+    static void OnResized(DragGesturePage* self, Ctx*,
+                          const ResizablePanelEvent*) {
+        self->resizes++;
+    }
+
+    static El* Render(DragGesturePage* self, Ctx* cx) {
+        return Div(cx->a)->W(400)->H(100)->Child(
+            h_resizable(cx, StrL("resizable"))
+                ->WithState(self->state)
+                ->OnResize(Listen(cx, &DragGesturePage::OnResized))
+                ->Child(resizable_panel(cx)->Size(150)->Child(Div(cx->a)
+                                                                  ->SizeFull()))
+                ->Child(resizable_panel(cx)->Size(250)->Child(Div(cx->a)
+                                                                  ->SizeFull()))
+                ->IntoEl());
+    }
+};
+
+struct DragHarness {
+    App* app = nullptr;
+    Window* win = nullptr;
+    Entity<DragGesturePage> page;
+};
+
+static DragHarness OpenDragHarness() {
+    DragHarness harness;
+    harness.app = TestAppNew();
+    harness.page = EntityNew<DragGesturePage>(harness.app);
+    DragGesturePage* page = harness.page.Get(harness.app);
+    page->state = EntityNewState<ResizableState>(harness.app);
+    harness.win = TestWindowOpen(harness.app, harness.page.id, 400, 100, 1);
+    // The rust harness draws twice before it reads the second panel's edge.
+    TestDraw(harness.win);
+    return harness;
+}
+
+static void CloseDragHarness(DragHarness harness) {
+    TestAppFree(harness.app);
+}
+
+static void RawDown(Window* win, float x, float y) {
+    PlatformInput in = InputMouseDown(MouseButton::Left, x, y, {}, 1, false);
+    TestDispatchInputRaw(win, in);
+}
+
+static void RawMove(Window* win, float x, float y, bool pressed) {
+    PlatformInput in = InputMouseMove(x, y, pressed, MouseButton::Left, {});
+    TestDispatchInputRaw(win, in);
+}
+
+static void RawUp(Window* win, float x, float y) {
+    PlatformInput in = InputMouseUp(MouseButton::Left, x, y, {}, 1);
+    TestDispatchInputRaw(win, in);
+}
+
+static ResizableState* DragState(DragHarness harness) {
+    DragGesturePage* page = harness.page.Get(harness.app);
+    return page ? page->state.Get(harness.app) : nullptr;
+}
+
+// dragging_before_the_next_paint_resizes_and_emits_once. The whole gesture
+// is one update: no draw between the press, the moves and the releases.
+static void DraggingBeforeTheNextPaintResizesAndEmitsOnce() {
+    DragHarness harness = OpenDragHarness();
+    ResizableState* state = DragState(harness);
+    DragGesturePage* page = harness.page.Get(harness.app);
+    utassert(state && state->sizes.len == 2);
+    utassertnear(state->sizes[0], 150.f);
+    utassertnear(state->sizes[1], 250.f);
+    float boundary = state->bounds.x + state->sizes[0];
+    float y = state->bounds.y + 50.f;
+
+    RawDown(harness.win, boundary - 2.f, y);
+    RawMove(harness.win, boundary + 10.f, y, true);
+    RawMove(harness.win, state->bounds.x + 220.f, y, true);
+    utassert(state->dragging == 0);
+    utassertnear(state->sizes[0], 220.f);
+    utassertnear(state->sizes[1], 180.f);
+    utassert(page->resizes == 0);
+
+    RawUp(harness.win, state->bounds.x + 220.f, y);
+    RawUp(harness.win, state->bounds.x + 220.f, y);
+    RawMove(harness.win, state->bounds.x + 260.f, y, false);
+    utassert(state->dragging < 0);
+    utassertnear(state->sizes[0], 220.f);
+    utassertnear(state->sizes[1], 180.f);
+    utassert(page->resizes == 1);
+    CloseDragHarness(harness);
+}
+
+// cancelled_drag_does_not_reuse_the_painted_index. The drag is painted,
+// then resize_panel ends it. A move and a release that were already queued
+// must leave the programmatic sizes alone and must not emit again.
+static void CancelledDragDoesNotReuseThePaintedIndex() {
+    DragHarness harness = OpenDragHarness();
+    ResizableState* state = DragState(harness);
+    DragGesturePage* page = harness.page.Get(harness.app);
+    utassert(state && state->sizes.len == 2);
+    float boundary = state->bounds.x + state->sizes[0];
+    float y = state->bounds.y + 50.f;
+
+    TestSimulateMouseDown(harness.win, {boundary - 2.f, y});
+    TestSimulateMouseMove(harness.win, {boundary + 10.f, y}, true);
+    utassert(state->dragging == 0);
+    TestDraw(harness.win);
+
+    Arena* arena = ArenaNew();
+    Ctx cx = {harness.app, harness.win, arena, {}};
+    state->ResizePanel(&cx, 0, 210.f);
+    ArenaDelete(arena);
+    // cx.stop_active_drag: the window drops the payload the press picked up.
+    harness.win->activeDrag = {};
+    utassert(state->dragging < 0);
+    utassertnear(state->sizes[0], 210.f);
+    utassertnear(state->sizes[1], 190.f);
+    // This listener is also done_resizing's emit, so the programmatic resize
+    // has already been heard. The queued release must not add another.
+    int heard = page->resizes;
+
+    RawMove(harness.win, state->bounds.x + 260.f, y, true);
+    RawUp(harness.win, state->bounds.x + 260.f, y);
+    utassertnear(state->sizes[0], 210.f);
+    utassertnear(state->sizes[1], 190.f);
+    utassert(state->dragging < 0);
+    utassert(page->resizes == heard);
+    CloseDragHarness(harness);
+}
+
 void TestResizable() {
     TestSuite("resizable");
+    DraggingBeforeTheNextPaintResizesAndEmitsOnce();
+    CancelledDragDoesNotReuseThePaintedIndex();
     ResizingOnePanelTakesFromTheNext();
     TheLastPanelHasNoHandle();
     GrowingWalksOnPastANeighbourThatIsSpent();

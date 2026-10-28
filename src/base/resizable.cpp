@@ -241,6 +241,10 @@ bool ResizableState::ResizePanel(Ctx* cx, int ix, float size) {
     bool changed =
         ResizablePanelResize(sizes.els, mins.els, maxs.els, sizes.len, handle,
                              requested, ContainerSize(), fixedFlags);
+    // done_resizing: a programmatic resize ends the gesture. Move and release
+    // handlers read `dragging` when the event arrives, so a release still
+    // queued from the frame that painted the drag must not reuse this index.
+    dragging = -1;
     // Rust calls done_resizing for every valid panel, even when the requested
     // value was already current or the range clamps it back to that value.
     if (onResized.IsValid()) {
