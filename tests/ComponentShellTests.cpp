@@ -1338,6 +1338,75 @@ void ClickingAButtonReachesTheScript() {
     utassert(FindText(root, StrL("hits: 1")) != nullptr);
 }
 
+static int CountText(El* element, Str text) {
+    if (!element) return 0;
+    int n = element->kind == ElKind::Text && StrEq(element->text, text) ? 1 : 0;
+    for (El* child = element->first; child; child = child->next)
+        n += CountText(child, text);
+    return n;
+}
+
+static bool HasButtonName(El* element, Str name) {
+    if (!element) return false;
+    if (element->accessibility.role == AccessibilityRole::Button &&
+        StrEq(element->accessibility.label, name))
+        return true;
+    for (El* child = element->first; child; child = child->next) {
+        if (HasButtonName(child, name)) return true;
+    }
+    return false;
+}
+
+static El* ButtonWithAccessibleName(El* element, Str name) {
+    if (!element) return nullptr;
+    if (element->accessibility.role == AccessibilityRole::Button &&
+        StrEq(element->accessibility.label, name) &&
+        element->listener.IsValid())
+        return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = ButtonWithAccessibleName(child, name)) return found;
+    }
+    return nullptr;
+}
+
+// controls_host.rs:
+// a_named_button_preserves_its_visible_label_and_click_handler. The
+// accessible name is on the element whenever the script sets it; this tree
+// has no GPUI_A11Y_ACTIVE gate.
+void ANamedButtonKeepsItsVisibleLabelAndClick() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { Button } from 'gpui-component';\n"
+        "export default class App extends View {\n"
+        "  init(_props, _cx) { this.hits = 0; }\n"
+        "  render() {\n"
+        "    return div().size_full()\n"
+        "      .child(Button.new('press').primary().label('Press me')\n"
+        "        .accessibility_label('Run the primary action')\n"
+        "        .on_click((_event, cx) => { this.hits++; cx.notify(); }))\n"
+        "      .child(Button.new('plain').label('Press me'))\n"
+        "      .child(`hits: ${this.hits}`);\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && FindText(root, StrL("hits: 0")) != nullptr);
+    utassert(CountText(root, StrL("Press me")) == 2);
+    utassert(CountText(root, StrL("Run the primary action")) == 0);
+    utassert(HasButtonName(root, StrL("Press me")));
+    El* named = ButtonWithAccessibleName(root, StrL("Run the primary action"));
+    utassert(named != nullptr);
+    if (named) Click(host, named);
+    root = host.Render();
+    utassert(FindText(root, StrL("hits: 1")) != nullptr);
+    utassert(StrContains(
+        CallErrorTemp("Button",
+                      "new Button('action').accessibility_label(123)"),
+        StrL("accessibility_label(accessibility_label) expects a string")));
+    utassert(StrContains(
+        CallErrorTemp("Button", "new Button('action').accessibility_label()"),
+        StrL("accessibility_label(accessibility_label) expects a string")));
+}
+
 // ─── display/: mod.rs, common.rs and the seven modules ─────────────────────
 
 // registers_the_display_catalog_with_documented_callables
@@ -8331,6 +8400,7 @@ void TestComponentShell() {
     KbdParsesItsKeystroke();
     ClickingATwoStateControlReportsItsNewState();
     ClickingAButtonReachesTheScript();
+    ANamedButtonKeepsItsVisibleLabelAndClick();
 
     TestSuite("delegate_collections");
     DelegateCollectionCatalogExposesRetainedListContract();

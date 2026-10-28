@@ -19,6 +19,7 @@ struct ButtonOp {
     enum Kind : uint8_t {
         Size,
         Label,
+        AccessibilityLabel,
         Tooltip,
         Loading,
         Outline,
@@ -108,6 +109,9 @@ static El* MaterializeButton(MaterializeRequest* request) {
                 break;
             case ButtonOp::Label:
                 button->Label(op.text);
+                break;
+            case ButtonOp::AccessibilityLabel:
+                button->AccessibilityLabel(op.text);
                 break;
             case ButtonOp::Tooltip:
                 button->Tooltip(op.text);
@@ -306,6 +310,8 @@ static El* MaterializeToggle(MaterializeRequest* request) {
 
 static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
+static constexpr ArgumentDescriptor kAccessibilityLabelArgs[] = {
+    {"accessibility_label", SchemaString()}};
 static constexpr ArgumentDescriptor kTooltipArgs[] = {
     {"tooltip", SchemaString()}};
 static constexpr ArgumentDescriptor kLoadingArgs[] = {
@@ -322,6 +328,9 @@ static constexpr MethodDescriptor kButtonMethods[] = {
     kDisabledMethod,
     {"label", kLabelArgs, "Sets the visible button label.",
      &RecordButtonString<ButtonOp::Label>},
+    {"accessibility_label", kAccessibilityLabelArgs,
+     "Sets the accessible name independently of the visible button label.",
+     &RecordButtonString<ButtonOp::AccessibilityLabel>},
     {"tooltip", kTooltipArgs, "Sets concise hover help.",
      &RecordButtonString<ButtonOp::Tooltip>},
     {"loading", kLoadingArgs, "Sets the loading presentation.",

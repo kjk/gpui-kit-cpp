@@ -16,14 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `01198073b66f967048d8dd97bc035956a74f8435` (2026-10-24,
-table: Expose DataTable's structure and cells to assistive technology
-(#3667)).
-The data table is a grid when a row or a cell can be selected, and a
-table otherwise. The count includes the header row. Column headers are
-named, body cells take a delegate label, and a selectable cell reports
-whether it is selected. Group headers and the row-header column still
-have no role, which is the same limit upstream left.
+Processed through `69a2077c2da588de1c46b89ffd903e1373e45a29` (2026-10-24,
+button: Expose accessible names in the script API (#3665)).
+A script button can name itself for assistive technology without
+changing the visible label. The method is button-only; checkbox, switch
+and toggle keep the methods they already had.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
