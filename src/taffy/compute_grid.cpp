@@ -4361,6 +4361,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     bool intrinsicColumnContributionChanged = false;
 
     if (!rerunColumnSizing) {
+        // Every item that crosses an intrinsic column is visited. Stopping
+        // at the first change would leave the later items' caches stale.
         for (int i = 0; i < len(items); i++) {
             GridItem* item = &items[i];
             if (!item->crossesIntrinsicColumn) {
@@ -4408,9 +4410,11 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         bool rerunRowSizing = parentHeightIndefinite && hasPercentageRow;
 
         if (!rerunRowSizing) {
+            // Every item that crosses an intrinsic row is visited. Stopping
+            // at the first change would leave the later items' caches stale.
             for (int i = 0; i < len(items); i++) {
                 GridItem* item = &items[i];
-                if (!item->crossesIntrinsicColumn) {
+                if (!item->crossesIntrinsicRow) {
                     continue;
                 }
                 SizeFOpt gridAreaSize = ItemGridAreaSize(

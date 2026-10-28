@@ -6839,6 +6839,56 @@ static void TestGridAutoMinIgnoresUnspannedFlex() {
     tree.Free();
 }
 
+// taffy ceb7443d. Column sizing is re-run when a later item's min-content
+// contribution changes, not only the first. Three auto columns: a 10x100
+// box, then 50% and 100% heights with aspect ratios 1 and 2. Columns
+// resolve to 10, 50 and 200.
+static void TestGridRerunColumnSizingMultipleItems() {
+    TestSuite("taffy grid rerun column sizing multiple items");
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style fixed;
+    fixed.size.width = taffy::Dimension::Length(10.0f);
+    fixed.size.height = taffy::Dimension::Length(100.0f);
+    fixed.gridRow.start = GridPlacement::FromLineIndex(1);
+    fixed.gridColumn.start = GridPlacement::FromLineIndex(1);
+    TaffyNodeId a = tree.NewLeaf(fixed);
+    taffy::Style half;
+    half.size.height = taffy::Dimension::Percent(0.5f);
+    half.aspectRatio = Some(1.0f);
+    half.justifySelf = taffy::OptAlignSelf(taffy::AlignItems{});
+    half.gridRow.start = GridPlacement::FromLineIndex(1);
+    half.gridColumn.start = GridPlacement::FromLineIndex(2);
+    TaffyNodeId b = tree.NewLeaf(half);
+    taffy::Style full;
+    full.size.height = taffy::Dimension::Percent(1.0f);
+    full.aspectRatio = Some(2.0f);
+    full.justifySelf = taffy::OptAlignSelf(taffy::AlignItems{});
+    full.gridRow.start = GridPlacement::FromLineIndex(1);
+    full.gridColumn.start = GridPlacement::FromLineIndex(3);
+    TaffyNodeId c = tree.NewLeaf(full);
+    TaffyNodeId kids[3] = {a, b, c};
+    GridTemplateComponent cols[3] = {
+        GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+        GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+        GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+    };
+    GridTemplateComponent row =
+        GridTemplateComponent::Single(TrackSizingFunction::Auto());
+    taffy::Style grid;
+    grid.display = taffy::Display::Grid;
+    grid.justifyContent = taffy::OptJustifyContent(taffy::JustifyContent{});
+    grid.gridTemplateColumns = GridTemplateOf(cols, 3);
+    grid.gridTemplateRows = GridTemplateOf(&row, 1);
+    TaffyNodeId root = tree.NewWithChildren(grid, kids, 3);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 260.0f, 100.0f);
+    AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 10.0f, 100.0f);
+    AssertBox(tree.GetLayout(b), 10.0f, 0.0f, 50.0f, 50.0f);
+    AssertBox(tree.GetLayout(c), 60.0f, 0.0f, 200.0f, 100.0f);
+    tree.Free();
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6865,6 +6915,7 @@ void TestTaffy() {
     TestGridKnownWidthSkipsMeasure();
     TestGridFixedTrackSkipsMeasure();
     TestGridAutoMinIgnoresUnspannedFlex();
+    TestGridRerunColumnSizingMultipleItems();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();
