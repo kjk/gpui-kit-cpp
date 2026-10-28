@@ -2596,6 +2596,61 @@ static void TestBlockPercentageBasis() {
     }
 }
 
+// A stretched flex item's cross size is definite, so a percentage height
+// resolves. An unstretched item's cross height stays indefinite.
+static void TestFlexCrossDefinitePercentage() {
+    TestSuite("taffy flex cross size definiteness");
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style pct;
+        pct.display = taffy::Display::Block;
+        pct.size.height = taffy::Dimension::Percent(0.5f);
+        TaffyNodeId p = tree.NewLeaf(pct);
+        taffy::Style itemStyle;
+        itemStyle.display = taffy::Display::Block;
+        itemStyle.size.width = taffy::Dimension::Length(50.0f);
+        TaffyNodeId item = tree.NewWithChildren(itemStyle, &p, 1);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &item, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(item).size.h, 100.0f);
+        utassertnear(tree.GetLayout(p).size.h, 50.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style grand;
+        grand.display = taffy::Display::Block;
+        grand.size = SizeDim::FromLengths(20.0f, 20.0f);
+        TaffyNodeId g = tree.NewLeaf(grand);
+        taffy::Style pct;
+        pct.display = taffy::Display::Block;
+        pct.size.height = taffy::Dimension::Percent(0.5f);
+        TaffyNodeId p = tree.NewWithChildren(pct, &g, 1);
+        taffy::Style itemStyle;
+        itemStyle.display = taffy::Display::Block;
+        itemStyle.size.width = taffy::Dimension::Length(50.0f);
+        TaffyNodeId item = tree.NewWithChildren(itemStyle, &p, 1);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+        rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &item, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(item).size.h, 20.0f);
+        utassertnear(tree.GetLayout(p).size.h, 20.0f);
+        utassertnear(tree.GetLayout(g).size.h, 20.0f);
+        tree.Free();
+    }
+}
+
 // ─── src/compute/grid/explicit_grid.rs ───────────────────────────────────
 //
 // The grid internals are private; compute.h exposes the seams taffy's own
@@ -4020,6 +4075,7 @@ void TestTaffy() {
     TestFlexBalanceLayout();
     TestBlockLayout();
     TestBlockPercentageBasis();
+    TestFlexCrossDefinitePercentage();
     TestExplicitMinSkipsMinContent();
     TestAbsoluteKnownSizeSkipsMeasure();
     TestLeafContentSizeEndPadding();
