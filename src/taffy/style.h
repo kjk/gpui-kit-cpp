@@ -1550,8 +1550,12 @@ struct Style {
     Display display = Display::Flex;
     // Whether a child is display:table. Affects children of block layouts.
     bool itemIsTable = false;
-    // Is it a replaced element, like an image or a form field?
+    // A replaced element like an image or video. Implies compressible.
     bool itemIsReplaced = false;
+    // A compressible replaced element that is not a replaced element: a form
+    // control with an intrinsic size. An auto width is intrinsic in block
+    // layout, but absolute layout still stretches it between its insets.
+    bool itemIsCompressibleReplaced = false;
     BoxSizing boxSizing = BoxSizing::BorderBox;
     Direction direction = Direction::Ltr;
 
@@ -1629,7 +1633,11 @@ struct Style {
                                         : BoxGenerationMode::Normal;
     }
     bool IsBlock() const { return display == Display::Block; }
-    bool IsCompressibleReplaced() const { return itemIsReplaced; }
+    // A replaced element or a form control with an intrinsic size.
+    bool IsCompressibleReplaced() const {
+        return itemIsReplaced || itemIsCompressibleReplaced;
+    }
+    bool IsReplaced() const { return itemIsReplaced; }
 };
 
 // Rust derives `PartialEq` on `Style` and on everything it holds; this is

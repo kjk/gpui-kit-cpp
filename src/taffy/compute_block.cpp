@@ -752,8 +752,9 @@ struct BlockItem {
 
     // Tables do not get stretch sizing applied to them.
     bool isTable = false;
-    // Replaced elements resolve auto width from their intrinsic size.
-    bool isReplaced = false;
+    // Compressible replaced items resolve an auto width to their intrinsic
+    // size rather than being stretch-sized.
+    bool isCompressibleReplaced = false;
     // Whether the child is a non-independent block or inline node.
     bool isInSameBfc = false;
 
@@ -825,7 +826,7 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
         item.nodeId = childNodeId;
         item.order = order++;
         item.isTable = cs.itemIsTable;
-        item.isReplaced = cs.IsCompressibleReplaced();
+        item.isCompressibleReplaced = cs.IsCompressibleReplaced();
         item.floatMode = cs.floatMode;
         item.clear = cs.clear;
         item.position = cs.position;
@@ -1163,7 +1164,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         bool hasNonStretchJustify = justifySelf.IsSome() && !isStretch;
 
         SizeFOpt knownDimensions = SizeFOptNone();
-        if (!(item.isTable || item.isReplaced) || isStretch) {
+        if (!(item.isTable || item.isCompressibleReplaced) || isStretch) {
             // A non-normal, non-stretch justify-self makes an auto width
             // fit-content instead of stretch.
             Dimension widthStyle = item.sizeStyle.width;

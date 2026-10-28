@@ -355,8 +355,9 @@ Optf MinTrackSizingFunction::DefiniteValue(Optf parentSize,
 // two read against each other.
 bool operator==(const Style& a, const Style& b) {
     return a.display == b.display && a.itemIsTable == b.itemIsTable &&
-           a.itemIsReplaced == b.itemIsReplaced && a.boxSizing == b.boxSizing &&
-           a.direction == b.direction &&
+           a.itemIsReplaced == b.itemIsReplaced &&
+           a.itemIsCompressibleReplaced == b.itemIsCompressibleReplaced &&
+           a.boxSizing == b.boxSizing && a.direction == b.direction &&
            // Overflow
            a.overflow == b.overflow &&
            SameFloatBits(a.scrollbarWidth, b.scrollbarWidth) &&

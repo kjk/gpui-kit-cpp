@@ -337,9 +337,10 @@ OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
             cs.maxSize.MaybeResolve(AsOptional(usedArea), calc), aspectRatio),
         boxSizingAdjustment);
     SizeFOpt knownDimensions = MaybeClamp(styleSize, minSize, maxSize);
-    // An absolute replaced box keeps its intrinsic size. A table is not
-    // stretch-sized by `normal` either. Explicit stretch still applies.
-    bool isReplaced = cs.IsCompressibleReplaced();
+    // An absolute replaced element keeps its intrinsic size. A form control
+    // is compressible but still stretches between its insets. A table is
+    // not stretch-sized by `normal` either. Explicit stretch still applies.
+    bool isReplaced = cs.IsReplaced();
     bool isTable = cs.itemIsTable;
     Direction itemDirection = cs.direction;
     OptAlignSelf justifySelf = cs.justifySelf;

@@ -386,6 +386,7 @@ static void TestStyleDefaults() {
     utassert(s.display == taffy::Display::Flex);
     utassert(!s.itemIsTable);
     utassert(!s.itemIsReplaced);
+    utassert(!s.itemIsCompressibleReplaced);
     utassert(s.boxSizing == BoxSizing::BorderBox);
     utassert(s.direction == Direction::Ltr);
     utassert(s.overflow.x == taffy::Overflow::Visible);
@@ -7000,6 +7001,74 @@ static void TestAbsoluteReplacedDoesNotStretch() {
     }
 }
 
+// taffy e299619a. A form control is compressible (intrinsic block width)
+// without being a replaced element (absolute stretch between insets).
+static void TestCompressibleReplaced() {
+    TestSuite("taffy compressible replaced");
+    taffy::Style replaced;
+    replaced.itemIsReplaced = true;
+    utassert(replaced.IsCompressibleReplaced());
+    utassert(replaced.IsReplaced());
+    taffy::Style form;
+    form.itemIsCompressibleReplaced = true;
+    utassert(form.IsCompressibleReplaced());
+    utassert(!form.IsReplaced());
+
+    taffy::Style blockRoot;
+    blockRoot.display = taffy::Display::Block;
+    blockRoot.size.width = taffy::Dimension::Length(400.0f);
+    {
+        TaffyTree tree;
+        tree.Init();
+        AspectMeasureCtx input = {150.0f, 20.0f / 150.0f};
+        taffy::Style child;
+        child.display = taffy::Display::Block;
+        child.itemIsCompressibleReplaced = true;
+        TaffyNodeId node = tree.NewLeafWithContext(child, &input);
+        TaffyNodeId root = tree.NewWithChildren(blockRoot, &node, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AspectMeasureFn, nullptr);
+        utassertnear(tree.GetLayout(node).size.w, 150.0f);
+        utassertnear(tree.GetLayout(node).size.h, 20.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        AspectMeasureCtx input = {150.0f, 20.0f / 150.0f};
+        taffy::Style child;
+        child.display = taffy::Display::Block;
+        child.itemIsCompressibleReplaced = true;
+        child.justifySelf = taffy::OptAlignSelf(
+            taffy::AlignItems{taffy::AlignItemsKeyword::Stretch});
+        TaffyNodeId node = tree.NewLeafWithContext(child, &input);
+        TaffyNodeId root = tree.NewWithChildren(blockRoot, &node, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AspectMeasureFn, nullptr);
+        utassertnear(tree.GetLayout(node).size.w, 400.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        AspectMeasureCtx input = {150.0f, 20.0f / 150.0f};
+        taffy::Style child;
+        child.position = taffy::Position::Absolute;
+        child.itemIsCompressibleReplaced = true;
+        InsetAll(&child, 10.0f);
+        TaffyNodeId node = tree.NewLeafWithContext(child, &input);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.position = taffy::Position::Relative;
+        rootStyle.size = SizeDim::FromLengths(400.0f, 300.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &node, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AspectMeasureFn, nullptr);
+        AssertBox(tree.GetLayout(node), 10.0f, 10.0f, 380.0f, 280.0f);
+        tree.Free();
+    }
+}
+
 // taffy a4dff69e. justify-self / align-self place an absolute box inside
 // its static-position rectangle, and inside the inset-modified containing
 // block when both insets are set. Default, safe and unsafe disagree once
@@ -8082,6 +8151,7 @@ void TestTaffy() {
     TestOofHoisting();
     TestAbsposAutoMarginNeedsBothInsets();
     TestAbsoluteReplacedDoesNotStretch();
+    TestCompressibleReplaced();
     TestAbsposSelfAlignment();
     TestInitialContainingBlock();
     TestRootPositionAndInsets();
