@@ -820,6 +820,66 @@ static void DropdownButtonNamesItsMenuTrigger() {
     AppGlobalClear(&app);
 }
 
+// button.rs caller_owned_focus_handle_drives_focus_and_keyboard_activation:
+// the application's handle is what the button focuses as, and Enter on
+// that handle activates it.
+struct CallerFocusButton {
+    FocusHandle focus = {};
+    int clicks = 0;
+
+    static void OnClick(CallerFocusButton* self, Ctx*, const ClickEvent*) {
+        self->clicks++;
+    }
+
+    static El* Render(CallerFocusButton* self, Ctx* cx) {
+        return component::Button::New(cx, StrL("details"))
+            ->Label(StrL("Details"))
+            ->TrackFocus(self->focus)
+            ->OnClick(Listen(cx, &CallerFocusButton::OnClick))
+            ->IntoEl();
+    }
+};
+
+static void AnUnsetButtonKeepsNoCallerFocus() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx{&app, win, arena, {}};
+    component::Button* button = component::Button::New(&cx, StrL("details"));
+    utassert(!button->hasFocus);
+    utassert(!button->focus.IsValid());
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+static void CallerOwnedFocusHandleDrivesFocusAndKeyboardActivation() {
+    App* app = TestAppNew();
+    auto view = EntityNew<CallerFocusButton>(app);
+    CallerFocusButton* self = view.Get(app);
+    self->focus = FocusHandleNew(app);
+    Window* win = TestWindowOpen(app, view, 400, 200, 1);
+    TestDraw(win);
+    TestFocus(win, self->focus);
+    TestDraw(win);
+    utassert(win->focusId == self->focus.id);
+    bool painted = false;
+    for (int i = 0; i < len(win->paint.hits); i++) {
+        if (win->paint.hits[i].focusId == self->focus.id) {
+            painted = true;
+        }
+    }
+    utassert(painted);
+    TestSimulateKeystrokes(win, "enter");
+    WindowKeyUp(win, KeyReturn, false, false, false, false, false);
+    TestFlushEffects(app);
+    utassert(self->clicks == 1);
+    TestAppFree(app);
+}
+
 void TestButtonGroup() {
     TestSuite("button_group");
     BaseButtonCentersOrdinaryChildGeometry();
@@ -838,4 +898,6 @@ void TestButtonGroup() {
     ClipboardButtonsAcceptTheSharedSizeContract();
     AnOpenTriggerIsStoredApartFromASelectedOne();
     DropdownButtonNamesItsMenuTrigger();
+    AnUnsetButtonKeepsNoCallerFocus();
+    CallerOwnedFocusHandleDrivesFocusAndKeyboardActivation();
 }

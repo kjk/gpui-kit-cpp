@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4c43e3fd4569857ea70881099dc9d51216b7f2a8` (2026-10-26,
-text_selection: Extend double- and triple-click drags by words and lines (#3681)).
-A double or triple click keeps its word or logical line selected, and a
-drag or a later shift-click extends by that same unit. A plain click
-drops it. Touch selects the unit and does not drag by it.
+Processed through `973d7ae6b9d99a002ff740f298489ee4cfb7f967` (2026-10-26,
+button: Accept a caller-owned focus handle (#3684)).
+A themed button takes a caller-owned focus handle. That handle is the
+focus ring, Enter and Space, and the node's focus id. Without one, the
+button keeps the path focus it makes for itself.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

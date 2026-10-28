@@ -352,6 +352,11 @@ Button* Button::FocusRing(bool v) {
     focusRing = v;
     return this;
 }
+Button* Button::TrackFocus(FocusHandle handle) {
+    focus = handle;
+    hasFocus = handle.IsValid();
+    return this;
+}
 Button* Button::Tooltip(Str s) {
     tooltip = s;
     return this;
@@ -722,15 +727,20 @@ El* Button::IntoEl() {
                 ->TabStop(tabStop && interactive)
                 ->FocusRing(focusRing)
                 ->FocusLineStyle(focusLine,
-                                 RgbaOpacity(normalFg, kFocusLineOpacity))
-                ->H(h > 0 ? h : kAuto)
-                ->PadX(padX)
-                ->ItemsCenter()
-                ->JustifyCenter()
-                ->LineHeight(1.25f)
-                ->Gap(gap)
-                ->Corners(cornerTL ? rounding : 0.f, cornerTR ? rounding : 0.f,
-                          cornerBR ? rounding : 0.f, cornerBL ? rounding : 0.f);
+                                 RgbaOpacity(normalFg, kFocusLineOpacity));
+    // PathId already named the button's own focus. A caller handle replaces
+    // it, the way Button::track_focus replaces the keyed handle at render.
+    if (hasFocus) {
+        e->TrackFocus(focus);
+    }
+    e = e->H(h > 0 ? h : kAuto)
+            ->PadX(padX)
+            ->ItemsCenter()
+            ->JustifyCenter()
+            ->LineHeight(1.25f)
+            ->Gap(gap)
+            ->Corners(cornerTL ? rounding : 0.f, cornerTR ? rounding : 0.f,
+                      cornerBR ? rounding : 0.f, cornerBL ? rounding : 0.f);
     if (accessibilityId.s) {
         e->AccessibilityId(accessibilityId);
     }

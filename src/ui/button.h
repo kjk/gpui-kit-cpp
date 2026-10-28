@@ -161,6 +161,11 @@ struct Button {
     bool focusRing = true;
     int tabIndex = 0;
     bool tabStop = true;
+    // track_focus: a caller-owned handle, used instead of the path focus
+    // the button keeps for itself. It drives the ring, Enter/Space, and
+    // the node's focus id. Unset leaves the path focus.
+    FocusHandle focus = {};
+    bool hasFocus = false;
     bool hasCustom = false;
     Rgba custom = {};
     Str tooltip = {};
@@ -255,6 +260,7 @@ struct Button {
     Button* TabIndex(int v);
     Button* TabStop(bool v);
     Button* FocusRing(bool v);
+    Button* TrackFocus(FocusHandle handle);
     Button* Tooltip(Str s);
     // tooltip_placement: prefer a side for the tooltip, falling back when it
     // does not fit. Applies to `Tooltip`; omitting it keeps automatic
