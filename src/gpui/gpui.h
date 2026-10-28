@@ -5455,6 +5455,15 @@ struct InputState {
     bool chipLine = false;
     // input_bounds: the whole field, what a press outside the run maps against.
     Bounds inputBounds = {};
+    // revealed_viewport: the fully visible part of the window this field
+    // last asked a scroller to bring it into. Cleared on blur, including a
+    // blur while the field is not mounted, so the next focus asks again.
+    // Manual scrolling in between is left alone.
+    bool hasRevealedViewport = false;
+    Bounds revealedViewport = {};
+    // The frame that published caretWinX/Y. A multi-line reveal uses them
+    // only when they belong to this frame.
+    uint64_t caretGeomFrame = 0;
     // input/popovers::Popover's trigger and laid-out surface. RangeOut fills
     // the first from the active symbol/diagnostic; BoundsOut fills the second
     // after Positioner has moved it. Together they keep the hover alive while
@@ -5575,6 +5584,11 @@ bool InputRevealCaretOnResize(InputState* s, float newViewW, float newViewH,
                               float lineH);
 // The caret box paint just measured, kept for the next resize check.
 void InputRememberCaretGeometry(InputState* s);
+// element.rs request_reveal: a focused field asks once per fully-visible
+// viewport. A single-line field asks for all of itself. A multi-line one
+// asks for the caret's line, or its top 120px when it has no caret this
+// frame. The box is dilated by 8px for the field's padding and border.
+void InputRequestReveal(InputState* s, Window* win);
 // ScrollPadding: the vertical clearance to retain when revealing a text
 // position. `scroll_to` picks SurroundingLines for a directed move and Minimal
 // otherwise; search picks the two on its own.

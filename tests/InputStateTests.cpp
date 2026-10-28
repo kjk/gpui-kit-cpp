@@ -12000,6 +12000,92 @@ static void TapAsksForTheVirtualKeyboard() {
     InputViewFree(&view);
 }
 
+// element.rs focused_input_asks_its_scroll_container_to_reveal_it.
+// A list as tall as the window, whose second item is an input that starts
+// below the fold.
+struct RevealList {
+    InputState input;
+    VirtualListScrollHandle handle;
+    float sizes[2] = {190.f, 40.f};
+    bool showInput = true;
+
+    static El* Row(void* user, Ctx* cx, int ix) {
+        RevealList* self = (RevealList*)user;
+        if (ix == 0) {
+            return Div(cx->a)->H(190.f)->W(kFill);
+        }
+        El* row = Div(cx->a)->H(40.f)->W(kFill);
+        if (self->showInput) {
+            row->Child(InputStateFrame(cx, &self->input));
+        }
+        return row;
+    }
+
+    static El* Render(RevealList* self, Ctx* cx) {
+        return component::VirtualList::New(cx, 2)
+            ->Handle(&self->handle)
+            ->Sizes(self->sizes)
+            ->Row(&RevealList::Row, self)
+            ->IntoEl();
+    }
+};
+
+static bool RevealShown(const RevealList* self, const Window* win) {
+    const Bounds& b = self->input.inputBounds;
+    return b.y >= -0.5f && b.Bottom() <= win->paint.viewH + 0.5f;
+}
+
+static void FocusedInputAsksItsScrollContainerToRevealIt() {
+    App* app = TestAppNew();
+    utassert(app != nullptr);
+    if (!app) {
+        return;
+    }
+    Entity<RevealList> root = EntityNew<RevealList>(app);
+    Window* win = TestWindowOpen(app, root, 240, 200);
+    RevealList* self = root.Get(app);
+    utassert(self != nullptr && win != nullptr);
+    if (!self || !win) {
+        TestAppFree(app);
+        return;
+    }
+    utassert(self->handle.offset == 0.f);
+    utassert(!RevealShown(self, win));
+
+    InputFocus(&self->input, app, win);
+    TestDraw(win);
+    TestDraw(win);
+    utassert(self->handle.offset > 0.f);
+    utassert(RevealShown(self, win));
+
+    self->handle.offset = 0.f;
+    TestDraw(win);
+    TestDraw(win);
+    utassert(self->handle.offset == 0.f);
+
+    self->showInput = false;
+    WindowSetFocusId(win, 0);
+    utassert(!self->input.hasRevealedViewport);
+    TestDraw(win);
+    self->showInput = true;
+    InputFocus(&self->input, app, win);
+    TestDraw(win);
+    TestDraw(win);
+    utassert(self->handle.offset > 0.f);
+    utassert(RevealShown(self, win));
+
+    self->handle.offset = 0.f;
+    TestDraw(win);
+    TestDraw(win);
+    utassert(self->handle.offset == 0.f);
+
+    TestSimulateResize(win, 240, 195);
+    TestDraw(win);
+    utassert(self->handle.offset > 0.f);
+    utassert(RevealShown(self, win));
+    TestAppFree(app);
+}
+
 void TestInputState() {
     TextareaPrewrapPreparesContentRowsBeforeLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
@@ -12009,6 +12095,7 @@ void TestInputState() {
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
+    FocusedInputAsksItsScrollContainerToRevealIt();
     TapAsksForTheVirtualKeyboard();
     AccessibilityActionsRecheckLiveEditability();
     AccessibilitySetValuePreservesExactEditorText();

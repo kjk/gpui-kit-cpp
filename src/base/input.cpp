@@ -4590,6 +4590,61 @@ void InputRememberCaretGeometry(InputState* s) {
     s->caretGeomValid = true;
 }
 
+static bool RevealBoundsSame(Bounds a, Bounds b) {
+    return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+void InputRequestReveal(InputState* s, Window* win) {
+    if (!s || !win) {
+        return;
+    }
+    // element.rs REVEAL_MARGIN / REVEAL_MAX_HEIGHT.
+    const float kRevealMargin = 8.f;
+    const float kRevealMaxH = 120.f;
+    bool focused = s->focused && s->focusWin == win;
+    Bounds viewport = WindowFullyVisibleBounds(win);
+    bool changed = !s->hasRevealedViewport ||
+                   !RevealBoundsSame(s->revealedViewport, viewport);
+    if (focused) {
+        s->hasRevealedViewport = true;
+        s->revealedViewport = viewport;
+    } else {
+        s->hasRevealedViewport = false;
+    }
+    if (!focused || !changed || s->inputBounds.h <= 0.f) {
+        return;
+    }
+    float top = s->inputBounds.y;
+    float height = s->inputBounds.h;
+    if (!InputIsSingleLine(s)) {
+        float lineH = s->lastLineH > 0.f ? s->lastLineH : kInputLineH;
+        if (s->caretGeomFrame == win->frameSeq && lineH > 0.f) {
+            float caretTop = s->caretWinY - lineH;
+            if (caretTop < s->inputBounds.y) {
+                caretTop = s->inputBounds.y;
+            }
+            if (caretTop > s->inputBounds.Bottom()) {
+                caretTop = s->inputBounds.Bottom();
+            }
+            float room = s->inputBounds.Bottom() - caretTop;
+            if (room < 0.f) {
+                room = 0.f;
+            }
+            top = caretTop;
+            height = lineH < room ? lineH : room;
+        } else {
+            height =
+                s->inputBounds.h < kRevealMaxH ? s->inputBounds.h : kRevealMaxH;
+        }
+    }
+    Bounds request = {s->inputBounds.x, top, s->inputBounds.w, height};
+    request.x -= kRevealMargin;
+    request.y -= kRevealMargin;
+    request.w += kRevealMargin * 2.f;
+    request.h += kRevealMargin * 2.f;
+    WindowRequestAutoscroll(win, request);
+}
+
 void InputScrollToCaret(InputState* s, float caretX, float caretY,
                         InputMoveDir dir) {
     // scroll_to: a directed move asks for surrounding lines (a code editor
@@ -9763,6 +9818,9 @@ void InputBlur(InputState* s, App* app, Window* win) {
     if (!s) {
         return;
     }
+    // on_blur clears the reveal cache before any early return, so a field
+    // that is unmounted while it loses focus does not keep the old viewport.
+    s->hasRevealedViewport = false;
     // Blurring ends the typing session, so a later undo stops here rather than
     // swallowing everything typed before the field lost focus.
     UndoBreakCoalescing(&s->undo);

@@ -7333,6 +7333,9 @@ static void PaintCaretAt(PaintCtx* ctx, El* e, float font, int off,
     CaretPlace place = MeasureCaretPlace(ctx, e, font, off, lineEndAffinity);
     if (primary) {
         ApplyPrimaryCaret(e, place);
+        if (e->input && ctx && ctx->window) {
+            e->input->caretGeomFrame = ctx->window->frameSeq;
+        }
     }
     if (e->caretColor.a != 0) {
         // element.rs snap_caret_to_device_pixels. The layout position stays
@@ -7890,12 +7893,14 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // InputElement's input_bounds: the box a press maps against. The
     // outermost binding of the frame wins, so the themed field's whole
     // bordered box counts and not just the run inside it.
+    bool recordedInput = false;
     if (e->input && e->kind != ElKind::Text) {
         bool seen = false;
         for (int i = 0; i < ctx->inputs.len && !seen; i++) {
             seen = ctx->inputs[i] == e->input;
         }
         if (!seen) {
+            recordedInput = true;
             e->input->inputBounds = e->Bounds();
             // The box the field scrolls inside, less what it pads by.
             float viewW = e->w - e->style.pad.HorizontalAxisSum();
@@ -8319,6 +8324,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         VecReset(children);
     } else {
         for (El* c = e->first; c; c = c->next) PaintElNode(ctx, c, skipOverlay);
+    }
+    // request_reveal runs after the caret has been painted, and before an
+    // ancestor list's after-paint takes the request.
+    if (recordedInput) {
+        InputRequestReveal(e->input, ctx->window);
     }
     if (pushed) {
         ctx->window->imageCacheStack.len--;

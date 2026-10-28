@@ -336,10 +336,14 @@ static void VirtualListAfterPaint(PaintCtx* ctx, El* e, void* user) {
     float top = e->y + o.pad;
     float height = std::max(e->h - o.pad * 2, 0.f);
     float contentTop = top - e->scrollY;
-    if (want.x >= e->x + e->w || want.x + want.w <= e->x ||
-        want.y < contentTop - 0.5f ||
-        want.y + want.h > contentTop + e->contentH + 0.5f) {
-        // Let an enclosing list take a request outside our own content.
+    float contentH = e->contentH;
+    // A reveal dilates past the field, so the request may hang off the last
+    // row. Overlap is enough; the clamp below stops the scroll at the end.
+    // A request that misses this list entirely is the parent's.
+    bool overlaps = want.x < e->x + e->w && want.Right() > e->x &&
+                    want.y < contentTop + contentH &&
+                    want.Bottom() > contentTop;
+    if (!overlaps) {
         WindowRequestAutoscroll(ctx->window, want);
         return;
     }
@@ -629,17 +633,21 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
         float bottom = top + innerH;
         float contentTop = top - offset;
         float extent = layout.contentSize.h;
-        bool inside = want.x < e->x + e->w && want.x + want.w > e->x &&
-                      want.y >= contentTop - 0.5f &&
-                      want.y + want.h <= contentTop + extent + 0.5f;
+        // Same overlap rule as VirtualListAfterPaint: a dilated reveal of
+        // the last row still belongs to this list.
+        bool inside = want.x < e->x + e->w && want.Right() > e->x &&
+                      want.y < contentTop + extent &&
+                      want.Bottom() > contentTop;
         float delta = 0;
-        if (inside && want.h <= innerH) {
+        if (!inside) {
+            WindowRequestAutoscroll(paint->win, want);
+        } else if (want.h <= innerH) {
             if (want.y < top) {
                 delta = want.y - top;
             } else if (want.y + want.h > bottom) {
                 delta = want.y + want.h - bottom;
             }
-        } else if (inside) {
+        } else {
             delta = want.y - top;
         }
         float most = extent > innerH ? extent - innerH : 0.f;

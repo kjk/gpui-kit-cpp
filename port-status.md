@@ -16,13 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0121c36b75fbe0652eda6fdd954f73df61581527` (2026-10-23,
-input: Lay out tabs to tab stops in the code editor (#3622)).
-A tab ends on the next multiple of `tab_size` spaces. Wrap measurement,
-the longest line, the caret and a click all use that width. The shared
-shaper does not hand glyph positions back, so the drawn line is spaces
-that reach the stop; the buffer still holds the tab. Token rows are
-left to the shaper, as upstream leaves them.
+Processed through `7c0746e8ec10eeb27214c41c880aeaa82fccbef1` (2026-10-23,
+input: Ask scroll containers to reveal a focused input (#3625)).
+A focused field asks its list to bring it into view when it gains focus
+and again when the window's fully visible bounds change. Scrolling away
+while it stays focused is left alone, and blurring clears that memory
+even if the field is not mounted. A single-line field asks for all of
+itself; a multi-line one asks for the caret's line, or its top 120px.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
