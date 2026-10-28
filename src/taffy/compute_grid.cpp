@@ -4343,30 +4343,6 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     // size was already known.
     innerNodeSize = {Some(containerContentBox.w), Some(containerContentBox.h)};
 
-    // 7. Re-resolve percentage track base sizes. An indefinitely sized
-    // container resolves them to zero during "Initialise Tracks", so they are
-    // resolved again here against the content-sized content box.
-    if (!availableGridSpace.width.IsDefinite()) {
-        for (int i = 0; i < len(columns); i++) {
-            GridTrack& c = columns[i];
-            Optf mn = c.minTrackSizingFunction
-                          .ResolvedPercentageSize(containerContentBox.w, calc);
-            Optf mx = c.maxTrackSizingFunction
-                          .ResolvedPercentageSize(containerContentBox.w, calc);
-            c.baseSize = MaybeClamp(c.baseSize, mn, mx);
-        }
-    }
-    if (!availableGridSpace.height.IsDefinite()) {
-        for (int i = 0; i < len(rows); i++) {
-            GridTrack& r = rows[i];
-            Optf mn = r.minTrackSizingFunction
-                          .ResolvedPercentageSize(containerContentBox.h, calc);
-            Optf mx = r.maxTrackSizingFunction
-                          .ResolvedPercentageSize(containerContentBox.h, calc);
-            r.baseSize = MaybeClamp(r.baseSize, mn, mx);
-        }
-    }
-
     // Column sizing is re-run once if the container's width was indefinite and
     // there are percentage columns, or if any item's min-content contribution
     // across an intrinsic track changed.
@@ -4427,7 +4403,23 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         }
     }
 
+    // Row sizing is re-run once if the container's height was indefinite and
+    // there are percentage rows, or if column sizing was re-run and an item's
+    // min-content contribution across an intrinsic row changed. It is not
+    // nested in the column re-run: a percentage row still resolves when no
+    // column needs another pass.
+    bool parentHeightIndefinite = !IsSome(outerNodeSize.h);
+    bool rerunRowSizing = parentHeightIndefinite && hasPercentageRow;
     bool intrinsicRowContributionChanged = false;
+    if (rerunRowSizing) {
+        for (int i = 0; i < len(items); i++) {
+            items[i].hasGridAreaSizeCache = false;
+            items[i].minContentContributionCache.h = None();
+            items[i].maxContentContributionCache.h = None();
+            items[i].minimumContributionCache.h = None();
+        }
+    }
+
     if (rerunColumnSizing) {
         TrackSizingAlgorithm(
             tree, AbstractAxis::Inline, Get(innerMinSize, AbstractAxis::Inline),
@@ -4436,9 +4428,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             len(columns), rows.els, len(rows), items.els, len(items),
             TrackSizeEstimate::BaseSize, hasBaselineAlignedItem);
 
-        bool parentHeightIndefinite = !IsSome(outerNodeSize.h);
-        bool rerunRowSizing = parentHeightIndefinite && hasPercentageRow;
-
+        // Column widths may have changed, so intrinsic heights are recomputed
+        // unless the row pass is already going to run.
         if (!rerunRowSizing) {
             // Every item that crosses an intrinsic row is visited. Stopping
             // at the first change would leave the later items' caches stale.
@@ -4467,24 +4458,16 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                 }
             }
             rerunRowSizing = intrinsicRowContributionChanged;
-        } else {
-            for (int i = 0; i < len(items); i++) {
-                items[i].hasGridAreaSizeCache = false;
-                items[i].minContentContributionCache.h = None();
-                items[i].maxContentContributionCache.h = None();
-                items[i].minimumContributionCache.h = None();
-            }
         }
+    }
 
-        if (rerunRowSizing) {
-            TrackSizingAlgorithm(
-                tree, AbstractAxis::Block,
-                Get(innerMinSize, AbstractAxis::Block),
-                Get(innerMaxSize, AbstractAxis::Block), alignContent,
-                justifyContent, availableGridSpace, innerNodeSize, rows.els,
-                len(rows), columns.els, len(columns), items.els, len(items),
-                TrackSizeEstimate::BaseSize, false);
-        }
+    if (rerunRowSizing) {
+        TrackSizingAlgorithm(
+            tree, AbstractAxis::Block, Get(innerMinSize, AbstractAxis::Block),
+            Get(innerMaxSize, AbstractAxis::Block), alignContent,
+            justifyContent, availableGridSpace, innerNodeSize, rows.els,
+            len(rows), columns.els, len(columns), items.els, len(items),
+            TrackSizeEstimate::BaseSize, false);
     }
 
     if ((intrinsicColumnContributionChanged && !hasPercentageColumn) ||

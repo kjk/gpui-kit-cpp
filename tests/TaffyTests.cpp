@@ -7100,6 +7100,52 @@ static void TestGridPercentRerunIndefiniteContainer() {
     }
 }
 
+// taffy 66b33640. Percentage rows re-resolve against an indefinite
+// container's height even when no column is re-run. Rows are auto, 20%
+// and auto, holding items 20, 60 and 20 tall. The grid is 100px: the
+// percentage row is 20px and the auto rows stretch to 40px each. A
+// definite available height of 500px does not change that.
+static void TestGridPercentRowsIndefiniteContainer() {
+    TestSuite("taffy grid percentage rows");
+    AvailableSpace heights[2] = {AvailableSpace::MaxContent(),
+                                 AvailableSpace::Definite(500.0f)};
+    float itemH[3] = {20.0f, 60.0f, 20.0f};
+    for (int pass = 0; pass < 2; pass++) {
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId kids[3];
+        for (int i = 0; i < 3; i++) {
+            taffy::Style item;
+            item.size.width = taffy::Dimension::Length(20.0f);
+            item.size.height = taffy::Dimension::Length(itemH[i]);
+            kids[i] = tree.NewLeaf(item);
+        }
+        GridTemplateComponent col =
+            GridTemplateComponent::Single(TrackSizingFunction::Auto());
+        GridTemplateComponent rows[3] = {
+            GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+            GridTemplateComponent::Single(TrackSizingFunction::Percent(0.2f)),
+            GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+        };
+        taffy::Style grid;
+        grid.display = taffy::Display::Grid;
+        grid.gridTemplateColumns = GridTemplateOf(&col, 1);
+        grid.gridTemplateRows = GridTemplateOf(rows, 3);
+        TaffyNodeId root = tree.NewWithChildren(grid, kids, 3);
+        SizeAvail space;
+        space.width = AvailableSpace::Definite(200.0f);
+        space.height = heights[pass];
+        tree.ComputeLayout(root, space);
+        float yb = tree.GetLayout(kids[1]).location.y;
+        float yc = tree.GetLayout(kids[2]).location.y;
+        utassertnear(tree.GetLayout(root).size.h, 100.0f);
+        utassertnear(yb, 40.0f);
+        utassertnear(yc - yb, 20.0f);
+        utassertnear(100.0f - yc, 40.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -7129,6 +7175,7 @@ void TestTaffy() {
     TestGridRerunColumnSizingMultipleItems();
     TestShrinkToFitExcludesMargin();
     TestGridPercentRerunIndefiniteContainer();
+    TestGridPercentRowsIndefiniteContainer();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();
