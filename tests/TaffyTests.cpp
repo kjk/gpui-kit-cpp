@@ -614,7 +614,7 @@ static taffy::LayoutOutput SizeMeasureFunction(const taffy::LayoutInput& inputs,
 // output as the leaf's layout, which flex baseline alignment then reads.
 struct BaselineContext {
     SizeF size;
-    float baselineY;
+    Optf baselineY = None();
 };
 
 static taffy::LayoutOutput BaselineMeasure(const taffy::LayoutInput& inputs,
@@ -630,7 +630,7 @@ static taffy::LayoutOutput BaselineMeasure(const taffy::LayoutInput& inputs,
     }
     BaselineContext* c = (BaselineContext*)nodeContext;
     return taffy::LayoutOutput::FromSizesAndBaselines(
-        c->size, RectF::Zero(), taffy::BaselinesFromFirst(Some(c->baselineY)));
+        c->size, RectF::Zero(), taffy::BaselinesFromFirst(c->baselineY));
 }
 
 static void TestTaffyTreeBasics() {
@@ -2501,6 +2501,96 @@ static void TestBlockLayout() {
     }
 }
 
+// A scroll-container child synthesizes or clamps its baseline to the
+// border box. A visible child with no baseline contributes none, so the
+// flex parent uses the block's own bottom edge.
+static void TestBlockScrollBaselines() {
+    TestSuite("taffy block scroll baselines");
+
+    auto flexRoot = [](TaffyTree& tree, TaffyNodeId a, TaffyNodeId b) {
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Row;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.size = SizeDim::FromLengths(200.0f, 120.0f);
+        TaffyNodeId kids[] = {a, b};
+        return tree.NewWithChildren(rootStyle, kids, 2);
+    };
+    auto blockWrap = [](TaffyTree& tree, TaffyNodeId child) {
+        taffy::Style wrap;
+        wrap.display = taffy::Display::Block;
+        wrap.size.width = Dimension::Length(40.0f);
+        wrap.padding.bottom = LengthPercentage::Length(20.0f);
+        return tree.NewWithChildren(wrap, &child, 1);
+    };
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        BaselineContext none = {{30.0f, 30.0f}, None()};
+        taffy::Style scrollStyle;
+        scrollStyle.display = taffy::Display::Block;
+        scrollStyle
+            .overflow = {taffy::Overflow::Hidden, taffy::Overflow::Hidden};
+        scrollStyle.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId scroll = tree.NewLeafWithContext(scrollStyle, &none);
+        TaffyNodeId itemA = blockWrap(tree, scroll);
+        BaselineContext refCtx = {{40.0f, 80.0f}, Some(10.0f)};
+        TaffyNodeId itemB = tree.NewLeafWithContext(taffy::Style{}, &refCtx);
+        TaffyNodeId root = flexRoot(tree, itemA, itemB);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      BaselineMeasure, nullptr);
+        utassertnear(tree.GetLayout(itemA).location.y, 0.0f);
+        utassertnear(tree.GetLayout(itemB).location.y, 20.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        BaselineContext none = {{30.0f, 30.0f}, None()};
+        taffy::Style plainStyle;
+        plainStyle.display = taffy::Display::Block;
+        plainStyle.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId plain = tree.NewLeafWithContext(plainStyle, &none);
+        TaffyNodeId itemA = blockWrap(tree, plain);
+        BaselineContext refCtx = {{40.0f, 80.0f}, Some(10.0f)};
+        TaffyNodeId itemB = tree.NewLeafWithContext(taffy::Style{}, &refCtx);
+        TaffyNodeId root = flexRoot(tree, itemA, itemB);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      BaselineMeasure, nullptr);
+        utassertnear(tree.GetLayout(itemA).location.y, 0.0f);
+        utassertnear(tree.GetLayout(itemB).location.y, 40.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        BaselineContext contentCtx = {{30.0f, 60.0f}, Some(48.0f)};
+        taffy::Style contentStyle;
+        contentStyle.display = taffy::Display::Block;
+        TaffyNodeId content =
+            tree.NewLeafWithContext(contentStyle, &contentCtx);
+        taffy::Style scrollStyle;
+        scrollStyle.display = taffy::Display::Block;
+        scrollStyle
+            .overflow = {taffy::Overflow::Hidden, taffy::Overflow::Hidden};
+        scrollStyle.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId scroll = tree.NewWithChildren(scrollStyle, &content, 1);
+        TaffyNodeId itemA = blockWrap(tree, scroll);
+        BaselineContext refCtx = {{40.0f, 80.0f}, Some(10.0f)};
+        TaffyNodeId itemB = tree.NewLeafWithContext(taffy::Style{}, &refCtx);
+        TaffyNodeId root = flexRoot(tree, itemA, itemB);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      BaselineMeasure, nullptr);
+        utassertnear(tree.GetLayout(itemA).location.y, 0.0f);
+        utassertnear(tree.GetLayout(itemB).location.y, 20.0f);
+        tree.Free();
+    }
+}
+
 // block_percentage_height_with_min_height_parent and the relative
 // percentage-inset fixtures. Min-height is not a percentage basis, and
 // a relative percentage inset resolves against the container's height.
@@ -4363,6 +4453,7 @@ void TestTaffy() {
     TestFlexBalanceLayout();
     TestBlockLayout();
     TestBlockPercentageBasis();
+    TestBlockScrollBaselines();
     TestFlexCrossDefinitePercentage();
     TestFlexReverseBaseline();
     TestExplicitMinSkipsMinContent();

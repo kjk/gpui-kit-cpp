@@ -1295,8 +1295,21 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
         }
 
-        if (!IsSome(res.firstBaseline) && IsSome(itemLayout.baselines.first)) {
-            res.firstBaseline = Some(location.y + itemLayout.baselines.first);
+        // The first in-flow child that has a baseline supplies the
+        // container's. A scroll container's baseline is its content at the
+        // initial scroll position, clamped to the border box. With none of
+        // its own, it synthesizes one from the bottom edge.
+        // https://github.com/w3c/csswg-drafts/issues/7660
+        if (!IsSome(res.firstBaseline)) {
+            Optf childBaseline = itemLayout.baselines.first;
+            if (IsScrollContainer(item.overflow.y)) {
+                float raw = UnwrapOr(childBaseline, itemLayout.size.h);
+                childBaseline =
+                    Some(F32Max(0.0f, F32Min(raw, itemLayout.size.h)));
+            }
+            if (IsSome(childBaseline)) {
+                res.firstBaseline = Some(location.y + childBaseline);
+            }
         }
 
         // Held back so the align-content pass can shift location.y before the
