@@ -1506,6 +1506,50 @@ static void TestGridRepetitionLineNames() {
     tree.Free();
 }
 
+// A non-finite flex factor or container size used to keep the fr-size and
+// space-distribution loops from ever deciding they were done.
+static void TestGridNonFiniteStylesTerminate() {
+    TestSuite("taffy::grid non-finite styles");
+
+    float factors[3] = {NAN, INFINITY, -INFINITY};
+    for (int i = 0; i < 3; i++) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.size = SizeDim::FromLengths(10.0f, 10.0f);
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+
+        GridTemplateComponent col =
+            GridTemplateComponent::Single(TrackSizingFunction::Fr(factors[i]));
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.gridTemplateColumns = GridTemplateOf(&col, 1);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::Definite({100.0f, 100.0f}));
+        // The item's height is a length, so stretch does not replace it.
+        utassertnear(tree.GetLayout(child).size.h, 10.0f);
+        tree.Free();
+    }
+
+    float widths[2] = {NAN, INFINITY};
+    for (int i = 0; i < 2; i++) {
+        TaffyTree tree;
+        tree.Init();
+        TaffyNodeId child = tree.NewLeaf(taffy::Style{});
+        TrackSizingFunction fr = TrackSizingFunction::Fr(1.0f);
+        GridTemplateComponent rep =
+            GridRepeat(RepetitionCount::Exactly(2), &fr, 1);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.size = SizeDim::FromLengths(widths[i], 100.0f);
+        rootStyle.gridTemplateColumns = GridTemplateOf(&rep, 1);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::Definite({100.0f, 100.0f}));
+        utassertnear(tree.GetLayout(root).size.h, 100.0f);
+        tree.Free();
+    }
+}
+
 // Rust's `(width, height, cols, rows).into_grid()`: a grid of `1fr` tracks.
 static taffy::Style GridParent(float w, float h, int cols, int rows) {
     taffy::Style s;
@@ -2379,6 +2423,7 @@ void TestTaffy() {
     TestGridPlacement();
     TestGridLayout();
     TestGridRepetitionLineNames();
+    TestGridNonFiniteStylesTerminate();
     TestTaffy013Regressions();
     gpui::ArenaDelete(gGridArena);
     gGridArena = nullptr;

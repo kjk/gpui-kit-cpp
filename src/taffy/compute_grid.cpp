@@ -2539,7 +2539,14 @@ float DistributeSpaceUpToLimits(float spaceToDistribute, GridTrack* tracks,
     // A small constant so rounding error cannot spin this loop forever.
     const float kThreshold = 0.01f;
 
-    while (spaceToDistribute > kThreshold) {
+    // Each iteration freezes at least one track at its limit, so the loop
+    // completes within n + 1 iterations. Non-finite values can prevent any
+    // space from being distributed, so the bound guarantees termination.
+    int maxIterations = n + 1;
+    for (int iter = 0; iter < maxIterations; iter++) {
+        if (spaceToDistribute <= kThreshold) {
+            break;
+        }
         float proportionSum = 0.0f;
         for (int i = 0; i < n; i++) {
             const GridTrack& t = tracks[i];
@@ -3229,7 +3236,11 @@ float FindSizeOfFr(const GridTrack* tracks, int n, float spaceToFill) {
     // restarted. Starting at infinity makes that impossible on the first pass.
     float hypotheticalFrSize = INFINITY;
     float previousIterHypotheticalFrSize;
-    while (true) {
+    // Every restart treats one more flexible track as inflexible, so a valid
+    // hypothetical fr size is found within n + 1 iterations. Non-finite
+    // values make comparisons false, so the bound guarantees termination.
+    int maxIterations = n + 1;
+    for (int iter = 0; iter < maxIterations; iter++) {
         float usedSpace = 0.0f;
         float naiveFlexFactorSum = 0.0f;
         for (int i = 0; i < n; i++) {
