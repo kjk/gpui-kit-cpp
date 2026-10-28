@@ -509,6 +509,40 @@ El* IconEl(Arena* a, IconName name, float size) {
     return e;
 }
 
+// Private, the way IconResolver is: the public surface is the setter and
+// the lookup. One hook per App, replaced wholesale by the next set.
+struct IconPathHook {
+    IconPathResolveFn fn = nullptr;
+    void* user = nullptr;
+};
+
+void IconPathResolverSet(App* app, IconPathResolveFn fn, void* user) {
+    if (!app) {
+        return;
+    }
+    IconPathHook* hook = AppGlobalEnsure<IconPathHook>(app);
+    hook->fn = fn;
+    hook->user = user;
+}
+
+Str IconPathResolve(Str path, const App* app, Arena* a) {
+    if (!path.s || len(path) == 0 || !app) {
+        return path;
+    }
+    IconPathHook* hook = AppGlobalGet<IconPathHook>(app);
+    if (!hook || !hook->fn) {
+        return path;
+    }
+    Str out = {};
+    if (!hook->fn(path, app, hook->user, &out)) {
+        return path;
+    }
+    if (!a) {
+        return out;
+    }
+    return out.s ? StrDup(a, out) : Str{};
+}
+
 El* ImageEl(Arena* a, Str src, Str alt) {
     return ImageEl(a, ImageSource::FromResource(src), alt);
 }
@@ -8337,9 +8371,16 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // asked for.
         if (e->iconSvg.s) {
             // `Icon::data`: the SVG source itself, converted once and kept.
+            // It is not an asset path, so the resolver is not asked.
             SvgDrawXml(ctx, e->iconSvg, e->x, e->y, s, c, e->style.rotate);
         } else {
             Str path = e->iconPath.s ? e->iconPath : IconNamePath(e->icon);
+            // Every path icon, including a checkbox, radio or questionnaire
+            // check that Rust draws with svg() beside Icon. Icon::IntoEl
+            // may already have stored a resolved path; a hook that only
+            // rewrites its own paths leaves that one alone. A native menu
+            // does not come through here.
+            path = IconPathResolve(path, ctx->app, e->arena);
             SvgDraw(ctx, path, e->x, e->y, s, c, e->style.rotate);
         }
     } else if (e->kind == ElKind::Progress) {

@@ -3362,6 +3362,16 @@ Str DebugSourceMessage(Arena* a, Str cwd, const char* file, int line,
                        int column);
 El* IconEl(Arena* a, IconName name);
 El* IconEl(Arena* a, IconName name, float size);
+// set_icon_resolver / resolve_icon_path. The hook is an application global.
+// `fn` returns true and writes `*out` to draw a different asset; false keeps
+// `path`. `*out` has to stay valid until IconPathResolve returns; a
+// replacement is copied into `a` when one is given. An empty path is not
+// offered. Icon::data (SVG source on the element) is not offered. A native
+// menu reads the original path and does not ask.
+using IconPathResolveFn = bool (*)(Str path, const App* app, void* user,
+                                   Str* out);
+void IconPathResolverSet(App* app, IconPathResolveFn fn, void* user);
+Str IconPathResolve(Str path, const App* app, Arena* a);
 // gpui's img(src): `alt` is what paints when the source will not decode.
 // The size is the image's own unless W() / H() overrides it, and it is
 // scaled down to fit the width it is given — object_fit(Contain) with

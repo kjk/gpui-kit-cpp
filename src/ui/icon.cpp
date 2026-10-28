@@ -70,12 +70,28 @@ Icon* Icon::Rotate(float turns) {
     return Transform(turns);
 }
 
+void SetIconResolver(App* app, IconPathResolveFn fn, void* user) {
+    IconPathResolverSet(app, fn, user);
+}
+
+Str ResolveIconPath(Str path, const App* app, Arena* a) {
+    return IconPathResolve(path, app, a);
+}
+
 El* Icon::IntoEl() {
     El* e = hasSize ? IconEl(a, name, size) : IconEl(a, name);
     if (source == IconSource::Data) {
         e->iconSvg = data;
-    } else if (path.s) {
-        e->iconPath = path;
+    } else {
+        // The path to draw. A named icon already has IconNamePath on the
+        // element; an explicit Path replaces it, then the hook may too.
+        Str drawn = path.s ? path : e->iconPath;
+        if (cx && cx->app) {
+            drawn = ResolveIconPath(drawn, cx->app, a);
+        }
+        if (drawn.s) {
+            e->iconPath = drawn;
+        }
     }
     if (hasColor) {
         e->Fg(color);

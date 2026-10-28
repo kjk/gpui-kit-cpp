@@ -314,6 +314,63 @@ static void AListenerArgumentIsSixtyFourBits() {
     utassert(bound.arg == 5000000000LL && bound.ArgBound());
 }
 
+// checkbox.rs: the_check_mark_asks_the_icon_resolver_for_its_path. The
+// tick is an IconEl, not component::Icon, so only the paint-time ask
+// proves the check went through the hook.
+struct CheckAsked {
+    Str paths[32] = {};
+    int n = 0;
+    Arena* a = nullptr;
+};
+
+static bool CheckResolverRecords(Str path, const App*, void* user, Str*) {
+    CheckAsked* asked = (CheckAsked*)user;
+    if (asked->n < 32) {
+        asked->paths[asked->n++] = StrDup(asked->a, path);
+    }
+    return false;
+}
+
+struct CheckedHarness {
+    static El* Render(CheckedHarness*, Ctx* cx) {
+        return component::Checkbox::New(cx, StrL("checked"))
+            ->Checked(true)
+            ->IntoEl();
+    }
+};
+
+static bool CheckAskedContains(const CheckAsked& asked, Str path) {
+    for (int i = 0; i < asked.n; i++) {
+        if (base::StrEq(asked.paths[i], path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void TheCheckMarkAsksTheIconResolverForItsPath() {
+    bool wasReduced = MotionReduced();
+    MotionSetReduced(true);
+    App* app = TestAppNew();
+    utassert(app);
+    if (!app) {
+        MotionSetReduced(wasReduced);
+        return;
+    }
+    component::Init(app);
+    Arena* a = ArenaNew();
+    CheckAsked asked = {};
+    asked.a = a;
+    component::SetIconResolver(app, &CheckResolverRecords, &asked);
+    Entity<CheckedHarness> view = EntityNew<CheckedHarness>(app);
+    Window* win = TestWindowOpen(app, view);
+    TestDraw(win);
+    utassert(CheckAskedContains(asked, IconNamePath(IconName::Check)));
+    TestAppFree(app);
+    ArenaDelete(a);
+    MotionSetReduced(wasReduced);
+}
+
 void TestClick() {
     TestSuite("click");
     AReleaseOnTheElementThatTookThePressIsAClick();
@@ -327,6 +384,7 @@ void TestClick() {
     FocusThatMovedBetweenTheHalvesTakesTheClick();
     AControlCanOwnThePressWithoutACallback();
     CheckboxActivationProducesTheControlledNextState();
+    TheCheckMarkAsksTheIconResolverForItsPath();
     SwitchActivationProducesTheControlledNextValue();
     LongLabelsPreserveTrackSizeInNarrowContainers();
     DisablingFocusedButtonPreservesBidirectionalTraversal();

@@ -142,10 +142,10 @@ static void ADataIconKeepsItsBytesSizeColourAndTransform() {
 }
 
 static void PinnedIconAdditionsHaveExactAssetPaths() {
-    utassert(base::StrEq(IconNamePath(IconName::AtSign),
-                         StrL("icons/at-sign.svg")));
-    utassert(base::StrEq(IconNamePath(IconName::Image),
-                         StrL("icons/image.svg")));
+    utassert(
+        base::StrEq(IconNamePath(IconName::AtSign), StrL("icons/at-sign.svg")));
+    utassert(
+        base::StrEq(IconNamePath(IconName::Image), StrL("icons/image.svg")));
     utassert(base::StrEq(IconNamePath(IconName::Sparkles),
                          StrL("icons/sparkles.svg")));
     utassert(base::StrEq(IconNamePath(IconName::ALargeSmall),
@@ -165,6 +165,61 @@ static void PinnedIconAdditionsHaveExactAssetPaths() {
     utassert(base::StrEq(IconNamePath(IconName::X), StrL("icons/x.svg")));
 }
 
+// icon.rs: test_icon_resolver_replaces_the_path_to_draw. The hook sees the
+// asset path, not the icon name. Search is rewritten, Check is kept, and
+// an empty path and Icon::data are never offered.
+struct IconAsked {
+    Str paths[8] = {};
+    int n = 0;
+    Arena* a = nullptr;
+};
+
+static bool IconResolverRecords(Str path, const App*, void* user, Str* out) {
+    IconAsked* asked = (IconAsked*)user;
+    if (asked->n < 8) {
+        asked->paths[asked->n++] = StrDup(asked->a, path);
+    }
+    if (base::StrEq(path, IconNamePath(IconName::Search))) {
+        *out = StrL("icons/alt/search.svg");
+        return true;
+    }
+    return false;
+}
+
+static void IconResolverReplacesThePathToDraw() {
+    App* app = TestAppNew();
+    utassert(app);
+    if (!app) {
+        return;
+    }
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = app;
+
+    El* before = component::Icon::New(&cx, IconName::Search)->IntoEl();
+    utassert(base::StrEq(before->iconPath, IconNamePath(IconName::Search)));
+
+    IconAsked asked = {};
+    asked.a = a;
+    component::SetIconResolver(app, &IconResolverRecords, &asked);
+
+    El* search = component::Icon::New(&cx, IconName::Search)->IntoEl();
+    utassert(base::StrEq(search->iconPath, StrL("icons/alt/search.svg")));
+    El* check = component::Icon::New(&cx, IconName::Check)->IntoEl();
+    utassert(base::StrEq(check->iconPath, IconNamePath(IconName::Check)));
+    El* empty = component::Icon::Empty(&cx)->IntoEl();
+    utassert(!empty->iconPath.s || len(empty->iconPath) == 0);
+    El* data = component::Icon::Empty(&cx)->Data(Str(kArrowSvg))->IntoEl();
+    utassert(data->iconSvg.s && base::StrEq(data->iconSvg, Str(kArrowSvg)));
+    utassert(asked.n == 2);
+    utassert(base::StrEq(asked.paths[0], IconNamePath(IconName::Search)));
+    utassert(base::StrEq(asked.paths[1], IconNamePath(IconName::Check)));
+
+    TestAppFree(app);
+    ArenaDelete(a);
+}
+
 void TestIcon() {
     TestSuite("icon");
     DefaultSizeAndColorAreInherited();
@@ -172,4 +227,5 @@ void TestIcon() {
     TheIconSourceIsTheLastPathOrDataSet();
     ADataIconKeepsItsBytesSizeColourAndTransform();
     PinnedIconAdditionsHaveExactAssetPaths();
+    IconResolverReplacesThePathToDraw();
 }

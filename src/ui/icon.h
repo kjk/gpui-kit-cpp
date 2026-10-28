@@ -69,6 +69,14 @@ struct Icon {
     El* IntoEl();
 };
 
+// set_icon_resolver: every path icon asks this for the asset to draw.
+// false from `fn` keeps the path. Icon::data is not asked, and neither is
+// an empty path. The hook runs on every draw and should be cheap.
+void SetIconResolver(App* app, IconPathResolveFn fn, void* user);
+// resolve_icon_path: the path to draw, or `path` when the hook declines
+// or none is set. The replacement is copied into `a`.
+Str ResolveIconPath(Str path, const App* app, Arena* a);
+
 } // namespace component
 } // namespace gpui
 #endif // GPUI_UI_ICON_H_
