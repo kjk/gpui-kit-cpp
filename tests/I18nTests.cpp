@@ -50,6 +50,10 @@ static void AKeyAnswersInTheLocaleInForce() {
     // than showing the key.
     utassert(base::StrEq(Tr("Dialog.ok"), StrL("OK")));
 
+    utassert(LocaleSet(StrL("pt-BR")));
+    utassert(base::StrEq(Tr("Attachment.Remove"), StrL("Remover")));
+    utassert(base::StrEq(Tr("Calendar.week.0"), StrL("Do")));
+
     utassert(LocaleSet(StrL("zh-CN")));
     utassert(base::StrEq(Tr("Calendar.week.0"), StrL("日")));
     utassert(base::StrEq(Tr("Dock.Zoom In"), StrL("放大")));

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "47e5a897ddca7bb0b6f4c03574f8d4edb5379bd3",
+  sha: "9b5918898c6f1c6fa223da2dd44b437da2144bb8",
   date: "2026-10-23",
-  subject: "text: Release the shaped text of dropped text views at the next frame (#3628)",
+  subject: "locales: Add Brazilian Portuguese (pt-BR) (#3638)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

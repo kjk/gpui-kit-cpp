@@ -24,7 +24,7 @@ const upstream = join(root, ".work", "gpui-component");
 
 // English first: it is the fallback, and the language the keys are written
 // in. The rest in the order they first appear across the two files.
-const LOCALES = ["en", "zh-CN", "zh-HK", "zh-TW", "it", "fr"];
+const LOCALES = ["en", "pt-BR", "zh-CN", "zh-HK", "zh-TW", "it", "fr"];
 
 type Catalogue = Map<string, Map<string, string>>;
 
@@ -98,7 +98,7 @@ const keys = [...catalogue.keys()].sort();
 const missingEnglish = keys.filter((k) => !catalogue.get(k)!.has("en"));
 if (missingEnglish.length > 0) {
   // English is what the lookup falls back to, so a key without one would be
-  // a label that reads as its own key in five locales out of six.
+  // a label that reads as its own key in every locale but English.
   throw new Error(`no English for: ${missingEnglish.join(", ")}`);
 }
 
