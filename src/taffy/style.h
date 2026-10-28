@@ -418,6 +418,8 @@ enum class AlignItemsKeyword : uint8_t {
 
 // The position-keyword half of AlignContent (and its alias JustifyContent).
 enum class AlignContentKeyword : uint8_t {
+    // The layout mode's default: stretch for flex and grid, start for block.
+    Normal,
     Start,
     End,
     FlexStart,
@@ -444,6 +446,7 @@ constexpr AlignContentKeyword Reversed(AlignContentKeyword k) {
             return AlignContentKeyword::FlexStart;
         case AlignContentKeyword::Stretch:
             return AlignContentKeyword::End;
+        case AlignContentKeyword::Normal:
         default:
             return k;
     }
@@ -1599,8 +1602,9 @@ struct Style {
     OptAlignSelf alignSelf;
     AlignItems justifyItems = AlignItems{AlignItemsKeyword::Normal};
     OptAlignSelf justifySelf;
-    OptAlignContent alignContent;
-    OptJustifyContent justifyContent;
+    // Always set. normal is the initial value.
+    AlignContent alignContent = AlignContent{AlignContentKeyword::Normal};
+    AlignContent justifyContent = AlignContent{AlignContentKeyword::Normal};
     SizeLp gap;
 
     // Block container

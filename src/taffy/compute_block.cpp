@@ -1591,9 +1591,10 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     // css-align-3 §5.1.1: a non-normal align-content makes a block container
     // establish an independent formatting context. Layout and paint
     // containment do too.
-    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome() ||
-                             style.contain
-                                 .EstablishesIndependentFormattingContext();
+    bool establishesNewBfc =
+        isScrollContainer ||
+        style.alignContent.keyword != AlignContentKeyword::Normal ||
+        style.contain.EstablishesIndependentFormattingContext();
 
     LineBool ownMarginsCollapseWithChildren = {
         verticalMarginsAreCollapsible.start && !establishesNewBfc &&
@@ -1608,7 +1609,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         padding.bottom > 0.0f || border.top > 0.0f || border.bottom > 0.0f;
 
     TextAlign textAlign = style.textAlign;
-    OptAlignContent alignContent = style.alignContent;
+    AlignContent alignContent = style.alignContent;
     AlignItems justifyItems = style.justifyItems;
 
     // 1. Generate items.
@@ -1699,7 +1700,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     // distribution keywords take the single-subject fallback. Passing
     // numItems = 1 does that. The group then shifts by one offset, with
     // no inter-item gap.
-    if (alignContent.IsSome()) {
+    if (alignContent.keyword != AlignContentKeyword::Normal) {
         float containerInnerHeight =
             containerOuterHeight - resolvedContentBoxInset.VerticalAxisSum();
         float inflowContentHeight =
@@ -1708,7 +1709,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         // The offset is applied even when every child is out of flow: their
         // static positions move with the in-flow content.
         AlignContentKeyword keyword =
-            ApplyAlignmentFallback(freeSpace, 1, alignContent.val);
+            ApplyAlignmentFallback(freeSpace, 1, alignContent);
         float groupOffset =
             ComputeAlignmentOffset(freeSpace, 1, 0.0f, keyword, false, true);
         if (IsSome(inFlow.firstBaseline)) {
@@ -1881,7 +1882,9 @@ LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
     // establish an independent formatting context. Layout and paint
     // containment do too.
     Contain contain = style.contain;
-    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome() ||
+    bool establishesNewBfc = isScrollContainer ||
+                             style.alignContent
+                                     .keyword != AlignContentKeyword::Normal ||
                              contain.EstablishesIndependentFormattingContext();
     Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);

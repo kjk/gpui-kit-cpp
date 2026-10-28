@@ -145,7 +145,7 @@ struct AlgoConstants {
     SizeF gap;
     AlignItems alignItems;
     AlignContent alignContent;
-    OptJustifyContent justifyContent;
+    AlignContent justifyContent;
 
     // The border-box and content-box sizes of the node being laid out, if
     // known.
@@ -223,9 +223,15 @@ AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
     // normal behaves as stretch for flex items. Resolved once so a child
     // whose align-self is auto picks up stretch rather than normal.
     c.alignItems = ResolveNormalAlignment(style.alignItems);
-    c.alignContent = style.alignContent
-                         .UnwrapOr(AlignContent{AlignContentKeyword::Stretch});
-    c.justifyContent = style.justifyContent;
+    // normal is stretch on the cross axis. On the main axis stretch behaves
+    // as flex-start, so a normal justify-content resolves straight there.
+    c.alignContent = style.alignContent.keyword == AlignContentKeyword::Normal
+                         ? AlignContent{AlignContentKeyword::Stretch}
+                         : style.alignContent;
+    c.justifyContent = style.justifyContent
+                                   .keyword == AlignContentKeyword::Normal
+                           ? AlignContent{AlignContentKeyword::FlexStart}
+                           : style.justifyContent;
     c.layoutDirection = style.direction;
 
     // A node that scrolls vertically needs *horizontal* space reserved for a
@@ -1654,11 +1660,8 @@ void DistributeRemainingFreeSpace(Vec<FlexLine>* lines,
         int numItems = line.count;
         bool layoutReverse = IsReverse(dir);
         float gap = Main(c.gap, dir);
-        JustifyContent rawMode =
-            c.justifyContent
-                .UnwrapOr(AlignContent{AlignContentKeyword::FlexStart});
         AlignContentKeyword mode =
-            ApplyAlignmentFallback(freeSpace, numItems, rawMode);
+            ApplyAlignmentFallback(freeSpace, numItems, c.justifyContent);
 
         for (int i = 0; i < numItems; i++) {
             FlexItem& child =
@@ -2092,10 +2095,8 @@ void CollectOofCandidates(TaffyTree* tree, NodeId node, const AlgoConstants& c,
         AlignItems alignSelf = ResolveSelfRelative(
             ResolveNormalAlignment(cs.alignSelf.UnwrapOr(c.alignItems)),
             cs.direction, c.layoutDirection, c.isColumn);
-        AlignContentKeyword mainKeyword =
-            c.justifyContent
-                .UnwrapOr(AlignContent{AlignContentKeyword::FlexStart})
-                .Keyword();
+        // normal is already resolved to flex-start.
+        AlignContentKeyword mainKeyword = c.justifyContent.Keyword();
         bool mainStartPosition = true;
         if (mainKeyword == AlignContentKeyword::Start) {
             mainStartPosition = !mainIsRtl;
@@ -2105,6 +2106,7 @@ void CollectOofCandidates(TaffyTree* tree, NodeId node, const AlgoConstants& c,
         AxisStaticEdge mainEdge = AxisStaticEdge::Center;
         switch (mainKeyword) {
             case AlignContentKeyword::SpaceBetween:
+            case AlignContentKeyword::Normal:
             case AlignContentKeyword::Stretch:
             case AlignContentKeyword::FlexStart:
                 mainEdge =

@@ -104,8 +104,8 @@ static void EveryFieldIsCompared() {
     }
     {
         TStyle s = base;
-        s.justifyContent = taffy::OptJustifyContent(
-            taffy::JustifyContent{taffy::AlignContentKeyword::SpaceBetween});
+        s.justifyContent =
+            taffy::JustifyContent{taffy::AlignContentKeyword::SpaceBetween};
         utassert(!(s == base));
     }
     {

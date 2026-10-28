@@ -448,7 +448,11 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
 
 AlignContentKeyword ApplyAlignmentFallback(float freeSpace, int numItems,
                                            AlignContent alignmentMode) {
-    AlignContentKeyword keyword = alignmentMode.keyword;
+    // Callers resolve normal first. A leftover normal is stretch.
+    AlignContentKeyword keyword =
+        alignmentMode.keyword == AlignContentKeyword::Normal
+            ? AlignContentKeyword::Stretch
+            : alignmentMode.keyword;
     bool isSafe = alignmentMode.safety == AlignmentSafety::Safe;
 
     // 1. With a single item, or when the items overflow, the distributed
@@ -495,6 +499,7 @@ float ComputeAlignmentOffset(float freeSpace, int numItems, float gap,
                 return layoutIsFlexReversed ? 0.0f : freeSpace;
             case AlignContentKeyword::Center:
                 return freeSpace / 2.0f;
+            case AlignContentKeyword::Normal:
             case AlignContentKeyword::Stretch:
             case AlignContentKeyword::SpaceBetween:
                 return 0.0f;

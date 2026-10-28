@@ -2336,6 +2336,7 @@ float ComputeAlignmentGutterAdjustment(AlignContent alignment,
             outerGutterWeight = 1;
             innerGutterWeight = 0;
             break;
+        case AlignContentKeyword::Normal:
         case AlignContentKeyword::Stretch:
             outerGutterWeight = 0;
             innerGutterWeight = 0;
@@ -4059,11 +4060,15 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         contentBoxInset.left += scrollbarGutter.x;
     }
 
+    // normal behaves as stretch for a grid container.
     AlignContent alignContent =
-        style.alignContent.UnwrapOr(AlignContent{AlignContentKeyword::Stretch});
+        style.alignContent.keyword == AlignContentKeyword::Normal
+            ? AlignContent{AlignContentKeyword::Stretch}
+            : style.alignContent;
     AlignContent justifyContent =
-        style.justifyContent
-            .UnwrapOr(AlignContent{AlignContentKeyword::Stretch});
+        style.justifyContent.keyword == AlignContentKeyword::Normal
+            ? AlignContent{AlignContentKeyword::Stretch}
+            : style.justifyContent;
     AlignItems alignItems = style.alignItems;
     AlignItems justifyItems = style.justifyItems;
 

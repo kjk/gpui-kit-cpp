@@ -3854,29 +3854,26 @@ static taffy::FlexDirection ToTaffyFlexDir(FlexDir d) {
     }
 }
 
-static taffy::OptJustifyContent ToTaffyJustify(Justify j) {
+static taffy::AlignContent ToTaffyJustify(Justify j) {
     using K = taffy::AlignContentKeyword;
     switch (j) {
         case Justify::Center:
-            return taffy::OptJustifyContent(taffy::AlignContent{K::Center});
+            return taffy::AlignContent{K::Center};
         case Justify::End:
-            return taffy::OptJustifyContent(taffy::AlignContent{K::End});
+            return taffy::AlignContent{K::End};
         case Justify::SpaceBetween:
-            return taffy::OptJustifyContent(
-                taffy::AlignContent{K::SpaceBetween});
+            return taffy::AlignContent{K::SpaceBetween};
         case Justify::SpaceAround:
-            return taffy::OptJustifyContent(
-                taffy::AlignContent{K::SpaceAround});
+            return taffy::AlignContent{K::SpaceAround};
         case Justify::SpaceEvenly:
-            return taffy::OptJustifyContent(
-                taffy::AlignContent{K::SpaceEvenly});
+            return taffy::AlignContent{K::SpaceEvenly};
         case Justify::Start:
-            return taffy::OptJustifyContent(taffy::AlignContent{K::Start});
+            return taffy::AlignContent{K::Start};
         default:
-            // Unset is None, not Start: a grid's `normal` stretches its
+            // Unset is normal, not start: a grid's normal stretches its
             // auto tracks and a reversed flex line packs at its far end,
             // which an explicit Start would undo in both.
-            return taffy::OptJustifyContent();
+            return taffy::AlignContent{K::Normal};
     }
 }
 
@@ -3903,8 +3900,8 @@ static taffy::Style ToTaffyStyle(const El* e) {
                  : s.flexWrapReverse ? taffy::FlexWrap::WrapReverse
                                      : taffy::FlexWrap::Wrap;
     if (s.alignContent != 0) {
-        t.alignContent = taffy::OptAlignContent(taffy::AlignContent{
-            (taffy::AlignContentKeyword)(s.alignContent - 1)});
+        t.alignContent = taffy::AlignContent{
+            (taffy::AlignContentKeyword)(s.alignContent - 1)};
     }
     t.alignItems = ToTaffyAlignItems(s.align, false);
     if (s.hasAlignSelf) {
