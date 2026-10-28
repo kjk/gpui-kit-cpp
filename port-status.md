@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `973d7ae6b9d99a002ff740f298489ee4cfb7f967` (2026-10-26,
-button: Accept a caller-owned focus handle (#3684)).
-A themed button takes a caller-owned focus handle. That handle is the
-focus ring, Enter and Space, and the node's focus id. Without one, the
-button keeps the path focus it makes for itself.
+Processed through `b4af12b3400cdac7f3bc39716a5d59a378c4aa57` (2026-10-26,
+text: Support list and blockquote style overrides (#3687)).
+A text view can refine list markers and blockquotes over the resolved
+style. Unspecified fields stay as they are, including on an inverted
+surface. A blockquote's face and weight reach a nested table's
+measurement; the table keeps its own size.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

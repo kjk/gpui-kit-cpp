@@ -3655,7 +3655,13 @@ enum StyleField : uint32_t {
     StyleFieldMaxHeight = 1u << 22,
     // box_shadow. A hover that sets `shadow([])` must copy a count of zero
     // so the shadows that were there are cleared.
-    StyleFieldShadow = 1u << 23
+    StyleFieldShadow = 1u << 23,
+    // Text style a list marker or a blockquote can name. Weight, the mono
+    // face and a family id cascade; a table that sets its own size still
+    // measures with the face and weight it inherited.
+    StyleFieldFontWeight = 1u << 24,
+    StyleFieldFontMono = 1u << 25,
+    StyleFieldFontFamily = 1u << 26
 };
 
 // StyleRefinement::refine, over the fields `fields` names and no others. The

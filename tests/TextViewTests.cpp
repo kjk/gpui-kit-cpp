@@ -8095,6 +8095,209 @@ static void HoverUnderlineKeepsMarksAndDiesWithTheText() {
     ArenaDelete(a);
 }
 
+static El* FindTableCell(El* e) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->selTableCell) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* found = FindTableCell(c)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+static El* BorderLEl(El* e, float width) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->style.borderL == width) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* found = BorderLEl(c, width)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+static El* BorderBoxEl(El* e, float width) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->style.border == width) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* found = BorderBoxEl(c, width)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// list_and_blockquote_refinements_remain_explicit_on_an_inverted_surface
+static void ListAndBlockquoteRefinementsStayExplicitOnAnInvertedSurface() {
+    TextViewStyle plain = TextViewStyle::Default();
+    utassert(plain.ListStyleFields() == 0);
+    utassert(plain.BlockquoteStyleFields() == 0);
+    gpui::Style marker = {};
+    marker.color = Rgba{255, 0, 0, 255};
+    marker.hasColor = true;
+    marker.fontWeight = (uint16_t)FontWeight::Bold;
+    marker.fontBold = true;
+    gpui::Style quote = {};
+    quote.borderL = 4.f;
+    quote.borderColor = Rgba{0, 0, 255, 255};
+    quote.bg = Background(Rgba{0, 255, 0, 255});
+    uint32_t markerFields = StyleFieldColor | StyleFieldFontWeight;
+    uint32_t quoteFields =
+        StyleFieldBorderL | StyleFieldBorderColor | StyleFieldBg;
+    TextViewStyle styled = plain;
+    styled.WithListStyle(marker, markerFields)
+        .WithBlockquoteStyle(quote, quoteFields);
+    utassert(!plain.Equals(styled));
+    utassert(styled.ListStyle().fontWeight == (uint16_t)FontWeight::Bold);
+    utassert(styled.BlockquoteStyle().borderL == 4.f);
+    Rgba white = {255, 255, 255, 255};
+    utassert(styled.IsInvertedBy(white));
+    TextViewStyle inverted = styled.OnTextColor(white);
+    utassert(inverted.ListStyleFields() == markerFields);
+    utassert(inverted.ListStyle().color.r == 255);
+    utassert(inverted.ListStyle().fontWeight == (uint16_t)FontWeight::Bold);
+    utassert(inverted.BlockquoteStyleFields() == quoteFields);
+    utassert(inverted.BlockquoteStyle().borderL == 4.f);
+    utassert(inverted.BlockquoteStyle().borderColor.b == 255);
+    utassert(inverted.BlockquoteStyle().bg.color.g == 255);
+}
+
+struct StyledBlocksView {
+    bool merged = false;
+
+    static El* Render(StyledBlocksView* self, Ctx* cx) {
+        gpui::Style marker = {};
+        marker.color = Rgba{0, 0, 255, 255};
+        marker.hasColor = true;
+        marker.fontWeight = (uint16_t)FontWeight::Bold;
+        marker.fontBold = true;
+        gpui::Style quote = {};
+        quote.borderColor = Rgba{0, 0, 255, 255};
+        quote.borderL = 4.f;
+        quote.fontSize = 30.f;
+        quote.fontMono = true;
+        quote.fontWeight = (uint16_t)FontWeight::Bold;
+        quote.fontBold = true;
+        uint32_t markerFields = StyleFieldColor | StyleFieldFontWeight;
+        uint32_t quoteFields = StyleFieldBorderColor | StyleFieldBorderL |
+                               StyleFieldFontSize | StyleFieldFontMono |
+                               StyleFieldFontWeight;
+        if (self->merged) {
+            gpui::Style inheritedMarker = {};
+            inheritedMarker.fontWeight = (uint16_t)FontWeight::Bold;
+            inheritedMarker.fontBold = true;
+            gpui::Style inheritedQuote = {};
+            inheritedQuote.borderL = 4.f;
+            TextViewDefaults defaults = TextViewDefaults::New().WithStyle(
+                TextViewStyle::Default()
+                    .WithListStyle(inheritedMarker, StyleFieldFontWeight)
+                    .WithBlockquoteStyle(inheritedQuote, StyleFieldBorderL));
+            defaults.Install(cx->app);
+            gpui::Style overMarker = {};
+            overMarker.color = marker.color;
+            overMarker.hasColor = true;
+            gpui::Style overQuote = {};
+            overQuote.borderColor = quote.borderColor;
+            return TextView::New(cx,
+                                 StrL("1. First\n\n- [ ] todo\n\n> quoted\n\n> "
+                                      "| 0123456789 |\n> | --- |\n"))
+                ->Font(15.f)
+                ->ListStyle(overMarker, StyleFieldColor)
+                ->BlockquoteStyle(overQuote, StyleFieldBorderColor)
+                ->IntoEl();
+        }
+        return TextView::New(cx, StrL("1. First\n\n- [ ] todo\n\n> quoted\n\n> "
+                                      "| 0123456789 |\n> | --- |\n"))
+            ->Font(15.f)
+            ->Style(TextViewStyle::Default()
+                        .WithListStyle(marker, markerFields)
+                        .WithBlockquoteStyle(quote, quoteFields))
+            ->IntoEl();
+    }
+};
+
+static void DrawStyledBlocks(Window* win, Entity<StyledBlocksView> view,
+                             El** root) {
+    TestDraw(win);
+    *root = EntityRender(win->app, win, win->frameArena, view.id);
+    const RuntimeStyle& th = RuntimeStyleNow(win->app);
+    LayoutEl(&win->paint, *root, 0, 0, 800, 400, th.fontSize, th.foreground);
+}
+
+// list_and_blockquote_view_refinements_keep_unspecified_style_properties
+static void ListAndBlockquoteViewRefinementsKeepUnspecifiedStyleProperties() {
+    App* app = TestAppNew();
+    Entity<StyledBlocksView> view = EntityNew<StyledBlocksView>(app);
+    StyledBlocksView* harness = view.Get(app);
+    harness->merged = true;
+    Window* win = TestWindowOpen(app, view, 800, 400);
+    WindowSetRemSize(win, 16.f);
+    El* root = nullptr;
+    DrawStyledBlocks(win, view, &root);
+    El* marker = StreamTextEl(root, StrL("1."));
+    El* quote = BorderLEl(root, 4.f);
+    utassert(marker && quote);
+    if (marker && quote) {
+        utassert(marker->style.color.b == 255);
+        utassert(marker->style.fontWeight == (uint16_t)FontWeight::Bold);
+        utassertnear(quote->style.borderL, 4.f);
+        utassert(quote->style.borderColor.b == 255);
+    }
+    TestAppFree(app);
+}
+
+// blockquote_typography_reaches_nested_table_measurement. The fake wide-mono
+// text system is not here; the real shaper is. A quote that names a 30px
+// bold mono face leaves the table at its 14px size and measures the cell
+// in that face and weight.
+static void BlockquoteTypographyReachesNestedTableMeasurement() {
+    App* app = TestAppNew();
+    Entity<StyledBlocksView> view = EntityNew<StyledBlocksView>(app);
+    StyledBlocksView* harness = view.Get(app);
+    harness->merged = false;
+    Window* win = TestWindowOpen(app, view, 800, 400);
+    WindowSetRemSize(win, 16.f);
+    El* root = nullptr;
+    DrawStyledBlocks(win, view, &root);
+    El* quoted = StreamTextEl(root, StrL("quoted"));
+    El* digits = StreamTextEl(root, StrL("0123456789"));
+    El* cell = FindTableCell(root);
+    utassert(quoted && digits && cell);
+    if (quoted && digits && cell) {
+        utassertnear(quoted->laidFont, 30.f);
+        float tableSize = 15.f * (14.f / 15.f);
+        utassertnear(digits->laidFont, tableSize);
+        Size mono = MeasureText(&win->paint, StrL("0123456789"), tableSize, 0,
+                                false, kFontWeightBold | kFontMono);
+        Size plain = MeasureText(&win->paint, StrL("0123456789"), tableSize, 0,
+                                 false, 0);
+        float scale = win->paint.dpi > 0 ? win->paint.dpi / 96.f : 1.f;
+        float px = (mono.w + 24.f) * scale;
+        float whole = (float)(int)px;
+        if (whole < px) {
+            whole += 1.f;
+        }
+        utassertnear(cell->style.maxW, whole / scale);
+        utassert(cell->style.maxW > plain.w + 24.f);
+    }
+    El* box = root ? BorderBoxEl(root, 1.5f) : nullptr;
+    utassert(box && box->style.borderColor.b == 255);
+    TestAppFree(app);
+}
+
 // inline_code_refinements_remain_explicit_on_an_inverted_surface
 static void InlineCodeRefinementsStayExplicitOnAnInvertedSurface() {
     TextViewStyle plain = TextViewStyle::Default();
@@ -8437,5 +8640,8 @@ void TestTextView() {
     InlineCodeRefinementsStayExplicitOnAnInvertedSurface();
     InlineCodeStyleKeepsEqualSizeProseSeparateAndMeasuresItsBox();
     FadesInlineCodeStyleBackgroundAndBorder();
+    ListAndBlockquoteRefinementsStayExplicitOnAnInvertedSurface();
+    ListAndBlockquoteViewRefinementsKeepUnspecifiedStyleProperties();
+    BlockquoteTypographyReachesNestedTableMeasurement();
     ArenaDelete(a);
 }

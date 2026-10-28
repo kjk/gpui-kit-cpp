@@ -438,7 +438,7 @@ using HeadingStyleFn = uint32_t (*)(uint8_t level, gpui::Style* style,
                                     void* data);
 
 // text/style.rs TextViewStyle. A Style plus its named-field mask is this
-// tree's StyleRefinement representation; the five refinements therefore
+// tree's StyleRefinement representation; the refinements therefore
 // preserve the same "only fields the caller named win" behavior.
 //
 // The six colours are what crossing the gpui-base seam added: rich text used
@@ -485,6 +485,19 @@ struct TextViewStyle {
     // size that is not finite and positive is dropped.
     gpui::Style inlineCodeStyle = {};
     uint32_t inlineCodeStyleFields = 0;
+    // with_list_style: the bullet or number column, over its defaults
+    // (muted colour, the indent as its width, right-aligned, 0.3-indent
+    // of right padding). Its text colour also outlines an unchecked task
+    // box. A checked box stays the link colour.
+    gpui::Style listStyle = {};
+    uint32_t listStyleFields = 0;
+    // with_blockquote_style: the quote container, over its defaults (muted
+    // text, a 2px left border in the border colour, 0.9-body left padding).
+    // Border widths and colour style the bar. Text, background, padding
+    // and radii style the quote. Headings and tables keep the sizes they
+    // set; a nested table still measures with this face and weight.
+    gpui::Style blockquoteStyle = {};
+    uint32_t blockquoteStyleFields = 0;
     // The table body background, or the theme surface when unset. Only
     // OnTextColor sets it, to let a table on an inverted surface show that
     // surface.
@@ -533,6 +546,13 @@ struct TextViewStyle {
                                        uint32_t fields);
     const gpui::Style& InlineCodeStyle() const { return inlineCodeStyle; }
     uint32_t InlineCodeStyleFields() const { return inlineCodeStyleFields; }
+    TextViewStyle& WithListStyle(const gpui::Style& style, uint32_t fields);
+    const gpui::Style& ListStyle() const { return listStyle; }
+    uint32_t ListStyleFields() const { return listStyleFields; }
+    TextViewStyle& WithBlockquoteStyle(const gpui::Style& style,
+                                       uint32_t fields);
+    const gpui::Style& BlockquoteStyle() const { return blockquoteStyle; }
+    uint32_t BlockquoteStyleFields() const { return blockquoteStyleFields; }
     TextViewStyle& WithDark(bool value);
     // `on_text_color`: this style adapted to body text drawn in `color`, the
     // text color a container sets for its surface.
@@ -1346,6 +1366,20 @@ struct TextView {
     bool inlineCodeStyleSet = false;
     gpui::Style inlineCodeStyle = {};
     uint32_t inlineCodeStyleFields = 0;
+    // TextView::list_style / blockquote_style, merged over the resolved
+    // style the same way inline code is.
+    bool listStyleSet = false;
+    gpui::Style listStyle = {};
+    uint32_t listStyleFields = 0;
+    bool blockquoteStyleSet = false;
+    gpui::Style blockquoteStyle = {};
+    uint32_t blockquoteStyleFields = 0;
+    // The blockquote refinement whose children are rendering. A nested
+    // quote saves and restores it. Tables read the face and weight while
+    // they measure, which is before the quote's div cascades them.
+    bool quoteOn = false;
+    gpui::Style quoteStyle = {};
+    uint32_t quoteFields = 0;
     // The view follows a text color that inverts its style's surface, so the
     // installed highlighter — whose colors are made for the page — is left
     // out.
@@ -1393,6 +1427,12 @@ struct TextView {
     // Refines inline code over the resolved style. Unspecified properties
     // are inherited, including a refinement already on that style.
     TextView* InlineCodeStyle(const gpui::Style& style, uint32_t fields);
+    // Refines list markers over the resolved style. Unspecified properties
+    // are inherited, including a refinement already on that style.
+    TextView* ListStyle(const gpui::Style& style, uint32_t fields);
+    // Refines blockquotes over the resolved style. Unspecified properties
+    // are inherited, including a refinement already on that style.
+    TextView* BlockquoteStyle(const gpui::Style& style, uint32_t fields);
     TextView* Refine(const gpui::Style& style, uint32_t fields);
     TextView* Selectable(bool on = true);
     // `.selection_format(..)`: whether a copy of the selection is the text as

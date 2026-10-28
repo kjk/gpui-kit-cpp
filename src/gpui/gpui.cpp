@@ -1503,6 +1503,18 @@ void StyleApplyFields(Style* into, const Style& over, uint32_t fields) {
     if (fields & StyleFieldFontSize) {
         into->fontSize = over.fontSize;
     }
+    if (fields & StyleFieldFontWeight) {
+        into->fontWeight = over.fontWeight;
+        into->fontBold = over.fontBold;
+        into->fontSemibold = over.fontSemibold;
+        into->fontMedium = over.fontMedium;
+    }
+    if (fields & StyleFieldFontMono) {
+        into->fontMono = over.fontMono;
+    }
+    if (fields & StyleFieldFontFamily) {
+        into->fontFamily = over.fontFamily;
+    }
     if (fields & StyleFieldWidth) {
         into->width = over.width;
     }

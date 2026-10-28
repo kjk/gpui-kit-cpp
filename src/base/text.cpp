@@ -459,6 +459,20 @@ TextViewStyle& TextViewStyle::WithInlineCodeStyle(const gpui::Style& value,
     return *this;
 }
 
+TextViewStyle& TextViewStyle::WithListStyle(const gpui::Style& value,
+                                            uint32_t fields) {
+    listStyle = value;
+    listStyleFields = fields;
+    return *this;
+}
+
+TextViewStyle& TextViewStyle::WithBlockquoteStyle(const gpui::Style& value,
+                                                  uint32_t fields) {
+    blockquoteStyle = value;
+    blockquoteStyleFields = fields;
+    return *this;
+}
+
 TextViewStyle& TextViewStyle::WithDark(bool value) {
     isDark = value;
     return *this;
@@ -549,6 +563,13 @@ static bool StyleFieldsEqual(const gpui::Style& a, const gpui::Style& b,
     if ((fields & StyleFieldBorderL) && a.borderL != b.borderL) return false;
     if ((fields & StyleFieldBorderR) && a.borderR != b.borderR) return false;
     if ((fields & StyleFieldFontSize) && a.fontSize != b.fontSize) return false;
+    if ((fields & StyleFieldFontWeight) &&
+        (a.fontWeight != b.fontWeight || a.fontBold != b.fontBold ||
+         a.fontSemibold != b.fontSemibold || a.fontMedium != b.fontMedium))
+        return false;
+    if ((fields & StyleFieldFontMono) && a.fontMono != b.fontMono) return false;
+    if ((fields & StyleFieldFontFamily) && a.fontFamily != b.fontFamily)
+        return false;
     if ((fields & StyleFieldWidth) && a.width != b.width) return false;
     if ((fields & StyleFieldHeight) && a.height != b.height) return false;
     if ((fields & StyleFieldMinWidth) && a.minW != b.minW) return false;
@@ -588,6 +609,8 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
         tableCellFields != other.tableCellFields ||
         inlineCodeFields != other.inlineCodeFields ||
         inlineCodeStyleFields != other.inlineCodeStyleFields ||
+        listStyleFields != other.listStyleFields ||
+        blockquoteStyleFields != other.blockquoteStyleFields ||
         isDark != other.isDark ||
         hasTableBackground != other.hasTableBackground ||
         (hasTableBackground &&
@@ -598,7 +621,10 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
         !StyleFieldsEqual(tableCell, other.tableCell, tableCellFields) ||
         !StyleFieldsEqual(inlineCode, other.inlineCode, inlineCodeFields) ||
         !StyleFieldsEqual(inlineCodeStyle, other.inlineCodeStyle,
-                          inlineCodeStyleFields)) {
+                          inlineCodeStyleFields) ||
+        !StyleFieldsEqual(listStyle, other.listStyle, listStyleFields) ||
+        !StyleFieldsEqual(blockquoteStyle, other.blockquoteStyle,
+                          blockquoteStyleFields)) {
         return false;
     }
     // The callback is compared by what it answers for every level, which is
@@ -4479,6 +4505,57 @@ static void CellFont(const TextView* tv, bool head, float* size, int* weight) {
             w = (int)FontWeight::Medium;
         }
     }
+    // A blockquote's face and weight are the window text style while its
+    // children render. The table keeps its own size. MeasureText wants the
+    // packed weight word, not GPUI's 100-700 enum.
+    if (tv->quoteOn && w == 0 && (tv->quoteFields & StyleFieldFontWeight)) {
+        switch ((FontWeight)tv->quoteStyle.fontWeight) {
+            case FontWeight::Thin:
+                w = kFontWeightThin;
+                break;
+            case FontWeight::ExtraLight:
+                w = kFontWeightExtraLight;
+                break;
+            case FontWeight::Light:
+                w = kFontWeightLight;
+                break;
+            case FontWeight::Normal:
+                w = kFontWeightExplicitNormal;
+                break;
+            case FontWeight::Medium:
+                w = kFontWeightMedium;
+                break;
+            case FontWeight::Semibold:
+                w = kFontWeightSemibold;
+                break;
+            case FontWeight::Bold:
+                w = kFontWeightBold;
+                break;
+            case FontWeight::ExtraBold:
+                w = kFontWeightExtraBold;
+                break;
+            case FontWeight::Black:
+                w = kFontWeightBlack;
+                break;
+            default:
+                if (tv->quoteStyle.fontBold) {
+                    w = kFontWeightBold;
+                } else if (tv->quoteStyle.fontSemibold) {
+                    w = kFontWeightSemibold;
+                } else if (tv->quoteStyle.fontMedium) {
+                    w = kFontWeightMedium;
+                }
+                break;
+        }
+    }
+    if (tv->quoteOn && (tv->quoteFields & StyleFieldFontMono) &&
+        tv->quoteStyle.fontMono) {
+        w |= kFontMono;
+    }
+    if (tv->quoteOn && (tv->quoteFields & StyleFieldFontFamily) &&
+        tv->quoteStyle.fontFamily) {
+        w |= FontFamilyBits(tv->quoteStyle.fontFamily);
+    }
     *size = font;
     *weight = w;
 }
@@ -4942,7 +5019,10 @@ static El* TaskBox(const Ctx* cx, Arena* a, const TextViewStyle& style,
                   ->ItemsCenter()
                   ->JustifyCenter()
                   ->Radius(4)
-                  ->Border(1.5f, on ? style.link : style.mutedForeground);
+                  ->Border(1.5f, on ? style.link
+                                 : (style.listStyleFields & StyleFieldColor)
+                                     ? style.listStyle.color
+                                     : style.mutedForeground);
     if (on) {
         Rgba tick = style.isDark ? RgbaHex(0x000000) : RgbaHex(0xffffff);
         box->Bg(style.link)
@@ -5006,15 +5086,30 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
         if (len(shown) > 0 && shown.s[len(shown) - 1] == ' ') {
             shown.len--;
         }
-        row->Child(Div(a)
-                       ->W(indent)
-                       ->Shrink0()
-                       ->PadR(indent * 0.3f)
-                       ->Child(TextEl(a, shown)
-                                   ->Font(baseFont)
-                                   ->W(kFill)
-                                   ->TextRight()
-                                   ->Fg(textViewStyle.mutedForeground)));
+        Rgba markerFg = textViewStyle.mutedForeground;
+        float markerFont = baseFont;
+        const gpui::Style& markerStyle = textViewStyle.listStyle;
+        uint32_t markerFields = textViewStyle.listStyleFields;
+        if (markerFields & StyleFieldColor) {
+            markerFg = markerStyle.color;
+        }
+        if ((markerFields & StyleFieldFontSize) && markerStyle.fontSize > 0) {
+            markerFont = markerStyle.fontSize;
+        }
+        // text_right is on the column, before the refinement, so a list
+        // style can replace the alignment. The label inherits it.
+        El* column =
+            Div(a)
+                ->W(indent)
+                ->Shrink0()
+                ->PadR(indent * 0.3f)
+                ->TextRight()
+                ->Child(
+                    TextEl(a, shown)->Font(markerFont)->W(kFill)->Fg(markerFg));
+        if (markerFields) {
+            column->Refine(markerStyle, markerFields);
+        }
+        row->Child(column);
     }
     return row->Child(content);
 }
@@ -6836,10 +6931,18 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
     // carries none.
     float mb = (inList || isLast) ? 0.f : gap;
     switch (n->kind) {
-        case MdKind::Paragraph:
+        case MdKind::Paragraph: {
+            // A blockquote's text size is the inherited text style. A
+            // heading and a table name their own sizes and do not take it.
+            float font = baseFont;
+            if (quoteOn && (quoteFields & StyleFieldFontSize) &&
+                quoteStyle.fontSize > 0) {
+                font = quoteStyle.fontSize;
+            }
             SrcOpen({}, {});
             return Div(a)->W(kFill)->PadB(mb)->Child(
-                Inline(n, baseFont, BlockFg(), 0));
+                Inline(n, font, BlockFg(), 0));
+        }
         case MdKind::Heading: {
             float scale = 1.f;
             float line = 1.35f;
@@ -6914,19 +7017,35 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
                 ->Child(Div(a)->H(1)->W(kFill)->Bg(textViewStyle.border));
         }
         case MdKind::Quote: {
+            Rgba quoteFg = textViewStyle.mutedForeground;
+            if (textViewStyle.blockquoteStyleFields & StyleFieldColor) {
+                quoteFg = textViewStyle.blockquoteStyle.color;
+            }
             El* inner = Div(a)
                             ->FlexCol()
                             ->W(kFill)
-                            ->Fg(textViewStyle.mutedForeground)
+                            ->Fg(quoteFg)
                             ->BorderL(2, textViewStyle.border)
                             ->PadL(baseFont * 0.9f);
+            if (textViewStyle.blockquoteStyleFields) {
+                inner->Refine(textViewStyle.blockquoteStyle,
+                              textViewStyle.blockquoteStyleFields);
+            }
             // text_color(muted_foreground) on the quote, and nothing inside
             // it naming a colour of its own: the paragraphs and headings it
             // holds inherit the grey rather than painting themselves black.
+            // An explicit blockquote colour replaces that grey. Headings
+            // and tables keep the sizes they name.
             Rgba savedFg = blockFg;
             bool savedSet = blockFgSet;
-            blockFg = textViewStyle.mutedForeground;
+            blockFg = quoteFg;
             blockFgSet = true;
+            gpui::Style savedQuote = quoteStyle;
+            uint32_t savedQuoteFields = quoteFields;
+            bool savedQuoteOn = quoteOn;
+            quoteStyle = textViewStyle.blockquoteStyle;
+            quoteFields = textViewStyle.blockquoteStyleFields;
+            quoteOn = quoteFields != 0;
             // node.rs prefixes every line of a selected blockquote with
             // `> ` so it round-trips; nested quotes stack the prefix.
             Str savedPre = srcLinePre;
@@ -6938,6 +7057,9 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             srcLinePre = savedPre;
             blockFg = savedFg;
             blockFgSet = savedSet;
+            quoteStyle = savedQuote;
+            quoteFields = savedQuoteFields;
+            quoteOn = savedQuoteOn;
             return Div(a)->W(kFill)->PadB(mb)->Child(inner);
         }
         case MdKind::List: {
@@ -7096,6 +7218,19 @@ El* TextView::IntoEl() {
         textViewStyle
             .WithInlineCodeStyle(merged, textViewStyle.inlineCodeStyleFields |
                                              inlineCodeStyleFields);
+    }
+    if (listStyleSet) {
+        gpui::Style merged = textViewStyle.listStyle;
+        StyleApplyFields(&merged, listStyle, listStyleFields);
+        textViewStyle.WithListStyle(
+            merged, textViewStyle.listStyleFields | listStyleFields);
+    }
+    if (blockquoteStyleSet) {
+        gpui::Style merged = textViewStyle.blockquoteStyle;
+        StyleApplyFields(&merged, blockquoteStyle, blockquoteStyleFields);
+        textViewStyle
+            .WithBlockquoteStyle(merged, textViewStyle.blockquoteStyleFields |
+                                             blockquoteStyleFields);
     }
     if (!state.IsValid()) {
         uint32_t kind = (uint32_t)HashClickId(
@@ -7443,6 +7578,20 @@ TextView* TextView::InlineCodeStyle(const gpui::Style& style, uint32_t fields) {
     inlineCodeStyle = NormalizeInlineCodeStyle(style, &kept);
     inlineCodeStyleFields = kept;
     inlineCodeStyleSet = true;
+    return this;
+}
+
+TextView* TextView::ListStyle(const gpui::Style& style, uint32_t fields) {
+    listStyle = style;
+    listStyleFields = fields;
+    listStyleSet = true;
+    return this;
+}
+
+TextView* TextView::BlockquoteStyle(const gpui::Style& style, uint32_t fields) {
+    blockquoteStyle = style;
+    blockquoteStyleFields = fields;
+    blockquoteStyleSet = true;
     return this;
 }
 

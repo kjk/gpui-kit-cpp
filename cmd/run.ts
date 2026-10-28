@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "973d7ae6b9d99a002ff740f298489ee4cfb7f967",
+  sha: "b4af12b3400cdac7f3bc39716a5d59a378c4aa57",
   date: "2026-10-26",
-  subject: "button: Accept a caller-owned focus handle (#3684)",
+  subject: "text: Support list and blockquote style overrides (#3687)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",
