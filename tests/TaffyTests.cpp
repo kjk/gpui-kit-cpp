@@ -8177,6 +8177,52 @@ static void TestBlockAlignContentNestedFloat() {
 // taffy 4142c9d8. A percentage min size on an auto track is cyclic, so
 // the minimum contribution treats the indefinite area as zero. The
 // grid's own 50px size wins over the 100px grandchild.
+// An indefinite container treats minmax(percent, fixed) as auto on the min
+// side, so the fixed max clamps the item. Treating the percentage as
+// min-content would grow the track to the item's content size.
+static void TestGridIndefinitePercentMinTrack() {
+    TestSuite("taffy grid indefinite percent min track");
+    {
+        TaffyTree tree;
+        tree.Init();
+        SizeF content = {30.0f, 10.0f};
+        TaffyNodeId child = tree.NewLeafWithContext(taffy::Style{}, &content);
+        GridTemplateComponent col = GridTemplateComponent::Single(
+            TrackSizingFunction::MinMax(MinTrackSizingFunction::Percent(0.2f),
+                                        MaxTrackSizingFunction::Length(20.0f)));
+        taffy::Style root;
+        root.display = taffy::Display::Grid;
+        root.gridTemplateColumns = GridTemplateOf(&col, 1);
+        TaffyNodeId rootNode = tree.NewWithChildren(root, &child, 1);
+        tree.ComputeLayoutWithMeasure(rootNode, SizeAvail::MaxContent(),
+                                      SizeMeasureFunction, nullptr);
+        AssertBox(tree.GetLayout(rootNode), 0.0f, 0.0f, 20.0f, 10.0f);
+        AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 20.0f, 10.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        SizeF content = {20.0f, 40.0f};
+        TaffyNodeId child = tree.NewLeafWithContext(taffy::Style{}, &content);
+        GridTemplateComponent col =
+            GridTemplateComponent::Single(TrackSizingFunction::Length(20.0f));
+        GridTemplateComponent row = GridTemplateComponent::Single(
+            TrackSizingFunction::MinMax(MinTrackSizingFunction::Percent(1.0f),
+                                        MaxTrackSizingFunction::Length(15.0f)));
+        taffy::Style root;
+        root.display = taffy::Display::Grid;
+        root.gridTemplateColumns = GridTemplateOf(&col, 1);
+        root.gridTemplateRows = GridTemplateOf(&row, 1);
+        TaffyNodeId rootNode = tree.NewWithChildren(root, &child, 1);
+        tree.ComputeLayoutWithMeasure(rootNode, SizeAvail::MaxContent(),
+                                      SizeMeasureFunction, nullptr);
+        AssertBox(tree.GetLayout(rootNode), 0.0f, 0.0f, 20.0f, 15.0f);
+        AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 20.0f, 15.0f);
+        tree.Free();
+    }
+}
+
 static void TestGridCyclicPercentMinContribution() {
     TestSuite("taffy grid cyclic percent min");
     for (int withPreferred = 0; withPreferred < 2; withPreferred++) {
@@ -8285,6 +8331,7 @@ void TestTaffy() {
     gGridArena = gpui::ArenaNew();
     TestNegativeAvailableSpace();
     TestGridBlockItemHeightCache();
+    TestGridIndefinitePercentMinTrack();
     TestGridCyclicPercentMinContribution();
     TestGridUnaffectedTracksNotMeasured();
     TestGridFrRowUsesColumnWidth();

@@ -1393,6 +1393,11 @@ struct MinTrackSizingFunction {
     }
 
     bool IsAuto() const { return raw.IsAuto(); }
+    // Auto, or a percentage (including calc()) while the parent size is
+    // still indefinite. A definite parent resolves the percentage instead.
+    bool BehavesAsAuto(Optf parentSize) const {
+        return raw.IsAuto() || (!IsSome(parentSize) && raw.UsesPercentage());
+    }
     bool IsMinContent() const { return raw.IsMinContent(); }
     bool IsMaxContent() const { return raw.IsMaxContent(); }
     bool IsMinOrMaxContent() const { return raw.IsMinOrMaxContent(); }

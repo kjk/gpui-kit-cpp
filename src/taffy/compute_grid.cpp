@@ -1861,17 +1861,19 @@ float ItemMinimumContribution(GridItem* item, TaffyTree* tree,
     }
     if (!IsSome(size)) {
         // The automatic minimum size is content-based only if the item spans
-        // at least one track whose min sizing function is auto, and either it
-        // spans one track or none of the tracks it spans is flexible. A
-        // flexible track elsewhere in the axis does not count. Otherwise the
-        // automatic minimum is zero.
+        // at least one track whose min sizing function behaves as auto
+        // (auto itself, or a percentage while this axis is indefinite), and
+        // either it spans one track or none of the tracks it spans is
+        // flexible. A flexible track elsewhere in the axis does not count.
+        // Otherwise the automatic minimum is zero.
         (void)axisTrackCount;
         bool spansAutoMinTrack = false;
         bool spansAFlexibleTrack = false;
         int from = item->TrackRangeStart(axis);
         int to = item->TrackRangeEnd(axis);
         for (int i = from; i < to; i++) {
-            if (axisTracks[i].minTrackSizingFunction.IsAuto()) {
+            if (axisTracks[i].minTrackSizingFunction.BehavesAsAuto(
+                    Get(innerNodeSize, axis))) {
                 spansAutoMinTrack = true;
             }
             if (axisTracks[i].maxTrackSizingFunction.IsFr()) {
@@ -2873,71 +2875,47 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                                             : item->overflow.y;
 
                 float newBaseSize = track.baseSize;
-                switch (track.minTrackSizingFunction.raw.Tag()) {
-                    case CompactLength::kMinContentTag:
-                        newBaseSize = F32Max(
-                            track.baseSize,
-                            sizer.MinContentContribution(item, axisTracks));
-                        break;
-                    case CompactLength::kPercentTag:
-                        // An indefinite, not-yet-resolved container size makes
-                        // a percentage track behave as min-content, matching
-                        // Chrome.
-                        if (!IsSome(axisInnerNodeSize)) {
-                            newBaseSize = F32Max(
-                                track.baseSize,
-                                sizer.MinContentContribution(item, axisTracks));
-                        }
-                        break;
-                    case CompactLength::kMaxContentTag:
-                        newBaseSize = F32Max(
-                            track.baseSize,
-                            sizer.MaxContentContribution(item, axisTracks));
-                        break;
-                    case CompactLength::kAutoTag: {
-                        float space;
-                        bool minOrMaxConstraint =
-                            axisAvailableGridSpace
-                                    .kind == AvailableSpace::Kind::MinContent ||
-                            axisAvailableGridSpace
-                                    .kind == AvailableSpace::Kind::MaxContent;
-                        // QUIRK: the spec says a container sized under a min-
-                        // or max-content constraint uses the items' limited
-                        // min-content contributions in place of their minimum
-                        // contributions. Browsers only do that when the item
-                        // is not a scroll container, giving a scroll
-                        // container's automatic minimum size (zero)
-                        // precedence.
-                        if (minOrMaxConstraint &&
-                            !IsScrollContainer(axisOverflow)) {
-                            float axisMinimumSize = sizer.MinimumContribution(
-                                item, axisTracks, nAxisTracks);
-                            float axisMinContentSize =
-                                sizer.MinContentContribution(item, axisTracks);
-                            Optf limit =
-                                track.maxTrackSizingFunction
-                                    .DefiniteLimit(axisInnerNodeSize, calc);
-                            space = F32Max(MaybeMin(axisMinContentSize, limit),
-                                           axisMinimumSize);
-                        } else {
-                            space = sizer.MinimumContribution(item, axisTracks,
-                                                              nAxisTracks);
-                        }
-                        newBaseSize = F32Max(track.baseSize, space);
-                        break;
+                uint64_t minTag = track.minTrackSizingFunction.raw.Tag();
+                if (minTag == CompactLength::kMinContentTag) {
+                    newBaseSize =
+                        F32Max(track.baseSize,
+                               sizer.MinContentContribution(item, axisTracks));
+                } else if (minTag == CompactLength::kMaxContentTag) {
+                    newBaseSize =
+                        F32Max(track.baseSize,
+                               sizer.MaxContentContribution(item, axisTracks));
+                } else if (track.minTrackSizingFunction
+                               .BehavesAsAuto(axisInnerNodeSize)) {
+                    // An indefinite container makes a percentage (or calc())
+                    // min track behave as auto, not as min-content.
+                    float space;
+                    bool minOrMaxConstraint =
+                        axisAvailableGridSpace
+                                .kind == AvailableSpace::Kind::MinContent ||
+                        axisAvailableGridSpace
+                                .kind == AvailableSpace::Kind::MaxContent;
+                    // QUIRK: the spec says a container sized under a min-
+                    // or max-content constraint uses the items' limited
+                    // min-content contributions in place of their minimum
+                    // contributions. Browsers only do that when the item
+                    // is not a scroll container, giving a scroll
+                    // container's automatic minimum size (zero)
+                    // precedence.
+                    if (minOrMaxConstraint &&
+                        !IsScrollContainer(axisOverflow)) {
+                        float axisMinimumSize = sizer.MinimumContribution(
+                            item, axisTracks, nAxisTracks);
+                        float axisMinContentSize =
+                            sizer.MinContentContribution(item, axisTracks);
+                        Optf limit = track.maxTrackSizingFunction.DefiniteLimit(
+                            axisInnerNodeSize, calc);
+                        space = F32Max(MaybeMin(axisMinContentSize, limit),
+                                       axisMinimumSize);
+                    } else {
+                        space = sizer.MinimumContribution(item, axisTracks,
+                                                          nAxisTracks);
                     }
-                    case CompactLength::kLengthTag:
-                        // Not an intrinsic track sizing function.
-                        break;
-                    default:
-                        // calc() behaves like a percentage here.
-                        if (track.minTrackSizingFunction.raw.IsCalc() &&
-                            !IsSome(axisInnerNodeSize)) {
-                            newBaseSize = F32Max(
-                                track.baseSize,
-                                sizer.MinContentContribution(item, axisTracks));
-                        }
-                        break;
+                    newBaseSize = F32Max(track.baseSize, space);
                 }
 
                 GridTrack& t = axisTracks[trackIndex];
