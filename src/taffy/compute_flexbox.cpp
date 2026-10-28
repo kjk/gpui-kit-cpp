@@ -2356,17 +2356,25 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
     int firstLineIdx = constants.isWrapReverse ? len(flexLines) - 1 : 0;
     if (firstLineIdx >= 0 && flexLines[firstLineIdx].count > 0) {
         FlexLine& firstLine = flexLines[firstLineIdx];
+        // Column containers take the visually startmost item. Reverse
+        // flex order puts that item last. A row still skips items that
+        // do not participate in baseline alignment.
         const FlexItem* chosen = nullptr;
-        for (int i = 0; i < firstLine.count; i++) {
-            const FlexItem& item = firstLine.items[i];
-            if (constants.isColumn ||
-                item.ParticipatesInBaselineAlignment(constants.dir)) {
-                chosen = &item;
-                break;
+        if (constants.isColumn) {
+            chosen = IsReverse(constants.dir)
+                         ? &firstLine.items[firstLine.count - 1]
+                         : &firstLine.items[0];
+        } else {
+            for (int i = 0; i < firstLine.count; i++) {
+                const FlexItem& item = firstLine.items[i];
+                if (item.ParticipatesInBaselineAlignment(constants.dir)) {
+                    chosen = &item;
+                    break;
+                }
             }
-        }
-        if (!chosen) {
-            chosen = &firstLine.items[0];
+            if (!chosen) {
+                chosen = &firstLine.items[0];
+            }
         }
         firstVerticalBaseline = Some(chosen->baseline);
     }

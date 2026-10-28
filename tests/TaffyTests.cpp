@@ -2652,6 +2652,43 @@ static void TestFlexCrossDefinitePercentage() {
 }
 
 // ─── src/compute/grid/explicit_grid.rs ───────────────────────────────────
+// flex_container_baseline_column_reverse. The container baseline comes
+// from the visually topmost item, which is last in column-reverse order.
+static void TestFlexReverseBaseline() {
+    TestSuite("taffy flex column-reverse baseline");
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style tall;
+    tall.size = SizeDim::FromLengths(50.0f, 100.0f);
+    TaffyNodeId tallNode = tree.NewLeaf(tall);
+
+    taffy::Style top;
+    top.size = SizeDim::FromLengths(60.0f, 20.0f);
+    TaffyNodeId topNode = tree.NewLeaf(top);
+    taffy::Style below;
+    below.size = SizeDim::FromLengths(60.0f, 30.0f);
+    TaffyNodeId belowNode = tree.NewLeaf(below);
+    TaffyNodeId colKids[] = {topNode, belowNode};
+    taffy::Style col;
+    col.flexDirection = FlexDirection::ColumnReverse;
+    col.size = SizeDim::FromLengths(60.0f, 90.0f);
+    TaffyNodeId colNode = tree.NewWithChildren(col, colKids, 2);
+
+    taffy::Style rootStyle;
+    rootStyle
+        .alignItems = OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+    rootStyle.size = SizeDim::FromLengths(200.0f, 200.0f);
+    TaffyNodeId kids[] = {tallNode, colNode};
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+    utassertnear(tree.GetLayout(tallNode).location.y, 0.0f);
+    utassertnear(tree.GetLayout(colNode).location.x, 50.0f);
+    utassertnear(tree.GetLayout(colNode).location.y, 30.0f);
+    utassertnear(tree.GetLayout(topNode).location.y, 70.0f);
+    utassertnear(tree.GetLayout(belowNode).location.y, 40.0f);
+    tree.Free();
+}
+
 //
 // The grid internals are private; compute.h exposes the seams taffy's own
 // unit tests reach into. See the note there.
@@ -4327,6 +4364,7 @@ void TestTaffy() {
     TestBlockLayout();
     TestBlockPercentageBasis();
     TestFlexCrossDefinitePercentage();
+    TestFlexReverseBaseline();
     TestExplicitMinSkipsMinContent();
     TestAbsoluteKnownSizeSkipsMeasure();
     TestLeafContentSizeEndPadding();
