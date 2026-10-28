@@ -1581,7 +1581,8 @@ SizeFOpt ItemKnownDimensions(const GridItem& item, TaffyTree* tree,
                               aspectRatio),
         boxSizingAdjustment);
 
-    SizeFOpt gridAreaMinusItemMargins = MaybeSub(gridAreaSize, margins);
+    SizeFOpt gridAreaMinusItemMargins =
+        MaybeMax(MaybeSub(gridAreaSize, margins), SizeFOpt{0.0f, 0.0f});
 
     Optf width = inherentSize.w;
     if (!IsSome(width)) {
@@ -1704,8 +1705,8 @@ SizeAvail KeywordAdjustedAvailableSpace(const GridItem& item,
         if (!sizeStyle.IsSizingKeyword()) {
             continue;
         }
-        Optf stretch =
-            MaybeSub(Get(gridAreaSize, axis), Some(Get(margins, axis)));
+        Optf stretch = MaybeMax(
+            MaybeSub(Get(gridAreaSize, axis), Some(Get(margins, axis))), 0.0f);
         SizingKeywordResolution keyword =
             ResolveSizingKeyword(sizeStyle, stretch, Get(gridAreaSize, axis));
         if (keyword.isSome && keyword.kind == SizingKeywordKind::Measure) {
@@ -3778,9 +3779,11 @@ AlignedItem AlignAndPositionItem(
     RectFOpt margin = style.margin.MaybeResolve(Some(gridAreaSize.w), calc);
 
     SizeF gridAreaMinusItemMarginsSize = {
-        MaybeSub(MaybeSub(gridAreaSize.w, margin.left), margin.right),
-        MaybeSub(MaybeSub(gridAreaSize.h, margin.top), margin.bottom) -
-            baselineShim};
+        F32Max(MaybeSub(MaybeSub(gridAreaSize.w, margin.left), margin.right),
+               0.0f),
+        F32Max(MaybeSub(MaybeSub(gridAreaSize.h, margin.top), margin.bottom) -
+                   baselineShim,
+               0.0f)};
 
     SizingKeywordResolution keywordWidth;
     if (!IsSome(inherentSize.w)) {

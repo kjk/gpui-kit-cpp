@@ -5433,6 +5433,77 @@ static void TestGridBlockItemHeightCache() {
     tree.Free();
 }
 
+// A leaf whose horizontal margins exceed a 20px container. Records whether
+// any measure saw a negative known size or a negative definite available space.
+// The measure itself is zero unless a known size is already set, matching
+// taffy's TestNodeContext::zero.
+struct NegativeSpaceCtx {
+    bool saw = false;
+};
+
+static bool LayoutInputIsNegative(const taffy::LayoutInput& inputs) {
+    auto neg = [](Optf v) { return IsSome(v) && v < 0.0f; };
+    auto negAvail = [](AvailableSpace a) {
+        return a.kind == AvailableSpace::Kind::Definite && a.value < 0.0f;
+    };
+    return neg(inputs.knownDimensions.w) || neg(inputs.knownDimensions.h) ||
+           negAvail(inputs.availableSpace.width) ||
+           negAvail(inputs.availableSpace.height);
+}
+
+static SizeF ZeroUnlessKnown(SizeFOpt known, SizeAvail, void*) {
+    return {IsSome(known.w) ? known.w : 0.0f, IsSome(known.h) ? known.h : 0.0f};
+}
+
+static taffy::LayoutOutput NegativeSpaceMeasure(
+    const taffy::LayoutInput& inputs, TaffyNodeId node, void* nodeContext,
+    const taffy::Style* style, void* userData) {
+    (void)node;
+    (void)userData;
+    NegativeSpaceCtx* ctx = (NegativeSpaceCtx*)nodeContext;
+    if (ctx && LayoutInputIsNegative(inputs)) {
+        ctx->saw = true;
+    }
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    ZeroUnlessKnown, nullptr);
+}
+
+static void AssertMarginsFloorAtZero(taffy::Display display,
+                                     taffy::FlexDirection dir) {
+    TaffyTree tree;
+    tree.Init();
+    NegativeSpaceCtx ctx;
+    taffy::Style leafStyle;
+    leafStyle.margin.left = LengthPercentageAuto::Length(30.0f);
+    leafStyle.margin.right = LengthPercentageAuto::Length(10.0f);
+    leafStyle.size = {Dimension::Auto(), Dimension::Auto()};
+    TaffyNodeId leaf = tree.NewLeafWithContext(leafStyle, &ctx);
+
+    TrackSizingFunction col = TrackSizingFunction::Length(20.0f);
+    GridTemplateComponent colC = GridTemplateComponent::Single(col);
+    taffy::Style rootStyle;
+    rootStyle.display = display;
+    rootStyle.flexDirection = dir;
+    rootStyle.size.width = Dimension::Length(20.0f);
+    rootStyle.size.height = Dimension::Auto();
+    rootStyle.gridTemplateColumns = GridTemplateOf(&colC, 1);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, &leaf, 1);
+    tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                  NegativeSpaceMeasure, nullptr);
+    utassert(!ctx.saw);
+    utassertnear(tree.GetLayout(leaf).size.w, 0.0f);
+    tree.Free();
+}
+
+// Block, column flex and grid each floor a child's available and stretch
+// width when its horizontal margins are wider than the container.
+static void TestNegativeAvailableSpace() {
+    TestSuite("taffy negative available space");
+    AssertMarginsFloorAtZero(taffy::Display::Block, FlexDirection::Row);
+    AssertMarginsFloorAtZero(taffy::Display::Flex, FlexDirection::Column);
+    AssertMarginsFloorAtZero(taffy::Display::Grid, FlexDirection::Row);
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -5478,6 +5549,7 @@ void TestTaffy() {
     // The grid tests build styles whose track lists live in an arena of their
     // own; a Style holds slices, not owned vectors.
     gGridArena = gpui::ArenaNew();
+    TestNegativeAvailableSpace();
     TestGridBlockItemHeightCache();
     TestGridUnaffectedTracksNotMeasured();
     TestGridFrRowUsesColumnWidth();

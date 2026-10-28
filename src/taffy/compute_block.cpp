@@ -942,8 +942,12 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
     LineBool ownMarginsCollapseWithChildren, bool isScrollContainer,
     BlockContext* blockCtx) {
     CalcResolver calc = tree->calc;
-    float containerInnerWidth = containerOuterWidth - resolvedContentBoxInset
-                                                          .HorizontalAxisSum();
+    // Padding or border wider than the box floors the content width at zero.
+    // A negative width would be passed down as a known size and available
+    // space.
+    float containerInnerWidth =
+        F32Max(0.0f, containerOuterWidth - resolvedContentBoxInset
+                                               .HorizontalAxisSum());
     Optf percentageResolutionHeight =
         MaybeSub(containerPercentageResolutionHeight, resolvedContentBoxInset
                                                           .VerticalAxisSum());
@@ -1003,7 +1007,8 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         if (floatDirection.IsSome()) {
             hasActiveFloats = true;
 
-            float availableWidth = containerInnerWidth - itemNonAutoXMarginSum;
+            float availableWidth =
+                F32Max(0.0f, containerInnerWidth - itemNonAutoXMarginSum);
             Optf itemKnownWidth = None();
             AvailableSpace itemAvailableWidth =
                 AvailableSpace::Definite(availableWidth);
@@ -1077,7 +1082,8 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         bool itemPushedBelowFloat = false;
 
         if (item.isInSameBfc) {
-            stretchWidth = containerInnerWidth - itemNonAutoXMarginSum;
+            stretchWidth =
+                F32Max(0.0f, containerInnerWidth - itemNonAutoXMarginSum);
             floatAvoidingPosition = {0.0f, 0.0f};
             floatAvoidingWidth = 0.0f;
         } else {
@@ -1102,7 +1108,8 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                     }
                     float width = MaybeClamp(
                         UnwrapOr(item.size.w,
-                                 F32Max(slot.stretchWidth, minAutoWidth)),
+                                 F32Max(F32Max(slot.stretchWidth, minAutoWidth),
+                                        0.0f)),
                         item.minSize.w, item.maxSize.w);
                     if (width <= slot.borderWidth + kFitTolerance) {
                         break;
@@ -1112,11 +1119,13 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                 itemPushedBelowFloat = slot.y > minY;
                 hasActiveFloats = slot.segmentId >= 0;
                 itemAvoidsFloats = true;
-                stretchWidth = F32Max(slot.stretchWidth, minAutoWidth);
+                stretchWidth =
+                    F32Max(F32Max(slot.stretchWidth, minAutoWidth), 0.0f);
                 floatAvoidingPosition = {slot.x, slot.y};
                 floatAvoidingWidth = slot.borderWidth;
             } else {
-                stretchWidth = containerInnerWidth - itemNonAutoXMarginSum;
+                stretchWidth =
+                    F32Max(0.0f, containerInnerWidth - itemNonAutoXMarginSum);
                 floatAvoidingPosition = {resolvedContentBoxInset.left, minY};
                 floatAvoidingWidth = containerInnerWidth;
             }

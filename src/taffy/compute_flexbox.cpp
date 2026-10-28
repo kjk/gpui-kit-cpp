@@ -342,20 +342,22 @@ SizeAvail DetermineAvailableSpace(SizeFOpt knownDimensions,
     // knownDimensions by the caller.
     SizeAvail out;
     if (IsSome(knownDimensions.w)) {
-        out.width = AvailableSpace::Definite(
-            knownDimensions.w - c.contentBoxInset.HorizontalAxisSum());
+        out.width = AvailableSpace::Definite(F32Max(
+            0.0f, knownDimensions.w - c.contentBoxInset.HorizontalAxisSum()));
     } else {
-        out.width = MaybeSub(
-            MaybeSub(outerAvailableSpace.width, c.margin.HorizontalAxisSum()),
-            c.contentBoxInset.HorizontalAxisSum());
+        out.width = MaybeMax(MaybeSub(MaybeSub(outerAvailableSpace.width,
+                                               c.margin.HorizontalAxisSum()),
+                                      c.contentBoxInset.HorizontalAxisSum()),
+                             0.0f);
     }
     if (IsSome(knownDimensions.h)) {
-        out.height = AvailableSpace::Definite(
-            knownDimensions.h - c.contentBoxInset.VerticalAxisSum());
+        out.height = AvailableSpace::Definite(F32Max(
+            0.0f, knownDimensions.h - c.contentBoxInset.VerticalAxisSum()));
     } else {
-        out.height = MaybeSub(
-            MaybeSub(outerAvailableSpace.height, c.margin.VerticalAxisSum()),
-            c.contentBoxInset.VerticalAxisSum());
+        out.height = MaybeMax(MaybeSub(MaybeSub(outerAvailableSpace.height,
+                                                c.margin.VerticalAxisSum()),
+                                       c.contentBoxInset.VerticalAxisSum()),
+                              0.0f);
     }
     return out;
 }
@@ -423,8 +425,9 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
             !child.marginIsAuto.CrossEnd(dir) &&
             !IsSome(Cross(childKnownDimensions, dir))) {
             SetCross(&childKnownDimensions, dir,
-                     MaybeSub(crossAxisAvailableSpace.IntoOption(),
-                              CrossAxisSum(child.margin, dir)));
+                     MaybeMax(MaybeSub(crossAxisAvailableSpace.IntoOption(),
+                                       CrossAxisSum(child.margin, dir)),
+                              0.0f));
             // A stretched cross size is definite when the container's cross
             // size is. https://www.w3.org/TR/css-flexbox-1/#definite-sizes
             childCrossSizeIsDefinite = !c.isWrap && c.hasDefiniteCrossSize &&
@@ -454,8 +457,10 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
         //    against the aspect ratio in GenerateAnonymousFlexItems, so using
         //    the main size covers this.
         Optf mainSize = Main(child.size, dir);
-        Optf mainStretch = MaybeSub(percentResolutionMainSize,
-                                    Some(MainAxisSum(child.margin, dir)));
+        Optf mainStretch =
+            MaybeMax(MaybeSub(percentResolutionMainSize,
+                              Some(MainAxisSum(child.margin, dir))),
+                     0.0f);
         // A flex-basis keyword replaces the main size. `content`, and a
         // keyword that cannot be resolved here, measure the item and ignore
         // the main size. A length or auto flex basis falls through to the
@@ -918,10 +923,12 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                         if (item.alignSelf
                                     .keyword == AlignItemsKeyword::Stretch &&
                             !IsSome(Cross(childKnownDimensions, dir))) {
-                            SetCross(
-                                &childKnownDimensions, dir,
-                                MaybeSub(crossAxisAvailableSpace.IntoOption(),
-                                         CrossAxisSum(item.margin, dir)));
+                            SetCross(&childKnownDimensions, dir,
+                                     MaybeMax(MaybeSub(crossAxisAvailableSpace
+                                                           .IntoOption(),
+                                                       CrossAxisSum(item.margin,
+                                                                    dir)),
+                                              0.0f));
                         }
 
                         float measuredMainSize = tree->MeasureChildSize(
@@ -1276,8 +1283,8 @@ void DetermineHypotheticalCrossSize(TaffyTree* tree, FlexLine* line,
         if (IsSome(innerCross)) {
             innerCross = Some(c.DividedCrossSpace(innerCross));
         }
-        Optf crossStretch =
-            MaybeSub(innerCross, Some(CrossAxisSum(child.margin, dir)));
+        Optf crossStretch = MaybeMax(
+            MaybeSub(innerCross, Some(CrossAxisSum(child.margin, dir))), 0.0f);
         SizingKeywordResolution crossKeyword =
             ResolveSizingKeyword(child.sizeStyle.Cross(dir), crossStretch,
                                  Cross(c.nodeInnerSize, dir));
@@ -1494,10 +1501,11 @@ void DetermineUsedCrossSize(TaffyTree* tree, Vec<FlexLine>* lines,
                 SizeFOpt maxSizeIgnoringAspectRatio =
                     MaybeAdd(cs.maxSize.MaybeResolve(c.nodeInnerSize, calc),
                              boxSizingAdjustment);
-                used =
-                    MaybeClamp(lineCrossSize - CrossAxisSum(child.margin, dir),
-                               Cross(child.minSize, dir),
-                               Cross(maxSizeIgnoringAspectRatio, dir));
+                used = MaybeClamp(
+                    F32Max(0.0f,
+                           lineCrossSize - CrossAxisSum(child.margin, dir)),
+                    Cross(child.minSize, dir),
+                    Cross(maxSizeIgnoringAspectRatio, dir));
             } else {
                 used = Cross(child.hypotheticalInnerSize, dir);
             }
