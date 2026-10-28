@@ -368,6 +368,48 @@ static void ACustomRowIsMeasured() {
     ArenaDelete(a);
 }
 
+static El* FindRole(El* e, AccessibilityRole role) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->accessibility.role == role) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* found = FindRole(c, role)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// command/state.rs: the empty list is padded only while the empty state
+// shows. A loading list with no rows leaves the container unpadded.
+static void LoadingEmptyListIsNotPadded() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = a;
+    Entity<CommandState> state = EntityNewState<CommandState>(&app);
+    CommandState* s = state.Get(&app);
+    utassert(s);
+    s->loading = true;
+    El* loading = Command::New(&cx, StrL("loading"), state)->IntoEl();
+    El* list = FindRole(loading, AccessibilityRole::ListBox);
+    utassert(list && list->style.pad.top == 0.f && list->first == nullptr);
+
+    s->loading = false;
+    El* empty = Command::New(&cx, StrL("empty"), state)->IntoEl();
+    El* emptyList = FindRole(empty, AccessibilityRole::ListBox);
+    utassert(emptyList && emptyList->style.pad.top == 4.f);
+    utassert(emptyList->first != nullptr);
+
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 // impl Styled for Command: `.refine_style(&self.options.style)` lands on the
 // palette's box after its popover surface and its border, so a caller's
 // `min_h` or `rounded` wins over what the palette chose. And
@@ -421,6 +463,7 @@ static void ACommandIsStyled() {
 
 void TestCommand() {
     TestSuite("command");
+    LoadingEmptyListIsNotPadded();
     ACommandIsStyled();
     TheQueryIsACaseInsensitiveSubstringOfTheLabelOrAKeyword();
     GroupsFlattenIntoHeadingsAndItems();

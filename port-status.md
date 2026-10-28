@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d2b473b6a6abc59e475beee904294fd46fa21041` (2026-10-24,
-hover_card: Apply trigger_style to the trigger container (#3653)).
-A hover card's trigger container takes a style of its own, so a full
-width or flex grow sizes the element the parent lays out and the card
-anchors to. The card's own style still belongs to its content.
+Processed through `75e146c8cad15980a7fcef6b16daad7b8d801d91` (2026-10-24,
+command: Pad the empty list only while the empty state shows (#3654)).
+An empty command list is padded only while its empty state is shown.
+A search still in flight leaves no blank strip under the query.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

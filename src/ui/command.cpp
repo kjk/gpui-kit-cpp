@@ -1009,11 +1009,10 @@ El* Command::IntoEl() {
     listBox->customUser = probe;
     if (s->rows.len == 0) {
         // The inset is the list's own; only the empty slot needs it from the
-        // box around it.
-        listBox->Pad(inset);
-        // While a search is in flight the list is empty because the answer
-        // has not arrived, which is not the same as no match.
+        // box around it, and only while that slot is shown. A search in
+        // flight leaves no blank strip under the query.
         if (!s->loading) {
+            listBox->Pad(inset);
             listBox->Child(empty ? empty : DefaultEmpty(cx));
         }
     } else {
