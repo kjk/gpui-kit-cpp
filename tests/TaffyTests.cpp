@@ -3493,6 +3493,57 @@ static void TestExplicitMinSkipsMinContent() {
     tree.Free();
 }
 
+// An absolutely positioned child with both sizes set is laid out once.
+// The extra min-content measurement is skipped.
+static taffy::LayoutOutput CountCallsMeasure(const taffy::LayoutInput& inputs,
+                                             TaffyNodeId node,
+                                             void* nodeContext,
+                                             const taffy::Style* style,
+                                             void* userData) {
+    (void)inputs;
+    (void)node;
+    (void)nodeContext;
+    (void)style;
+    if (userData) {
+        (*(int*)userData)++;
+    }
+    return taffy::LayoutOutput::FromOuterSize({1.0f, 1.0f});
+}
+
+static void TestAbsoluteKnownSizeSkipsMeasure() {
+    TestSuite("taffy absolute known size skips measure");
+
+    int calls = 0;
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style absStyle;
+    absStyle.position = taffy::Position::Absolute;
+    absStyle.size = SizeDim::FromLengths(40.0f, 20.0f);
+    TaffyNodeId abs = tree.NewLeaf(absStyle);
+    taffy::Style blockStyle;
+    blockStyle.display = taffy::Display::Block;
+    blockStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+    TaffyNodeId block = tree.NewWithChildren(blockStyle, &abs, 1);
+    tree.ComputeLayoutWithMeasure(block, SizeAvail::MaxContent(),
+                                  CountCallsMeasure, &calls);
+    utassert(calls == 1);
+    utassertnear(tree.GetLayout(abs).size.w, 40.0f);
+    utassertnear(tree.GetLayout(abs).size.h, 20.0f);
+    tree.Free();
+
+    calls = 0;
+    tree.Init();
+    abs = tree.NewLeaf(absStyle);
+    taffy::Style flexStyle;
+    flexStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+    TaffyNodeId flex = tree.NewWithChildren(flexStyle, &abs, 1);
+    tree.ComputeLayoutWithMeasure(flex, SizeAvail::MaxContent(),
+                                  CountCallsMeasure, &calls);
+    utassert(calls == 1);
+    utassertnear(tree.GetLayout(abs).size.w, 40.0f);
+    tree.Free();
+}
+
 static void TestLeafContentSizeEndPadding() {
     TestSuite("taffy leaf content size end padding");
     SizeF measured = {100.0f, 1000.0f};
@@ -3874,6 +3925,7 @@ void TestTaffy() {
     TestFlexBalanceLayout();
     TestBlockLayout();
     TestExplicitMinSkipsMinContent();
+    TestAbsoluteKnownSizeSkipsMeasure();
     TestLeafContentSizeEndPadding();
     TestOverflowPastScrollOrigin();
     TestContentSizeEndPadding();

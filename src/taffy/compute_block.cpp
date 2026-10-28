@@ -1463,11 +1463,18 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
                                 AvailableSpace::Definite(MaybeClamp(
                                     areaHeight, minSize.h, maxSize.h))};
 
-        SizeF measuredSize = tree->MeasureChildSizeBoth(
-            item.nodeId, knownDimensions, AsOptional(areaSize), childAvail,
-            SizingMode::ContentSize, LineBool::False());
-        SizeF finalSize = MaybeClamp(UnwrapOr(knownDimensions, measuredSize),
-                                     minSize, maxSize);
+        // Both axes already known: the content measurement would not
+        // change the used size.
+        SizeF finalSize;
+        if (IsSome(knownDimensions.w) && IsSome(knownDimensions.h)) {
+            finalSize = {knownDimensions.w, knownDimensions.h};
+        } else {
+            SizeF measuredSize = tree->MeasureChildSizeBoth(
+                item.nodeId, knownDimensions, AsOptional(areaSize), childAvail,
+                SizingMode::ContentSize, LineBool::False());
+            finalSize = UnwrapOr(knownDimensions, measuredSize);
+        }
+        finalSize = MaybeClamp(finalSize, minSize, maxSize);
 
         LayoutOutput layoutOutput = tree->PerformChildLayout(
             item.nodeId, AsOptional(finalSize), AsOptional(areaSize),
