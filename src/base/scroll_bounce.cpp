@@ -258,7 +258,11 @@ bool ScrollOverscroll::Packet(float dy, TouchPhase phase, float extent,
         }
         if (phase == TouchPhase::Ended || phase == TouchPhase::Cancelled) {
             bool moving = hasMoved && now - movedAt < kOverscrollStill;
-            physics.LetGo((moving ? velocity : 0) * kOverscrollCarry);
+            // Only an edge held past its end carries the finger's speed.
+            // Let go within the text, the momentum that follows scrolls
+            // it, and throws the edge only if it runs into it.
+            float speed = moving && Offset() != 0 ? velocity : 0;
+            physics.LetGo(speed * kOverscrollCarry);
             thrown = true;
             spent = Offset() != 0;
         }

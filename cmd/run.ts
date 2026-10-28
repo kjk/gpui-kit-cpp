@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f209867ef067a234b0bc43cbdc4d33101f3c2a86",
+  sha: "e692bcb79a8a2cac37b392b43577852088adbc32",
   date: "2026-10-23",
-  subject: "scroll: Ignore rounding in the part of a packet the text did not use (#3632)",
+  subject: "scroll: Throw the edge on release only when it is stretched (#3631)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

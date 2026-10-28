@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f209867ef067a234b0bc43cbdc4d33101f3c2a86` (2026-10-23,
-scroll: Ignore rounding in the part of a packet the text did not use (#3632)).
-A packet the text used except for an f32 residue no longer counts as
-hitting an edge. Up to 0.01 px of unused travel stays with the text, so
-a drag back off a far edge keeps scrolling instead of stretching.
+Processed through `e692bcb79a8a2cac37b392b43577852088adbc32` (2026-10-23,
+scroll: Throw the edge on release only when it is stretched (#3631)).
+Releasing a drag inside the text no longer throws the edge with the
+finger's speed. Momentum still scrolls the text, and the edge is thrown
+only when that momentum runs into it or the edge was already stretched.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

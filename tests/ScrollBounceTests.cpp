@@ -472,6 +472,28 @@ static void ADragBackOffAFarEdgeKeepsScrollingTheText() {
     }
 }
 
+static void AFlickAwayFromTheEdgesLeavesTheNextDragToTheText() {
+    ScrollOverscroll over;
+    OverRoom room{10000};
+    const double frame = 0.016;
+    double start = 0;
+    over.Packet(0, TouchPhase::Started, 400, start, OverUseRoom, &room);
+    for (int n = 1; n <= 6; n++) {
+        over.Packet(-70, TouchPhase::Moved, 400, start + frame * (double)n,
+                    OverUseRoom, &room);
+    }
+    double lifted = start + frame * 7;
+    over.Packet(0, TouchPhase::Ended, 400, lifted, OverUseRoom, &room);
+    over.Step(lifted + frame);
+    utassert(over.Offset() == 0.f);
+    float before = room.room;
+    double again = lifted + frame * 2;
+    over.Packet(0, TouchPhase::Started, 400, again, OverUseRoom, &room);
+    over.Packet(-50, TouchPhase::Moved, 400, again + frame, OverUseRoom, &room);
+    utassert(before - room.room == 50.f);
+    utassert(over.Offset() == 0.f);
+}
+
 static void AfterAPauseTheNextFlickThrowsTheEdgeAgain() {
     ScrollOverscroll over;
     OverRoom room{0};
@@ -547,6 +569,7 @@ void TestScrollBounce() {
     AStretchFollowsTheTravelAsNSScrollViewDoes();
     AStillReleaseReturnsAtFullSpeed();
     ADragBackOffAFarEdgeKeepsScrollingTheText();
+    AFlickAwayFromTheEdgesLeavesTheNextDragToTheText();
     AfterAPauseTheNextFlickThrowsTheEdgeAgain();
     MomentumBackIntoTheTextScrollsWhileTheEdgeReturns();
     ANewPreciseGestureTakesOverWithoutJumping();
