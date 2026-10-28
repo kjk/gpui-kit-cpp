@@ -842,10 +842,13 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
                                  IsScrollContainer(cs.overflow.y);
         // Layout and paint containment establish an independent formatting
         // context, so the child is not in its parent's BFC.
+        // A non-normal align-content establishes an independent formatting
+        // context, so the child is not in its parent's BFC.
         item.isInSameBfc =
             cs.IsBlock() && !cs.itemIsTable && !IsOutOfFlow(cs.position) &&
             isNotFloated && !isScrollContainer &&
-            !cs.contain.EstablishesIndependentFormattingContext();
+            !cs.contain.EstablishesIndependentFormattingContext() &&
+            cs.alignContent.keyword == AlignContentKeyword::Normal;
 
         item.sizeStyle = cs.size;
         item.size = MaybeAdd(
@@ -1211,6 +1214,9 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         float clearPos = UnwrapOr(clearThreshold, -INFINITY);
 
         LayoutOutput itemLayout;
+        // Floats inside a same-BFC child, relative to that child's border
+        // top. Added to the parent once the child's position is known.
+        float childFloatContribution = -INFINITY;
         if (item.isInSameBfc) {
             // A same-BFC child always has a defined width, from stretch
             // sizing.
@@ -1221,14 +1227,19 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             float insetRight = containerOuterWidth - width - insetLeft;
             float insets[2] = {insetLeft, insetRight};
 
-            BlockContext childBlockCtx = blockCtx->SubContext(
-                F32Max(yOffsetForAbsolute + itemNonAutoMargin.top, clearPos),
-                insets);
+            // The child's position is estimated from its top margin collapsed
+            // with the preceding margins. Its own collapsed-through margins
+            // are not known yet.
+            float estimatedY = committedYOffset +
+                               activeCollapsibleMarginSet
+                                   .CollapseWithMargin(itemNonAutoMargin.top)
+                                   .Resolve();
+            BlockContext childBlockCtx =
+                blockCtx->SubContext(F32Max(estimatedY, clearPos), insets);
             itemLayout = tree->ComputeBlockChildLayout(item.nodeId, inputs,
                                                        &childBlockCtx);
-            blockCtx->AddChildFloatedContentHeightContribution(
-                yOffsetForAbsolute + childBlockCtx
-                                         .FloatedContentHeightContribution());
+            childFloatContribution = childBlockCtx
+                                         .FloatedContentHeightContribution();
             bool childFlags[2];
             childBlockCtx.GetTopAdjoiningFloats(childFlags);
             blockCtx->MergeAdjoiningFloats(childFlags);
@@ -1344,6 +1355,14 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                     : floatAvoidingPosition.x + floatAvoidingWidth -
                           finalSize.w - extraRight + insetOffset.x,
                 floatAvoidingPosition.y + insetOffset.y};
+        }
+
+        // Floats in the child are placed relative to its border top, so the
+        // margin-collapsed position is what reaches the parent. A later
+        // align-content shift of that position keeps the floats.
+        if (item.isInSameBfc) {
+            blockCtx->AddChildFloatedContentHeightContribution(
+                location.y - insetOffset.y + childFloatContribution);
         }
 
         // justify-self aligns the margin box. It wins over legacy

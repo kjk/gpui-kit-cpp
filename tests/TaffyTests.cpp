@@ -8141,6 +8141,39 @@ static void TestAlignItemsNormal() {
     tree.Free();
 }
 
+// taffy 2a9aa3bd. align-content end still counts a nested float toward
+// the content height, so the stack is not dropped to the padding edge.
+static void TestBlockAlignContentNestedFloat() {
+    TestSuite("taffy block align-content nested float");
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style floated;
+    floated.display = taffy::Display::Block;
+    floated.floatMode = taffy::Float::Right;
+    floated.size = SizeDim::FromLengths(50.0f, 60.0f);
+    TaffyNodeId floatNode = tree.NewLeaf(floated);
+    taffy::Style host;
+    host.display = taffy::Display::Block;
+    host.size = SizeDim::FromLengths(200.0f, 20.0f);
+    TaffyNodeId hostNode = tree.NewWithChildren(host, &floatNode, 1);
+    taffy::Style next;
+    next.display = taffy::Display::Block;
+    next.overflow = {taffy::Overflow::Hidden, taffy::Overflow::Hidden};
+    next.size = SizeDim::FromLengths(100.0f, 20.0f);
+    TaffyNodeId nextNode = tree.NewLeaf(next);
+    TaffyNodeId kids[2] = {hostNode, nextNode};
+    taffy::Style root;
+    root.display = taffy::Display::Block;
+    root.alignContent = AlignContent{AlignContentKeyword::End};
+    root.size = SizeDim::FromLengths(200.0f, 200.0f);
+    TaffyNodeId node = tree.NewWithChildren(root, kids, 2);
+    tree.ComputeLayout(node, SizeAvail::MaxContent());
+    AssertBox(tree.GetLayout(hostNode), 0.0f, 140.0f, 200.0f, 20.0f);
+    AssertBox(tree.GetLayout(floatNode), 150.0f, 0.0f, 50.0f, 60.0f);
+    AssertBox(tree.GetLayout(nextNode), 0.0f, 160.0f, 100.0f, 20.0f);
+    tree.Free();
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -8152,6 +8185,7 @@ void TestTaffy() {
     TestResolveOrZeroRect();
     TestAlignment();
     TestAlignItemsNormal();
+    TestBlockAlignContentNestedFloat();
     TestFlexDirection();
     TestStyleDefaults();
     TestPositionStaticSticky();
