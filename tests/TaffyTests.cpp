@@ -5104,6 +5104,37 @@ static void CollapseThroughCase(const taffy::Style& mid, float rootH,
     tree.Free();
 }
 
+// Children of a parent at a fractional offset tile without 1px gaps.
+// rounding_fractial_input_8: padding 20.625 / 51.25, ten 13.9375 boxes.
+static void TestRoundingCumulativePosition() {
+    TestSuite("taffy rounding cumulative position");
+
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style item;
+    item.size = SizeDim::FromLengths(13.9375f, 13.9375f);
+    TaffyNodeId kids[10];
+    for (int i = 0; i < 10; i++) {
+        kids[i] = tree.NewLeaf(item);
+    }
+    taffy::Style column;
+    column.flexDirection = FlexDirection::Column;
+    TaffyNodeId col = tree.NewWithChildren(column, kids, 10);
+    taffy::Style rootStyle;
+    rootStyle.size = SizeDim::FromLengths(100.0f, 200.0f);
+    rootStyle.padding.left = LengthPercentage::Length(20.625f);
+    rootStyle.padding.top = LengthPercentage::Length(51.25f);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, &col, 1);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 200.0f);
+    AssertBox(tree.GetLayout(col), 21.0f, 51.0f, 14.0f, 149.0f);
+    for (int i = 0; i < 10; i++) {
+        AssertBox(tree.GetLayout(kids[i]), 0.0f, 14.0f * (float)i, 14.0f,
+                  14.0f);
+    }
+    tree.Free();
+}
+
 static void TestMarginCollapseThroughUsedHeight() {
     TestSuite("taffy margin collapse through used height");
 
@@ -5658,6 +5689,7 @@ void TestTaffy() {
     TestBlockPercentageBasis();
     TestBlockPercentPaddingUsesWidth();
     TestMarginCollapseThroughUsedHeight();
+    TestRoundingCumulativePosition();
     TestBlockScrollBaselines();
     TestContainment();
     TestFlexCrossDefinitePercentage();

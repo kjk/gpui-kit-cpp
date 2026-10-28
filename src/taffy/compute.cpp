@@ -126,11 +126,15 @@ static void RoundLayoutInner(TaffyTree* tree, NodeId nodeId, float cumulativeX,
     Layout unrounded = tree->GetUnroundedLayout(nodeId);
     Layout layout = unrounded;
 
+    // A child of a fractionally placed parent is rounded in the same
+    // cumulative space as its size, so siblings tile with no 1px gap.
+    float parentX = cumulativeX;
+    float parentY = cumulativeY;
     cumulativeX += unrounded.location.x;
     cumulativeY += unrounded.location.y;
 
-    layout.location.x = F32Round(unrounded.location.x);
-    layout.location.y = F32Round(unrounded.location.y);
+    layout.location.x = F32Round(cumulativeX) - F32Round(parentX);
+    layout.location.y = F32Round(cumulativeY) - F32Round(parentY);
     layout.size
         .w = F32Round(cumulativeX + unrounded.size.w) - F32Round(cumulativeX);
     layout.size
