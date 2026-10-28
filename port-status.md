@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `296be8460b9018fb4f08592aed6aedb702b15186` (2026-10-22,
-scroll: Scroll content past a scrollable's maximum size (#3613)).
-The vertical bounce wrap keeps the caller's size, minimum, maximum and
-flex. The scroll area fills that wrap and drops the maximum on the
-scrolled axis, so the rows past the maximum can be scrolled into view.
-A horizontal area is not wrapped; it is already the viewport.
+Processed through `07dc43d809757ef4df2c7cf00b13f5172eb430a5` (2026-10-22,
+theme: Let applications tune the scrollbar idle hold and fade-out (#3616)).
+`MotionTokens` carries the scrollbar's idle hold and fade-out, 2s and
+500ms. The base projection reads them, so a later mode or theme change
+keeps an application's values. The scrollable page and the animation
+guide were not copied.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "296be8460b9018fb4f08592aed6aedb702b15186",
+  sha: "07dc43d809757ef4df2c7cf00b13f5172eb430a5",
   date: "2026-10-22",
-  subject: "scroll: Scroll content past a scrollable's maximum size (#3613)",
+  subject: "theme: Let applications tune the scrollbar idle hold and fade-out (#3616)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

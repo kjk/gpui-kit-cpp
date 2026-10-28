@@ -169,6 +169,11 @@ struct MotionTokens {
     Spring springMove = {};
     float distanceShort = 0;
     float distanceMedium = 0;
+    // scrollbar_idle / scrollbar_exit. How long a bar stays visible after
+    // the last scroll, drag or hover, and how long it takes to fade once
+    // that hold ends. Milliseconds, like the durations above.
+    float scrollbarIdleMs = 2000;
+    float scrollbarExitMs = 500;
 
     // `impl Default for MotionTokens`, which is what every theme starts with
     // and what the components read today.

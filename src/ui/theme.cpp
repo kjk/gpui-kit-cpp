@@ -32,6 +32,8 @@ MotionTokens MotionTokens::Default() {
     m.springMove = Spring::New(280.f).WithDamping(0.85f).WithEpsilon(0.1f);
     m.distanceShort = 4.f;
     m.distanceMedium = 8.f;
+    m.scrollbarIdleMs = 2000.f;
+    m.scrollbarExitMs = 500.f;
     return m;
 }
 
@@ -1050,6 +1052,11 @@ void ThemeEndUpdate(ThemeUpdateScope* scope) {
             state->active[(int)modeAfter] = *t;
             state->active[(int)scope->modeBefore] = scope->colorsBefore;
         } else {
+            // One motion policy. A mode switch shows the other palette, and
+            // the scrollbar timing edited on the live theme comes with it.
+            Theme* dest = &state->active[(int)modeAfter];
+            dest->motion.scrollbarIdleMs = t->motion.scrollbarIdleMs;
+            dest->motion.scrollbarExitMs = t->motion.scrollbarExitMs;
             t->mode = scope->modeBefore;
         }
         state->mode = modeAfter;
@@ -1319,7 +1326,14 @@ void ThemeSyncBase(App* app) {
                                                  : BaseThemeAppearance::Light;
     base.tokens = ThemeSemanticTokens(ui, ThemeFontSize(app));
     base.scrollbar.mode = ScrollbarModeNow(app);
+    // scrollbar_motion: idle and exit come from the theme's motion tokens.
+    // Enter, expand and the entrance stay the projection's. Reduced motion
+    // has already zeroed the fade; the hold still follows the token.
     base.scrollbar.motion = ScrollbarMotionFor(base.scrollbar.mode);
+    base.scrollbar.motion.idle = ui.motion.scrollbarIdleMs / 1000.f;
+    if (!MotionReduced()) {
+        base.scrollbar.motion.exit = ui.motion.scrollbarExitMs / 1000.f;
+    }
     // plot_motion: the plot hover motion this design system projects onto
     // Base. A pointer chases the cursor across neighbouring data, so it has
     // to arrive well within the time the cursor takes to reach the next
