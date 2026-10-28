@@ -1630,6 +1630,45 @@ static void TestFlexboxLayout() {
             tree.Free();
         }
     }
+
+    {
+        // margin_auto_multiple_children_row_justify_center. Auto main
+        // margins absorb the free space, so justify-content does not
+        // shift the line again.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style autoRight;
+        autoRight.size = SizeDim::FromLengths(50.0f, 50.0f);
+        autoRight.margin.right = LengthPercentageAuto::Auto();
+        TaffyNodeId a = tree.NewLeaf(autoRight);
+        taffy::Style plain;
+        plain.size = SizeDim::FromLengths(50.0f, 50.0f);
+        TaffyNodeId b = tree.NewLeaf(plain);
+        taffy::Style rootStyle;
+        rootStyle.justifyContent =
+            OptJustifyContent(AlignContent{AlignContentKeyword::Center});
+        rootStyle.size = SizeDim::FromLengths(200.0f, 200.0f);
+        TaffyNodeId kids[] = {a, b};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(a).location.x, 0.0f);
+        utassertnear(tree.GetLayout(b).location.x, 150.0f);
+        tree.Free();
+
+        // margin_auto_left_justify_flex_end. The auto margin already
+        // places the item at the end.
+        tree.Init();
+        taffy::Style autoLeft;
+        autoLeft.size = SizeDim::FromLengths(50.0f, 50.0f);
+        autoLeft.margin.left = LengthPercentageAuto::Auto();
+        TaffyNodeId c = tree.NewLeaf(autoLeft);
+        rootStyle.justifyContent =
+            OptJustifyContent(AlignContent{AlignContentKeyword::FlexEnd});
+        root = tree.NewWithChildren(rootStyle, &c, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(c).location.x, 150.0f);
+        tree.Free();
+    }
 }
 
 // ─── flex-wrap: balance (1bade665) ───────────────────────────────────────

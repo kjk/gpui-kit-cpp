@@ -1474,6 +1474,9 @@ void DistributeRemainingFreeSpace(Vec<FlexLine>* lines,
                     }
                 }
             }
+            // Auto margins absorbed the free space, so justify-content
+            // has none left.
+            freeSpace = 0.0f;
         }
 
         // 2. Align the items along the main axis per justify-content.
