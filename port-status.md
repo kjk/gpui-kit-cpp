@@ -16,16 +16,18 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `089bcd5bf43b260cccb02a3cc8d03d39176661e2` (2026-10-28,
-message_scroller: Let the scrollbar reach the end of padded content (#3615)).
-The list's vertical padding is measured on the first and last rows,
-separate from row style, and a splice at the start remeasures the
-rows whose first-row inset changed. The scrollbar extent then reaches
-the padded end. Website docs are not ported. Scroll events and
-`secondary-` chords keep their C++ names. Scrollbar idle stays 2s and
-exit 500ms as constants. Links are always underlined. A textarea has
-no decoration extras, and linked text is gone. Image source, list and
-blockquote refinements, and selection stay.
+Processed through `48535387e2fb4647a5c7e2ac17813229da1cf9cc` (2026-10-28,
+input: Configure cursor blinking through the theme (#3713)).
+`CursorBlink` on both themes is the caret policy. The default still
+blinks every 500 ms with no idle timeout. A steady policy or an elapsed
+idle timeout leaves the caret visible with no timer, and a theme write
+that does not change the normalized policy leaves the phase alone. A
+mode switch keeps the policy, which is not in the color file. Website
+docs are not ported. Scroll events and `secondary-` chords keep their
+C++ names. Scrollbar idle stays 2s and exit 500ms as constants. Links
+are always underlined. A textarea has no decoration extras, and linked
+text is gone. Image source, list and blockquote refinements, and
+selection stay.
 The current update target is
 `18be16887bc2cb462f7b0a33c18bf6183344e7de`.
 

@@ -1036,6 +1036,9 @@ void ThemeEndUpdate(ThemeUpdateScope* scope) {
         return;
     }
     Theme* t = &state->active[(int)scope->modeBefore];
+    // cursor_blink is application-wide, not part of either palette. Capture
+    // it before a mode switch or a file reload replaces the slot.
+    CursorBlink blink = t->cursorBlink;
     ThemeTokensReconcile(t, &scope->colorsBefore, &scope->tokensBefore);
     ThemeMode modeAfter = t->mode;
     bool modeChanged = modeAfter != scope->modeBefore;
@@ -1072,6 +1075,8 @@ void ThemeEndUpdate(ThemeUpdateScope* scope) {
             state->mode = modeAfter;
         }
     }
+    state->active[0].cursorBlink = blink;
+    state->active[1].cursorBlink = blink;
     ThemeDidChange(app, state);
     AppRefreshWindows(app);
 }
@@ -1114,8 +1119,13 @@ const Theme& ThemeDark(const App* app) {
 void ThemeInstall(App* app, ThemeMode mode, const Theme& t) {
     AppThemeState* state = ThemeStateOf(app);
     if (state) {
+        // A palette install does not carry the caret policy. Keep the one
+        // the live mode already has, on both slots.
+        CursorBlink blink = state->active[(int)state->mode].cursorBlink;
         state->active[(int)mode] = t;
         state->active[(int)mode].mode = mode;
+        state->active[0].cursorBlink = blink;
+        state->active[1].cursorBlink = blink;
         ThemeDidChange(app, state);
     }
 }
@@ -1386,6 +1396,7 @@ void ThemeSyncBase(App* app) {
     base.resizable.activeHandle = ui.dragBorder;
     base.resizable.hasHandle = true;
     base.resizable.hasActiveHandle = true;
+    base.cursorBlink = ui.cursorBlink;
     BaseThemeSet(app, base);
     // `install_text_view_defaults`: rich text lives in Base and reads no
     // theme, so the themed palette and the themed syntax highlighter are

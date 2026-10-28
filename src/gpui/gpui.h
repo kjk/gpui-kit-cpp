@@ -7642,24 +7642,89 @@ void WindowCancelTimer(Window* win, int id);
 // ─── caret ────────────────────────────────────────────────────────────────
 //
 // Port of crates/base/src/input/base/blink_cursor.rs. A blinking caret is
-// state, not a function of the clock: something flips it on a 500 ms timer
-// and every repaint in between shows what the last flip decided. Sampling the
-// clock at paint time instead makes the caret invisible whenever nothing
-// happens to repaint during the lit half.
+// state, not a function of the clock: a one-shot delay flips it, and every
+// repaint in between shows what the last flip decided. Sampling the clock at
+// paint time instead makes the caret invisible whenever nothing happens to
+// repaint during the lit half.
+//
+// The phase length and the idle timeout come from CursorBlink on the theme.
+// The default still blinks every 500 ms and never goes idle. A steady policy,
+// or an idle timeout that has elapsed, leaves the caret visible with no timer.
 //
 // One per text field, the way Rust gives every InputState its own
 // Entity<BlinkCursor>. `handle` is an EntityId the owner keeps; the first
 // Start creates the entity behind it.
 
+// Application-wide caret visibility policy. Private fields in Rust; the
+// unset idle timeout is -1, and an interval of 0 is steady.
+struct CursorBlink {
+    int intervalMs = 500;
+    int idleTimeoutMs = -1;
+
+    static CursorBlink Steady() {
+        CursorBlink policy;
+        policy.intervalMs = 0;
+        policy.idleTimeoutMs = -1;
+        return policy;
+    }
+    static CursorBlink Blinking(int intervalMs) {
+        CursorBlink policy;
+        policy.intervalMs = intervalMs;
+        policy.idleTimeoutMs = -1;
+        return policy;
+    }
+    CursorBlink WithIdleTimeout(int timeoutMs) const {
+        CursorBlink policy = *this;
+        policy.idleTimeoutMs = timeoutMs;
+        return policy;
+    }
+    bool IsSteady() const { return intervalMs <= 0; }
+    bool Interval(int* out) const {
+        if (IsSteady()) {
+            return false;
+        }
+        if (out) {
+            *out = intervalMs;
+        }
+        return true;
+    }
+    // None when steady, so a timeout attached to a steady policy is ignored.
+    bool IdleTimeout(int* out) const {
+        if (IsSteady() || idleTimeoutMs < 0) {
+            return false;
+        }
+        if (out) {
+            *out = idleTimeoutMs;
+        }
+        return true;
+    }
+    // Every steady spelling collapses to one value, so switching among them
+    // is not a policy change.
+    CursorBlink Normalized() const { return IsSteady() ? Steady() : *this; }
+};
+
 struct BlinkCursor {
     bool visible = false;
     bool paused = false; // solid, because the user is typing
-    // The armed timer. Cancelling it is what Rust's epoch counter does.
+    // The armed one-shot. 0 is "no timer": steady, idle, or stopped.
     int timer = 0;
+    uint32_t epoch = 0;
+    uint32_t armedEpoch = 0;
+    // Milliseconds since the clock's epoch of the last focus, edit or cursor
+    // movement. Negative when the caret is not running.
+    int64_t lastActivityMs = -1;
+    CursorBlink policy = {};
+    App* app = nullptr;
+    Window* win = nullptr;
+    EntityId self = {};
 
-    static void OnFlip(BlinkCursor* self, Ctx* cx, const TickEvent* ev);
-    static void OnResume(BlinkCursor* self, Ctx* cx, const TickEvent* ev);
+    ~BlinkCursor();
+    static void OnTick(BlinkCursor* self, Ctx* cx, const TickEvent* ev);
 };
+
+// Theme updates that change the normalized policy. Focused carets adopt it
+// immediately; a caret that is not running only stores it.
+void BlinkRetarget(App* app, const CursorBlink& policy);
 
 // Every call restarts from a visible caret. Rust calls this from focus,
 // from on_focus, and when the window becomes active.

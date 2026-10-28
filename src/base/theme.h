@@ -73,6 +73,9 @@ struct Theme {
     ScrollbarTheme scrollbar = {};
     ResizableTheme resizable = {};
     PlotTheme plot = {};
+    // Application-wide caret policy. The default blinks every 500 ms and
+    // has no idle timeout. Styled themes project their own value here.
+    CursorBlink cursorBlink = {};
 
     // Theme::global clones the installed value or returns Default; global_mut
     // installs Default on first access and returns the application-owned one.

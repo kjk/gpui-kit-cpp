@@ -363,6 +363,32 @@ static void EditsAfterApplyingAConfigOfTheOtherModeSurvive() {
     AppGlobalClear(&app);
 }
 
+// theme/mod.rs cursor_blink_survives_theme_updates_and_mode_changes.
+// Theme::change reloads the registered file for the new mode. The caret
+// policy is not in that file, so both the styled theme and Base keep it.
+static void CursorBlinkSurvivesThemeUpdatesAndModeChanges() {
+    App app;
+    component::Init(&app);
+    ThemeUpdate(&app, [](Theme* t) { t->cursorBlink = CursorBlink::Steady(); });
+    const BaseTheme* base = BaseThemeGlobal(&app);
+    utassert(base);
+    utassert(base->cursorBlink.IsSteady());
+
+    ThemeUpdateScope scope;
+    Theme* edited = ThemeBeginUpdate(&app, true, &scope);
+    utassert(edited);
+    edited->mode = ThemeMode::Dark;
+    ThemeEndUpdate(&scope);
+
+    utassert(ThemeNow(&app).cursorBlink.IsSteady());
+    utassert(ThemeLight(&app).cursorBlink.IsSteady());
+    utassert(ThemeDark(&app).cursorBlink.IsSteady());
+    base = BaseThemeGlobal(&app);
+    utassert(base);
+    utassert(base->cursorBlink.IsSteady());
+    AppGlobalClear(&app);
+}
+
 void TestThemeSettings() {
     TestSuite("theme settings");
     TheFocusRingIsOnUntilAnApplicationTurnsItOff();
@@ -381,4 +407,5 @@ void TestThemeSettings() {
     SettingTheModeLoadsThatModesTheme();
     ApplyingAConfigKeepsItsGradients();
     EditsAfterApplyingAConfigOfTheOtherModeSurvive();
+    CursorBlinkSurvivesThemeUpdatesAndModeChanges();
 }

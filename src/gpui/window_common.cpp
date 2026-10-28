@@ -15,6 +15,7 @@
 #include "base/focus_trap.h"
 #include "base/global_state.h"
 #include "base/input.h"
+#include "base/theme.h"
 #include "base/scrollable_mask.h"
 #include "base/text_selection.h"
 #include "base/tooltip.h"
@@ -3767,33 +3768,53 @@ void WindowTouchCancel(Window* win) {
     TouchHostReset(win);
 }
 
-// blink_cursor.rs: INTERVAL and PAUSE_DELAY.
-static const int kBlinkIntervalMs = 500;
+// blink_cursor.rs: PAUSE_DELAY. The phase length is the theme policy.
 static const int kBlinkPauseMs = 300;
+
+struct BlinkRegistry {
+    Vec<EntityId> ids;
+};
 
 static BlinkCursor* BlinkGet(App* app, EntityId handle) {
     return (BlinkCursor*)EntityGet(app, handle);
 }
 
-void BlinkCursor::OnFlip(BlinkCursor* self, Ctx* cx, const TickEvent*) {
-    if (self->paused) {
-        return;
-    }
-    self->visible = !self->visible;
-    Notify(cx);
+static BlinkRegistry* BlinkRegistryOf(App* app) {
+    return AppGlobalGet<BlinkRegistry>(app);
 }
 
-void BlinkCursor::OnResume(BlinkCursor* self, Ctx* cx, const TickEvent*) {
-    // The pause is over and blinking picks up where Rust's `blink(epoch)`
-    // does: the pause held the caret lit, so the first blink after it is the
-    // dark half, and an idle field shows that it has gone idle.
-    self->paused = false;
-    self->visible = !self->visible;
-    Listener flip;
-    flip.SetFn(&BlinkCursor::OnFlip);
-    flip.view = cx->self;
-    self->timer = WindowSetInterval(cx->win, kBlinkIntervalMs, flip);
-    Notify(cx);
+static void BlinkRegister(App* app, EntityId id) {
+    BlinkRegistry* reg = AppGlobalEnsure<BlinkRegistry>(app);
+    if (!reg || !id.IsValid()) {
+        return;
+    }
+    for (int i = 0; i < reg->ids.len; i++) {
+        if (reg->ids[i] == id) {
+            return;
+        }
+    }
+    VecAppend(reg->ids, id);
+}
+
+static void BlinkUnregister(App* app, EntityId id) {
+    BlinkRegistry* reg = BlinkRegistryOf(app);
+    if (!reg) {
+        return;
+    }
+    for (int i = 0; i < reg->ids.len; i++) {
+        if (reg->ids[i] != id) {
+            continue;
+        }
+        reg->ids[i] = reg->ids[reg->ids.len - 1];
+        reg->ids.len--;
+        return;
+    }
+}
+
+BlinkCursor::~BlinkCursor() {
+    if (app) {
+        BlinkUnregister(app, self);
+    }
 }
 
 // The Listener a timer calls back through, bound to the cursor's own entity —
@@ -3806,34 +3827,193 @@ static Listener BlinkListener(EntityId handle, void (*fn)(T*, Ctx*, const E*)) {
     return l;
 }
 
+static CursorBlink BlinkPolicyNow(App* app) {
+    const BaseTheme* theme = BaseThemeGlobal(app);
+    if (!theme) {
+        return {};
+    }
+    return theme->cursorBlink.Normalized();
+}
+
+static bool BlinkPolicySame(CursorBlink a, CursorBlink b) {
+    a = a.Normalized();
+    b = b.Normalized();
+    return a.intervalMs == b.intervalMs && a.idleTimeoutMs == b.idleTimeoutMs;
+}
+
+// Whole milliseconds. Deadlines are this integer divided by 1000, so four
+// 100 ms timers land on the same instant as one 400 ms advance. Adding the
+// binary fraction 0.1 four times does not.
+static int64_t BlinkNowMs() {
+    double ms = TimeNow() * 1000.0;
+    if (ms <= 0) {
+        return 0;
+    }
+    return (int64_t)(ms + 0.5);
+}
+
+static int BlinkElapsedMs(const BlinkCursor* b) {
+    if (!b || b->lastActivityMs < 0) {
+        return 0;
+    }
+    int64_t delta = BlinkNowMs() - b->lastActivityMs;
+    if (delta <= 0) {
+        return 0;
+    }
+    if (delta > 2000000000) {
+        return 2000000000;
+    }
+    return (int)delta;
+}
+
+static void BlinkSetVisible(BlinkCursor* b, bool visible) {
+    if (!b || b->visible == visible) {
+        return;
+    }
+    b->visible = visible;
+    if (b->win) {
+        AppInvalidate(b->win);
+    }
+}
+
+static void BlinkCancelTimer(BlinkCursor* b) {
+    if (b->timer && b->win) {
+        WindowCancelTimer(b->win, b->timer);
+    }
+    b->timer = 0;
+}
+
+// blink_cursor.rs blink_delay. False is None: steady, not running, or idle.
+static bool BlinkDelay(const BlinkCursor* b, int* outMs) {
+    if (!b || b->lastActivityMs < 0) {
+        return false;
+    }
+    int interval = 0;
+    if (!b->policy.Interval(&interval)) {
+        return false;
+    }
+    int elapsed = BlinkElapsedMs(b);
+    int delay = b->paused && elapsed < kBlinkPauseMs ? kBlinkPauseMs - elapsed
+                                                     : interval;
+    int idle = 0;
+    if (b->policy.IdleTimeout(&idle)) {
+        if (elapsed >= idle) {
+            return false;
+        }
+        int remain = idle - elapsed;
+        if (remain < delay) {
+            delay = remain;
+        }
+    }
+    if (delay < 1) {
+        delay = 1;
+    }
+    if (outMs) {
+        *outMs = delay;
+    }
+    return true;
+}
+
+static void BlinkSchedule(BlinkCursor* b);
+
+void BlinkCursor::OnTick(BlinkCursor* self, Ctx* cx, const TickEvent*) {
+    self->timer = 0;
+    if (self->epoch != self->armedEpoch) {
+        return;
+    }
+    int delay = 0;
+    if (BlinkDelay(self, &delay)) {
+        // The pause held the caret lit, so the first phase after it is dark.
+        self->paused = false;
+        BlinkSetVisible(self, !self->visible);
+    }
+    BlinkSchedule(self);
+    (void)cx;
+}
+
+static void BlinkSchedule(BlinkCursor* b) {
+    BlinkCancelTimer(b);
+    int delay = 0;
+    if (!BlinkDelay(b, &delay)) {
+        // Steady, or the idle timeout has elapsed: the caret stays visible
+        // and nothing is armed. "No timer" is not "hidden".
+        b->paused = false;
+        BlinkSetVisible(b, true);
+        return;
+    }
+    if (!b->win) {
+        return;
+    }
+    b->armedEpoch = b->epoch;
+    b->timer = WindowSetTimeout(b->win, delay,
+                                BlinkListener(b->self, &BlinkCursor::OnTick));
+    // WindowSetTimeout deadlines chain the binary fraction. Pin this one to
+    // the integer millisecond counted from the last activity.
+    int64_t fireAt = b->lastActivityMs + BlinkElapsedMs(b) + delay;
+    double due = (double)fireAt / 1000.0;
+    for (int i = 0; i < b->win->timers.len; i++) {
+        if (b->win->timers[i].id == b->timer) {
+            b->win->timers[i].dueAt = due;
+            break;
+        }
+    }
+}
+
+void BlinkRetarget(App* app, const CursorBlink& policy) {
+    BlinkRegistry* reg = BlinkRegistryOf(app);
+    if (!reg) {
+        return;
+    }
+    CursorBlink next = policy.Normalized();
+    for (int i = 0; i < reg->ids.len; i++) {
+        BlinkCursor* b = BlinkGet(app, reg->ids[i]);
+        if (!b || BlinkPolicySame(b->policy, next)) {
+            continue;
+        }
+        b->policy = next;
+        // A caret that is not running stores the policy and waits for start.
+        if (b->lastActivityMs < 0) {
+            continue;
+        }
+        b->epoch++;
+        BlinkSetVisible(b, true);
+        BlinkSchedule(b);
+    }
+}
+
 void BlinkStart(App* app, Window* win, EntityId* handle) {
     if (!app || !win || !handle) {
         return;
     }
     if (!handle->IsValid()) {
-        // cx.new(|_| BlinkCursor::new())
-        *handle = EntityNewRaw(app, new BlinkCursor(), nullptr,
-                               &EntityDropT<BlinkCursor>);
+        // cx.new(|cx| BlinkCursor::new(cx))
+        BlinkCursor* created = new BlinkCursor();
+        *handle =
+            EntityNewRaw(app, created, nullptr, &EntityDropT<BlinkCursor>);
+        if (!handle->IsValid()) {
+            delete created;
+            return;
+        }
+        created->app = app;
+        created->self = *handle;
+        created->win = win;
+        created->policy = BlinkPolicyNow(app);
+        BlinkRegister(app, *handle);
     }
     BlinkCursor* b = BlinkGet(app, *handle);
     if (!b) {
         return;
     }
     // blink_cursor.rs start: a focus calls this twice (InputState::focus,
-    // then on_focus) and window activation calls it too. Resuming the
-    // running cycle used to step the caret that had just appeared, so every
-    // start drops the pending timer and begins again from a visible caret.
-    // Rust sets visible false and lets blink() toggle it; the caret is lit
-    // either way, and the next flip is a full interval later.
-    if (b->timer) {
-        WindowCancelTimer(win, b->timer);
-        b->timer = 0;
-    }
+    // then on_focus) and window activation calls it too. Every start drops
+    // the pending timer and begins again from a visible caret, so the second
+    // call does not hide the one that just appeared.
+    b->win = win;
+    b->epoch++;
+    b->lastActivityMs = BlinkNowMs();
     b->paused = false;
-    b->visible = true;
-    b->timer = WindowSetInterval(win, kBlinkIntervalMs,
-                                 BlinkListener(*handle, &BlinkCursor::OnFlip));
-    AppInvalidate(win);
+    BlinkSetVisible(b, true);
+    BlinkSchedule(b);
 }
 
 void BlinkStop(App* app, Window* win, EntityId* handle) {
@@ -3844,11 +4024,12 @@ void BlinkStop(App* app, Window* win, EntityId* handle) {
     if (!b) {
         return;
     }
-    WindowCancelTimer(win, b->timer);
-    b->timer = 0;
+    b->win = win;
+    b->epoch++;
+    b->lastActivityMs = -1;
     b->paused = false;
-    b->visible = false;
-    AppInvalidate(win);
+    BlinkCancelTimer(b);
+    BlinkSetVisible(b, false);
 }
 
 void BlinkPause(App* app, Window* win, EntityId* handle) {
@@ -3856,24 +4037,22 @@ void BlinkPause(App* app, Window* win, EntityId* handle) {
         return;
     }
     BlinkCursor* b = BlinkGet(app, *handle);
-    if (!b || !b->timer) {
-        return; // not blinking, nothing to keep solid
+    // Not running: a pause must not create a timer or a caret.
+    if (!b || b->lastActivityMs < 0) {
+        return;
     }
-    WindowCancelTimer(win, b->timer);
+    b->win = win;
+    b->epoch++;
+    b->lastActivityMs = BlinkNowMs();
     b->paused = true;
-    b->visible = true;
-    b->timer = WindowSetTimeout(win, kBlinkPauseMs,
-                                BlinkListener(*handle, &BlinkCursor::OnResume));
-    AppInvalidate(win);
+    BlinkSetVisible(b, true);
+    BlinkSchedule(b);
 }
 
 bool BlinkVisible(App* app, EntityId handle) {
     BlinkCursor* b = BlinkGet(app, handle);
-    if (!b || !b->timer) {
-        return false;
-    }
-    // Paused means solid, not hidden.
-    return b->paused || b->visible;
+    // Stopped is hidden. Steady and idle stay visible with no timer.
+    return b && b->visible;
 }
 
 // How long an animating window waits between frames: one 60Hz frame, whether

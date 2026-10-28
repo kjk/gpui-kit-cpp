@@ -21,8 +21,18 @@ const BaseTheme* BaseThemeGlobal(const App* app) {
 
 void BaseThemeSet(App* app, const BaseTheme& theme) {
     BaseTheme* current = BaseThemeGlobal(app);
-    if (current) {
-        *current = theme;
+    if (!current) {
+        return;
+    }
+    CursorBlink before = current->cursorBlink;
+    *current = theme;
+    // An unrelated theme write keeps the phase. Only a normalized policy
+    // change reaches carets that are already running.
+    CursorBlink after = current->cursorBlink.Normalized();
+    CursorBlink was = before.Normalized();
+    if (was.intervalMs != after.intervalMs ||
+        was.idleTimeoutMs != after.idleTimeoutMs) {
+        BlinkRetarget(app, after);
     }
 }
 

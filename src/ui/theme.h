@@ -433,6 +433,11 @@ struct Theme {
     // motion policy. Read it as a field, the way every other setting here is
     // read; Rust needs the accessor only because its palette is nested.
     MotionTokens motion = MotionTokens::Default();
+    // Theme::cursor_blink. Not stored in the color file: a mode switch and
+    // a palette reload keep whatever the application already set. The
+    // default blinks every 500 ms with no idle timeout, and ThemeSyncBase
+    // copies it onto the Base theme.
+    CursorBlink cursorBlink = {};
     // The renderable half of the palette, for the tokens a theme file may
     // spell as a gradient. Every one of these carries the flat colour of the
     // same name, so reading a token instead of a field is never wrong.

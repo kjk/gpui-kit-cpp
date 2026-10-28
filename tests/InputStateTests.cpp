@@ -4080,6 +4080,7 @@ struct BlinkFixture {
     App* app = nullptr;
     Window* win = nullptr;
     EntityId handle = {};
+    EntityId other = {};
 
     BlinkFixture() {
         app = TestAppNew();
@@ -4087,21 +4088,62 @@ struct BlinkFixture {
     }
     ~BlinkFixture() { TestAppFree(app); }
     bool Visible() const { return BlinkVisible(app, handle); }
+    bool VisibleOther() const { return BlinkVisible(app, other); }
+    BlinkCursor* Cursor() const {
+        return handle.IsValid() ? (BlinkCursor*)EntityGet(app, handle)
+                                : nullptr;
+    }
+    bool Armed() const {
+        BlinkCursor* b = Cursor();
+        return b && b->timer != 0;
+    }
     void Start() {
         BlinkStart(app, win, &handle);
+        TestRunUntilParked(app);
+    }
+    void StartOther() {
+        BlinkStart(app, win, &other);
         TestRunUntilParked(app);
     }
     void Pause() {
         BlinkPause(app, win, &handle);
         TestRunUntilParked(app);
     }
+    void PauseOther() {
+        BlinkPause(app, win, &other);
+        TestRunUntilParked(app);
+    }
     void Stop() {
         BlinkStop(app, win, &handle);
+        TestRunUntilParked(app);
+    }
+    void StopOther() {
+        BlinkStop(app, win, &other);
         TestRunUntilParked(app);
     }
     void Advance(double ms) {
         TestAdvanceClock(app, ms);
         TestRunUntilParked(app);
+    }
+    void SetPolicy(CursorBlink policy) {
+        BaseTheme theme = base_theme::Theme::Global(app);
+        theme.cursorBlink = policy;
+        BaseThemeSet(app, theme);
+        TestRunUntilParked(app);
+    }
+    void SetAppearance(BaseThemeAppearance appearance) {
+        BaseTheme theme = base_theme::Theme::Global(app);
+        theme.appearance = appearance;
+        BaseThemeSet(app, theme);
+        TestRunUntilParked(app);
+    }
+    // assert_idle: three seconds produce no further blink and no repaint.
+    void AssertIdle(bool visible) {
+        uint64_t frames = win->frameSeq;
+        Advance(3000);
+        utassert(Visible() == visible);
+        utassert(win->frameSeq == frames);
+        utassert(!Armed());
     }
 };
 
@@ -4204,6 +4246,234 @@ static void StartingABlinkingCursorKeepsItVisible() {
     utassert(f.Visible());
     f.Advance(1);
     utassert(!f.Visible());
+}
+
+// blink_cursor.rs test_cursor_blink_builder
+static void CursorBlinkBuilder() {
+    CursorBlink policy = CursorBlink::Blinking(500).WithIdleTimeout(5000);
+    int interval = 0;
+    int idle = 0;
+    utassert(policy.Interval(&interval) && interval == 500);
+    utassert(policy.IdleTimeout(&idle) && idle == 5000);
+    utassert(!policy.IsSteady());
+    CursorBlink fallback = {};
+    utassert(fallback.Interval(&interval) && interval == 500);
+    utassert(!fallback.IdleTimeout(&idle));
+    utassert(fallback.intervalMs == CursorBlink::Blinking(500).intervalMs);
+
+    CursorBlink steady = CursorBlink::Blinking(0).WithIdleTimeout(500);
+    utassert(steady.IsSteady());
+    utassert(!steady.Interval(&interval));
+    utassert(!steady.IdleTimeout(&idle));
+    CursorBlink collapsed = steady.Normalized();
+    utassert(collapsed.IsSteady());
+    utassert(collapsed.idleTimeoutMs < 0);
+    utassert(collapsed.intervalMs == CursorBlink::Steady().intervalMs);
+}
+
+// blink_cursor.rs idle_timeout_stops_between_blinks_and_activity_restarts_it
+static void IdleTimeoutStopsBetweenBlinksAndActivityRestartsIt() {
+    BlinkFixture f;
+    f.SetPolicy(CursorBlink::Blinking(500).WithIdleTimeout(750));
+    f.Start();
+    f.Advance(kIntervalMs);
+    utassert(!f.Visible());
+    f.Advance(249);
+    utassert(!f.Visible());
+    f.Advance(1);
+    f.AssertIdle(true);
+
+    f.Pause();
+    f.Advance(kPauseDelayMs);
+    utassert(!f.Visible());
+    f.Advance(450);
+    f.AssertIdle(true);
+
+    f.Start();
+    f.Advance(kIntervalMs);
+    utassert(!f.Visible());
+}
+
+// blink_cursor.rs idle_timeout_includes_the_typing_pause
+static void IdleTimeoutIncludesTheTypingPause() {
+    BlinkFixture f;
+    f.SetPolicy(CursorBlink::Blinking(500).WithIdleTimeout(200));
+    f.Start();
+    f.Advance(100);
+    f.Pause();
+    f.Advance(199);
+    utassert(f.Visible());
+    utassert(f.Armed());
+    f.Advance(1);
+    f.AssertIdle(true);
+}
+
+// blink_cursor.rs steady_and_zero_durations_never_schedule_blinks
+static void SteadyAndZeroDurationsNeverScheduleBlinks() {
+    CursorBlink policies[3] = {
+        CursorBlink::Steady(),
+        CursorBlink::Blinking(0),
+        CursorBlink::Blinking((int)kIntervalMs).WithIdleTimeout(0),
+    };
+    for (int i = 0; i < 3; i++) {
+        BlinkFixture f;
+        f.SetPolicy(policies[i]);
+        f.Start();
+        f.AssertIdle(true);
+        f.Pause();
+        f.AssertIdle(true);
+    }
+}
+
+// blink_cursor.rs policy_changes_resume_idle_cursors_without_resetting_activity
+static void PolicyChangesResumeIdleCursorsWithoutResettingActivity() {
+    BlinkFixture f;
+    f.Start();
+    f.Advance(kIntervalMs);
+    utassert(!f.Visible());
+
+    f.SetPolicy(CursorBlink::Steady());
+    utassert(f.Visible());
+    f.Advance(1000);
+
+    f.SetPolicy(CursorBlink::Blinking(100).WithIdleTimeout(1000));
+    utassert(!f.Armed());
+
+    f.SetPolicy(CursorBlink::Blinking(100).WithIdleTimeout(2000));
+    f.Advance(100);
+    utassert(!f.Visible());
+    f.Advance(400);
+    utassert(f.Visible());
+    utassert(!f.Armed());
+
+    f.SetPolicy(CursorBlink::Blinking(100));
+    f.Advance(100);
+    utassert(!f.Visible());
+}
+
+// blink_cursor.rs
+// changing_the_interval_restarts_the_visible_phase_and_cancels_old_blinks
+static void ChangingTheIntervalRestartsTheVisiblePhaseAndCancelsOldBlinks() {
+    BlinkFixture f;
+    f.Start();
+    f.Advance(250);
+
+    f.SetPolicy(CursorBlink::Blinking(1000));
+    f.Advance(250);
+    utassert(f.Visible());
+    f.Advance(749);
+    utassert(f.Visible());
+    f.Advance(1);
+    utassert(!f.Visible());
+
+    f.SetPolicy(CursorBlink::Steady());
+    f.AssertIdle(true);
+}
+
+// blink_cursor.rs unchanged_policy_preserves_the_phase_and_idle_deadline
+static void UnchangedPolicyPreservesThePhaseAndIdleDeadline() {
+    BlinkFixture f;
+    CursorBlink policy = CursorBlink::Blinking(500).WithIdleTimeout(750);
+    f.SetPolicy(policy);
+    f.Start();
+    f.Advance(kIntervalMs);
+    utassert(!f.Visible());
+
+    f.SetPolicy(policy);
+    utassert(!f.Visible());
+    f.Advance(249);
+    utassert(!f.Visible());
+    f.Advance(1);
+    f.AssertIdle(true);
+}
+
+// blink_cursor.rs
+// unrelated_theme_changes_preserve_the_blink_phase_and_idle_deadline
+static void UnrelatedThemeChangesPreserveTheBlinkPhaseAndIdleDeadline() {
+    BlinkFixture f;
+    f.SetPolicy(CursorBlink::Blinking(500).WithIdleTimeout(750));
+    f.Start();
+    f.Advance(kIntervalMs);
+    utassert(!f.Visible());
+
+    f.SetAppearance(BaseThemeAppearance::Dark);
+    utassert(!f.Visible());
+    f.Advance(249);
+    utassert(!f.Visible());
+    f.Advance(1);
+    f.AssertIdle(true);
+}
+
+// blink_cursor.rs policy_changes_preserve_the_remaining_typing_pause
+static void PolicyChangesPreserveTheRemainingTypingPause() {
+    BlinkFixture f;
+    f.Start();
+    f.Pause();
+    f.Advance(100);
+
+    f.SetPolicy(CursorBlink::Blinking(200).WithIdleTimeout(400));
+    f.Advance(199);
+    utassert(f.Visible());
+    f.Advance(1);
+    utassert(!f.Visible());
+    f.Advance(100);
+    f.AssertIdle(true);
+}
+
+// blink_cursor.rs steady_policy_cancels_the_typing_pause
+static void SteadyPolicyCancelsTheTypingPause() {
+    BlinkFixture f;
+    f.Start();
+    f.Pause();
+    f.Advance(100);
+    f.SetPolicy(CursorBlink::Steady());
+    f.AssertIdle(true);
+}
+
+// blink_cursor.rs unfocused_cursors_ignore_policy_changes
+static void UnfocusedCursorsIgnorePolicyChanges() {
+    BlinkFixture f;
+    f.StartOther();
+    f.PauseOther();
+    f.StopOther();
+
+    f.SetPolicy(CursorBlink::Steady());
+    f.AssertIdle(false);
+    uint64_t frames = f.win->frameSeq;
+    f.Advance(3000);
+    utassert(!f.VisibleOther());
+    utassert(f.win->frameSeq == frames);
+
+    f.SetPolicy(CursorBlink::Blinking(500));
+    frames = f.win->frameSeq;
+    f.Advance(3000);
+    utassert(!f.Visible());
+    utassert(!f.VisibleOther());
+    utassert(f.win->frameSeq == frames);
+
+    f.StartOther();
+    f.Advance(kIntervalMs);
+    utassert(!f.VisibleOther());
+}
+
+// blink_cursor.rs shortening_the_timeout_stops_a_hidden_cursor_immediately
+static void ShorteningTheTimeoutStopsAHiddenCursorImmediately() {
+    BlinkFixture f;
+    f.Start();
+    f.Advance(kIntervalMs);
+    utassert(!f.Visible());
+
+    f.SetPolicy(CursorBlink::Blinking(500).WithIdleTimeout(400));
+    f.AssertIdle(true);
+}
+
+// blink_cursor.rs initialization_preserves_an_application_policy
+static void InitializationPreservesAnApplicationPolicy() {
+    BlinkFixture f;
+    f.SetPolicy(CursorBlink::Steady());
+    BaseInit(f.app);
+    f.Start();
+    f.AssertIdle(true);
 }
 
 // kit/tests/input_focus.rs (#3253): each input is one tab stop, so Tab and
@@ -12246,6 +12516,19 @@ void TestInputState() {
     StoppingAPausedCursorEndsTheBlinkLoop();
     StoppingABlinkingCursorEndsTheBlinkLoop();
     StartingABlinkingCursorKeepsItVisible();
+    CursorBlinkBuilder();
+    IdleTimeoutStopsBetweenBlinksAndActivityRestartsIt();
+    IdleTimeoutIncludesTheTypingPause();
+    SteadyAndZeroDurationsNeverScheduleBlinks();
+    PolicyChangesResumeIdleCursorsWithoutResettingActivity();
+    ChangingTheIntervalRestartsTheVisiblePhaseAndCancelsOldBlinks();
+    UnchangedPolicyPreservesThePhaseAndIdleDeadline();
+    UnrelatedThemeChangesPreserveTheBlinkPhaseAndIdleDeadline();
+    PolicyChangesPreserveTheRemainingTypingPause();
+    SteadyPolicyCancelsTheTypingPause();
+    UnfocusedCursorsIgnorePolicyChanges();
+    ShorteningTheTimeoutStopsAHiddenCursorImmediately();
+    InitializationPreservesAnApplicationPolicy();
     InlineTokenContentValidatesRanges();
     InlineTokensRespectModeAndContent();
     InlineTokenWrapAndSizeRefresh();

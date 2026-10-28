@@ -18,6 +18,9 @@ namespace input_syntax {
 struct Tree {};
 } // namespace input_syntax
 
+// input/mod.rs re-exports Base's caret policy.
+using CursorBlink = ::gpui::CursorBlink;
+
 // crates/ui/src/input/language_config.rs::init: text/json/python editing
 // defaults. Unknown languages keep LanguageConfig::Default().
 void InputLanguageInit(App* app);
