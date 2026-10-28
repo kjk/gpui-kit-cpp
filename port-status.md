@@ -16,19 +16,19 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c8917c3661ed1090870f403c312b39e0d8a62e0b` (2026-10-27,
-text: Render reference-style Markdown images (#3683)). Definitions are
-collected before inlines are folded, so a reference may precede its
-definition, and the first one wins, including a definition nested in a
-blockquote. The image keeps that destination and title, the alt, and
-the reference's source span. A reference with no definition stays the
-source text. Scroll events and
+Processed through `9d5cd7c41041c9bb500fc3e76f5a71677fcb75bc` (2026-10-28,
+text: Fix application shutdown deadlock during layout cleanup (#3697)).
+Rust keeps the foreground executor on the retained-layout cleanup
+global so closing its channel cannot wake a task whose scheduler is
+already gone. This tree has no channel-backed sweep task, so quit
+does not take that path. The native_shutdown harness is a kit process
+test and is not ported. Scroll events and
 `secondary-` chords keep their C++ names. Scrollbar idle stays 2s and
 exit 500ms as constants. Links are always underlined. A textarea has
 no decoration extras, and linked text is gone. Image source, list and
 blockquote refinements, and selection stay.
 The current update target is
-`c8917c3661ed1090870f403c312b39e0d8a62e0b`.
+`18be16887bc2cb462f7b0a33c18bf6183344e7de`.
 
 ## Known gaps vs Rust
 

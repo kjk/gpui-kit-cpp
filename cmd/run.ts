@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c8917c3661ed1090870f403c312b39e0d8a62e0b",
-  date: "2026-10-27",
-  subject: "text: Render reference-style Markdown images (#3683)",
+  sha: "9d5cd7c41041c9bb500fc3e76f5a71677fcb75bc",
+  date: "2026-10-28",
+  subject: "text: Fix application shutdown deadlock during layout cleanup (#3697)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",
