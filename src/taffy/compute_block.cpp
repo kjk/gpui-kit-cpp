@@ -874,15 +874,25 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
 
 // In the block axis, min-content, max-content and fit-content are the content
 // size an auto height already resolves to. Only stretch is a definite height.
+//
+// A block-axis margin is subtracted unless `marginsTreatedAsZero` says it
+// could collapse through that edge of the containing block: no border or
+// padding on that side, and the box does not establish a new BFC. A float's
+// margins never collapse, so the caller passes false for both.
+// https://github.com/w3c/csswg-drafts/issues/11044#issuecomment-2599101601
 Optf ResolveStretchHeight(Dimension heightStyle, Optf containerInnerHeight,
-                          float itemYMarginSum, CalcResolver calc) {
-    SizingKeywordResolution resolved = ResolveSizingKeyword(
-        heightStyle, MaybeSub(containerInnerHeight, Some(itemYMarginSum)),
-        containerInnerHeight, calc);
-    if (resolved.isSome && resolved.kind == SizingKeywordKind::Exact) {
-        return Some(resolved.exact);
+                          RectF itemMargin, LineBool marginsTreatedAsZero) {
+    if (!heightStyle.IsStretch() || !IsSome(containerInnerHeight)) {
+        return None();
     }
-    return None();
+    float height = containerInnerHeight;
+    if (!marginsTreatedAsZero.start) {
+        height -= itemMargin.top;
+    }
+    if (!marginsTreatedAsZero.end) {
+        height -= itemMargin.bottom;
+    }
+    return Some(height);
 }
 
 // ─── determine_content_based_container_width ─────────────────────────────
@@ -957,7 +967,8 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
     Optf containerPercentageResolutionHeight, RectF contentBoxInset,
     RectF resolvedContentBoxInset, RectF resolvedBorder, TextAlign textAlign,
     AlignItems justifyItems, Direction direction,
-    LineBool ownMarginsCollapseWithChildren, bool isScrollContainer,
+    LineBool ownMarginsCollapseWithChildren,
+    LineBool childrenMarginsAdjoinOwnEdges, bool isScrollContainer,
     BlockContext* blockCtx) {
     CalcResolver calc = tree->calc;
     // Padding or border wider than the box floors the content width at zero.
@@ -1043,7 +1054,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
             Optf itemKnownHeight = ResolveStretchHeight(
                 item.sizeStyle.height, percentageResolutionHeight,
-                itemNonAutoMargin.VerticalAxisSum(), calc);
+                itemNonAutoMargin, LineBool::False());
             LayoutOutput itemLayout = tree->PerformChildLayout(
                 item.nodeId, {itemKnownWidth, itemKnownHeight}, parentSize,
                 {itemAvailableWidth, AvailableSpace::MaxContent()},
@@ -1187,7 +1198,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
             Optf keywordHeight = ResolveStretchHeight(
                 item.sizeStyle.height, percentageResolutionHeight,
-                itemNonAutoMargin.VerticalAxisSum(), calc);
+                itemNonAutoMargin, childrenMarginsAdjoinOwnEdges);
             SizeFOpt sized = item.size;
             sized.w = Some(
                 MaybeClamp(UnwrapOr(Or(sized.w, keywordWidth), stretchWidth),
@@ -1621,13 +1632,20 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         style.alignContent.keyword != AlignContentKeyword::Normal ||
         style.contain.EstablishesIndependentFormattingContext();
 
-    LineBool ownMarginsCollapseWithChildren = {
+    // A child's margin can collapse through an edge that has no border or
+    // padding, on a box that does not establish a new BFC. A definite height
+    // stops the bottom margin collapsing with this box's own margin, but it
+    // still adjoins the edge for stretch.
+    LineBool childrenMarginsAdjoinOwnEdges = {
         verticalMarginsAreCollapsible.start && !establishesNewBfc &&
             !IsOutOfFlow(style.position) && padding.top == 0.0f &&
             border.top == 0.0f,
         verticalMarginsAreCollapsible.end && !establishesNewBfc &&
             !IsOutOfFlow(style.position) && padding.bottom == 0.0f &&
-            border.bottom == 0.0f && !IsSome(size.h)};
+            border.bottom == 0.0f};
+    LineBool ownMarginsCollapseWithChildren = {
+        childrenMarginsAdjoinOwnEdges.start,
+        childrenMarginsAdjoinOwnEdges.end && !IsSome(size.h)};
     bool hasStylesPreventingBeingCollapsedThrough =
         !style.IsBlock() || blockCtx->IsBfcRoot() || establishesNewBfc ||
         IsOutOfFlow(style.position) || padding.top > 0.0f ||
@@ -1695,7 +1713,8 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         tree, runMode, &items, &oofPool, containerOuterWidth,
         containerPercentageResolutionHeight, contentBoxInset,
         resolvedContentBoxInset, resolvedBorder, textAlign, justifyItems,
-        direction, ownMarginsCollapseWithChildren, isScrollContainer, blockCtx);
+        direction, ownMarginsCollapseWithChildren,
+        childrenMarginsAdjoinOwnEdges, isScrollContainer, blockCtx);
     RectF inflowOverflowRect = inFlow.inflowOverflowRect;
     float intrinsicOuterHeight = inFlow.intrinsicOuterHeight;
 

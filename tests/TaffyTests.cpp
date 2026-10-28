@@ -3075,6 +3075,427 @@ static void TestBlockOwnVerticalMargin() {
     tree.Free();
 }
 
+// A margin that can collapse through a container edge is zero when that
+// child's height is stretch. A border, padding, or new BFC on that edge
+// keeps the margin. A float's margins never collapse.
+static void TestBlockStretchIgnoresCollapsibleMargin() {
+    TestSuite("taffy block stretch collapsible margin");
+
+    auto withMargin = [](taffy::Style style, float m) {
+        style.margin.top = LengthPercentageAuto::Length(m);
+        style.margin.right = LengthPercentageAuto::Length(m);
+        style.margin.bottom = LengthPercentageAuto::Length(m);
+        style.margin.left = LengthPercentageAuto::Length(m);
+        return style;
+    };
+    auto block = [](Direction dir, taffy::Display display) {
+        taffy::Style style;
+        style.display = display;
+        style.direction = dir;
+        style.position = taffy::Position::Relative;
+        return style;
+    };
+    auto borderOf = [](taffy::Style style, float w) {
+        style.border.top = LengthPercentage::Length(w);
+        style.border.right = LengthPercentage::Length(w);
+        style.border.bottom = LengthPercentage::Length(w);
+        style.border.left = LengthPercentage::Length(w);
+        return style;
+    };
+
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    for (int i = 0; i < 2; i++) {
+        Direction dir = directions[i];
+
+        {
+            // No border or padding: both margins adjoin, so stretch is 100.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style mid = block(dir, taffy::Display::Block);
+            mid.size.height = Dimension::Length(100.0f);
+            TaffyNodeId midId = tree.NewWithChildren(mid, &childId, 1);
+            taffy::Style root = block(dir, taffy::Display::Block);
+            root.position = taffy::Position::Absolute;
+            root.size.width = Dimension::Length(100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 110.0f);
+            AssertBox(tree.GetLayout(midId), 0.0f, 10.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 0.0f, 80.0f, 100.0f);
+            tree.Free();
+        }
+        {
+            // A border on every side keeps both margins.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style root =
+                borderOf(block(dir, taffy::Display::Block), 3.0f);
+            root.position = taffy::Position::Absolute;
+            root.size = SizeDim::FromLengths(100.0f, 100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &childId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 13.0f, 13.0f, 74.0f, 74.0f);
+            tree.Free();
+        }
+        {
+            // Content-box adds the border outside the 100px size.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.boxSizing = BoxSizing::ContentBox;
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style root =
+                borderOf(block(dir, taffy::Display::Block), 3.0f);
+            root.boxSizing = BoxSizing::ContentBox;
+            root.position = taffy::Position::Absolute;
+            root.size = SizeDim::FromLengths(100.0f, 100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &childId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 106.0f, 106.0f);
+            AssertBox(tree.GetLayout(childId), 13.0f, 13.0f, 80.0f, 80.0f);
+            tree.Free();
+        }
+        {
+            // Border on the bottom only: the top margin still adjoins.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style mid = block(dir, taffy::Display::Block);
+            mid.size.height = Dimension::Length(100.0f);
+            mid.border.bottom = LengthPercentage::Length(5.0f);
+            TaffyNodeId midId = tree.NewWithChildren(mid, &childId, 1);
+            taffy::Style root = block(dir, taffy::Display::Block);
+            root.position = taffy::Position::Absolute;
+            root.size.width = Dimension::Length(100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 110.0f);
+            AssertBox(tree.GetLayout(midId), 0.0f, 10.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 0.0f, 80.0f, 85.0f);
+            tree.Free();
+        }
+        {
+            // Padding on the top only: the bottom margin still adjoins.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style mid = block(dir, taffy::Display::Block);
+            mid.size.height = Dimension::Length(100.0f);
+            mid.padding.top = LengthPercentage::Length(5.0f);
+            TaffyNodeId midId = tree.NewWithChildren(mid, &childId, 1);
+            taffy::Style root = block(dir, taffy::Display::Block);
+            root.position = taffy::Position::Absolute;
+            root.size.width = Dimension::Length(100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(midId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 15.0f, 80.0f, 85.0f);
+            tree.Free();
+        }
+        {
+            // A float's margins are never treated as zero.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.floatMode = taffy::Float::Left;
+            child.size.width = Dimension::Length(30.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style mid = block(dir, taffy::Display::Block);
+            mid.size.height = Dimension::Length(100.0f);
+            TaffyNodeId midId = tree.NewWithChildren(mid, &childId, 1);
+            taffy::Style root = block(dir, taffy::Display::Block);
+            root.position = taffy::Position::Absolute;
+            root.size.width = Dimension::Length(100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(midId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 10.0f, 30.0f, 80.0f);
+            tree.Free();
+        }
+        {
+            // flow-root establishes a BFC, so the margins stay inside.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style mid = block(dir, taffy::Display::FlowRoot);
+            mid.size.height = Dimension::Length(100.0f);
+            TaffyNodeId midId = tree.NewWithChildren(mid, &childId, 1);
+            taffy::Style root = block(dir, taffy::Display::Block);
+            root.position = taffy::Position::Absolute;
+            root.size.width = Dimension::Length(100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(midId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 10.0f, 80.0f, 80.0f);
+            tree.Free();
+        }
+        {
+            // overflow:hidden is a scroll container, so it is a new BFC.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style mid = block(dir, taffy::Display::Block);
+            mid.size.height = Dimension::Length(100.0f);
+            mid.overflow.x = taffy::Overflow::Hidden;
+            mid.overflow.y = taffy::Overflow::Hidden;
+            mid.scrollbarWidth = 15.0f;
+            TaffyNodeId midId = tree.NewWithChildren(mid, &childId, 1);
+            taffy::Style root = block(dir, taffy::Display::Block);
+            root.position = taffy::Position::Absolute;
+            root.size.width = Dimension::Length(100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(midId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 10.0f, 80.0f, 80.0f);
+            tree.Free();
+        }
+        {
+            // The absolute root is out of flow, so its child's margins stay.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style root = block(dir, taffy::Display::Block);
+            root.position = taffy::Position::Absolute;
+            root.size = SizeDim::FromLengths(100.0f, 100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &childId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 10.0f, 80.0f, 80.0f);
+            tree.Free();
+        }
+        {
+            // A flex item's block container does not collapse its margins.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style mid = block(dir, taffy::Display::Block);
+            mid.size = SizeDim::FromLengths(100.0f, 100.0f);
+            TaffyNodeId midId = tree.NewWithChildren(mid, &childId, 1);
+            taffy::Style root = block(dir, taffy::Display::Flex);
+            root.position = taffy::Position::Absolute;
+            root.size.width = Dimension::Length(100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(midId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 10.0f, 80.0f, 80.0f);
+            tree.Free();
+        }
+        {
+            // The stretched child being a flow-root does not change the
+            // parent's edges, so this matches the no-border case.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::FlowRoot), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            taffy::Style mid = block(dir, taffy::Display::Block);
+            mid.size.height = Dimension::Length(100.0f);
+            TaffyNodeId midId = tree.NewWithChildren(mid, &childId, 1);
+            taffy::Style root = block(dir, taffy::Display::Block);
+            root.position = taffy::Position::Absolute;
+            root.size.width = Dimension::Length(100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 110.0f);
+            AssertBox(tree.GetLayout(midId), 0.0f, 10.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 0.0f, 80.0f, 100.0f);
+            tree.Free();
+        }
+        {
+            // Empty siblings keep the margin inside, but the parent's edges
+            // still adjoin, so the stretch height stays 100.
+            TaffyTree tree;
+            tree.Init();
+            TaffyNodeId empty0 =
+                tree.NewLeaf(block(dir, taffy::Display::Block));
+            taffy::Style hidden = block(dir, taffy::Display::Block);
+            hidden.overflow.x = taffy::Overflow::Hidden;
+            hidden.overflow.y = taffy::Overflow::Hidden;
+            hidden.scrollbarWidth = 15.0f;
+            TaffyNodeId empty1 = tree.NewLeaf(hidden);
+            taffy::Style child =
+                withMargin(block(dir, taffy::Display::Block), 10.0f);
+            child.size.height = Dimension::Stretch();
+            TaffyNodeId childId = tree.NewLeaf(child);
+            TaffyNodeId empty2 = tree.NewLeaf(hidden);
+            TaffyNodeId empty3 =
+                tree.NewLeaf(block(dir, taffy::Display::Block));
+            TaffyNodeId kids[] = {empty0, empty1, childId, empty2, empty3};
+            taffy::Style mid = block(dir, taffy::Display::Block);
+            mid.size.height = Dimension::Length(100.0f);
+            TaffyNodeId midId = tree.NewWithChildren(mid, kids, 5);
+            taffy::Style root = block(dir, taffy::Display::Block);
+            root.position = taffy::Position::Absolute;
+            root.size.width = Dimension::Length(100.0f);
+            TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+            tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(midId), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(empty0), 0.0f, 0.0f, 100.0f, 0.0f);
+            AssertBox(tree.GetLayout(empty1), 0.0f, 0.0f, 100.0f, 0.0f);
+            AssertBox(tree.GetLayout(childId), 10.0f, 10.0f, 80.0f, 100.0f);
+            AssertBox(tree.GetLayout(empty2), 0.0f, 120.0f, 100.0f, 0.0f);
+            AssertBox(tree.GetLayout(empty3), 0.0f, 120.0f, 100.0f, 0.0f);
+            tree.Free();
+        }
+    }
+
+    {
+        // The margin-top collapses through, so it is not subtracted.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated = block(Direction::Ltr, taffy::Display::Block);
+        floated.floatMode = taffy::Float::Left;
+        floated.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId floatId = tree.NewLeaf(floated);
+        taffy::Style child =
+            borderOf(block(Direction::Ltr, taffy::Display::Block), 3.0f);
+        child.size.width = Dimension::Length(90.0f);
+        child.size.height = Dimension::Stretch();
+        child.margin.top = LengthPercentageAuto::Length(50.0f);
+        TaffyNodeId childId = tree.NewLeaf(child);
+        TaffyNodeId kids[] = {floatId, childId};
+        taffy::Style mid = block(Direction::Ltr, taffy::Display::Block);
+        mid.size.height = Dimension::Length(100.0f);
+        TaffyNodeId midId = tree.NewWithChildren(mid, kids, 2);
+        taffy::Style root = block(Direction::Ltr, taffy::Display::Block);
+        root.position = taffy::Position::Absolute;
+        root.size.width = Dimension::Length(100.0f);
+        TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+        tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 150.0f);
+        AssertBox(tree.GetLayout(midId), 0.0f, 50.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(floatId), 0.0f, 0.0f, 30.0f, 30.0f);
+        AssertBox(tree.GetLayout(childId), 0.0f, 0.0f, 90.0f, 100.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated = block(Direction::Rtl, taffy::Display::Block);
+        floated.floatMode = taffy::Float::Left;
+        floated.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId floatId = tree.NewLeaf(floated);
+        taffy::Style child =
+            borderOf(block(Direction::Rtl, taffy::Display::Block), 3.0f);
+        child.size.width = Dimension::Length(90.0f);
+        child.size.height = Dimension::Stretch();
+        child.margin.top = LengthPercentageAuto::Length(50.0f);
+        TaffyNodeId childId = tree.NewLeaf(child);
+        TaffyNodeId kids[] = {floatId, childId};
+        taffy::Style mid = block(Direction::Rtl, taffy::Display::Block);
+        mid.size.height = Dimension::Length(100.0f);
+        TaffyNodeId midId = tree.NewWithChildren(mid, kids, 2);
+        taffy::Style root = block(Direction::Rtl, taffy::Display::Block);
+        root.position = taffy::Position::Absolute;
+        root.size.width = Dimension::Length(100.0f);
+        TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+        tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 150.0f);
+        AssertBox(tree.GetLayout(midId), 0.0f, 50.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(floatId), 0.0f, 0.0f, 30.0f, 30.0f);
+        AssertBox(tree.GetLayout(childId), 10.0f, 0.0f, 90.0f, 100.0f);
+        tree.Free();
+    }
+    {
+        // clear:both places the stretch box below the float. The margin
+        // still adjoins, so the height stays 100.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated = block(Direction::Ltr, taffy::Display::Block);
+        floated.floatMode = taffy::Float::Left;
+        floated.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId floatId = tree.NewLeaf(floated);
+        taffy::Style child =
+            borderOf(block(Direction::Ltr, taffy::Display::Block), 3.0f);
+        child.clear = taffy::Clear::Both;
+        child.size.width = Dimension::Length(90.0f);
+        child.size.height = Dimension::Stretch();
+        child.margin.top = LengthPercentageAuto::Length(50.0f);
+        TaffyNodeId childId = tree.NewLeaf(child);
+        TaffyNodeId kids[] = {floatId, childId};
+        taffy::Style mid = block(Direction::Ltr, taffy::Display::Block);
+        mid.size.height = Dimension::Length(100.0f);
+        TaffyNodeId midId = tree.NewWithChildren(mid, kids, 2);
+        taffy::Style root = block(Direction::Ltr, taffy::Display::Block);
+        root.position = taffy::Position::Absolute;
+        root.size.width = Dimension::Length(100.0f);
+        TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+        tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(midId), 0.0f, 0.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(floatId), 0.0f, 0.0f, 30.0f, 30.0f);
+        AssertBox(tree.GetLayout(childId), 0.0f, 30.0f, 90.0f, 100.0f);
+        tree.Free();
+    }
+    {
+        // A flow-root beside a float is placed the same way.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated = block(Direction::Ltr, taffy::Display::Block);
+        floated.floatMode = taffy::Float::Left;
+        floated.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId floatId = tree.NewLeaf(floated);
+        taffy::Style child =
+            borderOf(block(Direction::Ltr, taffy::Display::FlowRoot), 3.0f);
+        child.size.width = Dimension::Length(90.0f);
+        child.size.height = Dimension::Stretch();
+        child.margin.top = LengthPercentageAuto::Length(50.0f);
+        TaffyNodeId childId = tree.NewLeaf(child);
+        TaffyNodeId kids[] = {floatId, childId};
+        taffy::Style mid = block(Direction::Ltr, taffy::Display::Block);
+        mid.size.height = Dimension::Length(100.0f);
+        TaffyNodeId midId = tree.NewWithChildren(mid, kids, 2);
+        taffy::Style root = block(Direction::Ltr, taffy::Display::Block);
+        root.position = taffy::Position::Absolute;
+        root.size.width = Dimension::Length(100.0f);
+        TaffyNodeId rootId = tree.NewWithChildren(root, &midId, 1);
+        tree.ComputeLayout(rootId, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(rootId), 0.0f, 0.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(midId), 0.0f, 0.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(floatId), 0.0f, 0.0f, 30.0f, 30.0f);
+        AssertBox(tree.GetLayout(childId), 0.0f, 30.0f, 90.0f, 100.0f);
+        tree.Free();
+    }
+}
+
 // A cleared float sits below the floats it clears, so a shrink-to-fit
 // float container takes the widest uncleared run rather than the sum.
 static void TestFloatClearIntrinsicWidth() {
@@ -9828,6 +10249,7 @@ void TestTaffy() {
     TestFlexBalanceLayout();
     TestBlockLayout();
     TestBlockOwnVerticalMargin();
+    TestBlockStretchIgnoresCollapsibleMargin();
     TestFloatClearIntrinsicWidth();
     TestFloatChildPaddingBorderMinimum();
     TestFloatPercentSumFits();
