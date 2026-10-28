@@ -1063,6 +1063,9 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         inputs.sizingMode = SizingMode::InherentSize;
         inputs.axis = RequestedAxis::Both;
         inputs.knownDimensions = knownDimensions;
+        // Stretch gives this child a definite size in both axes.
+        inputs.knownDimensionsAreDefiniteW = true;
+        inputs.knownDimensionsAreDefiniteH = true;
         inputs.parentSize = parentSize;
         inputs.availableSpace = availableSpace;
         inputs.availableSpace.width = AvailableSpace::Definite(stretchWidth);
@@ -1564,8 +1567,14 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
                    minSize, maxSize);
     SizeFOpt knownDimensions = {Or(knownDimensionsIn.w, derived.w),
                                 Or(knownDimensionsIn.h, derived.h)};
+    // A known height imposed by a parent is a percentage basis only when
+    // that parent says the height is definite. Width always is.
+    SizeFOpt percentageBasisDimensions = knownDimensions;
+    if (!inputs.knownDimensionsAreDefiniteH) {
+        percentageBasisDimensions.h = None();
+    }
     SizeFOpt containerContentBoxSize =
-        MaybeSub(knownDimensions, contentBoxInset.SumAxes());
+        MaybeSub(percentageBasisDimensions, contentBoxInset.SumAxes());
 
     bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
                              IsScrollContainer(style.overflow.y);
@@ -1619,7 +1628,8 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     }
 
     Optf containerPercentageResolutionHeight =
-        Or(Or(knownDimensions.h, MaybeMax(size.h, minSize.h)), minSize.h);
+        Or(Or(percentageBasisDimensions.h, MaybeMax(size.h, minSize.h)),
+           minSize.h);
 
     // 3. Final item layout.
     // Percentage padding and borders resolve against the containing block's

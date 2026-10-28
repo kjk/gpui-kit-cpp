@@ -118,6 +118,12 @@ struct LayoutInput {
     // "what would the height of this node be, assuming the width is W"; both
     // set means "your size is exactly WxH, lay out your children".
     SizeFOpt knownDimensions = SizeFOptNone();
+    // Whether a known dimension is a definite size for the node's own
+    // content: percentage resolution and flex line breaking. False when a
+    // parent imposed a size derived from this node's content. Ignored, and
+    // treated as true, on an axis whose known dimension is None.
+    bool knownDimensionsAreDefiniteW = true;
+    bool knownDimensionsAreDefiniteH = true;
     // The parent's size, for percentage resolution.
     SizeFOpt parentSize = SizeFOptNone();
     // A soft constraint, used for wrapping.
@@ -236,6 +242,9 @@ constexpr int kCacheSize = 9;
 struct CacheKey {
     uint64_t kdAvailableSpace = 0;
     uint64_t parentSize = 0;
+    // Normalized so an axis with no known dimension is always true.
+    bool knownDimensionsAreDefiniteW = true;
+    bool knownDimensionsAreDefiniteH = true;
 
     static CacheKey From(const LayoutInput& input);
     // The parent size with the axis bits and the y-axis value masked out.
@@ -244,7 +253,9 @@ struct CacheKey {
 
 constexpr bool operator==(CacheKey a, CacheKey b) {
     return a.kdAvailableSpace == b.kdAvailableSpace &&
-           a.parentSize == b.parentSize;
+           a.parentSize == b.parentSize &&
+           a.knownDimensionsAreDefiniteW == b.knownDimensionsAreDefiniteW &&
+           a.knownDimensionsAreDefiniteH == b.knownDimensionsAreDefiniteH;
 }
 
 // Rust's entry is an `Option<CacheEntry>`; the discriminant lives in

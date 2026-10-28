@@ -73,6 +73,12 @@ CacheKey CacheKey::From(const LayoutInput& input) {
         SizeMixedCacheKey(input.knownDimensions, input.availableSpace);
     key.parentSize =
         (SizeOptionCacheKey(input.parentSize) & kNonSignBitsMask) | extraBits;
+    // An axis with no known dimension is always definite. The flag only
+    // means something when a parent passed a size.
+    key.knownDimensionsAreDefiniteW =
+        input.knownDimensionsAreDefiniteW || !IsSome(input.knownDimensions.w);
+    key.knownDimensionsAreDefiniteH =
+        input.knownDimensionsAreDefiniteH || !IsSome(input.knownDimensions.h);
     return key;
 }
 
@@ -145,6 +151,10 @@ bool Cache::GetWithKey(CacheKey key, RunMode runMode, LayoutOutput* out) const {
                 }
                 const CacheEntry<SizeF>& e = measureEntries[i];
                 if (e.key.kdAvailableSpace == key.kdAvailableSpace &&
+                    e.key.knownDimensionsAreDefiniteW ==
+                        key.knownDimensionsAreDefiniteW &&
+                    e.key.knownDimensionsAreDefiniteH ==
+                        key.knownDimensionsAreDefiniteH &&
                     e.key.XAxisParentSize() == xAxis) {
                     *out = LayoutOutput::FromOuterSize(e.content);
                     return true;

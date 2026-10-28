@@ -40,6 +40,8 @@ struct FlexItem {
     float scrollbarWidth = 0.0f;
     float flexShrink = 0.0f;
     float flexGrow = 0.0f;
+    // The used flex basis came from a definite style size, not from content.
+    bool flexBasisIsDefinite = false;
 
     // Differs from minSize above: this also accounts for content-based
     // automatic minimum sizes.
@@ -116,6 +118,11 @@ struct AlgoConstants {
     // known.
     SizeFOpt nodeOuterSize = SizeFOptNone();
     SizeFOpt nodeInnerSize = SizeFOptNone();
+    // A known main size imposed by a parent from this node's own content is
+    // indefinite: percentages and flex wrapping must not treat it as definite.
+    bool knownMainSizeIsDefinite = true;
+    bool hasDefiniteMainSize = false;
+    bool hasDefiniteCrossSize = false;
 
     // The size of the virtual container holding the flex items, and of the
     // internal container.
@@ -142,7 +149,10 @@ Optf Filter(Optf v, bool keep) {
 // ─── compute_constants ───────────────────────────────────────────────────
 
 AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
-                               SizeFOpt knownDimensions, SizeFOpt parentSize) {
+                               SizeFOpt knownDimensions,
+                               bool knownDimensionsAreDefiniteW,
+                               bool knownDimensionsAreDefiniteH,
+                               SizeFOpt parentSize) {
     CalcResolver calc = tree->calc;
     AlgoConstants c;
     c.dir = style.flexDirection;
@@ -183,6 +193,15 @@ AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
 
     c.nodeOuterSize = knownDimensions;
     c.nodeInnerSize = MaybeSub(c.nodeOuterSize, c.contentBoxInset.SumAxes());
+    bool knownMainDefinite =
+        c.isRow ? knownDimensionsAreDefiniteW : knownDimensionsAreDefiniteH;
+    bool knownCrossDefinite =
+        c.isRow ? knownDimensionsAreDefiniteH : knownDimensionsAreDefiniteW;
+    c.knownMainSizeIsDefinite = knownMainDefinite;
+    c.hasDefiniteMainSize =
+        knownMainDefinite && IsSome(Main(knownDimensions, c.dir));
+    c.hasDefiniteCrossSize =
+        knownCrossDefinite && IsSome(Cross(knownDimensions, c.dir));
     c.gap = style.gap.ResolveOrZero(Or(c.nodeInnerSize, SizeFOpt{0, 0}), calc);
 
     c.minSize =
@@ -230,17 +249,26 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
         SizeF boxSizingAdjustment =
             cs.boxSizing == BoxSizing::ContentBox ? pbSum : SizeF::Zero();
 
+        // A known main size derived from the container's own content is
+        // indefinite, so item percentages do not resolve against it.
+        SizeFOpt percentResolutionSize = c.nodeInnerSize;
+        if (!c.knownMainSizeIsDefinite) {
+            SetMain(&percentResolutionSize, c.dir, None());
+        }
+
         FlexItem item;
         item.node = child;
         item.order = (uint32_t)index;
         item.size = MaybeAdd(
-            MaybeApplyAspectRatio(cs.size.MaybeResolve(c.nodeInnerSize, calc),
-                                  aspectRatio),
+            MaybeApplyAspectRatio(
+                cs.size.MaybeResolve(percentResolutionSize, calc), aspectRatio),
             boxSizingAdjustment);
-        item.minSize = MaybeAdd(cs.minSize.MaybeResolve(c.nodeInnerSize, calc),
-                                boxSizingAdjustment);
-        item.maxSize = MaybeAdd(cs.maxSize.MaybeResolve(c.nodeInnerSize, calc),
-                                boxSizingAdjustment);
+        item.minSize =
+            MaybeAdd(cs.minSize.MaybeResolve(percentResolutionSize, calc),
+                     boxSizingAdjustment);
+        item.maxSize =
+            MaybeAdd(cs.maxSize.MaybeResolve(percentResolutionSize, calc),
+                     boxSizingAdjustment);
         item.aspectRatio = aspectRatio;
         // The inset resolves left/right against the width and top/bottom
         // against the height, which is Rust's `zip_size`.
@@ -341,6 +369,7 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
                 break;
         }
 
+        bool childCrossSizeIsDefinite = IsSome(Cross(child.size, dir));
         SizeFOpt childKnownDimensions = child.size;
         SetMain(&childKnownDimensions, dir, None());
         SetCross(&childKnownDimensions, dir,
@@ -354,9 +383,16 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
             SetCross(&childKnownDimensions, dir,
                      MaybeSub(crossAxisAvailableSpace.IntoOption(),
                               CrossAxisSum(child.margin, dir)));
+            // A stretched cross size is definite when the container's cross
+            // size is. https://www.w3.org/TR/css-flexbox-1/#definite-sizes
+            childCrossSizeIsDefinite = !c.isWrap && c.hasDefiniteCrossSize &&
+                                       IsSome(crossAxisParentSize);
         }
 
         Optf containerWidth = Main(c.nodeInnerSize, dir);
+        // A percentage flex basis resolves only against a definite main size.
+        Optf percentResolutionMainSize =
+            c.knownMainSizeIsDefinite ? containerWidth : None();
         float boxSizingAdjustment = 0.0f;
         if (cs.boxSizing == BoxSizing::ContentBox) {
             RectF padding = cs.padding.ResolveOrZero(containerWidth, calc);
@@ -364,7 +400,7 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
             boxSizingAdjustment = Main((padding + border).SumAxes(), dir);
         }
         Optf flexBasis =
-            MaybeAdd(cs.flexBasis.MaybeResolve(containerWidth, calc),
+            MaybeAdd(cs.flexBasis.MaybeResolve(percentResolutionMainSize, calc),
                      boxSizingAdjustment);
 
         // A. If the item has a definite used flex basis, that is the flex base
@@ -377,8 +413,15 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
         Optf mainSize = Main(child.size, dir);
         Optf definiteBasis = Or(flexBasis, mainSize);
         if (IsSome(definiteBasis)) {
+            child.flexBasisIsDefinite = true;
             child.flexBasis = definiteBasis;
         } else {
+            // An aspect ratio plus a definite cross size makes the base size
+            // definite: the child's layout derives it from that cross size.
+            if (IsSome(child.aspectRatio) && childCrossSizeIsDefinite &&
+                IsSome(Cross(childKnownDimensions, dir))) {
+                child.flexBasisIsDefinite = true;
+            }
             // C is covered by E below, which passes the available space
             // constraint through to the child.
             // D would need vertical writing modes.
@@ -463,7 +506,9 @@ void CollectFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
     FlexItem* items = flexItems->els;
     int total = flexItems->len;
 
-    if (!c.isWrap) {
+    // Wrapping needs a definite main size. A main size derived from the
+    // container's own content collects every item onto one line.
+    if (!c.isWrap || !c.knownMainSizeIsDefinite) {
         VecAppend(*lines, {items, total, 0.0f, 0.0f});
         return;
     }
@@ -903,6 +948,26 @@ void ResolveFlexibleLengths(FlexLine* line, const AlgoConstants& c) {
     }
 }
 
+// An item's post-flexing main size is definite only when the container's
+// main size is definite or the item's used flex basis is.
+// https://www.w3.org/TR/css-flexbox-1/#definite-sizes
+LayoutInput ItemLayoutInput(const AlgoConstants& c, const FlexItem& item,
+                            RunMode runMode, RequestedAxis axis, SizeFOpt known,
+                            SizeAvail available) {
+    bool mainDefinite = c.hasDefiniteMainSize || item.flexBasisIsDefinite;
+    LayoutInput in;
+    in.runMode = runMode;
+    in.sizingMode = SizingMode::ContentSize;
+    in.axis = axis;
+    in.knownDimensions = known;
+    in.knownDimensionsAreDefiniteW = c.isRow ? mainDefinite : true;
+    in.knownDimensionsAreDefiniteH = c.isRow ? true : mainDefinite;
+    in.parentSize = c.nodeInnerSize;
+    in.availableSpace = available;
+    in.verticalMarginsAreCollapsible = LineBool::False();
+    return in;
+}
+
 // ─── determine_hypothetical_cross_size ───────────────────────────────────
 //
 // https://www.w3.org/TR/css-flexbox-1/#algo-cross-item
@@ -942,9 +1007,12 @@ void DetermineHypotheticalCrossSize(TaffyTree* tree, FlexLine* line,
                               c.isRow ? childCross : Some(child.targetSize.h)};
             SizeAvail avail = {c.isRow ? childKnownMain : childAvailableCross,
                                c.isRow ? childAvailableCross : childKnownMain};
-            float measured = tree->MeasureChildSize(
-                child.node, known, c.nodeInnerSize, avail,
-                SizingMode::ContentSize, CrossAxis(dir), LineBool::False());
+            LayoutOutput measuredOut = tree->ComputeChildLayout(
+                child.node, ItemLayoutInput(c, child, RunMode::ComputeSize,
+                                            c.isRow ? RequestedAxis::Vertical
+                                                    : RequestedAxis::Horizontal,
+                                            known, avail));
+            float measured = GetAbs(measuredOut.size, CrossAxis(dir));
             childInnerCross = F32Max(
                 MaybeClamp(measured, transferredMinCross, transferredMaxCross),
                 paddingBorderSum);
@@ -997,9 +1065,9 @@ void CalculateChildrenBaseLines(TaffyTree* tree, SizeFOpt nodeSize,
                         : availableSpace.width.MaybeSet(nodeSize.w),
                 c.isRow ? availableSpace.height.MaybeSet(nodeSize.h)
                         : AvailableSpace::Definite(c.containerSize.h)};
-            LayoutOutput out = tree->PerformChildLayout(
-                child.node, known, c.nodeInnerSize, avail,
-                SizingMode::ContentSize, LineBool::False());
+            LayoutOutput out = tree->ComputeChildLayout(
+                child.node, ItemLayoutInput(c, child, RunMode::PerformLayout,
+                                            RequestedAxis::Both, known, avail));
             float baseline = UnwrapOr(out.firstBaselines.y, out.size.h);
             if (IsScrollContainer(child.overflow.y)) {
                 baseline = F32Max(0.0f, F32Min(baseline, out.size.h));
@@ -1390,12 +1458,23 @@ void AlignFlexLinesPerAlignContent(Vec<FlexLine>* lines, const AlgoConstants& c,
 void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
                        float totalOffsetCross, float lineOffsetCross,
                        SizeF* totalContentSize, SizeF containerSize,
-                       SizeFOpt nodeInnerSize, FlexDirection direction,
-                       Direction layoutDirection) {
-    LayoutOutput layoutOutput = tree->PerformChildLayout(
-        item->node, AsOptional(item->targetSize), nodeInnerSize,
-        SizeAvail::Definite(containerSize), SizingMode::ContentSize,
-        LineBool::False());
+                       SizeFOpt nodeInnerSize, bool hasDefiniteMainSize,
+                       FlexDirection direction, Direction layoutDirection) {
+    bool mainDefinite = hasDefiniteMainSize || item->flexBasisIsDefinite;
+    LayoutInput childInput;
+    childInput.runMode = RunMode::PerformLayout;
+    childInput.sizingMode = SizingMode::ContentSize;
+    childInput.axis = RequestedAxis::Both;
+    childInput.knownDimensions = AsOptional(item->targetSize);
+    childInput
+        .knownDimensionsAreDefiniteW = IsRow(direction) ? mainDefinite : true;
+    childInput
+        .knownDimensionsAreDefiniteH = IsRow(direction) ? true : mainDefinite;
+    childInput.parentSize = nodeInnerSize;
+    childInput.availableSpace = SizeAvail::Definite(containerSize);
+    childInput.verticalMarginsAreCollapsible = LineBool::False();
+    LayoutOutput layoutOutput =
+        tree->ComputeChildLayout(item->node, childInput);
     SizeF size = layoutOutput.size;
     SizeF contentSize = layoutOutput.contentSize;
 
@@ -1494,8 +1573,8 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
 void CalculateLayoutLine(TaffyTree* tree, FlexLine* line,
                          float* totalOffsetCross, SizeF* contentSize,
                          SizeF containerSize, SizeFOpt nodeInnerSize,
-                         RectF paddingBorder, FlexDirection direction,
-                         Direction layoutDirection) {
+                         bool hasDefiniteMainSize, RectF paddingBorder,
+                         FlexDirection direction, Direction layoutDirection) {
     float totalOffsetMain =
         (IsRtl(layoutDirection) && IsRow(direction))
             ? containerSize.w - MainEnd(paddingBorder, direction)
@@ -1513,7 +1592,8 @@ void CalculateLayoutLine(TaffyTree* tree, FlexLine* line,
                              : &line->items[i];
         CalculateFlexItem(tree, item, &totalOffsetMain, *totalOffsetCross,
                           lineOffsetCross, contentSize, containerSize,
-                          nodeInnerSize, direction, layoutDirection);
+                          nodeInnerSize, hasDefiniteMainSize, direction,
+                          layoutDirection);
     }
 
     if (!isRtlColumn) {
@@ -1536,8 +1616,9 @@ SizeF FinalLayoutPass(TaffyTree* tree, Vec<FlexLine>* lines,
         FlexLine& line =
             c.isWrapReverse ? (*lines)[lines->len - 1 - i] : (*lines)[i];
         CalculateLayoutLine(tree, &line, &totalOffsetCross, &contentSize,
-                            c.containerSize, c.nodeInnerSize, c.contentBoxInset,
-                            c.dir, c.layoutDirection);
+                            c.containerSize, c.nodeInnerSize,
+                            c.hasDefiniteMainSize, c.contentBoxInset, c.dir,
+                            c.layoutDirection);
     }
 
     contentSize.w +=
@@ -1874,8 +1955,10 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
     SizeFOpt parentSize = inputs.parentSize;
     RunMode runMode = inputs.runMode;
 
-    AlgoConstants constants = ComputeConstants(tree, tree->GetStyle(node),
-                                               knownDimensions, parentSize);
+    AlgoConstants constants =
+        ComputeConstants(tree, tree->GetStyle(node), knownDimensions,
+                         inputs.knownDimensionsAreDefiniteW,
+                         inputs.knownDimensionsAreDefiniteH, parentSize);
 
     Vec<FlexItem> flexItems;
     // A container that does not wrap has exactly one flex line, and nothing
@@ -2107,8 +2190,15 @@ LayoutOutput ComputeFlexboxLayout(TaffyTree* tree, NodeId node,
         }
     }
 
+    // The flags describe dimensions the parent passed in. A size taken from
+    // this node's own style is definite. An axis the parent left unknown is
+    // treated as definite so the flag does not poison it.
     LayoutInput next = inputs;
     next.knownDimensions = styledBasedKnownDimensions;
+    next.knownDimensionsAreDefiniteW =
+        inputs.knownDimensionsAreDefiniteW || !IsSome(knownDimensions.w);
+    next.knownDimensionsAreDefiniteH =
+        inputs.knownDimensionsAreDefiniteH || !IsSome(knownDimensions.h);
     return ComputePreliminary(tree, node, next);
 }
 

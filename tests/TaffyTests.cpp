@@ -1036,6 +1036,70 @@ static void TestFlexboxLayout() {
         utassertnear(tree.GetLayout(flowChild).location.x, 0.0f);
         tree.Free();
     }
+
+    {
+        // A column flex item with an indefinite flex basis grows to the
+        // container's min-height, but that used height is not definite.
+        // The child's percentage height resolves to auto, so it is 0.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style grandStyle;
+        grandStyle.display = taffy::Display::Block;
+        grandStyle.size.height = Dimension::Percent(1.0f);
+        TaffyNodeId grand = tree.NewLeaf(grandStyle);
+
+        taffy::Style itemStyle;
+        itemStyle.display = taffy::Display::Block;
+        itemStyle.flexGrow = 1.0f;
+        TaffyNodeId itemKids[] = {grand};
+        TaffyNodeId item = tree.NewWithChildren(itemStyle, itemKids, 1);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Column;
+        rootStyle.size.width = Dimension::Length(200.0f);
+        rootStyle.minSize.height = Dimension::Length(200.0f);
+        TaffyNodeId rootKids[] = {item};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, rootKids, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        utassertnear(tree.GetLayout(root).size.h, 200.0f);
+        utassertnear(tree.GetLayout(item).size.h, 200.0f);
+        utassertnear(tree.GetLayout(grand).size.h, 0.0f);
+        tree.Free();
+    }
+
+    {
+        // The same item with a definite flex basis of 200px makes the
+        // used height definite, so the child's 100% height is 200.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style grandStyle;
+        grandStyle.display = taffy::Display::Block;
+        grandStyle.size.height = Dimension::Percent(1.0f);
+        TaffyNodeId grand = tree.NewLeaf(grandStyle);
+
+        taffy::Style itemStyle;
+        itemStyle.display = taffy::Display::Block;
+        itemStyle.flexGrow = 1.0f;
+        itemStyle.flexBasis = Dimension::Length(200.0f);
+        TaffyNodeId itemKids[] = {grand};
+        TaffyNodeId item = tree.NewWithChildren(itemStyle, itemKids, 1);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Column;
+        rootStyle.size.width = Dimension::Length(200.0f);
+        rootStyle.minSize.height = Dimension::Length(200.0f);
+        TaffyNodeId rootKids[] = {item};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, rootKids, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        utassertnear(tree.GetLayout(root).size.h, 200.0f);
+        utassertnear(tree.GetLayout(item).size.h, 200.0f);
+        utassertnear(tree.GetLayout(grand).size.h, 200.0f);
+        tree.Free();
+    }
 }
 
 // ─── block end-to-end ────────────────────────────────────────────────────
