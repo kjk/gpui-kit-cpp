@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `69a2077c2da588de1c46b89ffd903e1373e45a29` (2026-10-24,
-button: Expose accessible names in the script API (#3665)).
-A script button can name itself for assistive technology without
-changing the visible label. The method is button-only; checkbox, switch
-and toggle keep the methods they already had.
+Processed through `f8f5e4ac0cac468de6fd2bab2a184cd200527d3e` (2026-10-24,
+text: Preserve sparse Markdown table rows (#3673)).
+A Markdown table keeps a short row short. The header still sets the
+column count, extra cells are dropped, and an empty cell that was
+written stays where it was written. The renderer fills the gap.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

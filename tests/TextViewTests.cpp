@@ -145,25 +145,57 @@ static void TestMarkdownTableAlign(Arena* a) {
     utassert(Child(body, 2)->align == MdAlignRight);
 }
 
-// format/markdown.rs table_rows_use_header_column_count. A short body row
-// is padded and a long one loses the cells past the delimiter.
+// format/markdown.rs table_rows_keep_missing_cells_implicit. A short body
+// row stays short, a long one loses the cells past the delimiter, and an
+// explicit empty cell stays in place.
 static void TestMarkdownTableColumnCount(Arena* a) {
     MdNode* doc = MdParse(a, StrL("| A | B | C |\n"
                                   "| --- | --- | --- |\n"
                                   "| one |\n"
-                                  "| two | three | four | ignored |\n"));
+                                  "| two | three | four | ignored |\n"
+                                  "| five | | six |\n"));
     MdNode* table = Child(doc, 0);
     utassert(table && table->kind == MdKind::Table);
-    utassert(Children(table) == 3);
-    for (int i = 0; i < 3; i++) {
-        utassert(Children(Child(table, i)) == 3);
+    utassert(Children(table) == 4);
+    utassert(Children(Child(table, 0)) == 3);
+    utassert(Children(Child(table, 1)) == 1);
+    utassert(Children(Child(table, 2)) == 3);
+    utassert(Children(Child(table, 3)) == 3);
+    utassert(TextIs(a, Child(Child(table, 1), 0), "one"));
+    utassert(TextIs(a, Child(Child(table, 2), 2), "four"));
+    utassert(TextIs(a, Child(Child(table, 3), 1), ""));
+    utassert(TextIs(a, Child(Child(table, 3), 2), "six"));
+}
+
+// format/markdown.rs sparse_table_cell_count_tracks_source_cells. A wide
+// header and one-cell body rows keep one cell per source cell.
+static void TestMarkdownSparseTableCellCount(Arena* a) {
+    const int cases[][2] = {{32, 64}, {64, 128}};
+    for (int n = 0; n < 2; n++) {
+        int columns = cases[n][0];
+        int rows = cases[n][1];
+        StrBuilder source;
+        for (int i = 0; i < columns; i++) source.Append(StrL("|h"));
+        source.Append(StrL("|\n"));
+        for (int i = 0; i < columns; i++) source.Append(StrL("|---"));
+        source.Append(StrL("|\n"));
+        for (int i = 0; i < rows; i++) source.Append(StrL("|x|\n"));
+        Str text = source.TakeStr();
+        MdNode* doc = MdParse(a, text);
+        StrFree(text);
+        MdNode* table = Child(doc, 0);
+        utassert(table && table->kind == MdKind::Table);
+        utassert(Children(table) == rows + 1);
+        utassert(Children(Child(table, 0)) == columns);
+        int cells = Children(Child(table, 0));
+        bool bodyIsOne = true;
+        for (MdNode* row = Child(table, 0)->next; row; row = row->next) {
+            bodyIsOne = bodyIsOne && Children(row) == 1;
+            cells += Children(row);
+        }
+        utassert(bodyIsOne);
+        utassert(cells == columns + rows);
     }
-    MdNode* shortRow = Child(table, 1);
-    utassert(TextIs(a, Child(shortRow, 0), "one"));
-    utassert(TextIs(a, Child(shortRow, 1), ""));
-    utassert(TextIs(a, Child(shortRow, 2), ""));
-    MdNode* longRow = Child(table, 2);
-    utassert(TextIs(a, Child(longRow, 2), "four"));
 }
 
 // Inline HTML inside a paragraph: the parser hands the tags over as mdast
@@ -8249,6 +8281,7 @@ void TestTextView() {
 #if GPUI_MARKDOWN_FULL
     TestMarkdownTableAlign(a);
     TestMarkdownTableColumnCount(a);
+    TestMarkdownSparseTableCellCount(a);
     TableKeepsNarrowColumnsOnOneLine();
     TestTableToMarkdown(a);
     TestMarkdownInlineHtml(a);

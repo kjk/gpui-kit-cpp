@@ -2518,9 +2518,9 @@ static void MdTable(MdBuild* b, const md::Node* n) {
     Span tableSpan;
     bool hasTableSpan = MdNodeSpan(b, n, &tableSpan);
     int ordinal = 0;
-    // GFM fixes the column count with the header delimiter, not each body
-    // row. markdown-rs keeps a short row short and a long row long; padding
-    // and truncation put every row on that grid.
+    // GFM fixes the column count with the header delimiter. Leave missing
+    // cells implicit; AppendTableCells places them on the shared column
+    // grid. Excess cells are still dropped.
     md::ArenaAlign align = md::NodePerKind(b->a, n);
     int32_t nCols = md::ArenaAlignCount(b->a, align);
     int32_t rowIndex = 0;
@@ -2542,10 +2542,6 @@ static void MdTable(MdBuild* b, const md::Node* n) {
             }
             MdTableCell(b, align, cellIndex, cell, hasTableSpan,
                         tableSpan.start, &ordinal);
-            cellIndex++;
-        }
-        while (cellIndex < nCols) {
-            MdTableCell(b, align, cellIndex, nullptr, false, 0, &ordinal);
             cellIndex++;
         }
         Pop(b);
