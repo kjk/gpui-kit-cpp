@@ -16,15 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `58ba3db28f77a0c9e731dacc74daf2569261c440` (2026-10-28,
-selectable_text: Avoid resolving window selection during paint (#3699)).
-Rust's selectable-text paint compares this participant's projected
-copy text around `update_runs` instead of resolving the window
-selection, which ran every copy callback. This frame never asks for
-that text while painting, and
-`paint_does_not_resolve_window_selected_text` locks a redraw at zero
-callbacks. `projected_copy_text` stays crate-private and has no paint
-caller here. Scroll events and
+Processed through `596a2d3c70ba0ca419d6664daf131b30831c56b2` (2026-10-28,
+input: give editor popups POPUP_PRIORITY so they paint above dialogs (#3700)).
+Rust defers the completion menu, code-action menu and hover popover
+at `POPUP_PRIORITY` so they sort above a dialog. This frame paints a
+menu that is fixed inside a dialog with that dialog, after the
+editor, so it is already above the surface. Scroll events and
 `secondary-` chords keep their C++ names. Scrollbar idle stays 2s and
 exit 500ms as constants. Links are always underlined. A textarea has
 no decoration extras, and linked text is gone. Image source, list and
