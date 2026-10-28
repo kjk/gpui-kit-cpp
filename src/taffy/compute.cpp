@@ -240,9 +240,10 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
     bool hasStylesPreventingBeingCollapsedThrough =
         !style.IsBlock() || IsScrollContainer(style.overflow.x) ||
         IsScrollContainer(style.overflow.y) ||
-        style.position == Position::Absolute || padding.top > 0.0f ||
-        padding.bottom > 0.0f || border.top > 0.0f || border.bottom > 0.0f ||
-        (IsSome(nodeSize.h) && nodeSize.h > 0.0f) ||
+        style.position == Position::Absolute ||
+        style.contain.EstablishesIndependentFormattingContext() ||
+        padding.top > 0.0f || padding.bottom > 0.0f || border.top > 0.0f ||
+        border.bottom > 0.0f || (IsSome(nodeSize.h) && nodeSize.h > 0.0f) ||
         (IsSome(nodeMinSize.h) && nodeMinSize.h > 0.0f);
 
     // Return early if both dimensions are already known.
@@ -405,13 +406,18 @@ float ComputeAlignmentOffset(float freeSpace, int numItems, float gap,
 RectF ComputeScrollableOverflowContribution(PointF location, SizeF size,
                                             RectF scrollableOverflowRect,
                                             PointOverflow overflow,
+                                            Contain contain,
                                             bool parentIsScrollContainer) {
     bool isScrollContainer =
         IsScrollContainer(overflow.x) || IsScrollContainer(overflow.y);
+    // Layout or paint containment keeps overflowing content inside the box.
+    bool overflowIsContained = contain.ContainsScrollableOverflow();
     // Hidden or Scroll on either axis clips both. Clip clips only its axis.
     // Visible is what lets a child's own overflow escape.
-    bool propagatesX = !isScrollContainer && overflow.x == Overflow::Visible;
-    bool propagatesY = !isScrollContainer && overflow.y == Overflow::Visible;
+    bool propagatesX = !isScrollContainer && !overflowIsContained &&
+                       overflow.x == Overflow::Visible;
+    bool propagatesY = !isScrollContainer && !overflowIsContained &&
+                       overflow.y == Overflow::Visible;
     SizeF endExtent = {
         propagatesX ? F32Max(size.w, scrollableOverflowRect.right) : size.w,
         propagatesY ? F32Max(size.h, scrollableOverflowRect.bottom) : size.h};

@@ -3722,6 +3722,7 @@ AlignedItem AlignAndPositionItem(
 
     const Style& style = tree->GetStyle(node);
     PointOverflow overflow = style.overflow;
+    Contain contain = style.contain;
     float scrollbarWidth = style.scrollbarWidth;
     Optf aspectRatio = style.aspectRatio;
     OptAlignItems justifySelf = style.justifySelf;
@@ -3930,7 +3931,7 @@ AlignedItem AlignAndPositionItem(
                                 containerBorder.right
                           : xr.start - containerBorder.left,
          yr.start - containerBorder.top},
-        finalSize, layoutOutput.scrollableOverflowRect, overflow,
+        finalSize, layoutOutput.scrollableOverflowRect, overflow, contain,
         containerIsScrollContainer);
     return {contribution, yr.start, finalSize.h};
 }
@@ -4005,6 +4006,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
 
     const Style& style = tree->GetStyle(node);
     Direction direction = style.direction;
+    Contain contain = style.contain;
 
     // 1. Available grid space.
     // https://www.w3.org/TR/css-grid-1/#available-grid-space
@@ -4653,11 +4655,15 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                 break;
             }
         }
-        float gridContainerBaseline =
-            chosen->yPosition + UnwrapOr(chosen->baseline, chosen->height);
+        // Layout containment suppresses the box's baseline. Paint does not.
+        Optf gridContainerBaseline = None();
+        if (!contain.SuppressesBaseline()) {
+            gridContainerBaseline = Some(
+                chosen->yPosition + UnwrapOr(chosen->baseline, chosen->height));
+        }
         out = LayoutOutput::FromSizesAndBaselines(
             containerBorderBox, withEndPadding(itemOverflowRect),
-            BaselinesFromFirst(Some(gridContainerBaseline)));
+            BaselinesFromFirst(gridContainerBaseline));
     }
 
     VecReset(items);

@@ -140,11 +140,13 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
 // `location` is the border box measured from the parent's scroll origin.
 // A scroll container (Hidden or Scroll on either axis) clips both axes.
 // Clip clips only its own axis. Visible propagates the child's rect.
+// Layout or paint containment contributes only the border box.
 // A box wholly before the scroll origin is dropped only when the parent
 // is itself a scroll container.
 RectF ComputeScrollableOverflowContribution(PointF location, SizeF size,
                                             RectF scrollableOverflowRect,
                                             PointOverflow overflow,
+                                            Contain contain,
                                             bool parentIsScrollContainer);
 
 } // namespace taffy

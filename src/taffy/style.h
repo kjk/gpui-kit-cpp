@@ -553,6 +553,53 @@ constexpr Optf MaybeIntoAutomaticMinSize(Overflow o) {
     return IsScrollContainer(o) ? Some(0.0f) : None();
 }
 
+// The layout-affecting parts of CSS `contain`. Size and inline-size are not
+// implemented (the Rust commit does not implement them either). `style`
+// containment has no layout effect and is not stored. Parse of the keyword
+// is the omitted `parse` feature; callers set the bits directly.
+// https://drafts.csswg.org/css-contain-2/
+struct Contain {
+    uint8_t bits = 0;
+
+    static constexpr Contain None() { return {}; }
+    // Independent formatting context, and no baseline.
+    static constexpr Contain Layout() { return {1u << 0}; }
+    // Independent formatting context. Clipping and stacking are out of scope.
+    static constexpr Contain Paint() { return {1u << 1}; }
+    // `contain: content` is layout plus paint. Style is ignored.
+    static constexpr Contain Content() {
+        return {uint8_t((1u << 0) | (1u << 1))};
+    }
+
+    constexpr bool Contains(Contain other) const {
+        return (bits & other.bits) == other.bits;
+    }
+    constexpr bool Intersects(Contain other) const {
+        return (bits & other.bits) != 0;
+    }
+    constexpr Contain Union(Contain other) const {
+        return Contain{uint8_t(bits | other.bits)};
+    }
+    // Layout and paint both establish an independent formatting context.
+    constexpr bool EstablishesIndependentFormattingContext() const {
+        return Intersects(Layout().Union(Paint()));
+    }
+    // Layout containment suppresses the baseline. Paint does not.
+    constexpr bool SuppressesBaseline() const { return Contains(Layout()); }
+    // Layout treats overflowing content as ink overflow. Paint clips it.
+    // Either way it does not contribute to an ancestor's scrollable overflow.
+    constexpr bool ContainsScrollableOverflow() const {
+        return Intersects(Layout().Union(Paint()));
+    }
+};
+
+constexpr bool operator==(Contain a, Contain b) {
+    return a.bits == b.bits;
+}
+constexpr bool operator!=(Contain a, Contain b) {
+    return !(a == b);
+}
+
 // The direction of text, table and grid columns, and horizontal overflow.
 enum class Direction : uint8_t {
     Ltr,
@@ -1402,6 +1449,8 @@ struct Style {
     // Overflow
     PointOverflow overflow;
     float scrollbarWidth = 0.0f;
+    // Layout-affecting parts of CSS `contain`.
+    Contain contain;
 
     // Float
     Float floatMode = Float::None;

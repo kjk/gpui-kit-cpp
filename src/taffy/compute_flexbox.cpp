@@ -40,6 +40,7 @@ struct FlexItem {
     AlignSelf alignSelf;
 
     PointOverflow overflow;
+    Contain contain;
     float scrollbarWidth = 0.0f;
     float flexShrink = 0.0f;
     float flexGrow = 0.0f;
@@ -321,6 +322,7 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
             ResolveSelfRelative(cs.alignSelf.UnwrapOr(c.alignItems),
                                 cs.direction, c.layoutDirection, c.isColumn);
         item.overflow = cs.overflow;
+        item.contain = cs.contain;
         item.scrollbarWidth = cs.scrollbarWidth;
         item.flexGrow = cs.flexGrow;
         item.flexShrink = cs.flexShrink;
@@ -1805,7 +1807,7 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
     *totalOverflowRect =
         totalOverflowRect->Union(ComputeScrollableOverflowContribution(
             contributionLocation, size, scrollableOverflowRect, item->overflow,
-            c.isScrollContainer));
+            item->contain, c.isScrollContainer));
 }
 
 // ─── calculate_layout_line ───────────────────────────────────────────────
@@ -1896,6 +1898,7 @@ RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
         }
 
         PointOverflow overflow = cs.overflow;
+        Contain contain = cs.contain;
         float scrollbarWidth = cs.scrollbarWidth;
         Optf aspectRatio = cs.aspectRatio;
         AlignSelf alignSelf =
@@ -2191,7 +2194,7 @@ RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree, NodeId node,
                 : relativeLocation;
         overflowRect = overflowRect.Union(ComputeScrollableOverflowContribution(
             contributionLocation, finalSize,
-            layoutOutput.scrollableOverflowRect, overflow,
+            layoutOutput.scrollableOverflowRect, overflow, contain,
             c.isScrollContainer));
     }
 
@@ -2398,6 +2401,7 @@ LayoutOutput ComputeFlexboxLayout(TaffyTree* tree, NodeId node,
     SizeFOpt parentSize = inputs.parentSize;
     RunMode runMode = inputs.runMode;
     const Style& style = tree->GetStyle(node);
+    Contain contain = style.contain;
 
     Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
@@ -2463,7 +2467,12 @@ LayoutOutput ComputeFlexboxLayout(TaffyTree* tree, NodeId node,
         inputs.knownDimensionsAreDefiniteW || !IsSome(knownDimensions.w);
     next.knownDimensionsAreDefiniteH =
         inputs.knownDimensionsAreDefiniteH || !IsSome(knownDimensions.h);
-    return ComputePreliminary(tree, node, next);
+    LayoutOutput out = ComputePreliminary(tree, node, next);
+    // Layout containment suppresses the box's baseline. Paint does not.
+    if (contain.SuppressesBaseline()) {
+        out.baselines = BaselinesFromFirst(None());
+    }
+    return out;
 }
 
 } // namespace taffy

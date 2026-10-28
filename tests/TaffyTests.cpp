@@ -351,6 +351,7 @@ static void TestStyleDefaults() {
     utassert(s.overflow.x == taffy::Overflow::Visible);
     utassert(s.overflow.y == taffy::Overflow::Visible);
     utassertnear(s.scrollbarWidth, 0.0f);
+    utassert(s.contain == Contain::None());
     utassert(s.floatMode == Float::None);
     utassert(s.clear == Clear::None);
     utassert(s.position == taffy::Position::Relative);
@@ -4429,6 +4430,282 @@ static void TestTaffy013Regressions() {
     }
 }
 
+// Layout and paint containment. Both establish an independent formatting
+// context and contain scrollable overflow. Only layout suppresses baselines.
+// Size and inline-size containment are not part of this commit.
+static void TestContainment() {
+    TestSuite("taffy contain");
+
+    utassert(Contain::Layout().SuppressesBaseline());
+    utassert(!Contain::Paint().SuppressesBaseline());
+    utassert(Contain::Content().SuppressesBaseline());
+    utassert(Contain::Layout().EstablishesIndependentFormattingContext());
+    utassert(Contain::Paint().EstablishesIndependentFormattingContext());
+    utassert(!Contain::None().EstablishesIndependentFormattingContext());
+    utassert(Contain::Layout().ContainsScrollableOverflow());
+    utassert(Contain::Paint().ContainsScrollableOverflow());
+    utassert(!Contain::None().ContainsScrollableOverflow());
+    utassert(Contain::Content() == Contain::Layout().Union(Contain::Paint()));
+    taffy::Style plain;
+    taffy::Style contained = plain;
+    utassert(plain == contained);
+    contained.contain = Contain::Paint();
+    utassert(!(plain == contained));
+
+    auto marginCollapse = [](Contain contain, float midH, float innerY) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style innerStyle;
+        innerStyle.display = taffy::Display::Block;
+        innerStyle.size.height = Dimension::Length(10.0f);
+        innerStyle.margin.top = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId inner = tree.NewLeaf(innerStyle);
+
+        taffy::Style midStyle;
+        midStyle.display = taffy::Display::Block;
+        midStyle.contain = contain;
+        TaffyNodeId mid = tree.NewWithChildren(midStyle, &inner, 1);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        rootStyle.border = {
+            LengthPercentage::Length(1.0f), LengthPercentage::Length(1.0f),
+            LengthPercentage::Length(1.0f), LengthPercentage::Length(1.0f)};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &mid, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.h, 32.0f);
+        utassertnear(tree.GetLayout(mid).size.h, midH);
+        utassertnear(tree.GetLayout(inner).location.y, innerY);
+        tree.Free();
+    };
+    // No containment: the 20px margin collapses out of the middle box.
+    marginCollapse(Contain::None(), 10.0f, 0.0f);
+    // Paint and layout both stop that collapse. The margin stays inside.
+    marginCollapse(Contain::Paint(), 30.0f, 20.0f);
+    marginCollapse(Contain::Layout(), 30.0f, 20.0f);
+
+    // contain_layout_block_contains_floats. The contained block keeps the
+    // float, so the following sibling starts below it. Without containment
+    // the float escapes into the root and the sibling overlaps it.
+    auto containsFloat = [](Contain contain, float rootH, float midH,
+                            float tailY) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated;
+        floated.display = taffy::Display::Block;
+        floated.floatMode = taffy::Float::Left;
+        floated.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId child = tree.NewLeaf(floated);
+        taffy::Style midStyle;
+        midStyle.display = taffy::Display::Block;
+        midStyle.contain = contain;
+        TaffyNodeId mid = tree.NewWithChildren(midStyle, &child, 1);
+        taffy::Style tailStyle;
+        tailStyle.display = taffy::Display::Block;
+        tailStyle.size.height = Dimension::Length(10.0f);
+        TaffyNodeId tail = tree.NewLeaf(tailStyle);
+        TaffyNodeId kids[] = {mid, tail};
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.h, rootH);
+        utassertnear(tree.GetLayout(mid).size.h, midH);
+        utassertnear(tree.GetLayout(child).location.y, 0.0f);
+        utassertnear(tree.GetLayout(child).size.w, 30.0f);
+        utassertnear(tree.GetLayout(tail).location.y, tailY);
+        tree.Free();
+    };
+    containsFloat(Contain::None(), 30.0f, 0.0f, 0.0f);
+    containsFloat(Contain::Layout(), 40.0f, 30.0f, 30.0f);
+    containsFloat(Contain::Paint(), 40.0f, 30.0f, 30.0f);
+
+    {
+        // A contained block beside a float is its own BFC, so it narrows
+        // to the space the float leaves rather than running under it.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style floated;
+        floated.display = taffy::Display::Block;
+        floated.floatMode = taffy::Float::Left;
+        floated.size = SizeDim::FromLengths(30.0f, 20.0f);
+        TaffyNodeId a = tree.NewLeaf(floated);
+        taffy::Style innerStyle;
+        innerStyle.display = taffy::Display::Block;
+        innerStyle.size.height = Dimension::Length(10.0f);
+        TaffyNodeId inner = tree.NewLeaf(innerStyle);
+        taffy::Style box;
+        box.display = taffy::Display::Block;
+        box.contain = Contain::Paint();
+        TaffyNodeId b = tree.NewWithChildren(box, &inner, 1);
+        TaffyNodeId kids[] = {a, b};
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.h, 20.0f);
+        utassertnear(tree.GetLayout(b).location.x, 30.0f);
+        utassertnear(tree.GetLayout(b).size.w, 70.0f);
+        utassertnear(tree.GetLayout(inner).size.w, 70.0f);
+        tree.Free();
+    }
+
+    auto baselineShift = [](taffy::Display display, Contain contain,
+                            float siblingY) {
+        TaffyTree tree;
+        tree.Init();
+        BaselineContext content = {{30.0f, 30.0f}, Some(10.0f)};
+        taffy::Style contentStyle;
+        contentStyle.display = taffy::Display::Block;
+        contentStyle.size = SizeDim::FromLengths(30.0f, 30.0f);
+        TaffyNodeId contentNode =
+            tree.NewLeafWithContext(contentStyle, &content);
+        taffy::Style box;
+        box.display = display;
+        box.contain = contain;
+        box.size.width = Dimension::Length(40.0f);
+        TaffyNodeId itemA = tree.NewWithChildren(box, &contentNode, 1);
+        BaselineContext refCtx = {{40.0f, 80.0f}, Some(10.0f)};
+        TaffyNodeId itemB = tree.NewLeafWithContext(taffy::Style{}, &refCtx);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.flexDirection = FlexDirection::Row;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.size = SizeDim::FromLengths(200.0f, 120.0f);
+        TaffyNodeId kids[] = {itemA, itemB};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      BaselineMeasure, nullptr);
+        utassertnear(tree.GetLayout(itemA).location.y, 0.0f);
+        utassertnear(tree.GetLayout(itemB).location.y, siblingY);
+        tree.Free();
+    };
+    // Paint keeps the content baseline (10). Layout drops it, so the flex
+    // line uses the box's bottom edge (30) and the sibling shifts by 20.
+    baselineShift(taffy::Display::Block, Contain::None(), 0.0f);
+    baselineShift(taffy::Display::Block, Contain::Paint(), 0.0f);
+    baselineShift(taffy::Display::Block, Contain::Layout(), 20.0f);
+    baselineShift(taffy::Display::Block, Contain::Content(), 20.0f);
+    baselineShift(taffy::Display::Flex, Contain::Layout(), 20.0f);
+    baselineShift(taffy::Display::Flex, Contain::Paint(), 0.0f);
+
+    // contain_layout_flex_baseline / contain_paint_flex_baseline. The first
+    // item's baseline is its 30px child. Layout containment drops the second
+    // item's baseline, so it aligns its bottom (20) to that 30. Paint keeps
+    // the 10px child's baseline, so the item shifts down by 20.
+    auto flexBaseline = [](Contain contain, float secondY) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style tallChild;
+        tallChild.size = SizeDim::FromLengths(50.0f, 30.0f);
+        TaffyNodeId tall = tree.NewLeaf(tallChild);
+        taffy::Style firstStyle;
+        firstStyle.size = SizeDim::FromLengths(50.0f, 60.0f);
+        TaffyNodeId first = tree.NewWithChildren(firstStyle, &tall, 1);
+        taffy::Style shortChild;
+        shortChild.size = SizeDim::FromLengths(50.0f, 10.0f);
+        TaffyNodeId shortNode = tree.NewLeaf(shortChild);
+        taffy::Style secondStyle;
+        secondStyle.contain = contain;
+        secondStyle.size = SizeDim::FromLengths(50.0f, 20.0f);
+        TaffyNodeId second = tree.NewWithChildren(secondStyle, &shortNode, 1);
+        taffy::Style rootStyle;
+        rootStyle.alignItems =
+            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.size.width = Dimension::Length(200.0f);
+        TaffyNodeId kids[] = {first, second};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.h, 60.0f);
+        utassertnear(tree.GetLayout(first).location.y, 0.0f);
+        utassertnear(tree.GetLayout(second).location.y, secondY);
+        utassertnear(tree.GetLayout(shortNode).location.y, 0.0f);
+        tree.Free();
+    };
+    flexBaseline(Contain::Layout(), 10.0f);
+    flexBaseline(Contain::Paint(), 20.0f);
+
+    // A grid records a content baseline only once a row has two
+    // baseline-aligned items. Layout containment then drops it.
+    {
+        Arena* arena = ArenaNew();
+        TrackSizingFunction track = TrackSizingFunction::Auto();
+        GridTemplateComponent cols[2] = {GridTemplateComponent::Single(track),
+                                         GridTemplateComponent::Single(track)};
+        auto gridBaseline = [&](Contain contain, float siblingY) {
+            TaffyTree tree;
+            tree.Init();
+            BaselineContext content = {{30.0f, 30.0f}, Some(10.0f)};
+            taffy::Style cell;
+            cell.size = SizeDim::FromLengths(30.0f, 30.0f);
+            TaffyNodeId a = tree.NewLeafWithContext(cell, &content);
+            TaffyNodeId b = tree.NewLeafWithContext(cell, &content);
+            taffy::Style gridStyle;
+            gridStyle.display = taffy::Display::Grid;
+            gridStyle.contain = contain;
+            gridStyle.alignItems =
+                OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+            gridStyle.gridTemplateColumns = SliceDup(arena, cols, 2);
+            TaffyNodeId cells[] = {a, b};
+            TaffyNodeId grid = tree.NewWithChildren(gridStyle, cells, 2);
+            BaselineContext refCtx = {{40.0f, 80.0f}, Some(10.0f)};
+            TaffyNodeId sibling =
+                tree.NewLeafWithContext(taffy::Style{}, &refCtx);
+            taffy::Style rootStyle;
+            rootStyle.alignItems =
+                OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+            rootStyle.size = SizeDim::FromLengths(200.0f, 120.0f);
+            TaffyNodeId kids[] = {grid, sibling};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                          BaselineMeasure, nullptr);
+            utassertnear(tree.GetLayout(grid).location.y, 0.0f);
+            utassertnear(tree.GetLayout(sibling).location.y, siblingY);
+            tree.Free();
+        };
+        gridBaseline(Contain::Paint(), 0.0f);
+        gridBaseline(Contain::Layout(), 20.0f);
+        ArenaDelete(arena);
+    }
+
+    auto overflowOf = [](Contain contain) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.inset.left = LengthPercentageAuto::Length(-30.0f);
+        absStyle.inset.top = LengthPercentageAuto::Length(-20.0f);
+        absStyle.size = SizeDim::FromLengths(40.0f, 20.0f);
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        taffy::Style midStyle;
+        midStyle.display = taffy::Display::Block;
+        midStyle.contain = contain;
+        midStyle.size = SizeDim::FromLengths(50.0f, 50.0f);
+        TaffyNodeId mid = tree.NewWithChildren(midStyle, &abs, 1);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &mid, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        RectF rect = tree.GetLayout(root).scrollableOverflowRect;
+        tree.Free();
+        return rect;
+    };
+    RectF open = overflowOf(Contain::None());
+    utassertnear(open.left, -30.0f);
+    utassertnear(open.top, -20.0f);
+    RectF laidOut = overflowOf(Contain::Layout());
+    utassertnear(laidOut.left, 0.0f);
+    utassertnear(laidOut.top, 0.0f);
+    RectF painted = overflowOf(Contain::Paint());
+    utassertnear(painted.left, 0.0f);
+    utassertnear(painted.top, 0.0f);
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -4454,6 +4731,7 @@ void TestTaffy() {
     TestBlockLayout();
     TestBlockPercentageBasis();
     TestBlockScrollBaselines();
+    TestContainment();
     TestFlexCrossDefinitePercentage();
     TestFlexReverseBaseline();
     TestExplicitMinSkipsMinContent();

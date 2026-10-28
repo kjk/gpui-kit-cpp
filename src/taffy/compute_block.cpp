@@ -603,8 +603,10 @@ struct BlockContext {
     float insets[2] = {0.0f, 0.0f};
     // The x insets of the content box.
     float contentBoxInsets[2] = {0.0f, 0.0f};
-    // The height that floats take up in this element.
-    float floatContentContribution = 0.0f;
+    // The height that floats take up in this element. Negative infinity when
+    // the subtree contains no floats, so a child with none does not lift a
+    // negative contribution back to zero.
+    float floatContentContribution = -INFINITY;
     bool isRoot = false;
     bool adjoiningFloats[2] = {false, false};
     bool topAdjoiningFloats[2] = {false, false};
@@ -749,6 +751,7 @@ struct BlockItem {
     SizeFOpt maxSize = SizeFOptNone();
 
     PointOverflow overflow;
+    Contain contain;
     float scrollbarWidth = 0.0f;
 
     Position position = Position::Relative;
@@ -800,14 +803,19 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
         item.clear = cs.clear;
         item.position = cs.position;
         item.overflow = cs.overflow;
+        item.contain = cs.contain;
         item.scrollbarWidth = cs.scrollbarWidth;
 
         bool isNotFloated = cs.floatMode == Float::None;
         bool isScrollContainer = IsScrollContainer(cs.overflow.x) ||
                                  IsScrollContainer(cs.overflow.y);
+        // Layout and paint containment establish an independent formatting
+        // context, so the child is not in its parent's BFC.
         item.isInSameBfc = cs.IsBlock() && !cs.itemIsTable &&
                            cs.position != Position::Absolute && isNotFloated &&
-                           !isScrollContainer;
+                           !isScrollContainer &&
+                           !cs.contain
+                                .EstablishesIndependentFormattingContext();
 
         item.sizeStyle = cs.size;
         item.size = MaybeAdd(
@@ -1037,7 +1045,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                                       : location.x - resolvedBorder.left,
                      location.y - resolvedBorder.top},
                     itemLayout.size, itemLayout.scrollableOverflowRect,
-                    item.overflow, isScrollContainer));
+                    item.overflow, item.contain, isScrollContainer));
             continue;
         }
 
@@ -1333,7 +1341,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                      : location.x - resolvedBorder.left,
                  location.y - resolvedBorder.top},
                 finalSize, itemLayout.scrollableOverflowRect, item.overflow,
-                isScrollContainer));
+                item.contain, isScrollContainer));
 
         if (isCollapsingWithFirstMarginSet && itemPushedBelowFloat) {
             isCollapsingWithFirstMarginSet = false;
@@ -1594,11 +1602,11 @@ RectF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
         PointF relativeLocation = {
             IsRtl(direction) ? areaSize.w - relX - finalSize.w : relX,
             location.y - areaOffset.y};
-        absoluteOverflowRect = absoluteOverflowRect
-                                   .Union(ComputeScrollableOverflowContribution(
-                                       relativeLocation, finalSize,
-                                       layoutOutput.scrollableOverflowRect,
-                                       item.overflow, isScrollContainer));
+        absoluteOverflowRect =
+            absoluteOverflowRect.Union(ComputeScrollableOverflowContribution(
+                relativeLocation, finalSize,
+                layoutOutput.scrollableOverflowRect, item.overflow,
+                item.contain, isScrollContainer));
     }
 
     return absoluteOverflowRect;
@@ -1681,8 +1689,11 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
                              IsScrollContainer(style.overflow.y);
     // css-align-3 §5.1.1: a non-normal align-content makes a block container
-    // establish an independent formatting context.
-    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome();
+    // establish an independent formatting context. Layout and paint
+    // containment do too.
+    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome() ||
+                             style.contain
+                                 .EstablishesIndependentFormattingContext();
 
     LineBool ownMarginsCollapseWithChildren = {
         verticalMarginsAreCollapsible.start && !establishesNewBfc &&
@@ -1822,7 +1833,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
                              : l.location.x - resolvedBorder.left,
                          l.location.y - resolvedBorder.top},
                         l.size, l.scrollableOverflowRect, items[i].overflow,
-                        isScrollContainer));
+                        items[i].contain, isScrollContainer));
             }
         }
     }
@@ -1920,8 +1931,11 @@ LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
     bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
                              IsScrollContainer(style.overflow.y);
     // css-align-3 §5.1.1: a non-normal align-content makes a block container
-    // establish an independent formatting context.
-    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome();
+    // establish an independent formatting context. Layout and paint
+    // containment do too.
+    Contain contain = style.contain;
+    bool establishesNewBfc = isScrollContainer || style.alignContent.IsSome() ||
+                             contain.EstablishesIndependentFormattingContext();
     Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
@@ -1978,18 +1992,25 @@ LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
     next.knownDimensions = styledBasedKnownDimensions;
 
     // Use the block formatting context that was passed down, unless this node
-    // establishes its own (a scroll container, or a non-normal align-content).
+    // establishes its own (a scroll container, a non-normal align-content,
+    // or layout/paint containment).
+    LayoutOutput out;
     if (blockCtx && !establishesNewBfc) {
-        return ComputeInner(tree, nodeId, next, blockCtx);
+        out = ComputeInner(tree, nodeId, next, blockCtx);
+    } else {
+        BlockFormattingContext rootBfc;
+        BlockContext rootCtx;
+        rootCtx.bfc = &rootBfc;
+        rootCtx.isRoot = true;
+        out = ComputeInner(tree, nodeId, next, &rootCtx);
+        VecReset(rootBfc.floatContext.leftFloats);
+        VecReset(rootBfc.floatContext.rightFloats);
+        VecReset(rootBfc.floatContext.segments);
     }
-    BlockFormattingContext rootBfc;
-    BlockContext rootCtx;
-    rootCtx.bfc = &rootBfc;
-    rootCtx.isRoot = true;
-    LayoutOutput out = ComputeInner(tree, nodeId, next, &rootCtx);
-    VecReset(rootBfc.floatContext.leftFloats);
-    VecReset(rootBfc.floatContext.rightFloats);
-    VecReset(rootBfc.floatContext.segments);
+    // Layout containment suppresses the box's baseline. Paint does not.
+    if (contain.SuppressesBaseline()) {
+        out.baselines = BaselinesFromFirst(None());
+    }
     return out;
 }
 
