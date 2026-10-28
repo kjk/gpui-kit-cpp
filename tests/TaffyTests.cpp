@@ -5098,6 +5098,98 @@ static void TestGridMinContributionClampedByMinMax() {
     }
 }
 
+// minmax(auto, fixed) does not crush a sizing keyword. The minimum
+// contribution of min-content or max-content is the item's min-content
+// contribution, so the track grows past the fixed max.
+// grid_minmax_auto_fixed_item_*_content, border-box.
+static void TestGridKeywordMinimumContribution() {
+    TestSuite("taffy::grid keyword minimum contribution");
+
+    auto fixedAuto = [](float maxPx) {
+        TrackSizingFunction t;
+        t.min = MinTrackSizingFunction::Auto();
+        t.max = MaxTrackSizingFunction::Length(maxPx);
+        return t;
+    };
+
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    Dimension keywords[2] = {taffy::Dimension::MaxContent(),
+                             taffy::Dimension::MinContent()};
+    float itemX[2] = {0.0f, 100.0f};
+    for (int d = 0; d < 2; d++) {
+        for (int k = 0; k < 2; k++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style inner;
+            inner.direction = directions[d];
+            inner.position = taffy::Position::Relative;
+            inner.size = SizeDim::FromLengths(100.0f, 25.0f);
+            TaffyNodeId innerId = tree.NewLeaf(inner);
+            taffy::Style keywordItem;
+            keywordItem.direction = directions[d];
+            keywordItem.position = taffy::Position::Relative;
+            keywordItem.size.width = keywords[k];
+            TaffyNodeId a = tree.NewWithChildren(keywordItem, &innerId, 1);
+            taffy::Style empty;
+            empty.direction = directions[d];
+            empty.position = taffy::Position::Relative;
+            TaffyNodeId b = tree.NewLeaf(empty);
+            TrackSizingFunction col = fixedAuto(50.0f);
+            GridTemplateComponent cc = GridTemplateComponent::Single(col);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.direction = directions[d];
+            rootStyle.position = taffy::Position::Absolute;
+            rootStyle.size.width = taffy::Dimension::Length(200.0f);
+            rootStyle.gridTemplateColumns = GridTemplateOf(&cc, 1);
+            TaffyNodeId kids[2] = {a, b};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 200.0f, 25.0f);
+            AssertBox(tree.GetLayout(a), itemX[d], 0.0f, 100.0f, 25.0f);
+            AssertBox(tree.GetLayout(innerId), 0.0f, 0.0f, 100.0f, 25.0f);
+            AssertBox(tree.GetLayout(b), itemX[d], 25.0f, 100.0f, 0.0f);
+            tree.Free();
+        }
+    }
+
+    float innerX[2] = {0.0f, 100.0f};
+    for (int d = 0; d < 2; d++) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style inner;
+        inner.direction = directions[d];
+        inner.position = taffy::Position::Relative;
+        inner.size = SizeDim::FromLengths(100.0f, 100.0f);
+        TaffyNodeId innerId = tree.NewLeaf(inner);
+        taffy::Style keywordItem;
+        keywordItem.direction = directions[d];
+        keywordItem.position = taffy::Position::Relative;
+        keywordItem.size.height = taffy::Dimension::MaxContent();
+        TaffyNodeId a = tree.NewWithChildren(keywordItem, &innerId, 1);
+        taffy::Style empty;
+        empty.direction = directions[d];
+        empty.position = taffy::Position::Relative;
+        TaffyNodeId b = tree.NewLeaf(empty);
+        TrackSizingFunction row = fixedAuto(50.0f);
+        GridTemplateComponent rc = GridTemplateComponent::Single(row);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.direction = directions[d];
+        rootStyle.position = taffy::Position::Absolute;
+        rootStyle.size = SizeDim::FromLengths(200.0f, 200.0f);
+        rootStyle.gridTemplateRows = GridTemplateOf(&rc, 1);
+        TaffyNodeId kids[2] = {a, b};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 200.0f, 200.0f);
+        AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 200.0f, 100.0f);
+        AssertBox(tree.GetLayout(innerId), innerX[d], 0.0f, 100.0f, 100.0f);
+        AssertBox(tree.GetLayout(b), 0.0f, 100.0f, 200.0f, 100.0f);
+        tree.Free();
+    }
+}
+
 // A 1fr row expands under a min-content block-size constraint, because a
 // grid's min-content block size is its max-content block size.
 // grid_fr_rows_flex_item_min_content_block_size and
@@ -9646,6 +9738,7 @@ void TestTaffy() {
     TestGridAutoMinFloorPaddingBorder();
     TestGridReplacedNormalDoesNotStretch();
     TestGridMinContributionClampedByMinMax();
+    TestGridKeywordMinimumContribution();
     TestGridFrRowsMinContentBlockSize();
     TestGridSizingKeywords();
     TestTaffy013Regressions();

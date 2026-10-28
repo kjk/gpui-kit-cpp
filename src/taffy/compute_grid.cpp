@@ -2113,6 +2113,16 @@ float ItemMinimumContribution(GridItem* item, TaffyTree* tree,
         size = MaybeClamp(size, minResolved, maxResolved);
     }
     if (!IsSome(size)) {
+        // A preferred size that is a sizing keyword other than stretch does
+        // not behave as auto, so the minimum contribution is the min-content
+        // contribution.
+        Dimension pref = item->size.Get(axis);
+        if (pref.IsSizingKeyword() && !pref.IsStretch()) {
+            size = Some(ItemMinContentContributionCached(
+                item, axis, tree, gridAreaSize, gridAreaSize));
+        }
+    }
+    if (!IsSome(size)) {
         // A percentage minimum is cyclic when the area it is a percentage of
         // is the track this contribution is sizing. An indefinite area
         // resolves that percentage against zero.
