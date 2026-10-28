@@ -478,10 +478,12 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
                                        IsSome(crossAxisParentSize);
         }
 
-        Optf containerWidth = Main(c.nodeInnerSize, dir);
+        // Percentage padding and border resolve against the container's
+        // inline size, whichever axis is the main axis.
+        Optf containerWidth = c.nodeInnerSize.w;
         // A percentage flex basis resolves only against a definite main size.
         Optf percentResolutionMainSize =
-            c.knownMainSizeIsDefinite ? containerWidth : None();
+            c.knownMainSizeIsDefinite ? Main(c.nodeInnerSize, dir) : None();
         float boxSizingAdjustment = 0.0f;
         if (cs.boxSizing == BoxSizing::ContentBox) {
             RectF padding = cs.padding.ResolveOrZero(containerWidth, calc);
@@ -1541,8 +1543,11 @@ void DetermineUsedCrossSize(TaffyTree* tree, Vec<FlexLine>* lines,
                 // This use of max_size is an exception to the rule that
                 // max_size transfers through the aspect ratio. Chrome and
                 // Firefox agree, and it is a reasonable reading of the spec.
-                RectF padding = cs.padding.ResolveOrZero(c.nodeInnerSize, calc);
-                RectF border = cs.border.ResolveOrZero(c.nodeInnerSize, calc);
+                // Percentage padding and border resolve against the
+                // container's width on all four sides.
+                RectF padding = cs.padding
+                                    .ResolveOrZero(c.nodeInnerSize.w, calc);
+                RectF border = cs.border.ResolveOrZero(c.nodeInnerSize.w, calc);
                 SizeF pbSum = (padding + border).SumAxes();
                 SizeF boxSizingAdjustment =
                     cs.boxSizing == BoxSizing::ContentBox ? pbSum

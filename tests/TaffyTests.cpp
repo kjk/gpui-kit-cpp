@@ -6370,6 +6370,92 @@ static void TestRootPositionAndInsets() {
     }
 }
 
+// taffy 8391a347. Percentage padding on a flex item resolves against the
+// container's width, including the block-axis sides of a column.
+static void TestFlexPercentagePaddingAgainstWidth() {
+    TestSuite("taffy flex percentage padding");
+    SizeAvail space = SizeAvail::MaxContent();
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style root;
+        root.display = taffy::Display::Flex;
+        root.flexDirection = taffy::FlexDirection::Column;
+        root.size = SizeDim::FromLengths(400.0f, 300.0f);
+        taffy::Style item;
+        item.flexBasis = taffy::Dimension::Length(50.0f);
+        item.padding.top = taffy::LengthPercentage::Percent(0.1f);
+        item.padding.bottom = taffy::LengthPercentage::Percent(0.05f);
+        TaffyNodeId child = tree.NewLeaf(item);
+        TaffyNodeId node = tree.NewWithChildren(root, &child, 1);
+        tree.ComputeLayout(node, space);
+        AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 400.0f, 60.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style root;
+        root.display = taffy::Display::Flex;
+        root.boxSizing = taffy::BoxSizing::ContentBox;
+        root.flexDirection = taffy::FlexDirection::Column;
+        root.size = SizeDim::FromLengths(400.0f, 300.0f);
+        taffy::Style item;
+        item.boxSizing = taffy::BoxSizing::ContentBox;
+        item.flexBasis = taffy::Dimension::Length(50.0f);
+        item.padding.top = taffy::LengthPercentage::Percent(0.1f);
+        item.padding.bottom = taffy::LengthPercentage::Percent(0.05f);
+        TaffyNodeId child = tree.NewLeaf(item);
+        TaffyNodeId node = tree.NewWithChildren(root, &child, 1);
+        tree.ComputeLayout(node, space);
+        AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 400.0f, 110.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style root;
+        root.display = taffy::Display::Flex;
+        root.boxSizing = taffy::BoxSizing::ContentBox;
+        root.flexDirection = taffy::FlexDirection::Column;
+        root.size.width = taffy::Dimension::Length(400.0f);
+        taffy::Style item;
+        item.boxSizing = taffy::BoxSizing::ContentBox;
+        item.flexBasis = taffy::Dimension::Length(50.0f);
+        item.padding.top = taffy::LengthPercentage::Percent(0.1f);
+        TaffyNodeId child = tree.NewLeaf(item);
+        TaffyNodeId node = tree.NewWithChildren(root, &child, 1);
+        tree.ComputeLayout(node, space);
+        AssertBox(tree.GetLayout(node), 0.0f, 0.0f, 400.0f, 90.0f);
+        AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 400.0f, 90.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style root;
+        root.display = taffy::Display::Flex;
+        root.boxSizing = taffy::BoxSizing::ContentBox;
+        root.size.width = taffy::Dimension::Length(400.0f);
+        taffy::Style tall;
+        tall.boxSizing = taffy::BoxSizing::ContentBox;
+        tall.size = SizeDim::FromLengths(20.0f, 200.0f);
+        taffy::Style item;
+        item.boxSizing = taffy::BoxSizing::ContentBox;
+        item.size.width = taffy::Dimension::Length(20.0f);
+        item.maxSize.height = taffy::Dimension::Length(50.0f);
+        item.padding.top = taffy::LengthPercentage::Percent(0.1f);
+        TaffyNodeId a = tree.NewLeaf(tall);
+        TaffyNodeId b = tree.NewLeaf(item);
+        TaffyNodeId kids[2] = {a, b};
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 2);
+        tree.ComputeLayout(node, space);
+        AssertBox(tree.GetLayout(node), 0.0f, 0.0f, 400.0f, 200.0f);
+        AssertBox(tree.GetLayout(b), 20.0f, 0.0f, 20.0f, 90.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6389,6 +6475,7 @@ void TestTaffy() {
     TestAbsoluteReplacedDoesNotStretch();
     TestInitialContainingBlock();
     TestRootPositionAndInsets();
+    TestFlexPercentagePaddingAgainstWidth();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();
