@@ -258,9 +258,9 @@ struct Layout {
 
 // ─── Cache ───────────────────────────────────────────────────────────────
 
-// A node's size is queried by its parent several times over one layout run
-// and later results must not clobber earlier ones, so there is a slot per
-// shape of query. See `ComputeCacheSlot` for what each slot holds.
+// A node's size is queried by its parent several times over one layout run.
+// Measure results share a small clock: a hit marks the slot, and a full
+// cache replaces the first slot whose mark was already cleared.
 constexpr int kCacheSize = 9;
 
 // A space-optimised cache key. Two f32s packed into a u64 each; the f32s are
@@ -275,6 +275,9 @@ struct CacheKey {
     static CacheKey From(const LayoutInput& input);
     // The parent size with the axis bits and the y-axis value masked out.
     uint64_t XAxisParentSize() const;
+    // A single-axis measure may leave the other axis garbage, so it only
+    // answers a query for that same axis. A both-axis entry answers either.
+    bool SizeIsValidFor(CacheKey other) const;
 };
 
 constexpr bool operator==(CacheKey a, CacheKey b) {
@@ -305,6 +308,10 @@ struct Cache {
     // Bit 0 is finalLayoutEntry; bits 1..kCacheSize are measureEntries.
     // An entry's content is only meaningful while its bit is set.
     uint16_t presentMask = 0;
+    // Bit i is set when measure slot i has been used since the clock last
+    // passed it. The clock clears the bit and skips a set slot.
+    uint16_t recentlyUsedEntries = 0;
+    uint8_t nextMeasureEntry = 0;
     // Tracks whether every entry is empty, so a clear can be skipped.
     bool isEmpty = true;
 
@@ -313,13 +320,13 @@ struct Cache {
         return (uint16_t)(1u << (i + 1));
     }
 
-    bool Get(const LayoutInput& input, LayoutOutput* out) const;
+    bool Get(const LayoutInput& input, LayoutOutput* out);
     void Store(const LayoutInput& input, const LayoutOutput& output);
     // The same two with the key already in hand. Every real lookup is a get
     // followed by a store with the same input, and building the key is a
     // dozen bit operations over four floats — enough, at one per node per
-    // pass, to be worth doing once.
-    bool GetWithKey(CacheKey key, RunMode runMode, LayoutOutput* out) const;
+    // pass, to be worth doing once. A measure hit marks the slot used.
+    bool GetWithKey(CacheKey key, RunMode runMode, LayoutOutput* out);
     void StoreWithKey(CacheKey key, const LayoutInput& input,
                       const LayoutOutput& output);
     // True if it cleared something, false if it was already empty. Rust

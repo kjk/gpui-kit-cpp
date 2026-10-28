@@ -5001,6 +5001,157 @@ static void TestContainment() {
     utassertnear(painted.top, 0.0f);
 }
 
+// src/tree/cache.rs. A measure input whose known width is the cache key.
+static LayoutInput CacheMeasureInput(float width) {
+    LayoutInput in;
+    in.runMode = RunMode::ComputeSize;
+    in.sizingMode = SizingMode::InherentSize;
+    in.axis = RequestedAxis::Both;
+    in.knownDimensions.w = Some(width);
+    in.knownDimensions.h = None();
+    in.knownDimensionsAreDefiniteW = true;
+    in.knownDimensionsAreDefiniteH = true;
+    in.parentSize = SizeFOptNone();
+    in.availableSpace = SizeAvail::MaxContent();
+    in.verticalMarginsAreCollapsible = LineBool::False();
+    return in;
+}
+
+static LayoutOutput CacheMeasureOutput(float width) {
+    return LayoutOutput::FromOuterSize({width, width});
+}
+
+static bool CacheGotSize(Cache& cache, float width, SizeF* size) {
+    LayoutOutput out;
+    if (!cache.Get(CacheMeasureInput(width), &out)) {
+        return false;
+    }
+    *size = out.size;
+    return true;
+}
+
+static int CacheMeasureCount(const Cache& cache) {
+    int n = 0;
+    for (int i = 0; i < kCacheSize; i++) {
+        if ((cache.presentMask & Cache::MeasureBit(i)) != 0) {
+            n++;
+        }
+    }
+    return n;
+}
+
+static void TestLayoutCache() {
+    TestSuite("taffy::tree::cache");
+
+    {
+        // recently_used_measure_entries_get_a_second_chance
+        Cache cache;
+        for (int width = 0; width < kCacheSize; width++) {
+            cache.Store(CacheMeasureInput((float)width),
+                        CacheMeasureOutput((float)width));
+        }
+        cache.Store(CacheMeasureInput((float)kCacheSize),
+                    CacheMeasureOutput((float)kCacheSize));
+        SizeF got;
+        utassert(CacheGotSize(cache, 1.0f, &got));
+        utassertnear(got.w, 1.0f);
+        utassertnear(got.h, 1.0f);
+        cache.Store(CacheMeasureInput((float)(kCacheSize + 1)),
+                    CacheMeasureOutput((float)(kCacheSize + 1)));
+        utassert(CacheGotSize(cache, 1.0f, &got));
+        utassertnear(got.w, 1.0f);
+        utassertnear(got.h, 1.0f);
+        utassert(!CacheGotSize(cache, 2.0f, &got));
+    }
+
+    {
+        // storing_an_existing_measurement_updates_it_in_place
+        Cache cache;
+        cache.Store(CacheMeasureInput(1.0f), CacheMeasureOutput(1.0f));
+        cache.Store(CacheMeasureInput(2.0f), CacheMeasureOutput(2.0f));
+        cache.Store(CacheMeasureInput(1.0f), CacheMeasureOutput(3.0f));
+        utassert(CacheMeasureCount(cache) == 2);
+        SizeF got;
+        utassert(CacheGotSize(cache, 1.0f, &got));
+        utassertnear(got.w, 3.0f);
+        utassertnear(got.h, 3.0f);
+    }
+
+    {
+        // measurements_with_margin_collapse_metadata_are_not_cached
+        Cache cache;
+        LayoutOutput collapseThrough = CacheMeasureOutput(1.0f);
+        collapseThrough.marginsCanCollapseThrough = true;
+        cache.Store(CacheMeasureInput(1.0f), collapseThrough);
+        SizeF got;
+        utassert(!CacheGotSize(cache, 1.0f, &got));
+
+        LayoutOutput carried = CacheMeasureOutput(2.0f);
+        carried.topMargin = CollapsibleMarginSet::FromMargin(10.0f);
+        cache.Store(CacheMeasureInput(2.0f), carried);
+        utassert(!CacheGotSize(cache, 2.0f, &got));
+    }
+
+    {
+        // retrieving_a_measurement_only_marks_its_slot_as_used
+        Cache cache;
+        cache.Store(CacheMeasureInput(1.0f), CacheMeasureOutput(1.0f));
+        cache.Store(CacheMeasureInput(2.0f), CacheMeasureOutput(2.0f));
+        cache.recentlyUsedEntries = 0;
+        CacheEntry<SizeF> before[kCacheSize];
+        for (int i = 0; i < kCacheSize; i++) {
+            before[i] = cache.measureEntries[i];
+        }
+        SizeF got;
+        utassert(CacheGotSize(cache, 1.0f, &got));
+        utassertnear(got.w, 1.0f);
+        utassertnear(got.h, 1.0f);
+        for (int i = 0; i < kCacheSize; i++) {
+            utassert(before[i].key == cache.measureEntries[i].key);
+            utassert(before[i].content == cache.measureEntries[i].content);
+        }
+        utassert(cache.recentlyUsedEntries != 0);
+    }
+}
+
+// A width-only block measure stores height 0. A later height query must not
+// reuse that slot, or intrinsically sized grid rows collapse.
+static void TestGridBlockItemHeightCache() {
+    TestSuite("taffy grid block item height cache");
+
+    TaffyTree tree;
+    tree.Init();
+    SizeF leafSize = {100.0f, 19.0f};
+    TaffyNodeId items[3];
+    for (int row = 1; row <= 3; row++) {
+        TaffyNodeId leaf = tree.NewLeafWithContext(taffy::Style{}, &leafSize);
+        taffy::Style item;
+        item.display = taffy::Display::Block;
+        item.gridRow = {GLine((int16_t)row), GLine((int16_t)(row + 1))};
+        item.gridColumn = {GLine(1), GLine(2)};
+        items[row - 1] = tree.NewWithChildren(item, &leaf, 1);
+    }
+
+    TrackSizingFunction cols[2] = {TrackSizingFunction::Percent(0.6f),
+                                   TrackSizingFunction::Auto()};
+    GridTemplateComponent colComps[2] = {
+        GridTemplateComponent::Single(cols[0]),
+        GridTemplateComponent::Single(cols[1])};
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::Grid;
+    rootStyle.gridTemplateColumns = GridTemplateOf(colComps, 2);
+    rootStyle.size.width = Dimension::Length(1000.0f);
+    rootStyle.size.height = Dimension::Auto();
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, items, 3);
+    tree.ComputeLayoutWithMeasure(root, SizeAvail::Definite({1000.0f, 1000.0f}),
+                                  SizeMeasureFunction, nullptr);
+    for (int i = 0; i < 3; i++) {
+        utassertnear(tree.GetLayout(items[i]).size.h, 19.0f);
+        utassertnear(tree.GetLayout(items[i]).location.y, 19.0f * (float)i);
+    }
+    tree.Free();
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -5037,10 +5188,12 @@ void TestTaffy() {
     TestOverflowPastScrollOrigin();
     TestContentSizeEndPadding();
     TestScrollableOverflow();
+    TestLayoutCache();
 
     // The grid tests build styles whose track lists live in an arena of their
     // own; a Style holds slices, not owned vectors.
     gGridArena = gpui::ArenaNew();
+    TestGridBlockItemHeightCache();
     TestExplicitGridSizing();
     TestInitializeGridTracks();
     TestGridImplicitSizing();

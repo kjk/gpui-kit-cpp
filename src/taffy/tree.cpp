@@ -86,47 +86,13 @@ uint64_t CacheKey::XAxisParentSize() const {
     return parentSize & (kXAxisValueMask & kNonSignBitsMask);
 }
 
-// Which slot the current computation is cached in.
-//
-//   - Slot 0: both known dimensions were set
-//   - Slots 1-4: one of the two was set —
-//       1: width known, other axis MaxContent or Definite
-//       2: width known, other axis MinContent
-//       3: height known, other axis MaxContent or Definite
-//       4: height known, other axis MinContent
-//   - Slots 5-8: neither was set —
-//       5: x MaxContent/Definite, y MaxContent/Definite
-//       6: x MaxContent/Definite, y MinContent
-//       7: x MinContent,          y MaxContent/Definite
-//       8: x MinContent,          y MinContent
-//
-// Definite available space shares a slot with MaxContent because a node is
-// generally sized under one or the other, not both.
-static int ComputeCacheSlot(SizeFOpt knownDimensions,
-                            SizeAvail availableSpace) {
-    bool hasKnownWidth = IsSome(knownDimensions.w);
-    bool hasKnownHeight = IsSome(knownDimensions.h);
-
-    if (hasKnownWidth && hasKnownHeight) {
-        return 0;
-    }
-    bool heightIsMin = availableSpace.height
-                           .kind == AvailableSpace::Kind::MinContent;
-    bool widthIsMin = availableSpace.width
-                          .kind == AvailableSpace::Kind::MinContent;
-    if (hasKnownWidth && !hasKnownHeight) {
-        return 1 + (heightIsMin ? 1 : 0);
-    }
-    if (hasKnownHeight && !hasKnownWidth) {
-        return 3 + (widthIsMin ? 1 : 0);
-    }
-    if (!widthIsMin) {
-        return heightIsMin ? 6 : 5;
-    }
-    return heightIsMin ? 8 : 7;
+bool CacheKey::SizeIsValidFor(CacheKey other) const {
+    uint64_t entryAxis = parentSize & kBothSignBitsMask;
+    return entryAxis == kBothSignBitsMask ||
+           entryAxis == (other.parentSize & kBothSignBitsMask);
 }
 
-bool Cache::Get(const LayoutInput& input, LayoutOutput* out) const {
+bool Cache::Get(const LayoutInput& input, LayoutOutput* out) {
     return GetWithKey(CacheKey::From(input), input.runMode, out);
 }
 
@@ -134,7 +100,7 @@ void Cache::Store(const LayoutInput& input, const LayoutOutput& output) {
     StoreWithKey(CacheKey::From(input), input, output);
 }
 
-bool Cache::GetWithKey(CacheKey key, RunMode runMode, LayoutOutput* out) const {
+bool Cache::GetWithKey(CacheKey key, RunMode runMode, LayoutOutput* out) {
     switch (runMode) {
         case RunMode::PerformLayout:
             if ((presentMask & kFinalBit) && finalLayoutEntry.key == key) {
@@ -155,7 +121,9 @@ bool Cache::GetWithKey(CacheKey key, RunMode runMode, LayoutOutput* out) const {
                         key.knownDimensionsAreDefiniteW &&
                     e.key.knownDimensionsAreDefiniteH ==
                         key.knownDimensionsAreDefiniteH &&
-                    e.key.XAxisParentSize() == xAxis) {
+                    e.key.XAxisParentSize() == xAxis &&
+                    e.key.SizeIsValidFor(key)) {
+                    recentlyUsedEntries |= (uint16_t)(1u << i);
                     *out = LayoutOutput::FromOuterSize(e.content);
                     return true;
                 }
@@ -176,11 +144,42 @@ void Cache::StoreWithKey(CacheKey key, const LayoutInput& input,
             finalLayoutEntry = {key, output};
             break;
         case RunMode::ComputeSize: {
+            // A hit is rebuilt with FromOuterSize, which drops margin-collapse
+            // metadata. A result that carries any cannot be cached.
+            if (output.marginsCanCollapseThrough ||
+                output.topMargin.positive != 0.0f ||
+                output.topMargin.negative != 0.0f ||
+                output.bottomMargin.positive != 0.0f ||
+                output.bottomMargin.negative != 0.0f) {
+                return;
+            }
             isEmpty = false;
-            int slot =
-                ComputeCacheSlot(input.knownDimensions, input.availableSpace);
-            presentMask |= MeasureBit(slot);
-            measureEntries[slot] = {key, output.size};
+            for (int i = 0; i < kCacheSize; i++) {
+                if ((presentMask & MeasureBit(i)) == 0) {
+                    continue;
+                }
+                if (measureEntries[i].key == key) {
+                    measureEntries[i].content = output.size;
+                    recentlyUsedEntries |= (uint16_t)(1u << i);
+                    return;
+                }
+            }
+            while ((recentlyUsedEntries & (uint16_t)(1u << nextMeasureEntry)) !=
+                   0) {
+                recentlyUsedEntries &= (uint16_t)~(1u << nextMeasureEntry);
+                nextMeasureEntry = (uint8_t)(nextMeasureEntry + 1);
+                if (nextMeasureEntry == (uint8_t)kCacheSize) {
+                    nextMeasureEntry = 0;
+                }
+            }
+            int entryIndex = nextMeasureEntry;
+            presentMask |= MeasureBit(entryIndex);
+            measureEntries[entryIndex] = {key, output.size};
+            recentlyUsedEntries |= (uint16_t)(1u << entryIndex);
+            nextMeasureEntry = (uint8_t)(nextMeasureEntry + 1);
+            if (nextMeasureEntry == (uint8_t)kCacheSize) {
+                nextMeasureEntry = 0;
+            }
             break;
         }
         default:
@@ -196,6 +195,8 @@ bool Cache::Clear() {
     // The contents are left as they are: an entry is only ever read while
     // its bit is set, so dropping the bits is the whole clear.
     presentMask = 0;
+    recentlyUsedEntries = 0;
+    nextMeasureEntry = 0;
     return true;
 }
 
