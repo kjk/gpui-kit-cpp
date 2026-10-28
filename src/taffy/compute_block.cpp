@@ -1219,8 +1219,12 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         float childFloatContribution = -INFINITY;
         if (item.isInSameBfc) {
             // A same-BFC child always has a defined width, from stretch
-            // sizing.
-            float width = UnwrapOr(knownDimensions.w, stretchWidth);
+            // sizing. A replaced element may not: it is sized by its measure
+            // function. The width is at least the padding and border, so a
+            // float inside the child is placed in that box rather than in a
+            // content box crushed below it.
+            float width = F32Max(UnwrapOr(knownDimensions.w, stretchWidth),
+                                 item.paddingBorderSum.w);
 
             // TODO(taffy): account for auto margins.
             float insetLeft = itemNonAutoMargin.left + contentBoxInset.left;

@@ -3000,6 +3000,71 @@ static void TestFloatClearIntrinsicWidth() {
     tree.Free();
 }
 
+// A same-BFC child's float context is at least the child's padding and
+// border. A specified width smaller than that still places the right float
+// at the used border edge. float_child_padding_border_minimum.
+static void TestFloatChildPaddingBorderMinimum() {
+    TestSuite("taffy::float padding border minimum");
+
+    BoxSizing boxes[2] = {BoxSizing::BorderBox, BoxSizing::ContentBox};
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    float childX[2][2] = {{0.0f, 150.0f}, {0.0f, 50.0f}};
+    float childW[2] = {150.0f, 250.0f};
+    float floatX[2] = {130.0f, 230.0f};
+
+    for (int b = 0; b < 2; b++) {
+        for (int d = 0; d < 2; d++) {
+            TaffyTree tree;
+            tree.Init();
+            TaffyNodeId rows[4];
+            TaffyNodeId floats[4];
+            for (int r = 0; r < 4; r++) {
+                taffy::Style flo;
+                flo.boxSizing = boxes[b];
+                flo.direction = directions[d];
+                flo.position = taffy::Position::Relative;
+                flo.floatMode = taffy::Float::Right;
+                flo.size = SizeDim::FromLengths(20.0f, 20.0f);
+                floats[r] = tree.NewLeaf(flo);
+
+                taffy::Style row;
+                row.display = taffy::Display::Block;
+                row.boxSizing = boxes[b];
+                row.direction = directions[d];
+                row.position = taffy::Position::Relative;
+                row.size = SizeDim::FromLengths(100.0f, 20.0f);
+                if (r == 0) {
+                    row.padding.left = LengthPercentage::Length(150.0f);
+                } else if (r == 1) {
+                    row.border.left = LengthPercentage::Length(150.0f);
+                } else if (r == 2) {
+                    row.padding.left = LengthPercentage::Length(75.0f);
+                    row.border.left = LengthPercentage::Length(75.0f);
+                } else {
+                    row.padding.left = LengthPercentage::Percent(0.5f);
+                }
+                rows[r] = tree.NewWithChildren(row, &floats[r], 1);
+            }
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Block;
+            rootStyle.boxSizing = boxes[b];
+            rootStyle.direction = directions[d];
+            rootStyle.position = taffy::Position::Absolute;
+            rootStyle.size.width = taffy::Dimension::Length(300.0f);
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, rows, 4);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 300.0f, 80.0f);
+            for (int r = 0; r < 4; r++) {
+                AssertBox(tree.GetLayout(rows[r]), childX[b][d],
+                          20.0f * (float)r, childW[b], 20.0f);
+                AssertBox(tree.GetLayout(floats[r]), floatX[b], 0.0f, 20.0f,
+                          20.0f);
+            }
+            tree.Free();
+        }
+    }
+}
+
 // A scroll-container child synthesizes or clamps its baseline to the
 // border box. A visible child with no baseline contributes none, so the
 // flex parent uses the block's own bottom edge.
@@ -9346,6 +9411,7 @@ void TestTaffy() {
     TestFlexBalanceLayout();
     TestBlockLayout();
     TestFloatClearIntrinsicWidth();
+    TestFloatChildPaddingBorderMinimum();
     TestFloatPercentSumFits();
     TestFloatAvoidingAutoMargins();
     TestBlockJustifySelf();
