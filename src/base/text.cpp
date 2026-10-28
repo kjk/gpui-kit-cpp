@@ -437,6 +437,28 @@ TextViewStyle& TextViewStyle::WithInlineCode(const gpui::Style& value,
     return *this;
 }
 
+// Drop a font size that cannot replace the inherited one, and that would
+// make retained style equality fail every frame (NaN is never equal).
+static gpui::Style NormalizeInlineCodeStyle(gpui::Style style,
+                                            uint32_t* fields) {
+    if (fields && (*fields & StyleFieldFontSize)) {
+        float size = style.fontSize;
+        // NaN is not equal to itself. +inf is larger than any font.
+        if (!(size > 0.f) || size > 1.0e20f || size != size) {
+            *fields &= ~StyleFieldFontSize;
+        }
+    }
+    return style;
+}
+
+TextViewStyle& TextViewStyle::WithInlineCodeStyle(const gpui::Style& value,
+                                                  uint32_t fields) {
+    uint32_t kept = fields;
+    inlineCodeStyle = NormalizeInlineCodeStyle(value, &kept);
+    inlineCodeStyleFields = kept;
+    return *this;
+}
+
 TextViewStyle& TextViewStyle::WithDark(bool value) {
     isDark = value;
     return *this;
@@ -564,7 +586,9 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
         tableFields != other.tableFields ||
         tableHeadFields != other.tableHeadFields ||
         tableCellFields != other.tableCellFields ||
-        inlineCodeFields != other.inlineCodeFields || isDark != other.isDark ||
+        inlineCodeFields != other.inlineCodeFields ||
+        inlineCodeStyleFields != other.inlineCodeStyleFields ||
+        isDark != other.isDark ||
         hasTableBackground != other.hasTableBackground ||
         (hasTableBackground &&
          !TextRgbaEq(tableBackground, other.tableBackground)) ||
@@ -572,7 +596,9 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
         !StyleFieldsEqual(table, other.table, tableFields) ||
         !StyleFieldsEqual(tableHead, other.tableHead, tableHeadFields) ||
         !StyleFieldsEqual(tableCell, other.tableCell, tableCellFields) ||
-        !StyleFieldsEqual(inlineCode, other.inlineCode, inlineCodeFields)) {
+        !StyleFieldsEqual(inlineCode, other.inlineCode, inlineCodeFields) ||
+        !StyleFieldsEqual(inlineCodeStyle, other.inlineCodeStyle,
+                          inlineCodeStyleFields)) {
         return false;
     }
     // The callback is compared by what it answers for every level, which is
@@ -3374,16 +3400,63 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
         t->Bg(markBg);
     } else if (marks & MdCode) {
         // inline.rs shapes inline code in the theme's monospace face at
-        // 0.875 of the surrounding font size. Its background has four DIP of
-        // horizontal breathing room and the theme's small radius.
+        // 0.875 of the surrounding font size, unless the box refinement
+        // names a size. Its background has four DIP of horizontal breathing
+        // room and the theme's small radius, unless that refinement names
+        // padding, a radius or a border. A named padding replaces the four
+        // DIP; a border is added to it.
+        float sized = font * 0.875f;
+        bool namedSize = false;
+        float padL = 4.f;
+        float padR = 4.f;
+        float padT = 0.f;
+        float padB = 0.f;
+        auto take = [&](const gpui::Style& s, uint32_t fields) {
+            if ((fields & StyleFieldFontSize) && s.fontSize > 0.f) {
+                sized = s.fontSize;
+                namedSize = true;
+            }
+            if (fields & StyleFieldPad) {
+                padL = s.pad.left;
+                padR = s.pad.right;
+                padT = s.pad.top;
+                padB = s.pad.bottom;
+            }
+        };
+        take(textViewStyle.inlineCode, textViewStyle.inlineCodeFields);
+        take(textViewStyle.inlineCodeStyle, textViewStyle
+                                                .inlineCodeStyleFields);
         float radius = base_theme::Theme::Global(cx->app).tokens.radius.sm;
-        t->Font(font * 0.875f)
-            ->Mono()
-            ->PadX(4)
+        t->Mono()
+            ->PadL(padL)
+            ->PadR(padR)
+            ->PadT(padT)
+            ->PadB(padB)
             ->Radius(radius)
             ->Bg(textViewStyle.InlineCodeBackground());
-        if (textViewStyle.inlineCodeFields) {
-            t->Refine(textViewStyle.inlineCode, textViewStyle.inlineCodeFields);
+        // Refine carries the box. Font size is applied after it: a named
+        // size is a DIP resolved when the style was built, while
+        // Style.fontSize is DIPs at a 16 px rem and layout scales it by
+        // the window's rem. Leaving the DIP in the refinement would scale
+        // it a second time.
+        uint32_t codeFields =
+            textViewStyle.inlineCodeFields & ~StyleFieldFontSize;
+        uint32_t boxFields =
+            textViewStyle.inlineCodeStyleFields & ~StyleFieldFontSize;
+        if (codeFields) {
+            t->Refine(textViewStyle.inlineCode, codeFields);
+        }
+        if (boxFields) {
+            t->Refine(textViewStyle.inlineCodeStyle, boxFields);
+        }
+        if (namedSize) {
+            float windowRem = cx && cx->win ? WindowRemSize(cx->win) : 16.f;
+            if (!(windowRem > 0.f)) {
+                windowRem = 16.f;
+            }
+            t->Font(sized * 16.f / windowRem);
+        } else {
+            t->Font(sized);
         }
     }
     if (selectable) {
@@ -3744,7 +3817,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             SrcMap(w, wordRun->segments, wordRun->segmentCount, wordStart);
             RangeWashes(w, n, runOffset + wordStart,
                         runOffset + wordStart + wordLen,
-                        (marks & MdHighlight) != 0);
+                        (marks & MdHighlight) != 0, (marks & MdCode) != 0);
             // The word the reveal starts in, or, for a line break that lays
             // out no word, the first word after it.
             if (hasReveal && revealOut &&
@@ -4444,13 +4517,49 @@ static float CellTextWidth(TextView* tv, MdNode* cell, bool head) {
             }
             if (i > start) {
                 Str seg(text.s + start, i - start);
+                float segSize = size;
+                int segWeight = weight;
+                float extra = 0;
+                if (run->marks & MdCode) {
+                    float codeFont = size * 0.875f;
+                    float padL = 4.f;
+                    float padR = 4.f;
+                    float borderL = 0;
+                    float borderR = 0;
+                    auto take = [&](const gpui::Style& s, uint32_t fields) {
+                        if ((fields & StyleFieldFontSize) && s.fontSize > 0.f) {
+                            codeFont = s.fontSize;
+                        }
+                        if (fields & StyleFieldPad) {
+                            padL = s.pad.left;
+                            padR = s.pad.right;
+                        }
+                        if (fields & StyleFieldBorder) {
+                            borderL = s.border;
+                            borderR = s.border;
+                        }
+                        if (fields & StyleFieldBorderL) {
+                            borderL = s.borderL;
+                        }
+                        if (fields & StyleFieldBorderR) {
+                            borderR = s.borderR;
+                        }
+                    };
+                    take(tv->textViewStyle.inlineCode, tv->textViewStyle
+                                                           .inlineCodeFields);
+                    take(tv->textViewStyle.inlineCodeStyle,
+                         tv->textViewStyle.inlineCodeStyleFields);
+                    segSize = codeFont;
+                    segWeight = weight | (int)kFontMono;
+                    extra = padL + padR + borderL + borderR;
+                }
                 float w = 0;
                 if (paint) {
-                    w = MeasureText(paint, seg, size, 0, false, weight).w;
+                    w = MeasureText(paint, seg, segSize, 0, false, segWeight).w;
                 } else {
-                    w = (float)(i - start) * size * 0.5f;
+                    w = (float)(i - start) * segSize * 0.5f;
                 }
-                line += w;
+                line += w + extra;
             }
             if (i >= n) {
                 break;
@@ -6359,8 +6468,14 @@ int TextViewState::StreamFadeFrame(Arena* a, double now,
     return n;
 }
 
+static Rgba FadeRgba(Rgba c, float fadeOut) {
+    float keep = 1.f - (fadeOut < 0.f ? 0.f : (fadeOut > 1.f ? 1.f : fadeOut));
+    c.a = (uint8_t)((float)c.a * keep + 0.5f);
+    return c;
+}
+
 El* TextView::RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
-                          bool markOver) {
+                          bool markOver, bool fadeCodeBox) {
     // fade_highlights: the streamed fade of this leaf's bytes [lo, hi),
     // rebased to lo, over whatever the run paints.
     if (t && nStreamFades > 0 && leaf && leaf->leafStart >= 0 && hi > lo) {
@@ -6385,6 +6500,26 @@ El* TextView::RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
                 }
             }
             t->Fades(fades, at);
+        }
+    }
+    if (fadeCodeBox && t) {
+        // fade_highlights fades the code box's background and border by the
+        // same amount as the glyphs when the fade covers the span.
+        int nFades = 0;
+        const TextFade* fades = t->FadesGet(&nFades);
+        float fadeOut = 0;
+        int textLen = len(t->text);
+        for (int i = 0; i < nFades; i++) {
+            if (fades[i].lo <= 0 && fades[i].hi >= textLen &&
+                fades[i].fadeOut > fadeOut) {
+                fadeOut = fades[i].fadeOut;
+            }
+        }
+        if (fadeOut > 0.f) {
+            if (t->style.hasBg) {
+                t->style.bg.color = FadeRgba(t->style.bg.color, fadeOut);
+            }
+            t->style.borderColor = FadeRgba(t->style.borderColor, fadeOut);
         }
     }
     if (!t || !rangeHighlights || !leaf || leaf->leafStart < 0 || hi <= lo) {
@@ -6959,6 +7094,13 @@ El* TextView::IntoEl() {
     if (linkUnderlineOnHoverSet) {
         textViewStyle.linkUnderlineOnHover = linkUnderlineOnHover;
     }
+    if (inlineCodeStyleSet) {
+        gpui::Style merged = textViewStyle.inlineCodeStyle;
+        StyleApplyFields(&merged, inlineCodeStyle, inlineCodeStyleFields);
+        textViewStyle
+            .WithInlineCodeStyle(merged, textViewStyle.inlineCodeStyleFields |
+                                             inlineCodeStyleFields);
+    }
     if (!state.IsValid()) {
         uint32_t kind = (uint32_t)HashClickId(
             html ? StrL("TextViewStateHtml") : StrL("TextViewStateMarkdown"));
@@ -7297,6 +7439,14 @@ TextView* TextView::LinkUnderline(bool underline) {
 TextView* TextView::LinkUnderlineOnHover(bool underline) {
     linkUnderlineOnHoverSet = true;
     linkUnderlineOnHover = underline;
+    return this;
+}
+
+TextView* TextView::InlineCodeStyle(const gpui::Style& style, uint32_t fields) {
+    uint32_t kept = fields;
+    inlineCodeStyle = NormalizeInlineCodeStyle(style, &kept);
+    inlineCodeStyleFields = kept;
+    inlineCodeStyleSet = true;
     return this;
 }
 

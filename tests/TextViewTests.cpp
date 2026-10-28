@@ -8063,6 +8063,174 @@ static void HoverUnderlineKeepsMarksAndDiesWithTheText() {
     ArenaDelete(a);
 }
 
+// inline_code_refinements_remain_explicit_on_an_inverted_surface
+static void InlineCodeRefinementsStayExplicitOnAnInvertedSurface() {
+    TextViewStyle plain = TextViewStyle::Default();
+    utassert(plain.InlineCodeStyleFields() == 0);
+    // Computed at runtime: a constant 1e20*1e20 is a C4056 overflow.
+    volatile float big = 1.0e20f;
+    float inf = big * big;
+    float bad[] = {inf, inf - inf, 0.f, -1.f};
+    for (float size : bad) {
+        gpui::Style named = {};
+        named.fontSize = size;
+        // WithInlineCodeStyle mutates and returns *this. Copy first so
+        // `plain` stays the style with no box.
+        TextViewStyle styled = plain;
+        styled.WithInlineCodeStyle(named, StyleFieldFontSize);
+        utassert((styled.InlineCodeStyleFields() & StyleFieldFontSize) == 0);
+    }
+    gpui::Style box = {};
+    box.fontSize = 16.f;
+    box.bg = Background(Rgba{255, 0, 0, 255});
+    box.border = 1.f;
+    box.borderColor = Rgba{0, 0, 255, 255};
+    uint32_t fields = StyleFieldFontSize | StyleFieldBg | StyleFieldBorder |
+                      StyleFieldBorderColor;
+    TextViewStyle styled = plain;
+    styled.WithInlineCodeStyle(box, fields);
+    utassert(!plain.Equals(styled));
+    utassert(styled.InlineCodeStyle().fontSize == 16.f);
+    utassert(styled.InlineCodeStyle().bg.color.r == 255);
+    utassert(styled.InlineCodeStyle().border == 1.f);
+    Rgba white = {255, 255, 255, 255};
+    utassert(styled.IsInvertedBy(white));
+    TextViewStyle inverted = styled.OnTextColor(white);
+    utassert(inverted.InlineCodeStyleFields() == fields);
+    utassert(inverted.InlineCodeStyle().fontSize == 16.f);
+    utassert(inverted.InlineCodeStyle().bg.color.r == 255);
+    utassert(inverted.InlineCodeStyle().borderColor.b == 255);
+}
+
+struct InlineCodeBoxView {
+    float rem = 16;
+    bool viewBorder = false;
+
+    static El* Render(InlineCodeBoxView* self, Ctx* cx) {
+        float rem = self->rem;
+        gpui::Style box = {};
+        box.fontSize = rem;
+        box.pad.left = rem * 0.25f;
+        box.pad.right = rem * 0.25f;
+        box.pad.top = rem * 0.125f;
+        box.pad.bottom = rem * 0.125f;
+        box.bg = Background(Rgba{255, 0, 0, 255});
+        box.border = 1.f;
+        box.borderColor = Rgba{0, 0, 255, 255};
+        box.radius = rem * 0.25f;
+        uint32_t fields = StyleFieldFontSize | StyleFieldPad | StyleFieldBg |
+                          StyleFieldBorder | StyleFieldBorderColor |
+                          StyleFieldRadius;
+        if (self->viewBorder) {
+            gpui::Style inherited = {};
+            inherited.fontSize = rem;
+            inherited.bg = box.bg;
+            TextViewDefaults defaults =
+                TextViewDefaults::New()
+                    .WithStyle(TextViewStyle::Default().WithInlineCodeStyle(
+                        inherited, StyleFieldFontSize | StyleFieldBg));
+            defaults.Install(cx->app);
+            gpui::Style over = {};
+            over.border = 1.f;
+            over.borderColor = box.borderColor;
+            return TextView::New(cx, StrL("before `code` after"))
+                ->Font(rem)
+                ->InlineCodeStyle(over,
+                                  StyleFieldBorder | StyleFieldBorderColor)
+                ->IntoEl();
+        }
+        return TextView::New(cx, StrL("before `code` after"))
+            ->Font(rem)
+            ->Style(TextViewStyle::Default().WithInlineCodeStyle(box, fields))
+            ->IntoEl();
+    }
+};
+
+// inline_code_style_keeps_equal_size_prose_separate_and_measures_its_box
+// and inline_code_view_refinement_keeps_unspecified_style_properties.
+static void InlineCodeStyleKeepsEqualSizeProseSeparateAndMeasuresItsBox() {
+    App* app = TestAppNew();
+    for (float rem : {14.f, 28.f}) {
+        Entity<InlineCodeBoxView> view = EntityNew<InlineCodeBoxView>(app);
+        InlineCodeBoxView* harness = view.Get(app);
+        harness->rem = rem;
+        harness->viewBorder = false;
+        Window* win = TestWindowOpen(app, view, 800, 200);
+        WindowSetRemSize(win, rem);
+        TestDraw(win);
+        El* root = EntityRender(app, win, win->frameArena, view.id);
+        const RuntimeStyle& th = RuntimeStyleNow(app);
+        LayoutEl(&win->paint, root, 0, 0, 800, 200, th.fontSize, th.foreground);
+        El* code = StreamTextEl(root, StrL("code"));
+        El* before = StreamTextEl(root, StrL("before"));
+        utassert(code && before);
+        if (code && before) {
+            utassertnear(code->laidFont, rem);
+            utassert(code->style.hasBg && code->style.bg.color.r == 255);
+            utassertnear(code->style.border, 1.f);
+            utassert(code->style.borderColor.b == 255);
+            utassertnear(code->style.radius, rem * 0.25f);
+            utassertnear(code->style.pad.left, rem * 0.25f);
+            utassert(!before->style.hasBg);
+            Size text = MeasureText(&win->paint, StrL("code"), rem, 0, false,
+                                    kFontMono);
+            utassertnear(code->w, text.w + rem * 0.5f + 2.f);
+        }
+        // A view refinement keeps the style's font size and background and
+        // adds the border it names.
+        harness->viewBorder = true;
+        TestDraw(win);
+        root = EntityRender(app, win, win->frameArena, view.id);
+        LayoutEl(&win->paint, root, 0, 0, 800, 200, th.fontSize, th.foreground);
+        code = StreamTextEl(root, StrL("code"));
+        utassert(code);
+        if (code) {
+            utassertnear(code->laidFont, rem);
+            utassert(code->style.hasBg && code->style.bg.color.r == 255);
+            utassertnear(code->style.border, 1.f);
+            utassert(code->style.borderColor.b == 255);
+        }
+    }
+    TestAppFree(app);
+}
+
+// fades_inline_code_style_background_and_border
+static void FadesInlineCodeStyleBackgroundAndBorder() {
+    bool wasReduced = MotionReduced();
+    MotionSetReduced(false);
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Entity<TextViewState> entity =
+        TextViewState::Markdown(&app, StrL("before "));
+    TextViewState* state = entity.Get(&app);
+    state->SetMotion(TextViewMotion{}.WithStreamFade(10000.f), &app, win);
+    TextView::New(&cx, entity)->IntoEl();
+    state->PushStr(StrL("`code`"), &app, win);
+    gpui::Style box = {};
+    box.bg = Background(Rgba{255, 0, 0, 255});
+    box.border = 1.f;
+    box.borderColor = Rgba{0, 0, 255, 255};
+    El* root = TextView::New(&cx, entity)
+                   ->InlineCodeStyle(box, StyleFieldBg | StyleFieldBorder |
+                                              StyleFieldBorderColor)
+                   ->IntoEl();
+    El* code = StreamTextEl(root, StrL("code"));
+    utassert(code && code->style.hasBg);
+    if (code) {
+        utassert(code->style.bg.color.a < 20);
+        utassert(code->style.borderColor.a < 20);
+    }
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    MotionSetReduced(wasReduced);
+}
+
 void TestTextView() {
     TestSuite("TextView");
     LinkedTextKeepsSourceAndReplacesLinks();
@@ -8233,5 +8401,8 @@ void TestTextView() {
 #if GPUI_MARKDOWN_FULL
     TestTextStateWindow();
 #endif
+    InlineCodeRefinementsStayExplicitOnAnInvertedSurface();
+    InlineCodeStyleKeepsEqualSizeProseSeparateAndMeasuresItsBox();
+    FadesInlineCodeStyleBackgroundAndBorder();
     ArenaDelete(a);
 }

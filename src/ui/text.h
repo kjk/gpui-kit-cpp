@@ -88,6 +88,7 @@ using TextViewLink = gpui::TextViewLink;
 using TextViewState = gpui::TextViewState;
 using TextViewLayoutState = gpui::TextViewLayoutState;
 using TextView = gpui::TextView;
+// TextView::InlineCodeStyle: the component façade forwards to Base.
 using Text = gpui::Text;
 using Minifier = gpui::Minifier;
 using HtmlInlineTag = gpui::HtmlInlineTag;

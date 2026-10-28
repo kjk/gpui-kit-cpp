@@ -16,16 +16,26 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f8e09e81df43c1611acd4a28f8765cbd394df516` (2026-10-24,
-typos: Preserve valid Portuguese translations (#3664)).
-Upstream added three pt-BR exceptions to its typos checker. The
-translations themselves are unchanged, and this tree does not run that
-checker.
+Processed through `11345ec002d9f182a266b5d5dd3a217090700a87` (2026-10-24,
+text: Support inline code style overrides (#3663)).
+Inline code takes a style refinement for font size, color, background,
+border, radius and padding. A named padding replaces the four DIP of
+breathing room; a border is added. A view refinement merges over the
+style after an inverted surface has derived its colors. Font family,
+weight and the other text decorations on that refinement are a known
+gap.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
 ## Known gaps vs Rust
 
+- **Inline code style overrides skip some text properties.** Font size,
+  color, background, border, radius and padding are applied
+  (`text.cpp`). Font family, features, fallbacks, weight, italic,
+  underline and strikethrough on that refinement are not: the run stays
+  on the monospace face, and weight still comes from the surrounding
+  marks. Lengths are DIPs resolved when the style is built (`Rems`),
+  which is how every other style in this tree names a size.
 - **A dialog outside the window stack eases in on its own clock.**
   `Dialog::IntoEl` still runs the entrance when no window layer supplied
   a presence sample (`dialog.cpp`). Rust takes that clock only from the

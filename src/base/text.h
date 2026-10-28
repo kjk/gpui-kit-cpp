@@ -478,6 +478,13 @@ struct TextViewStyle {
     uint32_t tableCellFields = 0;
     gpui::Style inlineCode = {};
     uint32_t inlineCodeFields = 0;
+    // with_inline_code_style: typography and box refinements applied after
+    // the highlight style and after an inverted surface recolors it.
+    // Unspecified fields keep the defaults (0.875 scale, 4 DIP of horizontal
+    // padding, the small radius, the code background, no border). A font
+    // size that is not finite and positive is dropped.
+    gpui::Style inlineCodeStyle = {};
+    uint32_t inlineCodeStyleFields = 0;
     // The table body background, or the theme surface when unset. Only
     // OnTextColor sets it, to let a table on an inverted surface show that
     // surface.
@@ -519,6 +526,13 @@ struct TextViewStyle {
     TextViewStyle& WithTableHead(const gpui::Style& style, uint32_t fields);
     TextViewStyle& WithTableCell(const gpui::Style& style, uint32_t fields);
     TextViewStyle& WithInlineCode(const gpui::Style& style, uint32_t fields);
+    // Overrides inline code font size, color, background, border, radius
+    // and padding. Margin, positioning, flex and explicit box sizes are
+    // not applied. Line height stays the paragraph's.
+    TextViewStyle& WithInlineCodeStyle(const gpui::Style& style,
+                                       uint32_t fields);
+    const gpui::Style& InlineCodeStyle() const { return inlineCodeStyle; }
+    uint32_t InlineCodeStyleFields() const { return inlineCodeStyleFields; }
     TextViewStyle& WithDark(bool value);
     // `on_text_color`: this style adapted to body text drawn in `color`, the
     // text color a container sets for its surface.
@@ -1327,6 +1341,11 @@ struct TextView {
     bool linkUnderline = true;
     bool linkUnderlineOnHoverSet = false;
     bool linkUnderlineOnHover = false;
+    // TextView::inline_code_style, merged over the resolved style after a
+    // surface recolor.
+    bool inlineCodeStyleSet = false;
+    gpui::Style inlineCodeStyle = {};
+    uint32_t inlineCodeStyleFields = 0;
     // The view follows a text color that inverts its style's surface, so the
     // installed highlighter — whose colors are made for the page — is left
     // out.
@@ -1371,6 +1390,9 @@ struct TextView {
     TextView* LinkUnderline(bool underline);
     // Set whether links are underlined while hovered. Defaults to false.
     TextView* LinkUnderlineOnHover(bool underline);
+    // Refines inline code over the resolved style. Unspecified properties
+    // are inherited, including a refinement already on that style.
+    TextView* InlineCodeStyle(const gpui::Style& style, uint32_t fields);
     TextView* Refine(const gpui::Style& style, uint32_t fields);
     TextView* Selectable(bool on = true);
     // `.selection_format(..)`: whether a copy of the selection is the text as
@@ -1559,7 +1581,7 @@ struct TextView {
     // With `markOver`, `t` is a `<mark>` word whose background moves into
     // the washes after the highlights, so it paints over them.
     El* RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
-                    bool markOver = false);
+                    bool markOver = false, bool fadeCodeBox = false);
     // Start this frame's reveal, dropping a clamped or expired request.
     // RevealPainted settles the report while the live content mask is active.
     void RevealFrame(TextViewState* managed);
