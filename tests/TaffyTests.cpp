@@ -4679,6 +4679,207 @@ static void TestGridMinmaxAutoFixedZero() {
     }
 }
 
+// minmax(auto, fixed) clamps the automatic minimum, but the clamp is a
+// stretch fit: it cannot shrink the item below its padding and border.
+// grid_minmax_auto_fixed_*_floor_*, border-box.
+static void TestGridAutoMinFloorPaddingBorder() {
+    TestSuite("taffy::grid auto min floor");
+
+    auto track = [](float maxPx) {
+        TrackSizingFunction t;
+        t.min = MinTrackSizingFunction::Auto();
+        t.max = MaxTrackSizingFunction::Length(maxPx);
+        return t;
+    };
+
+    // One column, horizontal padding 5+5. The 0px max cannot crush it
+    // below 10, and the two auto rows split the definite 50px height.
+    {
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        float x[2] = {0.0f, 40.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style padded;
+            padded.direction = directions[i];
+            padded.position = taffy::Position::Relative;
+            padded.padding.left = LengthPercentage::Length(5.0f);
+            padded.padding.right = LengthPercentage::Length(5.0f);
+            taffy::Style empty;
+            empty.direction = directions[i];
+            empty.position = taffy::Position::Relative;
+            TaffyNodeId a = tree.NewLeaf(padded);
+            TaffyNodeId b = tree.NewLeaf(empty);
+            TrackSizingFunction c = track(0.0f);
+            GridTemplateComponent cc = GridTemplateComponent::Single(c);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.direction = directions[i];
+            rootStyle.position = taffy::Position::Absolute;
+            rootStyle.size = SizeDim::FromLengths(50.0f, 50.0f);
+            rootStyle.gridTemplateColumns = GridTemplateOf(&cc, 1);
+            TaffyNodeId kids[2] = {a, b};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 50.0f, 50.0f);
+            AssertBox(tree.GetLayout(a), x[i], 0.0f, 10.0f, 25.0f);
+            AssertBox(tree.GetLayout(b), x[i], 25.0f, 10.0f, 25.0f);
+            tree.Free();
+        }
+    }
+
+    // Two minmax(auto, 0px) columns. Only the padded item's track is
+    // floored; the empty track stays at the fixed max.
+    {
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        float ax[2] = {0.0f, 40.0f};
+        float bx[2] = {10.0f, 40.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style padded;
+            padded.direction = directions[i];
+            padded.position = taffy::Position::Relative;
+            padded.padding.left = LengthPercentage::Length(5.0f);
+            padded.padding.right = LengthPercentage::Length(5.0f);
+            taffy::Style empty;
+            empty.direction = directions[i];
+            empty.position = taffy::Position::Relative;
+            TaffyNodeId a = tree.NewLeaf(padded);
+            TaffyNodeId b = tree.NewLeaf(empty);
+            TrackSizingFunction cols[2] = {track(0.0f), track(0.0f)};
+            GridTemplateComponent cc[2] = {
+                GridTemplateComponent::Single(cols[0]),
+                GridTemplateComponent::Single(cols[1])};
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.direction = directions[i];
+            rootStyle.position = taffy::Position::Absolute;
+            rootStyle.size = SizeDim::FromLengths(50.0f, 50.0f);
+            rootStyle.gridTemplateColumns = GridTemplateOf(cc, 2);
+            TaffyNodeId kids[2] = {a, b};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 50.0f, 50.0f);
+            AssertBox(tree.GetLayout(a), ax[i], 0.0f, 10.0f, 50.0f);
+            AssertBox(tree.GetLayout(b), bx[i], 0.0f, 0.0f, 50.0f);
+            tree.Free();
+        }
+    }
+
+    // The floor can exceed the fixed max. Padding 15+15 raises the first
+    // track to 30 while the second stays at its 20px max.
+    {
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        float ax[2] = {0.0f, 20.0f};
+        float bx[2] = {30.0f, 0.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style padded;
+            padded.direction = directions[i];
+            padded.position = taffy::Position::Relative;
+            padded.padding.left = LengthPercentage::Length(15.0f);
+            padded.padding.right = LengthPercentage::Length(15.0f);
+            taffy::Style empty;
+            empty.direction = directions[i];
+            empty.position = taffy::Position::Relative;
+            TaffyNodeId a = tree.NewLeaf(padded);
+            TaffyNodeId b = tree.NewLeaf(empty);
+            TrackSizingFunction cols[2] = {track(20.0f), track(20.0f)};
+            GridTemplateComponent cc[2] = {
+                GridTemplateComponent::Single(cols[0]),
+                GridTemplateComponent::Single(cols[1])};
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.direction = directions[i];
+            rootStyle.position = taffy::Position::Absolute;
+            rootStyle.size = SizeDim::FromLengths(50.0f, 50.0f);
+            rootStyle.gridTemplateColumns = GridTemplateOf(cc, 2);
+            TaffyNodeId kids[2] = {a, b};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 50.0f, 50.0f);
+            AssertBox(tree.GetLayout(a), ax[i], 0.0f, 30.0f, 50.0f);
+            AssertBox(tree.GetLayout(b), bx[i], 0.0f, 20.0f, 50.0f);
+            tree.Free();
+        }
+    }
+
+    // The same floor on the block axis. Vertical padding 5+5 keeps the
+    // minmax(auto, 0px) row at 10, and the implicit row takes the rest.
+    {
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style padded;
+            padded.direction = directions[i];
+            padded.position = taffy::Position::Relative;
+            padded.padding.top = LengthPercentage::Length(5.0f);
+            padded.padding.bottom = LengthPercentage::Length(5.0f);
+            taffy::Style empty;
+            empty.direction = directions[i];
+            empty.position = taffy::Position::Relative;
+            TaffyNodeId a = tree.NewLeaf(padded);
+            TaffyNodeId b = tree.NewLeaf(empty);
+            TrackSizingFunction r = track(0.0f);
+            GridTemplateComponent rc = GridTemplateComponent::Single(r);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.direction = directions[i];
+            rootStyle.position = taffy::Position::Absolute;
+            rootStyle.size = SizeDim::FromLengths(50.0f, 50.0f);
+            rootStyle.gridTemplateRows = GridTemplateOf(&rc, 1);
+            TaffyNodeId kids[2] = {a, b};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 50.0f, 50.0f);
+            AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 50.0f, 10.0f);
+            AssertBox(tree.GetLayout(b), 0.0f, 10.0f, 50.0f, 40.0f);
+            tree.Free();
+        }
+    }
+
+    // A border floors the same way. The 5px border on every side keeps the
+    // column at 10, and the bordered item's row is 30.
+    {
+        Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+        float x[2] = {0.0f, 40.0f};
+        for (int i = 0; i < 2; i++) {
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style bordered;
+            bordered.direction = directions[i];
+            bordered.position = taffy::Position::Relative;
+            bordered.border.left = LengthPercentage::Length(5.0f);
+            bordered.border.right = LengthPercentage::Length(5.0f);
+            bordered.border.top = LengthPercentage::Length(5.0f);
+            bordered.border.bottom = LengthPercentage::Length(5.0f);
+            taffy::Style empty;
+            empty.direction = directions[i];
+            empty.position = taffy::Position::Relative;
+            TaffyNodeId a = tree.NewLeaf(bordered);
+            TaffyNodeId b = tree.NewLeaf(empty);
+            TrackSizingFunction c = track(0.0f);
+            GridTemplateComponent cc = GridTemplateComponent::Single(c);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.direction = directions[i];
+            rootStyle.position = taffy::Position::Absolute;
+            rootStyle.size = SizeDim::FromLengths(50.0f, 50.0f);
+            rootStyle.gridTemplateColumns = GridTemplateOf(&cc, 1);
+            TaffyNodeId kids[2] = {a, b};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 50.0f, 50.0f);
+            AssertBox(tree.GetLayout(a), x[i], 0.0f, 10.0f, 30.0f);
+            AssertBox(tree.GetLayout(b), x[i], 30.0f, 10.0f, 20.0f);
+            tree.Free();
+        }
+    }
+}
+
 // Width and height sizing keywords on a grid item. The fixed tracks make the
 // area definite, so stretch is the area minus margins and the intrinsic
 // keywords measure the fixture text (min 20x20, max 40x10).
@@ -9136,6 +9337,7 @@ void TestTaffy() {
     TestGridNonFiniteStylesTerminate();
     TestGridZeroSpanTerminates();
     TestGridMinmaxAutoFixedZero();
+    TestGridAutoMinFloorPaddingBorder();
     TestGridSizingKeywords();
     TestTaffy013Regressions();
     gpui::ArenaDelete(gGridArena);

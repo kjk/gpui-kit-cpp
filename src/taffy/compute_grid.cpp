@@ -2141,8 +2141,13 @@ float ItemMinimumContribution(GridItem* item, TaffyTree* tree,
             // sizing functions the item spans. That clamp does not apply to
             // an explicitly specified preferred or minimum size, and a
             // fit-content() argument does not clamp the way a fixed max does.
+            // The clamp is a stretch fit into the limit, so it does not shrink
+            // the item below its padding + border.
             Optf limit = SpannedFixedTrackLimit(*item, axis, axisTracks,
                                                 Get(innerNodeSize, axis), calc);
+            if (IsSome(limit)) {
+                limit = F32Max(limit, Get(paddingBorderSize, axis));
+            }
             size = Some(MaybeMin(minimumContribution, limit));
         } else {
             size = Some(0.0f);
