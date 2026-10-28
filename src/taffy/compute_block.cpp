@@ -55,16 +55,23 @@ struct PlacedFloatedBox {
     float y = 0.0f;
 };
 
+// Percentage widths and margins that sum to the container can exceed it by
+// a fraction of a pixel. A fit check that does not absorb that wraps a box
+// that should sit on the same line.
+static constexpr float kFitTolerance = 0.001f;
+
 static bool FloatFitsHorizontally(float width, FloatDirection direction,
                                   float bfcWidth, const float floatInsets[2],
                                   const float cbInsets[2]) {
     int lead = (int)direction;
     int trail = 1 - lead;
     float xInset = F32Max(floatInsets[lead], cbInsets[lead]);
-    bool fitsOpposite = floatInsets[trail] == 0.0f ||
-                        xInset + width <= bfcWidth - floatInsets[trail];
-    bool fitsContaining = floatInsets[lead] == 0.0f ||
-                          xInset + width <= bfcWidth - cbInsets[trail];
+    bool fitsOpposite =
+        floatInsets[trail] == 0.0f ||
+        xInset + width <= bfcWidth - floatInsets[trail] + kFitTolerance;
+    bool fitsContaining =
+        floatInsets[lead] == 0.0f ||
+        xInset + width <= bfcWidth - cbInsets[trail] + kFitTolerance;
     return fitsOpposite && fitsContaining;
 }
 
@@ -1097,7 +1104,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                         UnwrapOr(item.size.w,
                                  F32Max(slot.stretchWidth, minAutoWidth)),
                         item.minSize.w, item.maxSize.w);
-                    if (width <= slot.borderWidth + 0.001f) {
+                    if (width <= slot.borderWidth + kFitTolerance) {
                         break;
                     }
                     after = slot.segmentId;

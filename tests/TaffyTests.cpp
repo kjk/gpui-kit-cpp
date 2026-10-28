@@ -2743,6 +2743,46 @@ static void TestBlockScrollBaselines() {
     }
 }
 
+// Three left floats whose percentage widths and margins sum to the
+// container. f32 rounding must not push the last one onto the next line.
+static void TestFloatPercentSumFits() {
+    TestSuite("taffy float percentage sum fits");
+
+    TaffyTree tree;
+    tree.Init();
+    const float kContainer = 1628.0f;
+    TaffyNodeId kids[3];
+    for (int i = 0; i < 3; i++) {
+        taffy::Style child;
+        child.display = taffy::Display::Block;
+        child.floatMode = Float::Left;
+        child.size.width = Dimension::Percent(0.30f);
+        child.size.height = Dimension::Length(50.0f);
+        if (i > 0) {
+            child.margin.left = LengthPercentageAuto::Percent(0.05f);
+        }
+        kids[i] = tree.NewLeaf(child);
+    }
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::Block;
+    rootStyle.size.width = Dimension::Length(kContainer);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+    // Rounding is on, so 30% of 1628 (488.4) and the 5% margins land on
+    // the integer boxes the fixture records. The last float stays at y 0.
+    utassertnear(tree.GetLayout(root).size.w, 1628.0f);
+    utassertnear(tree.GetLayout(root).size.h, 50.0f);
+    const float kX[3] = {0.0f, 570.0f, 1140.0f};
+    for (int i = 0; i < 3; i++) {
+        Layout box = tree.GetLayout(kids[i]);
+        utassertnear(box.location.x, kX[i]);
+        utassertnear(box.location.y, 0.0f);
+        utassertnear(box.size.w, 488.0f);
+        utassertnear(box.size.h, 50.0f);
+    }
+    tree.Free();
+}
+
 // block_percentage_height_with_min_height_parent and the relative
 // percentage-inset fixtures. Min-height is not a percentage basis, and
 // a relative percentage inset resolves against the container's height.
@@ -5215,6 +5255,7 @@ void TestTaffy() {
     TestFlexBalanceLayout();
     TestBlockLayout();
     TestFloatClearIntrinsicWidth();
+    TestFloatPercentSumFits();
     TestBlockPercentageBasis();
     TestBlockScrollBaselines();
     TestContainment();
