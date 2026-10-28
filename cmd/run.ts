@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "650d3948fd29cb3b7be6645ec0259eb15dbfa885",
+  sha: "f07fa6ac1faca1d3f11bc16b98dabd66e848e2d0",
   date: "2026-10-26",
-  subject: "text: Expose image source resolver on component TextView (#3694)",
+  subject: "release: Defer source-breaking changes from v0.8.1",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

@@ -8266,9 +8266,9 @@ static bool TreeHasSpanColor(El* e, Rgba color) {
     return false;
 }
 
-// TextareaState::create_decorations_collection paints over plain text, not
-// only over a highlighter's runs.
-static void TextareaDecorationsPaintOnPlainText() {
+// TextareaMode::Extras is (). A textarea does not own a decoration
+// collection, and one is not painted over its plain text.
+static void TextareaHasNoDecorationExtras() {
     InputView view = InputViewBuildTextarea();
     InputState* s = view.input;
     InputSetValue(s, StrL("hello textarea"));
@@ -8277,8 +8277,7 @@ static void TextareaDecorationsPaintOnPlainText() {
     TextDecoration decoration = TextDecoration::New({0, 5}, marked);
     TextDecorationCollection collection =
         InputCreateDecorationsCollection(s, &decoration, 1);
-    utassert(collection.IsValid());
-    utassert(TextareaExtras::Of(s).state == s);
+    utassert(!collection.IsValid());
     Arena* a = ArenaNew();
     Ctx cx = {view.app, view.win, a, {}};
     // Soft wrap defers the rows until prepaint. Building them here is the
@@ -8286,10 +8285,7 @@ static void TextareaDecorationsPaintOnPlainText() {
     s->wrap.buildingRows = true;
     El* row = Textarea::New(&cx, s);
     s->wrap.buildingRows = false;
-    utassert(TreeHasSpanColor(row, marked.color));
-    Selection ranges[2] = {};
-    utassert(collection.GetRanges(ranges, 2) == 1);
-    utassert(ranges[0].start == 0 && ranges[0].end == 5);
+    utassert(!TreeHasSpanColor(row, marked.color));
     ArenaDelete(a);
     InputViewFree(&view);
 }
@@ -9147,7 +9143,7 @@ static void BackspacePairWithCjkPrefix() {
 static void RunWindowTestsC() {
     UnfoldAt();
     BlurKeepsDecorations();
-    TextareaDecorationsPaintOnPlainText();
+    TextareaHasNoDecorationExtras();
     ContextMenuHandlerIsDeferredAndRespectsDisabled();
     ContextMenuHandlerCanReadItsInput();
     SetAutoGrowKeepsRowsFitted();

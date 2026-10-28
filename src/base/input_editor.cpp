@@ -909,7 +909,7 @@ int DecorationCollections::BuildSpans(TextSpan* out, int cap) const {
 
 TextDecorationCollection InputCreateDecorationsCollection(
     InputState* s, const TextDecoration* decorations, int n) {
-    if (!s) {
+    if (!s || s->kind != InputKind::Editor) {
         return TextDecorationCollection{};
     }
     if (!s->textDecorations) {

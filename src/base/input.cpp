@@ -2776,9 +2776,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             docSpans = hl;
             nDocSpans = nHl;
         }
-    } else {
-        // TextareaExtras::decoration_layers. A textarea has no highlighter,
-        // and its tracked decorations are still the runs the text paints.
+    } else if (state->kind == InputKind::Editor) {
+        // Editor extras with no highlighter: the tracked decorations are
+        // still the runs the text paints. A textarea has no extras.
         int nOwn = InputDecorationSpans(state, nullptr, 0);
         if (nOwn > 0) {
             TextSpan* own = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * nOwn);

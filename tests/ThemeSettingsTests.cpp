@@ -129,42 +129,6 @@ static void StyledThemeChangesProjectIntoBase() {
     AppGlobalClear(&second);
 }
 
-// theme.rs scrollbar_idle_and_exit_follow_the_motion_tokens.
-static void scrollbar_idle_and_exit_follow_the_motion_tokens() {
-    bool reduced = MotionReduced();
-    MotionSetReduced(false);
-    App app;
-    component::Init(&app);
-    const BaseTheme* base = BaseThemeGlobal(&app);
-    utassert(base);
-    utassertnear(base->scrollbar.motion.idle, 2.f);
-    utassertnear(base->scrollbar.motion.exit, 0.5f);
-    utassertnear(base->scrollbar.motion.enter, 0.3f);
-    utassertnear(base->scrollbar.motion.expand, 0.3f);
-    ThemeUpdate(&app, [](Theme* t) {
-        if (!t) return;
-        t->motion.scrollbarIdleMs = 700.f;
-        t->motion.scrollbarExitMs = 150.f;
-    });
-    base = BaseThemeGlobal(&app);
-    utassert(base);
-    utassertnear(base->scrollbar.motion.idle, 0.7f);
-    utassertnear(base->scrollbar.motion.exit, 0.15f);
-    utassertnear(base->scrollbar.motion.enter, 0.3f);
-    utassertnear(base->scrollbar.motion.expand, 0.3f);
-
-    // Mode and theme changes re-project the scrollbar; the tuned timing
-    // survives them.
-    ScrollbarModeSet(&app, ScrollbarMode::Hover);
-    ThemeSet(&app, ThemeMode::Dark);
-    base = BaseThemeGlobal(&app);
-    utassert(base);
-    utassertnear(base->scrollbar.motion.idle, 0.7f);
-    utassertnear(base->scrollbar.motion.exit, 0.15f);
-    AppGlobalClear(&app);
-    MotionSetReduced(reduced);
-}
-
 static void UnprojectedBaseVisualsResolveFromSemanticTokens() {
     SemanticThemeTokens tokens;
     tokens.colors.foreground = Rgb(0xfa, 0xfa, 0xfa);
@@ -408,7 +372,6 @@ void TestThemeSettings() {
     TheScrollbarModeIsTheThemesUntilAnElementSaysOtherwise();
     ThemeSettingsAreIsolatedPerApplication();
     StyledThemeChangesProjectIntoBase();
-    scrollbar_idle_and_exit_follow_the_motion_tokens();
     UnprojectedBaseVisualsResolveFromSemanticTokens();
     BaseThemeSourceContractBuildsAndOwnsGlobals();
     StyledThemeChangesProjectIntoTheRuntimeSeam();

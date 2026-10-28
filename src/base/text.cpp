@@ -366,16 +366,6 @@ TextViewStyle& TextViewStyle::WithLink(Rgba value) {
     return *this;
 }
 
-TextViewStyle& TextViewStyle::WithLinkUnderline(bool underline) {
-    linkUnderline = underline;
-    return *this;
-}
-
-TextViewStyle& TextViewStyle::WithLinkUnderlineOnHover(bool underline) {
-    linkUnderlineOnHover = underline;
-    return *this;
-}
-
 TextViewStyle& TextViewStyle::WithSelection(Rgba value) {
     selection = value;
     return *this;
@@ -595,8 +585,7 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
     // revision has to notice.
     if (!TextRgbaEq(foreground, other.foreground) ||
         !TextRgbaEq(mutedForeground, other.mutedForeground) ||
-        !TextRgbaEq(link, other.link) || linkUnderline != other.linkUnderline ||
-        linkUnderlineOnHover != other.linkUnderlineOnHover ||
+        !TextRgbaEq(link, other.link) ||
         !TextRgbaEq(selection, other.selection) ||
         !TextRgbaEq(codeBackground, other.codeBackground) ||
         !TextRgbaEq(border, other.border)) {
@@ -653,73 +642,13 @@ void TextViewState::OnFadeTick(TextViewState* self, Ctx* cx, const TickEvent*) {
     NotifyEntity(cx->app, self->self, cx->win);
 }
 
-void TextViewState::OnLinkHover(TextViewState* self, Ctx* cx,
-                                const HoverEvent* ev, int64_t arg) {
-    if (!self) {
-        return;
-    }
-    int ix = (int)arg;
-    bool inside = ev && ev->hovered && ix >= 0 && ix < len(self->linkHovers);
-    int next = inside ? ix : (self->hoveredLink == ix ? -1 : self->hoveredLink);
-    if (next == self->hoveredLink) {
-        return;
-    }
-    self->hoveredLink = next;
-    Notify(cx);
-}
-
 // The parse pipeline's own, further down.
 static void TextViewParseFree(TextViewParse* p);
 static void TextViewParseDetach(TextViewParseJob* job);
 static void TextViewBaselineDetach(TextViewState* s);
 
-static void TextViewLinksFree(TextViewState* s) {
-    if (!s) {
-        return;
-    }
-    for (int i = 0; i < s->nLinks; i++) {
-        StrFree(s->links[i].url);
-    }
-    free(s->links);
-    s->links = nullptr;
-    s->nLinks = 0;
-}
-
-static void TextViewLinksReplace(TextViewState* s, const TextViewLink* links,
-                                 int n) {
-    TextViewLinksFree(s);
-    if (!s || n <= 0 || !links) {
-        return;
-    }
-    s->links = (TextViewLink*)calloc((size_t)n, sizeof(TextViewLink));
-    if (!s->links) {
-        return;
-    }
-    s->nLinks = n;
-    for (int i = 0; i < n; i++) {
-        s->links[i].range = links[i].range;
-        s->links[i].url = StrDup(links[i].url);
-    }
-}
-
-static bool TextViewLinksEqual(const TextViewState* s,
-                               const TextViewLink* links, int n) {
-    if (!s || s->nLinks != n) {
-        return false;
-    }
-    for (int i = 0; i < n; i++) {
-        if (s->links[i].range.start != links[i].range.start ||
-            s->links[i].range.end != links[i].range.end ||
-            !base::StrEq(s->links[i].url, links[i].url)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 TextViewState::~TextViewState() {
     ArenaDelete(parserArena);
-    TextViewLinksFree(this);
     StrFree(text);
     RenderedIndexFree(renderedIndex);
     RangeHighlightFrameFree(rangeHighlights);
@@ -733,9 +662,7 @@ TextViewState::~TextViewState() {
 }
 
 static Entity<TextViewState> NewTextViewState(App* app, Str text,
-                                              TextViewFormat format,
-                                              const TextViewLink* links,
-                                              int nLinks) {
+                                              TextViewFormat format) {
     Entity<TextViewState> entity;
     if (!app) return entity;
     entity = EntityNewState<TextViewState>(app);
@@ -743,7 +670,6 @@ static Entity<TextViewState> NewTextViewState(App* app, Str text,
         state->self = entity.id;
         state->text = StrDup(text);
         state->format = format;
-        TextViewLinksReplace(state, links, nLinks);
         state->updateRevision = 1;
         state->fullUpdateRevision = 1;
         state->StartParse(app, nullptr);
@@ -752,17 +678,11 @@ static Entity<TextViewState> NewTextViewState(App* app, Str text,
 }
 
 Entity<TextViewState> TextViewState::Markdown(App* app, Str text) {
-    return NewTextViewState(app, text, TextViewFormat::Markdown, nullptr, 0);
+    return NewTextViewState(app, text, TextViewFormat::Markdown);
 }
 
 Entity<TextViewState> TextViewState::Html(App* app, Str text) {
-    return NewTextViewState(app, text, TextViewFormat::Html, nullptr, 0);
-}
-
-Entity<TextViewState> TextViewState::LinkedText(App* app, Str text,
-                                                const TextViewLink* links,
-                                                int n) {
-    return NewTextViewState(app, text, TextViewFormat::LinkedText, links, n);
+    return NewTextViewState(app, text, TextViewFormat::Html);
 }
 
 void TextViewState::Changed(App* app, Window* window,
@@ -777,31 +697,8 @@ void TextViewState::Changed(App* app, Window* window,
     if (app && self.IsValid()) NotifyEntity(app, self, window);
 }
 
-void TextViewState::SetLinkedText(Str value, const TextViewLink* incoming,
-                                  int n, App* app, Window* window) {
-    if (base::StrEq(text, value) && TextViewLinksEqual(this, incoming, n)) {
-        return;
-    }
-    if (motion.streamFadeMs > 0) {
-        streamFadePending = true;
-        streamFadeReplace = true;
-    }
-    Str replacement = StrDup(value);
-    StrFree(text);
-    text = replacement;
-    TextViewLinksReplace(this, incoming, n);
-    hoveredLink = -1;
-    VecClear(linkHovers);
-    Changed(app, window, false);
-    updateRevision++;
-    fullUpdateRevision = updateRevision;
-    StartParse(app, window);
-}
-
 void TextViewState::SetText(Str value, App* app, Window* window) {
     if (base::StrEq(text, value)) return;
-    hoveredLink = -1;
-    VecClear(linkHovers);
     // Markdown that extends the current non-empty text is appended like
     // PushStr, keeping the selection (and fading in when a stream fade is
     // on). HTML blocks carry no spans, so Rust parses an extension of them
@@ -884,24 +781,18 @@ int TextViewState::SelectedText(Window* window, char* out, int cap) const {
     const WindowSelection* selection = window ? window->sel : nullptr;
     // Select-all copies the source for every format other than Plain,
     // SourceAcrossStyles included.
-    // Linked text copies its source on select-all, the same way a Markdown
-    // view does for every format other than Plain. The rendered characters
-    // are the source, so the two answers match; the branch is the one Rust
-    // takes before it consults the selection format.
     bool selectAll = out && cap > 0 && selection && selectAllAnchor >= 0 &&
                      selection->anchor == selectAllAnchor &&
                      selection->cursor == selectAllCursor;
-    if (selectAll && (format == TextViewFormat::LinkedText ||
-                      (format == TextViewFormat::Markdown &&
-                       selectionFormat != SelectionFormat::Plain))) {
+    if (selectAll && format == TextViewFormat::Markdown &&
+        selectionFormat != SelectionFormat::Plain) {
         Str selected = Source();
         int n = std::min(len(selected), cap - 1);
         if (n > 0) memcpy(out, selected.s, (size_t)n);
         out[n] = 0;
         return n;
     }
-    bool plain =
-        format == TextViewFormat::Html || format == TextViewFormat::LinkedText;
+    bool plain = format == TextViewFormat::Html;
     return WindowSelectionTextForEntity(
         window, self, out, cap,
         plain ? gpui::SelectionFormat::Plain : selectionFormat);
@@ -3344,32 +3235,9 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
 }
 
 // One styled word. Everything a TextMark can say about a run, applied to the
-// element that carries it — node.rs 1390 builds the same HighlightStyle.
-int TextView::EnsureLinkHover(int start, int end) {
-    if (!textViewStyle.IsLinkUnderlinedOnHover() || start >= end ||
-        !state.IsValid()) {
-        return -1;
-    }
-    TextViewState* s = state.Get(cx);
-    if (!s) {
-        return -1;
-    }
-    for (int i = 0; i < len(s->linkHovers); i++) {
-        if (s->linkHovers[i].start == start && s->linkHovers[i].end == end) {
-            return i;
-        }
-    }
-    TextViewLinkHover slot;
-    slot.start = start;
-    slot.end = end;
-    int ix = len(s->linkHovers);
-    VecAppend(s->linkHovers, slot);
-    return ix;
-}
-
+// element that carries it — node.rs builds the same HighlightStyle.
 El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
-                   Str href, Rgba highlight, bool hasHighlight,
-                   bool linkHovered) {
+                   Str href, Rgba highlight, bool hasHighlight) {
     Rgba c = color;
     Rgba markBg = hasHighlight ? highlight : kMarkBg;
     if (marks & MdLink) {
@@ -3388,12 +3256,9 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
     if (marks & MdItalic) {
         t->Italic();
     }
-    // Resting link underlines follow the style (on by default). A hover
-    // underline is a separate policy and does not remove the marks the word
-    // already carries — bold stays bold.
-    bool linkRest = (marks & MdLink) && textViewStyle.IsLinkUnderlined();
-    bool linkHover = (marks & MdLink) && linkHovered;
-    if ((marks & MdUnderline) || linkRest || linkHover) {
+    // A link is always underlined. The rule does not remove the marks the
+    // word already carries — bold stays bold.
+    if ((marks & MdUnderline) || (marks & MdLink)) {
         // Rust hands the run an `UnderlineStyle { thickness: px(1.) }`, which
         // GPUI draws as a quad under the whole run — the spaces inside it as
         // well. A shaper's own underline stops at the last glyph, so a word
@@ -3819,22 +3684,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (wordLen <= 0) {
             return;
         }
-        bool linkHovered = false;
-        int hoverSlot = -1;
-        if ((marks & MdLink) && wordRun && wordRun->segmentCount > 0 &&
-            wordRun->segments) {
-            int srcStart = wordRun->segments[0].sourceStart;
-            int srcEnd = wordRun->segments[wordRun->segmentCount - 1].sourceEnd;
-            hoverSlot = EnsureLinkHover(srcStart, srcEnd);
-            linkHovered = hoverSlot >= 0 && state.IsValid() && state.Get(cx) &&
-                          state.Get(cx)->hoveredLink == hoverSlot;
-        }
         El* w = Word(StrDup(a, Str(word, wordLen)), font, color, marks, weight,
-                     href, highlight, hasHighlight, linkHovered);
-        if (hoverSlot >= 0 && state.IsValid()) {
-            w->OnHover(ListenTo(state, &TextViewState::OnLinkHover,
-                                (int64_t)hoverSlot));
-        }
+                     href, highlight, hasHighlight);
         if (wordRun) {
             SrcMap(w, wordRun->segments, wordRun->segmentCount, wordStart);
             RangeWashes(w, n, runOffset + wordStart,
@@ -3877,9 +3728,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             context.textStyle.fontMedium = inheritedWeight == 1;
             context.textStyle.italic = (marks & MdItalic) != 0;
             context.textStyle.fontMono = (marks & MdCode) != 0;
-            bool linkRest = (marks & MdLink) && textViewStyle
-                                                    .IsLinkUnderlined();
-            context.textStyle.underline = (marks & MdUnderline) || linkRest;
+            context.textStyle
+                .underline = (marks & MdUnderline) || (marks & MdLink);
             context.textStyle.strike = (marks & MdDel) != 0;
             if (marks & MdLink) {
                 context.textStyle.color = textViewStyle.link;
@@ -5977,8 +5827,6 @@ struct TextViewParseJob {
     bool append = false;
     bool html = false;
     TextViewFormat format = TextViewFormat::Markdown;
-    TextViewLink* links = nullptr;
-    int nLinks = 0;
     bool frontmatter = false;
     bool mdx = false;
     uint64_t fingerprint = 0;
@@ -6016,115 +5864,13 @@ static MarkdownExtensions CopyParserExtensions(Arena* a,
 // parse_content: markdown from `from` on with its spans measured in all of
 // `source`, or the HTML from `from` on (HTML blocks carry no spans, so an
 // append parses only the new text).
-static bool Utf8CharBoundary(Str s, int i) {
-    if (i < 0 || i > len(s)) {
-        return false;
-    }
-    if (i == len(s) || i == 0) {
-        return true;
-    }
-    return ((uint8_t)s.s[i] & 0xc0) != 0x80;
-}
-
-// parse_linked_text: one paragraph. Invalid ranges are skipped and the
-// source bytes stay in order, so the rendered text is the source.
-static MdNode* ParseLinkedDocument(Arena* a, Str source,
-                                   const TextViewLink* links, int nLinks) {
-    MdNode* doc = ArenaNew<MdNode>(a);
-    doc->kind = MdKind::Doc;
-    MdNode* paragraph = ArenaNew<MdNode>(a);
-    paragraph->kind = MdKind::Paragraph;
-    paragraph->parent = doc;
-    paragraph->blockStart = 0;
-    paragraph->leafStart = 0;
-    doc->first = paragraph;
-    doc->last = paragraph;
-    int cursor = 0;
-    auto add = [&](int lo, int hi, Str href) {
-        if (lo >= hi || lo < 0 || hi > len(source)) {
-            return;
-        }
-        MdRun* run = ArenaNew<MdRun>(a);
-        run->text = Str(source.s + lo, hi - lo);
-        if (len(href) > 0) {
-            run->marks = MdLink;
-            run->href = StrDup(a, href);
-        }
-        SourceSegment* seg = ArenaNew<SourceSegment>(a);
-        seg->renderedStart = 0;
-        seg->renderedEnd = hi - lo;
-        seg->sourceStart = lo;
-        seg->sourceEnd = hi;
-        seg->linear = true;
-        run->segments = seg;
-        run->segmentCount = 1;
-        if (paragraph->runLast) {
-            paragraph->runLast->next = run;
-        } else {
-            paragraph->runFirst = run;
-        }
-        paragraph->runLast = run;
-    };
-    for (int i = 0; links && i < nLinks; i++) {
-        Span range = links[i].range;
-        if (range.start < cursor || range.end > len(source) ||
-            range.start >= range.end ||
-            !Utf8CharBoundary(source, range.start) ||
-            !Utf8CharBoundary(source, range.end)) {
-            continue;
-        }
-        if (cursor < range.start) {
-            add(cursor, range.start, {});
-        }
-        add(range.start, range.end, links[i].url);
-        cursor = range.end;
-    }
-    if (cursor < len(source)) {
-        add(cursor, len(source), {});
-    }
-    return doc;
-}
-
 static MdNode* TextViewParseSource(Arena* a, Str source, int from,
                                    TextViewFormat format,
-                                   const MarkdownExtensions* extensions,
-                                   const TextViewLink* links, int nLinks) {
+                                   const MarkdownExtensions* extensions) {
     if (format == TextViewFormat::Html) {
         return HtmlParse(a, Str(source.s + from, len(source) - from));
     }
-    if (format == TextViewFormat::LinkedText) {
-        return ParseLinkedDocument(a, source, links, nLinks);
-    }
     return MdParseWithExtensions(a, source, extensions, from);
-}
-
-static void TextViewJobLinksFree(TextViewParseJob* job) {
-    if (!job) {
-        return;
-    }
-    for (int i = 0; i < job->nLinks; i++) {
-        StrFree(job->links[i].url);
-    }
-    free(job->links);
-    job->links = nullptr;
-    job->nLinks = 0;
-}
-
-static void TextViewJobLinksCopy(TextViewParseJob* job,
-                                 const TextViewState* s) {
-    TextViewJobLinksFree(job);
-    if (!job || !s || s->nLinks <= 0 || !s->links) {
-        return;
-    }
-    job->links = (TextViewLink*)calloc((size_t)s->nLinks, sizeof(TextViewLink));
-    if (!job->links) {
-        return;
-    }
-    job->nLinks = s->nLinks;
-    for (int i = 0; i < s->nLinks; i++) {
-        job->links[i].range = s->links[i].range;
-        job->links[i].url = StrDup(s->links[i].url);
-    }
 }
 
 static void TextViewParseDetach(TextViewParseJob* job) {
@@ -6135,9 +5881,8 @@ static void TextViewParseDetach(TextViewParseJob* job) {
 
 static void TextViewParseWork(TextViewParseJob* job) {
     job->arena = ArenaNew();
-    job->doc =
-        TextViewParseSource(job->arena, job->source, job->from, job->format,
-                            &job->extensions, job->links, job->nLinks);
+    job->doc = TextViewParseSource(job->arena, job->source, job->from,
+                                   job->format, &job->extensions);
     ArenaDelete(job->parserArena);
     job->parserArena = nullptr;
 }
@@ -6150,12 +5895,6 @@ static bool TextViewParseAppend(const TextViewState* s, uint64_t fingerprint,
                                 int* from) {
     const TextViewParse* p = s->parsed;
     bool html = s->format == TextViewFormat::Html;
-    // A linked document is one paragraph whose links index the whole source,
-    // so an append reparses it rather than splicing a suffix.
-    if (s->format == TextViewFormat::LinkedText) {
-        *from = 0;
-        return false;
-    }
     if (!p || p->fingerprint != fingerprint || p->html != html ||
         p->format != s->format ||
         s->fullUpdateRevision > s->committedRevision || s->baselinePending ||
@@ -6307,8 +6046,8 @@ void TextViewState::StartParse(App* app, Window* window,
     if (sync) {
         Arena* arena = ArenaNew();
         Str source = StrDup(text);
-        MdNode* doc = TextViewParseSource(arena, source, from, format,
-                                          &parserExtensions, links, nLinks);
+        MdNode* doc =
+            TextViewParseSource(arena, source, from, format, &parserExtensions);
         TextViewCommit(this, app, arena, doc, source, append, from,
                        updateRevision, fingerprint, kFadeAtFirstFrame);
         if (!append && app && self.IsValid()) {
@@ -6331,7 +6070,6 @@ void TextViewState::StartParse(App* app, Window* window,
     job->append = append;
     job->html = html;
     job->format = format;
-    TextViewJobLinksCopy(job, this);
     job->frontmatter = parserFrontmatter;
     job->mdx = parserMdx;
     job->fingerprint = fingerprint;
@@ -6348,7 +6086,6 @@ void TextViewState::StartParse(App* app, Window* window,
 }
 
 static void TextViewParseJobDiscard(TextViewParseJob* job) {
-    TextViewJobLinksFree(job);
     ArenaDelete(job->parserArena);
     if (job->arena) ArenaDelete(job->arena);
     StrFree(job->source);
@@ -6384,7 +6121,6 @@ void TextViewState::CommitParsedUpdate(TextViewParseJob* job) {
         s->streamFadePending = true;
         s->streamFadeReplace = false;
     }
-    TextViewJobLinksFree(job);
     delete job;
 }
 
@@ -6414,7 +6150,6 @@ TextViewParseJob* TextViewParseNowForTest(TextViewState* s, App* app) {
     job->append = TextViewParseAppend(s, fingerprint, &job->from);
     job->html = html;
     job->format = s->format;
-    TextViewJobLinksCopy(job, s);
     job->frontmatter = s->parserFrontmatter;
     job->mdx = s->parserMdx;
     job->fingerprint = fingerprint;
@@ -7206,12 +6941,6 @@ El* TextView::IntoEl() {
         }
         textViewStyle = resolved;
     }
-    if (linkUnderlineSet) {
-        textViewStyle.linkUnderline = linkUnderline;
-    }
-    if (linkUnderlineOnHoverSet) {
-        textViewStyle.linkUnderlineOnHover = linkUnderlineOnHover;
-    }
     if (inlineCodeStyleSet) {
         gpui::Style merged = textViewStyle.inlineCodeStyle;
         StyleApplyFields(&merged, inlineCodeStyle, inlineCodeStyleFields);
@@ -7261,7 +6990,6 @@ El* TextView::IntoEl() {
     if (managed) {
         source = managed->text;
         html = managed->format == TextViewFormat::Html;
-        VecClear(managed->linkHovers);
         managed->selectable = selectable;
         managed->selectionFormat = selFormat;
         managed->scrollable = scrollable;
@@ -7343,10 +7071,8 @@ El* TextView::IntoEl() {
     // so the view says what format it wants and the runs it builds below
     // carry the Markdown that format needs.
     if (selectable) {
-        bool plain =
-            html || (managed && managed->format == TextViewFormat::LinkedText);
         WindowSelectionSetFormat(
-            cx->win, plain ? gpui::SelectionFormat::Plain : selFormat);
+            cx->win, html ? gpui::SelectionFormat::Plain : selFormat);
     }
     // `.text_color(text_view_style.foreground())` on the root: every block
     // below names no colour of its own, so this is what they inherit.
@@ -7558,18 +7284,6 @@ TextView* TextView::Style(const TextViewStyle& value) {
     textViewStyle = value;
     textViewStyleSet = true;
     paragraphGap = value.paragraphGap;
-    return this;
-}
-
-TextView* TextView::LinkUnderline(bool underline) {
-    linkUnderlineSet = true;
-    linkUnderline = underline;
-    return this;
-}
-
-TextView* TextView::LinkUnderlineOnHover(bool underline) {
-    linkUnderlineOnHoverSet = true;
-    linkUnderlineOnHover = underline;
     return this;
 }
 

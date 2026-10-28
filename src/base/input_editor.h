@@ -209,10 +209,10 @@ struct RangeDecorationCollection {
 // within each style later collections and items paint over earlier ones.
 RangeDecorationCollection InputCreateRangeDecorationsCollection(
     InputState* s, const RangeDecoration* decorations, int n);
-// EditorState::create_decorations_collection, and the same method on
-// TextareaState: an independently owned collection of text decorations,
-// moved by every edit as the range decorations are and drawn over the
-// highlighter's runs — or over the plain text, when a textarea has none.
+// EditorState::create_decorations_collection: an independently owned
+// collection of text decorations, moved by every edit as the range
+// decorations are and drawn over the highlighter's runs. A textarea has
+// no extras, so the call is a no-op there.
 TextDecorationCollection InputCreateDecorationsCollection(
     InputState* s, const TextDecoration* decorations, int n);
 // EditorExtras::decoration_layers, flattened: the collections' runs, ordered

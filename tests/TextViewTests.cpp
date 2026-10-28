@@ -1298,12 +1298,6 @@ static void TestSourceShapedTextValues(Arena* a) {
     dark.isDark = !shared.isDark;
     utassert(!shared.Equals(dark));
     utassert(calls == 0);
-    TextViewStyle resting = shared;
-    resting.WithLinkUnderline(false);
-    utassert(!shared.Equals(resting));
-    TextViewStyle hovered = shared;
-    hovered.WithLinkUnderlineOnHover(true);
-    utassert(!shared.Equals(hovered));
 
     TextViewStyle equal = shared;
     equal.WithHeading(&Heading14Other);
@@ -7991,137 +7985,6 @@ static void TableAndParagraphBuildersReadBack(Arena* a) {
     utassert(table->first->first->align == MdAlignCenter);
 }
 
-static El* FindTextEl(El* e, const char* bytes) {
-    if (!e) {
-        return nullptr;
-    }
-    if (e->text.s && strcmp(e->text.s, bytes) == 0) {
-        return e;
-    }
-    for (El* child = e->first; child; child = child->next) {
-        if (El* found = FindTextEl(child, bytes)) {
-            return found;
-        }
-    }
-    return nullptr;
-}
-
-static Str RunText(const MdNode* paragraph) {
-    StrBuilder out;
-    for (const MdRun* run = paragraph ? paragraph->runFirst : nullptr; run;
-         run = run->next) {
-        out.Append(run->text);
-    }
-    return out.TakeStr();
-}
-
-// state.rs linked_text_preserves_source_and_ignores_invalid_ranges and
-// linked_text_initial_parse_and_link_only_update.
-static void LinkedTextKeepsSourceAndReplacesLinks() {
-    App app;
-    const char* raw = "\xC3\xA9 link\nnext";
-    TextViewLink links[] = {
-        TextViewLink::New({1, 2}, StrL("invalid-boundary")),
-        TextViewLink::New({3, 7}, StrL("https://example.com")),
-        TextViewLink::New({4, 6}, StrL("overlap")),
-        TextViewLink::New({8, 99}, StrL("out-of-bounds")),
-    };
-    Entity<TextViewState> entity =
-        TextViewState::LinkedText(&app, Str(raw), links, 4);
-    TextViewState* state = entity.Get(&app);
-    utassert(state && base::StrEq(state->Source(), Str(raw)));
-    const MdNode* document = state ? state->ParsedDocument() : nullptr;
-    const MdNode* paragraph = document ? document->first : nullptr;
-    utassert(paragraph && paragraph->kind == MdKind::Paragraph);
-    Str rendered = RunText(paragraph);
-    utassert(base::StrEq(rendered, Str(raw)));
-    StrFree(rendered);
-    int nLinks = 0;
-    Str url = {};
-    for (const MdRun* run = paragraph ? paragraph->runFirst : nullptr; run;
-         run = run->next) {
-        if (run->marks & MdLink) {
-            nLinks++;
-            url = run->href;
-        }
-    }
-    utassert(nLinks == 1);
-    utassert(base::StrEq(url, StrL("https://example.com")));
-
-    TextViewLink next = TextViewLink::New({0, 4}, StrL("second"));
-    state->SetLinkedText(StrL("link"), &next, 1, &app, nullptr);
-    utassert(base::StrEq(state->Source(), StrL("link")));
-    document = state->ParsedDocument();
-    paragraph = document ? document->first : nullptr;
-    const MdRun* linked = paragraph ? paragraph->runFirst : nullptr;
-    utassert(linked && (linked->marks & MdLink));
-    utassert(base::StrEq(linked->href, StrL("second")));
-}
-
-// inline.rs hovering_a_link_preserves_overlapping_text_marks, and
-// changed_text_and_invalid_utf8_ranges_do_not_keep_hover_styles. The hover
-// underline is painted over the marks the word already has.
-static void HoverUnderlineKeepsMarksAndDiesWithTheText() {
-    App app;
-    Window* win = new Window();
-    win->app = &app;
-    Arena* a = ArenaNew();
-    Ctx cx = {&app, win, a, {}};
-    Entity<TextViewState> entity = TextViewState::Markdown(
-        &app, StrL("**[linked](https://example.com)**"));
-    TextView* view = TextView::New(&cx, entity)
-                         ->LinkUnderline(false)
-                         ->LinkUnderlineOnHover(true);
-    El* resting = view->IntoEl();
-    El* word = FindTextEl(resting, "linked");
-    // Markdown bold is this tree's semibold face. The hover underline must
-    // not drop that weight.
-    utassert(word && word->style.fontSemibold);
-    utassert(word && word->nUnderlines == 0);
-
-    TextViewState* state = entity.Get(&app);
-    utassert(state && len(state->linkHovers) == 1);
-    HoverEvent entered = {true};
-    TextViewState::OnLinkHover(state, &cx, &entered, 0);
-    utassert(state->hoveredLink == 0);
-
-    TextView* hovered = TextView::New(&cx, entity)
-                            ->LinkUnderline(false)
-                            ->LinkUnderlineOnHover(true);
-    El* again = hovered->IntoEl();
-    word = FindTextEl(again, "linked");
-    utassert(word && word->style.fontSemibold);
-    utassert(word && word->nUnderlines > 0);
-
-    state->SetText(StrL("other"), &app, nullptr);
-    utassert(state->hoveredLink < 0);
-
-    TextViewLink bad[] = {
-        TextViewLink::New({0, 8}, StrL("old")),
-        TextViewLink::New({0, 1}, StrL("split")),
-    };
-    // "字" is three bytes; a range of one byte is not a character boundary.
-    Entity<TextViewState> linked =
-        TextViewState::LinkedText(&app, StrL("\xE5\xAD\x97"), bad, 2);
-    TextViewState* plain = linked.Get(&app);
-    const MdNode* document = plain ? plain->ParsedDocument() : nullptr;
-    const MdNode* paragraph = document ? document->first : nullptr;
-    int nLinks = 0;
-    for (const MdRun* run = paragraph ? paragraph->runFirst : nullptr; run;
-         run = run->next) {
-        if (run->marks & MdLink) {
-            nLinks++;
-        }
-    }
-    utassert(nLinks == 0);
-    Str rendered = RunText(paragraph);
-    utassert(base::StrEq(rendered, StrL("\xE5\xAD\x97")));
-    StrFree(rendered);
-
-    WindowKeyedFree(win);
-    ArenaDelete(a);
-}
-
 static El* FindTableCell(El* e) {
     if (!e) {
         return nullptr;
@@ -8495,8 +8358,6 @@ static void FadesInlineCodeStyleBackgroundAndBorder() {
 
 void TestTextView() {
     TestSuite("TextView");
-    LinkedTextKeepsSourceAndReplacesLinks();
-    HoverUnderlineKeepsMarksAndDiesWithTheText();
     Arena* a = ArenaNew();
     KeyedLeavesReportGeometryAndUnkeyedLeavesDoNot();
     WrappedLeafMapsIndicesAndPositions();
