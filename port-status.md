@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c297ddf9b7e4a687706756b777ffe1633619da04` (2026-10-24,
-time_field: Focus the first segment when the field is pressed outside a
-segment (#3655)).
-A left press on a time field, outside any segment, focuses the field and
-selects its first segment. A press on a segment still selects that
-segment. A disabled field does not take the press.
+Processed through `f8e09e81df43c1611acd4a28f8765cbd394df516` (2026-10-24,
+typos: Preserve valid Portuguese translations (#3664)).
+Upstream added three pt-BR exceptions to its typos checker. The
+translations themselves are unchanged, and this tree does not run that
+checker.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
