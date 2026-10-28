@@ -128,9 +128,21 @@ OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
                        minSize, maxSize);
     }
 
-    SizeAvail childAvail = {
-        AvailableSpace::Definite(MaybeClamp(areaWidth, minSize.w, maxSize.w)),
-        AvailableSpace::Definite(MaybeClamp(areaHeight, minSize.h, maxSize.h))};
+    // The space available to the box's border box: the containing block
+    // minus the box's insets and margins. Auto insets and margins are 0.
+    // The result is then clamped by the box's min and max sizes.
+    float borderBoxWidth =
+        F32Max(areaWidth - UnwrapOr(left, 0.0f) - UnwrapOr(right, 0.0f) -
+                   UnwrapOr(margin.left, 0.0f) - UnwrapOr(margin.right, 0.0f),
+               0.0f);
+    float borderBoxHeight =
+        F32Max(areaHeight - UnwrapOr(top, 0.0f) - UnwrapOr(bottom, 0.0f) -
+                   UnwrapOr(margin.top, 0.0f) - UnwrapOr(margin.bottom, 0.0f),
+               0.0f);
+    SizeFOpt borderBoxSpace =
+        MaybeClamp(SizeFOpt{borderBoxWidth, borderBoxHeight}, minSize, maxSize);
+    SizeAvail childAvail =
+        SizeAvail::Definite({borderBoxSpace.w, borderBoxSpace.h});
 
     SizeF finalSize;
     if (IsSome(knownDimensions.w) && IsSome(knownDimensions.h)) {

@@ -44,6 +44,18 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
         candidates = box.surfaced;
     } else {
         SizeFOpt knownDimensions = SizeFOptNone();
+        // A definite available space is the root's border box. The caller
+        // passed the viewport; the root's own margins come out of it, and
+        // the layout below must not subtract them again.
+        const Style& rootStyle = tree->GetStyle(root);
+        RectF rootMargin = rootStyle.margin.ResolveOrZero(
+            availableSpace.width.IntoOption(), calc);
+        SizeF rootMarginSum = rootMargin.SumAxes();
+        SizeAvail rootAvailableSpace = {
+            MaybeMax(MaybeSub(availableSpace.width, Some(rootMarginSum.w)),
+                     Some(0.0f)),
+            MaybeMax(MaybeSub(availableSpace.height, Some(rootMarginSum.h)),
+                     Some(0.0f))};
 
         {
             SizeFOpt parentSize = availableSpace.IntoOptions();
@@ -51,7 +63,6 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
 
             if (style.IsBlock()) {
                 Optf aspectRatio = style.aspectRatio;
-                RectF margin = style.margin.ResolveOrZero(parentSize.w, calc);
                 RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
                 RectF border = style.border.ResolveOrZero(parentSize.w, calc);
                 SizeF paddingBorderSize = (padding + border).SumAxes();
@@ -89,11 +100,10 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
                 }
 
                 // Block nodes stretch their width to the available space when
-                // it is definite.
+                // it is definite. That space already excludes the margin.
                 SizeFOpt availableSpaceBasedSize = SizeFOptNone();
-                availableSpaceBasedSize
-                    .w = MaybeSub(availableSpace.width.IntoOption(),
-                                  margin.HorizontalAxisSum());
+                availableSpaceBasedSize.w = rootAvailableSpace.width
+                                                .IntoOption();
 
                 SizeFOpt known = Or(knownDimensions, minMaxDefiniteSize);
                 known = Or(known, clampedStyleSize);
@@ -105,7 +115,7 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
         LayoutInput rootInput;
         rootInput.knownDimensions = knownDimensions;
         rootInput.parentSize = availableSpace.IntoOptions();
-        rootInput.availableSpace = availableSpace;
+        rootInput.availableSpace = rootAvailableSpace;
         rootInput.sizingMode = SizingMode::InherentSize;
         rootInput.axis = RequestedAxis::Both;
         rootInput.runMode = RunMode::PerformLayout;
@@ -117,8 +127,8 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
         rootIsCached = tree->CacheGet(root, rootInput, &cachedProbe);
 
         LayoutOutput output = tree->PerformChildLayout(
-            root, knownDimensions, availableSpace.IntoOptions(), availableSpace,
-            SizingMode::InherentSize, LineBool::False());
+            root, knownDimensions, availableSpace.IntoOptions(),
+            rootAvailableSpace, SizingMode::InherentSize, LineBool::False());
 
         const Style& style = tree->GetStyle(root);
         Optf widthOpt = availableSpace.width.IntoOption();
@@ -310,7 +320,8 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
 
     // Both horizontal and vertical percentage padding/border resolve against
     // the container's inline size (i.e. its width). That is CSS, not a bug.
-    RectF margin = style.margin.ResolveOrZero(parentSize.w, calc);
+    // A definite available space is already the border box: the caller
+    // subtracted this node's margins, and they are not subtracted again.
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
     RectF paddingBorder = padding + border;
@@ -376,8 +387,7 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
     AvailableSpace availWidth =
         IsSome(knownDimensions.w) ? AvailableSpace::Definite(knownDimensions.w)
                                   : availableSpaceIn.width;
-    availableSpace.width = MaybeSub(availWidth, margin.HorizontalAxisSum())
-                               .MaybeSet(knownDimensions.w)
+    availableSpace.width = availWidth.MaybeSet(knownDimensions.w)
                                .MaybeSet(nodeSize.w);
     if (availableSpace.width.IsDefinite()) {
         availableSpace.width =
@@ -388,8 +398,7 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
     AvailableSpace availHeight =
         IsSome(knownDimensions.h) ? AvailableSpace::Definite(knownDimensions.h)
                                   : availableSpaceIn.height;
-    availableSpace.height = MaybeSub(availHeight, margin.VerticalAxisSum())
-                                .MaybeSet(knownDimensions.h)
+    availableSpace.height = availHeight.MaybeSet(knownDimensions.h)
                                 .MaybeSet(nodeSize.h);
     if (availableSpace.height.IsDefinite()) {
         availableSpace.height =

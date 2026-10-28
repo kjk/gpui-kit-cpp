@@ -1726,6 +1726,27 @@ SizeAvail KeywordAdjustedAvailableSpace(const GridItem& item,
     return adjusted;
 }
 
+// Subtract the item's margins (and baseline shim) from the definite axes
+// of the space available to the item's margin box. That is the space passed
+// to the item. Margins resolve against the grid area's width, and an auto
+// margin counts as zero, matching final positioning.
+SizeFOpt AvailableSpaceMinusMargins(const GridItem& item, SizeFOpt gridAreaSize,
+                                    SizeFOpt availableSpace, TaffyTree* tree) {
+    if (!IsSome(availableSpace.w) && !IsSome(availableSpace.h)) {
+        return availableSpace;
+    }
+    RectF margin = item.margin.ResolveOrZero(gridAreaSize.w, tree->calc);
+    SizeFOpt out = availableSpace;
+    if (IsSome(out.w)) {
+        out.w = F32Max(out.w - margin.HorizontalAxisSum(), 0.0f);
+    }
+    if (IsSome(out.h)) {
+        out.h =
+            F32Max(out.h - margin.VerticalAxisSum() - item.baselineShim, 0.0f);
+    }
+    return out;
+}
+
 float ItemMinContentContribution(const GridItem& item, AbstractAxis axis,
                                  TaffyTree* tree, SizeFOpt gridAreaSize,
                                  SizeFOpt availableSpace) {
@@ -1738,6 +1759,9 @@ float ItemMinContentContribution(const GridItem& item, AbstractAxis axis,
     }
     // The child sees the grid area as its containing block during intrinsic
     // measurement, so percentage box properties resolve against it.
+    // Margins come out before a sizing keyword rewrites the constraint.
+    availableSpace =
+        AvailableSpaceMinusMargins(item, gridAreaSize, availableSpace, tree);
     SizeAvail avail = {
         IsSome(availableSpace.w) ? AvailableSpace::Definite(availableSpace.w)
                                  : AvailableSpace::MinContent(),
@@ -1770,6 +1794,8 @@ float ItemMaxContentContribution(const GridItem& item, AbstractAxis axis,
     if (IsSome(known)) {
         return known;
     }
+    availableSpace =
+        AvailableSpaceMinusMargins(item, gridAreaSize, availableSpace, tree);
     SizeAvail avail = {
         IsSome(availableSpace.w) ? AvailableSpace::Definite(availableSpace.w)
                                  : AvailableSpace::MaxContent(),

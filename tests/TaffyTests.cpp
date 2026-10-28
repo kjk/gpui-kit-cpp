@@ -745,6 +745,64 @@ static SizeF AhemEightPairInner(SizeFOpt known, SizeAvail available, void*) {
     return {inlineSize, block};
 }
 
+// Ten runs of two "H" separated by ZWSP, Ahem 10px. Max-content width is
+// 200px and one line is 10px, so 80px of available width wraps to 30px.
+static SizeF AhemTenPairInner(SizeFOpt known, SizeAvail available, void*) {
+    const int kCount = 10;
+    const int kWord = 2;
+    const float kH = 10.0f;
+    const float kMax = 200.0f;
+    const float kMin = 20.0f;
+    float inlineSize;
+    if (IsSome(known.w)) {
+        inlineSize = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        inlineSize = kMin;
+    } else if (available.width.kind == AvailableSpace::Kind::MaxContent) {
+        inlineSize = kMax;
+    } else {
+        inlineSize = F32Min(available.width.value, kMax);
+    }
+    if (inlineSize < kMin) {
+        inlineSize = kMin;
+    }
+    float block;
+    if (IsSome(known.h)) {
+        block = known.h;
+    } else {
+        int inlineChars = (int)(inlineSize / kH);
+        if (inlineChars < kWord) {
+            inlineChars = kWord;
+        }
+        int lineCount = 1;
+        int current = 0;
+        for (int i = 0; i < kCount; i++) {
+            if (current + kWord > inlineChars) {
+                if (current > 0) {
+                    lineCount++;
+                }
+                current = kWord;
+            } else {
+                current += kWord;
+            }
+        }
+        block = (float)lineCount * kH;
+    }
+    return {inlineSize, block};
+}
+
+static taffy::LayoutOutput AhemTenPairMeasure(const taffy::LayoutInput& inputs,
+                                              TaffyNodeId node,
+                                              void* nodeContext,
+                                              const taffy::Style* style,
+                                              void* userData) {
+    (void)node;
+    (void)nodeContext;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    AhemTenPairInner, nullptr);
+}
+
 static taffy::LayoutOutput AhemEightPairMeasure(
     const taffy::LayoutInput& inputs, TaffyNodeId node, void* nodeContext,
     const taffy::Style* style, void* userData) {
@@ -6889,6 +6947,95 @@ static void TestGridRerunColumnSizingMultipleItems() {
     tree.Free();
 }
 
+// taffy 04965fc5. A definite available space is the border box. A 20px
+// margin laid out into 100px leaves 80px, so ten Ahem pairs wrap to 30px
+// instead of staying 100px wide and 20px tall.
+static void TestShrinkToFitExcludesMargin() {
+    TestSuite("taffy shrink-to-fit excludes margin");
+    SizeAvail space;
+    space.width = AvailableSpace::Definite(100.0f);
+    space.height = AvailableSpace::MaxContent();
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style leaf;
+        leaf.display = taffy::Display::Block;
+        leaf.margin.left = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId node = tree.NewLeaf(leaf);
+        tree.ComputeLayoutWithMeasure(node, space, AhemTenPairMeasure, nullptr);
+        AssertBox(tree.GetLayout(node), 20.0f, 0.0f, 80.0f, 30.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style child;
+        child.size.width = taffy::Dimension::Length(20.0f);
+        child.size.height = taffy::Dimension::Length(10.0f);
+        child.flexShrink = 0.0f;
+        TaffyNodeId kids[10];
+        for (int i = 0; i < 10; i++) {
+            kids[i] = tree.NewLeaf(child);
+        }
+        taffy::Style root;
+        root.display = taffy::Display::Flex;
+        root.flexWrap = taffy::FlexWrap::Wrap;
+        root.margin.left = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 10);
+        tree.ComputeLayout(node, space);
+        AssertBox(tree.GetLayout(node), 20.0f, 0.0f, 80.0f, 30.0f);
+        AssertBox(tree.GetLayout(kids[0]), 0.0f, 0.0f, 20.0f, 10.0f);
+        AssertBox(tree.GetLayout(kids[3]), 60.0f, 0.0f, 20.0f, 10.0f);
+        AssertBox(tree.GetLayout(kids[4]), 0.0f, 10.0f, 20.0f, 10.0f);
+        AssertBox(tree.GetLayout(kids[9]), 20.0f, 20.0f, 20.0f, 10.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.margin.left = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        taffy::Style parent;
+        parent.display = taffy::Display::Block;
+        parent.position = taffy::Position::Relative;
+        parent.size = SizeDim::FromLengths(100.0f, 100.0f);
+        TaffyNodeId root = tree.NewWithChildren(parent, &abs, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AhemTenPairMeasure, nullptr);
+        AssertBox(tree.GetLayout(abs), 20.0f, 0.0f, 80.0f, 30.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style item;
+        item.justifySelf = taffy::OptAlignSelf(taffy::AlignItems{});
+        item.margin.left = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId leaf = tree.NewLeaf(item);
+        GridTemplateComponent col =
+            GridTemplateComponent::Single(TrackSizingFunction::Length(100.0f));
+        GridTemplateComponent row =
+            GridTemplateComponent::Single(TrackSizingFunction::Auto());
+        taffy::Style grid;
+        grid.display = taffy::Display::Grid;
+        grid.size.width = taffy::Dimension::Length(100.0f);
+        grid.gridTemplateColumns = GridTemplateOf(&col, 1);
+        grid.gridTemplateRows = GridTemplateOf(&row, 1);
+        TaffyNodeId root = tree.NewWithChildren(grid, &leaf, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AhemTenPairMeasure, nullptr);
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 30.0f);
+        AssertBox(tree.GetLayout(leaf), 20.0f, 0.0f, 80.0f, 30.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6916,6 +7063,7 @@ void TestTaffy() {
     TestGridFixedTrackSkipsMeasure();
     TestGridAutoMinIgnoresUnspannedFlex();
     TestGridRerunColumnSizingMultipleItems();
+    TestShrinkToFitExcludesMargin();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

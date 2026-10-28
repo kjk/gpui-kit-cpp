@@ -136,7 +136,6 @@ struct AlgoConstants {
 
     SizeFOpt minSize = SizeFOptNone();
     SizeFOpt maxSize = SizeFOptNone();
-    RectF margin;
     RectF border;
     // padding + border + scrollbar gutter.
     RectF contentBoxInset;
@@ -205,7 +204,6 @@ AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
     }
 
     Optf aspectRatio = style.aspectRatio;
-    c.margin = style.margin.ResolveOrZero(parentSize.w, calc);
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     c.border = style.border.ResolveOrZero(parentSize.w, calc);
     SizeF paddingBorderSum = padding.SumAxes() + c.border.SumAxes();
@@ -378,6 +376,9 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
 //
 // 9.2 Line Length Determination —
 // https://www.w3.org/TR/css-flexbox-1/#algo-available
+//
+// The flex container's margins have already been subtracted from
+// outerAvailableSpace by its parent.
 
 SizeAvail DetermineAvailableSpace(SizeFOpt knownDimensions,
                                   SizeAvail outerAvailableSpace,
@@ -389,8 +390,7 @@ SizeAvail DetermineAvailableSpace(SizeFOpt knownDimensions,
         out.width = AvailableSpace::Definite(F32Max(
             0.0f, knownDimensions.w - c.contentBoxInset.HorizontalAxisSum()));
     } else {
-        out.width = MaybeMax(MaybeSub(MaybeSub(outerAvailableSpace.width,
-                                               c.margin.HorizontalAxisSum()),
+        out.width = MaybeMax(MaybeSub(outerAvailableSpace.width,
                                       c.contentBoxInset.HorizontalAxisSum()),
                              0.0f);
     }
@@ -398,8 +398,7 @@ SizeAvail DetermineAvailableSpace(SizeFOpt knownDimensions,
         out.height = AvailableSpace::Definite(F32Max(
             0.0f, knownDimensions.h - c.contentBoxInset.VerticalAxisSum()));
     } else {
-        out.height = MaybeMax(MaybeSub(MaybeSub(outerAvailableSpace.height,
-                                                c.margin.VerticalAxisSum()),
+        out.height = MaybeMax(MaybeSub(outerAvailableSpace.height,
                                        c.contentBoxInset.VerticalAxisSum()),
                               0.0f);
     }
@@ -423,25 +422,26 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
         Optf crossAxisParentSize = Cross(c.nodeInnerSize, dir);
         SizeFOpt childParentSize = SizeFOptFromCross(dir, crossAxisParentSize);
 
-        float crossAxisMarginSum = CrossAxisSum(c.margin, dir);
+        // Available space for child sizing excludes the child's margins.
+        // Min and max sizes transferred through the aspect ratio are taken
+        // into account here. https://github.com/w3c/csswg-drafts/issues/10997
         SizeFOpt transferredMinSize =
             MaybeApplyAspectRatio(child.minSize, child.aspectRatio);
         SizeFOpt transferredMaxSize =
             MaybeApplyAspectRatio(child.maxSize, child.aspectRatio);
-        Optf childMinCross =
-            MaybeAdd(Cross(transferredMinSize, dir), crossAxisMarginSum);
-        Optf childMaxCross =
-            MaybeAdd(Cross(transferredMaxSize, dir), crossAxisMarginSum);
+        Optf childMinCross = Cross(transferredMinSize, dir);
+        Optf childMaxCross = Cross(transferredMaxSize, dir);
 
         // Clamp the available space by the item's min- and max- size.
         AvailableSpace crossAxisAvailableSpace;
         AvailableSpace crossIn = availableSpace.Cross(dir);
         switch (crossIn.kind) {
             case AvailableSpace::Kind::Definite:
-                crossAxisAvailableSpace = AvailableSpace::Definite(
-                    MaybeClamp(c.DividedCrossSpace(UnwrapOr(crossAxisParentSize,
-                                                            crossIn.value)),
-                               childMinCross, childMaxCross));
+                crossAxisAvailableSpace = AvailableSpace::Definite(MaybeClamp(
+                    F32Max(0.0f, c.DividedCrossSpace(UnwrapOr(
+                                     crossAxisParentSize, crossIn.value)) -
+                                     CrossAxisSum(child.margin, dir)),
+                    childMinCross, childMaxCross));
                 break;
             case AvailableSpace::Kind::MinContent:
                 crossAxisAvailableSpace =
@@ -469,9 +469,7 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
             !child.marginIsAuto.CrossEnd(dir) &&
             !IsSome(Cross(childKnownDimensions, dir))) {
             SetCross(&childKnownDimensions, dir,
-                     MaybeMax(MaybeSub(crossAxisAvailableSpace.IntoOption(),
-                                       CrossAxisSum(child.margin, dir)),
-                              0.0f));
+                     crossAxisAvailableSpace.IntoOption());
             // A stretched cross size is definite when the container's cross
             // size is. https://www.w3.org/TR/css-flexbox-1/#definite-sizes
             childCrossSizeIsDefinite = !c.isWrap && c.hasDefiniteCrossSize &&
@@ -947,19 +945,20 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                         }
                     } else {
                         Optf crossAxisParentSize = Cross(c->nodeInnerSize, dir);
-                        float crossAxisMarginSum = CrossAxisSum(c->margin, dir);
-                        Optf childMinCross = MaybeAdd(Cross(item.minSize, dir),
-                                                      crossAxisMarginSum);
-                        Optf childMaxCross = MaybeAdd(Cross(item.maxSize, dir),
-                                                      crossAxisMarginSum);
+                        // Available space for child sizing excludes the
+                        // child's margins.
+                        Optf childMinCross = Cross(item.minSize, dir);
+                        Optf childMaxCross = Cross(item.maxSize, dir);
                         AvailableSpace crossAxisAvailableSpace =
                             availableSpace.Cross(dir);
                         if (crossAxisAvailableSpace
                                 .kind == AvailableSpace::Kind::Definite) {
                             crossAxisAvailableSpace =
-                                AvailableSpace::Definite(c->DividedCrossSpace(
-                                    UnwrapOr(crossAxisParentSize,
-                                             crossAxisAvailableSpace.value)));
+                                AvailableSpace::Definite(F32Max(
+                                    0.0f, c->DividedCrossSpace(UnwrapOr(
+                                              crossAxisParentSize,
+                                              crossAxisAvailableSpace.value)) -
+                                              CrossAxisSum(item.margin, dir)));
                         }
                         crossAxisAvailableSpace =
                             MaybeClamp(crossAxisAvailableSpace, childMinCross,
@@ -987,11 +986,7 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                                     .keyword == AlignItemsKeyword::Stretch &&
                             !IsSome(Cross(childKnownDimensions, dir))) {
                             SetCross(&childKnownDimensions, dir,
-                                     MaybeMax(MaybeSub(crossAxisAvailableSpace
-                                                           .IntoOption(),
-                                                       CrossAxisSum(item.margin,
-                                                                    dir)),
-                                              0.0f));
+                                     crossAxisAvailableSpace.IntoOption());
                         }
 
                         float measuredMainSize = tree->MeasureChildSize(
@@ -1317,8 +1312,10 @@ void DetermineHypotheticalCrossSize(TaffyTree* tree, FlexLine* line,
         float paddingBorderSum =
             CrossAxisSum(child.padding + child.border, dir);
 
-        AvailableSpace childKnownMain =
-            AvailableSpace::Definite(Main(c.containerSize, dir));
+        // The available space passed to the child excludes the child's
+        // margins.
+        AvailableSpace childAvailableMain = AvailableSpace::Definite(F32Max(
+            0.0f, Main(c.containerSize, dir) - MainAxisSum(child.margin, dir)));
 
         Optf transferredMinCross =
             Cross(MaybeApplyAspectRatio(child.minSize, child.aspectRatio), dir);
@@ -1332,8 +1329,9 @@ void DetermineHypotheticalCrossSize(TaffyTree* tree, FlexLine* line,
 
         AvailableSpace crossAvail = availableSpace.Cross(dir);
         if (crossAvail.kind == AvailableSpace::Kind::Definite) {
-            crossAvail =
-                AvailableSpace::Definite(c.DividedCrossSpace(crossAvail.value));
+            crossAvail = AvailableSpace::Definite(
+                F32Max(0.0f, c.DividedCrossSpace(crossAvail.value) -
+                                 CrossAxisSum(child.margin, dir)));
         }
         AvailableSpace childAvailableCross = MaybeMax(
             MaybeClamp(crossAvail, transferredMinCross, transferredMaxCross),
@@ -1362,8 +1360,9 @@ void DetermineHypotheticalCrossSize(TaffyTree* tree, FlexLine* line,
         } else {
             SizeFOpt known = {c.isRow ? Some(child.targetSize.w) : childCross,
                               c.isRow ? childCross : Some(child.targetSize.h)};
-            SizeAvail avail = {c.isRow ? childKnownMain : childAvailableCross,
-                               c.isRow ? childAvailableCross : childKnownMain};
+            SizeAvail avail = {
+                c.isRow ? childAvailableMain : childAvailableCross,
+                c.isRow ? childAvailableCross : childAvailableMain};
             LayoutOutput measuredOut = tree->ComputeChildLayout(
                 child.node, ItemLayoutInput(c, child, RunMode::ComputeSize,
                                             c.isRow ? RequestedAxis::Vertical
@@ -1416,11 +1415,17 @@ void CalculateChildrenBaseLines(TaffyTree* tree, SizeFOpt nodeSize,
                                       : Some(child.hypotheticalInnerSize.w),
                               c.isRow ? Some(child.hypotheticalInnerSize.h)
                                       : Some(child.targetSize.h)};
+            // The available space passed to the child excludes its margins.
             SizeAvail avail = {
                 c.isRow ? AvailableSpace::Definite(c.containerSize.w)
                         : availableSpace.width.MaybeSet(nodeSize.w),
                 c.isRow ? availableSpace.height.MaybeSet(nodeSize.h)
                         : AvailableSpace::Definite(c.containerSize.h)};
+            SizeF marginSum = child.margin.SumAxes();
+            avail.width =
+                MaybeMax(MaybeSub(avail.width, Some(marginSum.w)), Some(0.0f));
+            avail.height =
+                MaybeMax(MaybeSub(avail.height, Some(marginSum.h)), Some(0.0f));
             LayoutOutput out = tree->ComputeChildLayout(
                 child.node, ItemLayoutInput(c, child, RunMode::PerformLayout,
                                             RequestedAxis::Both, known, avail));
@@ -1838,7 +1843,11 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
     childInput.knownDimensionsAreDefiniteH =
         IsRow(direction) ? crossDefinite : mainDefinite;
     childInput.parentSize = c.nodeInnerSize;
-    childInput.availableSpace = SizeAvail::Definite(containerSize);
+    // The available space passed to the child excludes the child's margins.
+    SizeF childMarginSum = item->margin.SumAxes();
+    childInput.availableSpace =
+        SizeAvail::Definite({F32Max(0.0f, containerSize.w - childMarginSum.w),
+                             F32Max(0.0f, containerSize.h - childMarginSum.h)});
     childInput.verticalMarginsAreCollapsible = LineBool::False();
     LayoutOutput layoutOutput =
         tree->ComputeChildLayout(item->node, childInput);
