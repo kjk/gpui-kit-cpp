@@ -131,9 +131,9 @@ static void ADragAcrossTwoRunsCopiesBoth() {
     WindowSelectionFree(&win);
 }
 
-// points_for_multi_click: two clicks take the word under the pointer, three
-// the whole run. The gesture is over when the press returns — the unit was
-// asked for outright — so a drag after one does not extend it.
+// Two clicks take the word under the pointer, three its logical line. A
+// drag and a shift-click extend by that unit, and the clicked unit stays
+// selected. A plain click drops the unit, so the next drag is by characters.
 static void TwoClicksTakeTheWordAndThreeTheLine() {
     Window win;
     AddRun(&win, 0, "hello brave world", 0);
@@ -141,20 +141,36 @@ static void TwoClicksTakeTheWordAndThreeTheLine() {
     TempStr buf = AllocStrTemp(63);
 
     // Without a text backend a hit resolves to the start of its run, so the
-    // word this lands on is the first one.
+    // word this lands on is the first one. The drag lands at the start of
+    // "second", and the word under that point is the whole run.
     WindowSelectionPress(&win, 25, 5, 2, false);
     utassert(WindowSelectionHas(&win));
+    utassert(win.sel->gesture.selecting && win.sel->unitHeld);
     int n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(StrEq(Str(buf.s, n), StrL("hello")));
-    // The press ended the gesture, so a drag does not grow it.
     WindowSelectionDrag(&win, 115, 45);
     n = WindowSelectionText(&win, buf.s, len(buf) + 1);
-    utassert(StrEq(Str(buf.s, n), StrL("hello")));
+    utassert(StrEq(Str(buf.s, n), StrL("hello brave world\nsecond")));
+    WindowSelectionRelease(&win);
+    utassert(win.sel->unitHeld && !win.sel->gesture.selecting);
+    WindowSelectionPress(&win, 115, 45, 1, true);
+    n = WindowSelectionText(&win, buf.s, len(buf) + 1);
+    utassert(StrEq(Str(buf.s, n), StrL("hello brave world\nsecond")));
 
     WindowSelectionPress(&win, 25, 5, 3, false);
     n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(StrEq(Str(buf.s, n), StrL("hello brave world")));
-    // And it stops at the run: the line is this run's, not the document's.
+    WindowSelectionDrag(&win, 115, 45);
+    n = WindowSelectionText(&win, buf.s, len(buf) + 1);
+    utassert(StrEq(Str(buf.s, n), StrL("hello brave world\nsecond")));
+
+    // A plain click ends the unit. Both hits are the start of a run, so a
+    // character drag from the first run to the second stops at its start.
+    WindowSelectionPress(&win, 25, 5, 1, false);
+    utassert(!win.sel->unitHeld);
+    WindowSelectionDrag(&win, 115, 45);
+    n = WindowSelectionText(&win, buf.s, len(buf) + 1);
+    utassert(StrEq(Str(buf.s, n), StrL("hello brave world\n")));
     WindowSelectionFree(&win);
 }
 

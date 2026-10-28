@@ -893,6 +893,10 @@ void WindowSelectionClear(Window* win) {
     s->hasAnchorCell = false;
     s->touchMenuOpen = false;
     s->hasTouchEdgeDrag = false;
+    s->unitHeld = false;
+    s->unitClickCount = 0;
+    s->unitStart = 0;
+    s->unitEnd = 0;
     if (win->app) {
         Vec<EntityId> participants;
         for (int i = 0; i < len(s->participants); i++) {
@@ -965,6 +969,57 @@ static const Bounds* AnchorCellOf(const WindowSelection* s) {
     return s && s->hasAnchorCell ? &s->anchorCell : nullptr;
 }
 
+static void SelectionUnitHold(WindowSelection* s, int clickCount, int a,
+                              int b) {
+    s->unitHeld = true;
+    s->unitClickCount = clickCount < 2 ? 2 : clickCount;
+    s->unitStart = a < b ? a : b;
+    s->unitEnd = a < b ? b : a;
+}
+
+// Moves the cursor to the edge of the word or line under the pointer, and
+// the anchor to the far edge of the unit the click selected. Inside that
+// unit the click's selection stands. Over no text the cursor stays put.
+static void SelectionUnitExtend(Window* win, float x, float y) {
+    WindowSelection* s = win ? win->sel : nullptr;
+    if (!s || !s->unitHeld) {
+        return;
+    }
+    PaintCtx* ctx = &win->paint;
+    float qx = x;
+    float qy = y;
+    ClampDragToAnchorCell(s, &qx, &qy);
+    const Bounds* cell = AnchorCellOf(s);
+    TextSelectionExtend(
+        &s->gesture,
+        TextHitOffsetIn(ctx, qx, qy, false, s->scope, nullptr, 0, cell) >= 0);
+    int off = TextHitOffsetIn(ctx, qx, qy, true, s->scope, nullptr, 0, cell);
+    s->cursorPoint = {qx, qy};
+    s->hasWindowPoints = true;
+    if (off < 0) {
+        return;
+    }
+    if (off >= s->unitStart && off < s->unitEnd) {
+        s->anchor = s->unitStart;
+        s->cursor = s->unitEnd;
+        s->gesture.didHitText = true;
+        return;
+    }
+    int edgeA = 0;
+    int edgeB = 0;
+    bool before = off < s->unitStart;
+    bool snapped = TextMultiClickRangeIn(ctx, qx, qy, s->unitClickCount,
+                                         s->scope, &edgeA, &edgeB, nullptr);
+    if (before) {
+        s->anchor = s->unitEnd;
+        s->cursor = snapped ? edgeA : off;
+    } else {
+        s->anchor = s->unitStart;
+        s->cursor = snapped ? edgeB : off;
+    }
+    s->gesture.didHitText = true;
+}
+
 void WindowSelectionPress(Window* win, float x, float y, int clickCount,
                           bool extend) {
     if (win && BaseIsTextSelectionSuppressed(win->app)) {
@@ -988,6 +1043,12 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
         EntityId anchorParticipant = s->anchorParticipant;
         bool hasAnchorCell = s->hasAnchorCell;
         Bounds anchorCell = s->anchorCell;
+        // A shift-click keeps the word or line a double or triple click
+        // selected. Any other press drops it.
+        bool keepUnit = extend && s->unitHeld;
+        int unitClickCount = s->unitClickCount;
+        int unitStart = s->unitStart;
+        int unitEnd = s->unitEnd;
         WindowSelectionClear(win);
         if (keep) {
             s->anchor = anchor;
@@ -1000,6 +1061,12 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
             s->anchorParticipant = anchorParticipant;
             s->hasAnchorCell = hasAnchorCell;
             s->anchorCell = anchorCell;
+            if (keepUnit) {
+                s->unitHeld = true;
+                s->unitClickCount = unitClickCount;
+                s->unitStart = unitStart;
+                s->unitEnd = unitEnd;
+            }
         }
     }
     PaintCtx* ctx = &win->paint;
@@ -1021,14 +1088,17 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
             bool inside =
                 TextHitOffsetIn(ctx, x, y, false, s->scope, nullptr) >= 0;
             TextSelectionBegin(&s->gesture, s->anchorInsideText || inside);
+            if (s->unitHeld) {
+                SelectionUnitExtend(win, x, y);
+            }
         }
         WindowSelectionPublish(win);
         return;
     }
-    // Two clicks take the word under the pointer, three the whole run —
-    // points_for_multi_click. A multi-click lands on a glyph by definition,
-    // so the gesture has hit text; the drag does not extend it, because the
-    // selection is already the unit that was asked for.
+    // Two clicks take the word under the pointer, three its logical line.
+    // The gesture stays down so a drag, and a shift-click after it, extend
+    // by that unit. A touch selects the unit and stops, the way a double
+    // tap grows handles instead of a word-by-word drag.
     int scope = 0;
     int a = 0;
     int b = 0;
@@ -1050,7 +1120,11 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
         ParticipantAt(win, s->anchorPoint, &s->anchorParticipant);
         s->hasAnchorCell = TextTableCellAt(ctx, x, y, &s->anchorCell);
         TextSelectionBegin(&s->gesture, true);
-        TextSelectionEnd(&s->gesture);
+        if (BaseIsTouchPress(win->app)) {
+            TextSelectionEnd(&s->gesture);
+        } else {
+            SelectionUnitHold(s, clickCount, a, b);
+        }
         WindowSelectionPublish(win);
         return;
     }
@@ -1105,6 +1179,9 @@ bool WindowSelectionLongPressStart(Window* win, float x, float y) {
     WindowSelectionPress(win, x, y, 2, false);
     WindowSelection* selection = win ? win->sel : nullptr;
     if (!selection || !WindowSelectionHas(win)) return false;
+    // The word is selected, then the drag is by characters. A double-click
+    // drag is the one that keeps the word as its unit.
+    selection->unitHeld = false;
     selection->gesture.selecting = true;
     selection->gesture.didHitText = true;
     selection->touchMenuOpen = false;
@@ -1165,14 +1242,19 @@ void WindowSelectionDrag(Window* win, float x, float y) {
     float qy = y;
     ClampDragToAnchorCell(s, &qx, &qy);
     const Bounds* cell = AnchorCellOf(s);
-    TextSelectionExtend(
-        &s->gesture,
-        TextHitOffsetIn(ctx, qx, qy, false, s->scope, nullptr, 0, cell) >= 0);
-    int off = TextHitOffsetIn(ctx, qx, qy, true, s->scope, nullptr, 0, cell);
-    if (off >= 0) {
-        s->cursor = off;
-        s->cursorPoint = {qx, qy};
-        s->hasWindowPoints = true;
+    if (s->unitHeld) {
+        SelectionUnitExtend(win, x, y);
+    } else {
+        TextSelectionExtend(
+            &s->gesture, TextHitOffsetIn(ctx, qx, qy, false, s->scope, nullptr,
+                                         0, cell) >= 0);
+        int off =
+            TextHitOffsetIn(ctx, qx, qy, true, s->scope, nullptr, 0, cell);
+        if (off >= 0) {
+            s->cursor = off;
+            s->cursorPoint = {qx, qy};
+            s->hasWindowPoints = true;
+        }
     }
     ParticipantAutoScroll(win, {x, y}, false);
     WindowSelectionPublish(win);

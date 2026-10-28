@@ -361,6 +361,14 @@ struct WindowSelection {
     Bounds touchUi = {};
     bool hasTouchUi = false;
     bool touchUiThisFrame = false;
+    // The word or line a double or triple click selected (Rust's
+    // SelectionUnit). A drag and a later shift-click extend by that unit,
+    // and the unit stays selected whichever way the pointer goes. A plain
+    // click drops it. Offsets are into the painted runs.
+    bool unitHeld = false;
+    int unitClickCount = 0;
+    int unitStart = 0;
+    int unitEnd = 0;
 };
 
 // The live touch selection, for handles and the edit menu. False when there
@@ -376,6 +384,8 @@ void WindowSelectionFree(Window* win);
 
 // The press. `clickCount` is GPUI's — 2 takes the word, 3 the line — and
 // `extend` is a shift-click, which moves the cursor and keeps the anchor.
+// A drag after two or three clicks, and a shift-click after it, extend by
+// that same word or line.
 void WindowSelectionPress(Window* win, float x, float y, int clickCount,
                           bool extend);
 // A long press takes the word like a double click but keeps the gesture live

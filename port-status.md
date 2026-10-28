@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `278e78da73d72f93efbd672bff938e971d32ef01` (2026-10-26,
-text: Publish selection snapshots once per frame (#3686)).
-A registration stores that participant's snapshot immediately and
-leaves SelectionChanged to the next window publication, so one
-registration no longer republishes every participant.
-`begin_selection_frame` is a no-op.
+Processed through `4c43e3fd4569857ea70881099dc9d51216b7f2a8` (2026-10-26,
+text_selection: Extend double- and triple-click drags by words and lines (#3681)).
+A double or triple click keeps its word or logical line selected, and a
+drag or a later shift-click extends by that same unit. A plain click
+drops it. Touch selects the unit and does not drag by it.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
