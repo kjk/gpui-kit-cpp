@@ -7146,6 +7146,159 @@ static void TestGridPercentRowsIndefiniteContainer() {
     }
 }
 
+// Ahem 10px words. `lens` is each word's character count. ZWSP separates
+// the words, so the min-content width is the longest word.
+struct AhemWords {
+    const int* lens;
+    int count;
+};
+
+static SizeF AhemWordsInner(SizeFOpt known, SizeAvail available, void* ctx) {
+    const AhemWords* words = (const AhemWords*)ctx;
+    const float kH = 10.0f;
+    float maxC = 0.0f;
+    float minC = 0.0f;
+    for (int i = 0; i < words->count; i++) {
+        float w = (float)words->lens[i] * kH;
+        maxC += w;
+        if (w > minC) {
+            minC = w;
+        }
+    }
+    float inlineSize;
+    if (IsSome(known.w)) {
+        inlineSize = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        inlineSize = minC;
+    } else if (available.width.kind == AvailableSpace::Kind::MaxContent) {
+        inlineSize = maxC;
+    } else {
+        inlineSize = F32Min(available.width.value, maxC);
+    }
+    if (inlineSize < minC) {
+        inlineSize = minC;
+    }
+    float block;
+    if (IsSome(known.h)) {
+        block = known.h;
+    } else {
+        int inlineChars = (int)(inlineSize / kH);
+        if (inlineChars < 1) {
+            inlineChars = 1;
+        }
+        int lineCount = 1;
+        int current = 0;
+        for (int i = 0; i < words->count; i++) {
+            int word = words->lens[i];
+            if (current > 0 && current + word > inlineChars) {
+                lineCount++;
+                current = word;
+            } else {
+                current += word;
+            }
+        }
+        block = (float)lineCount * kH;
+    }
+    return {inlineSize, block};
+}
+
+static taffy::LayoutOutput AhemWordsMeasure(const taffy::LayoutInput& inputs,
+                                            TaffyNodeId node, void* nodeContext,
+                                            const taffy::Style* style,
+                                            void* userData) {
+    (void)node;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    AhemWordsInner, nodeContext);
+}
+
+// taffy 3defa72e. A spanning item's max-content contribution grows only
+// tracks whose growth limit is still infinite. The fit-content(40px)
+// track was already fixed at 20px by "XX", so the span grows the other
+// track: columns are 45px and 20px inside a 100px grid with a 5px gap.
+static void TestGridFitContentGrowthLimit() {
+    TestSuite("taffy grid fit-content growth limit");
+    {
+        TaffyTree tree;
+        tree.Init();
+        static const int kXx[] = {2};
+        static const int kSpan[] = {3, 3, 1};
+        AhemWords xx = {kXx, 1};
+        AhemWords spanWords = {kSpan, 3};
+        taffy::Style narrow;
+        narrow.gridRow.start = GridPlacement::FromLineIndex(1);
+        narrow.gridColumn.start = GridPlacement::FromLineIndex(2);
+        TaffyNodeId a = tree.NewLeafWithContext(narrow, &xx);
+        taffy::Style span;
+        span.gridRow.start = GridPlacement::FromLineIndex(2);
+        span.gridColumn.start = GridPlacement::FromLineIndex(1);
+        span.gridColumn.end = GridPlacement::FromLineIndex(-1);
+        TaffyNodeId b = tree.NewLeafWithContext(span, &spanWords);
+        TaffyNodeId kids[2] = {a, b};
+        GridTemplateComponent cols[2] = {
+            GridTemplateComponent::Single(TrackSizingFunction::FitContent(
+                LengthPercentage::Length(110.0f))),
+            GridTemplateComponent::Single(TrackSizingFunction::FitContent(
+                LengthPercentage::Length(40.0f))),
+        };
+        taffy::Style grid;
+        grid.display = taffy::Display::Grid;
+        grid.size.width = taffy::Dimension::Length(100.0f);
+        grid.gap.width = LengthPercentage::Length(5.0f);
+        grid.justifyContent = taffy::OptJustifyContent(taffy::JustifyContent{});
+        grid.gridTemplateColumns = GridTemplateOf(cols, 2);
+        TaffyNodeId root = tree.NewWithChildren(grid, kids, 2);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AhemWordsMeasure, nullptr);
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 20.0f);
+        AssertBox(tree.GetLayout(a), 50.0f, 0.0f, 20.0f, 10.0f);
+        AssertBox(tree.GetLayout(b), 0.0f, 10.0f, 70.0f, 10.0f);
+        tree.Free();
+    }
+
+    // A fit-content(110px) track between two auto tracks takes an equal
+    // share of a spanning max-content contribution, because that share is
+    // under the fit-content() argument. The 110px text wraps to 20px.
+    {
+        TaffyTree tree;
+        tree.Init();
+        static const int kLong[] = {2, 2, 2, 2, 2, 1};
+        static const int kShort[] = {3, 3, 1};
+        AhemWords longWords = {kLong, 6};
+        AhemWords shortWords = {kShort, 3};
+        taffy::Style first;
+        first.gridRow.start = GridPlacement::FromLineIndex(1);
+        first.gridColumn.start = GridPlacement::FromLineIndex(1);
+        first.gridColumn.end = GridPlacement::FromLineIndex(-1);
+        TaffyNodeId a = tree.NewLeafWithContext(first, &longWords);
+        taffy::Style second;
+        second.gridRow.start = GridPlacement::FromLineIndex(2);
+        second.gridColumn.start = GridPlacement::FromLineIndex(1);
+        second.gridColumn.end = GridPlacement::FromLineIndex(-1);
+        TaffyNodeId b = tree.NewLeafWithContext(second, &shortWords);
+        TaffyNodeId kids[2] = {a, b};
+        GridTemplateComponent cols[3] = {
+            GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+            GridTemplateComponent::Single(TrackSizingFunction::FitContent(
+                LengthPercentage::Length(110.0f))),
+            GridTemplateComponent::Single(TrackSizingFunction::Auto()),
+        };
+        taffy::Style grid;
+        grid.display = taffy::Display::Grid;
+        grid.size.width = taffy::Dimension::Length(100.0f);
+        grid.gap.width = LengthPercentage::Length(5.0f);
+        grid.justifyContent = taffy::OptJustifyContent(taffy::JustifyContent{});
+        grid.gridTemplateColumns = GridTemplateOf(cols, 3);
+        TaffyNodeId root = tree.NewWithChildren(grid, kids, 2);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AhemWordsMeasure, nullptr);
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 30.0f);
+        AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 100.0f, 20.0f);
+        AssertBox(tree.GetLayout(b), 0.0f, 20.0f, 100.0f, 10.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -7176,6 +7329,7 @@ void TestTaffy() {
     TestShrinkToFitExcludesMargin();
     TestGridPercentRerunIndefiniteContainer();
     TestGridPercentRowsIndefiniteContainer();
+    TestGridFitContentGrowthLimit();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

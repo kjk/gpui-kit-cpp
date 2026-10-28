@@ -2767,38 +2767,31 @@ void DistributeItemSpaceToGrowthLimit(float space, GridTrack* tracks, int n,
     }
     float extraSpace = F32Max(0.0f, space - trackSizes);
 
-    // 2. Distribute up to the limits. For growth limits the limit is either
-    //    infinity or the growth limit itself, so either everything goes to the
-    //    infinite tracks or nothing is distributed here.
+    // 2. Distribute up to the limits. A growable track is one marked
+    // infinitely growable, or one whose growth limit is still infinite. Its
+    // limit is the fit-content() argument when it has one. A track that is
+    // not growable has already reached its growth limit, so it takes nothing
+    // in this step.
+    auto growthLimitOrBaseSize = [](const GridTrack& t) {
+        return t.growthLimit == INFINITY ? t.baseSize : t.growthLimit;
+    };
+    auto one = [](const GridTrack&) { return 1.0f; };
+    auto fitContentLimit = [&](const GridTrack& t) {
+        return t.FitContentLimit(axisInnerNodeSize);
+    };
     auto growable = [&](const GridTrack& t) {
         return trackIsAffected(t) &&
-               (t.infinitelyGrowable ||
-                t.FitContentLimitedGrowthLimit(axisInnerNodeSize) == INFINITY);
+               (t.infinitelyGrowable || t.growthLimit == INFINITY);
     };
-    int growableCount = 0;
-    for (int i = 0; i < n; i++) {
-        if (growable(tracks[i])) {
-            growableCount++;
-        }
-    }
-    if (growableCount > 0) {
-        float increase = extraSpace / (float)growableCount;
-        for (int i = 0; i < n; i++) {
-            if (growable(tracks[i])) {
-                tracks[i].itemIncurredIncrease = increase;
-            }
-        }
-    } else {
-        // 3. Distribute beyond the limits, to all affected tracks.
-        DistributeSpaceUpToLimits(
-            extraSpace, tracks, n, trackIsAffected,
-            [](const GridTrack&) { return 1.0f; },
-            [](const GridTrack& t) {
-                return t.growthLimit == INFINITY ? t.baseSize : t.growthLimit;
-            },
-            [&](const GridTrack& t) {
-                return t.FitContentLimit(axisInnerNodeSize);
-            });
+    extraSpace =
+        DistributeSpaceUpToLimits(extraSpace, tracks, n, growable, one,
+                                  growthLimitOrBaseSize, fitContentLimit);
+
+    // 3. Whatever remains is distributed beyond the limits, to every
+    // affected track.
+    if (extraSpace > 0.0f) {
+        DistributeSpaceUpToLimits(extraSpace, tracks, n, trackIsAffected, one,
+                                  growthLimitOrBaseSize, fitContentLimit);
     }
 
     // 4. Roll each track's item-incurred increase into its planned increase.
