@@ -1184,7 +1184,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                                 bottomMarginSet.Resolve()};
 
         RectFOpt inset = item.inset.MaybeResolveZip(
-            {Some(containerInnerWidth), Some(0.0f)}, calc);
+            {Some(containerInnerWidth), percentageResolutionHeight}, calc);
         Optf negRight = inset.right;
         if (IsSome(negRight)) {
             negRight = -negRight;
@@ -1711,9 +1711,10 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         return LayoutOutput::FromOuterSize({containerOuterWidth, 0.0f});
     }
 
+    // A min-height on its own is not a percentage basis. An indefinite
+    // height stays indefinite even when min-height is set.
     Optf containerPercentageResolutionHeight =
-        Or(Or(percentageBasisDimensions.h, MaybeMax(size.h, minSize.h)),
-           minSize.h);
+        Or(percentageBasisDimensions.h, MaybeMax(size.h, minSize.h));
 
     // 3. Final item layout.
     // Percentage padding and borders resolve against the containing block's

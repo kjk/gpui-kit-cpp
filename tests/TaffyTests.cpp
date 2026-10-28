@@ -2501,6 +2501,101 @@ static void TestBlockLayout() {
     }
 }
 
+// block_percentage_height_with_min_height_parent and the relative
+// percentage-inset fixtures. Min-height is not a percentage basis, and
+// a relative percentage inset resolves against the container's height.
+static void TestBlockPercentageBasis() {
+    TestSuite("taffy block percentage basis");
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style grand;
+        grand.display = taffy::Display::Block;
+        grand.size = SizeDim::FromLengths(20.0f, 20.0f);
+        TaffyNodeId g = tree.NewLeaf(grand);
+        taffy::Style mid;
+        mid.display = taffy::Display::Block;
+        mid.size.height = taffy::Dimension::Percent(0.5f);
+        TaffyNodeId m = tree.NewWithChildren(mid, &g, 1);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = taffy::Dimension::Length(100.0f);
+        rootStyle.minSize.height = taffy::Dimension::Length(80.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &m, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.h, 80.0f);
+        utassertnear(tree.GetLayout(m).size.h, 20.0f);
+        utassertnear(tree.GetLayout(g).size.h, 20.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.display = taffy::Display::Block;
+        childStyle.size = SizeDim::FromLengths(20.0f, 20.0f);
+        childStyle.inset.top = LengthPercentageAuto::Percent(0.5f);
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = taffy::Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.h, 20.0f);
+        utassertnear(tree.GetLayout(child).location.y, 0.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.display = taffy::Display::Block;
+        childStyle.size = SizeDim::FromLengths(20.0f, 20.0f);
+        childStyle.inset.top = LengthPercentageAuto::Percent(0.5f);
+        childStyle.inset.left = LengthPercentageAuto::Percent(0.1f);
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size = SizeDim::FromLengths(100.0f, 200.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(child).location.x, 10.0f);
+        utassertnear(tree.GetLayout(child).location.y, 100.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style grand;
+        grand.display = taffy::Display::Block;
+        grand.size = SizeDim::FromLengths(50.0f, 50.0f);
+        TaffyNodeId g = tree.NewLeaf(grand);
+        taffy::Style pct;
+        pct.display = taffy::Display::Block;
+        pct.size.height = taffy::Dimension::Percent(0.5f);
+        TaffyNodeId p = tree.NewWithChildren(pct, &g, 1);
+        taffy::Style itemStyle;
+        itemStyle.display = taffy::Display::Block;
+        itemStyle.size.width = taffy::Dimension::Length(50.0f);
+        itemStyle.minSize.height = taffy::Dimension::Length(0.0f);
+        TaffyNodeId item = tree.NewWithChildren(itemStyle, &p, 1);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Flex;
+        rootStyle.size.width = taffy::Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &item, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(root).size.h, 50.0f);
+        utassertnear(tree.GetLayout(item).size.h, 50.0f);
+        utassertnear(tree.GetLayout(p).size.h, 25.0f);
+        utassertnear(tree.GetLayout(g).size.h, 50.0f);
+        tree.Free();
+    }
+}
+
 // ─── src/compute/grid/explicit_grid.rs ───────────────────────────────────
 //
 // The grid internals are private; compute.h exposes the seams taffy's own
@@ -3924,6 +4019,7 @@ void TestTaffy() {
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();
+    TestBlockPercentageBasis();
     TestExplicitMinSkipsMinContent();
     TestAbsoluteKnownSizeSkipsMeasure();
     TestLeafContentSizeEndPadding();
