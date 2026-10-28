@@ -1322,9 +1322,10 @@ struct MinTrackSizingFunction {
     bool IsMinContent() const { return raw.IsMinContent(); }
     bool IsMaxContent() const { return raw.IsMaxContent(); }
     bool IsMinOrMaxContent() const { return raw.IsMinOrMaxContent(); }
-    bool UsesPercentage() const {
-        return raw.Tag() == CompactLength::kPercentTag || raw.IsCalc();
-    }
+    // The same test as CompactLength. fit-content() is not a valid min
+    // function (From maps it to auto), but a value that still carries a
+    // percentage tag reports it.
+    bool UsesPercentage() const { return raw.UsesPercentage(); }
 
     Optf DefiniteValue(Optf parentSize, CalcResolver calc) const;
     Optf ResolvedPercentageSize(float parentSize, CalcResolver calc) const {

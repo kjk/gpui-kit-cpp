@@ -492,6 +492,25 @@ static void TestCompactLength() {
     utassert(!CompactLength::Length(1.0f).IsContent());
     utassert(MaxTrackSizingFunction::From(Dimension::Content()).IsAuto());
     utassert(MinTrackSizingFunction::From(Dimension::Content()).IsAuto());
+
+    // 8068a484: percentage is a property of the compact value, including a
+    // fit-content() limit. The min half uses that test rather than only
+    // a plain percentage tag.
+    utassert(!CompactLength::Length(10.0f).UsesPercentage());
+    utassert(!CompactLength::Auto().UsesPercentage());
+    utassert(!CompactLength::Fr(1.0f).UsesPercentage());
+    utassert(!CompactLength::MinContent().UsesPercentage());
+    utassert(!CompactLength::MaxContent().UsesPercentage());
+    utassert(!CompactLength::FitContentPx(10.0f).UsesPercentage());
+    utassert(!CompactLength::FitContentKeyword().UsesPercentage());
+    utassert(!CompactLength::Stretch().UsesPercentage());
+    utassert(!CompactLength::Content().UsesPercentage());
+    utassert(CompactLength::FitContentPercent(0.5f).UsesPercentage());
+    utassert(MinTrackSizingFunction::Percent(0.5f).UsesPercentage());
+    utassert(!MinTrackSizingFunction::Length(10.0f).UsesPercentage());
+    MinTrackSizingFunction fitPctMin;
+    fitPctMin.raw = CompactLength::FitContentPercent(0.5f);
+    utassert(fitPctMin.UsesPercentage());
 }
 
 // ─── src/tree/taffy_tree.rs ──────────────────────────────────────────────
