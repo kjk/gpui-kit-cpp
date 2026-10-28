@@ -294,7 +294,17 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
 
     LayoutOutput out;
     out.size = size;
-    out.contentSize = measuredSize + padding.SumAxes();
+    // End padding is part of a scroll container's overflow. Other boxes
+    // do not extend content size by their own padding.
+    bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
+                             IsScrollContainer(style.overflow.y);
+    bool isRtl = IsRtl(style.direction);
+    float startPadding = isRtl ? padding.right : padding.left;
+    float endPadding = isRtl ? padding.left : padding.right;
+    out.contentSize = {
+        startPadding + measuredSize.w + (isScrollContainer ? endPadding : 0.0f),
+        padding.top + measuredSize.h +
+            (isScrollContainer ? padding.bottom : 0.0f)};
     out.marginsCanCollapseThrough = !hasStylesPreventingBeingCollapsedThrough &&
                                     size.h == 0.0f && measuredSize.h == 0.0f;
     return out;

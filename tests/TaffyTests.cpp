@@ -3464,6 +3464,38 @@ static void TestOverflowPastScrollOrigin() {
     tree.Free();
 }
 
+// leaf_content_size_excludes_the_own_padding_of_a_non_scroll_container.
+static void TestLeafContentSizeEndPadding() {
+    TestSuite("taffy leaf content size end padding");
+    SizeF measured = {100.0f, 1000.0f};
+    auto heightFor = [&](float top, float bottom, bool scroll) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style style;
+        style.boxSizing = taffy::BoxSizing::BorderBox;
+        style.size = SizeDim::FromLengths(300.0f, 200.0f);
+        style.padding.top = LengthPercentage::Length(top);
+        style.padding.bottom = LengthPercentage::Length(bottom);
+        if (scroll) {
+            style.overflow = {taffy::Overflow::Scroll, taffy::Overflow::Scroll};
+        }
+        TaffyNodeId node = tree.NewLeafWithContext(style, &measured);
+        tree.ComputeLayoutWithMeasure(node, SizeAvail::MaxContent(),
+                                      SizeMeasureFunction, nullptr);
+        float h = tree.GetLayout(node).contentSize.h;
+        tree.Free();
+        return h;
+    };
+    utassertnear(heightFor(20.0f, 0.0f, false), 1020.0f);
+    utassertnear(heightFor(0.0f, 20.0f, false), 1000.0f);
+    utassertnear(heightFor(20.0f, 20.0f, false), 1020.0f);
+    utassertnear(heightFor(0.0f, 0.0f, false), 1000.0f);
+    utassertnear(heightFor(20.0f, 0.0f, true), 1020.0f);
+    utassertnear(heightFor(0.0f, 20.0f, true), 1020.0f);
+    utassertnear(heightFor(20.0f, 20.0f, true), 1040.0f);
+    utassertnear(heightFor(0.0f, 0.0f, true), 1000.0f);
+}
+
 static void TestContentSizeEndPadding() {
     TestSuite("taffy content size end padding");
     taffy::Display displays[] = {taffy::Display::Block, taffy::Display::Flex,
@@ -3813,6 +3845,7 @@ void TestTaffy() {
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();
+    TestLeafContentSizeEndPadding();
     TestOverflowPastScrollOrigin();
     TestContentSizeEndPadding();
 
