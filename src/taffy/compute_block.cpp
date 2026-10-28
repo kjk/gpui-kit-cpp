@@ -806,8 +806,10 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
         }
 
         Optf aspectRatio = cs.aspectRatio;
-        RectF padding = cs.padding.ResolveOrZero(nodeInnerSize, calc);
-        RectF border = cs.border.ResolveOrZero(nodeInnerSize, calc);
+        // Percentage padding and border resolve against the containing
+        // block's width on every side, including when its height is auto.
+        RectF padding = cs.padding.ResolveOrZero(nodeInnerSize.w, calc);
+        RectF border = cs.border.ResolveOrZero(nodeInnerSize.w, calc);
         SizeF pbSum = (padding + border).SumAxes();
         SizeF boxSizingAdjustment =
             cs.boxSizing == BoxSizing::ContentBox ? pbSum : SizeF::Zero();

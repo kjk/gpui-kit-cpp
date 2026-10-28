@@ -5067,6 +5067,38 @@ static void TestContainment() {
     utassertnear(painted.top, 0.0f);
 }
 
+// Vertical percentage padding resolves against the container's width when
+// the container's height is auto. 10% + 20% of 100px is 30px of padding,
+// which floors the border box; the inner 10px block sits under the 15%
+// left padding.
+static void TestBlockPercentPaddingUsesWidth() {
+    TestSuite("taffy block percent padding uses width");
+
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style inner;
+    inner.display = taffy::Display::Block;
+    inner.size.height = Dimension::Length(10.0f);
+    TaffyNodeId grandchild = tree.NewLeaf(inner);
+    taffy::Style mid;
+    mid.display = taffy::Display::Block;
+    mid.size.height = Dimension::Length(20.0f);
+    mid.padding.top = LengthPercentage::Percent(0.10f);
+    mid.padding.right = LengthPercentage::Percent(0.05f);
+    mid.padding.bottom = LengthPercentage::Percent(0.20f);
+    mid.padding.left = LengthPercentage::Percent(0.15f);
+    TaffyNodeId child = tree.NewWithChildren(mid, &grandchild, 1);
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::Block;
+    rootStyle.size.width = Dimension::Length(100.0f);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 30.0f);
+    AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 100.0f, 30.0f);
+    AssertBox(tree.GetLayout(grandchild), 15.0f, 10.0f, 80.0f, 10.0f);
+    tree.Free();
+}
+
 // A column flex item's height is not a percentage basis while its content
 // size is measured, and it does not raise the column's max-content height
 // above the flex basis. The 200px block and its 100% child both end at 100.
@@ -5564,6 +5596,7 @@ void TestTaffy() {
     TestFloatClearIntrinsicWidth();
     TestFloatPercentSumFits();
     TestBlockPercentageBasis();
+    TestBlockPercentPaddingUsesWidth();
     TestBlockScrollBaselines();
     TestContainment();
     TestFlexCrossDefinitePercentage();
