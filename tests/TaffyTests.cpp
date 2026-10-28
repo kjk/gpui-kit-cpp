@@ -5268,6 +5268,133 @@ static void TestLayoutCache() {
     }
 }
 
+struct MeasureCount {
+    int count = 0;
+};
+
+static SizeF CountedLeafInner(SizeFOpt known, SizeAvail, void* ctx) {
+    MeasureCount* c = (MeasureCount*)ctx;
+    c->count++;
+    float w = IsSome(known.w) ? known.w : 10.0f;
+    float h = IsSome(known.h) ? known.h : 10.0f;
+    return {w, h};
+}
+
+static taffy::LayoutOutput CountedLeafMeasure(const taffy::LayoutInput& inputs,
+                                              TaffyNodeId node,
+                                              void* nodeContext,
+                                              const taffy::Style* style,
+                                              void* userData) {
+    (void)node;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    CountedLeafInner, nodeContext);
+}
+
+// An item that spans only a fixed track and a flexible track is not measured
+// during intrinsic track sizing. The one measure is the final layout pass.
+static void TestGridUnaffectedTracksNotMeasured() {
+    TestSuite("taffy grid unaffected tracks not measured");
+
+    TaffyTree tree;
+    tree.Init();
+    MeasureCount ctx;
+    taffy::Style leafStyle;
+    leafStyle.gridColumn = {GLine(2), GLine(3)};
+    TaffyNodeId leaf = tree.NewLeafWithContext(leafStyle, &ctx);
+
+    TrackSizingFunction cols[2] = {
+        TrackSizingFunction::Length(100.0f),
+        TrackSizingFunction::MinMax(MinTrackSizingFunction::Length(0.0f),
+                                    MaxTrackSizingFunction::Fr(1.0f))};
+    TrackSizingFunction row = TrackSizingFunction::Length(50.0f);
+    GridTemplateComponent colC[2] = {GridTemplateComponent::Single(cols[0]),
+                                     GridTemplateComponent::Single(cols[1])};
+    GridTemplateComponent rowC = GridTemplateComponent::Single(row);
+    taffy::Style gridStyle;
+    gridStyle.display = taffy::Display::Grid;
+    gridStyle.size = SizeDim::FromLengths(400.0f, 50.0f);
+    gridStyle.gridTemplateColumns = GridTemplateOf(colC, 2);
+    gridStyle.gridTemplateRows = GridTemplateOf(&rowC, 1);
+    TaffyNodeId grid = tree.NewWithChildren(gridStyle, &leaf, 1);
+    tree.ComputeLayoutWithMeasure(grid, SizeAvail::MaxContent(),
+                                  CountedLeafMeasure, nullptr);
+    utassertnear(tree.GetLayout(leaf).size.w, 300.0f);
+    utassert(ctx.count == 1);
+    tree.Free();
+}
+
+// "HHHHH" + ZWSP + "HHHH" at 10px: min-content 50, max-content 90, and two
+// lines once a definite width is below that max-content width.
+static SizeF WrapAtColumnInner(SizeFOpt known, SizeAvail available, void*) {
+    float width;
+    if (IsSome(known.w)) {
+        width = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::Definite) {
+        width = available.width.value;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        width = 50.0f;
+    } else {
+        width = 90.0f;
+    }
+    float height;
+    if (IsSome(known.h)) {
+        height = known.h;
+    } else if (width + 0.001f < 90.0f) {
+        height = 20.0f;
+    } else {
+        height = 10.0f;
+    }
+    return {width, height};
+}
+
+static taffy::LayoutOutput WrapAtColumnMeasure(const taffy::LayoutInput& inputs,
+                                               TaffyNodeId node,
+                                               void* nodeContext,
+                                               const taffy::Style* style,
+                                               void* userData) {
+    (void)node;
+    (void)nodeContext;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    WrapAtColumnInner, nullptr);
+}
+
+// A 1fr row's max-content contribution wraps against the column width.
+// Measuring it with no known width would leave the row at a single line.
+static void TestGridFrRowUsesColumnWidth() {
+    TestSuite("taffy grid fr row uses column width");
+
+    TaffyTree tree;
+    tree.Init();
+    TaffyNodeId a = tree.NewLeaf(taffy::Style{});
+    TaffyNodeId b = tree.NewLeaf(taffy::Style{});
+    TaffyNodeId kids[] = {a, b};
+    TrackSizingFunction col = TrackSizingFunction::Length(50.0f);
+    TrackSizingFunction rows[2] = {
+        TrackSizingFunction::MinMax(MinTrackSizingFunction::Length(10.0f),
+                                    MaxTrackSizingFunction::Fr(1.0f)),
+        TrackSizingFunction::MinMax(MinTrackSizingFunction::MinContent(),
+                                    MaxTrackSizingFunction::Length(50.0f))};
+    GridTemplateComponent colC = GridTemplateComponent::Single(col);
+    GridTemplateComponent rowC[2] = {GridTemplateComponent::Single(rows[0]),
+                                     GridTemplateComponent::Single(rows[1])};
+    taffy::Style gridStyle;
+    gridStyle.display = taffy::Display::Grid;
+    gridStyle.gridTemplateColumns = GridTemplateOf(&colC, 1);
+    gridStyle.gridTemplateRows = GridTemplateOf(rowC, 2);
+    TaffyNodeId grid = tree.NewWithChildren(gridStyle, kids, 2);
+    tree.ComputeLayoutWithMeasure(grid, SizeAvail::MaxContent(),
+                                  WrapAtColumnMeasure, nullptr);
+    utassertnear(tree.GetLayout(grid).size.w, 50.0f);
+    utassertnear(tree.GetLayout(grid).size.h, 70.0f);
+    utassertnear(tree.GetLayout(a).size.w, 50.0f);
+    utassertnear(tree.GetLayout(a).size.h, 20.0f);
+    utassertnear(tree.GetLayout(b).location.y, 20.0f);
+    utassertnear(tree.GetLayout(b).size.h, 50.0f);
+    tree.Free();
+}
+
 // A width-only block measure stores height 0. A later height query must not
 // reuse that slot, or intrinsically sized grid rows collapse.
 static void TestGridBlockItemHeightCache() {
@@ -5352,6 +5479,8 @@ void TestTaffy() {
     // own; a Style holds slices, not owned vectors.
     gGridArena = gpui::ArenaNew();
     TestGridBlockItemHeightCache();
+    TestGridUnaffectedTracksNotMeasured();
+    TestGridFrRowUsesColumnWidth();
     TestExplicitGridSizing();
     TestInitializeGridTracks();
     TestGridImplicitSizing();

@@ -529,6 +529,20 @@ struct GridItem {
     int TrackRangeEnd(AbstractAxis axis) const {
         return (int)PlacementIndexes(axis).end;
     }
+    // True when any track this item spans satisfies the predicate. An item
+    // whose tracks cannot receive a contribution is not measured for it.
+    template <typename Pred>
+    bool SpansTrackMatching(AbstractAxis axis, const GridTrack* tracks,
+                            Pred pred) const {
+        int from = TrackRangeStart(axis);
+        int end = TrackRangeEnd(axis);
+        for (int k = from; k < end; k++) {
+            if (pred(tracks[k])) {
+                return true;
+            }
+        }
+        return false;
+    }
     uint16_t Span(AbstractAxis axis) const { return Placement(axis).Span(); }
     bool CrossesFlexibleTrack(AbstractAxis axis) const {
         return axis == AbstractAxis::Inline ? crossesFlexibleColumn
@@ -3023,6 +3037,10 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
         };
         for (int bi = 0; bi < batchLen; bi++) {
             GridItem* item = &batch[bi];
+            if (!item->SpansTrackMatching(axis, axisTracks,
+                                          hasMinOrMaxContentMin)) {
+                continue;
+            }
             Overflow axisOverflow = axis == AbstractAxis::Inline
                                         ? item->overflow.x
                                         : item->overflow.y;
@@ -3065,6 +3083,12 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
             };
             for (int bi = 0; bi < batchLen; bi++) {
                 GridItem* item = &batch[bi];
+                if (!item->SpansTrackMatching(
+                        axis, axisTracks, [&](const GridTrack& t) {
+                            return hasAutoMin(t) || hasMaxContentMin(t);
+                        })) {
+                    continue;
+                }
                 float axisMaxContentSize =
                     sizer.MaxContentContribution(item, axisTracks);
                 Optf limit = SpannedTrackLimit(*item, axis, axisTracks,
@@ -3126,6 +3150,10 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
         };
         for (int bi = 0; bi < batchLen; bi++) {
             GridItem* item = &batch[bi];
+            if (!item->SpansTrackMatching(axis, axisTracks,
+                                          hasMaxContentMinFn)) {
+                continue;
+            }
             float space = sizer.MaxContentContribution(item, axisTracks);
             int from = item->TrackRangeStart(axis);
             int count = item->TrackRangeEnd(axis) - from;
@@ -3156,6 +3184,10 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
             };
             for (int bi = 0; bi < batchLen; bi++) {
                 GridItem* item = &batch[bi];
+                if (!item->SpansTrackMatching(axis, axisTracks,
+                                              hasIntrinsicMax)) {
+                    continue;
+                }
                 float space = sizer.MinContentContribution(item, axisTracks);
                 int from = item->TrackRangeStart(axis);
                 int count = item->TrackRangeEnd(axis) - from;
@@ -3178,6 +3210,10 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
             };
             for (int bi = 0; bi < batchLen; bi++) {
                 GridItem* item = &batch[bi];
+                if (!item->SpansTrackMatching(axis, axisTracks,
+                                              hasMaxContentMax)) {
+                    continue;
+                }
                 float space = sizer.MaxContentContribution(item, axisTracks);
                 int from = item->TrackRangeStart(axis);
                 int count = item->TrackRangeEnd(axis) - from;
@@ -3289,9 +3325,10 @@ float FindSizeOfFr(const GridTrack* tracks, int n, float spaceToFill) {
 // 11.7 Expand Flexible Tracks
 void ExpandFlexibleTracks(TaffyTree* tree, AbstractAxis axis,
                           GridTrack* axisTracks, int nAxisTracks,
-                          GridItem* items, int nItems, Optf axisMinSize,
-                          Optf axisMaxSize,
-                          AvailableSpace axisAvailableSpaceForExpansion) {
+                          const GridTrack* otherAxisTracks, GridItem* items,
+                          int nItems, Optf axisMinSize, Optf axisMaxSize,
+                          AvailableSpace axisAvailableSpaceForExpansion,
+                          SizeFOpt innerNodeSize, TrackSizeEstimate estimate) {
     float flexFraction = 0.0f;
     if (axisAvailableSpaceForExpansion.kind == AvailableSpace::Kind::Definite) {
         float availableSpace = axisAvailableSpaceForExpansion.value;
@@ -3321,6 +3358,12 @@ void ExpandFlexibleTracks(TaffyTree* tree, AbstractAxis axis,
             trackMax = F32Max(trackMax, v);
         }
         float itemMax = 0.0f;
+        IntrinsicSizeMeasurer sizer;
+        sizer.tree = tree;
+        sizer.otherAxisTracks = otherAxisTracks;
+        sizer.estimate = estimate;
+        sizer.axis = axis;
+        sizer.innerNodeSize = innerNodeSize;
         for (int i = 0; i < nItems; i++) {
             GridItem* item = &items[i];
             if (!item->CrossesFlexibleTrack(axis)) {
@@ -3328,10 +3371,10 @@ void ExpandFlexibleTracks(TaffyTree* tree, AbstractAxis axis,
             }
             int from = item->TrackRangeStart(axis);
             int count = item->TrackRangeEnd(axis) - from;
-            // TODO(taffy): plumb an estimate of the other axis size in here
-            // rather than passing none.
-            float maxContentContribution = ItemMaxContentContributionCached(
-                item, axis, tree, SizeFOptNone(), SizeFOptNone());
+            // The other axis is already sized, so the contribution wraps
+            // against that grid area rather than against an infinite width.
+            float maxContentContribution =
+                sizer.MaxContentContribution(item, axisTracks);
             itemMax = F32Max(itemMax, FindSizeOfFr(axisTracks + from, count,
                                                    maxContentContribution));
         }
@@ -3477,9 +3520,10 @@ void TrackSizingAlgorithm(TaffyTree* tree, AbstractAxis axis, Optf axisMinSize,
     }
 
     // 11.7 Expand Flexible Tracks.
-    ExpandFlexibleTracks(tree, axis, axisTracks, nAxisTracks, items, nItems,
-                         axisMinSize, axisMaxSize,
-                         axisAvailableSpaceForExpansion);
+    ExpandFlexibleTracks(tree, axis, axisTracks, nAxisTracks, otherAxisTracks,
+                         items, nItems, axisMinSize, axisMaxSize,
+                         axisAvailableSpaceForExpansion, innerNodeSize,
+                         estimate);
 
     // 11.8 Stretch auto Tracks.
     if (axisAlignment.keyword == AlignContentKeyword::Stretch) {
