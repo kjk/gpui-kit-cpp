@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c565782b37d8f96d3b69f9161a9a9e466aa2051e",
-  date: "2026-10-22",
-  subject: "sheet, notification: Keep out from under the system bars and the keyboard (#3624)",
+  sha: "47ae1eff3a070d24c25ec223d2b619aef167b787",
+  date: "2026-10-23",
+  subject: "scrollable_mask: Dispatch the overscroll steps of the scroll claim test within one frame (#3648)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

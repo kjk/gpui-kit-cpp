@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c565782b37d8f96d3b69f9161a9a9e466aa2051e` (2026-10-22,
-sheet, notification: Keep out from under the system bars and the keyboard (#3624)).
-A sheet and the notification layer take the larger of the window frame
-and the fully visible bounds, so a title and a toast stay out from under
-a system bar or the keyboard. Desktop reports the whole window, and the
-insets are zero.
+Processed through `47ae1eff3a070d24c25ec223d2b619aef167b787` (2026-10-23,
+scrollable_mask: Dispatch the overscroll steps of the scroll claim test within one frame (#3648)).
+The claim test's two overscroll steps now share one update, because a
+simulated wheel was drawing and clamping between them. The wheel here
+does not draw between steps, and the overscroll comparison is the
+formula the clamp leaves behind.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
