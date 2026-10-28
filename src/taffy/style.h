@@ -1247,6 +1247,9 @@ struct LineNameSet {
 struct GridTemplateRepetition {
     RepetitionCount count;
     Slice<TrackSizingFunction> tracks;
+    // Positional: set i names the i-th line of each repetition. Empty, or
+    // exactly tracks.len + 1 sets. Another length is ignored at layout
+    // (Rust panics; see compute_grid.cpp).
     Slice<LineNameSet> lineNames;
 
     uint16_t TrackCount() const { return (uint16_t)tracks.len; }

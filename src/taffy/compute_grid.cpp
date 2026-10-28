@@ -789,19 +789,33 @@ void NamedLineResolver::Init(const Style& style, uint16_t columnAutoRepetitions,
             uint16_t repeatCount = comp.repeat.count.IsAuto()
                                        ? ax.autoRepetitions
                                        : comp.repeat.count.count;
+            // Line name sets are positional: set i names the i-th line of
+            // each repetition. Empty means every line is unnamed. Any other
+            // length must be track count + 1. Rust panics on a mismatch;
+            // this tree has no exceptions, so a mismatch contributes no
+            // names and the tracks are still counted.
+            uint32_t lineNameSetCount = (uint32_t)comp.repeat.lineNames.len;
+            uint32_t linesPerRep = comp.repeat.TrackCount();
+            bool namesOk =
+                lineNameSetCount == 0 || lineNameSetCount == linesPerRep + 1;
             for (uint16_t r = 0; r < repeatCount; r++) {
-                for (int s = 0; s < comp.repeat.lineNames.len; s++) {
-                    const LineNameSet& ls = comp.repeat.lineNames[s];
-                    for (int k = 0; k < ls.names.len; k++) {
-                        Upsert(ax.map, ls.names[k], NameSuffix::None,
-                               currentLine);
+                if (namesOk) {
+                    for (int s = 0; s < comp.repeat.lineNames.len; s++) {
+                        uint32_t line = currentLine + (uint32_t)s;
+                        const LineNameSet& ls = comp.repeat.lineNames[s];
+                        for (int k = 0; k < ls.names.len; k++) {
+                            Upsert(ax.map, ls.names[k], NameSuffix::None, line);
+                        }
                     }
-                    currentLine += 1;
                 }
-                // The last line name set collapses with the following one.
-                currentLine -= 1;
+                currentLine += linesPerRep;
+                // Names past the track limit are never resolved.
+                if (currentLine > kMaxGridTracks) {
+                    break;
+                }
             }
-            if (repeatCount > 0) {
+            // The last line of the repetition collapses with the next set.
+            if (repeatCount > 0 && currentLine > 0) {
                 currentLine -= 1;
             }
         }

@@ -1472,6 +1472,40 @@ static Slice<GridTemplateComponent> GridTemplateOf(
     return SliceDup(gGridArena, comps, n);
 }
 
+static void TestGridRepetitionLineNames() {
+    TestSuite("taffy::grid named lines");
+
+    // repeat() with no line-name sets still occupies its tracks, so a
+    // name on the line after the repetition resolves past those tracks.
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style childStyle;
+    childStyle.size = SizeDim::FromLengths(5.0f, 5.0f);
+    childStyle.gridColumn.start = GridPlacement::FromNamedLine(StrL("c"), 1);
+    childStyle.gridColumn.end = GridPlacement::Auto();
+    TaffyNodeId child = tree.NewLeaf(childStyle);
+
+    TrackSizingFunction ten = TrackSizingFunction::Length(10.0f);
+    GridTemplateComponent cols[2];
+    cols[0] = GridRepeat(RepetitionCount::Exactly(2), &ten, 1);
+    cols[1] = GridTemplateComponent::Single(ten);
+
+    Str cName = StrL("c");
+    LineNameSet names[3];
+    names[2].names = SliceDup(gGridArena, &cName, 1);
+
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::Grid;
+    rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+    rootStyle.gridTemplateColumns = GridTemplateOf(cols, 2);
+    rootStyle.gridTemplateColumnNames = SliceDup(gGridArena, names, 3);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+    tree.ComputeLayout(root, SizeAvail::Definite({100.0f, 100.0f}));
+
+    utassertnear(tree.GetLayout(child).location.x, 30.0f);
+    tree.Free();
+}
+
 // Rust's `(width, height, cols, rows).into_grid()`: a grid of `1fr` tracks.
 static taffy::Style GridParent(float w, float h, int cols, int rows) {
     taffy::Style s;
@@ -2344,6 +2378,7 @@ void TestTaffy() {
     TestGridImplicitSizing();
     TestGridPlacement();
     TestGridLayout();
+    TestGridRepetitionLineNames();
     TestTaffy013Regressions();
     gpui::ArenaDelete(gGridArena);
     gGridArena = nullptr;

@@ -412,6 +412,12 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   linked but not yet seen running in a window; without
   `libwebkit2gtk-4.1-dev` it is a stub too. `src/wry/readme.md` has both.
 
+- **A grid repetition with the wrong number of line-name sets does not
+  abort.** Rust panics unless `line_names` is empty or exactly one set
+  per line (`track count + 1`). This tree has no exceptions, so a
+  mismatch contributes no names and the tracks are still counted
+  (`compute_grid.cpp`).
+
 ## Not ported, on purpose
 
 Per-crate exclusion lists live with the crate: `src/taffy/readme.md`,
