@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ecd2c8ff42439b73b87a238d02db10fe20376740",
-  date: "2026-10-23",
-  subject: "color_picker: Keep the first hex edit after a programmatic value (#3641)",
+  sha: "74b105c99021577c2b2d9e4a868ed376431f005d",
+  date: "2026-10-24",
+  subject: "website: Fix OtpInput examples and event documentation (#3645)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

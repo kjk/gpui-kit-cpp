@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ecd2c8ff42439b73b87a238d02db10fe20376740` (2026-10-23,
-color_picker: Keep the first hex edit after a programmatic value (#3641)).
-A programmatic colour writes the hex field without a change event, and
-the next typed edit still previews. This tree never held the flag that
-swallowed that edit.
+Processed through `74b105c99021577c2b2d9e4a868ed376431f005d` (2026-10-24,
+website: Fix OtpInput examples and event documentation (#3645)).
+The change is website markdown for the OTP input examples and events.
+Those pages are not ported.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
