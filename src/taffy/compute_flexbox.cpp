@@ -51,7 +51,9 @@ struct FlexItem {
     // automatic minimum sizes.
     float resolvedMinimumMainSize = 0.0f;
 
-    RectFOpt inset = RectFOptNone();
+    // position:relative offset in the container's width/height axes. Zero
+    // for every other position. Resolved once, when the item is generated.
+    SizeF relativeInset = SizeF::Zero();
     RectF margin;
     RectBool marginIsAuto;
     RectF padding;
@@ -258,6 +260,39 @@ AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
 //
 // 9.1 Initial Setup — https://www.w3.org/TR/css-flexbox-1/#algo-anon-box
 
+// A relative inset as one offset in the container's flex axes.
+static SizeF ResolveRelativeInset(RectFOpt inset, const AlgoConstants& c) {
+    FlexDirection direction = c.dir;
+    bool isRtlRow = IsRow(direction) && IsRtl(c.layoutDirection);
+    bool isRtlColumn = IsColumn(direction) && IsRtl(c.layoutDirection);
+
+    Optf negMainStart = MainStart(inset, direction);
+    if (IsSome(negMainStart)) {
+        negMainStart = -negMainStart;
+    }
+    Optf negMainEnd = MainEnd(inset, direction);
+    if (IsSome(negMainEnd)) {
+        negMainEnd = -negMainEnd;
+    }
+    float main =
+        isRtlRow ? UnwrapOr(Or(MainEnd(inset, direction), negMainStart), 0.0f)
+                 : UnwrapOr(Or(MainStart(inset, direction), negMainEnd), 0.0f);
+
+    Optf negCrossEnd = CrossEnd(inset, direction);
+    if (IsSome(negCrossEnd)) {
+        negCrossEnd = -negCrossEnd;
+    }
+    float cross =
+        isRtlColumn
+            ? UnwrapOr(Or(negCrossEnd, CrossStart(inset, direction)), 0.0f)
+            : UnwrapOr(Or(CrossStart(inset, direction), negCrossEnd), 0.0f);
+
+    SizeF out = SizeF::Zero();
+    SetMain(&out, direction, main);
+    SetCross(&out, direction, cross);
+    return out;
+}
+
 void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
                                 const AlgoConstants& c,
                                 Vec<FlexItem>* flexItems) {
@@ -313,7 +348,8 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
         // Only relative position applies inset. Static and sticky stay put;
         // sticky's inset is a scroll threshold the caller applies.
         if (cs.position == Position::Relative) {
-            item.inset = cs.inset.MaybeResolveZip(c.nodeInnerSize, calc);
+            RectFOpt inset = cs.inset.MaybeResolveZip(c.nodeInnerSize, calc);
+            item.relativeInset = ResolveRelativeInset(inset, c);
         }
         item.margin = cs.margin.ResolveOrZero(c.nodeInnerSize.w, calc);
         item.marginIsAuto = {cs.margin.left.IsAuto(), cs.margin.right.IsAuto(),
@@ -1788,29 +1824,8 @@ void CalculateFlexItem(TaffyTree* tree, FlexItem* item, float* totalOffsetMain,
     bool isRtlRow = IsRow(direction) && IsRtl(layoutDirection);
     bool isRtlColumn = IsColumn(direction) && IsRtl(layoutDirection);
 
-    Optf negMainStart = MainStart(item->inset, direction);
-    if (IsSome(negMainStart)) {
-        negMainStart = -negMainStart;
-    }
-    Optf negMainEnd = MainEnd(item->inset, direction);
-    if (IsSome(negMainEnd)) {
-        negMainEnd = -negMainEnd;
-    }
-    float mainRelativeInset =
-        isRtlRow
-            ? UnwrapOr(Or(MainEnd(item->inset, direction), negMainStart), 0.0f)
-            : UnwrapOr(Or(MainStart(item->inset, direction), negMainEnd), 0.0f);
-
-    Optf negCrossEnd = CrossEnd(item->inset, direction);
-    if (IsSome(negCrossEnd)) {
-        negCrossEnd = -negCrossEnd;
-    }
-    float crossRelativeInset =
-        isRtlColumn
-            ? UnwrapOr(Or(negCrossEnd, CrossStart(item->inset, direction)),
-                       0.0f)
-            : UnwrapOr(Or(CrossStart(item->inset, direction), negCrossEnd),
-                       0.0f);
+    float mainRelativeInset = Main(item->relativeInset, direction);
+    float crossRelativeInset = Cross(item->relativeInset, direction);
 
     float effectiveLineOffsetCross = isRtlColumn ? 0.0f : lineOffsetCross;
 
