@@ -4,6 +4,8 @@
 #include "base/input_tokens.h"
 #include "unicode-linebreak/unicode_linebreak.h"
 
+#include <math.h>
+
 namespace gpui {
 
 static const SyntaxContext kDefaultNotIn[] = {SyntaxContext::String,
@@ -2014,6 +2016,163 @@ void LineBreakOpportunities(Str text, Vec<int>* out) {
     unicode_linebreak::LineBreak next;
     while (breaks.Next(&next)) {
         VecAppend(*out, next.offset);
+    }
+}
+
+bool WidthRange::Fits(float measured, float available, float indent) {
+    bool fits = measured <= available;
+    float boundary = measured + indent;
+    if (fits) {
+        float up = nextafterf(boundary, HUGE_VALF);
+        if (up == up && up > minimum) {
+            minimum = up;
+        }
+    } else {
+        float down = nextafterf(boundary, -HUGE_VALF);
+        if (down == down && down < maximum) {
+            maximum = down;
+        }
+    }
+    return fits;
+}
+
+// How many leading `candidates` fit. -1 means a candidate ran past `limit`
+// and the caller must fall back to the grapheme search. Every comparison
+// that does run narrows `valid`.
+static int FittingCount(const int* candidates, int nCandidates, Str text,
+                        int start, float available, float indent, int limit,
+                        bool hasLimit, WidthRange* valid, WrapMeasureFn measure,
+                        void* user) {
+    auto fits = [&](int end) -> int {
+        if (hasLimit && end > limit) {
+            return -1;
+        }
+        float measured = measure(user, Str(text.s + start, end - start));
+        return valid->Fits(measured, available, indent) ? 1 : 0;
+    };
+    int low = 0;
+    int high = 1;
+    while (high <= nCandidates) {
+        int answer = fits(candidates[high - 1]);
+        if (answer < 0) {
+            return -1;
+        }
+        if (answer == 0) {
+            break;
+        }
+        low = high;
+        if (high == nCandidates) {
+            break;
+        }
+        high = high > nCandidates / 2 ? nCandidates : high * 2;
+    }
+    while (low + 1 < high) {
+        int mid = (low + high) / 2;
+        int answer = fits(candidates[mid - 1]);
+        if (answer < 0) {
+            return -1;
+        }
+        if (answer) {
+            low = mid;
+        } else {
+            high = mid;
+        }
+    }
+    return low;
+}
+
+void MeasuredWrap(Str text, float width, WrappingIndent indentMode,
+                  WrapMeasureFn measure, void* user, Vec<WrapBoundary>* out,
+                  WidthRange* valid) {
+    WidthRange local = WidthRange::All();
+    if (!valid) {
+        valid = &local;
+    } else {
+        *valid = WidthRange::All();
+    }
+    int n = len(text);
+    if (n <= 0 || !measure) {
+        return;
+    }
+    int indent = 0;
+    if (indentMode == WrappingIndent::Same) {
+        while (indent < n && text.s[indent] == ' ' &&
+               indent < kLineWrapperMaxIndent) {
+            indent++;
+        }
+    }
+    float indentWidth = measure(user, Str(text.s, indent));
+    Vec<int> ends;
+    for (int at = 0; at < n;) {
+        uint32_t c = 0;
+        int bytes = Utf8At(text, at, &c);
+        at += bytes > 0 ? bytes : 1;
+        if (TextIsGraphemeBoundary(text, at)) {
+            VecAppend(ends, at);
+        }
+    }
+    if (len(ends) == 0 || ends[len(ends) - 1] != n) {
+        VecAppend(ends, n);
+    }
+    Vec<int> all;
+    LineBreakOpportunities(text, &all);
+    Vec<int> opportunities;
+    for (int i = 0; i < len(all); i++) {
+        if (TextIsGraphemeBoundary(text, all[i])) {
+            VecAppend(opportunities, all[i]);
+        }
+    }
+    // A single word can span the rest of the line. Past this window the
+    // original grapheme search decides, and that probe is not a word break.
+    const int kMaxWordProbeGraphemes = 256;
+    int first = 0;
+    int start = 0;
+    while (first < len(ends)) {
+        float available = start == 0 ? width : width - indentWidth;
+        float rowIndent = start == 0 ? 0.f : indentWidth;
+        int wordProbeEnd = n;
+        if (len(ends) - first >= kMaxWordProbeGraphemes) {
+            wordProbeEnd = ends[first + kMaxWordProbeGraphemes - 1];
+        }
+        int firstWord = 0;
+        while (firstWord < len(opportunities)) {
+            int ix = opportunities[firstWord];
+            bool skip = ix <= start || (start == 0 && ix <= indent);
+            if (!skip) {
+                break;
+            }
+            firstWord++;
+        }
+        const int* words = opportunities.els + firstWord;
+        int nWords = len(opportunities) - firstWord;
+        int wordCount =
+            FittingCount(words, nWords, text, start, available, rowIndent,
+                         wordProbeEnd, true, valid, measure, user);
+        int end = 0;
+        if (wordCount > 0) {
+            end = words[wordCount - 1];
+        } else {
+            int count = FittingCount(ends.els + first, len(ends) - first, text,
+                                     start, available, rowIndent, 0, false,
+                                     valid, measure, user);
+            int fittingEnd = ends[first + std::max(count, 1) - 1];
+            if (fittingEnd == n) {
+                break;
+            }
+            int wc = 0;
+            while (wc < nWords && words[wc] <= fittingEnd) {
+                wc++;
+            }
+            end = wc >= 1 ? words[wc - 1] : fittingEnd;
+        }
+        if (end == n) {
+            break;
+        }
+        VecAppend(*out, WrapBoundary{end, indent});
+        while (first < len(ends) && ends[first] <= end) {
+            first++;
+        }
+        start = end;
     }
 }
 

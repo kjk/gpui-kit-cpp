@@ -4402,16 +4402,50 @@ bool SearchMatcherPrev(SearchMatcher* m, Selection* out);
    right by `indent` (WrappingIndent::Same's wrap_indent, the shaped width of
    the line's leading whitespace). The element builds one text element per
    visual row from it, and the hit test, the caret, Up/Down, Home/End and
-   scroll_to all walk it, so a row is a row everywhere. Rebuilt whole by
-   InputUpdateWrapMap (base/input.h) when the width, the font or the wrapping
-   indent moved; an edit re-wraps only the lines it touched, and a chip that
-   measured another width only its own line, TextWrapper::update and
-   set_inline_metrics. */
+   scroll_to all walk it, so a row is a row everywhere. A font, tab size or
+   wrapping-indent change rebuilds every line. A width change reuses a line
+   whose measured breaks stay valid (text_wrapper.rs WidthRange); an edit
+   re-wraps only the lines it touched, and a chip that measured another
+   width only its own line, TextWrapper::update and set_inline_metrics. */
+
+// text_wrapper/wrap_width.rs WidthRange. Inclusive minimum, exclusive
+// maximum, both rounded inward. All() is every viewport; Empty() never
+// matches, which is how an inline chip refuses reuse.
+struct WidthRange {
+    // f32::MIN and f32::MAX, Pixels::MIN and Pixels::MAX.
+    float minimum = -3.402823466e+38f;
+    float maximum = 3.402823466e+38f;
+
+    static WidthRange All() { return {}; }
+    static WidthRange Empty() {
+        WidthRange range;
+        range.minimum = 0;
+        range.maximum = 0;
+        return range;
+    }
+    bool Contains(float width) const {
+        return width >= minimum && width < maximum;
+    }
+    void Intersect(WidthRange other) {
+        if (other.minimum > minimum) {
+            minimum = other.minimum;
+        }
+        if (other.maximum < maximum) {
+            maximum = other.maximum;
+        }
+    }
+    // fits: record the comparison and report whether `measured` fits in
+    // `available`. `indent` is 0 on the first visual row.
+    bool Fits(float measured, float available, float indent);
+};
 
 struct InputWrapLine {
     int* starts = nullptr; // owned, local byte offsets, first is zero
     int nRows = 1;
     float indent = 0;
+    // Widths at which `starts` is still the wrap. Empty when the line holds
+    // an inline chip, whose element width is not a text measurement.
+    WidthRange validWidths = {};
 };
 
 struct InputWrapNode;
@@ -4430,9 +4464,16 @@ struct InputWrapTree {
     const InputWrapLine* Line(int index) const;
     int RowsAbove(int index) const;
     int LineAtRow(int row) const;
-    void Insert(int index, const int* starts, int nRows, float indent);
+    void Insert(int index, const int* starts, int nRows, float indent,
+                WidthRange valid = {});
     void Remove(int index, int count);
+    // The intersection of every line's valid widths contains `width`.
+    bool ContainsWidth(float width) const;
 };
+
+// Bounded exact substring widths for width-only reflows. Defined in
+// base/input.cpp; the map owns one.
+struct WidthCache;
 
 struct InputWrapMap {
     InputWrapTree tree;
@@ -4463,6 +4504,9 @@ struct InputWrapMap {
     // measure_tokens' widths, one per inline token span in document order,
     // and the token revision they were measured at.
     Vec<float> tokenWidths;
+    // text_wrapper/measurements.rs. Kept across a width change and dropped
+    // when the text, font, tab size, indent or inline metrics change.
+    WidthCache* widths = nullptr;
     // The text edited since the rows were wrapped, every splice merged into
     // one: bytes [editStart, editOldEnd) of the document the rows were made
     // for are [editStart, editNewEnd) of the current one. A whole-value set

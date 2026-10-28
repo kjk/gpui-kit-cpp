@@ -280,9 +280,9 @@ static void Notify(App* app, Window* win);
 // ─── soft wrap (display_map/text_wrapper.rs) ──────────────────────────────
 //
 // TextWrapper over the live document. Rust keeps a SumTree of LineItems and
-// re-wraps the lines an edit touched; the map here is flat and re-wraps the
-// whole document when anything it depends on moved, which is a sum of cached
-// character widths per byte.
+// re-wraps the lines an edit touched. A width change reuses every line whose
+// WidthRange still contains the new width, and the shaped widths of the
+// slices it did measure. A font, tab size or indent change drops both.
 
 static int WrapEncodeUtf8(uint32_t c, char* out) {
     if (c < 0x80) {
@@ -316,6 +316,9 @@ struct InputWrapNode {
     int height = 1;
     int lines = 1;
     int rows = 1;
+    // Intersection of this line and both subtrees. A width inside it leaves
+    // every stored break alone.
+    WidthRange valid = {};
 };
 static int WrapHeight(InputWrapNode* n) {
     return n ? n->height : 0;
@@ -330,6 +333,13 @@ static void WrapSummarize(InputWrapNode* n) {
     n->height = 1 + std::max(WrapHeight(n->left), WrapHeight(n->right));
     n->lines = 1 + WrapLines(n->left) + WrapLines(n->right);
     n->rows = n->line.nRows + WrapRows(n->left) + WrapRows(n->right);
+    n->valid = n->line.validWidths;
+    if (n->left) {
+        n->valid.Intersect(n->left->valid);
+    }
+    if (n->right) {
+        n->valid.Intersect(n->right->valid);
+    }
 }
 static InputWrapNode* WrapRotateLeft(InputWrapNode* n) {
     auto* r = n->right;
@@ -363,7 +373,12 @@ static InputWrapNode* WrapBalance(InputWrapNode* n) {
 }
 static InputWrapNode* WrapInsert(InputWrapNode* n, int at,
                                  InputWrapNode* item) {
-    if (!n) return item;
+    // A new leaf is returned as-is. Its summary has to exist before a parent
+    // intersects it, or a width the leaf rejected still looks reusable.
+    if (!n) {
+        WrapSummarize(item);
+        return item;
+    }
     int before = WrapLines(n->left);
     if (at <= before)
         n->left = WrapInsert(n->left, at, item);
@@ -465,13 +480,17 @@ int InputWrapTree::LineAtRow(int row) const {
     }
     return index;
 }
+bool InputWrapTree::ContainsWidth(float width) const {
+    return !root || root->valid.Contains(width);
+}
 void InputWrapTree::Insert(int index, const int* starts, int nRows,
-                           float indent) {
+                           float indent, WidthRange valid) {
     auto* n = new InputWrapNode();
     n->line.starts = (int*)Alloc(nullptr, sizeof(int) * nRows);
     memcpy(n->line.starts, starts, sizeof(int) * nRows);
     n->line.nRows = nRows;
     n->line.indent = indent;
+    n->line.validWidths = valid;
     n->rows = nRows;
     root = WrapInsert(root, std::max(0, std::min(index, LineCount())), n);
 }
@@ -559,6 +578,8 @@ struct WrapLineUser {
     const InlineTokenSpan* spans = nullptr;
     const float* widths = nullptr;
     int nSpans = 0;
+    // Intersected by every slice this line wraps. Inline chips force Empty.
+    WidthRange* valid = nullptr;
 };
 
 static float WrapTokenWidth(WrapLineUser* u, int i) {
@@ -599,6 +620,176 @@ static float WrapMeasureSlice(void* user, Str text) {
     return w;
 }
 
+// measurements.rs. FIFO of exact slice widths: 32,768 entries and 4 MiB of
+// text. A slice longer than the byte budget is measured and not stored.
+struct WidthCache {
+    struct Slot {
+        char* text = nullptr;
+        int len = 0;
+        float width = 0;
+        uint32_t hash = 0;
+        uint8_t state = 0; // 0 empty, 1 live, 2 tombstone
+    };
+    Slot* slots = nullptr;
+    int cap = 0;
+    int live = 0;
+    int tombs = 0;
+    int textBytes = 0;
+    int* fifo = nullptr;
+    int fifoHead = 0;
+    int fifoLen = 0;
+};
+
+static const int kWidthCacheMaxEntries = 32768;
+static const int kWidthCacheMaxBytes = 4 * 1024 * 1024;
+
+static uint32_t WidthCacheHash(Str text) {
+    uint32_t hash = 2166136261u;
+    for (int i = 0; i < len(text); i++) {
+        hash ^= (uint8_t)text.s[i];
+        hash *= 16777619u;
+    }
+    return hash ? hash : 1u;
+}
+
+static void WidthCacheFree(WidthCache* cache) {
+    if (!cache) {
+        return;
+    }
+    for (int i = 0; i < cache->cap; i++) {
+        Free(nullptr, cache->slots[i].text);
+    }
+    Free(nullptr, cache->slots);
+    Free(nullptr, cache->fifo);
+    delete cache;
+}
+
+static void WidthCacheDrop(InputWrapMap* map) {
+    if (!map) {
+        return;
+    }
+    WidthCacheFree(map->widths);
+    map->widths = nullptr;
+}
+
+static int WidthCacheLookup(WidthCache* cache, Str text, uint32_t hash,
+                            int* tomb) {
+    int mask = cache->cap - 1;
+    int at = (int)(hash & (uint32_t)mask);
+    *tomb = -1;
+    for (int n = 0; n < cache->cap; n++) {
+        WidthCache::Slot& slot = cache->slots[at];
+        if (slot.state == 0) {
+            return at;
+        }
+        if (slot.state == 2) {
+            if (*tomb < 0) {
+                *tomb = at;
+            }
+        } else if (slot.hash == hash && slot.len == len(text) &&
+                   memcmp(slot.text, text.s, (size_t)len(text)) == 0) {
+            return at;
+        }
+        at = (at + 1) & mask;
+    }
+    return *tomb >= 0 ? *tomb : 0;
+}
+
+static bool WidthCacheGet(WidthCache* cache, Str text, float* out) {
+    if (!cache || cache->cap == 0 || len(text) <= 0) {
+        return false;
+    }
+    int tomb = -1;
+    int at = WidthCacheLookup(cache, text, WidthCacheHash(text), &tomb);
+    if (cache->slots[at].state != 1) {
+        return false;
+    }
+    *out = cache->slots[at].width;
+    return true;
+}
+
+static void WidthCacheEvictOne(WidthCache* cache) {
+    if (cache->fifoLen <= 0) {
+        return;
+    }
+    int at = cache->fifo[cache->fifoHead];
+    cache->fifoHead++;
+    if (cache->fifoHead == kWidthCacheMaxEntries) {
+        cache->fifoHead = 0;
+    }
+    cache->fifoLen--;
+    WidthCache::Slot& slot = cache->slots[at];
+    if (slot.state == 1) {
+        cache->textBytes -= slot.len;
+        cache->live--;
+        Free(nullptr, slot.text);
+        slot.text = nullptr;
+        slot.len = 0;
+        slot.state = 2;
+        cache->tombs++;
+    }
+}
+
+static void WidthCachePut(InputWrapMap* map, Str text, float width) {
+    if (!map || len(text) <= 0 || len(text) > kWidthCacheMaxBytes) {
+        return;
+    }
+    if (!map->widths) {
+        map->widths = new WidthCache();
+    }
+    WidthCache* cache = map->widths;
+    uint32_t hash = WidthCacheHash(text);
+    if (cache->cap > 0) {
+        int tomb = -1;
+        int at = WidthCacheLookup(cache, text, hash, &tomb);
+        if (cache->slots[at].state == 1 && cache->slots[at].hash == hash &&
+            cache->slots[at].len == len(text) &&
+            memcmp(cache->slots[at].text, text.s, (size_t)len(text)) == 0) {
+            cache->slots[at].width = width;
+            return;
+        }
+    }
+    if (cache->cap == 0) {
+        cache->cap = kWidthCacheMaxEntries * 2;
+        cache->slots = (WidthCache::Slot*)Alloc(
+            nullptr, cache->cap * (int)sizeof(WidthCache::Slot));
+        memset(cache->slots, 0, (size_t)cache->cap * sizeof(WidthCache::Slot));
+        cache->fifo =
+            (int*)Alloc(nullptr, kWidthCacheMaxEntries * (int)sizeof(int));
+    }
+    while (cache->live >= kWidthCacheMaxEntries ||
+           cache->textBytes + len(text) > kWidthCacheMaxBytes) {
+        if (cache->fifoLen <= 0) {
+            break;
+        }
+        WidthCacheEvictOne(cache);
+    }
+    int tomb = -1;
+    int at = WidthCacheLookup(cache, text, hash, &tomb);
+    if (cache->slots[at].state == 0 && tomb >= 0) {
+        at = tomb;
+    }
+    WidthCache::Slot& slot = cache->slots[at];
+    if (slot.state == 2) {
+        cache->tombs--;
+    }
+    char* copy = (char*)Alloc(nullptr, len(text));
+    memcpy(copy, text.s, (size_t)len(text));
+    slot.text = copy;
+    slot.len = len(text);
+    slot.width = width;
+    slot.hash = hash;
+    slot.state = 1;
+    cache->live++;
+    cache->textBytes += len(text);
+    int tail = cache->fifoHead + cache->fifoLen;
+    if (tail >= kWidthCacheMaxEntries) {
+        tail -= kWidthCacheMaxEntries;
+    }
+    cache->fifo[tail] = at;
+    cache->fifoLen++;
+}
+
 // The shaped width of `text` on its own: what the row it would make paints
 // as. Tabs are widened to the editor's stops, and each candidate is measured
 // from its own start, so a soft-wrapped row begins its stops over.
@@ -606,6 +797,10 @@ static float WrapShapedWidth(void* user, Str text) {
     WrapMeasure* wm = (WrapMeasure*)user;
     if (len(text) <= 0) {
         return 0;
+    }
+    float cached = 0;
+    if (wm->map && WidthCacheGet(wm->map->widths, text, &cached)) {
+        return cached;
     }
     float stop = 0;
     if (wm->map && wm->map->tabSize > 0 && wm->map->spaceWidth > 0) {
@@ -618,10 +813,13 @@ static float WrapShapedWidth(void* user, Str text) {
             break;
         }
     }
-    if (tab && stop > 0) {
-        return TabExpandedWidth(text, stop, &WrapMeasureSlice, wm);
+    float width = tab && stop > 0
+                      ? TabExpandedWidth(text, stop, &WrapMeasureSlice, wm)
+                      : WrapMeasureSlice(wm, text);
+    if (wm->map) {
+        WidthCachePut(wm->map, text, width);
     }
-    return WrapMeasureSlice(wm, text);
+    return width;
 }
 
 // A line with its tabs widened to spaces, plus the source-byte to display-byte
@@ -821,11 +1019,14 @@ static void WrapLineFragments(void* user, Str slice, int base,
     WrapLineUser* u = (WrapLineUser*)user;
     if (u->nSpans == 0) {
         // Ordinary text breaks at Unicode line-break opportunities, measured
-        // with the widths it is painted at; the inline-element path below
-        // keeps LineWrapper's.
-        MeasuredWrapBoundaries(slice, u->width, u->wrappingIndent,
-                               &WrapShapedWidth, u->measure, out,
-                               &WrapCharWidthOf, u->measure);
+        // with the widths it is painted at. Word breaks are probed first so
+        // a later width still inside this range keeps the same rows.
+        WidthRange range;
+        MeasuredWrap(slice, u->width, u->wrappingIndent, &WrapShapedWidth,
+                     u->measure, out, &range);
+        if (u->valid) {
+            u->valid->Intersect(range);
+        }
         return;
     }
     Vec<LineFragment> frags;
@@ -852,12 +1053,16 @@ static void WrapLineFragments(void* user, Str slice, int base,
     }
     LineWrapperWrapLine(frags.els, len(frags), u->width, &WrapCharWidthOf,
                         u->measure, out);
+    // An inline chip has no measured text interval that stays valid.
+    if (u->valid) {
+        u->valid->Intersect(WidthRange::Empty());
+    }
 }
 
 // One logical line's rows, as byte offsets into it, and the continuation
 // rows' indent: the body of TextWrapper::_update for a row.
-static void WrapOneLine(InputState* s, WrapMeasure* wm, int line,
-                        Vec<int>* rows, float* indentOut) {
+static WidthRange WrapOneLine(InputState* s, WrapMeasure* wm, int line,
+                              Vec<int>* rows, float* indentOut) {
     s->wrap.wrappedLines++;
     InputWrapMap* m = &s->wrap;
     const Vec<int>& lineStarts = InputLineStarts(s);
@@ -900,6 +1105,8 @@ static void WrapOneLine(InputState* s, WrapMeasure* wm, int line,
     WrappingIndent indent =
         m->wrappingIndent ? WrappingIndent::Same : WrappingIndent::None;
     u.wrappingIndent = indent;
+    WidthRange valid = WidthRange::All();
+    u.valid = &valid;
     int indentChars = 0;
     VecClear(*rows);
     TextWrapperWrapItem(str, m->width > 0, indent, &WrapLineFragments, &u, rows,
@@ -920,6 +1127,7 @@ static void WrapOneLine(InputState* s, WrapMeasure* wm, int line,
         }
         *indentOut = x;
     }
+    return valid;
 }
 
 // The rows are the current document's now: no edit is waiting on them.
@@ -943,8 +1151,8 @@ static void WrapMapRebuild(InputState* s, PaintCtx* ctx) {
     Vec<int> rows;
     for (int line = 0; line < len(InputLineStarts(s)); line++) {
         float indent = 0;
-        WrapOneLine(s, &wm, line, &rows, &indent);
-        m->tree.Insert(line, rows.els, len(rows), indent);
+        WidthRange valid = WrapOneLine(s, &wm, line, &rows, &indent);
+        m->tree.Insert(line, rows.els, len(rows), indent, valid);
     }
     m->totalRows = m->tree.RowCount();
 }
@@ -957,8 +1165,8 @@ static void WrapMapReplaceLines(InputState* s, WrapMeasure* wm, int first,
     Vec<int> rows;
     for (int i = 0; i < newCount; i++) {
         float indent = 0;
-        WrapOneLine(s, wm, first + i, &rows, &indent);
-        m->tree.Insert(first + i, rows.els, len(rows), indent);
+        WidthRange valid = WrapOneLine(s, wm, first + i, &rows, &indent);
+        m->tree.Insert(first + i, rows.els, len(rows), indent, valid);
     }
     m->totalRows = m->tree.RowCount();
 }
@@ -980,12 +1188,38 @@ static int WrapLineOfOffset(const Vec<int>& lineStarts, int offset) {
 // Bring a map wrapped at its own width and font up to the current document:
 // the lines the edit envelope covers, then the lines whose chips measured
 // another width. A map that cannot say what changed is wrapped whole.
+// A width whose measured breaks are still valid keeps its rows. Lines that
+// fell out of range are wrapped again; the substring cache stays.
+static void WrapMapReflowWidth(InputState* s, PaintCtx* ctx) {
+    InputWrapMap* m = &s->wrap;
+    if (m->tree.ContainsWidth(m->width)) {
+        return;
+    }
+    WrapMeasure wm;
+    wm.map = m;
+    wm.ctx = ctx;
+    if (m->spaceWidth <= 0) {
+        m->spaceWidth = WrapCharWidthOf(&wm, ' ');
+    }
+    int n = m->tree.LineCount();
+    for (int i = 0; i < n; i++) {
+        const InputWrapLine* line = m->tree.Line(i);
+        if (line && line->validWidths.Contains(m->width)) {
+            continue;
+        }
+        WrapMapReplaceLines(s, &wm, i, 1, 1);
+    }
+}
+
 static void WrapMapCatchUp(InputState* s, PaintCtx* ctx) {
     InputWrapMap* m = &s->wrap;
     bool edited = m->docVersion != s->docVersion;
     if (!edited && len(m->dirtyLines) == 0) {
         return;
     }
+    // Edits, fonts and inline metrics drop measured slices. The rows that
+    // were not touched keep the widths they are valid for.
+    WidthCacheDrop(m);
     if (edited && (!m->hasEdit || m->editWhole)) {
         WrapMapRebuild(s, ctx);
         return;
@@ -1073,16 +1307,30 @@ void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
     if (width < 0) {
         width = 0;
     }
-    // set_wrap_width, set_font and set_wrapping_indent re-wrap every line;
-    // an edit or a chip re-measured re-wraps the lines it touched.
+    // set_font and set_wrapping_indent re-wrap every line. set_wrap_width
+    // reuses lines whose measured breaks still hold. An edit or a chip
+    // re-measured re-wraps the lines it touched.
     int tabSize = s->mode.tabSize > 0 ? s->mode.tabSize : 2;
-    bool same = m->valid && m->width == width && m->fontSize == fontSize &&
-                m->fontWord == fontWord && m->tabSize == tabSize &&
-                m->wrappingIndent == s->wrappingIndent;
-    if (same) {
+    bool fontSame = m->valid && m->fontSize == fontSize &&
+                    m->fontWord == fontWord && m->tabSize == tabSize &&
+                    m->wrappingIndent == s->wrappingIndent;
+    if (fontSame && m->width == width) {
         WrapMapCatchUp(s, ctx);
         return;
     }
+    // set_wrap_width: both the old and the new width wrap. Edits are applied
+    // at the width the rows were built for, then lines whose range misses
+    // the new width are measured again.
+    if (fontSame && m->width > 0 && width > 0) {
+        bool edited = m->docVersion != s->docVersion || len(m->dirtyLines) > 0;
+        if (edited) {
+            WrapMapCatchUp(s, ctx);
+        }
+        m->width = width;
+        WrapMapReflowWidth(s, ctx);
+        return;
+    }
+    WidthCacheDrop(m);
     m->width = width;
     m->fontSize = fontSize;
     m->fontWord = fontWord;
@@ -3515,6 +3763,7 @@ InputState::~InputState() {
     }
     delete overscroll;
     overscroll = nullptr;
+    WidthCacheDrop(&wrap);
 }
 
 static void TextReserve(InputState* s, int want) {

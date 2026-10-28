@@ -7,6 +7,8 @@
 
 #include "Test.h"
 
+#include <math.h>
+
 namespace {
 
 float MonoWidth(void*, uint32_t) {
@@ -193,8 +195,10 @@ static bool WrapMatchesFreshWrap(const InputState& s, float width) {
     InputState fresh;
     fresh.kind = InputKind::Editor;
     fresh.softWrap = true;
+    fresh.mode.tabSize = s.mode.tabSize;
+    fresh.wrappingIndent = s.wrappingIndent;
     InputSetValue(&fresh, InputValue(&s));
-    InputUpdateWrapMap(&fresh, nullptr, width, 14, 0);
+    InputUpdateWrapMap(&fresh, nullptr, width, s.wrap.fontSize, s.wrap.fontWord);
     const InputWrapMap& a = s.wrap;
     const InputWrapMap& b = fresh.wrap;
     if (a.tree.LineCount() != b.tree.LineCount() || a.totalRows != b.totalRows)
@@ -404,6 +408,183 @@ static void WrapTreeKeepsSuffixStorageAndSummaries() {
     utassert(tree.LineCount() == 0 && tree.RowCount() == 0);
 }
 
+static float ByteWidth(void*, Str text) {
+    return (float)len(text);
+}
+
+struct ProbeMeasure {
+    int bytes = 0;
+    int longest = 0;
+};
+
+static float ProbeByteWidth(void* user, Str text) {
+    ProbeMeasure* probe = (ProbeMeasure*)user;
+    probe->bytes += len(text);
+    if (len(text) > probe->longest) {
+        probe->longest = len(text);
+    }
+    return (float)len(text);
+}
+
+static bool SameBreaks(Str text, float width, WrappingIndent indent,
+                       WrapMeasureFn measure, void* user) {
+    Vec<WrapBoundary> measured;
+    Vec<WrapBoundary> original;
+    MeasuredWrap(text, width, indent, measure, user, &measured, nullptr);
+    MeasuredWrapBoundaries(text, width, indent, measure, user, &original);
+    if (len(measured) != len(original)) {
+        return false;
+    }
+    for (int i = 0; i < len(measured); i++) {
+        if (!(measured[i] == original[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// wrap_width/tests.rs oversized_words_keep_measurement_work_local.
+static void OversizedWordsKeepMeasurementWorkLocal() {
+    const int lengths[] = {8192, 16384};
+    const char* prefixes[] = {"", "short ", "    "};
+    const float widths[] = {80.f, 256.f, 512.f};
+    const WrappingIndent indents[] = {WrappingIndent::None,
+                                      WrappingIndent::Same};
+    for (int length : lengths) {
+        for (const char* prefix : prefixes) {
+            int prefixLen = (int)strlen(prefix);
+            char* text = (char*)Alloc(nullptr, prefixLen + length + 1);
+            memcpy(text, prefix, (size_t)prefixLen);
+            memset(text + prefixLen, 'x', (size_t)length);
+            text[prefixLen + length] = 0;
+            Str line = Str(text, prefixLen + length);
+            for (WrappingIndent indent : indents) {
+                for (float width : widths) {
+                    ProbeMeasure probe;
+                    utassert(SameBreaks(line, width, indent, &ProbeByteWidth,
+                                        &probe));
+                    utassert(probe.longest <= (int)(4.f * width));
+                    utassert(probe.bytes <= 32 * len(line));
+                }
+            }
+            Free(nullptr, text);
+        }
+    }
+    utassert(SameBreaks(StrL("hello world"), 8, WrappingIndent::None,
+                        &ByteWidth, nullptr));
+}
+
+// One grapheme's fractional width, minus the "fi" ligature rust subtracts.
+static float FractionalWidth(void*, Str text) {
+    float width = 0;
+    int at = 0;
+    while (at < len(text)) {
+        int start = at;
+        do {
+            uint32_t c = 0;
+            int n = Utf8At(text, at, &c);
+            at += n > 0 ? n : 1;
+        } while (at < len(text) && !TextIsGraphemeBoundary(text, at));
+        Str grapheme = Str(text.s + start, at - start);
+        bool ascii = true;
+        for (int i = 0; i < len(grapheme); i++) {
+            if ((unsigned char)grapheme.s[i] >= 0x80) {
+                ascii = false;
+            }
+        }
+        if (len(grapheme) == 1 && grapheme.s[0] == '\t') {
+            width += 28.25f;
+        } else if (ascii) {
+            width += 7.125f;
+        } else {
+            width += 15.75f;
+        }
+    }
+    int fi = 0;
+    for (int i = 0; i + 1 < len(text); i++) {
+        if (text.s[i] == 'f' && text.s[i + 1] == 'i') {
+            fi++;
+        }
+    }
+    return width - (float)fi * 0.875f;
+}
+
+// cached_resize_matches_cold_unicode_wrapping_at_fractional_thresholds,
+// one logical line at a time: the new probe and the character-first oracle.
+static void CachedResizeMatchesColdUnicodeWrapping() {
+    const char* text =
+        "    alphabet \xE4\xB8\xAD\xE6\x96\x87\xF0\x9F\x98\x80 e\xCC\x81 "
+        "family \xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x92\xBB finish\n"
+        "\tfi ffi office\n"
+        "\xD9\x85\xD8\xB1\xD8\xAD\xD8\xA8\xD8\xA7 "
+        "\xD8\xA8\xD8\xA7\xD9\x84\xD8\xB9\xD8\xA7\xD9\x84\xD9\x85\n"
+        "\r\n"
+        "end";
+    const WrappingIndent indents[] = {WrappingIndent::None,
+                                      WrappingIndent::Same};
+    for (WrappingIndent indent : indents) {
+        int lineStart = 0;
+        for (int i = 0; i <= (int)strlen(text); i++) {
+            if (i < (int)strlen(text) && text[i] != '\n') {
+                continue;
+            }
+            int lineEnd = i;
+            if (lineEnd > lineStart && text[lineEnd - 1] == '\r') {
+                lineEnd--;
+            }
+            Str line = Str(text + lineStart, lineEnd - lineStart);
+            for (int value = 1; value < 240; value++) {
+                float base = (float)value / 8.f;
+                float widths[] = {base, nextafterf(base, HUGE_VALF),
+                                  nextafterf(base, -HUGE_VALF)};
+                for (float width : widths) {
+                    utassert(SameBreaks(line, width, indent, &FractionalWidth,
+                                        nullptr));
+                }
+            }
+            lineStart = i + 1;
+        }
+    }
+}
+
+// set_wrap_width reuses rows while every line still fits, and a width that
+// leaves that range matches a cold wrap of the same text.
+static void WidthDragReusesMeasuredLines() {
+    InputState warm;
+    warm.kind = InputKind::Editor;
+    warm.softWrap = true;
+    InputSetValue(&warm,
+                  StrL("short\n"
+                       "    a longer line containing words and more words\n"
+                       "last\n"));
+    InputUpdateWrapMap(&warm, nullptr, 1000, 14, 0);
+    uint64_t shaped = warm.wrap.wrappedLines;
+    for (int width = 999; width >= 800; width--) {
+        InputUpdateWrapMap(&warm, nullptr, (float)width, 14, 0);
+    }
+    utassert(warm.wrap.wrappedLines == shaped);
+    utassert(WrapMatchesFreshWrap(warm, 800));
+    InputUpdateWrapMap(&warm, nullptr, 40, 14, 0);
+    utassert(warm.wrap.wrappedLines > shaped);
+    utassert(WrapMatchesFreshWrap(warm, 40));
+    warm.mode.tabSize = 8;
+    uint64_t beforeTab = warm.wrap.wrappedLines;
+    InputUpdateWrapMap(&warm, nullptr, 40, 14, 0);
+    utassert(warm.wrap.wrappedLines > beforeTab);
+    utassert(WrapMatchesFreshWrap(warm, 40));
+    // A font or indent change drops the measured rows, same as set_font and
+    // set_wrapping_indent.
+    uint64_t beforeFont = warm.wrap.wrappedLines;
+    InputUpdateWrapMap(&warm, nullptr, 40, 22, 0);
+    utassert(warm.wrap.wrappedLines > beforeFont);
+    utassert(WrapMatchesFreshWrap(warm, 40));
+    warm.wrappingIndent = 0;
+    uint64_t beforeIndent = warm.wrap.wrappedLines;
+    InputUpdateWrapMap(&warm, nullptr, 40, 22, 0);
+    utassert(warm.wrap.wrappedLines > beforeIndent);
+    utassert(WrapMatchesFreshWrap(warm, 40));
+}
+
 void TestTextWrapper() {
     TestSuite("text_wrapper");
     WrapTreeKeepsSuffixStorageAndSummaries();
@@ -413,4 +594,7 @@ void TestTextWrapper() {
     IsWordChar();
     WrappingIndentSameAndNone();
     EditsRewrapTheLinesTheyTouched();
+    OversizedWordsKeepMeasurementWorkLocal();
+    CachedResizeMatchesColdUnicodeWrapping();
+    WidthDragReusesMeasuredLines();
 }
