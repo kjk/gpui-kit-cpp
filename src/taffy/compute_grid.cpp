@@ -2096,6 +2096,12 @@ SpanPair PlaceIndefinitelyPositionedItem(const CellOccupancyMatrix& matrix,
                                       ? primarySpan.start < primaryGridStart
                                       : primarySpan.end > primaryGridEnd;
         if (primaryOutOfBounds) {
+            // A span that does not fit even at the search start can never
+            // fit: searching only moves it further from the start. Return
+            // and let the placement record clamp it into the limited grid.
+            if (primaryIdx == primaryStartPosition) {
+                return {primarySpan, secondarySpan};
+            }
             secondaryIdx = AdvancePosition(secondaryIdx, secondaryReversed);
             primaryIdx = primaryStartPosition;
             continue;

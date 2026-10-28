@@ -131,11 +131,20 @@ OriginZeroLine IntoOriginZeroLine(GridLine line, uint16_t explicitTrackCount) {
 
 // ─── grid placement ──────────────────────────────────────────────────────
 
+// A zero span is invalid and is treated as 1. Spans above the track limit
+// are clamped. https://www.w3.org/TR/css-grid-1/#overlarge-grids
+static uint16_t ClampGridSpan(uint16_t span) {
+    if (span < 1) {
+        return 1;
+    }
+    return span > kMaxGridTracks ? kMaxGridTracks : span;
+}
+
 static PlainPlacement IntoOriginZeroIgnoringNamed(const GridPlacement& p,
                                                   uint16_t explicitTrackCount) {
     switch (p.kind) {
         case GridPlacementKind::Span:
-            return PlainPlacement::Spanning(p.span);
+            return PlainPlacement::Spanning(ClampGridSpan(p.span));
         case GridPlacementKind::Line:
             // Grid line zero is an invalid index, so it is treated as auto.
             if (p.line == 0) {
@@ -179,7 +188,7 @@ bool LinePlain::IsDefiniteGridLine() const {
 static PlainPlacement PlainIntoOriginZero(PlainPlacement p,
                                           uint16_t explicitTrackCount) {
     if (p.IsSpan()) {
-        return p;
+        return PlainPlacement::Spanning(ClampGridSpan(p.span));
     }
     if (p.IsLine()) {
         if (p.line == 0) {

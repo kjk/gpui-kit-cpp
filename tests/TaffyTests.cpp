@@ -1550,6 +1550,33 @@ static void TestGridNonFiniteStylesTerminate() {
     }
 }
 
+// A zero span is normalized to 1. Paired with a named span that names
+// nothing, that used to estimate a zero-track grid while auto-placement
+// searched for a span of 1, and the search never finished.
+static void TestGridZeroSpanTerminates() {
+    TestSuite("taffy::grid zero span");
+
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    for (int i = 0; i < 2; i++) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.gridColumn
+            .start = GridPlacement::FromNamedSpan(StrL("does-not-exist"), 1);
+        childStyle.gridColumn.end = GridPlacement::FromSpan(0);
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.direction = directions[i];
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::Definite({100.0f, 100.0f}));
+        utassert(tree.GetLayout(root).size.w >= 0.0f);
+        utassert(tree.GetLayout(root).size.h >= 0.0f);
+        tree.Free();
+    }
+}
+
 // Rust's `(width, height, cols, rows).into_grid()`: a grid of `1fr` tracks.
 static taffy::Style GridParent(float w, float h, int cols, int rows) {
     taffy::Style s;
@@ -2424,6 +2451,7 @@ void TestTaffy() {
     TestGridLayout();
     TestGridRepetitionLineNames();
     TestGridNonFiniteStylesTerminate();
+    TestGridZeroSpanTerminates();
     TestTaffy013Regressions();
     gpui::ArenaDelete(gGridArena);
     gGridArena = nullptr;
