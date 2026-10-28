@@ -16,14 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `75da1a084ce414bb2b4e6ee8b77e77d46544bff1` (2026-10-26,
-diff: Parse truncated hunks through parse options (#3688)).
-`DiffFile::Parse` stays strict. `ParseWith` can accept a hunk that ends
-before its declared counts and count it from the lines present. Declared
-counts stay an upper bound. A short hunk stops at a non-source line or
-at a unified file header that cannot finish the hunk. `IsTruncated`
-reports an early end. An empty truncated hunk still orders the next
-hunk. Line numbers that do not fit in `int` stay invalid headers.
+Processed through `650d3948fd29cb3b7be6645ec0259eb15dbfa885` (2026-10-26,
+text: Expose image source resolver on component TextView (#3694)).
+The component text view is Base's text view, so `ImageSource` was
+already the resolver used for measurement and drawing. A pending or
+failed load still does not fall back to the document URL.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

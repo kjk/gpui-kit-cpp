@@ -1893,6 +1893,33 @@ static void InheritedInvertedColorSuppressesTheDefaultHighlighter() {
     TestAppFree(app);
 }
 
+static gpui::ImageSource BuilderResolvesTheDocumentUri(Str uri, void*) {
+    return gpui::ImageSource::FromResource(uri);
+}
+
+// crates/component/src/text/mod.rs test_text_view_builder. The component
+// façade is Base's TextView, so image_source is already this method.
+static void TestTextViewBuilder() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    TextView* view = TextView::New(&cx, StrL("# compatible"))
+                         ->Style(TextViewStyle::Default())
+                         ->Selectable(true)
+                         ->Scrollable(true)
+                         ->ImageSource(BuilderResolvesTheDocumentUri);
+    utassert(view->selectable && view->scrollable);
+    utassert(view->imageSource == BuilderResolvesTheDocumentUri);
+    gpui::ImageSource resolved =
+        view->imageSource(StrL("images/a.png"), nullptr);
+    utassert(resolved.kind == gpui::ImageSourceKind::Resource);
+    utassert(StrEq(resolved.resource, "images/a.png"));
+    ArenaDelete(a);
+    (void)win;
+}
+
 static void TestTextViewDefaultsAndOptInHighlighting() {
     App app;
     Window* win = new Window();
@@ -8537,6 +8564,7 @@ void TestTextView() {
     TextColorOfAMatchingSurfaceOnlyReplacesTheBodyText();
     TextColorOfAnInvertedSurfaceDerivesEveryColorFromIt();
     TextViewFollowsTheTextColorOfItsContainer();
+    TestTextViewBuilder();
     TestTextViewDefaultsAndOptInHighlighting();
     InheritedInvertedColorSuppressesTheDefaultHighlighter();
     TestTextViewRootNamesItsForeground();
