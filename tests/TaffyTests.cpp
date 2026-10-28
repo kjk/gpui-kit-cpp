@@ -4999,6 +4999,105 @@ static void TestGridReplacedNormalDoesNotStretch() {
     }
 }
 
+// A definite preferred size is the minimum contribution, already clamped by
+// min-size and max-size. grid_min_contribution_size_clamped_by_*.
+static void TestGridMinContributionClampedByMinMax() {
+    TestSuite("taffy::grid min contribution clamp");
+
+    Direction directions[2] = {Direction::Ltr, Direction::Rtl};
+    float maxX[2] = {0.0f, 90.0f};
+    float minX[2] = {0.0f, 70.0f};
+    for (int i = 0; i < 2; i++) {
+        {
+            // width 25, max-width 10, auto column, justify-content start.
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style capped;
+            capped.direction = directions[i];
+            capped.position = taffy::Position::Relative;
+            capped.size.width = taffy::Dimension::Length(25.0f);
+            capped.maxSize.width = taffy::Dimension::Length(10.0f);
+            taffy::Style empty;
+            empty.direction = directions[i];
+            empty.position = taffy::Position::Relative;
+            TaffyNodeId a = tree.NewLeaf(capped);
+            TaffyNodeId b = tree.NewLeaf(empty);
+            TrackSizingFunction col = TrackSizingFunction::Auto();
+            GridTemplateComponent cc = GridTemplateComponent::Single(col);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.direction = directions[i];
+            rootStyle.position = taffy::Position::Absolute;
+            rootStyle.justifyContent =
+                taffy::AlignContent{taffy::AlignContentKeyword::Start};
+            rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+            rootStyle.gridTemplateColumns = GridTemplateOf(&cc, 1);
+            TaffyNodeId kids[2] = {a, b};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(a), maxX[i], 0.0f, 10.0f, 50.0f);
+            AssertBox(tree.GetLayout(b), maxX[i], 50.0f, 10.0f, 50.0f);
+            tree.Free();
+        }
+        {
+            // width 25, min-width 30, against minmax(auto, 0px).
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style raised;
+            raised.direction = directions[i];
+            raised.position = taffy::Position::Relative;
+            raised.size.width = taffy::Dimension::Length(25.0f);
+            raised.minSize.width = taffy::Dimension::Length(30.0f);
+            taffy::Style empty;
+            empty.direction = directions[i];
+            empty.position = taffy::Position::Relative;
+            TaffyNodeId a = tree.NewLeaf(raised);
+            TaffyNodeId b = tree.NewLeaf(empty);
+            TrackSizingFunction col;
+            col.min = MinTrackSizingFunction::Auto();
+            col.max = MaxTrackSizingFunction::Length(0.0f);
+            GridTemplateComponent cc = GridTemplateComponent::Single(col);
+            taffy::Style rootStyle;
+            rootStyle.display = taffy::Display::Grid;
+            rootStyle.direction = directions[i];
+            rootStyle.position = taffy::Position::Absolute;
+            rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
+            rootStyle.gridTemplateColumns = GridTemplateOf(&cc, 1);
+            TaffyNodeId kids[2] = {a, b};
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+            tree.ComputeLayout(root, SizeAvail::MaxContent());
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 100.0f);
+            AssertBox(tree.GetLayout(a), minX[i], 0.0f, 30.0f, 50.0f);
+            AssertBox(tree.GetLayout(b), minX[i], 50.0f, 30.0f, 50.0f);
+            tree.Free();
+        }
+    }
+
+    {
+        // height 25, max-height 10, one auto row.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style capped;
+        capped.position = taffy::Position::Relative;
+        capped.size.height = taffy::Dimension::Length(25.0f);
+        capped.maxSize.height = taffy::Dimension::Length(10.0f);
+        TaffyNodeId a = tree.NewLeaf(capped);
+        TrackSizingFunction row = TrackSizingFunction::Auto();
+        GridTemplateComponent rc = GridTemplateComponent::Single(row);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Grid;
+        rootStyle.position = taffy::Position::Absolute;
+        rootStyle.size.width = taffy::Dimension::Length(100.0f);
+        rootStyle.gridTemplateRows = GridTemplateOf(&rc, 1);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &a, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 100.0f, 10.0f);
+        AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 100.0f, 10.0f);
+        tree.Free();
+    }
+}
+
 // Width and height sizing keywords on a grid item. The fixed tracks make the
 // area definite, so stretch is the area minus margins and the intrinsic
 // keywords measure the fixture text (min 20x20, max 40x10).
@@ -9459,6 +9558,7 @@ void TestTaffy() {
     TestGridMinmaxAutoFixedZero();
     TestGridAutoMinFloorPaddingBorder();
     TestGridReplacedNormalDoesNotStretch();
+    TestGridMinContributionClampedByMinMax();
     TestGridSizingKeywords();
     TestTaffy013Regressions();
     gpui::ArenaDelete(gGridArena);

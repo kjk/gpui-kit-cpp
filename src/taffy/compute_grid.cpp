@@ -2094,6 +2094,24 @@ float ItemMinimumContribution(GridItem* item, TaffyTree* tree,
                                  item->aspectRatio),
                              boxSizingAdjustment),
                     axis);
+    // A definite preferred size is clamped by the minimum and maximum sizes.
+    // An indefinite percentage maximum on a compressible replaced element
+    // resolves against zero.
+    if (IsSome(size) && (!item->minSize.Get(axis).IsAuto() ||
+                         !item->maxSize.Get(axis).IsAuto())) {
+        Optf basis =
+            axis == AbstractAxis::Inline ? gridAreaSize.w : gridAreaSize.h;
+        Optf maxBasis =
+            item->isCompressibleReplaced ? Or(basis, Some(0.0f)) : basis;
+        float adjustment = Get(boxSizingAdjustment, axis);
+        Optf minResolved =
+            MaybeAdd(item->minSize.Get(axis).MaybeResolve(basis, calc),
+                     Some(adjustment));
+        Optf maxResolved =
+            MaybeAdd(item->maxSize.Get(axis).MaybeResolve(maxBasis, calc),
+                     Some(adjustment));
+        size = MaybeClamp(size, minResolved, maxResolved);
+    }
     if (!IsSome(size)) {
         // A percentage minimum is cyclic when the area it is a percentage of
         // is the track this contribution is sizing. An indefinite area
