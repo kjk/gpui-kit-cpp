@@ -971,6 +971,18 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
 
                         SizeFOpt childKnownDimensions = item.size;
                         SetMain(&childKnownDimensions, dir, None());
+                        // Clamp a definite cross size by the cross min and max,
+                        // as DetermineFlexBaseSize does. An item measured wider
+                        // than its max-width wraps onto fewer lines and
+                        // under-reports its height.
+                        SizeFOpt transferredMinSize = MaybeApplyAspectRatio(
+                            item.minSize, item.aspectRatio);
+                        SizeFOpt transferredMaxSize = MaybeApplyAspectRatio(
+                            item.maxSize, item.aspectRatio);
+                        SetCross(&childKnownDimensions, dir,
+                                 MaybeClamp(Cross(childKnownDimensions, dir),
+                                            Cross(transferredMinSize, dir),
+                                            Cross(transferredMaxSize, dir)));
                         if (item.alignSelf
                                     .keyword == AlignItemsKeyword::Stretch &&
                             !IsSome(Cross(childKnownDimensions, dir))) {

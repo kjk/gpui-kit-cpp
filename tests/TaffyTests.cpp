@@ -617,6 +617,58 @@ static SizeF AhemBalanceInner(SizeFOpt known, SizeAvail available, void*) {
     return {inlineSize, block};
 }
 
+// Three runs of twelve "H" separated by ZWSP, Ahem 10px. A width of 200px
+// wraps to three lines; 300px wraps to two.
+static SizeF AhemTwelveInner(SizeFOpt known, SizeAvail available, void*) {
+    const int kLens[3] = {12, 12, 12};
+    const float kH = 10.0f;
+    float inlineSize;
+    if (IsSome(known.w)) {
+        inlineSize = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        inlineSize = 120.0f;
+    } else if (available.width.kind == AvailableSpace::Kind::MaxContent) {
+        inlineSize = 360.0f;
+    } else {
+        inlineSize = F32Min(available.width.value, 360.0f);
+    }
+    if (inlineSize < 120.0f) {
+        inlineSize = 120.0f;
+    }
+    float block;
+    if (IsSome(known.h)) {
+        block = known.h;
+    } else {
+        int inlineChars = (int)(inlineSize / kH);
+        int lineCount = 1;
+        int current = 0;
+        for (int i = 0; i < 3; i++) {
+            if (current + kLens[i] > inlineChars) {
+                if (current > 0) {
+                    lineCount++;
+                }
+                current = kLens[i];
+            } else {
+                current += kLens[i];
+            }
+        }
+        block = (float)lineCount * kH;
+    }
+    return {inlineSize, block};
+}
+
+static taffy::LayoutOutput AhemTwelveMeasure(const taffy::LayoutInput& inputs,
+                                             TaffyNodeId node,
+                                             void* nodeContext,
+                                             const taffy::Style* style,
+                                             void* userData) {
+    (void)node;
+    (void)nodeContext;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    AhemTwelveInner, nullptr);
+}
+
 static taffy::LayoutOutput AhemBalanceMeasure(const taffy::LayoutInput& inputs,
                                               TaffyNodeId node,
                                               void* nodeContext,
@@ -6456,6 +6508,31 @@ static void TestFlexPercentagePaddingAgainstWidth() {
     }
 }
 
+// taffy 22f941e1. A column's intrinsic height measures a flex-basis 0 item
+// at its max-width, so wrapped text is not measured at the wider percentage.
+static void TestFlexColumnMeasuresAtMaxWidth() {
+    TestSuite("taffy flex column max-width measure");
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style root;
+    root.display = taffy::Display::Flex;
+    root.flexDirection = taffy::FlexDirection::Column;
+    root.size.width = taffy::Dimension::Length(300.0f);
+    taffy::Style item;
+    item.flexGrow = 1.0f;
+    item.flexShrink = 1.0f;
+    item.flexBasis = taffy::Dimension::Length(0.0f);
+    item.size.width = taffy::Dimension::Percent(1.0f);
+    item.maxSize.width = taffy::Dimension::Length(200.0f);
+    TaffyNodeId child = tree.NewLeaf(item);
+    TaffyNodeId node = tree.NewWithChildren(root, &child, 1);
+    tree.ComputeLayoutWithMeasure(node, SizeAvail::MaxContent(),
+                                  AhemTwelveMeasure, nullptr);
+    AssertBox(tree.GetLayout(node), 0.0f, 0.0f, 300.0f, 30.0f);
+    AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 200.0f, 30.0f);
+    tree.Free();
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6476,6 +6553,7 @@ void TestTaffy() {
     TestInitialContainingBlock();
     TestRootPositionAndInsets();
     TestFlexPercentagePaddingAgainstWidth();
+    TestFlexColumnMeasuresAtMaxWidth();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();
