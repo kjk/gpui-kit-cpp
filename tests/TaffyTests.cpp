@@ -657,6 +657,64 @@ static SizeF AhemTwelveInner(SizeFOpt known, SizeAvail available, void*) {
     return {inlineSize, block};
 }
 
+// Four runs of two "H" separated by ZWSP, Ahem 10px. The flex-in-grid
+// measure-count test (taffy 391e383c). Both known dimensions are already
+// answered by ComputeLeafLayout, matching the Rust counter's early return.
+static SizeF AhemQuadInner(SizeFOpt known, SizeAvail available, void* ctx) {
+    if (IsSome(known.w) && IsSome(known.h)) {
+        return {known.w, known.h};
+    }
+    int* hits = (int*)ctx;
+    if (hits) {
+        *hits += 1;
+    }
+    const int kLens[4] = {2, 2, 2, 2};
+    const float kH = 10.0f;
+    float inlineSize;
+    if (IsSome(known.w)) {
+        inlineSize = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        inlineSize = 20.0f;
+    } else if (available.width.kind == AvailableSpace::Kind::MaxContent) {
+        inlineSize = 80.0f;
+    } else {
+        inlineSize = F32Min(available.width.value, 80.0f);
+    }
+    if (inlineSize < 20.0f) {
+        inlineSize = 20.0f;
+    }
+    float block;
+    if (IsSome(known.h)) {
+        block = known.h;
+    } else {
+        int inlineChars = (int)(inlineSize / kH);
+        int lineCount = 1;
+        int current = 0;
+        for (int i = 0; i < 4; i++) {
+            if (current + kLens[i] > inlineChars) {
+                if (current > 0) {
+                    lineCount++;
+                }
+                current = kLens[i];
+            } else {
+                current += kLens[i];
+            }
+        }
+        block = (float)lineCount * kH;
+    }
+    return {inlineSize, block};
+}
+
+static taffy::LayoutOutput AhemQuadMeasure(const taffy::LayoutInput& inputs,
+                                           TaffyNodeId node, void* nodeContext,
+                                           const taffy::Style* style,
+                                           void* userData) {
+    (void)node;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    AhemQuadInner, nodeContext);
+}
+
 static SizeF GridWidthSkipInner(SizeFOpt, SizeAvail, void* ctx) {
     int* hits = (int*)ctx;
     *hits += 1;
@@ -6607,6 +6665,36 @@ static void TestGridSkipsRowsWhenOnlyWidthRequested() {
     tree.Free();
 }
 
+// taffy 391e383c. A grid that sizes a flex item asks that flex container
+// only for its main size. The leaf is measured 10 times in a row and 11
+// times in a column (13 and 12 without the short-circuit) and lays out
+// at 50x20 inside a 50px-wide grid.
+static void TestFlexSkipsCrossSizeWhenOnlyMainRequested() {
+    TestSuite("taffy flex main-only skips cross");
+    taffy::FlexDirection dirs[2] = {taffy::FlexDirection::Row,
+                                    taffy::FlexDirection::Column};
+    int expected[2] = {10, 11};
+    for (int i = 0; i < 2; i++) {
+        TaffyTree tree;
+        tree.Init();
+        int hits = 0;
+        TaffyNodeId leaf = tree.NewLeafWithContext(taffy::Style{}, &hits);
+        taffy::Style flex;
+        flex.display = taffy::Display::Flex;
+        flex.flexDirection = dirs[i];
+        TaffyNodeId flexNode = tree.NewWithChildren(flex, &leaf, 1);
+        taffy::Style grid;
+        grid.display = taffy::Display::Grid;
+        grid.size.width = taffy::Dimension::Length(50.0f);
+        TaffyNodeId root = tree.NewWithChildren(grid, &flexNode, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AhemQuadMeasure, nullptr);
+        AssertBox(tree.GetLayout(leaf), 0.0f, 0.0f, 50.0f, 20.0f);
+        utassert(hits == expected[i]);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6629,6 +6717,7 @@ void TestTaffy() {
     TestFlexPercentagePaddingAgainstWidth();
     TestFlexColumnMeasuresAtMaxWidth();
     TestGridSkipsRowsWhenOnlyWidthRequested();
+    TestFlexSkipsCrossSizeWhenOnlyMainRequested();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

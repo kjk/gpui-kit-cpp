@@ -2219,6 +2219,22 @@ LayoutOutput ComputePreliminary(TaffyTree* tree, NodeId node,
                 Main(resolvedGap, constants.dir));
     }
 
+    // Only the container's main size was requested. Nothing below changes
+    // it, and the cross-size pass is what measures every item's other axis.
+    if (runMode == RunMode::ComputeSize) {
+        bool mainIsRequested =
+            (inputs.axis == RequestedAxis::Horizontal && constants.isRow) ||
+            (inputs.axis == RequestedAxis::Vertical && !constants.isRow);
+        if (mainIsRequested) {
+            SizeF size = SizeF::Zero();
+            SetMain(&size, constants.dir,
+                    Main(constants.containerSize, constants.dir));
+            VecReset(flexItems);
+            VecReset(flexLines);
+            return LayoutOutput::FromOuterSize(size);
+        }
+    }
+
     // 6. Resolve the flexible lengths of all the flex items.
     for (int i = 0; i < len(flexLines); i++) {
         ResolveFlexibleLengths(&flexLines[i], constants);
