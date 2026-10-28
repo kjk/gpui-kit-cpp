@@ -6117,6 +6117,94 @@ static void TestAbsposAutoMarginNeedsBothInsets() {
     }
 }
 
+// A measure whose unknown axis is `width * heightRatio` (height = width *
+// ratio).
+struct AspectMeasureCtx {
+    float width = 0;
+    float heightRatio = 0;
+};
+
+static SizeF AspectMeasureInner(SizeFOpt known, SizeAvail, void* nodeContext) {
+    AspectMeasureCtx* m = (AspectMeasureCtx*)nodeContext;
+    float w = IsSome(known.w) ? known.w : m->width;
+    float h = IsSome(known.h) ? known.h : w * m->heightRatio;
+    return {w, h};
+}
+
+static taffy::LayoutOutput AspectMeasureFn(const taffy::LayoutInput& inputs,
+                                           TaffyNodeId node, void* nodeContext,
+                                           const taffy::Style* style,
+                                           void* userData) {
+    (void)node;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    AspectMeasureInner, nodeContext);
+}
+
+static void InsetAll(taffy::Style* s, float v) {
+    taffy::LengthPercentageAuto inset = taffy::LengthPercentageAuto::Length(v);
+    s->inset.left = inset;
+    s->inset.right = inset;
+    s->inset.top = inset;
+    s->inset.bottom = inset;
+}
+
+// taffy tests/hand_written/absolute_replaced.rs. A replaced absolute box
+// uses its intrinsic size instead of stretching between its insets.
+static void TestAbsoluteReplacedDoesNotStretch() {
+    TestSuite("taffy absolute replaced");
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::Block;
+    rootStyle.position = taffy::Position::Relative;
+    rootStyle.size = SizeDim::FromLengths(400.0f, 300.0f);
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        AspectMeasureCtx image = {100.0f, 0.5f};
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.itemIsReplaced = true;
+        InsetAll(&absStyle, 10.0f);
+        TaffyNodeId abs = tree.NewLeafWithContext(absStyle, &image);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &abs, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AspectMeasureFn, nullptr);
+        AssertBox(tree.GetLayout(abs), 10.0f, 10.0f, 100.0f, 50.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        AspectMeasureCtx image = {100.0f, 0.5f};
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        absStyle.itemIsReplaced = true;
+        absStyle.size.width = taffy::Dimension::Length(200.0f);
+        InsetAll(&absStyle, 10.0f);
+        TaffyNodeId abs = tree.NewLeafWithContext(absStyle, &image);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &abs, 1);
+        tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                      AspectMeasureFn, nullptr);
+        utassertnear(tree.GetLayout(abs).size.w, 200.0f);
+        utassertnear(tree.GetLayout(abs).size.h, 100.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style absStyle;
+        absStyle.position = taffy::Position::Absolute;
+        InsetAll(&absStyle, 10.0f);
+        TaffyNodeId abs = tree.NewLeaf(absStyle);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &abs, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        utassertnear(tree.GetLayout(abs).size.w, 380.0f);
+        utassertnear(tree.GetLayout(abs).size.h, 280.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6133,6 +6221,7 @@ void TestTaffy() {
     TestResolveStaticOffset();
     TestOofHoisting();
     TestAbsposAutoMarginNeedsBothInsets();
+    TestAbsoluteReplacedDoesNotStretch();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

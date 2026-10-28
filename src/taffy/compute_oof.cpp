@@ -113,6 +113,9 @@ void PerformOofLayout(TaffyTree* tree, NodeId nodeId, OofCandidates candidates,
                          aspectRatio),
                      boxSizingAdjustment);
         SizeFOpt knownDimensions = MaybeClamp(styleSize, minSize, maxSize);
+        // An absolute replaced box keeps its intrinsic size. Stretching it
+        // between the insets is only for a non-replaced auto size.
+        bool isReplaced = cs.IsCompressibleReplaced();
 
         if (sizeStyle.width.IsSizingKeyword() || sizeStyle.height
                                                      .IsSizingKeyword()) {
@@ -124,7 +127,8 @@ void PerformOofLayout(TaffyTree* tree, NodeId nodeId, OofCandidates candidates,
                            minSize, maxSize);
         }
 
-        if (!IsSome(knownDimensions.w) && IsSome(left) && IsSome(right)) {
+        if (!isReplaced && !IsSome(knownDimensions.w) && IsSome(left) &&
+            IsSome(right)) {
             float newWidthRaw =
                 MaybeSub(MaybeSub(areaWidth, margin.left), margin.right) -
                 left - right;
@@ -133,7 +137,8 @@ void PerformOofLayout(TaffyTree* tree, NodeId nodeId, OofCandidates candidates,
                 MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
                            minSize, maxSize);
         }
-        if (!IsSome(knownDimensions.h) && IsSome(top) && IsSome(bottom)) {
+        if (!isReplaced && !IsSome(knownDimensions.h) && IsSome(top) &&
+            IsSome(bottom)) {
             float newHeightRaw =
                 MaybeSub(MaybeSub(areaHeight, margin.top), margin.bottom) -
                 top - bottom;
