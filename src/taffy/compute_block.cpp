@@ -1379,6 +1379,19 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         item.finalLayout.location = location;
         item.finalLayout.padding = item.padding;
         item.finalLayout.border = item.border;
+        // Used auto margins include the float-avoidance offset. The
+        // alignment margins above, which positioned the box, do not.
+        if (itemAvoidsFloats) {
+            if (!IsSome(itemMargin.left)) {
+                resolvedMargin.left +=
+                    floatAvoidingPosition.x - resolvedContentBoxInset.left;
+            }
+            if (!IsSome(itemMargin.right)) {
+                resolvedMargin.right +=
+                    containerOuterWidth - resolvedContentBoxInset.right -
+                    floatAvoidingPosition.x - floatAvoidingWidth;
+            }
+        }
         item.finalLayout.margin = resolvedMargin;
         OofCandRange range;
         OofAppendRange(oofPool, &range, itemLayout.oofCandidates);

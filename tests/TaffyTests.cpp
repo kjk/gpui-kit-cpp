@@ -3142,6 +3142,151 @@ static void TestFloatPercentSumFits() {
     tree.Free();
 }
 
+// taffy d53d0200. A float-avoiding block's used auto margin includes the
+// gap the float occupied. A relative inset and clearance do not.
+static void TestFloatAvoidingAutoMargins() {
+    TestSuite("taffy float avoiding auto margins");
+    taffy::Direction directions[2] = {taffy::Direction::Ltr,
+                                      taffy::Direction::Rtl};
+    float pairs[4][2] = {
+        {0.0f, 20.0f}, {20.0f, 0.0f}, {20.0f, 20.0f}, {0.0f, 0.0f}};
+    bool autoSides[3][2] = {{true, true}, {true, false}, {false, true}};
+    for (taffy::Direction direction : directions) {
+        for (int p = 0; p < 4; p++) {
+            float leftFloatWidth = pairs[p][0];
+            float rightFloatWidth = pairs[p][1];
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style leftFloatStyle;
+            leftFloatStyle.display = taffy::Display::Block;
+            leftFloatStyle.floatMode = taffy::Float::Left;
+            leftFloatStyle.size = SizeDim::FromLengths(leftFloatWidth, 40.0f);
+            TaffyNodeId leftFloat = tree.NewLeaf(leftFloatStyle);
+            taffy::Style rightFloatStyle;
+            rightFloatStyle.display = taffy::Display::Block;
+            rightFloatStyle.floatMode = taffy::Float::Right;
+            rightFloatStyle.size = SizeDim::FromLengths(rightFloatWidth, 40.0f);
+            TaffyNodeId rightFloat = tree.NewLeaf(rightFloatStyle);
+            TaffyNodeId boxes[3];
+            for (int i = 0; i < 3; i++) {
+                taffy::Style box;
+                box.display = taffy::Display::FlowRoot;
+                box.direction = direction;
+                box.size = SizeDim::FromLengths(40.0f, 10.0f);
+                box.margin.left = autoSides[i][0]
+                                      ? LengthPercentageAuto::Auto()
+                                      : LengthPercentageAuto::Zero();
+                box.margin.right = autoSides[i][1]
+                                       ? LengthPercentageAuto::Auto()
+                                       : LengthPercentageAuto::Zero();
+                box.margin.top = LengthPercentageAuto::Auto();
+                box.margin.bottom = LengthPercentageAuto::Auto();
+                boxes[i] = tree.NewLeaf(box);
+            }
+            TaffyNodeId kids[5] = {leftFloat, rightFloat, boxes[0], boxes[1],
+                                   boxes[2]};
+            taffy::Style root;
+            root.display = taffy::Display::FlowRoot;
+            root.direction = direction;
+            root.size.width = taffy::Dimension::Length(100.0f);
+            root.padding.left = taffy::LengthPercentage::Length(5.0f);
+            root.padding.right = taffy::LengthPercentage::Length(5.0f);
+            root.padding.top = taffy::LengthPercentage::Length(5.0f);
+            root.padding.bottom = taffy::LengthPercentage::Length(5.0f);
+            TaffyNodeId node = tree.NewWithChildren(root, kids, 5);
+            tree.ComputeLayout(node, SizeAvail::MaxContent());
+            float freeSpace = 90.0f - leftFloatWidth - rightFloatWidth - 40.0f;
+            for (int i = 0; i < 3; i++) {
+                bool leftAuto = autoSides[i][0];
+                bool rightAuto = autoSides[i][1];
+                int autoCount = (leftAuto ? 1 : 0) + (rightAuto ? 1 : 0);
+                float alignment = freeSpace / (float)autoCount;
+                float leftGap = leftAuto ? alignment : 0.0f;
+                Layout box = tree.GetLayout(boxes[i]);
+                utassertnear(box.location.x, 5.0f + leftFloatWidth + leftGap);
+                utassertnear(box.location.y, 5.0f + (float)i * 10.0f);
+                utassertnear(box.size.w, 40.0f);
+                utassertnear(box.size.h, 10.0f);
+                utassertnear(box.margin.left,
+                             leftAuto ? leftFloatWidth + alignment : 0.0f);
+                utassertnear(box.margin.right,
+                             rightAuto ? rightFloatWidth + alignment : 0.0f);
+                utassertnear(box.margin.top, 0.0f);
+                utassertnear(box.margin.bottom, 0.0f);
+            }
+            tree.Free();
+        }
+    }
+
+    for (taffy::Direction direction : directions) {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style leftFloatStyle;
+        leftFloatStyle.display = taffy::Display::Block;
+        leftFloatStyle.floatMode = taffy::Float::Left;
+        leftFloatStyle.size = SizeDim::FromLengths(40.0f, 40.0f);
+        TaffyNodeId leftFloat = tree.NewLeaf(leftFloatStyle);
+        taffy::Style rightFloatStyle;
+        rightFloatStyle.display = taffy::Display::Block;
+        rightFloatStyle.floatMode = taffy::Float::Right;
+        rightFloatStyle.size = SizeDim::FromLengths(60.0f, 40.0f);
+        TaffyNodeId rightFloat = tree.NewLeaf(rightFloatStyle);
+        taffy::Style boxStyle;
+        boxStyle.display = taffy::Display::FlowRoot;
+        boxStyle.direction = direction;
+        boxStyle.size = SizeDim::FromLengths(40.0f, 10.0f);
+        boxStyle.margin.left = LengthPercentageAuto::Auto();
+        boxStyle.margin.right = LengthPercentageAuto::Auto();
+        boxStyle.margin.top = LengthPercentageAuto::Zero();
+        boxStyle.margin.bottom = LengthPercentageAuto::Zero();
+        taffy::Style relativeStyle = boxStyle;
+        relativeStyle.position = taffy::Position::Relative;
+        relativeStyle.inset.left = LengthPercentageAuto::Length(7.0f);
+        TaffyNodeId relativeBox = tree.NewLeaf(relativeStyle);
+        taffy::Style clearedStyle = boxStyle;
+        clearedStyle.clear = taffy::Clear::Both;
+        TaffyNodeId clearedBox = tree.NewLeaf(clearedStyle);
+        TaffyNodeId nestedKids[2] = {relativeBox, clearedBox};
+        taffy::Style nestedStyle;
+        nestedStyle.display = taffy::Display::Block;
+        nestedStyle.direction = direction;
+        nestedStyle.margin.left = LengthPercentageAuto::Length(20.0f);
+        nestedStyle.margin.right = LengthPercentageAuto::Length(30.0f);
+        nestedStyle.padding.left = taffy::LengthPercentage::Length(5.0f);
+        nestedStyle.padding.right = taffy::LengthPercentage::Length(7.0f);
+        nestedStyle.border.left = taffy::LengthPercentage::Length(3.0f);
+        nestedStyle.border.right = taffy::LengthPercentage::Length(5.0f);
+        TaffyNodeId nested = tree.NewWithChildren(nestedStyle, nestedKids, 2);
+        TaffyNodeId rootKids[3] = {leftFloat, rightFloat, nested};
+        taffy::Style root;
+        root.display = taffy::Display::FlowRoot;
+        root.direction = direction;
+        root.size.width = taffy::Dimension::Length(200.0f);
+        root.padding.left = taffy::LengthPercentage::Length(10.0f);
+        root.padding.right = taffy::LengthPercentage::Length(10.0f);
+        root.padding.top = taffy::LengthPercentage::Length(10.0f);
+        root.padding.bottom = taffy::LengthPercentage::Length(10.0f);
+        TaffyNodeId node = tree.NewWithChildren(root, rootKids, 3);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        Layout relative = tree.GetLayout(relativeBox);
+        utassertnear(relative.location.x, 47.0f);
+        utassertnear(relative.location.y, 0.0f);
+        utassertnear(relative.margin.left, 32.0f);
+        utassertnear(relative.margin.right, 38.0f);
+        Layout cleared = tree.GetLayout(clearedBox);
+        utassertnear(cleared.location.x, 43.0f);
+        utassertnear(cleared.location.y, 40.0f);
+        utassertnear(cleared.margin.left, 35.0f);
+        utassertnear(cleared.margin.right, 35.0f);
+        Layout nestedLayout = tree.GetLayout(nested);
+        utassertnear(nestedLayout.location.x, 30.0f);
+        utassertnear(nestedLayout.location.y, 10.0f);
+        utassertnear(nestedLayout.margin.left, 20.0f);
+        utassertnear(nestedLayout.margin.right, 30.0f);
+        tree.Free();
+    }
+}
+
 // block_percentage_height_with_min_height_parent and the relative
 // percentage-inset fixtures. Min-height is not a percentage basis, and
 // a relative percentage inset resolves against the container's height.
@@ -7672,6 +7817,7 @@ void TestTaffy() {
     TestBlockLayout();
     TestFloatClearIntrinsicWidth();
     TestFloatPercentSumFits();
+    TestFloatAvoidingAutoMargins();
     TestBlockPercentageBasis();
     TestBlockPercentPaddingUsesWidth();
     TestMarginCollapseThroughUsedHeight();
