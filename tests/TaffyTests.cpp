@@ -3029,6 +3029,52 @@ static void TestBlockLayout() {
     }
 }
 
+// Margin collapsing moves the boxes. Layout::margin stays each box's own
+// margin, including when the inner margins collapse through the outer box.
+static void TestBlockOwnVerticalMargin() {
+    TestSuite("taffy block own vertical margin");
+
+    auto block = [](float marginTop, float marginBottom, Dimension height) {
+        taffy::Style style;
+        style.display = taffy::Display::Block;
+        style.size.height = height;
+        style.margin.top = LengthPercentageAuto::Length(marginTop);
+        style.margin.bottom = LengthPercentageAuto::Length(marginBottom);
+        return style;
+    };
+
+    TaffyTree tree;
+    tree.Init();
+    TaffyNodeId inner =
+        tree.NewLeaf(block(13.0f, 20.0f, Dimension::Length(10.0f)));
+    TaffyNodeId outer =
+        tree.NewWithChildren(block(8.0f, 5.0f, Dimension::Auto()), &inner, 1);
+    TaffyNodeId sibling =
+        tree.NewLeaf(block(30.0f, 0.0f, Dimension::Length(10.0f)));
+    TaffyNodeId kids[] = {outer, sibling};
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::FlowRoot;
+    rootStyle.size.width = Dimension::Length(100.0f);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+    Layout outerLayout = tree.GetLayout(outer);
+    utassertnear(outerLayout.location.y, 13.0f);
+    utassertnear(outerLayout.size.h, 10.0f);
+    utassertnear(outerLayout.margin.top, 8.0f);
+    utassertnear(outerLayout.margin.bottom, 5.0f);
+
+    Layout innerLayout = tree.GetLayout(inner);
+    utassertnear(innerLayout.location.y, 0.0f);
+    utassertnear(innerLayout.margin.top, 13.0f);
+    utassertnear(innerLayout.margin.bottom, 20.0f);
+
+    Layout siblingLayout = tree.GetLayout(sibling);
+    utassertnear(siblingLayout.location.y, 53.0f);
+    utassertnear(siblingLayout.margin.top, 30.0f);
+    tree.Free();
+}
+
 // A cleared float sits below the floats it clears, so a shrink-to-fit
 // float container takes the widest uncleared run rather than the sum.
 static void TestFloatClearIntrinsicWidth() {
@@ -9781,6 +9827,7 @@ void TestTaffy() {
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();
+    TestBlockOwnVerticalMargin();
     TestFloatClearIntrinsicWidth();
     TestFloatChildPaddingBorderMinimum();
     TestFloatPercentSumFits();

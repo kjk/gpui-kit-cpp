@@ -1267,10 +1267,12 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                               (IsSome(itemMargin.right) ? 0 : 1);
         float xAxisAutoMarginSize =
             autoMarginCount > 0 ? freeXSpace / (float)autoMarginCount : 0.0f;
+        // Collapsed margins move the box. Layout::margin is this child's own
+        // margin, with a vertical auto resolving to zero.
         RectF resolvedMargin = {UnwrapOr(itemMargin.left, xAxisAutoMarginSize),
                                 UnwrapOr(itemMargin.right, xAxisAutoMarginSize),
-                                topMarginSet.Resolve(),
-                                bottomMarginSet.Resolve()};
+                                UnwrapOr(itemMargin.top, 0.0f),
+                                UnwrapOr(itemMargin.bottom, 0.0f)};
 
         PointF insetOffset = {0.0f, 0.0f};
         if (item.position == Position::Relative) {
