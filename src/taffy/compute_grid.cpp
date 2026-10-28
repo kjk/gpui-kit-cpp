@@ -889,20 +889,50 @@ struct NamedLineResolver {
     LinePlain ResolveColumnNames(LinePlacement line) const {
         return ResolveLineNames(line, GridAreaAxis::Column);
     }
-    // Rust takes a `filter_lines` closure; the two callers want either all the
-    // lines, those strictly after a bound, or those strictly before one, so
-    // the bound comes in as a range instead.
-    // `isSpan` is true for a named span. A bare ident (index 0, not a span)
-    // that matches no line name matches the area edge of that name.
-    GridLine FindLineIndex(Str name, int32_t idx, GridAreaAxis axis,
-                           GridAreaEnd end, bool isSpan, int filterFrom,
-                           int filterTo) const;
+    // A bare ident (index 0) matches the area edge before a line of the same
+    // name. A positive index counts origin-zero lines forward from the
+    // explicit start; a negative index counts back from the explicit end.
+    GridLine FindNamedLine(Str name, int16_t idx, GridAreaAxis axis,
+                           GridAreaEnd end) const;
+    OriginZeroLine LastExplicitLine(GridAreaAxis axis) const;
+    // `lines` are sorted 1-based explicit line numbers. `n` counts from 1.
+    // The search bounds are origin-zero and may sit outside an i16: a span
+    // steps one line off a clamped grid line in i32.
+    OriginZeroLine NthLineForwards(const uint32_t* lines, int count,
+                                   int32_t firstOz, int32_t n,
+                                   GridAreaAxis axis) const;
+    OriginZeroLine NthLineBackwards(const uint32_t* lines, int count,
+                                    int32_t lastOz, int32_t n,
+                                    GridAreaAxis axis) const;
     // Lines literally named `name`, or the single area edge when `name` is
     // `<area>-start` / `<area>-end` and no line was given that name. `single`
     // holds that one edge; the returned pointer may alias it.
     int CollectLines(Str name, GridAreaAxis axis, const uint32_t** data,
                      uint32_t* single) const;
 };
+
+// Named-line maps store 1-based line numbers. Origin-zero is that minus one.
+static int32_t OzOfStored(uint32_t line) {
+    return (int32_t)line - 1;
+}
+
+static OriginZeroLine ClampedOz(int32_t line) {
+    if (line < (int32_t)kMinOzLine) {
+        line = kMinOzLine;
+    } else if (line > (int32_t)kMaxOzLine) {
+        line = kMaxOzLine;
+    }
+    return OriginZeroLine{(int16_t)line};
+}
+
+// Inverse of IntoOriginZeroLine. A clamped origin-zero line and an explicit
+// count within the track limit stay inside i16 (-20001..=10001).
+static GridLine IntoGridLine(OriginZeroLine line, uint16_t explicitTrackCount) {
+    int32_t explicitLineCount = (int32_t)explicitTrackCount + 1;
+    int32_t value =
+        line.v >= 0 ? (int32_t)line.v + 1 : (int32_t)line.v - explicitLineCount;
+    return GridLine{(int16_t)value};
+}
 
 void NamedLineResolver::Init(const Style& style, uint16_t columnAutoRepetitions,
                              uint16_t rowAutoRepetitions) {
@@ -1019,66 +1049,86 @@ int NamedLineResolver::CollectLines(Str name, GridAreaAxis axis,
     return 0;
 }
 
-GridLine NamedLineResolver::FindLineIndex(Str name, int32_t idx,
-                                          GridAreaAxis axis, GridAreaEnd end,
-                                          bool isSpan, int filterFrom,
-                                          int filterTo) const {
-    int32_t explicitTrackCount =
+OriginZeroLine NamedLineResolver::LastExplicitLine(GridAreaAxis axis) const {
+    uint16_t tracks =
         axis == GridAreaAxis::Row ? explicitRowCount : explicitColumnCount;
-    auto gridLine = [](int64_t value) {
-        value = value < INT16_MIN   ? INT16_MIN
-                : value > INT16_MAX ? INT16_MAX
-                                    : value;
-        return GridLine{(int16_t)value};
-    };
-    // An index of 0 means "no index specified". Only a bare ident, not a
-    // span, then matches an area edge.
-    bool isBareIdent = idx == 0 && !isSpan;
+    return OriginZeroLine{(int16_t)tracks};
+}
+
+OriginZeroLine NamedLineResolver::NthLineForwards(const uint32_t* lines,
+                                                  int count, int32_t firstOz,
+                                                  int32_t n,
+                                                  GridAreaAxis axis) const {
+    // Lines before the search start do not count. A negative bound is the
+    // explicit start: the named-line index never walks into negative tracks.
+    int32_t first = firstOz > 0 ? firstOz : 0;
+    int start = 0;
+    while (start < count && OzOfStored(lines[start]) < first) {
+        start++;
+    }
+    int kept = count - start;
+    int32_t oz;
+    if (n >= 1 && (n - 1) < kept) {
+        oz = OzOfStored(lines[start + (int)(n - 1)]);
+    } else {
+        // Not enough explicit lines. Implicit lines after the explicit grid
+        // count as matches.
+        int32_t afterExplicit = (int32_t)LastExplicitLine(axis).v + 1;
+        int32_t base = first > afterExplicit ? first : afterExplicit;
+        oz = base + (n - kept) - 1;
+    }
+    return ClampedOz(oz);
+}
+
+OriginZeroLine NamedLineResolver::NthLineBackwards(const uint32_t* lines,
+                                                   int count, int32_t lastOz,
+                                                   int32_t n,
+                                                   GridAreaAxis axis) const {
+    int32_t lastExplicit = LastExplicitLine(axis).v;
+    int32_t last = lastOz < lastExplicit ? lastOz : lastExplicit;
+    int end = 0;
+    while (end < count && OzOfStored(lines[end]) <= last) {
+        end++;
+    }
+    int32_t oz;
+    if (n >= 0 && (uint32_t)n <= (uint32_t)end) {
+        oz = OzOfStored(lines[end - (int)n]);
+    } else {
+        // Not enough explicit lines. Implicit lines before the explicit grid
+        // count as matches.
+        int32_t base = last < -1 ? last : -1;
+        oz = base - (n - end) + 1;
+    }
+    return ClampedOz(oz);
+}
+
+GridLine NamedLineResolver::FindNamedLine(Str name, int16_t idx,
+                                          GridAreaAxis axis,
+                                          GridAreaEnd end) const {
+    uint16_t explicitCount =
+        axis == GridAreaAxis::Row ? explicitRowCount : explicitColumnCount;
+    // A custom-ident on its own matches `<ident>-start` / `<ident>-end`
+    // before a line that was literally given that name. An indexed ident
+    // does not.
     if (idx == 0) {
-        idx = 1;
+        uint32_t edge = AreaEdge(name, axis, end);
+        if (edge != 0) {
+            return IntoGridLine(ClampedOz(OzOfStored(edge)), explicitCount);
+        }
     }
 
     uint32_t single = 0;
     const uint32_t* data = nullptr;
-    int n = CollectLines(name, axis, &data, &single);
-
-    if (n > 0 && data) {
-        int from = filterFrom < 0 ? 0 : filterFrom;
-        int to = filterTo < 0 || filterTo > n ? n : filterTo;
-        int count = to - from;
-        if (count < 0) {
-            count = 0;
-        }
-        uint32_t absIdx = idx < 0 ? (uint32_t)(-(int64_t)idx) : (uint32_t)idx;
-        if (absIdx <= (uint32_t)count) {
-            if (idx > 0) {
-                return gridLine(data[from + (int)absIdx - 1]);
-            }
-            return gridLine(data[from + count - (int)absIdx]);
-        }
-        int64_t remaining =
-            (int64_t)(absIdx - (uint32_t)count) * (idx > 0 ? 1 : -1);
-        if (idx > 0) {
-            return gridLine((int64_t)explicitTrackCount + 1 + remaining);
-        }
-        return gridLine(-((int64_t)explicitTrackCount + 1 + remaining));
+    int count = CollectLines(name, axis, &data, &single);
+    OriginZeroLine line;
+    if (idx >= 0) {
+        int32_t n = idx < 1 ? 1 : (int32_t)idx;
+        line = NthLineForwards(data, count, 0, n, axis);
+    } else {
+        line = NthLineBackwards(data, count, (int32_t)LastExplicitLine(axis).v,
+                                -(int32_t)idx, axis);
     }
-
-    if (isBareIdent) {
-        uint32_t edge = AreaEdge(name, axis, end);
-        if (edge != 0) {
-            return gridLine(edge);
-        }
-    }
-
-    // CSS Grid matches a non-existent line name to the first positive implicit
-    // line. A grid has one more explicit line than it has tracks, and the
-    // fallback is the line *after* that.
-    // https://github.com/w3c/csswg-drafts/issues/966#issuecomment-277042153
-    if (idx > 0) {
-        return gridLine((int64_t)explicitTrackCount + 1 + idx);
-    }
-    return gridLine(-((int64_t)explicitTrackCount + 1 + idx));
+    return IntoGridLine(line, explicitCount);
 }
 
 LinePlain NamedLineResolver::ResolveLineNames(LinePlacement line,
@@ -1088,68 +1138,47 @@ LinePlain NamedLineResolver::ResolveLineNames(LinePlacement line,
 
     if (start.kind == GridPlacementKind::NamedLine) {
         start = GridPlacement::FromLineIndex(
-            FindLineIndex(start.name, start.line, axis, GridAreaEnd::Start,
-                          false, -1, -1)
-                .v);
+            FindNamedLine(start.name, start.line, axis, GridAreaEnd::Start).v);
     }
     if (end.kind == GridPlacementKind::NamedLine) {
-        end = GridPlacement::FromLineIndex(FindLineIndex(end.name, end.line,
-                                                         axis, GridAreaEnd::End,
-                                                         false, -1, -1)
-                                               .v);
+        end = GridPlacement::FromLineIndex(
+            FindNamedLine(end.name, end.line, axis, GridAreaEnd::End).v);
     }
 
-    int16_t explicitTrackCount = axis == GridAreaAxis::Row
-                                     ? (int16_t)explicitRowCount
-                                     : (int16_t)explicitColumnCount;
+    uint16_t explicitTrackCount =
+        axis == GridAreaAxis::Row ? explicitRowCount : explicitColumnCount;
 
-    // A definite line paired with a named span resolves the span against the
-    // lines beyond (or before) that line. The line list includes an area
-    // edge when the span name is `<area>-start` or `<area>-end`.
+    // A definite non-zero line paired with a named span searches forward
+    // from the line after the start, or backward from the line before the
+    // end. A span does not take the bare-ident area-edge shortcut. A span
+    // count of 0 is a span of 1.
     if (start.kind == GridPlacementKind::Line &&
-        end.kind == GridPlacementKind::NamedSpan) {
-        int16_t normalizedStart =
-            start.line > 0
-                ? start.line
-                : (int16_t)F32Max((float)(explicitTrackCount + 1 + start.line),
-                                  0.0f);
+        end.kind == GridPlacementKind::NamedSpan && start.line != 0) {
+        int32_t after = (int32_t)IntoOriginZeroLine(GridLine{start.line},
+                                                    explicitTrackCount)
+                            .v +
+                        1;
         uint32_t single = 0;
         const uint32_t* data = nullptr;
-        int n = CollectLines(end.name, axis, &data, &single);
-        int point = 0;
-        for (int i = 0; i < n; i++) {
-            if (data[i] <= (uint32_t)normalizedStart) {
-                point++;
-            } else {
-                break;
-            }
-        }
-        GridLine endLine = FindLineIndex(end.name, (int32_t)end.span, axis,
-                                         GridAreaEnd::End, true, point, -1);
+        int count = CollectLines(end.name, axis, &data, &single);
+        int32_t n = end.span < 1 ? 1 : (int32_t)end.span;
+        GridLine endLine = IntoGridLine(
+            NthLineForwards(data, count, after, n, axis), explicitTrackCount);
         return {PlainPlacement::AtLine(start.line),
                 PlainPlacement::AtLine(endLine.v)};
     }
     if (start.kind == GridPlacementKind::NamedSpan &&
-        end.kind == GridPlacementKind::Line) {
-        int16_t normalizedEnd =
-            end.line > 0
-                ? end.line
-                : (int16_t)F32Max((float)(explicitTrackCount + 1 + end.line),
-                                  0.0f);
+        end.kind == GridPlacementKind::Line && end.line != 0) {
+        int32_t before =
+            (int32_t)IntoOriginZeroLine(GridLine{end.line}, explicitTrackCount)
+                .v -
+            1;
         uint32_t single = 0;
         const uint32_t* data = nullptr;
-        int n = CollectLines(start.name, axis, &data, &single);
-        int point = 0;
-        for (int i = 0; i < n; i++) {
-            if (data[i] < (uint32_t)normalizedEnd) {
-                point++;
-            } else {
-                break;
-            }
-        }
-        GridLine startLine =
-            FindLineIndex(start.name, (int32_t)start.span, axis,
-                          GridAreaEnd::Start, true, 0, point);
+        int count = CollectLines(start.name, axis, &data, &single);
+        int32_t n = start.span < 1 ? 1 : (int32_t)start.span;
+        GridLine startLine = IntoGridLine(
+            NthLineBackwards(data, count, before, n, axis), explicitTrackCount);
         return {PlainPlacement::AtLine(startLine.v),
                 PlainPlacement::AtLine(end.line)};
     }

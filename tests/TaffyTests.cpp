@@ -3875,6 +3875,70 @@ static GridPlacement GNamedSpan(const char* name, uint16_t span) {
     return GridPlacement::FromNamedSpan(Str(name), span);
 }
 
+static LineNameSet NameSet2(const char* a, const char* b) {
+    LineNameSet set;
+    Str names[2];
+    names[0] = Str(a);
+    names[1] = Str(b);
+    set.names = SliceDup(gGridArena, names, 2);
+    return set;
+}
+
+// One grid, several children. Implicit tracks created by one child move the
+// others, so the boxes are the positions of that shared grid.
+struct NamedBox {
+    LinePlacement column;
+    LinePlacement row;
+    float x;
+    float y;
+    float w;
+    float h;
+};
+
+static void AssertNamedGrid(const float* colPx, int nCols,
+                            const LineNameSet* colNames, const float* rowPx,
+                            int nRows, const LineNameSet* rowNames,
+                            float autoCol, float autoRow, float rootW,
+                            float rootH, const NamedBox* boxes, int n) {
+    TaffyTree tree;
+    tree.Init();
+    TaffyNodeId nodes[8];
+    for (int i = 0; i < n; i++) {
+        taffy::Style child;
+        child.gridColumn = boxes[i].column;
+        child.gridRow = boxes[i].row;
+        nodes[i] = tree.NewLeaf(child);
+    }
+    GridTemplateComponent cols[4];
+    GridTemplateComponent rows[4];
+    for (int i = 0; i < nCols; i++) {
+        cols[i] = GridTemplateComponent::Single(
+            TrackSizingFunction::Length(colPx[i]));
+    }
+    for (int i = 0; i < nRows; i++) {
+        rows[i] = GridTemplateComponent::Single(
+            TrackSizingFunction::Length(rowPx[i]));
+    }
+    TrackSizingFunction autoC = TrackSizingFunction::Length(autoCol);
+    TrackSizingFunction autoR = TrackSizingFunction::Length(autoRow);
+    taffy::Style root;
+    root.display = taffy::Display::Grid;
+    root.gridTemplateColumns = GridTemplateOf(cols, nCols);
+    root.gridTemplateRows = GridTemplateOf(rows, nRows);
+    root.gridTemplateColumnNames = SliceDup(gGridArena, colNames, nCols + 1);
+    root.gridTemplateRowNames = SliceDup(gGridArena, rowNames, nRows + 1);
+    root.gridAutoColumns = SliceDup(gGridArena, &autoC, 1);
+    root.gridAutoRows = SliceDup(gGridArena, &autoR, 1);
+    TaffyNodeId rootNode = tree.NewWithChildren(root, nodes, n);
+    tree.ComputeLayout(rootNode, SizeAvail::MaxContent());
+    AssertBox(tree.GetLayout(rootNode), 0.0f, 0.0f, rootW, rootH);
+    for (int i = 0; i < n; i++) {
+        AssertBox(tree.GetLayout(nodes[i]), boxes[i].x, boxes[i].y, boxes[i].w,
+                  boxes[i].h);
+    }
+    tree.Free();
+}
+
 static void TestGridAreaEdges() {
     TestSuite("taffy grid area edges");
     LineNameSet none[5];
@@ -3972,6 +4036,161 @@ static void TestGridAreaEdges() {
     box = PlaceAreaEdgeChild(
         same, true, {GNamed("area-end", 2), GridPlacement::Auto()}, {});
     utassertnear(box.location.x, 50.0f);
+}
+
+// taffy 6ba55159. A bare ident is the area edge, even when a line has that
+// name. A negative index counts back from the explicit end into implicit
+// lines. A named span searches forward or backward from the definite line.
+static void TestGridNamedLineResolution() {
+    TestSuite("taffy grid named line resolution");
+
+    float colsA[3] = {50.0f, 100.0f, 200.0f};
+    float rowsA[3] = {20.0f, 40.0f, 80.0f};
+    LineNameSet colA[4];
+    colA[0] = NameSet("a");
+    colA[1] = NameSet("a-start");
+    colA[2] = NameSet("a-end");
+    colA[3] = NameSet("a");
+    LineNameSet rowA[4];
+    rowA[0] = NameSet("a");
+    rowA[1] = NameSet("a-start");
+    rowA[2] = NameSet("a-end");
+    rowA[3] = NameSet("a");
+    NamedBox area[3];
+    area[0] = {{GNamed("a", 0), GNamed("a", 0)},
+               {GNamed("a", 0), GNamed("a", 0)},
+               50.0f,
+               20.0f,
+               100.0f,
+               40.0f};
+    area[1] = {{GNamed("a", 1), GNamed("a", 2)},
+               {GNamed("a", 1), GNamed("a", 2)},
+               0.0f,
+               0.0f,
+               350.0f,
+               140.0f};
+    area[2] = {{GNamed("a", 0), GNamedSpan("a", 0)},
+               {GNamedSpan("a", 0), GNamed("a", 0)},
+               50.0f,
+               0.0f,
+               300.0f,
+               60.0f};
+    AssertNamedGrid(colsA, 3, colA, rowsA, 3, rowA, 0.0f, 0.0f, 350.0f, 140.0f,
+                    area, 3);
+
+    float colsN[3] = {50.0f, 100.0f, 200.0f};
+    float rowsN[3] = {20.0f, 40.0f, 80.0f};
+    LineNameSet colN[4];
+    colN[0] = NameSet("col");
+    colN[1] = NameSet2("col", "mid");
+    colN[2] = NameSet("col");
+    colN[3] = NameSet("col");
+    LineNameSet rowN[4];
+    rowN[0] = NameSet("row");
+    rowN[1] = NameSet2("row", "mid");
+    rowN[2] = NameSet("row");
+    rowN[3] = NameSet("row");
+    NamedBox negative[6];
+    negative[0] = {{GNamed("col", -1), GridPlacement::Auto()},
+                   {GNamed("row", -2), GridPlacement::Auto()},
+                   365.0f,
+                   80.0f,
+                   5.0f,
+                   80.0f};
+    negative[1] = {{GNamed("mid", -1), GridPlacement::Auto()},
+                   {GNamed("mid", -1), GridPlacement::Auto()},
+                   65.0f,
+                   40.0f,
+                   100.0f,
+                   40.0f};
+    negative[2] = {{GNamed("mid", -2), GridPlacement::Auto()},
+                   {GNamed("mid", -3), GridPlacement::Auto()},
+                   10.0f,
+                   0.0f,
+                   5.0f,
+                   10.0f};
+    negative[3] = {{GNamed("col", -5), GridPlacement::Auto()},
+                   {GNamed("row", -6), GridPlacement::Auto()},
+                   10.0f,
+                   0.0f,
+                   5.0f,
+                   10.0f};
+    negative[4] = {{GNamed("foo", -1), GridPlacement::Auto()},
+                   {GNamed("foo", -2), GridPlacement::Auto()},
+                   10.0f,
+                   0.0f,
+                   5.0f,
+                   10.0f};
+    negative[5] = {{GNamed("foo", -3), GNamed("mid", -2)},
+                   {GNamed("mid", -2), GNamed("foo", -1)},
+                   0.0f,
+                   10.0f,
+                   10.0f,
+                   10.0f};
+    AssertNamedGrid(colsN, 3, colN, rowsN, 3, rowN, 5.0f, 10.0f, 370.0f, 160.0f,
+                    negative, 6);
+
+    NamedBox backwards[4];
+    backwards[0] = {{GNamedSpan("col", 0), GridPlacement::FromLineIndex(3)},
+                    {GNamedSpan("row", 0), GridPlacement::FromLineIndex(4)},
+                    50.0f,
+                    60.0f,
+                    100.0f,
+                    80.0f};
+    backwards[1] = {{GNamedSpan("col", 2), GridPlacement::FromLineIndex(3)},
+                    {GNamedSpan("row", 2), GridPlacement::FromLineIndex(4)},
+                    0.0f,
+                    20.0f,
+                    150.0f,
+                    120.0f};
+    backwards[2] = {{GNamedSpan("col", 3), GridPlacement::FromLineIndex(4)},
+                    {GNamedSpan("row", 3), GridPlacement::FromLineIndex(4)},
+                    0.0f,
+                    0.0f,
+                    350.0f,
+                    140.0f};
+    backwards[3] = {{GNamedSpan("mid", 0), GridPlacement::FromLineIndex(-1)},
+                    {GNamedSpan("mid", 0), GridPlacement::FromLineIndex(-1)},
+                    50.0f,
+                    20.0f,
+                    300.0f,
+                    120.0f};
+    AssertNamedGrid(colsN, 3, colN, rowsN, 3, rowN, 5.0f, 10.0f, 350.0f, 140.0f,
+                    backwards, 4);
+
+    NamedBox few[5];
+    few[0] = {{GNamedSpan("mid", 2), GridPlacement::FromLineIndex(4)},
+              {GNamedSpan("mid", 3), GridPlacement::FromLineIndex(4)},
+              0.0f,
+              0.0f,
+              355.0f,
+              160.0f};
+    few[1] = {{GridPlacement::FromLineIndex(1), GNamedSpan("mid", 2)},
+              {GridPlacement::FromLineIndex(1), GNamedSpan("mid", 3)},
+              5.0f,
+              20.0f,
+              355.0f,
+              160.0f};
+    few[2] = {{GNamedSpan("foo", 0), GridPlacement::FromLineIndex(2)},
+              {GNamedSpan("foo", 2), GridPlacement::FromLineIndex(2)},
+              0.0f,
+              0.0f,
+              55.0f,
+              40.0f};
+    few[3] = {{GridPlacement::FromLineIndex(3), GNamedSpan("foo", 0)},
+              {GridPlacement::FromLineIndex(3), GNamedSpan("foo", 2)},
+              155.0f,
+              80.0f,
+              205.0f,
+              100.0f};
+    few[4] = {{GNamed("foo", 0), GNamedSpan("foo", 2)},
+              {GNamed("foo", 0), GNamedSpan("mid", 3)},
+              360.0f,
+              170.0f,
+              10.0f,
+              30.0f};
+    AssertNamedGrid(colsN, 3, colN, rowsN, 3, rowN, 5.0f, 10.0f, 370.0f, 200.0f,
+                    few, 5);
 }
 
 // A non-finite flex factor or container size used to keep the fr-size and
@@ -8548,6 +8767,7 @@ void TestTaffy() {
     TestGridAutoMarginBaseline();
     TestGridRepetitionLineNames();
     TestGridAreaEdges();
+    TestGridNamedLineResolution();
     TestGridNonFiniteStylesTerminate();
     TestGridZeroSpanTerminates();
     TestGridMinmaxAutoFixedZero();
