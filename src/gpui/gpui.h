@@ -6919,6 +6919,9 @@ struct Window {
     // press. The next down can therefore distinguish a tap from a mouse.
     bool touchPressPending = false;
     bool touchPress = false;
+    // window.request_virtual_keyboard calls. A platform without a soft
+    // keyboard ignores the request; the count is what a test reads.
+    int virtualKeyboardRequests = 0;
     // Drag offsets are stored immediately, while the view notification is
     // coalesced to the scrollbar's 120 Hz default. A release flushes the
     // newest point and clears any trailing deadline.
@@ -7700,6 +7703,10 @@ void AppSetTitle(Window* win, Str title);
 void AppRequestAnim(Window* win, bool on);
 // One more frame, rather than every frame. Safe to call from inside a render.
 void WindowRequestAnimationFrame(Window* win);
+// window.request_virtual_keyboard: a user gesture asks the platform to
+// show the soft keyboard for the focused field. Platforms without one
+// ignore it. It does not move focus or the layout viewport.
+void WindowRequestVirtualKeyboard(Window* win);
 // window.rem_size / set_rem_size. Setting a new one lays the window out
 // again; it is safe to call while the window renders, before its layout.
 float WindowRemSize(const Window* win);

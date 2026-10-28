@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "07dc43d809757ef4df2c7cf00b13f5172eb430a5",
+  sha: "978522adcec29cb1a1cbd6f861cd38d675876623",
   date: "2026-10-22",
-  subject: "theme: Let applications tune the scrollbar idle hold and fade-out (#3616)",
+  subject: "input: Ask for the virtual keyboard when an input is tapped (#3623)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

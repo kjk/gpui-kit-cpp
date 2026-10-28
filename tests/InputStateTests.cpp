@@ -11788,6 +11788,66 @@ static void AccessibilitySetValuePreservesExactEditorText() {
     InputViewFree(&view);
 }
 
+// state.rs on_mouse_down: a touch press on an editable field asks for the
+// virtual keyboard, including a tap that does not move focus. A mouse
+// click, a press a second after the finger went down, the right button,
+// a press off the field, and a readonly or disabled field do not.
+static void TapAsksForTheVirtualKeyboard() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputSetValue(s, StrL("hello")); });
+    Flush(view);
+    TestDraw(view.win);
+    Point at = {};
+    utassert(InputLastCaretPoint(view.input, view.win, 1, &at));
+    at.y += view.input->lastLineH * 0.5f;
+
+    TestSimulateMouseDown(view.win, at);
+    utassert(view.win->virtualKeyboardRequests == 0);
+    utassert(view.input->focused);
+
+    BaseNoteTouch(view.app);
+    TestSimulateMouseDown(view.win, at);
+    utassert(view.win->virtualKeyboardRequests == 1);
+
+    BaseNoteTouch(view.app);
+    TestSimulateMouseDown(view.win, at);
+    utassert(view.win->virtualKeyboardRequests == 2);
+    utassert(view.input->focused);
+
+    TestAdvanceClock(view.app, 1100);
+    TestSimulateMouseDown(view.win, at);
+    utassert(view.win->virtualKeyboardRequests == 2);
+
+    BaseNoteTouch(view.app);
+    TestSimulateMouseDown(view.win, at, MouseButton::Right, {});
+    utassert(view.win->virtualKeyboardRequests == 2);
+
+    Point miss = {view.input->inputBounds.x + view.input->inputBounds.w + 4,
+                  view.input->inputBounds.y};
+    utassert(!view.input->inputBounds.Contains(miss));
+    BaseNoteTouch(view.app);
+    TestSimulateMouseDown(view.win, miss);
+    utassert(view.win->virtualKeyboardRequests == 2);
+    utassert(!view.input->focused);
+
+    view.input->readonly = true;
+    BaseNoteTouch(view.app);
+    TestSimulateMouseDown(view.win, at);
+    utassert(view.win->virtualKeyboardRequests == 2);
+
+    view.input->readonly = false;
+    view.input->disabled = true;
+    BaseNoteTouch(view.app);
+    TestSimulateMouseDown(view.win, at);
+    utassert(view.win->virtualKeyboardRequests == 2);
+
+    view.input->disabled = false;
+    BaseNoteTouch(view.app);
+    TestSimulateMouseDown(view.win, at);
+    utassert(view.win->virtualKeyboardRequests == 3);
+    InputViewFree(&view);
+}
+
 void TestInputState() {
     TextareaPrewrapPreparesContentRowsBeforeLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
@@ -11795,6 +11855,7 @@ void TestInputState() {
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
+    TapAsksForTheVirtualKeyboard();
     AccessibilityActionsRecheckLiveEditability();
     AccessibilitySetValuePreservesExactEditorText();
     PasswordContentTypesKeepAccessibilityValuesPrivate();

@@ -1492,6 +1492,14 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
         InputToggleFold(s, win->app, win, foldLine);
         return;
     }
+    // A tap asks for the virtual keyboard. Focus alone does not when it
+    // moves from another input, or stays here, after the user hid it.
+    // state.rs on_mouse_down. A fold chevron stopped the press above, the
+    // way that icon's stop_propagation keeps it off the field.
+    if (in.button == MouseButton::Left && BaseIsTouchPress(win->app) &&
+        !s->readonly) {
+        WindowRequestVirtualKeyboard(win);
+    }
     // Treat every press like a cursor move: take focus now rather than
     // waiting for the frame handoff, show the caret and restart the idle
     // delay, whatever phase the blink was in. state.rs on_mouse_down.
@@ -4232,6 +4240,16 @@ void AppFreeHeadless(App* app) {
 // window.request_animation_frame(). The flag is cleared as the next frame
 // starts, so a caller that still has somewhere to go asks again while it
 // renders, and one that has arrived stops.
+// window.request_virtual_keyboard(). Desktop has no soft keyboard, and
+// the Android host does not implement show_soft_keyboard yet, so the
+// request is recorded and otherwise ignored.
+void WindowRequestVirtualKeyboard(Window* win) {
+    if (!win) {
+        return;
+    }
+    win->virtualKeyboardRequests++;
+}
+
 void WindowRequestAnimationFrame(Window* win) {
     if (!win || win->animFrame) {
         return;
