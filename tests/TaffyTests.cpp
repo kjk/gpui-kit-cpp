@@ -5067,6 +5067,66 @@ static void TestContainment() {
     utassertnear(painted.top, 0.0f);
 }
 
+// Three block children. The middle one's margins collapse through it only
+// when its used height is zero, so the two 10px boxes share one 10px gap.
+static void CollapseThroughCase(const taffy::Style& mid, float rootH,
+                                float midY, float midH, float lastY) {
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style box;
+    box.display = taffy::Display::Block;
+    box.size.height = Dimension::Length(10.0f);
+    taffy::Style first = box;
+    first.margin.bottom = LengthPercentageAuto::Length(10.0f);
+    taffy::Style last = box;
+    last.margin.top = LengthPercentageAuto::Length(10.0f);
+    TaffyNodeId a = tree.NewLeaf(first);
+    taffy::Style emptyStyle;
+    emptyStyle.display = taffy::Display::Block;
+    TaffyNodeId empty = tree.NewLeaf(emptyStyle);
+    taffy::Style midStyle = mid;
+    midStyle.display = taffy::Display::Block;
+    TaffyNodeId b = tree.NewWithChildren(midStyle, &empty, 1);
+    TaffyNodeId c = tree.NewLeaf(last);
+    TaffyNodeId kids[] = {a, b, c};
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::Block;
+    rootStyle.size.width = Dimension::Length(50.0f);
+    if (rootH > 0.0f) {
+        rootStyle.size.height = Dimension::Length(rootH);
+    }
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+    utassertnear(tree.GetLayout(root).size.h, rootH > 0.0f ? rootH : 30.0f);
+    AssertBox(tree.GetLayout(a), 0.0f, 0.0f, 50.0f, 10.0f);
+    AssertBox(tree.GetLayout(b), 0.0f, midY, 50.0f, midH);
+    AssertBox(tree.GetLayout(c), 0.0f, lastY, 50.0f, 10.0f);
+    tree.Free();
+}
+
+static void TestMarginCollapseThroughUsedHeight() {
+    TestSuite("taffy margin collapse through used height");
+
+    taffy::Style percent;
+    percent.size.height = Dimension::Percent(0.10f);
+    percent.margin.top = LengthPercentageAuto::Length(10.0f);
+    percent.margin.bottom = LengthPercentageAuto::Length(10.0f);
+    CollapseThroughCase(percent, 100.0f, 20.0f, 10.0f, 40.0f);
+
+    taffy::Style clamped;
+    clamped.size.height = Dimension::Length(10.0f);
+    clamped.maxSize.height = Dimension::Length(0.0f);
+    clamped.margin.top = LengthPercentageAuto::Length(10.0f);
+    clamped.margin.bottom = LengthPercentageAuto::Length(10.0f);
+    CollapseThroughCase(clamped, 0.0f, 20.0f, 0.0f, 20.0f);
+
+    taffy::Style minPercent;
+    minPercent.minSize.height = Dimension::Percent(0.10f);
+    minPercent.margin.top = LengthPercentageAuto::Length(10.0f);
+    minPercent.margin.bottom = LengthPercentageAuto::Length(10.0f);
+    CollapseThroughCase(minPercent, 0.0f, 20.0f, 0.0f, 20.0f);
+}
+
 // Vertical percentage padding resolves against the container's width when
 // the container's height is auto. 10% + 20% of 100px is 30px of padding,
 // which floors the border box; the inner 10px block sits under the 15%
@@ -5597,6 +5657,7 @@ void TestTaffy() {
     TestFloatPercentSumFits();
     TestBlockPercentageBasis();
     TestBlockPercentPaddingUsesWidth();
+    TestMarginCollapseThroughUsedHeight();
     TestBlockScrollBaselines();
     TestContainment();
     TestFlexCrossDefinitePercentage();

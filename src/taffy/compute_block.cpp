@@ -1735,9 +1735,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     bool hasStylesPreventingBeingCollapsedThrough =
         !style.IsBlock() || blockCtx->IsBfcRoot() || establishesNewBfc ||
         style.position == Position::Absolute || padding.top > 0.0f ||
-        padding.bottom > 0.0f || border.top > 0.0f || border.bottom > 0.0f ||
-        (IsSome(size.h) && size.h > 0.0f) ||
-        (IsSome(minSize.h) && minSize.h > 0.0f);
+        padding.bottom > 0.0f || border.top > 0.0f || border.bottom > 0.0f;
 
     TextAlign textAlign = style.textAlign;
     OptAlignContent alignContent = style.alignContent;
@@ -1885,7 +1883,11 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
             break;
         }
     }
+    // CSS2 8.3.1: top and bottom margins collapse through a box only when
+    // its used height is zero. height, min-height and max-height are judged
+    // by the height they resolve to, not by the specified value being Some.
     bool canBeCollapsedThrough = !hasStylesPreventingBeingCollapsedThrough &&
+                                 containerOuterHeight == 0.0f &&
                                  allInFlowChildrenCanBeCollapsedThrough;
 
     LayoutOutput output;
