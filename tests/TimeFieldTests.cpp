@@ -276,6 +276,67 @@ static void TheFieldNamesItsSegments() {
     delete win;
 }
 
+// pressing_outside_the_segments_focuses_the_first_segment. The component
+// test: a 200px field, a press in the empty part selects the hour and
+// focuses the field, a press on the minute selects that segment, and a
+// press in the empty part again returns to the hour.
+struct TimePressView {
+    Entity<TimeFieldState> state = {};
+
+    static El* Render(TimePressView* self, Ctx* cx) {
+        Style wide = {};
+        wide.width = 200;
+        return Div(cx->a)->Child(component::TimeField::New(cx, self->state)
+                                     ->WithId(StrL("time"))
+                                     ->Refine(wide, StyleFieldWidth)
+                                     ->IntoEl());
+    }
+};
+
+static Bounds HitPath(Window* win, uint32_t path) {
+    if (!win) {
+        return {};
+    }
+    for (int i = 0; i < win->paint.hits.len; i++) {
+        if (win->paint.hits[i].pathId == path) {
+            return win->paint.hits[i].bounds;
+        }
+    }
+    return {};
+}
+
+static void PressingOutsideTheSegmentsFocusesTheFirstSegment() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<TimePressView> view = EntityNew<TimePressView>(app);
+    TimePressView* harness = view.Get(app);
+    Ctx made = {app, nullptr, GetTempArena(), {}};
+    if (harness) {
+        harness->state = TimeFieldStateNew(&made);
+    }
+    Window* win = TestWindowOpen(app, view);
+    TestDraw(win);
+    TimeFieldState* state = harness ? harness->state.Get(app) : nullptr;
+    uint32_t field = IdFoldName(0, StrL("time"));
+    Bounds hour = HitPath(win, IdFoldName(field, StrL("hour")));
+    Bounds minute = HitPath(win, IdFoldName(field, StrL("minute")));
+    utassert(state && hour.w > 0 && minute.w > 0);
+    if (state && hour.w > 0 && minute.w > 0) {
+        Point blank = {180.f, hour.y + hour.h * 0.5f};
+        TestSimulateClick(win, blank);
+        utassert(FocusHandleIsFocused(win, state->focus));
+        utassert(state->SelectedSegment() == TimeSegment::Hour);
+
+        TestSimulateClick(
+            win, {minute.x + minute.w * 0.5f, minute.y + minute.h * 0.5f});
+        utassert(state->SelectedSegment() == TimeSegment::Minute);
+
+        TestSimulateClick(win, blank);
+        utassert(state->SelectedSegment() == TimeSegment::Hour);
+    }
+    TestAppFree(app);
+}
+
 void TestTimeField() {
     TestSuite("time_field");
     TypingFillsSegmentsAndAdvances();
@@ -291,4 +352,5 @@ void TestTimeField() {
     TheFormatFollowsPrecisionAndCycle();
     TheStateEmitsUserEditsOnly();
     TheFieldNamesItsSegments();
+    PressingOutsideTheSegmentsFocusesTheFirstSegment();
 }

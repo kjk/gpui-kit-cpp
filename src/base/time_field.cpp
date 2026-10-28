@@ -467,11 +467,27 @@ void TimeFieldState::OnKeyDown(TimeFieldState* self, Ctx* cx,
     TimeFieldEdited(self, cx, changed);
 }
 
-void TimeFieldState::OnSegmentDown(TimeFieldState* self, Ctx* cx,
-                                   const MouseDownEvent*, int64_t segment) {
-    if (!self) {
+void TimeFieldState::OnFieldDown(TimeFieldState* self, Ctx* cx,
+                                 const MouseDownEvent* ev) {
+    if (!self || !ev || ev->button != MouseButton::Left) {
         return;
     }
+    FocusHandleFocus(cx->win, self->focus);
+    TimeSegment all[4];
+    int n = self->editor.Segments(all);
+    if (n > 0) {
+        self->editor.SelectSegment(all[0]);
+    }
+    Notify(cx);
+}
+
+void TimeFieldState::OnSegmentDown(TimeFieldState* self, Ctx* cx,
+                                   const MouseDownEvent* ev, int64_t segment) {
+    if (!self || !ev || ev->button != MouseButton::Left) {
+        return;
+    }
+    // Ahead of the field's own press, which would select the first segment.
+    WindowStopPropagation(cx);
     FocusHandleFocus(cx->win, self->focus);
     self->editor.SelectSegment((TimeSegment)segment);
     Notify(cx);
@@ -553,7 +569,8 @@ El* TimeField::IntoEl() {
             ->OnAction(action::SelectRight(), onAction)
             ->OnAction(action::SelectNextColumn(), onAction)
             ->OnAction(action::SelectPrevColumn(), onAction)
-            ->OnKeyDown(ListenTo(state, &TimeFieldState::OnKeyDown));
+            ->OnKeyDown(ListenTo(state, &TimeFieldState::OnKeyDown))
+            ->OnMouseDown(ListenTo(state, &TimeFieldState::OnFieldDown));
     }
 
     // The segments are named under the field, so "hour" in one field is not

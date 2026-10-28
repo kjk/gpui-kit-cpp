@@ -561,10 +561,15 @@ El* TimeField::IntoEl() {
     TimeFieldLook* look = ArenaNew<TimeFieldLook>(a);
     look->segmentRadius = th.radius / 2.f;
     look->selection = th.selection;
-    // Rust wraps Base's field in a styled div. Base's root is the element
-    // that owns the focus here, and the runtime paints a focus ring only on
-    // that element, so the frame's styling goes onto it instead of a wrapper
-    // around it; the layout is the same, a flex row centring the segments.
+    // Rust wraps Base's field in a styled div and moves `px_1` onto a
+    // `size_full` base field, so a press in the frame's padding hits the
+    // field. The focus ring paints on the element that tracks focus, so
+    // this tree keeps the frame and the field as one element: the padding
+    // is already on that field, and its box is the press target. A caller
+    // width wider than the segments (the field's own `w`) is empty space
+    // on that same box. `size_full` stays off this element — it would
+    // stretch the field in a row, which the inner field does not do while
+    // its frame is `flex_none`.
     // `font_features(tabular_figures())`: every digit one width, so the
     // segments do not shift while a value is typed.
     El* root = gpui::TimeField::New(cx, id, state)

@@ -119,7 +119,11 @@ struct TimeFieldState {
     // The "TimeField" key context's actions and its own keystrokes.
     static void OnAction(TimeFieldState* self, Ctx* cx, const ActionEvent* ev);
     static void OnKeyDown(TimeFieldState* self, Ctx* cx, const KeyEvent* ev);
-    // A press on a segment focuses the field and selects that segment.
+    // A left press on the field, outside any segment, focuses it and selects
+    // the first segment. A press on a segment stops propagation and selects
+    // that segment instead.
+    static void OnFieldDown(TimeFieldState* self, Ctx* cx,
+                            const MouseDownEvent* ev);
     static void OnSegmentDown(TimeFieldState* self, Ctx* cx,
                               const MouseDownEvent* ev, int64_t segment);
 };

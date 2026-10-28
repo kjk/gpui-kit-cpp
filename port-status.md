@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `40c3e50268ddbc293802570cac1d836adda3b693` (2026-10-24,
-text: Keep a drag that starts in a table cell in that cell (#3646)).
-A drag that starts in a table cell selects only that cell. A drag that
-starts outside the table still runs through it. Select-all still takes
-every cell.
+Processed through `c297ddf9b7e4a687706756b777ffe1633619da04` (2026-10-24,
+time_field: Focus the first segment when the field is pressed outside a
+segment (#3655)).
+A left press on a time field, outside any segment, focuses the field and
+selects its first segment. A press on a segment still selects that
+segment. A disabled field does not take the press.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

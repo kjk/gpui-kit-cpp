@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "40c3e50268ddbc293802570cac1d836adda3b693",
+  sha: "c297ddf9b7e4a687706756b777ffe1633619da04",
   date: "2026-10-24",
-  subject: "text: Keep a drag that starts in a table cell in that cell (#3646)",
+  subject: "time_field: Focus the first segment when the field is pressed outside a segment (#3655)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",
