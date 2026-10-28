@@ -560,14 +560,25 @@ BfcSlot FloatContext::FindBfcSlot(float minY,
 // The intrinsic width contribution of a set of floats.
 struct FloatIntrinsicWidthCalculator {
     AvailableSpace availableWidth;
+    // Running sums of adjacent uncleared floats on the left and the right.
+    float sideSums[2] = {};
     float contribution = 0.0f;
     float widest = 0.0f;
 
-    void AddFloat(float width) {
+    void AddFloat(float width, FloatDirection direction, Clear clear) {
         switch (availableWidth.kind) {
             case AvailableSpace::Kind::Definite:
             case AvailableSpace::Kind::MaxContent:
-                contribution += width;
+                // A float that clears a side is placed below the floats on
+                // that side, so its width does not accumulate with theirs.
+                if (clear == Clear::Left || clear == Clear::Both) {
+                    sideSums[0] = 0.0f;
+                }
+                if (clear == Clear::Right || clear == Clear::Both) {
+                    sideSums[1] = 0.0f;
+                }
+                sideSums[(int)direction] += width;
+                contribution = F32Max(contribution, sideSums[0] + sideSums[1]);
                 break;
             case AvailableSpace::Kind::MinContent:
                 contribution = F32Max(contribution, width);
@@ -896,7 +907,8 @@ float DetermineContentBasedContainerWidth(TaffyTree* tree,
         width = F32Max(width, item.paddingBorderSum.w) + itemXMarginSum;
 
         if (IsFloated(item.floatMode)) {
-            floatContribution.AddFloat(width);
+            floatContribution
+                .AddFloat(width, FloatDir(item.floatMode).val, item.clear);
             continue;
         }
         maxChildWidth = F32Max(maxChildWidth, width);

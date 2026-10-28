@@ -2502,6 +2502,69 @@ static void TestBlockLayout() {
     }
 }
 
+// A cleared float sits below the floats it clears, so a shrink-to-fit
+// float container takes the widest uncleared run rather than the sum.
+static void TestFloatClearIntrinsicWidth() {
+    TestSuite("taffy float clear intrinsic width");
+
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style rightA;
+    rightA.display = taffy::Display::Block;
+    rightA.floatMode = taffy::Float::Right;
+    rightA.size = SizeDim::FromLengths(100.0f, 20.0f);
+    TaffyNodeId rightANode = tree.NewLeaf(rightA);
+    taffy::Style rightB;
+    rightB.display = taffy::Display::Block;
+    rightB.floatMode = taffy::Float::Right;
+    rightB.clear = taffy::Clear::Right;
+    rightB.size = SizeDim::FromLengths(120.0f, 20.0f);
+    TaffyNodeId rightBNode = tree.NewLeaf(rightB);
+    TaffyNodeId rightKids[] = {rightANode, rightBNode};
+    taffy::Style rightBox;
+    rightBox.display = taffy::Display::Block;
+    rightBox.floatMode = taffy::Float::Right;
+    TaffyNodeId rightNode = tree.NewWithChildren(rightBox, rightKids, 2);
+
+    taffy::Style leftA;
+    leftA.display = taffy::Display::Block;
+    leftA.floatMode = taffy::Float::Left;
+    leftA.size = SizeDim::FromLengths(50.0f, 20.0f);
+    TaffyNodeId leftANode = tree.NewLeaf(leftA);
+    taffy::Style leftB;
+    leftB.display = taffy::Display::Block;
+    leftB.floatMode = taffy::Float::Left;
+    leftB.clear = taffy::Clear::Left;
+    leftB.size = SizeDim::FromLengths(60.0f, 20.0f);
+    TaffyNodeId leftBNode = tree.NewLeaf(leftB);
+    taffy::Style leftC;
+    leftC.display = taffy::Display::Block;
+    leftC.floatMode = taffy::Float::Left;
+    leftC.size = SizeDim::FromLengths(30.0f, 20.0f);
+    TaffyNodeId leftCNode = tree.NewLeaf(leftC);
+    TaffyNodeId leftKids[] = {leftANode, leftBNode, leftCNode};
+    taffy::Style leftBox;
+    leftBox.display = taffy::Display::Block;
+    leftBox.floatMode = taffy::Float::Left;
+    TaffyNodeId leftNode = tree.NewWithChildren(leftBox, leftKids, 3);
+
+    TaffyNodeId kids[] = {rightNode, leftNode};
+    taffy::Style rootStyle;
+    rootStyle.display = taffy::Display::Block;
+    rootStyle.size = SizeDim::FromLengths(400.0f, 200.0f);
+    TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
+    tree.ComputeLayout(root, SizeAvail::MaxContent());
+    AssertBox(tree.GetLayout(root), 0.0f, 0.0f, 400.0f, 200.0f);
+    AssertBox(tree.GetLayout(rightNode), 280.0f, 0.0f, 120.0f, 40.0f);
+    AssertBox(tree.GetLayout(rightANode), 20.0f, 0.0f, 100.0f, 20.0f);
+    AssertBox(tree.GetLayout(rightBNode), 0.0f, 20.0f, 120.0f, 20.0f);
+    AssertBox(tree.GetLayout(leftNode), 0.0f, 0.0f, 90.0f, 40.0f);
+    AssertBox(tree.GetLayout(leftANode), 0.0f, 0.0f, 50.0f, 20.0f);
+    AssertBox(tree.GetLayout(leftBNode), 0.0f, 20.0f, 60.0f, 20.0f);
+    AssertBox(tree.GetLayout(leftCNode), 60.0f, 20.0f, 30.0f, 20.0f);
+    tree.Free();
+}
+
 // A scroll-container child synthesizes or clamps its baseline to the
 // border box. A visible child with no baseline contributes none, so the
 // flex parent uses the block's own bottom edge.
@@ -4873,6 +4936,7 @@ void TestTaffy() {
     TestFlexBalanceCounts();
     TestFlexBalanceLayout();
     TestBlockLayout();
+    TestFloatClearIntrinsicWidth();
     TestBlockPercentageBasis();
     TestBlockScrollBaselines();
     TestContainment();
