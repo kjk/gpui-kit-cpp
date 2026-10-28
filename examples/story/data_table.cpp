@@ -994,6 +994,7 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
             ->OnVisibleRows(DtVisibleRows)
             ->OnVisibleCols(DtVisibleCols)
             ->CellText(DtCellText)
+            ->CellLabel(DtCellText)
             ->FitColumn(DtFitColumn);
     if (kHeaderRowH[self->headerRowH] > 0) {
         table->HeaderRowHeight(kHeaderRowH[self->headerRowH]);

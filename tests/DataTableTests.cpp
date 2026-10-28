@@ -1725,6 +1725,98 @@ static void ColumnTextAlignmentReachesTheHeaderAndTheCells() {
     EntityDropAll(&app);
 }
 
+static const component::TableColumn kA11yColumns[] = {
+    {StrL("Name")},
+    {StrL("Status")},
+};
+
+static Str A11yCellLabel(Ctx*, void*, int row, int col) {
+    return fmt("%d:%d", row, col);
+}
+
+static El* FindA11y(El* e, AccessibilityRole role, const char* label) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->accessibility.role == role &&
+        (!label || base::StrEq(e->accessibility.label, Str(label)))) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = FindA11y(c, role, label)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+// collections.rs table_exposes_its_header_and_cells_to_assistive_technology
+// and selectable_cells_report_their_selection.
+static void TableExposesItsHeaderAndCellsToAssistiveTechnology() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    Ctx cx = {&app, win, a, state.id};
+    TableState* st = state.Get(&app);
+    st->rowSelectable = false;
+    st->cellSelectable = false;
+    El* plain = component::DataTable::New(&cx, StrL("plain"), state)
+                    ->Columns(kA11yColumns, 2)
+                    ->Rows(4, nullptr, nullptr)
+                    ->BuildEl();
+    El* inner = FindNamed(plain, "table-inner");
+    utassert(inner && inner->accessibility.role == AccessibilityRole::Table);
+    utassert(inner && inner->accessibility.hasRowCount &&
+             inner->accessibility.rowCount == 5);
+    utassert(inner && inner->accessibility.hasColumnCount &&
+             inner->accessibility.columnCount == 2);
+
+    st->rowSelectable = true;
+    El* grid = component::DataTable::New(&cx, StrL("grid"), state)
+                   ->Columns(kA11yColumns, 2)
+                   ->Rows(4, nullptr, nullptr)
+                   ->CellLabel(A11yCellLabel)
+                   ->BuildEl();
+    inner = FindNamed(grid, "table-inner");
+    utassert(inner && inner->accessibility.role == AccessibilityRole::Grid);
+    El* head = FindA11y(grid, AccessibilityRole::Row, nullptr);
+    utassert(head && head->accessibility.hasRowIndex &&
+             head->accessibility.rowIndex == 0);
+    El* name = FindA11y(grid, AccessibilityRole::ColumnHeader, "Name");
+    El* status = FindA11y(grid, AccessibilityRole::ColumnHeader, "Status");
+    utassert(name && name->accessibility.hasColumnIndex &&
+             name->accessibility.columnIndex == 0);
+    utassert(status && status->accessibility.columnIndex == 1);
+    El* cell = FindNamed(grid, "cell-3-1");
+    utassert(cell && cell->accessibility.role == AccessibilityRole::Cell);
+    utassert(cell && base::StrEq(cell->accessibility.label, StrL("3:1")));
+
+    st->cellSelectable = true;
+    st->mode = TableSelectionMode::Cell;
+    st->selectedCellRow = 2;
+    st->selectedCellCol = 1;
+    El* cells = component::DataTable::New(&cx, StrL("cells"), state)
+                    ->Columns(kA11yColumns, 2)
+                    ->Rows(4, nullptr, nullptr)
+                    ->CellLabel(A11yCellLabel)
+                    ->BuildEl();
+    El* selected = FindNamed(cells, "cell-2-1");
+    El* other = FindNamed(cells, "cell-2-0");
+    utassert(selected && selected->accessibility
+                                 .role == AccessibilityRole::GridCell);
+    utassert(selected && selected->accessibility.hasSelected &&
+             selected->accessibility.selected);
+    utassert(other && other->accessibility.hasSelected &&
+             !other->accessibility.selected);
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestDataTable() {
     AFittedColumnHoldsItsContentOnWholeDevicePixels();
     AFitStaysWithinTheColumnAndEmitsOnlyOnAChange();
@@ -1736,6 +1828,7 @@ void TestDataTable() {
     EachColumnHasItsOwnResizeBounds();
     TheSourceDelegateDrivesTheTable();
     ColumnTextAlignmentReachesTheHeaderAndTheCells();
+    TableExposesItsHeaderAndCellsToAssistiveTechnology();
     ADumpRangeIsClampedToTheTable();
     TwoTablesOnOnePageAreTwoTables();
     TheDelegateHearsAboutTheRangeOnlyWhenItMoves();

@@ -109,6 +109,9 @@ struct TableDelegate {
     // leave it. Called from inside the table's own update, so it must
     // not update the table again. Null leaves the column alone.
     bool (*fitColumn)(Ctx* cx, void* data, int col, float* width) = nullptr;
+    // cell_label. The text a screen reader reads for a cell. Null is None,
+    // so a delegate that does not set it leaves the cell unnamed.
+    Str (*cellLabel)(Ctx* cx, void* data, int row, int col) = nullptr;
     El* (*renderEmpty)(Ctx* cx, void* data) = nullptr;
     bool (*loading)(Ctx* cx, void* data) = nullptr;
     El* (*renderLoading)(Ctx* cx, void* data, UiSize size) = nullptr;
@@ -190,6 +193,9 @@ struct DataTable {
     // The default answers nothing, so a table that has not set it dumps
     // empty cells the way Rust's does.
     Str (*cellText)(Ctx* cx, void* data, int row, int col) = nullptr;
+    // cell_label. Separate from cell_text: an export and a screen reader
+    // do not have to read the same string. Null leaves the cell unnamed.
+    Str (*cellLabel)(Ctx* cx, void* data, int row, int col) = nullptr;
     // fit_column, when the table is not using TableDelegate. Copied onto
     // the state as it builds, which is what a double-click calls later.
     bool (*fitColumn)(Ctx* cx, void* data, int col, float* width) = nullptr;
@@ -232,6 +238,7 @@ struct DataTable {
     DataTable* OnVisibleRows(void (*fn)(Ctx*, void*, int, int));
     DataTable* OnVisibleCols(void (*fn)(Ctx*, void*, int, int));
     DataTable* CellText(Str (*fn)(Ctx*, void*, int, int));
+    DataTable* CellLabel(Str (*fn)(Ctx*, void*, int, int));
     // TableDelegate::fit_column, for a table that is not driven by the
     // whole delegate table. The same hook as TableDelegate::fitColumn.
     DataTable* FitColumn(bool (*fn)(Ctx*, void*, int, float*));

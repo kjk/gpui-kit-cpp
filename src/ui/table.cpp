@@ -422,6 +422,7 @@ DataTable* DataTable::Delegate(const TableDelegate& value) {
     visibleRowsChanged = value.visibleRowsChanged;
     visibleColsChanged = value.visibleColumnsChanged;
     cellText = value.cellText;
+    cellLabel = value.cellLabel;
     return this;
 }
 DataTable* DataTable::Rows(int n, void* d,
@@ -491,6 +492,10 @@ DataTable* DataTable::OnVisibleCols(void (*fn)(Ctx*, void*, int, int)) {
 }
 DataTable* DataTable::CellText(Str (*fn)(Ctx*, void*, int, int)) {
     cellText = fn;
+    return this;
+}
+DataTable* DataTable::CellLabel(Str (*fn)(Ctx*, void*, int, int)) {
+    cellLabel = fn;
     return this;
 }
 DataTable* DataTable::FitColumn(bool (*fn)(Ctx*, void*, int, float*)) {
@@ -897,6 +902,7 @@ El* DataTable::BuildEl() {
         visibleRowsChanged = delegate.visibleRowsChanged;
         visibleColsChanged = delegate.visibleColumnsChanged;
         cellText = delegate.cellText;
+        cellLabel = delegate.cellLabel;
         if (delegate.groupHeaders) {
             delegate.groupHeaders(cx, data, this);
         }
@@ -951,7 +957,10 @@ El* DataTable::BuildEl() {
     }
     float scrollX = s ? s->scrollX : 0;
 
-    El* box = gpui::Table::New(cx, id, nRows, nColumns)->FlexCol()->W(kFill);
+    // The caller's id stays the focus target. The accessible table is the
+    // inner box: a grid when a row or a cell can be selected, a table
+    // otherwise, counting the header as a row.
+    El* box = Div(a)->PathClick(id)->FlexCol()->W(kFill);
     if (bordered) {
         box->Radius(th.radius)->Border(1, th.border);
     }
@@ -1004,7 +1013,16 @@ El* DataTable::BuildEl() {
     // goes with them. Rust gets the same split out of one element tree by
     // giving the fixed columns an offset of their own; two panes are the
     // shape that falls out of a tree with no such offset in it.
-    El* main = Div(a)->FlexRow()->W(kFill)->ItemsStart();
+    bool grid = !s || s->rowSelectable || s->cellSelectable;
+    El* main =
+        Div(a)
+            ->Id(StrL("table-inner"))
+            ->Role(grid ? AccessibilityRole::Grid : AccessibilityRole::Table)
+            ->AriaRowCount(nRows + 1)
+            ->AriaColumnCount(nColumns)
+            ->FlexRow()
+            ->W(kFill)
+            ->ItemsStart();
     El* fixedPane = Div(a)->FlexCol()->Shrink0();
     El* scrollPane = Div(a)->FlexCol()->Flex1()->ClipX();
     // render_row_header_cell: the narrow strip down the left a cell-selecting
@@ -1081,7 +1099,11 @@ El* DataTable::BuildEl() {
     Listener sortClick = ListenTo(state, &TableState::OnSortClick, 0);
     // render_table_head: the head row is on table_head, in
     // table_head_foreground, pinned pane and scrolling pane alike.
+    // The pinned columns live in their own pane, so they are a second
+    // header row at the same index. state.rs keeps one row for both.
     El* headFixed = gpui::TableHeader::New(cx, StrL("head-fixed"))
+                        ->Role(AccessibilityRole::Row)
+                        ->AriaRowIndex(0)
                         ->FlexRow()
                         ->Shrink0()
                         ->H(headerH)
@@ -1103,6 +1125,7 @@ El* DataTable::BuildEl() {
     }
     headScroll->PathClick(StrL("head"))
         ->Role(AccessibilityRole::Row)
+        ->AriaRowIndex(0)
         ->FlexRow()
         ->Shrink0();
     headWrap->Child(headScroll);
@@ -1120,7 +1143,9 @@ El* DataTable::BuildEl() {
         int c = s ? TableColAt(s, d) : d;
         const TableColumn& col = columns[c];
         Str colLabel = TableColumnLabel(col);
-        El* th_ = gpui::TableHead::New(cx, StrDup(a, fmt("th-%d", c)), c + 1)
+        // state.rs numbers columns from 0. The unstyled TableHead takes a
+        // one-based index; this table does not use that helper's count.
+        El* th_ = gpui::TableHead::New(cx, StrDup(a, fmt("th-%d", c)), c)
                       ->AriaLabel(colLabel)
                       ->FlexRow()
                       ->Shrink0()
@@ -1388,7 +1413,7 @@ El* DataTable::BuildEl() {
             int c = s ? TableColAt(s, d) : d;
             El* cellEl = cell ? cell(cx, data, r, c) : nullptr;
             Str cellId = StrDup(a, fmt("cell-%d-%d", r, c));
-            El* td = gpui::TableCell::New(cx, cellId, c + 1)
+            El* td = gpui::TableCell::New(cx, cellId, c)
                          ->FlexRow()
                          ->Shrink0()
                          ->W(ColWidth(s, c))
@@ -1424,6 +1449,23 @@ El* DataTable::BuildEl() {
                     ListSettingsNow(cx->app), th.tokens.tableActive,
                     th.tableActiveBorder, th.tokens.accent, true);
                 td->Bg(sel.bg);
+            }
+            // a11y_cell: a selectable cell is a grid cell that reports its
+            // selection. Otherwise it is a plain cell. There is no
+            // window.is_a11y_active here, so a cell_label hook runs on every
+            // frame it is set.
+            if (s && s->cellSelectable) {
+                int selRow = -1;
+                int selCol = -1;
+                bool selected = TableSelectedCell(s, &selRow, &selCol) &&
+                                selRow == r && selCol == c;
+                td->Role(AccessibilityRole::GridCell)->AriaSelected(selected);
+            }
+            if (cellLabel) {
+                Str label = cellLabel(cx, data, r, c);
+                if (label.s && len(label) > 0) {
+                    td->AriaLabel(label);
+                }
             }
             // A cell takes the click when the table is cell-selectable, which
             // is what `SelectCell` and `DoubleClickedCell` come from.
