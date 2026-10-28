@@ -1616,10 +1616,16 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         Or(Or(knownDimensions.h, MaybeMax(size.h, minSize.h)), minSize.h);
 
     // 3. Final item layout.
-    RectF resolvedPadding = rawPadding
-                                .ResolveOrZero(Some(containerOuterWidth), calc);
-    RectF resolvedBorder = rawBorder
-                               .ResolveOrZero(Some(containerOuterWidth), calc);
+    // Percentage padding and borders resolve against the containing block's
+    // width, not this box's own width. They differ when the box does not
+    // stretch. An unknown parent size falls back to this box's width, which
+    // is the root of the tree.
+    float percentageResolutionWidth =
+        UnwrapOr(parentSize.w, containerOuterWidth);
+    RectF resolvedPadding =
+        rawPadding.ResolveOrZero(Some(percentageResolutionWidth), calc);
+    RectF resolvedBorder =
+        rawBorder.ResolveOrZero(Some(percentageResolutionWidth), calc);
     RectF resolvedContentBoxInset =
         resolvedPadding + resolvedBorder + scrollbarGutter;
 

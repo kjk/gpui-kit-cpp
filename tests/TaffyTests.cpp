@@ -1140,6 +1140,34 @@ static void TestBlockLayout() {
         utassertnear(tree.GetLayout(tail).location.y, 50.0f);
         tree.Free();
     }
+
+    {
+        // Percentage padding resolves against the containing block's width,
+        // not the box's own width. 10% of 200 is 20, not 10% of 50.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style leafStyle;
+        leafStyle.display = taffy::Display::Block;
+        leafStyle.size = SizeDim::FromLengths(10.0f, 10.0f);
+        TaffyNodeId leaf = tree.NewLeaf(leafStyle);
+
+        taffy::Style midStyle;
+        midStyle.display = taffy::Display::Block;
+        midStyle.size.width = Dimension::Length(50.0f);
+        midStyle.padding.left = LengthPercentage::Percent(0.1f);
+        TaffyNodeId midKids[] = {leaf};
+        TaffyNodeId mid = tree.NewWithChildren(midStyle, midKids, 1);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = Dimension::Length(200.0f);
+        TaffyNodeId rootKids[] = {mid};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, rootKids, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        utassertnear(tree.GetLayout(leaf).location.x, 20.0f);
+        tree.Free();
+    }
 }
 
 // ─── src/compute/grid/explicit_grid.rs ───────────────────────────────────
