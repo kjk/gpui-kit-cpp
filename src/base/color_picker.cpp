@@ -167,7 +167,8 @@ void ColorPickerSyncPending(ColorPickerState* s) {
 }
 
 uint32_t ColorPickerSliderColor(const ColorPickerState* s) {
-    Rgba c = HslaToRgba(s->sliders.Read());
+    // hex_string rounds. The sliders are the float source the field formats.
+    Rgba c = HslaToRgbaRounded(s->sliders.Read());
     uint32_t rgb = ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | (uint32_t)c.b;
     // An opaque colour packs as 0xRRGGBB, so it reads the same as every hex
     // in the palette; a translucent one carries its alpha in the top byte,

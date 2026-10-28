@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9b5918898c6f1c6fa223da2dd44b437da2144bb8` (2026-10-23,
-locales: Add Brazilian Portuguese (pt-BR) (#3638)).
-The component catalog gained a pt-BR catalog. The generated locale
-table includes it.
+Processed through `90d8517a49eaafe22843597a7dfe125d3bdf73ff` (2026-10-23,
+color_picker: Round hex channels instead of truncating them (#3640)).
+The hex field clamps each slider channel to 0–1 and rounds it, so an
+alpha of 0.5 reads as 80 rather than 7F. The rest of the tree still
+truncates a float colour when it stores a byte.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

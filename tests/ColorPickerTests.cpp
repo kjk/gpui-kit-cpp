@@ -83,6 +83,14 @@ static void HexStringWidth() {
     Arena* a = ArenaNew();
     utassert(StrEqI(ColorPickerHexString(a, 0xff0000), "#FF0000"));
     utassert(StrEqI(ColorPickerHexString(a, 0x7fff0000), "#FF00007F"));
+    // hsla(0, 1, 0.5, 0.5) is halfway between 7F and 80. Rounding prints 80.
+    ColorPickerState halfway;
+    halfway.sliders.Write(Hsla{0.f, 1.f, 0.5f, 1.f});
+    utassert(StrEqI(ColorPickerHexString(a, ColorPickerSliderColor(&halfway)),
+                    "#FF0000"));
+    halfway.sliders.Write(Hsla{0.f, 1.f, 0.5f, 0.5f});
+    utassert(StrEqI(ColorPickerHexString(a, ColorPickerSliderColor(&halfway)),
+                    "#FF000080"));
     ArenaDelete(a);
 }
 

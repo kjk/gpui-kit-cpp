@@ -62,37 +62,64 @@ Hsla HslaNew(float h, float s, float l, float a) {
 // on `(h * 6.).floor()`, including the arm that catches a hue of exactly 1
 // and one that came out negative, and the clamp is Rust's — on the way out,
 // not on the way in.
-Rgba HslaToRgba(Hsla c) {
+static void HslaFloats(Hsla c, float* r, float* g, float* b) {
     float h = c.h, s = c.s, l = c.l;
     float k = (1.f - fabsf(2.f * l - 1.f)) * s;
     float x = k * (1.f - fabsf(fmodf(h * 6.f, 2.f) - 1.f));
     float m = l - k * 0.5f;
     float km = k + m;
     float xm = x + m;
-    float r = 0, g = 0, b = 0;
+    float rr = 0, gg = 0, bb = 0;
     switch ((int)floorf(h * 6.f)) {
         case 0:
         case 6:
-            r = km, g = xm, b = m;
+            rr = km, gg = xm, bb = m;
             break;
         case 1:
-            r = xm, g = km, b = m;
+            rr = xm, gg = km, bb = m;
             break;
         case 2:
-            r = m, g = km, b = xm;
+            rr = m, gg = km, bb = xm;
             break;
         case 3:
-            r = m, g = xm, b = km;
+            rr = m, gg = xm, bb = km;
             break;
         case 4:
-            r = xm, g = m, b = km;
+            rr = xm, gg = m, bb = km;
             break;
         default:
-            r = km, g = m, b = xm;
+            rr = km, gg = m, bb = xm;
             break;
     }
+    *r = rr;
+    *g = gg;
+    *b = bb;
+}
+
+// hex_string's channel: clamp to 0–1 and round to the nearest 8-bit value.
+// The rest of the tree still truncates, which is `(value * 255.) as u32`.
+static uint8_t RoundByte(float v01) {
+    if (v01 <= 0.f) {
+        return 0;
+    }
+    if (v01 >= 1.f) {
+        return 255;
+    }
+    return (uint8_t)(v01 * 255.f + 0.5f);
+}
+
+Rgba HslaToRgba(Hsla c) {
+    float r = 0, g = 0, b = 0;
+    HslaFloats(c, &r, &g, &b);
     return Rgba{ToByte(Clamp01(r)), ToByte(Clamp01(g)), ToByte(Clamp01(b)),
                 ToByte(c.a)};
+}
+
+Rgba HslaToRgbaRounded(Hsla c) {
+    float r = 0, g = 0, b = 0;
+    HslaFloats(c, &r, &g, &b);
+    return Rgba{RoundByte(Clamp01(r)), RoundByte(Clamp01(g)),
+                RoundByte(Clamp01(b)), RoundByte(Clamp01(c.a))};
 }
 
 // `impl From<Rgba> for Hsla`.

@@ -109,6 +109,9 @@ Hsla HslaFromRgba(Rgba c);
 // channels are clamped on the way out, which is what lets a saturation or a
 // lightness that ran past 1 land on a colour rather than on nonsense.
 Rgba HslaToRgba(Hsla c);
+// color_picker hex_string: the same conversion, with each channel rounded
+// to the nearest byte instead of truncated.
+Rgba HslaToRgbaRounded(Hsla c);
 // The two together, for a caller that has four numbers and wants a colour:
 // `hsla(h, s, l, a).to_rgb()`.
 Rgba RgbaHsla(float h, float s, float l, float a01);
