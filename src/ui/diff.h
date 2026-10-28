@@ -90,6 +90,19 @@ struct DiffParseError {
     Str Message() const { return message; }
 };
 
+// Relaxations for DiffFile::ParseWith. Every one is off, which parses
+// exactly as DiffFile::Parse does.
+struct DiffParseOptions {
+    bool truncatedHunks = false;
+    static DiffParseOptions New() { return {}; }
+    DiffParseOptions TruncatedHunks(bool on) const {
+        DiffParseOptions next = *this;
+        next.truncatedHunks = on;
+        return next;
+    }
+    bool HasTruncatedHunks() const { return truncatedHunks; }
+};
+
 struct DiffLinePosition {
     Str path = {};
     DiffSide side = DiffSide::Original;
@@ -212,8 +225,11 @@ struct DiffHunk {
     int modifiedStart = 0;
     int modifiedEnd = 0;
     Str label = {};
+    // One-based original lines this hunk supplies. A truncated hunk
+    // covers the lines present, not the count written in `label`.
     int originalLinesStart = 0;
     int originalLinesEnd = 0;
+    bool truncated = false;
     int HiddenLinesBefore(const DiffHunk* previous) const;
     Str Label() const { return label; }
 };
@@ -269,6 +285,9 @@ struct DiffFile {
     DiffFile& operator=(const DiffFile&) = delete;
 
     static bool Parse(Str patch, Vec<DiffFile*>* out, DiffParseError* error);
+    static bool ParseWith(Str patch, DiffParseOptions options,
+                          Vec<DiffFile*>* out, DiffParseError* error);
+    bool IsTruncated() const;
     static DiffFile* Unchanged(Str path, Str text);
     static DiffFile* ParseConflicts(Str path, Str text, DiffParseError* error);
     DiffFile* WithLanguage(Str language);

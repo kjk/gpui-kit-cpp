@@ -774,6 +774,11 @@ struct OpenFile {
     bool headers = false;
     bool renamed = false;
     bool copied = false;
+    // An empty truncated hunk supplies no source line, and still orders
+    // the next hunk on both sides.
+    bool hasLastHunk = false;
+    int lastHunkOld = 0;
+    int lastHunkNew = 0;
     bool hasPrefixes = false;
     const char* oldPrefix = "";
     const char* newPrefix = "";
@@ -804,6 +809,9 @@ struct OpenFile {
         headers = false;
         renamed = false;
         copied = false;
+        hasLastHunk = false;
+        lastHunkOld = 0;
+        lastHunkNew = 0;
         hasPrefixes = false;
         oldPrefix = "";
         newPrefix = "";
@@ -844,9 +852,14 @@ static bool HunkHeader(Str line, int number, int* oldStart, int* oldCount,
         uint64_t s = 0;
         uint64_t c = 0;
         if (!ParseU64(sPart, &s) || !ParseU64(cPart, &c)) return false;
-        if ((c > 0 && s == 0) || s > UINT64_MAX - c) return false;
+        // A zero-count side still names the line before the insertion,
+        // so the span is max(count, 1). A start or span that does not
+        // fit in int is an invalid header. Rust keeps those as usize
+        // (port-status.md).
+        uint64_t span = c == 0 ? 1 : c;
+        if ((c > 0 && s == 0) || s > UINT64_MAX - span) return false;
         if (s > (uint64_t)INT_MAX || c > (uint64_t)INT_MAX ||
-            s + c > (uint64_t)INT_MAX)
+            s + span > (uint64_t)INT_MAX)
             return false;
         *start = (int)s;
         *count = (int)c;
@@ -865,15 +878,57 @@ static int LastNumber(const SideBuild& side) {
     return side.number[len(side.number) - 1];
 }
 
+// A `---` / `+++` pair inside a short hunk can also be source. A
+// complete reading wins, so this scan runs once and stops only when
+// that pair cannot finish the declared counts.
+static bool TruncatedFileHeader(Str* lines, int nLines, int start,
+                                int oldRemaining, int newRemaining, int* out) {
+    bool header = false;
+    int headerIx = 0;
+    for (int ix = start; ix < nLines; ix++) {
+        Str line = lines[ix];
+        if (StrEq(line, "\\ No newline at end of file")) continue;
+        if (oldRemaining == 0 && newRemaining == 0) return false;
+        if (!header && Starts(line, "--- ") && ix + 1 < nLines &&
+            Starts(lines[ix + 1], "+++ ")) {
+            header = true;
+            headerIx = ix;
+        }
+        char tag = line.len == 0 ? ' ' : line.s[0];
+        if (tag == ' ' && oldRemaining > 0 && newRemaining > 0) {
+            oldRemaining--;
+            newRemaining--;
+        } else if (tag == '-' && oldRemaining > 0) {
+            oldRemaining--;
+        } else if (tag == '+' && newRemaining > 0) {
+            newRemaining--;
+        } else {
+            if (!header) return false;
+            *out = headerIx;
+            return true;
+        }
+    }
+    if ((oldRemaining == 0 && newRemaining == 0) || !header) return false;
+    *out = headerIx;
+    return true;
+}
+
 static bool ParseHunk(OpenFile* open, Str* lines, int nLines, int* ix,
-                      DiffParseError* error) {
+                      DiffParseOptions options, DiffParseError* error) {
     int oldStart = 0, oldCount = 0, newStart = 0, newCount = 0;
     if (!HunkHeader(lines[*ix], *ix + 1, &oldStart, &oldCount, &newStart,
                     &newCount, error))
         return false;
+    // A zero-count side names the line before its insertion point.
+    int firstOriginal = oldStart + (oldCount == 0 ? 1 : 0);
+    int firstModified = newStart + (newCount == 0 ? 1 : 0);
     int lastOld = LastNumber(open->original);
     int lastNew = LastNumber(open->modified);
-    if ((lastOld >= 0 && lastOld >= oldStart && oldCount > 0) ||
+    // `&&` binds tighter than `||`, matching the Rust condition.
+    bool backwards = options.truncatedHunks && open->hasLastHunk &&
+                     (firstOriginal < open->lastHunkOld ||
+                      firstModified < open->lastHunkNew);
+    if (backwards || (lastOld >= 0 && lastOld >= oldStart && oldCount > 0) ||
         (lastNew >= 0 && lastNew >= newStart && newCount > 0)) {
         *error = Err(*ix + 1, "overlapping or unordered hunks");
         return false;
@@ -888,12 +943,18 @@ static bool ParseHunk(OpenFile* open, Str* lines, int nLines, int* ix,
     int modifiedStart = len(open->modified.number);
     int headerLine = *ix;
     (*ix)++;
+    bool stopAtFile = false;
+    int nextFile = 0;
+    if (options.truncatedHunks)
+        stopAtFile = TruncatedFileHeader(lines, nLines, *ix, oldCount, newCount,
+                                         &nextFile);
     int oldUsed = 0;
     int newUsed = 0;
     Vec<int> deleted;
     Vec<int> added;
     int last = 0;
     while (*ix < nLines) {
+        if (stopAtFile && *ix == nextFile) break;
         Str content = lines[*ix];
         if (StrEq(content, "\\ No newline at end of file")) {
             if (last == '-')
@@ -913,19 +974,16 @@ static bool ParseHunk(OpenFile* open, Str* lines, int nLines, int* ix,
             continue;
         }
         if (oldUsed == oldCount && newUsed == newCount) break;
-        char tag = ' ';
-        Str text = {};
-        if (content.len == 0) {
-            tag = ' ';
-            text = {};
-        } else {
-            tag = content.s[0];
-            text = Slice(content, 1, content.len);
-        }
+        // The first byte decides the tag. A truncated hunk stops before
+        // a line whose first byte is not a source tag, so a multibyte
+        // character is never sliced.
+        char tag = content.len == 0 ? ' ' : content.s[0];
         if (tag != ' ' && tag != '+' && tag != '-') {
+            if (options.truncatedHunks) break;
             *error = Err(*ix + 1, "hunk ended before its declared line counts");
             return false;
         }
+        Str text = content.len == 0 ? Str{} : Slice(content, 1, content.len);
         if ((tag != '+' && open->original.noNewline) ||
             (tag != '-' && open->modified.noNewline)) {
             *error = Err(*ix + 1,
@@ -965,7 +1023,8 @@ static bool ParseHunk(OpenFile* open, Str* lines, int nLines, int* ix,
         last = tag;
         (*ix)++;
     }
-    if (oldUsed != oldCount || newUsed != newCount) {
+    bool truncated = oldUsed != oldCount || newUsed != newCount;
+    if (truncated && !options.truncatedHunks) {
         *error = Err(*ix + 1, "hunk ended before its declared line counts");
         return false;
     }
@@ -978,10 +1037,13 @@ static bool ParseHunk(OpenFile* open, Str* lines, int nLines, int* ix,
     hunk.modifiedStart = modifiedStart;
     hunk.modifiedEnd = len(open->modified.number);
     hunk.label = Own(open->file->arena, lines[headerLine]);
-    int first = oldStart + (oldCount == 0 ? 1 : 0);
-    hunk.originalLinesStart = first;
-    hunk.originalLinesEnd = first + oldCount;
+    hunk.originalLinesStart = firstOriginal;
+    hunk.originalLinesEnd = firstOriginal + oldUsed;
+    hunk.truncated = truncated;
     VecAppend(open->file->hunks, hunk);
+    open->hasLastHunk = true;
+    open->lastHunkOld = firstOriginal;
+    open->lastHunkNew = firstModified;
     return true;
 }
 
@@ -1009,6 +1071,18 @@ static DiffFile* AllocFile() {
 }
 
 bool DiffFile::Parse(Str patch, Vec<DiffFile*>* out, DiffParseError* error) {
+    return ParseWith(patch, DiffParseOptions{}, out, error);
+}
+
+bool DiffFile::IsTruncated() const {
+    for (int i = 0; i < len(hunks); i++) {
+        if (hunks[i].truncated) return true;
+    }
+    return false;
+}
+
+bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
+                         Vec<DiffFile*>* out, DiffParseError* error) {
     Vec<Str> raw;
     int i = 0;
     if (patch.len == 0) {
@@ -1165,7 +1239,7 @@ bool DiffFile::Parse(Str patch, Vec<DiffFile*>* out, DiffParseError* error) {
                     ix + 1, "hunk requires original and modified file headers");
                 return false;
             }
-            if (!ParseHunk(&open, raw.els, len(raw), &ix, error)) {
+            if (!ParseHunk(&open, raw.els, len(raw), &ix, options, error)) {
                 delete open.file;
                 for (int f = 0; f < len(*out); f++) delete (*out)[f];
                 VecClear(*out);

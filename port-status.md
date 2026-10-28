@@ -16,12 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b4af12b3400cdac7f3bc39716a5d59a378c4aa57` (2026-10-26,
-text: Support list and blockquote style overrides (#3687)).
-A text view can refine list markers and blockquotes over the resolved
-style. Unspecified fields stay as they are, including on an inverted
-surface. A blockquote's face and weight reach a nested table's
-measurement; the table keeps its own size.
+Processed through `75da1a084ce414bb2b4e6ee8b77e77d46544bff1` (2026-10-26,
+diff: Parse truncated hunks through parse options (#3688)).
+`DiffFile::Parse` stays strict. `ParseWith` can accept a hunk that ends
+before its declared counts and count it from the lines present. Declared
+counts stay an upper bound. A short hunk stops at a non-source line or
+at a unified file header that cannot finish the hunk. `IsTruncated`
+reports an early end. An empty truncated hunk still orders the next
+hunk. Line numbers that do not fit in `int` stay invalid headers.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
@@ -322,6 +324,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   scope) can be asked of it. Folding is brace-pair scanning, which is what
   upstream's own showcase highlighter does. The optional `syntect` feature
   (syntect and two-face) is the same exclusion and is not vendored.
+- **Diff line numbers are `int`.** A hunk header whose start, count, or
+  `start + max(count, 1)` span does not fit in `int` is an invalid
+  header (`diff.cpp`). Rust keeps those as `usize`, so a start of
+  `usize::MAX - 1` parses there and does not here.
 - **Diff review text is line ranges, not a text selection.** `src/ui/diff.cpp`
   selects source lines and copies them. It does not drive GPUI's
   `TextSelection`, so the hit-tested caret, word sweeps and chunk clipping

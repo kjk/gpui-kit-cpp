@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b4af12b3400cdac7f3bc39716a5d59a378c4aa57",
+  sha: "75da1a084ce414bb2b4e6ee8b77e77d46544bff1",
   date: "2026-10-26",
-  subject: "text: Support list and blockquote style overrides (#3687)",
+  subject: "diff: Parse truncated hunks through parse options (#3688)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

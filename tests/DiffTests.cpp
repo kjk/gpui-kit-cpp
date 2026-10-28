@@ -235,6 +235,119 @@ static void TestParser() {
     FreeFiles(files);
 }
 
+// truncated_hunks_count_the_lines_present
+// truncated_hunks_keep_structural_errors
+// non_ascii_lines_after_a_short_hunk_do_not_panic
+// truncated_unified_hunks_stop_before_the_next_file_headers
+// empty_truncated_hunks_preserve_order_on_both_sides
+static void TestTruncatedHunks() {
+    TestSuite("diff truncated hunks");
+    DiffParseOptions truncated = DiffParseOptions::New().TruncatedHunks(true);
+    utassert(truncated.HasTruncatedHunks());
+    utassert(!DiffParseOptions::New().HasTruncatedHunks());
+
+    const char* patch =
+        "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1,9 +1,9 @@\n keep\n-old\n"
+        "+new\ndiff --git a/b b/b\n--- a/b\n+++ b/b\n@@ -1,5 +1,5 @@\n-x\n"
+        "+y\n@@ -10,5 +10,5 @@\n first\n\n-z\n+w\n";
+    Vec<DiffFile*> files;
+    utassert(!Parse(patch, &files));
+    DiffParseError error;
+    utassert(DiffFile::ParseWith(Str(patch), truncated, &files, &error));
+    utassert(len(files) == 2);
+    utassert(files[0]->IsTruncated() && files[1]->IsTruncated());
+    utassert(files[0]->Additions() == 1 && files[0]->Deletions() == 1);
+    utassert(Same(files[0]->Source(DiffSide::Original), "keep\nold\n"));
+    utassert(Same(files[0]->Source(DiffSide::Modified), "keep\nnew\n"));
+    utassert(files[1]->Additions() == 2 && files[1]->Deletions() == 2);
+    utassert(Same(files[1]->Source(DiffSide::Original), "x\nfirst\n\nz\n"));
+    utassert(files[1]->LineNumber(DiffSide::Original, 3) == 12);
+    utassert(files[1]->LineNumber(DiffSide::Modified, 3) == 12);
+    utassert(files[1]->Hunks()[1].HiddenLinesBefore(&files[1]->Hunks()[0]) ==
+             8);
+    FreeFiles(files);
+
+    const char* complete = "--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n";
+    utassert(DiffFile::ParseWith(Str(complete), truncated, &files, &error));
+    utassert(!files[0]->IsTruncated());
+    FreeFiles(files);
+    utassert(Parse(complete, &files) && !files[0]->IsTruncated());
+    FreeFiles(files);
+
+    const char* bad[] = {
+        "--- a/a\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n+extra\n",
+        "--- a/a\n+++ b/a\n@@ -1 +1 @@\n same\n@@ -1 +2 @@\n again\n",
+        "--- a/a\n+++ b/a\n@@ -18446744073709551615,2 +1,2 @@\n a\n",
+        "--- a/a\n+++ b/a\n@@ -18446744073709551615,0 +1,2 @@\n",
+        "--- a/a\n+++ b/a\n@@ -x +1 @@\n a\n",
+        "--- \"a/\\q\"\n+++ b/a\n@@ -1,3 +1,3 @@\n a\n",
+        "--- /dev/null\n+++ b/a\n@@ -1,2 +1,2 @@\n a\n",
+        // usize::MAX - 1 and usize::MAX - 2 do not fit in int.
+        "--- a/a\n+++ b/a\n@@ -18446744073709551614,1 "
+        "+18446744073709551614,1 @@\n",
+        "--- a/a\n+++ b/a\n@@ -18446744073709551613,2 "
+        "+18446744073709551613,2 @@\n same\n",
+    };
+    for (int i = 0; i < 9; i++) {
+        utassert(!DiffFile::ParseWith(Str(bad[i]), truncated, &files, &error));
+        FreeFiles(files);
+        utassert(error.Line() > 0 && len(error.Message()) > 0);
+    }
+
+    const char* nonAscii = "--- a/a\n+++ b/a\n@@ -1,2 +1,2 @@\n-old\n+new\n…\n";
+    utassert(!Parse(nonAscii, &files));
+    utassert(DiffFile::ParseWith(Str(nonAscii), truncated, &files, &error));
+    utassert(files[0]->IsTruncated());
+    utassert(Same(files[0]->Source(DiffSide::Original), "old\n"));
+    utassert(Same(files[0]->Source(DiffSide::Modified), "new\n"));
+    FreeFiles(files);
+
+    const char* unified =
+        "--- a/a\n+++ b/a\n@@ -1,9 +1,9 @@\n keep\n--- a/b\n+++ b/b\n@@ -10 "
+        "+10 @@\n-old\n+new\n";
+    utassert(DiffFile::ParseWith(Str(unified), truncated, &files, &error));
+    utassert(len(files) == 2);
+    utassert(Same(files[0]->Path(), "a") && files[0]->IsTruncated());
+    utassert(Same(files[0]->Source(DiffSide::Original), "keep\n"));
+    utassert(Same(files[0]->Source(DiffSide::Modified), "keep\n"));
+    utassert(Same(files[1]->Path(), "b") && !files[1]->IsTruncated());
+    utassert(Same(files[1]->Source(DiffSide::Original), "old\n"));
+    utassert(Same(files[1]->Source(DiffSide::Modified), "new\n"));
+    FreeFiles(files);
+
+    const char* headerSource =
+        "--- a/a\n+++ b/a\n@@ -1,2 +1,2 @@\n--- source\n+++ source\n tail\n";
+    utassert(DiffFile::ParseWith(Str(headerSource), truncated, &files, &error));
+    utassert(len(files) == 1 && !files[0]->IsTruncated());
+    utassert(Same(files[0]->Source(DiffSide::Original), "-- source\ntail\n"));
+    utassert(Same(files[0]->Source(DiffSide::Modified), "++ source\ntail\n"));
+    FreeFiles(files);
+
+    const char* nexts[] = {"@@ -1 +1 @@", "@@ -10 +1 @@", "@@ -1 +10 @@"};
+    for (int i = 0; i < 3; i++) {
+        TempStr backwards = fmt(
+            "--- a/a\n+++ b/a\n@@ -10,2 +10,2 @@\n%s\n same\n", Str(nexts[i]));
+        utassert(!DiffFile::ParseWith(backwards, truncated, &files, &error));
+        FreeFiles(files);
+        utassert(error.Line() == 4);
+        utassert(Same(error.Message(), "overlapping or unordered hunks"));
+    }
+    const char* forward =
+        "--- a/a\n+++ b/a\n@@ -10,2 +10,2 @@\n@@ -20 +20 @@\n same\n";
+    utassert(DiffFile::ParseWith(Str(forward), truncated, &files, &error));
+    utassert(files[0]->IsTruncated());
+    utassert(files[0]->LineNumber(DiffSide::Original, 0) == 20);
+    FreeFiles(files);
+
+    DiffFile* unchanged = DiffFile::Unchanged(StrL("a"), StrL("one\n"));
+    utassert(!unchanged->IsTruncated());
+    delete unchanged;
+    DiffFile* conflicts =
+        DiffFile::ParseConflicts(StrL("a"), StrL("plain\n"), &error);
+    utassert(conflicts && !conflicts->IsTruncated());
+    delete conflicts;
+}
+
 static void TestConflictsAndLanguage() {
     TestSuite("diff conflicts");
     DiffFile* file =
@@ -864,6 +977,7 @@ static void AnApplicationHighlighterStylesEachHunkSide() {
 
 void TestDiff() {
     TestParser();
+    TestTruncatedHunks();
     TestConflictsAndLanguage();
     TestInlineAndRows();
     AnApplicationHighlighterStylesEachHunkSide();
