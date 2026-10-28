@@ -56,37 +56,42 @@ int PopupMenuNextIndex(const bool* clickable, int n, int selected) {
     if (n <= 0) {
         return -1;
     }
-    if (selected < 0) {
-        // set_selected_index(0): Rust takes the first row whether or not it
-        // is clickable.
-        return 0;
-    }
-    for (int i = selected + 1; i < n; i++) {
-        if (clickable[i]) {
+    int start = selected < 0 ? -1 : selected;
+    for (int i = start + 1; i < n; i++) {
+        if (clickable && clickable[i]) {
             return i;
         }
     }
-    return 0;
+    // Wrap, and the first step when nothing is selected: the first
+    // clickable row. None at all stays unselected.
+    if (selected >= 0) {
+        for (int i = 0; i < n; i++) {
+            if (clickable && clickable[i]) {
+                return i;
+            }
+        }
+    }
+    return -1;
 }
 
 int PopupMenuPrevIndex(const bool* clickable, int n, int selected) {
     if (n <= 0) {
         return -1;
     }
+    // Nothing selected starts the search at 0, so the row before it is
+    // the wrap to the last clickable one.
     int ix = selected < 0 ? 0 : selected;
     for (int i = ix - 1; i >= 0; i--) {
-        if (clickable[i]) {
+        if (clickable && clickable[i]) {
             return i;
         }
     }
-    // No clickable row before it: the last clickable one, or 0 if there is
-    // none at all.
     for (int i = n - 1; i >= 0; i--) {
-        if (clickable[i]) {
+        if (clickable && clickable[i]) {
             return i;
         }
     }
-    return 0;
+    return -1;
 }
 
 void PopupMenuOpen(PopupMenuState* s, Ctx* cx) {
@@ -170,22 +175,33 @@ void PopupMenuConfirm(PopupMenuState* s, Ctx* cx, int ix,
 void PopupMenuPerform(PopupMenuState* s, Ctx* cx, PopupMenuAction act,
                       const bool* clickable, const bool* hasSubmenu, int n) {
     switch (act) {
-        case PopupMenuAction::SelectPrev:
-            s->selected = PopupMenuPrevIndex(clickable, n, s->selected);
-            s->openSubmenu = -1;
-            Notify(cx);
+        case PopupMenuAction::SelectPrev: {
+            int prev = PopupMenuPrevIndex(clickable, n, s->selected);
+            // The same row again is a wrap onto the only clickable item.
+            // Leave the open submenu alone; Rust's set_selected_index
+            // does not notify when the index did not change.
+            if (prev >= 0 && prev != s->selected) {
+                s->selected = prev;
+                s->openSubmenu = -1;
+                Notify(cx);
+            }
             break;
-        case PopupMenuAction::SelectNext:
-            s->selected = PopupMenuNextIndex(clickable, n, s->selected);
-            s->openSubmenu = -1;
-            Notify(cx);
+        }
+        case PopupMenuAction::SelectNext: {
+            int next = PopupMenuNextIndex(clickable, n, s->selected);
+            if (next >= 0 && next != s->selected) {
+                s->selected = next;
+                s->openSubmenu = -1;
+                Notify(cx);
+            }
             break;
+        }
         case PopupMenuAction::Confirm:
+            // A separator, a label or a disabled row is not clickable.
+            // Hover can still select it; confirmation refuses it.
             if (s->selected >= 0 && s->selected < n && clickable[s->selected]) {
                 if (hasSubmenu && hasSubmenu[s->selected]) {
-                    // Enter on a submenu row opens it rather than running it.
-                    s->openSubmenu = s->selected;
-                    Notify(cx);
+                    PopupMenuEnterSubmenu(s, cx, s->selected);
                 } else {
                     PopupMenuConfirm(s, cx, s->selected);
                 }
@@ -204,8 +220,7 @@ void PopupMenuPerform(PopupMenuState* s, Ctx* cx, PopupMenuAction act,
         case PopupMenuAction::OpenSubmenu:
             if (s->selected >= 0 && s->selected < n && hasSubmenu &&
                 hasSubmenu[s->selected]) {
-                s->openSubmenu = s->selected;
-                Notify(cx);
+                PopupMenuEnterSubmenu(s, cx, s->selected);
             }
             break;
         case PopupMenuAction::CloseSubmenu:
@@ -383,11 +398,35 @@ void PopupMenuState::OnItemHover(PopupMenuState* self, Ctx* cx,
     Notify(cx);
 }
 
+void PopupMenuEnterSubmenu(PopupMenuState* s, Ctx* cx, int ix) {
+    if (!s) {
+        return;
+    }
+    s->selected = ix;
+    s->openSubmenu = ix;
+    PopupMenuState* child = nullptr;
+    int first = -1;
+    if (cx && ix >= 0 && ix < s->rows.len) {
+        child = s->rows[ix].submenuState.Get(cx);
+        first = s->rows[ix].submenuSelect;
+    }
+    if (child) {
+        child->open = true;
+        child->selected = first;
+        if (cx && !child->focus.IsValid()) {
+            child->focus = FocusHandleNew(cx);
+        }
+        if (cx && cx->win && child->focus.IsValid()) {
+            FocusHandleFocus(cx->win, child->focus);
+        }
+    }
+    Notify(cx);
+}
+
 void PopupMenuState::OnSubmenuClick(PopupMenuState* self, Ctx* cx,
                                     const ClickEvent*, int64_t ix) {
-    self->selected = (int)ix;
-    self->openSubmenu = (int)ix;
-    Notify(cx);
+    // The same activate path Enter uses. The parent stays open.
+    PopupMenuEnterSubmenu(self, cx, (int)ix);
 }
 
 void PopupMenuState::OnSubmenuHover(PopupMenuState* self, Ctx* cx,

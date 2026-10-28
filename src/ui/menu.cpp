@@ -367,7 +367,12 @@ El* PopupMenu::IntoEl() {
         root->BoundsOut(&s->bounds)
             ->OnMouseUpOut(ListenTo(state, &PopupMenuState::OnPressOutside));
     }
-    if (s && s->openSubmenu < 0) {
+    // A submenu that is only showing — hover selected its row — does not
+    // take focus. Activation focuses the child, and this arms the trap
+    // once that focus is already inside it. The root menu still arms
+    // while none of its submenus is up.
+    bool focusedHere = cx->win && FocusHandleContainsFocused(cx->win, focus);
+    if (s && s->openSubmenu < 0 && (!s->parent.IsValid() || focusedHere)) {
         FocusTrapArm(cx->win, focus.id);
     }
     Listener onAction = ListenTo(state, &PopupMenuState::OnAction);
@@ -388,6 +393,19 @@ El* PopupMenu::IntoEl() {
         row.clickable = it.kind != PopupMenuItem::Separator &&
                         it.kind != PopupMenuItem::Label && !it.disabled;
         row.submenu = it.submenu != nullptr;
+        if (it.submenu) {
+            row.submenuState = it.submenu->state;
+            row.submenuSelect = -1;
+            for (int k = 0; k < it.submenu->items.len; k++) {
+                const MenuItem& child = it.submenu->items[k];
+                if (child.kind == MenuItemKind::Separator ||
+                    child.kind == MenuItemKind::Label || child.disabled) {
+                    continue;
+                }
+                row.submenuSelect = k;
+                break;
+            }
+        }
         row.link = it.isLink;
         row.href = it.href;
         row.handler = it.onClick;
@@ -535,21 +553,32 @@ El* PopupMenu::IntoEl() {
         if (it.submenu) {
             row->Child(IconEl(a, IconName::ChevronRight, icon)->Fg(th.mutedFg));
         }
-        if (it.kind != PopupMenuItem::Label && !it.disabled) {
+        if (it.kind != PopupMenuItem::Label) {
             if (it.submenu) {
-                BindClick(row, StrDup(a, fmt("%d", i)),
-                          ListenerArg(submenuClick, i));
+                // Disabled rows still hover-select, so the child is shown.
+                // Only an enabled row accepts the click that enters it.
+                if (!it.disabled) {
+                    BindClick(row, StrDup(a, fmt("%d", i)),
+                              ListenerArg(submenuClick, i));
+                } else {
+                    // A disabled row is still hovered. The id is what puts
+                    // it in the hit chain; it has no click.
+                    row->PathId(StrDup(a, fmt("%d", i)));
+                }
                 row->OnHover(ListenerArg(submenuHover, i));
-            } else if (it.isLink && it.href.s) {
+            } else if (!it.disabled && it.isLink && it.href.s) {
                 BindClick(row, StrDup(a, fmt("%d", i)),
                           ListenerArg(linkClick, (int64_t)&it.href));
                 row->OnHover(ListenerArg(hover, i));
-            } else {
+            } else if (!it.disabled) {
                 BindClick(row, StrDup(a, fmt("%d", i)), ListenerArg(click, i));
                 // The action is on the row, and this click confirms it.
                 // Confirm dispatches from MenuActionFocus — the focus this
                 // used to attach with OnClickAction — so the hit must not
                 // dispatch that action a second time after the listener.
+                row->OnHover(ListenerArg(hover, i));
+            } else {
+                row->PathId(StrDup(a, fmt("%d", i)));
                 row->OnHover(ListenerArg(hover, i));
             }
         }

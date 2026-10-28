@@ -37,16 +37,17 @@ Str PopupMenuContext();
 // select_right.
 PopupMenuAction PopupMenuActionOf(uint32_t id, Side side);
 
-// select_down / select_up over the clickable items. A separator or a label is
-// not clickable and is stepped over; both ends wrap. Rust's select_down with
-// nothing selected takes index 0 whether or not that row is clickable, and
-// select_up with nothing selected takes the last clickable row — this keeps
-// both, quirk included.
+// select_down / select_up over the clickable items. A separator, a label or
+// a disabled row is stepped over; both ends wrap to the next clickable row.
+// With nothing selected, down takes the first clickable row and up the last.
+// No clickable row answers -1, and the selection stays where it was.
 int PopupMenuNextIndex(const bool* clickable, int n, int selected);
 int PopupMenuPrevIndex(const bool* clickable, int n, int selected);
 
 // The most rows the keyboard reads off a menu. The themed menu builds at most
 // this many, and a menu longer than a screen scrolls rather than growing.
+
+struct PopupMenuState;
 
 // What one row looks like to the keyboard. Rust's PopupMenu owns its items,
 // so select_down and confirm read them off itself; the rows belong to the
@@ -68,6 +69,11 @@ struct PopupMenuRow {
     // context: the focus the menu took, walked up through parent menus. An
     // invalid handle dispatches from the focus the menu is holding.
     FocusHandle actionFocus = {};
+    // The submenu this row opens, and the first clickable row inside it.
+    // -1 when that menu has none. Activation selects it and focuses the
+    // child; hover only shows the child.
+    Entity<PopupMenuState> submenuState = {};
+    int submenuSelect = -1;
 };
 
 // What a menu is between frames. Rust keeps this in the PopupMenu entity
@@ -166,6 +172,10 @@ void PopupMenuPerform(PopupMenuState* s, Ctx* cx, PopupMenuAction act,
 // take, and it is where the two things a row can be — a link, and a submenu
 // whose parent is the menu that has to close it — are answered.
 void PopupMenuPerformRows(PopupMenuState* s, Ctx* cx, PopupMenuAction act);
+// _select_submenu: show `ix`, select its first clickable row, and focus
+// the child. The parent stays open. A row that is not a submenu only
+// records the selection.
+void PopupMenuEnterSubmenu(PopupMenuState* s, Ctx* cx, int ix);
 
 // What the element records as it builds, in row order. Rust's menu owns its
 // items; this is the copy the keyboard reads.

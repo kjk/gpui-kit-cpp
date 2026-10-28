@@ -4,9 +4,8 @@
  * context, and so does this — the element declares the context, the keymap
  * resolves the chord against it, and the menu reads the action. select_up and
  * select_down walk only the clickable rows — a separator and a label are
- * stepped over — and both ends wrap; the two odd cases are Rust's own:
- * select_down with nothing selected takes row 0 whether or not it is clickable,
- * and select_up with nothing selected takes the last clickable row. Left and
+ * stepped over — and both ends wrap to another clickable row. With nothing
+ * selected, down takes the first clickable row and up the last. Left and
  * Right depend on the side the submenus open towards. */
 
 #include "Test.h"
@@ -67,12 +66,17 @@ static void TheWalkStepsOverWhatCannotBeClicked() {
 }
 
 static void NothingSelectedYet() {
-    // Rust's select_down takes row 0 with nothing selected, even where row 0
-    // is a separator.
+    // select_down takes the first clickable row, not a leading separator.
     const bool clickable[3] = {false, true, true};
-    utassert(PopupMenuNextIndex(clickable, 3, -1) == 0);
+    utassert(PopupMenuNextIndex(clickable, 3, -1) == 1);
+    utassert(PopupMenuNextIndex(clickable, 3, 2) == 1);
     // select_up takes the last clickable row instead.
     utassert(PopupMenuPrevIndex(clickable, 3, -1) == 2);
+    // No clickable row: the index stays unset.
+    const bool none[2] = {false, false};
+    utassert(PopupMenuNextIndex(none, 2, -1) == -1);
+    utassert(PopupMenuPrevIndex(none, 2, -1) == -1);
+    utassert(PopupMenuNextIndex(none, 2, 1) == -1);
 }
 
 static void AMenuWithNoRows() {
@@ -1196,6 +1200,131 @@ static void CustomMenuItemPreservesMouseEvent() {
     TestAppFree(app);
 }
 
+// menu.rs: activating_a_submenu_enters_it_without_dismissing_its_parent
+// and submenu_activation_skips_disabled_items. Click and Enter both enter
+// an enabled submenu, select its first clickable row and focus it. A
+// disabled row can be hovered, and confirmation leaves it alone.
+struct SubmenuActivationMenu {
+    bool saved = false;
+    Entity<PopupMenuState> menu;
+    Entity<PopupMenuState> more;
+    Entity<PopupMenuState> nope;
+    Entity<PopupMenuState> commands;
+
+    static void OnSave(SubmenuActivationMenu* self, Ctx* cx,
+                       const ClickEvent*) {
+        self->saved = true;
+        Notify(cx);
+    }
+
+    static El* Render(SubmenuActivationMenu* self, Ctx* cx) {
+        PopupMenu* more =
+            PopupMenu::New(cx, StrL("more-menu"))
+                ->Menu(StrL("Save copy"))
+                ->OnClick(Listen(cx, &SubmenuActivationMenu::OnSave));
+        PopupMenu* nope = PopupMenu::New(cx, StrL("nope-menu"))
+                              ->Menu(StrL("Unavailable"));
+        PopupMenu* commands =
+            PopupMenu::New(cx, StrL("commands-menu"))
+                ->Menu(StrL("Unavailable"))
+                ->Disabled(true)
+                ->Menu(StrL("Save copy"))
+                ->OnClick(Listen(cx, &SubmenuActivationMenu::OnSave));
+        PopupMenu* menu =
+            PopupMenu::New(cx, StrL("parent-menu"))
+                ->Menu(StrL("Unavailable"))
+                ->Disabled(true)
+                ->Menu(StrL("Save"))
+                ->OnClick(Listen(cx, &SubmenuActivationMenu::OnSave))
+                ->Submenu(StrL("More"), more)
+                ->Submenu(StrL("Nope"), nope)
+                ->Disabled(true)
+                ->Submenu(StrL("More commands"), commands);
+        self->menu = menu->state;
+        self->more = more->state;
+        self->nope = nope->state;
+        self->commands = commands->state;
+        El* tab = Div(cx->a)->Id(StrL("tab"))->H(80)->W(320);
+        return Div(cx->a)->SizeFull()->Child(ContextMenu::New(cx, StrL("wrap"))
+                                                 ->Child(tab)
+                                                 ->Menu(menu)
+                                                 ->IntoEl());
+    }
+};
+
+static Point MenuRowPoint(Bounds box, int ix) {
+    // p_1 and a 26px row with a 2px gap. The first row's centre is 17px
+    // in, and each following row is 28px further.
+    return {box.x + 24, box.y + 17 + ix * 28.f};
+}
+
+static void ActivatingASubmenuEntersItWithoutDismissingItsParent() {
+    App* app = TestAppNew();
+    Entity<SubmenuActivationMenu> view = EntityNew<SubmenuActivationMenu>(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    RightClickAt(win, {40, 40});
+    SubmenuActivationMenu* self = view.Get(app);
+    PopupMenuState* menu = self->menu.Get(app);
+    PopupMenuState* more = self->more.Get(app);
+    utassert(menu && menu->open && menu->rows.len == 5);
+    utassert(menu->rows[2].submenu && menu->rows[2].submenuSelect == 0);
+    utassert(menu->rows[4].submenu && menu->rows[4].submenuSelect == 1);
+
+    TestSimulateKeystrokes(win, "down down");
+    utassert(menu->selected == 2);
+    TestSimulateKeystrokes(win, "enter");
+    utassert(menu->open && menu->openSubmenu == 2);
+    utassert(more && more->selected == 0);
+    utassert(FocusHandleContainsFocused(win, more->focus));
+    utassert(!self->saved);
+    TestSimulateKeystrokes(win, "enter");
+    utassert(self->saved);
+    utassert(!menu->open);
+
+    self->saved = false;
+    RightClickAt(win, {40, 40});
+    utassert(menu->open);
+    Bounds box = menu->bounds;
+    utassert(box.h > 80);
+    TestSimulateClick(win, MenuRowPoint(box, 2));
+    utassert(menu->open && menu->openSubmenu == 2);
+    utassert(more->selected == 0);
+    utassert(FocusHandleContainsFocused(win, more->focus));
+    utassert(!self->saved);
+    TestSimulateKeystrokes(win, "escape");
+    TestSimulateKeystrokes(win, "escape");
+
+    RightClickAt(win, {40, 40});
+    box = menu->bounds;
+    TestSimulateMouseMove(win, MenuRowPoint(box, 0));
+    utassert(menu->selected == 0);
+    TestSimulateKeystrokes(win, "enter");
+    utassert(menu->open && !self->saved);
+
+    TestSimulateClick(win, MenuRowPoint(box, 4));
+    PopupMenuState* commands = self->commands.Get(app);
+    utassert(menu->openSubmenu == 4);
+    utassert(commands && commands->selected == 1);
+    utassert(FocusHandleContainsFocused(win, commands->focus));
+    Bounds child = commands->bounds;
+    utassert(child.w > 20);
+    TestSimulateMouseMove(win, MenuRowPoint(child, 0));
+    utassert(commands->selected == 0);
+    TestSimulateKeystrokes(win, "enter");
+    utassert(menu->open && menu->openSubmenu == 4);
+    utassert(!self->saved);
+
+    PopupMenuState* nope = self->nope.Get(app);
+    TestSimulateMouseMove(win, MenuRowPoint(box, 3));
+    utassert(menu->selected == 3 && menu->openSubmenu == 3);
+    utassert(nope && !FocusHandleContainsFocused(win, nope->focus));
+    TestSimulateKeystrokes(win, "enter");
+    utassert(menu->open);
+    utassert(!FocusHandleContainsFocused(win, nope->focus));
+    utassert(!self->saved);
+    TestAppFree(app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     TheWalkStepsOverWhatCannotBeClicked();
@@ -1224,4 +1353,5 @@ void TestPopupMenu() {
     RootPopupPropagatesUnusedHorizontalActionsToTheMenuBar();
     OpenWithoutDismissReleasesTheMenu();
     CustomMenuItemPreservesMouseEvent();
+    ActivatingASubmenuEntersItWithoutDismissingItsParent();
 }

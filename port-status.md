@@ -16,8 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ec89cfc36404667b7947aeb3d40b1c2859d729dd` (2026-10-28,
-icon: Let the application resolve the path every icon is drawn from (#3633)).
+Processed through `18be16887bc2cb462f7b0a33c18bf6183344e7de` (2026-10-28,
+menu: Make submenu rows activatable (#3714)).
+An enabled submenu row is activated by click or Enter: the child is
+focused, its first clickable row is selected, and the parent stays open.
+A disabled row can be hovered and shown, and confirmation refuses it.
+Up and down from an empty selection land on a clickable row.
 `SetIconResolver` rewrites the asset path of every path icon as it is
 drawn, including a checkbox, radio and questionnaire check. `Icon::data`
 and an empty path are not asked. No resolver leaves every path unchanged.
