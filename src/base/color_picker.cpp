@@ -82,7 +82,8 @@ Str ColorPickerHexString(Arena* a, uint32_t color) {
 }
 
 // write_hex_input: the field always shows what the picker is showing, unless
-// the field is what is being typed into.
+// the field is what is being typed into. InputSetValue emits no change, so
+// nothing feeds back and the next typed edit still previews.
 static void WriteHexInput(ColorPickerState* s, uint32_t color, bool has) {
     if (s->hexInput.focused) {
         return;

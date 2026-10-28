@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "25aae91a1df23bc333d3594ec59676722e983939",
+  sha: "ecd2c8ff42439b73b87a238d02db10fe20376740",
   date: "2026-10-23",
-  subject: "text: Add linked plain text and tracked text decorations (#2842)",
+  subject: "color_picker: Keep the first hex edit after a programmatic value (#3641)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

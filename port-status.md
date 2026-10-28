@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `25aae91a1df23bc333d3594ec59676722e983939` (2026-10-23,
-text: Add linked plain text and tracked text decorations (#2842)).
-Plain text can carry explicit link ranges, and a textarea keeps the
-same tracked decoration collections an editor does. Links underline at
-rest unless a style turns that off; a hover underline is off until asked.
+Processed through `ecd2c8ff42439b73b87a238d02db10fe20376740` (2026-10-23,
+color_picker: Keep the first hex edit after a programmatic value (#3641)).
+A programmatic colour writes the hex field without a change event, and
+the next typed edit still previews. This tree never held the flag that
+swallowed that edit.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

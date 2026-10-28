@@ -289,8 +289,38 @@ static void AClickAnywhereOnTheColorSelectOpensThePicker() {
     delete win;
 }
 
+// color_picker.rs first_hex_edit_after_set_value_previews: set_value writes
+// the field and emits no change. The typed edit that follows (new text and
+// its change event) still previews.
+static void FirstHexEditAfterSetValuePreviews() {
+    App app = {};
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+
+    Entity<ColorPickerState> picker = ColorPickerStateNew(&cx);
+    ColorPickerState* state = picker.Get(&app);
+    utassert(state);
+    // hsla(0, 1, 0.5, 1) is pure red.
+    ColorPickerSetValue(state, 0xff0000);
+
+    InputSetValue(&state->hexInput, StrL("#00FF00"));
+    InputEvent change = {};
+    ColorPickerState::OnHexChange(state, &cx, &change);
+
+    uint32_t shown = 0;
+    utassert(ColorPickerShown(state, &shown) && shown == 0x00ff00);
+    utassert(StrEqI(ColorPickerHexString(arena, shown), "#00FF00"));
+
+    EntityDropAll(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestColorPicker() {
     TestSuite("color_picker");
+    FirstHexEditAfterSetValuePreviews();
     APreviewHidesTheValueWithoutReplacingIt();
     ClearingAPreviewOfTheCommittedColorChangesNothing();
     CommittingCarriesThePreviewWithIt();
