@@ -403,9 +403,10 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
             RectF border = cs.border.ResolveOrZero(containerWidth, calc);
             boxSizingAdjustment = Main((padding + border).SumAxes(), dir);
         }
-        Optf flexBasis =
-            MaybeAdd(cs.flexBasis.MaybeResolve(percentResolutionMainSize, calc),
-                     boxSizingAdjustment);
+        Dimension flexBasisStyle = cs.flexBasis;
+        Optf flexBasis = MaybeAdd(
+            flexBasisStyle.MaybeResolve(percentResolutionMainSize, calc),
+            boxSizingAdjustment);
 
         // A. If the item has a definite used flex basis, that is the flex base
         //    size.
@@ -415,11 +416,47 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
         //    against the aspect ratio in GenerateAnonymousFlexItems, so using
         //    the main size covers this.
         Optf mainSize = Main(child.size, dir);
-        Optf definiteBasis = Or(flexBasis, mainSize);
-        if (IsSome(definiteBasis)) {
+        Optf mainStretch = MaybeSub(percentResolutionMainSize,
+                                    Some(MainAxisSum(child.margin, dir)));
+        // A flex-basis keyword replaces the main size. `content`, and a
+        // keyword that cannot be resolved here, measure the item and ignore
+        // the main size. A length or auto flex basis falls through to the
+        // main size, including a sizing keyword on width or height.
+        bool measureBasis = true;
+        AvailableSpace keywordMain = AvailableSpace::MaxContent();
+        bool hasKeywordMain = false;
+        if (flexBasisStyle.IsContent()) {
+            // Measure under the default constraint. The width/height is not
+            // the flex base size.
+        } else if (flexBasisStyle.IsSizingKeyword()) {
+            SizingKeywordResolution keyword = ResolveSizingKeyword(
+                flexBasisStyle, mainStretch, percentResolutionMainSize);
+            if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
+                child.flexBasisIsDefinite = true;
+                child.flexBasis = keyword.exact;
+                measureBasis = false;
+            } else if (keyword.isSome) {
+                keywordMain = keyword.measure;
+                hasKeywordMain = true;
+            }
+        } else if (IsSome(Or(flexBasis, mainSize))) {
             child.flexBasisIsDefinite = true;
-            child.flexBasis = definiteBasis;
+            child.flexBasis = Or(flexBasis, mainSize);
+            measureBasis = false;
         } else {
+            SizingKeywordResolution keyword =
+                ResolveSizingKeyword(child.sizeStyle.Main(dir), mainStretch,
+                                     percentResolutionMainSize);
+            if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
+                child.flexBasisIsDefinite = true;
+                child.flexBasis = keyword.exact;
+                measureBasis = false;
+            } else if (keyword.isSome) {
+                keywordMain = keyword.measure;
+                hasKeywordMain = true;
+            }
+        }
+        if (measureBasis) {
             // An aspect ratio plus a definite cross size makes the base size
             // definite: the child's layout derives it from that cross size.
             if (IsSome(child.aspectRatio) && childCrossSizeIsDefinite &&
@@ -429,36 +466,24 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
             // C is covered by E below, which passes the available space
             // constraint through to the child.
             // D would need vertical writing modes.
-            // A main-size keyword either is the flex base size (stretch) or
-            // picks the available space the item is measured under.
-            Optf mainStretch = MaybeSub(percentResolutionMainSize,
-                                        Some(MainAxisSum(child.margin, dir)));
-            SizingKeywordResolution keyword =
-                ResolveSizingKeyword(child.sizeStyle.Main(dir), mainStretch,
-                                     percentResolutionMainSize);
-            if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
-                child.flexBasisIsDefinite = true;
-                child.flexBasis = keyword.exact;
-            } else {
-                // E. Size the item into the available space using its used flex
-                //    basis in place of its main size, treating `content` as
-                //    max-content.
-                AvailableSpace mainAvailable =
-                    availableSpace.Main(dir)
-                                .kind == AvailableSpace::Kind::MinContent
-                        ? AvailableSpace::MinContent()
-                        : AvailableSpace::MaxContent();
-                if (keyword.isSome) {
-                    mainAvailable = keyword.measure;
-                }
-                SizeAvail childAvailableSpace = SizeAvail::MaxContent();
-                childAvailableSpace.SetMain(dir, mainAvailable);
-                childAvailableSpace.SetCross(dir, crossAxisAvailableSpace);
-                child.flexBasis = tree->MeasureChildSize(
-                    child.node, childKnownDimensions, childParentSize,
-                    childAvailableSpace, SizingMode::ContentSize, MainAxis(dir),
-                    LineBool::False());
+            // E. Size the item into the available space using its used flex
+            //    basis in place of its main size, treating `content` as
+            //    max-content.
+            AvailableSpace mainAvailable =
+                availableSpace.Main(dir)
+                            .kind == AvailableSpace::Kind::MinContent
+                    ? AvailableSpace::MinContent()
+                    : AvailableSpace::MaxContent();
+            if (hasKeywordMain) {
+                mainAvailable = keywordMain;
             }
+            SizeAvail childAvailableSpace = SizeAvail::MaxContent();
+            childAvailableSpace.SetMain(dir, mainAvailable);
+            childAvailableSpace.SetCross(dir, crossAxisAvailableSpace);
+            child.flexBasis = tree->MeasureChildSize(
+                child.node, childKnownDimensions, childParentSize,
+                childAvailableSpace, SizingMode::ContentSize, MainAxis(dir),
+                LineBool::False());
         }
 
         // Floor the flex basis by the padding+border sum, which floors the

@@ -141,6 +141,12 @@ static void TestMaybeResolveDimension() {
     utassert(
         OptfEq(Dimension::Percent(1.0f).MaybeResolve(Some(50.0f), NoCalc()),
                Some(50.0f)));
+
+    // b0bb6afc: content is not a length. Off flex-basis it behaves as auto.
+    utassert(OptfEq(Dimension::Content().MaybeResolve(Some(100.0f), NoCalc()),
+                    None()));
+    utassert(!Dimension::Length(1.0f).IsContent());
+    utassert(Dimension::Content().IsContent());
 }
 
 static void TestMaybeResolveSizeDimension() {
@@ -438,6 +444,16 @@ static void TestCompactLength() {
     utassert(MinTrackSizingFunction::From(Dimension::FitContent()).IsAuto());
     utassert(MinTrackSizingFunction::From(Dimension::MinContent())
                  .IsMinContent());
+
+    // b0bb6afc: content is its own tag. It is not a sizing keyword and not
+    // intrinsic. A grid track cannot express it, so both axes become auto.
+    utassert(CompactLength::Content().Tag() == CompactLength::kContentTag);
+    utassert(CompactLength::Content().IsContent());
+    utassert(!CompactLength::Content().IsSizingKeyword());
+    utassert(!CompactLength::Content().IsIntrinsic());
+    utassert(!CompactLength::Length(1.0f).IsContent());
+    utassert(MaxTrackSizingFunction::From(Dimension::Content()).IsAuto());
+    utassert(MinTrackSizingFunction::From(Dimension::Content()).IsAuto());
 }
 
 // ─── src/tree/taffy_tree.rs ──────────────────────────────────────────────
@@ -490,6 +506,37 @@ static taffy::LayoutOutput KeywordTextMeasure(const taffy::LayoutInput& inputs,
     (void)userData;
     return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
                                     KeywordTextInner, nullptr);
+}
+
+// "XXXX" + ZWSP + "XXXX" from the b0bb6afc flex-basis fixtures: min-content
+// width 40, max-content width 80, content height 20 either way.
+static SizeF ContentTextInner(SizeFOpt known, SizeAvail available, void*) {
+    const float kMinW = 40.0f;
+    const float kMaxW = 80.0f;
+    float width;
+    if (IsSome(known.w)) {
+        width = known.w;
+    } else if (available.width.kind == AvailableSpace::Kind::MinContent) {
+        width = kMinW;
+    } else if (available.width.kind == AvailableSpace::Kind::MaxContent) {
+        width = kMaxW;
+    } else {
+        width = F32Max(kMinW, F32Min(kMaxW, available.width.value));
+    }
+    float height = IsSome(known.h) ? known.h : 20.0f;
+    return {width, height};
+}
+
+static taffy::LayoutOutput ContentTextMeasure(const taffy::LayoutInput& inputs,
+                                              TaffyNodeId node,
+                                              void* nodeContext,
+                                              const taffy::Style* style,
+                                              void* userData) {
+    (void)node;
+    (void)nodeContext;
+    (void)userData;
+    return taffy::ComputeLeafLayout(inputs, *style, taffy::CalcResolver{},
+                                    ContentTextInner, nullptr);
 }
 
 static void AssertBox(const Layout& layout, float x, float y, float w,
@@ -1381,6 +1428,82 @@ static void TestFlexboxLayout() {
         AssertBox(tree.GetLayout(c), 10.0f, 0.0f, 20.0f, 120.0f);
         tree.Free();
     }
+
+    {
+        // flex-basis keywords and content. flex-shrink stays 0 so a
+        // max-content basis can overflow the container. The measure stands
+        // in for "XXXX" + ZWSP + "XXXX" (min 40, max 80, height 20).
+        struct BasisCase {
+            Dimension basis;
+            FlexDirection dir;
+            float rootW;
+            float rootH;
+            float x;
+            float w;
+            float h;
+            bool needsMeasure;
+        };
+        BasisCase cases[] = {
+            {Dimension::MinContent(), FlexDirection::Row, 200.0f, 50.0f, 0.0f,
+             40.0f, 50.0f, true},
+            {Dimension::MinContent(), FlexDirection::Row, 200.0f, 50.0f, 160.0f,
+             40.0f, 50.0f, true},
+            {Dimension::MaxContent(), FlexDirection::Row, 60.0f, 50.0f, 0.0f,
+             80.0f, 50.0f, true},
+            {Dimension::FitContent(), FlexDirection::Row, 60.0f, 50.0f, 0.0f,
+             60.0f, 50.0f, true},
+            {Dimension::Stretch(), FlexDirection::Row, 200.0f, 50.0f, 0.0f,
+             200.0f, 50.0f, false},
+            {Dimension::Content(), FlexDirection::Row, 200.0f, 50.0f, 0.0f,
+             80.0f, 50.0f, true},
+            {Dimension::MinContent(), FlexDirection::Column, 50.0f, 200.0f,
+             0.0f, 50.0f, 20.0f, true},
+            {Dimension::MaxContent(), FlexDirection::Column, 50.0f, 200.0f,
+             0.0f, 50.0f, 20.0f, true},
+            {Dimension::Stretch(), FlexDirection::Column, 50.0f, 200.0f, 0.0f,
+             50.0f, 200.0f, false},
+            {Dimension::Content(), FlexDirection::Column, 50.0f, 200.0f, 0.0f,
+             50.0f, 20.0f, true},
+        };
+        Direction textDir[] = {Direction::Ltr, Direction::Rtl, Direction::Ltr,
+                               Direction::Ltr, Direction::Ltr, Direction::Ltr,
+                               Direction::Ltr, Direction::Ltr, Direction::Ltr,
+                               Direction::Ltr};
+        for (int i = 0; i < 10; i++) {
+            BasisCase c = cases[i];
+            TaffyTree tree;
+            tree.Init();
+            taffy::Style childStyle;
+            childStyle.boxSizing = BoxSizing::ContentBox;
+            childStyle.direction = textDir[i];
+            childStyle.flexShrink = 0.0f;
+            childStyle.flexBasis = c.basis;
+            // content ignores a competing main size. The other cases leave
+            // that size auto.
+            if (c.basis.IsContent() && c.dir == FlexDirection::Row) {
+                childStyle.size.width = Dimension::Length(30.0f);
+            }
+            if (c.basis.IsContent() && c.dir == FlexDirection::Column) {
+                childStyle.size.height = Dimension::Length(100.0f);
+            }
+            TaffyNodeId child = tree.NewLeaf(childStyle);
+            taffy::Style rootStyle;
+            rootStyle.boxSizing = BoxSizing::ContentBox;
+            rootStyle.direction = textDir[i];
+            rootStyle.flexDirection = c.dir;
+            rootStyle.size = SizeDim::FromLengths(c.rootW, c.rootH);
+            TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+            if (c.needsMeasure) {
+                tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
+                                              ContentTextMeasure, nullptr);
+            } else {
+                tree.ComputeLayout(root, SizeAvail::MaxContent());
+            }
+            AssertBox(tree.GetLayout(root), 0.0f, 0.0f, c.rootW, c.rootH);
+            AssertBox(tree.GetLayout(child), c.x, 0.0f, c.w, c.h);
+            tree.Free();
+        }
+    }
 }
 
 // ─── block end-to-end ────────────────────────────────────────────────────
@@ -1888,6 +2011,27 @@ static void TestBlockLayout() {
         AssertBox(tree.GetLayout(a), 10.0f, 0.0f, 105.0f, 10.0f);
         AssertBox(tree.GetLayout(b), 0.0f, 40.0f, 100.0f, 10.0f);
         AssertBox(tree.GetLayout(c), 10.0f, 0.0f, 20.0f, 120.0f);
+        tree.Free();
+    }
+
+    {
+        // width:content is not a block sizing keyword. It resolves as auto,
+        // so the child stretches to the container.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style childStyle;
+        childStyle.display = taffy::Display::Block;
+        childStyle.boxSizing = BoxSizing::ContentBox;
+        childStyle.size.width = Dimension::Content();
+        childStyle.size.height = Dimension::Length(10.0f);
+        TaffyNodeId child = tree.NewLeaf(childStyle);
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.boxSizing = BoxSizing::ContentBox;
+        rootStyle.size.width = Dimension::Length(100.0f);
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(child), 0.0f, 0.0f, 100.0f, 10.0f);
         tree.Free();
     }
 }

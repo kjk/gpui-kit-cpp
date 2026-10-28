@@ -52,6 +52,8 @@ struct CompactLength {
     // A plain `fit-content` keyword, with no limit argument.
     static constexpr uint64_t kFitContentKeywordTag = 0x27;
     static constexpr uint64_t kStretchTag = 0x2f;
+    // Valid for flex-basis. Anywhere else it behaves as auto.
+    static constexpr uint64_t kContentTag = 0x37;
 
     static constexpr uint64_t kTagMask = 0xff;
     static constexpr uint64_t kCalcTagMask = 0x07;
@@ -87,6 +89,7 @@ struct CompactLength {
                t == kFitContentPercentTag || t == kStretchTag;
     }
     bool IsStretch() const { return Tag() == kStretchTag; }
+    bool IsContent() const { return Tag() == kContentTag; }
     bool IsMaxOrFitContent() const {
         uint64_t t = Tag();
         return t == kMaxContentTag || t == kFitContentPxTag ||
@@ -144,6 +147,8 @@ struct CompactLength {
     // The stretch-fit size: the size the box takes if it fills the available
     // space. https://www.w3.org/TR/css-sizing-4/#stretch-fit-sizing
     static CompactLength Stretch() { return FromTag(kStretchTag); }
+    // Automatic size from the box's content. Only flex-basis honors it.
+    static CompactLength Content() { return FromTag(kContentTag); }
     static CompactLength Zero() { return Length(0.0f); }
     // The low 3 bits are the tag and must be zero; callers align their calc
     // nodes. Rust asserts the same thing.
@@ -248,6 +253,9 @@ struct Dimension {
         return {CompactLength::FitContentPercent(limit)};
     }
     static Dimension Stretch() { return {CompactLength::Stretch()}; }
+    // Automatic size from the box's content. Only flex-basis honors it;
+    // everywhere else this resolves as auto.
+    static Dimension Content() { return {CompactLength::Content()}; }
     static Dimension Calc(const void* p) { return {CompactLength::Calc(p)}; }
     static Dimension Zero() { return {CompactLength::Zero()}; }
     static Dimension From(LengthPercentage lp) { return {lp.raw}; }
@@ -256,6 +264,7 @@ struct Dimension {
     bool IsAuto() const { return raw.IsAuto(); }
     bool IsSizingKeyword() const { return raw.IsSizingKeyword(); }
     bool IsStretch() const { return raw.IsStretch(); }
+    bool IsContent() const { return raw.IsContent(); }
     uint64_t Tag() const { return raw.Tag(); }
     float Value() const { return raw.Value(); }
     // Rust's `MaybeResolve<Option<f32>>` for a single dimension.
@@ -1133,7 +1142,7 @@ struct MaxTrackSizingFunction {
     // track sizing functions. Those become auto.
     static MaxTrackSizingFunction From(Dimension v) {
         if (v.raw.Tag() == CompactLength::kFitContentKeywordTag ||
-            v.raw.IsStretch()) {
+            v.raw.IsStretch() || v.raw.IsContent()) {
             return Auto();
         }
         return {v.raw};
@@ -1187,7 +1196,8 @@ struct MinTrackSizingFunction {
         uint64_t t = v.raw.Tag();
         if (t == CompactLength::kFitContentPxTag ||
             t == CompactLength::kFitContentPercentTag ||
-            t == CompactLength::kFitContentKeywordTag || v.raw.IsStretch()) {
+            t == CompactLength::kFitContentKeywordTag || v.raw.IsStretch() ||
+            v.raw.IsContent()) {
             return Auto();
         }
         return {v.raw};

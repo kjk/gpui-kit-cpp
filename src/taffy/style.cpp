@@ -30,6 +30,7 @@ static Optf MaybeResolveRaw(CompactLength raw, Optf context,
         case CompactLength::kFitContentPercentTag:
         case CompactLength::kFitContentKeywordTag:
         case CompactLength::kStretchTag:
+        case CompactLength::kContentTag:
             return None();
         default:
             break;
