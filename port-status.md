@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f07fa6ac1faca1d3f11bc16b98dabd66e848e2d0` (2026-10-26,
-release: Defer source-breaking changes from v0.8.1).
-Scrollbar idle stays 2s and exit 500ms as constants. Links are always
-underlined. A textarea has no decoration extras, and linked text is
-gone. Image source, list and blockquote refinements, and selection stay.
+Processed through `99576db58ec8103417c41a092e891b4022d24e7e` (2026-10-26,
+Bump v0.8.1). Workspace crates are 0.8.1. Scroll events and
+`secondary-` chords keep their C++ names; the host still resolves
+secondary as Command on macOS and Control elsewhere. Scrollbar idle
+stays 2s and exit 500ms as constants. Links are always underlined. A
+textarea has no decoration extras, and linked text is gone. Image
+source, list and blockquote refinements, and selection stay.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 
