@@ -1643,6 +1643,15 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
         Some(paddingBorderSize.h));
     SizeF finalOuterSize = {containerOuterWidth, containerOuterHeight};
 
+    // CSS2 §8.3.1: the bottom margin of a block with height: auto collapses
+    // with its last in-flow child's bottom margin only if min-height is less
+    // than the used height. When min-height determines the used height, the
+    // last child's bottom margin stays inside the box. max-height does not.
+    bool heightConstrainedByMinHeight = IsSome(minSize.h) && minSize.h > 0.0f &&
+                                        minSize.h >= containerOuterHeight;
+    bool ownBottomMarginCollapsesWithChildren =
+        ownMarginsCollapseWithChildren.end && !heightConstrainedByMinHeight;
+
     // Apply align-content to the in-flow non-floated items. Block layout
     // treats the whole stack of in-flow children as one alignment subject, so
     // the distribution keywords must take the single-subject fallback
@@ -1716,7 +1725,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
             : CollapsibleMarginSet::FromMargin(UnwrapOr(
                   rawMargin.MaybeResolve(parentSize.w, calc).top, 0.0f));
     output.bottomMargin =
-        ownMarginsCollapseWithChildren.end
+        ownBottomMarginCollapsesWithChildren
             ? inFlow.lastChildBottomMarginSet
             : CollapsibleMarginSet::FromMargin(UnwrapOr(
                   rawMargin.MaybeResolve(parentSize.w, calc).bottom, 0.0f));

@@ -1021,6 +1021,125 @@ static void TestBlockLayout() {
         utassertnear(tree.GetLayout(c1).location.y, 31.0f);
         tree.Free();
     }
+
+    {
+        // block_margin_y_last_child_collapse_blocked_by_min_height.
+        // min-height determines the used height, so the last child's bottom
+        // margin stays inside and the parent's own 10px margin is what
+        // separates it from the next sibling.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style innerStyle;
+        innerStyle.display = taffy::Display::Block;
+        innerStyle.size.height = Dimension::Length(10.0f);
+        innerStyle.margin.bottom = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId inner = tree.NewLeaf(innerStyle);
+
+        taffy::Style midStyle;
+        midStyle.display = taffy::Display::Block;
+        midStyle.minSize.height = Dimension::Length(40.0f);
+        midStyle.margin.bottom = LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId midKids[] = {inner};
+        TaffyNodeId mid = tree.NewWithChildren(midStyle, midKids, 1);
+
+        taffy::Style tailStyle;
+        tailStyle.display = taffy::Display::Block;
+        tailStyle.size.height = Dimension::Length(10.0f);
+        TaffyNodeId tail = tree.NewLeaf(tailStyle);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = Dimension::Length(50.0f);
+        TaffyNodeId rootKids[] = {mid, tail};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, rootKids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        utassertnear(tree.GetLayout(root).size.h, 60.0f);
+        utassertnear(tree.GetLayout(mid).location.y, 0.0f);
+        utassertnear(tree.GetLayout(mid).size.h, 40.0f);
+        utassertnear(tree.GetLayout(inner).location.y, 0.0f);
+        utassertnear(tree.GetLayout(inner).size.h, 10.0f);
+        utassertnear(tree.GetLayout(tail).location.y, 50.0f);
+        utassertnear(tree.GetLayout(tail).size.h, 10.0f);
+        tree.Free();
+    }
+
+    {
+        // block_margin_y_last_child_collapse_not_blocked_by_smaller_min_height.
+        // min-height is below the used height, so the last child's 30px
+        // margin still collapses with the parent's 10px margin.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style innerStyle;
+        innerStyle.display = taffy::Display::Block;
+        innerStyle.size.height = Dimension::Length(20.0f);
+        innerStyle.margin.bottom = LengthPercentageAuto::Length(30.0f);
+        TaffyNodeId inner = tree.NewLeaf(innerStyle);
+
+        taffy::Style midStyle;
+        midStyle.display = taffy::Display::Block;
+        midStyle.minSize.height = Dimension::Length(10.0f);
+        midStyle.margin.bottom = LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId midKids[] = {inner};
+        TaffyNodeId mid = tree.NewWithChildren(midStyle, midKids, 1);
+
+        taffy::Style tailStyle;
+        tailStyle.display = taffy::Display::Block;
+        tailStyle.size.height = Dimension::Length(10.0f);
+        TaffyNodeId tail = tree.NewLeaf(tailStyle);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = Dimension::Length(50.0f);
+        TaffyNodeId rootKids[] = {mid, tail};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, rootKids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        utassertnear(tree.GetLayout(root).size.h, 60.0f);
+        utassertnear(tree.GetLayout(mid).location.y, 0.0f);
+        utassertnear(tree.GetLayout(mid).size.h, 20.0f);
+        utassertnear(tree.GetLayout(inner).size.h, 20.0f);
+        utassertnear(tree.GetLayout(tail).location.y, 50.0f);
+        tree.Free();
+    }
+
+    {
+        // block_margin_y_collapse_through_child_blocked_by_parent_min_height.
+        // An empty child's bottom margin collapses through the top, and
+        // min-height keeps it from also collapsing out of the bottom.
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style innerStyle;
+        innerStyle.display = taffy::Display::Block;
+        innerStyle.margin.bottom = LengthPercentageAuto::Length(20.0f);
+        TaffyNodeId inner = tree.NewLeaf(innerStyle);
+
+        taffy::Style midStyle;
+        midStyle.display = taffy::Display::Block;
+        midStyle.minSize.height = Dimension::Length(30.0f);
+        TaffyNodeId midKids[] = {inner};
+        TaffyNodeId mid = tree.NewWithChildren(midStyle, midKids, 1);
+
+        taffy::Style tailStyle;
+        tailStyle.display = taffy::Display::Block;
+        tailStyle.size.height = Dimension::Length(10.0f);
+        TaffyNodeId tail = tree.NewLeaf(tailStyle);
+
+        taffy::Style rootStyle;
+        rootStyle.display = taffy::Display::Block;
+        rootStyle.size.width = Dimension::Length(50.0f);
+        TaffyNodeId rootKids[] = {mid, tail};
+        TaffyNodeId root = tree.NewWithChildren(rootStyle, rootKids, 2);
+        tree.ComputeLayout(root, SizeAvail::MaxContent());
+
+        utassertnear(tree.GetLayout(root).size.h, 60.0f);
+        utassertnear(tree.GetLayout(mid).location.y, 20.0f);
+        utassertnear(tree.GetLayout(mid).size.h, 30.0f);
+        utassertnear(tree.GetLayout(inner).location.y, 0.0f);
+        utassertnear(tree.GetLayout(inner).size.h, 0.0f);
+        utassertnear(tree.GetLayout(tail).location.y, 50.0f);
+        tree.Free();
+    }
 }
 
 // ─── src/compute/grid/explicit_grid.rs ───────────────────────────────────
