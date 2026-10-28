@@ -10,139 +10,190 @@ namespace taffy {
 // ─── compute_root_layout ─────────────────────────────────────────────────
 
 void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
-    SizeFOpt knownDimensions = SizeFOptNone();
     CalcResolver calc = tree->calc;
+    Position rootPosition = tree->GetStyle(root).position;
+    Direction rootDirection = tree->GetStyle(root).direction;
+    SizeFOpt icbSize = availableSpace.IntoOptions();
+    // An absolute or fixed root is positioned against the viewport. Without a
+    // definite viewport in both axes there is no initial containing block, and
+    // the root is laid out in flow instead.
+    bool oofRoot =
+        IsOutOfFlow(rootPosition) && IsSome(icbSize.w) && IsSome(icbSize.h);
 
-    {
-        SizeFOpt parentSize = availableSpace.IntoOptions();
-        const Style& style = tree->GetStyle(root);
-
-        if (style.IsBlock()) {
-            Optf aspectRatio = style.aspectRatio;
-            RectF margin = style.margin.ResolveOrZero(parentSize.w, calc);
-            RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
-            RectF border = style.border.ResolveOrZero(parentSize.w, calc);
-            SizeF paddingBorderSize = (padding + border).SumAxes();
-            SizeF boxSizingAdjustment = style.boxSizing == BoxSizing::ContentBox
-                                            ? paddingBorderSize
-                                            : SizeF::Zero();
-
-            SizeFOpt minSize = MaybeAdd(
-                MaybeApplyAspectRatio(
-                    style.minSize.MaybeResolve(parentSize, calc), aspectRatio),
-                boxSizingAdjustment);
-            SizeFOpt maxSize = MaybeAdd(
-                MaybeApplyAspectRatio(
-                    style.maxSize.MaybeResolve(parentSize, calc), aspectRatio),
-                boxSizingAdjustment);
-            SizeFOpt clampedStyleSize = MaybeClamp(
-                MaybeAdd(
-                    MaybeApplyAspectRatio(
-                        style.size.MaybeResolve(parentSize, calc), aspectRatio),
-                    boxSizingAdjustment),
-                minSize, maxSize);
-
-            // If both min and max are set in an axis and max <= min, that
-            // determines the size in that axis.
-            SizeFOpt minMaxDefiniteSize = SizeFOptNone();
-            if (IsSome(minSize.w) && IsSome(maxSize.w) &&
-                maxSize.w <= minSize.w) {
-                minMaxDefiniteSize.w = minSize.w;
-            }
-            if (IsSome(minSize.h) && IsSome(maxSize.h) &&
-                maxSize.h <= minSize.h) {
-                minMaxDefiniteSize.h = minSize.h;
-            }
-
-            // Block nodes stretch their width to the available space when it
-            // is definite.
-            SizeFOpt availableSpaceBasedSize = SizeFOptNone();
-            availableSpaceBasedSize.w = MaybeSub(
-                availableSpace.width.IntoOption(), margin.HorizontalAxisSum());
-
-            SizeFOpt known = Or(knownDimensions, minMaxDefiniteSize);
-            known = Or(known, clampedStyleSize);
-            known = Or(known, availableSpaceBasedSize);
-            knownDimensions = MaybeMax(known, paddingBorderSize);
-        }
-    }
-
-    LayoutInput rootInput;
-    rootInput.knownDimensions = knownDimensions;
-    rootInput.parentSize = availableSpace.IntoOptions();
-    rootInput.availableSpace = availableSpace;
-    rootInput.sizingMode = SizingMode::InherentSize;
-    rootInput.axis = RequestedAxis::Both;
-    rootInput.runMode = RunMode::PerformLayout;
-    rootInput.verticalMarginsAreCollapsible = LineBool::False();
-    LayoutOutput cachedProbe;
-    // A cached root already recorded its hoisted children, including the
-    // ones this pass adds below. Laying the candidates out again is fine;
-    // appending them again is not.
-    bool rootIsCached = tree->CacheGet(root, rootInput, &cachedProbe);
-
-    LayoutOutput output = tree->PerformChildLayout(
-        root, knownDimensions, availableSpace.IntoOptions(), availableSpace,
-        SizingMode::InherentSize, LineBool::False());
-
-    const Style& style = tree->GetStyle(root);
-    Optf widthOpt = availableSpace.width.IntoOption();
-    RectF padding = style.padding.ResolveOrZero(widthOpt, calc);
-    RectF border = style.border.ResolveOrZero(widthOpt, calc);
-    RectF margin = style.margin.ResolveOrZero(widthOpt, calc);
-    // A node that scrolls vertically needs horizontal space reserved, hence
-    // the transposed axes.
-    SizeF scrollbarSize = {
-        style.overflow.y == Overflow::Scroll ? style.scrollbarWidth : 0.0f,
-        style.overflow.x == Overflow::Scroll ? style.scrollbarWidth : 0.0f};
-    // The root's margin box sits at the origin of the initial containing
-    // block. RTL shifts it so the margin edge still meets the viewport.
-    PointF location = {margin.left, margin.top};
-    if (IsRtl(style.direction) && IsSome(widthOpt)) {
-        location.x = widthOpt - output.size.w - margin.right;
-    }
-
+    bool rootIsCached = false;
     Layout layout;
-    layout.order = 0;
-    layout.location = location;
-    layout.size = output.size;
-    layout.scrollableOverflowRect = output.scrollableOverflowRect;
-    layout.scrollbarSize = scrollbarSize;
-    layout.padding = padding;
-    layout.border = border;
-    // TODO(taffy): support auto margins for the root node?
-    layout.margin = margin;
-    tree->SetUnroundedLayout(root, layout);
+    OofCandidates candidates;
 
-    // A static root's own pass claims nothing, so absolute and fixed boxes
-    // are still on `output`. Their containing block is the viewport, anchored
-    // at the canvas origin, not the root's border box. An indefinite axis
-    // falls back to the root's padding box. Overflow from this pass is not
-    // folded back into the root layout; a positioned root already claimed
-    // its absolutes inside the child pass.
-    if (!output.oofCandidates.IsEmpty()) {
-        RectF areaInset = border;
-        areaInset.right += scrollbarSize.w;
-        areaInset.bottom += scrollbarSize.h;
-        SizeF rootPaddingBox = output.size - areaInset.SumAxes();
+    if (oofRoot) {
+        OofCandidate self;
+        self.node = root;
+        self.order = 0;
+        self.position = rootPosition;
+        float xAnchor = IsRtl(rootDirection) ? icbSize.w : 0.0f;
+        self.staticX = AxisStaticPosition::FromEdge(
+            xAnchor,
+            IsRtl(rootDirection) ? AxisStaticEdge::End : AxisStaticEdge::Start);
+        self.staticY =
+            AxisStaticPosition::FromEdge(0.0f, AxisStaticEdge::Start);
+        bool scroll = IsScrollContainer(tree->GetStyle(root).overflow.x) ||
+                      IsScrollContainer(tree->GetStyle(root).overflow.y);
+        OofBoxLayout box =
+            LayoutOofBox(tree, self, {icbSize.w, icbSize.h}, {0.0f, 0.0f},
+                         rootDirection, false, root, scroll, &rootIsCached);
+        layout = box.layout;
+        candidates = box.surfaced;
+    } else {
+        SizeFOpt knownDimensions = SizeFOptNone();
+
+        {
+            SizeFOpt parentSize = availableSpace.IntoOptions();
+            const Style& style = tree->GetStyle(root);
+
+            if (style.IsBlock()) {
+                Optf aspectRatio = style.aspectRatio;
+                RectF margin = style.margin.ResolveOrZero(parentSize.w, calc);
+                RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
+                RectF border = style.border.ResolveOrZero(parentSize.w, calc);
+                SizeF paddingBorderSize = (padding + border).SumAxes();
+                SizeF boxSizingAdjustment =
+                    style.boxSizing == BoxSizing::ContentBox ? paddingBorderSize
+                                                             : SizeF::Zero();
+
+                SizeFOpt minSize =
+                    MaybeAdd(MaybeApplyAspectRatio(
+                                 style.minSize.MaybeResolve(parentSize, calc),
+                                 aspectRatio),
+                             boxSizingAdjustment);
+                SizeFOpt maxSize =
+                    MaybeAdd(MaybeApplyAspectRatio(
+                                 style.maxSize.MaybeResolve(parentSize, calc),
+                                 aspectRatio),
+                             boxSizingAdjustment);
+                SizeFOpt clampedStyleSize = MaybeClamp(
+                    MaybeAdd(MaybeApplyAspectRatio(
+                                 style.size.MaybeResolve(parentSize, calc),
+                                 aspectRatio),
+                             boxSizingAdjustment),
+                    minSize, maxSize);
+
+                // If both min and max are set in an axis and max <= min, that
+                // determines the size in that axis.
+                SizeFOpt minMaxDefiniteSize = SizeFOptNone();
+                if (IsSome(minSize.w) && IsSome(maxSize.w) &&
+                    maxSize.w <= minSize.w) {
+                    minMaxDefiniteSize.w = minSize.w;
+                }
+                if (IsSome(minSize.h) && IsSome(maxSize.h) &&
+                    maxSize.h <= minSize.h) {
+                    minMaxDefiniteSize.h = minSize.h;
+                }
+
+                // Block nodes stretch their width to the available space when
+                // it is definite.
+                SizeFOpt availableSpaceBasedSize = SizeFOptNone();
+                availableSpaceBasedSize
+                    .w = MaybeSub(availableSpace.width.IntoOption(),
+                                  margin.HorizontalAxisSum());
+
+                SizeFOpt known = Or(knownDimensions, minMaxDefiniteSize);
+                known = Or(known, clampedStyleSize);
+                known = Or(known, availableSpaceBasedSize);
+                knownDimensions = MaybeMax(known, paddingBorderSize);
+            }
+        }
+
+        LayoutInput rootInput;
+        rootInput.knownDimensions = knownDimensions;
+        rootInput.parentSize = availableSpace.IntoOptions();
+        rootInput.availableSpace = availableSpace;
+        rootInput.sizingMode = SizingMode::InherentSize;
+        rootInput.axis = RequestedAxis::Both;
+        rootInput.runMode = RunMode::PerformLayout;
+        rootInput.verticalMarginsAreCollapsible = LineBool::False();
+        LayoutOutput cachedProbe;
+        // A cached root already recorded its hoisted children, including the
+        // ones this pass adds below. Laying the candidates out again is fine;
+        // appending them again is not.
+        rootIsCached = tree->CacheGet(root, rootInput, &cachedProbe);
+
+        LayoutOutput output = tree->PerformChildLayout(
+            root, knownDimensions, availableSpace.IntoOptions(), availableSpace,
+            SizingMode::InherentSize, LineBool::False());
+
+        const Style& style = tree->GetStyle(root);
+        Optf widthOpt = availableSpace.width.IntoOption();
+        RectF padding = style.padding.ResolveOrZero(widthOpt, calc);
+        RectF border = style.border.ResolveOrZero(widthOpt, calc);
+        RectF margin = style.margin.ResolveOrZero(widthOpt, calc);
+        // A node that scrolls vertically needs horizontal space reserved, hence
+        // the transposed axes.
+        SizeF scrollbarSize = {
+            style.overflow.y == Overflow::Scroll ? style.scrollbarWidth : 0.0f,
+            style.overflow.x == Overflow::Scroll ? style.scrollbarWidth : 0.0f};
+        // The root's margin box sits at the origin of the initial containing
+        // block. RTL shifts it so the margin edge still meets the viewport.
+        PointF location = {margin.left, margin.top};
+        if (IsRtl(style.direction) && IsSome(widthOpt)) {
+            location.x = widthOpt - output.size.w - margin.right;
+        }
+        // A relative root is shifted by its insets, resolved against the
+        // viewport.
+        if (style.position == Position::Relative) {
+            RectFOpt inset = style.inset.MaybeResolveZip(icbSize, calc);
+            Optf negRight = inset.right;
+            if (IsSome(negRight)) {
+                negRight = -negRight;
+            }
+            Optf negBottom = inset.bottom;
+            if (IsSome(negBottom)) {
+                negBottom = -negBottom;
+            }
+            Optf dx = IsRtl(style.direction) ? Or(negRight, inset.left)
+                                             : Or(inset.left, negRight);
+            location.x += UnwrapOr(dx, 0.0f);
+            location.y += UnwrapOr(Or(inset.top, negBottom), 0.0f);
+        }
+
+        layout.order = 0;
+        layout.location = location;
+        layout.size = output.size;
+        layout.scrollableOverflowRect = output.scrollableOverflowRect;
+        layout.scrollbarSize = scrollbarSize;
+        layout.padding = padding;
+        layout.border = border;
+        // TODO(taffy): support auto margins for the root node?
+        layout.margin = margin;
+        tree->SetUnroundedLayout(root, layout);
+        candidates = output.oofCandidates;
+    } // in-flow root
+
+    // Boxes with no nearer containing block resolve against the viewport,
+    // anchored at the canvas origin. An indefinite axis falls back to the
+    // root's padding box. Overflow from this pass is not folded back into
+    // the root layout.
+    if (!candidates.IsEmpty()) {
+        RectF areaInset = layout.border;
+        areaInset.right += layout.scrollbarSize.w;
+        areaInset.bottom += layout.scrollbarSize.h;
+        SizeF rootPaddingBox = layout.size - areaInset.SumAxes();
         SizeF areaSize = rootPaddingBox;
         PointF areaOffset = {areaInset.left, areaInset.top};
-        if (IsSome(widthOpt)) {
-            areaSize.w = F32Max(widthOpt - scrollbarSize.w, 0.0f);
-            areaOffset.x = -location.x;
+        if (IsSome(icbSize.w)) {
+            areaSize.w = F32Max(icbSize.w - layout.scrollbarSize.w, 0.0f);
+            areaOffset.x = -layout.location.x;
         }
-        Optf heightOpt = availableSpace.height.IntoOption();
-        if (IsSome(heightOpt)) {
-            areaSize.h = F32Max(heightOpt - scrollbarSize.h, 0.0f);
-            areaOffset.y = -location.y;
+        if (IsSome(icbSize.h)) {
+            areaSize.h = F32Max(icbSize.h - layout.scrollbarSize.h, 0.0f);
+            areaOffset.y = -layout.location.y;
         }
+        const Style& tailStyle = tree->GetStyle(root);
         Vec<NodeId> hoisted;
         OofCandidates unclaimed;
         RectF overflow = RectF::Zero();
-        bool scroll = IsScrollContainer(style.overflow.x) ||
-                      IsScrollContainer(style.overflow.y);
-        PerformOofLayout(tree, root, output.oofCandidates, areaSize, areaOffset,
-                         style.direction, ContainingBlockClaims::All(), scroll,
+        bool scroll = IsScrollContainer(tailStyle.overflow.x) ||
+                      IsScrollContainer(tailStyle.overflow.y);
+        PerformOofLayout(tree, root, candidates, areaSize, areaOffset,
+                         rootDirection, ContainingBlockClaims::All(), scroll,
                          &hoisted, &unclaimed, &overflow);
         if (!rootIsCached) {
             tree->AddHoistedChildren(root, hoisted);

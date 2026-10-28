@@ -6275,6 +6275,101 @@ static void TestInitialContainingBlock() {
     }
 }
 
+// taffy fb461a78. A relative root is shifted by its insets. An absolute or
+// fixed root with a definite viewport is positioned like any other
+// out-of-flow box. An indefinite viewport leaves that root in flow.
+static void TestRootPositionAndInsets() {
+    TestSuite("taffy root position");
+    SizeAvail viewport = {AvailableSpace::Definite(800.0f),
+                          AvailableSpace::Definite(600.0f)};
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Fixed;
+        root.inset.top = taffy::LengthPercentageAuto::Percent(0.1f);
+        root.inset.right = taffy::LengthPercentageAuto::Length(10.0f);
+        root.size = SizeDim::FromLengths(100.0f, 50.0f);
+        TaffyNodeId node = tree.NewLeaf(root);
+        tree.ComputeLayout(node, viewport);
+        AssertBox(tree.GetLayout(node), 690.0f, 60.0f, 100.0f, 50.0f);
+        tree.ComputeLayout(node, viewport);
+        AssertBox(tree.GetLayout(node), 690.0f, 60.0f, 100.0f, 50.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Fixed;
+        root.inset.top = taffy::LengthPercentageAuto::Length(10.0f);
+        root.inset.left = taffy::LengthPercentageAuto::Length(10.0f);
+        root.size = SizeDim::FromLengths(100.0f, 50.0f);
+        TaffyNodeId node = tree.NewLeaf(root);
+        tree.ComputeLayout(node, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(node), 0.0f, 0.0f, 100.0f, 50.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Relative;
+        root.inset.left = taffy::LengthPercentageAuto::Length(25.0f);
+        root.inset.bottom = taffy::LengthPercentageAuto::Length(15.0f);
+        root.size = SizeDim::FromLengths(100.0f, 50.0f);
+        root.margin.left = taffy::LengthPercentageAuto::Length(10.0f);
+        root.margin.right = taffy::LengthPercentageAuto::Length(10.0f);
+        root.margin.top = taffy::LengthPercentageAuto::Length(10.0f);
+        root.margin.bottom = taffy::LengthPercentageAuto::Length(10.0f);
+        root.border.left = taffy::LengthPercentage::Length(5.0f);
+        root.border.right = taffy::LengthPercentage::Length(5.0f);
+        root.border.top = taffy::LengthPercentage::Length(5.0f);
+        root.border.bottom = taffy::LengthPercentage::Length(5.0f);
+        taffy::Style flow;
+        flow.size.height = taffy::Dimension::Length(10.0f);
+        TaffyNodeId flowNode = tree.NewLeaf(flow);
+        taffy::Style abs = OofLeaf(20.0f, 20.0f);
+        abs.position = taffy::Position::Absolute;
+        abs.inset.right = taffy::LengthPercentageAuto::Length(0.0f);
+        abs.inset.bottom = taffy::LengthPercentageAuto::Length(10.0f);
+        TaffyNodeId absNode = tree.NewLeaf(abs);
+        TaffyNodeId kids[2] = {flowNode, absNode};
+        TaffyNodeId node = tree.NewWithChildren(root, kids, 2);
+        SizeAvail page = {AvailableSpace::Definite(400.0f),
+                          AvailableSpace::Definite(300.0f)};
+        tree.ComputeLayout(node, page);
+        AssertBox(tree.GetLayout(node), 35.0f, -5.0f, 100.0f, 50.0f);
+        AssertBox(tree.GetLayout(flowNode), 5.0f, 5.0f, 90.0f, 10.0f);
+        AssertBox(tree.GetLayout(absNode), 75.0f, 15.0f, 20.0f, 20.0f);
+        tree.Free();
+    }
+    {
+        TaffyTree tree;
+        tree.Init();
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Absolute;
+        root.inset.top = taffy::LengthPercentageAuto::Length(20.0f);
+        root.inset.left = taffy::LengthPercentageAuto::Length(50.0f);
+        root.inset.bottom = taffy::LengthPercentageAuto::Length(40.0f);
+        root.inset.right = taffy::LengthPercentageAuto::Length(30.0f);
+        taffy::Style flow;
+        flow.size.height = taffy::Dimension::Length(10.0f);
+        TaffyNodeId flowNode = tree.NewLeaf(flow);
+        TaffyNodeId node = tree.NewWithChildren(root, &flowNode, 1);
+        SizeAvail page = {AvailableSpace::Definite(400.0f),
+                          AvailableSpace::Definite(300.0f)};
+        tree.ComputeLayout(node, page);
+        AssertBox(tree.GetLayout(node), 50.0f, 20.0f, 320.0f, 240.0f);
+        AssertBox(tree.GetLayout(flowNode), 0.0f, 0.0f, 320.0f, 10.0f);
+        tree.Free();
+    }
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -6293,6 +6388,7 @@ void TestTaffy() {
     TestAbsposAutoMarginNeedsBothInsets();
     TestAbsoluteReplacedDoesNotStretch();
     TestInitialContainingBlock();
+    TestRootPositionAndInsets();
     TestCompactLength();
     TestTaffyTreeBasics();
     TestTaffyTreeHierarchy();

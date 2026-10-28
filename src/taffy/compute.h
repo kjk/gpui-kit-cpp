@@ -34,6 +34,25 @@ void RoundLayout(TaffyTree* tree, NodeId node);
 // Called inside the cache-miss path so a hit already carries the remainder.
 void ComputeOofLayout(TaffyTree* tree, NodeId node, LayoutOutput* output);
 
+// One out-of-flow box, already stored on the node. `surfaced` is translated
+// into the box's border box. `overflowContribution` is that box's scrollable
+// overflow in the positioning area.
+struct OofBoxLayout {
+    Layout layout;
+    OofCandidates surfaced;
+    RectF overflowContribution = RectF::Zero();
+};
+
+// Size and position one out-of-flow box. `resolveGridArea` looks up
+// `gridOwner`'s track snapshot; the root passes false because it is not a grid
+// item of itself. `cacheHit`, when set, records whether the final layout pass
+// was cached.
+OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
+                          SizeF areaSize, PointF areaOffset,
+                          Direction direction, bool resolveGridArea,
+                          NodeId gridOwner, bool isScrollContainer,
+                          bool* cacheHit);
+
 // Lays out `candidates`, appending claimed nodes to `hoisted` and the rest
 // to `unclaimed`. `overflowOut` is the scrollable overflow of the claimed
 // boxes, relative to the positioning area's origin.

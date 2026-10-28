@@ -35,6 +35,225 @@ static PointF ResolveStaticOffset(const OofCandidate& candidate, SizeF size,
                                     margin.bottom)};
 }
 
+OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
+                          SizeF areaSize, PointF areaOffset,
+                          Direction direction, bool resolveGridArea,
+                          NodeId gridOwner, bool isScrollContainer,
+                          bool* cacheHit) {
+    OofBoxLayout result;
+    SizeF usedArea = areaSize;
+    PointF usedOffset = areaOffset;
+    if (resolveGridArea) {
+        RectF paddingBox = {areaOffset.x, areaOffset.x + areaSize.w,
+                            areaOffset.y, areaOffset.y + areaSize.h};
+        RectF gridArea;
+        if (GridOofArea(tree, gridOwner, candidate.node, paddingBox,
+                        &gridArea)) {
+            usedArea = {gridArea.right - gridArea.left,
+                        gridArea.bottom - gridArea.top};
+            usedOffset = {gridArea.left, gridArea.top};
+        }
+    }
+    float areaWidth = usedArea.w;
+    float areaHeight = usedArea.h;
+
+    CalcResolver calc = tree->calc;
+    const Style& cs = tree->GetStyle(candidate.node);
+    Optf aspectRatio = cs.aspectRatio;
+    RectFOpt margin = cs.margin.MaybeResolve(Some(areaWidth), calc);
+    RectF padding = cs.padding.ResolveOrZero(Some(areaWidth), calc);
+    RectF border = cs.border.ResolveOrZero(Some(areaWidth), calc);
+    SizeF paddingBorderSum = (padding + border).SumAxes();
+    SizeF boxSizingAdjustment = cs.boxSizing == BoxSizing::ContentBox
+                                    ? paddingBorderSum
+                                    : SizeF::Zero();
+    RectFOpt inset = cs.inset.MaybeResolveZip(AsOptional(usedArea), calc);
+    Optf left = inset.left;
+    Optf right = inset.right;
+    Optf top = inset.top;
+    Optf bottom = inset.bottom;
+    SizeDim sizeStyle = cs.size;
+    PointOverflow overflow = cs.overflow;
+    Contain contain = cs.contain;
+    float scrollbarWidth = cs.scrollbarWidth;
+
+    SizeFOpt styleSize = MaybeAdd(
+        MaybeApplyAspectRatio(
+            sizeStyle.MaybeResolve(AsOptional(usedArea), calc), aspectRatio),
+        boxSizingAdjustment);
+    SizeFOpt minSize = MaybeMax(
+        Or(MaybeAdd(MaybeApplyAspectRatio(
+                        cs.minSize.MaybeResolve(AsOptional(usedArea), calc),
+                        aspectRatio),
+                    boxSizingAdjustment),
+           AsOptional(paddingBorderSum)),
+        paddingBorderSum);
+    SizeFOpt maxSize = MaybeAdd(
+        MaybeApplyAspectRatio(
+            cs.maxSize.MaybeResolve(AsOptional(usedArea), calc), aspectRatio),
+        boxSizingAdjustment);
+    SizeFOpt knownDimensions = MaybeClamp(styleSize, minSize, maxSize);
+    // An absolute replaced box keeps its intrinsic size. Stretching it
+    // between the insets is only for a non-replaced auto size.
+    bool isReplaced = cs.IsCompressibleReplaced();
+
+    if (sizeStyle.width.IsSizingKeyword() || sizeStyle.height
+                                                 .IsSizingKeyword()) {
+        ResolveAbsoluteSizingKeywords(tree, candidate.node, &knownDimensions,
+                                      sizeStyle, usedArea, inset, margin,
+                                      SizingMode::ContentSize);
+        knownDimensions =
+            MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
+                       minSize, maxSize);
+    }
+
+    if (!isReplaced && !IsSome(knownDimensions.w) && IsSome(left) &&
+        IsSome(right)) {
+        float newWidthRaw =
+            MaybeSub(MaybeSub(areaWidth, margin.left), margin.right) - left -
+            right;
+        knownDimensions.w = Some(F32Max(newWidthRaw, 0.0f));
+        knownDimensions =
+            MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
+                       minSize, maxSize);
+    }
+    if (!isReplaced && !IsSome(knownDimensions.h) && IsSome(top) &&
+        IsSome(bottom)) {
+        float newHeightRaw =
+            MaybeSub(MaybeSub(areaHeight, margin.top), margin.bottom) - top -
+            bottom;
+        knownDimensions.h = Some(F32Max(newHeightRaw, 0.0f));
+        knownDimensions =
+            MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
+                       minSize, maxSize);
+    }
+
+    SizeAvail childAvail = {
+        AvailableSpace::Definite(MaybeClamp(areaWidth, minSize.w, maxSize.w)),
+        AvailableSpace::Definite(MaybeClamp(areaHeight, minSize.h, maxSize.h))};
+
+    SizeF finalSize;
+    if (IsSome(knownDimensions.w) && IsSome(knownDimensions.h)) {
+        finalSize = {knownDimensions.w, knownDimensions.h};
+    } else {
+        SizeF measured = tree->MeasureChildSizeBoth(
+            candidate.node, knownDimensions, AsOptional(usedArea), childAvail,
+            SizingMode::ContentSize, LineBool::False());
+        finalSize = UnwrapOr(knownDimensions, measured);
+    }
+    finalSize = MaybeClamp(finalSize, minSize, maxSize);
+
+    LayoutInput layoutInput;
+    layoutInput.knownDimensions = AsOptional(finalSize);
+    layoutInput.parentSize = AsOptional(usedArea);
+    layoutInput.availableSpace = childAvail;
+    layoutInput.sizingMode = SizingMode::ContentSize;
+    layoutInput.axis = RequestedAxis::Both;
+    layoutInput.runMode = RunMode::PerformLayout;
+    layoutInput.verticalMarginsAreCollapsible = LineBool::False();
+    if (cacheHit) {
+        LayoutOutput probe;
+        *cacheHit = tree->CacheGet(candidate.node, layoutInput, &probe);
+    }
+    LayoutOutput layoutOutput =
+        tree->ComputeChildLayout(candidate.node, layoutInput);
+
+    RectF nonAutoMargin = {
+        IsSome(left) ? UnwrapOr(margin.left, 0.0f) : 0.0f,
+        IsSome(right) ? UnwrapOr(margin.right, 0.0f) : 0.0f,
+        IsSome(top) ? UnwrapOr(margin.top, 0.0f) : 0.0f,
+        IsSome(bottom) ? UnwrapOr(margin.bottom, 0.0f) : 0.0f};
+
+    // Auto margins absorb free space only when both insets on that axis
+    // are set. A single inset leaves them at 0.
+    SizeF freeSpace = {0.0f, 0.0f};
+    if (IsSome(left) && IsSome(right)) {
+        freeSpace.w = usedArea.w - left - right - finalSize.w -
+                      nonAutoMargin.HorizontalAxisSum();
+    }
+    if (IsSome(top) && IsSome(bottom)) {
+        freeSpace.h = usedArea.h - top - bottom - finalSize.h -
+                      nonAutoMargin.VerticalAxisSum();
+    }
+    int autoW = (IsSome(margin.left) ? 0 : 1) + (IsSome(margin.right) ? 0 : 1);
+    int autoH = (IsSome(margin.top) ? 0 : 1) + (IsSome(margin.bottom) ? 0 : 1);
+    SizeF autoMarginSize;
+    if (autoW == 2 && freeSpace.w <= 0.0f) {
+        autoMarginSize.w = 0.0f;
+    } else if (autoW > 0) {
+        autoMarginSize.w = freeSpace.w / (float)autoW;
+    }
+    if (autoH == 2 && freeSpace.h <= 0.0f) {
+        autoMarginSize.h = 0.0f;
+    } else if (autoH > 0) {
+        autoMarginSize.h = freeSpace.h / (float)autoH;
+    }
+    RectF autoMargin = {IsSome(margin.left) ? 0.0f : autoMarginSize.w,
+                        IsSome(margin.right) ? 0.0f : autoMarginSize.w,
+                        IsSome(margin.top) ? 0.0f : autoMarginSize.h,
+                        IsSome(margin.bottom) ? 0.0f : autoMarginSize.h};
+    RectF resolvedMargin = {UnwrapOr(margin.left, autoMargin.left),
+                            UnwrapOr(margin.right, autoMargin.right),
+                            UnwrapOr(margin.top, autoMargin.top),
+                            UnwrapOr(margin.bottom, autoMargin.bottom)};
+
+    PointF staticOffset =
+        ResolveStaticOffset(candidate, finalSize, resolvedMargin);
+    float xOffset;
+    if (IsSome(left) && IsSome(right)) {
+        xOffset = IsRtl(direction)
+                      ? usedArea.w - finalSize.w - right - resolvedMargin.right
+                      : left + resolvedMargin.left;
+    } else if (IsSome(left)) {
+        xOffset = left + resolvedMargin.left;
+    } else if (IsSome(right)) {
+        xOffset = usedArea.w - finalSize.w - right - resolvedMargin.right;
+    } else {
+        xOffset = staticOffset.x - usedOffset.x;
+    }
+    float yLocation;
+    if (IsSome(top)) {
+        yLocation = top + resolvedMargin.top + usedOffset.y;
+    } else if (IsSome(bottom)) {
+        yLocation = usedArea.h - finalSize.h - bottom - resolvedMargin.bottom +
+                    usedOffset.y;
+    } else {
+        yLocation = staticOffset.y;
+    }
+    PointF location = {xOffset + usedOffset.x, yLocation};
+
+    SizeF scrollbarSize = {
+        overflow.y == Overflow::Scroll ? scrollbarWidth : 0.0f,
+        overflow.x == Overflow::Scroll ? scrollbarWidth : 0.0f};
+
+    Layout layout;
+    layout.order = candidate.order;
+    layout.size = finalSize;
+    layout.scrollableOverflowRect = layoutOutput.scrollableOverflowRect;
+    layout.scrollbarSize = scrollbarSize;
+    layout.location = location;
+    layout.padding = padding;
+    layout.border = border;
+    layout.margin = resolvedMargin;
+    tree->SetUnroundedLayout(candidate.node, layout);
+
+    // Anchors stay relative to this box. The caller translates them into its
+    // own border box. The root pass must see them unshifted.
+    if (!layoutOutput.oofCandidates.IsEmpty()) {
+        result.surfaced = layoutOutput.oofCandidates;
+    }
+
+    float relX = location.x - usedOffset.x;
+    PointF relativeLocation = {
+        IsRtl(direction) ? usedArea.w - relX - finalSize.w : relX,
+        location.y - usedOffset.y};
+    result.layout = layout;
+    result.overflowContribution = ComputeScrollableOverflowContribution(
+        relativeLocation, finalSize, layoutOutput.scrollableOverflowRect,
+        overflow, contain, isScrollContainer);
+    return result;
+}
+
 void PerformOofLayout(TaffyTree* tree, NodeId nodeId, OofCandidates candidates,
                       SizeF areaSize, PointF areaOffset, Direction direction,
                       ContainingBlockClaims claims, bool isScrollContainer,
@@ -56,221 +275,27 @@ void PerformOofLayout(TaffyTree* tree, NodeId nodeId, OofCandidates candidates,
         }
     }
 
-    CalcResolver calc = tree->calc;
     int index = 0;
     while (index < len(work)) {
         OofCandidate candidate = work[index];
         index += 1;
         VecAppend(*hoisted, candidate.node);
-
-        SizeF usedArea = areaSize;
-        PointF usedOffset = areaOffset;
-        RectF paddingBox = {areaOffset.x, areaOffset.x + areaSize.w,
-                            areaOffset.y, areaOffset.y + areaSize.h};
-        RectF gridArea;
-        if (GridOofArea(tree, nodeId, candidate.node, paddingBox, &gridArea)) {
-            usedArea = {gridArea.right - gridArea.left,
-                        gridArea.bottom - gridArea.top};
-            usedOffset = {gridArea.left, gridArea.top};
+        OofBoxLayout box =
+            LayoutOofBox(tree, candidate, areaSize, areaOffset, direction, true,
+                         nodeId, isScrollContainer, nullptr);
+        if (!box.surfaced.IsEmpty()) {
+            box.surfaced.Translate(box.layout.location);
         }
-        float areaWidth = usedArea.w;
-        float areaHeight = usedArea.h;
-
-        const Style& cs = tree->GetStyle(candidate.node);
-        Optf aspectRatio = cs.aspectRatio;
-        RectFOpt margin = cs.margin.MaybeResolve(Some(areaWidth), calc);
-        RectF padding = cs.padding.ResolveOrZero(Some(areaWidth), calc);
-        RectF border = cs.border.ResolveOrZero(Some(areaWidth), calc);
-        SizeF paddingBorderSum = (padding + border).SumAxes();
-        SizeF boxSizingAdjustment = cs.boxSizing == BoxSizing::ContentBox
-                                        ? paddingBorderSum
-                                        : SizeF::Zero();
-        RectFOpt inset = cs.inset.MaybeResolveZip(AsOptional(usedArea), calc);
-        Optf left = inset.left;
-        Optf right = inset.right;
-        Optf top = inset.top;
-        Optf bottom = inset.bottom;
-        SizeDim sizeStyle = cs.size;
-        PointOverflow overflow = cs.overflow;
-        Contain contain = cs.contain;
-        float scrollbarWidth = cs.scrollbarWidth;
-
-        SizeFOpt styleSize =
-            MaybeAdd(MaybeApplyAspectRatio(
-                         sizeStyle.MaybeResolve(AsOptional(usedArea), calc),
-                         aspectRatio),
-                     boxSizingAdjustment);
-        SizeFOpt minSize = MaybeMax(
-            Or(MaybeAdd(MaybeApplyAspectRatio(
-                            cs.minSize.MaybeResolve(AsOptional(usedArea), calc),
-                            aspectRatio),
-                        boxSizingAdjustment),
-               AsOptional(paddingBorderSum)),
-            paddingBorderSum);
-        SizeFOpt maxSize =
-            MaybeAdd(MaybeApplyAspectRatio(
-                         cs.maxSize.MaybeResolve(AsOptional(usedArea), calc),
-                         aspectRatio),
-                     boxSizingAdjustment);
-        SizeFOpt knownDimensions = MaybeClamp(styleSize, minSize, maxSize);
-        // An absolute replaced box keeps its intrinsic size. Stretching it
-        // between the insets is only for a non-replaced auto size.
-        bool isReplaced = cs.IsCompressibleReplaced();
-
-        if (sizeStyle.width.IsSizingKeyword() || sizeStyle.height
-                                                     .IsSizingKeyword()) {
-            ResolveAbsoluteSizingKeywords(
-                tree, candidate.node, &knownDimensions, sizeStyle, usedArea,
-                inset, margin, SizingMode::ContentSize);
-            knownDimensions =
-                MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
-                           minSize, maxSize);
-        }
-
-        if (!isReplaced && !IsSome(knownDimensions.w) && IsSome(left) &&
-            IsSome(right)) {
-            float newWidthRaw =
-                MaybeSub(MaybeSub(areaWidth, margin.left), margin.right) -
-                left - right;
-            knownDimensions.w = Some(F32Max(newWidthRaw, 0.0f));
-            knownDimensions =
-                MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
-                           minSize, maxSize);
-        }
-        if (!isReplaced && !IsSome(knownDimensions.h) && IsSome(top) &&
-            IsSome(bottom)) {
-            float newHeightRaw =
-                MaybeSub(MaybeSub(areaHeight, margin.top), margin.bottom) -
-                top - bottom;
-            knownDimensions.h = Some(F32Max(newHeightRaw, 0.0f));
-            knownDimensions =
-                MaybeClamp(MaybeApplyAspectRatio(knownDimensions, aspectRatio),
-                           minSize, maxSize);
-        }
-
-        SizeAvail childAvail = {AvailableSpace::Definite(MaybeClamp(
-                                    areaWidth, minSize.w, maxSize.w)),
-                                AvailableSpace::Definite(MaybeClamp(
-                                    areaHeight, minSize.h, maxSize.h))};
-
-        SizeF finalSize;
-        if (IsSome(knownDimensions.w) && IsSome(knownDimensions.h)) {
-            finalSize = {knownDimensions.w, knownDimensions.h};
-        } else {
-            SizeF measured = tree->MeasureChildSizeBoth(
-                candidate.node, knownDimensions, AsOptional(usedArea),
-                childAvail, SizingMode::ContentSize, LineBool::False());
-            finalSize = UnwrapOr(knownDimensions, measured);
-        }
-        finalSize = MaybeClamp(finalSize, minSize, maxSize);
-
-        LayoutOutput layoutOutput = tree->PerformChildLayout(
-            candidate.node, AsOptional(finalSize), AsOptional(usedArea),
-            childAvail, SizingMode::ContentSize, LineBool::False());
-
-        RectF nonAutoMargin = {
-            IsSome(left) ? UnwrapOr(margin.left, 0.0f) : 0.0f,
-            IsSome(right) ? UnwrapOr(margin.right, 0.0f) : 0.0f,
-            IsSome(top) ? UnwrapOr(margin.top, 0.0f) : 0.0f,
-            IsSome(bottom) ? UnwrapOr(margin.bottom, 0.0f) : 0.0f};
-
-        // Auto margins absorb free space only when both insets on that axis
-        // are set. A single inset leaves them at 0.
-        SizeF freeSpace = {0.0f, 0.0f};
-        if (IsSome(left) && IsSome(right)) {
-            freeSpace.w = usedArea.w - left - right - finalSize.w -
-                          nonAutoMargin.HorizontalAxisSum();
-        }
-        if (IsSome(top) && IsSome(bottom)) {
-            freeSpace.h = usedArea.h - top - bottom - finalSize.h -
-                          nonAutoMargin.VerticalAxisSum();
-        }
-        int autoW =
-            (IsSome(margin.left) ? 0 : 1) + (IsSome(margin.right) ? 0 : 1);
-        int autoH =
-            (IsSome(margin.top) ? 0 : 1) + (IsSome(margin.bottom) ? 0 : 1);
-        SizeF autoMarginSize;
-        if (autoW == 2 && freeSpace.w <= 0.0f) {
-            autoMarginSize.w = 0.0f;
-        } else if (autoW > 0) {
-            autoMarginSize.w = freeSpace.w / (float)autoW;
-        }
-        if (autoH == 2 && freeSpace.h <= 0.0f) {
-            autoMarginSize.h = 0.0f;
-        } else if (autoH > 0) {
-            autoMarginSize.h = freeSpace.h / (float)autoH;
-        }
-        RectF autoMargin = {IsSome(margin.left) ? 0.0f : autoMarginSize.w,
-                            IsSome(margin.right) ? 0.0f : autoMarginSize.w,
-                            IsSome(margin.top) ? 0.0f : autoMarginSize.h,
-                            IsSome(margin.bottom) ? 0.0f : autoMarginSize.h};
-        RectF resolvedMargin = {UnwrapOr(margin.left, autoMargin.left),
-                                UnwrapOr(margin.right, autoMargin.right),
-                                UnwrapOr(margin.top, autoMargin.top),
-                                UnwrapOr(margin.bottom, autoMargin.bottom)};
-
-        PointF staticOffset =
-            ResolveStaticOffset(candidate, finalSize, resolvedMargin);
-        float xOffset;
-        if (IsSome(left) && IsSome(right)) {
-            xOffset = IsRtl(direction) ? usedArea.w - finalSize.w - right -
-                                             resolvedMargin.right
-                                       : left + resolvedMargin.left;
-        } else if (IsSome(left)) {
-            xOffset = left + resolvedMargin.left;
-        } else if (IsSome(right)) {
-            xOffset = usedArea.w - finalSize.w - right - resolvedMargin.right;
-        } else {
-            xOffset = staticOffset.x - usedOffset.x;
-        }
-        float yLocation;
-        if (IsSome(top)) {
-            yLocation = top + resolvedMargin.top + usedOffset.y;
-        } else if (IsSome(bottom)) {
-            yLocation = usedArea.h - finalSize.h - bottom -
-                        resolvedMargin.bottom + usedOffset.y;
-        } else {
-            yLocation = staticOffset.y;
-        }
-        PointF location = {xOffset + usedOffset.x, yLocation};
-
-        SizeF scrollbarSize = {
-            overflow.y == Overflow::Scroll ? scrollbarWidth : 0.0f,
-            overflow.x == Overflow::Scroll ? scrollbarWidth : 0.0f};
-
-        Layout layout;
-        layout.order = candidate.order;
-        layout.size = finalSize;
-        layout.scrollableOverflowRect = layoutOutput.scrollableOverflowRect;
-        layout.scrollbarSize = scrollbarSize;
-        layout.location = location;
-        layout.padding = padding;
-        layout.border = border;
-        layout.margin = resolvedMargin;
-        tree->SetUnroundedLayout(candidate.node, layout);
-
-        if (!layoutOutput.oofCandidates.IsEmpty()) {
-            layoutOutput.oofCandidates.Translate(location);
-            for (int s = 0; s < len(layoutOutput.oofCandidates.inner); s++) {
-                const OofCandidate& surfaced = layoutOutput.oofCandidates
-                                                   .inner[s];
-                if (claims.ForPosition(surfaced.position)) {
-                    VecAppend(work, surfaced);
-                } else {
-                    unclaimed->Push(surfaced);
-                }
+        for (int s = 0; s < len(box.surfaced.inner); s++) {
+            const OofCandidate& surfaced = box.surfaced.inner[s];
+            if (claims.ForPosition(surfaced.position)) {
+                VecAppend(work, surfaced);
+            } else {
+                unclaimed->Push(surfaced);
             }
         }
-
-        float relX = location.x - usedOffset.x;
-        PointF relativeLocation = {
-            IsRtl(direction) ? usedArea.w - relX - finalSize.w : relX,
-            location.y - usedOffset.y};
         absoluteOverflowRect = absoluteOverflowRect
-                                   .Union(ComputeScrollableOverflowContribution(
-                                       relativeLocation, finalSize,
-                                       layoutOutput.scrollableOverflowRect,
-                                       overflow, contain, isScrollContainer));
+                                   .Union(box.overflowContribution);
     }
 
     *overflowOut = absoluteOverflowRect;
