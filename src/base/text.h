@@ -271,6 +271,9 @@ struct MdRun {
     Str href = {};
     // ImageNode::url. An image run carries no other text.
     Str imgSrc = {};
+    // ImageNode::title. Empty is none: a reference image takes the
+    // first definition's title, and an inline image takes its own.
+    Str imgTitle = {};
     // ImageNode::width / height, when the document gave them. 0 is "its own".
     float imgW = 0;
     float imgH = 0;

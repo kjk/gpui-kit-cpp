@@ -639,6 +639,102 @@ static void TestMarkdownImage(Arena* a) {
     utassert(base::StrEq(r->href, StrL("https://x/")));
 }
 
+#if GPUI_MARKDOWN_FULL
+
+// The paragraph that holds the first image run, which is markdown.rs
+// first_paragraph for these fixtures: the image is a direct child.
+static MdNode* ParagraphWithImage(MdNode* doc) {
+    for (MdNode* c = doc ? doc->first : nullptr; c; c = c->next) {
+        if (ImageRunOf(c)) {
+            return c;
+        }
+    }
+    return nullptr;
+}
+
+static int RunCount(MdNode* n) {
+    int count = 0;
+    for (MdRun* r = n ? n->runFirst : nullptr; r; r = r->next) {
+        count++;
+    }
+    return count;
+}
+
+// markdown.rs test_reference_images. Full, collapsed and shortcut
+// references take the definition's destination and title. The span is
+// the reference in the source; offset 0 puts it at the end of "Before ".
+static void TestMarkdownReferenceImages(Arena* a) {
+    const char* references[] = {
+        "![Alt &amp; text][PiCtUrE]",
+        "![picture][]",
+        "![picture]",
+    };
+    const char* alts[] = {"Alt & text", "picture", "picture"};
+    const char* destinations[] = {
+        "https://example.com/image.png",
+        "./image.png",
+        "file:///image.png",
+        "data:image/png;base64,iVBORw0KGgo=",
+    };
+    for (int i = 0; i < 3; i++) {
+        for (const char* destination : destinations) {
+            StrBuilder built(a);
+            built.Append(StrL("Before "));
+            built.Append(Str(references[i]));
+            built.Append(StrL(" after.\n\n[picture]: "));
+            built.Append(Str(destination));
+            built.Append(StrL(" \"Title\"\n"));
+            MdNode* doc = MdParse(a, built.TakeStr());
+            MdNode* p = ParagraphWithImage(doc);
+            utassert(p != nullptr);
+            utassert(RunCount(p) == 3);
+            utassert(base::StrEq(p->runFirst->text, StrL("Before ")));
+            utassert(base::StrEq(p->runLast->text, StrL(" after.")));
+            MdRun* img = ImageRunOf(p);
+            utassert(img != nullptr);
+            utassert(base::StrEq(img->imgSrc, Str(destination)));
+            utassert(base::StrEq(img->text, Str(alts[i])));
+            utassert(base::StrEq(img->imgTitle, StrL("Title")));
+            utassert(img->hasImgSpan);
+            utassert(img->imgSpan.start == 7);
+            utassert(img->imgSpan.end == 7 + (int)strlen(references[i]));
+            utassert(img->imgW == 0 && img->imgH == 0);
+        }
+    }
+}
+
+// markdown.rs test_reference_image_definition_lookup. The first
+// definition wins, including one nested in a blockquote. A link around
+// the image keeps its own url. A reference with no definition stays
+// the source and is not an image.
+static void TestMarkdownReferenceImageDefinitions(Arena* a) {
+    MdNode* nested = MdParse(
+        a, StrL("![alt][Some   LABEL]\n\n> [some label]: first.png\n\n[some "
+                "label]: second.png \"Ignored\"\n"));
+    MdRun* img = ImageRunOf(ParagraphWithImage(nested));
+    utassert(img != nullptr);
+    utassert(base::StrEq(img->imgSrc, StrL("first.png")));
+    utassert(len(img->imgTitle) == 0);
+    utassert(base::StrEq(img->text, StrL("alt")));
+
+    MdNode* linked =
+        MdParse(a, StrL("[picture]: image.png\n\n[![alt][picture]](https://"
+                        "example.com)"));
+    MdRun* linkedImg = ImageRunOf(ParagraphWithImage(linked));
+    utassert(linkedImg != nullptr);
+    utassert(base::StrEq(linkedImg->imgSrc, StrL("image.png")));
+    utassert((linkedImg->marks & MdLink) != 0);
+    utassert(base::StrEq(linkedImg->href, StrL("https://example.com")));
+
+    const char* missing = "![missing][unknown] ![collapsed][] ![shortcut]";
+    MdNode* plain = MdParse(a, StrL("![missing][unknown] ![collapsed][] "
+                                    "![shortcut]"));
+    utassert(TextIs(a, Child(plain, 0), missing));
+    utassert(ImageRunOf(Child(plain, 0)) == nullptr);
+}
+
+#endif // GPUI_MARKDOWN_FULL
+
 // html.rs attr_width_height: the size the tag gives, in pixels. A percentage
 // is not a size this layout can use, so it reads as none.
 static void TestHtmlImage(Arena* a) {
@@ -8379,6 +8475,10 @@ void TestTextView() {
     TestMarkdownHtmlBlock(a);
 #endif
     TestMarkdownImage(a);
+#if GPUI_MARKDOWN_FULL
+    TestMarkdownReferenceImages(a);
+    TestMarkdownReferenceImageDefinitions(a);
+#endif
     TestHtmlBlocks(a);
     TestHtmlInlineMarks(a);
     TestHtmlNestedMarks(a);

@@ -16,17 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0e3ac79eeb7dc96a18d6cbd476f0660cfd10da95` (2026-10-27,
-diff: Add line decorations and interactive gutter markers (#3703)). A
-line decoration paints above the change fill and below the text; the
-last covering one wins, a selected line shows the selection instead,
-and an unset fill is the warning color at 0.2 opacity. A gutter marker
-lane, one row square, sits between the line numbers and the code when
-markers and a renderer are both set. The first marker on a line is
-shown, and a press in the lane does not start a line selection. Rows
-are fill-width, so the lane takes space from the row rather than
-growing a measured content width. Character-range decorations are not
-in this checkin. Scroll events and
+Processed through `c8917c3661ed1090870f403c312b39e0d8a62e0b` (2026-10-27,
+text: Render reference-style Markdown images (#3683)). Definitions are
+collected before inlines are folded, so a reference may precede its
+definition, and the first one wins, including a definition nested in a
+blockquote. The image keeps that destination and title, the alt, and
+the reference's source span. A reference with no definition stays the
+source text. Scroll events and
 `secondary-` chords keep their C++ names. Scrollbar idle stays 2s and
 exit 500ms as constants. Links are always underlined. A textarea has
 no decoration extras, and linked text is gone. Image source, list and

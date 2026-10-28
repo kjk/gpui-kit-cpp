@@ -1147,6 +1147,8 @@ namespace md = markdown;
 struct MdDef {
     Str identifier;
     Str url;
+    // Empty when the definition names no title.
+    Str title;
 };
 
 // Arena::Alloc takes an int byte count. Reject only a shape that cannot be
@@ -1741,7 +1743,7 @@ static void AddText(MdBuild* b, Str s,
 // node.rs InlineNode::image: an image sits in the flow beside the words,
 // carrying the marks in force — an image inside a link is a link.
 static void AddImage(MdBuild* b, Str src, Str alt, float w, float h,
-                     const md::Node* node = nullptr) {
+                     const md::Node* node = nullptr, Str title = {}) {
     if (len(src) <= 0) {
         return;
     }
@@ -1750,6 +1752,7 @@ static void AddImage(MdBuild* b, Str src, Str alt, float w, float h,
     // ImageNode::span, which selected_source_range takes in whole.
     r->hasImgSpan = node && MdNodeSpan(b, node, &r->imgSpan);
     r->imgSrc = src;
+    r->imgTitle = title;
     r->text = alt;
     r->imgW = w;
     r->imgH = h;
@@ -2183,16 +2186,21 @@ static void MdMarked(MdBuild* b, const md::Node* n, uint8_t mark) {
     b->marks = saved;
 }
 
-// The URL a `[text][id]` or `![alt][id]` points at, from the definitions
-// collected below. Empty when the definition is missing, which is what Rust's
-// LinkMark holds until the reference is resolved.
-static Str MdDefUrl(MdBuild* b, Str identifier) {
+// The first `[id]: url` for this identifier. Definitions are collected
+// before any inline is folded, so a reference may precede its definition,
+// and a later duplicate does not replace the first.
+static const MdDef* MdDefFind(MdBuild* b, Str identifier) {
     for (const MdDef& def : b->defs) {
         if (StrEq(def.identifier, identifier)) {
-            return def.url;
+            return &def;
         }
     }
-    return {};
+    return nullptr;
+}
+
+static Str MdDefUrl(MdBuild* b, Str identifier) {
+    const MdDef* def = MdDefFind(b, identifier);
+    return def ? def->url : Str{};
 }
 
 // Whether an inline plugin claims `n`, and what it made of it.
@@ -2316,12 +2324,30 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
         }
         case md::NodeKind::Image:
             AddImage(b, V(b, n, md::NodeStrKind::Url),
-                     V(b, n, md::NodeStrKind::Alt), 0, 0, n);
+                     V(b, n, md::NodeStrKind::Alt), 0, 0, n,
+                     V(b, n, md::NodeStrKind::Title));
             break;
-        case md::NodeKind::ImageReference:
-            AddImage(b, MdDefUrl(b, V(b, n, md::NodeStrKind::Identifier)),
-                     V(b, n, md::NodeStrKind::Alt), 0, 0, n);
+        case md::NodeKind::ImageReference: {
+            // markdown.rs parse_paragraph ImageReference: a definition
+            // resolves to the image. The parser emits the reference even
+            // when nothing defines it, so a miss stays the source the
+            // author wrote. paragraph.text() is that source.
+            const MdDef* def =
+                MdDefFind(b, V(b, n, md::NodeStrKind::Identifier));
+            if (def) {
+                AddImage(b, def->url, V(b, n, md::NodeStrKind::Alt), 0, 0, n,
+                         def->title);
+            } else {
+                Span span;
+                Str raw;
+                if (MdNodeSpan(b, n, &span) && MdSourceSlice(b, span, &raw)) {
+                    Vec<SourceSegment> segments;
+                    MdSourceSegments(b, n, raw, false, segments);
+                    AddText(b, raw, &segments);
+                }
+            }
             break;
+        }
         case md::NodeKind::FootnoteReference: {
             // markdown.rs renders the call as an italic `[id]`, mapped onto
             // its `[^id]`.
@@ -2605,11 +2631,16 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
 // Every link reference definition in the tree, wherever it sits.
 static void MdCollectDefs(MdBuild* b, const md::Node* n) {
     if (n->kind == md::NodeKind::Definition) {
-        MdDef def;
-        def.identifier = V(b, n, md::NodeStrKind::Identifier);
-        def.url = V(b, n, md::NodeStrKind::Url);
-        b->defs.Append(b->a, def);
-        return;
+        // CommonMark keeps the first definition. A later one, including
+        // one that follows a reference, does not replace it.
+        Str id = V(b, n, md::NodeStrKind::Identifier);
+        if (!MdDefFind(b, id)) {
+            MdDef def;
+            def.identifier = id;
+            def.url = V(b, n, md::NodeStrKind::Url);
+            def.title = V(b, n, md::NodeStrKind::Title);
+            b->defs.Append(b->a, def);
+        }
     }
     for (const md::Node* child : md::NodeKids(b->a, n)) {
         MdCollectDefs(b, child);
