@@ -29,6 +29,10 @@ struct ToolbarState {
     bool disabled = false;
 
     static void OnKeyDown(ToolbarState* self, Ctx* cx, const KeyEvent* ev);
+    // on_any_mouse_down: the handle is for containment only. A press on
+    // blank space must not run the window's default, which would blur an
+    // editor. A focusable item takes the press before this runs.
+    static void OnMouseDown(ToolbarState* self, Ctx* cx, const MouseDownEvent*);
 };
 
 // move_focus: step through the window's tab stops, the way Root's focus trap

@@ -64,7 +64,53 @@ Rove RoveOpen(int count, bool disabled = false) {
     return r;
 }
 
+struct ClickView {
+    FocusHandle outside = {};
+    FocusHandle item = {};
+
+    static El* Render(ClickView* self, Ctx* cx) {
+        Toolbar* bar = Toolbar::New(cx, StrL("click-toolbar"));
+        bar->root->FlexRow()->W(100)->H(20);
+        // A click id is what makes the item a hit. FocusOnPress is how a
+        // tracked handle here takes the press; GPUI does that for every
+        // track_focus.
+        bar->Child(Div(cx->a)
+                       ->W(20)
+                       ->H(20)
+                       ->Click(1)
+                       ->TrackFocus(self->item)
+                       ->TabStop(true)
+                       ->FocusOnPress(true));
+        return Div(cx->a)
+            ->Child(Div(cx->a)
+                        ->W(20)
+                        ->H(20)
+                        ->TrackFocus(self->outside)
+                        ->TabStop(true))
+            ->Child(bar->IntoEl());
+    }
+};
+
 } // namespace
+
+// toolbar.rs: clicking_blank_toolbar_space_keeps_focus_outside.
+static void ClickingBlankToolbarSpaceKeepsFocusOutside() {
+    App* app = TestAppNew();
+    Entity<ClickView> view = EntityNew<ClickView>(app);
+    ClickView* v = view.Get(app);
+    v->outside = FocusHandleNew(app);
+    v->item = FocusHandleNew(app);
+    Window* win = TestWindowOpen(app, view);
+    TestFocus(win, v->outside);
+    TestDraw(win);
+    // Blank space to the right of the 20px item, inside the 20px-tall bar.
+    TestSimulateClick(win, {80, 30});
+    utassert(FocusHandleIsFocused(win, v->outside));
+    TestDraw(win);
+    TestSimulateClick(win, {10, 30});
+    utassert(FocusHandleIsFocused(win, v->item));
+    TestAppFree(app);
+}
 
 // toolbar.rs: test_toolbar_builder, test_toolbar_defaults,
 // test_toolbar_group_builder.
@@ -302,6 +348,7 @@ void TestToolbar() {
     AToolbarWithOneItemKeepsFocusOnIt();
     TheToolbarHandleContainsItsItems();
     ADisabledToolbarIgnoresArrowKeys();
+    ClickingBlankToolbarSpaceKeepsFocusOutside();
     RolesAndNames();
     StyledToolbarSizesItsControls();
 }

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "75e146c8cad15980a7fcef6b16daad7b8d801d91",
+  sha: "3b2f7bfd12f9c2ccb77e6828dd6546446c5ca4f0",
   date: "2026-10-24",
-  subject: "command: Pad the empty list only while the empty state shows (#3654)",
+  subject: "toolbar: Keep focus where it was when blank toolbar space is clicked (#3652)",
   crates: {
     "gpui-kit": "0.8.0",
     "gpui-base": "0.8.0",

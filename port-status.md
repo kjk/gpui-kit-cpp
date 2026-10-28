@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `75e146c8cad15980a7fcef6b16daad7b8d801d91` (2026-10-24,
-command: Pad the empty list only while the empty state shows (#3654)).
-An empty command list is padded only while its empty state is shown.
-A search still in flight leaves no blank strip under the query.
+Processed through `3b2f7bfd12f9c2ccb77e6828dd6546446c5ca4f0` (2026-10-24,
+toolbar: Keep focus where it was when blank toolbar space is clicked (#3652)).
+A press on blank toolbar space does not take focus and does not blur
+the editor that had it. A focusable item in the bar still takes the
+press.
 The current update target is
 `c8917c3661ed1090870f403c312b39e0d8a62e0b`.
 

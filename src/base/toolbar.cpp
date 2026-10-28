@@ -40,6 +40,10 @@ void ToolbarState::OnKeyDown(ToolbarState* self, Ctx* cx, const KeyEvent* ev) {
     Notify(cx);
 }
 
+void ToolbarState::OnMouseDown(ToolbarState*, Ctx* cx, const MouseDownEvent*) {
+    WindowPreventDefault(cx);
+}
+
 Toolbar* Toolbar::New(Ctx* cx, Str id) {
     Toolbar* t = ArenaNew<Toolbar>(cx->a);
     t->cx = cx;
@@ -74,7 +78,8 @@ El* Toolbar::IntoEl() {
     }
     return root->Role(AccessibilityRole::Toolbar)
         ->AriaOrientation(AccessibilityOrientation::Horizontal)
-        ->OnKeyDown(ListenTo(state, &ToolbarState::OnKeyDown));
+        ->OnKeyDown(ListenTo(state, &ToolbarState::OnKeyDown))
+        ->OnMouseDown(ListenTo(state, &ToolbarState::OnMouseDown));
 }
 
 ToolbarGroup* ToolbarGroup::New(Ctx* cx, Str id) {
