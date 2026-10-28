@@ -257,6 +257,10 @@ static void TestAlignment() {
     utassert(!(AlignItems{AlignItemsKeyword::Center}).IsSafe());
     utassert(!(AlignItems{AlignItemsKeyword::Baseline}).IsSafe());
     utassert(!(AlignItems{AlignItemsKeyword::Stretch}).IsSafe());
+    utassert(!(AlignItems{AlignItemsKeyword::Normal}).IsSafe());
+    utassert((AlignItems{AlignItemsKeyword::Normal}).IsStretchOrNormal());
+    utassert((AlignItems{AlignItemsKeyword::Stretch}).IsStretchOrNormal());
+    utassert(!(AlignItems{AlignItemsKeyword::Start}).IsStretchOrNormal());
     // A bare keyword carries Default, not Unsafe.
     utassert((AlignItems{}).safety == AlignmentSafety::Default);
     utassert((AlignContent{}).safety == AlignmentSafety::Default);
@@ -404,9 +408,9 @@ static void TestStyleDefaults() {
     utassert(s.minSize == SizeDim::Auto());
     utassert(s.maxSize == SizeDim::Auto());
     utassert(!IsSome(s.aspectRatio));
-    utassert(!s.alignItems.IsSome());
+    utassert(s.alignItems.keyword == taffy::AlignItemsKeyword::Normal);
     utassert(!s.alignSelf.IsSome());
-    utassert(!s.justifyItems.IsSome());
+    utassert(s.justifyItems.keyword == taffy::AlignItemsKeyword::Normal);
     utassert(!s.justifySelf.IsSome());
     utassert(!s.alignContent.IsSome());
     utassert(!s.justifyContent.IsSome());
@@ -1339,8 +1343,7 @@ static void TestTaffyTreeMeasure() {
         taffy::Style rootStyle;
         rootStyle.display = taffy::Display::Flex;
         rootStyle.flexDirection = FlexDirection::Row;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
         rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
         TaffyNodeId kids[] = {childA, childB};
         TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
@@ -1362,8 +1365,7 @@ static void TestTaffyTreeMeasure() {
         taffy::Style rootStyle;
         rootStyle.display = taffy::Display::Flex;
         rootStyle.flexDirection = FlexDirection::Row;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::FlexStart};
         rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
         TaffyNodeId kids[] = {childA, childB};
         TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
@@ -1404,8 +1406,7 @@ static void TestTaffyTreeMeasure() {
             TaffyNodeId c = tree.NewWithChildren(col, &cLeaf, 1);
             taffy::Style rootStyle;
             rootStyle.display = taffy::Display::Flex;
-            rootStyle.alignItems =
-                OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+            rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
             rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
             TaffyNodeId kids[] = {a, b, c};
             TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
@@ -1430,8 +1431,7 @@ static void TestTaffyTreeMeasure() {
         TaffyNodeId c = tree.NewWithChildren(col, &cLeaf, 1);
         taffy::Style rootStyle;
         rootStyle.display = taffy::Display::Flex;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
         rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
         TaffyNodeId kids[] = {a, b, c};
         TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
@@ -1605,8 +1605,7 @@ static void TestFlexboxLayout() {
         rootStyle.size = SizeDim::FromLengths(200.0f, 100.0f);
         rootStyle.justifyContent =
             OptJustifyContent(AlignContent{AlignContentKeyword::Center});
-        rootStyle
-            .alignItems = OptAlignItems(AlignItems{AlignItemsKeyword::Center});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::Center};
         TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 1);
         tree.ComputeLayout(root, SizeAvail::MaxContent());
 
@@ -1830,8 +1829,7 @@ static void TestFlexboxLayout() {
 
         taffy::Style rootStyle;
         rootStyle.boxSizing = BoxSizing::ContentBox;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::FlexStart};
         rootStyle.size = SizeDim::FromLengths(120.0f, 60.0f);
         TaffyNodeId kids[2] = {a, b};
         TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
@@ -1860,8 +1858,7 @@ static void TestFlexboxLayout() {
         TaffyNodeId c = tree.NewLeaf(fitStyle);
         taffy::Style rootStyle;
         rootStyle.boxSizing = BoxSizing::ContentBox;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::FlexStart};
         rootStyle.size.width = Dimension::Length(200.0f);
         TaffyNodeId kids[3] = {a, b, c};
         TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 3);
@@ -2099,8 +2096,7 @@ static void TestFlexNegativeMarginIntrinsic() {
     TaffyNodeId kids[] = {colNode, rowNode, textRowNode, wrapNode};
     taffy::Style rootStyle;
     rootStyle.flexDirection = FlexDirection::Column;
-    rootStyle
-        .alignItems = OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+    rootStyle.alignItems = AlignItems{AlignItemsKeyword::FlexStart};
     TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 4);
     tree.ComputeLayoutWithMeasure(root, SizeAvail::MaxContent(),
                                   SizeMeasureFunction, nullptr);
@@ -2376,8 +2372,7 @@ static void TestFlexBalanceLayout() {
             rootStyle.flexLineCount = 2;
             rootStyle.size = SizeDim::FromLengths(210.0f, 100.0f);
             rootStyle.gap.width = LengthPercentage::Length(10.0f);
-            rootStyle.alignItems =
-                OptAlignItems(AlignItems{AlignItemsKeyword::Start});
+            rootStyle.alignItems = AlignItems{AlignItemsKeyword::Start};
             rootStyle.alignContent =
                 OptAlignContent(AlignContent{AlignContentKeyword::Start});
             TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
@@ -2406,8 +2401,7 @@ static void TestFlexBalanceLayout() {
             rootStyle.flexLineCount = 2;
             rootStyle.size = SizeDim::FromLengths(210.0f, 100.0f);
             rootStyle.gap.width = LengthPercentage::Length(10.0f);
-            rootStyle.alignItems =
-                OptAlignItems(AlignItems{AlignItemsKeyword::Start});
+            rootStyle.alignItems = AlignItems{AlignItemsKeyword::Start};
             rootStyle.alignContent =
                 OptAlignContent(AlignContent{AlignContentKeyword::Start});
             TaffyNodeId root = tree.NewWithChildren(rootStyle, &child, 1);
@@ -3023,8 +3017,7 @@ static void TestBlockScrollBaselines() {
         taffy::Style rootStyle;
         rootStyle.display = taffy::Display::Flex;
         rootStyle.flexDirection = FlexDirection::Row;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
         rootStyle.size = SizeDim::FromLengths(200.0f, 120.0f);
         TaffyNodeId kids[] = {a, b};
         return tree.NewWithChildren(rootStyle, kids, 2);
@@ -3455,8 +3448,7 @@ static void TestBlockJustifySelf() {
                                tree.NewLeaf(plain)};
         taffy::Style root;
         root.display = taffy::Display::Block;
-        root.justifyItems = taffy::OptAlignItems(
-            taffy::AlignItems{taffy::AlignItemsKeyword::End});
+        root.justifyItems = taffy::AlignItems{taffy::AlignItemsKeyword::End};
         root.size = SizeDim::FromLengths(200.0f, 100.0f);
         TaffyNodeId node = tree.NewWithChildren(root, kids, 3);
         tree.ComputeLayout(node, SizeAvail::MaxContent());
@@ -3727,8 +3719,7 @@ static void TestFlexCrossDefinitePercentage() {
         TaffyNodeId item = tree.NewWithChildren(itemStyle, &p, 1);
         taffy::Style rootStyle;
         rootStyle.display = taffy::Display::Flex;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::FlexStart});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::FlexStart};
         rootStyle.size = SizeDim::FromLengths(100.0f, 100.0f);
         TaffyNodeId root = tree.NewWithChildren(rootStyle, &item, 1);
         tree.ComputeLayout(root, SizeAvail::MaxContent());
@@ -3763,8 +3754,7 @@ static void TestFlexReverseBaseline() {
     TaffyNodeId colNode = tree.NewWithChildren(col, colKids, 2);
 
     taffy::Style rootStyle;
-    rootStyle
-        .alignItems = OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+    rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
     rootStyle.size = SizeDim::FromLengths(200.0f, 200.0f);
     TaffyNodeId kids[] = {tallNode, colNode};
     TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
@@ -5144,8 +5134,7 @@ static void TestGridLayout() {
 
         taffy::Style rootStyle;
         rootStyle.display = taffy::Display::Grid;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
         rootStyle.size = SizeDim::FromLengths(120.0f, 100.0f);
         GridTemplateComponent cols[2] = {
             GridTemplateComponent::Single(TrackSizingFunction::Length(60.0f)),
@@ -5255,8 +5244,7 @@ static void TestGridFrContentProportion() {
         gridStyle.gridTemplateColumns = GridTemplateOf(&col, 1);
         TaffyNodeId grid = tree.NewWithChildren(gridStyle, &itemNode, 1);
         taffy::Style flexStyle;
-        flexStyle
-            .alignItems = OptAlignItems(AlignItems{AlignItemsKeyword::Start});
+        flexStyle.alignItems = AlignItems{AlignItemsKeyword::Start};
         flexStyle.size = SizeDim::FromLengths(20.0f, 150.0f);
         TaffyNodeId flex = tree.NewWithChildren(flexStyle, &grid, 1);
         tree.ComputeLayout(flex, SizeAvail::MaxContent());
@@ -5315,8 +5303,7 @@ static void TestGridAutoMarginBaseline() {
         TaffyNodeId kids[] = {aNode, bNode, cNode};
         taffy::Style rootStyle;
         rootStyle.display = taffy::Display::Grid;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
         rootStyle.size.width = Dimension::Length(120.0f);
         rootStyle.gridAutoFlow = taffy::GridAutoFlow::Column;
         TrackSizingFunction col = TrackSizingFunction::Length(40.0f);
@@ -5368,8 +5355,7 @@ static void TestGridAutoMarginBaseline() {
 
         taffy::Style rootStyle;
         rootStyle.display = taffy::Display::Grid;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
         rootStyle.size = SizeDim::FromLengths(120.0f, 80.0f);
         GridTemplateComponent cols[2] = {
             GridTemplateComponent::Single(TrackSizingFunction::Length(60.0f)),
@@ -5407,8 +5393,7 @@ static void TestGridAutoMarginBaseline() {
             TaffyNodeId secondNode = tree.NewLeaf(second);
             taffy::Style rootStyle;
             rootStyle.display = taffy::Display::Grid;
-            rootStyle.alignItems =
-                OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+            rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
             TrackSizingFunction col = TrackSizingFunction::Length(40.0f);
             GridTemplateComponent cols[2] = {
                 GridTemplateComponent::Single(col),
@@ -5444,8 +5429,7 @@ static void TestScrollColumnDoesNotShrink() {
     taffy::Style leaf;
     leaf.size = {taffy::Dimension::Percent(1.0f),
                  taffy::Dimension::Length(400.0f)};
-    leaf.alignItems = taffy::OptAlignItems(
-        taffy::AlignItems{taffy::AlignItemsKeyword::Center});
+    leaf.alignItems = taffy::AlignItems{taffy::AlignItemsKeyword::Center};
     leaf.justifyContent = taffy::OptJustifyContent(
         taffy::AlignContent{taffy::AlignContentKeyword::Center});
     TaffyNodeId ta = tree.NewLeaf(textStyle);
@@ -5744,8 +5728,7 @@ static void TestContainment() {
         taffy::Style rootStyle;
         rootStyle.display = taffy::Display::Flex;
         rootStyle.flexDirection = FlexDirection::Row;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
         rootStyle.size = SizeDim::FromLengths(200.0f, 120.0f);
         TaffyNodeId kids[] = {itemA, itemB};
         TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
@@ -5785,8 +5768,7 @@ static void TestContainment() {
         secondStyle.size = SizeDim::FromLengths(50.0f, 20.0f);
         TaffyNodeId second = tree.NewWithChildren(secondStyle, &shortNode, 1);
         taffy::Style rootStyle;
-        rootStyle.alignItems =
-            OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+        rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
         rootStyle.size.width = Dimension::Length(200.0f);
         TaffyNodeId kids[] = {first, second};
         TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
@@ -5818,8 +5800,7 @@ static void TestContainment() {
             taffy::Style gridStyle;
             gridStyle.display = taffy::Display::Grid;
             gridStyle.contain = contain;
-            gridStyle.alignItems =
-                OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+            gridStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
             gridStyle.gridTemplateColumns = SliceDup(arena, cols, 2);
             TaffyNodeId cells[] = {a, b};
             TaffyNodeId grid = tree.NewWithChildren(gridStyle, cells, 2);
@@ -5827,8 +5808,7 @@ static void TestContainment() {
             TaffyNodeId sibling =
                 tree.NewLeafWithContext(taffy::Style{}, &refCtx);
             taffy::Style rootStyle;
-            rootStyle.alignItems =
-                OptAlignItems(AlignItems{AlignItemsKeyword::Baseline});
+            rootStyle.alignItems = AlignItems{AlignItemsKeyword::Baseline};
             rootStyle.size = SizeDim::FromLengths(200.0f, 120.0f);
             TaffyNodeId kids[] = {grid, sibling};
             TaffyNodeId root = tree.NewWithChildren(rootStyle, kids, 2);
@@ -8134,6 +8114,25 @@ static void TestFitContentCalc() {
     }
 }
 
+// taffy e1fd88d2. normal is the items-alignment default, and a flex item
+// treats it as stretch.
+static void TestAlignItemsNormal() {
+    TestSuite("taffy align-items normal");
+    TaffyTree tree;
+    tree.Init();
+    taffy::Style child;
+    child.size.width = taffy::Dimension::Length(10.0f);
+    TaffyNodeId node = tree.NewLeaf(child);
+    taffy::Style root;
+    root.display = taffy::Display::Flex;
+    root.size = SizeDim::FromLengths(100.0f, 50.0f);
+    root.alignItems = AlignItems{AlignItemsKeyword::Normal};
+    TaffyNodeId parent = tree.NewWithChildren(root, &node, 1);
+    tree.ComputeLayout(parent, SizeAvail::MaxContent());
+    utassertnear(tree.GetLayout(node).size.h, 50.0f);
+    tree.Free();
+}
+
 void TestTaffy() {
     TestScrollColumnDoesNotShrink();
     TestMaybeMathOptOpt();
@@ -8144,6 +8143,7 @@ void TestTaffy() {
     TestResolveOrZeroDimension();
     TestResolveOrZeroRect();
     TestAlignment();
+    TestAlignItemsNormal();
     TestFlexDirection();
     TestStyleDefaults();
     TestPositionStaticSticky();

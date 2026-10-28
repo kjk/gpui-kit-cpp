@@ -953,7 +953,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
     Vec<OofCandidate>* oofPool, float containerOuterWidth,
     Optf containerPercentageResolutionHeight, RectF contentBoxInset,
     RectF resolvedContentBoxInset, RectF resolvedBorder, TextAlign textAlign,
-    OptAlignItems justifyItems, Direction direction,
+    AlignItems justifyItems, Direction direction,
     LineBool ownMarginsCollapseWithChildren, bool isScrollContainer,
     BlockContext* blockCtx) {
     CalcResolver calc = tree->calc;
@@ -1150,18 +1150,16 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
         }
 
-        // justify-self on an in-flow block (css-align-3 §6.1.1). auto takes
-        // the container's justify-items. normal (both unset) is the default
-        // block layout. stretch is that same stretch, except it also
-        // stretches tables and replaced boxes.
-        OptAlignItems justifySelf = item.justifySelf.Or(justifyItems);
-        if (justifySelf.IsSome()) {
-            justifySelf.val = ResolveSelfRelative(
-                justifySelf.val, item.direction, direction, true);
-        }
-        bool isStretch = justifySelf.IsSome() &&
-                         justifySelf.val.keyword == AlignItemsKeyword::Stretch;
-        bool hasNonStretchJustify = justifySelf.IsSome() && !isStretch;
+        // justify-self on an in-flow block (css-align-3 §6.1.1). none takes
+        // the container's justify-items. normal is the default block layout.
+        // stretch is that same stretch, except it also stretches tables and
+        // replaced boxes.
+        AlignItems justifySelf =
+            ResolveSelfRelative(item.justifySelf.UnwrapOr(justifyItems),
+                                item.direction, direction, true);
+        bool isStretch = justifySelf.keyword == AlignItemsKeyword::Stretch;
+        bool hasNonStretchJustify =
+            justifySelf.keyword != AlignItemsKeyword::Normal && !isStretch;
 
         SizeFOpt knownDimensions = SizeFOptNone();
         if (!(item.isTable || item.isCompressibleReplaced) || isStretch) {
@@ -1367,9 +1365,8 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                 containerStart = resolvedContentBoxInset.left;
                 freeX = containerInnerWidth - itemOuterWidth;
             }
-            AlignItemsKeyword keyword = justifySelf.val.keyword;
-            if (justifySelf.val.safety == AlignmentSafety::Safe &&
-                freeX < 0.0f) {
+            AlignItemsKeyword keyword = justifySelf.keyword;
+            if (justifySelf.safety == AlignmentSafety::Safe && freeX < 0.0f) {
                 keyword = AlignItemsKeyword::Start;
             }
             float offset;
@@ -1612,7 +1609,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
 
     TextAlign textAlign = style.textAlign;
     OptAlignContent alignContent = style.alignContent;
-    OptAlignItems justifyItems = style.justifyItems;
+    AlignItems justifyItems = style.justifyItems;
 
     // 1. Generate items.
     Vec<BlockItem> items;
@@ -1807,22 +1804,18 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
             candidate.position = item.position;
             // The static-position rectangle spans the content box on the
             // inline axis and is a zero-height line at the child's
-            // hypothetical block position. justify-self: auto takes the
-            // container's justify-items. align-self is not filled from
-            // align-items.
+            // hypothetical block position. justify-self none takes the
+            // container's justify-items. Block containers have no
+            // align-items, so an align-self of none is normal.
             float inlineStart = resolvedContentBoxInset.left;
             float inlineEnd = containerOuterWidth - resolvedContentBoxInset
                                                         .right;
-            OptAlignItems itemJustify = item.justifySelf.Or(justifyItems);
-            if (itemJustify.IsSome()) {
-                itemJustify.val = ResolveSelfRelative(
-                    itemJustify.val, item.direction, direction, true);
-            }
-            OptAlignItems itemAlign = item.alignSelf;
-            if (itemAlign.IsSome()) {
-                itemAlign.val = ResolveSelfRelative(
-                    itemAlign.val, item.direction, direction, false);
-            }
+            AlignItems itemJustify =
+                ResolveSelfRelative(item.justifySelf.UnwrapOr(justifyItems),
+                                    item.direction, direction, true);
+            AlignItems itemAlign = ResolveSelfRelative(
+                item.alignSelf.UnwrapOr(AlignItems{AlignItemsKeyword::Normal}),
+                item.direction, direction, false);
             candidate.staticX = AxisStaticPosition::FromAlignment(
                 itemJustify, inlineStart, inlineEnd, IsRtl(direction));
             candidate.staticY = AxisStaticPosition::FromAlignment(

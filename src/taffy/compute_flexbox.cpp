@@ -185,6 +185,15 @@ Optf Filter(Optf v, bool keep) {
 
 // ─── compute_constants ───────────────────────────────────────────────────
 
+// normal behaves as stretch for flex items.
+// https://www.w3.org/TR/css-align-3/#align-flex
+AlignItems ResolveNormalAlignment(AlignItems alignment) {
+    if (alignment.keyword == AlignItemsKeyword::Normal) {
+        return AlignItems{AlignItemsKeyword::Stretch};
+    }
+    return alignment;
+}
+
 AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
                                SizeFOpt knownDimensions,
                                bool knownDimensionsAreDefiniteW,
@@ -211,8 +220,9 @@ AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
                                     ? paddingBorderSum
                                     : SizeF::Zero();
 
-    c.alignItems = style.alignItems
-                       .UnwrapOr(AlignItems{AlignItemsKeyword::Stretch});
+    // normal behaves as stretch for flex items. Resolved once so a child
+    // whose align-self is auto picks up stretch rather than normal.
+    c.alignItems = ResolveNormalAlignment(style.alignItems);
     c.alignContent = style.alignContent
                          .UnwrapOr(AlignContent{AlignContentKeyword::Stretch});
     c.justifyContent = style.justifyContent;
@@ -360,9 +370,9 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
                              cs.margin.top.IsAuto(), cs.margin.bottom.IsAuto()};
         item.padding = padding;
         item.border = border;
-        item.alignSelf =
-            ResolveSelfRelative(cs.alignSelf.UnwrapOr(c.alignItems),
-                                cs.direction, c.layoutDirection, c.isColumn);
+        item.alignSelf = ResolveSelfRelative(
+            ResolveNormalAlignment(cs.alignSelf.UnwrapOr(c.alignItems)),
+            cs.direction, c.layoutDirection, c.isColumn);
         item.overflow = cs.overflow;
         item.contain = cs.contain;
         item.scrollbarWidth = cs.scrollbarWidth;
@@ -2079,9 +2089,9 @@ void CollectOofCandidates(TaffyTree* tree, NodeId node, const AlgoConstants& c,
             continue;
         }
 
-        AlignItems alignSelf =
-            ResolveSelfRelative(cs.alignSelf.UnwrapOr(c.alignItems),
-                                cs.direction, c.layoutDirection, c.isColumn);
+        AlignItems alignSelf = ResolveSelfRelative(
+            ResolveNormalAlignment(cs.alignSelf.UnwrapOr(c.alignItems)),
+            cs.direction, c.layoutDirection, c.isColumn);
         AlignContentKeyword mainKeyword =
             c.justifyContent
                 .UnwrapOr(AlignContent{AlignContentKeyword::FlexStart})

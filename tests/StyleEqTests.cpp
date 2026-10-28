@@ -93,8 +93,7 @@ static void EveryFieldIsCompared() {
     }
     {
         TStyle s = base;
-        s.alignItems = taffy::OptAlignItems(
-            taffy::AlignItems{taffy::AlignItemsKeyword::Center});
+        s.alignItems = taffy::AlignItems{taffy::AlignItemsKeyword::Center};
         utassert(!(s == base));
     }
     {

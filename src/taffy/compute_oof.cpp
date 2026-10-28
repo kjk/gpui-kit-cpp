@@ -44,18 +44,12 @@ enum class OofAlignment : uint8_t {
     End
 };
 
-static OofAlignment OofAlignmentFromStyle(OptAlignItems alignment,
-                                          Direction itemDirection,
-                                          Direction containerDirection,
-                                          bool axisIsInline) {
-    if (!alignment.IsSome()) {
-        return OofAlignment::Normal;
-    }
-    AlignItemsKeyword keyword =
-        ResolveSelfRelative(alignment.val, itemDirection, containerDirection,
-                            axisIsInline)
-            .keyword;
-    switch (keyword) {
+// `alignment` already has self-start/self-end resolved. None on the style
+// is normal, and it does not defer to the containing block's *-items.
+static OofAlignment OofAlignmentFromResolved(AlignItems alignment) {
+    switch (alignment.keyword) {
+        case AlignItemsKeyword::Normal:
+            return OofAlignment::Normal;
         case AlignItemsKeyword::Stretch:
             return OofAlignment::Stretch;
         case AlignItemsKeyword::Center:
@@ -343,8 +337,14 @@ OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
     bool isReplaced = cs.IsReplaced();
     bool isTable = cs.itemIsTable;
     Direction itemDirection = cs.direction;
-    OptAlignSelf justifySelf = cs.justifySelf;
-    OptAlignSelf alignSelf = cs.alignSelf;
+    // auto (none) is normal. It does not take the containing block's
+    // align-items or justify-items.
+    AlignItems justifySelf = ResolveSelfRelative(
+        cs.justifySelf.UnwrapOr(AlignItems{AlignItemsKeyword::Normal}),
+        itemDirection, direction, true);
+    AlignItems alignSelf = ResolveSelfRelative(
+        cs.alignSelf.UnwrapOr(AlignItems{AlignItemsKeyword::Normal}),
+        itemDirection, direction, false);
 
     // Static positions arrive relative to the containing block's border box.
     // The inset-resolution area starts at `usedOffset`.
@@ -362,10 +362,8 @@ OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
     horizontal.marginStart = margin.left;
     horizontal.marginEnd = margin.right;
     horizontal.staticPosition = staticX;
-    horizontal.alignment =
-        OofAlignmentFromStyle(justifySelf, itemDirection, direction, true);
-    horizontal.safety = justifySelf.IsSome() ? justifySelf.val.safety
-                                             : AlignmentSafety::Default;
+    horizontal.alignment = OofAlignmentFromResolved(justifySelf);
+    horizontal.safety = justifySelf.safety;
     horizontal.isInline = true;
     horizontal.reversed = IsRtl(direction);
     horizontal.isScrollAxis = IsScrollContainer(containerOverflow.x);
@@ -377,10 +375,8 @@ OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
     vertical.marginStart = margin.top;
     vertical.marginEnd = margin.bottom;
     vertical.staticPosition = staticY;
-    vertical.alignment =
-        OofAlignmentFromStyle(alignSelf, itemDirection, direction, false);
-    vertical.safety =
-        alignSelf.IsSome() ? alignSelf.val.safety : AlignmentSafety::Default;
+    vertical.alignment = OofAlignmentFromResolved(alignSelf);
+    vertical.safety = alignSelf.safety;
     vertical.isInline = false;
     vertical.reversed = false;
     vertical.isScrollAxis = IsScrollContainer(containerOverflow.y);

@@ -403,6 +403,8 @@ inline bool operator!=(AvailableSpace a, AvailableSpace b) {
 // The position-keyword half of AlignItems (and its aliases AlignSelf,
 // JustifyItems, JustifySelf).
 enum class AlignItemsKeyword : uint8_t {
+    // The layout mode's default: usually stretch, but start in some cases.
+    Normal,
     Start,
     End,
     FlexStart,
@@ -468,6 +470,11 @@ struct AlignItems {
 
     constexpr bool IsSafe() const { return safety == AlignmentSafety::Safe; }
     constexpr AlignItemsKeyword Keyword() const { return keyword; }
+    // Stretch or normal, ignoring the overflow-position modifier.
+    constexpr bool IsStretchOrNormal() const {
+        return keyword == AlignItemsKeyword::Stretch ||
+               keyword == AlignItemsKeyword::Normal;
+    }
 };
 
 struct AlignContent {
@@ -1586,10 +1593,11 @@ struct Style {
     RectLp padding;
     RectLp border;
 
-    // Alignment
-    OptAlignItems alignItems;
+    // Alignment. `align-items` and `justify-items` are always set; `normal`
+    // is the initial value. Self alignment stays optional: none is `auto`.
+    AlignItems alignItems = AlignItems{AlignItemsKeyword::Normal};
     OptAlignSelf alignSelf;
-    OptAlignItems justifyItems;
+    AlignItems justifyItems = AlignItems{AlignItemsKeyword::Normal};
     OptAlignSelf justifySelf;
     OptAlignContent alignContent;
     OptJustifyContent justifyContent;

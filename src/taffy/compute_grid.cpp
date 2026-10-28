@@ -1604,7 +1604,7 @@ SizeFOpt ItemKnownDimensions(const GridItem& item, TaffyTree* tree,
                 width = Some(keyword.exact);
             }
         } else if (!item.margin.left.IsAuto() && !item.margin.right.IsAuto() &&
-                   item.justifySelf.keyword == AlignItemsKeyword::Stretch) {
+                   item.justifySelf.IsStretchOrNormal()) {
             width = gridAreaMinusItemMargins.w;
         }
     }
@@ -1621,7 +1621,7 @@ SizeFOpt ItemKnownDimensions(const GridItem& item, TaffyTree* tree,
                 height = Some(keyword.exact);
             }
         } else if (!item.margin.top.IsAuto() && !item.margin.bottom.IsAuto() &&
-                   item.alignSelf.keyword == AlignItemsKeyword::Stretch) {
+                   item.alignSelf.IsStretchOrNormal()) {
             height = gridAreaMinusItemMargins.h;
         }
     }
@@ -3744,7 +3744,7 @@ struct AlignedItem {
 // Align and size a grid item into its final position.
 AlignedItem AlignAndPositionItem(
     TaffyTree* tree, NodeId node, uint32_t order, RectF gridArea,
-    OptAlignItems containerJustifyItems, OptAlignItems containerAlignItems,
+    AlignItems containerJustifyItems, AlignItems containerAlignItems,
     float baselineShim, Direction direction, float containerBorderBoxWidth,
     RectF containerBorder, bool containerIsScrollContainer,
     Vec<OofCandidate>* oofPool) {
@@ -3757,24 +3757,14 @@ AlignedItem AlignAndPositionItem(
     Contain contain = style.contain;
     float scrollbarWidth = style.scrollbarWidth;
     Optf aspectRatio = style.aspectRatio;
-    OptAlignItems justifySelf = style.justifySelf;
-    if (justifySelf.IsSome()) {
-        justifySelf.val = ResolveSelfRelative(justifySelf.val, style.direction,
-                                              direction, true);
-    }
-    OptAlignItems alignSelf = style.alignSelf;
-    if (alignSelf.IsSome()) {
-        alignSelf.val = ResolveSelfRelative(alignSelf.val, style.direction,
-                                            direction, false);
-    }
-    if (containerJustifyItems.IsSome()) {
-        containerJustifyItems.val = ResolveSelfRelative(
-            containerJustifyItems.val, style.direction, direction, true);
-    }
-    if (containerAlignItems.IsSome()) {
-        containerAlignItems.val = ResolveSelfRelative(
-            containerAlignItems.val, style.direction, direction, false);
-    }
+    // none takes the container's justify-items / align-items, then
+    // self-start and self-end resolve against the item's own direction.
+    AlignItems justifySelf =
+        ResolveSelfRelative(style.justifySelf.UnwrapOr(containerJustifyItems),
+                            style.direction, direction, true);
+    AlignItems alignSelf =
+        ResolveSelfRelative(style.alignSelf.UnwrapOr(containerAlignItems),
+                            style.direction, direction, false);
     Position position = style.position;
 
     RectFOpt inset = style.inset
@@ -3803,23 +3793,26 @@ AlignedItem AlignAndPositionItem(
                               aspectRatio),
         boxSizingAdjustment);
 
-    // Default alignment when neither the parent nor the item sets one. An item
-    // with a preferred aspect ratio but no width or height stretches its width
-    // and derives its height from the ratio.
+    // normal (the default when neither the parent nor the item sets another
+    // keyword) stretches, unless this axis already has a preferred size.
+    // An item with a preferred aspect ratio but no width or height stretches
+    // its width and derives its height from the ratio.
     // https://www.w3.org/TR/css-grid-1/#grid-item-sizing
-    AlignItems horizontalAlignment =
-        justifySelf.Or(containerJustifyItems)
-            .UnwrapOr(
-                (IsSome(inherentSize.w) || sizeStyle.width.IsSizingKeyword())
-                    ? AlignItems{AlignItemsKeyword::Start}
-                    : AlignItems{AlignItemsKeyword::Stretch});
-    AlignItems verticalAlignment =
-        alignSelf.Or(containerAlignItems)
-            .UnwrapOr((IsSome(inherentSize.h) ||
-                       sizeStyle.height.IsSizingKeyword() ||
-                       IsSome(aspectRatio))
-                          ? AlignItems{AlignItemsKeyword::Start}
-                          : AlignItems{AlignItemsKeyword::Stretch});
+    AlignItems horizontalAlignment = justifySelf;
+    if (justifySelf.keyword == AlignItemsKeyword::Normal) {
+        horizontalAlignment =
+            (IsSome(inherentSize.w) || sizeStyle.width.IsSizingKeyword())
+                ? AlignItems{AlignItemsKeyword::Start}
+                : AlignItems{AlignItemsKeyword::Stretch};
+    }
+    AlignItems verticalAlignment = alignSelf;
+    if (alignSelf.keyword == AlignItemsKeyword::Normal) {
+        verticalAlignment =
+            (IsSome(inherentSize.h) || sizeStyle.height.IsSizingKeyword() ||
+             IsSome(aspectRatio))
+                ? AlignItems{AlignItemsKeyword::Start}
+                : AlignItems{AlignItemsKeyword::Stretch};
+    }
 
     // Not a bug: the CSS spec has both horizontal and vertical margins resolve
     // against the *width* of the grid area.
@@ -3934,13 +3927,11 @@ AlignedItem AlignAndPositionItem(
         MaybeClamp(UnwrapOr(size, layoutOutput.size), minSize, maxSize);
 
     AlignedAxis xr = AlignItemWithinArea(
-        {gridArea.left, gridArea.right},
-        justifySelf.UnwrapOr(horizontalAlignment), finalSize.w, position, inset,
-        false, margin, 0.0f, direction);
-    AlignedAxis yr = AlignItemWithinArea({gridArea.top, gridArea.bottom},
-                                         alignSelf.UnwrapOr(verticalAlignment),
-                                         finalSize.h, position, inset, true,
-                                         margin, baselineShim, Direction::Ltr);
+        {gridArea.left, gridArea.right}, horizontalAlignment, finalSize.w,
+        position, inset, false, margin, 0.0f, direction);
+    AlignedAxis yr = AlignItemWithinArea(
+        {gridArea.top, gridArea.bottom}, verticalAlignment, finalSize.h,
+        position, inset, true, margin, baselineShim, Direction::Ltr);
 
     SizeF scrollbarSize = {
         overflow.y == Overflow::Scroll ? scrollbarWidth : 0.0f,
@@ -4073,8 +4064,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     AlignContent justifyContent =
         style.justifyContent
             .UnwrapOr(AlignContent{AlignContentKeyword::Stretch});
-    OptAlignItems alignItems = style.alignItems;
-    OptAlignItems justifyItems = style.justifyItems;
+    AlignItems alignItems = style.alignItems;
+    AlignItems justifyItems = style.justifyItems;
 
     SizeFOpt sizeOrPreferred = Or(knownDimensions, preferredSize);
     // The available space the grid is sized against: a known or preferred
@@ -4210,10 +4201,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     Vec<GridItem> items;
     CellOccupancyMatrix cellOccupancyMatrix;
     cellOccupancyMatrix.Init(estColCounts, estRowCounts);
-    PlaceGridItems(
-        &cellOccupancyMatrix, &items, tree, children, style.gridAutoFlow,
-        alignItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}),
-        justifyItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}));
+    PlaceGridItems(&cellOccupancyMatrix, &items, tree, children,
+                   style.gridAutoFlow, alignItems, justifyItems);
 
     // Auto-placement can add tracks, so the counts are read back here.
     TrackCounts finalColCounts = cellOccupancyMatrix
@@ -4667,18 +4656,13 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                           padding.bottom - scrollbarGutter.y;
         }
 
-        // None stays none. from_alignment treats that as start, and the
-        // positioning pass treats an unset self-alignment as normal.
-        OptAlignItems justifySelf = cs.justifySelf.Or(justifyItems);
-        if (justifySelf.IsSome()) {
-            justifySelf.val = ResolveSelfRelative(justifySelf.val, cs.direction,
-                                                  direction, true);
-        }
-        OptAlignItems alignSelf = cs.alignSelf.Or(alignItems);
-        if (alignSelf.IsSome()) {
-            alignSelf.val = ResolveSelfRelative(alignSelf.val, cs.direction,
-                                                direction, false);
-        }
+        // none takes the container's items alignment. normal and stretch
+        // fall back to start for the static-position rectangle.
+        AlignItems justifySelf =
+            ResolveSelfRelative(cs.justifySelf.UnwrapOr(justifyItems),
+                                cs.direction, direction, true);
+        AlignItems alignSelf = ResolveSelfRelative(
+            cs.alignSelf.UnwrapOr(alignItems), cs.direction, direction, false);
 
         OofCandidate candidate;
         candidate.node = child;

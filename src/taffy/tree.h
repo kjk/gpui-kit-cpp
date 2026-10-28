@@ -196,9 +196,9 @@ struct AxisStaticPosition {
 
     // Align the box within [areaStart, areaEnd]. `alignment` is already
     // resolved: auto replaced, and self-start/self-end mapped to the
-    // container direction. None is normal, which is start. Stretch falls
-    // back to start. `axisIsRtl` flips start and end.
-    static AxisStaticPosition FromAlignment(OptAlignItems alignment,
+    // container direction. Normal and stretch fall back to start.
+    // `axisIsRtl` flips start and end.
+    static AxisStaticPosition FromAlignment(AlignItems alignment,
                                             float areaStart, float areaEnd,
                                             bool axisIsRtl) {
         auto edgeFor = [](AlignItemsKeyword keyword, bool rtl) {
@@ -210,7 +210,7 @@ struct AxisStaticPosition {
             bool startPosition = (!endish) != rtl;
             return startPosition ? AxisStaticEdge::Start : AxisStaticEdge::End;
         };
-        AlignItems resolved = alignment.UnwrapOr(AlignItems{});
+        AlignItems resolved = alignment;
         AlignItemsKeyword fallbackKw = resolved.safety == AlignmentSafety::Safe
                                            ? AlignItemsKeyword::Start
                                            : resolved.keyword;

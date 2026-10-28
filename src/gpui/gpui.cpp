@@ -3821,25 +3821,23 @@ static taffy::Overflow ToTaffyOverflow(Overflow o) {
 // `items_start` / `items_end` are FlexStart / FlexEnd in gpui's Styled,
 // while `self_start` / `self_end` are Start / End; the two differ in a
 // wrap-reverse line, so the item-level ones say which they are.
-static taffy::OptAlignItems ToTaffyAlignItems(FlexAlign a, bool self) {
+static taffy::AlignItems ToTaffyAlignItems(FlexAlign a, bool self) {
     using K = taffy::AlignItemsKeyword;
     switch (a) {
         case FlexAlign::Start:
-            return taffy::OptAlignItems(
-                taffy::AlignItems{self ? K::Start : K::FlexStart});
+            return taffy::AlignItems{self ? K::Start : K::FlexStart};
         case FlexAlign::Center:
-            return taffy::OptAlignItems(taffy::AlignItems{K::Center});
+            return taffy::AlignItems{K::Center};
         case FlexAlign::End:
-            return taffy::OptAlignItems(
-                taffy::AlignItems{self ? K::End : K::FlexEnd});
+            return taffy::AlignItems{self ? K::End : K::FlexEnd};
         case FlexAlign::Baseline:
-            return taffy::OptAlignItems(taffy::AlignItems{K::Baseline});
+            return taffy::AlignItems{K::Baseline};
         case FlexAlign::Stretch:
-            return taffy::OptAlignItems(taffy::AlignItems{K::Stretch});
+            return taffy::AlignItems{K::Stretch};
         default:
-            // Unset is None, as gpui's to_taffy leaves it, so taffy applies
-            // the container's own default rather than an explicit stretch.
-            return taffy::OptAlignItems();
+            // Unset is normal, so taffy applies the layout mode's default
+            // rather than an explicit stretch.
+            return taffy::AlignItems{K::Normal};
     }
 }
 
@@ -3910,7 +3908,7 @@ static taffy::Style ToTaffyStyle(const El* e) {
     }
     t.alignItems = ToTaffyAlignItems(s.align, false);
     if (s.hasAlignSelf) {
-        t.alignSelf = ToTaffyAlignItems(s.alignSelf, true);
+        t.alignSelf = taffy::OptAlignSelf(ToTaffyAlignItems(s.alignSelf, true));
     }
     t.justifyContent = ToTaffyJustify(s.justify);
     t.overflow = {ToTaffyOverflow(s.overflowX), ToTaffyOverflow(s.overflowY)};
