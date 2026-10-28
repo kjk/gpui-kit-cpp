@@ -224,8 +224,24 @@ struct OofAxis {
         float imcbEnd = 0.0f;
         InsetModifiedContainingBlock(&imcbStart, &imcbEnd);
         if (!IsSome(insetStart) && !IsSome(insetEnd)) {
-            return ResolveStaticOffsetAxis(
-                staticPosition, size, marginStartResolved, marginEndResolved);
+            // Both insets auto: align in the static-position rectangle.
+            // `safe` that overflows the inset-modified containing block
+            // (which may be the outer containing block, not that rectangle)
+            // starts at the IMCB's start edge instead.
+            float marginBox = size + marginStartResolved + marginEndResolved;
+            float imcbSize = imcbEnd - imcbStart;
+            bool safeOverflow = staticPosition.align
+                                        .safety == AlignmentSafety::Safe &&
+                                marginBox > imcbSize;
+            float offset;
+            if (safeOverflow) {
+                offset =
+                    AlignInLine(imcbStart, imcbEnd, marginBox, StartEdge());
+            } else {
+                offset = AlignInLine(staticPosition.start, staticPosition.end,
+                                     marginBox, staticPosition.align.keyword);
+            }
+            return offset + marginStartResolved;
         }
         if (IsSome(insetStart) && !IsSome(insetEnd)) {
             return imcbStart + marginStartResolved;

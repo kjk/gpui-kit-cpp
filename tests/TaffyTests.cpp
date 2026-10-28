@@ -4193,6 +4193,217 @@ static void TestGridNamedLineResolution() {
                     few, 5);
 }
 
+// taffy 5f6ec1d4. `safe` static alignment that overflows uses the
+// inset-modified containing block, which for a static parent is the outer
+// relative box, not the static-position rectangle.
+static void TestAbsposSafeStaticImcb() {
+    TestSuite("taffy abspos safe static imcb");
+
+    auto boxEdges = [](taffy::Style* s, float padX, float padY, float border) {
+        s->padding.left = taffy::LengthPercentage::Length(padX);
+        s->padding.right = taffy::LengthPercentage::Length(padX);
+        s->padding.top = taffy::LengthPercentage::Length(padY);
+        s->padding.bottom = taffy::LengthPercentage::Length(padY);
+        s->border.left = taffy::LengthPercentage::Length(border);
+        s->border.right = taffy::LengthPercentage::Length(border);
+        s->border.top = taffy::LengthPercentage::Length(border);
+        s->border.bottom = taffy::LengthPercentage::Length(border);
+    };
+    auto marginBox = [](taffy::Style* s, float x, float y) {
+        s->margin.left = taffy::LengthPercentageAuto::Length(x);
+        s->margin.right = taffy::LengthPercentageAuto::Length(x);
+        s->margin.top = taffy::LengthPercentageAuto::Length(y);
+        s->margin.bottom = taffy::LengthPercentageAuto::Length(y);
+    };
+    taffy::AlignItems safeEnd{taffy::AlignItemsKeyword::End,
+                              taffy::AlignmentSafety::Safe};
+    taffy::AlignItems unsafeEnd{taffy::AlignItemsKeyword::End,
+                                taffy::AlignmentSafety::Unsafe};
+    taffy::AlignItems safeCenter{taffy::AlignItemsKeyword::Center,
+                                 taffy::AlignmentSafety::Safe};
+    taffy::AlignItems unsafeCenter{taffy::AlignItemsKeyword::Center,
+                                   taffy::AlignmentSafety::Unsafe};
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        auto abs = [&](float w, float h, taffy::AlignItems justify,
+                       bool margin) {
+            taffy::Style s;
+            s.position = taffy::Position::Absolute;
+            s.size = SizeDim::FromLengths(w, h);
+            s.justifySelf = taffy::OptAlignSelf(justify);
+            if (margin) {
+                marginBox(&s, 4.0f, 2.0f);
+            }
+            return s;
+        };
+        TaffyNodeId a[4] = {tree.NewLeaf(abs(45.0f, 35.0f, safeEnd, false)),
+                            tree.NewLeaf(abs(15.0f, 10.0f, safeEnd, false)),
+                            tree.NewLeaf(abs(45.0f, 35.0f, safeEnd, true)),
+                            tree.NewLeaf(abs(45.0f, 35.0f, unsafeEnd, false))};
+        taffy::Style staticBlock;
+        staticBlock.display = taffy::Display::Block;
+        staticBlock.size = SizeDim::FromLengths(30.0f, 25.0f);
+        boxEdges(&staticBlock, 1.0f, 2.0f, 1.0f);
+        TaffyNodeId staticNode = tree.NewWithChildren(staticBlock, a, 4);
+
+        TaffyNodeId b[2] = {tree.NewLeaf(abs(45.0f, 35.0f, safeEnd, false)),
+                            tree.NewLeaf(abs(15.0f, 10.0f, safeEnd, false))};
+        taffy::Style relativeBlock = staticBlock;
+        relativeBlock.position = taffy::Position::Relative;
+        TaffyNodeId relativeNode = tree.NewWithChildren(relativeBlock, b, 2);
+
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Relative;
+        root.size = SizeDim::FromLengths(200.0f, 200.0f);
+        boxEdges(&root, 0.0f, 0.0f, 3.0f);
+        TaffyNodeId kids[2] = {staticNode, relativeNode};
+        TaffyNodeId rootNode = tree.NewWithChildren(root, kids, 2);
+        tree.ComputeLayout(rootNode, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(a[0]), 3.0f, 6.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(a[1]), 16.0f, 6.0f, 15.0f, 10.0f);
+        AssertBox(tree.GetLayout(a[2]), 7.0f, 8.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(a[3]), -14.0f, 6.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(b[0]), 1.0f, 3.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(b[1]), 13.0f, 3.0f, 15.0f, 10.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        auto abs = [&](float w, float h, bool align,
+                       taffy::AlignmentSafety safety, bool margin) {
+            taffy::Style s;
+            s.position = taffy::Position::Absolute;
+            s.size = SizeDim::FromLengths(w, h);
+            if (align) {
+                s.alignSelf = taffy::OptAlignSelf(taffy::AlignItems{
+                    taffy::AlignItemsKeyword::Center, safety});
+            }
+            if (margin) {
+                marginBox(&s, 4.0f, 2.0f);
+            }
+            return s;
+        };
+        TaffyNodeId a[5] = {
+            tree.NewLeaf(
+                abs(45.0f, 35.0f, true, taffy::AlignmentSafety::Safe, false)),
+            tree.NewLeaf(
+                abs(15.0f, 10.0f, true, taffy::AlignmentSafety::Safe, false)),
+            tree.NewLeaf(
+                abs(45.0f, 35.0f, true, taffy::AlignmentSafety::Safe, true)),
+            tree.NewLeaf(
+                abs(45.0f, 35.0f, true, taffy::AlignmentSafety::Unsafe, false)),
+            tree.NewLeaf(abs(45.0f, 35.0f, false,
+                             taffy::AlignmentSafety::Default, false))};
+        taffy::Style flex;
+        flex.display = taffy::Display::Flex;
+        flex.size = SizeDim::FromLengths(30.0f, 25.0f);
+        flex.alignItems = taffy::AlignItems{taffy::AlignItemsKeyword::Center};
+        flex.justifyContent =
+            taffy::AlignContent{taffy::AlignContentKeyword::End};
+        boxEdges(&flex, 1.0f, 2.0f, 1.0f);
+        TaffyNodeId flexNode = tree.NewWithChildren(flex, a, 5);
+
+        TaffyNodeId b[2] = {
+            tree.NewLeaf(
+                abs(45.0f, 35.0f, true, taffy::AlignmentSafety::Safe, false)),
+            tree.NewLeaf(
+                abs(15.0f, 10.0f, true, taffy::AlignmentSafety::Safe, false))};
+        taffy::Style reverse = flex;
+        reverse.flexDirection = taffy::FlexDirection::RowReverse;
+        reverse.justifyContent =
+            taffy::AlignContent{taffy::AlignContentKeyword::FlexStart};
+        TaffyNodeId reverseNode = tree.NewWithChildren(reverse, b, 2);
+
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Relative;
+        root.size = SizeDim::FromLengths(200.0f, 200.0f);
+        boxEdges(&root, 0.0f, 0.0f, 3.0f);
+        TaffyNodeId kids[2] = {flexNode, reverseNode};
+        TaffyNodeId rootNode = tree.NewWithChildren(root, kids, 2);
+        tree.ComputeLayout(rootNode, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(a[0]), -14.0f, 3.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(a[1]), 16.0f, 11.0f, 15.0f, 10.0f);
+        AssertBox(tree.GetLayout(a[2]), -18.0f, 5.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(a[3]), -14.0f, -2.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(a[4]), -14.0f, -2.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(b[0]), -14.0f, 23.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(b[1]), 16.0f, 36.0f, 15.0f, 10.0f);
+        tree.Free();
+    }
+
+    {
+        TaffyTree tree;
+        tree.Init();
+        auto abs = [&](float w, float h, taffy::AlignItems justify,
+                       taffy::AlignItems align, bool margin, bool top) {
+            taffy::Style s;
+            s.position = taffy::Position::Absolute;
+            s.size = SizeDim::FromLengths(w, h);
+            s.justifySelf = taffy::OptAlignSelf(justify);
+            s.alignSelf = taffy::OptAlignSelf(align);
+            s.gridColumn = {GridPlacement::FromLineIndex(2),
+                            GridPlacement::FromLineIndex(3)};
+            s.gridRow = {GridPlacement::FromLineIndex(2),
+                         GridPlacement::FromLineIndex(3)};
+            if (margin) {
+                marginBox(&s, 4.0f, 2.0f);
+            }
+            if (top) {
+                s.inset.top = taffy::LengthPercentageAuto::Length(20.0f);
+            }
+            return s;
+        };
+        TaffyNodeId a[5] = {
+            tree.NewLeaf(abs(45.0f, 35.0f, safeEnd, safeCenter, false, false)),
+            tree.NewLeaf(abs(45.0f, 35.0f, safeEnd, safeCenter, false, true)),
+            tree.NewLeaf(abs(15.0f, 10.0f, safeEnd, safeCenter, false, false)),
+            tree.NewLeaf(abs(45.0f, 35.0f, safeEnd, safeCenter, true, false)),
+            tree.NewLeaf(
+                abs(45.0f, 35.0f, unsafeEnd, unsafeCenter, false, false))};
+        float colPx[3] = {2.0f, 20.0f, 2.0f};
+        float rowPx[3] = {3.0f, 14.0f, 3.0f};
+        GridTemplateComponent cols[3];
+        GridTemplateComponent rows[3];
+        for (int i = 0; i < 3; i++) {
+            cols[i] = GridTemplateComponent::Single(
+                TrackSizingFunction::Length(colPx[i]));
+            rows[i] = GridTemplateComponent::Single(
+                TrackSizingFunction::Length(rowPx[i]));
+        }
+        taffy::Style grid;
+        grid.display = taffy::Display::Grid;
+        grid.boxSizing = taffy::BoxSizing::ContentBox;
+        grid.size = SizeDim::FromLengths(30.0f, 25.0f);
+        boxEdges(&grid, 1.0f, 2.0f, 1.0f);
+        grid.gridTemplateColumns = GridTemplateOf(cols, 3);
+        grid.gridTemplateRows = GridTemplateOf(rows, 3);
+        TaffyNodeId gridNode = tree.NewWithChildren(grid, a, 5);
+
+        taffy::Style root;
+        root.display = taffy::Display::Block;
+        root.position = taffy::Position::Relative;
+        root.boxSizing = taffy::BoxSizing::ContentBox;
+        root.size = SizeDim::FromLengths(200.0f, 25.0f);
+        boxEdges(&root, 0.0f, 0.0f, 3.0f);
+        TaffyNodeId rootNode = tree.NewWithChildren(root, &gridNode, 1);
+        tree.ComputeLayout(rootNode, SizeAvail::MaxContent());
+        AssertBox(tree.GetLayout(rootNode), 0.0f, 0.0f, 206.0f, 31.0f);
+        AssertBox(tree.GetLayout(gridNode), 3.0f, 3.0f, 34.0f, 31.0f);
+        AssertBox(tree.GetLayout(a[0]), 3.0f, 9.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(a[1]), 3.0f, 23.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(a[2]), 20.0f, 14.0f, 15.0f, 10.0f);
+        AssertBox(tree.GetLayout(a[3]), 7.0f, 11.0f, 45.0f, 35.0f);
+        AssertBox(tree.GetLayout(a[4]), -10.0f, 1.0f, 45.0f, 35.0f);
+        tree.Free();
+    }
+}
+
 // A non-finite flex factor or container size used to keep the fr-size and
 // space-distribution loops from ever deciding they were done.
 static void TestGridNonFiniteStylesTerminate() {
@@ -8768,6 +8979,7 @@ void TestTaffy() {
     TestGridRepetitionLineNames();
     TestGridAreaEdges();
     TestGridNamedLineResolution();
+    TestAbsposSafeStaticImcb();
     TestGridNonFiniteStylesTerminate();
     TestGridZeroSpanTerminates();
     TestGridMinmaxAutoFixedZero();
