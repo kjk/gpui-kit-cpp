@@ -445,11 +445,11 @@ El* PopupMenu::IntoEl() {
             if (i + 1 == items.len) {
                 continue;
             }
-            // my_0p5 border_b(2): a rule with a little air around it.
+            // my_0p5 border_b(1): a rule with a little air around it.
             rows->Child(Div(a)
                             ->W(kFill)
                             ->PadY(Rems(cx, 0.125f))
-                            ->Child(Div(a)->W(kFill)->H(2)->Bg(th.border)));
+                            ->Child(Div(a)->W(kFill)->H(1)->Bg(th.border)));
             continue;
         }
         bool lit =
