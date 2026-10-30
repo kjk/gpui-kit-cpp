@@ -8093,6 +8093,17 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         if (e->input) {
             e->input->lastBounds = e->Bounds();
             e->input->lastFont = font;
+            // The run paints with the font_family cascaded onto it (a view
+            // root's FontFamily, say), which the InputState's own style may
+            // not carry. Hit-testing must use the same face it was drawn
+            // with, or a click maps to the wrong character (Segoe UI vs
+            // Microsoft YaHei widths differ). Keep the weight bits, swap in
+            // the family.
+            if (e->style.fontFamily) {
+                e->input->lastFontWord =
+                    (uint16_t)((e->input->lastFontWord & ~kFontFamilyMask) |
+                               FontFamilyBits(e->style.fontFamily));
+            }
         }
         Rgba c = e->style.hasColor ? e->style.color
                                    : RuntimeStyleNow(ctx->app).foreground;
