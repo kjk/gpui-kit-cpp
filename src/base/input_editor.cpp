@@ -480,6 +480,40 @@ double TabFloor(double x) {
 
 } // namespace
 
+Str TextNoLineBreaks(Arena* a, Str text) {
+    char* out = nullptr;
+    for (int i = 0; i < len(text); i++) {
+        unsigned char c = (unsigned char)text.s[i];
+        unsigned char next =
+            i + 1 < len(text) ? (unsigned char)text.s[i + 1] : 0;
+        unsigned char third =
+            i + 2 < len(text) ? (unsigned char)text.s[i + 2] : 0;
+        bool ascii = c == 0x0b || c == 0x0c || c == 0x0d;
+        bool nel = c == 0xc2 && next == 0x85;
+        bool sep =
+            c == 0xe2 && next == 0x80 && (third == 0xa8 || third == 0xa9);
+        if (!ascii && !nel && !sep) {
+            continue;
+        }
+        if (!out) {
+            out = (char*)Alloc(a, len(text) + 1);
+            if (!out) {
+                return text;
+            }
+            memcpy(out, text.s, (size_t)len(text));
+            out[len(text)] = 0;
+        }
+        if (ascii) {
+            out[i] = ' ';
+        } else if (nel) {
+            out[i + 1] = '\xa0'; // U+00A0
+        } else {
+            out[i + 2] = '\x82'; // U+2002
+        }
+    }
+    return out ? Str(out, len(text)) : text;
+}
+
 float TabExpandedWidth(Str text, float stop,
                        float (*measure)(void* user, Str text), void* user) {
     if (!measure || len(text) <= 0) {

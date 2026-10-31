@@ -626,8 +626,49 @@ static void LargeDocumentWrapsByCharacterWidths() {
     utassert(WrapMatchesFreshWrap(s, width * 2));
 }
 
+// What a shaper would break a row at becomes space of the same byte length.
+static void RowsKeepTheirLengthWithoutLineBreaks() {
+    Arena* a = ArenaNew();
+    Str same = StrL("plain \xc2\xa0 \xe2\x80\x82 text");
+    utassert(TextNoLineBreaks(a, same).s == same.s);
+    Str out = TextNoLineBreaks(a, StrL("a\x0b"
+                                       "b\x0c"
+                                       "c\r"
+                                       "d\xc2\x85"
+                                       "e\xe2\x80\xa8"
+                                       "f\xe2\x80\xa9"
+                                       "g"));
+    utassert(StrEq(out, StrL("a b c d\xc2\xa0"
+                             "e\xe2\x80\x82"
+                             "f\xe2\x80\x82"
+                             "g")));
+    ArenaDelete(a);
+}
+
+// Every distinct character past what a small table holds keeps its width: a
+// document with thousands of them doesn't shape each one again.
+static void CharacterWidthsGrowPastTheFirstTable() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    s.softWrap = true;
+    Vec<char> text;
+    while (len(text) < 200 * 1024) {
+        VecAppend(text, 'x');
+    }
+    for (uint32_t c = 0x4e00; c < 0x4e00 + 4000; c++) {
+        VecAppend(text, (char)(0xe0 | (c >> 12)));
+        VecAppend(text, (char)(0x80 | ((c >> 6) & 0x3f)));
+        VecAppend(text, (char)(0x80 | (c & 0x3f)));
+    }
+    InputSetValue(&s, Str(text.els, len(text)));
+    InputUpdateWrapMap(&s, nullptr, 500, 14, 0);
+    utassert(s.wrap.totalRows > 1);
+}
+
 void TestTextWrapper() {
     TestSuite("text_wrapper");
+    RowsKeepTheirLengthWithoutLineBreaks();
+    CharacterWidthsGrowPastTheFirstTable();
     LargeDocumentWrapsByCharacterWidths();
     WrapTreeKeepsSuffixStorageAndSummaries();
     MeasuredWrapKeepsCjkLatinBoundaryStableDuringEdits();

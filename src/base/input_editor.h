@@ -28,6 +28,11 @@ struct TabSize {
 float TabExpandedWidth(Str text, float stop,
                        float (*measure)(void* user, Str text), void* user);
 
+// `text`, in `a` if it has to change, with what a shaper breaks a line at
+// (VT, FF, CR, NEL, LS, PS) as spaces of the same byte length, so that one row
+// of an editor shapes as one line and its byte offsets still hold.
+Str TextNoLineBreaks(Arena* a, Str text);
+
 // The same walk, writing one x per Unicode scalar into `xs` (uniform
 // advances, which is how the tab_stops unit tests build a line). Returns
 // false when there is no tab to widen. `width` is the expanded width, or

@@ -95,6 +95,12 @@ The current update target is
   an `IDropTarget`, macOS an AppKit dragging destination, and Linux X11
   Xdnd for `text/uri-list`. The page can read only each file's name
   (`window_wasm.cpp`).
+- **Soft wrap of a large document.** Over 128 KB the editor wraps with one pass
+  over cached character widths, not `MeasuredWrap`'s shaped probes, so opening
+  a large file doesn't shape every row (`WrapLineFragments`). Kerning and
+  ligatures don't move those breaks. Editor rows also shape VT, FF, CR, NEL, LS
+  and PS as spaces of the same byte length (`TextNoLineBreaks`), because the
+  shaper would break a row at them.
 - **One engine.** Upstream selects GPUI Fast with the `gpui-fast` Cargo
   feature. This tree is that engine's C++ port and has no second backend
   to switch.

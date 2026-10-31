@@ -22,6 +22,7 @@ import {
   root,
   takeBuildFlag,
 } from "./build.ts";
+import { ensureRustTree } from "./run.ts";
 
 function die(msg: string): never {
   console.error(msg);
@@ -43,6 +44,8 @@ if (flags.wasm) {
 const plat = platformFor(flags, die);
 checkBuildFlags(flags, plat, die);
 
+// The inventory tests compare against the Rust tree, which has to be the pinned one.
+ensureRustTree(root);
 await build({ names: ["tests"], plat, flags, fail: die, quiet: true });
 
 // build.ts owns the out/ layout — Linux, macOS and a clang-cl build each keep

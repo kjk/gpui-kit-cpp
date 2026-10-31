@@ -4485,6 +4485,11 @@ struct InputWrapTree {
 // base/input.cpp; the map owns one.
 struct WidthCache;
 
+struct WrapCharWidthSlot {
+    uint32_t c = 0;
+    float width = 0;
+};
+
 struct InputWrapMap {
     InputWrapTree tree;
     // Cumulative wrapped logical lines, for measuring incremental work.
@@ -4508,8 +4513,8 @@ struct InputWrapMap {
     float charFont = 0;
     uint16_t charWord = 0;
     float asciiWidths[128] = {};
-    uint32_t otherChars[256] = {};
-    float otherWidths[256] = {};
+    Vec<WrapCharWidthSlot> otherWidths;
+    int nOtherWidths = 0;
     float spaceWidth = 0;
     // measure_tokens' widths, one per inline token span in document order,
     // and the token revision they were measured at.

@@ -510,12 +510,49 @@ struct WrapMeasure {
 static bool WrapAdvance(const WrapMeasure* wm, Str bytes, float* out) {
     const InputWrapMap* m = wm->map;
     float x = 0, y = 0, h = 0;
-    if (!wm->ctx || !TextPointAt(wm->ctx, bytes, m->fontSize, 0, false,
-                                 len(bytes), &x, &y, &h, m->fontWord)) {
+    if (!wm->ctx ||
+        !TextPointAt(wm->ctx, TextNoLineBreaks(GetTempArena(), bytes),
+                     m->fontSize, 0, false, len(bytes), &x, &y, &h,
+                     m->fontWord)) {
         return false;
     }
     *out = x;
     return true;
+}
+
+// The slot holding `c`, or the empty one where it belongs. Null with no table.
+static WrapCharWidthSlot* WrapOtherWidthFind(InputWrapMap* m, uint32_t c) {
+    int cap = len(m->otherWidths);
+    if (cap == 0) {
+        return nullptr;
+    }
+    for (uint32_t at = c * 2654435761u;; at++) {
+        WrapCharWidthSlot* slot =
+            &m->otherWidths[(int)(at & (uint32_t)(cap - 1))];
+        if (slot->c == c || slot->c == 0) {
+            return slot;
+        }
+    }
+}
+
+// Past half full the table doubles, so every distinct character is shaped once.
+static void WrapOtherWidthAdd(InputWrapMap* m, uint32_t c, float width) {
+    int cap = len(m->otherWidths);
+    if ((m->nOtherWidths + 1) * 2 > cap) {
+        Vec<WrapCharWidthSlot> old;
+        for (const WrapCharWidthSlot& slot : m->otherWidths) {
+            VecAppend(old, slot);
+        }
+        VecClear(m->otherWidths);
+        VecResize(m->otherWidths, cap > 0 ? cap * 2 : 256);
+        for (const WrapCharWidthSlot& slot : old) {
+            if (slot.c != 0) {
+                *WrapOtherWidthFind(m, slot.c) = slot;
+            }
+        }
+    }
+    *WrapOtherWidthFind(m, c) = {c, width};
+    m->nOtherWidths++;
 }
 
 // LineWrapper::width_for_char.
@@ -528,28 +565,16 @@ static float WrapCharWidthOf(void* user, uint32_t c) {
         for (float& w : m->asciiWidths) {
             w = -1;
         }
-        for (uint32_t& k : m->otherChars) {
-            k = 0;
-        }
+        VecClear(m->otherWidths);
+        m->nOtherWidths = 0;
     }
-    int slot = -1;
     if (c < 128) {
         if (m->asciiWidths[c] >= 0) {
             return m->asciiWidths[c];
         }
-    } else {
-        const int kSlots = (int)dimof(m->otherChars);
-        int at = (int)((c * 2654435761u) >> 24) % kSlots;
-        for (int probe = 0; probe < kSlots; probe++) {
-            int i = (at + probe) % kSlots;
-            if (m->otherChars[i] == c) {
-                return m->otherWidths[i];
-            }
-            if (m->otherChars[i] == 0) {
-                slot = i;
-                break;
-            }
-        }
+    } else if (const WrapCharWidthSlot* found = WrapOtherWidthFind(m, c);
+               found && found->c == c) {
+        return found->width;
     }
     char buf[4];
     int n = WrapEncodeUtf8(c, buf);
@@ -561,9 +586,8 @@ static float WrapCharWidthOf(void* user, uint32_t c) {
     }
     if (c < 128) {
         m->asciiWidths[c] = w;
-    } else if (slot >= 0) {
-        m->otherChars[slot] = c;
-        m->otherWidths[slot] = w;
+    } else {
+        WrapOtherWidthAdd(m, c, w);
     }
     return w;
 }
@@ -874,8 +898,8 @@ static float TabSliceWidth(void* user, Str text) {
     TabSliceMeasure* m = (TabSliceMeasure*)user;
     if (m->ctx && len(text) > 0) {
         float x = 0, y = 0, h = 0;
-        if (TextPointAt(m->ctx, text, m->font, 0, false, len(text), &x, &y, &h,
-                        m->word)) {
+        if (TextPointAt(m->ctx, TextNoLineBreaks(GetTempArena(), text), m->font,
+                        0, false, len(text), &x, &y, &h, m->word)) {
             return x;
         }
     }
@@ -905,6 +929,8 @@ static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
     if (!a || !s || len(line) <= 0) {
         return shown;
     }
+    line = TextNoLineBreaks(a, line);
+    shown.text = line;
     bool tab = false;
     for (int i = 0; i < len(line); i++) {
         if (line.s[i] == '\t') {
@@ -1018,8 +1044,8 @@ static int TabSourceAtX(PaintCtx* ctx, const InputState* s, Str text, float x) {
         float w = TabSliceWidth(&measure, run);
         double runX = shaped + shift;
         if (x < (float)(runX + (double)w)) {
-            int local =
-                TextIndexAt(ctx, run, font, 0, false, x - (float)runX, 0, word);
+            int local = TextIndexAt(ctx, TextNoLineBreaks(GetTempArena(), run),
+                                    font, 0, false, x - (float)runX, 0, word);
             if (local < 0) {
                 local = 0;
             }
@@ -8371,8 +8397,8 @@ static float WrapTextAdvance(PaintCtx* ctx, const InputState* s, Str text) {
     }
     float x = 0, y = 0, h = 0;
     if (len(text) > 0 && ctx) {
-        TextPointAt(ctx, text, WrapFontOf(s), 0, false, len(text), &x, &y, &h,
-                    s->lastFontWord);
+        TextPointAt(ctx, TextNoLineBreaks(GetTempArena(), text), WrapFontOf(s),
+                    0, false, len(text), &x, &y, &h, s->lastFontWord);
     }
     return x;
 }
@@ -8476,8 +8502,9 @@ static int WrapRowIndexAt(PaintCtx* ctx, const InputState* s, Str line,
             if (tab) {
                 return f.lo + TabSourceAtX(ctx, s, text, x - at);
             }
-            return f.lo + TextIndexAt(ctx, text, font, 0, false, x - at, 0,
-                                      s->lastFontWord);
+            return f.lo +
+                   TextIndexAt(ctx, TextNoLineBreaks(GetTempArena(), text),
+                               font, 0, false, x - at, 0, s->lastFontWord);
         }
         at += w;
     }
@@ -10290,7 +10317,8 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
         if (tab) {
             return TabSourceAtX(ctx, s, t, x - b.x);
         }
-        return TextIndexAt(ctx, t, font, 0, false, x - b.x, 0, s->lastFontWord);
+        return TextIndexAt(ctx, TextNoLineBreaks(GetTempArena(), t), font, 0,
+                           false, x - b.x, 0, s->lastFontWord);
     }
     float lineH = s->lastLineH > 0 ? s->lastLineH : b.h;
     int rows = InputLinesLen(s);
@@ -11651,8 +11679,8 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
             at = MaskedOffset(text, offset);
         }
         float x = 0, y = 0, h = 0;
-        if (!TextPointAt(ctx, run, font, 0, false, at, &x, &y, &h,
-                         s->lastFontWord)) {
+        if (!TextPointAt(ctx, TextNoLineBreaks(GetTempArena(), run), font, 0,
+                         false, at, &x, &y, &h, s->lastFontWord)) {
             return false;
         }
         *out = {b.x + x, b.y + y};
@@ -11694,8 +11722,9 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
         // The multiple of the font layout gave the row (InputLineMult).
         float lineMult = lineH * 16.f / WindowRemSize(win) / font;
         float x = 0, y = 0, h = 0;
-        if (!TextPointAt(ctx, line, font, 0, false, offset - row.start, &x, &y,
-                         &h, s->lastFontWord, lineMult, affinity)) {
+        if (!TextPointAt(ctx, TextNoLineBreaks(GetTempArena(), line), font, 0,
+                         false, offset - row.start, &x, &y, &h, s->lastFontWord,
+                         lineMult, affinity)) {
             return false;
         }
         *out = {row.text->x + x, row.text->y + y};
