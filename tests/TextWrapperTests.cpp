@@ -198,7 +198,8 @@ static bool WrapMatchesFreshWrap(const InputState& s, float width) {
     fresh.mode.tabSize = s.mode.tabSize;
     fresh.wrappingIndent = s.wrappingIndent;
     InputSetValue(&fresh, InputValue(&s));
-    InputUpdateWrapMap(&fresh, nullptr, width, s.wrap.fontSize, s.wrap.fontWord);
+    InputUpdateWrapMap(&fresh, nullptr, width, s.wrap.fontSize,
+                       s.wrap.fontWord);
     const InputWrapMap& a = s.wrap;
     const InputWrapMap& b = fresh.wrap;
     if (a.tree.LineCount() != b.tree.LineCount() || a.totalRows != b.totalRows)
@@ -585,8 +586,49 @@ static void WidthDragReusesMeasuredLines() {
     utassert(WrapMatchesFreshWrap(warm, 40));
 }
 
+// A large document wraps by character widths: every row fits, tabs count as a
+// whole stop, and another width gives what a cold wrap gives.
+static void LargeDocumentWrapsByCharacterWidths() {
+    Str repeated =
+        StrL("some words that wrap and aVeryLongWordThatDoesNotFitOnARow\n");
+    Vec<char> text;
+    while (len(text) < 200 * 1024) {
+        for (int i = 0; i < len(repeated); i++) {
+            VecAppend(text, repeated.s[i]);
+        }
+    }
+    for (char c : {'\t', '\t', '\t', '\t', 'x'}) {
+        VecAppend(text, c);
+    }
+    InputState s;
+    s.kind = InputKind::Editor;
+    s.softWrap = true;
+    s.mode.tabSize = 4;
+    InputSetValue(&s, Str(text.els, len(text)));
+    float fontSize = 14;
+    float charWidth = fontSize * 0.6f;
+    float width = charWidth * 12;
+    InputUpdateWrapMap(&s, nullptr, width, fontSize, 0);
+    const Vec<int>& lineStarts = InputLineStarts(&s);
+    utassert(s.wrap.totalRows > len(lineStarts));
+    for (int line = 0; line + 1 < len(lineStarts); line++) {
+        const InputWrapLine& rows = *s.wrap.tree.Line(line);
+        int lineLen = lineStarts[line + 1] - 1 - lineStarts[line];
+        for (int r = 0; r < rows.nRows; r++) {
+            int end = r + 1 < rows.nRows ? rows.starts[r + 1] : lineLen;
+            utassert(end > rows.starts[r]);
+            utassert(end - rows.starts[r] <= 12);
+        }
+    }
+    const InputWrapLine& tabs = *s.wrap.tree.Line(len(lineStarts) - 1);
+    utassert(tabs.nRows > 1);
+    InputUpdateWrapMap(&s, nullptr, width * 2, fontSize, 0);
+    utassert(WrapMatchesFreshWrap(s, width * 2));
+}
+
 void TestTextWrapper() {
     TestSuite("text_wrapper");
+    LargeDocumentWrapsByCharacterWidths();
     WrapTreeKeepsSuffixStorageAndSummaries();
     MeasuredWrapKeepsCjkLatinBoundaryStableDuringEdits();
     MeasuredWrapPreservesWordsGraphemesAndIndentation();
