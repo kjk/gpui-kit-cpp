@@ -712,6 +712,66 @@ static void NextChangeWrapsOnceTheListIsScrolledToItsEnd() {
     utassert(fix.state->scrollItem == 10);
 }
 
+// A change that is on screen below the top row has to become the top row, or
+// the next key finds the same change again.
+static void NextChangeMovesPastAChangeAlreadyOnScreen() {
+    DiffFix fix;
+    VecAppend(fix.state->changeRows, 6);
+    VecAppend(fix.state->changeRows, 14);
+    VirtualListScrollHandle& h = fix.state->listScroll;
+    h.itemsCount = 100;
+    h.contentSize = 2400;
+    h.viewport = 588;
+    fix.state->NextChange(&fix.cx);
+    utassert(fix.state->scrollItem == 6);
+    VirtualListHandleLayout(&h, nullptr, 100, 24, 588);
+    utassert(h.offset == 6 * 24);
+    fix.state->NextChange(&fix.cx);
+    utassert(fix.state->scrollItem == 14);
+    VirtualListHandleLayout(&h, nullptr, 100, 24, 588);
+    utassert(h.offset == 14 * 24);
+    fix.state->PreviousChange(&fix.cx);
+    utassert(fix.state->scrollItem == 6);
+    VirtualListHandleLayout(&h, nullptr, 100, 24, 588);
+    utassert(h.offset == 6 * 24);
+}
+
+// Runs belong to their line wherever it is, and a file of many lines doesn't
+// take time for lines times lines: with that, this test takes minutes.
+static void WordRunsOfALargeFileAreOnTheirLines() {
+    StrBuilder patch;
+    constexpr int kLines = 100000;
+    patch.Append(
+        StrL("--- a/big.txt\n+++ b/big.txt\n@@ -1,100000 +1,100000 @@\n"));
+    for (int i = 0; i < kLines; i++) {
+        if (i % 1000 == 500) {
+            patch.Append(StrL("-same words before\n+same other before\n"));
+        } else {
+            patch.Append(StrL(" a line that doesn't change\n"));
+        }
+    }
+    DiffFix fix;
+    utassert(fix.LoadStr(Str(patch.els, len(patch))));
+    DiffFile* file = fix.state->FileAt(0);
+    utassert(file->LinesCount(DiffSide::Original) == kLines);
+    int withRuns = 0;
+    for (int i = 0; i < kLines; i++) {
+        int count = file->InlineCount(DiffSide::Modified, i);
+        utassert((count > 0) == (i % 1000 == 500));
+        withRuns += count > 0 ? 1 : 0;
+        utassert((file->InlineCount(DiffSide::Original, i) > 0) ==
+                 (i % 1000 == 500));
+    }
+    utassert(withRuns == kLines / 1000);
+    int count = 0;
+    const DiffRun* runs = file->InlineAt(DiffSide::Modified, 500, &count);
+    utassert(runs && count > 0);
+    utassert(runs[0].start == 5);
+    // a line over the limit has no runs, and the others keep theirs
+    fix.state->SetInlineMaxLineLength(5, &fix.cx);
+    utassert(fix.state->FileAt(0)->InlineCount(DiffSide::Modified, 500) == 0);
+}
+
 struct DiffBoxView {
     Entity<DiffState> state;
     bool loaded = false;
@@ -1118,6 +1178,8 @@ void TestDiff() {
     TestInlineAndRows();
     AnApplicationHighlighterStylesEachHunkSide();
     NextChangeWrapsOnceTheListIsScrolledToItsEnd();
+    NextChangeMovesPastAChangeAlreadyOnScreen();
+    WordRunsOfALargeFileAreOnTheirLines();
     TestDiffListFillsItsHeight();
     TheWholePatchKeepsItsHeightAfterTheFirstLayout();
     TheWheelScrollsPastTheRowsRenderedSoFar();

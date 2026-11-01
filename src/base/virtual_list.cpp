@@ -182,6 +182,8 @@ float VirtualListScrollTo(float origin, float size, float offset,
     float want = offset;
     if (strategy == ScrollStrategy::Center) {
         want = origin + size * 0.5f - viewport * 0.5f;
+    } else if (strategy == ScrollStrategy::Start) {
+        want = origin;
     } else if (origin < offset) {
         want = origin;
     } else if (origin + size > offset + viewport) {

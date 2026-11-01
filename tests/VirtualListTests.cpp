@@ -106,6 +106,22 @@ static void UniformRowsAnswerTheSameRange() {
     utassert(r.first == 0 && r.end == 0);
 }
 
+static void ScrollToStartPutsTheItemAtTheTop() {
+    // Row 2 is on screen, which is enough for Top but not for Start.
+    utassertnear(VirtualListScrollToRow(10, 50, 2, 0, 200, ScrollStrategy::Top),
+                 0.f);
+    utassertnear(
+        VirtualListScrollToRow(10, 50, 2, 0, 200, ScrollStrategy::Start),
+        100.f);
+    utassertnear(
+        VirtualListScrollToRow(10, 50, 1, 200, 200, ScrollStrategy::Start),
+        50.f);
+    // The list ends before row 9 can be at the top.
+    utassertnear(
+        VirtualListScrollToRow(10, 50, 9, 0, 200, ScrollStrategy::Start),
+        300.f);
+}
+
 static void ScrollToItemMovesAsLittleAsItCan() {
     // Ten rows of fifty, a viewport of two hundred: rows 0..3 are on screen.
     // A row already in view does not move the list at all.
@@ -426,6 +442,7 @@ void TestVirtualList() {
     RowsOfDifferentHeightsStillLineUp();
     UniformRowsAnswerTheSameRange();
     ScrollToItemMovesAsLittleAsItCan();
+    ScrollToStartPutsTheItemAtTheTop();
 
     TestSuite("virtual_list/handle");
     AScrollRequestWaitsForTheLayout();

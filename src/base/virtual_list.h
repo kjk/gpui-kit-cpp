@@ -59,10 +59,13 @@ float VirtualListItemOrigin(const float* sizes, int count, int ix);
 // matches only Center and lets the rest fall into one branch that scrolls as
 // little as it can: an item above the view aligns with the top, one below
 // aligns with the bottom, and one already in view does not move at all.
+// Top and Bottom only move what isn't on screen, as Rust's do. Start puts the
+// item at the top of the viewport wherever it is now.
 enum class ScrollStrategy : uint8_t {
     Top,
     Center,
-    Bottom
+    Bottom,
+    Start
 };
 
 // scroll_to_item: the offset that brings the item at `origin` into a viewport
