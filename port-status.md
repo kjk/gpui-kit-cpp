@@ -101,6 +101,11 @@ The current update target is
   ligatures don't move those breaks. Editor rows also shape VT, FF, CR, NEL, LS
   and PS as spaces of the same byte length (`TextNoLineBreaks`), because the
   shaper would break a row at them.
+- **Media and volume keys have names.** Rust's gpui names none of them. This tree
+  binds `medianext`, `mediaprev`, `mediastop`, `mediaplaypause`, `volumemute`,
+  `volumedown` and `volumeup`, with the Win32 codes. X11 maps the XF86 audio
+  keysyms, macOS the system-defined media key events, and Windows and the
+  browser deliver the codes as they are.
 - **One engine.** Upstream selects GPUI Fast with the `gpui-fast` Cargo
   feature. This tree is that engine's C++ port and has no second backend
   to switch.

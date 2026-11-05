@@ -740,6 +740,15 @@ enum : int {
     KeyF24 = 135,
     KeyBrowserBack = 166,
     KeyBrowserForward = 167,
+    // Win32's volume and media keys. Rust's gpui names none of them; this
+    // tree does, so an app can bind one (port-status.md).
+    KeyVolumeMute = 173,
+    KeyVolumeDown = 174,
+    KeyVolumeUp = 175,
+    KeyMediaNextTrack = 176,
+    KeyMediaPrevTrack = 177,
+    KeyMediaStop = 178,
+    KeyMediaPlayPause = 179,
     // Win32's OEM punctuation keys. X11 and Cocoa map both the unshifted and
     // shifted character on each physical key onto the same code.
     KeySemicolon = 186,

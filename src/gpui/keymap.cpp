@@ -64,6 +64,13 @@ static const NamedKey kNamedKeys[] = {
     {"delete", KeyDelete},
     {"back", KeyBrowserBack},
     {"forward", KeyBrowserForward},
+    {"volumemute", KeyVolumeMute},
+    {"volumedown", KeyVolumeDown},
+    {"volumeup", KeyVolumeUp},
+    {"medianext", KeyMediaNextTrack},
+    {"mediaprev", KeyMediaPrevTrack},
+    {"mediastop", KeyMediaStop},
+    {"mediaplaypause", KeyMediaPlayPause},
     {"menu", KeyApps},
     {"numpad0", KeyNumpad0},
     {"numpad1", KeyNumpad0 + 1},
@@ -672,6 +679,13 @@ bool KeyIsPrintable(int vk) {
         case KeyEnd:
         case KeyBrowserBack:
         case KeyBrowserForward:
+        case KeyVolumeMute:
+        case KeyVolumeDown:
+        case KeyVolumeUp:
+        case KeyMediaNextTrack:
+        case KeyMediaPrevTrack:
+        case KeyMediaStop:
+        case KeyMediaPlayPause:
         case KeyEscape:
         // Shift, Control, Alt, caps lock and the Windows keys.
         case KeyShift:

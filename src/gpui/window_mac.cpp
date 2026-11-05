@@ -2273,6 +2273,63 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     return win;
 }
 
+// Media and volume keys reach an app as NSEventTypeSystemDefined events of
+// subtype 8 (NX_SUBTYPE_AUX_CONTROL_BUTTONS), never as keyDown:. data1 holds
+// the NX_KEYTYPE_* code in its high 16 bits, the key state (0xA down, 0xB up)
+// in bits 8-15 and the repeat flag in bit 0.
+static int MediaKeyFor(int nxKey) {
+    switch (nxKey) {
+        case 0: // NX_KEYTYPE_SOUND_UP
+            return KeyVolumeUp;
+        case 1: // NX_KEYTYPE_SOUND_DOWN
+            return KeyVolumeDown;
+        case 7: // NX_KEYTYPE_MUTE
+            return KeyVolumeMute;
+        case 16: // NX_KEYTYPE_PLAY
+            return KeyMediaPlayPause;
+        case 17: // NX_KEYTYPE_NEXT
+            return KeyMediaNextTrack;
+        case 18: // NX_KEYTYPE_PREVIOUS
+            return KeyMediaPrevTrack;
+        default:
+            return 0;
+    }
+}
+
+// Hands a media key to the key window as a key press. The caller still sends
+// every event on, so the system keeps its own handling of the key.
+static void DispatchMediaKey(App* app, NSEvent* ev) {
+    if ([ev type] != NSEventTypeSystemDefined || (int)[ev subtype] != 8) {
+        return;
+    }
+    NSInteger data = [ev data1];
+    int key = MediaKeyFor((int)((data & 0xFFFF0000) >> 16));
+    if (!key) {
+        return;
+    }
+    int state = (int)((data & 0xFF00) >> 8);
+    NSWindow* keyWin = [NSApp keyWindow];
+    for (int i = 0; i < app->windows.len; i++) {
+        Window* w = app->windows[i];
+        if (!w->plat || w->plat->window != keyWin) {
+            continue;
+        }
+        NSEventModifierFlags mods = [ev modifierFlags];
+        bool shift = (mods & NSEventModifierFlagShift) != 0;
+        bool ctrl = (mods & NSEventModifierFlagControl) != 0;
+        bool alt = (mods & NSEventModifierFlagOption) != 0;
+        bool platform = (mods & NSEventModifierFlagCommand) != 0;
+        if (state == 0xA) {
+            KeyDownFlags flags;
+            flags.held = (data & 0x1) != 0;
+            WindowKeyDown(w, key, shift, ctrl, alt, platform, false, flags);
+        } else if (state == 0xB) {
+            WindowKeyUp(w, key, shift, ctrl, alt, platform, false);
+        }
+        return;
+    }
+}
+
 int AppRun(App* app) {
     if (!app) {
         return 1;
@@ -2290,6 +2347,7 @@ int AppRun(App* app) {
                 if (!ev) {
                     break;
                 }
+                DispatchMediaKey(app, ev);
                 [NSApp sendEvent:ev];
             }
             if (!AppAnyWindowOpen(app)) {
@@ -2330,6 +2388,7 @@ int AppRun(App* app) {
                                                     inMode:NSDefaultRunLoopMode
                                                    dequeue:YES];
                 if (ev) {
+                    DispatchMediaKey(app, ev);
                     [NSApp sendEvent:ev];
                 }
             }

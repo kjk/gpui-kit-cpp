@@ -68,6 +68,12 @@ static void AChordIsReadTheWayRustSpellsIt() {
     utassert(c.vk == KeyBrowserBack);
     utassert(KeyChordParse(StrL("forward"), &c));
     utassert(c.vk == KeyBrowserForward);
+    utassert(KeyChordParse(StrL("medianext"), &c));
+    utassert(c.vk == KeyMediaNextTrack);
+    utassert(KeyChordParse(StrL("ctrl-mediaplaypause"), &c));
+    utassert(c.vk == KeyMediaPlayPause && c.ctrl);
+    utassert(KeyChordParse(StrL("volumeup"), &c));
+    utassert(c.vk == KeyVolumeUp);
     utassert(KeyChordParse(StrL("menu"), &c));
     utassert(c.vk == KeyApps && c.vk != KeyMenu && !c.alt);
     utassert(KeyChordParse(StrL("ctrl-numpad0"), &c));
@@ -730,12 +736,14 @@ static void TheChordAnActionIsReachedBy() {
 
     // Round trip: every name KeyChordParse reads, KeyName spells again.
     const char* specs[] = {
-        "enter",   "escape",   "tab",    "space", "backspace", "delete",
-        "left",    "up",       "right",  "down",  "home",      "end",
-        "pageup",  "pagedown", "insert", "back",  "forward",   "menu",
-        "numpad0", "numpad9",  "f1",     "f7",    "f11",       "f12",
-        "f24",     "f35",      "cut",    "copy",  "paste",     "new",
-        "open",    "save"};
+        "enter",     "escape",    "tab",        "space",         "backspace",
+        "delete",    "left",      "up",         "right",         "down",
+        "home",      "end",       "pageup",     "pagedown",      "insert",
+        "back",      "forward",   "menu",       "numpad0",       "numpad9",
+        "f1",        "f7",        "f11",        "f12",           "f24",
+        "f35",       "cut",       "copy",       "paste",         "new",
+        "open",      "save",      "volumemute", "volumedown",    "volumeup",
+        "medianext", "mediaprev", "mediastop",  "mediaplaypause"};
     for (const char* spec : specs) {
         KeyChord parsed = {};
         utassert(KeyChordParse(Str(spec), &parsed));
@@ -800,6 +808,10 @@ static void OnlyTypingKeysArePrintable() {
     utassert(!KeyIsPrintable(KeyPageUp) && !KeyIsPrintable(KeyEnd));
     utassert(!KeyIsPrintable(KeyInsert) && !KeyIsPrintable(KeyEscape));
     utassert(!KeyIsPrintable(KeyBrowserBack));
+    utassert(!KeyIsPrintable(KeyMediaNextTrack) &&
+             !KeyIsPrintable(KeyVolumeUp));
+    utassert(!KeyIsPrintable(KeyMediaPlayPause) &&
+             !KeyIsPrintable(KeyVolumeMute));
     utassert(!KeyIsPrintable(KeyShift) && !KeyIsPrintable(KeyControl));
     utassert(!KeyIsPrintable(KeyAlt));
 }

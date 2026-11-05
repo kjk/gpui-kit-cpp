@@ -332,6 +332,22 @@ static int KeyFor(KeySym ks) {
             return KeyBrowserBack;
         case XF86XK_Forward:
             return KeyBrowserForward;
+        case XF86XK_AudioMute:
+            return KeyVolumeMute;
+        case XF86XK_AudioLowerVolume:
+            return KeyVolumeDown;
+        case XF86XK_AudioRaiseVolume:
+            return KeyVolumeUp;
+        case XF86XK_AudioNext:
+            return KeyMediaNextTrack;
+        case XF86XK_AudioPrev:
+            return KeyMediaPrevTrack;
+        case XF86XK_AudioStop:
+            return KeyMediaStop;
+        // one key on most keyboards, and Win32 has one code for both
+        case XF86XK_AudioPlay:
+        case XF86XK_AudioPause:
+            return KeyMediaPlayPause;
         case XF86XK_Cut:
             return KeyCut;
         case XF86XK_Copy:
