@@ -1364,9 +1364,94 @@ static void ACheckedMenuItemReportsItsCheck() {
     TestAppFree(app);
 }
 
+// menu.rs a_submenu_with_room_opens_on_the_right,
+// a_submenu_by_the_window_s_edge_opens_on_the_left and
+// submenus_with_different_widths_choose_the_side_that_fits.
+struct SubmenuSideMenu {
+    float parentW = 128;
+    float subW = 128;
+    Entity<PopupMenuState> menu;
+    Entity<PopupMenuState> submenu;
+
+    static El* Render(SubmenuSideMenu* self, Ctx* cx) {
+        PopupMenu* sub = PopupMenu::New(cx, StrL("submenu"))
+                             ->MinW(self->subW)
+                             ->Menu(StrL("Save copy"));
+        PopupMenu* menu = PopupMenu::New(cx, StrL("parent-menu"))
+                              ->MinW(self->parentW)
+                              ->Submenu(StrL("More"), sub);
+        self->menu = menu->state;
+        self->submenu = sub->state;
+        El* tab = Div(cx->a)->Id(StrL("window-menu"))->SizeFull();
+        return Div(cx->a)->SizeFull()->Child(ContextMenu::New(cx, StrL("wrap"))
+                                                 ->Child(tab)
+                                                 ->Menu(menu)
+                                                 ->IntoEl());
+    }
+};
+
+static void OpenSubmenuAt(float x, float parentW, float subW, Bounds* item,
+                          Bounds* submenu) {
+    App* app = TestAppNew();
+    Entity<SubmenuSideMenu> view = EntityNew<SubmenuSideMenu>(app);
+    SubmenuSideMenu* self = view.Get(app);
+    self->parentW = parentW;
+    self->subW = subW;
+    Window* win = TestWindowOpen(app, view, 800, 480);
+    TestSimulateMouseDown(win, {x, 40}, MouseButton::Right);
+    TestDraw(win);
+    self = view.Get(app);
+    PopupMenuState* opened = self->menu.Get(app);
+    utassert(opened && opened->open && opened->bounds.w > 0);
+    // Hover selects the row, which is what opens its submenu. Left and
+    // Right would follow the side, so they cannot open both cases.
+    TestSimulateMouseMove(win, {opened->bounds.x + opened->bounds.w * 0.5f,
+                                opened->bounds.y + 14});
+    TestDraw(win);
+    self = view.Get(app);
+    PopupMenuState* menu = self->menu.Get(app);
+    PopupMenuState* sub = self->submenu.Get(app);
+    utassert(menu && sub && menu->open && menu->openSubmenu == 0);
+    if (item && menu) {
+        *item = menu->bounds;
+    }
+    if (submenu && sub) {
+        *submenu = sub->bounds;
+    }
+    TestAppFree(app);
+}
+
+static void ASubmenuWithRoomOpensOnTheRight() {
+    Bounds item = {};
+    Bounds sub = {};
+    OpenSubmenuAt(400, 128, 128, &item, &sub);
+    utassert(item.x + 500 > 800);
+    utassert(item.Right() + sub.w < 800);
+    utassert(sub.x + sub.w * 0.5f > item.Right());
+}
+
+static void ASubmenuByTheWindowEdgeOpensOnTheLeft() {
+    Bounds item = {};
+    Bounds sub = {};
+    OpenSubmenuAt(790, 128, 128, &item, &sub);
+    utassert(sub.x + sub.w * 0.5f < item.x);
+}
+
+static void SubmenusWithDifferentWidthsChooseTheSideThatFits() {
+    Bounds item = {};
+    Bounds sub = {};
+    OpenSubmenuAt(420, 128, 320, &item, &sub);
+    utassert(sub.Right() <= item.x);
+    OpenSubmenuAt(330, 300, 128, &item, &sub);
+    utassert(sub.x + sub.w * 0.5f > item.Right());
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     ACheckedMenuItemReportsItsCheck();
+    ASubmenuWithRoomOpensOnTheRight();
+    ASubmenuByTheWindowEdgeOpensOnTheLeft();
+    SubmenusWithDifferentWidthsChooseTheSideThatFits();
     TheWalkStepsOverWhatCannotBeClicked();
     NothingSelectedYet();
     AMenuWithNoRows();

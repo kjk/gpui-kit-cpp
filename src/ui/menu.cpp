@@ -260,6 +260,70 @@ static void OnPopupLinkClick(PopupMenuState* state, Ctx* cx, const ClickEvent*,
     PopupMenuDismissAll(state, cx);
 }
 
+// The width IntoEl assigns, which is also the width a submenu is measured
+// by before it has been drawn (popup_menu.rs update_submenu_menu_anchor).
+static float PopupMenuWidth(Ctx* cx, PopupMenu* menu) {
+    if (!menu) {
+        return 0;
+    }
+    bool leftGutter = false;
+    for (const MenuItem& it : menu->items) {
+        if (it.icon != IconName::None ||
+            (SideIsLeft(menu->checkSide) && it.checked)) {
+            leftGutter = true;
+        }
+    }
+    float menuW = menu->minW > 0 ? menu->minW : Rems(cx, 8.f);
+    float icon = UiIconPx(cx, UiSize::XSmall);
+    float gap = Rems(cx, 0.25f);
+    float kbdPadX = Rems(cx, 0.25f);
+    float kbdMinW = Rems(cx, 1.25f);
+    if (cx->win) {
+        for (const MenuItem& it : menu->items) {
+            if (!it.label.s || it.kind == MenuItemKind::Separator) {
+                continue;
+            }
+            // text_sm / text_xs. Border + item-list padding (p_1) + row
+            // padding (px(8.)).
+            Size label =
+                MeasureText(&cx->win->paint, it.label, Rems(cx, 0.875f), 0);
+            float need = 2 + Rems(cx, 0.5f) + 16 + label.w;
+            if (leftGutter) {
+                need += icon + gap;
+            }
+            if (it.kbd.s) {
+                Size key =
+                    MeasureText(&cx->win->paint, it.kbd, Rems(cx, 0.75f), 0);
+                float kbdW = key.w + kbdPadX * 2;
+                need += (kbdW > kbdMinW ? kbdW : kbdMinW) + gap;
+            }
+            if ((!SideIsLeft(menu->checkSide) && it.checked) || it.submenu ||
+                (it.isLink && menu->externalLinkIcon)) {
+                need += icon + gap;
+            }
+            if (need > menuW) {
+                menuW = need;
+            }
+        }
+    }
+    if (menuW > 500) {
+        menuW = 500;
+    }
+    return menuW;
+}
+
+// A laid-out submenu whose width changed has to be placed again. The parent
+// reads that width while it builds, which is the next frame.
+static void PopupMenuWidthChanged(PaintCtx* ctx, El* e, void* user) {
+    PopupMenuState* s = (PopupMenuState*)user;
+    if (!s || !ctx || !ctx->window || !s->parent.IsValid()) {
+        return;
+    }
+    if (s->bounds.w != e->w) {
+        WindowRequestAnimationFrame(ctx->window);
+    }
+}
+
 El* PopupMenu::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     PopupMenuState* s = state.Get(cx);
@@ -284,45 +348,30 @@ El* PopupMenu::IntoEl() {
     // 500px maximum. Custom rows in the story already carry an explicit
     // 250px minimum, so their own content fits within that floor.
     // `min_w(rems(8.))` unless the caller set one.
-    float menuW = minW > 0 ? minW : Rems(cx, 8.f);
     // The rem lengths the rows below are built from: the icon and the gap
     // after it, and the kbd's padding and floor.
     // Every icon a row shows -- its own, the check, the submenu's chevron --
     // is `.xsmall()`, size_3.
+    float menuW = PopupMenuWidth(cx, this);
     float icon = UiIconPx(cx, UiSize::XSmall);
     float gap = Rems(cx, 0.25f);
     float kbdPadX = Rems(cx, 0.25f);
     float kbdMinW = Rems(cx, 1.25f);
-    if (cx->win) {
-        for (const MenuItem& it : items) {
-            if (!it.label.s || it.kind == MenuItemKind::Separator) {
-                continue;
-            }
-            // text_sm / text_xs, at the window's rem.
-            Size label =
-                MeasureText(&cx->win->paint, it.label, Rems(cx, 0.875f), 0);
-            // Border + item-list padding (p_1) + row padding (px(8.)).
-            float need = 2 + Rems(cx, 0.5f) + 16 + label.w;
-            if (leftGutter) {
-                need += icon + gap;
-            }
-            if (it.kbd.s) {
-                Size key =
-                    MeasureText(&cx->win->paint, it.kbd, Rems(cx, 0.75f), 0);
-                float kbdW = key.w + kbdPadX * 2;
-                need += (kbdW > kbdMinW ? kbdW : kbdMinW) + gap;
-            }
-            if ((!SideIsLeft(checkSide) && it.checked) || it.submenu ||
-                (it.isLink && externalLinkIcon)) {
-                need += icon + gap;
-            }
-            if (need > menuW) {
-                menuW = need;
+    // Open a submenu on the left only when, placed at this menu's right
+    // edge, it would pass the window. Its width is the one it will be drawn
+    // at, or this menu's own when the selected row is not a submenu.
+    if (s && cx->win) {
+        float selfW = s->bounds.w > 0 ? s->bounds.w : menuW;
+        float subW = selfW;
+        int ix = s->selected >= 0 ? s->selected : s->openSubmenu;
+        if (ix >= 0 && ix < items.len && items[ix].submenu) {
+            float childW = PopupMenuWidth(cx, items[ix].submenu);
+            if (childW > 0) {
+                subW = childW;
             }
         }
-    }
-    if (menuW > 500) {
-        menuW = 500;
+        float winW = WindowSize(cx->win).dipW;
+        s->side = (s->bounds.Right() + subW > winW) ? Side::Left : Side::Right;
     }
     float itemH = size == UiSize::Small ? 20.f : 26.f;
     float radius = size == UiSize::Small ? th.radius * 0.5f : th.radius;
@@ -363,9 +412,12 @@ El* PopupMenu::IntoEl() {
     root->KeyContext(PopupMenuContext())->TrackFocus(focus)->TrapId(focus.id);
     if (s) {
         // .on_mouse_down_out(Self::on_mouse_down_out), and the box it is
-        // measured against.
+        // measured against. prepaint notices a width change so the parent
+        // can flip the submenu on the next frame.
         root->BoundsOut(&s->bounds)
             ->OnMouseUpOut(ListenTo(state, &PopupMenuState::OnPressOutside));
+        root->prePaint = PopupMenuWidthChanged;
+        root->customUser = s;
     }
     // A submenu that is only showing — hover selected its row — does not
     // take focus. Activation focuses the child, and this arms the trap
@@ -606,8 +658,11 @@ El* PopupMenu::IntoEl() {
                 s->submenuFocus = subState->focus;
             }
             sub->Absolute()->Top(-Rems(cx, 0.25f)); // top_neg_1
+            // TopLeft hangs the submenu off the row's right, overlapping by
+            // 8. TopRight puts it on the left of the row: its right edge is
+            // 16px before the row's left (anchor TopRight, left -16).
             if (s && SideIsLeft(s->side)) {
-                sub->Right(menuW - 8);
+                sub->Right(menuW + 16);
             } else {
                 sub->Left(menuW - 8);
             }

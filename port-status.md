@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `18b54950e89f2756b4b3eedc965f91efa681c37b` (2026-11-01,
-input: Hover the whole visible editor after scrolling (#3734)). Hover
-already tests the pointer against `inputBounds`, the visible editor,
-so the scrolled bottom of a field stays live.
+Processed through `6902d040733918f6a8f0944def52b08fbfb2c454` (2026-11-01,
+menu: Open a submenu on the left only without room on the right
+(#3736)). A submenu opens on the left only when its own width would
+pass the window's right edge.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
