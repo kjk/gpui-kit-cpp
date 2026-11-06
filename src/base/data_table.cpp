@@ -943,15 +943,14 @@ void TableState::OnResizeDrag(TableState* self, Ctx* cx,
         return;
     }
     TableEnsureCols(self, col + 1);
+    // The width at the press, plus how far the pointer has moved. The
+    // painted left edge moves when the table scrolls as the columns narrow.
+    if (!self->hasResizeOrigin || col >= self->colWidth.len) {
+        return;
+    }
     self->resizingCol = col;
-    // col_group.bounds.left(). Each boundary is covered by two bands: the
-    // trailing one ends at the column's right edge, and the leading one — in
-    // the next column's head, marked by its payload data — starts there. So
-    // where the column starts is that edge less the width it has now, and
-    // the width it has now is what laid the band out where it is.
-    float boundary = ev->drag.data ? ev->el.x : ev->el.Right();
-    float left = boundary - self->colWidth[col];
-    TableResizeCol(self, cx, col, ev->event.x - kTableResizeHandleW - left);
+    TableResizeCol(self, cx, col,
+                   self->resizeOriginW + (ev->event.x - self->resizeOriginX));
 }
 
 void TableState::OnResizeMouseDown(TableState* self, Ctx* cx,
@@ -960,6 +959,12 @@ void TableState::OnResizeMouseDown(TableState* self, Ctx* cx,
         return;
     }
     int ix = (int)col;
+    if (ix >= 0 && ix < self->colCount) {
+        TableEnsureCols(self, ix + 1);
+        self->resizeOriginX = ev->x;
+        self->resizeOriginW = ix < self->colWidth.len ? self->colWidth[ix] : 0;
+        self->hasResizeOrigin = true;
+    }
     if (ev->clickCount == 1) {
         self->fittedCol = -1;
     } else if (ev->clickCount == 2 && TableFitCol(self, cx, ix)) {
@@ -968,6 +973,7 @@ void TableState::OnResizeMouseDown(TableState* self, Ctx* cx,
 }
 
 void TableState::OnResizeEnd(TableState* self, Ctx* cx, const MouseUpEvent*) {
+    self->hasResizeOrigin = false;
     if (self->resizingCol < 0) {
         return;
     }

@@ -88,9 +88,6 @@ extern const Str kTableResizeDrag;
 // in Rust.
 extern const Str kTableColDrag;
 
-// HANDLE_SIZE: how far behind the pointer a resize drag trails the column
-// edge.
-const float kTableResizeHandleW = 2;
 // HANDLE_PADDING: grab room on each side of a resize handle's hairline, so
 // the divider can be caught without pixel-hunting. Both halves of the band
 // are this wide, so widening the grab area stays symmetric about the
@@ -177,6 +174,12 @@ struct TableState {
     // resizing_col: which edge is being dragged right now, and the flag that
     // decides whether a release has anything to report.
     int resizingCol = -1;
+    // Where the press on a resize handle was, and the column's width then.
+    // A drag adds the pointer's movement to that width, so a scroll that
+    // moves the painted edge does not change the column.
+    bool hasResizeOrigin = false;
+    float resizeOriginX = 0;
+    float resizeOriginW = 0;
     // fitted_col. A double-click that just fitted this column ignores
     // resize drags until the next single press, so the second press of
     // that click cannot pull the fitted edge back under the pointer.

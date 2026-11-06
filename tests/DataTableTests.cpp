@@ -1824,7 +1824,47 @@ static void TableExposesItsHeaderAndCellsToAssistiveTechnology() {
     AppGlobalClear(&app);
 }
 
+// collections.rs resizing_a_column_in_a_scrolled_table_follows_the_pointer.
+// The painted edge in the drag is not where the press started. The width
+// is the width then plus how far the pointer has moved.
+static void ResizingAColumnFollowsThePointer() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    Ctx cx = {&app, win, a, state.id};
+    TableState* s = state.Get(&app);
+    s->colCount = 4;
+    TableEnsureCols(s, 4);
+    for (int i = 0; i < 4; i++) {
+        s->colWidth[i] = 300;
+    }
+    MouseDownEvent down = {};
+    down.button = MouseButton::Left;
+    down.x = 1000;
+    down.clickCount = 1;
+    TableState::OnResizeMouseDown(s, &cx, &down, 2);
+    DragMoveEvent drag = {};
+    drag.drag.kind = kTableResizeDrag;
+    drag.drag.ix = 2;
+    drag.event.x = 900;
+    drag.el = {0, 0, 40, 10};
+    TableState::OnResizeDrag(s, &cx, &drag);
+    utassert(s->colWidth[2] == 200.f);
+    MouseUpEvent up = {};
+    TableState::OnResizeEnd(s, &cx, &up);
+    drag.event.x = 800;
+    TableState::OnResizeDrag(s, &cx, &drag);
+    utassert(s->colWidth[2] == 200.f);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestDataTable() {
+    ResizingAColumnFollowsThePointer();
     AFittedColumnHoldsItsContentOnWholeDevicePixels();
     AFitStaysWithinTheColumnAndEmitsOnlyOnAChange();
     AResizeDragAfterAFitWaitsForTheNextPress();

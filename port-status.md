@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6902d040733918f6a8f0944def52b08fbfb2c454` (2026-11-01,
-menu: Open a submenu on the left only without room on the right
-(#3736)). A submenu opens on the left only when its own width would
-pass the window's right edge.
+Processed through `a1b7a3f97b2a6b390af3e3212f7e7d478a352057` (2026-11-01,
+table: Resize a column from where the drag started (#3732)). A column
+resize keeps the width from the press and adds how far the pointer
+has moved, so a scrolling table does not collapse the column.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
