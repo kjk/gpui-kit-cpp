@@ -646,6 +646,7 @@ static void End(SpeechState* s, Ctx* cx, SpeechEvent* ev) {
     DropSession(s);
     s->status = SpeechStatus::Idle;
     s->meter = LevelMeter{};
+    s->surfaces.Free();
     Emit(s, cx, ev);
     NotifySelf(s, cx);
 }
@@ -848,6 +849,7 @@ SpeechState::~SpeechState() {
     }
     StrFree(committed);
     StrFree(hypothesis);
+    surfaces.Free();
     delete systemRecognizer;
 }
 
@@ -908,6 +910,14 @@ TempStr SpeechState::TranscriptTemp() const {
     return fmt("%s%s", committed, hypothesis);
 }
 
+void SpeechState::AdvanceSurface(double now, float width) {
+    surfaces.Advance(now, width, &meter);
+}
+
+const float* SpeechState::SurfaceHeights(float width, int* outN) const {
+    return surfaces.Heights(width, outN);
+}
+
 void SpeechState::Start(Ctx* cx) {
     if (SpeechStatusIsActive(status)) {
         return;
@@ -947,6 +957,7 @@ void SpeechState::Start(Ctx* cx) {
     SetOwned(&committed, {});
     SetOwned(&hypothesis, {});
     meter.Reset(format.sampleRate, format.channels);
+    surfaces.Free();
     hasSession = true;
     sessionId = id;
     capture = capturing;
@@ -1316,12 +1327,301 @@ El* SpeechIndicator::IntoEl() {
     return Div(a)->SizeFull()->Group()->Child(bars)->Child(stop);
 }
 
+// ─── surface.rs ───────────────────────────────────────────────────────────
+
+static const float kLiquidNodeSpacing = 3.f;
+static const int kLiquidMinNodes = 16;
+static const float kLiquidStep = 1.f / 240.f;
+static const float kLiquidMaxFrame = 0.05f;
+static const float kLiquidStiffness = 2600.f;
+static const float kLiquidRestoring = 4.f;
+static const float kLiquidDamping = 2.4f;
+static const float kLiquidSourceFrequency = 3.2f;
+static const float kLiquidSourceAmplitude = 0.9f;
+static const float kLiquidSourcePull = 0.35f;
+static const float kLiquidSourceResponse = 0.05f;
+static const float kLiquidDropLevel = 0.18f;
+static const float kLiquidDropRelease = 0.09f;
+static const float kLiquidDropRise = 0.15f;
+static const float kLiquidDropStrength = 9.f;
+static const int kLiquidDropReach = 4;
+static const float kLiquidStaleAfter = 0.5f;
+static const float kTau = 6.283185307179586f;
+
+static int LiquidNodeCount(float width) {
+    int n = (int)(width / kLiquidNodeSpacing);
+    return n > kLiquidMinNodes ? n : kLiquidMinNodes;
+}
+
+void LiquidSurface::Free() {
+    delete[] heights;
+    delete[] velocities;
+    heights = nullptr;
+    velocities = nullptr;
+    n = 0;
+}
+
+static void LiquidResize(LiquidSurface* s, int nodes) {
+    if (s->n == nodes) {
+        return;
+    }
+    delete[] s->heights;
+    delete[] s->velocities;
+    s->heights = new float[nodes]();
+    s->velocities = new float[nodes]();
+    s->n = nodes;
+}
+
+static void LiquidDrop(LiquidSurface* s, float level) {
+    uint32_t seed = s->seed;
+    seed ^= seed << 13;
+    seed ^= seed >> 17;
+    seed ^= seed << 5;
+    s->seed = seed;
+    float place = 0.12f + 0.76f * ((float)seed / (float)0xffffffffu);
+    int last = s->n - 1;
+    int center = (int)(place * (float)last);
+    for (int offset = -kLiquidDropReach; offset <= kLiquidDropReach; offset++) {
+        int ix = center + offset;
+        if (ix > 0 && ix < last) {
+            float falloff = expf(-(float)(offset * offset) / 5.f);
+            s->velocities[ix] -= level * kLiquidDropStrength * falloff;
+        }
+    }
+}
+
+static void LiquidDropSyllables(LiquidSurface* s, const LevelMeter* meter) {
+    if (!meter) {
+        return;
+    }
+    uint64_t recorded = meter->recorded;
+    uint64_t fresh = recorded >= s->seen ? recorded - s->seen : 0;
+    s->seen = recorded;
+    int nLevels = meter->LevelsLen();
+    // History holds at most kSpeechLevelHistory; a wider gap still walks
+    // what is left, oldest first, the way the meter's iterator does.
+    int skip = fresh < (uint64_t)nLevels ? nLevels - (int)fresh : 0;
+    for (int i = skip; i < nLevels; i++) {
+        float level = meter->LevelAt(i);
+        if (level < kLiquidDropRelease) {
+            s->sounding = false;
+        } else if (level >= kLiquidDropLevel &&
+                   (!s->sounding || level >= s->previous + kLiquidDropRise)) {
+            s->sounding = true;
+            LiquidDrop(s, level);
+        }
+        s->previous = level;
+    }
+}
+
+static void LiquidStep(LiquidSurface* s, float dt) {
+    int last = s->n - 1;
+    if (last < 1) {
+        return;
+    }
+    s->phase = fmodf(s->phase + dt * kTau * kLiquidSourceFrequency, kTau);
+    if (s->phase < 0.f) {
+        s->phase += kTau;
+    }
+    float source = s->level * kLiquidSourceAmplitude * sinf(s->phase);
+    int middle = s->n / 2;
+    for (int offset = -2; offset <= 2; offset++) {
+        int ix = middle + offset;
+        if (ix <= 0 || ix >= last) {
+            continue;
+        }
+        float target = source * expf(-(float)(offset * offset) / 2.f);
+        s->heights[ix] += (target - s->heights[ix]) * kLiquidSourcePull;
+    }
+    float damping = expf(-kLiquidDamping * dt);
+    for (int ix = 1; ix < last; ix++) {
+        float curvature =
+            s->heights[ix - 1] + s->heights[ix + 1] - 2.f * s->heights[ix];
+        s->velocities[ix] +=
+            (kLiquidStiffness * curvature - kLiquidRestoring * s->heights[ix]) *
+            dt;
+        s->velocities[ix] *= damping;
+    }
+    for (int ix = 1; ix < last; ix++) {
+        s->heights[ix] += s->velocities[ix] * dt;
+    }
+    s->heights[0] = 0.f;
+    s->heights[last] = 0.f;
+}
+
+void LiquidSurface::Advance(double now, float width, const LevelMeter* meter) {
+    LiquidResize(this, LiquidNodeCount(width));
+    float elapsed = 0.f;
+    if (advanced >= 0 && now >= advanced) {
+        elapsed = (float)(now - advanced);
+        if (elapsed > kLiquidMaxFrame) {
+            elapsed = kLiquidMaxFrame;
+        }
+    }
+    advanced = now;
+    LiquidDropSyllables(this, meter);
+    float raw = 0.f;
+    if (meter && meter->LevelsLen() > 0) {
+        raw = meter->LevelAt(meter->LevelsLen() - 1);
+    }
+    float follow = 1.f - expf(-elapsed / kLiquidSourceResponse);
+    level += (raw - level) * follow;
+    int steps = elapsed > 0.f ? (int)ceilf(elapsed / kLiquidStep) : 0;
+    float dt = steps > 0 ? elapsed / (float)steps : 0.f;
+    for (int i = 0; i < steps; i++) {
+        LiquidStep(this, dt);
+    }
+}
+
+void LiquidSurfaces::Free() {
+    for (int i = 0; i < n; i++) {
+        items[i]->Free();
+        delete items[i];
+    }
+    delete[] items;
+    items = nullptr;
+    n = 0;
+    cap = 0;
+}
+
+void LiquidSurfaces::Advance(double now, float width, const LevelMeter* meter) {
+    int nodes = LiquidNodeCount(width);
+    int kept = 0;
+    for (int i = 0; i < n; i++) {
+        LiquidSurface* s = items[i];
+        bool same = s->n == nodes;
+        bool fresh = s->advanced < 0 || now < s->advanced ||
+                     (now - s->advanced) < (double)kLiquidStaleAfter;
+        if (same || fresh) {
+            items[kept++] = s;
+        } else {
+            s->Free();
+            delete s;
+        }
+    }
+    n = kept;
+    int ix = -1;
+    for (int i = 0; i < n; i++) {
+        if (items[i]->n == nodes) {
+            ix = i;
+            break;
+        }
+    }
+    if (ix < 0) {
+        if (n == cap) {
+            int ncap = cap < 4 ? 4 : cap * 2;
+            LiquidSurface** next = new LiquidSurface*[ncap];
+            for (int i = 0; i < n; i++) {
+                next[i] = items[i];
+            }
+            delete[] items;
+            items = next;
+            cap = ncap;
+        }
+        items[n] = new LiquidSurface();
+        ix = n;
+        n++;
+    }
+    items[ix]->Advance(now, width, meter);
+}
+
+const float* LiquidSurfaces::Heights(float width, int* outN) const {
+    int nodes = LiquidNodeCount(width);
+    for (int i = 0; i < n; i++) {
+        if (items[i]->n == nodes && items[i]->heights) {
+            if (outN) {
+                *outN = items[i]->n;
+            }
+            return items[i]->heights;
+        }
+    }
+    if (outN) {
+        *outN = 0;
+    }
+    return nullptr;
+}
+
+void SpeechStillHeights(float level, float* out) {
+    const int points = kSpeechStillPoints;
+    for (int ix = 0; ix < points; ix++) {
+        float fromMiddle = (float)ix / (float)(points - 1) - 0.5f;
+        float envelope = expf(-powf(fromMiddle / 0.3f, 2.f));
+        out[ix] = level * kLiquidSourceAmplitude *
+                  cosf(kTau * 2.5f * fromMiddle) * envelope;
+    }
+}
+
+float SpeechEdgeTaper(float t) {
+    if (t < 0.f) {
+        t = 0.f;
+    } else if (t > 1.f) {
+        t = 1.f;
+    }
+    float s = sinf(kPi * t);
+    if (s < 0.f) {
+        s = 0.f;
+    }
+    return powf(s, 0.35f);
+}
+
+static const float kCrestRatio = 0.42f;
+static const float kCrestSoftness = 1.4f;
+static const float kLineTaper = 0.25f;
+static const int kMinSurfacePoints = 32;
+static const float kWaterOpacity = 0.16f;
+
+int SpeechSurfacePoints(Bounds bounds, const float* heights, int nHeights,
+                        Point* out, int cap) {
+    int count = (!heights || nHeights <= 0) ? kMinSurfacePoints
+                                            : (nHeights < 2 ? 2 : nHeights);
+    int write = count < cap ? count : cap;
+    float middle = bounds.y + bounds.h / 2.f;
+    float crest = bounds.h * kCrestRatio;
+    for (int ix = 0; ix < write; ix++) {
+        float t = count <= 1 ? 0.f : (float)ix / (float)(count - 1);
+        float height = (heights && ix < nHeights) ? heights[ix] : 0.f;
+        float rise = tanhf(height * kCrestSoftness) * SpeechEdgeTaper(t);
+        out[ix] = Point{bounds.x + bounds.w * t, middle + crest * rise};
+    }
+    return write;
+}
+
+void SpeechSurfaceRibbon(const Point* points, int n, float width, Point* top,
+                         Point* bottom) {
+    int last = n > 1 ? n - 1 : 1;
+    for (int ix = 0; ix < n; ix++) {
+        Point before = points[ix > 0 ? ix - 1 : 0];
+        Point after = points[ix + 1 < n ? ix + 1 : n - 1];
+        float dx = after.x - before.x;
+        float dy = after.y - before.y;
+        float length = sqrtf(dx * dx + dy * dy);
+        if (length < 1e-20f) {
+            length = 1e-20f;
+        }
+        float swell = sinf(kPi * (float)ix / (float)last);
+        if (swell < 0.f) {
+            swell = 0.f;
+        }
+        float half = width * (kLineTaper + (1.f - kLineTaper) * swell) / 2.f;
+        float ox = half * (-dy / length);
+        float oy = half * (dx / length);
+        Point at = points[ix];
+        top[ix] = Point{at.x - ox, at.y - oy};
+        bottom[ix] = Point{at.x + ox, at.y + oy};
+    }
+}
+
 // ─── waveform.rs ──────────────────────────────────────────────────────────
 
 // DEFAULT_WIDTH: the width of a waveform the caller does not size.
 static const float kWaveformDefaultWidth = 96.f;
 // GAP_RATIO: the space between bars, relative to their width.
 static const float kWaveformGapRatio = 2.5f;
+
+SpeechWaveform* SpeechWaveform::Liquid() {
+    liquid = true;
+    return this;
+}
 
 SpeechWaveform* SpeechWaveform::New(Ctx* cx, Entity<SpeechState> state) {
     SpeechWaveform* w = ArenaNew<SpeechWaveform>(cx->a);
@@ -1407,6 +1707,122 @@ struct WaveformPaint {
     Rgba color = {};
 };
 
+struct LiquidPaint {
+    Entity<SpeechState> state = {};
+    bool animate = false;
+    bool reduced = false;
+    float line = 2;
+    Rgba color = {};
+    const float* heights = nullptr;
+    int nHeights = 0;
+};
+
+static void CopyHeights(Arena* arena, LiquidPaint* paint, const float* src,
+                        int n) {
+    if (n <= 0 || !src) {
+        paint->heights = nullptr;
+        paint->nHeights = 0;
+        return;
+    }
+    float* copy = (float*)Alloc(arena, n * (int)sizeof(float));
+    for (int i = 0; i < n; i++) {
+        copy[i] = src[i];
+    }
+    paint->heights = copy;
+    paint->nHeights = n;
+}
+
+static void PrepareLiquid(PaintCtx* ctx, El* e, void* user) {
+    LiquidPaint* paint = (LiquidPaint*)user;
+    SpeechState* s = paint->state.Get(ctx->app);
+    if (paint->reduced) {
+        float still[kSpeechStillPoints];
+        float level = 0.f;
+        if (s && s->LevelsLen() > 0) {
+            level = s->LevelAt(s->LevelsLen() - 1);
+        }
+        SpeechStillHeights(level, still);
+        CopyHeights(e->arena, paint, still, kSpeechStillPoints);
+        return;
+    }
+    if (s && paint->animate) {
+        s->AdvanceSurface(TimeNow(), e->w);
+    }
+    int n = 0;
+    const float* heights = s ? s->SurfaceHeights(e->w, &n) : nullptr;
+    CopyHeights(e->arena, paint, heights, n);
+}
+
+static void PathQuadTo(Path* path, float x0, float y0, float cx, float cy,
+                       float x, float y) {
+    PathCubicTo(path, x0 + (2.f / 3.f) * (cx - x0),
+                y0 + (2.f / 3.f) * (cy - y0), x + (2.f / 3.f) * (cx - x),
+                y + (2.f / 3.f) * (cy - y), x, y);
+}
+
+// follow: current point is points[0]. A quadratic through each later
+// midpoint, then a line to the last point. GPUI's curve_to is quadratic;
+// the path here only has cubics.
+static void PathFollow(Path* path, const Point* points, int n) {
+    if (n <= 0) {
+        return;
+    }
+    float x = points[0].x;
+    float y = points[0].y;
+    for (int i = 1; i + 1 < n; i++) {
+        float mx = (points[i].x + points[i + 1].x) / 2.f;
+        float my = (points[i].y + points[i + 1].y) / 2.f;
+        PathQuadTo(path, x, y, points[i].x, points[i].y, mx, my);
+        x = mx;
+        y = my;
+    }
+    PathLineTo(path, points[n - 1].x, points[n - 1].y);
+}
+
+static void PaintLiquid(PaintCtx* ctx, El* e, void* user) {
+    const LiquidPaint* paint = (const LiquidPaint*)user;
+    Bounds box = e->Bounds();
+    int cap = paint->nHeights > kMinSurfacePoints ? paint->nHeights
+                                                  : kMinSurfacePoints;
+    if (cap < 2) {
+        cap = 2;
+    }
+    Point* points = (Point*)Alloc(e->arena, cap * (int)sizeof(Point));
+    int n =
+        SpeechSurfacePoints(box, paint->heights, paint->nHeights, points, cap);
+    if (n < 2) {
+        return;
+    }
+    Point* top = (Point*)Alloc(e->arena, n * (int)sizeof(Point));
+    Point* bottom = (Point*)Alloc(e->arena, n * (int)sizeof(Point));
+    Point* reversed = (Point*)Alloc(e->arena, n * (int)sizeof(Point));
+    SpeechSurfaceRibbon(points, n, paint->line, top, bottom);
+    for (int i = 0; i < n; i++) {
+        reversed[i] = bottom[n - 1 - i];
+    }
+    Rgba color = PaintFade(ctx, paint->color);
+    Rgba water = PaintFade(ctx, RgbaOpacity(paint->color, kWaterOpacity));
+    Rgba clear = PaintFade(ctx, RgbaOpacity(paint->color, 0.f));
+    CanvasPushClip(ctx, box.x, box.y, box.w, box.h);
+    Path* fill = PathNew(ctx, true);
+    PathMoveTo(fill, points[0].x, points[0].y);
+    PathFollow(fill, points, n);
+    PathLineTo(fill, box.x + box.w, box.y + box.h);
+    PathLineTo(fill, box.x, box.y + box.h);
+    PathClose(fill);
+    PathFillGradientV(ctx, fill, box.y, box.y + box.h, water, clear);
+    PathFree(fill);
+    Path* line = PathNew(ctx, true);
+    PathMoveTo(line, top[0].x, top[0].y);
+    PathFollow(line, top, n);
+    PathLineTo(line, bottom[n - 1].x, bottom[n - 1].y);
+    PathFollow(line, reversed, n);
+    PathClose(line);
+    PathFill(ctx, line, color);
+    PathFree(line);
+    CanvasPopClip(ctx);
+}
+
 static void PaintWaveform(PaintCtx* ctx, El* e, void* user) {
     const WaveformPaint* w = (const WaveformPaint*)user;
     Bounds rects[kSpeechLevelHistory + 4];
@@ -1460,8 +1876,21 @@ El* SpeechWaveform::IntoEl() {
     }
 
     El* canvas = Div(a)->SizeFull();
-    canvas->customPaint = &PaintWaveform;
-    canvas->customUser = paint;
+    if (liquid) {
+        LiquidPaint* water = ArenaNew<LiquidPaint>(a);
+        water->state = state;
+        water->animate = animate;
+        water->reduced = MotionReduced();
+        float line = height * 0.1f;
+        water->line = line < 2.f ? 2.f : line;
+        water->color = paint->color;
+        canvas->prePaint = &PrepareLiquid;
+        canvas->customPaint = &PaintLiquid;
+        canvas->customUser = water;
+    } else {
+        canvas->customPaint = &PaintWaveform;
+        canvas->customUser = paint;
+    }
     El* e = Div(a)->H(height)->W(kWaveformDefaultWidth)->Shrink0();
     if (styleSet) {
         e->Refine(style, styleSet);

@@ -342,6 +342,54 @@ struct SystemRecognizer {
     SpeechRecognizer AsRecognizer();
 };
 
+// ─── surface.rs ───────────────────────────────────────────────────────────
+
+// A one-dimensional water surface driven by speech, behind
+// SpeechWaveform::liquid. Heights are displacements around zero.
+struct LiquidSurface {
+    float* heights = nullptr;
+    float* velocities = nullptr;
+    int n = 0;
+    // Negative until the first advance.
+    double advanced = -1;
+    float level = 0;
+    float phase = 0;
+    uint64_t seen = 0;
+    bool sounding = false;
+    float previous = 0;
+    uint32_t seed = 0x9e3779b9u;
+
+    void Advance(double now, float width, const LevelMeter* meter);
+    void Free();
+};
+
+// The water surfaces of one speech state, one for each width, so waveforms
+// of different widths do not restart each other.
+struct LiquidSurfaces {
+    LiquidSurface** items = nullptr;
+    int n = 0;
+    int cap = 0;
+
+    void Advance(double now, float width, const LevelMeter* meter);
+    const float* Heights(float width, int* outN) const;
+    void Free();
+};
+
+// still_heights: a ripple around the middle that grows with `level` and does
+// not travel. Writes kSpeechStillPoints heights.
+const int kSpeechStillPoints = 64;
+void SpeechStillHeights(float level, float* out);
+// edge_taper: how far a point `t` of the way across (0..=1) may move.
+float SpeechEdgeTaper(float t);
+// surface_points: the points of a surface across `bounds`. Writes up to
+// `cap` and returns how many the surface has.
+int SpeechSurfacePoints(Bounds bounds, const float* heights, int nHeights,
+                        Point* out, int cap);
+// ribbon: the two edges of a line through `points` that is `width` wide in
+// the middle and narrows toward the ends.
+void SpeechSurfaceRibbon(const Point* points, int n, float width, Point* top,
+                         Point* bottom);
+
 // ─── state.rs ─────────────────────────────────────────────────────────────
 
 // Where a SpeechState is in its session.
@@ -426,6 +474,8 @@ struct SpeechState {
     Str committed = {};
     Str hypothesis = {};
     LevelMeter meter = {};
+    // One water surface per width a liquid waveform has drawn.
+    LiquidSurfaces surfaces = {};
 
     // Sink calls, applied after the update they were made in: Rust's
     // `cx.defer`. They are posted to a window of the application; an
@@ -477,6 +527,12 @@ struct SpeechState {
     bool LevelLeadAt(double now, float* out) const {
         return meter.LeadAt(now, out);
     }
+    // advance_surface: step the water surface a liquid waveform `width` wide
+    // draws, to `now`. It does not notify.
+    void AdvanceSurface(double now, float width);
+    // surface_heights: the surface `width` wide. Empty before the first
+    // advance; `*outN` is how many.
+    const float* SurfaceHeights(float width, int* outN) const;
 
     // Start a session. Does nothing while one is running.
     //
@@ -596,6 +652,10 @@ void SpeechIndicatorBarRects(Bounds bounds, const float* heights, Bounds* out);
 // width. Before any audio, nothing is drawn. With reduced motion the bars
 // still show each level but do not scroll between them.
 //
+// SpeechWaveform::liquid draws a water surface instead: the middle rises and
+// falls with the level and sends waves toward both edges. Waves need room to
+// travel, so it is for a waveform that spans a row.
+//
 // Size the waveform like any element, e.g. a kFill width to span a row; it is
 // 96 px wide by default, and its height follows WithSize.
 struct SpeechWaveform {
@@ -603,11 +663,14 @@ struct SpeechWaveform {
     Ctx* cx = nullptr;
     Entity<SpeechState> state = {};
     UiSize size = UiSize::Medium;
+    bool liquid = false;
     Style style = {};
     uint32_t styleSet = 0;
 
     // A waveform for `state`.
     static SpeechWaveform* New(Ctx* cx, Entity<SpeechState> state);
+    // liquid: draw the input as a water surface rather than bars.
+    SpeechWaveform* Liquid();
     SpeechWaveform* WithSize(UiSize s);
     SpeechWaveform* Refine(const Style& refinement, uint32_t fields);
     float Height() const;

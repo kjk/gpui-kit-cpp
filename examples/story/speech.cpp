@@ -239,6 +239,15 @@ El* Dictation::Render(Ctx* cx, const char* id, bool showWhenUnsupported) {
     El* col = Div(a)->FlexCol()->W(kFill)->Gap(8);
     col->Child(
         component::Input::New(cx, Str(id), &input)->Suffix(suffix)->IntoEl());
+    if (component::SpeechStatusIsCapturing(status)) {
+        Style full;
+        full.width = kFill;
+        col->Child(component::SpeechWaveform::New(cx, speech)
+                       ->Liquid()
+                       ->WithSize(UiSize::Large)
+                       ->Refine(full, StyleFieldWidth)
+                       ->IntoEl());
+    }
     if (state && component::SpeechStatusIsActive(status)) {
         col->Child(
             StoryTxt(cx, StrDup(a, state->TranscriptTemp()), 14, th.mutedFg));

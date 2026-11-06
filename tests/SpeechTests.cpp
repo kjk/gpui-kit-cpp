@@ -726,6 +726,266 @@ static void BarsSitSideBySideAroundTheCenterAndGrowFromTheMidline() {
     utassert(rects[2].h > rects[0].h);
 }
 
+// ─── surface.rs ───────────────────────────────────────────────────────────
+
+static LevelMeter LoudMeter(int count) {
+    LevelMeter meter;
+    meter.Reset(16000, 1);
+    int n = 1280 * count;
+    int16_t* tone = new int16_t[n];
+    for (int ix = 0; ix < n; ix++) {
+        tone[ix] = (int16_t)(ix % 2 == 0 ? 8000 : -8000);
+    }
+    meter.Push(tone, n);
+    delete[] tone;
+    return meter;
+}
+
+static double RunSurface(LiquidSurface* surface, const LevelMeter* meter,
+                         double start, float secs) {
+    double now = start;
+    int frames = (int)(secs * 60.f);
+    for (int i = 0; i < frames; i++) {
+        now += 1.0 / 60.0;
+        surface->Advance(now, 300.f, meter);
+    }
+    return now;
+}
+
+static float MaxAbs(const float* heights, int n) {
+    float m = 0.f;
+    for (int i = 0; i < n; i++) {
+        float a = heights[i] < 0.f ? -heights[i] : heights[i];
+        if (a > m) {
+            m = a;
+        }
+    }
+    return m;
+}
+
+static bool AllZero(const float* heights, int n) {
+    for (int i = 0; i < n; i++) {
+        if (heights[i] != 0.f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void SilenceStaysFlat() {
+    LevelMeter meter;
+    meter.Reset(16000, 1);
+    LiquidSurface surface;
+    RunSurface(&surface, &meter, 0, 1.f);
+    utassert(surface.n == 100);
+    utassert(AllZero(surface.heights, surface.n));
+    surface.Free();
+}
+
+static void SoundSendsWavesFromTheMiddleTowardTheEdges() {
+    LevelMeter meter = LoudMeter(4);
+    LiquidSurface surface;
+    double start = 0;
+    surface.Advance(start, 300.f, &meter);
+    double now = RunSurface(&surface, &meter, start, 0.1f);
+    float middle = 0.f;
+    for (int i = 40; i < 60; i++) {
+        float a =
+            surface.heights[i] < 0 ? -surface.heights[i] : surface.heights[i];
+        if (a > middle) {
+            middle = a;
+        }
+    }
+    utassert(middle > 0.05f);
+    float early =
+        surface.heights[5] < 0 ? -surface.heights[5] : surface.heights[5];
+    float reached = 0.f;
+    for (int i = 0; i < 60; i++) {
+        now += 1.0 / 60.0;
+        surface.Advance(now, 300.f, &meter);
+        float a =
+            surface.heights[5] < 0 ? -surface.heights[5] : surface.heights[5];
+        if (a > reached) {
+            reached = a;
+        }
+    }
+    float bar = early > 0.01f ? early : 0.01f;
+    utassert(reached > bar);
+    surface.Free();
+}
+
+static void TheEdgesStayAtRestAndTheSurfaceStaysBounded() {
+    LevelMeter meter = LoudMeter(8);
+    LiquidSurface surface;
+    RunSurface(&surface, &meter, 0, 5.f);
+    utassert(surface.heights[0] == 0.f);
+    utassert(surface.heights[surface.n - 1] == 0.f);
+    utassert(MaxAbs(surface.heights, surface.n) < 2.f);
+    surface.Free();
+}
+
+static void TheSurfaceSettlesAfterTheSoundStops() {
+    LiquidSurface surface;
+    LevelMeter loud = LoudMeter(4);
+    double now = RunSurface(&surface, &loud, 0, 1.f);
+    LevelMeter quiet;
+    quiet.Reset(16000, 1);
+    RunSurface(&surface, &quiet, now, 4.f);
+    utassert(MaxAbs(surface.heights, surface.n) < 0.02f);
+    surface.Free();
+}
+
+static void AChangeOfWidthStartsFromRest() {
+    LevelMeter meter = LoudMeter(4);
+    LiquidSurface surface;
+    double now = RunSurface(&surface, &meter, 0, 0.5f);
+    surface.Advance(now, 600.f, &meter);
+    utassert(surface.n == 200);
+    utassert(AllZero(surface.heights, surface.n));
+    surface.Free();
+}
+
+static bool HeightsMatch(const float* a, int na, const float* b, int nb) {
+    if (na != nb) {
+        return false;
+    }
+    for (int i = 0; i < na; i++) {
+        if (a[i] != b[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void WaveformsOfDifferentWidthsKeepTheirOwnSurfaces() {
+    LevelMeter meter = LoudMeter(4);
+    LiquidSurfaces surfaces;
+    LiquidSurface narrow;
+    LiquidSurface wide;
+    double now = 0;
+    for (int i = 0; i < 60; i++) {
+        now += 1.0 / 60.0;
+        surfaces.Advance(now, 300.f, &meter);
+        surfaces.Advance(now, 600.f, &meter);
+        narrow.Advance(now, 300.f, &meter);
+        wide.Advance(now, 600.f, &meter);
+    }
+    int nNarrow = 0;
+    int nWide = 0;
+    const float* gotNarrow = surfaces.Heights(300.f, &nNarrow);
+    const float* gotWide = surfaces.Heights(600.f, &nWide);
+    utassert(HeightsMatch(gotNarrow, nNarrow, narrow.heights, narrow.n));
+    utassert(HeightsMatch(gotWide, nWide, wide.heights, wide.n));
+    float at = wide.heights[80] < 0 ? -wide.heights[80] : wide.heights[80];
+    utassert(at > 0.01f);
+    surfaces.Free();
+    narrow.Free();
+    wide.Free();
+}
+
+static void AWidthNoLongerDrawnIsDropped() {
+    LevelMeter meter = LoudMeter(4);
+    LiquidSurfaces surfaces;
+    double now = 10;
+    surfaces.Advance(now, 300.f, &meter);
+    surfaces.Advance(now + 0.1, 600.f, &meter);
+    int n = 0;
+    utassert(surfaces.Heights(300.f, &n) != nullptr);
+    utassert(n > 0);
+    surfaces.Advance(now + 1.0, 600.f, &meter);
+    utassert(surfaces.Heights(300.f, &n) == nullptr);
+    const float* wide = surfaces.Heights(600.f, &n);
+    utassert(wide != nullptr);
+    utassert(n == 200);
+    surfaces.Free();
+}
+
+static void ReducedMotionRipplesInPlaceWithTheLevel() {
+    float quiet[kSpeechStillPoints];
+    SpeechStillHeights(0.f, quiet);
+    utassert(AllZero(quiet, kSpeechStillPoints));
+    float loud[kSpeechStillPoints];
+    SpeechStillHeights(1.f, loud);
+    float mid = loud[kSpeechStillPoints / 2];
+    if (mid < 0.f) {
+        mid = -mid;
+    }
+    utassert(mid > 0.5f);
+    float edge = loud[0] < 0.f ? -loud[0] : loud[0];
+    utassert(edge < 0.05f);
+}
+
+static void TheTaperHoldsTheEdges() {
+    utassert(SpeechEdgeTaper(0.f) == 0.f);
+    float atEnd = SpeechEdgeTaper(1.f);
+    utassert(atEnd >= 0.f && atEnd < 0.01f);
+    float mid = SpeechEdgeTaper(0.5f);
+    utassert(mid > 1.f - 1e-6f && mid < 1.f + 1e-6f);
+    utassert(SpeechEdgeTaper(0.1f) > 0.6f);
+}
+
+static void ASurfaceAtRestIsAFlatLineAcrossTheMidline() {
+    Bounds bounds = WaveBounds(96.f, 20.f);
+    Point points[64];
+    int n = SpeechSurfacePoints(bounds, nullptr, 0, points, 64);
+    utassert(n == 32);
+    utassert(points[0].x == bounds.x && points[0].y == 30.f);
+    utassert(points[31].x == bounds.x + bounds.w && points[31].y == 30.f);
+    for (int i = 0; i < n; i++) {
+        utassert(points[i].y == 30.f);
+    }
+}
+
+static void ASurfaceLineSwellsInTheMiddleAndThinsAtTheEnds() {
+    Bounds bounds = WaveBounds(96.f, 20.f);
+    Point points[64];
+    int n = SpeechSurfacePoints(bounds, nullptr, 0, points, 64);
+    Point top[64];
+    Point bottom[64];
+    SpeechSurfaceRibbon(points, n, 4.f, top, bottom);
+    auto width = [&](int ix) { return bottom[ix].y - top[ix].y; };
+    int middle = n / 2;
+    float end = width(0);
+    utassert(end > 1.f - 0.01f && end < 1.f + 0.01f);
+    float other = width(n - 1);
+    utassert(other > 1.f - 0.01f && other < 1.f + 0.01f);
+    utassert(width(middle) > 3.9f);
+    utassert(width(4) > width(0) && width(middle) > width(4));
+}
+
+static void ASurfaceLineKeepsItsWidthAcrossASteepWave() {
+    Point points[3] = {Point{0, 0}, Point{1, 1}, Point{2, 2}};
+    Point top[3];
+    Point bottom[3];
+    SpeechSurfaceRibbon(points, 3, 4.f, top, bottom);
+    float dx = bottom[1].x - top[1].x;
+    float dy = bottom[1].y - top[1].y;
+    float length = sqrtf(dx * dx + dy * dy);
+    utassert(length > 4.f - 0.01f && length < 4.f + 0.01f);
+}
+
+static void ASurfaceMeetsTheEdgesAtRestAndKeepsItsCrestsInside() {
+    float heights[] = {5.f, -5.f, 5.f, -5.f, 5.f};
+    Bounds bounds = WaveBounds(96.f, 20.f);
+    Point points[8];
+    int n = SpeechSurfacePoints(bounds, heights, 5, points, 8);
+    utassert(n == 5);
+    utassert(points[0].y == 30.f);
+    float edge = points[4].y - 30.f;
+    if (edge < 0.f) {
+        edge = -edge;
+    }
+    utassert(edge < 0.1f);
+    for (int i = 0; i < n; i++) {
+        float d = points[i].y - 30.f;
+        if (d < 0.f) {
+            d = -d;
+        }
+        utassert(d <= 20.f * 0.42f);
+    }
+    utassert(points[1].y < 30.f && points[2].y > 30.f);
+}
+
 void TestSpeech() {
     TestSuite("speech");
     OneLevelPerIntervalAcrossPushes();
@@ -765,4 +1025,17 @@ void TestSpeech() {
     TheBarsGlideBetweenLevels();
     TheBarsBreatheInSilenceButStayLow();
     BarsSitSideBySideAroundTheCenterAndGrowFromTheMidline();
+    SilenceStaysFlat();
+    SoundSendsWavesFromTheMiddleTowardTheEdges();
+    TheEdgesStayAtRestAndTheSurfaceStaysBounded();
+    TheSurfaceSettlesAfterTheSoundStops();
+    AChangeOfWidthStartsFromRest();
+    WaveformsOfDifferentWidthsKeepTheirOwnSurfaces();
+    AWidthNoLongerDrawnIsDropped();
+    ReducedMotionRipplesInPlaceWithTheLevel();
+    TheTaperHoldsTheEdges();
+    ASurfaceAtRestIsAFlatLineAcrossTheMidline();
+    ASurfaceLineSwellsInTheMiddleAndThinsAtTheEnds();
+    ASurfaceLineKeepsItsWidthAcrossASteepWave();
+    ASurfaceMeetsTheEdgesAtRestAndKeepsItsCrestsInside();
 }

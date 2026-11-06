@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bb9297d5a6858e1f4d40afb19279df8ba071fc5f` (2026-10-29,
-speech: Show the voice in SpeechButton while capturing (#3726)). While
-capturing, the button shows four bars that follow the voice and breathe
-in silence; the stop glyph appears under the pointer, on keyboard
-focus, and while the final result is pending.
+Processed through `ae6a3fdfef416e7040e773415ac9cbd8c623e5d5` (2026-10-29,
+speech: Add a liquid appearance to SpeechWaveform (#3725)).
+`SpeechWaveform::Liquid` draws a water surface driven by the speech
+state. The bars stay the default. A session start or end resets the
+surface.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
