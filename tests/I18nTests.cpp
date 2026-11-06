@@ -57,6 +57,10 @@ static void AKeyAnswersInTheLocaleInForce() {
     utassert(LocaleSet(StrL("zh-CN")));
     utassert(base::StrEq(Tr("Calendar.week.0"), StrL("日")));
     utassert(base::StrEq(Tr("Dock.Zoom In"), StrL("放大")));
+
+    utassert(LocaleSet(StrL("ru")));
+    utassert(base::StrEq(Tr("Attachment.Remove"), StrL("Удалить")));
+    utassert(base::StrEq(Tr("Calendar.week.0"), StrL("Вс")));
     utassert(LocaleSet(StrL("en")));
 }
 

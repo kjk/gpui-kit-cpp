@@ -16,9 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2cf9c73c3c9fd64e0349dfb440c65a56aea0b96d` (2026-11-01,
-a11y: Name the icon-only close buttons (#3741)). A dialog, sheet and
-notification close button that shows only an icon is named Close.
+Processed through `51d7c2bef5eb866e6b9367ffec6f77653837b913` (2026-11-01,
+locales: Add Russian (ru) (#3745)). The component catalogue includes
+Russian for every string.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

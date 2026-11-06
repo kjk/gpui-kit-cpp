@@ -24,7 +24,7 @@ const upstream = join(root, ".work", "gpui-component");
 
 // English first: it is the fallback, and the language the keys are written
 // in. The rest in the order they first appear across the two files.
-const LOCALES = ["en", "pt-BR", "zh-CN", "zh-HK", "zh-TW", "it", "fr"];
+const LOCALES = ["en", "pt-BR", "ru", "zh-CN", "zh-HK", "zh-TW", "it", "fr"];
 
 type Catalogue = Map<string, Map<string, string>>;
 
