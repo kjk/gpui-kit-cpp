@@ -91,6 +91,36 @@ struct ClickView {
     }
 };
 
+// arrow_keys_wrap_inside_the_toolbar_among_many_page_stops.
+constexpr int kBusyStops = 120;
+
+struct BusyPage {
+    FocusHandle before[kBusyStops] = {};
+    FocusHandle items[3] = {};
+    FocusHandle after[kBusyStops] = {};
+
+    static El* Stop(Arena* a, FocusHandle h) {
+        return Div(a)->W(1)->H(1)->TrackFocus(h)->TabStop(true);
+    }
+
+    static El* Render(BusyPage* self, Ctx* cx) {
+        Arena* a = cx->a;
+        Toolbar* bar = Toolbar::New(cx, StrL("busy-toolbar"));
+        for (FocusHandle h : self->items) {
+            bar->Child(Div(a)->W(20)->H(20)->TrackFocus(h)->TabStop(true));
+        }
+        El* col = Div(a)->FlexCol();
+        for (FocusHandle h : self->before) {
+            col->Child(Stop(a, h));
+        }
+        col->Child(bar->IntoEl());
+        for (FocusHandle h : self->after) {
+            col->Child(Stop(a, h));
+        }
+        return col;
+    }
+};
+
 } // namespace
 
 // toolbar.rs: clicking_blank_toolbar_space_keeps_focus_outside.
@@ -132,6 +162,33 @@ static void BaseToolbarBuilders() {
              !group->root->first->next->next);
     ArenaDelete(a);
     EntityDropAll(&app);
+}
+
+// arrow_keys_wrap_inside_the_toolbar_among_many_page_stops. More stops
+// than the hundred hops the search used to give up after.
+static void ArrowKeysWrapAmongManyPageStops() {
+    App* app = TestAppNew();
+    Entity<BusyPage> view = EntityNew<BusyPage>(app);
+    BusyPage* page = view.Get(app);
+    for (int i = 0; i < kBusyStops; i++) {
+        page->before[i] = FocusHandleNew(app);
+        page->after[i] = FocusHandleNew(app);
+    }
+    for (FocusHandle& h : page->items) {
+        h = FocusHandleNew(app);
+    }
+    Window* win = TestWindowOpen(app, view);
+    TestFocus(win, page->items[0]);
+    TestDraw(win);
+    TestSimulateKeystrokes(win, "right");
+    utassert(FocusHandleIsFocused(win, page->items[1]));
+    TestSimulateKeystrokes(win, "right");
+    utassert(FocusHandleIsFocused(win, page->items[2]));
+    TestSimulateKeystrokes(win, "right");
+    utassert(FocusHandleIsFocused(win, page->items[0]));
+    TestSimulateKeystrokes(win, "left");
+    utassert(FocusHandleIsFocused(win, page->items[2]));
+    TestAppFree(app);
 }
 
 // toolbar.rs: arrow_keys_rove_focus_across_items.
@@ -345,6 +402,7 @@ void TestToolbar() {
     TestSuite("toolbar");
     BaseToolbarBuilders();
     ArrowKeysRoveFocusAcrossItems();
+    ArrowKeysWrapAmongManyPageStops();
     AToolbarWithOneItemKeepsFocusOnIt();
     TheToolbarHandleContainsItsItems();
     ADisabledToolbarIgnoresArrowKeys();

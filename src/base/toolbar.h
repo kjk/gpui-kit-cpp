@@ -16,11 +16,6 @@
 
 namespace gpui {
 
-// MAX_FOCUS_ATTEMPTS: upper bound on tab-stop hops when wrapping focus back
-// into the toolbar, so a toolbar whose items all vanished from the tab order
-// can never hang the key handler. Mirrors Root's focus-trap loop bound.
-const int kToolbarMaxFocusAttempts = 100;
-
 // The toolbar's element state: the focus handle its container tracks, kept
 // across frames so containment and the key handler name the same node, and
 // whether its own navigation is off.
@@ -35,12 +30,13 @@ struct ToolbarState {
     static void OnMouseDown(ToolbarState* self, Ctx* cx, const MouseDownEvent*);
 };
 
-// move_focus: step through the window's tab stops, the way Root's focus trap
-// cycles, until the focus lands on another one inside `container`; when the
-// walk comes back to where it started the toolbar has no other item and the
-// focus stays put. The hops are taken on the frame's focus list and only the
-// last one moves the focus, where Rust focuses each one in turn and lets the
-// effect cycle settle on the last; no blur runs for a stop passed over.
+// move_focus: walk the window's tab order in the asked direction, passing
+// over stops outside `container`, and land on the first stop inside it. The
+// order wraps, so the walk comes back in at the container's first stop
+// however many stops the rest of the window holds. It ends at the first
+// repeated stop and leaves focus where it started, so a toolbar whose items
+// have all left the tab order cannot hang the key handler. The hops are
+// taken on the frame's focus list and only the landing one moves the focus.
 // Answers whether the focus moved.
 bool ToolbarMoveFocus(Window* win, FocusHandle container, bool forward);
 

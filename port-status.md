@@ -16,13 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d983af26269fca2200600aced3e3f03849e60749` (2026-10-29,
-test: Register Toolbar for snapshot queries (#3717)).
-The toolbar root is registered with GPUI's test snapshot finder, so a
-test can read its role, label and whether focus is inside it. Outside
-tests the element is unchanged. This tree does not carry that finder.
-The toolbar is already a horizontal Toolbar node, and tests read the
-role off the element and containment off the focus handle.
+Processed through `4ab17012f0e86c8e18703a59086b484e76780a27` (2026-10-29,
+toolbar: End the wrap search at the first repeated stop (#3716)).
+Left and Right in a toolbar walk the window's tab order until focus
+comes back inside it. The walk no longer stops after 100 hops. It ends
+at the first repeated stop and leaves focus where it started, so a bar
+among more than a hundred page stops still wraps. Stops outside the
+bar are still passed over.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

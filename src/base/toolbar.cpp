@@ -7,19 +7,39 @@ bool ToolbarMoveFocus(Window* win, FocusHandle container, bool forward) {
     if (!start || !container.IsValid()) {
         return false;
     }
-    // The first step and then up to MAX_FOCUS_ATTEMPTS more, as Rust takes.
+    // Walk the tab order with no hop limit. It ends at the first repeated
+    // stop, which is where a cycle that never returns to `start` stops, and
+    // focus stays where it was. A stop outside the toolbar is passed over,
+    // however many the rest of the window holds.
+    Vec<int> visited;
+    VecAppend(visited, start);
     int at = start;
-    for (int hop = 0; hop <= kToolbarMaxFocusAttempts; hop++) {
-        at = FocusNextFrom(win, at, 0, !forward);
-        if (at != start && WindowFocusContains(win, container.id, at)) {
-            WindowSetFocusId(win, at);
-            return true;
-        }
-        if (at == start) {
+    bool moved = false;
+    for (;;) {
+        int next = FocusNextFrom(win, at, 0, !forward);
+        if (!next) {
             break;
         }
+        bool seen = false;
+        for (int i = 0; i < len(visited); i++) {
+            if (visited[i] == next) {
+                seen = true;
+                break;
+            }
+        }
+        if (seen) {
+            break;
+        }
+        if (WindowFocusContains(win, container.id, next)) {
+            WindowSetFocusId(win, next);
+            moved = true;
+            break;
+        }
+        VecAppend(visited, next);
+        at = next;
     }
-    return false;
+    VecReset(visited);
+    return moved;
 }
 
 void ToolbarState::OnKeyDown(ToolbarState* self, Ctx* cx, const KeyEvent* ev) {
