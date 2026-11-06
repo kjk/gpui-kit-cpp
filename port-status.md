@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `30fee292692801a98459f90aa20d8d52e3e48144` (2026-11-01,
-table: Give the focused element the grid's role (#3727)). The table's
-role, name and row and column counts sit on the element that tracks
-keyboard focus. The inner layout box has no role.
+Processed through `fc8d794ec01e2967ae16412415b00d449f9a8cad` (2026-11-01,
+menu: Report a checked item's check to assistive technology (#3729)).
+A checked popup item is toggled on for assistive technology. An
+unchecked item stays unset.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

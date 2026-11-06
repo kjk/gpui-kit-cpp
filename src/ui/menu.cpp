@@ -460,6 +460,8 @@ El* PopupMenu::IntoEl() {
                 ->AriaLabel(it.label)
                 ->AriaSelected(lit)
                 ->AriaDisabled(it.disabled || it.kind == MenuItemKind::Label)
+                ->AriaToggled(it.checked ? AccessibilityToggled::True
+                                         : AccessibilityToggled::Unset)
                 ->FlexRow()
                 ->W(kFill)
                 ->MinH(itemH)

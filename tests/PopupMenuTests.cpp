@@ -1325,8 +1325,48 @@ static void ActivatingASubmenuEntersItWithoutDismissingItsParent() {
     TestAppFree(app);
 }
 
+static El* MenuItemNamed(El* e, const char* label) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->accessibility.role == AccessibilityRole::MenuItem &&
+        base::StrEq(e->accessibility.label, Str(label))) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = MenuItemNamed(c, label)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+// menu.rs a_checked_menu_item_reports_its_check. The check mark is drawn
+// beside the row; the node has to say it is toggled or a screen reader
+// cannot tell which option is chosen.
+static void ACheckedMenuItemReportsItsCheck() {
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    Window* win = new Window();
+    win->app = app;
+    Ctx cx = {app, win, a, {}};
+    El* menu = PopupMenu::New(&cx, StrL("place"))
+                   ->MenuWithCheck(StrL("Left"), true)
+                   ->MenuWithCheck(StrL("Right"), false)
+                   ->IntoEl();
+    El* left = MenuItemNamed(menu, "Left");
+    El* right = MenuItemNamed(menu, "Right");
+    utassert(left && left->accessibility.toggled == AccessibilityToggled::True);
+    utassert(right && right->accessibility
+                              .toggled == AccessibilityToggled::Unset);
+    delete win;
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
+    ACheckedMenuItemReportsItsCheck();
     TheWalkStepsOverWhatCannotBeClicked();
     NothingSelectedYet();
     AMenuWithNoRows();
