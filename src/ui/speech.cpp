@@ -6,6 +6,7 @@
 #include "gpui/paint.h"
 #include "ui/button.h"
 #include "ui/i18n.h"
+#include "ui/icon.h"
 #include "ui/theme.h"
 
 #include <math.h>
@@ -1049,6 +1050,34 @@ SpeechButton* SpeechButton::Refine(const Style& refinement, uint32_t fields) {
     return this;
 }
 
+// The icon button's square for this size, and the icon size the indicator's
+// stop glyph takes. px(20) / px(24) / px(32) at a 16 px rem, the same sides
+// Button gives an icon-only button. A pixel Size stays pixels; Large keeps
+// its own icon inside the 32 px square.
+static float SpeechButtonCapturingSide(const Ctx* cx, UiSize buttonSize,
+                                       UiSize* iconSize) {
+    if (buttonSize.kind == UiSize::Kind::Size) {
+        *iconSize = UiSize::Custom(buttonSize.pixels * 0.75f);
+        return buttonSize.pixels;
+    }
+    if (buttonSize == UiSize::XSmall) {
+        *iconSize = UiSize::XSmall;
+        return Rems(cx, 1.25f);
+    }
+    if (buttonSize == UiSize::Small) {
+        *iconSize = UiSize::Small;
+        return Rems(cx, 1.5f);
+    }
+    *iconSize = buttonSize;
+    return Rems(cx, 2.f);
+}
+
+// use_keyed_state((id, "focus")): keyboard focus can show the stop glyph,
+// which the indicator otherwise reveals only under the pointer.
+struct SpeechButtonFocus {
+    FocusHandle handle = {};
+};
+
 El* SpeechButton::IntoEl() {
     const SpeechState* s = state.Get(cx->app);
     SpeechStatus status = s ? s->Status() : SpeechStatus::Idle;
@@ -1061,16 +1090,42 @@ El* SpeechButton::IntoEl() {
     bool available =
         SpeechStatusIsActive(status) || (s && s->IsAvailable(cx->app));
     bool capturing = SpeechStatusIsCapturing(status);
+    bool stopping = status == SpeechStatus::Stopping;
     Str label = !available  ? Tr("Speech.Unavailable")
                 : capturing ? Tr("Speech.Stop")
                             : Tr("Speech.Start");
 
-    El* e = Button::New(cx, id)
-                ->Ghost()
-                ->WithSize(size)
-                ->Icon(capturing ? IconName::Square : IconName::Mic)
-                ->Selected(capturing)
-                ->Loading(status == SpeechStatus::Stopping)
+    bool keyboardFocused = false;
+    FocusHandle focus = {};
+    if (cx->win) {
+        SpeechButtonFocus* slot =
+            ElementState<SpeechButtonFocus>(cx, id, StrL("focus"));
+        if (!slot->handle.IsValid()) {
+            slot->handle = FocusHandleNew(cx);
+        }
+        focus = slot->handle;
+        keyboardFocused = FocusHandleIsFocused(cx->win, focus) &&
+                          WindowLastInputWasKeyboard(cx->win);
+    }
+
+    Button* button = Button::New(cx, id)->Ghost()->WithSize(size);
+    if (focus.IsValid()) {
+        button->TrackFocus(focus);
+    }
+    // With a child instead of an icon the button sizes to its content, so
+    // give it the icon button's square and let the indicator fill it.
+    if (capturing && !keyboardFocused) {
+        UiSize iconSize = size;
+        float side = SpeechButtonCapturingSide(cx, size, &iconSize);
+        button->Size(side)->Child(
+            SpeechIndicator::New(cx, state)->WithSize(iconSize)->IntoEl());
+    } else {
+        button
+            ->Icon((capturing || stopping) ? IconName::Square : IconName::Mic);
+    }
+
+    El* e = button->Selected(capturing)
+                ->Loading(stopping)
                 ->Disabled(disabled || !available)
                 ->Tooltip(label)
                 ->AccessibilityLabel(label)
@@ -1080,6 +1135,185 @@ El* SpeechButton::IntoEl() {
         e->Refine(style, styleSet);
     }
     return e;
+}
+
+// ─── indicator.rs ─────────────────────────────────────────────────────────
+
+// How strongly each bar follows the voice: fuller in the middle.
+static const float kSpeechIndicatorWeights[kSpeechIndicatorBars] = {
+    0.65f, 1.f, 0.85f, 0.55f};
+// How far behind the newest level each bar reads, in levels.
+static const float kSpeechIndicatorLags[kSpeechIndicatorBars] = {1.f, 0.f, 0.5f,
+                                                                 1.5f};
+// The bars' heights with reduced motion: a still glyph of a voice.
+static const float kSpeechIndicatorStill[kSpeechIndicatorBars] = {0.4f, 0.7f,
+                                                                  0.55f, 0.35f};
+// How high the bars breathe in silence.
+static const float kSpeechIndicatorBreath = 0.12f;
+// How fast the bars breathe, in radians per second, and how far apart.
+static const float kSpeechIndicatorBreathRate = 2.4f;
+static const float kSpeechIndicatorBreathSpread = 0.9f;
+// A bar's width, the gap between bars and a full bar's height, relative to
+// the indicator's shorter side.
+static const float kSpeechIndicatorBarRatio = 0.085f;
+static const float kSpeechIndicatorGapRatio = 0.075f;
+static const float kSpeechIndicatorHeightRatio = 0.46f;
+
+SpeechIndicator* SpeechIndicator::New(Ctx* cx, Entity<SpeechState> state) {
+    SpeechIndicator* indicator = ArenaNew<SpeechIndicator>(cx->a);
+    indicator->a = cx->a;
+    indicator->cx = cx;
+    indicator->state = state;
+    return indicator;
+}
+
+SpeechIndicator* SpeechIndicator::WithSize(UiSize s) {
+    size = s;
+    return this;
+}
+
+static float SpeechIndicatorSample(const float* levels, int last,
+                                   float position) {
+    float lastF = (float)last;
+    if (position < 0.f) {
+        position = 0.f;
+    } else if (position > lastF) {
+        position = lastF;
+    }
+    int below = (int)floorf(position);
+    int above = below + 1;
+    if (above > last) {
+        above = last;
+    }
+    float fraction = position - (float)below;
+    return levels[below] + (levels[above] - levels[below]) * fraction;
+}
+
+void SpeechIndicatorBarHeights(const float* levels, int nLevels,
+                               uint64_t recorded, bool hasLead, float lead,
+                               float* out) {
+    for (int i = 0; i < kSpeechIndicatorBars; i++) {
+        out[i] = 0.f;
+    }
+    // No lead, or no level to read: dots.
+    if (!hasLead || nLevels <= 0 || !levels) {
+        return;
+    }
+    int last = nLevels - 1;
+    // The playhead moves evenly between levels, so reading at it rather than
+    // at the newest level makes the bars glide instead of jump every 80 ms.
+    float playhead = (float)last - lead;
+    // The bars breathe only while the voice is quiet, on a clock that runs
+    // with the audio. LEVEL_INTERVAL is 80 ms.
+    float seconds =
+        ((float)recorded - lead) * ((float)kSpeechLevelIntervalMs / 1000.f);
+    float atPlayhead = SpeechIndicatorSample(levels, last, playhead);
+    float loud = atPlayhead * 4.f;
+    if (loud > 1.f) {
+        loud = 1.f;
+    }
+    float quiet = 1.f - loud;
+    for (int i = 0; i < kSpeechIndicatorBars; i++) {
+        float voice = SpeechIndicatorSample(
+                          levels, last, playhead - kSpeechIndicatorLags[i]) *
+                      kSpeechIndicatorWeights[i];
+        float phase = seconds * kSpeechIndicatorBreathRate +
+                      (float)i * kSpeechIndicatorBreathSpread;
+        float breath =
+            kSpeechIndicatorBreath * (0.5f + 0.5f * sinf(phase)) * quiet;
+        float height = voice > breath ? voice : breath;
+        if (height < 0.f) {
+            height = 0.f;
+        } else if (height > 1.f) {
+            height = 1.f;
+        }
+        out[i] = height;
+    }
+}
+
+void SpeechIndicatorBarRects(Bounds bounds, const float* heights, Bounds* out) {
+    float side = bounds.w < bounds.h ? bounds.w : bounds.h;
+    float bar = side * kSpeechIndicatorBarRatio;
+    float gap = side * kSpeechIndicatorGapRatio;
+    float full = side * kSpeechIndicatorHeightRatio;
+    float total = bar * (float)kSpeechIndicatorBars +
+                  gap * (float)(kSpeechIndicatorBars - 1);
+    float left = bounds.x + bounds.w / 2.f - total / 2.f;
+    float middle = bounds.y + bounds.h / 2.f;
+    for (int i = 0; i < kSpeechIndicatorBars; i++) {
+        float h = heights ? heights[i] : 0.f;
+        float height = bar + (full - bar) * h;
+        out[i] = Bounds{left + (bar + gap) * (float)i, middle - height / 2.f,
+                        bar, height};
+    }
+}
+
+struct IndicatorPaint {
+    float heights[kSpeechIndicatorBars] = {};
+};
+
+static void PaintIndicator(PaintCtx* ctx, El* e, void* user) {
+    // Under the pointer the bars give way to the stop glyph. There is no
+    // group-hover opacity, so the bars simply are not drawn while the
+    // "speech-indicator" group is hovered.
+    if (ctx->groupHovered) {
+        return;
+    }
+    const IndicatorPaint* paint = (const IndicatorPaint*)user;
+    Bounds rects[kSpeechIndicatorBars];
+    SpeechIndicatorBarRects(e->Bounds(), paint->heights, rects);
+    Rgba color = PaintFade(ctx, e->style.color);
+    for (int i = 0; i < kSpeechIndicatorBars; i++) {
+        float radius = rects[i].w < rects[i].h ? rects[i].w : rects[i].h;
+        FillRound(ctx, rects[i].x, rects[i].y, rects[i].w, rects[i].h,
+                  radius / 2.f, color);
+    }
+}
+
+El* SpeechIndicator::IntoEl() {
+    const SpeechState* s = state.Get(cx->app);
+    bool reduced = MotionReduced();
+    IndicatorPaint* paint = ArenaNew<IndicatorPaint>(a);
+    if (reduced) {
+        for (int i = 0; i < kSpeechIndicatorBars; i++) {
+            paint->heights[i] = kSpeechIndicatorStill[i];
+        }
+    } else if (s) {
+        int n = s->LevelsLen();
+        float levels[kSpeechLevelHistory];
+        if (n > kSpeechLevelHistory) {
+            n = kSpeechLevelHistory;
+        }
+        for (int i = 0; i < n; i++) {
+            levels[i] = s->LevelAt(i);
+        }
+        float lead = 0.f;
+        bool hasLead = s->LevelLeadAt(TimeNow(), &lead);
+        SpeechIndicatorBarHeights(levels, n, s->LevelsRecorded(), hasLead, lead,
+                                  paint->heights);
+    }
+    if (s && SpeechStatusIsCapturing(s->Status()) && !reduced && cx->win) {
+        WindowRequestAnimationFrame(cx->win);
+    }
+
+    El* canvas = Div(a)->SizeFull();
+    canvas->customPaint = &PaintIndicator;
+    canvas->customUser = paint;
+    El* bars =
+        Div(a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0)->Child(canvas);
+    El* stop =
+        Div(a)
+            ->Absolute()
+            ->Left(0)
+            ->Top(0)
+            ->Right(0)
+            ->Bottom(0)
+            ->Flex()
+            ->ItemsCenter()
+            ->JustifyCenter()
+            ->GroupHoverVisible()
+            ->Child(Icon::New(cx, IconName::Square)->Size(size)->IntoEl());
+    return Div(a)->SizeFull()->Group()->Child(bars)->Child(stop);
 }
 
 // ─── waveform.rs ──────────────────────────────────────────────────────────

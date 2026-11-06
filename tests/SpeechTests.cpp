@@ -1,5 +1,5 @@
 /* Ported from the tests in crates/ui/src/speech/: level.rs, waveform.rs,
- * state.rs and button.rs.
+ * state.rs, button.rs and indicator.rs.
  *
  * The state tests run on the test platform. Rust defers a sink's call with
  * cx.defer and times a stop out on the executor; here both ride a window —
@@ -641,6 +641,91 @@ static void TestSpeechButtonBuilder() {
     TestAppFree(app);
 }
 
+// ─── indicator.rs ─────────────────────────────────────────────────────────
+
+static bool HeightsEqual(const float* a, const float* b) {
+    for (int i = 0; i < kSpeechIndicatorBars; i++) {
+        if (a[i] != b[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void TheBarsAreDotsBeforeAnyAudio() {
+    float heights[kSpeechIndicatorBars];
+    SpeechIndicatorBarHeights(nullptr, 0, 0, false, 0, heights);
+    for (int i = 0; i < kSpeechIndicatorBars; i++) {
+        utassert(heights[i] == 0.f);
+    }
+    float one[] = {0.5f};
+    SpeechIndicatorBarHeights(one, 1, 1, false, 0, heights);
+    for (int i = 0; i < kSpeechIndicatorBars; i++) {
+        utassert(heights[i] == 0.f);
+    }
+}
+
+static void TheBarsFollowALoudVoiceFullestInTheMiddle() {
+    float levels[8];
+    for (int i = 0; i < 8; i++) {
+        levels[i] = 1.f;
+    }
+    float heights[kSpeechIndicatorBars];
+    SpeechIndicatorBarHeights(levels, 8, 8, true, 0.f, heights);
+    const float weights[kSpeechIndicatorBars] = {0.65f, 1.f, 0.85f, 0.55f};
+    utassert(HeightsEqual(heights, weights));
+}
+
+static void TheBarsRiseOneAfterAnother() {
+    // A voice that has only just started reaches the bar without lag first
+    // and the most lagging bar last.
+    float levels[] = {0.f, 0.f, 0.f, 1.f};
+    float heights[kSpeechIndicatorBars];
+    SpeechIndicatorBarHeights(levels, 4, 4, true, 0.f, heights);
+    utassert(heights[1] > 0.9f);
+    utassert(heights[0] < heights[1]);
+    utassert(heights[3] < heights[2]);
+}
+
+static void TheBarsGlideBetweenLevels() {
+    float levels[] = {0.f, 1.f};
+    float atEdge[kSpeechIndicatorBars];
+    float between[kSpeechIndicatorBars];
+    float behind[kSpeechIndicatorBars];
+    SpeechIndicatorBarHeights(levels, 2, 2, true, 0.f, atEdge);
+    SpeechIndicatorBarHeights(levels, 2, 2, true, 0.5f, between);
+    SpeechIndicatorBarHeights(levels, 2, 2, true, 1.f, behind);
+    utassert(behind[1] < between[1] && between[1] < atEdge[1]);
+}
+
+static void TheBarsBreatheInSilenceButStayLow() {
+    float silence[8] = {};
+    float early[kSpeechIndicatorBars];
+    float later[kSpeechIndicatorBars];
+    SpeechIndicatorBarHeights(silence, 8, 8, true, 0.f, early);
+    SpeechIndicatorBarHeights(silence, 8, 12, true, 0.f, later);
+    utassert(!HeightsEqual(early, later));
+    for (int i = 0; i < kSpeechIndicatorBars; i++) {
+        utassert(early[i] <= 0.12f);
+        utassert(later[i] <= 0.12f);
+    }
+}
+
+static void BarsSitSideBySideAroundTheCenterAndGrowFromTheMidline() {
+    float heights[] = {0.f, 1.f, 0.5f, 0.f};
+    Bounds rects[kSpeechIndicatorBars];
+    SpeechIndicatorBarRects(Bounds{0, 0, 24, 24}, heights, rects);
+    float span = rects[0].x + (rects[3].x + rects[3].w);
+    utassert(span > 24.f - 0.01f && span < 24.f + 0.01f);
+    for (int i = 0; i < kSpeechIndicatorBars; i++) {
+        float centerY = rects[i].y + rects[i].h / 2.f;
+        utassert(centerY > 12.f - 0.01f && centerY < 12.f + 0.01f);
+        utassert(rects[i].h >= rects[i].w);
+    }
+    utassert(rects[1].h > rects[2].h);
+    utassert(rects[2].h > rects[0].h);
+}
+
 void TestSpeech() {
     TestSuite("speech");
     OneLevelPerIntervalAcrossPushes();
@@ -674,4 +759,10 @@ void TestSpeech() {
     RecognizerThatFailsToStartLeavesTheStateIdle();
     StateWithoutARecognizerIsUnsupported();
     TestSpeechButtonBuilder();
+    TheBarsAreDotsBeforeAnyAudio();
+    TheBarsFollowALoudVoiceFullestInTheMiddle();
+    TheBarsRiseOneAfterAnother();
+    TheBarsGlideBetweenLevels();
+    TheBarsBreatheInSilenceButStayLow();
+    BarsSitSideBySideAroundTheCenterAndGrowFromTheMidline();
 }

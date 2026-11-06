@@ -3,7 +3,8 @@
 /* Speech input — crates/ui/src/speech/
 
    Capture audio, recognize it and hand the text to the caller. SpeechState
-   owns a session and SpeechButton and SpeechWaveform render it. Recognition
+   owns a session and SpeechButton, SpeechIndicator and SpeechWaveform
+   render it. Recognition
    and audio capture are both replaceable: fill a SpeechRecognizer to use any
    speech service and an AudioInput to feed audio from anywhere.
 
@@ -468,6 +469,9 @@ struct SpeechState {
     // Peaks rise at once and fall back smoothly; background noise reads as 0.
     int LevelsLen() const { return meter.LevelsLen(); }
     float LevelAt(int ix) const { return meter.LevelAt(ix); }
+    // levels_recorded: levels recorded this session, including those dropped
+    // from the history. With LevelLeadAt, a clock that advances with the audio.
+    uint64_t LevelsRecorded() const { return meter.recorded; }
     // How far past the waveform's trailing edge the newest level sits at
     // `now`, in levels. False before the first level.
     bool LevelLeadAt(double now, float* out) const {
@@ -502,9 +506,10 @@ Entity<SpeechState> SpeechStateNew(App* app);
 
 // The button that starts and stops a SpeechState's session.
 //
-// Shows a microphone at rest and a stop glyph, pressed, while capturing; a
-// click toggles the session. While the final result is pending it shows a
-// spinner and ignores clicks.
+// Shows a microphone at rest and, pressed, a SpeechIndicator while capturing:
+// bars that move with the voice, turning into a stop glyph under the pointer
+// or while the button has keyboard focus. A click toggles the session. While
+// the final result is pending it shows a spinner and ignores clicks.
 //
 // Renders nothing when the state has no recognizer on this platform, unless
 // ShowWhenUnsupported is set, and renders disabled while the recognizer
@@ -532,6 +537,53 @@ struct SpeechButton {
     SpeechButton* Refine(const Style& refinement, uint32_t fields);
     El* IntoEl();
 };
+
+// ─── indicator.rs ─────────────────────────────────────────────────────────
+// pub use indicator::SpeechIndicator
+
+// How many bars move with the voice.
+const int kSpeechIndicatorBars = 4;
+
+// What a stop button shows while a SpeechState captures: bars that rise and
+// fall with the voice, so the button reads as listening rather than as a
+// media control, turning into a stop glyph while the pointer is over it.
+//
+// In silence the bars shrink to dots that breathe gently; with reduced motion
+// they hold still. They take the text color of the button they sit in.
+//
+// SpeechButton shows it while capturing. A caller with its own stop button
+// makes it the button's only child and removes the button's padding, so the
+// indicator fills it; the button stays responsible for its accessible label,
+// which should say that it stops. Keyboard focus has no pointer to reveal the
+// stop glyph, so while the button has it, show the glyph in place of the
+// indicator, as SpeechButton does. Size it like the icon it replaces: the
+// stop glyph takes that size.
+//
+// SpeechIndicator::new. with_size sizes the stop glyph.
+struct SpeechIndicator {
+    Arena* a = nullptr;
+    Ctx* cx = nullptr;
+    Entity<SpeechState> state = {};
+    UiSize size = UiSize::Medium;
+
+    // An indicator for `state`.
+    static SpeechIndicator* New(Ctx* cx, Entity<SpeechState> state);
+    // Sizable::with_size.
+    SpeechIndicator* WithSize(UiSize s);
+    El* IntoEl();
+};
+
+// bar_heights: the height of each bar in 0..=1 for `levels` (oldest first),
+// `recorded` of them so far this session, with the newest `lead` levels past
+// the playhead. Without a lead, before any audio, the bars are dots.
+// Writes kSpeechIndicatorBars heights to `out`.
+void SpeechIndicatorBarHeights(const float* levels, int nLevels,
+                               uint64_t recorded, bool hasLead, float lead,
+                               float* out);
+// bar_rects: the bars for `heights` in `bounds`, side by side around the
+// center, each centered on the midline and at least as tall as it is wide.
+// Writes kSpeechIndicatorBars rects to `out`.
+void SpeechIndicatorBarRects(Bounds bounds, const float* heights, Bounds* out);
 
 // ─── waveform.rs ──────────────────────────────────────────────────────────
 

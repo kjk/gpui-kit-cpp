@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `98ddf917e85a32a03b95a7ae0ae5fc3d0fd885b8` (2026-10-29,
-editor: Add gutter and overview ruler decorations (#3704)). A gutter
-collection reserves its strip and keeps an empty range as a line
-boundary. Overview-ruler marks sit on the scrollbar track, in lanes,
-and follow edits and folds. Highlight colors `created`, `modified` and
-`deleted` come from the theme.
+Processed through `bb9297d5a6858e1f4d40afb19279df8ba071fc5f` (2026-10-29,
+speech: Show the voice in SpeechButton while capturing (#3726)). While
+capturing, the button shows four bars that follow the voice and breathe
+in silence; the stop glyph appears under the pointer, on keyboard
+focus, and while the final result is pending.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
