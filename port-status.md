@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `997a5cde37fd4d019692f014bfb6190967fbfa4f` (2026-10-29,
-virtual_list: Use the height constraint when a horizontal list infers its height (#3720)).
-`ListSizingBehavior::Infer` sizes an automatic axis from the items. A
-horizontal list reads the height constraint, so a 120px-wide list of
-10px items is 10px tall. A definite length and fill are unchanged.
+Processed through `0f8582f5e56551aa7b7b90774f2513a68aac39a9` (2026-10-29,
+popover: Clear focus on close when nothing had it at open (#3718)).
+A popover that still holds focus on close gives it back to whatever had
+it at open. When that was nothing, the window blurs, so focus does not
+stay on the closed popover's handle. Focus that has already left the
+popover is left where it is.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

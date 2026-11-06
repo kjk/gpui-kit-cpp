@@ -79,10 +79,18 @@ void PopoverSetOpenFocused(PopoverState* s, Ctx* cx, bool open) {
             s->trackedFocus.IsValid() ? s->trackedFocus : s->focus;
         FocusHandleFocus(cx->win, take);
     } else {
-        if (s->previousFocus.IsValid() &&
-            (FocusHandleContainsFocused(cx->win, s->focus) ||
-             FocusHandleContainsFocused(cx->win, s->trackedFocus))) {
-            FocusHandleRestore(cx->win, s->previousFocus);
+        // Restore only while the popover still holds focus. A click that
+        // already moved it is left where it is. Nothing focused at open
+        // means nothing focused now: leaving the closed handle focused
+        // keeps window.focused on an element that is no longer in the tree.
+        bool inside = FocusHandleContainsFocused(cx->win, s->focus) ||
+                      FocusHandleContainsFocused(cx->win, s->trackedFocus);
+        if (inside) {
+            if (s->previousFocus.IsValid()) {
+                FocusHandleRestore(cx->win, s->previousFocus);
+            } else {
+                WindowSetFocusId(cx->win, 0);
+            }
         }
         s->previousFocus = {};
     }

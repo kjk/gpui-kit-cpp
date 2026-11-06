@@ -333,6 +333,31 @@ struct PopoverRecorder {
 
 } // namespace
 
+// unstyled_popover_owns_pointer_open_and_outside_dismiss: a popover opened
+// with nothing focused blurs on close, rather than keeping its own handle.
+static void ClosingAPopoverBlursWhenNothingWasFocused() {
+    App app;
+    Window* win = new Window();
+    Arena* a = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, a, {}};
+    PopoverState state;
+    state.focus = FocusHandleNew(&cx);
+    utassert(WindowFocusedId(win) == 0);
+    PopoverSetOpenFocused(&state, &cx, true);
+    utassert(WindowFocusedId(win) == state.focus.id);
+    PopoverSetOpenFocused(&state, &cx, false);
+    utassert(WindowFocusedId(win) == 0);
+
+    FocusHandle other = FocusHandleNew(&cx);
+    PopoverSetOpenFocused(&state, &cx, true);
+    WindowSetFocusId(win, other.id);
+    PopoverSetOpenFocused(&state, &cx, false);
+    utassert(WindowFocusedId(win) == other.id);
+    delete win;
+    ArenaDelete(a);
+}
+
 static void PopoverOwnsOpenCallbacksAndOutsideDismissal() {
     App app;
     Window* win = new Window();
@@ -1156,6 +1181,7 @@ void TestPopup() {
     AClosedPopupAsksForNoFrameAndOpensAtOnce();
     TriggerCaptureEnablesContentOnTheNextFrame();
     PopoverOpenStateOwnsItsDeferredRegistration();
+    ClosingAPopoverBlursWhenNothingWasFocused();
     PopoverOwnsOpenCallbacksAndOutsideDismissal();
     EnterInPopoverContentActivatesTheChild();
     TooltipOverlayOwnsRequestsTransitionsAndPositioning();

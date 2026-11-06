@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "997a5cde37fd4d019692f014bfb6190967fbfa4f",
+  sha: "0f8582f5e56551aa7b7b90774f2513a68aac39a9",
   date: "2026-10-29",
-  subject: "virtual_list: Use the height constraint when a horizontal list infers its height (#3720)",
+  subject: "popover: Clear focus on close when nothing had it at open (#3718)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",
