@@ -2454,6 +2454,96 @@ static void InlineHtmlMarkAppliesHighlightColors() {
     ArenaDelete(a);
 }
 
+static bool TextStartsWithWord(Str text, const char* needle) {
+    int n = (int)strlen(needle);
+    if (!text.s || len(text) < n) {
+        return false;
+    }
+    if (!StrEq(Str(text.s, n), Str(needle, n))) {
+        return false;
+    }
+    return len(text) == n || text.s[n] == ' ';
+}
+
+static El* FindWord(El* e, const char* needle) {
+    if (!e) {
+        return nullptr;
+    }
+    if (TextStartsWithWord(e->text, needle)) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = FindWord(c, needle)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+// node.rs mark_sets_a_readable_text_color_with_its_background, and
+// translucent_mark_cache_tracks_theme_background. The mark's ink is black
+// or white against the wash composited on the theme surface. A fully
+// transparent mark and ordinary bold text keep the inherited color. A link
+// on a mark stays the link color. Rebuilding after the surface changes
+// picks the ink again.
+static void MarkSetsAReadableTextColorWithItsBackground() {
+    Rgba black = {0, 0, 0, 255};
+    Rgba white = {255, 255, 255, 255};
+    utassert(RgbaEq(MarkTextColor(RgbaHex(0xfef08a), white), black));
+    utassert(RgbaEq(MarkTextColor(RgbaHex(0x1e3a8a), white), white));
+    utassert(RgbaEq(MarkTextColor(Rgba{0, 0, 0, 0x80}, white), black));
+    utassert(RgbaEq(MarkTextColor(Rgba{255, 255, 255, 0x4d}, black), white));
+
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    base_theme::Theme* theme = base_theme::Theme::GlobalMut(&app);
+    theme->tokens.colors.background = white;
+    El* root =
+        TextView::NewHtml(
+            &cx,
+            StrL("<p>plain <mark>yellow</mark> "
+                 "<mark style=\"background-color: #1e3a8a\">navy</mark> "
+                 "<mark style=\"background-color: #00000000\">clear</mark> "
+                 "<a href=\"https://example.com\">plainlink</a> "
+                 "<mark><a href=\"https://example.com\">golink</a></mark> "
+                 "<strong>bold</strong> "
+                 "<mark style=\"background-color: #00000033\">fade</mark></p>"))
+            ->IntoEl();
+    El* plain = FindWord(root, "plain");
+    El* yellow = FindWord(root, "yellow");
+    El* navy = FindWord(root, "navy");
+    El* clear = FindWord(root, "clear");
+    El* plainlink = FindWord(root, "plainlink");
+    El* golink = FindWord(root, "golink");
+    El* bold = FindWord(root, "bold");
+    El* fade = FindWord(root, "fade");
+    utassert(yellow && SameTextViewColor(yellow->style.color, black));
+    utassert(navy && SameTextViewColor(navy->style.color, white));
+    utassert(clear && plain &&
+             SameTextViewColor(clear->style.color, plain->style.color));
+    utassert(plainlink && golink &&
+             SameTextViewColor(golink->style.color, plainlink->style.color));
+    utassert(bold && plain &&
+             SameTextViewColor(bold->style.color, plain->style.color));
+    utassert(fade && SameTextViewColor(fade->style.color, black));
+
+    theme->tokens.colors.background = black;
+    El* dark = TextView::NewHtml(&cx, StrL("<p><mark style=\"background-color: "
+                                           "#00000033\">fade</mark></p>"))
+                   ->IntoEl();
+    El* fadeDark = FindWord(dark, "fade");
+    utassert(fadeDark && SameTextViewColor(fadeDark->style.color, white));
+
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 static uint32_t HeadingOnePadded(uint8_t level, gpui::Style* out, void*) {
     if (level != 1) return 0;
     out->pad.bottom = 32; // pb(rems(2.))
@@ -8582,6 +8672,7 @@ void TestTextView() {
     ClaimedInlineMathSurvivesProseFlattening();
     InlineHtmlFormattingTagsPairAcrossSiblings();
     InlineHtmlMarkAppliesHighlightColors();
+    MarkSetsAReadableTextColorWithItsBackground();
     HeadingRefinementChangesRenderedHeadingGeometry();
     FlowPositionSkipsBlocksThatRenderNothing();
     FlowPositionReportsThePreviousHeadingOrRule();

@@ -3222,7 +3222,46 @@ El* TextView::SrcImage(El* e, MdRun* r) {
 // default wash pins the ink to the light theme's near-black. A tag that
 // names another color keeps the run's own foreground.
 static const Rgba kMarkBg = {0xfe, 0xf0, 0x8a, 0xff};
-static const Rgba kMarkFg = {0x0a, 0x0a, 0x0a, 0xff};
+
+static float MarkSrgbChannel(float value) {
+    return value <= 0.04045f ? value / 12.92f
+                             : powf((value + 0.055f) / 1.055f, 2.4f);
+}
+
+Rgba MarkTextColor(Rgba highlight, Rgba background) {
+    Rgba rgb = RgbaBlend(background, highlight);
+    float lum = 0.2126f * MarkSrgbChannel((float)rgb.r / 255.f) +
+                0.7152f * MarkSrgbChannel((float)rgb.g / 255.f) +
+                0.0722f * MarkSrgbChannel((float)rgb.b / 255.f);
+    // Contrast with black is (L + 0.05) / 0.05 and with white
+    // 1.05 / (L + 0.05). They meet where (L + 0.05)^2 = 0.0525.
+    if ((lum + 0.05f) * (lum + 0.05f) > 0.0525f) {
+        return Rgba{0, 0, 0, 255};
+    }
+    return Rgba{255, 255, 255, 255};
+}
+
+// The ink a marked run draws with. The wash is composited on the theme
+// surface each time the run is built, which is what
+// translucent_mark_cache_tracks_theme_background asks of the paragraph
+// cache: a later theme background picks a new ink. A link keeps its color.
+static Rgba MarkedRunColor(const TextView* view, Rgba color, uint8_t marks,
+                           Rgba highlight, bool hasHighlight) {
+    Rgba c = color;
+    if (marks & MdHighlight) {
+        Rgba markBg = hasHighlight ? highlight : kMarkBg;
+        if (markBg.a > 0) {
+            App* app = view->cx ? view->cx->app : nullptr;
+            Rgba surface = base_theme::Theme::Global(app)
+                               .tokens.colors.background;
+            c = MarkTextColor(markBg, surface);
+        }
+    }
+    if (marks & MdLink) {
+        c = view->textViewStyle.link;
+    }
+    return c;
+}
 
 // A length measured off a font size: font sizes here are written at a 16 px
 // rem and layout scales them by the window's rem, so a line height or a box
@@ -3293,16 +3332,10 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
 // element that carries it — node.rs builds the same HighlightStyle.
 El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
                    Str href, Rgba highlight, bool hasHighlight) {
-    Rgba c = color;
+    // node.rs sets the link color after the mark's ink, so a link drawn on
+    // a highlight stays the link color. MarkedRunColor does that.
+    Rgba c = MarkedRunColor(this, color, marks, highlight, hasHighlight);
     Rgba markBg = hasHighlight ? highlight : kMarkBg;
-    if (marks & MdLink) {
-        // node.rs: `highlight.color = Some(node_cx.style.link())`. It used to
-        // be `cx.theme().link`; the style carries the role now.
-        c = textViewStyle.link;
-    }
-    if ((marks & MdHighlight) && RgbaEq(markBg, kMarkBg)) {
-        c = kMarkFg;
-    }
     El* t = TextEl(a, w)->Font(font);
     if (c.a) {
         t->Fg(c);
@@ -3775,7 +3808,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             context.remSize = 16;
             context.textStyle.fontSize = font;
             context.textStyle.lineHeight = kLineHeight;
-            context.textStyle.color = color;
+            context.textStyle.color =
+                MarkedRunColor(this, color, marks, highlight, hasHighlight);
             int inheritedWeight =
                 (marks & MdBold) ? (weight > 2 ? weight : 2) : weight;
             context.textStyle.fontBold = inheritedWeight >= 3;
@@ -3786,9 +3820,6 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             context.textStyle
                 .underline = (marks & MdUnderline) || (marks & MdLink);
             context.textStyle.strike = (marks & MdDel) != 0;
-            if (marks & MdLink) {
-                context.textStyle.color = textViewStyle.link;
-            }
             InlineElement rendered;
             if (renderer) {
                 if (renderer->renderInline) {

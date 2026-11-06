@@ -249,8 +249,14 @@ enum MdMark : uint8_t {
     MdLink = 1 << 5,
     // <mark>: TextMark::highlight. The wash is the tag's color, then its
     // style background-color, then #fef08a (html.rs mark_color_from_values).
+    // The glyphs take black or white from MarkTextColor so the wash stays
+    // readable. A link drawn on the mark keeps the link color.
     MdHighlight = 1 << 6,
 };
+
+// node.rs mark_text_color. Black or white, whichever contrasts more with
+// `highlight` composited over `background` (WCAG relative luminance).
+Rgba MarkTextColor(Rgba highlight, Rgba background);
 
 // One styled piece of a paragraph: node.rs's (text, TextMark) pair, or —
 // when `imgSrc` is set — node.rs's InlineNode::image, an ImageNode sitting in

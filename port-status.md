@@ -16,9 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `51d7c2bef5eb866e6b9367ffec6f77653837b913` (2026-11-01,
-locales: Add Russian (ru) (#3745)). The component catalogue includes
-Russian for every string.
+Processed through `6c8caded973d96058af53190aefc31b495fefbba` (2026-11-01,
+text: Draw a mark's text in a color that reads on its background (#3746)).
+A highlight picks black or white text from the wash composited on the
+theme surface. A link on that highlight keeps the link color.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
