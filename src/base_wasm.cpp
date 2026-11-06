@@ -97,6 +97,11 @@ uint64_t PlatArenaReserveSize() {
 // There is no executable and no directory it sits in. Assets are preloaded
 // into MEMFS at the root by the build (see cmd/build-wasm.ts), which is what
 // gpui/assets.cpp walks from.
+// macOS speech example relaunches itself. Every other platform keeps running.
+bool PlatDisclaimSpeechResponsibility(int, char**, int*) {
+    return true;
+}
+
 bool PlatGetExePath(char* out, int cap) {
     if (out && cap > 0) out[0] = 0;
     return false;

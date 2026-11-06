@@ -21,7 +21,10 @@ using namespace gpui;
 // Rust embeds three extra icons with `icon_assets!`; here they are files
 // under assets/speech/icons, found the way examples/app_assets finds its own.
 // The usage descriptions macOS asks for are examples/speech_Info.plist, which
-// cmd/build.ts links into the binary as Rust's build.rs does.
+// cmd/build.ts links into the binary as Rust's build.rs does. Startup calls
+// PlatDisclaimSpeechResponsibility, the port of responsibility.rs: a terminal
+// is otherwise the TCC responsible process, and one that lacks
+// NSSpeechRecognitionUsageDescription aborts the example.
 
 static uint32_t ActToggleSpeech() {
     static uint32_t id = ActionOf(StrL("speech::ToggleSpeech"));
@@ -828,6 +831,11 @@ static void PrintChecks(App* app) {
 }
 
 int GpuiMain(int argc, char** argv) {
+    // responsibility::disclaim runs before anything else, including --check.
+    int status = 0;
+    if (!PlatDisclaimSpeechResponsibility(argc, argv, &status)) {
+        return status;
+    }
     bool check = false;
     for (int ix = 1; ix < argc; ix++) {
         check = check || StrEq(Str(argv[ix]), StrL("--check"));

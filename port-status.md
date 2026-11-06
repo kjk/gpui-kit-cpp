@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bb85882e1faab845d9e7be33b69a152879a90f69` (2026-10-29,
-test: Observe painted text and alternative text (#3724)). A button's
-tooltip is also its accessibility description. The paint-order text log
-behind Rust's `test-support` is not recorded here.
+Processed through `944803984cf0ba3111861d6e1aa9d6265c109ff9` (2026-10-29,
+speech: Disclaim the terminal's responsibility for privacy access on
+macOS (#3730)). The speech example relaunches itself on macOS so the
+binary, not the terminal, is the TCC responsible process. Other
+platforms keep running.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

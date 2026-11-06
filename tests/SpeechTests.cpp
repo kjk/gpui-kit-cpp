@@ -12,6 +12,7 @@
 
 #include "Test.h"
 #include <math.h>
+#include <stdlib.h>
 
 using namespace gpui::component;
 
@@ -986,8 +987,28 @@ static void ASurfaceMeetsTheEdgesAtRestAndKeepsItsCrestsInside() {
     utassert(points[1].y < 30.f && points[2].y > 30.f);
 }
 
+// responsibility.rs: a process that already carries
+// SPEECH_RESPONSIBILITY_DISCLAIMED does not relaunch. Setting the variable
+// is the only path safe to drive from the suite; the spawn itself is macOS.
+static void AlreadyDisclaimedKeepsRunning() {
+#if GPUI_OS_WINDOWS
+    _putenv("SPEECH_RESPONSIBILITY_DISCLAIMED=1");
+#else
+    setenv("SPEECH_RESPONSIBILITY_DISCLAIMED", "1", 1);
+#endif
+    int status = 7;
+    utassert(PlatDisclaimSpeechResponsibility(0, nullptr, &status));
+    utassert(status == 7);
+#if GPUI_OS_WINDOWS
+    _putenv("SPEECH_RESPONSIBILITY_DISCLAIMED=");
+#else
+    unsetenv("SPEECH_RESPONSIBILITY_DISCLAIMED");
+#endif
+}
+
 void TestSpeech() {
     TestSuite("speech");
+    AlreadyDisclaimedKeepsRunning();
     OneLevelPerIntervalAcrossPushes();
     TheWindowFollowsTheStreamFormat();
     PeaksRiseFastAndFallSlowly();

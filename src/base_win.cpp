@@ -175,6 +175,11 @@ bool PlatCanonicalPath(const char* path, char* out, int cap) {
     return true;
 }
 
+// macOS speech example relaunches itself. Every other platform keeps running.
+bool PlatDisclaimSpeechResponsibility(int, char**, int*) {
+    return true;
+}
+
 bool PlatGetExePath(char* out, int cap) {
     if (!out || cap <= 0) return false;
     out[0] = 0;

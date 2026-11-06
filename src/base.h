@@ -161,6 +161,12 @@ bool PlatCanonicalPath(const char* path, char* out, int cap);
 void PlatGetExeDir(char* out, int cap);
 // The running executable's path. False when this platform has none.
 bool PlatGetExePath(char* out, int cap);
+// macOS speech example: relaunch so this binary, not the terminal, is the
+// TCC responsible process (`responsibility_spawnattrs_setdisclaim`). True
+// means keep running. False means *status is the child's exit code and the
+// caller must return it. Other platforms always return true. The env
+// SPEECH_RESPONSIBILITY_DISCLAIMED=1 skips the relaunch.
+bool PlatDisclaimSpeechResponsibility(int argc, char** argv, int* status);
 // Unix mode & 0111. False on Windows, where a bundle records no execute bit.
 bool PlatFileIsExecutable(const char* path);
 // chmod 0755. True without doing anything where the OS has no mode bit.
