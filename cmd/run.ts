@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6c8caded973d96058af53190aefc31b495fefbba",
+  sha: "24dfec5748a62c015380e3cc8d92a40968822639",
   date: "2026-11-01",
-  subject: "text: Draw a mark's text in a color that reads on its background (#3746)",
+  subject: "diff: keep the vertical scrollbar at the viewport edge when soft_wrap is off (#3739)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",

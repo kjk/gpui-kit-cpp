@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6c8caded973d96058af53190aefc31b495fefbba` (2026-11-01,
-text: Draw a mark's text in a color that reads on its background (#3746)).
-A highlight picks black or white text from the wash composited on the
-theme surface. A link on that highlight keeps the link color.
+Processed through `24dfec5748a62c015380e3cc8d92a40968822639` (2026-11-01,
+diff: keep the vertical scrollbar at the viewport edge when soft_wrap is
+off (#3739)). The diff's vertical bar is the scroll element's own bar,
+painted on the viewport box, so a wide unwrapped diff does not push it
+to the content's right edge.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
