@@ -1,6 +1,8 @@
 #include "ui/highlighter.h"
 #include "base/input.h"
+#include "base/json.h"
 #include "ui/input.h"
+#include "ui/theme.h"
 #include "ui/popover.h"
 #include "ui/text.h"
 #include "base/positioner.h"
@@ -1150,6 +1152,73 @@ static bool SynHlResolveStyle(void* data, Str name, TextSpan* out) {
     *out = TextSpan{};
     out->color = c;
     return true;
+}
+
+static int HexNibble(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+static bool ParseHighlightHex(Str s, Rgba* out) {
+    if (!out || !s.s || s.s[0] != '#') {
+        return false;
+    }
+    int n = len(s);
+    if (n != 7 && n != 9) {
+        return false;
+    }
+    int v[8];
+    for (int i = 0; i < n - 1; i++) {
+        v[i] = HexNibble(s.s[i + 1]);
+        if (v[i] < 0) {
+            return false;
+        }
+    }
+    if (n == 7) {
+        *out = Rgb((uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]),
+                   (uint8_t)(v[4] * 16 + v[5]));
+        return true;
+    }
+    *out = Rgba8((uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]),
+                 (uint8_t)(v[4] * 16 + v[5]), (uint8_t)(v[6] * 16 + v[7]));
+    return true;
+}
+
+// StatusColors reads the active theme's highlight object. A missing key, or
+// one this tree cannot parse, uses the palette fallback.
+static Rgba HighlightStatus(const App* app, const char* key, Rgba fallback) {
+    if (!app) {
+        return fallback;
+    }
+    const ThemeConfig* cfg =
+        ThemeRegistryFind(app, ThemeRegistryActive(app, ThemeGet(app)));
+    const JsonValue* value =
+        cfg && cfg->highlight ? JsonGet(cfg->highlight, key) : nullptr;
+    Rgba parsed;
+    if (value && ParseHighlightHex(JsonString(value), &parsed)) {
+        return parsed;
+    }
+    return fallback;
+}
+
+Rgba HighlightStatusCreated(const App* app) {
+    return HighlightStatus(app, "created", ThemeNow(app).success);
+}
+
+Rgba HighlightStatusModified(const App* app) {
+    return HighlightStatus(app, "modified", ThemeNow(app).warning);
+}
+
+Rgba HighlightStatusDeleted(const App* app) {
+    return HighlightStatus(app, "deleted", ThemeNow(app).danger);
 }
 
 // The names a semantic token carries, resolved with the same table.

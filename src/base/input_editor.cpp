@@ -1338,6 +1338,15 @@ int InputRangeDecorations(const InputState* s, const Selection* ranges,
         .Intersecting(ranges, nRanges, out, cap);
 }
 
+static void GutterDecorationsReleaseOwner(InputState* s);
+static void OverviewDecorationsReleaseOwner(InputState* s);
+static void GutterDecorationsAdjust(GutterDecorationsState* state,
+                                    Selection editedRange, int insertedLen);
+static void OverviewDecorationsAdjust(OverviewRulerDecorationsState* state,
+                                      Selection editedRange, int insertedLen);
+static void GutterDecorationsClear(GutterDecorationsState* state);
+static void OverviewDecorationsClear(OverviewRulerDecorationsState* state);
+
 void InputDecorationsFree(InputState* s) {
     if (!s) {
         return;
@@ -1350,19 +1359,20 @@ void InputDecorationsFree(InputState* s) {
         DecorationsRelease(text);
         s->textDecorations = nullptr;
     }
-    if (!s->rangeDecorations) {
-        return;
+    if (s->rangeDecorations) {
+        RangeDecorationsState* state = s->rangeDecorations;
+        state->ownerAlive = false;
+        state->input = nullptr;
+        // The collections go with the editor; a surviving handle keeps only the
+        // shell it checks.
+        while (len(state->collections.entries) > 0) {
+            state->collections.Remove(state->collections.entries[0]->id);
+        }
+        RangeDecorationsRelease(state);
+        s->rangeDecorations = nullptr;
     }
-    RangeDecorationsState* state = s->rangeDecorations;
-    state->ownerAlive = false;
-    state->input = nullptr;
-    // The collections go with the editor; a surviving handle keeps only the
-    // shell it checks.
-    while (len(state->collections.entries) > 0) {
-        state->collections.Remove(state->collections.entries[0]->id);
-    }
-    RangeDecorationsRelease(state);
-    s->rangeDecorations = nullptr;
+    GutterDecorationsReleaseOwner(s);
+    OverviewDecorationsReleaseOwner(s);
 }
 
 void InputDecorationsAdjustForEdit(InputState* s, Selection editedRange,
@@ -1374,6 +1384,13 @@ void InputDecorationsAdjustForEdit(InputState* s, Selection editedRange,
         s->rangeDecorations->collections
             .AdjustForEdit(editedRange, insertedLen);
     }
+    if (s && s->gutterDecorations) {
+        GutterDecorationsAdjust(s->gutterDecorations, editedRange, insertedLen);
+    }
+    if (s && s->overviewDecorations) {
+        OverviewDecorationsAdjust(s->overviewDecorations, editedRange,
+                                  insertedLen);
+    }
 }
 
 void InputDecorationsReset(InputState* s) {
@@ -1383,6 +1400,1141 @@ void InputDecorationsReset(InputState* s) {
     if (s && s->rangeDecorations) {
         s->rangeDecorations->collections.Clear();
     }
+    if (s && s->gutterDecorations) {
+        GutterDecorationsClear(s->gutterDecorations);
+    }
+    if (s && s->overviewDecorations) {
+        OverviewDecorationsClear(s->overviewDecorations);
+    }
+}
+
+// ─── gutter and overview ruler (decorations.rs, element.rs) ───────────────
+
+static const float kGutterDecorationGap = 4.f;
+static const float kGutterBoundaryMarkHeight = 8.f;
+static const float kMinOverviewRulerMarkHeight = 6.f;
+
+static int AdjustPointForEdit(int offset, Selection edit, int insertedLen) {
+    if (offset <= edit.start) {
+        return offset;
+    }
+    if (offset >= edit.end) {
+        int64_t removed = (int64_t)edit.end - (int64_t)edit.start;
+        if (removed < 0) {
+            removed = 0;
+        }
+        int64_t shifted = (int64_t)offset + insertedLen - removed;
+        if (shifted < 0) {
+            shifted = 0;
+        }
+        if (shifted > 0x7fffffff) {
+            shifted = 0x7fffffff;
+        }
+        return (int)shifted;
+    }
+    return edit.start;
+}
+
+template <typename T>
+struct MarkEntries {
+    uint64_t id = 0;
+    Vec<T> decorations;
+    Vec<int> indices;
+    Vec<int> maxEnds;
+};
+
+template <typename T>
+static int MarkBuild(MarkEntries<T>* entry, int lo, int hi) {
+    if (!entry || hi <= lo) {
+        return 0;
+    }
+    int mid = lo + (hi - lo) / 2;
+    int end = entry->decorations[entry->indices[mid]].range.end;
+    end = std::max(end, MarkBuild(entry, lo, mid));
+    end = std::max(end, MarkBuild(entry, mid + 1, hi));
+    entry->maxEnds[mid] = end;
+    return end;
+}
+
+template <typename T>
+static void MarkReindex(MarkEntries<T>* entry) {
+    VecClear(entry->indices);
+    VecClear(entry->maxEnds);
+    int n = len(entry->decorations);
+    if (n <= 0) {
+        return;
+    }
+    VecResize(entry->indices, n);
+    VecResize(entry->maxEnds, n);
+    for (int i = 0; i < n; i++) {
+        entry->indices[i] = i;
+        entry->maxEnds[i] = 0;
+    }
+    const T* decorations = entry->decorations.els;
+    std::sort(entry->indices.els, entry->indices.els + n,
+              [decorations](int a, int b) {
+                  int sa = decorations[a].range.start;
+                  int sb = decorations[b].range.start;
+                  return sa < sb || (sa == sb && a < b);
+              });
+    MarkBuild(entry, 0, n);
+}
+
+template <typename T>
+static int MarkQuery(const MarkEntries<T>* entry, int lo, int hi,
+                     Selection range, Vec<int>* matches) {
+    if (!entry || hi <= lo || range.start >= range.end) {
+        return 0;
+    }
+    // An empty decoration touches the span when it lies inside it, including
+    // at its start. The subtree max is tested as if it could be empty, so a
+    // boundary at the span's start is not pruned.
+    auto touches = [&](int end, bool empty) {
+        return end > range.start || (empty && end == range.start);
+    };
+    int mid = lo + (hi - lo) / 2;
+    if (!touches(entry->maxEnds[mid], true)) {
+        return 1;
+    }
+    int visited = 1 + MarkQuery(entry, lo, mid, range, matches);
+    int ix = entry->indices[mid];
+    Selection candidate = entry->decorations[ix].range;
+    if (candidate.start < range.end) {
+        if (touches(candidate.end, candidate.IsEmpty())) {
+            VecAppend(*matches, ix);
+        }
+        visited += MarkQuery(entry, mid + 1, hi, range, matches);
+    }
+    return visited;
+}
+
+template <typename T>
+struct MarkCollections {
+    uint64_t nextId = 0;
+    uint64_t revision = 0;
+    Vec<MarkEntries<T>*> entries;
+
+    MarkCollections() = default;
+    MarkCollections(const MarkCollections&) = delete;
+    MarkCollections& operator=(const MarkCollections&) = delete;
+    ~MarkCollections() {
+        for (int i = 0; i < len(entries); i++) {
+            delete entries[i];
+        }
+    }
+
+    bool HasAny() const { return len(entries) > 0; }
+
+    MarkEntries<T>* Find(uint64_t id) const {
+        for (int i = 0; i < len(entries); i++) {
+            if (entries[i]->id == id) {
+                return entries[i];
+            }
+        }
+        return nullptr;
+    }
+
+    uint64_t Create(const T* decorations, int n) {
+        MarkEntries<T>* entry = new MarkEntries<T>();
+        entry->id = nextId++;
+        for (int i = 0; decorations && i < n; i++) {
+            VecAppend(entry->decorations, decorations[i]);
+        }
+        MarkReindex(entry);
+        VecAppend(entries, entry);
+        revision++;
+        return entry->id;
+    }
+
+    bool Set(uint64_t id, const T* decorations, int n) {
+        MarkEntries<T>* entry = Find(id);
+        if (!entry) {
+            return false;
+        }
+        VecClear(entry->decorations);
+        for (int i = 0; decorations && i < n; i++) {
+            VecAppend(entry->decorations, decorations[i]);
+        }
+        MarkReindex(entry);
+        revision++;
+        return true;
+    }
+
+    bool Append(uint64_t id, const T* decorations, int n) {
+        MarkEntries<T>* entry = Find(id);
+        if (!entry) {
+            return false;
+        }
+        for (int i = 0; decorations && i < n; i++) {
+            VecAppend(entry->decorations, decorations[i]);
+        }
+        MarkReindex(entry);
+        revision++;
+        return true;
+    }
+
+    bool Remove(uint64_t id) {
+        for (int i = 0; i < len(entries); i++) {
+            if (entries[i]->id == id) {
+                delete entries[i];
+                for (int k = i; k + 1 < len(entries); k++) {
+                    entries[k] = entries[k + 1];
+                }
+                entries.len--;
+                revision++;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void Clear() {
+        for (int i = 0; i < len(entries); i++) {
+            VecClear(entries[i]->decorations);
+            MarkReindex(entries[i]);
+        }
+        revision++;
+    }
+
+    void Adjust(Selection editedRange, int insertedLen) {
+        for (int e = 0; e < len(entries); e++) {
+            MarkEntries<T>* entry = entries[e];
+            int n = len(entry->decorations);
+            if (n == 0 || entry->maxEnds[n / 2] <= editedRange.start) {
+                continue;
+            }
+            Vec<int> remap;
+            VecResize(remap, n);
+            int retained = 0;
+            for (int i = 0; i < n; i++) {
+                T d = entry->decorations[i];
+                if (d.range.IsEmpty()) {
+                    int at = AdjustPointForEdit(d.range.start, editedRange,
+                                                insertedLen);
+                    d.range = {at, at};
+                } else {
+                    d.range = AdjustDecorationRange(d.range, editedRange,
+                                                    insertedLen);
+                }
+                remap[i] = retained;
+                entry->decorations[retained++] = d;
+            }
+            VecResize(entry->decorations, retained);
+            Vec<int>& indices = entry->indices;
+            int write = 0;
+            for (int i = 0; i < len(indices); i++) {
+                int ix = indices[i];
+                if (ix >= 0 && ix < n) {
+                    indices[write++] = remap[ix];
+                }
+            }
+            VecResize(indices, write);
+            bool sorted = true;
+            for (int i = 1; i < len(indices); i++) {
+                int a = indices[i - 1];
+                int b = indices[i];
+                int sa = entry->decorations[a].range.start;
+                int sb = entry->decorations[b].range.start;
+                if (sa > sb || (sa == sb && a > b)) {
+                    sorted = false;
+                    break;
+                }
+            }
+            if (!sorted) {
+                const T* decorations = entry->decorations.els;
+                std::sort(indices.els, indices.els + len(indices),
+                          [decorations](int a, int b) {
+                              int sa = decorations[a].range.start;
+                              int sb = decorations[b].range.start;
+                              return sa < sb || (sa == sb && a < b);
+                          });
+            }
+            VecResize(entry->maxEnds, retained);
+            for (int i = 0; i < retained; i++) {
+                entry->maxEnds[i] = 0;
+            }
+            MarkBuild(entry, 0, retained);
+        }
+    }
+
+    int Intersecting(Selection range, const T** out, int cap) const {
+        int count = 0;
+        Vec<int> matches;
+        for (int e = 0; e < len(entries); e++) {
+            const MarkEntries<T>* entry = entries[e];
+            VecClear(matches);
+            MarkQuery(entry, 0, len(entry->decorations), range, &matches);
+            std::sort(matches.els, matches.els + len(matches));
+            int prev = -1;
+            for (int i = 0; i < len(matches); i++) {
+                if (matches[i] == prev) {
+                    continue;
+                }
+                prev = matches[i];
+                if (out && count < cap) {
+                    out[count] = &entry->decorations[matches[i]];
+                }
+                count++;
+            }
+        }
+        return count;
+    }
+};
+
+template <typename T>
+static int MarkNormalize(Str text, const T* in, int n, Vec<T>* out) {
+    int added = 0;
+    int textLen = len(text);
+    for (int i = 0; in && i < n; i++) {
+        Selection range = in[i].range;
+        // Reversed ranges, and ranges past the end, are dropped. Clipping a
+        // past-the-end range would otherwise invent a boundary at the end.
+        if (range.start > range.end || range.start > textLen) {
+            continue;
+        }
+        int start = RopeClipOffset(text, range.start, Bias::Left);
+        if (range.IsEmpty()) {
+            range = {start, start};
+        } else {
+            int end = RopeClipOffset(text, range.end, Bias::Right);
+            range = {start, end};
+            if (range.IsEmpty()) {
+                continue;
+            }
+        }
+        T d = in[i];
+        d.range = range;
+        VecAppend(*out, d);
+        added++;
+    }
+    return added;
+}
+
+struct GutterDecorationsState {
+    int refs = 1;
+    bool ownerAlive = true;
+    InputState* input = nullptr;
+    MarkCollections<GutterDecoration> collections;
+};
+
+struct OverviewCachedRow {
+    OverviewRulerLane lane = OverviewRulerLane::Center;
+    Rgba color = {};
+    bool hasColor = false;
+    int start = 0;
+    int end = 0;
+};
+
+struct OverviewRulerDecorationsState {
+    int refs = 1;
+    bool ownerAlive = true;
+    InputState* input = nullptr;
+    MarkCollections<OverviewRulerDecoration> collections;
+    bool cacheValid = false;
+    uint64_t cacheDecorations = 0;
+    uint64_t cacheDocument = 0;
+    int cacheWrapRows = 0;
+    int cacheDisplayRows = 0;
+    float cacheWrapWidth = -1.f;
+    uint64_t cacheFolds = 0;
+    Vec<OverviewCachedRow> cacheRows;
+};
+
+static void GutterDecorationsRetain(GutterDecorationsState* state) {
+    if (state) {
+        state->refs++;
+    }
+}
+
+static void GutterDecorationsRelease(GutterDecorationsState* state) {
+    if (state && --state->refs <= 0) {
+        delete state;
+    }
+}
+
+static void OverviewDecorationsRetain(OverviewRulerDecorationsState* state) {
+    if (state) {
+        state->refs++;
+    }
+}
+
+static void OverviewDecorationsRelease(OverviewRulerDecorationsState* state) {
+    if (state && --state->refs <= 0) {
+        delete state;
+    }
+}
+
+static MarkCollections<GutterDecoration>* GutterLive(
+    GutterDecorationsState* state) {
+    return state && state->ownerAlive && state->input ? &state->collections
+                                                      : nullptr;
+}
+
+static MarkCollections<OverviewRulerDecoration>* OverviewLive(
+    OverviewRulerDecorationsState* state) {
+    return state && state->ownerAlive && state->input ? &state->collections
+                                                      : nullptr;
+}
+
+static void GutterDecorationsReleaseOwner(InputState* s) {
+    if (!s || !s->gutterDecorations) {
+        return;
+    }
+    GutterDecorationsState* state = s->gutterDecorations;
+    state->ownerAlive = false;
+    state->input = nullptr;
+    while (len(state->collections.entries) > 0) {
+        state->collections.Remove(state->collections.entries[0]->id);
+    }
+    GutterDecorationsRelease(state);
+    s->gutterDecorations = nullptr;
+}
+
+static void OverviewDecorationsReleaseOwner(InputState* s) {
+    if (!s || !s->overviewDecorations) {
+        return;
+    }
+    OverviewRulerDecorationsState* state = s->overviewDecorations;
+    state->ownerAlive = false;
+    state->input = nullptr;
+    while (len(state->collections.entries) > 0) {
+        state->collections.Remove(state->collections.entries[0]->id);
+    }
+    OverviewDecorationsRelease(state);
+    s->overviewDecorations = nullptr;
+}
+
+static void GutterDecorationsAdjust(GutterDecorationsState* state,
+                                    Selection editedRange, int insertedLen) {
+    if (MarkCollections<GutterDecoration>* live = GutterLive(state)) {
+        live->Adjust(editedRange, insertedLen);
+    }
+}
+
+static void OverviewDecorationsAdjust(OverviewRulerDecorationsState* state,
+                                      Selection editedRange, int insertedLen) {
+    if (MarkCollections<OverviewRulerDecoration>* live = OverviewLive(state)) {
+        live->Adjust(editedRange, insertedLen);
+    }
+}
+
+static void GutterDecorationsClear(GutterDecorationsState* state) {
+    if (MarkCollections<GutterDecoration>* live = GutterLive(state)) {
+        live->Clear();
+    }
+}
+
+static void OverviewDecorationsClear(OverviewRulerDecorationsState* state) {
+    if (MarkCollections<OverviewRulerDecoration>* live = OverviewLive(state)) {
+        live->Clear();
+    }
+}
+
+GutterDecoration GutterDecoration::New(Selection range) {
+    GutterDecoration d;
+    d.range = range;
+    return d;
+}
+
+bool GutterDecoration::Color(Rgba* out) const {
+    if (!hasColor || !out) {
+        return false;
+    }
+    *out = color;
+    return true;
+}
+
+bool GutterDecoration::FoldedColor(Rgba* out) const {
+    if (!hasFoldedColor || !out) {
+        return false;
+    }
+    *out = foldedColor;
+    return true;
+}
+
+GutterDecoration GutterDecoration::WithColor(Rgba value) const {
+    GutterDecoration out = *this;
+    out.color = value;
+    out.hasColor = true;
+    return out;
+}
+
+GutterDecoration GutterDecoration::WithFoldedColor(Rgba value) const {
+    GutterDecoration out = *this;
+    out.foldedColor = value;
+    out.hasFoldedColor = true;
+    return out;
+}
+
+OverviewRulerDecoration OverviewRulerDecoration::New(Selection range) {
+    OverviewRulerDecoration d;
+    d.range = range;
+    return d;
+}
+
+bool OverviewRulerDecoration::Color(Rgba* out) const {
+    if (!hasColor || !out) {
+        return false;
+    }
+    *out = color;
+    return true;
+}
+
+OverviewRulerDecoration OverviewRulerDecoration::WithLane(
+    OverviewRulerLane value) const {
+    OverviewRulerDecoration out = *this;
+    out.lane = value;
+    return out;
+}
+
+OverviewRulerDecoration OverviewRulerDecoration::WithColor(Rgba value) const {
+    OverviewRulerDecoration out = *this;
+    out.color = value;
+    out.hasColor = true;
+    return out;
+}
+
+GutterDecorationCollection::GutterDecorationCollection(
+    const GutterDecorationCollection& other)
+    : state(other.state), id(other.id) {
+    GutterDecorationsRetain(state);
+}
+
+GutterDecorationCollection& GutterDecorationCollection::operator=(
+    const GutterDecorationCollection& other) {
+    if (this == &other) {
+        return *this;
+    }
+    GutterDecorationsRetain(other.state);
+    GutterDecorationsRelease(state);
+    state = other.state;
+    id = other.id;
+    return *this;
+}
+
+GutterDecorationCollection::~GutterDecorationCollection() {
+    GutterDecorationsRelease(state);
+}
+
+void GutterDecorationCollection::Set(const GutterDecoration* decorations,
+                                     int n) {
+    MarkCollections<GutterDecoration>* live = GutterLive(state);
+    if (!live) {
+        return;
+    }
+    Vec<GutterDecoration> normalized;
+    MarkNormalize(InputValue(state->input), decorations, n, &normalized);
+    live->Set(id, normalized.els, len(normalized));
+}
+
+void GutterDecorationCollection::Append(const GutterDecoration* decorations,
+                                        int n) {
+    MarkCollections<GutterDecoration>* live = GutterLive(state);
+    if (!live) {
+        return;
+    }
+    Vec<GutterDecoration> normalized;
+    MarkNormalize(InputValue(state->input), decorations, n, &normalized);
+    live->Append(id, normalized.els, len(normalized));
+}
+
+void GutterDecorationCollection::Clear() {
+    Set(nullptr, 0);
+}
+
+void GutterDecorationCollection::Dispose() {
+    if (MarkCollections<GutterDecoration>* live = GutterLive(state)) {
+        live->Remove(id);
+    }
+}
+
+int GutterDecorationCollection::GetRanges(Selection* out, int cap) const {
+    MarkCollections<GutterDecoration>* live = GutterLive(state);
+    MarkEntries<GutterDecoration>* entry = live ? live->Find(id) : nullptr;
+    if (!entry) {
+        return 0;
+    }
+    for (int i = 0; out && i < len(entry->decorations) && i < cap; i++) {
+        out[i] = entry->decorations[i].range;
+    }
+    return len(entry->decorations);
+}
+
+OverviewRulerDecorationCollection::OverviewRulerDecorationCollection(
+    const OverviewRulerDecorationCollection& other)
+    : state(other.state), id(other.id) {
+    OverviewDecorationsRetain(state);
+}
+
+OverviewRulerDecorationCollection& OverviewRulerDecorationCollection::operator=(
+    const OverviewRulerDecorationCollection& other) {
+    if (this == &other) {
+        return *this;
+    }
+    OverviewDecorationsRetain(other.state);
+    OverviewDecorationsRelease(state);
+    state = other.state;
+    id = other.id;
+    return *this;
+}
+
+OverviewRulerDecorationCollection::~OverviewRulerDecorationCollection() {
+    OverviewDecorationsRelease(state);
+}
+
+void OverviewRulerDecorationCollection::Set(
+    const OverviewRulerDecoration* decorations, int n) {
+    MarkCollections<OverviewRulerDecoration>* live = OverviewLive(state);
+    if (!live) {
+        return;
+    }
+    Vec<OverviewRulerDecoration> normalized;
+    MarkNormalize(InputValue(state->input), decorations, n, &normalized);
+    live->Set(id, normalized.els, len(normalized));
+    state->cacheValid = false;
+}
+
+void OverviewRulerDecorationCollection::Append(
+    const OverviewRulerDecoration* decorations, int n) {
+    MarkCollections<OverviewRulerDecoration>* live = OverviewLive(state);
+    if (!live) {
+        return;
+    }
+    Vec<OverviewRulerDecoration> normalized;
+    MarkNormalize(InputValue(state->input), decorations, n, &normalized);
+    live->Append(id, normalized.els, len(normalized));
+    state->cacheValid = false;
+}
+
+void OverviewRulerDecorationCollection::Clear() {
+    Set(nullptr, 0);
+}
+
+void OverviewRulerDecorationCollection::Dispose() {
+    if (MarkCollections<OverviewRulerDecoration>* live = OverviewLive(state)) {
+        live->Remove(id);
+        state->cacheValid = false;
+    }
+}
+
+int OverviewRulerDecorationCollection::GetRanges(Selection* out,
+                                                 int cap) const {
+    MarkCollections<OverviewRulerDecoration>* live = OverviewLive(state);
+    MarkEntries<OverviewRulerDecoration>* entry =
+        live ? live->Find(id) : nullptr;
+    if (!entry) {
+        return 0;
+    }
+    for (int i = 0; out && i < len(entry->decorations) && i < cap; i++) {
+        out[i] = entry->decorations[i].range;
+    }
+    return len(entry->decorations);
+}
+
+static GutterDecorationsState* GutterEnsure(InputState* s) {
+    if (!s) {
+        return nullptr;
+    }
+    if (!s->gutterDecorations) {
+        s->gutterDecorations = new GutterDecorationsState();
+        s->gutterDecorations->input = s;
+    }
+    return s->gutterDecorations;
+}
+
+static OverviewRulerDecorationsState* OverviewEnsure(InputState* s) {
+    if (!s) {
+        return nullptr;
+    }
+    if (!s->overviewDecorations) {
+        s->overviewDecorations = new OverviewRulerDecorationsState();
+        s->overviewDecorations->input = s;
+    }
+    return s->overviewDecorations;
+}
+
+GutterDecorationCollection InputCreateGutterDecorationsCollection(
+    InputState* s, const GutterDecoration* decorations, int n) {
+    GutterDecorationCollection result;
+    GutterDecorationsState* state = GutterEnsure(s);
+    if (!state) {
+        return result;
+    }
+    Vec<GutterDecoration> normalized;
+    MarkNormalize(InputValue(s), decorations, n, &normalized);
+    result.state = state;
+    result.id = state->collections.Create(normalized.els, len(normalized));
+    GutterDecorationsRetain(result.state);
+    return result;
+}
+
+OverviewRulerDecorationCollection InputCreateOverviewRulerDecorationsCollection(
+    InputState* s, const OverviewRulerDecoration* decorations, int n) {
+    OverviewRulerDecorationCollection result;
+    OverviewRulerDecorationsState* state = OverviewEnsure(s);
+    if (!state) {
+        return result;
+    }
+    Vec<OverviewRulerDecoration> normalized;
+    MarkNormalize(InputValue(s), decorations, n, &normalized);
+    result.state = state;
+    result.id = state->collections.Create(normalized.els, len(normalized));
+    state->cacheValid = false;
+    OverviewDecorationsRetain(result.state);
+    return result;
+}
+
+void InputSetGutterDecorationsWidth(InputState* s, float width) {
+    if (!s || s->gutterDecorationsWidth == width) {
+        return;
+    }
+    s->gutterDecorationsWidth = width;
+}
+
+float InputGutterStripWidth(const InputState* s) {
+    if (!s || !s->gutterDecorations || !s->gutterDecorations->ownerAlive ||
+        !s->gutterDecorations->collections.HasAny()) {
+        return 0.f;
+    }
+    float w = s->gutterDecorationsWidth;
+    if (w < 0.f) {
+        w = 0.f;
+    }
+    return w + kGutterDecorationGap;
+}
+
+int InputGutterDecorations(const InputState* s, Selection range,
+                           const GutterDecoration** out, int cap) {
+    if (!s || !s->gutterDecorations || !s->gutterDecorations->ownerAlive) {
+        return 0;
+    }
+    return s->gutterDecorations->collections.Intersecting(range, out, cap);
+}
+
+uint64_t InputOverviewRulerRevision(const InputState* s) {
+    if (!s || !s->overviewDecorations || !s->overviewDecorations->ownerAlive) {
+        return 0;
+    }
+    return s->overviewDecorations->collections.revision;
+}
+
+static int WrapRowsOf(const InputState* s, int line) {
+    if (!s || !s->wrap.valid || line < 0 || line >= s->wrap.tree.LineCount()) {
+        return 1;
+    }
+    const InputWrapLine* item = s->wrap.tree.Line(line);
+    if (!item || item->nRows < 1) {
+        return 1;
+    }
+    return item->nRows;
+}
+
+static int RowsBeforeLine(const InputState* s, int line) {
+    if (!s || line <= 0) {
+        return 0;
+    }
+    FoldMapRebuild((FoldMap*)&s->folds, InputLinesLen(s));
+    bool wrapped = s->softWrap && s->wrap.valid && s->wrap.width > 0;
+    bool folded = len(s->folds.folded) > 0;
+    if (!wrapped && !folded) {
+        return line;
+    }
+    if (!folded && wrapped && line <= s->wrap.tree.LineCount()) {
+        if (line < s->wrap.tree.LineCount()) {
+            return s->wrap.tree.RowsAbove(line);
+        }
+        return s->wrap.totalRows;
+    }
+    int n = 0;
+    int lines = InputLinesLen(s);
+    if (line > lines) {
+        line = lines;
+    }
+    for (int i = 0; i < line; i++) {
+        if (FoldMapLineHidden(&s->folds, i)) {
+            continue;
+        }
+        int rows = wrapped ? WrapRowsOf(s, i) : 1;
+        if (rows < 1) {
+            rows = 1;
+        }
+        n += rows;
+    }
+    return n;
+}
+
+static int RowsOnLine(const InputState* s, int line) {
+    if (!s) {
+        return 1;
+    }
+    FoldMapRebuild((FoldMap*)&s->folds, InputLinesLen(s));
+    if (FoldMapLineHidden(&s->folds, line)) {
+        return 0;
+    }
+    if (!(s->softWrap && s->wrap.valid && s->wrap.width > 0)) {
+        return 1;
+    }
+    int rows = WrapRowsOf(s, line);
+    return rows < 1 ? 1 : rows;
+}
+
+static Selection DisplayRangeOfLine(const InputState* s, int line) {
+    if (RowsOnLine(s, line) <= 0) {
+        return {-1, -1};
+    }
+    int start = RowsBeforeLine(s, line);
+    return {start, start + RowsOnLine(s, line)};
+}
+
+static int DisplayRowOfLine(const InputState* s, int line) {
+    Selection rows = DisplayRangeOfLine(s, line);
+    if (rows.start >= 0) {
+        return rows.start;
+    }
+    int visible = FoldMapNearestVisibleLine(&s->folds, line);
+    Selection header = DisplayRangeOfLine(s, visible);
+    return header.start < 0 ? 0 : header.start;
+}
+
+static int DisplayRowCountOf(const InputState* s) {
+    return s ? RowsBeforeLine(s, InputLinesLen(s)) : 0;
+}
+
+static int BufferLineAtDisplay(const InputState* s, int displayRow) {
+    if (!s) {
+        return 0;
+    }
+    int lines = InputLinesLen(s);
+    bool wrapped = s->softWrap && s->wrap.valid && s->wrap.width > 0;
+    bool folded = len(s->folds.folded) > 0;
+    if (!wrapped && !folded) {
+        if (displayRow < 0) {
+            return 0;
+        }
+        return displayRow < lines ? displayRow : (lines > 0 ? lines - 1 : 0);
+    }
+    if (!folded && wrapped) {
+        int line = s->wrap.tree.LineAtRow(displayRow);
+        if (line < 0) {
+            line = 0;
+        }
+        return line;
+    }
+    int at = 0;
+    for (int i = 0; i < lines; i++) {
+        if (FoldMapLineHidden(&s->folds, i)) {
+            continue;
+        }
+        int rows = wrapped ? WrapRowsOf(s, i) : 1;
+        if (rows < 1) {
+            rows = 1;
+        }
+        if (displayRow < at + rows) {
+            return i;
+        }
+        at += rows;
+    }
+    return lines > 0 ? lines - 1 : 0;
+}
+
+DecorationRows InputDecorationRows(const InputState* s, Selection range) {
+    DecorationRows out;
+    if (!s) {
+        return out;
+    }
+    Str text = InputValue(s);
+    FoldMapRebuild((FoldMap*)&s->folds, InputLinesLen(s));
+    int startLine = RopeOffsetToPoint(text, range.start).row;
+    bool foldedStart = FoldMapLineHidden(&s->folds, startLine);
+    int start = DisplayRowOfLine(s, startLine);
+    if (range.IsEmpty() && !foldedStart) {
+        Selection rows = DisplayRangeOfLine(s, startLine);
+        int boundary = RopeLineStartOffset(text, startLine) == range.start
+                           ? rows.start
+                           : rows.end;
+        if (rows.start < 0) {
+            boundary = start;
+        }
+        out.boundary = true;
+        out.start = boundary;
+        out.end = boundary;
+        return out;
+    }
+    int endLine = RopeOffsetToPoint(text, range.end).row;
+    if (endLine > startLine && RopeLineStartOffset(text, endLine) == range
+                                                                         .end) {
+        endLine -= 1;
+    }
+    Selection endRows = DisplayRangeOfLine(s, endLine);
+    int end =
+        endRows.start >= 0 ? endRows.end : DisplayRowOfLine(s, endLine) + 1;
+    if (end < start + 1) {
+        end = start + 1;
+    }
+    out.foldedStart = foldedStart;
+    out.start = start;
+    out.end = end;
+    return out;
+}
+
+Selection InputVisibleDecorationSpan(const InputState* s,
+                                     Selection visibleLines) {
+    if (!s || visibleLines.end <= visibleLines.start) {
+        return {};
+    }
+    Str text = InputValue(s);
+    FoldMapRebuild((FoldMap*)&s->folds, InputLinesLen(s));
+    int last = visibleLines.end - 1;
+    int lastRow = DisplayRowOfLine(s, last);
+    int end = len(text);
+    if (lastRow + 1 < DisplayRowCountOf(s)) {
+        int line = BufferLineAtDisplay(s, lastRow + 1);
+        end = RopeLineStartOffset(text, line);
+    }
+    int startLine = visibleLines.start;
+    if (startLine < 0) {
+        startLine = 0;
+    }
+    return {RopeLineStartOffset(text, startLine), end};
+}
+
+static Rgba MarkColor(const InputState* s, bool has, Rgba color) {
+    return has ? color : (s ? s->editorForeground : Rgba{});
+}
+
+int InputLayoutGutterMarks(const InputState* s, float originX, float originY,
+                           float lineH, float viewTop, float viewBottom,
+                           GutterMark* out, int cap) {
+    if (!s || !s->gutterDecorations || !s->gutterDecorations->ownerAlive ||
+        !s->gutterDecorations->collections.HasAny() || lineH <= 0) {
+        return 0;
+    }
+    float width = s->gutterDecorationsWidth;
+    if (width < 0.f) {
+        width = 0.f;
+    }
+    Str text = InputValue(s);
+    Selection span = {0, len(text)};
+    bool clip = viewBottom >= viewTop;
+    if (clip) {
+        int first = (int)((viewTop - originY) / lineH);
+        int last = (int)((viewBottom - originY) / lineH) + 1;
+        if (first < 0) {
+            first = 0;
+        }
+        int lines = InputLinesLen(s);
+        if (last < first) {
+            last = first;
+        }
+        if (last > lines) {
+            last = lines;
+        }
+        if (last <= first) {
+            last = first + 1;
+        }
+        span = InputVisibleDecorationSpan(s, {first, last});
+    }
+    Selection query = {span.start, span.end + 1};
+    int n = s->gutterDecorations->collections.Intersecting(query, nullptr, 0);
+    Vec<const GutterDecoration*> found;
+    if (n > 0) {
+        VecResize(found, n);
+        s->gutterDecorations->collections.Intersecting(query, found.els, n);
+    }
+    int count = 0;
+    auto push = [&](float y, float h, Rgba color, bool pill) {
+        if (clip && (y + h < viewTop || y > viewBottom)) {
+            return;
+        }
+        if (out && count < cap) {
+            out[count] = {originX, y, width, h, color, pill};
+        }
+        count++;
+    };
+    for (int i = 0; i < n; i++) {
+        const GutterDecoration* d = found[i];
+        Rgba color = MarkColor(s, d->hasColor, d->color);
+        DecorationRows rows = InputDecorationRows(s, d->range);
+        auto top = [&](int row) { return originY + lineH * (float)row; };
+        if (rows.boundary) {
+            push(top(rows.start) - kGutterBoundaryMarkHeight * 0.5f,
+                 kGutterBoundaryMarkHeight, color, true);
+            continue;
+        }
+        auto bar = [&](int from, int to, Rgba c) {
+            int last = to - 1;
+            if (last < from) {
+                last = from;
+            }
+            float y = top(from);
+            float bottom = top(last) + lineH;
+            push(y, bottom - y, c, false);
+        };
+        if (!rows.foldedStart) {
+            bar(rows.start, rows.end, color);
+            continue;
+        }
+        Rgba folded = d->hasFoldedColor ? d->foldedColor : color;
+        bar(rows.start, rows.start + 1, folded);
+        if (rows.end > rows.start + 1) {
+            bar(rows.start + 1, rows.end, color);
+        }
+    }
+    return count;
+}
+
+static uint64_t FoldSignature(const InputState* s) {
+    uint64_t hash = 1469598103934665603ull;
+    if (!s) {
+        return hash;
+    }
+    for (int i = 0; i < len(s->folds.folded); i++) {
+        hash ^= (uint64_t)(uint32_t)s->folds.folded[i].startLine;
+        hash *= 1099511628211ull;
+        hash ^= (uint64_t)(uint32_t)s->folds.folded[i].endLine;
+        hash *= 1099511628211ull;
+    }
+    return hash;
+}
+
+static int LaneIndex(OverviewRulerLane lane) {
+    return (int)lane;
+}
+
+int InputLayoutOverviewRuler(InputState* s, float trackX, float trackY,
+                             float trackW, float trackH, float contentHeight,
+                             float paddingTop, float lineH,
+                             OverviewRulerMark* out, int cap) {
+    if (!s || !s->overviewDecorations || !s->overviewDecorations->ownerAlive ||
+        contentHeight <= 0.f || trackH <= 0.f || lineH <= 0.f) {
+        return 0;
+    }
+    OverviewRulerDecorationsState* store = s->overviewDecorations;
+    int wrapRows = s->softWrap && s->wrap.valid ? s->wrap.totalRows : 0;
+    int displayRows = DisplayRowCountOf(s);
+    float wrapWidth = s->wrap.measuredWidth;
+    uint64_t folds = FoldSignature(s);
+    bool same = store->cacheValid &&
+                store->cacheDecorations == store->collections.revision &&
+                store->cacheDocument == s->docVersion &&
+                store->cacheWrapRows == wrapRows &&
+                store->cacheDisplayRows == displayRows &&
+                store->cacheWrapWidth == wrapWidth &&
+                store->cacheFolds == folds;
+    if (!same) {
+        Vec<OverviewCachedRow> rows;
+        MarkCollections<OverviewRulerDecoration>& cols = store->collections;
+        for (int e = 0; e < len(cols.entries); e++) {
+            const MarkEntries<OverviewRulerDecoration>* entry = cols.entries[e];
+            for (int i = 0; i < len(entry->decorations); i++) {
+                const OverviewRulerDecoration& d = entry->decorations[i];
+                DecorationRows placed = InputDecorationRows(s, d.range);
+                OverviewCachedRow row;
+                row.lane = d.lane;
+                row.hasColor = d.hasColor;
+                row.color = d.color;
+                if (placed.boundary) {
+                    row.start = placed.start;
+                    row.end = placed.start;
+                } else {
+                    row.start = placed.start;
+                    row.end = placed.end;
+                }
+                VecAppend(rows, row);
+            }
+        }
+        std::sort(rows.els, rows.els + len(rows),
+                  [](const OverviewCachedRow& a, const OverviewCachedRow& b) {
+                      int la = LaneIndex(a.lane);
+                      int lb = LaneIndex(b.lane);
+                      return la < lb || (la == lb && a.start < b.start);
+                  });
+        store->cacheRows = rows;
+        store->cacheValid = true;
+        store->cacheDecorations = cols.revision;
+        store->cacheDocument = s->docVersion;
+        store->cacheWrapRows = wrapRows;
+        store->cacheDisplayRows = displayRows;
+        store->cacheWrapWidth = wrapWidth;
+        store->cacheFolds = folds;
+    }
+    if (len(store->cacheRows) == 0) {
+        return 0;
+    }
+    float scale = trackH / contentHeight;
+    struct Merged {
+        OverviewRulerLane lane;
+        Rgba color;
+        float top;
+        float bottom;
+    };
+    Vec<Merged> merged;
+    for (int i = 0; i < len(store->cacheRows); i++) {
+        const OverviewCachedRow& row = store->cacheRows[i];
+        float y0 = trackY + (paddingTop + lineH * (float)row.start) * scale;
+        float y1 = trackY + (paddingTop + lineH * (float)row.end) * scale;
+        float height = y1 - y0;
+        if (height < kMinOverviewRulerMarkHeight) {
+            height = kMinOverviewRulerMarkHeight;
+        }
+        float top = y0 + (y1 - y0 - height) * 0.5f;
+        float limit = trackY + trackH - height;
+        if (limit < trackY) {
+            limit = trackY;
+        }
+        if (top < trackY) {
+            top = trackY;
+        }
+        if (top > limit) {
+            top = limit;
+        }
+        Rgba color = MarkColor(s, row.hasColor, row.color);
+        if (len(merged) > 0) {
+            Merged& last = merged[len(merged) - 1];
+            if (last.lane == row.lane && RgbaEq(last.color, color) &&
+                top <= last.bottom + 1.f) {
+                float bottom = top + height;
+                if (bottom > last.bottom) {
+                    last.bottom = bottom;
+                }
+                continue;
+            }
+        }
+        VecAppend(merged, Merged{row.lane, color, top, top + height});
+    }
+    float third = trackW / 3.f;
+    int count = len(merged);
+    for (int i = 0; i < count; i++) {
+        float x = trackX;
+        float w = third;
+        switch (merged[i].lane) {
+            case OverviewRulerLane::Left:
+                x = trackX;
+                w = third;
+                break;
+            case OverviewRulerLane::Center:
+                x = trackX + third;
+                w = third;
+                break;
+            case OverviewRulerLane::Right:
+                x = trackX + third * 2.f;
+                w = third;
+                break;
+            case OverviewRulerLane::Full:
+                x = trackX;
+                w = trackW;
+                break;
+        }
+        if (out && i < cap) {
+            out[i] = {merged[i].lane,
+                      merged[i].color,
+                      x,
+                      merged[i].top,
+                      w,
+                      merged[i].bottom - merged[i].top};
+        }
+    }
+    return count;
 }
 
 // ─── frame geometry (element.rs) ───────────────────────────────────────────

@@ -71,6 +71,12 @@ struct Highlighter {
     El* IntoEl();
 };
 
+// StatusColors::created / modified / deleted. The highlight theme's keys,
+// falling back to success, warning and danger (Rust's error).
+Rgba HighlightStatusCreated(const App* app);
+Rgba HighlightStatusModified(const App* app);
+Rgba HighlightStatusDeleted(const App* app);
+
 } // namespace component
 } // namespace gpui
 #endif // GPUI_UI_HIGHLIGHTER_H_

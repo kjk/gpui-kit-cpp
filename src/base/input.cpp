@@ -1956,6 +1956,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     float lineMult = InputLineMult(cx, lineH, font);
     state->lastLineH = lineH;
     state->lastFontWord = InputFontWord(style);
+    state->editorForeground = style.foreground;
     Str text = InputValue(state);
     bool masked = style.mask || state->masked;
     bool showSel = state->HasSelectionFocus(cx->win);
@@ -2661,6 +2662,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     float lineMult = InputLineMult(cx, lineH, font);
     state->lastLineH = lineH;
     state->lastFontWord = InputFontWord(style);
+    state->editorForeground = style.foreground;
     Str text = InputValue(state);
     bool caret =
         state->focused && !state->disabled && BlinkVisible(cx, state->blink);
@@ -2752,8 +2754,11 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     bool wrap = false;
     {
         float colW = state->contentBox.w;
+        // An empty gutter collection still reserves the strip, so the text
+        // does not shift when marks appear.
+        float strip = InputGutterStripWidth(state);
         float gutterW =
-            lineNumbers ? numW + kLineNumberRightMargin + foldW : 0.f;
+            (lineNumbers ? numW + kLineNumberRightMargin + foldW : 0.f) + strip;
         float textW = 0;
         if (colW > 0) {
             textW = colW - gutterW - kEditorRightMargin;
@@ -3518,6 +3523,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             continue;
         }
         if (!lineNumbers) {
+            if (InputGutterStripWidth(state) > 0) {
+                el->PadL(InputGutterStripWidth(state));
+            }
             col->Child(el);
             continue;
         }
@@ -3530,6 +3538,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                        ->Gap(kLineNumberRightMargin)
                        ->H((float)nVis * lineH)
                        ->ItemsStart();
+        float strip = InputGutterStripWidth(state);
+        if (strip > 0) {
+            band->PadL(strip);
+        }
         // active_line: the wash under the line the caret is on, gutter and
         // all, and the editor's padding left of the gutter. The column
         // paints it under every row, before the decorations.
@@ -3596,6 +3608,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             if (lineNumbers) {
                 gutter = numW + kLineNumberRightMargin + foldW;
             }
+            gutter += InputGutterStripWidth(state);
             // RIGHT_MARGIN rides along once the line overflows, which is
             // the scroll width element.rs publishes. A minimum on the
             // column keeps that width when the wide line is not built.
@@ -3619,6 +3632,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (lineNumbers) {
             textLeft = numW + kLineNumberRightMargin + (folding ? foldW : 0.f);
         }
+        textLeft += InputGutterStripWidth(state);
         // Where the caret was last painted, in the column's own coordinates.
         float gx = state->caretWinX - state->contentBox.x;
         float gy = state->caretWinY - state->contentBox.y - lineH;
@@ -3647,6 +3661,45 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             if (nl < 0) {
                 break;
+            }
+        }
+    }
+    // Bars and boundary pills in the strip before the line numbers. Ghost
+    // lines are not shifted: an inline completion that inserts rows under
+    // the caret leaves these marks on the document rows.
+    if (InputGutterStripWidth(state) > 0.f && lineH > 0.f) {
+        float viewTop = state->scrollY;
+        // The component says how tall the rows are before the first paint.
+        // A base frame that has not measured yet uses the window, the same
+        // cap the row virtualizer uses, so a long document does not build a
+        // mark for every line on that first frame.
+        float viewH = state->viewH;
+        if (viewH <= 0.f && cx->win && cx->win->paint.viewH > 0.f) {
+            viewH = cx->win->paint.viewH;
+        }
+        float viewBottom = viewH > 0.f ? viewTop + viewH : viewTop - 1.f;
+        int nMarks = InputLayoutGutterMarks(state, 0, 0, lineH, viewTop,
+                                            viewBottom, nullptr, 0);
+        if (nMarks > 0) {
+            GutterMark* marks =
+                (GutterMark*)Alloc(a, (int)sizeof(GutterMark) * nMarks);
+            if (marks) {
+                nMarks = InputLayoutGutterMarks(state, 0, 0, lineH, viewTop,
+                                                viewBottom, marks, nMarks);
+                float markW = state->gutterDecorationsWidth;
+                for (int i = 0; i < nMarks; i++) {
+                    El* mark = Div(a)
+                                   ->Absolute()
+                                   ->Left(marks[i].x)
+                                   ->Top(marks[i].y)
+                                   ->W(markW)
+                                   ->H(marks[i].h)
+                                   ->Bg(marks[i].color);
+                    if (marks[i].pill && markW > 0.f) {
+                        mark->Radius(markW * 0.5f);
+                    }
+                    col->Child(mark);
+                }
             }
         }
     }
@@ -5243,6 +5296,33 @@ void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void*) {
     El* bar = s->scrollbarRenderer(s->scrollbarRendererUser, &presented, &cx);
     if (!bar) return;
     e->Child(bar);
+}
+
+void InputPaintOverviewRuler(InputState* s, PaintCtx* ctx, float trackX,
+                             float trackY, float trackW, float trackH,
+                             float contentHeight, float paddingTop,
+                             float lineHeight) {
+    if (!s || !ctx || trackW <= 0.f || trackH <= 0.f) {
+        return;
+    }
+    int n = InputLayoutOverviewRuler(s, trackX, trackY, trackW, trackH,
+                                     contentHeight, paddingTop, lineHeight,
+                                     nullptr, 0);
+    if (n <= 0) {
+        return;
+    }
+    OverviewRulerMark* marks = (OverviewRulerMark*)Alloc(
+        GetTempArena(), (int)sizeof(OverviewRulerMark) * n);
+    if (!marks) {
+        return;
+    }
+    n = InputLayoutOverviewRuler(s, trackX, trackY, trackW, trackH,
+                                 contentHeight, paddingTop, lineHeight, marks,
+                                 n);
+    for (int i = 0; i < n; i++) {
+        FillRound(ctx, marks[i].x, marks[i].y, marks[i].w, marks[i].h, 0,
+                  marks[i].color);
+    }
 }
 
 void InputSetScrollBounce(InputState* s, bool on) {

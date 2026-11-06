@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a3340830c5cdc113d05a1a254436fa8d3c191a3e",
+  sha: "98ddf917e85a32a03b95a7ae0ae5fc3d0fd885b8",
   date: "2026-10-29",
-  subject: "input: Add a native touch selection opt-out (#3723)",
+  subject: "editor: Add gutter and overview ruler decorations (#3704)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",

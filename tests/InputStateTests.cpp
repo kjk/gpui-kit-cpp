@@ -11469,7 +11469,412 @@ static void HorizontalScrollExtentCoversTheWidestLaidOutLine() {
     TestAppFree(d.app);
 }
 
+static InputState* DecorationDoc(const char* text) {
+    InputState* s = new InputState();
+    s->kind = InputKind::Editor;
+    s->softWrap = false;
+    InputSetValue(s, Str(text));
+    return s;
+}
+
+static bool GutterRangesAre(const GutterDecorationCollection& c,
+                            const Selection* want, int nWant) {
+    Selection got[8] = {};
+    int n = c.GetRanges(got, 8);
+    if (n != nWant) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (got[i].start != want[i].start || got[i].end != want[i].end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool QueriedGutterRangesAre(const InputState* s, Selection query,
+                                   const Selection* want, int nWant) {
+    const GutterDecoration* got[8] = {};
+    int n = InputGutterDecorations(s, query, got, 8);
+    if (n != nWant || InputGutterDecorations(s, query, nullptr, 0) != n) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (!got[i] || got[i]->range.start != want[i].start ||
+            got[i]->range.end != want[i].end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// decorations.rs gutter_collections_keep_empty_ranges_as_line_boundaries.
+static void GutterCollectionsKeepEmptyRangesAsLineBoundaries() {
+    InputState* s = DecorationDoc("one\ntwo\nthree");
+    GutterDecoration in[6] = {
+        GutterDecoration::New({4, 4}),     GutterDecoration::New({8, 13}),
+        GutterDecoration::New({9, 8}),     GutterDecoration::New({100, 100}),
+        GutterDecoration::New({100, 200}), GutterDecoration::New({13, 13}),
+    };
+    GutterDecorationCollection c =
+        InputCreateGutterDecorationsCollection(s, in, 6);
+    Selection kept[3] = {{4, 4}, {8, 13}, {13, 13}};
+    utassert(GutterRangesAre(c, kept, 3));
+    // Text typed at a boundary goes after it.
+    InputDecorationsAdjustForEdit(s, {4, 4}, 2);
+    Selection afterType[3] = {{4, 4}, {10, 15}, {15, 15}};
+    utassert(GutterRangesAre(c, afterType, 3));
+    // Deleting the lines a bar covers leaves a boundary where they were.
+    InputDecorationsAdjustForEdit(s, {10, 15}, 0);
+    Selection afterDelete[3] = {{4, 4}, {10, 10}, {10, 10}};
+    utassert(GutterRangesAre(c, afterDelete, 3));
+    // A replacement covering a boundary moves it to the replacement's start.
+    InputDecorationsAdjustForEdit(s, {2, 6}, 1);
+    Selection afterReplace[3] = {{2, 2}, {7, 7}, {7, 7}};
+    utassert(GutterRangesAre(c, afterReplace, 3));
+    delete s;
+}
+
+// decorations.rs gutter_queries_find_boundaries_inside_the_span.
+static void GutterQueriesFindBoundariesInsideTheSpan() {
+    InputState* s = DecorationDoc("one\ntwo\nthree\nfour\nx");
+    GutterDecoration in[4] = {
+        GutterDecoration::New({4, 4}),
+        GutterDecoration::New({8, 13}),
+        GutterDecoration::New({13, 13}),
+        GutterDecoration::New({20, 20}),
+    };
+    GutterDecorationCollection c =
+        InputCreateGutterDecorationsCollection(s, in, 4);
+    Selection q1[2] = {{4, 4}, {8, 13}};
+    utassert(QueriedGutterRangesAre(s, {4, 13}, q1, 2));
+    Selection q2[2] = {{13, 13}, {20, 20}};
+    utassert(QueriedGutterRangesAre(s, {13, 21}, q2, 2));
+    utassert(QueriedGutterRangesAre(s, {5, 8}, nullptr, 0));
+    delete s;
+}
+
+// decorations.rs
+// gutter_query_keeps_index_order_after_inserting_at_mixed_ranges.
+static void GutterQueryKeepsIndexOrderAfterInsertingAtMixedRanges() {
+    InputState* s = DecorationDoc("one\ntwo\n");
+    GutterDecoration in[3] = {
+        GutterDecoration::New({4, 8}),
+        GutterDecoration::New({4, 8}),
+        GutterDecoration::New({4, 4}),
+    };
+    GutterDecorationCollection c =
+        InputCreateGutterDecorationsCollection(s, in, 3);
+    InputDecorationsAdjustForEdit(s, {4, 4}, 1);
+    Selection only[1] = {{4, 4}};
+    utassert(QueriedGutterRangesAre(s, {4, 5}, only, 1));
+    delete s;
+}
+
+// element.rs default_decoration_collections_address_no_editor.
+static void DefaultDecorationCollectionsAddressNoEditor() {
+    GutterDecoration gutter;
+    utassert(gutter.Range().start == 0 && gutter.Range().end == 0);
+    OverviewRulerDecoration ruler;
+    utassert(ruler.Lane() == OverviewRulerLane::Center);
+    utassert(ruler.Range().start == 0 && ruler.Range().end == 0);
+
+    GutterDecorationCollection detached;
+    GutterDecoration extra = GutterDecoration::New({0, 1});
+    detached.Set(&extra, 1);
+    detached.Append(&extra, 1);
+    utassert(detached.GetRanges(nullptr, 0) == 0);
+    detached.Clear();
+    detached.Dispose();
+
+    OverviewRulerDecorationCollection detachedRuler;
+    OverviewRulerDecoration one = OverviewRulerDecoration::New({0, 1});
+    detachedRuler.Set(&one, 1);
+    utassert(detachedRuler.GetRanges(nullptr, 0) == 0);
+    detachedRuler.Dispose();
+}
+
+// element.rs gutter_decorations_reserve_a_strip_and_mark_lines_and_boundaries.
+static void GutterDecorationsReserveAStripAndMarkLinesAndBoundaries() {
+    const char* text = "one\ntwo\nthree\nfour";
+    DecorationEditor d = DecorationEditorOpen(text, false);
+    TestDraw(d.win);
+    float textX = d.editor->lastBounds.x;
+    utassert(InputGutterStripWidth(d.editor) == 0.f);
+    GutterDecorationCollection collection =
+        InputCreateGutterDecorationsCollection(d.editor, nullptr, 0);
+    TestDraw(d.win);
+    utassertnear(InputGutterStripWidth(d.editor), 7.f);
+    utassertnear(d.editor->lastBounds.x, textX + 7.f);
+
+    int two = (int)(strstr(text, "two") - text);
+    int four = (int)(strstr(text, "four") - text);
+    int n = (int)strlen(text);
+    Rgba red = Rgba8(255, 0, 0, 255);
+    GutterDecoration marksIn[3] = {
+        GutterDecoration::New({two, four}).WithColor(red),
+        GutterDecoration::New({four, four}),
+        GutterDecoration::New({n, n}),
+    };
+    collection.Set(marksIn, 3);
+    DecorationRows rows[3];
+    const GutterDecoration* found[3] = {};
+    utassert(InputGutterDecorations(d.editor, {0, n + 1}, found, 3) == 3);
+    for (int i = 0; i < 3; i++) {
+        rows[i] = InputDecorationRows(d.editor, found[i]->range);
+    }
+    utassert(!rows[0].boundary && !rows[0].foldedStart && rows[0].start == 1 &&
+             rows[0].end == 3);
+    utassert(rows[1].boundary && rows[1].start == 3);
+    utassert(rows[2].boundary && rows[2].start == 4);
+
+    float lineH = d.editor->lastLineH > 0.f ? d.editor->lastLineH : 20.f;
+    GutterMark laid[3];
+    utassert(InputLayoutGutterMarks(d.editor, 0, 0, lineH, 0, -1, laid, 3) ==
+             3);
+    utassertnear(laid[0].y, lineH);
+    utassertnear(laid[0].h, lineH * 2.f);
+    utassertnear(laid[0].w, 3.f);
+    utassert(!laid[0].pill && RgbaEq(laid[0].color, red));
+    utassert(laid[1].pill && laid[2].pill);
+    utassertnear(laid[1].y + laid[1].h * 0.5f, lineH * 3.f);
+    utassertnear(laid[2].y + laid[2].h * 0.5f, lineH * 4.f);
+
+    collection.Dispose();
+    TestDraw(d.win);
+    utassert(InputGutterStripWidth(d.editor) == 0.f);
+    utassertnear(d.editor->lastBounds.x, textX);
+    TestAppFree(d.app);
+}
+
+// element.rs gutter_decorations_starting_in_a_fold_mark_its_row_and_the_rest.
+static void GutterDecorationsStartingInAFoldMarkItsRowAndTheRest() {
+    const char* text = "top\nhidden one\nhidden two\nend\nlast";
+    InputState* s = DecorationDoc(text);
+    s->mode.kind = LayoutModeKind::CodeEditor;
+    s->mode.folding = true;
+    int hiddenStart = 4;
+    int endAt = (int)(strstr(text, "end") - text);
+    int lastAt = (int)(strstr(text, "last") - text);
+    int boundary = (int)(strstr(text, "hidden two") - text);
+    int n = (int)strlen(text);
+    FoldRange fold = {0, 3};
+    InputSetFoldCandidates(s, &fold, 1);
+    FoldMapSetFolded(&s->folds, 0, true);
+    Rgba red = Rgba8(255, 0, 0, 255);
+    Rgba blue = Rgba8(0, 0, 255, 255);
+    GutterDecoration in[4] = {
+        GutterDecoration::New({hiddenStart, endAt})
+            .WithColor(red)
+            .WithFoldedColor(blue),
+        GutterDecoration::New({hiddenStart, lastAt})
+            .WithColor(red)
+            .WithFoldedColor(blue),
+        GutterDecoration::New({boundary, boundary}),
+        GutterDecoration::New({0, n}),
+    };
+    GutterDecorationCollection c =
+        InputCreateGutterDecorationsCollection(s, in, 4);
+    const GutterDecoration* found[4] = {};
+    utassert(InputGutterDecorations(s, {0, n + 1}, found, 4) == 4);
+    DecorationRows rows[4];
+    for (int i = 0; i < 4; i++) {
+        rows[i] = InputDecorationRows(s, found[i]->range);
+    }
+    utassert(rows[0].foldedStart && rows[0].start == 0 && rows[0].end == 1);
+    utassert(rows[1].foldedStart && rows[1].start == 0 && rows[1].end == 2);
+    utassert(rows[2].foldedStart && rows[2].start == 0 && rows[2].end == 1);
+    utassert(!rows[3].foldedStart && rows[3].start == 0 && rows[3].end == 3);
+
+    float lineH = 18.f;
+    float originY = 7.f;
+    GutterMark marks[8];
+    int nMarks =
+        InputLayoutGutterMarks(s, 3.f, originY, lineH, 0, -1, marks, 8);
+    utassert(nMarks >= 3);
+    utassert(RgbaEq(marks[0].color, blue));
+    utassert(RgbaEq(marks[1].color, blue));
+    utassert(RgbaEq(marks[2].color, red));
+    utassertnear(marks[0].h, lineH);
+    utassertnear(marks[2].y, originY + lineH);
+    utassertnear(marks[2].h, lineH);
+    delete s;
+}
+
+// element.rs gutter_decorations_only_lay_out_the_visible_rows.
+static void GutterDecorationsOnlyLayOutTheVisibleRows() {
+    Arena* a = ArenaNew();
+    Str text = RepeatedText(a, "x\n", 100);
+    InputState* s = new InputState();
+    s->kind = InputKind::Editor;
+    s->softWrap = false;
+    InputSetValue(s, text);
+    GutterDecoration in[101];
+    for (int n = 0; n < 100; n++) {
+        in[n] = GutterDecoration::New({2 * n, 2 * (n + 1)});
+    }
+    in[100] = GutterDecoration::New({80, 80});
+    GutterDecorationCollection c =
+        InputCreateGutterDecorationsCollection(s, in, 101);
+    Selection span = InputVisibleDecorationSpan(s, {40, 47});
+    utassert(span.start == 80);
+    const GutterDecoration* found[32] = {};
+    Selection query = {span.start, span.end + 1};
+    int nFound = InputGutterDecorations(s, query, found, 32);
+    utassert(nFound < 20);
+    utassert(nFound == InputGutterDecorations(s, query, nullptr, 0));
+    bool sawBoundary = false;
+    for (int i = 0; i < nFound; i++) {
+        utassert(found[i]->range.start >= 78);
+        if (found[i]->range.start == 80 && found[i]->range.end == 80) {
+            sawBoundary = true;
+        }
+    }
+    utassert(sawBoundary);
+    float lineH = 20.f;
+    float viewTop = lineH * 40.f;
+    float viewBottom = viewTop + 140.f;
+    GutterMark marks[32];
+    int nMarks =
+        InputLayoutGutterMarks(s, 0, 0, lineH, viewTop, viewBottom, marks, 32);
+    utassert(nMarks > 0 && nMarks <= nFound);
+    for (int i = 0; i < nMarks; i++) {
+        utassert(marks[i].y + marks[i].h >= viewTop);
+        utassert(marks[i].y <= viewBottom);
+    }
+    delete s;
+    ArenaDelete(a);
+}
+
+// element.rs overview_ruler_marks_follow_the_content_height_and_merge.
+static void OverviewRulerMarksFollowTheContentHeightAndMerge() {
+    Arena* a = ArenaNew();
+    StrBuilder sb(a);
+    for (int i = 0; i < 99; i++) {
+        sb.Append(StrL("x\n"));
+    }
+    sb.Append(StrL("x"));
+    InputState* s = new InputState();
+    s->kind = InputKind::Editor;
+    s->softWrap = false;
+    InputSetValue(s, sb.TakeStr());
+    auto line = [](int n) { return n * 2; };
+    Rgba green = Rgba8(0, 180, 0, 255);
+    Rgba red = Rgba8(220, 0, 0, 255);
+    Rgba blue = Rgba8(0, 0, 220, 255);
+    OverviewRulerDecoration in[4] = {
+        OverviewRulerDecoration::New({line(0), line(50)})
+            .WithLane(OverviewRulerLane::Left)
+            .WithColor(green),
+        OverviewRulerDecoration::New({line(80), line(80)})
+            .WithLane(OverviewRulerLane::Left)
+            .WithColor(red),
+        OverviewRulerDecoration::New({line(50), line(60)})
+            .WithLane(OverviewRulerLane::Left)
+            .WithColor(green),
+        OverviewRulerDecoration::New({line(10), line(11)}).WithColor(blue),
+    };
+    OverviewRulerDecorationCollection c =
+        InputCreateOverviewRulerDecorationsCollection(s, in, 4);
+    float trackX = 400.f;
+    float trackY = 10.f;
+    float trackW = 16.f;
+    float trackH = 100.f;
+    float contentH = 2000.f;
+    float pad = 8.f;
+    float lineH = 20.f;
+    auto yAt = [&](int row) {
+        return trackY + (pad + lineH * (float)row) * (trackH / contentH);
+    };
+    OverviewRulerMark marks[4];
+    int n = InputLayoutOverviewRuler(s, trackX, trackY, trackW, trackH,
+                                     contentH, pad, lineH, marks, 4);
+    utassert(n == 3);
+    float third = trackW / 3.f;
+    utassert(marks[0].lane == OverviewRulerLane::Left);
+    utassert(RgbaEq(marks[0].color, green));
+    utassertnear(marks[0].x, trackX);
+    utassertnear(marks[0].w, third);
+    utassertnear(marks[0].y, yAt(0));
+    utassertnear(marks[0].h, yAt(60) - yAt(0));
+    utassert(marks[1].lane == OverviewRulerLane::Left);
+    utassert(RgbaEq(marks[1].color, red));
+    utassertnear(marks[1].h, 6.f);
+    utassertnear(marks[1].y + marks[1].h * 0.5f, yAt(80));
+    utassert(marks[2].lane == OverviewRulerLane::Center);
+    utassertnear(marks[2].x, trackX + third);
+    utassertnear(marks[2].h, 6.f);
+
+    float wide = 21.f;
+    OverviewRulerMark wideMarks[4];
+    utassert(InputLayoutOverviewRuler(s, trackX, trackY, wide, trackH, contentH,
+                                      pad, lineH, wideMarks, 4) == 3);
+    utassertnear(wideMarks[0].x, trackX);
+    utassertnear(wideMarks[0].w, 7.f);
+    delete s;
+    ArenaDelete(a);
+}
+
+// element.rs overview_ruler_marks_follow_edits_folds_and_new_decorations.
+static void OverviewRulerMarksFollowEditsFoldsAndNewDecorations() {
+    Arena* a = ArenaNew();
+    StrBuilder sb(a);
+    for (int i = 0; i < 99; i++) {
+        sb.Append(StrL("x\n"));
+    }
+    sb.Append(StrL("x"));
+    InputState* s = new InputState();
+    s->kind = InputKind::Editor;
+    s->softWrap = false;
+    s->mode.kind = LayoutModeKind::CodeEditor;
+    s->mode.folding = true;
+    InputSetValue(s, sb.TakeStr());
+    OverviewRulerDecoration first = OverviewRulerDecoration::New({100, 102});
+    OverviewRulerDecorationCollection ruler =
+        InputCreateOverviewRulerDecorationsCollection(s, &first, 1);
+    float trackH = 100.f;
+    float contentH = 4000.f;
+    float lineH = 20.f;
+    OverviewRulerMark mark;
+    auto top = [&]() {
+        utassert(InputLayoutOverviewRuler(s, 0, 0, 16.f, trackH, contentH, 0,
+                                          lineH, &mark, 1) == 1);
+        return mark.y;
+    };
+    float start = top();
+    utassertnear(top(), start);
+    char inserted[21];
+    for (int i = 0; i < 10; i++) {
+        inserted[i * 2] = 'y';
+        inserted[i * 2 + 1] = '\n';
+    }
+    inserted[20] = 0;
+    Selection at = {0, 0};
+    InputReplaceTextInRange(s, nullptr, nullptr, &at, Str(inserted));
+    float edited = top();
+    utassert(edited > start);
+    FoldRange fold = {0, 30};
+    InputSetFoldCandidates(s, &fold, 1);
+    FoldMapSetFolded(&s->folds, 0, true);
+    float folded = top();
+    utassert(folded < edited);
+    OverviewRulerDecoration moved = OverviewRulerDecoration::New({180, 182});
+    ruler.Set(&moved, 1);
+    utassert(top() > folded);
+    delete s;
+    ArenaDelete(a);
+}
+
 static void RunElementWindowTests() {
+    GutterCollectionsKeepEmptyRangesAsLineBoundaries();
+    GutterQueriesFindBoundariesInsideTheSpan();
+    GutterQueryKeepsIndexOrderAfterInsertingAtMixedRanges();
+    DefaultDecorationCollectionsAddressNoEditor();
+    GutterDecorationsReserveAStripAndMarkLinesAndBoundaries();
+    GutterDecorationsStartingInAFoldMarkItsRowAndTheRest();
+    GutterDecorationsOnlyLayOutTheVisibleRows();
+    OverviewRulerMarksFollowTheContentHeightAndMerge();
+    OverviewRulerMarksFollowEditsFoldsAndNewDecorations();
     TheInsetsFollowTheSize();
     HorizontalScrollExtentExcludesPlaceholder();
     HorizontalScrollExtentCoversTheWidestLaidOutLine();

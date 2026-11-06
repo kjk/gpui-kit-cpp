@@ -235,6 +235,161 @@ void InputDecorationsAdjustForEdit(InputState* s, Selection editedRange,
 // reset_annotations: every collection emptied, still reusable.
 void InputDecorationsReset(InputState* s);
 
+// GutterDecoration: a mark in the strip before the line numbers. An empty
+// range is a line boundary. Default is an empty range at the document start
+// in the editor foreground. Rust marks it #[non_exhaustive].
+struct GutterDecoration {
+    Selection range = {};
+    Rgba color = {};
+    Rgba foldedColor = {};
+    bool hasColor = false;
+    bool hasFoldedColor = false;
+
+    // fn new
+    static GutterDecoration New(Selection range);
+    // fn range
+    Selection Range() const { return range; }
+    // fn color — false is the editor foreground.
+    bool Color(Rgba* out) const;
+    // fn folded_color — false means use Color.
+    bool FoldedColor(Rgba* out) const;
+    // fn with_color
+    GutterDecoration WithColor(Rgba value) const;
+    // fn with_folded_color
+    GutterDecoration WithFoldedColor(Rgba value) const;
+};
+
+// OverviewRulerLane: Monaco's lanes on the vertical scrollbar track. Default
+// is Center. fn OverviewRulerLane
+enum class OverviewRulerLane : uint8_t {
+    Left = 0,
+    Center = 1,
+    Right = 2,
+    Full = 3,
+};
+
+// OverviewRulerDecoration: a mark on the scrollbar track. An empty range is a
+// line boundary. Default is an empty range in the center lane.
+struct OverviewRulerDecoration {
+    Selection range = {};
+    OverviewRulerLane lane = OverviewRulerLane::Center;
+    Rgba color = {};
+    bool hasColor = false;
+
+    // fn new
+    static OverviewRulerDecoration New(Selection range);
+    Selection Range() const { return range; }
+    // fn lane
+    OverviewRulerLane Lane() const { return lane; }
+    bool Color(Rgba* out) const;
+    // fn with_lane
+    OverviewRulerDecoration WithLane(OverviewRulerLane value) const;
+    // fn with_color
+    OverviewRulerDecoration WithColor(Rgba value) const;
+};
+
+// Where a gutter or overview decoration sits, in display rows.
+// Lines: every line the range touches. Boundary: the top of `start`.
+struct DecorationRows {
+    bool boundary = false;
+    bool foldedStart = false;
+    int start = 0;
+    int end = 0;
+};
+
+// decoration_rows
+DecorationRows InputDecorationRows(const InputState* s, Selection range);
+// visible_buffer_span. `visibleLines` is a half-open range of buffer lines
+// that, with nothing folded or wrapped, are the display rows.
+Selection InputVisibleDecorationSpan(const InputState* s,
+                                     Selection visibleLines);
+
+struct GutterMark {
+    float x = 0;
+    float y = 0;
+    float w = 0;
+    float h = 0;
+    Rgba color = {};
+    bool pill = false;
+};
+
+// layout_gutter_decorations, in document coordinates. Marks outside
+// [viewTop, viewBottom] are dropped. viewBottom < viewTop keeps every mark.
+int InputLayoutGutterMarks(const InputState* s, float originX, float originY,
+                           float lineH, float viewTop, float viewBottom,
+                           GutterMark* out, int cap);
+
+struct OverviewRulerMark {
+    OverviewRulerLane lane = OverviewRulerLane::Center;
+    Rgba color = {};
+    float x = 0;
+    float y = 0;
+    float w = 0;
+    float h = 0;
+};
+
+// layout_overview_ruler. `contentHeight` is the height the thumb maps onto
+// the track. Returns how many marks there are.
+int InputLayoutOverviewRuler(InputState* s, float trackX, float trackY,
+                             float trackW, float trackH, float contentHeight,
+                             float paddingTop, float lineH,
+                             OverviewRulerMark* out, int cap);
+
+// The strip reserved while any gutter collection exists: width + 4px gap,
+// or 0 when none exists. An empty collection still reserves it.
+float InputGutterStripWidth(const InputState* s);
+
+struct GutterDecorationCollection {
+    GutterDecorationsState* state = nullptr;
+    uint64_t id = 0;
+
+    GutterDecorationCollection() = default;
+    GutterDecorationCollection(const GutterDecorationCollection& other);
+    GutterDecorationCollection& operator=(
+        const GutterDecorationCollection& other);
+    ~GutterDecorationCollection();
+
+    // fn set / append / clear / dispose / get_ranges
+    void Set(const GutterDecoration* decorations, int n);
+    void Append(const GutterDecoration* decorations, int n);
+    void Clear();
+    void Dispose();
+    int GetRanges(Selection* out, int cap) const;
+};
+
+struct OverviewRulerDecorationCollection {
+    OverviewRulerDecorationsState* state = nullptr;
+    uint64_t id = 0;
+
+    OverviewRulerDecorationCollection() = default;
+    OverviewRulerDecorationCollection(
+        const OverviewRulerDecorationCollection& other);
+    OverviewRulerDecorationCollection& operator=(
+        const OverviewRulerDecorationCollection& other);
+    ~OverviewRulerDecorationCollection();
+
+    void Set(const OverviewRulerDecoration* decorations, int n);
+    void Append(const OverviewRulerDecoration* decorations, int n);
+    void Clear();
+    void Dispose();
+    int GetRanges(Selection* out, int cap) const;
+};
+
+// fn create_gutter_decorations_collection
+GutterDecorationCollection InputCreateGutterDecorationsCollection(
+    InputState* s, const GutterDecoration* decorations, int n);
+// fn create_overview_ruler_decorations_collection
+OverviewRulerDecorationCollection InputCreateOverviewRulerDecorationsCollection(
+    InputState* s, const OverviewRulerDecoration* decorations, int n);
+// fn gutter_decorations_width / fn set_gutter_decorations_width
+void InputSetGutterDecorationsWidth(InputState* s, float width);
+// fn gutter_decorations. Touches `range`, an empty mark included when it
+// lies inside the span (including at its start).
+int InputGutterDecorations(const InputState* s, Selection range,
+                           const GutterDecoration** out, int cap);
+// fn overview_ruler_revision
+uint64_t InputOverviewRulerRevision(const InputState* s);
+
 // Corners<Point<Pixels>>: one visual row's box of a projected range.
 struct RangeCorners {
     Point topLeft = {};

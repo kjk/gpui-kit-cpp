@@ -206,6 +206,10 @@ struct EditorStory {
     // from text styling. Both follow edits, including newlines inserted
     // before these ranges.
     RangeDecorationCollection rangeDecorations;
+    // create_gutter_decorations_collection and the overview ruler. Kept so
+    // the handles outlive the frame that created them.
+    GutterDecorationCollection gutterDecorations;
+    OverviewRulerDecorationCollection overviewDecorations;
     bool seeded = false;
 
     static El* Render(EditorStory* self, Ctx* cx);
@@ -270,6 +274,43 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
         };
         self->rangeDecorations = InputCreateRangeDecorationsCollection(
             &self->decorations, ranges, 2);
+        // Version-control marks: the Italic line modified, the Underline
+        // line added, and a deletion at the start of the Fill line. The
+        // gutter strip and the scrollbar track own the same ranges.
+        int italicStart = std::max(0, StrFind(text, StrL("Italic")));
+        int underlineStart = std::max(0, StrFind(text, StrL("Underline")));
+        int underlineLineEnd =
+            underlineStart + len(StrL("Underline marks review text.\n"));
+        // The deleted mark sits where "Fill: " starts, an empty range.
+        int deleted = fillStart - len(StrL("Fill: "));
+        if (deleted < 0) {
+            deleted = 0;
+        }
+        Rgba modified = component::HighlightStatusModified(cx->app);
+        Rgba added = component::HighlightStatusCreated(cx->app);
+        Rgba removed = component::HighlightStatusDeleted(cx->app);
+        GutterDecoration gutters[3] = {
+            GutterDecoration::New({italicStart, underlineStart})
+                .WithColor(modified),
+            GutterDecoration::New({underlineStart, underlineLineEnd})
+                .WithColor(added),
+            GutterDecoration::New({deleted, deleted}).WithColor(removed),
+        };
+        self->gutterDecorations = InputCreateGutterDecorationsCollection(
+            &self->decorations, gutters, 3);
+        auto rulerMark = [](Selection range, Rgba color) {
+            return OverviewRulerDecoration::New(range)
+                .WithLane(OverviewRulerLane::Left)
+                .WithColor(RgbaOpacity(color, 0.6f));
+        };
+        OverviewRulerDecoration rulers[3] = {
+            rulerMark({italicStart, underlineStart}, modified),
+            rulerMark({underlineStart, underlineLineEnd}, added),
+            rulerMark({deleted, deleted}, removed),
+        };
+        self->overviewDecorations =
+            InputCreateOverviewRulerDecorationsCollection(&self->decorations,
+                                                          rulers, 3);
     }
     self->code.readonly = self->readOnly;
     self->decorations.readonly = self->readOnly;

@@ -25,6 +25,14 @@ using CursorBlink = ::gpui::CursorBlink;
 // defaults. Unknown languages keep LanguageConfig::Default().
 void InputLanguageInit(App* app);
 
+// input/mod.rs re-exports GutterDecoration, GutterDecorationCollection,
+// OverviewRulerDecoration, OverviewRulerDecorationCollection and
+// OverviewRulerLane. create_gutter_decorations_collection,
+// create_overview_ruler_decorations_collection, gutter_decorations_width,
+// set_gutter_decorations_width, gutter_decorations,
+// overview_ruler_decorations and overview_ruler_revision are the base
+// editor methods those types call.
+
 // input.rs set_native_touch_selection. The platform draws the handles and
 // the edit menu of a focused input. A long press still selects a word.
 void SetNativeTouchSelection(App* app, bool enabled);

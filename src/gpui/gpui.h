@@ -198,6 +198,10 @@ struct ScrollOverscroll;
 // An editor's range decoration store, which base/input_editor.cpp defines.
 struct RangeDecorationsState;
 struct DecorationCollectionsState;
+// Gutter and overview-ruler stores (base/input_editor.cpp). Empty ranges are
+// line boundaries and are kept.
+struct GutterDecorationsState;
+struct OverviewRulerDecorationsState;
 // An editor's retained syntax context provider (base/input_editor.cpp).
 struct InputSyntaxCache;
 
@@ -1324,6 +1328,13 @@ enum class IconName : uint8_t {
 };
 
 struct PaintCtx;
+
+// Overview ruler marks on the vertical scrollbar track, under the thumb.
+// element.rs layout_overview_ruler. No-op when the editor has no collection.
+void InputPaintOverviewRuler(InputState* s, PaintCtx* ctx, float trackX,
+                             float trackY, float trackW, float trackH,
+                             float contentHeight, float paddingTop,
+                             float lineHeight);
 
 // A run of a text element painted differently from the rest of it: GPUI's
 // HighlightStyle over a range, which is what a syntax highlighter's captures
@@ -5471,6 +5482,13 @@ struct InputState {
     // (base/input_editor.h), made on the first
     // InputCreateRangeDecorationsCollection and dropped with the state.
     RangeDecorationsState* rangeDecorations = nullptr;
+    // EditorExtras::gutter_decorations / overview_ruler_decorations. The
+    // strip width is 3px until set_gutter_decorations_width says otherwise.
+    // editorForeground is the fallback a mark with no color paints in.
+    GutterDecorationsState* gutterDecorations = nullptr;
+    OverviewRulerDecorationsState* overviewDecorations = nullptr;
+    float gutterDecorationsWidth = 3.f;
+    Rgba editorForeground = {0x17, 0x17, 0x17, 255};
     // EditorExtras::decorations: the text decoration collections
     // (base/input_editor.h), made on the first
     // InputCreateDecorationsCollection and dropped with the state. Edits move

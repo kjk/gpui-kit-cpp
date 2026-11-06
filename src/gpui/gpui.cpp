@@ -8634,6 +8634,19 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         }
         float thumbX = e->x + e->w - thumbW - inset;
         float thumbY = geometry.Start(e->scrollY);
+        // Overview ruler marks sit under the scrollbar, so they stay visible
+        // while the thumb fades. The track is the theme's scrollbar width.
+        if (e->input && e->input->overviewDecorations) {
+            float padTop = e->input->editorPaddingsSet
+                               ? e->input->editorPaddings.top
+                               : e->style.pad.top;
+            float viewport = e->input->viewH > 0.f ? e->input->viewH : e->h;
+            float contentHeight = e->input->contentH + e->h - viewport;
+            float lineH =
+                e->input->lastLineH > 0.f ? e->input->lastLineH : 20.f;
+            InputPaintOverviewRuler(e->input, ctx, e->x + e->w - trackW, e->y,
+                                    trackW, e->h, contentHeight, padTop, lineH);
+        }
         // The track, which every default theme leaves transparent — the band
         // is Rust's WIDTH and reaches the whole length of the box. A vertical
         // bar slides in from the right, so the slide is along x.

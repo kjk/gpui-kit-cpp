@@ -16,16 +16,22 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a3340830c5cdc113d05a1a254436fa8d3c191a3e` (2026-10-29,
-input: Add a native touch selection opt-out (#3723)). A host can leave
-a focused input's touch handles and edit menu to the platform. The
-field still accepts a UTF-16 selection from that UI, and the end that
-moved becomes the cursor.
+Processed through `98ddf917e85a32a03b95a7ae0ae5fc3d0fd885b8` (2026-10-29,
+editor: Add gutter and overview ruler decorations (#3704)). A gutter
+collection reserves its strip and keeps an empty range as a line
+boundary. Overview-ruler marks sit on the scrollbar track, in lanes,
+and follow edits and folds. Highlight colors `created`, `modified` and
+`deleted` come from the theme.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
 ## Known gaps vs Rust
 
+- **Gutter marks stay on document rows when ghost lines appear.** An
+  inline completion that inserts rows under the caret does not push
+  gutter bars and boundary pills down with those rows (`input.cpp`).
+  Rust shifts the marks with the ghost text. The decorations story has
+  no inline completion.
 - **Selection order is the caller's document order.** Rust numbers
   paint-order participants after a complete frame and refreshes once
   when a partial redraw cannot place a retained sibling
