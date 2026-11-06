@@ -195,11 +195,18 @@ float Easing::Sample(float progress) const {
                     offset = 1.f;
                     break;
             }
+            // One JumpNone step has no jump. Built directly, past the
+            // constructor, it samples as linear (easing.rs).
+            if (jumps == 0.f) {
+                return progress;
+            }
             float step = floorf(progress * steps) + offset;
             step = ClampF(step, 0.f, jumps);
-            return jumps > 0.f ? step / jumps : 0.f;
+            return step / jumps;
         }
         case EasingKind::LinearStops: {
+            // No stops, built directly rather than through LinearStops(),
+            // samples as linear.
             if (!stops || stopsLen <= 0) {
                 return progress;
             }

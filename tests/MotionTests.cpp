@@ -629,6 +629,23 @@ static void StepEasingObservesTheCssJumpPositions() {
                  .UnwrapErr() == EasingError::InvalidStepCount);
 }
 
+// curves_built_without_stops_or_jumps_sample_linearly. The constructors
+// reject these; the variants can still be filled in by hand.
+static void CurvesBuiltWithoutStopsOrJumpsSampleLinearly() {
+    Easing noJumps;
+    noJumps.kind = EasingKind::Steps;
+    noJumps.count = 1;
+    noJumps.position = StepPosition::JumpNone;
+    Easing noStops;
+    noStops.kind = EasingKind::LinearStops;
+    float progress[] = {-1.f, 0.25f, 2.f};
+    float expected[] = {0.f, 0.25f, 1.f};
+    for (int i = 0; i < 3; i++) {
+        utassert(noStops.Sample(progress[i]) == expected[i]);
+        utassert(noJumps.Sample(progress[i]) == expected[i]);
+    }
+}
+
 static float TestNaN() {
     volatile float zero = 0.f;
     return zero / zero;
@@ -1294,6 +1311,7 @@ void TestMotion() {
     TheCssKeywordEasingsMatchTheirPublishedSamples();
     CubicBezierEasingKeepsAnticipationAndOvershoot();
     StepEasingObservesTheCssJumpPositions();
+    CurvesBuiltWithoutStopsOrJumpsSampleLinearly();
     LinearStopsFillTheirOmittedPositions();
     ANegativeDelayStartsInsideTheActiveInterval();
     AlternateDirectionReversesTheOddIterations();

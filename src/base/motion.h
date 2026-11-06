@@ -146,6 +146,9 @@ struct Easing {
     // may leave that range: a cubic Bézier with y controls outside it
     // anticipates or overshoots, and linear stops or a custom curve may do
     // the same. Clamp the result where it drives an opacity or a colour.
+    // A curve built directly, rather than through Steps or LinearStops, may
+    // have nothing to sample: no stops, or one JumpNone step. That samples
+    // as linear.
     float Sample(float progress) const;
 
   private:

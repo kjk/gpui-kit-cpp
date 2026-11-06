@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c2634780091b72c9f1eb5559cdcde3a9410b470f` (2026-10-29,
-text: Continue alphabetic ordered-list numbering after Z (#3722)).
-Nested ordered lists past Z continue AA, AB, and so on, uppercase at
-depth 1 and lowercase deeper, instead of wrapping back to a single
-letter. A start of 0 and depth 0 stay decimal. The ordinal add saturates
-at `u32::MAX`.
+Processed through `6944a53371625f5321608becf1520d0f9646a2c1` (2026-10-29,
+motion: Sample directly built easing curves with nothing to sample as
+linear (#3721)). A step curve of one `JumpNone` step, and linear stops
+with none, sample as linear. The constructors still reject both.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
