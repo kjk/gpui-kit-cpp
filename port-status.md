@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4ab17012f0e86c8e18703a59086b484e76780a27` (2026-10-29,
-toolbar: End the wrap search at the first repeated stop (#3716)).
-Left and Right in a toolbar walk the window's tab order until focus
-comes back inside it. The walk no longer stops after 100 hops. It ends
-at the first repeated stop and leaves focus where it started, so a bar
-among more than a hundred page stops still wraps. Stops outside the
-bar are still passed over.
+Processed through `861070bb50573741e17b6cdbb99c00ff1658f687` (2026-10-29,
+virtual_list: Rebuild cached geometry when the axis or gap changes (#3719)).
+Rust caches each item's extent and origin and used to rebuild that
+cache only when the item sizes changed, so a new gap or axis kept the
+old positions. This tree builds that geometry every frame from the
+current axis and gap, so the change is already how the list is drawn.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
