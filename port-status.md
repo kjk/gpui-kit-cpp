@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `fc8d794ec01e2967ae16412415b00d449f9a8cad` (2026-11-01,
-menu: Report a checked item's check to assistive technology (#3729)).
-A checked popup item is toggled on for assistive technology. An
-unchecked item stays unset.
+Processed through `18b54950e89f2756b4b3eedc965f91efa681c37b` (2026-11-01,
+input: Hover the whole visible editor after scrolling (#3734)). Hover
+already tests the pointer against `inputBounds`, the visible editor,
+so the scrolled bottom of a field stays live.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
