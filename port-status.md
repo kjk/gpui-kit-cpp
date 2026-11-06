@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6944a53371625f5321608becf1520d0f9646a2c1` (2026-10-29,
-motion: Sample directly built easing curves with nothing to sample as
-linear (#3721)). A step curve of one `JumpNone` step, and linear stops
-with none, sample as linear. The constructors still reject both.
+Processed through `a36f2a78627e9c874706a7013387c39f05629bc7` (2026-10-29,
+command: Name each palette row after its item (#3728)). Each command
+row is a list-box option whose label is the item's, including a
+disabled row. A custom row with no label stays unnamed.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

@@ -831,14 +831,19 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
     El* line = Div(a)
                    ->Role(AccessibilityRole::ListBoxOption)
                    ->AriaSelected(selected)
-                   ->AriaDisabled(disabled)
-                   ->FlexRow()
-                   ->W(kFill)
-                   ->ItemsCenter()
-                   ->Gap(Rems(cx, 0.5f))
-                   ->PadX(Rems(cx, 0.5f))
-                   ->PadY(Rems(cx, 0.375f))
-                   ->Radius(itemRadius >= 0 ? itemRadius : th.radius);
+                   ->AriaDisabled(disabled);
+    // The row's text is a child that is not an accessibility node, so the
+    // row names itself. Custom content with no label stays unnamed.
+    if (len(item->label) > 0) {
+        line->AriaLabel(item->label);
+    }
+    line->FlexRow()
+        ->W(kFill)
+        ->ItemsCenter()
+        ->Gap(Rems(cx, 0.5f))
+        ->PadX(Rems(cx, 0.5f))
+        ->PadY(Rems(cx, 0.375f))
+        ->Radius(itemRadius >= 0 ? itemRadius : th.radius);
     if (selected) {
         line->Bg(th.tokens.accent);
     }

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6944a53371625f5321608becf1520d0f9646a2c1",
+  sha: "a36f2a78627e9c874706a7013387c39f05629bc7",
   date: "2026-10-29",
-  subject: "motion: Sample directly built easing curves with nothing to sample as linear (#3721)",
+  subject: "command: Name each palette row after its item (#3728)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",

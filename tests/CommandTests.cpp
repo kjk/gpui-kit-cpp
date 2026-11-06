@@ -368,6 +368,63 @@ static void ACustomRowIsMeasured() {
     ArenaDelete(a);
 }
 
+static void CollectRole(El* e, AccessibilityRole role, El** out, int* n,
+                        int cap) {
+    if (!e || *n >= cap) {
+        return;
+    }
+    if (e->accessibility.role == role) {
+        out[(*n)++] = e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        CollectRole(c, role, out, n, cap);
+    }
+}
+
+// search.rs command_rows_are_named_after_their_items. The row text is not
+// its own accessibility node, so each option carries the item's label,
+// including a disabled row. Custom content with no label stays unnamed.
+static void CommandRowsAreNamedAfterTheirItems() {
+    App app = {};
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* a = ArenaNew();
+    win->frameArena = a;
+    Ctx cx = {&app, win, a, {}};
+    Entity<CommandState> state = EntityNewState<CommandState>(&app);
+    CommandItem items[4] = {};
+    items[0].label = StrL("Open");
+    items[1].label = StrL("Delete");
+    items[1].disabled = true;
+    items[2].label = StrL("Save");
+    items[3].content = [](Ctx* rowCx, const CommandItem*) {
+        return Div(rowCx->a)->Child(TextEl(rowCx->a, StrL("custom")));
+    };
+    El* root =
+        Command::New(&cx, StrL("named"), state)->Items(items, 4)->IntoEl();
+    LayoutEl(&win->paint, root, 0, 0, 320, 400, 14, Rgba{});
+    El* rows[8] = {};
+    int n = 0;
+    CollectRole(root, AccessibilityRole::ListBoxOption, rows, &n, 8);
+    utassert(n == 4);
+    if (n == 4) {
+        utassert(rows[0]
+                     ->accessibility.role == AccessibilityRole::ListBoxOption);
+        utassert(StrEq(rows[0]->accessibility.label, StrL("Open")));
+        utassert(StrEq(rows[1]->accessibility.label, StrL("Delete")));
+        utassert(rows[1]->accessibility.disabled);
+        utassert(StrEq(rows[2]->accessibility.label, StrL("Save")));
+        utassert(len(rows[3]->accessibility.label) == 0);
+    }
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 static El* FindRole(El* e, AccessibilityRole role) {
     if (!e) {
         return nullptr;
@@ -463,6 +520,7 @@ static void ACommandIsStyled() {
 
 void TestCommand() {
     TestSuite("command");
+    CommandRowsAreNamedAfterTheirItems();
     LoadingEmptyListIsNotPadded();
     ACommandIsStyled();
     TheQueryIsACaseInsensitiveSubstringOfTheLabelOrAKeyword();
