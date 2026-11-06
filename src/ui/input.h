@@ -25,6 +25,10 @@ using CursorBlink = ::gpui::CursorBlink;
 // defaults. Unknown languages keep LanguageConfig::Default().
 void InputLanguageInit(App* app);
 
+// input.rs set_native_touch_selection. The platform draws the handles and
+// the edit menu of a focused input. A long press still selects a word.
+void SetNativeTouchSelection(App* app, bool enabled);
+
 enum class AnyInputKind : uint8_t {
     None,
     Input,

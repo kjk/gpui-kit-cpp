@@ -326,6 +326,27 @@ static void BindInputContextMenu(Ctx* cx, El* e, Str id, InputState* state,
     menu->selection = selection.id;
 }
 
+// input.rs NativeTouchSelection. Set while a host draws the platform's own
+// selection UI over the window.
+struct NativeTouchSelectionFlag {
+    bool enabled = false;
+};
+
+void SetNativeTouchSelection(App* app, bool enabled) {
+    NativeTouchSelectionFlag* flag =
+        AppGlobalEnsure<NativeTouchSelectionFlag>(app);
+    if (flag) {
+        flag->enabled = enabled;
+    }
+    AppRefreshWindows(app);
+}
+
+static bool NativeTouchSelectionOn(const App* app) {
+    NativeTouchSelectionFlag* flag =
+        AppGlobalGet<NativeTouchSelectionFlag>(app);
+    return flag && flag->enabled;
+}
+
 // input.rs render_touch_selection: the field's touch selection drawn -- its
 // handles, floated above the field so its own clip does not cut the knobs,
 // and its edit menu. Cut, Copy and Paste go through the field's actions, so
@@ -431,6 +452,11 @@ static void PaintInputTouchHandles(PaintCtx* ctx, El*, void* user) {
 
 static void InputTouchSelectionLayer(Ctx* cx, El* e, Str id,
                                      InputState* state) {
+    // The platform draws the handles and the menu. The selection itself,
+    // including the one a long press made, stays.
+    if (NativeTouchSelectionOn(cx->app)) {
+        return;
+    }
     TouchSelectionSnapshot snap = {};
     if (!state || !cx->win || !InputTouchSelection(state, cx->win, &snap)) {
         return;

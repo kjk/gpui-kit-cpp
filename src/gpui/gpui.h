@@ -5868,6 +5868,12 @@ void InputSelectToWithAffinity(InputState* s, App* app, Window* win, int offset,
 void InputSelectAll(InputState* s, App* app, Window* win);
 void InputUnselect(InputState* s, App* app, Window* win);
 void InputSetSelectedRange(InputState* s, App* app, Window* win, int a, int b);
+// EntityInputHandler::set_selected_text_range. `startUtf16`/`endUtf16` are
+// UTF-16 offsets, which may arrive backwards. The end that moved becomes
+// the cursor, so dragging the start handle leaves a reversed selection.
+// Text and undo history are left alone. Out of range clamps to the document.
+void InputSetSelectedTextRangeUtf16(InputState* s, App* app, Window* win,
+                                    int startUtf16, int endUtf16);
 // selection.rs: what a double and a triple click take.
 void InputSelectWord(InputState* s, App* app, Window* win, int offset);
 void InputSelectLine(InputState* s, App* app, Window* win, int offset);

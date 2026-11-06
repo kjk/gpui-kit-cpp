@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a36f2a78627e9c874706a7013387c39f05629bc7",
+  sha: "a3340830c5cdc113d05a1a254436fa8d3c191a3e",
   date: "2026-10-29",
-  subject: "command: Name each palette row after its item (#3728)",
+  subject: "input: Add a native touch selection opt-out (#3723)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",

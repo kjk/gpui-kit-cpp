@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a36f2a78627e9c874706a7013387c39f05629bc7` (2026-10-29,
-command: Name each palette row after its item (#3728)). Each command
-row is a list-box option whose label is the item's, including a
-disabled row. A custom row with no label stays unnamed.
+Processed through `a3340830c5cdc113d05a1a254436fa8d3c191a3e` (2026-10-29,
+input: Add a native touch selection opt-out (#3723)). A host can leave
+a focused input's touch handles and edit menu to the platform. The
+field still accepts a UTF-16 selection from that UI, and the end that
+moved becomes the cursor.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

@@ -5370,6 +5370,46 @@ void InputSetSelectedRange(InputState* s, App* app, Window* win, int a, int b) {
     InputSelectTo(s, app, win, end);
 }
 
+void InputSetSelectedTextRangeUtf16(InputState* s, App* app, Window* win,
+                                    int startUtf16, int endUtf16) {
+    if (!s) {
+        return;
+    }
+    if (startUtf16 < 0) {
+        startUtf16 = 0;
+    }
+    if (endUtf16 < 0) {
+        endUtf16 = 0;
+    }
+    Str text = InputValue(s);
+    Selection previous = s->selectedRange;
+    bool wasReversed = s->selectionReversed;
+    int a = RopeOffsetUtf16ToOffset(text, startUtf16);
+    int b = RopeOffsetUtf16ToOffset(text, endUtf16);
+    if (b < a) {
+        int swap = a;
+        a = b;
+        b = swap;
+    }
+    InputSetSelectedRange(s, app, win, a, b);
+    Selection range = s->selectedRange;
+    bool same = range.start == previous.start && range.end == previous.end;
+    bool reversed = false;
+    if (same) {
+        reversed = wasReversed;
+    } else if (!range.IsEmpty() && range.end == previous.start) {
+        reversed = true;
+    } else if (!range.IsEmpty() && range.start == previous.end) {
+        reversed = false;
+    } else {
+        reversed = !range.IsEmpty() && range.start != previous.start &&
+                   range.end == previous.end;
+    }
+    s->selectionReversed = reversed;
+    InputScrollToCursor(s, InputMoveDir::None);
+    Notify(app, win);
+}
+
 // selection.rs: what a double and a triple click take.
 void InputSelectWord(InputState* s, App* app, Window* win, int offset) {
     int a = 0;

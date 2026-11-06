@@ -196,6 +196,62 @@ static void WordMovement() {
     utassert(InputCursor(&s) == 6);
 }
 
+// state.rs test_set_selected_text_range. "🙂" is 2 UTF-16 units and 4 bytes.
+static void Utf16Sel(const InputState& s, int* a, int* b, bool* reversed) {
+    Str text = InputValue(&s);
+    *a = RopeOffsetToOffsetUtf16(text, s.selectedRange.start);
+    *b = RopeOffsetToOffsetUtf16(text, s.selectedRange.end);
+    *reversed = s.selectionReversed;
+}
+
+static void SetSelectedTextRangeFollowsTheHandleThatMoved() {
+    InputState s;
+    InputSetValue(&s, StrL("\xF0\x9F\x99\x82 hello world"));
+    int a = 0;
+    int b = 0;
+    bool reversed = false;
+
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 3, 8);
+    utassert(s.selectedRange.start == 5 && s.selectedRange.end == 10);
+    Utf16Sel(s, &a, &b, &reversed);
+    utassert(a == 3 && b == 8 && !reversed);
+
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 3, 14);
+    Utf16Sel(s, &a, &b, &reversed);
+    utassert(a == 3 && b == 14 && !reversed);
+    utassert(InputCursor(&s) == 16);
+
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 9, 14);
+    Utf16Sel(s, &a, &b, &reversed);
+    utassert(a == 9 && b == 14 && reversed);
+    utassert(InputCursor(&s) == 11);
+
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 9, 14);
+    Utf16Sel(s, &a, &b, &reversed);
+    utassert(a == 9 && b == 14 && reversed);
+
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 100, 9);
+    Utf16Sel(s, &a, &b, &reversed);
+    utassert(a == 9 && b == 14 && reversed);
+
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 3, 8);
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 2, 3);
+    Utf16Sel(s, &a, &b, &reversed);
+    utassert(a == 2 && b == 3 && reversed);
+    utassert(InputCursor(&s) == 4);
+
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 3, 8);
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 8, 9);
+    Utf16Sel(s, &a, &b, &reversed);
+    utassert(a == 8 && b == 9 && !reversed);
+    utassert(InputCursor(&s) == 11);
+
+    InputSetSelectedTextRangeUtf16(&s, nullptr, nullptr, 2, 2);
+    Utf16Sel(s, &a, &b, &reversed);
+    utassert(a == 2 && b == 2 && !reversed);
+    utassert(ValueIs(s, "\xF0\x9F\x99\x82 hello world"));
+}
+
 static void DeleteToWordAndLineBoundaries() {
     InputState s;
     InputSetValue(&s, StrL("hello brave world"));
@@ -11501,6 +11557,38 @@ static void ThemedInputDrawsTouchHandlesAndEditMenu() {
     TestAppFree(app);
 }
 
+// input.rs native_touch_selection_leaves_the_handles_and_menu_to_the_platform.
+static void NativeTouchSelectionLeavesTheHandlesAndMenuToThePlatform() {
+    App* app = TestAppNew();
+    Entity<ThemedTouchRoot> root = EntityNew<ThemedTouchRoot>(app);
+    InputState* input = &root.Get(app)->input;
+    InputSetValue(input, StrL("quick select value"));
+    Window* win = TestWindowOpen(app, root, 400, 200);
+    TestDraw(win);
+    Point at = {};
+    utassert(InputLastCaretPoint(input, win, 8, &at));
+    at.y += input->lastLineH * 0.5f;
+    for (TouchPhase phase : {TouchPhase::Started, TouchPhase::Ended}) {
+        PlatformInput in = InputLongPress(phase, at, at);
+        WindowDispatchInput(win, &in);
+        TestFlushEffects(app);
+        TestRunUntilParked(app);
+        TestDraw(win);
+    }
+    utassert(InputTouchSelection(input, win, nullptr));
+    utassert(PaintedTextIs(win, "Cut"));
+
+    component::SetNativeTouchSelection(app, true);
+    TestDraw(win);
+    utassert(InputTouchSelection(input, win, nullptr));
+    utassert(!PaintedTextIs(win, "Cut"));
+
+    component::SetNativeTouchSelection(app, false);
+    TestDraw(win);
+    utassert(PaintedTextIs(win, "Cut"));
+    TestAppFree(app);
+}
+
 // touch.rs open_input: a single-line input holding `value`, painted.
 static InputView OpenTouchInput(const char* value) {
     InputView view = InputViewBuild();
@@ -11781,6 +11869,7 @@ static void ScrollingClosesTheMenuAndKeepsTheHandles() {
 static void RunTouchWindowTests() {
     LongPressSelectsWordThenReleaseOpensMenu();
     ThemedInputDrawsTouchHandlesAndEditMenu();
+    NativeTouchSelectionLeavesTheHandlesAndMenuToThePlatform();
     DoubleTapSelectsWordWithHandlesAndMenu();
     LongPressOnEmptyInputPlacesCaretWithMenu();
     DraggingAHandleMovesThatEndOnly();
@@ -12556,6 +12645,7 @@ void TestInputState() {
     TextInputConfigurationFollowsTheInput();
     AFocusedFieldGoingTakesItsRegistrationWithIt();
     WordMovement();
+    SetSelectedTextRangeFollowsTheHandleThatMoved();
     DeleteToWordAndLineBoundaries();
     LineBoundaries();
     PageMovesByTheViewport();

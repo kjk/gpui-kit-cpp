@@ -865,6 +865,17 @@ static bool PressedButton(MouseButton* out) {
     return NSMakeRange(lo, hi - lo);
 }
 
+// EntityInputHandler::set_selected_text_range. The IME and the system
+// selection handles count in UTF-16 and ask the field to follow.
+- (void)setSelectedRange:(NSRange)range {
+    gpui::InputState* in = [self gpuiInput];
+    if (!in || range.location == NSNotFound) {
+        return;
+    }
+    gpui::InputSetSelectedTextRangeUtf16(in, win->app, win, (int)range.location,
+                                         (int)(range.location + range.length));
+}
+
 - (void)setMarkedText:(id)string
         selectedRange:(NSRange)selected
      replacementRange:(NSRange)replacement {
