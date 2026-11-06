@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0f8582f5e56551aa7b7b90774f2513a68aac39a9",
+  sha: "d983af26269fca2200600aced3e3f03849e60749",
   date: "2026-10-29",
-  subject: "popover: Clear focus on close when nothing had it at open (#3718)",
+  subject: "test: Register Toolbar for snapshot queries (#3717)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",

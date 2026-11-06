@@ -16,12 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0f8582f5e56551aa7b7b90774f2513a68aac39a9` (2026-10-29,
-popover: Clear focus on close when nothing had it at open (#3718)).
-A popover that still holds focus on close gives it back to whatever had
-it at open. When that was nothing, the window blurs, so focus does not
-stay on the closed popover's handle. Focus that has already left the
-popover is left where it is.
+Processed through `d983af26269fca2200600aced3e3f03849e60749` (2026-10-29,
+test: Register Toolbar for snapshot queries (#3717)).
+The toolbar root is registered with GPUI's test snapshot finder, so a
+test can read its role, label and whether focus is inside it. Outside
+tests the element is unchanged. This tree does not carry that finder.
+The toolbar is already a horizontal Toolbar node, and tests read the
+role off the element and containment off the focus handle.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
