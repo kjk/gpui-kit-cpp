@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "18be16887bc2cb462f7b0a33c18bf6183344e7de",
-  date: "2026-10-28",
-  subject: "menu: Make submenu rows activatable (#3714)",
+  sha: "997a5cde37fd4d019692f014bfb6190967fbfa4f",
+  date: "2026-10-29",
+  subject: "virtual_list: Use the height constraint when a horizontal list infers its height (#3720)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",

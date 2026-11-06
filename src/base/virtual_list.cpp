@@ -674,9 +674,73 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
     }
 }
 
+// Infer's measured layout. The cross axis is one item laid out at its own
+// size (measure_item); the main axis is the retained item-size sum. A
+// definite style size wins. An automatic axis takes that content size, which
+// is what a min-content or max-content constraint resolves to. Fill stays
+// fill: this tree's parent assigns that, the way a percentage does once the
+// parent is definite.
+static float VirtualListInferLength(float specified, float content,
+                                    bool infer) {
+    if (specified > 0) {
+        return specified;
+    }
+    if (infer && specified == kAuto) {
+        return content;
+    }
+    return kFill;
+}
+
+static void VirtualListInferContent(Ctx* cx, const VirtualListOpts& o,
+                                    float* main, float* cross) {
+    *main = 0;
+    *cross = 0;
+    if (!cx || o.count <= 0 || !o.row) {
+        return;
+    }
+    int ix = o.itemToMeasure;
+    if (ix < 0) {
+        ix = 0;
+    }
+    if (ix >= o.count) {
+        ix = o.count - 1;
+    }
+    El* sample = o.row(o.user, cx, ix);
+    PaintCtx paint = {};
+    paint.app = cx->app;
+    paint.window = cx->win;
+    Size got = MeasureEl(&paint, sample, 0);
+    float crossSize = o.layoutAxis == Axis::Horizontal ? got.h : got.w;
+    ItemSizeLayout layout;
+    ItemSizeLayoutBuild(&layout, o.layoutAxis, o.sizes, o.count, o.rowH, o.gap,
+                        crossSize);
+    if (o.layoutAxis == Axis::Horizontal) {
+        *main = layout.contentSize.w;
+        *cross = layout.contentSize.h;
+    } else {
+        *main = layout.contentSize.h;
+        *cross = layout.contentSize.w;
+    }
+}
+
 El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
     Arena* a = cx->a;
-    float viewport = o.layoutAxis == Axis::Horizontal ? o.viewW : o.viewH;
+    bool infer = o.sizingBehavior == ListSizingBehavior::Infer;
+    float inferMain = 0;
+    float inferCross = 0;
+    if (infer) {
+        VirtualListInferContent(cx, o, &inferMain, &inferCross);
+    }
+    float along = o.layoutAxis == Axis::Horizontal ? o.viewW : o.viewH;
+    float crossSpec = o.layoutAxis == Axis::Horizontal ? o.viewH : o.viewW;
+    float viewport = VirtualListInferLength(along, inferMain, infer);
+    if (viewport == kFill) {
+        viewport = 0;
+    }
+    float cross = VirtualListInferLength(crossSpec, inferCross, infer);
+    if (cross == kFill) {
+        cross = 0;
+    }
     float offset = o.layoutAxis == Axis::Horizontal ? o.scrollX : o.scrollY;
     if (o.logicalScroll) {
         offset =
@@ -685,7 +749,6 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
     if (o.handle && viewport > 0 && !o.needsMeasure) {
         o.handle->axis = o.layoutAxis;
         ItemSizeLayout layout;
-        float cross = o.layoutAxis == Axis::Horizontal ? o.viewH : o.viewW;
         ItemSizeLayoutBuild(&layout, o.layoutAxis, o.sizes, o.count, o.rowH,
                             o.gap, cross);
         const float* sizes = layout.sizes.len ? layout.sizes.els : nullptr;
@@ -700,26 +763,25 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
     paint->app = cx->app;
     paint->win = cx->win;
     El* e = New(cx, id)->ClipY()->ClipX();
+    // A definite viewport keeps the padding the constructor always folded
+    // into it. An inferred content size does not: padding is the element's
+    // own inset, added below.
     if (o.layoutAxis == Axis::Horizontal) {
         e->ScrollX(offset)->ScrollY(o.scrollY);
-        if (o.viewW > 0)
-            e->W(o.viewW + o.pad * 2);
-        else
-            e->W(kFill);
-        if (o.viewH > 0)
-            e->H(o.viewH);
-        else
-            e->H(kFill);
+        float w = VirtualListInferLength(o.viewW, inferMain, infer);
+        float h = VirtualListInferLength(o.viewH, inferCross, infer);
+        if (o.viewW > 0) {
+            w += o.pad * 2;
+        }
+        e->W(w)->H(h);
     } else {
         e->ScrollY(offset)->ScrollX(o.scrollX);
-        if (o.viewH > 0)
-            e->H(o.viewH + o.pad * 2);
-        else
-            e->H(kFill);
-        if (o.viewW > 0)
-            e->W(o.viewW);
-        else
-            e->W(kFill);
+        float h = VirtualListInferLength(o.viewH, inferMain, infer);
+        float w = VirtualListInferLength(o.viewW, inferCross, infer);
+        if (o.viewH > 0) {
+            h += o.pad * 2;
+        }
+        e->H(h)->W(w);
     }
     if (o.pad > 0) {
         e->Pad(o.pad);

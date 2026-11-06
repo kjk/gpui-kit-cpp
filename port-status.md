@@ -16,27 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `18be16887bc2cb462f7b0a33c18bf6183344e7de` (2026-10-28,
-menu: Make submenu rows activatable (#3714)).
-An enabled submenu row is activated by click or Enter: the child is
-focused, its first clickable row is selected, and the parent stays open.
-A disabled row can be hovered and shown, and confirmation refuses it.
-Up and down from an empty selection land on a clickable row.
-`SetIconResolver` rewrites the asset path of every path icon as it is
-drawn, including a checkbox, radio and questionnaire check. `Icon::data`
-and an empty path are not asked. No resolver leaves every path unchanged.
-Native menus keep the original path, as upstream does. Website docs are
-not ported. `CursorBlink` on both themes is the caret policy. The default
-still blinks every 500 ms with no idle timeout. A steady policy or an
-elapsed idle timeout leaves the caret visible with no timer, and a theme
-write that does not change the normalized policy leaves the phase alone.
-A mode switch keeps the policy, which is not in the color file. Scroll
-events and `secondary-` chords keep their C++ names. Scrollbar idle stays
-2s and exit 500ms as constants. Links are always underlined. A textarea
-has no decoration extras, and linked text is gone. Image source, list and
-blockquote refinements, and selection stay.
+Processed through `997a5cde37fd4d019692f014bfb6190967fbfa4f` (2026-10-29,
+virtual_list: Use the height constraint when a horizontal list infers its height (#3720)).
+`ListSizingBehavior::Infer` sizes an automatic axis from the items. A
+horizontal list reads the height constraint, so a 120px-wide list of
+10px items is 10px tall. A definite length and fill are unchanged.
 The current update target is
-`18be16887bc2cb462f7b0a33c18bf6183344e7de`.
+`48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
 ## Known gaps vs Rust
 

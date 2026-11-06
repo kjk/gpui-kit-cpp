@@ -430,8 +430,42 @@ static void TheThemedListFillsItsBox() {
     ArenaDelete(a);
 }
 
+static El* InferItem(void*, Ctx* cx, int) {
+    return Div(cx->a)->W(30)->H(10);
+}
+
+// a_horizontal_list_infers_its_height_from_its_items. Infer reads the height
+// constraint. A 120px-wide horizontal list of 10px items must not come out
+// 120px tall.
+static void AHorizontalListInfersItsHeightFromItsItems() {
+    App app = {};
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = a;
+    float sizes[] = {30, 30, 30};
+    VirtualListOpts opts;
+    opts.count = 3;
+    opts.sizes = sizes;
+    opts.row = &InferItem;
+    opts.sizingBehavior = ListSizingBehavior::Infer;
+    opts.viewW = 120;
+    opts.viewH = kAuto;
+    El* list = h_virtual_list(&cx, StrL("virtual-list-infer"), opts)
+                   ->FlexNone();
+    El* col = Div(a)->FlexCol()->ItemsStart()->W(120)->Child(list);
+    LayoutEl(nullptr, col, 0, 0, 120, 400, 14, Rgba{});
+    // The list is as tall as its items. Reading the width constraint would
+    // make this 120 tall and fill the column.
+    utassertnear(list->y, 0.f);
+    utassertnear(list->w, 120.f);
+    utassertnear(list->h, 10.f);
+    ArenaDelete(a);
+}
+
 void TestVirtualList() {
     TestSuite("virtual_list");
+    AHorizontalListInfersItsHeightFromItsItems();
     TheThemedListFillsItsBox();
     TheTopOfTheListStartsAtZero();
     ScrollingMovesBothEdges();

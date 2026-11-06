@@ -68,6 +68,15 @@ enum class ScrollStrategy : uint8_t {
     Start
 };
 
+// gpui::ListSizingBehavior. Auto is size_full: the list fills its parent.
+// Infer measures from the items. An automatic axis (`kAuto`) takes the
+// content size — the min-content and max-content branch of the measured
+// layout. A positive size is the style's definite length. Zero stays fill.
+enum class ListSizingBehavior : uint8_t {
+    Auto,
+    Infer
+};
+
 // scroll_to_item: the offset that brings the item at `origin` into a viewport
 // of `viewport`, from where it is now. Offsets run positive-down, as
 // El::ScrollY takes them, and the answer is clamped to the list — there is
@@ -186,11 +195,17 @@ struct VirtualListOpts {
     float rowH = 32;
     // 0 means fill the parent (Rust `.size_full()`). A positive value is an
     // explicit along-axis viewport used until layout reports the real box.
+    // `kAuto` is `.h_auto()` / `.w_auto()`, read when `sizingBehavior` is
+    // Infer.
     float viewH = 0;
     // The horizontal counterpart. `rowH` remains the historical name for a
     // uniform along-axis extent, so it is a width when layoutAxis is
-    // horizontal. 0 fills the parent.
+    // horizontal. 0 fills the parent. `kAuto` is the automatic axis.
     float viewW = 0;
+    // with_sizing_behavior. Auto is the constructor's default.
+    ListSizingBehavior sizingBehavior = ListSizingBehavior::Auto;
+    // with_item_to_measure_index: which item Infer measures for the cross axis.
+    int itemToMeasure = 0;
     const float* sizes = nullptr;
     // Rows flagged here are measured at the viewport width before placement.
     // The size array supplies a provisional extent only to find the range.
