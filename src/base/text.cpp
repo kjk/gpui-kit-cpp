@@ -2919,20 +2919,44 @@ static Str Bullet(int depth) {
     }
 }
 
-int OrderedListOrdinal(int start, int ix) {
+uint32_t OrderedListOrdinal(uint32_t start, uint32_t ix) {
+    if (ix > 0xffffffffu - start) {
+        return 0xffffffffu;
+    }
     return start + ix;
 }
 
-Str ListItemPrefix(Arena* a, int ix, int start, bool ordered, int depth) {
+// text/utils.rs list_item_prefix: base-26, 1 = A, 26 = Z, 27 = AA. The
+// longest label u32::MAX produces is seven letters.
+static Str AlphaListPrefix(Arena* a, uint32_t ordinal, char first) {
+    char rev[8];
+    int n = 0;
+    uint32_t remaining = ordinal;
+    while (remaining > 0 && n < 7) {
+        remaining -= 1;
+        rev[n++] = (char)(first + (remaining % 26));
+        remaining /= 26;
+    }
+    char letters[12];
+    for (int i = 0; i < n; i++) {
+        letters[i] = rev[n - 1 - i];
+    }
+    letters[n] = '.';
+    letters[n + 1] = ' ';
+    letters[n + 2] = 0;
+    return StrDup(a, Str(letters));
+}
+
+Str ListItemPrefix(Arena* a, uint32_t ix, uint32_t start, bool ordered,
+                   int depth) {
     if (!ordered) {
         return Bullet(depth);
     }
-    int ordinal = OrderedListOrdinal(start, ix);
+    uint32_t ordinal = OrderedListOrdinal(start, ix);
     if (depth == 0 || start == 0) {
-        return StrDup(a, fmt("%d. ", ordinal));
+        return StrDup(a, fmt("%u. ", ordinal));
     }
-    int alpha = (ordinal > 0 ? ordinal - 1 : 0) % 26;
-    return StrDup(a, fmt("%c. ", (depth == 1 ? 'A' : 'a') + alpha));
+    return AlphaListPrefix(a, ordinal, depth == 1 ? 'A' : 'a');
 }
 
 // âââ SelectionFormat::Source âââ
@@ -6838,13 +6862,16 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
                 if (c->kind != MdKind::Item) {
                     continue;
                 }
-                Str marker = ListItemPrefix(a, ix, n->start, n->ordered, depth);
+                Str marker = ListItemPrefix(a, (uint32_t)ix, (uint32_t)n->start,
+                                            n->ordered, depth);
                 // list_selected_source restores the Markdown marker rather
                 // than the bullet glyph the item is drawn with, and puts the
                 // task list's checkbox after it.
-                Str src = n->ordered ? StrDup(a, fmt("%d. ", OrderedListOrdinal(
-                                                                 n->start, ix)))
-                                     : StrL("- ");
+                Str src = n->ordered
+                              ? StrDup(a, fmt("%u. ", OrderedListOrdinal(
+                                                          (uint32_t)n->start,
+                                                          (uint32_t)ix)))
+                              : StrL("- ");
                 srcItemPad = src;
                 if (c->hasCheck) {
                     // The checkbox stands where the prefix would: `when(!todo

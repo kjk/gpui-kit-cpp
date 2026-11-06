@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `861070bb50573741e17b6cdbb99c00ff1658f687` (2026-10-29,
-virtual_list: Rebuild cached geometry when the axis or gap changes (#3719)).
-Rust caches each item's extent and origin and used to rebuild that
-cache only when the item sizes changed, so a new gap or axis kept the
-old positions. This tree builds that geometry every frame from the
-current axis and gap, so the change is already how the list is drawn.
+Processed through `c2634780091b72c9f1eb5559cdcde3a9410b470f` (2026-10-29,
+text: Continue alphabetic ordered-list numbering after Z (#3722)).
+Nested ordered lists past Z continue AA, AB, and so on, uppercase at
+depth 1 and lowercase deeper, instead of wrapping back to a single
+letter. A start of 0 and depth 0 stay decimal. The ordinal add saturates
+at `u32::MAX`.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

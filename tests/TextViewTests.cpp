@@ -314,9 +314,48 @@ static void TestHtmlNestingHasNoPortLimit(Arena* a) {
     StrFree(html);
 }
 
-static bool PrefixIs(Arena* a, int ix, int start, bool ordered, int depth,
-                     const char* want) {
+static bool PrefixIs(Arena* a, uint32_t ix, uint32_t start, bool ordered,
+                     int depth, const char* want) {
     return base::StrEq(ListItemPrefix(a, ix, start, ordered, depth), Str(want));
+}
+
+// text/utils.rs: test_alphabetic_list_item_prefix. Past Z the marker
+// continues AA, AB, … Depth 1 is uppercase; every deeper depth is lowercase.
+// `None` is start 1 here. `usize::MAX as u32` is u32::MAX, then saturates.
+static void TestAlphabeticListItemPrefix(Arena* a) {
+    struct Pair {
+        uint32_t ordinal;
+        const char* label;
+    };
+    Pair pairs[] = {
+        {1, "A"},    {26, "Z"},    {27, "AA"},
+        {28, "AB"},  {52, "AZ"},   {53, "BA"},
+        {702, "ZZ"}, {703, "AAA"}, {0xffffffffu, "MWLQKWU"},
+    };
+    for (int i = 0; i < 9; i++) {
+        uint32_t ordinal = pairs[i].ordinal;
+        const char* label = pairs[i].label;
+        char lower[8];
+        int n = 0;
+        for (; label[n] && n < 7; n++) {
+            lower[n] = (char)(label[n] - 'A' + 'a');
+        }
+        lower[n] = 0;
+        Str upperWant = fmt("%s. ", Str(label));
+        Str lowerWant = fmt("%s. ", Str(lower));
+        for (int depth = 1; depth <= 3; depth++) {
+            Str want = depth == 1 ? upperWant : lowerWant;
+            utassert(
+                base::StrEq(ListItemPrefix(a, 0, ordinal, true, depth), want));
+            utassert(base::StrEq(ListItemPrefix(a, ordinal - 1, 1, true, depth),
+                                 want));
+        }
+    }
+    utassert(PrefixIs(a, 1, 26, true, 1, "AA. "));
+    utassert(PrefixIs(a, 1, 26, true, 2, "aa. "));
+    utassert(PrefixIs(a, 0xffffffffu, 1, true, 1, "MWLQKWU. "));
+    utassert(PrefixIs(a, 26, 1, true, 0, "27. "));
+    utassert(PrefixIs(a, 27, 0, true, 1, "27. "));
 }
 
 // text/utils.rs: test_list_item_prefix. A start of 1 is Rust's Some(1) and
@@ -370,7 +409,7 @@ static void TestOrderedListStarts(Arena* a) {
     utassert(nested && nested->kind == MdKind::List && nested->start == 4);
     utassert(PrefixIs(a, 0, nested->start, true, 1, "D. "));
     utassert(PrefixIs(a, 1, nested->start, true, 1, "E. "));
-    utassert(OrderedListOrdinal(nested->start, 1) == 5);
+    utassert(OrderedListOrdinal((uint32_t)nested->start, 1) == 5);
 
     MdNode* zero = Child(
         Child(Child(MdParse(a, StrL("1. outer\n\n   0. zero")), 0), 0), 1);
@@ -8493,6 +8532,7 @@ void TestTextView() {
     TestHtmlNestingHasNoPortLimit(a);
     TestHtmlList(a);
     TestListItemPrefix(a);
+    TestAlphabeticListItemPrefix(a);
     TestOrderedListStarts(a);
     TestHtmlPre(a);
     TestPreTextStaysText(a);
