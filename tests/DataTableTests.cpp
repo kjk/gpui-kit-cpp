@@ -1750,8 +1750,11 @@ static El* FindA11y(El* e, AccessibilityRole role, const char* label) {
     return nullptr;
 }
 
-// collections.rs table_exposes_its_header_and_cells_to_assistive_technology
-// and selectable_cells_report_their_selection.
+// collections.rs table_exposes_its_header_and_cells_to_assistive_technology,
+// a_focused_table_is_its_named_grid and
+// selectable_cells_report_their_selection. The focused-element check is the
+// role on the same box that TrackFocus binds; this fixture does not move window
+// focus.
 static void TableExposesItsHeaderAndCellsToAssistiveTechnology() {
     App app;
     Window* win = new Window();
@@ -1767,20 +1770,24 @@ static void TableExposesItsHeaderAndCellsToAssistiveTechnology() {
                     ->Rows(4, nullptr, nullptr)
                     ->BuildEl();
     El* inner = FindNamed(plain, "table-inner");
-    utassert(inner && inner->accessibility.role == AccessibilityRole::Table);
-    utassert(inner && inner->accessibility.hasRowCount &&
-             inner->accessibility.rowCount == 5);
-    utassert(inner && inner->accessibility.hasColumnCount &&
-             inner->accessibility.columnCount == 2);
+    utassert(plain->accessibility.role == AccessibilityRole::Table);
+    utassert(plain->accessibility.hasRowCount && plain->accessibility
+                                                         .rowCount == 5);
+    utassert(plain->accessibility.hasColumnCount && plain->accessibility
+                                                            .columnCount == 2);
+    utassert(inner && inner->accessibility.role == AccessibilityRole::None);
 
     st->rowSelectable = true;
     El* grid = component::DataTable::New(&cx, StrL("grid"), state)
                    ->Columns(kA11yColumns, 2)
                    ->Rows(4, nullptr, nullptr)
                    ->CellLabel(A11yCellLabel)
+                   ->AccessibilityLabel(StrL("Records"))
                    ->BuildEl();
     inner = FindNamed(grid, "table-inner");
-    utassert(inner && inner->accessibility.role == AccessibilityRole::Grid);
+    utassert(grid->accessibility.role == AccessibilityRole::Grid);
+    utassert(base::StrEq(grid->accessibility.label, StrL("Records")));
+    utassert(inner && inner->accessibility.role == AccessibilityRole::None);
     El* head = FindA11y(grid, AccessibilityRole::Row, nullptr);
     utassert(head && head->accessibility.hasRowIndex &&
              head->accessibility.rowIndex == 0);

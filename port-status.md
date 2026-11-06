@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `944803984cf0ba3111861d6e1aa9d6265c109ff9` (2026-10-29,
-speech: Disclaim the terminal's responsibility for privacy access on
-macOS (#3730)). The speech example relaunches itself on macOS so the
-binary, not the terminal, is the TCC responsible process. Other
-platforms keep running.
+Processed through `30fee292692801a98459f90aa20d8d52e3e48144` (2026-11-01,
+table: Give the focused element the grid's role (#3727)). The table's
+role, name and row and column counts sit on the element that tracks
+keyboard focus. The inner layout box has no role.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

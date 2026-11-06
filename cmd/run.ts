@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "944803984cf0ba3111861d6e1aa9d6265c109ff9",
-  date: "2026-10-29",
-  subject: "speech: Disclaim the terminal's responsibility for privacy access on macOS (#3730)",
+  sha: "30fee292692801a98459f90aa20d8d52e3e48144",
+  date: "2026-11-01",
+  subject: "table: Give the focused element the grid's role (#3727)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",

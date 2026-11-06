@@ -444,6 +444,11 @@ DataTable* DataTable::FocusRing(bool v) {
     focusRingEnabled = v;
     return this;
 }
+
+DataTable* DataTable::AccessibilityLabel(Str s) {
+    accessibilityLabel = s;
+    return this;
+}
 DataTable* DataTable::FixedColsBorder(bool v) {
     fixedColsBorder = v;
     return this;
@@ -957,10 +962,21 @@ El* DataTable::BuildEl() {
     }
     float scrollX = s ? s->scrollX : 0;
 
-    // The caller's id stays the focus target. The accessible table is the
-    // inner box: a grid when a row or a cell can be selected, a table
-    // otherwise, counting the header as a row.
-    El* box = Div(a)->PathClick(id)->FlexCol()->W(kFill);
+    // The element that holds keyboard focus is the table's accessibility
+    // node. A grid when a row or a cell can be selected, a table otherwise.
+    // The counts cover every row, not just the rendered ones, plus the header.
+    bool grid = !s || s->rowSelectable || s->cellSelectable;
+    El* box =
+        Div(a)
+            ->PathClick(id)
+            ->Role(grid ? AccessibilityRole::Grid : AccessibilityRole::Table)
+            ->AriaRowCount(nRows + 1)
+            ->AriaColumnCount(nColumns)
+            ->FlexCol()
+            ->W(kFill);
+    if (len(accessibilityLabel) > 0) {
+        box->AriaLabel(accessibilityLabel);
+    }
     if (bordered) {
         box->Radius(th.radius)->Border(1, th.border);
     }
@@ -1013,16 +1029,8 @@ El* DataTable::BuildEl() {
     // goes with them. Rust gets the same split out of one element tree by
     // giving the fixed columns an offset of their own; two panes are the
     // shape that falls out of a tree with no such offset in it.
-    bool grid = !s || s->rowSelectable || s->cellSelectable;
     El* main =
-        Div(a)
-            ->Id(StrL("table-inner"))
-            ->Role(grid ? AccessibilityRole::Grid : AccessibilityRole::Table)
-            ->AriaRowCount(nRows + 1)
-            ->AriaColumnCount(nColumns)
-            ->FlexRow()
-            ->W(kFill)
-            ->ItemsStart();
+        Div(a)->Id(StrL("table-inner"))->FlexRow()->W(kFill)->ItemsStart();
     El* fixedPane = Div(a)->FlexCol()->Shrink0();
     El* scrollPane = Div(a)->FlexCol()->Flex1()->ClipX();
     // render_row_header_cell: the narrow strip down the left a cell-selecting

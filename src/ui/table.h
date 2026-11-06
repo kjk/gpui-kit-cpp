@@ -149,6 +149,9 @@ struct DataTable {
     // FocusableExt::focus_ring. On by default. The selected row already
     // shows keyboard position, so a table can turn the outline off.
     bool focusRingEnabled = true;
+    // data_table.rs accessibility_label: the name a screen reader reads
+    // when the table takes focus. Empty leaves it unnamed.
+    Str accessibilityLabel = {};
     // TableOptions::fixed_cols_border: the hairline on the right of the
     // fixed columns, in the header and on each body row. Off when those
     // cells draw the edge themselves.
@@ -219,6 +222,8 @@ struct DataTable {
     DataTable* Bordered(bool v);
     // FocusableExt::focus_ring. False skips the keyboard focus outline.
     DataTable* FocusRing(bool v);
+    // data_table.rs accessibility_label.
+    DataTable* AccessibilityLabel(Str s);
     DataTable* FixedColsBorder(bool v);
     DataTable* ScrollbarVisible(bool vertical, bool horizontal);
     // Bounce the rows at the vertical boundaries. Headers and scrollbars
