@@ -259,6 +259,22 @@ static void CloseAndBodyClickFollowTheSourceLifecycle() {
     EntityDropAll(&app);
 }
 
+static bool ButtonNamedClose(El* e) {
+    if (!e) {
+        return false;
+    }
+    if (e->accessibility.role == AccessibilityRole::Button &&
+        StrEq(e->accessibility.label, StrL("Close"))) {
+        return true;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (ButtonNamedClose(c)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void PerNotificationPlacementsBuildIndependentStableStacks() {
     App app;
     Window* win = new Window();
@@ -283,6 +299,8 @@ static void PerNotificationPlacementsBuildIndependentStableStacks() {
     NotificationPush(s, &cx, bottom);
 
     El* root = NotificationList::New(&cx, state)->IntoEl();
+    // icon_only_close_buttons_are_named: the card's close control is an icon.
+    utassert(ButtonNamedClose(root));
     utassert(root->first && root->first->next && !root->first->next->next);
     utassertnear(root->first->style.width, 411.f);
     utassertnear(root->first->style.absTop, 73.f);

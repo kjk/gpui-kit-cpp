@@ -1051,6 +1051,7 @@ El* NotificationList::IntoEl() {
                                   ->Ghost()
                                   ->WithSize(UiSize::XSmall)
                                   ->Icon(IconName::X)
+                                  ->AccessibilityLabel(StrL("Close"))
                                   ->OnClick(close)
                                   ->IntoEl()
                                   ->StopClick();

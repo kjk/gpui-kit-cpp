@@ -16,10 +16,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a1b7a3f97b2a6b390af3e3212f7e7d478a352057` (2026-11-01,
-table: Resize a column from where the drag started (#3732)). A column
-resize keeps the width from the press and adds how far the pointer
-has moved, so a scrolling table does not collapse the column.
+Processed through `2cf9c73c3c9fd64e0349dfb440c65a56aea0b96d` (2026-11-01,
+a11y: Name the icon-only close buttons (#3741)). A dialog, sheet and
+notification close button that shows only an icon is named Close.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

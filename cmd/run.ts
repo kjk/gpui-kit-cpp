@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a1b7a3f97b2a6b390af3e3212f7e7d478a352057",
+  sha: "2cf9c73c3c9fd64e0349dfb440c65a56aea0b96d",
   date: "2026-11-01",
-  subject: "table: Resize a column from where the drag started (#3732)",
+  subject: "a11y: Name the icon-only close buttons (#3741)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",

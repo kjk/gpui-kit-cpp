@@ -170,6 +170,7 @@ El* Sheet::IntoEl(WinSize win) {
                     ->Ghost()
                     ->WithSize(UiSize::Small)
                     ->Icon(IconName::X)
+                    ->AccessibilityLabel(StrL("Close"))
                     ->OnClick(onClose)
                     ->IntoEl());
     surface->Child(head);

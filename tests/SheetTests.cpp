@@ -241,7 +241,44 @@ static void ThemedSheetReadsItsMarginFromSheetSettings() {
     AppGlobalClear(&app);
 }
 
+// overlays.rs icon_only_close_buttons_are_named. The sheet's close
+// control is only an icon, so the button carries the name.
+static El* CloseNamed(El* e) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->accessibility.role == AccessibilityRole::Button &&
+        StrEq(e->accessibility.label, StrL("Close"))) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = CloseNamed(c)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+static void TheSheetCloseButtonIsNamed() {
+    App app;
+    component::Init(&app);
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    El* root =
+        component::Sheet::New(&cx)->Open(true)->IntoEl(WinSize{800, 600});
+    utassert(CloseNamed(root));
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestSheet() {
+    TheSheetCloseButtonIsNamed();
     TestSuite("sheet");
     ASheetOverlayPressHasThreeOutcomes();
     ThePressCutoffLeavesTheBandAboveAlone();
