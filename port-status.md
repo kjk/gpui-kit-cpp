@@ -16,16 +16,21 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ae6a3fdfef416e7040e773415ac9cbd8c623e5d5` (2026-10-29,
-speech: Add a liquid appearance to SpeechWaveform (#3725)).
-`SpeechWaveform::Liquid` draws a water surface driven by the speech
-state. The bars stay the default. A session start or end resets the
-surface.
+Processed through `bb85882e1faab845d9e7be33b69a152879a90f69` (2026-10-29,
+test: Observe painted text and alternative text (#3724)). A button's
+tooltip is also its accessibility description. The paint-order text log
+behind Rust's `test-support` is not recorded here.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
 ## Known gaps vs Rust
 
+- **Painted text is not observed for tests.** Rust records each label,
+  shortcut, text run and avatar name while painting when `test-support`
+  is on, and `test_support::texts` returns that log (`observe.rs`,
+  `test_support.rs`). The C++ test platform reads the element tree
+  directly and does not keep a paint-order text log
+  (`src/gpui/test_app.h`).
 - **Gutter marks stay on document rows when ghost lines appear.** An
   inline completion that inserts rows under the caret does not push
   gutter bars and boundary pills down with those rows (`input.cpp`).

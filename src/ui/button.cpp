@@ -860,6 +860,8 @@ El* Button::IntoEl() {
     }
     if (tooltip.s) {
         e->Tip(tooltip);
+        // Like an HTML title, the tooltip describes the button.
+        e->AriaDescription(tooltip);
         if (tooltipPlacement >= 0) {
             e->TipPlacement(tooltipPlacement);
         }

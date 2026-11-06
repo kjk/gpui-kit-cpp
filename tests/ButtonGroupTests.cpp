@@ -288,6 +288,7 @@ static void SourceButtonVariantsRoundingAndIconsRemainConcrete() {
                      ->TooltipPlacement(Placement::Left)
                      ->IntoEl();
     utassert(StrEq(placed->style.tooltip, StrL("Find a document")));
+    utassert(StrEq(placed->accessibility.description, StrL("Find a document")));
     utassert(placed->style.tooltipPlacement == (int8_t)Placement::Left);
     El* automatic = component::Button::New(&cx, StrL("auto"))
                         ->Tooltip(StrL("Anywhere"))
