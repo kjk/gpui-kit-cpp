@@ -193,12 +193,7 @@ DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
         return nullptr;
     }
     DirWatchOpenFiles(w);
-    if (!PlatThreadRun(MkFunc0(DirWatchThread, w))) {
-        *err = DirWatchError::Failed;
-        DirWatchFree(w);
-        return nullptr;
-    }
-    return w;
+    return DirWatchPlatStartThread(w, DirWatchThread, DirWatchFree, err);
 }
 
 void DirWatchPlatClose(DirWatchPlat* w) {

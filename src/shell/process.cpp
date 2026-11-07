@@ -386,6 +386,44 @@ void ProcessStreamCoreTimedOut(ProcessStreamCore* stream) {
                    ProcessTimeoutMilliseconds(stream->timeoutSeconds))));
 }
 
+bool ProcessStreamStarted(ProcessStream* stream, bool ok, ProcessStream** out) {
+    if (!ok) {
+        ProcessStreamFree(stream);
+        return false;
+    }
+    if (out) *out = stream;
+    return true;
+}
+
+void ProcessStreamThreadsFailed(Str command, Str* error) {
+    ErrorOutSet(error, fmt("running `%s` failed: a stream thread could not be "
+                           "started",
+                           command));
+}
+
+uint32_t ProcessStreamPid(const ProcessStream* stream) {
+    ProcessStreamCore* core = ProcessStreamCoreOf((ProcessStream*)stream);
+    return core ? core->pid : 0;
+}
+
+void ProcessStreamPoll(ProcessStream* stream, Vec<ProcessStreamEvent>* out) {
+    if (ProcessStreamCore* core = ProcessStreamCoreOf(stream)) {
+        ProcessEventTake(&core->box, out);
+    }
+}
+
+bool ProcessStreamWrite(ProcessStream* stream, Str text, Str* error) {
+    ProcessStreamCore* core = ProcessStreamCoreOf(stream);
+    if (!core) return false;
+    return ProcessStdinEnqueue(&core->box, text, error);
+}
+
+void ProcessStreamEnd(ProcessStream* stream) {
+    if (ProcessStreamCore* core = ProcessStreamCoreOf(stream)) {
+        ProcessStdinEnd(&core->box);
+    }
+}
+
 void ProcessStdinPump(ProcessEventBox* box,
                       int (*writeSome)(void* ctx, const char* bytes, int count),
                       void* ctx) {

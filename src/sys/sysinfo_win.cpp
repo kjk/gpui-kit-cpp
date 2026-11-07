@@ -20,12 +20,7 @@ void SysStateInit(SysState* s) {
     SysStateReset(s, (int)si.dwNumberOfProcessors);
 }
 
-void SysStateFree(SysState* s) {
-    VecReset(s->prevProcs);
-    VecReset(s->procs);
-}
-
-static void RefreshCpu(SysState* s) {
+void SysRefreshCpu(SysState* s) {
     FILETIME idle, kernel, user;
     if (!GetSystemTimes(&idle, &kernel, &user)) {
         return;
@@ -34,7 +29,7 @@ static void RefreshCpu(SysState* s) {
     SysCpuSample(s, FtToU64(idle), FtToU64(kernel) + FtToU64(user));
 }
 
-static void RefreshMemory(SysState* s) {
+void SysRefreshMemory(SysState* s) {
     MEMORYSTATUSEX ms = {sizeof(ms)};
     if (GlobalMemoryStatusEx(&ms)) {
         s->memTotal = ms.ullTotalPhys;
@@ -43,7 +38,7 @@ static void RefreshMemory(SysState* s) {
     }
 }
 
-static void RefreshDisk(SysState* s) {
+void SysRefreshDisk(SysState* s) {
     WCHAR drives[512];
     DWORD n = GetLogicalDriveStringsW(511, drives);
     if (n == 0 || n > 511) {
@@ -63,7 +58,7 @@ static void RefreshDisk(SysState* s) {
     }
 }
 
-static void RefreshBattery(SysState* s) {
+void SysRefreshBattery(SysState* s) {
     SYSTEM_POWER_STATUS ps = {};
     s->battery = {};
     if (!GetSystemPowerStatus(&ps)) {
@@ -77,7 +72,7 @@ static void RefreshBattery(SysState* s) {
     s->battery.pct = (float)ps.BatteryLifePercent;
 }
 
-static void RefreshProcesses(SysState* s) {
+void SysRefreshProcesses(SysState* s) {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) {
         return;
@@ -127,14 +122,6 @@ static void RefreshProcesses(SysState* s) {
     CloseHandle(snap);
 
     SysProcScanEnd(s, &scan);
-}
-
-void SysRefresh(SysState* s) {
-    RefreshCpu(s);
-    RefreshMemory(s);
-    RefreshDisk(s);
-    RefreshBattery(s);
-    RefreshProcesses(s);
 }
 
 // crates/fps/src/memory/windows.rs. PrivateUsage is this process' private

@@ -23,12 +23,7 @@ void SysStateInit(SysState* s) {
     SysStateReset(s, PlatCoreCount());
 }
 
-void SysStateFree(SysState* s) {
-    VecReset(s->prevProcs);
-    VecReset(s->procs);
-}
-
-static void RefreshCpu(SysState* s) {
+void SysRefreshCpu(SysState* s) {
     host_cpu_load_info_data_t load = {};
     mach_msg_type_number_t count = HOST_CPU_LOAD_INFO_COUNT;
     if (host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO,
@@ -43,7 +38,7 @@ static void RefreshCpu(SysState* s) {
     SysCpuSample(s, idle, total);
 }
 
-static void RefreshMemory(SysState* s) {
+void SysRefreshMemory(SysState* s) {
     uint64_t total = 0;
     size_t len = sizeof(total);
     int mib[2] = {CTL_HW, HW_MEMSIZE};
@@ -65,7 +60,7 @@ static void RefreshMemory(SysState* s) {
     SysMemorySet(s, total, avail);
 }
 
-static void RefreshDisk(SysState* s) {
+void SysRefreshDisk(SysState* s) {
     struct statfs st = {};
     if (statfs("/", &st) != 0 || st.f_blocks == 0) {
         return;
@@ -74,7 +69,7 @@ static void RefreshDisk(SysState* s) {
     SysDiskSet(s, (uint64_t)st.f_blocks * unit, (uint64_t)st.f_bavail * unit);
 }
 
-static void RefreshBattery(SysState* s) {
+void SysRefreshBattery(SysState* s) {
     s->battery = {};
     CFTypeRef blob = IOPSCopyPowerSourcesInfo();
     if (!blob) {
@@ -137,7 +132,7 @@ static uint64_t MachTicksTo100ns(uint64_t ticks) {
     return (uint64_t)(ns / 100.0L);
 }
 
-static void RefreshProcesses(SysState* s) {
+void SysRefreshProcesses(SysState* s) {
     int cap = proc_listpids(PROC_ALL_PIDS, 0, nullptr, 0);
     if (cap <= 0) {
         return;
@@ -182,14 +177,6 @@ static void RefreshProcesses(SysState* s) {
     }
 
     SysProcScanEnd(s, &scan);
-}
-
-void SysRefresh(SysState* s) {
-    RefreshCpu(s);
-    RefreshMemory(s);
-    RefreshDisk(s);
-    RefreshBattery(s);
-    RefreshProcesses(s);
 }
 
 // crates/fps/src/memory/macos.rs. ri_phys_footprint through proc_pid_rusage:

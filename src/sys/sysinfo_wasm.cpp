@@ -73,19 +73,10 @@ void SysStateInit(SysState* s) {
     GpJsBatteryStart();
 }
 
-void SysStateFree(SysState* s) {
-    VecReset(s->prevProcs);
-    VecReset(s->procs);
-}
-
-void SysRefresh(SysState* s) {
-    if (!s) {
-        return;
-    }
-
-    // The heap the module has grown to, against what the engine says it may
-    // grow to. Without a limit to measure against, wasm32's 4 GiB ceiling is
-    // the only honest denominator.
+// The heap the module has grown to, against what the engine says it may
+// grow to. Without a limit to measure against, wasm32's 4 GiB ceiling is the
+// only honest denominator.
+void SysRefreshMemory(SysState* s) {
     uint64_t used = (uint64_t)emscripten_get_heap_size();
     double limit = GpJsJsHeapLimit();
     uint64_t total = limit > 0 ? (uint64_t)limit : 4ull * 1024 * 1024 * 1024;
@@ -95,21 +86,29 @@ void SysRefresh(SysState* s) {
     s->memTotal = total;
     s->memUsed = used;
     s->mem = total > 0 ? (float)((double)used / (double)total * 100.0) : 0.f;
+}
 
-    // No host CPU time to sample. A tab cannot see the machine's load and has
-    // no share of it to report; leaving this at zero says so.
+// No host CPU time to sample. A tab cannot see the machine's load and has no
+// share of it to report; leaving this at zero says so.
+void SysRefreshCpu(SysState* s) {
     s->cpu = 0;
+}
 
-    // No filesystem beyond the one the build preloaded into memory, and that
-    // is already counted as memory.
+// No filesystem beyond the one the build preloaded into memory, and that is
+// already counted as memory.
+void SysRefreshDisk(SysState* s) {
     ZeroStruct(&s->disk);
+}
 
+void SysRefreshBattery(SysState* s) {
     s->battery.present = GpJsBatteryPresent() != 0;
     s->battery.pct = s->battery.present ? (float)GpJsBatteryPct() : 0.f;
     s->battery.charging = GpJsBatteryCharging() != 0;
+}
 
-    // No process table: a page is not told what else is running, and there is
-    // nothing to approximate it with.
+// No process table: a page is not told what else is running, and there is
+// nothing to approximate it with.
+void SysRefreshProcesses(SysState* s) {
     VecReset(s->procs);
 }
 

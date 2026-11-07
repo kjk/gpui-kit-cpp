@@ -59,6 +59,14 @@ struct SysState {
     }
 };
 
+// SysStateFree and SysRefresh are sysinfo.cpp's, over the platform's
+// SysRefresh* seams below; iOS and Android leave all of these to the host
+// adapter.
+#if GPUI_OS_IOS || GPUI_OS_ANDROID
+#define GPUI_SYSINFO_HOSTED 1
+#else
+#define GPUI_SYSINFO_HOSTED 0
+#endif
 void SysStateInit(SysState* s);
 void SysStateFree(SysState* s);
 void SysRefresh(SysState* s);
@@ -78,6 +86,13 @@ void SysSortProcesses(SysState* s, ProcessSort field, bool descending,
 
 // Empty every reading and remember `ncpu` cores (at least one).
 void SysStateReset(SysState* s, int ncpu);
+
+// The five readings SysRefresh takes, in this order, each its platform's.
+void SysRefreshCpu(SysState* s);
+void SysRefreshMemory(SysState* s);
+void SysRefreshDisk(SysState* s);
+void SysRefreshBattery(SysState* s);
+void SysRefreshProcesses(SysState* s);
 
 // Machine-wide CPU use since the previous sample, from the idle and total
 // (busy plus idle) time counters in any one unit.

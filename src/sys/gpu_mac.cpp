@@ -43,8 +43,6 @@ struct GpuProbe {
 static GpuProbe gProbe;
 // FPS monitors can live in more than one window. Their samples run on the
 // executor, while the probe is process-wide.
-static base::Mutex gProbeLock;
-
 static bool NumberU64(CFNumberRef number, uint64_t* out) {
     if (!number || CFGetTypeID(number) != CFNumberGetTypeID()) {
         return false;
@@ -163,7 +161,7 @@ static bool HasAccelerators() {
 }
 
 // gProbeLock is held by every caller.
-static bool ProbeOpenLocked() {
+bool GpuProbeOpenLocked() {
     if (gProbe.tried) {
         return gProbe.available;
     }
@@ -183,15 +181,8 @@ static bool ProbeOpenLocked() {
     return true;
 }
 
-bool GpuAvailable() {
-    gProbeLock.Lock();
-    bool available = ProbeOpenLocked();
-    gProbeLock.Unlock();
-    return available;
-}
-
-static float GpuUsagePercentLocked() {
-    if (!ProbeOpenLocked()) {
+float GpuUsagePercentLocked() {
+    if (!GpuProbeOpenLocked()) {
         return -1.f;
     }
     // `None` while this process has yet to open an accelerator client, which
@@ -222,15 +213,7 @@ static float GpuUsagePercentLocked() {
     return (float)percent;
 }
 
-float GpuUsagePercent() {
-    gProbeLock.Lock();
-    float usage = GpuUsagePercentLocked();
-    gProbeLock.Unlock();
-    return usage;
-}
-
-void GpuProbeFree() {
-    gProbeLock.Lock();
+void GpuProbeFreeLocked() {
     if (gProbe.creator) {
         CFRelease(gProbe.creator);
     }
@@ -240,7 +223,6 @@ void GpuProbeFree() {
     gProbe.primed = false;
     gProbe.tried = false;
     gProbe.available = false;
-    gProbeLock.Unlock();
 }
 
 } // namespace gpui

@@ -11,10 +11,6 @@ namespace gpui::shell {
 // A child deadline is wall time. TimeNow() is the frame clock, and the
 // test platform replaces it, so a 100 ms timeout would never arrive
 // while a test holds that clock still.
-static double WallSeconds() {
-    return ClockMonotonicSecondsSinceStart();
-}
-
 static bool ExecutableFile(const WCHAR* path) {
     DWORD attributes = GetFileAttributesW(path);
     return attributes != INVALID_FILE_ATTRIBUTES &&
@@ -397,7 +393,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         StrBuilder stdoutText, stderrText;
         bool stdoutClosed = false, stderrClosed = false, done = false;
         DWORD exitCode = (DWORD)-1;
-        double started = WallSeconds();
+        double started = ClockMonotonicSecondsSinceStart();
         double timeoutSeconds = ProcessBoundedTimeoutSeconds(options);
         while (!done || !stdoutClosed || !stderrClosed) {
             if (!stdoutClosed)
@@ -407,7 +403,8 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
                 ok = DrainPipe(&errRead, &stderrText, &stderrClosed, error,
                                "stderr");
             bool cancelled = cancellation && cancellation->IsCancelled();
-            if (!ok || cancelled || WallSeconds() - started >= timeoutSeconds) {
+            if (!ok || cancelled ||
+                ClockMonotonicSecondsSinceStart() - started >= timeoutSeconds) {
                 if (ok)
                     ProcessBoundedStopError(command, cancelled, timeoutSeconds,
                                             error);
@@ -547,7 +544,7 @@ static DWORD WINAPI StreamStdinMain(LPVOID param) {
 
 static DWORD WINAPI StreamWaiterMain(LPVOID param) {
     ProcessStream* stream = (ProcessStream*)param;
-    double started = WallSeconds();
+    double started = ClockMonotonicSecondsSinceStart();
     bool waitFailed = false;
     for (;;) {
         DWORD waited = WaitForSingleObject(stream->process, 20);
@@ -561,7 +558,8 @@ static DWORD WINAPI StreamWaiterMain(LPVOID param) {
             break;
         }
         if (stream->timeoutSeconds > 0 &&
-            WallSeconds() - started >= stream->timeoutSeconds) {
+            ClockMonotonicSecondsSinceStart() - started >=
+                stream->timeoutSeconds) {
             ProcessStreamCoreTimedOut(stream);
             if (stream->job) TerminateJobObject(stream->job, 1);
             break;
@@ -767,9 +765,7 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
         threadsOk = stream->waiter != nullptr;
     }
     if (!threadsOk) {
-        ErrorOutSet(error, fmt("running `%s` failed: a stream thread could "
-                               "not be started",
-                               command));
+        ProcessStreamThreadsFailed(command, error);
         ok = false;
     }
 
@@ -781,29 +777,11 @@ done:
     if (process.hThread) CloseHandle(process.hThread);
     Free(nullptr, executable);
     Free(nullptr, directory);
-    if (!ok) {
-        ReleaseStream(stream);
-        return false;
-    }
-    if (out) *out = stream;
-    return true;
+    return ProcessStreamStarted(stream, ok, out);
 }
 
-uint32_t ProcessStreamPid(const ProcessStream* stream) {
-    return stream ? stream->pid : 0;
-}
-
-void ProcessStreamPoll(ProcessStream* stream, Vec<ProcessStreamEvent>* out) {
-    if (stream) ProcessEventTake(&stream->box, out);
-}
-
-bool ProcessStreamWrite(ProcessStream* stream, Str text, Str* error) {
-    if (!stream) return false;
-    return ProcessStdinEnqueue(&stream->box, text, error);
-}
-
-void ProcessStreamEnd(ProcessStream* stream) {
-    if (stream) ProcessStdinEnd(&stream->box);
+ProcessStreamCore* ProcessStreamCoreOf(ProcessStream* stream) {
+    return stream;
 }
 
 void ProcessStreamKill(ProcessStream* stream) {

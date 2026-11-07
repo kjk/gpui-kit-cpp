@@ -178,6 +178,15 @@ void ProcessStreamCoreInit(ProcessStreamCore* stream, Str command,
 void ProcessStreamCoreFree(ProcessStreamCore* stream);
 // Records the deadline as the reason the waiter is about to kill the child.
 void ProcessStreamCoreTimedOut(ProcessStreamCore* stream);
+// The shared half of a platform's stream: the derived-to-base conversion,
+// written where ProcessStream is complete, so ProcessStreamPid, Poll, Write
+// and End are written once in process.cpp. Null for null.
+ProcessStreamCore* ProcessStreamCoreOf(ProcessStream* stream);
+// The end of a platform's ProcessStreamStart: hand the stream out when it
+// started, or free it (ProcessStreamFree) and answer false.
+bool ProcessStreamStarted(ProcessStream* stream, bool ok, ProcessStream** out);
+// The error for a stream whose reader, writer or waiter thread did not start.
+void ProcessStreamThreadsFailed(Str command, Str* error);
 
 // The stdin writer thread's body: hands queued bytes to writeSome until the
 // script ends the stream, the stream stops, or a write fails. writeSome writes

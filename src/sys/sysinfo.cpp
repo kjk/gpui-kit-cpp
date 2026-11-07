@@ -55,6 +55,24 @@ void SysSortProcesses(SysState* s, ProcessSort field, bool descending,
     }
 }
 
+#if !GPUI_SYSINFO_HOSTED
+void SysStateFree(SysState* s) {
+    VecReset(s->prevProcs);
+    VecReset(s->procs);
+}
+
+void SysRefresh(SysState* s) {
+    if (!s) {
+        return;
+    }
+    SysRefreshCpu(s);
+    SysRefreshMemory(s);
+    SysRefreshDisk(s);
+    SysRefreshBattery(s);
+    SysRefreshProcesses(s);
+}
+#endif
+
 void SysStateReset(SysState* s, int ncpu) {
     VecReset(s->prevProcs);
     VecReset(s->procs);

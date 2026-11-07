@@ -25,10 +25,6 @@ namespace gpui::shell {
 // A child deadline is wall time. TimeNow() is the frame clock, and the
 // test platform replaces it, so a timeout would never arrive while a
 // test holds that clock still.
-static double WallSeconds() {
-    return ClockMonotonicSecondsSinceStart();
-}
-
 static bool HasSlash(Str command) {
     for (int i = 0; i < len(command); i++) {
         if (command.s[i] == '/') return true;
@@ -158,7 +154,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     StrBuilder stdoutText, stderrText;
     bool stdoutClosed = false, stderrClosed = false, done = false, ok = true;
     int status = 0;
-    double started = WallSeconds();
+    double started = ClockMonotonicSecondsSinceStart();
     double timeoutSeconds = ProcessBoundedTimeoutSeconds(options);
     while (!done || !stdoutClosed || !stderrClosed) {
         if (!stdoutClosed)
@@ -168,7 +164,8 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
             ok = DrainFd(errPipe[0], &stderrText, &stderrClosed, error,
                          "stderr");
         bool cancelled = cancellation && cancellation->IsCancelled();
-        if (!ok || cancelled || WallSeconds() - started >= timeoutSeconds) {
+        if (!ok || cancelled ||
+            ClockMonotonicSecondsSinceStart() - started >= timeoutSeconds) {
             if (ok)
                 ProcessBoundedStopError(command, cancelled, timeoutSeconds,
                                         error);
@@ -319,7 +316,7 @@ static void* PosixStdinMain(void* param) {
 
 static void* PosixWaiterMain(void* param) {
     ProcessStream* stream = (ProcessStream*)param;
-    double started = WallSeconds();
+    double started = ClockMonotonicSecondsSinceStart();
     int status = 0;
     bool waitFailed = false;
     for (;;) {
@@ -333,7 +330,8 @@ static void* PosixWaiterMain(void* param) {
             break;
         }
         if (stream->timeoutSeconds > 0 &&
-            WallSeconds() - started >= stream->timeoutSeconds) {
+            ClockMonotonicSecondsSinceStart() - started >=
+                stream->timeoutSeconds) {
             ProcessStreamCoreTimedOut(stream);
             if (stream->child > 0) kill(-stream->child, SIGKILL);
         }
@@ -486,32 +484,12 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
                                    stream) == 0;
         if (threadsOk) stream->haveWaiter = true;
     }
-    if (!threadsOk) {
-        ErrorOutSet(error, fmt("running `%s` failed: a stream thread could "
-                               "not be started",
-                               command));
-        ReleaseStream(stream);
-        return false;
-    }
-    if (out) *out = stream;
-    return true;
+    if (!threadsOk) ProcessStreamThreadsFailed(command, error);
+    return ProcessStreamStarted(stream, threadsOk, out);
 }
 
-uint32_t ProcessStreamPid(const ProcessStream* stream) {
-    return stream ? stream->pid : 0;
-}
-
-void ProcessStreamPoll(ProcessStream* stream, Vec<ProcessStreamEvent>* out) {
-    if (stream) ProcessEventTake(&stream->box, out);
-}
-
-bool ProcessStreamWrite(ProcessStream* stream, Str text, Str* error) {
-    if (!stream) return false;
-    return ProcessStdinEnqueue(&stream->box, text, error);
-}
-
-void ProcessStreamEnd(ProcessStream* stream) {
-    if (stream) ProcessStdinEnd(&stream->box);
+ProcessStreamCore* ProcessStreamCoreOf(ProcessStream* stream) {
+    return stream;
 }
 
 void ProcessStreamKill(ProcessStream* stream) {

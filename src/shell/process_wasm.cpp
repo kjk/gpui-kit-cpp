@@ -2,6 +2,10 @@
 
 namespace gpui::shell {
 
+// Never made: ProcessStreamStart refuses in a browser. The shared
+// accessors in process.cpp see only null.
+struct ProcessStream : ProcessStreamCore {};
+
 bool ProcessRunBounded(Str command, const Str*, int, ProcessCancellation*,
                        ProcessOutput*, Str* error, const ProcessOptions*) {
     if (error)
@@ -20,19 +24,9 @@ bool ProcessStreamStart(Str command, const Str*, int,
     return false;
 }
 
-uint32_t ProcessStreamPid(const ProcessStream*) {
-    return 0;
+ProcessStreamCore* ProcessStreamCoreOf(ProcessStream* stream) {
+    return stream;
 }
-
-void ProcessStreamPoll(ProcessStream*, Vec<ProcessStreamEvent>*) {}
-
-bool ProcessStreamWrite(ProcessStream*, Str, Str* error) {
-    if (error)
-        *error = StrDup(StrL("running a process is unavailable in a browser"));
-    return false;
-}
-
-void ProcessStreamEnd(ProcessStream*) {}
 
 void ProcessStreamKill(ProcessStream*) {}
 

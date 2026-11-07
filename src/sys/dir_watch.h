@@ -119,5 +119,19 @@ Plat* DirWatchPlatNewPosix(DirWatchId id, const char* dir, bool create,
     return w;
 }
 
+// The last step of DirWatchPlatOpen on hosted POSIX: hand `w` to `thread`,
+// which owns it from then on and frees it when it stops. When the thread
+// cannot be started, `w` is freed here and the open fails.
+template <typename Plat>
+Plat* DirWatchPlatStartThread(Plat* w, void (*thread)(Plat*),
+                              void (*release)(Plat*), DirWatchError* err) {
+    if (!PlatThreadRun(MkFunc0(thread, w))) {
+        *err = DirWatchError::Failed;
+        release(w);
+        return nullptr;
+    }
+    return w;
+}
+
 } // namespace gpui
 #endif // GPUI_SYS_DIR_WATCH_H_

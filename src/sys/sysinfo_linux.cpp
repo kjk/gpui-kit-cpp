@@ -34,12 +34,7 @@ void SysStateInit(SysState* s) {
     SysStateReset(s, (int)sysconf(_SC_NPROCESSORS_ONLN));
 }
 
-void SysStateFree(SysState* s) {
-    VecReset(s->prevProcs);
-    VecReset(s->procs);
-}
-
-static void RefreshCpu(SysState* s) {
+void SysRefreshCpu(SysState* s) {
     TempStr buf = ReadBoundedFileTemp(StrL("/proc/stat"), 511);
     if (!buf) {
         return;
@@ -78,7 +73,7 @@ static uint64_t MeminfoKb(Str text, Str key) {
     return value * 1024ull;
 }
 
-static void RefreshMemory(SysState* s) {
+void SysRefreshMemory(SysState* s) {
     TempStr buf = ReadBoundedFileTemp(StrL("/proc/meminfo"), 4095);
     if (!buf) {
         return;
@@ -97,7 +92,7 @@ static void RefreshMemory(SysState* s) {
     SysMemorySet(s, total, avail);
 }
 
-static void RefreshDisk(SysState* s) {
+void SysRefreshDisk(SysState* s) {
     struct statvfs st = {};
     if (statvfs("/", &st) != 0 || st.f_blocks == 0) {
         return;
@@ -106,7 +101,7 @@ static void RefreshDisk(SysState* s) {
     SysDiskSet(s, (uint64_t)st.f_blocks * unit, (uint64_t)st.f_bavail * unit);
 }
 
-static void RefreshBattery(SysState* s) {
+void SysRefreshBattery(SysState* s) {
     s->battery = {};
     DIR* d = opendir("/sys/class/power_supply");
     if (!d) {
@@ -192,7 +187,7 @@ static bool ReadProcStat(const char* text, ProcessInfo* pi, uint64_t* cpu) {
     return true;
 }
 
-static void RefreshProcesses(SysState* s) {
+void SysRefreshProcesses(SysState* s) {
     DIR* d = opendir("/proc");
     if (!d) {
         return;
@@ -226,14 +221,6 @@ static void RefreshProcesses(SysState* s) {
     closedir(d);
 
     SysProcScanEnd(s, &scan);
-}
-
-void SysRefresh(SysState* s) {
-    RefreshCpu(s);
-    RefreshMemory(s);
-    RefreshDisk(s);
-    RefreshBattery(s);
-    RefreshProcesses(s);
 }
 
 // crates/fps/src/memory/linux.rs. RssAnon out of /proc/self/status: the
