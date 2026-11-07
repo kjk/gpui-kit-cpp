@@ -891,13 +891,6 @@ static float TabSliceWidth(void* user, Str text) {
     return w;
 }
 
-static double TabFloorPos(double x) {
-    if (x <= 0) {
-        return 0;
-    }
-    return (double)(int64_t)x;
-}
-
 static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
                          Str line) {
     TabShown shown;
@@ -942,8 +935,7 @@ static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
             float tabW = TabSliceWidth(&measure, Str(line.s + i, 1));
             double expanded = shaped + shift;
             double end = shaped + (double)tabW;
-            double next =
-                (double)stop * (TabFloorPos(expanded / (double)stop) + 1.0);
+            double next = TabNextStop(expanded, stop);
             int nsp = (int)((next - expanded) / (double)space + 0.5);
             if (nsp < 1) {
                 nsp = 1;
@@ -1003,8 +995,7 @@ static int TabSourceAtX(PaintCtx* ctx, const InputState* s, Str text, float x) {
             float tabW = TabSliceWidth(&measure, Str(text.s + i, 1));
             double expanded = shaped + shift;
             double end = shaped + (double)tabW;
-            double next =
-                (double)stop * (TabFloorPos(expanded / (double)stop) + 1.0);
+            double next = TabNextStop(expanded, stop);
             if (x < (float)next) {
                 return i;
             }
@@ -6644,6 +6635,26 @@ struct HighlightChange {
     }
 };
 
+// The range an edit replaces: the one it names, else the marked text (a
+// commit replaces whatever the input method had provisionally put in, not
+// the selection: the marked text is what the candidate was standing in for),
+// else the selection. Token boundaries widen it unless the token store is
+// replaying or has validated the edit, and range_from_utf16 clamps both ends
+// into the document, so a stale or out-of-range edit lands at the end rather
+// than past it.
+static Selection ResolveEditRange(const InputState* s, const Selection* range) {
+    Selection r = range           ? *range
+                  : s->imeMarking ? s->imeMarked
+                                  : s->selectedRange;
+    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
+        InputNormalizeTokenRange(s, &r.start, &r.end);
+    }
+    int n = len(InputValue(s));
+    r.start = ClampI(r.start, 0, n);
+    r.end = ClampI(r.end, r.start, n);
+    return r;
+}
+
 bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
                              const Selection* range, Str newText) {
     HighlightChange highlightChange(s);
@@ -6679,25 +6690,8 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
 
     Arena* tmp = GetTempArena();
     Str text = NormalizeInput(tmp, s, newText);
-    // A commit with no range of its own replaces whatever the input method
-    // had provisionally put in, not the selection: the marked text is what
-    // the candidate was standing in for.
-    Selection r = range           ? *range
-                  : s->imeMarking ? s->imeMarked
-                                  : s->selectedRange;
-    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
-        InputNormalizeTokenRange(s, &r.start, &r.end);
-    }
+    Selection r = ResolveEditRange(s, range);
     Str before = InputValue(s);
-    // range_from_utf16 clamps both ends into the document: a stale or
-    // out-of-range edit lands at the end rather than past it.
-    r.start = ClampI(r.start, 0, len(before));
-    if (r.end > len(before)) {
-        r.end = len(before);
-    }
-    if (r.end < r.start) {
-        r.end = r.start;
-    }
     int pairedCaret = -1;
     int pairedOpenLen = 0;
     int pairedCloseLen = 0;
@@ -7116,22 +7110,8 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     }
     Arena* tmp = GetTempArena();
     Str text = NormalizeInput(tmp, s, newText);
-    Selection r = range           ? *range
-                  : s->imeMarking ? s->imeMarked
-                                  : s->selectedRange;
-    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
-        InputNormalizeTokenRange(s, &r.start, &r.end);
-    }
+    Selection r = ResolveEditRange(s, range);
     Str before = InputValue(s);
-    if (r.start < 0) {
-        r.start = 0;
-    }
-    if (r.end > len(before)) {
-        r.end = len(before);
-    }
-    if (r.end < r.start) {
-        r.end = r.start;
-    }
     Str oldAll = StrDup(tmp, before);
     // Marked text does not emit a change, so the batch waiting for the
     // next one is empty. The first candidate remembers the document it
@@ -11919,6 +11899,22 @@ static void CommitAllTransactions(UndoManager* m) {
     UndoCommitTransaction(m);
 }
 
+// The transaction what was just done belongs to: the open batch, else the
+// last one recorded. None while undo is ignoring changes, or before anything
+// was recorded.
+static UndoTransaction* UndoRecordingTarget(UndoManager* m) {
+    if (m->ignoring) {
+        return nullptr;
+    }
+    if (m->transactionDepth > 0) {
+        return &m->pending;
+    }
+    if (m->undos.len > 0) {
+        return &m->undos[m->undos.len - 1];
+    }
+    return nullptr;
+}
+
 static AutoClosedPairRange* PairsDup(const AutoClosedPairRange* src, int n) {
     if (!src || n <= 0) {
         return nullptr;
@@ -11937,15 +11933,7 @@ static void UndoRecordAutoClosedPairs(UndoManager* m,
                                       int nBefore,
                                       const AutoClosedPairRange* after,
                                       int nAfter) {
-    if (m->ignoring) {
-        return;
-    }
-    UndoTransaction* t = nullptr;
-    if (m->transactionDepth > 0) {
-        t = &m->pending;
-    } else if (m->undos.len > 0) {
-        t = &m->undos[m->undos.len - 1];
-    }
+    UndoTransaction* t = UndoRecordingTarget(m);
     if (!t) {
         return;
     }
@@ -11967,15 +11955,7 @@ static void UndoRecordAutoClosedPairs(UndoManager* m,
 void UndoRecordSelections(UndoManager* m, const CursorSelection* before,
                           int nBefore, const CursorSelection* after,
                           int nAfter) {
-    if (m->ignoring) {
-        return;
-    }
-    UndoTransaction* t = nullptr;
-    if (m->transactionDepth > 0) {
-        t = &m->pending;
-    } else if (m->undos.len > 0) {
-        t = &m->undos[m->undos.len - 1];
-    }
+    UndoTransaction* t = UndoRecordingTarget(m);
     if (!t) {
         return;
     }

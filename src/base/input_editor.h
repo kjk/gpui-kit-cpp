@@ -27,6 +27,9 @@ struct TabSize {
 // run of fractional stops does not land two tabs on one stop.
 float TabExpandedWidth(Str text, float stop,
                        float (*measure)(void* user, Str text), void* user);
+// The tab stop after `x`: the next multiple of `stop` strictly past it (the
+// first stop for anything at or before 0).
+double TabNextStop(double x, float stop);
 
 // `text`, in `a` if it has to change, with what a shaper breaks a line at
 // (VT, FF, CR, NEL, LS, PS) as spaces of the same byte length, so that one row

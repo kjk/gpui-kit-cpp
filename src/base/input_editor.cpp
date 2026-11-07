@@ -471,13 +471,6 @@ struct TabGlyph {
     float x = 0;
 };
 
-double TabFloor(double x) {
-    if (x <= 0) {
-        return 0;
-    }
-    return (double)(int64_t)x;
-}
-
 } // namespace
 
 Str TextNoLineBreaks(Arena* a, Str text) {
@@ -514,6 +507,12 @@ Str TextNoLineBreaks(Arena* a, Str text) {
     return out ? Str(out, len(text)) : text;
 }
 
+double TabNextStop(double x, float stop) {
+    double q = x / (double)stop;
+    double whole = q <= 0 ? 0 : (double)(int64_t)q;
+    return (double)stop * (whole + 1.0);
+}
+
 float TabExpandedWidth(Str text, float stop,
                        float (*measure)(void* user, Str text), void* user) {
     if (!measure || len(text) <= 0) {
@@ -537,7 +536,7 @@ float TabExpandedWidth(Str text, float stop,
             float tabW = measure(user, Str(text.s + i, 1));
             double start = shaped + shift;
             double end = shaped + (double)tabW;
-            double next = (double)stop * (TabFloor(start / (double)stop) + 1.0);
+            double next = TabNextStop(start, stop);
             shift = next - end;
             shaped = end;
             i++;
@@ -631,7 +630,7 @@ bool TabExpandGlyphXs(Str text, float stop, float advance, float tabAdvance,
         }
         float endX = gEnd < len(glyphs) ? glyphs[gEnd].x : shapedW;
         double start = (double)startX + shift;
-        double next = (double)stop * (TabFloor(start / (double)stop) + 1.0);
+        double next = TabNextStop(start, stop);
         shift = next - (double)endX;
         VecAppend(tabAt, i);
         VecAppend(tabShift, (float)shift);
