@@ -141,6 +141,10 @@ int WindowChromeHit(Window* win, float x, float y);
 
 // Milliseconds until the window next wants waking, or 0 if nothing does.
 int WindowTimerMs(Window* win);
+// The soonest of the window's armed timers and a pending scroll-drag notify,
+// as a TimeNow() instant, or -1 when neither is waiting. WindowTimerMs and
+// the test platform's simulated clock add the animation frame to it.
+double WindowTimersDue(const Window* win);
 
 // The OS window went away. Frees the paint target and clears `plat`.
 void WindowClosed(Window* win);

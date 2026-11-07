@@ -9,17 +9,28 @@
 
 namespace gpui {
 
+// The index of key's slot in app->globals, or -1.
+static int AppGlobalIndex(const App* app, const void* key) {
+    for (int i = 0; i < app->globals.len; i++) {
+        if (app->globals[i].key == key) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void AppGlobalFreeValue(AppGlobalSlot& slot) {
+    if (slot.value && slot.freeValue) {
+        slot.freeValue(slot.value);
+    }
+}
+
 void* AppGlobalGetRaw(const App* app, const void* key) {
     if (!app || !key) {
         return nullptr;
     }
-    for (int i = 0; i < app->globals.len; i++) {
-        const AppGlobalSlot& slot = app->globals[i];
-        if (slot.key == key) {
-            return slot.value;
-        }
-    }
-    return nullptr;
+    int i = AppGlobalIndex(app, key);
+    return i < 0 ? nullptr : app->globals[i].value;
 }
 
 void AppGlobalSetRaw(App* app, const void* key, void* value,
@@ -30,14 +41,10 @@ void AppGlobalSetRaw(App* app, const void* key, void* value,
         }
         return;
     }
-    for (int i = 0; i < app->globals.len; i++) {
+    int i = AppGlobalIndex(app, key);
+    if (i >= 0) {
         AppGlobalSlot& slot = app->globals[i];
-        if (slot.key != key) {
-            continue;
-        }
-        if (slot.value && slot.freeValue) {
-            slot.freeValue(slot.value);
-        }
+        AppGlobalFreeValue(slot);
         slot.value = value;
         slot.freeValue = freeValue;
         return;
@@ -49,24 +56,19 @@ bool AppGlobalRemoveRaw(App* app, const void* key) {
     if (!app || !key) {
         return false;
     }
-    for (int i = 0; i < app->globals.len; i++) {
-        AppGlobalSlot& slot = app->globals[i];
-        if (slot.key != key) {
-            continue;
-        }
-        if (slot.value && slot.freeValue) {
-            slot.freeValue(slot.value);
-        }
-        for (int j = i; j < app->globals.len - 1; j++) {
-            app->globals[j] = app->globals[j + 1];
-        }
-        app->globals.len--;
-        if (app->globals.els) {
-            app->globals[app->globals.len] = {};
-        }
-        return true;
+    int i = AppGlobalIndex(app, key);
+    if (i < 0) {
+        return false;
     }
-    return false;
+    AppGlobalFreeValue(app->globals[i]);
+    for (int j = i; j < app->globals.len - 1; j++) {
+        app->globals[j] = app->globals[j + 1];
+    }
+    app->globals.len--;
+    if (app->globals.els) {
+        app->globals[app->globals.len] = {};
+    }
+    return true;
 }
 
 void AppGlobalClear(App* app) {
@@ -74,10 +76,7 @@ void AppGlobalClear(App* app) {
         return;
     }
     for (int i = app->globals.len - 1; i >= 0; i--) {
-        AppGlobalSlot& slot = app->globals[i];
-        if (slot.value && slot.freeValue) {
-            slot.freeValue(slot.value);
-        }
+        AppGlobalFreeValue(app->globals[i]);
     }
     VecReset(app->globals);
 }

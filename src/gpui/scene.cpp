@@ -641,6 +641,19 @@ void RecFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
     p->color = PaintFade(ctx, c);
 }
 
+// The stroke half of an outline or a line: its width, the optional dash
+// (on, off) pair, and the faded colour.
+static void StrokeSet(PaintCtx* ctx, Prim* p, float stroke, Rgba c,
+                      const float* dash) {
+    p->e1 = stroke;
+    if (dash) {
+        p->flags |= kFDash;
+        p->e2 = dash[0];
+        p->e3 = dash[1];
+    }
+    p->color = PaintFade(ctx, c);
+}
+
 void RecStrokeRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
                     float stroke, Rgba c, const float* dash) {
     float s = stroke > 0 ? stroke : 0;
@@ -651,13 +664,7 @@ void RecStrokeRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
     p->g2 = w;
     p->g3 = h;
     p->e0 = r;
-    p->e1 = stroke;
-    if (dash) {
-        p->flags |= kFDash;
-        p->e2 = dash[0];
-        p->e3 = dash[1];
-    }
-    p->color = PaintFade(ctx, c);
+    StrokeSet(ctx, p, stroke, c, dash);
 }
 
 void RecLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
@@ -671,13 +678,7 @@ void RecLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
     p->g1 = y1;
     p->g2 = x2;
     p->g3 = y2;
-    p->e1 = stroke;
-    if (dash) {
-        p->flags |= kFDash;
-        p->e2 = dash[0];
-        p->e3 = dash[1];
-    }
-    p->color = PaintFade(ctx, c);
+    StrokeSet(ctx, p, stroke, c, dash);
 }
 
 void RecEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
@@ -873,18 +874,24 @@ void RecPathFill(PaintCtx* ctx, Path* p, Rgba c) {
     }
 }
 
-void RecPathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
-                         float y1, Rgba from, Rgba to) {
-    Prim* prim = EmitPath(ctx, p, kPPathGradient, 1);
-    if (!prim) {
-        return;
-    }
+// A linear gradient from (x0, y0) in `from` to (x1, y1) in `to`.
+static void GradientSet(PaintCtx* ctx, Prim* prim, float x0, float y0, float x1,
+                        float y1, Rgba from, Rgba to) {
     prim->e0 = x0;
     prim->e1 = y0;
     prim->e2 = x1;
     prim->e3 = y1;
     prim->color = PaintFade(ctx, from);
     prim->color2 = PaintFade(ctx, to);
+}
+
+void RecPathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
+                         float y1, Rgba from, Rgba to) {
+    Prim* prim = EmitPath(ctx, p, kPPathGradient, 1);
+    if (!prim) {
+        return;
+    }
+    GradientSet(ctx, prim, x0, y0, x1, y1, from, to);
 }
 
 void RecPathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
@@ -909,12 +916,7 @@ void RecPathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
         return;
     }
     prim->g0 = stroke;
-    prim->e0 = x0;
-    prim->e1 = y0;
-    prim->e2 = x1;
-    prim->e3 = y1;
-    prim->color = PaintFade(ctx, from);
-    prim->color2 = PaintFade(ctx, to);
+    GradientSet(ctx, prim, x0, y0, x1, y1, from, to);
     if (roundCaps) {
         prim->flags |= kFRoundCaps;
     }

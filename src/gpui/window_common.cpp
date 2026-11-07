@@ -812,16 +812,33 @@ static bool FocusIdTakesPress(Window* win, int id) {
 
 // rebuilt every frame, so an id is the only handle that survives one.
 
-static const HitRect* HitRectById(Window* win, int id) {
+// The index of the topmost hit rect containing (x, y), or -1: the leaf of
+// the chain the pointer is on.
+static int HitLeafAt(const PaintCtx& paint, float x, float y) {
+    for (int i = paint.hits.len - 1; i >= 0; i--) {
+        if (paint.hits[i].bounds.Contains({x, y})) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// The last hit rect painted with this id, or -1.
+static int HitIndexById(Window* win, int id) {
     if (!win || !id) {
-        return nullptr;
+        return -1;
     }
     for (int i = win->paint.hits.len - 1; i >= 0; i--) {
         if (win->paint.hits[i].id == id) {
-            return &win->paint.hits[i];
+            return i;
         }
     }
-    return nullptr;
+    return -1;
+}
+
+static const HitRect* HitRectById(Window* win, int id) {
+    int i = HitIndexById(win, id);
+    return i < 0 ? nullptr : &win->paint.hits[i];
 }
 
 static const HitRect* HitRectByFocusId(Window* win, int focusId) {
@@ -842,18 +859,7 @@ static const HitRect* HitRectByFocusId(Window* win, int focusId) {
 // hit. The enclosing hit rects are that set: each of them contains the
 // pointer, and two absolutely placed siblings are not inside one another, so
 // the chain is what bounds containment would have found anyway.
-static int HitIndexById(Window* win, int id) {
-    if (!win || !id) {
-        return -1;
-    }
-    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
-        if (win->paint.hits[i].id == id) {
-            return i;
-        }
-    }
-    return -1;
-}
-
+//
 // The element and everything it is inside of, innermost first.
 static const int kHoverChainMax = 32;
 static int HoverChain(Window* win, int ix, int* out) {
@@ -882,13 +888,7 @@ static bool ElementLongPress(Window* win, const LongPressEvent& ev) {
     }
     win->defaultPrevented = false;
     Point at = {ev.startPosition.x, ev.startPosition.y};
-    int ix = -1;
-    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
-        if (win->paint.hits[i].bounds.Contains(at)) {
-            ix = i;
-            break;
-        }
-    }
+    int ix = HitLeafAt(win->paint, at.x, at.y);
     while (ix >= 0 && ix < win->paint.hits.len) {
         HitRect hr = win->paint.hits[ix];
         int parent = hr.parent;
@@ -1689,6 +1689,16 @@ static float ClampScroll(float off, float content, float viewport) {
     return off < 0 ? 0 : off;
 }
 
+// Where a delta of (dx, dy) leaves s, each axis clamped to its content and
+// held where it is when that axis does not scroll.
+static void ScrollOffsetBy(const ScrollRect& s, bool canX, bool canY, float dx,
+                           float dy, float* offX, float* offY) {
+    *offY = canY ? ClampScroll(s.scrollY - dy, s.contentH, ScrollViewportH(s))
+                 : s.scrollY;
+    *offX = canX ? ClampScroll(s.scrollX - dx, s.contentW, ScrollViewportW(s))
+                 : s.scrollX;
+}
+
 // The scrolled box whose scrollbar band the pointer is in, or null, and which
 // of its two bars. Innermost first, the way the hit test reads its rects.
 static ScrollRect* ScrollbarAt(PaintCtx* ctx, float x, float y,
@@ -1725,14 +1735,7 @@ static bool ScrollbarCovered(const PaintCtx& paint, const ScrollRect& s,
     if (s.barHit < 0) {
         return false;
     }
-    int leaf = -1;
-    for (int i = paint.hits.len - 1; i >= 0; i--) {
-        if (paint.hits[i].bounds.Contains({x, y})) {
-            leaf = i;
-            break;
-        }
-    }
-    for (int i = leaf; i >= 0; i = paint.hits[i].parent) {
+    for (int i = HitLeafAt(paint, x, y); i >= 0; i = paint.hits[i].parent) {
         if (i >= s.barHit && paint.hits[i].stopMouseDown) {
             return true;
         }
@@ -1852,6 +1855,36 @@ static bool PageScrollBy(Window* win, int dir) {
     return true;
 }
 
+// One scroll rect's track along one axis: where it starts, how long it is,
+// the viewport and content it scrolls, the end margin a horizontal bar leaves
+// for a vertical one, and the current offset. Press and drag both lay the
+// thumb out from it.
+struct ScrollbarTrackAxis {
+    float origin = 0;
+    float track = 0;
+    float viewport = 0;
+    float content = 0;
+    float marginEnd = 0;
+    float current = 0;
+
+    ScrollbarThumbGeometry Geometry(float inset, float minLength) const {
+        return ScrollbarGeometry(origin, track, viewport, content, marginEnd,
+                                 inset, minLength);
+    }
+};
+
+static ScrollbarTrackAxis ScrollbarTrackAxisOf(const ScrollRect* s,
+                                               bool horizontal) {
+    ScrollbarTrackAxis a;
+    a.track = horizontal ? s->bounds.w : s->bounds.h;
+    a.viewport = horizontal ? ScrollViewportW(*s) : ScrollViewportH(*s);
+    a.content = horizontal ? s->contentW : s->contentH;
+    a.origin = horizontal ? s->bounds.x : s->bounds.y;
+    a.marginEnd = horizontal && s->barY && ScrollsY(*s) ? s->trackWidth : 0;
+    a.current = horizontal ? s->scrollX : s->scrollY;
+    return a;
+}
+
 enum class ScrollbarPressKind : uint8_t {
     Mouse,
     ShiftMouse,
@@ -1861,16 +1894,11 @@ enum class ScrollbarPressKind : uint8_t {
 // Unlike Rust's always-jump track press, Windows pages unless Shift is held.
 static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
                            bool horizontal, ScrollbarPressKind kind) {
-    float track = horizontal ? s->bounds.w : s->bounds.h;
-    float viewport = horizontal ? ScrollViewportW(*s) : ScrollViewportH(*s);
-    float content = horizontal ? s->contentW : s->contentH;
-    float origin = horizontal ? s->bounds.x : s->bounds.y;
+    ScrollbarTrackAxis axis = ScrollbarTrackAxisOf(s, horizontal);
     float at = horizontal ? x : y;
-    float marginEnd = horizontal && s->barY && ScrollsY(*s) ? s->trackWidth : 0;
-    float current = horizontal ? s->scrollX : s->scrollY;
+    float current = axis.current;
     ScrollbarThumbGeometry geometry =
-        ScrollbarGeometry(origin, track, viewport, content, marginEnd,
-                          s->thumbInset, s->thumbMinLength);
+        axis.Geometry(s->thumbInset, s->thumbMinLength);
     float thumbStart = geometry.Start(current);
     float thumbLength = geometry.length;
     bool crossInside = horizontal ? y <= s->bounds.Bottom() - s->thumbInset
@@ -1881,8 +1909,7 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         // The painted hover thumb is wider than the resting one. A press on
         // the extra pixels is still a grab, not a jump down the track.
         ScrollbarThumbGeometry hover =
-            ScrollbarGeometry(origin, track, viewport, content, marginEnd,
-                              s->thumbHoverInset, s->thumbHoverMinLength);
+            axis.Geometry(s->thumbHoverInset, s->thumbHoverMinLength);
         float hoverStart = hover.Start(current);
         float hoverLength = hover.length;
         bool hoverCross = horizontal
@@ -1898,9 +1925,7 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         // The pointer has already selected thumb_hover in prepaint. Resolve
         // that state's potentially different inset and minimum before
         // retaining the grab point.
-        geometry =
-            ScrollbarGeometry(origin, track, viewport, content, marginEnd,
-                              s->thumbHoverInset, s->thumbHoverMinLength);
+        geometry = axis.Geometry(s->thumbHoverInset, s->thumbHoverMinLength);
         thumbStart = geometry.Start(current);
         thumbLength = geometry.length;
         crossInside = horizontal ? y <= s->bounds.Bottom() - s->thumbHoverInset
@@ -1920,8 +1945,7 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         // that geometry now so the painted grab point remains under the
         // pointer on the first active frame.
         ScrollbarThumbGeometry active =
-            ScrollbarGeometry(origin, track, viewport, content, marginEnd,
-                              s->thumbActiveInset, s->thumbActiveMinLength);
+            axis.Geometry(s->thumbActiveInset, s->thumbActiveMinLength);
         float off = active.DragOffset(at, win->scrollDragGrab, current);
         ScrollbarQueueDrag(win, s, horizontal ? off : s->scrollX,
                            horizontal ? s->scrollY : off, true);
@@ -1992,16 +2016,11 @@ static bool ScrollbarDrag(Window* win, float x, float y,
         return false;
     }
     bool horizontal = win->scrollDragHorizontal;
-    float track = horizontal ? s->bounds.w : s->bounds.h;
-    float viewport = horizontal ? ScrollViewportW(*s) : ScrollViewportH(*s);
-    float content = horizontal ? s->contentW : s->contentH;
-    float origin = horizontal ? s->bounds.x : s->bounds.y;
+    ScrollbarTrackAxis axis = ScrollbarTrackAxisOf(s, horizontal);
     float at = horizontal ? x : y;
-    float marginEnd = horizontal && s->barY && ScrollsY(*s) ? s->trackWidth : 0;
-    float current = horizontal ? s->scrollX : s->scrollY;
+    float current = axis.current;
     ScrollbarThumbGeometry geometry =
-        ScrollbarGeometry(origin, track, viewport, content, marginEnd,
-                          s->thumbActiveInset, s->thumbActiveMinLength);
+        axis.Geometry(s->thumbActiveInset, s->thumbActiveMinLength);
     float off = geometry.DragOffset(at, win->scrollDragGrab, current);
     if (off == current && !immediate) return false;
     ScrollbarQueueDrag(win, s, horizontal ? off : s->scrollX,
@@ -2457,13 +2476,7 @@ static bool SliderTouchDrag(Window* win, const TouchDragEvent& touch,
 
 static void HitChain(Window* win, float x, float y, Vec<int>* out) {
     VecClear(*out);
-    int leaf = -1;
-    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
-        if (win->paint.hits[i].bounds.Contains({x, y})) {
-            leaf = i;
-            break;
-        }
-    }
+    int leaf = HitLeafAt(win->paint, x, y);
     for (int i = leaf; i >= 0; i = win->paint.hits[i].parent) {
         VecAppend(*out, i);
     }
@@ -2513,6 +2526,22 @@ static void DispatchMouseDownOut(Window* win, const MouseDownEvent& in) {
             ListenerCall(win->app, win, hr.onMouseDownOut, &in);
         }
     }
+}
+
+// on_mouse_down over the hit chain at (x, y), capture then bubble, with an
+// element that stops a focusing press ending the walk there.
+static void DispatchMouseDownChain(Window* win, float x, float y,
+                                   const MouseDownEvent& in) {
+    Vec<int> chain;
+    HitChain(win, x, y, &chain);
+    MouseDownEvent ev = in;
+    DispatchChain(
+        win, chain, &ev,
+        [](const HitRect& hr, DispatchPhase phase) {
+            return hr.mouseDownPhase == phase ? hr.onMouseDown : Listener{};
+        },
+        true);
+    VecReset(chain);
 }
 
 static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
@@ -2577,16 +2606,7 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
         if (in.button == MouseButton::Right) {
             InputRightPress(win, in);
         }
-        Vec<int> chain;
-        HitChain(win, x, y, &chain);
-        MouseDownEvent ev = in;
-        DispatchChain(
-            win, chain, &ev,
-            [](const HitRect& hr, DispatchPhase phase) {
-                return hr.mouseDownPhase == phase ? hr.onMouseDown : Listener{};
-            },
-            true);
-        VecReset(chain);
+        DispatchMouseDownChain(win, x, y, in);
         DispatchMouseDownOut(win, in);
         ClearPendingClick(win);
         AppInvalidate(win);
@@ -2682,16 +2702,7 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
         // on_mouse_down over the whole chain, not just the element the press
         // landed on: a tile's frame hears the press its drag bar took, which
         // is what brings it to the front.
-        Vec<int> chain;
-        HitChain(win, x, y, &chain);
-        MouseDownEvent ev = in;
-        DispatchChain(
-            win, chain, &ev,
-            [](const HitRect& hr, DispatchPhase phase) {
-                return hr.mouseDownPhase == phase ? hr.onMouseDown : Listener{};
-            },
-            true);
-        VecReset(chain);
+        DispatchMouseDownChain(win, x, y, in);
     }
     DispatchMouseDownOut(win, in);
     // A semantic control can suppress selection without consuming the mouse
@@ -2948,13 +2959,7 @@ static bool ScrollMaskIsTopmost(Window* win, const ScrollRect& s, float x,
     if (s.maskHit < 0) {
         return true;
     }
-    int leaf = -1;
-    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
-        if (win->paint.hits[i].bounds.Contains({x, y})) {
-            leaf = i;
-            break;
-        }
-    }
+    int leaf = HitLeafAt(win->paint, x, y);
     return leaf >= 0 && HitDescendsFrom(win->paint, leaf, s.maskHit);
 }
 
@@ -3182,12 +3187,8 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
             dx = dy;
             dy = 0;
         }
-        float offY =
-            canY ? ClampScroll(s.scrollY - dy, s.contentH, ScrollViewportH(s))
-                 : s.scrollY;
-        float offX =
-            canX ? ClampScroll(s.scrollX - dx, s.contentW, ScrollViewportW(s))
-                 : s.scrollX;
+        float offX = 0, offY = 0;
+        ScrollOffsetBy(s, canX, canY, dx, dy, &offX, &offY);
         if (offX == s.scrollX && offY == s.scrollY) {
             AppInvalidate(win);
             return;
@@ -3732,17 +3733,13 @@ bool WindowScrollApply(Window* win, float x, float y, float dx, float dy) {
         if (!s.onScroll.IsValid() || !s.bounds.Contains({x, y})) {
             continue;
         }
-        bool canY = s.contentH > ScrollViewportH(s) + 1.f;
-        bool canX = s.contentW > ScrollViewportW(s) + 1.f;
+        bool canY = ScrollsY(s);
+        bool canX = ScrollsX(s);
         if (!canY && !canX) {
             continue;
         }
-        float offY =
-            canY ? ClampScroll(s.scrollY - dy, s.contentH, ScrollViewportH(s))
-                 : s.scrollY;
-        float offX =
-            canX ? ClampScroll(s.scrollX - dx, s.contentW, ScrollViewportW(s))
-                 : s.scrollX;
+        float offX = 0, offY = 0;
+        ScrollOffsetBy(s, canX, canY, dx, dy, &offX, &offY);
         if (offX == s.scrollX && offY == s.scrollY) {
             return false;
         }
@@ -4243,6 +4240,21 @@ int WindowChromeHit(Window* win, float x, float y) {
     return 0;
 }
 
+double WindowTimersDue(const Window* win) {
+    double soonest = -1;
+    for (int i = 0; i < win->timers.len; i++) {
+        double due = win->timers[i].dueAt;
+        if (due > 0 && (soonest < 0 || due < soonest)) {
+            soonest = due;
+        }
+    }
+    if (win->scrollDragNotifyPending && win->scrollDragNotifyDue > 0 &&
+        (soonest < 0 || win->scrollDragNotifyDue < soonest)) {
+        soonest = win->scrollDragNotifyDue;
+    }
+    return soonest;
+}
+
 int WindowTimerMs(Window* win) {
     if (!win) {
         return 0;
@@ -4276,15 +4288,9 @@ int WindowTimerMs(Window* win) {
     // posts AppFetchLanded when the worker finishes and that invalidates the
     // window, so an idle window with a picture on the way sleeps like any
     // other.
-    for (int i = 0; i < win->timers.len; i++) {
-        double due = win->timers[i].dueAt;
-        if (due > 0 && (soonest < 0 || due < soonest)) {
-            soonest = due;
-        }
-    }
-    if (win->scrollDragNotifyPending && win->scrollDragNotifyDue > 0 &&
-        (soonest < 0 || win->scrollDragNotifyDue < soonest)) {
-        soonest = win->scrollDragNotifyDue;
+    double timersDue = WindowTimersDue(win);
+    if (timersDue > 0 && (soonest < 0 || timersDue < soonest)) {
+        soonest = timersDue;
     }
     if (win->touchHost == TouchHostKind::Pending) {
         double due = win->touchHostStartAt + kTouchLongPressS;

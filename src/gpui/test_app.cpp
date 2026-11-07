@@ -154,17 +154,7 @@ void TestSimulateResize(Window* win, float w, float h) {
 // The same deadlines WindowTimerMs reads, without its rounding to whole
 // milliseconds: the simulated clock steps onto a deadline exactly.
 static double NextDeadline(Window* win) {
-    double soonest = -1;
-    for (int i = 0; i < win->timers.len; i++) {
-        double due = win->timers[i].dueAt;
-        if (due > 0 && (soonest < 0 || due < soonest)) {
-            soonest = due;
-        }
-    }
-    if (win->scrollDragNotifyPending && win->scrollDragNotifyDue > 0 &&
-        (soonest < 0 || win->scrollDragNotifyDue < soonest)) {
-        soonest = win->scrollDragNotifyDue;
-    }
+    double soonest = WindowTimersDue(win);
     if (win->anim || win->opts.anim || win->animFrame) {
         // WindowTimerTick's own pacing: one frame every 16 ms.
         double due = win->lastDrawTime + 0.016;
