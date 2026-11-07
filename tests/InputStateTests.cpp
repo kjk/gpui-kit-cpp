@@ -2455,6 +2455,44 @@ static void ReopeningSearchPanelPreservesThePreviousMatch() {
     EntityDropAll(&app);
 }
 
+// overlay.rs: typing_a_search_query_keeps_the_first_character. Each letter is
+// its own edit, then the panel builds again. One update that types the whole
+// word hides the bug, because the anchor is set and cleared before the next
+// build. The document is the one the Rust test opens search on.
+static void TypingASearchQueryKeepsTheFirstCharacter() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    InputState editor;
+    editor.kind = InputKind::Editor;
+    editor.searchable = true;
+    InputSetValue(&editor, StrL("{\"host\": \"a.test\"}"));
+    InputOpenSearch(&editor, &app, win, false);
+    component::SearchPanel::New(&cx, StrL("find"), &editor)->IntoEl();
+    InputState* query = win->input;
+    utassert(query && query != &editor);
+
+    const char letters[] = {'h', 'o', 's', 't'};
+    char expected[5] = {};
+    for (int i = 0; i < 4; i++) {
+        expected[i] = letters[i];
+        InputTypeChar(query, &app, win, (uint32_t)letters[i]);
+        component::SearchPanel::New(&cx, StrL("find"), &editor)->IntoEl();
+        utassert(StrEq(InputValue(query), Str(expected, i + 1)));
+    }
+    utassert(StrEq(editor.search.query, StrL("host")));
+
+    InputBlur(query, &app, win);
+    win->input = nullptr;
+    win->prevInput = nullptr;
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
 // test_search_shortcut_reaches_the_host_when_not_searchable /
 // test_search_shortcut_opens_the_panel_when_searchable
 static void SearchShortcutPropagatesWhenTheEditorIsNotSearchable() {
@@ -13325,6 +13363,7 @@ void TestInputState() {
     TwoFindBarsHaveTwoPrevButtons();
     ReopeningFindSelectsItsQueryWithoutChangingUntouchedFrames();
     ReopeningSearchPanelPreservesThePreviousMatch();
+    TypingASearchQueryKeepsTheFirstCharacter();
     SearchShortcutPropagatesWhenTheEditorIsNotSearchable();
     TheUiInputFacadeKeepsTheSourceShapes();
     BaseInputCoreKeepsTheSourceModeAndPresentationSeams();

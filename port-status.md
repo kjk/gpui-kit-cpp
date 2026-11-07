@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `eb529e76c7d211ec5fbe088af4cf819b4b01f4b6` (2026-11-03,
-text: Give span-less HTML paragraphs unique element ids (#3771)).
-Upstream stopped span-less paragraphs from sharing the element id
-"p". Layout here is by tree position, so those paragraphs were already
-separate.
+Processed through `7a27193a7f5a7047f6ad12474225f7017d9d150e` (2026-11-03,
+input: Keep the first typed character in the editor search panel (#3772)).
+The search panel decides a new session from the activation revision.
+A query edit still records the viewport on the anchor, and that write
+does not select the field again.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

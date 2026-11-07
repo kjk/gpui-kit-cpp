@@ -1970,6 +1970,10 @@ El* SearchPanel::IntoEl() {
     }
     // Opening it puts the query in the field and picks it out, which is what
     // makes typing over it the next search rather than an edit of the last.
+    // anchorOffset stays out of this. A changed query records the viewport
+    // there in the same write the panel just made, and treating that as a
+    // new session selects the field, so the next character replaces the one
+    // just typed. Find again still bumps searchActivationRevision.
     if (!st->wasOpen ||
         st->activationRevision != target->searchActivationRevision) {
         st->wasOpen = true;
