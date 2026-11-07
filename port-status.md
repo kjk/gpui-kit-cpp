@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `87e722ed4a835db9e7e8a4a4deeeeb838157f873` (2026-11-04,
-input: Compose decoration styles deterministically (#3777)).
-Highlight layers compose in input order, so a later colour wins on the
-bytes it covers, and that winner stays put however many syntax runs sit
-in front of a decoration.
+Processed through `328aec50f04c351950887e2c22369837cb8e4529` (2026-11-04,
+scrollable_mask: Let the parent scroll a swipe over a horizontal area that fits (#3779)).
+A horizontal mask whose content fits gives a swipe with any vertical
+part to the parent scroller. A strip that overflows, and a purely
+horizontal delta, still keep the gesture.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

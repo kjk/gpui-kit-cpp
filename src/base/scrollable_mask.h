@@ -15,7 +15,8 @@
    the sibling collapses onto the viewport itself: `Apply` marks the axis
    whose gestures the viewport traps, and `window_common.cpp` runs the same
    per-gesture axis lock and edge rule the Rust element does — a vertical mask
-   hands the event to the ancestor at its edge, a horizontal one keeps it. */
+   hands the event to the ancestor at its edge, and a horizontal one keeps it
+   unless the content fits and the swipe moves vertically at all. */
 
 #include "gpui/gpui.h"
 

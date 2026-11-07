@@ -3031,6 +3031,14 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
             continue;
         }
         if (s.maskAxes & 3) {
+            // A horizontal mask whose content fits gives a swipe with any
+            // vertical part back to the parent. The offset is not clamped
+            // before the comparison upstream, so consuming the swipe would
+            // swallow the document scroll over a table that cannot move.
+            if ((s.maskAxes & 1) != 0 && (s.maskAxes & 2) == 0 &&
+                in.deltaY != 0 && s.contentW <= ScrollViewportW(s)) {
+                continue;
+            }
             // A dialog/menu above the mask blocks the whole gesture; letting
             // the search continue would scroll the ancestor underneath the
             // same overlay instead.

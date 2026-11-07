@@ -1018,6 +1018,41 @@ static void horizontal_scroll_area_claims_only_steps_that_move() {
     ClearHorizontalScrollClaim();
 }
 
+// scrollable_mask.rs
+// horizontal_scroll_area_that_fits_bubbles_horizontal_dominant_wheel.
+// A 50px strip in a 100px row. A diagonal swipe belongs to the parent.
+static void
+horizontal_scroll_area_that_fits_bubbles_horizontal_dominant_wheel() {
+    App app = {};
+    Window* win = new Window();
+    win->app = &app;
+    Entity<ScrollRecorder> entity = EntityNewState<ScrollRecorder>(&app);
+    ScrollRecorder* state = entity.Get(&app);
+    ScrollRect parent =
+        TestScrollRect(1, {0, 0, 100, 100}, 100, 500, 0, -1,
+                       ListenTo(entity, &ScrollRecorder::Outer));
+    ScrollRect strip = TestScrollRect(2, {0, 0, 100, 40}, 50, 40, 1, -1,
+                                      ListenTo(entity, &ScrollRecorder::Inner));
+    VecAppend(win->paint.scrolls, parent);
+    VecAppend(win->paint.scrolls, strip);
+
+    DispatchWheel(win, -40, -10, true);
+    utassert(state->innerCalls == 0);
+    utassertnear(state->outerY, 10);
+
+    // A purely horizontal delta is still consumed, and there is nowhere
+    // for it to move.
+    state->outerY = 0;
+    state->outerCalls = 0;
+    DispatchWheel(win, -40, 0, true);
+    utassert(state->outerCalls == 0);
+    utassertnear(state->innerX, 0);
+
+    VecReset(win->paint.scrolls);
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestScrollbar() {
     TestSuite("scrollbar");
     AScrollableFlexItemShrinksBelowItsContent();
@@ -1037,6 +1072,7 @@ void TestScrollbar() {
     vertical_wheel_scrolls_the_strip_and_then_the_parent();
     vertical_wheel_leaves_trackpads_and_horizontal_wheels_to_the_scroller();
     horizontal_scroll_area_claims_only_steps_that_move();
+    horizontal_scroll_area_that_fits_bubbles_horizontal_dominant_wheel();
     ATrackPressPagesAndShiftPressJumps();
     AThumbPressOnAnInputScrollerDragsEvenWithoutAScrollId();
     ATouchThumbDragMovesDownAndCancelReleasesIt();
