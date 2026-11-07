@@ -34,37 +34,6 @@ El* Caret::IntoEl(const Ctx* cx, Arena* a) const {
     return out;
 }
 
-static int SelectFlatIndex(const SearchableListState* s, IndexPath path) {
-    if (!s || !s->items || path.row < 0 || path.section < 0) {
-        return -1;
-    }
-    int row = 0;
-    for (int i = 0; i < s->nItems; i++) {
-        if (s->items[i].section != path.section) {
-            continue;
-        }
-        if (row == path.row) {
-            return i;
-        }
-        row++;
-    }
-    return -1;
-}
-
-static IndexPath SelectPath(const SearchableListState* s, int flat) {
-    if (!s || !s->items || flat < 0 || flat >= s->nItems) {
-        return IndexPathNew(-1);
-    }
-    int section = s->items[flat].section;
-    int row = 0;
-    for (int i = 0; i < flat; i++) {
-        if (s->items[i].section == section) {
-            row++;
-        }
-    }
-    return IndexPathNew(row).Section(section);
-}
-
 Entity<SearchableListState> SelectListEntity(Entity<SelectState> state) {
     Entity<SearchableListState> out;
     out.id = state.id;
@@ -142,7 +111,8 @@ void SelectState::SetItems(const SearchableItem* items, int nItems) {
 }
 
 void SelectState::SetSelectedIndex(const IndexPath* selected, Ctx* cx) {
-    SetSelectedIndex(selected ? SelectFlatIndex(&state, *selected) : -1, cx);
+    SetSelectedIndex(selected ? SearchableListFlatIndex(&state, *selected) : -1,
+                     cx);
 }
 
 void SelectState::SetSelectedIndex(int flatIndex, Ctx* cx) {
@@ -186,7 +156,8 @@ bool SelectState::SelectedIndex(IndexPath* out) const {
     if (state.list.selected < 0 || state.list.selected >= state.matches.len) {
         return false;
     }
-    IndexPath path = SelectPath(&state, state.matches[state.list.selected]);
+    IndexPath path =
+        SearchableListPath(&state, state.matches[state.list.selected]);
     if (path.row < 0) {
         return false;
     }
@@ -265,7 +236,7 @@ void SelectState::OnListChange(SelectState* self, Ctx* cx,
     int ix = event->index;
     if (ix >= 0 && ix < self->state.nItems) {
         ev.hasValue = true;
-        ev.index = SelectPath(&self->state, ix);
+        ev.index = SearchableListPath(&self->state, ix);
         ev.value = self->state.items[ix].value;
     }
     self->ClearQueryAndRestore(cx);

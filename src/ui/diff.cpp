@@ -262,17 +262,26 @@ int DiffFile::LineNumber(DiffSide side, int index) const {
     return SideOf(this, side)->lines[index].lineNumber;
 }
 
-int DiffFile::LineIndex(DiffSide side, int line) const {
-    const Vec<DiffSourceLine>& lines = SideOf(this, side)->lines;
+// How many of a side's lines (sorted by number) are numbered below `line`,
+// or at most `line` with `inclusive`: a lower or an upper bound.
+static int LinesBefore(const Vec<DiffSourceLine>& lines, int line,
+                       bool inclusive) {
     int lo = 0;
     int hi = len(lines);
     while (lo < hi) {
         int mid = lo + (hi - lo) / 2;
-        if (lines[mid].lineNumber < line)
+        int n = lines[mid].lineNumber;
+        if (n < line || (inclusive && n == line))
             lo = mid + 1;
         else
             hi = mid;
     }
+    return lo;
+}
+
+int DiffFile::LineIndex(DiffSide side, int line) const {
+    const Vec<DiffSourceLine>& lines = SideOf(this, side)->lines;
+    int lo = LinesBefore(lines, line, false);
     if (lo < len(lines) && lines[lo].lineNumber == line) return lo;
     return -1;
 }
@@ -283,26 +292,8 @@ int DiffFile::PatchIx(DiffSide side, int ix) const {
 
 Str DiffFile::TextForLines(Arena* a, DiffSide side, int start, int end) const {
     const Vec<DiffSourceLine>& lines = SideOf(this, side)->lines;
-    int lo = 0;
-    int hi = len(lines);
-    while (lo < hi) {
-        int mid = lo + (hi - lo) / 2;
-        if (lines[mid].lineNumber < start)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    int first = lo;
-    lo = 0;
-    hi = len(lines);
-    while (lo < hi) {
-        int mid = lo + (hi - lo) / 2;
-        if (lines[mid].lineNumber <= end)
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    int last = lo;
+    int first = LinesBefore(lines, start, false);
+    int last = LinesBefore(lines, end, true);
     if (first >= last) return {};
     const DiffSourceLine& aLine = lines[first];
     const DiffSourceLine& bLine = lines[last - 1];
@@ -1946,31 +1937,37 @@ bool DiffHasLineEndingChange(const DiffFile* file, DiffSide side, int ix,
 
 // ─── Rows ──────────────────────────────────────────────────────────────────
 
-static void VisiblePairs(const DiffFile* file, bool hasContext, int context,
-                         int minCollapsed, const DiffState* state,
-                         Vec<char>* visible) {
+// Which pairs a file shows: each run of changed pairs with `contextLines`
+// around it (every pair without context), the ranges the user expanded, and
+// a hidden run shorter than `minCollapsedLines` shown after all. With
+// `byHunk` a run and its context stay inside the hunk that holds them, and a
+// hidden run does not cross a hunk's end; `hunkEnd[i]` is where pair i's
+// hunk ends (the file's end when not by hunk).
+static void VisiblePairs(const DiffState* state, int fileIx, bool byHunk,
+                         Vec<char>* visible, Vec<int>* hunkEnd) {
+    const DiffFile* file = state->files[fileIx];
     int n = len(file->pairs);
     VecClear(*visible);
     VecResize(*visible, n);
-    Vec<int> hunkEnd;
     Vec<int> hunkStart;
-    VecResize(hunkEnd, n);
+    VecClear(*hunkEnd);
+    VecResize(*hunkEnd, n);
     VecResize(hunkStart, n);
     for (int i = 0; i < n; i++) {
-        hunkEnd[i] = n;
+        (*hunkEnd)[i] = n;
         hunkStart[i] = 0;
     }
-    for (int h = 0; h < len(file->hunks); h++) {
+    for (int h = 0; byHunk && h < len(file->hunks); h++) {
         for (int i = file->hunks[h].pairsStart;
              i < file->hunks[h].pairsEnd && i < n; i++) {
             hunkStart[i] = file->hunks[h].pairsStart;
-            hunkEnd[i] = file->hunks[h].pairsEnd;
+            (*hunkEnd)[i] = file->hunks[h].pairsEnd;
         }
     }
     Vec<int> boundaries;
     VecResize(boundaries, n + 1);
     for (int i = 0; i <= n; i++) boundaries[i] = 0;
-    if (!hasContext) {
+    if (!state->hasContext) {
         boundaries[0] += 1;
         boundaries[n] -= 1;
     } else {
@@ -1981,21 +1978,24 @@ static void VisiblePairs(const DiffFile* file, bool hasContext, int context,
                 continue;
             }
             int start = ix;
-            while (ix < n && ix < hunkEnd[start] && file->pairs[ix].changed)
+            while (ix < n && ix < (*hunkEnd)[start] && file->pairs[ix].changed)
                 ix++;
-            int from = start - context;
+            int from = start - state->contextLines;
             if (from < hunkStart[start]) from = hunkStart[start];
             if (from < 0) from = 0;
-            int to = ix + context;
-            if (to > hunkEnd[start]) to = hunkEnd[start];
+            int to = ix + state->contextLines;
+            if (to > (*hunkEnd)[start]) to = (*hunkEnd)[start];
             boundaries[from] += 1;
             boundaries[to] -= 1;
         }
     }
     for (int i = 0; i < len(state->expanded); i++) {
-        if (state->expanded[i].file != -1) {
-            // Filled by the caller with file already filtered: file field
-            // is the pair range's owner, matched below.
+        if (state->expanded[i].file != fileIx) continue;
+        int start = IMin(IMax(state->expanded[i].start, 0), n);
+        int end = IMin(IMax(state->expanded[i].end, 0), n);
+        if (start < end) {
+            boundaries[start] += 1;
+            boundaries[end] -= 1;
         }
     }
     int active = 0;
@@ -2010,8 +2010,8 @@ static void VisiblePairs(const DiffFile* file, bool hasContext, int context,
             continue;
         }
         int start = ix;
-        while (ix < n && ix < hunkEnd[start] && !(*visible)[ix]) ix++;
-        if (ix - start < minCollapsed) {
+        while (ix < n && ix < (*hunkEnd)[start] && !(*visible)[ix]) ix++;
+        if (ix - start < state->minCollapsedLines) {
             for (int k = start; k < ix; k++) (*visible)[k] = 1;
         }
     }
@@ -2021,136 +2021,63 @@ static void ProjectFile(DiffState* state, int fileIx) {
     const DiffFile* file = state->files[fileIx];
     int n = len(file->pairs);
     Vec<char> visible;
-    VisiblePairs(file, state->hasContext, state->contextLines,
-                 state->minCollapsedLines, state, &visible);
-    // Recompute with expansions folded into the same boundary pass.
-    {
-        Vec<int> hunkEnd;
-        Vec<int> hunkStart;
-        VecResize(hunkEnd, n);
-        VecResize(hunkStart, n);
-        for (int i = 0; i < n; i++) {
-            hunkEnd[i] = n;
-            hunkStart[i] = 0;
+    Vec<int> hunkEnd;
+    VisiblePairs(state, fileIx, true, &visible, &hunkEnd);
+    int hunkIx = 0;
+    int ix2 = 0;
+    while (ix2 < n) {
+        while (hunkIx < len(file->hunks) && file->hunks[hunkIx]
+                                                    .pairsStart == ix2) {
+            DiffRow row;
+            row.kind = DiffRowKind::Hunk;
+            row.file = fileIx;
+            row.hunk = hunkIx;
+            VecAppend(state->rows, row);
+            hunkIx++;
         }
-        for (int h = 0; h < len(file->hunks); h++) {
-            for (int i = file->hunks[h].pairsStart;
-                 i < file->hunks[h].pairsEnd && i < n; i++) {
-                hunkStart[i] = file->hunks[h].pairsStart;
-                hunkEnd[i] = file->hunks[h].pairsEnd;
-            }
-        }
-        Vec<int> boundaries;
-        VecResize(boundaries, n + 1);
-        for (int i = 0; i <= n; i++) boundaries[i] = 0;
-        if (!state->hasContext) {
-            if (n >= 0) {
-                boundaries[0] += 1;
-                boundaries[n] -= 1;
-            }
-        } else {
-            int ix = 0;
-            while (ix < n) {
-                if (!file->pairs[ix].changed) {
-                    ix++;
-                    continue;
-                }
-                int start = ix;
-                while (ix < n && ix < hunkEnd[start] && file->pairs[ix].changed)
-                    ix++;
-                int from = start - state->contextLines;
-                if (from < hunkStart[start]) from = hunkStart[start];
-                if (from < 0) from = 0;
-                int to = ix + state->contextLines;
-                if (to > hunkEnd[start]) to = hunkEnd[start];
-                boundaries[from] += 1;
-                boundaries[to] -= 1;
-            }
-        }
-        for (int i = 0; i < len(state->expanded); i++) {
-            if (state->expanded[i].file != fileIx) continue;
-            int start = IMin(state->expanded[i].start, n);
-            int end = IMin(state->expanded[i].end, n);
-            if (start < 0) start = 0;
-            if (start < end) {
-                boundaries[start] += 1;
-                boundaries[end] -= 1;
-            }
-        }
-        int active = 0;
-        for (int i = 0; i < n; i++) {
-            active += boundaries[i];
-            visible[i] = active > 0 ? 1 : 0;
-        }
-        int ix = 0;
-        while (ix < n) {
-            if (visible[ix]) {
-                ix++;
-                continue;
-            }
-            int start = ix;
-            while (ix < n && ix < hunkEnd[start] && !visible[ix]) ix++;
-            if (ix - start < state->minCollapsedLines) {
-                for (int k = start; k < ix; k++) visible[k] = 1;
-            }
-        }
-        int hunkIx = 0;
-        int ix2 = 0;
-        while (ix2 < n) {
-            while (hunkIx < len(file->hunks) && file->hunks[hunkIx]
-                                                        .pairsStart == ix2) {
-                DiffRow row;
-                row.kind = DiffRowKind::Hunk;
-                row.file = fileIx;
-                row.hunk = hunkIx;
-                VecAppend(state->rows, row);
-                hunkIx++;
-            }
-            if (!visible[ix2]) {
-                int start = ix2;
-                while (ix2 < n && ix2 < hunkEnd[start] && !visible[ix2]) ix2++;
-                DiffRow row;
-                row.kind = DiffRowKind::Fold;
-                row.file = fileIx;
-                row.pairsStart = start;
-                row.pairsEnd = ix2;
-                VecAppend(state->rows, row);
-            } else if (state->mode == DiffMode::Unified && file->pairs[ix2]
-                                                               .changed) {
-                int start = ix2;
-                while (ix2 < n && ix2 < hunkEnd[start] &&
-                       file->pairs[ix2].changed)
-                    ix2++;
-                for (int p = start; p < ix2; p++) {
-                    if (file->pairs[p].original < 0) continue;
-                    DiffRow row;
-                    row.kind = DiffRowKind::Code;
-                    row.file = fileIx;
-                    row.original = file->pairs[p].original;
-                    row.modified = -1;
-                    row.changed = true;
-                    VecAppend(state->rows, row);
-                }
-                for (int p = start; p < ix2; p++) {
-                    if (file->pairs[p].modified < 0) continue;
-                    DiffRow row;
-                    row.kind = DiffRowKind::Code;
-                    row.file = fileIx;
-                    row.original = -1;
-                    row.modified = file->pairs[p].modified;
-                    row.changed = true;
-                    VecAppend(state->rows, row);
-                }
-            } else {
+        if (!visible[ix2]) {
+            int start = ix2;
+            while (ix2 < n && ix2 < hunkEnd[start] && !visible[ix2]) ix2++;
+            DiffRow row;
+            row.kind = DiffRowKind::Fold;
+            row.file = fileIx;
+            row.pairsStart = start;
+            row.pairsEnd = ix2;
+            VecAppend(state->rows, row);
+        } else if (state->mode == DiffMode::Unified && file->pairs[ix2]
+                                                           .changed) {
+            int start = ix2;
+            while (ix2 < n && ix2 < hunkEnd[start] && file->pairs[ix2].changed)
+                ix2++;
+            for (int p = start; p < ix2; p++) {
+                if (file->pairs[p].original < 0) continue;
                 DiffRow row;
                 row.kind = DiffRowKind::Code;
                 row.file = fileIx;
-                row.original = file->pairs[ix2].original;
-                row.modified = file->pairs[ix2].modified;
-                row.changed = file->pairs[ix2].changed;
+                row.original = file->pairs[p].original;
+                row.modified = -1;
+                row.changed = true;
                 VecAppend(state->rows, row);
-                ix2++;
             }
+            for (int p = start; p < ix2; p++) {
+                if (file->pairs[p].modified < 0) continue;
+                DiffRow row;
+                row.kind = DiffRowKind::Code;
+                row.file = fileIx;
+                row.original = -1;
+                row.modified = file->pairs[p].modified;
+                row.changed = true;
+                VecAppend(state->rows, row);
+            }
+        } else {
+            DiffRow row;
+            row.kind = DiffRowKind::Code;
+            row.file = fileIx;
+            row.original = file->pairs[ix2].original;
+            row.modified = file->pairs[ix2].modified;
+            row.changed = file->pairs[ix2].changed;
+            VecAppend(state->rows, row);
+            ix2++;
         }
     }
 }
@@ -2171,57 +2098,8 @@ static void ProjectConflicts(DiffState* state, int fileIx) {
     const DiffFile* file = state->files[fileIx];
     int n = len(file->pairs);
     Vec<char> visible;
-    VecResize(visible, n);
-    for (int i = 0; i < n; i++) visible[i] = 0;
-    Vec<int> boundaries;
-    VecResize(boundaries, n + 1);
-    for (int i = 0; i <= n; i++) boundaries[i] = 0;
-    if (!state->hasContext) {
-        boundaries[0] += 1;
-        boundaries[n] -= 1;
-    } else {
-        int ix = 0;
-        while (ix < n) {
-            if (!file->pairs[ix].changed) {
-                ix++;
-                continue;
-            }
-            int start = ix;
-            while (ix < n && file->pairs[ix].changed) ix++;
-            int from = start - state->contextLines;
-            if (from < 0) from = 0;
-            int to = ix + state->contextLines;
-            if (to > n) to = n;
-            boundaries[from] += 1;
-            boundaries[to] -= 1;
-        }
-    }
-    for (int i = 0; i < len(state->expanded); i++) {
-        if (state->expanded[i].file != fileIx) continue;
-        int start = IMin(IMax(state->expanded[i].start, 0), n);
-        int end = IMin(IMax(state->expanded[i].end, 0), n);
-        if (start < end) {
-            boundaries[start] += 1;
-            boundaries[end] -= 1;
-        }
-    }
-    int active = 0;
-    for (int i = 0; i < n; i++) {
-        active += boundaries[i];
-        visible[i] = active > 0 ? 1 : 0;
-    }
-    int ix = 0;
-    while (ix < n) {
-        if (visible[ix]) {
-            ix++;
-            continue;
-        }
-        int start = ix;
-        while (ix < n && !visible[ix]) ix++;
-        if (ix - start < state->minCollapsedLines) {
-            for (int k = start; k < ix; k++) visible[k] = 1;
-        }
-    }
+    Vec<int> hunkEnd;
+    VisiblePairs(state, fileIx, false, &visible, &hunkEnd);
     auto code = [&](int line, bool changed) {
         DiffRow row;
         row.kind = DiffRowKind::Code;
@@ -2232,7 +2110,7 @@ static void ProjectConflicts(DiffState* state, int fileIx) {
         VecAppend(state->rows, row);
     };
     int next = 0;
-    ix = 0;
+    int ix = 0;
     while (ix < n) {
         if (next < len(file->conflicts) && file->conflicts[next]
                                                    .SourceLinesStart() == ix) {
@@ -2866,29 +2744,13 @@ static bool ClipRange(const DiffState* state, DiffLineRange in,
     const DiffFile* file = state->files[fileIx];
     auto firstAt = [&](DiffSide side, int line) -> int {
         const Vec<DiffSourceLine>& lines = SideOf(file, side)->lines;
-        int lo = 0;
-        int hi = len(lines);
-        while (lo < hi) {
-            int mid = lo + (hi - lo) / 2;
-            if (lines[mid].lineNumber < line)
-                lo = mid + 1;
-            else
-                hi = mid;
-        }
+        int lo = LinesBefore(lines, line, false);
         if (lo >= len(lines)) return -1;
         return lines[lo].lineNumber;
     };
     auto lastAt = [&](DiffSide side, int line) -> int {
         const Vec<DiffSourceLine>& lines = SideOf(file, side)->lines;
-        int lo = 0;
-        int hi = len(lines);
-        while (lo < hi) {
-            int mid = lo + (hi - lo) / 2;
-            if (lines[mid].lineNumber <= line)
-                lo = mid + 1;
-            else
-                hi = mid;
-        }
+        int lo = LinesBefore(lines, line, true);
         if (lo == 0) return -1;
         return lines[lo - 1].lineNumber;
     };

@@ -296,6 +296,11 @@ struct SearchableListState {
     }
 };
 
+// An item's place in the caller's flat array from its section and row, -1
+// when there is none; and back. Rows count within a section in array order.
+int SearchableListFlatIndex(const SearchableListState* s, IndexPath path);
+IndexPath SearchableListPath(const SearchableListState* s, int flat);
+
 // The selection replaced by the one index, which is what a single-select list
 // holds and what a caller seeding one wants. A negative index selects nothing.
 void SearchableListSelectOnly(SearchableListState* s, int index);

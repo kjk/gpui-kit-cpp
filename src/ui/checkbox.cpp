@@ -83,6 +83,48 @@ Checkbox* Checkbox::OnChange(Listener fn) {
     return this;
 }
 
+void ChoiceRowAnnounce(El* row, Str label, Str accessibilityLabel, Str tooltip,
+                       int tooltipShowDelayMs) {
+    Str name = accessibilityLabel.s ? accessibilityLabel : label;
+    if (name.s) {
+        row->AriaLabel(name);
+    }
+    if (tooltip.s) {
+        row->Tip(tooltip);
+        if (tooltipShowDelayMs >= 0) {
+            row->TipShowDelay(tooltipShowDelayMs);
+        }
+    }
+}
+
+El* ChoiceLabelColumn(Ctx* cx, El* indicator, float box, Str label, Str hint,
+                      UiSize size, bool disabled, bool wrapLabel) {
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+    indicator->MarginT(box * 0.125f);
+    El* col = Div(a)->FlexCol()->Gap(Rems(cx, 0.25f))->LineHeight(1.25f);
+    if (label.s) {
+        // input_text_size: the Input/Select ladder. A custom Size sets no
+        // size and inherits.
+        El* text = TextEl(a, label)->Fg(disabled ? th.mutedFg : th.foreground);
+        if (wrapLabel) {
+            text->Wrap();
+        }
+        if (size != UiSize::Size) {
+            UiInputTextSize(text, size);
+        }
+        col->Child(text);
+    }
+    if (hint.s) {
+        col->Child(TextEl(a, hint)
+                       ->Font(12)
+                       ->LineHeight(1.2f)
+                       ->Fg(th.mutedFg)
+                       ->Wrap());
+    }
+    return col;
+}
+
 El* Checkbox::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // indicator_size: rems(0.75 / 0.875 / 1.125 / 1).
@@ -144,47 +186,19 @@ El* Checkbox::IntoEl() {
                   ->FlexRow()
                   ->ItemsStart()
                   ->Gap(Rems(cx, 0.5f));
-    // The explicit name wins over the visible label, and only the name
-    // changes: what is drawn stays the label.
-    Str name = accessibilityLabel.s ? accessibilityLabel : label;
-    if (name.s) {
-        row->AriaLabel(name);
-    }
-    if (tooltip.s) {
-        row->Tip(tooltip);
-        if (tooltipShowDelayMs >= 0) {
-            row->TipShowDelay(tooltipShowDelayMs);
-        }
-    }
+    ChoiceRowAnnounce(row, label, accessibilityLabel, tooltip,
+                      tooltipShowDelayMs);
     row->Child(ind);
     if (w > 0) {
         row->W(w);
     }
     if (label.s || hint.s || child) {
-        ind->MarginT(box * 0.125f);
-        // v_flex().line_height(relative(1.25)).gap_1(). Rust also puts
-        // flex_1 on this column; here that would make every checkbox row
-        // claim the whole width of whatever holds it, which lays a row of
-        // them out as a column, so the label measures itself instead.
-        El* col = Div(a)->FlexCol()->Gap(Rems(cx, 0.25f))->LineHeight(1.25f);
-        if (label.s) {
-            // input_text_size: the Input/Select ladder. A custom Size sets
-            // no size and inherits.
-            El* text = TextEl(a, label)
-                           ->Fg(disabled ? th.mutedFg : th.foreground)
-                           ->Wrap();
-            if (size != UiSize::Size) {
-                UiInputTextSize(text, size);
-            }
-            col->Child(text);
-        }
-        if (hint.s) {
-            col->Child(TextEl(a, hint)
-                           ->Font(12)
-                           ->LineHeight(1.2f)
-                           ->Fg(th.mutedFg)
-                           ->Wrap());
-        }
+        // Rust also puts flex_1 on this column; here that would make every
+        // checkbox row claim the whole width of whatever holds it, which lays
+        // a row of them out as a column, so the label measures itself
+        // instead.
+        El* col =
+            ChoiceLabelColumn(cx, ind, box, label, hint, size, disabled, true);
         if (child) {
             col->Child(child);
         }

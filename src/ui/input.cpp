@@ -936,6 +936,28 @@ static bool InputContentIsSecret(bool hasContentType,
 
 // content_type.rs::ns_text_content_type. These are WHATWG autocomplete names,
 // which are also the values GPUI's NSTextContent adapter publishes on macOS.
+// The field's accessibility record: its role, the name (the placeholder when
+// nothing names it), the placeholder, an automation id, and whether the value
+// is exposed.
+static void SetFieldAccessibility(InputState* state, AccessibilityRole role,
+                                  Str name, Str accessibilityId,
+                                  bool valueExposed) {
+    InputAccessibility access = InputAccessibility::New(&role);
+    if (!name.s && state->placeholder.s) {
+        name = state->placeholder;
+    }
+    if (name.s) {
+        access = access.WithLabel(name);
+    }
+    if (state->placeholder.s) {
+        access = access.WithPlaceholder(state->placeholder);
+    }
+    if (accessibilityId.s) {
+        access = access.WithAccessibilityId(accessibilityId);
+    }
+    InputSetAccessibility(state, access.WithValueExposed(valueExposed));
+}
+
 static Str InputNativeContentType(bool present, InputContentType value) {
     if (!present) return {};
     switch (value) {
@@ -1090,21 +1112,8 @@ El* Input::IntoEl() {
     // mask that is only on right now is omitted by the editor itself.
     bool valueExposed = !InputContentIsSecret(hasContentType, contentType);
     if (state) {
-        InputAccessibility access = InputAccessibility::New(&role);
-        Str aria = ariaLabel.s ? ariaLabel : label;
-        if (!aria.s && state->placeholder.s) {
-            aria = state->placeholder;
-        }
-        if (aria.s) {
-            access = access.WithLabel(aria);
-        }
-        if (state->placeholder.s) {
-            access = access.WithPlaceholder(state->placeholder);
-        }
-        if (accessibilityId.s) {
-            access = access.WithAccessibilityId(accessibilityId);
-        }
-        InputSetAccessibility(state, access.WithValueExposed(valueExposed));
+        SetFieldAccessibility(state, role, ariaLabel.s ? ariaLabel : label,
+                              accessibilityId, valueExposed);
     }
     // The frame is presentational. The editor owns the text role and the
     // one focus registration.
@@ -1351,22 +1360,8 @@ El* Textarea::IntoEl() {
     }
     bool interactive = state && !state->disabled && !disabled;
     if (state) {
-        InputAccessibility access = InputAccessibility::New(&accessibilityRole)
-                                        .WithValueExposed(true);
-        Str aria = ariaLabel;
-        if (!aria.s && state->placeholder.s) {
-            aria = state->placeholder;
-        }
-        if (aria.s) {
-            access = access.WithLabel(aria);
-        }
-        if (state->placeholder.s) {
-            access = access.WithPlaceholder(state->placeholder);
-        }
-        if (accessibilityId.s) {
-            access = access.WithAccessibilityId(accessibilityId);
-        }
-        InputSetAccessibility(state, access);
+        SetFieldAccessibility(state, accessibilityRole, ariaLabel,
+                              accessibilityId, true);
     }
     // Presentational frame. The rows carry the text role.
     El* box = InputBase::New(cx, id, interactive, AccessibilityRole::None)

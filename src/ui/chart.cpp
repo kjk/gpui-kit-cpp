@@ -1342,6 +1342,36 @@ static Ctx ChartIdCtx(const PaintCtx* ctx, uint32_t id) {
     return out;
 }
 
+// The hover a pie or a sankey keeps: the item under the cursor (none while
+// the chart is still appearing) is tracked through plot::TrackHover, which
+// eases `focus` in and out and lingers on the last item as it fades. On
+// return `hoverIndex` is the item held, -1 for none.
+static void ChartTrackIndexHover(const PaintCtx* ctx, uint32_t id,
+                                 const plot::PlotAppear& appear, Point cursor,
+                                 int* hoverIndex, float* focus,
+                                 Point* lingerCursor) {
+    if (appear.IsAppearing()) {
+        *hoverIndex = -1;
+    }
+    plot::TooltipState live = {};
+    const plot::TooltipState* livePtr = nullptr;
+    if (*hoverIndex >= 0) {
+        live = plot::TooltipState::New(*hoverIndex, cursor, nullptr, 0);
+        livePtr = &live;
+    }
+    plot::PlotHover hover = {};
+    Point linger = cursor;
+    Ctx idCx = ChartIdCtx(ctx, id);
+    if (plot::TrackHover(&idCx, livePtr, *hoverIndex >= 0 ? &cursor : nullptr,
+                         &hover, &linger)) {
+        *focus = hover.Progress();
+        *hoverIndex = hover.State().index;
+        *lingerCursor = linger;
+    } else {
+        *hoverIndex = -1;
+    }
+}
+
 // PlotElement's half of the appear for the charts painted here: sample it
 // under the chart's id when the chart has a generation, and treat it as
 // complete otherwise.
@@ -1576,29 +1606,9 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             }
             pieAngle += sweep;
         }
-        plot::TooltipState live = {};
-        const plot::TooltipState* livePtr = nullptr;
-        Point cursor = local;
         // No tooltip while the ring sweeps in.
-        if (appear.IsAppearing()) {
-            hoverIndex = -1;
-        }
-        if (hoverIndex >= 0) {
-            live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
-            livePtr = &live;
-        }
-        plot::PlotHover hover = {};
-        Point linger = cursor;
-        Ctx idCx = ChartIdCtx(ctx, p->id);
-        if (plot::TrackHover(&idCx, livePtr,
-                             hoverIndex >= 0 ? &cursor : nullptr, &hover,
-                             &linger)) {
-            focus = hover.Progress();
-            hoverIndex = hover.State().index;
-            lingerCursor = linger;
-        } else {
-            hoverIndex = -1;
-        }
+        ChartTrackIndexHover(ctx, p->id, appear, local, &hoverIndex, &focus,
+                             &lingerCursor);
     }
     // The ring sweeps clockwise from its first slice as the chart appears:
     // each slice's angles are scaled toward the ring's start.
@@ -1908,29 +1918,9 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
                 hoverIndex = node.index;
             }
         }
-        plot::TooltipState live = {};
-        const plot::TooltipState* livePtr = nullptr;
-        Point cursor = local;
         // No tooltip while the links draw in.
-        if (appear.IsAppearing()) {
-            hoverIndex = -1;
-        }
-        if (hoverIndex >= 0) {
-            live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
-            livePtr = &live;
-        }
-        plot::PlotHover hover = {};
-        Point linger = cursor;
-        Ctx idCx = ChartIdCtx(ctx, c->id);
-        if (plot::TrackHover(&idCx, livePtr,
-                             hoverIndex >= 0 ? &cursor : nullptr, &hover,
-                             &linger)) {
-            focus = hover.Progress();
-            hoverIndex = hover.State().index;
-            lingerCursor = linger;
-        } else {
-            hoverIndex = -1;
-        }
+        ChartTrackIndexHover(ctx, c->id, appear, local, &hoverIndex, &focus,
+                             &lingerCursor);
     }
 
     // The ribbons first, under the nodes: a horizontal cubic through the
