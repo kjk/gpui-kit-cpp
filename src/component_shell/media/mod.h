@@ -40,10 +40,18 @@ bool RequireLeaf(int children, Str* error);
 
 } // namespace gpui::component_shell::media::diff
 
+namespace gpui {
+class Capabilities;
+}
+
 namespace gpui::component_shell::media::webview {
 
-// webview.rs `is_navigable`: `about:` or an http(s) URL with a host.
-bool WebDocumentNavigable(Str url);
+// webview.rs `may_load`: `about:` (the engine's blank page) or a GET the
+// creating script's grant would allow fetch to make.
+bool MayLoadDocument(const Capabilities& capabilities, Str url);
+// require_url. On refusal `error` is the message, not owned.
+bool WebUrlAccepted(const Capabilities& capabilities, Str url,
+                    const char* context, Str* error);
 
 } // namespace gpui::component_shell::media::webview
 #endif // GPUI_COMPONENT_SHELL_MEDIA_MOD_H_

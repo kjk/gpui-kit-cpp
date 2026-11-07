@@ -6,6 +6,9 @@
 // script asks it for its title with `evaluate_script`, and the page answers
 // with `window.ipc.postMessage`, which arrives at `on_message`.
 //
+// A page needs the network grant a `fetch` of it would: `gpui-shell.json`
+// grants gpui-kit.com, so another address in the bar is refused.
+//
 //   cargo run -p gpui-shell -- run examples/js_webview
 //
 // On Linux the page needs an X11 window; in a Wayland session, start it with
@@ -15,15 +18,7 @@ import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 /** @import { AsyncContext, Context } from "gpui-kit" */
 /** @import { InputState as InputStateType, WebViewState as WebViewStateType } from "gpui-component" */
-import {
-  Button,
-  Icon,
-  Input,
-  InputState,
-  TitleBar,
-  WebView,
-  WebViewState,
-} from "gpui-component";
+import { Button, Icon, Input, InputState, TitleBar, WebView, WebViewState } from "gpui-component";
 
 const HOME = "https://gpui-kit.com";
 
@@ -101,19 +96,9 @@ export default class Browser extends View {
           .py(6)
           .border_b(1)
           .border_color(colors.border)
-          .child(
-            navigation("back", "chevron-left", "Back", () => this.page.back()),
-          )
-          .child(
-            navigation("forward", "chevron-right", "Forward", () =>
-              this.page.forward(),
-            ),
-          )
-          .child(
-            navigation("reload", "rotate-cw", "Reload", () =>
-              this.page.reload(),
-            ),
-          )
+          .child(navigation("back", "chevron-left", "Back", () => this.page.back()))
+          .child(navigation("forward", "chevron-right", "Forward", () => this.page.forward()))
+          .child(navigation("reload", "rotate-cw", "Reload", () => this.page.reload()))
           .child(div().flex_1().child(Input.new(this.address))),
       )
       .child(

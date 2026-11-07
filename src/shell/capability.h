@@ -121,6 +121,10 @@ class Capabilities {
     bool MayReach(Str host) const;
     bool MayRequest(Str scheme, Str host, uint16_t port, bool hasPort,
                     Str method, Str path) const;
+    // A GET of an absolute http(s) URL, parsed the way fetch parses it.
+    // A path's `.` and `..` segments are removed first, so a prefix grant
+    // cannot be left by climbing out of it.
+    bool MayGet(Str url) const;
 
     // One line per granted capability, for `gpui-shell list`. Empty when
     // nothing is granted. Each line ends with a newline.

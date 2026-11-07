@@ -182,6 +182,19 @@ bool FetchIsHttpMethod(Str method) {
     return true;
 }
 
+bool FetchParseUrl(Str url, FetchParsedUrl* out) {
+    FetchUrl parsed;
+    if (!ParseFetchUrl(url, &parsed, nullptr)) return false;
+    if (out) {
+        out->scheme = parsed.scheme;
+        out->host = parsed.host;
+        out->path = parsed.path;
+        out->port = parsed.port;
+        out->hasPort = parsed.hasPort;
+    }
+    return true;
+}
+
 bool FetchAuthorize(Str url, Str method, const Capabilities& capabilities,
                     Str* error) {
     if (error) {

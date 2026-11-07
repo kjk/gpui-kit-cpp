@@ -36,6 +36,10 @@ void PolicyUpdateDefaultApplication(Str name);
 // edits replace the default policy and never widen an existing holder.
 Policy* PolicyDefault();
 void PolicySetDefault(Policy* policy);
+// The grant of the script call now running, or the default outside one.
+// A component that reaches a resource for the script checks this, as fetch
+// does, and keeps a copy: native callbacks run outside the call.
+const Capabilities& CurrentCapabilities();
 void PolicyUpdateDefaultCapabilities(const Capabilities& capabilities);
 shell::Storage* PolicyStorage(Policy* policy, bool session);
 bool PolicySetStoragePath(Policy* policy, Str path, Str* error = nullptr);

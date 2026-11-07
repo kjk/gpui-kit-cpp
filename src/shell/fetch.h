@@ -60,6 +60,17 @@ constexpr int kFetchMaxRequestBody = 8 * 1024 * 1024;
 bool FetchAuthorize(Str url, Str method, const Capabilities& capabilities,
                     Str* error = nullptr);
 
+// The pieces `fetch` reads out of an absolute http(s) URL. Each `Str` points
+// into `url` and is valid only as long as that string is.
+struct FetchParsedUrl {
+    Str scheme;
+    Str host;
+    Str path;
+    uint16_t port = 0;
+    bool hasPort = false;
+};
+bool FetchParseUrl(Str url, FetchParsedUrl* out);
+
 // Sends `request`, following redirects only where the policy allows it.
 bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
                FetchResult* out);

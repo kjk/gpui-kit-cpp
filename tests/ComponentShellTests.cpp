@@ -3334,20 +3334,42 @@ void DiffIsAnExactLeaf() {
     utassert(StrEq(error, StrL("Diff does not accept children")));
 }
 
-// webview.rs only_web_documents_are_navigable
-void OnlyWebDocumentsAreNavigable() {
-    using component_shell::media::webview::WebDocumentNavigable;
+// webview.rs only_granted_web_documents_load
+void OnlyGrantedWebDocumentsLoad() {
+    using component_shell::media::webview::MayLoadDocument;
+    Capabilities capabilities;
+    capabilities.AddNetworkHost(StrL("gpui-kit.com"))
+        .AddNetworkHost(StrL("localhost"));
     const char* allowed[] = {"https://gpui-kit.com",
                              "http://localhost:3000/index.html", "about:blank"};
-    for (const char* url : allowed) utassert(WebDocumentNavigable(Str(url)));
+    for (const char* url : allowed) {
+        utassert(MayLoadDocument(capabilities, Str(url)));
+    }
     const char* denied[] = {"",
                             "gpui-kit.com",
                             "file:///etc/passwd",
                             "javascript:alert(1)",
                             "data:text/html,<p>x</p>",
                             "mailto:me@example.com",
-                            "https://"};
-    for (const char* url : denied) utassert(!WebDocumentNavigable(Str(url)));
+                            "https://",
+                            "http://127.0.0.1:8080/admin",
+                            "http://169.254.169.254/latest/meta-data/"};
+    for (const char* url : denied) {
+        utassert(!MayLoadDocument(capabilities, Str(url)));
+    }
+}
+
+// webview.rs a_page_without_a_network_grant_does_not_load
+void APageWithoutANetworkGrantDoesNotLoad() {
+    using component_shell::media::webview::WebUrlAccepted;
+    Capabilities capabilities;
+    Str error;
+    utassert(!WebUrlAccepted(capabilities, StrL("https://gpui-kit.com"),
+                             "WebViewState", &error));
+    utassert(error.s && StrContains(error, StrL("capabilities.network")));
+    utassert(!WebUrlAccepted(capabilities, StrL("file:///etc/passwd"),
+                             "WebViewState", &error));
+    utassert(error.s && StrContains(error, StrL("http or https")));
 }
 
 // media_public_host.rs catalog_exposes_only_renderable_media_surfaces
@@ -8534,7 +8556,8 @@ void TestComponentShell() {
     ImageSourcesAreConfinedToTheAssetRoot();
     EditorIsAnExactLeaf();
     DiffIsAnExactLeaf();
-    OnlyWebDocumentsAreNavigable();
+    OnlyGrantedWebDocumentsLoad();
+    APageWithoutANetworkGrantDoesNotLoad();
     CatalogExposesOnlyRenderableMediaSurfaces();
     LocalImageAndRetainedEditorCrossThePublicHost();
     MediaRecordersRefuseWhatRustRefuses();

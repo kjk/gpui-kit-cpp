@@ -1,4 +1,5 @@
 #include "shell/capability.h"
+#include "shell/fetch.h"
 
 namespace gpui {
 
@@ -504,6 +505,46 @@ bool Capabilities::MayRequest(Str scheme, Str host, uint16_t port, bool hasPort,
             return true;
     }
     return false;
+}
+
+// RFC 3986 remove_dot_segments for the path fetch's URL parser would hand
+// the grant check. `..` that would leave the root is dropped.
+static Str NormalizeUrlPath(Arena* arena, Str path) {
+    Vec<Str> parts;
+    int i = 0;
+    if (len(path) > 0 && path.s[0] == '/') i = 1;
+    while (i <= len(path)) {
+        int end = i;
+        while (end < len(path) && path.s[end] != '/') end++;
+        Str part(path.s + i, end - i);
+        if (len(part) == 0 || StrEq(part, StrL("."))) {
+        } else if (StrEq(part, StrL(".."))) {
+            if (len(parts) > 0) parts.len--;
+        } else {
+            VecAppend(parts, part);
+        }
+        if (end >= len(path)) break;
+        i = end + 1;
+    }
+    StrBuilder out(arena);
+    out.AppendChar('/');
+    for (int s = 0; s < len(parts); s++) {
+        if (s > 0) out.AppendChar('/');
+        out.Append(parts[s]);
+    }
+    VecReset(parts);
+    return Str(out.els, out.len);
+}
+
+bool Capabilities::MayGet(Str url) const {
+    shell::FetchParsedUrl parsed;
+    if (!shell::FetchParseUrl(url, &parsed)) return false;
+    Arena* arena = ArenaNew();
+    Str path = NormalizeUrlPath(arena, parsed.path);
+    bool allowed = MayRequest(parsed.scheme, parsed.host, parsed.port,
+                              parsed.hasPort, StrL("GET"), path);
+    ArenaDelete(arena);
+    return allowed;
 }
 
 static bool IsSeparator(char c) {

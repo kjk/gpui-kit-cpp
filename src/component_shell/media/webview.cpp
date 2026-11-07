@@ -6,6 +6,7 @@
 
 #include "component_shell/families.h"
 #include "component_shell/media/mod.h"
+#include "shell/policy.h"
 #include "ui/theme.h"
 #include "webview/webview.h"
 
@@ -16,10 +17,9 @@ namespace gpui::component_shell::media::webview {
 constexpr int kEventQueue = 1024;
 constexpr int kMessageLimit = 1024 * 1024;
 
-// `about:` is how the engines start a blank page. Anything else must be
-// http or https with a host, so `file:` cannot reach the disk.
-bool WebDocumentNavigable(Str url) {
-    if (StrStartsWith(url, "about:")) return true;
+// http or https with a host. `about:` is decided separately: it is how the
+// engines start a blank page, and it carries nothing from outside.
+static bool IsWebUrl(Str url) {
     int colon = -1;
     for (int i = 0; i < len(url); i++) {
         char c = url.s[i];
@@ -56,6 +56,31 @@ bool WebDocumentNavigable(Str url) {
     return end > host;
 }
 
+bool MayLoadDocument(const Capabilities& capabilities, Str url) {
+    return StrStartsWith(url, "about:") || capabilities.MayGet(url);
+}
+
+bool WebUrlAccepted(const Capabilities& capabilities, Str url,
+                    const char* context, Str* error) {
+    if (!(StrStartsWith(url, "about:") || IsWebUrl(url))) {
+        if (error) {
+            *error = fmt("%s expects an http or https URL, got `%s`",
+                         Str(context), url);
+        }
+        return false;
+    }
+    if (!MayLoadDocument(capabilities, url)) {
+        if (error) {
+            *error =
+                fmt("%s cannot load `%s`; grant GET for it in "
+                    "capabilities.network.hosts or capabilities.network.http",
+                    Str(context), url);
+        }
+        return false;
+    }
+    return true;
+}
+
 enum class PageTheme : uint8_t {
     Light,
     Dark,
@@ -80,6 +105,8 @@ struct Bridge {
     ShellRuntime* runtime = nullptr;
     shell::ComponentCallback message = {};
     shell::ComponentCallback load = {};
+    // The creating script's grant. Null until the state is built.
+    const Capabilities* capabilities = nullptr;
     Vec<PageEvent> queue;
 
     ~Bridge() {
@@ -93,6 +120,9 @@ struct ShellWebView {
     App* app = nullptr;
     Entity<WebView> view;
     Entity<Bridge> bridge;
+    // Copied when the script creates the page. Later calls and native
+    // callbacks check this grant, not whatever is current then.
+    Capabilities capabilities;
     bool followApp = true;
     PageTheme chosen = PageTheme::Light;
     bool hasApplied = false;
@@ -124,22 +154,38 @@ static void Enqueue(Bridge* self, uint8_t kind, Str text) {
     PostDrain(self);
 }
 
-static void OnIpc(void* ctx, Str, Str body) {
+static void OnIpc(void* ctx, Str url, Str body) {
+    Bridge* bridge = (Bridge*)ctx;
+    // The URI is the sending document's, so a page reached past the
+    // navigation check still cannot answer.
+    if (!bridge || bridge->dead || !bridge->capabilities ||
+        !bridge->capabilities->MayGet(url)) {
+        logf("dropped a WebView message from `%s`; it is not granted\n", url);
+        return;
+    }
     if (len(body) > kMessageLimit) {
         logf("dropped a %d byte WebView message; the limit is %d\n", len(body),
              kMessageLimit);
         return;
     }
-    Enqueue((Bridge*)ctx, 0, body);
+    Enqueue(bridge, 0, body);
 }
 
 static void OnPageLoad(void* ctx, wry::PageLoadEvent event, Str url) {
-    if (event != wry::PageLoadEvent::Finished) return;
-    Enqueue((Bridge*)ctx, 1, url);
+    Bridge* bridge = (Bridge*)ctx;
+    if (event != wry::PageLoadEvent::Finished || !bridge || bridge->dead ||
+        !bridge->capabilities || !MayLoadDocument(*bridge->capabilities, url)) {
+        return;
+    }
+    Enqueue(bridge, 1, url);
 }
 
-static bool OnNavigate(void*, Str url) {
-    return WebDocumentNavigable(url);
+static bool OnNavigate(void* ctx, Str url) {
+    Bridge* bridge = (Bridge*)ctx;
+    if (!bridge || bridge->dead || !bridge->capabilities) return false;
+    if (MayLoadDocument(*bridge->capabilities, url)) return true;
+    logf("blocked a WebView navigation to `%s`; it is not granted\n", url);
+    return false;
 }
 
 static void Deliver(Bridge* self, Ctx* cx, const PageEvent& event) {
@@ -245,15 +291,19 @@ static bool NewWebViewState(shell::StateBuild* build,
         return build->Fail(StrL("WebViewState expects one http or https URL"));
     }
     Str url = args[0].string;
-    if (!WebDocumentNavigable(url)) {
-        return build->Fail(
-            fmt("WebViewState expects an http or https URL, got `%s`", url));
+    // One read: the grant checked here is the grant the page keeps.
+    const Capabilities& grant = CurrentCapabilities();
+    Str refusal;
+    if (!WebUrlAccepted(grant, url, "WebViewState", &refusal)) {
+        return build->Fail(refusal);
     }
     ShellWebView* state = build->New<ShellWebView>();
     state->app = build->app;
+    state->capabilities = grant;
     state->bridge = EntityNewState<Bridge>(build->app);
     Bridge* bridge = state->bridge.Get(build->app);
     if (!bridge) return CreationFailed(build);
+    bridge->capabilities = &state->capabilities;
     bridge->window = build->window;
     bridge->app = build->app;
     bridge->selfId = state->bridge.id;
@@ -292,18 +342,17 @@ static bool OneString(shell::StateCall* call,
     return call->Fail(fmt("%s expects one string", Str(context)));
 }
 
-static bool RequireUrl(shell::StateCall* call, Str url, const char* context) {
-    if (WebDocumentNavigable(url)) return true;
-    return call->Fail(
-        fmt("%s expects an http or https URL, got `%s`", Str(context), url));
-}
-
 static bool LoadUrl(shell::StateCall* call, void* state,
                     const shell::ComponentDataValue* args, int count) {
     Str url;
-    if (!OneString(call, args, count, "WebViewState.load_url", &url) ||
-        !RequireUrl(call, url, "WebViewState.load_url"))
+    ShellWebView* self = (ShellWebView*)state;
+    Str refusal;
+    if (!OneString(call, args, count, "WebViewState.load_url", &url) || !self ||
+        !WebUrlAccepted(self->capabilities, url, "WebViewState.load_url",
+                        &refusal)) {
+        if (refusal.s) return call->Fail(refusal);
         return false;
+    }
     wry::WebView* raw = WebViewRaw(PageOf(state));
     if (!raw || !wry::WebViewLoadUrl(raw, url)) {
         return call->Fail(StrL("WebViewState.load_url could not navigate"));
@@ -420,8 +469,16 @@ static bool EvaluateScript(shell::StateCall* call, void* state,
     Str script;
     if (!OneString(call, args, count, "WebViewState.evaluate_script", &script))
         return false;
+    ShellWebView* self = (ShellWebView*)state;
     wry::WebView* raw = WebViewRaw(PageOf(state));
-    if (!raw || !wry::WebViewEval(raw, script)) {
+    Str page = raw ? wry::WebViewUrlTemp(raw) : Str{};
+    if (!raw || !self || !MayLoadDocument(self->capabilities, page)) {
+        return call->Fail(
+            fmt("WebViewState.evaluate_script cannot run in `%s`; it is not "
+                "granted",
+                page));
+    }
+    if (!wry::WebViewEval(raw, script)) {
         return call->Fail(StrL("WebViewState.evaluate_script could not run"));
     }
     call->out = shell::ComponentDataValue::Null();
@@ -519,8 +576,10 @@ static constexpr shell::StateDescriptor kState = {
     "WebViewState",
     "WebViewState",
     kStateArgs,
-    "A retained native web page loaded from an http or https URL. The page "
-    "posts text to the script with `window.ipc.postMessage(text)`.",
+    "A retained native web page loaded from an http or https URL. The "
+    "application needs the network grant `fetch` would need to GET each page "
+    "it shows. The page posts text to the script with "
+    "`window.ipc.postMessage(text)`.",
     &NewWebViewState,
     kStateMethods,
 };

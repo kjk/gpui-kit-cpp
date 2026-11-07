@@ -189,7 +189,7 @@ static const char kComponentModule0[] = R"GPUI_DTS(declare module "gpui-componen
    */
   export const DiffState: { (patch: string, mode?: "unified" | "split"): DiffState; new: (patch: string, mode?: "unified" | "split") => DiffState };
   /**
-   * A retained native web page loaded from an http or https URL. The page posts text to the script with `window.ipc.postMessage(text)`.
+   * A retained native web page loaded from an http or https URL. The application needs the network grant `fetch` would need to GET each page it shows. The page posts text to the script with `window.ipc.postMessage(text)`.
    */
   export interface WebViewState { readonly __gpuiComponentState: unique symbol;
     load_url(url: string): void;
@@ -204,7 +204,7 @@ static const char kComponentModule0[] = R"GPUI_DTS(declare module "gpui-componen
     /** Releases the state and its subscriptions now rather than with the application. Returns `false` when it was already released; a method called afterwards throws. Not allowed during render. */
     release(): boolean }
   /**
-   * A retained native web page loaded from an http or https URL. The page posts text to the script with `window.ipc.postMessage(text)`.
+   * A retained native web page loaded from an http or https URL. The application needs the network grant `fetch` would need to GET each page it shows. The page posts text to the script with `window.ipc.postMessage(text)`.
    */
   export const WebViewState: { (url: string): WebViewState; new: (url: string) => WebViewState };
   /**

@@ -154,6 +154,30 @@ static void CapabilitiesAreDenyFirstAndScoped() {
                                 true, StrL("GET"), StrL("/v1/itemset")));
 }
 
+// capability.rs a_get_needs_a_grant_for_its_scheme_host_port_and_path
+static void AGetNeedsAGrantForItsSchemeHostPortAndPath() {
+    HttpRequestGrant docs(StrL("docs.example.com"));
+    docs.AddMethod(StrL("GET")).AddPathPrefix(StrL("/guide/"));
+    Capabilities capabilities;
+    capabilities.AddNetworkHost(StrL("gpui-kit.com")).AddHttpRequest(docs);
+    const char* allowed[] = {"https://gpui-kit.com/",
+                             "http://GPUI-Kit.com:8080/any",
+                             "https://docs.example.com/guide/intro"};
+    for (const char* url : allowed) {
+        utassert(capabilities.MayGet(Str(url)));
+    }
+    const char* denied[] = {"https://docs.example.com/admin",
+                            "https://docs.example.com/guide/../admin",
+                            "http://docs.example.com/guide/intro",
+                            "https://docs.example.com:8443/guide/intro",
+                            "http://127.0.0.1/",
+                            "file:///etc/passwd",
+                            "gpui-kit.com"};
+    for (const char* url : denied) {
+        utassert(!capabilities.MayGet(Str(url)));
+    }
+}
+
 static void FilesystemGrantsReturnRootRelativeAuthority() {
 #if GPUI_OS_WINDOWS
     Str root = StrL("C:/safe");
@@ -6326,6 +6350,7 @@ void TestShellCore() {
     BridgedValuesMatchJavaScriptConversions();
     RuntimeMetricsSeparateScriptNativeAndFrames();
     CapabilitiesAreDenyFirstAndScoped();
+    AGetNeedsAGrantForItsSchemeHostPortAndPath();
     FilesystemGrantsReturnRootRelativeAuthority();
     PoliciesFreezeCapabilityGrants();
     ScopeGenerationsExpireAdoptAndRefuseReentry();

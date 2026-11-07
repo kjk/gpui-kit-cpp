@@ -215,4 +215,15 @@ ScopeHostContext ScopeHostForGeneration(uint64_t generation,
 }
 
 } // namespace shell
+
+const Capabilities& CurrentCapabilities() {
+    if (Policy* scoped = shell::ScopeCurrentPolicy()) {
+        return PolicyCapabilities(scoped);
+    }
+    Policy* def = PolicyDefault();
+    const Capabilities& capabilities = PolicyCapabilities(def);
+    PolicyRelease(def);
+    return capabilities;
+}
+
 } // namespace gpui
