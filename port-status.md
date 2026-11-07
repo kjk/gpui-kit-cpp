@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ca956729fa5ab72e6d4e26b8811bc932cd519805` (2026-11-04,
-scroll: Stop a smooth-scrolling wheel at the edge on macOS (#3781)).
-On macOS a precise wheel with no touch or lift scrolls and stops at the
-edge. A trackpad touch or lift, including one that arrived on a sideways
-packet, still throws the edge, and a pause of 250 ms ends that stream.
+Processed through `0ab9cf4ed6d237457e66efc56c8ffcf915e8ce05` (2026-11-04,
+shell: Register GridLayout in the gpui-shell component catalog (#3789)).
+The shell catalog now builds GridLayout, GridItem and GridDragHandle.
+A script owns which items exist and their limits; an item already in the
+grid keeps the place the user gave it. The JavaScript gallery's
+GridLayout route is a live example.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

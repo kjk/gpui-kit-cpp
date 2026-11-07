@@ -43,6 +43,7 @@ static const RegisterFamily kFamilies[] = {
     &RegisterBasic,
     &RegisterChart,
     &RegisterCarousel,
+    &RegisterGridLayout,
     &RegisterQuestionnaire,
 };
 

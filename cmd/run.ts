@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ca956729fa5ab72e6d4e26b8811bc932cd519805",
+  sha: "0ab9cf4ed6d237457e66efc56c8ffcf915e8ce05",
   date: "2026-11-04",
-  subject: "scroll: Stop a smooth-scrolling wheel at the edge on macOS (#3781)",
+  subject: "shell: Register GridLayout in the gpui-shell component catalog (#3789)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

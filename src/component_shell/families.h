@@ -5,6 +5,7 @@
 // the order `register` calls them.
 
 #include "shell/component_registry.h"
+#include "base/grid_layout.h"
 
 namespace gpui {
 struct QuestionnaireState;
@@ -48,6 +49,7 @@ bool RegisterNavigation(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterBasic(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterChart(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCarousel(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterGridLayout(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterQuestionnaire(shell::ComponentRegistry*, shell::RegistryError*);
 
 // A family's own modules, in the order its mod.rs registers them.
@@ -184,6 +186,26 @@ void SetChartErrorProbe(ChartErrorProbe probe);
 bool CarouselNonnegativeUsize(const shell::ComponentArgument& argument,
                               double* out);
 bool CarouselNonemptyId(const shell::ComponentArgument& argument);
+
+// grid_layout.rs argument checks, reconcile and layout tuples, exposed for
+// the tests the way the Rust functions are to theirs.
+bool GridLayoutNonnegativeUsize(const shell::ComponentArgument& argument,
+                                double* out);
+bool GridLayoutPositiveUsize(const shell::ComponentArgument& argument,
+                             double* out);
+bool GridLayoutPositiveLength(const shell::ComponentArgument& argument,
+                              float* out);
+bool GridLayoutNonemptyId(const shell::ComponentArgument& argument);
+// 0 is unknown, 1 is none, 2 is vertical, 3 is horizontal.
+int GridLayoutCompactionCode(Str value);
+// False when membership and the script-owned limits already match. `next`
+// is replaced when this returns true.
+bool GridLayoutReconcile(const GridArea* current, int nCurrent,
+                         const GridArea* seeds, int nSeeds,
+                         Vec<GridArea>* next);
+shell::ComponentDataValue GridLayoutLayoutArgument(Arena* a,
+                                                   const GridArea* areas,
+                                                   int n);
 
 // questionnaire/mod.rs: the retained QuestionnaireState a Questionnaire
 // keyed by `id` renders in `cx`'s window, for the tests to drive the flow

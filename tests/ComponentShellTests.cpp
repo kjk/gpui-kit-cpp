@@ -6733,6 +6733,121 @@ void CarouselRefusesWhatRustRefuses() {
         StrEq(failure, "Carousel component received an incompatible payload"));
     StrFree(failure);
 }
+// ─── grid_layout.rs ────────────────────────────────────────────────────────
+
+// registers_the_grid_layout_family_and_state
+void RegistersTheGridLayoutFamilyAndState() {
+    FamilyCatalog catalog(&component_shell::RegisterGridLayout);
+    utassert(catalog.ok);
+    const char* expected[] = {"GridLayout", "GridItem", "GridDragHandle"};
+    utassert(catalog.NamesAre(expected, 3));
+    utassert(catalog.frozen.StateCount() == 1);
+    if (catalog.frozen.StateCount() == 1) {
+        utassert(strcmp(catalog.frozen.State(0)->exportName,
+                        "GridLayoutState") == 0);
+        utassert(strcmp(catalog.frozen.State(0)->kind, "GridLayoutState") == 0);
+    }
+    utassert(catalog.Documented());
+}
+
+// arguments_are_closed
+void GridLayoutArgumentsAreClosed() {
+    shell::ComponentArgument number;
+    number.kind = shell::ComponentArgumentKind::Number;
+    double out = 0;
+    number.number = 3.;
+    utassert(component_shell::GridLayoutPositiveUsize(number, &out) &&
+             out == 3.);
+    number.number = 0.;
+    utassert(!component_shell::GridLayoutPositiveUsize(number, &out));
+    number.number = -1.;
+    utassert(!component_shell::GridLayoutNonnegativeUsize(number, &out));
+    number.number = 1.5;
+    utassert(!component_shell::GridLayoutNonnegativeUsize(number, &out));
+    number.number = (double)NAN;
+    float length = 0;
+    utassert(!component_shell::GridLayoutPositiveLength(number, &length));
+    number.number = 0.;
+    utassert(!component_shell::GridLayoutPositiveLength(number, &length));
+    utassert(!component_shell::GridLayoutNonemptyId(StringArgument(" ")));
+    utassert(component_shell::GridLayoutCompactionCode(StrL("none")) == 1);
+    utassert(component_shell::GridLayoutCompactionCode(StrL("diagonal")) == 0);
+}
+
+static GridArea GridTestArea(const char* id, int col, int row, int colSpan,
+                             int rowSpan) {
+    return GridArea::New(Str(id)).Col(col).Row(row).ColSpan(colSpan).RowSpan(
+        rowSpan);
+}
+
+// reconciling_keeps_the_users_place_and_the_scripts_limits
+void ReconcilingKeepsTheUsersPlaceAndTheScriptsLimits() {
+    GridArea current[2] = {GridTestArea("a", 6, 4, 3, 2),
+                           GridTestArea("gone", 0, 0, 1, 1)};
+    GridArea seeds[2] = {
+        GridTestArea("a", 0, 0, 2, 2).MinSpan(3, 2).Locked(true),
+        GridTestArea("new", 0, 0, 1, 1),
+    };
+    Vec<GridArea> next;
+    utassert(component_shell::GridLayoutReconcile(current, 2, seeds, 2, &next));
+    const GridArea* a = nullptr;
+    bool hasNew = false;
+    bool hasGone = false;
+    for (int i = 0; i < len(next); i++) {
+        if (StrEq(next[i].id, StrL("a"))) a = &next[i];
+        if (StrEq(next[i].id, StrL("new"))) hasNew = true;
+        if (StrEq(next[i].id, StrL("gone"))) hasGone = true;
+    }
+    utassert(a && a->col == 6 && a->row == 4 && a->colSpan == 3 &&
+             a->rowSpan == 2);
+    utassert(a && a->minColSpan == 3 && a->locked);
+    utassert(hasNew && !hasGone);
+
+    utassert(!component_shell::GridLayoutReconcile(next.els, len(next), seeds,
+                                                   2, &next));
+    Vec<GridArea> settled;
+    for (int i = 0; i < len(next); i++) VecAppend(settled, next[i]);
+    utassert(len(settled) > 0);
+    if (len(settled) > 0) settled[0].colSpan = 5;
+    utassert(!component_shell::GridLayoutReconcile(settled.els, len(settled),
+                                                   seeds, 2, &settled));
+
+    GridArea unlocked[2] = {GridTestArea("a", 0, 0, 2, 2).MinSpan(3, 2),
+                            GridTestArea("new", 0, 0, 1, 1)};
+    Vec<GridArea> changed;
+    utassert(component_shell::GridLayoutReconcile(next.els, len(next), unlocked,
+                                                  2, &changed));
+    utassert(len(changed) > 0 && !changed[0].locked);
+}
+
+// the_layout_reaches_a_script_as_tuples
+void TheLayoutReachesAScriptAsTuples() {
+    Arena* arena = ArenaNew();
+    GridArea areas[1] = {GridTestArea("revenue", 1, 2, 3, 4)};
+    shell::ComponentDataValue value =
+        component_shell::GridLayoutLayoutArgument(arena, areas, 1);
+    utassert(value.kind == shell::DataKind::Array && value.count == 1 &&
+             value.items);
+    if (value.items) {
+        const shell::ComponentDataValue& row = value.items[0];
+        utassert(row.kind == shell::DataKind::Array && row.count == 5 &&
+                 row.items);
+        if (row.items && row.count == 5) {
+            utassert(row.items[0].kind == shell::DataKind::String &&
+                     StrEq(row.items[0].string, StrL("revenue")));
+            utassert(row.items[1].kind == shell::DataKind::Number &&
+                     row.items[1].number == 1.);
+            utassert(row.items[2].kind == shell::DataKind::Number &&
+                     row.items[2].number == 2.);
+            utassert(row.items[3].kind == shell::DataKind::Number &&
+                     row.items[3].number == 3.);
+            utassert(row.items[4].kind == shell::DataKind::Number &&
+                     row.items[4].number == 4.);
+        }
+    }
+    ArenaDelete(arena);
+}
+
 // ─── questionnaire/mod.rs, tests/questionnaire_host.rs ─────────────────────
 
 void QuestionnaireRegistersTypedPartsAndTheRoot() {
@@ -6867,11 +6982,11 @@ void QuestionnaireRefusesWhatRustRefuses() {
 // With every family registered, the catalog's whole `declare module
 // "gpui-component"` block and its Element union are byte for byte what the
 // Rust catalog writes: every export in the same order, nothing missing and
-// nothing extra (133 element types and 16 state exports).
+// nothing extra (136 element types and 17 state exports).
 void WholeCatalogDeclarationsEqualRust() {
     const FrozenComponentRegistry* frozen = component_shell::Components();
-    utassert(frozen->DescriptorCount() == 133);
-    utassert(frozen->StateCount() == 16);
+    utassert(frozen->DescriptorCount() == 136);
+    utassert(frozen->StateCount() == 17);
 
     StrBuilder rust;
     AppendRustComponentDeclarations(&rust);
@@ -8624,6 +8739,12 @@ void TestComponentShell() {
     CarouselIdentifiersAndIndicesAreClosed();
     CarouselPartsComposeAndReportChanges();
     CarouselRefusesWhatRustRefuses();
+
+    TestSuite("grid_layout");
+    RegistersTheGridLayoutFamilyAndState();
+    GridLayoutArgumentsAreClosed();
+    ReconcilingKeepsTheUsersPlaceAndTheScriptsLimits();
+    TheLayoutReachesAScriptAsTuples();
 
     TestSuite("questionnaire");
     QuestionnaireRegistersTypedPartsAndTheRoot();
