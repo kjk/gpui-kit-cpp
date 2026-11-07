@@ -3866,6 +3866,7 @@ InputState::~InputState() {
         }
     }
     StrFree(placeholder);
+    StrFree(imeOriginal);
     MaskPatternFree(&maskPattern);
     VecReset(autoClosed);
     InlineTokenStoreFree(tokens);
@@ -4723,6 +4724,73 @@ static void Emit(InputState* s, App* app, Window* win, InputEvent ev) {
         return;
     }
     ListenerCall(app, win, s->onChange, &ev);
+}
+
+static void EditBatchClear(InputState* s) {
+    VecClear(s->lastInputEdits);
+    VecClear(s->lastInputEditBytes);
+}
+
+static void EditBatchPush(InputState* s, InputEdit edit) {
+    if (!s->emitEvents && !s->holdEditBatch) {
+        return;
+    }
+    Str text = InputValue(s);
+    InputEditSnapshot snap;
+    snap.edit = edit;
+    snap.textOff = len(s->lastInputEditBytes);
+    snap.textLen = len(text);
+    if (snap.textLen > 0) {
+        VecAppendN(s->lastInputEditBytes, text.s, snap.textLen);
+    }
+    VecAppend(s->lastInputEditBytes, '\0');
+    VecAppend(s->lastInputEdits, snap);
+}
+
+// emit_change. A composition still holding its original text reports one
+// replacement of that whole document. The edits event goes out first.
+static void EmitEditsAndChange(InputState* s, App* app, Window* win) {
+    if (!s->emitEvents) {
+        return;
+    }
+    if (s->imeHaveOriginal) {
+        Str original = s->imeOriginal;
+        s->imeOriginal = {};
+        s->imeHaveOriginal = false;
+        Str old = original.s ? original : StrL("");
+        InputEdit full =
+            InputEdit::New(old, Selection{0, len(old)}, InputValue(s));
+        StrFree(original);
+        EditBatchClear(s);
+        EditBatchPush(s, full);
+    }
+    if (s->onEdits.IsValid()) {
+        InputEditsEvent ev;
+        ev.edits = s->lastInputEdits.els;
+        ev.count = len(s->lastInputEdits);
+        ev.bytes = s->lastInputEditBytes.els;
+        ListenerCall(app, win, s->onEdits, &ev);
+    }
+    Emit(s, app, win, InputEvent{InputEventKind::Change});
+}
+
+int InputLastEditCount(const InputState* s) {
+    return s ? len(s->lastInputEdits) : 0;
+}
+
+const InputEditSnapshot* InputLastEditAt(const InputState* s, int index) {
+    if (!s || index < 0 || index >= len(s->lastInputEdits)) {
+        return nullptr;
+    }
+    return &s->lastInputEdits[index];
+}
+
+Str InputLastEditText(const InputState* s, int index) {
+    const InputEditSnapshot* snap = InputLastEditAt(s, index);
+    if (!snap || !s->lastInputEditBytes.els) {
+        return {};
+    }
+    return Str(s->lastInputEditBytes.els + snap->textOff, snap->textLen);
 }
 
 // pause_blink_cursor: solid while the user is doing something, so the caret
@@ -6632,7 +6700,19 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         s->scrollX = wasX;
     }
     highlightChange.Finish();
-    Emit(s, app, win, InputEvent{InputEventKind::Change});
+    if (!s->holdEditBatch) {
+        EditBatchClear(s);
+    }
+    if (!s->imeHaveOriginal) {
+        InputEdit edit = maskChanged
+                             ? InputEdit::New(oldAll, Selection{0, len(oldAll)},
+                                              InputValue(s))
+                             : InputEdit::New(oldAll, r, text);
+        EditBatchPush(s, edit);
+    }
+    if (!s->holdEditBatch) {
+        EmitEditsAndChange(s, app, win);
+    }
     Notify(app, win);
     return true;
 }
@@ -6731,6 +6811,11 @@ bool InputReplaceTextInRanges(InputState* s, App* app, Window* win,
     if (group) {
         UndoBeginTransaction(&s->undo);
     }
+    bool ownBatch = !s->holdEditBatch;
+    if (ownBatch) {
+        s->holdEditBatch = true;
+        EditBatchClear(s);
+    }
     bool ok = true;
     for (int k = 0; k < n; k++) {
         int i = desc[k];
@@ -6769,6 +6854,12 @@ bool InputReplaceTextInRanges(InputState* s, App* app, Window* win,
         CursorSelection* after = AllCursors(a, s, &nAfter);
         UndoRecordSelections(&s->undo, before, nBefore, after, nAfter);
         UndoCommitTransaction(&s->undo);
+    }
+    if (ownBatch) {
+        s->holdEditBatch = false;
+        if (InputLastEditCount(s) > 0) {
+            EmitEditsAndChange(s, app, win);
+        }
     }
     Notify(app, win);
     return ok;
@@ -6862,6 +6953,14 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
         r.end = r.start;
     }
     Str oldAll = StrDup(tmp, before);
+    // Marked text does not emit a change, so the batch waiting for the
+    // next one is empty. The first candidate remembers the document it
+    // replaced; a later candidate keeps that original.
+    EditBatchClear(s);
+    if (!s->imeHaveOriginal) {
+        s->imeOriginal = StrDup(before);
+        s->imeHaveOriginal = true;
+    }
     // The pairs the editor inserted move with the composition, and the
     // transaction keeps them from before it, the way the committed path does.
     int nPairsBefore = 0;
@@ -6879,6 +6978,9 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
             TextSet(s, oldAll);
             free(pairsBefore);
             if (startsComposition) {
+                StrFree(s->imeOriginal);
+                s->imeOriginal = {};
+                s->imeHaveOriginal = false;
                 UndoCommitTransaction(&s->undo);
             }
             return;
@@ -7002,6 +7104,11 @@ void InputSetValue(InputState* s, Str value) {
     ReplaceText(s, app, win, value);
     UndoSetIgnoring(&s->undo, false);
     s->emitEvents = true;
+    // set_value stays silent and leaves nothing for the next change.
+    EditBatchClear(s);
+    StrFree(s->imeOriginal);
+    s->imeOriginal = {};
+    s->imeHaveOriginal = false;
     VecClear(s->autoClosed);
     ResetSelection(s);
     UndoClear(&s->undo);

@@ -12985,6 +12985,161 @@ static void ScrollbarRendererReceivesTheEditorsScrollRange() {
     TestAppFree(app);
 }
 
+static bool EditIs(const InputState& s, int index, int start, int oldEnd,
+                   int newEnd, const char* after) {
+    const InputEditSnapshot* snap = InputLastEditAt(&s, index);
+    if (!snap) {
+        return false;
+    }
+    if (snap->edit.startByte != start || snap->edit.oldEndByte != oldEnd ||
+        snap->edit.newEndByte != newEnd) {
+        return false;
+    }
+    return StrEq(InputLastEditText(&s, index), after);
+}
+
+struct EditSeen {
+    char text[8][64] = {};
+    int n = 0;
+
+    static void OnEdits(EditSeen* self, Ctx*, const InputEditsEvent* ev) {
+        if (!self || !ev || self->n >= 8) {
+            return;
+        }
+        int len = 0;
+        if (ev->count > 0) {
+            const InputEditSnapshot& snap = ev->edits[ev->count - 1];
+            len = snap.textLen < 63 ? snap.textLen : 63;
+            if (ev->bytes && len > 0) {
+                memcpy(self->text[self->n], ev->bytes + snap.textOff,
+                       (size_t)len);
+            }
+        }
+        self->text[self->n][len] = 0;
+        self->n++;
+    }
+};
+
+// state.rs test_last_input_edits_single_insert,
+// test_last_input_edits_delete_and_paste, test_last_input_edits_grouped_change,
+// test_last_input_edits_without_a_highlighter,
+// test_last_input_edits_cleared_by_set_value.
+static void LastInputEditsFollowTheChange() {
+    InputState s;
+    s.kind = InputKind::Textarea;
+    InputSetValue(&s, StrL("hello world"));
+    Selection at = {5, 5};
+    InputReplaceTextInRange(&s, nullptr, nullptr, &at, StrL(" big"));
+    utassert(InputLastEditCount(&s) == 1);
+    utassert(EditIs(s, 0, 5, 5, 9, "hello big world"));
+    utassert(s.lastInputEdits[0].edit.startPosition.column == 5);
+    utassert(s.lastInputEdits[0].edit.newEndPosition.column == 9);
+
+    InputSetValue(&s, StrL("hello world"));
+    Selection drop = {5, 11};
+    InputReplaceTextInRange(&s, nullptr, nullptr, &drop, Str{});
+    utassert(ValueIs(s, "hello"));
+    utassert(EditIs(s, 0, 5, 11, 5, "hello"));
+
+    Selection nl = {5, 5};
+    InputReplaceTextInRange(&s, nullptr, nullptr, &nl, StrL("\nnext"));
+    utassert(ValueIs(s, "hello\nnext"));
+    utassert(EditIs(s, 0, 5, 5, 10, "hello\nnext"));
+    utassert(s.lastInputEdits[0].edit.newEndPosition.row == 1);
+    utassert(s.lastInputEdits[0].edit.newEndPosition.column == 4);
+
+    InputSetValue(&s, StrL("aaa bbb ccc"));
+    Selection ranges[2] = {{0, 3}, {8, 11}};
+    Str texts[2] = {StrL("X"), StrL("Y")};
+    utassert(InputReplaceTextInRanges(&s, nullptr, nullptr, ranges, texts, 2));
+    utassert(ValueIs(s, "X bbb Y"));
+    utassert(InputLastEditCount(&s) == 2);
+    utassert(EditIs(s, 0, 8, 11, 9, "aaa bbb Y"));
+    utassert(EditIs(s, 1, 0, 3, 1, "X bbb Y"));
+
+    InputSetValue(&s, StrL("fn main() {}"));
+    utassert(InputLastEditCount(&s) == 0);
+    Selection br = {12, 12};
+    InputReplaceTextInRange(&s, nullptr, nullptr, &br, StrL("\n"));
+    utassert(EditIs(s, 0, 12, 12, 13, "fn main() {}\n"));
+    utassert(s.lastInputEdits[0].edit.newEndPosition.row == 1);
+    utassert(s.lastInputEdits[0].edit.newEndPosition.column == 0);
+
+    InputSetValue(&s, StrL("hello"));
+    Selection bang = {5, 5};
+    InputReplaceTextInRange(&s, nullptr, nullptr, &bang, StrL("!"));
+    utassert(InputLastEditCount(&s) == 1);
+    InputSetValue(&s, StrL("replaced"));
+    utassert(InputLastEditCount(&s) == 0);
+    Selection q = {8, 8};
+    InputReplaceTextInRange(&s, nullptr, nullptr, &q, StrL("?"));
+    utassert(EditIs(s, 0, 8, 8, 9, "replaced?"));
+}
+
+// state.rs input_edits_events_preserve_queued_changes_and_undo,
+// input_edits_event_replays_ime_commit,
+// input_edits_event_replays_after_cancelled_composition,
+// input_edits_event_replays_mask_rewrite.
+static void InputEditsEventsReplayEachChange() {
+    App app;
+    Entity<EditSeen> seenEnt = EntityNewState<EditSeen>(&app);
+    InputState s;
+    s.kind = InputKind::Textarea;
+    s.onEdits = ListenTo(seenEnt, &EditSeen::OnEdits);
+    InputSetValue(&s, StrL("hello"));
+    Selection a = {5, 5};
+    InputReplaceTextInRange(&s, &app, nullptr, &a, StrL("!"));
+    Selection b = {6, 6};
+    InputReplaceTextInRange(&s, &app, nullptr, &b, StrL("?"));
+    InputPerform(&s, &app, nullptr, InputAction::Undo, false);
+    EditSeen* seen = seenEnt.Get(&app);
+    utassert(seen->n >= 3);
+    utassert(StrEq(Str(seen->text[0]), StrL("hello!")));
+    utassert(StrEq(Str(seen->text[1]), StrL("hello!?")));
+    utassert(ValueIs(s, seen->text[seen->n - 1]));
+
+    Entity<EditSeen> imeEnt = EntityNewState<EditSeen>(&app);
+    InputState ime;
+    ime.kind = InputKind::Textarea;
+    ime.onEdits = ListenTo(imeEnt, &EditSeen::OnEdits);
+    InputSetValue(&ime, Str{});
+    InputReplaceAndMarkText(&ime, &app, nullptr, nullptr, StrL("n"), nullptr);
+    InputReplaceAndMarkText(&ime, &app, nullptr, nullptr, StrL("ni"), nullptr);
+    InputReplaceTextInRange(&ime, &app, nullptr, nullptr, StrL("你"));
+    EditSeen* imeSeen = imeEnt.Get(&app);
+    utassert(imeSeen->n == 1);
+    utassert(StrEq(Str(imeSeen->text[0]), StrL("你")));
+    utassert(ValueIs(ime, "你"));
+
+    Entity<EditSeen> cancelEnt = EntityNewState<EditSeen>(&app);
+    InputState cancelled;
+    cancelled.kind = InputKind::Textarea;
+    cancelled.onEdits = ListenTo(cancelEnt, &EditSeen::OnEdits);
+    InputSetValue(&cancelled, Str{});
+    InputReplaceAndMarkText(&cancelled, &app, nullptr, nullptr, StrL("n"),
+                            nullptr);
+    InputReplaceAndMarkText(&cancelled, &app, nullptr, nullptr, Str{}, nullptr);
+    InputReplaceTextInRange(&cancelled, &app, nullptr, nullptr, StrL("x"));
+    EditSeen* cancelSeen = cancelEnt.Get(&app);
+    utassert(cancelSeen->n == 1);
+    utassert(StrEq(Str(cancelSeen->text[0]), StrL("x")));
+
+    Entity<EditSeen> maskEnt = EntityNewState<EditSeen>(&app);
+    InputState masked;
+    InputSetMaskPattern(&masked, MaskPatternNumber(','));
+    masked.onEdits = ListenTo(maskEnt, &EditSeen::OnEdits);
+    InputSetValue(&masked, StrL("999"));
+    InputReplaceTextInRange(&masked, &app, nullptr, nullptr, StrL("9"));
+    EditSeen* maskSeen = maskEnt.Get(&app);
+    utassert(maskSeen->n == 1);
+    utassert(ValueIs(masked, "9,999"));
+    utassert(StrEq(Str(maskSeen->text[0]), StrL("9,999")));
+    const InputEditSnapshot* snap = InputLastEditAt(&masked, 0);
+    utassert(snap && snap->edit.startByte == 0 && snap->edit.oldEndByte == 3);
+    utassert(snap && snap->edit.newEndByte == 5);
+    EntityDropAll(&app);
+}
+
 void TestInputState() {
     TextareaPrewrapPreparesContentRowsBeforeLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
@@ -12994,6 +13149,8 @@ void TestInputState() {
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
+    LastInputEditsFollowTheChange();
+    InputEditsEventsReplayEachChange();
     ScrollbarRendererReceivesTheEditorsScrollRange();
     FocusedInputAsksItsScrollContainerToRevealIt();
     TapAsksForTheVirtualKeyboard();

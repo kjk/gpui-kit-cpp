@@ -5133,6 +5133,23 @@ struct InputEditWithText {
     Str text = {};
 };
 
+// InputEditsEvent::edits. One applied edit and where its document snapshot
+// sits in InputEditsEvent::bytes. The snapshot is the text immediately
+// after that edit, in application order.
+struct InputEditSnapshot {
+    InputEdit edit = {};
+    int textOff = 0;
+    int textLen = 0;
+};
+
+// InputEditsEvent. Emitted just before InputEvent::Change. The pointers are
+// the field's batch and stay valid through the listener call.
+struct InputEditsEvent {
+    const InputEditSnapshot* edits = nullptr;
+    int count = 0;
+    const char* bytes = nullptr;
+};
+
 // An edit the highlighter has not been handed yet: its envelope, and where
 // in InputState::highlightRemoved the bytes it took out are kept, which is
 // what turns the text after it back into the text before it.
@@ -5292,6 +5309,19 @@ struct InputState {
     bool highlightWhole = false;
     int highlightChangeDepth = 0;
     bool hasPendingEdit = false;
+    // last_input_edits: the batch copied into InputEditsEvent when a change
+    // is emitted. A grouped replace accumulates; the next change clears it.
+    // Snapshots live in lastInputEditBytes, not in a Vec of Str.
+    Vec<InputEditSnapshot> lastInputEdits;
+    Vec<char> lastInputEditBytes;
+    // Set while replace_text_in_ranges owns the batch, so each splice adds
+    // an edit and only the batch emits.
+    bool holdEditBatch = false;
+    // ime_original_text: the document before an unannounced composition.
+    // The next change reports one replacement of this whole text. Empty is
+    // a real original, so the flag is what distinguishes it from none.
+    bool imeHaveOriginal = false;
+    Str imeOriginal = {};
     Selection selectedRange = {};
     bool selectionReversed = false;
     // selected_word_range: what a double click took, kept so dragging out of
@@ -5425,6 +5455,8 @@ struct InputState {
     // use, so an InputState stays a plain value.
     EntityId blink = {};
     Listener onChange = {};
+    // Subscribe to InputEditsEvent. Runs before onChange for the same edit.
+    Listener onEdits = {};
     // validate: `Fn(&str, &mut App) -> bool`. A plain function pointer plus
     // its captured value, the way Listener carries one.
     bool (*validate)(Str text, int64_t arg) = nullptr;
@@ -6168,6 +6200,10 @@ bool InputCodeActionAction(InputState* s, App* app, Window* win,
 // or a mask or validator that said no.
 bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
                              const Selection* range, Str newText);
+// last_input_edits. The text is a view of the field's snapshot buffer.
+int InputLastEditCount(const InputState* s);
+const InputEditSnapshot* InputLastEditAt(const InputState* s, int index);
+Str InputLastEditText(const InputState* s, int index);
 void InputSetAutoClose(InputState* s, bool enabled, App* app,
                        Window* win = nullptr);
 void InputSetSmartIndent(InputState* s, bool enabled, App* app,

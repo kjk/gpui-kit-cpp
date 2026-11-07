@@ -25,7 +25,8 @@ using CursorBlink = ::gpui::CursorBlink;
 // defaults. Unknown languages keep LanguageConfig::Default().
 void InputLanguageInit(App* app);
 
-// input/mod.rs re-exports GutterDecoration, GutterDecorationCollection,
+// input/mod.rs re-exports InputEditsEvent with the other base input types,
+// and GutterDecoration, GutterDecorationCollection,
 // OverviewRulerDecoration, OverviewRulerDecorationCollection and
 // OverviewRulerLane. create_gutter_decorations_collection,
 // create_overview_ruler_decorations_collection, gutter_decorations_width,

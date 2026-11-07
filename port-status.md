@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `24dfec5748a62c015380e3cc8d92a40968822639` (2026-11-01,
-diff: keep the vertical scrollbar at the viewport edge when soft_wrap is
-off (#3739)). The diff's vertical bar is the scroll element's own bar,
-painted on the viewport box, so a wide unwrapped diff does not push it
-to the content's right edge.
+Processed through `73cbcf72f0bf42f7fb56acbaf88372787c3f1b2d` (2026-11-01,
+input: Expose edits from the latest change (#3751)). Each notified
+input change carries the edits in application order and the document
+after each one. A composition commit and a mask rewrite report one
+replacement of the whole document. set_value stays silent.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
