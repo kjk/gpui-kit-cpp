@@ -777,6 +777,18 @@ int MatchNewlinePlus(Str s, int i) {
     return count > 0 ? at - i : -1;
 }
 
+// The `~ newline+` a list item and a list paragraph end with: `n` ends past
+// the newlines at `at`, or the rule fails without them.
+static MdNode* EndAtNewlines(Str s, int at, MdNode* n, int* pos) {
+    int nl = MatchNewlinePlus(s, at);
+    if (nl < 0) {
+        return nullptr;
+    }
+    n->end = at + nl;
+    *pos = n->end;
+    return n;
+}
+
 // list_item = ${ list_prefix ~ (inline | string)+ ~ newline+ }
 MdNode* ParseListItem(MdParser* p, int* pos) {
     Str s = p->s;
@@ -790,13 +802,7 @@ MdNode* ParseListItem(MdParser* p, int* pos) {
     if (ParseInlineOrStringSeq(p, &at, n) == 0) {
         return nullptr;
     }
-    int nl = MatchNewlinePlus(s, at);
-    if (nl < 0) {
-        return nullptr;
-    }
-    n->end = at + nl;
-    *pos = n->end;
-    return n;
+    return EndAtNewlines(s, at, n, pos);
 }
 
 // list_paragraph = { indent ~ (inline | string)* ~ newline+ }
@@ -810,13 +816,7 @@ MdNode* ParseListParagraph(MdParser* p, int* pos) {
     MdNode* n = NewNode(p, MdRule::Container, i);
     int at = i + indent;
     ParseInlineOrStringSeq(p, &at, n);
-    int nl = MatchNewlinePlus(s, at);
-    if (nl < 0) {
-        return nullptr;
-    }
-    n->end = at + nl;
-    *pos = n->end;
-    return n;
+    return EndAtNewlines(s, at, n, pos);
 }
 
 // list = { list_item ~ (list_item | list_paragraph)* }

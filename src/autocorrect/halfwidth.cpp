@@ -133,17 +133,25 @@ static bool IsEnglishSep(uint32_t cp) {
            cp == '!' || cp == '&' || cp == ':';
 }
 
+// Moves `*i` past the next run of word characters, skipping what comes
+// before it. False when no word is left.
+static bool SkipWordRun(Str s, int* i) {
+    while (*i < len(s) && !IsWordCp(Utf8At(s, *i))) {
+        Utf8Next(s, i);
+    }
+    if (*i >= len(s)) {
+        return false;
+    }
+    while (*i < len(s) && IsWordCp(Utf8At(s, *i))) {
+        Utf8Next(s, i);
+    }
+    return true;
+}
+
 static bool HasEnglishShape(Str s) {
     int i = 0;
-    while (i < len(s)) {
-        if (!IsWordCp(Utf8At(s, i))) {
-            Utf8Next(s, &i);
-            continue;
-        }
-        // A word run…
-        while (i < len(s) && IsWordCp(Utf8At(s, i))) {
-            Utf8Next(s, &i);
-        }
+    // A word run…
+    while (SkipWordRun(s, &i)) {
         // …then at least one separator…
         int seps = 0;
         while (i < len(s) && IsEnglishSep(Utf8At(s, i))) {
@@ -243,14 +251,7 @@ static bool LooksLikeCodeString(Str s) {
         }
     }
     int i = 0;
-    while (i < len(s)) {
-        if (!IsWordCp(Utf8At(s, i))) {
-            Utf8Next(s, &i);
-            continue;
-        }
-        while (i < len(s) && IsWordCp(Utf8At(s, i))) {
-            Utf8Next(s, &i);
-        }
+    while (SkipWordRun(s, &i)) {
         if (i + 1 < len(s) && s.s[i] == '.' && IsWordCp(Utf8At(s, i + 1))) {
             int j = i + 1;
             while (j < len(s) && IsWordCp(Utf8At(s, j))) {

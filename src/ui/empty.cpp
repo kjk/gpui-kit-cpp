@@ -3,35 +3,14 @@
 namespace gpui {
 namespace component {
 
-template <typename T>
-static T* EmptyPartNew(Ctx* cx) {
-    T* value = ArenaNew<T>(cx->a);
-    value->a = cx->a;
-    return value;
-}
-
 static void EmptyChildren(El* parent, const ArenaVec<El*>& children) {
     for (El* child : children) {
         parent->Child(child);
     }
 }
 
-EmptyMedia* EmptyMedia::New(Ctx* cx) {
-    EmptyMedia* value = EmptyPartNew<EmptyMedia>(cx);
-    value->cx = cx;
-    return value;
-}
 EmptyMedia* EmptyMedia::WithVariant(EmptyMediaVariant value) {
     variant = value;
-    return this;
-}
-EmptyMedia* EmptyMedia::Child(El* child) {
-    children.Append(a, child);
-    return this;
-}
-EmptyMedia* EmptyMedia::Refine(const Style& value, uint32_t fields) {
-    StyleApplyFields(&style, value, fields);
-    styleSet |= fields;
     return this;
 }
 El* EmptyMedia::IntoEl() {
@@ -53,18 +32,6 @@ El* EmptyMedia::IntoEl() {
     return root;
 }
 
-EmptyTitle* EmptyTitle::New(Ctx* cx) {
-    return EmptyPartNew<EmptyTitle>(cx);
-}
-EmptyTitle* EmptyTitle::Child(El* child) {
-    children.Append(a, child);
-    return this;
-}
-EmptyTitle* EmptyTitle::Refine(const Style& value, uint32_t fields) {
-    StyleApplyFields(&style, value, fields);
-    styleSet |= fields;
-    return this;
-}
 El* EmptyTitle::IntoEl() {
     El* root = Div(a)->MaxW(kFill)->MinW(0)->Font(14)->Medium()->Wrap();
     root->Refine(style, styleSet);
@@ -73,21 +40,6 @@ El* EmptyTitle::IntoEl() {
     return root;
 }
 
-EmptyDescription* EmptyDescription::New(Ctx* cx) {
-    EmptyDescription* value = EmptyPartNew<EmptyDescription>(cx);
-    value->cx = cx;
-    return value;
-}
-EmptyDescription* EmptyDescription::Child(El* child) {
-    children.Append(a, child);
-    return this;
-}
-EmptyDescription* EmptyDescription::Refine(const Style& value,
-                                           uint32_t fields) {
-    StyleApplyFields(&style, value, fields);
-    styleSet |= fields;
-    return this;
-}
 El* EmptyDescription::IntoEl() {
     const Theme& theme = ThemeNow(cx->app);
     El* root = Div(a)
@@ -103,20 +55,6 @@ El* EmptyDescription::IntoEl() {
     return root;
 }
 
-EmptyContent* EmptyContent::New(Ctx* cx) {
-    EmptyContent* value = EmptyPartNew<EmptyContent>(cx);
-    value->cx = cx;
-    return value;
-}
-EmptyContent* EmptyContent::Child(El* child) {
-    children.Append(a, child);
-    return this;
-}
-EmptyContent* EmptyContent::Refine(const Style& value, uint32_t fields) {
-    StyleApplyFields(&style, value, fields);
-    styleSet |= fields;
-    return this;
-}
 El* EmptyContent::IntoEl() {
     El* root = Div(a)
                    ->FlexCol()
@@ -133,7 +71,8 @@ El* EmptyContent::IntoEl() {
 }
 
 EmptyHeader* EmptyHeader::New(Ctx* cx) {
-    EmptyHeader* value = EmptyPartNew<EmptyHeader>(cx);
+    EmptyHeader* value = ArenaNew<EmptyHeader>(cx->a);
+    value->a = cx->a;
     value->cx = cx;
     return value;
 }
@@ -170,26 +109,12 @@ El* EmptyHeader::IntoEl() {
     return root;
 }
 
-Empty* Empty::New(Ctx* cx) {
-    Empty* value = EmptyPartNew<Empty>(cx);
-    value->cx = cx;
-    return value;
-}
 Empty* Empty::Header(EmptyHeader* value) {
     header = value;
     return this;
 }
 Empty* Empty::Content(EmptyContent* value) {
     content = value;
-    return this;
-}
-Empty* Empty::Child(El* child) {
-    children.Append(a, child);
-    return this;
-}
-Empty* Empty::Refine(const Style& value, uint32_t fields) {
-    StyleApplyFields(&style, value, fields);
-    styleSet |= fields;
     return this;
 }
 El* Empty::IntoEl() {

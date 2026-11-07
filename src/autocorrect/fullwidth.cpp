@@ -155,9 +155,7 @@ static bool PassReplace(Str in, MatchFn match, StrBuilder* out) {
             changed = true;
             continue;
         }
-        int step = Utf8Len(in, i);
-        out->Append(Str(in.s + i, step));
-        i += step;
+        Utf8CopyNext(in, &i, out);
     }
     return changed;
 }
