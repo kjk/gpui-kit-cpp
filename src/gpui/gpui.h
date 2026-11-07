@@ -7425,6 +7425,10 @@ struct Window {
     // AppInvalidate calls since the last recorded frame; the next frame takes
     // them as its `invalidations` and zeroes it.
     uint64_t invalidations = 0;
+    // A repaint is owed: AppInvalidate sets it, a platform's redraw clears it.
+    // The browser's frame loop paints only when it is set; Windows asks the
+    // OS for a WM_PAINT instead (PlatInvalidate).
+    bool dirty = true;
 
     Window() = default;
     // Drops the focus registration a field is still holding on this window.
@@ -8167,7 +8171,13 @@ bool ClipboardReadAsync(Window* win, ClipboardReadFn done, void* data);
 // macOS NSTextContent autofill metadata. The other platforms intentionally
 // accept and ignore it, matching gpui-kit's cfg-gated implementation.
 // An empty value clears the metadata.
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_WASM
+inline void WindowSetTextContentType(Window* win, Str value) {
+    (void)win, (void)value;
+}
+#else
 void WindowSetTextContentType(Window* win, Str value);
+#endif
 
 // cx.open_url: hand a link to whatever the desktop opens links with. Rust's
 // takes an `&str` and answers nothing, and so does this — a browser that

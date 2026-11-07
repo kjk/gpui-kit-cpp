@@ -1,8 +1,9 @@
 #ifndef GPUI_GPUI_WINDOW_LOOP_H_
 #define GPUI_GPUI_WINDOW_LOOP_H_
 /* The steps of AppRun that the X11 and AppKit loops take the same way. Both
-   own their event loop, keep a `dirty` flag and a `nextTick` deadline (TimeNow
-   seconds, 0 when the timer is off) on their PlatWindow, and go round:
+   own their event loop, read the Window's `dirty` flag and keep a `nextTick`
+   deadline (TimeNow seconds, 0 when the timer is off) on their PlatWindow,
+   and go round:
 
      drain the OS's events -> RunLoopRedrawDirty -> RunLoopWaitFor -> block
      on the OS until the wait ends -> ExecDrain -> RunLoopTickDue
@@ -20,8 +21,7 @@ template <typename Plat>
 void RunLoopRedrawDirty(App* app, void (*redraw)(Window*)) {
     for (int i = 0; i < app->windows.len; i++) {
         Window* w = app->windows[i];
-        Plat* plat = w->plat;
-        if (plat && plat->dirty) {
+        if (w->plat && w->dirty) {
             redraw(w);
         }
     }
@@ -41,7 +41,7 @@ double RunLoopWaitFor(App* app, bool* anyDirty) {
         if (!plat) {
             continue;
         }
-        if (plat->dirty) {
+        if (w->dirty) {
             *anyDirty = true;
         }
         if (plat->nextTick > 0) {

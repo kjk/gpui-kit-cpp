@@ -36,7 +36,6 @@ struct PlatWindow {
     // retaining an arena frame.
     NSMutableDictionary<NSNumber*, GpuiAccessibilityElement*>*
         accessibilityElements = nil;
-    bool dirty = true;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
     // Shown only after the first paint. Ordering front at creation puts an
@@ -1340,7 +1339,7 @@ static void Redraw(Window* win) {
     if (!pw || !pw->view) {
         return;
     }
-    pw->dirty = false;
+    win->dirty = false;
     win->maximized = [pw->window isZoomed] ? true : false;
     [pw->view display];
     OrderFrontOnce(pw);
@@ -1352,15 +1351,6 @@ void AppQuit(Window* win) {
     if (win && win->plat && win->plat->window) {
         // windowWillClose is what calls WindowClosed.
         [win->plat->window close];
-    }
-}
-
-void AppInvalidate(Window* win) {
-    if (win) {
-        win->invalidations++;
-    }
-    if (win && win->plat) {
-        win->plat->dirty = true;
     }
 }
 
@@ -2060,14 +2050,8 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     return StrDupTemp(Str(paths.els, len(paths)));
 }
 
-void ClipboardSetText(Window* win, Str text) {
-    if (TestPlatformClipboardWrite(text)) {
-        return;
-    }
+void PlatClipboardSetText(Window* win, Str text) {
     (void)win;
-    if (!text.s || len(text) <= 0) {
-        return;
-    }
     NSString* s = [[NSString alloc] initWithBytes:text.s
                                            length:(NSUInteger)len(text)
                                          encoding:NSUTF8StringEncoding];
@@ -2099,37 +2083,16 @@ void WindowSetTextContentType(Window* win, Str value) {
     [win->plat->view setContentType:content];
 }
 
-Str ClipboardGetText(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated.text;
-    }
+Str PlatClipboardGetText(Arena* a, Window* win) {
     (void)win;
     NSPasteboard* pb = [NSPasteboard generalPasteboard];
     NSString* s = [pb stringForType:NSPasteboardTypeString];
-    if (!s) {
-        return {};
-    }
-    const char* utf8 = [s UTF8String];
-    if (!utf8) {
-        return {};
-    }
-    int n = (int)strlen(utf8);
-    char* buf = (char*)Alloc(a, n + 1);
-    if (!buf) {
-        return {};
-    }
-    memcpy(buf, utf8, (size_t)n + 1);
-    return Str(buf, n);
+    return s ? StrDup(a, Str([s UTF8String])) : Str();
 }
 
-ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated;
-    }
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     ClipboardItem out;
-    out.text = ClipboardGetText(a, win);
+    out.text = PlatClipboardGetText(a, win);
     NSPasteboard* pb = [NSPasteboard generalPasteboard];
     NSData* image = [pb dataForType:NSPasteboardTypePNG];
     if (!image) image = [pb dataForType:NSPasteboardTypeTIFF];

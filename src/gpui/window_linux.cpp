@@ -51,7 +51,6 @@ struct PlatWindow {
     unsigned int repeatKeycode = 0;
     int pxW = 0;
     int pxH = 0;
-    bool dirty = true;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
     // -1, or the _NET_WM_MOVERESIZE direction the pointer is currently over.
@@ -144,7 +143,7 @@ static void Redraw(Window* win) {
     if (!pw) {
         return;
     }
-    pw->dirty = false;
+    win->dirty = false;
     EnsureSurfaces(win);
     if (!pw->surf || !pw->back) {
         return;
@@ -1184,11 +1183,8 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     return result;
 }
 
-void ClipboardSetText(Window* win, Str text) {
-    if (TestPlatformClipboardWrite(text)) {
-        return;
-    }
-    if (!win || !win->plat || !text.s || len(text) <= 0) {
+void PlatClipboardSetText(Window* win, Str text) {
+    if (!win || !win->plat) {
         return;
     }
     if (gClipboard.s) {
@@ -1197,11 +1193,6 @@ void ClipboardSetText(Window* win, Str text) {
     gClipboard = StrDup(text);
     XSetSelectionOwner(gDpy, aClipboard, win->plat->xwin, CurrentTime);
     XFlush(gDpy);
-}
-
-void WindowSetTextContentType(Window* win, Str value) {
-    (void)win;
-    (void)value;
 }
 
 struct ClipboardTargets {
@@ -1363,11 +1354,7 @@ static ClipboardTargets ReadClipboardTargets(XWindow xwin) {
 // A paste on X11 is a round trip: ask the selection owner to write into a
 // property on our window, then wait for SelectionNotify. Windows and Cocoa
 // read the clipboard directly, so this platform signature hides the wait.
-Str ClipboardGetText(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated.text;
-    }
+Str PlatClipboardGetText(Arena* a, Window* win) {
     if (!win || !win->plat || !gDpy) {
         return {};
     }
@@ -1378,11 +1365,7 @@ Str ClipboardGetText(Arena* a, Window* win) {
     return ReadClipboardTarget(a, xwin, aUtf8String);
 }
 
-ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated;
-    }
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     ClipboardItem out;
     if (!win || !win->plat || !gDpy) {
         return out;
@@ -1745,7 +1728,7 @@ static void HandleEvent(App* app, XEvent* ev) {
     switch (ev->type) {
         case Expose:
             if (ev->xexpose.count == 0) {
-                pw->dirty = true;
+                win->dirty = true;
             }
             break;
         case ConfigureNotify:
@@ -1753,7 +1736,7 @@ static void HandleEvent(App* app, XEvent* ev) {
                                                            .height != pw->pxH) {
                 pw->pxW = ev->xconfigure.width;
                 pw->pxH = ev->xconfigure.height;
-                pw->dirty = true;
+                win->dirty = true;
             }
             break;
         case PropertyNotify:
@@ -1762,7 +1745,7 @@ static void HandleEvent(App* app, XEvent* ev) {
                 ev->xproperty.atom == aGtkEdgeConstraints) {
                 ReadWmState(win);
                 win->tiling = ReadTiling(win, win->maximized);
-                pw->dirty = true;
+                win->dirty = true;
             }
             break;
         case KeyPress:
@@ -1926,15 +1909,6 @@ static void HandleEvent(App* app, XEvent* ev) {
 void AppQuit(Window* win) {
     if (win && win->plat) {
         DestroyPlatWindow(win);
-    }
-}
-
-void AppInvalidate(Window* win) {
-    if (win) {
-        win->invalidations++;
-    }
-    if (win && win->plat) {
-        win->plat->dirty = true;
     }
 }
 

@@ -772,6 +772,43 @@ static void DrawFrameOnce(Window* win, void* native, int pxW, int pxH,
     }
 }
 
+#if GPUI_WINDOW_IN_TREE
+void AppInvalidate(Window* win) {
+    if (!win) {
+        return;
+    }
+    win->invalidations++;
+    win->dirty = true;
+    PlatInvalidate(win);
+}
+
+void ClipboardSetText(Window* win, Str text) {
+    if (TestPlatformClipboardWrite(text)) {
+        return;
+    }
+    if (!text.s || len(text) <= 0) {
+        return;
+    }
+    PlatClipboardSetText(win, text);
+}
+
+Str ClipboardGetText(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated.text;
+    }
+    return PlatClipboardGetText(a, win);
+}
+
+ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated;
+    }
+    return PlatClipboardGetItem(a, win);
+}
+#endif
+
 void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
                      float dipH) {
     DrawFrameOnce(win, native, pxW, pxH, dipW, dipH, false);

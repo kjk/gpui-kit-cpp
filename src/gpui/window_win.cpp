@@ -1050,10 +1050,7 @@ void AppQuit(Window* win) {
     }
 }
 
-void AppInvalidate(Window* win) {
-    if (win) {
-        win->invalidations++;
-    }
+void PlatInvalidate(Window* win) {
     HWND hwnd = Hwnd(win);
     if (hwnd) {
         InvalidateRect(hwnd, nullptr, FALSE);
@@ -1691,13 +1688,7 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     return result;
 }
 
-void ClipboardSetText(Window* win, Str text) {
-    if (TestPlatformClipboardWrite(text)) {
-        return;
-    }
-    if (!text.s || len(text) <= 0) {
-        return;
-    }
+void PlatClipboardSetText(Window* win, Str text) {
     WCHAR* w = ToCWstrTemp(text);
     int wn = (int)wcslen(w);
     HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)(wn + 1) * sizeof(WCHAR));
@@ -1736,16 +1727,7 @@ void ClipboardSetText(Window* win, Str text) {
     }
 }
 
-void WindowSetTextContentType(Window* win, Str value) {
-    (void)win;
-    (void)value;
-}
-
-Str ClipboardGetText(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated.text;
-    }
+Str PlatClipboardGetText(Arena* a, Window* win) {
     if (!OpenClipboard(Hwnd(win))) {
         return {};
     }
@@ -1835,13 +1817,9 @@ static Str ClipboardReadPaths(Arena* a, HANDLE handle) {
     return paths.TakeStr();
 }
 
-ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated;
-    }
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     ClipboardItem out;
-    out.text = ClipboardGetText(a, win);
+    out.text = PlatClipboardGetText(a, win);
     if (!OpenClipboard(Hwnd(win))) {
         return out;
     }

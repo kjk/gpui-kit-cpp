@@ -39,7 +39,6 @@ struct PlatWindow {
     // The canvas box, in CSS pixels, which are DIPs here.
     int cssW = 0;
     int cssH = 0;
-    bool dirty = true;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
     bool open = true;
@@ -402,7 +401,7 @@ EM_JS(void, GpJsFileNamesRead, (char* out, int cap), {
 // or a paste that has arrived. Both are reasons to draw again.
 extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_wake(void) {
     if (gWin && gWin->plat) {
-        gWin->plat->dirty = true;
+        gWin->dirty = true;
     }
 }
 
@@ -484,21 +483,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_clipboard_read(void) {
         }
     }
     done(data, gWin->app, gWin, item);
-    gWin->plat->dirty = true;
+    gWin->dirty = true;
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_set_theme(int dark) {
     if (gWin && gWin->plat && gWin->plat->open) {
         AppHostSetTheme(gWin->app, dark != 0);
-    }
-}
-
-void AppInvalidate(Window* win) {
-    if (win) {
-        win->invalidations++;
-    }
-    if (win && win->plat) {
-        win->plat->dirty = true;
     }
 }
 
@@ -515,7 +505,7 @@ static void Redraw(Window* win) {
     if (!pw || pw->cssW <= 0 || pw->cssH <= 0) {
         return;
     }
-    pw->dirty = false;
+    win->dirty = false;
     win->paint.dpi = 96;
     WindowDrawFrame(win, (void*)pw, pw->cssW, pw->cssH, (float)pw->cssW,
                     (float)pw->cssH);
@@ -826,7 +816,7 @@ static EM_BOOL OnResize(int, const EmscriptenUiEvent*, void*) {
     if (w != win->plat->cssW || h != win->plat->cssH) {
         win->plat->cssW = w;
         win->plat->cssH = h;
-        win->plat->dirty = true;
+        win->dirty = true;
     }
     return EM_TRUE;
 }
@@ -889,7 +879,7 @@ void AppToggleMaximize(Window* win) {
     bool fullScreen = !GpJsFullscreen();
     GpJsSetFullscreen(fullScreen);
     win->maximized = fullScreen;
-    win->plat->dirty = true;
+    win->dirty = true;
 }
 
 void WindowSetFullScreen(Window* win, bool fullScreen) {
@@ -898,7 +888,7 @@ void WindowSetFullScreen(Window* win, bool fullScreen) {
     }
     GpJsSetFullscreen(fullScreen);
     win->maximized = fullScreen;
-    win->plat->dirty = true;
+    win->dirty = true;
 }
 
 // A tab is as solid as the browser draws it and takes the pointer the browser
@@ -1003,26 +993,12 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     return {};
 }
 
-void ClipboardSetText(Window* win, Str text) {
-    if (TestPlatformClipboardWrite(text)) {
-        return;
-    }
+void PlatClipboardSetText(Window* win, Str text) {
     (void)win;
-    if (text.s && len(text) > 0) {
-        GpJsClipboardWrite(text.s, len(text));
-    }
+    GpJsClipboardWrite(text.s, len(text));
 }
 
-void WindowSetTextContentType(Window* win, Str value) {
-    (void)win;
-    (void)value;
-}
-
-Str ClipboardGetText(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated.text;
-    }
+Str PlatClipboardGetText(Arena* a, Window* win) {
     (void)win;
     if (!gInPasteEvent) {
         return {};
@@ -1039,13 +1015,9 @@ Str ClipboardGetText(Arena* a, Window* win) {
     return StrDup(a, tmp);
 }
 
-ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated;
-    }
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     ClipboardItem out;
-    out.text = ClipboardGetText(a, win);
+    out.text = PlatClipboardGetText(a, win);
     if (!gInPasteEvent) {
         return out;
     }
@@ -1167,7 +1139,7 @@ static void Tick(void* arg) {
     }
     for (int i = 0; i < app->windows.len; i++) {
         Window* w = app->windows[i];
-        if (w->plat && w->plat->dirty && w->plat->open) {
+        if (w->plat && w->dirty && w->plat->open) {
             Redraw(w);
         }
     }

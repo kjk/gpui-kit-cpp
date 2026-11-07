@@ -198,6 +198,31 @@ void PlatInstallImePositionUpdate(void (*update)(Window* win));
 // queue on macOS. AppNew installs it with ExecSetWake and nothing else calls
 // it.
 void PlatWake(App* app);
+// AppInvalidate's platform half, after it has counted the call and marked
+// `win->dirty`: Windows asks for a WM_PAINT; the Linux, macOS and browser
+// loops repaint a dirty window on their next pass and need nothing more.
+// window_common.cpp defines AppInvalidate for these four; iOS and Android
+// leave it to the host adapter.
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC || GPUI_OS_WASM
+#define GPUI_WINDOW_IN_TREE 1
+#else
+#define GPUI_WINDOW_IN_TREE 0
+#endif
+#if GPUI_WINDOW_IN_TREE
+// The clipboard's platform halves. window_common.cpp's ClipboardSetText,
+// GetText and GetItem answer from the test platform's clipboard when it is
+// installed, drop an empty write, and otherwise call these.
+void PlatClipboardSetText(Window* win, Str text);
+Str PlatClipboardGetText(Arena* a, Window* win);
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win);
+#endif
+#if GPUI_OS_WINDOWS
+void PlatInvalidate(Window* win);
+#else
+inline void PlatInvalidate(Window* win) {
+    (void)win;
+}
+#endif
 
 // A second event loop sharing the main thread with the platform's own. The
 // one there is is GLib's main context, which WebKitGTK (src/wry/wry_linux.cpp)

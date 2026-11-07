@@ -75,7 +75,6 @@
 
 namespace wry {
 
-using base::AllocStrTemp;
 using base::logf;
 using base::Str;
 using base::StrDup;
@@ -172,22 +171,7 @@ static NSString* ToNS(Str s) {
 }
 
 static Str FromNSTemp(NSString* s) {
-    if (!s) {
-        return {};
-    }
-    const char* utf8 = [s UTF8String];
-    if (!utf8) {
-        return {};
-    }
-    int n = (int)strlen(utf8);
-    Str res = AllocStrTemp(n + 1);
-    if (!res.s) {
-        return {};
-    }
-    memcpy(res.s, utf8, (size_t)n);
-    res.s[n] = 0;
-    res.len = n;
-    return res;
+    return s ? base::StrDupTemp(Str([s UTF8String])) : Str();
 }
 
 // `url_from_webview`.
