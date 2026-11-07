@@ -1511,7 +1511,7 @@ static const char kComponentModule5[] = R"GPUI_DTS(     * Not available on this 
      */
     disabled(disabled: boolean): LinkElement;
     /**
-     * Sets the external URL opened when activated.
+     * Sets the absolute HTTP(S) URL opened when activated.
      */
     href(href: string): LinkElement;
     /**

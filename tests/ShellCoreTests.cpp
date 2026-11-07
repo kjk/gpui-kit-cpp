@@ -535,13 +535,44 @@ static void ScriptThemesAndOpenUrlsFollowHostScopeRules() {
     ViewTypeRelease(type);
     ShellErrorClear(&error);
 
+    const char* refusedHrefs[] = {
+        "file:///etc/passwd", "javascript:alert(1)",
+        "smb://server/share", "docs/intro.html",
+        "https://",           "/relative",
+    };
+    for (const char* url : refusedHrefs) {
+        ShellErrorClear(&error);
+        TempStr source = fmt(
+            "import { View } from 'gpui'; import { Link } from 'gpui-base'; "
+            "export default class BadHref extends View { render() { return "
+            "Link.new('bad').href('%s'); } }",
+            Str(url));
+        type = runtime
+                   ? runtime->LoadSource(StrL("bad-href.js"), source, &error)
+                   : nullptr;
+        object = type && runtime ? runtime->Instantiate(type, &window, &app,
+                                                        nullptr, &error)
+                                 : nullptr;
+        output->Reset();
+        if (object && runtime) {
+            runtime->RenderToSpec(output, object, &window, &app, {}, nullptr,
+                                  &error);
+        }
+        utassert(StrContains(
+            error.message,
+            StrL("Link.href(url) expects an absolute HTTP(S) URL")));
+        ViewObjectRelease(object);
+        ViewTypeRelease(type);
+    }
+    ShellErrorClear(&error);
     type = runtime
                ? runtime->LoadSource(
-                     StrL("bad-href.js"),
+                     StrL("good-href.js"),
                      StrL("import { View } from 'gpui'; import { Link } from "
-                          "'gpui-base'; export default class BadHref extends "
+                          "'gpui-base'; export default class GoodHref extends "
                           "View { render() { return "
-                          "Link.new('bad').href('/relative'); } }"),
+                          "Link.new('notes').href('https://gpui-kit.com/"
+                          "docs'); } }"),
                      &error)
                : nullptr;
     object = type && runtime
@@ -552,7 +583,7 @@ static void ScriptThemesAndOpenUrlsFollowHostScopeRules() {
         runtime
             ->RenderToSpec(output, object, &window, &app, {}, nullptr, &error);
     }
-    utassert(StrContains(error.message, StrL("absolute HTTP(S) URL")));
+    utassert(!error.IsSet());
     ViewObjectRelease(object);
     ViewTypeRelease(type);
     ArenaDelete(output);

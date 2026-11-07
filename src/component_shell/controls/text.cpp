@@ -2,6 +2,7 @@
 
 #include "component_shell/families.h"
 #include "component_shell/support.h"
+#include "shell/capability.h"
 #include "shell/view.h"
 #include "ui/kbd.h"
 #include "ui/label.h"
@@ -85,6 +86,10 @@ static bool RecordMasked(PayloadBuild* build, const ComponentArgument* args,
 
 static bool RecordHref(PayloadBuild* build, const ComponentArgument* args,
                        int) {
+    if (!IsOpenableUrl(args[0].string)) {
+        return build->Fail(
+            StrL("Link.href(url) expects an absolute HTTP(S) URL with a host"));
+    }
     build->New<LinkOp>()->href = args[0].string;
     return true;
 }
@@ -219,7 +224,7 @@ static constexpr ConstructorDescriptor kLinkConstructors[] = {
 static constexpr MethodDescriptor kLinkMethods[] = {
     kOnClickMethod,
     kDisabledMethod,
-    {"href", kHrefArgs, "Sets the external URL opened when activated.",
+    {"href", kHrefArgs, "Sets the absolute HTTP(S) URL opened when activated.",
      &RecordHref},
 };
 static constexpr ComponentDescriptor kLink = {

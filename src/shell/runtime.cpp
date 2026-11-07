@@ -4332,16 +4332,24 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
             }
         }
         if (StrEq(name, StrL("href"))) {
+            bool link = receiver &&
+                        StrEq(Str(shell::ComponentName(receiver->component)),
+                              StrL("Link"));
             if (argCount != 1 || op.args[0]
                                          .kind != shell::BridgedKind::String) {
                 ArenaDelete(arena);
-                return JS_ThrowTypeError(ctx, "href(url) expects a string");
+                return JS_ThrowTypeError(
+                    ctx, link ? "Link.href expects one URL string"
+                              : "href(url) expects a string");
             }
             if (!IsOpenableUrl(op.args[0].string)) {
                 ArenaDelete(arena);
                 return JS_ThrowTypeError(
                     ctx,
-                    "href(url) expects an absolute HTTP(S) URL with a host");
+                    link ? "Link.href(url) expects an absolute HTTP(S) URL "
+                           "with a host"
+                         : "href(url) expects an absolute HTTP(S) URL with a "
+                           "host");
             }
         }
         // The name is all a group_hover below can match, so one that is

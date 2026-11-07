@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `161ebe417c438f6097af94a47b13469c80b317c7` (2026-11-05,
-shell: Refuse bundle values that would break a line in the generated scripts (#3803)).
-A bundle value rendered into a shell template is refused when it holds
-a control character or U+2028 / U+2029. The error names the field, such
-as `` `name` `` or `` `--download-url` ``.
+Processed through `f7946e496d268a47c8cb47f0ce6d868de549c006` (2026-11-05,
+shell: Check `Link.href` against the URL scheme rule (#3804)).
+`Link.href` accepts only an absolute `http` or `https` URL with a host.
+Anything else throws when the script sets it. `IsOpenableUrl` is the
+shared check.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
