@@ -4,6 +4,7 @@
 
 #include "gpui/platform.h"
 
+#include <math.h>
 #include <stdio.h>
 #include "gpui/keymap.h"
 #include "gpui/image.h"
@@ -4167,6 +4168,14 @@ static bool WindowAnimationDue(Window* win, double now) {
     return now >= win->lastDrawTime + kAnimationFrameInterval;
 }
 
+double TimerNextDue(double now, int ms, bool repeat) {
+    double period = (double)ms / 1000.0;
+    if (!repeat || ms < kTimerGridMinMs) {
+        return now + period;
+    }
+    return (floor((now + period * 0.5) / period) + 1) * period;
+}
+
 void WindowTimerTick(Window* win) {
     if (!win) {
         return;
@@ -4190,7 +4199,7 @@ void WindowTimerTick(Window* win) {
         Listener l = t.l;
         int ms = t.ms;
         if (t.repeat) {
-            t.dueAt = now + (double)ms / 1000.0;
+            t.dueAt = TimerNextDue(now, ms, true);
         } else {
             t.dueAt = 0; // swept below
         }

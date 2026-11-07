@@ -573,7 +573,7 @@ static int WindowArmTimer(Window* win, int ms, Listener l, bool repeat) {
     TimerSub t;
     t.id = win->nextTimerId++;
     t.ms = ms;
-    t.dueAt = TimeNow() + (double)ms / 1000.0;
+    t.dueAt = TimerNextDue(TimeNow(), ms, repeat);
     t.repeat = repeat;
     t.l = l;
     VecAppend(win->timers, t);

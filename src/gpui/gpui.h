@@ -910,6 +910,17 @@ struct Listener {
 static_assert(sizeof(Listener) <= 24,
               "keep Listener flags packed into the function word");
 
+// When a timer next fires. A one-shot, or an interval shorter than
+// kTimerGridMinMs, fires `ms` from now. A longer interval fires on a grid of
+// its own length — the first multiple of `ms` more than half an interval
+// away — so intervals that divide each other (100, 200, 500 ms) come due in
+// the same wakeup instead of drifting apart by the time each one's handler
+// took, and a window polling with a dozen such timers wakes once per period
+// rather than once per timer. Below the floor a grid would, on a 15.6 ms OS
+// timer, come due on nearly every tick.
+constexpr int kTimerGridMinMs = 50;
+double TimerNextDue(double now, int ms, bool repeat);
+
 // One armed timer. GPUI has no timer list: it spawns a task per timer and the
 // Task handle cancels on drop. Here the window keeps them, and dispatch drops
 // one whose view went stale — which is the same lifetime, spelled differently.

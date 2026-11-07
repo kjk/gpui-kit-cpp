@@ -1223,7 +1223,15 @@ void AppSetTitle(Window* win, Str title) {
 // display's own cadence rather than an approximation of it. This lands within
 // a tick of the same rate without a second thread; what it does not get is
 // the phase, so a frame can still be handed to DWM just after a vblank.
-static UINT TimerDelay(int ms) {
+//
+// That round-down is only for a window that is actually animating. Anything
+// else asks for the delay it was given. Rounding a 16 ms interval down to the
+// tick woke an idle window on every tick, about 64 times a second, to run a
+// handler that was due about 35 of those times.
+static UINT TimerDelay(int ms, bool animating) {
+    if (!animating) {
+        return ms >= 1 ? (UINT)ms : 1;
+    }
     static double tick = 0;
     if (tick <= 0) {
         DWORD adjust = 0;
@@ -1249,7 +1257,8 @@ void PlatSetTimer(Window* win, int ms) {
         return;
     }
     if (ms > 0) {
-        SetTimer(hwnd, 1, TimerDelay(ms), nullptr);
+        bool animating = win->anim || win->opts.anim || win->animFrame;
+        SetTimer(hwnd, 1, TimerDelay(ms, animating), nullptr);
     } else {
         KillTimer(hwnd, 1);
     }

@@ -14,6 +14,8 @@
 
 #include "Test.h"
 
+#include <math.h>
+
 // Everything a worker touches goes through this lock: base has no atomics,
 // and the executor is the thing under test rather than the thing to lean on.
 static Mutex gLock;
@@ -213,8 +215,36 @@ static void ATestAppLeavesTheExecutorAsItFoundIt() {
     utassert(gRan == 1);
 }
 
+// TimerNextDue: an interval of kTimerGridMinMs or more comes due on a grid of
+// its own length, so intervals that divide each other share a wakeup however
+// far apart they were armed; a late wakeup keeps the cadence rather than
+// shifting it; a one-shot and a short interval fire `ms` from now.
+static bool Near(double a, double b) {
+    return fabs(a - b) < 1e-9;
+}
+
+static void IntervalsShareAGrid() {
+    // Armed 30 ms and 70 ms past a grid line, 100 ms and 200 ms intervals.
+    double a = TimerNextDue(10.03, 100, true);
+    double b = TimerNextDue(10.07, 200, true);
+    utassert(Near(a, 10.1));
+    utassert(Near(b, 10.2));
+    // The 100 ms one fires at 10.1 and comes back at 10.2, with the other.
+    double a2 = TimerNextDue(a, 100, true);
+    utassert(Near(a2, b));
+    // Woken 12 ms late, it still comes back on the grid, not 12 ms later.
+    utassert(Near(TimerNextDue(10.212, 100, true), 10.3));
+    // Never sooner than half an interval: armed just before a grid line, the
+    // first firing is the line after.
+    utassert(Near(TimerNextDue(10.099, 100, true), 10.2));
+    // A one-shot and a frame-length interval are `ms` from now.
+    utassert(Near(TimerNextDue(10.003, 100, false), 10.103));
+    utassert(Near(TimerNextDue(10.003, 16, true), 10.019));
+}
+
 void TestExecutor() {
     TestSuite("executor");
+    IntervalsShareAGrid();
     // The suite has no App, so this is where the main thread is named.
     ExecInit();
 
