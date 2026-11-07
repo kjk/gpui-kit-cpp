@@ -115,6 +115,8 @@ static const StoryInfo kMeta[StoryCount] = {
     {"empty", "Empty",
      "Compose empty states with icons, avatars, actions, and custom content."},
     {"form", "Form", "Form to collect multiple inputs."},
+    {"grid-layout", "GridLayout",
+     "A grid whose items can be dragged and resized into place."},
     {"group-box", "GroupBox",
      "A styled container element that with an optional title to groups "
      "related content together."},

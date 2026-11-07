@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6fdd3e7e038993309124835d6339bcfb0b464739",
+  sha: "1c902056e22090a9ca0dba66cca3281f035235c5",
   date: "2026-11-03",
-  subject: "shell: Stop a Git dependency selector from being read as a `git fetch` option (#3778)",
+  subject: "grid_layout: Add a grid whose items the user drags and resizes (#3770)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

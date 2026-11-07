@@ -40,6 +40,7 @@ enum StateField : uint32_t {
     // What Rust's own `disabled(|style| style.opacity(0.5))` names.
     StateFieldOpacity = StyleFieldOpacity,
     StateFieldPad = StyleFieldPad,
+    StateFieldShadow = StyleFieldShadow,
 };
 
 struct StateStyle {
@@ -58,6 +59,8 @@ struct StateStyle {
     StateStyle& HoverFg(Rgba c);
     StateStyle& ActiveBg(Background c);
     StateStyle& Opacity(float v);
+    // box_shadow / shadow_lg: the array is borrowed, the way Style::shadows is.
+    StateStyle& Shadows(const BoxShadow* values, int count);
     // px(x).py(y): the four edges, horizontal and vertical.
     StateStyle& Pad(float x, float y);
 

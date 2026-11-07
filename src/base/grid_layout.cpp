@@ -1569,6 +1569,11 @@ GridItem* GridItem::DragHandleOnly(bool value) {
     return this;
 }
 
+GridItem* GridItem::Radius(float v) {
+    style.Radius(v);
+    return this;
+}
+
 GridItem* GridItem::Pad(float x, float y) {
     style.Pad(x, y);
     return this;

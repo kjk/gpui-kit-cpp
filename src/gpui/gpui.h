@@ -2071,6 +2071,8 @@ struct Style {
     uint8_t textOverflow : 2 = 0;
     // Whether focusLineColor holds FocusLine::Inside's colour.
     uint8_t hasFocusLineColor : 1 = false;
+    // group_hover border_color. One bit of this byte remains.
+    uint8_t groupHoverBorder : 1 = false;
     // font_family, as the id FontFamilyIntern gave its name: 0 is unset
     // (inherit, and the default face at the root). The spare byte of this
     // unit.
@@ -3267,6 +3269,9 @@ struct El {
     // The other half of `group_hover`: a fill rather than a visibility, for a
     // strip that lights when the pointer is in the box around it.
     El* GroupHoverBg(Background c);
+    // group_hover(|this| this.border_color(..)). The hovered colour is kept
+    // in groupHoverBg; the fill flag stays clear, so the box does not fill.
+    El* GroupHoverBorder(Rgba c);
     El* FocusId(int v);
     // `div().track_focus(&handle)`. The element is focusable, and what it is
     // focusable *as* is the handle the caller's state owns rather than

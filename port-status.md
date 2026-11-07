@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6fdd3e7e038993309124835d6339bcfb0b464739` (2026-11-03,
-shell: Stop a Git dependency selector from being read as a `git fetch` option (#3778)).
-`git fetch` now passes `--` before the remote and the ref. A
-selector whose first character is `-` is rejected.
+Processed through `1c902056e22090a9ca0dba66cca3281f035235c5` (2026-11-03,
+grid_layout: Add a grid whose items the user drags and resizes (#3770)).
+Items sit on a column grid, drag to move, and resize from the corner.
+The layout commits when the gesture ends.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

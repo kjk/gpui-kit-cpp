@@ -57,6 +57,7 @@ const RUST_STORY_ORDER = [
   "EditorStory",
   "EmptyStory",
   "FormStory",
+  "GridLayoutStory",
   "GroupBoxStory",
   "HoverCardStory",
   "IconStory",
@@ -109,11 +110,8 @@ const RUST_STORY_ORDER = [
 
 /** The complete JavaScript Story route manifest, in Rust Story display order. */
 export const catalog = RUST_STORY_ORDER.map((rustStory) => {
-  const story = byRustStory.find(
-    (candidate) => candidate.rustStory === rustStory,
-  );
-  if (!story)
-    throw new Error(`JavaScript Story catalog is missing ${rustStory}`);
+  const story = byRustStory.find((candidate) => candidate.rustStory === rustStory);
+  if (!story) throw new Error(`JavaScript Story catalog is missing ${rustStory}`);
   return story;
 });
 
@@ -124,9 +122,7 @@ if (routesById.size !== catalog.length) {
   throw new Error("JavaScript Story catalog contains duplicate route ids");
 }
 if (byRustStory.length !== catalog.length) {
-  throw new Error(
-    "JavaScript Story catalog has a route missing from the Rust Story order",
-  );
+  throw new Error("JavaScript Story catalog has a route missing from the Rust Story order");
 }
 if (coveredBy.some((entry) => !routesById.has(entry.route))) {
   throw new Error("JavaScript Story coverage references an unknown route");
@@ -142,9 +138,7 @@ export function filterCatalog(query) {
   const needle = query.trim().toLowerCase();
   if (needle === "") return catalog;
   return catalog.filter((story) =>
-    [story.title, story.group, story.rustStory, story.id].some((value) =>
-      value.toLowerCase().includes(needle),
-    ),
+    [story.title, story.group, story.rustStory, story.id].some((value) => value.toLowerCase().includes(needle)),
   );
 }
 

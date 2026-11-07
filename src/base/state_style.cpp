@@ -80,6 +80,13 @@ StateStyle& StateStyle::Opacity(float v) {
     return *this;
 }
 
+StateStyle& StateStyle::Shadows(const BoxShadow* values, int count) {
+    style.shadows = values;
+    style.shadowCount = count < 0 ? 0 : count;
+    set |= StateFieldShadow;
+    return *this;
+}
+
 void StateStyleRefine(StateStyle* into, const StateStyle& over) {
     if (over.Has(StateFieldPad)) {
         into->style.pad = over.style.pad;
@@ -120,6 +127,9 @@ void StateStyleRefine(StateStyle* into, const StateStyle& over) {
     }
     if (over.Has(StateFieldOpacity)) {
         into->Opacity(over.style.opacity);
+    }
+    if (over.Has(StateFieldShadow)) {
+        into->Shadows(over.style.shadows, over.style.shadowCount);
     }
 }
 

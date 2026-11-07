@@ -34,6 +34,7 @@ enum {
     StoryEditor,
     StoryEmpty,
     StoryForm,
+    StoryGridLayout,
     StoryGroupBox,
     StoryHoverCard,
     StoryIcon,

@@ -17,12 +17,12 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "6fdd3e7e038993309124835d6339bcfb0b464739";
+const pinnedGpuiComponent = "1c902056e22090a9ca0dba66cca3281f035235c5";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
 calendar checkbox collapsible color_picker combobox component_traits
-date_picker dialog dock element_ext event focus_trap geometry global_state
+date_picker dialog dock element_ext event focus_trap geometry global_state grid_layout
 history hover_card index_path input link list_settings macos_accessibility
 measure motion nav_stack number_input observe otp_input overscroll pagination plot popover popup positioner
 progress questionnaire radio radio_group resizable scrollbar scrollable_mask select selectable_text
@@ -38,7 +38,7 @@ component_traits element_ext global_state icon index_path inspector
 root sizing styled time title_bar virtual_list window_border window_ext
 accordion alert attachment avatar badge breadcrumb bubble button chart checkbox
 carousel clipboard collapsible color_picker combobox command description_list dialog diff dock
-empty form group_box highlighter history hover_card input kbd label link list marker
+empty form grid_layout group_box highlighter history hover_card input kbd label link list marker
 menu message message_scroller native_menu notification pagination plot popover
 progress questionnaire radio rating resizable scroll searchable_list select separator setting
 sheet shimmer sidebar skeleton slider speech spinner status_bar stepper switch tab
@@ -213,6 +213,11 @@ const testTargets: Record<string, string[]> = {
   "base/focus_trap": ["tests/FocusTrapTests.cpp"],
   "base/dock": ["tests/DockTests.cpp", "tests/DockStateTests.cpp"],
   "base/global_state": ["tests/AppGlobalTests.cpp"],
+  "base/grid_layout": [
+    "tests/GridLayoutTests.cpp",
+    "tests/GridLayoutStateTests.cpp",
+    "tests/GridLayoutElementTests.cpp",
+  ],
   "base/history": ["tests/HistoryTests.cpp"],
   "base/undo_history": ["tests/HistoryTests.cpp"],
   "base/hover_card": ["tests/HoverCardTests.cpp"],
@@ -636,13 +641,13 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 597, sha256: "aaf12ad51a4dbe6f9bad98287f23a4c2066d74250a35fc0a9e980d05fb35b0be" },
-    "pub-use": { count: 172, sha256: "1ca9a2ed0498fd49dc94dcfcacf9021019d30e7b1d4da8f16ad006c69c1b2671" },
-    test: { count: 1559, sha256: "ae7005a7e1529bef6981479b498fa198c324caaf4870dae39432625802a8c511" },
+    declaration: { count: 604, sha256: "7a48a38e8e7b10cace4ed3074154e9375f7052993408913c47c9eb4431430f93" },
+    "pub-use": { count: 176, sha256: "53a5213865d6a3f9e1d0cd0d672010ec42c5f39bf31f7fa052f4c58c65d4ae98" },
+    test: { count: 1586, sha256: "4abeb19cfc477eb2fe6459e3bf06d50a2b8310904527c239f70d98231fc336e8" },
   },
   ui: {
-    declaration: { count: 475, sha256: "96c41e84b248736fad99cd785b00a527bc16b3619e73df751a0ae2715a6c7529" },
-    "pub-use": { count: 171, sha256: "be9129f4d50db8278c573ba6d18b62f5e58fb8fa58b63066b48bcaec563974ba" },
+    declaration: { count: 477, sha256: "6caa6b78559bf4182a48fe416a53c872f61371b3ea2fddbd881a90fd81498b30" },
+    "pub-use": { count: 172, sha256: "af5c7009828bca5b03133d1f89c649a2212616321c5ad44d0151b4c9c67f770d" },
     test: { count: 821, sha256: "827ae7a46f207964f1b5b0a33b732587a00acaad26a598fdd6b1a1d4cf7191a5" },
   },
 };

@@ -265,6 +265,7 @@ struct GridItem {
     static GridItem* New(Ctx* cx, Str id);
     GridItem* Label(Str text);
     GridItem* DragHandleOnly(bool value);
+    GridItem* Radius(float v);
     GridItem* Pad(float x, float y);
     GridItem* Child(El* el);
 };

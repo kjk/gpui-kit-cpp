@@ -2422,6 +2422,11 @@ El* El::GroupHoverBg(Background c) {
     style.hasGroupHoverBg = true;
     return this;
 }
+El* El::GroupHoverBorder(Rgba c) {
+    style.groupHoverBorder = true;
+    style.groupHoverBg.color = c;
+    return this;
+}
 El* El::GroupHoverVisible() {
     style.groupHoverVisible = true;
     return this;
@@ -7563,6 +7568,10 @@ static bool PaintRoundEdgeBorder(PaintCtx* ctx, El* e) {
 // child whose background runs to the box's edge does not hide its parent's
 // border or the border's rounded corners.
 static void PaintElBorder(PaintCtx* ctx, El* e) {
+    Rgba savedBorder = e->style.borderColor;
+    if (e->style.groupHoverBorder && ctx->groupHovered) {
+        e->style.borderColor = e->style.groupHoverBg.color;
+    }
     if (e->style.border > 0) {
         if (e->style.borderDashed) {
             // In stroke widths; the default is what GPUI's border_dashed
@@ -7604,6 +7613,7 @@ static void PaintElBorder(PaintCtx* ctx, El* e) {
         }
     }
     if (e->style.border <= 0 && PaintRoundEdgeBorder(ctx, e)) {
+        e->style.borderColor = savedBorder;
         return;
     }
     // An edge border sits inside the box and covers whole pixels: the line
@@ -7628,6 +7638,7 @@ static void PaintElBorder(PaintCtx* ctx, El* e) {
         DrawLine(ctx, x, e->y, x, e->y + e->h, e->style.borderR,
                  e->style.borderColor);
     }
+    e->style.borderColor = savedBorder;
 }
 
 static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay);

@@ -29,6 +29,7 @@
 #include "ui/inspector.h"
 #include "ui/form.h"
 #include "ui/global_state.h"
+#include "ui/grid_layout.h"
 #include "ui/group_box.h"
 #include "ui/highlighter.h"
 #include "ui/history.h"
