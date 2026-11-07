@@ -202,6 +202,10 @@ struct PaintTarget {
     IDCompositionDevice* dcomp = nullptr;
     IDCompositionTarget* dcompTarget = nullptr;
     IDCompositionVisual* dcompVisual = nullptr;
+    // A scratch bitmap CanvasScrollRect copies the overlap through.
+    ID2D1Bitmap1* scrollStage = nullptr;
+    int scrollStageW = 0;
+    int scrollStageH = 0;
 };
 
 // ─── lifecycle ────────────────────────────────────────────────────────────
@@ -391,6 +395,7 @@ void PaintTargetFree(PaintCtx* ctx) {
         ctx->rt->dc->SetTarget(nullptr);
     }
     Rel(&ctx->rt->backBuffer);
+    Rel(&ctx->rt->scrollStage);
     Rel(&ctx->rt->dc);
     Rel(&ctx->rt->swap);
     delete ctx->rt;
@@ -766,7 +771,9 @@ static bool SceneFinish(PaintCtx* ctx) {
     Bounds damage = {};
     bool draw = scene::FrameEnd(ctx, &damage);
     if (draw) {
-        scene::Replay(ctx, &damage);
+        if (!scene::ReplayScroll(ctx)) {
+            scene::Replay(ctx, &damage);
+        }
     }
     return draw;
 }
@@ -1028,6 +1035,175 @@ void CanvasPopClip(PaintCtx* ctx) {
     if (ctx && ctx->rt) {
         ctx->rt->rt->PopAxisAlignedClip();
     }
+}
+
+bool CanvasScrollRect(PaintCtx* ctx, float x, float y, float w, float h,
+                      float dx, float dy) {
+    if (PaintGpuOn() || !ctx || !ctx->rt || !ctx->rt->dc || w < 1.f ||
+        h < 1.f) {
+        return false;
+    }
+    if (dx == 0.f && dy == 0.f) {
+        return false;
+    }
+    ID2D1DeviceContext* dc = ctx->rt->dc;
+    float dpiX = 96.f, dpiY = 96.f;
+    dc->GetDpi(&dpiX, &dpiY);
+    float sx = dpiX / 96.f;
+    float sy = dpiY / 96.f;
+    if (sx <= 0.f || sy <= 0.f) {
+        return false;
+    }
+    auto nearPx = [](float dip, float scale, int* px) {
+        float exact = dip * scale;
+        int rounded = (int)lroundf(exact);
+        if (fabsf(exact - (float)rounded) > 0.05f) {
+            return false;
+        }
+        *px = rounded;
+        return true;
+    };
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0, dxPx = 0, dyPx = 0;
+    if (!nearPx(x, sx, &x0) || !nearPx(y, sy, &y0) || !nearPx(x + w, sx, &x1) ||
+        !nearPx(y + h, sy, &y1) || !nearPx(dx, sx, &dxPx) ||
+        !nearPx(dy, sy, &dyPx)) {
+        return false;
+    }
+    int cw = x1 - x0;
+    int ch = y1 - y0;
+    if (cw <= 1 || ch <= 1 || dxPx == 0 && dyPx == 0) {
+        return false;
+    }
+    if (abs(dxPx) >= cw || abs(dyPx) >= ch) {
+        return false;
+    }
+    // Pixels that stay on screen move by (dxPx, dyPx). The source is the
+    // opposite corner of the destination, and it has to lie inside the clip.
+    int srcX = x0;
+    int srcY = y0;
+    int dstX = x0;
+    int dstY = y0;
+    int copyW = cw;
+    int copyH = ch;
+    if (dxPx > 0) {
+        dstX = x0 + dxPx;
+        copyW = cw - dxPx;
+    } else if (dxPx < 0) {
+        srcX = x0 - dxPx;
+        copyW = cw + dxPx;
+    }
+    if (dyPx > 0) {
+        dstY = y0 + dyPx;
+        copyH = ch - dyPx;
+    } else if (dyPx < 0) {
+        srcY = y0 - dyPx;
+        copyH = ch + dyPx;
+    }
+    if (copyW <= 0 || copyH <= 0) {
+        return false;
+    }
+    if (!ctx->rt->scrollStage || ctx->rt->scrollStageW < copyW ||
+        ctx->rt->scrollStageH < copyH) {
+        Rel(&ctx->rt->scrollStage);
+        int sw = copyW;
+        int sh = copyH;
+        D2D1_BITMAP_PROPERTIES1 props = D2D1::BitmapProperties1(
+            D2D1_BITMAP_OPTIONS_NONE,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+                              D2D1_ALPHA_MODE_IGNORE),
+            96.f, 96.f);
+        HRESULT hr = dc->CreateBitmap(D2D1::SizeU((UINT)sw, (UINT)sh), nullptr,
+                                      0, props, &ctx->rt->scrollStage);
+        if (FAILED(hr) || !ctx->rt->scrollStage) {
+            return false;
+        }
+        ctx->rt->scrollStageW = sw;
+        ctx->rt->scrollStageH = sh;
+    }
+    dc->Flush();
+    D2D1_POINT_2U destPoint = {0, 0};
+    D2D1_RECT_U srcRect = {(UINT)srcX, (UINT)srcY, (UINT)(srcX + copyW),
+                           (UINT)(srcY + copyH)};
+    HRESULT hr = ctx->rt->scrollStage
+                     ->CopyFromRenderTarget(&destPoint, dc, &srcRect);
+    if (FAILED(hr)) {
+        return false;
+    }
+    D2D1_RECT_F destDip =
+        D2D1::RectF((float)dstX / sx, (float)dstY / sy,
+                    (float)(dstX + copyW) / sx, (float)(dstY + copyH) / sy);
+    D2D1_RECT_F srcDip = D2D1::RectF(0.f, 0.f, (float)copyW, (float)copyH);
+    dc->DrawBitmap(ctx->rt->scrollStage, destDip, 1.f,
+                   D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, srcDip);
+    return true;
+}
+
+bool CanvasReadPixels(PaintCtx* ctx, float x, float y, float w, float h,
+                      uint8_t* bgra, int cap, int* outW, int* outH) {
+    if (outW) {
+        *outW = 0;
+    }
+    if (outH) {
+        *outH = 0;
+    }
+    if (PaintGpuOn() || !ctx || !ctx->rt || !ctx->rt->dc || !bgra || w < 1.f ||
+        h < 1.f) {
+        return false;
+    }
+    ID2D1DeviceContext* dc = ctx->rt->dc;
+    float dpiX = 96.f, dpiY = 96.f;
+    dc->GetDpi(&dpiX, &dpiY);
+    float sx = dpiX / 96.f;
+    float sy = dpiY / 96.f;
+    int x0 = (int)lroundf(x * sx);
+    int y0 = (int)lroundf(y * sy);
+    int x1 = (int)lroundf((x + w) * sx);
+    int y1 = (int)lroundf((y + h) * sy);
+    int pw = x1 - x0;
+    int ph = y1 - y0;
+    if (pw <= 0 || ph <= 0 || pw > 8192 || ph > 8192) {
+        return false;
+    }
+    if (cap / 4 < pw * ph) {
+        return false;
+    }
+    D2D1_BITMAP_PROPERTIES1 props = D2D1::BitmapProperties1(
+        D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+        D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
+        dpiX, dpiY);
+    ID2D1Bitmap1* bmp = nullptr;
+    HRESULT hr = dc->CreateBitmap(D2D1::SizeU((UINT)pw, (UINT)ph), nullptr, 0,
+                                  props, &bmp);
+    if (FAILED(hr) || !bmp) {
+        return false;
+    }
+    dc->Flush();
+    D2D1_POINT_2U destPoint = {0, 0};
+    D2D1_RECT_U srcRect = {(UINT)x0, (UINT)y0, (UINT)x1, (UINT)y1};
+    hr = bmp->CopyFromRenderTarget(&destPoint, dc, &srcRect);
+    if (FAILED(hr)) {
+        bmp->Release();
+        return false;
+    }
+    D2D1_MAPPED_RECT mapped = {};
+    hr = bmp->Map(D2D1_MAP_OPTIONS_READ, &mapped);
+    if (FAILED(hr) || !mapped.bits) {
+        bmp->Release();
+        return false;
+    }
+    for (int row = 0; row < ph; row++) {
+        memcpy(bgra + (size_t)row * (size_t)pw * 4,
+               mapped.bits + (size_t)row * mapped.pitch, (size_t)pw * 4);
+    }
+    bmp->Unmap();
+    bmp->Release();
+    if (outW) {
+        *outW = pw;
+    }
+    if (outH) {
+        *outH = ph;
+    }
+    return true;
 }
 
 // ─── paths ────────────────────────────────────────────────────────────────

@@ -1221,6 +1221,15 @@ void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
     }
 }
 
+bool CanvasScrollRect(PaintCtx*, float, float, float, float, float, float) {
+    return false;
+}
+
+bool CanvasReadPixels(PaintCtx*, float, float, float, float, uint8_t*, int,
+                      int*, int*) {
+    return false;
+}
+
 void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
     if (scene::Recording()) {
         scene::RecPushClip(ctx, x, y, w, h);

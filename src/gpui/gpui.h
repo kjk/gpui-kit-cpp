@@ -6888,6 +6888,12 @@ struct FrameTiming {
     // flush, the CGContext flush, or the canvas draw of the
     // requestAnimationFrame callback on wasm.
     double presentAt = -1;
+    // The three phases of this draw, the same split GPUI_FRAME_BENCH prints.
+    // Build is EntityRender, layout is LayoutEl, paint is PaintEl plus
+    // PaintTargetEnd. Zero on a frame that has not been drawn yet.
+    float buildSecs = 0;
+    float layoutSecs = 0;
+    float paintSecs = 0;
 };
 
 enum : uint16_t {

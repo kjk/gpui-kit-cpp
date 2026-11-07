@@ -132,4 +132,9 @@ bool SysSelfPrivateMemory(uint64_t* bytes) {
     return false;
 }
 
+bool SysSelfThreadCpu(double* seconds) {
+    (void)seconds;
+    return false;
+}
+
 } // namespace gpui

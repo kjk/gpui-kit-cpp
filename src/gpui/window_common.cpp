@@ -227,6 +227,8 @@ static void FrameBenchTick(Window* win, float secs) {
             sc.framesUnchanged, sc.frames, sc.framesPartial,
             sc.framesPartial ? 100.0 * sc.damageFracSum / sc.framesPartial
                              : 0.0);
+        logf("frame-bench scene scroll blits=%d rejects=%d", sc.scrollBlits,
+             sc.scrollRejects);
     }
     want = 0;
     PlatSetTimer(win, 0);
@@ -740,6 +742,9 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     bool presented =
         !headless && !(SceneOn() && scene::SkipPresent(&win->paint));
     timing.presentAt = presented ? drawEnd : -1;
+    timing.buildSecs = (float)gFrameBuildSecs;
+    timing.layoutSecs = (float)gFrameLayoutSecs;
+    timing.paintSecs = (float)gFramePaintSecs;
     win->frameTrace[win->frameSeq % (uint64_t)kFrameTraceCap] = timing;
     win->lastDrawTime = drawEnd;
     InteractionBenchRecord(win, timing);
@@ -4688,6 +4693,9 @@ int GpuiTakeRuntimeArgs(int argc, char** argv) {
             continue;
         }
         if (i > 0 && argument && SceneTakeArg(argument)) {
+            continue;
+        }
+        if (i > 0 && argument && ScrollLayersTakeArg(argument)) {
             continue;
         }
         if (i > 0 && argument && LayoutReuseTakeArg(argument)) {

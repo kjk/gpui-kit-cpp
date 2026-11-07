@@ -93,5 +93,11 @@ TempStr FormatPctTemp(float v, int decimals);
 // resident set PlatSelfUsage reports — a worse number, but a present one. The
 // browser has none: a page only ever sees its own linear heap.
 bool SysSelfPrivateMemory(uint64_t* bytes);
+
+// CPU time this thread has consumed so far, user plus kernel, in seconds.
+// The calling thread is the one that is measured, which for a frame is the
+// main thread. False where the platform has no such clock (wasm). Examples
+// call this instead of the platform API.
+bool SysSelfThreadCpu(double* seconds);
 } // namespace gpui
 #endif // GPUI_SYS_SYSINFO_H_

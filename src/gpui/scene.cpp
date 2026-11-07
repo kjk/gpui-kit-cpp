@@ -9,6 +9,7 @@
 
 #include "gpui/scene.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 namespace gpui {
@@ -39,6 +40,42 @@ bool SceneTakeArg(Str arg) {
     return true;
 }
 
+// -1 until the first frame or an explicit argument. On unless asked off.
+static int gScrollLayers = -1;
+
+static bool ScrollEnvOff(const char* value) {
+    if (!value || !value[0]) {
+        return false;
+    }
+    if (value[0] == '0' && value[1] == 0) {
+        return true;
+    }
+    return (value[0] == 'o' || value[0] == 'O') &&
+           (value[1] == 'f' || value[1] == 'F') &&
+           (value[2] == 'f' || value[2] == 'F') && value[3] == 0;
+}
+
+static bool ScrollLayersOn() {
+    if (gScrollLayers < 0) {
+        gScrollLayers = ScrollEnvOff(getenv("GPUI_SCROLL_LAYERS")) ? 0 : 1;
+    }
+    return gScrollLayers == 1 && SceneLevelOn() >= kSceneReplay;
+}
+
+bool ScrollLayersTakeArg(Str arg) {
+    const Str prefix = StrL("__scroll_layers=");
+    if (!base::StrStartsWith(arg, prefix)) {
+        return false;
+    }
+    Str value(arg.s + len(prefix), len(arg) - len(prefix));
+    if (base::StrEqI(value, "off") || base::StrEqI(value, "0")) {
+        gScrollLayers = 0;
+    } else if (base::StrEqI(value, "on") || base::StrEqI(value, "1")) {
+        gScrollLayers = 1;
+    }
+    return true;
+}
+
 namespace scene {
 
 // ─── the recorded frame ──────────────────────────────────────────────────
@@ -58,7 +95,10 @@ enum PrimKind : uint8_t {
     kPPathStrokeGradient,
     kPImage,
     kPText,
-    kPTextSpans
+    kPTextSpans,
+    // Not drawn. The scroll container's viewport and content offset, so a
+    // later frame can tell a pure scroll from a real change.
+    kPScroll
 };
 
 enum PrimFlag : uint8_t {
@@ -164,6 +204,36 @@ struct HashBag {
     int mask = 0;
 };
 
+// One swap-chain buffer's scroll content, in content space (screen position
+// plus the scroll offset), so a later frame can match rows that only moved.
+static const int kScrollCap = 1024;
+static const int kChromeCap = 96;
+static const int kScrollDamageCap = 8;
+
+struct ScrollSnap {
+    bool valid = false;
+    Bounds clip = {};
+    float scrollX = 0;
+    float scrollY = 0;
+    uint64_t outsideHash = 0;
+    int contentN = 0;
+    int chromeN = 0;
+    uint64_t contentH[kScrollCap] = {};
+    Bounds contentB[kScrollCap] = {};
+    uint64_t chromeH[kChromeCap] = {};
+    Bounds chromeB[kChromeCap] = {};
+};
+
+// The blit ReplayScroll still has to do, and the rectangles it redraws.
+struct ScrollPlan {
+    bool want = false;
+    Bounds clip = {};
+    float shiftX = 0;
+    float shiftY = 0;
+    int n = 0;
+    Bounds rects[kScrollDamageCap] = {};
+};
+
 // The current frame owns text and foreground ranges in textArena; previous
 // primitives keep only the resulting hash and bounds.
 struct TextRec {
@@ -220,6 +290,11 @@ struct State {
     int maskBytes = 0;
     HashBag bagA;
     HashBag bagB;
+    // What each swap-chain buffer is showing, so a later visit can scroll
+    // those pixels instead of redrawing them. The chain is three deep.
+    ScrollSnap scrollSnaps[3] = {};
+    int scrollSnapAt = 0;
+    ScrollPlan scrollPlan = {};
 };
 
 // Paint.h's path-building calls after PathNew carry only Path*, not PaintCtx*.
@@ -844,6 +919,26 @@ void RecImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
     p->resourceGeneration = RenderImageGeneration(img);
 }
 
+void RecScroll(PaintCtx* ctx, float x, float y, float w, float h, float scrollX,
+               float scrollY) {
+    if (!Recording() || !ctx || ctx->sceneState != gActive) {
+        return;
+    }
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    Prim* p = Emit(ctx, kPScroll, Bounds{x, y, w, h});
+    if (!p) {
+        return;
+    }
+    p->g0 = scrollX;
+    p->g1 = scrollY;
+    p->g2 = w;
+    p->g3 = h;
+    p->mask = Bounds{x, y, w, h};
+    p->bbox = Bounds{x, y, w, h};
+}
+
 void RecTextDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
                  bool clip, float clipW) {
     Size sz = TextLayoutSize(tl);
@@ -1075,7 +1170,10 @@ void Invalidate(PaintCtx* ctx) {
     s->prevFrameHash = 0;
     for (int i = 0; i < kBufferDepth; i++) {
         s->damageRing[i] = Bounds{};
+        s->scrollSnaps[i] = ScrollSnap{};
     }
+    s->scrollSnapAt = 0;
+    s->scrollPlan = ScrollPlan{};
 }
 
 void Reset(PaintCtx* ctx) {
@@ -1501,6 +1599,330 @@ static bool BagTake(HashBag& b, uint64_t hash) {
     return false;
 }
 
+// ─── scroll layers ───────────────────────────────────────────────────────
+//
+// A scrolled frame moves primitives that DirectWrite would otherwise draw
+// again. The swap chain is three buffers deep, so the target being drawn
+// holds the frame from three presents ago, not the previous one. When that
+// image is the same content at an older offset, the overlap is copied by
+// that delta and only the strip that entered, plus chrome that moved
+// (a scrollbar thumb), is replayed.
+
+static bool ScrollSameClip(Bounds a, Bounds b) {
+    return fabsf(a.x - b.x) < 0.5f && fabsf(a.y - b.y) < 0.5f &&
+           fabsf(a.w - b.w) < 0.5f && fabsf(a.h - b.h) < 0.5f;
+}
+
+static bool ScrollMaskInside(Bounds clip, Bounds mask) {
+    return mask.w > 0.5f && mask.h > 0.5f && mask.x >= clip.x - 0.75f &&
+           mask.y >= clip.y - 0.75f && mask.Right() <= clip.Right() + 0.75f &&
+           mask.Bottom() <= clip.Bottom() + 0.75f;
+}
+
+static bool ScrollHits(Bounds a, Bounds b) {
+    Bounds i = Intersect(a, b);
+    return i.w > 0.5f && i.h > 0.5f;
+}
+
+// Screen position plus the scroll offset: a row that only scrolled hashes
+// the same. The mask is left out because a viewport clip does not move with
+// the content, and a tighter clip does, and both are already in the geometry.
+static uint64_t ScrollContentHash(const Prim& src, float scrollX,
+                                  float scrollY) {
+    Prim p = src;
+    switch (p.kind) {
+        case kPLine:
+            p.g0 += scrollX;
+            p.g1 += scrollY;
+            p.g2 += scrollX;
+            p.g3 += scrollY;
+            break;
+        case kPEllipse:
+            p.g0 += scrollX;
+            p.g1 += scrollY;
+            break;
+        case kPPathStrokeGradient:
+            p.e0 += scrollX;
+            p.e1 += scrollY;
+            p.e2 += scrollX;
+            p.e3 += scrollY;
+            break;
+        case kPImage:
+            p.g0 += scrollX;
+            p.g1 += scrollY;
+            p.imageBounds.x += scrollX;
+            p.imageBounds.y += scrollY;
+            break;
+        default:
+            p.g0 += scrollX;
+            p.g1 += scrollY;
+            break;
+    }
+    p.mask = {};
+    return HashPrim(p);
+}
+
+static bool ScrollFind(const uint64_t* hashes, int n, uint8_t* used,
+                       uint64_t want) {
+    for (int i = 0; i < n; i++) {
+        if (!used[i] && hashes[i] == want) {
+            used[i] = 1;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool ScrollAddRect(ScrollPlan* plan, Bounds r) {
+    if (r.w <= 0.5f || r.h <= 0.5f) {
+        return true;
+    }
+    if (plan->n >= kScrollDamageCap) {
+        return false;
+    }
+    plan->rects[plan->n++] = r;
+    return true;
+}
+
+static Bounds ScrollKept(Bounds clip, float shiftX, float shiftY) {
+    float x = clip.x;
+    float y = clip.y;
+    float w = clip.w;
+    float h = clip.h;
+    if (shiftX < 0) {
+        w += shiftX;
+    } else if (shiftX > 0) {
+        x += shiftX;
+        w -= shiftX;
+    }
+    if (shiftY < 0) {
+        h += shiftY;
+    } else if (shiftY > 0) {
+        y += shiftY;
+        h -= shiftY;
+    }
+    if (w < 0) {
+        w = 0;
+    }
+    if (h < 0) {
+        h = 0;
+    }
+    return Bounds{x, y, w, h};
+}
+
+// The largest scroll container in this frame. Its clip is what a blit moves.
+static bool ScrollMark(Bounds* clip, float* scrollX, float* scrollY) {
+    int best = -1;
+    float bestArea = 0;
+    for (int i = 0; i < gCur.len; i++) {
+        const Prim& p = gCur[i];
+        if (p.kind != kPScroll) {
+            continue;
+        }
+        float area = p.g2 * p.g3;
+        if (area > bestArea) {
+            bestArea = area;
+            best = i;
+        }
+    }
+    if (best < 0) {
+        return false;
+    }
+    const Prim& p = gCur[best];
+    *clip = p.mask;
+    *scrollX = p.g0;
+    *scrollY = p.g1;
+    return clip->w > 1.f && clip->h > 1.f;
+}
+
+static ScrollSnap ScrollCapture() {
+    ScrollSnap snap;
+    Bounds clip = {};
+    float scrollX = 0, scrollY = 0;
+    if (!ScrollMark(&clip, &scrollX, &scrollY)) {
+        return snap;
+    }
+    uint64_t outside = kHashSeed;
+    int outsideN = 0;
+    bool overflow = false;
+    for (int i = 0; i < gCur.len; i++) {
+        const Prim& p = gCur[i];
+        if (p.kind == kPScroll || p.kind == kPClear) {
+            continue;
+        }
+        if (p.bbox.w <= 0 || p.bbox.h <= 0) {
+            continue;
+        }
+        if (ScrollMaskInside(clip, p.mask)) {
+            if (snap.contentN >= kScrollCap) {
+                overflow = true;
+                break;
+            }
+            snap.contentH[snap.contentN] =
+                ScrollContentHash(p, scrollX, scrollY);
+            snap.contentB[snap.contentN] = p.bbox;
+            snap.contentN++;
+            continue;
+        }
+        if (ScrollHits(p.bbox, clip)) {
+            if (snap.chromeN >= kChromeCap) {
+                overflow = true;
+                break;
+            }
+            snap.chromeH[snap.chromeN] = p.hash;
+            snap.chromeB[snap.chromeN] = p.bbox;
+            snap.chromeN++;
+            continue;
+        }
+        outside = HashBytes(outside, &p.hash, 8);
+        outsideN++;
+    }
+    if (overflow || snap.contentN == 0) {
+        return ScrollSnap{};
+    }
+    outside = HashBytes(outside, &outsideN, 4);
+    snap.valid = true;
+    snap.clip = clip;
+    snap.scrollX = scrollX;
+    snap.scrollY = scrollY;
+    snap.outsideHash = outside;
+    return snap;
+}
+
+static ScrollPlan ScrollMakePlan(const ScrollSnap& oldSnap,
+                                 const ScrollSnap& now) {
+    ScrollPlan plan;
+    if (!oldSnap.valid || !now.valid ||
+        !ScrollSameClip(oldSnap.clip, now.clip)) {
+        return plan;
+    }
+    if (oldSnap.outsideHash != now.outsideHash) {
+        return plan;
+    }
+    float shiftX = -(now.scrollX - oldSnap.scrollX);
+    float shiftY = -(now.scrollY - oldSnap.scrollY);
+    if (fabsf(shiftX) < 0.5f && fabsf(shiftY) < 0.5f) {
+        return plan;
+    }
+    if (fabsf(shiftX) >= now.clip.w || fabsf(shiftY) >= now.clip.h) {
+        return plan;
+    }
+    Bounds clip = now.clip;
+    if (shiftY < 0) {
+        if (!ScrollAddRect(&plan, Bounds{clip.x, clip.Bottom() + shiftY, clip.w,
+                                         -shiftY})) {
+            return ScrollPlan{};
+        }
+    } else if (shiftY > 0) {
+        if (!ScrollAddRect(&plan, Bounds{clip.x, clip.y, clip.w, shiftY})) {
+            return ScrollPlan{};
+        }
+    }
+    if (shiftX < 0) {
+        if (!ScrollAddRect(&plan, Bounds{clip.Right() + shiftX, clip.y, -shiftX,
+                                         clip.h})) {
+            return ScrollPlan{};
+        }
+    } else if (shiftX > 0) {
+        if (!ScrollAddRect(&plan, Bounds{clip.x, clip.y, shiftX, clip.h})) {
+            return ScrollPlan{};
+        }
+    }
+    Bounds kept = ScrollKept(clip, shiftX, shiftY);
+    uint8_t used[kScrollCap] = {};
+    float extra = 0;
+    for (int i = 0; i < now.contentN; i++) {
+        if (ScrollFind(oldSnap.contentH, oldSnap.contentN, used,
+                       now.contentH[i])) {
+            continue;
+        }
+        Bounds overlap = Intersect(now.contentB[i], kept);
+        if (overlap.w > 1.f && overlap.h > 1.f) {
+            extra += overlap.w * overlap.h;
+            if (!ScrollAddRect(&plan, Intersect(now.contentB[i], clip))) {
+                return ScrollPlan{};
+            }
+        }
+    }
+    for (int i = 0; i < oldSnap.contentN; i++) {
+        if (used[i]) {
+            continue;
+        }
+        Bounds moved = oldSnap.contentB[i];
+        moved.x += shiftX;
+        moved.y += shiftY;
+        Bounds overlap = Intersect(moved, kept);
+        if (overlap.w > 1.f && overlap.h > 1.f) {
+            extra += overlap.w * overlap.h;
+            if (!ScrollAddRect(&plan, overlap)) {
+                return ScrollPlan{};
+            }
+        }
+    }
+    uint8_t chromeUsed[kChromeCap] = {};
+    for (int i = 0; i < now.chromeN; i++) {
+        if (ScrollFind(oldSnap.chromeH, oldSnap.chromeN, chromeUsed,
+                       now.chromeH[i])) {
+            continue;
+        }
+        Bounds r = Intersect(now.chromeB[i], clip);
+        extra += r.w * r.h;
+        if (!ScrollAddRect(&plan, r)) {
+            return ScrollPlan{};
+        }
+    }
+    for (int i = 0; i < oldSnap.chromeN; i++) {
+        if (chromeUsed[i]) {
+            continue;
+        }
+        Bounds moved = oldSnap.chromeB[i];
+        moved.x += shiftX;
+        moved.y += shiftY;
+        Bounds r = Intersect(moved, clip);
+        extra += r.w * r.h;
+        if (!ScrollAddRect(&plan, r)) {
+            return ScrollPlan{};
+        }
+    }
+    float clipArea = clip.w * clip.h;
+    if (clipArea > 0 && extra > clipArea * 0.20f) {
+        return ScrollPlan{};
+    }
+    if (plan.n <= 0) {
+        return ScrollPlan{};
+    }
+    plan.want = true;
+    plan.clip = clip;
+    plan.shiftX = shiftX;
+    plan.shiftY = shiftY;
+    return plan;
+}
+
+static void ScrollCommit() {
+    if (!gActive) {
+        return;
+    }
+    ScrollSnap now;
+    ScrollPlan plan;
+    if (ScrollLayersOn()) {
+        now = ScrollCapture();
+        plan = ScrollMakePlan(gActive->scrollSnaps[gActive->scrollSnapAt], now);
+        if (now.valid && gActive->scrollSnaps[gActive->scrollSnapAt].valid &&
+            ScrollSameClip(now.clip, gActive->scrollSnaps[gActive->scrollSnapAt]
+                                         .clip) &&
+            (fabsf(now.scrollX - gActive->scrollSnaps[gActive->scrollSnapAt]
+                                     .scrollX) >= 0.5f ||
+             fabsf(now.scrollY - gActive->scrollSnaps[gActive->scrollSnapAt]
+                                     .scrollY) >= 0.5f) &&
+            !plan.want) {
+            gStats.scrollRejects++;
+        }
+    }
+    gActive->scrollSnaps[gActive->scrollSnapAt] = now;
+    gActive->scrollSnapAt = (gActive->scrollSnapAt + 1) % 3;
+    gActive->scrollPlan = plan;
+}
+
 bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
     State* s = StateFor(ctx, false);
     if (!s) {
@@ -1606,6 +2028,15 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
         gStats.damageFracSum += area > 0 ? (dmg.w * dmg.h) / area : 1.f;
     }
 
+    // A presented frame rotates the swap chain. Record what this buffer will
+    // show once the replay (or a scroll blit) finishes, and whether that
+    // replay can be a blit of the buffer's current pixels.
+    if (!skip) {
+        ScrollCommit();
+    } else {
+        gActive->scrollPlan = ScrollPlan{};
+    }
+
     // This frame becomes the one the next is compared against, whether or not
     // it was drawn: what is on screen did not change either way.
     VecClear(gPrev);
@@ -1652,6 +2083,9 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
     gStats.maskChanges = 0;
     for (int i = 0; i < gCur.len; i++) {
         const Prim& p = gCur[i];
+        if (p.kind == kPScroll) {
+            continue;
+        }
         if (p.bbox.w <= 0 || p.bbox.h <= 0) {
             // Wholly clipped away. A scene knows this; a tree walk that
             // issues the call does not.
@@ -1783,6 +2217,106 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
         if (gMasks[i].image) gStats.maskCacheLive++;
     }
     ctx->opacity = saved;
+}
+
+static bool ScrollVerifyOn() {
+    static int on = -1;
+    if (on < 0) {
+        const char* value = getenv("GPUI_SCROLL_VERIFY");
+        on = value && value[0] == '1' && value[1] == 0 ? 1 : 0;
+    }
+    return on == 1;
+}
+
+// Compare the blitted clip with a from-scratch replay of the same frame.
+// A mismatch turns the layer off for the rest of the process. The scratch
+// replay is what stays on the target, so a failed check is still a correct
+// frame.
+static void ScrollVerify(PaintCtx* ctx, Bounds clip) {
+    if (!ScrollVerifyOn() || !gActive) {
+        return;
+    }
+    int cap = (int)(clip.w * clip.h * 4.f) + 64;
+    if (cap < 64) {
+        return;
+    }
+    // Device pixels can be larger than DIPs. Leave headroom for a 3x scale.
+    if (cap > 16000000) {
+        cap = 16000000;
+    } else {
+        cap *= 9;
+    }
+    uint8_t* before = (uint8_t*)base::Alloc(nullptr, cap);
+    uint8_t* after = (uint8_t*)base::Alloc(nullptr, cap);
+    int bw = 0, bh = 0, aw = 0, ah = 0;
+    bool gotBefore = before && CanvasReadPixels(ctx, clip.x, clip.y, clip.w,
+                                                clip.h, before, cap, &bw, &bh);
+    Replay(ctx, nullptr);
+    bool gotAfter = after && gotBefore &&
+                    CanvasReadPixels(ctx, clip.x, clip.y, clip.w, clip.h, after,
+                                     cap, &aw, &ah);
+    static int reported = 0;
+    if (!gotBefore || !gotAfter || bw != aw || bh != ah || bw <= 0 || bh <= 0) {
+        if (reported++ == 0) {
+            logf(
+                "scroll-verify readback failed before=%d after=%d %dx%d vs "
+                "%dx%d",
+                gotBefore ? 1 : 0, gotAfter ? 1 : 0, bw, bh, aw, ah);
+        }
+    } else {
+        int bad = 0;
+        int maxDelta = 0;
+        int n = bw * bh;
+        for (int i = 0; i < n; i++) {
+            int delta = 0;
+            for (int c = 0; c < 4; c++) {
+                int d = (int)before[i * 4 + c] - (int)after[i * 4 + c];
+                if (d < 0) {
+                    d = -d;
+                }
+                if (d > delta) {
+                    delta = d;
+                }
+            }
+            if (delta > maxDelta) {
+                maxDelta = delta;
+            }
+            if (delta > 16) {
+                bad++;
+            }
+        }
+        if (reported++ == 0 || bad > n / 200) {
+            logf("scroll-verify bad=%d/%d max=%d", bad, n, maxDelta);
+        }
+        if (bad > n / 200) {
+            logf("scroll-verify mismatch; layers off");
+            gScrollLayers = 0;
+            gStats.scrollRejects++;
+        }
+    }
+    base::Free(nullptr, before);
+    base::Free(nullptr, after);
+}
+
+bool ReplayScroll(PaintCtx* ctx) {
+    State* s = StateFor(ctx, false);
+    if (!s || !s->scrollPlan.want) {
+        return false;
+    }
+    gActive = s;
+    ScrollPlan plan = s->scrollPlan;
+    s->scrollPlan.want = false;
+    if (!CanvasScrollRect(ctx, plan.clip.x, plan.clip.y, plan.clip.w,
+                          plan.clip.h, plan.shiftX, plan.shiftY)) {
+        gStats.scrollRejects++;
+        return false;
+    }
+    for (int i = 0; i < plan.n; i++) {
+        Replay(ctx, &plan.rects[i]);
+    }
+    gStats.scrollBlits++;
+    ScrollVerify(ctx, plan.clip);
+    return true;
 }
 
 } // namespace scene

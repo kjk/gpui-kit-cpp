@@ -212,7 +212,7 @@ export const simpleExamples = [
 ];
 
 /** A directory of .cpp built as one binary. */
-export const dirExamples = ["showcase", "story"];
+export const dirExamples = ["showcase", "story", "gpui_perf"];
 
 /** Not examples: console programs, so -all leaves them out. */
 export const consoleTargets = new Set(["tests", "bench", "gpui_shell"]);
@@ -527,6 +527,9 @@ function objGroup(f: string): string {
   }
   if (f.startsWith("examples/story/")) {
     return "story";
+  }
+  if (f.startsWith("examples/gpui_perf/")) {
+    return "gpui_perf";
   }
   if (f.startsWith("tests/")) {
     return "tests";
@@ -1633,7 +1636,8 @@ function link(
       // The test and benchmark runners write their reports to stdout, so
       // they are console apps. The entry point is the amalgam's wWinMain
       // either way.
-      consoleTargets.has(name) ? "/SUBSYSTEM:CONSOLE" : "/SUBSYSTEM:WINDOWS",
+      // gpui_perf writes the --auto table to the console it was launched from.
+      consoleTargets.has(name) || name === "gpui_perf" ? "/SUBSYSTEM:CONSOLE" : "/SUBSYSTEM:WINDOWS",
       // Layout recurses once per level of the tree, and taffy's `superdeep`
       // benchmarks nest a thousand of them. Windows reserves 1 MB by default,
       // where the Rust benchmarks get the 8 MB of a Rust main thread, so this

@@ -286,6 +286,15 @@ void CanvasEllipseGradient(PaintCtx* ctx, float cx, float cy, float rx,
                            Rgba from, Rgba to);
 void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h);
 void CanvasPopClip(PaintCtx* ctx);
+// Copy the pixels of `w` x `h` at (`x`, `y`) by (`dx`, `dy`) DIPs inside that
+// rectangle. The overlap moves; the strip that enters is left untouched for
+// the caller to redraw. False when this backend cannot scroll its target.
+bool CanvasScrollRect(PaintCtx* ctx, float x, float y, float w, float h,
+                      float dx, float dy);
+// Tightly packed premultiplied-or-ignore BGRA of that rectangle, top-down,
+// `outW` * `outH` * 4 bytes. False when the target cannot be read back.
+bool CanvasReadPixels(PaintCtx* ctx, float x, float y, float w, float h,
+                      uint8_t* bgra, int cap, int* outW, int* outH);
 
 // ─── paths ────────────────────────────────────────────────────────────────
 //

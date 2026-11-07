@@ -26,6 +26,22 @@ The current update target is
 
 ## Known gaps vs Rust
 
+- **`examples/gpui_perf` is the windowed showcase, not the headless suite.**
+  `--auto` runs the nine gpui-fast scenarios (spinner, sidebar, components
+  page, 5000-row table, 33 ms refresh, 5000-message list, workspace
+  quotes, scroll and hover) against the same 245-name page list. Components
+  are raw divs. The workspace keeps the 200-by-15 watchlist, quote header,
+  120 candles, 10-level book, 80 trades, a donut and 12 hidden feed
+  subscribers, drawn with plain elements rather than Longbridge Pro widgets.
+  Allsum chat is a title only. `--retention` does nothing until view
+  retention exists. Instruction counts and the headless scenario crate are
+  not ported (`examples/gpui_perf`).
+- **Scroll layers blit a pure scroll.** When the only change inside a scroll
+  viewport is the offset, the frame copies the overlap already on the swap
+  chain and redraws the strip that entered, plus a scrollbar thumb that
+  moved. It is on by default. `__scroll_layers=off` and `GPUI_SCROLL_LAYERS=0`
+  draw every primitive. Content that changes (a quote tick, a refresh)
+  still draws whole (`src/gpui/scene.cpp`).
 - **Fitted text does not contribute its max-content width.** A
   shrink-to-fit bubble around a TextView sizes to its padding and list
   markers. A run is width 100%, and that percentage does not fall back

@@ -220,4 +220,51 @@ bool SysSelfPrivateMemory(uint64_t* bytes) {
     return true;
 }
 
+// Rated cycles per second from the processor's ~MHz key. GetThreadTimes only
+// moves in 10–16 ms quanta, which is coarser than a frame, so a per-frame
+// sample from it is zero. QueryThreadCycleTime counts cycles the thread
+// actually ran; dividing by the rated frequency is a stable milliseconds
+// figure on one machine, not a cross-machine clock.
+static double RatedCyclesPerSec() {
+    static double hz = -1;
+    if (hz >= 0) {
+        return hz;
+    }
+    hz = 0;
+    HKEY key = nullptr;
+    if (RegOpenKeyExA(HKEY_LOCAL_MACHINE,
+                      "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0,
+                      KEY_READ, &key) == 0) {
+        DWORD mhz = 0;
+        DWORD size = sizeof(mhz);
+        if (RegQueryValueExA(key, "~MHz", nullptr, nullptr, (BYTE*)&mhz,
+                             &size) == 0 &&
+            mhz > 0) {
+            hz = (double)mhz * 1000000.0;
+        }
+        RegCloseKey(key);
+    }
+    return hz;
+}
+
+bool SysSelfThreadCpu(double* seconds) {
+    double hz = RatedCyclesPerSec();
+    ULONG64 cycles = 0;
+    if (hz > 0 && QueryThreadCycleTime(GetCurrentThread(), &cycles)) {
+        if (seconds) {
+            *seconds = (double)cycles / hz;
+        }
+        return true;
+    }
+    FILETIME created, exited, kernel, user;
+    if (!GetThreadTimes(GetCurrentThread(), &created, &exited, &kernel,
+                        &user)) {
+        return false;
+    }
+    if (seconds) {
+        *seconds = (double)(FtToU64(kernel) + FtToU64(user)) / 10000000.0;
+    }
+    return true;
+}
+
 } // namespace gpui

@@ -70,6 +70,10 @@ inline bool SceneOn() {
 // Consumes `__scene=off|replay|cache|skip|damage`. Invalid values are still
 // consumed and leave the current/default selection unchanged.
 bool SceneTakeArg(Str arg);
+// Consumes `__scroll_layers=on|off`. Absent means on. `GPUI_SCROLL_LAYERS=0`
+// turns the same path off. A pure scroll then blits the previous pixels and
+// redraws the strip that entered, instead of redrawing every primitive.
+bool ScrollLayersTakeArg(Str arg);
 
 namespace scene {
 
@@ -168,6 +172,15 @@ inline void RecImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
 }
 void RecTextDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
                  bool clip, float clipW);
+// A scroll container's viewport, recorded while its clip is in force.
+// `scrollX` / `scrollY` are the content offsets (positive-down /
+// positive-right). Replay does not draw it.
+void RecScroll(PaintCtx* ctx, float x, float y, float w, float h, float scrollX,
+               float scrollY);
+// When FrameEnd decided this frame is a pure scroll, shift the pixels already
+// on the target and replay only the exposed strip and the chrome that moved.
+// False means the caller draws the frame the ordinary way.
+bool ReplayScroll(PaintCtx* ctx);
 
 // ─── what a frame cost ───────────────────────────────────────────────────
 
@@ -215,6 +228,10 @@ struct SceneStats {
     // Fraction of the view redrawn by the most recent frame: zero when it was
     // skipped, one for a full replay, and between them for damage replay.
     float damageFraction = 1;
+    // Scroll-layer blits that reused the previous pixels, and frames that
+    // looked like a scroll but had to be drawn whole.
+    int scrollBlits = 0;
+    int scrollRejects = 0;
 };
 const SceneStats& Stats(PaintCtx* ctx);
 

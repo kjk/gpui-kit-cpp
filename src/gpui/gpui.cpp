@@ -8163,6 +8163,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (clipBox.h < 0) clipBox.h = 0;
     if (clip) {
         CanvasPushClip(ctx, clipBox.x, clipBox.y, clipBox.w, clipBox.h);
+        if (e->style.overflowX == Overflow::Scroll ||
+            e->style.overflowY == Overflow::Scroll) {
+            scene::RecScroll(ctx, clipBox.x, clipBox.y, clipBox.w, clipBox.h,
+                             e->scrollX, e->scrollY);
+        }
     }
 
     Bounds previousHitMask = ctx->hitMask;

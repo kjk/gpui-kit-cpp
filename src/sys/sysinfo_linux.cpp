@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/statvfs.h>
+#include <time.h>
 #include <unistd.h>
 
 namespace gpui {
@@ -342,6 +343,18 @@ bool SysSelfPrivateMemory(uint64_t* bytes) {
         line += newline + 1;
     }
     return false;
+}
+
+// clock_gettime(CLOCK_THREAD_CPUTIME_ID): this thread's user plus kernel time.
+bool SysSelfThreadCpu(double* seconds) {
+    struct timespec ts = {};
+    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) {
+        return false;
+    }
+    if (seconds) {
+        *seconds = (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+    }
+    return true;
 }
 
 } // namespace gpui
