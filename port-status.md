@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5b72161ed8dc0ae7909c5b8bb4a551b1c95f7d15` (2026-11-06,
-input: Publish the input's layout at the end of prepaint (#3831)).
-The caret is already published at write-back, which is this tree's
-prepaint, so a menu in the same frame reads this frame's caret. A
-field write during paint does not notify, and there is no second
-engine for GPUI Fast's check to dirty.
+Processed through `2859436c4520641f90be0507cb36e9599ea45f33` (2026-11-06,
+dialog: Add `Dialog::accessibility_label` (#3826)).
+`Dialog::AccessibilityLabel` names the dialog for accessibility
+clients. The host element carries that label with its dialog role.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

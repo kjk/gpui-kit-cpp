@@ -141,6 +141,8 @@ struct Dialog {
     Dialog* Trap(Str name);
     Dialog* Backdrop(El* backdrop);
     Dialog* Popup(El* popup);
+    // accessibility_label: the name a client reads, typically the title.
+    Dialog* AccessibilityLabel(Str label);
     El* IntoEl();
 };
 } // namespace gpui

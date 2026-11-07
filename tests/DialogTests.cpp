@@ -1146,8 +1146,40 @@ static void ClosingFadesTheDialogSurface() {
     delete win;
 }
 
+// dialog.rs a_dialog_takes_an_accessible_name.
+static void ADialogTakesAnAccessibleName() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    El* host = Dialog::New(&cx)
+                   ->AccessibilityLabel(StrL("Discard draft?"))
+                   ->Popup(Div(a)->W(10)->H(10))
+                   ->IntoEl();
+    IdsCollect(host);
+    AccessibilityCollect(host, &win->accessibility);
+    const AccessibilityNode* dialog = nullptr;
+    for (int i = 0; i < len(win->accessibility); i++) {
+        if (win->accessibility[i].info.role == AccessibilityRole::Dialog) {
+            dialog = &win->accessibility[i];
+            break;
+        }
+    }
+    utassert(dialog != nullptr);
+    if (dialog) {
+        utassert(StrEq(dialog->info.label, StrL("Discard draft?")));
+    }
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestDialog() {
     TestSuite("dialog");
+    ADialogTakesAnAccessibleName();
     ButtonPropsMergeWithWhatTheDialogAlreadyCarries();
     CloseTriggerSuppliesAnAccessibleButtonThatActivatesOnce();
     OversizedDialogsAreClampedToTheViewport();

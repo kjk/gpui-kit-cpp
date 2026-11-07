@@ -275,6 +275,13 @@ static void DialogAnchorControlActions(El* el, FocusHandle anchor) {
     }
 }
 
+Dialog* Dialog::AccessibilityLabel(Str label) {
+    if (root) {
+        root->AriaLabel(label);
+    }
+    return this;
+}
+
 Dialog* Dialog::Popup(El* popup) {
     if (popup) {
         // The popup is the trap container, not the backdrop: a Tab inside a
