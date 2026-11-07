@@ -40,22 +40,11 @@ struct AlertDialogTrigger {
     static El* New(Ctx* cx, Listener onOpen = {}, DialogHandle handle = {});
 };
 
-struct AlertDialog {
-    Ctx* cx = nullptr;
-    El* root = nullptr;
-    // An alert is a Dialog, so it traps focus like one — under its own name,
-    // since an alert is what a dialog opens on top of.
-    Str trap = {};
-    bool open = true;
-    DialogHandle handle = {};
-
+// An alert is a Dialog, so it traps focus like one — under its own name,
+// since an alert is what a dialog opens on top of.
+struct AlertDialog : DialogBuilder<AlertDialog> {
     static AlertDialog* New(Ctx* cx);
-    AlertDialog* Open(bool value);
-    AlertDialog* Handle(DialogHandle value);
-    AlertDialog* Trap(Str name);
-    AlertDialog* Backdrop(El* backdrop);
     AlertDialog* Popup(El* popup);
-    El* IntoEl();
 };
 } // namespace gpui
 #endif // GPUI_BASE_ALERT_DIALOG_H_

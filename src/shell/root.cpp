@@ -237,10 +237,7 @@ struct ShellDialogLayer {
             backdrop =
                 DialogBackdrop::New(cx)
                     ->Absolute()
-                    ->Top(0)
-                    ->Left(0)
-                    ->Right(0)
-                    ->Bottom(0)
+                    ->Inset0()
                     ->Bg(BackdropColor())
                     ->OnMouseDown(Listen(cx, &ShellDialogLayer::OnBackdrop));
         }
@@ -261,10 +258,7 @@ struct ShellDialogLayer {
                           ->Child(child ? child : Div(cx->a));
         El* popup = Div(cx->a)
                         ->Absolute()
-                        ->Top(0)
-                        ->Left(0)
-                        ->Right(0)
-                        ->Bottom(0)
+                        ->Inset0()
                         ->Flex()
                         ->ItemsCenter()
                         ->JustifyCenter()
@@ -448,13 +442,7 @@ struct ShellSheetLayer {
         }
         return Sheet::New(cx)
             ->Trap(StrL("shell-sheet"))
-            ->Overlay(Div(cx->a)
-                          ->Absolute()
-                          ->Top(0)
-                          ->Left(0)
-                          ->Right(0)
-                          ->Bottom(0)
-                          ->Bg(BackdropColor()))
+            ->Overlay(Div(cx->a)->Absolute()->Inset0()->Bg(BackdropColor()))
             ->Surface(surface)
             ->RequestClose(Listen(cx, &ShellSheetLayer::Close))
             ->IntoEl()

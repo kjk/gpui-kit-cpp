@@ -125,7 +125,10 @@ struct DialogTrigger {
                    Str id = StrL("dialog-trigger"));
 };
 
-struct Dialog {
+// What a Dialog and an AlertDialog (which is one) hold and set alike: the
+// viewport host, its focus trap, and whether it is open.
+template <typename Self>
+struct DialogBuilder {
     Ctx* cx = nullptr;
     El* root = nullptr;
     // focus_trap("dialog-{layer}"): the popup keeps Tab inside itself while
@@ -135,15 +138,56 @@ struct Dialog {
     bool open = true;
     DialogHandle handle = {};
 
+    // The viewport host, like Rust Dialog's deferred+anchored overlay. A
+    // popup in normal flow lands centered; the caller lays the host out
+    // differently by styling `root`, which is Rust's refine_style on the
+    // host.
+    static Self* NewHost(Ctx* cx, AccessibilityRole role, Str trapName) {
+        Arena* a = cx->a;
+        Self* d = ArenaNew<Self>(a);
+        d->cx = cx;
+        d->trap = trapName;
+        d->root = Div(a)
+                      ->Role(role)
+                      ->Fixed()
+                      ->Top(0)
+                      ->Left(0)
+                      ->W(kFill)
+                      ->H(kFill)
+                      ->Flex()
+                      ->ItemsCenter()
+                      ->JustifyCenter();
+        return d;
+    }
+    Self* Open(bool value) {
+        open = value;
+        return static_cast<Self*>(this);
+    }
+    Self* Handle(DialogHandle value) {
+        handle = value;
+        return static_cast<Self*>(this);
+    }
+    Self* Trap(Str name) {
+        trap = name;
+        return static_cast<Self*>(this);
+    }
+    Self* Backdrop(El* backdrop) {
+        if (backdrop) {
+            root->Child(backdrop);
+        }
+        return static_cast<Self*>(this);
+    }
+    El* IntoEl() {
+        bool visible = handle.IsValid() ? handle.IsOpen(cx->app, open) : open;
+        return visible ? root : Div(cx->a);
+    }
+};
+
+struct Dialog : DialogBuilder<Dialog> {
     static Dialog* New(Ctx* cx);
-    Dialog* Open(bool value);
-    Dialog* Handle(DialogHandle value);
-    Dialog* Trap(Str name);
-    Dialog* Backdrop(El* backdrop);
     Dialog* Popup(El* popup);
     // accessibility_label: the name a client reads, typically the title.
     Dialog* AccessibilityLabel(Str label);
-    El* IntoEl();
 };
 } // namespace gpui
 #endif // GPUI_BASE_DIALOG_H_

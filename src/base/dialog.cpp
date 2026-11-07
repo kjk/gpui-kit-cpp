@@ -220,46 +220,7 @@ El* DialogClose::WithTrigger(Ctx* cx, El* trigger, int clickId) {
 }
 
 Dialog* Dialog::New(Ctx* cx) {
-    Arena* a = cx->a;
-    Dialog* d = ArenaNew<Dialog>(a);
-    d->cx = cx;
-    d->trap = StrL("dialog");
-    d->root = Div(a)
-                  ->Role(AccessibilityRole::Dialog)
-                  ->Fixed()
-                  ->Top(0)
-                  ->Left(0)
-                  ->W(kFill)
-                  ->H(kFill)
-                  // A popup in normal flow lands centered; the caller lays
-                  // the host out differently by styling `root`, which is
-                  // Rust's refine_style on the host.
-                  ->Flex()
-                  ->ItemsCenter()
-                  ->JustifyCenter();
-    return d;
-}
-
-Dialog* Dialog::Trap(Str name) {
-    trap = name;
-    return this;
-}
-
-Dialog* Dialog::Open(bool value) {
-    open = value;
-    return this;
-}
-
-Dialog* Dialog::Handle(DialogHandle value) {
-    handle = value;
-    return this;
-}
-
-Dialog* Dialog::Backdrop(El* backdrop) {
-    if (backdrop) {
-        root->Child(backdrop);
-    }
-    return this;
+    return NewHost(cx, AccessibilityRole::Dialog, StrL("dialog"));
 }
 
 static void DialogAnchorControlActions(El* el, FocusHandle anchor) {
@@ -301,8 +262,4 @@ Dialog* Dialog::Popup(El* popup) {
     return this;
 }
 
-El* Dialog::IntoEl() {
-    bool visible = handle.IsValid() ? handle.IsOpen(cx->app, open) : open;
-    return visible ? root : Div(cx->a);
-}
 } // namespace gpui

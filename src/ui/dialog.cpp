@@ -772,13 +772,7 @@ El* Dialog::IntoEl(WinSize size) {
     if (closing) {
         // Painted after the content, so a press on the leaving surface hits
         // the shield rather than a button or a field under it.
-        panel->Child(Div(a)
-                         ->Absolute()
-                         ->Left(0)
-                         ->Top(0)
-                         ->Right(0)
-                         ->Bottom(0)
-                         ->StopMouseDown());
+        panel->Child(Div(a)->Absolute()->Inset0()->StopMouseDown());
     }
     // The corner positioner keeps an oversized panel inside the window.
     // SlideDown is the only entrance that moves the requested point.

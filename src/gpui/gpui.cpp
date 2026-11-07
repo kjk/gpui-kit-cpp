@@ -2430,6 +2430,9 @@ El* El::Left(float v) {
     style.absLeft = v;
     return this;
 }
+El* El::Inset0() {
+    return Top(0)->Right(0)->Bottom(0)->Left(0);
+}
 El* El::Bottom(float v) {
     style.absBottom = v;
     return this;

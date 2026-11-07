@@ -10,91 +10,36 @@ namespace component {
 // shares. Critically damped, because an opacity that overshoots would clip
 // at 1 and come back — a flicker rather than a flourish.
 
-Checkbox* Checkbox::New(Ctx* cx, Str id) {
-    Arena* a = cx->a;
-    Checkbox* c = ArenaNew<Checkbox>(a);
-    c->a = a;
-    c->cx = cx;
-    c->id = id;
-    return c;
-}
-
-Checkbox* Checkbox::Label(Str s) {
-    label = s;
-    return this;
-}
-Checkbox* Checkbox::AccessibilityLabel(Str s) {
-    accessibilityLabel = s;
-    return this;
-}
-Checkbox* Checkbox::Hint(Str s) {
-    hint = s;
-    return this;
-}
 Checkbox* Checkbox::Child(El* e) {
     child = e;
-    return this;
-}
-Checkbox* Checkbox::Checked(bool v) {
-    checked = v;
-    return this;
-}
-Checkbox* Checkbox::Disabled(bool v) {
-    disabled = v;
-    return this;
-}
-Checkbox* Checkbox::WithSize(UiSize s) {
-    size = s;
     return this;
 }
 Checkbox* Checkbox::W(float v) {
     w = v;
     return this;
 }
-Checkbox* Checkbox::FocusRing(bool v) {
-    focusRing = v;
-    return this;
-}
 Checkbox* Checkbox::Role(AccessibilityRole value) {
     accessibilityRole = value;
     return this;
 }
-Checkbox* Checkbox::TabIndex(int v) {
-    tabIndex = v;
-    return this;
-}
-Checkbox* Checkbox::TabStop(bool v) {
-    tabStop = v;
-    return this;
-}
-Checkbox* Checkbox::Tooltip(Str s) {
-    tooltip = s;
-    return this;
-}
-Checkbox* Checkbox::TooltipShowDelay(int ms) {
-    tooltipShowDelayMs = ms;
-    return this;
-}
-Checkbox* Checkbox::OnClick(Listener fn) {
-    return OnChange(fn);
-}
-Checkbox* Checkbox::OnChange(Listener fn) {
-    onClick = fn;
-    return this;
-}
-
-void ChoiceRowAnnounce(El* row, Str label, Str accessibilityLabel, Str tooltip,
-                       int tooltipShowDelayMs) {
-    Str name = accessibilityLabel.s ? accessibilityLabel : label;
+El* ChoiceRow(Ctx* cx, El* row, const ChoiceFields& f) {
+    row->TabIndex(f.tabIndex)
+        ->TabStop(f.tabStop)
+        ->FocusRing(f.focusRing)
+        ->FlexRow()
+        ->ItemsStart()
+        ->Gap(Rems(cx, 0.5f));
+    Str name = f.accessibilityLabel.s ? f.accessibilityLabel : f.label;
     if (name.s) {
         row->AriaLabel(name);
     }
-    if (tooltip.s) {
-        row->Tip(tooltip);
-        if (tooltipShowDelayMs >= 0) {
-            row->TipShowDelay(tooltipShowDelayMs);
+    if (f.tooltip.s) {
+        row->Tip(f.tooltip);
+        if (f.tooltipShowDelayMs >= 0) {
+            row->TipShowDelay(f.tooltipShowDelayMs);
         }
     }
+    return row;
 }
 
 El* ChoiceLabelColumn(Ctx* cx, El* indicator, float box, Str label, Str hint,
@@ -178,16 +123,10 @@ El* Checkbox::IntoEl() {
     // of the label, not with the middle of the block. Centring looks the same
     // on a one-line label and drops the box half a description lower on a
     // labelled one, which is what it was doing.
-    El* row = gpui::Checkbox::New(cx, id, state, disabled, onClick)
-                  ->Role(accessibilityRole)
-                  ->TabIndex(tabIndex)
-                  ->TabStop(tabStop)
-                  ->FocusRing(focusRing)
-                  ->FlexRow()
-                  ->ItemsStart()
-                  ->Gap(Rems(cx, 0.5f));
-    ChoiceRowAnnounce(row, label, accessibilityLabel, tooltip,
-                      tooltipShowDelayMs);
+    El* row = ChoiceRow(cx,
+                        gpui::Checkbox::New(cx, id, state, disabled, onClick)
+                            ->Role(accessibilityRole),
+                        *this);
     row->Child(ind);
     if (w > 0) {
         row->W(w);

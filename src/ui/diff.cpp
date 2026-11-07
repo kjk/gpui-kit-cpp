@@ -3353,13 +3353,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
         if (deco) {
             Rgba fill = deco->hasBackground ? deco->background
                                             : RgbaOpacity(theme.warning, 0.2f);
-            box->Child(Div(cx->a)
-                           ->Absolute()
-                           ->Top(0)
-                           ->Left(0)
-                           ->Right(0)
-                           ->Bottom(0)
-                           ->Bg(fill));
+            box->Child(Div(cx->a)->Absolute()->Inset0()->Bg(fill));
         }
         if (diff->lineNumber) {
             int width = file->lineNumberDigits * 8 + 12;

@@ -3313,6 +3313,8 @@ struct El {
     El* Left(float v);
     El* Bottom(float v);
     El* Right(float v);
+    // Styled::inset_0: top, right, bottom and left all 0.
+    El* Inset0();
     El* LeftRel(float frac);
     El* RightRel(float frac);
     El* TopRel(float frac);

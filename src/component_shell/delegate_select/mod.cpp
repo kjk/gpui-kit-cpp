@@ -213,12 +213,7 @@ static bool RecordPlaceholder(PayloadBuild* build,
 
 static bool RecordMenuWidth(PayloadBuild* build, const ComponentArgument* args,
                             int count) {
-    float width = 0;
-    if (!MenuWidthArgument(build, "Select", args, count, &width)) return false;
-    Op* op = build->New<Op>();
-    op->kind = Op::MenuWidth;
-    op->number = width;
-    return true;
+    return RecordMenuWidthOp<Op>(build, "Select", args, count);
 }
 
 static constexpr ArgumentDescriptor kArguments[] = {

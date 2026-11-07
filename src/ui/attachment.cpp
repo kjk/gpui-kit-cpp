@@ -100,16 +100,7 @@ AttachmentMedia* AttachmentMedia::Src(Str value) {
 
 AttachmentMedia* AttachmentMedia::Overlay(El* overlay) {
     if (overlay) {
-        overlays.Append(a, Div(a)
-                               ->Absolute()
-                               ->Left(0)
-                               ->Top(0)
-                               ->Right(0)
-                               ->Bottom(0)
-                               ->Flex()
-                               ->ItemsCenter()
-                               ->JustifyCenter()
-                               ->Child(overlay));
+        overlays.Append(a, CenteredOverlay(a)->Child(overlay));
     }
     return this;
 }
@@ -220,14 +211,8 @@ El* AttachmentMedia::IntoEl() {
     if (hasSource) {
         // GPUI clips rectangularly, so the slot's overflow_hidden cannot
         // round the image: it carries the slot's radius itself.
-        box->Child(ImageEl(a, source)
-                       ->Absolute()
-                       ->Left(0)
-                       ->Top(0)
-                       ->Right(0)
-                       ->Bottom(0)
-                       ->SizeFull()
-                       ->Radius(radius));
+        box->Child(ImageEl(a, source)->Absolute()->Inset0()->SizeFull()->Radius(
+            radius));
     }
     // An icon slot shows the status itself; children come back with
     // Complete.
@@ -258,15 +243,7 @@ El* AttachmentMedia::IntoEl() {
                           : IconEl(a, IconName::Ban, glyph)
                                 ->Fg(Rgb(0xff, 0xff, 0xff));
         }
-        box->Child(Div(a)
-                       ->Absolute()
-                       ->Left(0)
-                       ->Top(0)
-                       ->Right(0)
-                       ->Bottom(0)
-                       ->Flex()
-                       ->ItemsCenter()
-                       ->JustifyCenter()
+        box->Child(CenteredOverlay(a)
                        ->Radius(radius)
                        ->Bg(Rgba8(0, 0, 0, (uint8_t)(opacity * 255.f + 0.5f)))
                        ->Child(control));
@@ -724,7 +701,7 @@ static El* UploadBar(Arena* a, float percent, float radius, Rgba color) {
     bar->percent = percent;
     bar->radius = radius;
     bar->color = color;
-    El* e = Div(a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0);
+    El* e = Div(a)->Absolute()->Inset0();
     e->customPaint = PaintUploadBar;
     e->customUser = bar;
     return e;
@@ -826,14 +803,8 @@ El* Attachment::IntoEl() {
     if (clickable) {
         // The click layer is added before the actions slot, so the actions'
         // hitboxes stay on top and their buttons keep working.
-        card->Child(Div(a)
-                        ->PathClick(id)
-                        ->Absolute()
-                        ->Left(0)
-                        ->Top(0)
-                        ->Right(0)
-                        ->Bottom(0)
-                        ->OnClick(onClick));
+        card->Child(
+            Div(a)->PathClick(id)->Absolute()->Inset0()->OnClick(onClick));
     }
     if (actions) {
         card->Child(actions->IntoEl());

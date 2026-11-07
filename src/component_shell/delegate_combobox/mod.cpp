@@ -237,13 +237,7 @@ static bool RecordSearchable(PayloadBuild* build, const ComponentArgument* args,
 
 static bool RecordMenuWidth(PayloadBuild* build, const ComponentArgument* args,
                             int count) {
-    float width = 0;
-    if (!MenuWidthArgument(build, "Combobox", args, count, &width))
-        return false;
-    Op* op = build->New<Op>();
-    op->kind = Op::MenuWidth;
-    op->number = width;
-    return true;
+    return RecordMenuWidthOp<Op>(build, "Combobox", args, count);
 }
 
 static constexpr ArgumentDescriptor kArguments[] = {
