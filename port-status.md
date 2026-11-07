@@ -43,6 +43,13 @@ The current update target is
   moved. It is on by default. `__scroll_layers=off` and `GPUI_SCROLL_LAYERS=0`
   draw every primitive. Content that changes (a quote tick, a refresh)
   still draws whole (`src/gpui/scene.cpp`).
+- **The semantic tree is collected only for a listener.** Rust hands
+  AccessKit a tree every frame. Here a frame walks the element tree for
+  accessibility nodes only while `PlatAccessibilityWanted` says something
+  reads it: on Windows a UIA client is listening or has asked the window
+  (WM_GETOBJECT); macOS and Linux always collect; wasm never; a headless
+  test window always does. An idle frame otherwise paid that walk and its
+  hash for nobody (`src/gpui/window_common.cpp`).
 - **Fitted text does not contribute its max-content width.** A
   shrink-to-fit bubble around a TextView sizes to its padding and list
   markers. A run is width 100%, and that percentage does not fall back

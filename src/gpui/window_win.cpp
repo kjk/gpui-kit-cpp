@@ -28,6 +28,9 @@ struct PlatWindow {
     // fallback for a custom root). Nodes retain it, and close detaches the
     // Window before the last COM reference can disappear.
     WinAccessibility* accessibility = nullptr;
+    // An automation client asked this window for its tree (WM_GETOBJECT), so
+    // frames collect it from then on even before UiaClientsAreListening.
+    bool accessibilityAsked = false;
     // WM_SETCURSOR fires on every move over the client area and has to put it
     // back, so the window remembers what it last asked for.
     HCURSOR cursor = nullptr;
@@ -681,6 +684,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         }
         case WM_GETOBJECT:
             if ((LONG)lParam == UiaRootObjectId) {
+                if (!win->plat->accessibilityAsked) {
+                    // Frames were not collecting the tree; the next one does.
+                    win->plat->accessibilityAsked = true;
+                    AppInvalidate(win);
+                }
                 if (!win->plat->accessibility) {
                     win->plat
                         ->accessibility = AccessibilityWinNew(win, (void*)hwnd);
@@ -1395,6 +1403,13 @@ void PlatAccessibilityFocusChanged(Window* win, int focusId) {
     if (win && win->plat) {
         AccessibilityWinFocusChanged(win->plat->accessibility, focusId);
     }
+}
+
+bool PlatAccessibilityWanted(Window* win) {
+    if (!win || !win->plat) {
+        return false;
+    }
+    return win->plat->accessibilityAsked || UiaClientsAreListening();
 }
 
 bool PlatHasMenu() {

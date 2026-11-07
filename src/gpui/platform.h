@@ -270,6 +270,12 @@ void PlatInstallAccessibilityHitTest(Window* win);
 // which the adapter resolves back to the semantic node that exposes it.
 void PlatAccessibilityTreeChanged(Window* win);
 void PlatAccessibilityFocusChanged(Window* win, int focusId);
+// Whether anything would read the portable tree: an automation client is
+// listening, or one has asked this window for it. While nothing would, a
+// frame does not collect or hash it — that walk is a cost of every frame
+// otherwise. Windows answers from UIA; macOS and Linux always collect, since
+// VoiceOver and AT-SPI query without announcing themselves; wasm never.
+bool PlatAccessibilityWanted(Window* win);
 
 // ─── OS popup menus (crates/ui/src/native_menu) ──────────────────────────
 

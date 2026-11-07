@@ -1640,6 +1640,11 @@ void PlatAccessibilityFocusChanged(Window* win, int focusId) {
     }
 }
 
+// VoiceOver queries NSAccessibility without announcing itself first.
+bool PlatAccessibilityWanted(Window* win) {
+    return win != nullptr;
+}
+
 bool PlatHasMenu() {
     return true;
 }

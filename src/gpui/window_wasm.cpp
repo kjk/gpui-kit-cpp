@@ -997,6 +997,12 @@ void PlatAccessibilityFocusChanged(Window* win, int focusId) {
     (void)focusId;
 }
 
+// A canvas has no native accessibility API, so nothing reads the tree.
+bool PlatAccessibilityWanted(Window* win) {
+    (void)win;
+    return false;
+}
+
 // A page has no popup menu of its own, so NativeMenu::Show draws one — Rust's
 // FallbackMenuOverlay, which is what the X11 window gets too.
 bool PlatHasMenu() {

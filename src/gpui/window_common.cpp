@@ -643,7 +643,22 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         LayoutEl(&win->paint, root, 0, 0, dipW, dipH, WindowRemSize(win),
                  th.foreground, win->layout);
         FocusCollect(win, root);
-        AccessibilityCollect(root, &win->accessibility);
+        // The semantic tree is a walk of every element, building a string
+        // for each node with a role, and a hash of the result: only while
+        // something would read it. A headless window is a test's, and tests
+        // read the tree directly. The hash is zeroed otherwise, so the first
+        // collection a client sees announces itself as a change.
+        if (headless || PlatAccessibilityWanted(win)) {
+            AccessibilityCollect(root, &win->accessibility);
+            uint64_t accessibilityHash =
+                AccessibilityTreeHash(win->accessibility);
+            if (accessibilityHash != win->accessibilityHash) {
+                win->accessibilityHash = accessibilityHash;
+                PlatAccessibilityTreeChanged(win);
+            }
+        } else {
+            win->accessibilityHash = 0;
+        }
         // A dialog that has just opened takes focus into itself, which is what
         // Rust gets from tracking focus on the trap container.
         FocusTrapApplyPending(win);
@@ -651,11 +666,6 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         double tPaint0 = TimeNow();
         PaintEl(&win->paint, root);
         gFramePaintSecs = TimeNow() - tPaint0;
-    }
-    uint64_t accessibilityHash = AccessibilityTreeHash(win->accessibility);
-    if (accessibilityHash != win->accessibilityHash) {
-        win->accessibilityHash = accessibilityHash;
-        PlatAccessibilityTreeChanged(win);
     }
     // A Scrolling scrollbar part-way through its fade wants the next frame.
     // One ask for the whole tree, after it has painted, the way Rust's

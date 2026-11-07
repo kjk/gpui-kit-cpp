@@ -975,6 +975,11 @@ void PlatAccessibilityFocusChanged(Window* win, int focusId) {
     AccessibilityLinuxFocusChanged(win, focusId);
 }
 
+// AT-SPI clients query over D-Bus without announcing themselves first.
+bool PlatAccessibilityWanted(Window* win) {
+    return win != nullptr;
+}
+
 Point AccessibilityLinuxWindowOrigin(Window* win) {
     Point result = {};
     if (!gDpy || !win || !win->plat) {
