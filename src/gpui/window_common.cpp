@@ -206,10 +206,10 @@ static void FrameBenchTick(Window* win, float secs) {
     LayoutCacheStats ls = LayoutCacheLastStats(win->layout);
     logf(
         "frame-bench layout nodes=%d live=%d slots=%d made=%d dropped=%d "
-        "restyled=%d remeasured=%d allocs=%d",
+        "restyled=%d remeasured=%d held=%d allocs=%d",
         ls.nodes, LayoutCacheNodeCount(win->layout),
         LayoutCacheSlotCount(win->layout), ls.made, ls.dropped, ls.restyled,
-        ls.remeasured, ls.allocs);
+        ls.remeasured, ls.remeasureHeld, ls.allocs);
     FrameBenchLogGpu();
     if (SceneOn()) {
         const scene::SceneStats& sc = scene::Stats(&win->paint);
@@ -296,12 +296,12 @@ static void LayoutDumpFrame(Window* win, El* root) {
     fprintf(f,
             "--- frame %llu t=%.3f view=%.0fx%.0f prims=%d presented=%d "
             "nodes=%d slots=%d made=%d dropped=%d restyled=%d remeasured=%d "
-            "allocs=%d\n",
+            "held=%d allocs=%d\n",
             (unsigned long long)win->frameSeq, TimeNow(), win->paint.viewW,
             win->paint.viewH, SceneOn() ? scene::Stats(&win->paint).prims : -1,
             (SceneOn() && scene::SkipPresent(&win->paint)) ? 0 : 1, ls.nodes,
             LayoutCacheSlotCount(win->layout), ls.made, ls.dropped, ls.restyled,
-            ls.remeasured, ls.allocs);
+            ls.remeasured, ls.remeasureHeld, ls.allocs);
     LayoutDumpEl(f, root, 0);
     fflush(f);
 }
@@ -4348,6 +4348,9 @@ Window::~Window() {
     scene::Free(&paint);
     StrFree(fileDropPaths);
     fileDropPaths = {};
+    // A test that builds a Window by hand and deletes it never reaches the
+    // teardown that frees these; a window that did, freed them already.
+    LayoutRowCachesFree(this);
 }
 
 void WindowClosed(Window* win) {
@@ -4478,6 +4481,7 @@ static void AppRelease(App* app, bool platform) {
         TextMeasClear(&w->paint);
         LayoutCacheFree(w->layout);
         w->layout = nullptr;
+        LayoutRowCachesFree(w);
         WindowSelectionFree(w);
         PaintTargetFree(&w->paint);
         VecReset(w->timers);

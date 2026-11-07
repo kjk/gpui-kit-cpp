@@ -6693,6 +6693,10 @@ struct LayoutCacheStats {
     // ancestors with it.
     int restyled = 0;
     int remeasured = 0;
+    // Measured leaves whose content moved but which answered every question
+    // taffy had asked them the way they did before, so stayed clean: a
+    // price ticking in a fixed-width cell.
+    int remeasureHeld = 0;
     // Times InsertNode actually `new`'d a NodeData this pass. Recycled
     // slots do not count. `__layout_reuse=off` still rebuilds, but this
     // stays 0 after the tree has reached its peak size.
@@ -6736,6 +6740,17 @@ Size MeasureElAtWidth(PaintCtx* ctx, El* e, float width);
 // rebuilds its children at prepaint and lays them out again does it in that
 // same scratch cache, so it leaves them alone inside one.
 bool LayoutInScratchPass();
+// The layout cache a virtual list's row `index` is laid out in, kept from one
+// frame to the next the way the window's own is, so a row still on screen is
+// reconciled against the nodes it had rather than laid out from nothing.
+// gpui-fast keys a list row's layout nodes by its index for the same reason.
+// `list` names the list; two lists that happened to share a key would only
+// cost each other the reuse, since reconciling is correct against any tree.
+// Null (the scratch cache) with no window or inside a scratch pass. A cache
+// unclaimed for kRowLayoutKeepFrames frames is freed; so are all of them
+// with the window.
+LayoutCache* LayoutRowCache(PaintCtx* ctx, uint64_t list, int index);
+void LayoutRowCachesFree(Window* win);
 void PaintEl(PaintCtx* ctx, El* e);
 // Where the bytes [lo, hi) of a laid-out text run landed, one rectangle per
 // visual line, in window coordinates — ShapedLine::x_for_index over each
@@ -7034,6 +7049,16 @@ struct Window {
     // The taffy tree this window lays out in, kept between frames. Made on
     // the first frame and freed with the window.
     LayoutCache* layout = nullptr;
+    // Virtual-list rows' layout caches (LayoutRowCache), one per list and
+    // row index, with the frame each was last claimed in.
+    struct RowLayout {
+        uint64_t list = 0;
+        int32_t index = 0;
+        uint64_t lastFrame = 0;
+        LayoutCache* cache = nullptr;
+    };
+    Vec<RowLayout> rowLayouts;
+    uint64_t rowLayoutSweptAt = 0;
     // The selection over this window's selectable runs. Made on the first
     // press that lands on text and dropped with the window.
     WindowSelection* sel = nullptr;

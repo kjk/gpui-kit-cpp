@@ -3686,13 +3686,45 @@ void PaintTextRangeBoxes(PaintCtx* ctx, Str s, float fontSize, float maxW,
 // `El*` would undo the caching it is there to protect. The record is the
 // node's context, set once when the node is made, and its fields are updated
 // in place.
+// One question taffy asked a measured leaf, and the answer it was given.
+struct LayoutMeasureAsked {
+    taffy::SizeFOpt known;
+    taffy::SizeAvail avail;
+    // A text run's measured width (TextMeasureWidth), which with `known` is
+    // all its answer depends on; two text questions compare on these alone.
+    // `avail` is still kept whole, to ask the question again.
+    float textW = 0;
+    bool text = false;
+    taffy::SizeF size;
+};
+
+// A leaf is asked a handful of things per pass (min-content, max-content,
+// the definite width), and the same ones frame after frame.
+static const int kLayoutMeasureLog = 4;
+
 struct LayoutNode {
     El* el = nullptr;
     // What the measure function last read off the element. Zero for a node
     // that is not a measured leaf.
     uint64_t measKey = 0;
     uint8_t kind = 0;
+    // Every distinct question answered since the node was last dirtied:
+    // whatever taffy cached for it, and for the nodes above it, was built
+    // from these answers and no others. When the content changes, the new
+    // content is asked the same questions; if it gives the same answers the
+    // node stays clean (gpui-fast's retained layout keeps a price ticking
+    // in a table cell from laying out the table). More questions than the
+    // log holds and nothing can be proved, so the node is dirtied.
+    LayoutMeasureAsked asked[kLayoutMeasureLog];
+    uint8_t askedCount = 0;
+    bool askedOverflow = false;
+    uint8_t askedFlags = 0;
 };
+
+static void LayoutMeasureLogReset(LayoutNode* rec) {
+    rec->askedCount = 0;
+    rec->askedOverflow = false;
+}
 
 struct LayoutCache {
     taffy::TaffyTree tree;
@@ -4156,9 +4188,108 @@ struct LayoutMeasureSizeCtx {
     LayoutNode* rec;
 };
 
+static taffy::SizeF LayoutMeasureSizeOf(taffy::SizeFOpt known,
+                                        taffy::SizeAvail avail,
+                                        LayoutMeasureSizeCtx* sc);
+
+// What decides a measured leaf's answer. A text run's is the width it is
+// measured at plus the dimensions taffy already knows, which pass straight
+// through: a run that neither wraps nor truncates is measured unconstrained
+// whatever space it is offered, so the eight or so questions a flex pass asks
+// it are two or three questions. Anything else is keyed on what it was asked.
+static LayoutMeasureAsked LayoutMeasureQuestion(const El* e,
+                                                taffy::SizeFOpt known,
+                                                taffy::SizeAvail avail) {
+    LayoutMeasureAsked q;
+    q.known = known;
+    q.avail = avail;
+    if (e && e->kind == ElKind::Text) {
+        q.text = true;
+        q.textW = TextMeasureWidth(e, known, avail);
+    }
+    return q;
+}
+
+static bool LayoutMeasureSameQuestion(const LayoutMeasureAsked& a,
+                                      const LayoutMeasureAsked& b) {
+    // Bitwise: an unknown dimension is a NaN, which == never matches.
+    if (memcmp(&a.known, &b.known, sizeof(a.known)) != 0 || a.text != b.text) {
+        return false;
+    }
+    if (a.text) {
+        return a.textW == b.textW;
+    }
+    return a.avail.width.kind == b.avail.width.kind &&
+           a.avail.width.value == b.avail.width.value &&
+           a.avail.height.kind == b.avail.height.kind &&
+           a.avail.height.value == b.avail.height.value;
+}
+
+// The flags TextMeasureWidth reads off the element. The log's questions were
+// folded together under them, so content measured under others cannot be
+// checked against it.
+static uint8_t LayoutMeasureFlags(const El* e) {
+    return (uint8_t)((e->style.wrap ? 1 : 0) | (e->style.truncate ? 2 : 0));
+}
+
 static taffy::SizeF LayoutMeasureSize(taffy::SizeFOpt known,
                                       taffy::SizeAvail avail, void* user) {
     LayoutMeasureSizeCtx* sc = (LayoutMeasureSizeCtx*)user;
+    taffy::SizeF size = LayoutMeasureSizeOf(known, avail, sc);
+    LayoutNode* rec = sc->rec;
+    if (rec && rec->el && !rec->askedOverflow) {
+        LayoutMeasureAsked q = LayoutMeasureQuestion(rec->el, known, avail);
+        if (rec->askedCount == 0) {
+            rec->askedFlags = LayoutMeasureFlags(rec->el);
+        }
+        bool seen = false;
+        for (int i = 0; i < rec->askedCount; i++) {
+            if (LayoutMeasureSameQuestion(rec->asked[i], q)) {
+                seen = true;
+                break;
+            }
+        }
+        if (!seen) {
+            if (rec->askedCount < kLayoutMeasureLog) {
+                q.size = size;
+                rec->asked[rec->askedCount++] = q;
+            } else {
+                rec->askedOverflow = true;
+            }
+        }
+    }
+    return size;
+}
+
+// Whether this frame's element answers every question the node was asked
+// since it was last dirtied the way last frame's did. Called before the
+// layout pass, once the element's measurement inputs have moved. A node never
+// asked anything was sized by its style alone (both dimensions known), so
+// its content cannot have moved it.
+static bool LayoutMeasureStillHolds(PaintCtx* ctx, LayoutNode* rec) {
+    if (!rec || !rec->el || rec->askedOverflow) {
+        return false;
+    }
+    if (rec->askedCount == 0) {
+        return true;
+    }
+    if (LayoutMeasureFlags(rec->el) != rec->askedFlags) {
+        return false;
+    }
+    LayoutMeasureCtx mc = {ctx, taffy::CalcResolver{}};
+    LayoutMeasureSizeCtx sc = {&mc, rec};
+    for (int i = 0; i < rec->askedCount; i++) {
+        const LayoutMeasureAsked& q = rec->asked[i];
+        taffy::SizeF now = LayoutMeasureSizeOf(q.known, q.avail, &sc);
+        if (now.w != q.size.w || now.h != q.size.h) {
+            return false;
+        }
+    }
+    return true;
+}
+static taffy::SizeF LayoutMeasureSizeOf(taffy::SizeFOpt known,
+                                        taffy::SizeAvail avail,
+                                        LayoutMeasureSizeCtx* sc) {
     // The context is the cache's record for this node, not the element:
     // telling taffy about a new El* would mark the node dirty, which is the
     // one thing the cache is there to avoid.
@@ -4620,6 +4751,7 @@ static LayoutNode* LayoutNodeTake(LayoutCache* lc, El* e) {
     n->el = e;
     n->measKey = 0;
     n->kind = (uint8_t)e->kind;
+    LayoutMeasureLogReset(n);
     return n;
 }
 
@@ -4806,16 +4938,26 @@ static taffy::NodeId LayoutSync(LayoutSyncCtx* sc, El* e, taffy::NodeId prev,
     if (isRoot) {
         StretchRootStyle(&ts, sc->availW, sc->availH);
     }
+    bool restyled = false;
     if (!(ts == lc->tree.GetStyle(prev))) {
         lc->tree.SetStyle(prev, ts);
         lc->stats.restyled++;
+        restyled = true;
+        // SetStyle dirtied the node and cleared what taffy cached for it.
+        LayoutMeasureLogReset(rec);
     }
 
     uint64_t key = LayoutMeasureKey(sc->ctx, e);
     if (key != rec->measKey) {
         rec->measKey = key;
-        lc->tree.MarkDirty(prev);
-        lc->stats.remeasured++;
+        if (!restyled && LayoutMeasureStillHolds(sc->ctx, rec)) {
+            // New content, same answers: what taffy cached still holds.
+            lc->stats.remeasureHeld++;
+        } else {
+            lc->tree.MarkDirty(prev);
+            LayoutMeasureLogReset(rec);
+            lc->stats.remeasured++;
+        }
     }
 
     // The children, in order. A `fixed` child is not one of this node's — it
@@ -5658,6 +5800,78 @@ Size MeasureElAtWidth(PaintCtx* ctx, El* e, float width) {
 
 LayoutCache* LayoutCacheNew() {
     return new LayoutCache();
+}
+
+// gpui-fast keeps a row's nodes for 240 frames after it leaves the viewport,
+// so scrolling back over it reuses them. Past the cap the least recently
+// claimed goes first: a fling through a long list must not keep a cache per
+// row it passed.
+static const uint64_t kRowLayoutKeepFrames = 240;
+static const int kRowLayoutCap = 256;
+
+static void LayoutRowCacheSweep(Window* win) {
+    uint64_t now = win->frameSeq;
+    int keep = 0;
+    for (int i = 0; i < len(win->rowLayouts); i++) {
+        Window::RowLayout r = win->rowLayouts[i];
+        if (now > r.lastFrame + kRowLayoutKeepFrames) {
+            LayoutCacheFree(r.cache);
+            continue;
+        }
+        win->rowLayouts[keep++] = r;
+    }
+    win->rowLayouts.len = keep;
+}
+
+LayoutCache* LayoutRowCache(PaintCtx* ctx, uint64_t list, int index) {
+    Window* win = ctx ? ctx->window : nullptr;
+    if (!win || LayoutInScratchPass()) {
+        return nullptr;
+    }
+    uint64_t now = win->frameSeq;
+    if (win->rowLayoutSweptAt != now) {
+        win->rowLayoutSweptAt = now;
+        LayoutRowCacheSweep(win);
+    }
+    int oldest = -1;
+    for (int i = 0; i < len(win->rowLayouts); i++) {
+        Window::RowLayout& r = win->rowLayouts[i];
+        if (r.list == list && r.index == index) {
+            r.lastFrame = now;
+            return r.cache;
+        }
+        if (oldest < 0 || r.lastFrame < win->rowLayouts[oldest].lastFrame) {
+            oldest = i;
+        }
+    }
+    if (len(win->rowLayouts) >= kRowLayoutCap && oldest >= 0) {
+        Window::RowLayout& r = win->rowLayouts[oldest];
+        if (r.lastFrame == now) {
+            // Every cache is this frame's: more rows on screen than the cap.
+            return nullptr;
+        }
+        LayoutCacheFree(r.cache);
+        win->rowLayouts[oldest] = win->rowLayouts[len(win->rowLayouts) - 1];
+        win->rowLayouts.len--;
+    }
+    Window::RowLayout r;
+    r.list = list;
+    r.index = index;
+    r.lastFrame = now;
+    r.cache = LayoutCacheNew();
+    VecAppend(win->rowLayouts, r);
+    return r.cache;
+}
+
+void LayoutRowCachesFree(Window* win) {
+    if (!win) {
+        return;
+    }
+    for (int i = 0; i < len(win->rowLayouts); i++) {
+        LayoutCacheFree(win->rowLayouts[i].cache);
+    }
+    VecReset(win->rowLayouts);
+    win->rowLayoutSweptAt = 0;
 }
 
 void LayoutCacheFree(LayoutCache* lc) {

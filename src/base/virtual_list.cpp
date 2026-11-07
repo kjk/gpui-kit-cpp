@@ -317,6 +317,8 @@ void ItemSizeLayoutBuild(ItemSizeLayout* layout, Axis axis,
 
 struct VirtualListPaint {
     VirtualListOpts opts = {};
+    // Which list this is, for LayoutRowCache: the view and the list's id.
+    uint64_t layoutKey = 0;
     Arena* a = nullptr;
     App* app = nullptr;
     Window* win = nullptr;
@@ -369,7 +371,7 @@ static El* VirtualListTakeRow(const VirtualListOpts& o, El** rangeRows,
 
 static void VirtualListPlace(PaintCtx* ctx, El* e, El* made, Axis axis,
                              float pad, float innerW, float innerH, float along,
-                             float extent) {
+                             float extent, uint64_t layoutKey, int ix) {
     float x = e->x + pad;
     float y = e->y + pad;
     float w = innerW;
@@ -383,7 +385,11 @@ static void VirtualListPlace(PaintCtx* ctx, El* e, El* made, Axis axis,
     }
     // The rows are laid out under the list's own text style, the way GPUI
     // prepaints a list's items inside the text style the list was given.
-    LayoutEl(ctx, made, x, y, w, h, e->laidFont, e->style.color);
+    // Each row keeps its taffy nodes from one frame to the next, by index, so
+    // a row still on screen is reconciled rather than laid out from nothing
+    // — and a price ticking in one of its cells does not lay it out at all.
+    LayoutEl(ctx, made, x, y, w, h, e->laidFont, e->style.color,
+             LayoutRowCache(ctx, layoutKey, ix));
     e->Child(made);
 }
 
@@ -469,7 +475,7 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
                 if (ix < layout->sizes.len) layout->sizes[ix] = extent;
             }
             VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH,
-                             origin - offset, extent);
+                             origin - offset, extent, paint->layoutKey, ix);
             along += extent;
             origin += extent;
             ix++;
@@ -513,8 +519,8 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
                                                     : (float)ix * o.rowH;
             along = origin - offset;
         }
-        VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH, along,
-                         extent);
+        VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH, along, extent,
+                         paint->layoutKey, ix);
     }
 }
 
@@ -762,6 +768,15 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
     paint->a = a;
     paint->app = cx->app;
     paint->win = cx->win;
+    {
+        uint64_t h = 1469598103934665603ull;
+        for (int i = 0; i < len(id); i++) {
+            h = (h ^ (uint8_t)id.s[i]) * 1099511628211ull;
+        }
+        h = (h ^ (uint32_t)paint->opts.view.index) * 1099511628211ull;
+        h = (h ^ paint->opts.view.gen) * 1099511628211ull;
+        paint->layoutKey = h;
+    }
     El* e = New(cx, id)->ClipY()->ClipX();
     // A definite viewport keeps the padding the constructor always folded
     // into it. An inferred content size does not: padding is the element's

@@ -478,6 +478,15 @@ the first thing to try if a frame comes out laid out stale; `GPUI_FRAME_BENCH`
 prints what each frame had to tell taffy (`nodes=1466 made=0 dropped=0
 restyled=0 remeasured=0` is a page that did not change).
 
+Two refinements, both from gpui-fast. A measured leaf whose content moved is
+first asked again the questions taffy asked it since it was last dirtied; if
+every answer is the same it stays clean (`held=` in the bench line), so a
+price ticking in a fixed-width cell lays nothing out. And a virtual list's
+rows are laid out in caches of their own, one per list and row index
+(`LayoutRowCache`), kept for 240 unclaimed frames, so a row still on screen
+is reconciled rather than built from nothing. `__layout_reuse=off` turns off
+both.
+
 **Do not add a special case to `LayoutEl` for something CSS already has a rule
 for** — make the style translation say the right thing instead. When a layout
 question comes up the answer is in `src/taffy/`, and behind that in the crate.

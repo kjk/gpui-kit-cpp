@@ -346,6 +346,157 @@ static void AFixedOverlayOutlivesANestedLayout() {
     LayoutCacheFree(lc);
 }
 
+// gpui-fast's retained layout: a measured leaf whose content moved is asked
+// again the questions taffy asked it since it was last dirtied, and stays
+// clean when every answer is the same — a price ticking in a table cell does
+// not lay the table out again. Whatever it answers, the boxes around it must
+// come out where a full layout would put them.
+struct TickerView {
+    Str price = StrL("1.25");
+    Bounds priceBox = {};
+    Bounds markerBox = {};
+    static El* Render(TickerView* self, Ctx* cx) {
+        // Monospace, so a price of the same length is the same width in any
+        // face on any platform.
+        return Div(cx->a)
+            ->FlexRow()
+            ->ItemsStart()
+            ->Pad(10)
+            ->Child(
+                TextEl(cx->a, self->price)->Mono()->BoundsOut(&self->priceBox))
+            ->Child(Div(cx->a)->W(10)->H(10)->BoundsOut(&self->markerBox));
+    }
+};
+
+static void AnUnchangedAnswerKeepsTheNodeClean() {
+    App* app = TestAppNew();
+    Entity<TickerView> view = EntityNew<TickerView>(app);
+    Window* win = TestWindowOpen(app, view, 400, 200);
+    TickerView* v = view.Get(app);
+    TestDraw(win);
+    TestDraw(win);
+    LayoutCacheStats s = LayoutCacheLastStats(win->layout);
+    utassert(s.remeasured == 0 && s.remeasureHeld == 0);
+    float markerX = v->markerBox.x;
+    utassert(markerX > v->priceBox.x);
+
+    // A tick: new digits, the same answers, so the node stays clean and
+    // everything after it stays where it was.
+    v->price = StrL("1.26");
+    TestDraw(win);
+    s = LayoutCacheLastStats(win->layout);
+    utassert(s.remeasured == 0 && s.remeasureHeld == 1);
+    utassert(v->markerBox.x == markerX);
+    utassert(v->markerBox.x == v->priceBox.x + v->priceBox.w);
+
+    // A longer price is a different answer: dirtied, and the box after it
+    // moves to the new edge.
+    v->price = StrL("10.26");
+    TestDraw(win);
+    s = LayoutCacheLastStats(win->layout);
+    utassert(s.remeasured == 1 && s.remeasureHeld == 0);
+    utassert(v->markerBox.x > markerX);
+    utassert(v->markerBox.x == v->priceBox.x + v->priceBox.w);
+    TestAppFree(app);
+}
+
+// A virtual list's rows keep their layout caches by index (LayoutRowCache).
+// Scrolled frame by frame while its cells tick — some ticks the same width,
+// some not, a wrapped cell among them — every row must come out where laying
+// it out from nothing puts it.
+static const int kRowCacheRows = 300;
+
+struct RowCacheView {
+    VirtualListScrollHandle handle;
+    int tick = 0;
+    Bounds boxes[kRowCacheRows] = {};
+    static El* Row(void* user, Ctx* cx, int ix) {
+        auto* self = (RowCacheView*)user;
+        int t = self->tick;
+        // A same-width tick on even frames, a wider or narrower one on odd.
+        TempStr price = (t & 1) ? fmt("%d.%d", ix, (t * 7 + ix) % 1000)
+                                : fmt("%d.%d", ix, (t * 7 + ix) % 10);
+        TempStr note =
+            fmt("note %d grows %s", ix,
+                (t + ix) % 3 == 0 ? StrL("a little longer than before")
+                                  : StrL("short"));
+        return Div(cx->a)
+            ->FlexRow()
+            ->ItemsStart()
+            ->Gap(4)
+            ->Child(TextEl(cx->a, StrDup(cx->a, price)))
+            ->Child(Div(cx->a)->W(90)->Child(TextEl(cx->a, StrDup(cx->a, note))
+                                                 ->Wrap()))
+            ->Child(Div(cx->a)->W(6)->H(6)->BoundsOut(&self->boxes[ix]));
+    }
+    static El* Render(RowCacheView* self, Ctx* cx) {
+        VirtualListOpts o;
+        o.count = kRowCacheRows;
+        o.rowH = 40;
+        o.viewW = 300;
+        o.viewH = 200;
+        o.handle = &self->handle;
+        o.row = &RowCacheView::Row;
+        o.user = self;
+        return Div(cx->a)->Child(VirtualList::New(cx, StrL("rows"), o));
+    }
+};
+
+// Each frame's visible rows' boxes, in order, for the whole history.
+static void RowCacheHistory(Vec<Bounds>& out, int* maxCaches) {
+    App* app = TestAppNew();
+    Entity<RowCacheView> view = EntityNew<RowCacheView>(app);
+    Window* win = TestWindowOpen(app, view, 400, 300);
+    RowCacheView* v = view.Get(app);
+    *maxCaches = 0;
+    for (int f = 0; f < 90; f++) {
+        v->tick = f;
+        // Forward, back over rows it showed, and a jump past them.
+        float offset = f < 40 ? f * 23.f : f < 60 ? (80 - f) * 23.f : 4000.f;
+        v->handle.offset = offset;
+        for (int i = 0; i < kRowCacheRows; i++) {
+            v->boxes[i] = Bounds{-1, -1, -1, -1};
+        }
+        TestDraw(win);
+        for (int i = 0; i < kRowCacheRows; i++) {
+            if (v->boxes[i].w >= 0) {
+                VecAppend(out, v->boxes[i]);
+            }
+        }
+        if (len(win->rowLayouts) > *maxCaches) {
+            *maxCaches = len(win->rowLayouts);
+        }
+    }
+    TestAppFree(app);
+}
+
+static void ListRowsKeptByIndexLayOutAsFromNothing() {
+    Vec<Bounds> kept;
+    Vec<Bounds> fresh;
+    int keptCaches = 0;
+    int freshCaches = 0;
+    RowCacheHistory(kept, &keptCaches);
+    LayoutReuseTakeArg(StrL("__layout_reuse=off"));
+    RowCacheHistory(fresh, &freshCaches);
+    LayoutReuseTakeArg(StrL("__layout_reuse=on"));
+    utassert(len(kept) > 90 * 4);
+    utassert(len(kept) == len(fresh));
+    int differ = 0;
+    for (int i = 0; i < len(kept) && i < len(fresh); i++) {
+        Bounds a = kept[i];
+        Bounds b = fresh[i];
+        if (fabsf(a.x - b.x) > 0.01f || fabsf(a.y - b.y) > 0.01f ||
+            fabsf(a.w - b.w) > 0.01f || fabsf(a.h - b.h) > 0.01f) {
+            differ++;
+        }
+    }
+    utassert(differ == 0);
+    // A cache per row on screen and the ones scrolled past, not per row.
+    utassert(keptCaches > 0 && keptCaches < kRowCacheRows);
+    VecReset(kept);
+    VecReset(fresh);
+}
+
 void TestLayoutReuse() {
     AFixedOverlayOutlivesANestedLayout();
     AChildOfAnotherKindIsStillLaidOut();
@@ -356,4 +507,6 @@ void TestLayoutReuse() {
     AFixedOverlayIsReusedNotRebuilt();
     AKindChangeRecyclesBeforeBuilding();
     ReuseOffRebuildsEveryFrame();
+    AnUnchangedAnswerKeepsTheNodeClean();
+    ListRowsKeptByIndexLayOutAsFromNothing();
 }
