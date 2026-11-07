@@ -283,10 +283,13 @@ inline float UiInputPadX(UiSize s) {
     }
 }
 
-inline float UiInputFontPx(UiSize s) {
+// text_xs / text_sm / text_sm / text_base: the text ladder input, table cell
+// and button sizes all climb, XSmall to Large. A custom Size answers
+// `custom`, which each ladder chooses for itself.
+inline float UiTextLadderPx(UiSize s, float custom) {
     switch (s) {
         case UiSize::Size:
-            return s.pixels * 0.875f;
+            return custom;
         case UiSize::XSmall:
             return 12;
         case UiSize::Small:
@@ -295,6 +298,10 @@ inline float UiInputFontPx(UiSize s) {
         default:
             return 16;
     }
+}
+
+inline float UiInputFontPx(UiSize s) {
+    return UiTextLadderPx(s, s.pixels * 0.875f);
 }
 
 inline float UiInputPadY(UiSize s) {
@@ -408,17 +415,7 @@ inline El* UiSizeWith(const Ctx* cx, El* e, UiSize s) {
 // table_cell_size's text: text_xs / text_sm / text_sm / text_base, the
 // Input ladder; 0 for a custom Size, which sets none.
 inline float UiTableCellFontPx(UiSize s) {
-    switch (s) {
-        case UiSize::XSmall:
-            return 12;
-        case UiSize::Small:
-        case UiSize::Medium:
-            return 14;
-        case UiSize::Large:
-            return 16;
-        default:
-            return 0;
-    }
+    return UiTextLadderPx(s, 0);
 }
 inline El* UiTableCellSize(El* e, UiSize s) {
     Edges pad = UiTableCellPadding(s);
@@ -429,15 +426,7 @@ inline El* UiTableCellSize(El* e, UiSize s) {
 }
 // button_text_size: text_xs, text_sm for Small and Medium, text_base.
 inline float UiButtonTextPx(UiSize s) {
-    switch (s) {
-        case UiSize::XSmall:
-            return 12;
-        case UiSize::Small:
-        case UiSize::Medium:
-            return 14;
-        default:
-            return 16;
-    }
+    return UiTextLadderPx(s, 16);
 }
 inline El* UiButtonTextSize(El* e, UiSize s) {
     return e->Font(UiButtonTextPx(s));

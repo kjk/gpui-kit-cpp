@@ -400,6 +400,31 @@ void ThemeFillDerived(Theme* t, bool dark) {
     t->windowBorder = t->border;
 }
 
+// What the built-in light and dark themes set alike: default-theme.json
+// gives both the same blue chart ramp, the same bullish and bearish, and the
+// same radii.
+static void ThemeSetSharedDefaults(Theme* t) {
+    t->chart1 = Rgb(0x93, 0xc5, 0xfd);
+    t->chart2 = Rgb(0x3b, 0x82, 0xf6);
+    t->chart3 = Rgb(0x25, 0x63, 0xeb);
+    t->chart4 = Rgb(0x1d, 0x4e, 0xd8);
+    t->chart5 = Rgb(0x1e, 0x40, 0xaf);
+    t->chartBullish = Rgb(0x16, 0xa3, 0x4a);
+    t->chartBearish = Rgb(0xdc, 0x26, 0x26);
+    t->radius = 6;
+    t->radiusLg = 8;
+    t->radiusFull = kRadiusFull;
+}
+
+// The three that only exist so a theme can spell them as gradients, on the
+// fallbacks schema.rs gives them. Run once the title bar and the background
+// are set.
+static void ThemeSetSharedAliases(Theme* t) {
+    t->statusBar = t->titleBar;
+    t->switchThumb = t->background;
+    t->sliderThumb = t->background;
+}
+
 const Theme& ThemeDefaultDark() {
     static Theme t;
     static bool init = false;
@@ -453,13 +478,7 @@ const Theme& ThemeDefaultDark() {
         t.yellowLight = Rgb(0xfd, 0xe0, 0x47);
         t.cyanLight = Rgb(0x67, 0xe8, 0xf9);
         t.magentaLight = Rgb(0xd8, 0xb4, 0xfe);
-        t.chart1 = Rgb(0x93, 0xc5, 0xfd);
-        t.chart2 = Rgb(0x3b, 0x82, 0xf6);
-        t.chart3 = Rgb(0x25, 0x63, 0xeb);
-        t.chart4 = Rgb(0x1d, 0x4e, 0xd8);
-        t.chart5 = Rgb(0x1e, 0x40, 0xaf);
-        t.chartBullish = Rgb(0x16, 0xa3, 0x4a);
-        t.chartBearish = Rgb(0xdc, 0x26, 0x26);
+        ThemeSetSharedDefaults(&t);
         // neutral-800/60
         t.chartGrid = RgbaOpacity(Rgb(0x26, 0x26, 0x26), 0.6f);
         t.danger = Rgb(0xf8, 0x71, 0x71);
@@ -504,14 +523,7 @@ const Theme& ThemeDefaultDark() {
         // description_list.label.foreground falls back to muted_foreground,
         // not to the foreground: a label reads as a caption beside its value.
         t.descListLabelFg = Rgb(0xa3, 0xa3, 0xa3);
-        t.radius = 6;
-        t.radiusLg = 8;
-        t.radiusFull = kRadiusFull;
-        // The three that only exist so a theme can spell them as gradients,
-        // on the fallbacks schema.rs gives them.
-        t.statusBar = t.titleBar;
-        t.switchThumb = t.background;
-        t.sliderThumb = t.background;
+        ThemeSetSharedAliases(&t);
         ThemeFillDerived(&t, true);
         ThemeTokensReset(&t);
         init = true;
@@ -566,13 +578,7 @@ const Theme& ThemeDefaultLight() {
         t.yellowLight = Rgb(0xfa, 0xcc, 0x15);
         t.cyanLight = Rgb(0x22, 0xd3, 0xee);
         t.magentaLight = Rgb(0xc0, 0x84, 0xfc);
-        t.chart1 = Rgb(0x93, 0xc5, 0xfd);
-        t.chart2 = Rgb(0x3b, 0x82, 0xf6);
-        t.chart3 = Rgb(0x25, 0x63, 0xeb);
-        t.chart4 = Rgb(0x1d, 0x4e, 0xd8);
-        t.chart5 = Rgb(0x1e, 0x40, 0xaf);
-        t.chartBullish = Rgb(0x16, 0xa3, 0x4a);
-        t.chartBearish = Rgb(0xdc, 0x26, 0x26);
+        ThemeSetSharedDefaults(&t);
         // neutral-200/60
         t.chartGrid = RgbaOpacity(Rgb(0xe5, 0xe5, 0xe5), 0.6f);
         t.danger = Rgb(0xef, 0x44, 0x44);
@@ -612,14 +618,7 @@ const Theme& ThemeDefaultLight() {
         t.groupBoxFg = Rgb(0x17, 0x17, 0x17);
         t.descListLabel = Rgb(0xf9, 0xf9, 0xf9);
         t.descListLabelFg = Rgb(0x73, 0x73, 0x73);
-        t.radius = 6;
-        t.radiusLg = 8;
-        t.radiusFull = kRadiusFull;
-        // The three that only exist so a theme can spell them as gradients,
-        // on the fallbacks schema.rs gives them.
-        t.statusBar = t.titleBar;
-        t.switchThumb = t.background;
-        t.sliderThumb = t.background;
+        ThemeSetSharedAliases(&t);
         ThemeFillDerived(&t, false);
         ThemeTokensReset(&t);
         init = true;
