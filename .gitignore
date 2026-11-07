@@ -30,3 +30,4 @@ build/
 gpui.d.ts
 gpui-kit.d.ts
 .claude/worktrees/
+/gpui-perf.txt
