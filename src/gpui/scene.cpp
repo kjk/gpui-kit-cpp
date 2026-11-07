@@ -14,6 +14,10 @@
 
 namespace gpui {
 
+// The non-Windows default. Damage redraws on top of what the back buffer
+// already holds, and only the flip-model chain on Windows has been checked
+// to hold it (cmd/bench-scene.ts); Cairo, Core Graphics and Canvas2D stay at
+// skip until theirs are.
 static int gSceneLevel = kSceneSkip;
 
 int SceneLevelFallback() {
@@ -531,6 +535,20 @@ static Bounds Union(Bounds a, Bounds b) {
     return r;
 }
 
+// Out to whole device pixels. A damage clip that ends partway into a pixel
+// antialiases that pixel: what is redrawn there is blended with what the
+// buffer held, and the seam shows as a faint row along the clip's edge.
+static Bounds SnapOutToPixels(Bounds b, float scale) {
+    if (b.w <= 0 || b.h <= 0 || scale <= 0) {
+        return b;
+    }
+    float x0 = floorf(b.x * scale) / scale;
+    float y0 = floorf(b.y * scale) / scale;
+    float x1 = ceilf((b.x + b.w) * scale) / scale;
+    float y1 = ceilf((b.y + b.h) * scale) / scale;
+    return Bounds{x0, y0, x1 - x0, y1 - y0};
+}
+
 static bool SameBounds(Bounds a, Bounds b) {
     return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
 }
@@ -942,7 +960,18 @@ void RecScroll(PaintCtx* ctx, float x, float y, float w, float h, float scrollX,
 void RecTextDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
                  bool clip, float clipW) {
     Size sz = TextLayoutSize(tl);
-    Prim* p = Emit(ctx, kPText, Bounds{x, y, sz.w, sz.h});
+    // Glyph ink is not confined to the layout box: an italic or an `f`
+    // overhangs its advance, a stacked accent rises over the ascent, and
+    // ClearType bleeds a pixel either side. The bbox is what a damage frame
+    // clears and culls by, so a run whose ink sat outside it would leave
+    // stale pixels when it changed, or be clipped where a neighbour redrew.
+    // Half the baseline (about 0.4em) covers ordinary overhang.
+    float pad = TextLayoutBaseline(tl) * 0.5f;
+    if (pad < 2.f) {
+        pad = 2.f;
+    }
+    Prim* p = Emit(ctx, kPText,
+                   Bounds{x - pad, y - pad, sz.w + pad * 2, sz.h + pad * 2});
     p->g0 = x;
     p->g1 = y;
     p->g2 = sz.w;
@@ -1999,7 +2028,8 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
             changed++;
             d = Union(d, gPrev[i].bbox);
         }
-        dmg = Intersect(d, whole);
+        float scale = ctx && ctx->dpi > 0 ? ctx->dpi / 96.f : 1.f;
+        dmg = Intersect(SnapOutToPixels(d, scale), whole);
     }
     gStats.primsChanged = changed;
 

@@ -42,7 +42,7 @@ static WinPaintOptions gWinPaintOptions = {
     WinPaintBackend::Direct2D,
 #endif
     WinPaintMsaa::X4,
-    WinSceneMode::Skip,
+    WinSceneMode::Damage,
     0,
 };
 

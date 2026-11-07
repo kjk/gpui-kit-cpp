@@ -4,10 +4,10 @@
    stacking context; sibling contexts are sorted by z-index, then flattened
    into a frame's primitives. Every primitive carries its content mask.
 
-   It is on, at the `skip` level, and __scene is how to turn it down or
-   off. It earns that on the scenes this tree draws — see the note at the end
-   of this header for the numbers, and for the one scene it costs rather than
-   pays on.
+   It is on, at the `damage` level on Windows and `skip` elsewhere, and
+   __scene is how to turn it down or off. It earns that on the scenes this tree
+   draws — see the note at the end of this header for the numbers, and for the
+   one scene it costs rather than pays on.
 
    GPUI_PATH_CACHE_TRANSLATION=off restores absolute-coordinate path keys for
    profiling the translated cache against its predecessor. It is otherwise
@@ -36,10 +36,12 @@
      off      the element tree draws straight to the backend, as it used to
      replay   collect and replay; measures what the scene itself costs
      cache    + path geometry and small offscreen masks kept across frames
-     skip     + a frame identical to the last one is not drawn at all  (default)
-     damage   + a frame that differs in part is drawn in part
+     skip     + a frame identical to the last one is not drawn at all
+     damage   + a frame that differs in part is drawn in part  (Windows default)
 
-   An absent `__scene=` argument means `skip`; an invalid value is consumed
+   An absent `__scene=` argument means `damage` on Windows and `skip` on
+   every other target, whose back buffers have not been checked to hold the
+   last frame's pixels; an invalid value is consumed
    and leaves the current/default selection unchanged. `off` is what a bisect
    wants, and what to reach for if a frame ever comes out stale: this is the
    only thing in the tree that can decide not to draw.
@@ -301,12 +303,14 @@ const SceneStats& Stats(PaintCtx* ctx);
 //
 // What it is short of, and what each would take:
 //
-// - **Damage is measured but barely exercised.** The diff is a multiset
-//   comparison of primitive hashes, so a frame that gains or loses a
-//   primitive still names a rectangle rather than giving up — but the two
-//   things that would show it working, a hover and a chart tick, both need
-//   input or a timer that GPUI_FRAME_BENCH's own 1 ms timer displaces. What
-//   is measured is the mechanism, not the payoff.
+// - **Damage is checked on screen, on Windows only.** cmd/bench-scene.ts
+//   drives scrolls, hovers, a popup, a caret and a chart tick through real
+//   input and timers, reads the visible surface back and finds skip and
+//   damage identical on Direct2D, D3D11 and D3D12 (-settle=2500, the window
+//   topmost). Two things it caught: a damage clip on a fractional DIP left a
+//   blended seam (the rectangle is now snapped out to device pixels), and a
+//   text run's ink overhangs its layout box (its bbox is padded). The other
+//   platforms stay at skip until their back buffers are checked the same way.
 // - **Mask cache coverage is bounded.** A small solid fill or round-cap
 //   stroke is rasterized once into a colourized coverage image. Large paths,
 //   gradients and other strokes retain the geometry path; see port-status.md.

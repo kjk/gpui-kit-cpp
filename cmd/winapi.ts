@@ -85,6 +85,13 @@ export function bringToTopAndRedraw(hwnd: number): void {
   user32.symbols.RedrawWindow(hwnd, null, 0n, RDW_INVALIDATE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 }
 
+// Keep a window above every non-topmost one, so a capture of the visible
+// desktop surface (captureWindowSurfaceToPng) photographs it rather than
+// whatever else the user has open over it. -1 is HWND_TOPMOST.
+export function setTopmost(hwnd: number): void {
+  user32.symbols.SetWindowPos(hwnd, -1, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
 // The heavier hammer for the same problem: move the window a pixel and back,
 // which is a resize as far as the app and DWM are concerned and so redraws
 // and recomposites everything. An invalidate alone does not always get a

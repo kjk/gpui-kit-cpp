@@ -95,7 +95,7 @@ async function capture(
   try {
     await Bun.file(logPath).delete();
   } catch {}
-  const runtime = ["-gpui-window=80,80,900,700", testCase, `__paint=${backend}`, "__msaa=4", "__scene=skip"];
+  const runtime = ["-gpui-window=80,80,900,700", testCase, `__paint=${backend}`, "__msaa=4"];
   if (stress) runtime.push("__gpu_reset_every=3");
   const proc = Bun.spawn([exe, ...runtime], {
     cwd: root,

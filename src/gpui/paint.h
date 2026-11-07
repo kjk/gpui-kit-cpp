@@ -91,10 +91,12 @@ enum class WinPaintMsaa : uint8_t {
 //   Cache    also retains realized path geometry by hash, trading cache memory
 //            for avoiding repeated path construction/tessellation.
 //   Skip     also hashes whole frames and omits drawing and presenting an
-//            unchanged frame. This is the measured, safe default.
-//   Damage   also redraws only the union of changed primitive bounds. It can
-//            save work on localized changes, but is the most experimental
-//            mode and carries prior damage across the triple-buffered chain.
+//            unchanged frame.
+//   Damage   also redraws only the union of changed primitive bounds, snapped
+//            out to device pixels, carrying prior damage across the
+//            triple-buffered chain. The default: on gpui_perf it halves the
+//            paint of a spinner or a refreshed table, and cmd/bench-scene.ts
+//            finds its captures identical to Skip's on all three backends.
 enum class WinSceneMode : uint8_t {
     Off,
     Replay,
@@ -106,7 +108,7 @@ enum class WinSceneMode : uint8_t {
 struct WinPaintOptions {
     WinPaintBackend backend = WinPaintBackend::Direct2D;
     WinPaintMsaa msaa = WinPaintMsaa::X4;
-    WinSceneMode scene = WinSceneMode::Skip;
+    WinSceneMode scene = WinSceneMode::Damage;
     // Test seam: after this many presented custom-GPU frames, tear down the
     // same device-local state a DXGI device-removal result invalidates. Zero
     // is inert. Kept in the typed options so the stress runner reaches the

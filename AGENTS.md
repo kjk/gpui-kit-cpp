@@ -277,7 +277,8 @@ need no FXC and never load D3DCompiler.
 `src/gpui/scene.h` sits between the element tree and `paint.h` on Windows: the
 tree's drawing is collected as a flat array and replayed through the same
 `paint.h` entry points, so all three backends draw it and none can tell. It is
-on at the `skip` level; `__scene=off|replay|cache|skip|damage` turns it down.
+on at the `damage` level on Windows (`skip` elsewhere);
+`__scene=off|replay|cache|skip|damage` turns it down.
 **`__scene=off` is the first thing to try if a frame comes out stale** — it is
 the only thing here that can decide not to draw. Read the header before
 touching it.

@@ -7,6 +7,11 @@
 //   bun cmd/bench-scene.ts -only=introduction-scroll
 //   bun cmd/bench-scene.ts -only=icon-scroll -paint=d3d11
 //   bun cmd/bench-scene.ts -only=icon-scroll -absolute-paths
+//   bun cmd/bench-scene.ts -only=introduction-scroll -settle=2000
+//
+// -settle=ms waits that long after the interaction before the final
+// capture (150 by default), so a scrollbar fading out has finished and the
+// skip and damage captures can be compared pixel for pixel.
 
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -24,6 +29,7 @@ import {
   setCursorPos,
   setForegroundWindow,
   setProcessDpiAware,
+  setTopmost,
   sleep,
   waitForPidWindow,
   WM_CLOSE,
@@ -42,6 +48,7 @@ let build = true;
 let onlyName = "";
 let paintName = "";
 let absolutePaths = false;
+let settleMs = 150;
 for (const arg of Bun.argv.slice(2)) {
   if (arg === "-nobuild") {
     build = false;
@@ -51,6 +58,8 @@ for (const arg of Bun.argv.slice(2)) {
     onlyName = arg.slice(6);
   } else if (arg.startsWith("-paint=")) {
     paintName = arg.slice(7);
+  } else if (arg.startsWith("-settle=")) {
+    settleMs = Math.max(0, Number.parseInt(arg.slice(8), 10) || 0);
   } else if (arg === "-absolute-paths") {
     absolutePaths = true;
   } else {
@@ -314,6 +323,8 @@ async function runOne(scenario: Scenario, mode: Mode): Promise<Result> {
     throw new Error(`${scenario.name}/${mode}: window did not appear`);
   }
   moveWindow(hwnd, 40, 40, 1100, 750);
+  // The captures read the desktop, so nothing else may sit over the window.
+  setTopmost(hwnd);
   setForegroundWindow(hwnd);
   await sleep(700);
   // Establish the same unhovered baseline even when a prior run left the
@@ -326,7 +337,7 @@ async function runOne(scenario: Scenario, mode: Mode): Promise<Result> {
     throw new Error(`${scenario.name}/${mode}: initial visible-surface capture failed`);
   }
   await scenario.drive(hwnd);
-  await sleep(150);
+  await sleep(settleMs);
   const image = join(outDir, `${scenario.name}-${mode}.png`);
   if (!captureWindowSurfaceToPng(hwnd, image)) {
     await closeProcess(proc, hwnd);
