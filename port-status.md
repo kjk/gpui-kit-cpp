@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7591a35eced761e3613c01e71ff04c10129dae1a` (2026-11-02,
-chore: Bump v0.9.0 (#3769)).
-The workspace crates move from 0.8.1 to 0.9.0. No widget behaviour
-changes.
+Processed through `b6a815cbcdadf0fc0183a24f747ff0bc88cb9336` (2026-11-03,
+diff: Reject invalid hunk prefixes before slicing UTF-8 (#3473)).
+A hunk line whose first byte is not a space, plus or minus is an
+error, so a multibyte character is never sliced off as a tag.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

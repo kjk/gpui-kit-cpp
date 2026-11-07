@@ -231,6 +231,28 @@ static void TestParser() {
         "--- /dev/null\n+++ b/a\n@@ -1 +1 @@\n-old\n+new\n",
     };
     for (int i = 0; i < 6; i++) utassert(ParseErr(bad[i]));
+
+    // invalid_hunk_prefixes_return_an_error_without_slicing_unicode
+    const char* prefixes[] = {"é", "中", "😀", "?"};
+    for (int i = 0; i < 4; i++) {
+        TempStr patch =
+            fmt("--- a/a\n+++ b/a\n@@ -1 +1 @@\n%sinvalid\n", Str(prefixes[i]));
+        Vec<DiffFile*> rejected;
+        DiffParseError error;
+        utassert(!DiffFile::Parse(patch, &rejected, &error));
+        FreeFiles(rejected);
+        utassert(error.Line() == 4);
+        utassert(Same(error.Message(),
+                      "hunk ended before its declared line counts"));
+    }
+
+    // valid_hunk_prefixes_preserve_unicode_source
+    utassert(
+        Parse("--- a/a\n+++ b/a\n@@ -1,2 +1,2 @@\n é\n-中\n+😀\n", &files));
+    utassert(Same(files[0]->Source(DiffSide::Original), "é\n中\n"));
+    utassert(Same(files[0]->Source(DiffSide::Modified), "é\n😀\n"));
+    FreeFiles(files);
+
     utassert(Parse("", &files) && len(files) == 0);
     FreeFiles(files);
 }

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7591a35eced761e3613c01e71ff04c10129dae1a",
-  date: "2026-11-02",
-  subject: "chore: Bump v0.9.0 (#3769)",
+  sha: "b6a815cbcdadf0fc0183a24f747ff0bc88cb9336",
+  date: "2026-11-03",
+  subject: "diff: Reject invalid hunk prefixes before slicing UTF-8 (#3473)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
