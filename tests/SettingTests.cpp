@@ -601,8 +601,11 @@ static void EmptySearchKeepsInputEditableAndRestoresSelectedPage() {
         root = EntityRender(app, win, win->frameArena, host.id);
         utassert(FindSettingElement(root, "settings-no-results"));
 
-        // Not macOS: the shortcut modifier is control.
-        TestSimulateKeystrokes(win, "ctrl-a backspace");
+        // Select-all is ctrl-a, and cmd-a where the secondary modifier is
+        // Command.
+        TestSimulateKeystrokes(win, PlatSecondaryIsCommand()
+                                        ? "cmd-a backspace"
+                                        : "ctrl-a backspace");
         utassert(len(InputValue(&settings->search)) == 0);
         utassert(SearchFieldFocused(win, &settings->search));
         root = EntityRender(app, win, win->frameArena, host.id);

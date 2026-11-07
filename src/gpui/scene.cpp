@@ -2034,11 +2034,19 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
     if (!skip) {
         ScrollCommit();
     } else {
-        // GCC 13.3, which is what the Linux CI image compiles with, stops
-        // with an internal error in gimple_add_tmp_var on
-        // `scrollPlan = ScrollPlan{}` in this function. The plan is a POD,
-        // so clearing the bytes is the same value.
-        memset(&gActive->scrollPlan, 0, sizeof(gActive->scrollPlan));
+        // GCC 13.3 stops with an internal error in gimple_add_tmp_var on
+        // `scrollPlan = ScrollPlan{}` in this function. Default member
+        // initializers also make the type non-trivial, so memset is
+        // rejected. Clearing the fields is the empty plan.
+        ScrollPlan* plan = &gActive->scrollPlan;
+        plan->want = false;
+        plan->clip = {};
+        plan->shiftX = 0;
+        plan->shiftY = 0;
+        plan->n = 0;
+        for (int i = 0; i < kScrollDamageCap; i++) {
+            plan->rects[i] = {};
+        }
     }
 
     // This frame becomes the one the next is compared against, whether or not
