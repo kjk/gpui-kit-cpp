@@ -4718,6 +4718,65 @@ static void TabLeavesTheFieldThePressFocused() {
     TestAppFree(app);
 }
 
+// A face the field does not name: a view root's font_family and font_weight
+// cascade onto the input's run, which paints in them. Georgia bold against
+// the default regular face (or the default bold, where Georgia is not
+// installed) moves every advance, so a press measured in the field's own
+// face lands characters away from the glyph under it.
+struct CascadedFaceView {
+    InputState field;
+    static El* Render(CascadedFaceView* self, Ctx* cx) {
+        return Div(cx->a)
+            ->FontFamily(StrL("Georgia"))
+            ->Bold()
+            ->Pad(16)
+            ->Child(component::Input::New(cx, StrL("field"), &self->field)
+                        ->W(460)
+                        ->IntoEl());
+    }
+};
+
+// Not a Rust case: GPUI's TextElement shapes and hit-tests one TextRun, so
+// the two cannot disagree there. Here the run is shaped from the cascaded El
+// style and the press from InputState::lastFontWord, which has to follow it.
+static void APressIsMeasuredInTheFaceTheRunPaintsIn() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<CascadedFaceView> view = EntityNew<CascadedFaceView>(app);
+    Window* win = TestWindowOpen(app, view, 520, 120);
+    CascadedFaceView* v = view.Get(app);
+    InputSetValue(&v->field, StrL("mmmmmmmmmmiiiiiiiiiiwwwwwwwwww"));
+    TestDraw(win);
+    // The word the run paints with, built from what the root names rather
+    // than read back from the state under test.
+    uint16_t word =
+        (uint16_t)(kFontWeightBold |
+                   FontFamilyBits(FontFamilyIntern(StrL("Georgia"))));
+    utassert(v->field.lastFontWord == word);
+    // Render seeds the next frame from what PrepareEl found, so it measures
+    // its tab stops and wrap rows in that face and asks for no other.
+    TestRunUntilParked(app);
+    TestDraw(win);
+    utassert(v->field.lastFontWord == word);
+    utassert(v->field.cascadeFontWord == word);
+
+    // Press a quarter of the way into the 21st character, measured the way
+    // the run was painted: the caret goes before it.
+    Str text = InputValue(&v->field);
+    float font = v->field.lastFont;
+    float x20 = 0, x21 = 0, y = 0, h = 0;
+    utassert(
+        TextPointAt(&win->paint, text, font, 0, false, 20, &x20, &y, &h, word));
+    utassert(
+        TextPointAt(&win->paint, text, font, 0, false, 21, &x21, &y, &h, word));
+    utassert(x21 > x20);
+    Bounds b = v->field.lastBounds;
+    TestSimulateClick(win, {b.x + x20 + (x21 - x20) * 0.25f, b.y + b.h / 2});
+    TestDraw(win);
+    utassert(InputCursor(&v->field) == 20);
+    TestAppFree(app);
+}
+
 // ─── kit/tests/input (#3256) ─────────────────────────────────────────────
 
 // textarea.rs
@@ -13544,6 +13603,7 @@ void TestInputState() {
     ScrollToCursorUsesDocumentYNotStaleWindowY();
     InputFocusCyclesThroughInputsAndAddons();
     TabLeavesTheFieldThePressFocused();
+    APressIsMeasuredInTheFaceTheRunPaintsIn();
     RunWindowTests();
     RunElementWindowTests();
     RunTouchWindowTests();

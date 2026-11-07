@@ -4425,6 +4425,24 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
     // port drew it black inside a blue box.
     e->style.color = fg;
     e->style.hasColor = true;
+    // An input's bound run has its whole text style by now: its parent
+    // pushed the cascade onto it before preparing it. That word, not the one
+    // the field's own style names, is what the run is shaped and painted
+    // with, so it is what a press must be measured against — a view root's
+    // font_family("Microsoft YaHei") or font_weight otherwise puts the caret
+    // further from the click the further along the line it is. Render read
+    // last frame's answer; when this one differs, the rows it measured
+    // (tab stops, the wrap map) were in the wrong face, so draw once more.
+    if (e->input && e->kind == ElKind::Text) {
+        uint16_t word = ElTextWeight(e);
+        e->input->cascadeFontWord = word;
+        if (e->input->lastFontWord != word) {
+            e->input->lastFontWord = word;
+            if (ctx && ctx->window) {
+                WindowRequestAnimationFrame(ctx->window);
+            }
+        }
+    }
     // font_family inherits. Pushing the flag one level down here cascades it
     // through the subtree, since every child is prepared the same way.
     if (e->style.fontMono) {

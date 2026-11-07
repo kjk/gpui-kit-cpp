@@ -5552,10 +5552,18 @@ struct InputState {
     Bounds lastBounds = {};
     float lastFont = 0;
     float lastLineH = 0;
-    // The weight word those rows were drawn with — kFontMono and the
-    // family's bits — so a press is measured against the same advances they
-    // were laid out with.
+    // The weight word those rows were drawn with — weight, italic, mono,
+    // features and the family's bits — so a press is measured against the
+    // same advances they were laid out with. Render seeds it from the
+    // field's own style merged with `cascadeFontWord`; PrepareEl replaces it
+    // with the bound run's word once the text style has cascaded onto it.
     uint16_t lastFontWord = 0;
+    // The bound run's whole word as PrepareEl last resolved it: what the
+    // ancestors' text style (a view root's font_family or font_weight)
+    // added to the field's own. Render cannot see its ancestors, so it reads
+    // last frame's answer here and ShowTabs and the wrap map measure in the
+    // face the run will paint with.
+    uint16_t cascadeFontWord = 0;
     // display_map/text_wrapper.rs: every logical line's visual rows.
     InputWrapMap wrap;
     // WrappingIndent: 1 is Same (the default), 0 is None.

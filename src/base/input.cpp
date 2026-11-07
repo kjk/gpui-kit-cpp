@@ -1861,6 +1861,21 @@ static uint16_t InputFontWord(const InputEditorStyle& style) {
                       FontFamilyBits(style.fontFamily));
 }
 
+// The word the bound run will paint with: the field's own (mono, family)
+// over what last frame's PrepareEl found cascaded onto the run. A family the
+// field names wins over an inherited one, as InputFace's FontFamilyId does;
+// weight, italic and features come only from above. When the field's own
+// style changes, PrepareEl sees a different word and asks for one more frame.
+static uint16_t InputFontWordCascaded(const InputEditorStyle& style,
+                                      uint16_t cascaded) {
+    uint16_t own = InputFontWord(style);
+    uint16_t w = (uint16_t)((cascaded & ~kFontFamilyMask) | own);
+    if (!style.fontFamily) {
+        w |= (uint16_t)(cascaded & kFontFamilyMask);
+    }
+    return w;
+}
+
 // One text run between a row's chips: the whole gap, shaped as one fragment
 // the way Rust shapes it. Where the row breaks is the wrap map's business.
 static void EmitTokenTextRun(El* row, Arena* a, const InputEditorStyle& style,
@@ -1955,7 +1970,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     float lineH = InputLineH(cx);
     float lineMult = InputLineMult(cx, lineH, font);
     state->lastLineH = lineH;
-    state->lastFontWord = InputFontWord(style);
+    state->lastFontWord = InputFontWordCascaded(style, state->cascadeFontWord);
     state->editorForeground = style.foreground;
     Str text = InputValue(state);
     bool masked = style.mask || state->masked;
@@ -2676,7 +2691,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                       : InputLineH(cx);
     float lineMult = InputLineMult(cx, lineH, font);
     state->lastLineH = lineH;
-    state->lastFontWord = InputFontWord(style);
+    state->lastFontWord = InputFontWordCascaded(style, state->cascadeFontWord);
     state->editorForeground = style.foreground;
     Str text = InputValue(state);
     bool caret =
