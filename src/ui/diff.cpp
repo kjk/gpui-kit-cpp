@@ -2297,18 +2297,12 @@ static void CollectSyntaxSide(const DiffFile* file, int fileIx, DiffSide side,
                 int stop = absEnd < line.contentEnd ? absEnd : line.contentEnd;
                 if (start >= stop) continue;
                 DiffSyntaxSpan span;
+                static_cast<DiffSyntaxStyle&>(span) = hits[k];
                 span.file = fileIx;
                 span.side = (uint8_t)side;
                 span.line = begin + offset;
                 span.start = DisplayOff(src, line, start - line.sourceStart);
                 span.end = DisplayOff(src, line, stop - line.sourceStart);
-                span.weight = hits[k].weight;
-                span.italic = hits[k].italic;
-                span.hasColor = hits[k].hasColor;
-                span.color = hits[k].color;
-                span.hasBackground = hits[k].hasBackground;
-                span.background = hits[k].background;
-                span.underline = hits[k].underline;
                 VecAppend(*out, span);
             }
         }
@@ -2330,20 +2324,6 @@ void DiffState::EnsureSyntax() {
     }
 }
 
-static DiffSyntaxStyle StyleOf(const DiffSyntaxSpan& span) {
-    DiffSyntaxStyle style;
-    style.start = span.start;
-    style.end = span.end;
-    style.weight = span.weight;
-    style.italic = span.italic;
-    style.hasColor = span.hasColor;
-    style.color = span.color;
-    style.hasBackground = span.hasBackground;
-    style.background = span.background;
-    style.underline = span.underline;
-    return style;
-}
-
 int DiffState::SyntaxStyleCount(int file, DiffSide side, int line) const {
     int n = 0;
     for (int i = 0; i < len(syntaxSpans); i++) {
@@ -2363,7 +2343,7 @@ DiffSyntaxStyle DiffState::SyntaxStyleAt(int file, DiffSide side, int line,
         if (span.file != file || span.side != (uint8_t)side ||
             span.line != line)
             continue;
-        if (n == ix) return StyleOf(span);
+        if (n == ix) return span;
         n++;
     }
     return {};

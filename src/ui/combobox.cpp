@@ -332,66 +332,8 @@ Combobox* Combobox::New(Ctx* cx, Str id, Entity<ComboboxState> state) {
     }
     return out;
 }
-Combobox* Combobox::Items(const SearchableItem* it, int n) {
-    items = it;
-    nItems = n;
-    return this;
-}
-Combobox* Combobox::Sections(const Str* titles, int n) {
-    sections = titles;
-    nSections = n;
-    return this;
-}
-Combobox* Combobox::Placeholder(Str s) {
-    placeholder = s;
-    return this;
-}
 Combobox* Combobox::SearchPlaceholder(Str s) {
     searchPlaceholder = s;
-    return this;
-}
-Combobox* Combobox::Empty(Str s) {
-    empty = s;
-    return this;
-}
-Combobox* Combobox::Icon(IconName n) {
-    icon = n;
-    return this;
-}
-Combobox* Combobox::CheckIcon(IconName n) {
-    checkIcon = n;
-    return this;
-}
-Combobox* Combobox::W(float v) {
-    width = v;
-    return this;
-}
-Combobox* Combobox::MenuWidth(float v) {
-    menuWidth = v;
-    return this;
-}
-Combobox* Combobox::MenuMaxH(float v) {
-    menuMaxH = v;
-    return this;
-}
-Combobox* Combobox::WithSize(UiSize value) {
-    size = value;
-    return this;
-}
-Combobox* Combobox::Disabled(bool v) {
-    disabled = v;
-    return this;
-}
-Combobox* Combobox::Cleanable(bool v) {
-    cleanable = v;
-    return this;
-}
-Combobox* Combobox::Appearance(bool v) {
-    appearance = v;
-    return this;
-}
-Combobox* Combobox::FocusRing(bool v) {
-    focusRing = v;
     return this;
 }
 Combobox* Combobox::Multiple(bool v) {
@@ -408,28 +350,11 @@ Combobox* Combobox::OnQueryFocus(Listener fn) {
     onQueryFocus = fn;
     return this;
 }
-Combobox* Combobox::OnToggle(Listener fn) {
-    onToggle = fn;
-    return this;
-}
-Combobox* Combobox::OnClear(Listener fn) {
-    onClear = fn;
-    return this;
-}
-
-Combobox* Combobox::Trigger(El* e) {
-    trigger = e;
-    return this;
-}
 Combobox* Combobox::RenderTrigger(
     void* value, El* (*fn)(Ctx* cx, void* data,
                            const ComboboxTriggerContext* triggerContext)) {
     triggerData = value;
     renderTrigger = fn;
-    return this;
-}
-Combobox* Combobox::Footer(El* e) {
-    footer = e;
     return this;
 }
 Combobox* Combobox::RenderFooter(void* value, El* (*fn)(Ctx* cx, void* data)) {
@@ -440,11 +365,6 @@ Combobox* Combobox::RenderFooter(void* value, El* (*fn)(Ctx* cx, void* data)) {
 Combobox* Combobox::RenderEmpty(void* value, El* (*fn)(Ctx* cx, void* data)) {
     emptyData = value;
     renderEmpty = fn;
-    return this;
-}
-Combobox* Combobox::Delegate(const SearchableListDelegate& value) {
-    delegate = value;
-    hasDelegate = true;
     return this;
 }
 Combobox* Combobox::Refine(const Style& value, uint32_t fields) {
@@ -508,22 +428,13 @@ El* Combobox::IntoEl() {
             clear = ListenTo(comboboxState, &ComboboxState::OnClear);
         }
     }
-    Select* sel = Select::New(cx, id, state)
-                      ->Items(items, nItems)
-                      ->Placeholder(placeholder)
-                      ->Empty(empty.s ? empty : Tr("ComboBox.empty"))
-                      ->W(width)
-                      ->MenuWidth(menuWidth)
-                      ->WithSize(size)
-                      ->Icon(icon)
-                      ->CheckIcon(checkIcon)
-                      ->Disabled(disabled)
-                      ->Cleanable(cleanable)
-                      ->Appearance(appearance)
-                      ->FocusRing(focusRing)
-                      ->Searchable(query, onQueryFocus)
-                      ->OnToggle(toggle)
-                      ->OnClear(clear);
+    Select* sel = Select::New(cx, id, state);
+    static_cast<SelectFields&>(*sel) = *this;
+    if (!empty.s) {
+        sel->empty = Tr("ComboBox.empty");
+    }
+    sel->onToggle = toggle;
+    sel->onClear = clear;
     if (styleSet) {
         sel->TriggerRefine(style, styleSet);
     }
@@ -535,21 +446,6 @@ El* Combobox::IntoEl() {
         sel->OnMouseDownOut(
                ListenTo(comboboxState, &ComboboxState::OnMouseDownOut))
             ->TriggerBoundsOut(&owner->bounds);
-    }
-    if (hasDelegate) {
-        sel->Delegate(delegate);
-    }
-    if (sections) {
-        sel->Sections(sections, nSections);
-    }
-    if (menuMaxH > 0) {
-        sel->MenuMaxH(menuMaxH);
-    }
-    if (trigger) {
-        sel->Trigger(trigger);
-    }
-    if (footer) {
-        sel->Footer(footer);
     }
     return sel->IntoEl();
 }

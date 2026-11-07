@@ -169,7 +169,10 @@ struct SidebarGroup {
     El* IntoEl(Str id);
 };
 
-struct SidebarHeader {
+// The header and the footer: a row of children with selected / collapsed
+// state, a click and the caller's style, set the same way on both.
+template <typename Self>
+struct SidebarBandBuilder {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     ArenaVec<El*> children;
@@ -180,32 +183,42 @@ struct SidebarHeader {
     Listener onClick = {};
     ElRefiner refiner = {};
 
-    static SidebarHeader* New(Ctx* cx);
-    SidebarHeader* Child(El* child);
-    SidebarHeader* Selected(bool v);
-    SidebarHeader* Collapsed(bool v);
-    SidebarHeader* OnClick(Listener fn);
-    SidebarHeader* Refine(const Style& v, uint32_t fields);
+    static Self* New(Ctx* cx) {
+        Self* self = ArenaNew<Self>(cx->a);
+        self->a = cx->a;
+        self->cx = cx;
+        return self;
+    }
+    Self* Child(El* child) {
+        if (child) {
+            children.Append(a, child);
+        }
+        return static_cast<Self*>(this);
+    }
+    Self* Selected(bool v) {
+        selected = v;
+        return static_cast<Self*>(this);
+    }
+    Self* Collapsed(bool v) {
+        collapsed = v;
+        return static_cast<Self*>(this);
+    }
+    Self* OnClick(Listener fn) {
+        onClick = fn;
+        return static_cast<Self*>(this);
+    }
+    Self* Refine(const Style& v, uint32_t fields) {
+        StyleApplyFields(&style, v, fields);
+        styleSet |= fields;
+        return static_cast<Self*>(this);
+    }
+};
+
+struct SidebarHeader : SidebarBandBuilder<SidebarHeader> {
     El* IntoEl();
 };
 
-struct SidebarFooter {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
-    Style style = {};
-    uint32_t styleSet = 0;
-    bool selected = false;
-    bool collapsed = false;
-    Listener onClick = {};
-    ElRefiner refiner = {};
-
-    static SidebarFooter* New(Ctx* cx);
-    SidebarFooter* Child(El* child);
-    SidebarFooter* Selected(bool v);
-    SidebarFooter* Collapsed(bool v);
-    SidebarFooter* OnClick(Listener fn);
-    SidebarFooter* Refine(const Style& v, uint32_t fields);
+struct SidebarFooter : SidebarBandBuilder<SidebarFooter> {
     El* IntoEl();
 };
 

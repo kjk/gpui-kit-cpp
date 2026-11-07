@@ -66,15 +66,10 @@ struct ShellSelectBinding {
     FocusHandle contentFocus = {};
 };
 
+// A NumberInput's step target; with a script `onStep` the script steps it,
+// so the target's own step is not applied.
 struct ShellNumberBinding {
-    InputState* state = nullptr;
-    NumberStep step = {};
-    bool hasStep = false;
-    bool hasMin = false;
-    double min = 0;
-    bool hasMax = false;
-    double max = 0;
-    bool disabled = false;
+    NumberStepTarget target = {};
     shell::CallbackId onStep = 0;
 };
 

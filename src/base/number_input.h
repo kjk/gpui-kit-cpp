@@ -69,22 +69,36 @@ bool NumberParseValue(Str value, double* out);
 // else, which is a key the field itself should keep.
 bool NumberStepForKey(int key, StepAction* out);
 
+// Rust's `min: Option<f64>` and `max: Option<f64>` of a numeric field.
+struct NumberRange {
+    bool hasMin = false;
+    double min = 0;
+    bool hasMax = false;
+    double max = 0;
+};
+
+// What a step works on besides its direction: the field, the step policy
+// (Rust's Option<NumberStep>, set when `hasStep`), the range, and whether the
+// control is disabled.
+struct NumberStepTarget : NumberRange {
+    InputState* state = nullptr;
+    NumberStep step = {};
+    bool hasStep = false;
+    bool disabled = false;
+};
+
 // InputState::apply_number_step. The default themed control focuses the
 // editor, applies `step` silently when one is supplied, and sends onStep only
 // when stepping is caller-controlled or the candidate fails validation.
 // A disabled control consumes nothing and never focuses. `hasMin`/`hasMax`
 // are Rust's Option<f64>.
-bool NumberInputApplyStep(InputState* state, App* app, Window* win,
-                          StepAction action, const NumberStep* step,
-                          bool hasMin, double min, bool hasMax, double max,
-                          bool disabled, Listener onStep = {});
+bool NumberInputApplyStep(const NumberStepTarget& target, App* app, Window* win,
+                          StepAction action, Listener onStep = {});
 
 // A frame-local closure over the same operation. This is what the built-in
 // buttons, accessibility actions and inherited arrow-key behavior share.
-Func0 NumberInputStepCallback(Ctx* cx, InputState* state, StepAction action,
-                              const NumberStep* step, bool hasMin, double min,
-                              bool hasMax, double max, bool disabled,
-                              Listener onStep = {});
+Func0 NumberInputStepCallback(Ctx* cx, const NumberStepTarget& target,
+                              StepAction action, Listener onStep = {});
 
 // ensure_number_mask: a NumberInput supplies the ungrouped numeric mask only
 // until the caller explicitly selected a mask of its own.
