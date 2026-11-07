@@ -547,6 +547,72 @@ static void EscapeClearsTheSearchAndPassesThroughWhenEmpty() {
     TestAppFree(app);
 }
 
+// settings.rs empty_search_keeps_input_editable_and_restores_selected_page.
+struct EmptySearchHost {
+    Entity<SettingsState> state = {};
+
+    static El* Render(EmptySearchHost* self, Ctx* cx) {
+        return Div(cx->a)->SizeFull()->Child(SearchTestSettings(cx, self->state)
+                                                 ->IntoEl());
+    }
+};
+
+static bool SearchFieldFocused(Window* win, const InputState* s) {
+    return win && s && s->focused && win->input == s && s->focus.IsValid() &&
+           win->focusId == s->focus.id;
+}
+
+static void EmptySearchKeepsInputEditableAndRestoresSelectedPage() {
+    App* app = TestAppNew();
+    utassert(app);
+    if (!app) {
+        return;
+    }
+    component::Init(app);
+    Entity<EmptySearchHost> host = EntityNew<EmptySearchHost>(app);
+    EmptySearchHost* h = host.Get(app);
+    utassert(h);
+    if (!h) {
+        TestAppFree(app);
+        return;
+    }
+    h->state = EntityNewState<SettingsState>(app);
+    Window* win = TestWindowOpen(app, host, 1000, 700, 1);
+    SettingsState* settings = h->state.Get(app);
+    utassert(settings && win);
+    if (settings && win) {
+        InputFocus(&settings->search, app, win);
+        TestDraw(win);
+        El* root = EntityRender(app, win, win->frameArena, host.id);
+        utassert(!FindSettingElement(root, "settings-no-results"));
+
+        TestSimulateInput(win, StrL("no matching setting"));
+        root = EntityRender(app, win, win->frameArena, host.id);
+        utassert(FindSettingElement(root, "settings-no-results"));
+        utassert(!FindSettingElement(root, "1-2-1"));
+        utassert(settings->page == 1 && settings->group == -1);
+        utassert(SearchFieldFocused(win, &settings->search));
+
+        // Continue typing without refocusing while the empty state is up.
+        TestSimulateInput(win, StrL("x"));
+        utassert(
+            StrEq(InputValue(&settings->search), StrL("no matching settingx")));
+        utassert(SearchFieldFocused(win, &settings->search));
+        root = EntityRender(app, win, win->frameArena, host.id);
+        utassert(FindSettingElement(root, "settings-no-results"));
+
+        // Not macOS: the shortcut modifier is control.
+        TestSimulateKeystrokes(win, "ctrl-a backspace");
+        utassert(len(InputValue(&settings->search)) == 0);
+        utassert(SearchFieldFocused(win, &settings->search));
+        root = EntityRender(app, win, win->frameArena, host.id);
+        utassert(!FindSettingElement(root, "settings-no-results"));
+        utassert(settings->page == 1 && settings->group == -1);
+        utassert(FindSettingElement(root, "1-2-1"));
+    }
+    TestAppFree(app);
+}
+
 static El* FindChild(El* root, const El* wanted) {
     if (!root) {
         return nullptr;
@@ -1006,6 +1072,7 @@ void TestSetting() {
     SearchRenderKeepsOriginalItemIndexes();
     SearchPlaceholderFollowsTheLocaleAndKeepsThePage();
     EscapeClearsTheSearchAndPassesThroughWhenEmpty();
+    EmptySearchKeepsInputEditableAndRestoresSelectedPage();
     FooterFollowsGroupSearchVisibility();
     ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged();
     ElementItemsAndFieldsWithoutADefault();

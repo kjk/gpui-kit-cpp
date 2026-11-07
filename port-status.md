@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `929054a81a36a290f65140e20090ce6d561ef526` (2026-11-05,
-setting: Clear the sidebar search on Escape (#3816)).
-Escape in the settings search clears a non-empty query and leaves the
-current page. An empty query, and Escape on Android, keeps propagating
-so a dialog around the pane still closes. A keystroke tries each
-matching binding from the inside out until one is handled.
+Processed through `b2aaa3e5f9a387dea74981586bfca33e7e08420d` (2026-11-06,
+settings: Show an empty state when search has no matches (#3692)).
+A settings search with no matches keeps the field focused and editable,
+leaves the selected page in place, and shows the empty state. Clearing
+the query restores that page. The empty state itself was already drawn.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "929054a81a36a290f65140e20090ce6d561ef526",
-  date: "2026-11-05",
-  subject: "setting: Clear the sidebar search on Escape (#3816)",
+  sha: "b2aaa3e5f9a387dea74981586bfca33e7e08420d",
+  date: "2026-11-06",
+  subject: "settings: Show an empty state when search has no matches (#3692)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
