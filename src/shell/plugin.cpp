@@ -560,8 +560,18 @@ static bool ParseCapabilities(const JsonValue* value, PluginManifest* out,
                                   StrL("capabilities.fs.write"), error))
             return false;
         const JsonValue* execute = JsonGet(fs, "execute");
-        if (execute && execute->kind == JsonKind::String &&
-            StrEq(execute->str, StrL("*"))) {
+        // A scalar other than "*" used to deserialize as the unrestricted
+        // grant, so "git" read as one command while allowing every command.
+        if (execute && execute->kind == JsonKind::String) {
+            if (!StrEq(execute->str, StrL("*"))) {
+                SetError(
+                    error,
+                    fmt("capabilities.fs.execute must be \"*\" or an array of "
+                        "command names, not \"%s\"; write [\"%s\"] to allow "
+                        "only that command",
+                        execute->str, execute->str));
+                return false;
+            }
             out->executeUnrestricted = true;
         } else if (execute &&
                    !ParseStringArray(out->arena, execute, &out->execute,
@@ -894,7 +904,10 @@ void PluginManifestSchema(StrBuilder* out) {
         "\"string\"},"
         "\"entry\":{\"type\":\"string\"},\"dependencies\":{\"type\":\"object\"}"
         ","
-        "\"capabilities\":{\"type\":\"object\"},"
+        "\"capabilities\":{\"type\":\"object\",\"properties\":{\"fs\":{"
+        "\"type\":\"object\",\"properties\":{\"execute\":{\"anyOf\":["
+        "{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
+        "{\"type\":\"string\",\"const\":\"*\"}]}}}}},"
         "\"window\":{\"type\":\"object\",\"additionalProperties\":false,"
         "\"required\":[\"width\",\"height\"],\"properties\":{"
         "\"width\":{\"type\":\"number\"},\"height\":{\"type\":\"number\"}}}}"

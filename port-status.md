@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `675965a79de3aba323716d09aa4dccaa0614c7e1` (2026-11-05,
-deps: Update `rustls-webpki` and `webpki-root-certs` for CVE-2026-111943 (#3801)).
-Upstream bumped the Rust TLS crates that `gpui-shell`'s fetch and
-WebSocket use. This tree's HTTP client is the operating system's, and a
-WebSocket is out of scope, so the lockfile change has nothing to port.
+Processed through `f95e5bcb7f97444c6da6d542385490892738606c` (2026-11-05,
+shell: Accept only `"*"` as the unrestricted `execute` grant (#3802)).
+A string `capabilities.fs.execute` is the unrestricted grant only when
+it is `*`. Any other string is a manifest error naming that field and
+showing the one-command array form. The manifest schema marks that
+scalar `"const": "*"`.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

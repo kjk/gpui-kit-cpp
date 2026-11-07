@@ -4468,6 +4468,32 @@ static bool AuthorizePlugin(const PluginManifest*, void* data) {
     return *(bool*)data;
 }
 
+static void AnExecuteStringOtherThanTheWildcardIsRefused() {
+    ShellError error = {};
+    PluginManifest refused;
+    utassert(!PluginManifestParse(
+        StrL("{\"id\":\"com.example.inbox\",\"name\":\"Inbox\",\"entry\":"
+             "\"main.js\",\"capabilities\":{\"fs\":{\"execute\":\"git\"}}}"),
+        &refused, &error));
+    utassert(StrContains(error.message, StrL("capabilities.fs.execute")));
+    utassert(StrContains(error.message, StrL("[\"git\"]")));
+    ShellErrorClear(&error);
+
+    PluginManifest star;
+    utassert(PluginManifestParse(
+        StrL("{\"id\":\"com.example.inbox\",\"name\":\"Inbox\",\"entry\":"
+             "\"main.js\",\"capabilities\":{\"fs\":{\"execute\":\"*\"}}}"),
+        &star, &error));
+    Capabilities granted = star.Grant(StrL("plugin-root"), StrL("data-root"));
+    utassert(granted.MayRun(StrL("anything")));
+
+    StrBuilder schema;
+    PluginManifestSchema(&schema);
+    Str text = schema.TakeStr();
+    utassert(StrContains(text, StrL("\"const\":\"*\"")));
+    StrFree(text);
+}
+
 static void ShellPluginManifestsDiscoverAuthorizeAndUnload() {
     const Str valid = StrL(
         "{"
@@ -6426,6 +6452,7 @@ void TestShellCore() {
     ShellFetchChecksEveryGetTargetBeforeContact();
     ShellAccessibilityRolesMirrorUpstream();
     ShellDockPanelsPersistAndChromeRunsInLayoutScope();
+    AnExecuteStringOtherThanTheWildcardIsRefused();
     ShellPluginManifestsDiscoverAuthorizeAndUnload();
     ShellDefaultEnvironmentStaysPlain();
     ShellTextCodingAndProcessSurface();
