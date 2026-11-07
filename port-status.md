@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d2ac0e79475729b07ead3821fa4ec6fd70276517` (2026-11-02,
-gpui: Upgrade to gpui-pre 0.3.11 and gpui-fast 0.1.13 (#3766)).
-The GPUI reference is Zed `f816e1f9263e`. Kit edits that key a window's
-text system by address, and that sample animation from the executor
-clock, do not change a widget here.
+Processed through `7591a35eced761e3613c01e71ff04c10129dae1a` (2026-11-02,
+chore: Bump v0.9.0 (#3769)).
+The workspace crates move from 0.8.1 to 0.9.0. No widget behaviour
+changes.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
