@@ -1734,6 +1734,23 @@ static Str A11yCellLabel(Ctx*, void*, int row, int col) {
     return fmt("%d:%d", row, col);
 }
 
+static void FindDataRows(El* e, El** selected, El** neighbor) {
+    if (!e) {
+        return;
+    }
+    if (e->accessibility.role == AccessibilityRole::Row && e->accessibility
+                                                               .hasRowIndex) {
+        if (e->accessibility.rowIndex == 2) {
+            *selected = e;
+        } else if (e->accessibility.rowIndex == 1) {
+            *neighbor = e;
+        }
+    }
+    for (El* c = e->first; c; c = c->next) {
+        FindDataRows(c, selected, neighbor);
+    }
+}
+
 static El* FindA11y(El* e, AccessibilityRole role, const char* label) {
     if (!e) {
         return nullptr;
@@ -1817,6 +1834,47 @@ static void TableExposesItsHeaderAndCellsToAssistiveTechnology() {
              selected->accessibility.selected);
     utassert(other && other->accessibility.hasSelected &&
              !other->accessibility.selected);
+    // Unfocused: the selection is reported, and it is not the active
+    // descendant. state.rs adds that only while focus_handle is focused.
+    utassert(selected && !selected->accessibility.activeDescendant);
+
+    FocusHandleFocus(win, st->focus);
+    El* focusedCells =
+        component::DataTable::New(&cx, StrL("cells-focus"), state)
+            ->Columns(kA11yColumns, 2)
+            ->Rows(4, nullptr, nullptr)
+            ->CellLabel(A11yCellLabel)
+            ->BuildEl();
+    El* focusedSelected = FindNamed(focusedCells, "cell-2-1");
+    El* focusedOther = FindNamed(focusedCells, "cell-2-0");
+    utassert(focusedSelected && focusedSelected->accessibility
+                                    .activeDescendant);
+    utassert(focusedOther && !focusedOther->accessibility.activeDescendant);
+
+    st->cellSelectable = false;
+    st->mode = TableSelectionMode::Row;
+    st->selectedRow = 1;
+    win->focusId = 0;
+    El* idleRows = component::DataTable::New(&cx, StrL("rows-idle"), state)
+                       ->Columns(kA11yColumns, 2)
+                       ->Rows(4, nullptr, nullptr)
+                       ->BuildEl();
+    // Header is row index 0. Selected data row 1 is index 2; row 0 is 1.
+    El* idleSelected = nullptr;
+    El* idleNeighbor = nullptr;
+    FindDataRows(idleRows, &idleSelected, &idleNeighbor);
+    utassert(idleSelected && !idleSelected->accessibility.activeDescendant);
+    utassert(idleNeighbor && !idleNeighbor->accessibility.activeDescendant);
+    FocusHandleFocus(win, st->focus);
+    El* liveRows = component::DataTable::New(&cx, StrL("rows-focus"), state)
+                       ->Columns(kA11yColumns, 2)
+                       ->Rows(4, nullptr, nullptr)
+                       ->BuildEl();
+    El* liveSelected = nullptr;
+    El* liveNeighbor = nullptr;
+    FindDataRows(liveRows, &liveSelected, &liveNeighbor);
+    utassert(liveSelected && liveSelected->accessibility.activeDescendant);
+    utassert(liveNeighbor && !liveNeighbor->accessibility.activeDescendant);
 
     ArenaDelete(a);
     delete win;

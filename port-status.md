@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `56e9153c4e80775cb6e29d5ef6f6b350bbab71b1` (2026-11-01,
-combobox: Correct filtered selection events and confirmation (#3449)).
-A single-select combobox closes when the chosen value is already
-selected. A change is the values before and after the delegate, not
-the indexes.
+Processed through `c32021ccd919072519b992f385c1630e59d57b44` (2026-11-01,
+table: Move assistive technology focus with the selected row or cell (#3758)).
+While the table has focus, the selected row or cell is the active
+descendant. An unfocused table still reports the selection.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

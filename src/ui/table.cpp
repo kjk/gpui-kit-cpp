@@ -915,6 +915,11 @@ El* DataTable::BuildEl() {
     TableState* s = state.Get(cx);
     if (s) {
         s->self = state;
+        // state.rs reads focus_handle while painting the selected row and
+        // cell. Create it before those rows, not after the body is built.
+        if (!s->focus.IsValid()) {
+            s->focus = FocusHandleNew(cx);
+        }
         // The counts are the caller's every frame, which is what keeps the
         // keys inside the rows and columns there actually are.
         s->rowCount = nRows;
@@ -1414,6 +1419,12 @@ El* DataTable::BuildEl() {
                 row->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
             }
         }
+        // While the table has focus, the selected row is the focused node
+        // for assistive technology. The pinned pane is not its own row.
+        if (s && TableSelectedRow(s) == r &&
+            FocusHandleIsFocused(cx->win, s->focus)) {
+            rowScroll->AriaActiveDescendant();
+        }
         if (rowHeaderOn) {
             rowFixed->Child(RowHeaderCell(cx, state, r, false));
         }
@@ -1468,6 +1479,11 @@ El* DataTable::BuildEl() {
                 bool selected = TableSelectedCell(s, &selRow, &selCol) &&
                                 selRow == r && selCol == c;
                 td->Role(AccessibilityRole::GridCell)->AriaSelected(selected);
+                // While the table has focus, the selected cell is the
+                // focused node for assistive technology.
+                if (selected && FocusHandleIsFocused(cx->win, s->focus)) {
+                    td->AriaActiveDescendant();
+                }
             }
             if (cellLabel) {
                 Str label = cellLabel(cx, data, r, c);
