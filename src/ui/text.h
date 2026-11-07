@@ -43,6 +43,8 @@ using MarkdownBlockRenderFn = gpui::MarkdownBlockRenderFn;
 using MarkdownPlugin = gpui::MarkdownPlugin;
 using MarkdownBlockParser = gpui::MarkdownBlockParser;
 using MarkdownBlockRenderer = gpui::MarkdownBlockRenderer;
+using MarkdownBlockSurfaceFn = gpui::MarkdownBlockSurfaceFn;
+using MarkdownBlockSurface = gpui::MarkdownBlockSurface;
 using MarkdownExtensions = gpui::MarkdownExtensions;
 using TextViewPlugin = gpui::TextViewPlugin;
 using TextViewSetupFn = gpui::TextViewSetupFn;
@@ -102,6 +104,7 @@ using gpui::HtmlParseInto;
 using gpui::MdDecodeEntity;
 using gpui::MdParse;
 using gpui::MdTableToMarkdown;
+using gpui::MdToMarkdown;
 using gpui::TextViewInitKeys;
 
 // text/mod.rs `markdown(source)` / `html(source)`.

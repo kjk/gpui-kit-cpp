@@ -303,6 +303,22 @@ button:
 
 <UserCard id="madcodelife" />
 
+## Block surfaces
+
+The example registers two block surfaces, which open with a GitHub alert
+marker. Their blocks stay part of the document: select across a surface
+and copy it.
+
+> [!note]
+> Surfaces draw a blockquote's blocks in a container of your own, such as
+> this callout with an icon and a title.
+
+> [!card]
+> #### A card
+>
+> - Any block can go inside, **including** lists and `code`.
+> - Other renderers show this as a blockquote.
+
 ## Task markers
 
 The custom `MarkerHighlighter` (an LSP-style semantic tokens provider)

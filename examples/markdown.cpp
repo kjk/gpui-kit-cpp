@@ -1019,6 +1019,37 @@ static void OnFind(MarkdownApp* self, Ctx* cx, const InputEvent* ev) {
 
 // on_reveal: the preview scrolls inside its own panel, which follows no
 // scroll request, so a reveal hands it the line to scroll to.
+// examples/markdown markdown_extensions: `> [!note]` and `> [!card]`.
+// The callback runs every frame; its children are the blockquote's blocks.
+static El* RenderNoteSurface(Ctx* cx, void*) {
+    const Theme& th = ThemeNow(cx->app);
+    Arena* a = cx->a;
+    El* title = Div(a)
+                    ->FlexRow()
+                    ->Gap(8)
+                    ->ItemsCenter()
+                    ->Fg(th.info)
+                    ->Child(component::Icon::New(cx, IconName::Info)->IntoEl())
+                    ->Child(TextEl(a, StrL("Note")));
+    return Div(a)
+        ->FlexCol()
+        ->Pad(12)
+        ->Radius(th.radiusLg)
+        ->Border(1, RgbaOpacity(th.info, 0.3f))
+        ->Bg(RgbaOpacity(th.info, 0.08f))
+        ->Child(title);
+}
+
+static El* RenderCardSurface(Ctx* cx, void*) {
+    const Theme& th = ThemeNow(cx->app);
+    return Div(cx->a)
+        ->FlexCol()
+        ->Pad(16)
+        ->Radius(th.radiusLg)
+        ->Border(1, th.border)
+        ->Bg(th.secondary);
+}
+
 static void OnReveal(MarkdownApp* self, Ctx* cx,
                      const TextViewRevealEvent* ev) {
     const ScrollRect* viewport =
@@ -1070,6 +1101,11 @@ El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
     El* left = Div(a)->FlexCol()->SizeFull()->Child(ed->IntoEl());
 
     component::TextView* tv = component::TextView::New(cx, self->textView);
+    // Set before the plugins, which add to the same extensions.
+    component::MarkdownExtensions extensions;
+    extensions.BlockSurface(a, StrL("note"), &RenderNoteSurface);
+    extensions.BlockSurface(a, StrL("card"), &RenderCardSurface);
+    tv->MarkdownExtensionsSet(extensions);
     // .plugin(TickerPlugin::new(..)).plugin(UserCardPlugin::new())
     tv->Plugin(StrL("ticker"), &TickerParse, &TickerRender);
     tv->Plugin(StrL("user-card"), &UserCardParse, &UserCardRender);

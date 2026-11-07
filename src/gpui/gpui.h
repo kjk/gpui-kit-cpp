@@ -2179,6 +2179,10 @@ struct SelBlock {
     // Whether entering this block continues the previous block's line rather
     // than starting a new one. Table cells in a row do.
     bool join = false;
+    // A block surface's `> [!name]\n`, shared by every block inside it.
+    // Emitted once, when the selection enters the surface, so a copy that
+    // starts on a later block still round-trips as the same surface.
+    Str surfacePre;
 };
 
 // What SelectionFormat::Source needs from one selectable run: the marks

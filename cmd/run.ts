@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "48ac25b50c81ca5e34ec1631e3efabe22f4af64a",
+  sha: "803d5d861605edf62ca6fb3d43fe4dabbadc1f41",
   date: "2026-11-07",
-  subject: "toolbar: Add `Toolbar::axis` for vertical toolbars (#3821)",
+  subject: "text: Add block surfaces to `TextView` (#3830)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

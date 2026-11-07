@@ -207,7 +207,8 @@ bool MarkdownExtensions::HasSameParserConfiguration(
         blockParsers.len != other.blockParsers.len ||
         blockRenderers.len != other.blockRenderers.len ||
         inlineParsers.len != other.inlineParsers.len ||
-        inlineRenderers.len != other.inlineRenderers.len) {
+        inlineRenderers.len != other.inlineRenderers.len ||
+        blockSurfaces.len != other.blockSurfaces.len) {
         return false;
     }
     // Rust compares the renderer map's keys; the order they were registered
@@ -222,6 +223,13 @@ bool MarkdownExtensions::HasSameParserConfiguration(
             return false;
         }
     }
+    // has_same_parser_configuration also requires the surface-name sets to
+    // match. The callbacks are not part of the parse.
+    for (int i = 0; i < blockSurfaces.len; i++) {
+        if (!other.BlockSurfaceOf(blockSurfaces[i].name)) {
+            return false;
+        }
+    }
     return true;
 }
 
@@ -233,6 +241,7 @@ uint64_t MarkdownExtensions::ParserFingerprint() const {
     h = h * 1099511628211ull + (uint64_t)blockRenderers.len;
     h = h * 1099511628211ull + (uint64_t)inlineParsers.len;
     h = h * 1099511628211ull + (uint64_t)inlineRenderers.len;
+    h = h * 1099511628211ull + (uint64_t)blockSurfaces.len;
     // Name by name, and order-independent, so a renderer table rebuilt in a
     // different order is still the same parser configuration.
     uint64_t names = 0;
@@ -252,7 +261,103 @@ uint64_t MarkdownExtensions::ParserFingerprint() const {
         }
         names += one;
     }
+    for (int i = 0; i < blockSurfaces.len; i++) {
+        uint64_t one = 1469598103934665603ull;
+        Str name = blockSurfaces[i].name;
+        for (int at = 0; at < len(name); at++) {
+            one = (one ^ (uint64_t)(uint8_t)name.s[at]) * 1099511628211ull;
+        }
+        names += one;
+    }
     return h * 1099511628211ull + names;
+}
+
+static bool AsciiEqFold(Str a, Str b) {
+    if (len(a) != len(b)) {
+        return false;
+    }
+    for (int i = 0; i < len(a); i++) {
+        unsigned char ca = (unsigned char)a.s[i];
+        unsigned char cb = (unsigned char)b.s[i];
+        if (ca >= 'A' && ca <= 'Z') {
+            ca = (unsigned char)(ca - 'A' + 'a');
+        }
+        if (cb >= 'A' && cb <= 'Z') {
+            cb = (unsigned char)(cb - 'A' + 'a');
+        }
+        if (ca != cb) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static Str AsciiLowerDup(Arena* a, Str name) {
+    bool upper = false;
+    for (int i = 0; i < len(name); i++) {
+        unsigned char c = (unsigned char)name.s[i];
+        if (c >= 'A' && c <= 'Z') {
+            upper = true;
+            break;
+        }
+    }
+    if (!upper || !a) {
+        return name;
+    }
+    char* buf = (char*)Alloc(a, len(name) + 1);
+    if (!buf) {
+        return name;
+    }
+    for (int i = 0; i < len(name); i++) {
+        unsigned char c = (unsigned char)name.s[i];
+        buf[i] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : (char)c;
+    }
+    buf[len(name)] = 0;
+    return Str(buf, len(name));
+}
+
+MarkdownExtensions& MarkdownExtensions::BlockSurface(Arena* a, Str name,
+                                                     MarkdownBlockSurfaceFn fn,
+                                                     void* data) {
+    if (fn && len(name) > 0) {
+        Str key = AsciiLowerDup(a, name);
+        for (int i = 0; i < blockSurfaces.len; i++) {
+            if (base::StrEq(blockSurfaces[i].name, key)) {
+                blockSurfaces[i] = {key, fn, data};
+                revision = NextMarkdownExtensionsRevision();
+                return *this;
+            }
+        }
+        blockSurfaces.Append(a, {key, fn, data});
+        revision = NextMarkdownExtensionsRevision();
+    }
+    return *this;
+}
+
+Str MarkdownExtensions::BlockSurfaceName(Str written) const {
+    for (int i = 0; i < blockSurfaces.len; i++) {
+        if (AsciiEqFold(blockSurfaces[i].name, written)) {
+            return blockSurfaces[i].name;
+        }
+    }
+    return {};
+}
+
+const MarkdownBlockSurface* MarkdownExtensions::BlockSurfaceOf(Str name) const {
+    for (int i = 0; i < blockSurfaces.len; i++) {
+        if (base::StrEq(blockSurfaces[i].name, name)) {
+            return &blockSurfaces[i];
+        }
+    }
+    return nullptr;
+}
+
+El* MarkdownExtensions::RenderBlockSurface(Str name, Ctx* cx) const {
+    const MarkdownBlockSurface* surface = BlockSurfaceOf(name);
+    if (!surface || !surface->fn) {
+        return nullptr;
+    }
+    return surface->fn(cx, surface->data);
 }
 
 const MarkdownBlockRenderer* MarkdownExtensions::Renderer(Str name) const {
@@ -2503,6 +2608,164 @@ static void MdTable(MdBuild* b, const md::Node* n) {
     Pop(b);
 }
 
+// Drop the first `count` children of `parent` by rebuilding the sibling
+// ring. mdast has no unlink; the dropped nodes stay allocated.
+static void MdDropFirstChildren(Arena* a, md::Node* parent, int count) {
+    if (!a || !parent || count <= 0 || !parent->lastKid.IsSet()) {
+        return;
+    }
+    md::Node* last = md::NodeLastChild(a, parent);
+    md::Node* at = md::NodeFirstChild(a, parent);
+    for (int i = 0; i < count; i++) {
+        if (!at) {
+            parent->lastKid = {};
+            return;
+        }
+        if (at == last) {
+            parent->lastKid = {};
+            return;
+        }
+        at = md::ArenaPtrGet(a, at->sibling);
+    }
+    if (!at) {
+        parent->lastKid = {};
+        return;
+    }
+    last->sibling = ArenaPtrOf(a, at);
+}
+
+static void MdSetSpanStart(MdBuild* b, const md::Node* n, int32_t start) {
+    if (!b->positions || !n) {
+        return;
+    }
+    // The fold owns this table for the duration of the parse. The marker
+    // line is not text, so the remainder's span has to start after it or
+    // MdSourceSegments maps the marker.
+    md::NodePositions* positions = const_cast<md::NodePositions*>(b->positions);
+    for (int i = 0; i < positions->spans.len; i++) {
+        if (positions->spans[i].node == n) {
+            positions->spans[i].start = start;
+            return;
+        }
+    }
+}
+
+static Str MdTrimStartSpace(Str s) {
+    int i = 0;
+    while (i < len(s) && (s.s[i] == ' ' || s.s[i] == '\t')) {
+        i++;
+    }
+    return Str((char*)s.s + i, len(s) - i);
+}
+
+// format/markdown.rs take_surface_marker. Only a top-level blockquote, and
+// only when a surface is registered. Mutates the mdast paragraph so the
+// existing inline fold sees the text after the marker. Returns the stored
+// lowercase name, or empty when this quote is not a surface.
+static Str TakeSurfaceMarker(MdBuild* b, md::Node* quote) {
+    if (!b->extensions || !b->extensions->HasBlockSurfaces() || !b->cur ||
+        b->cur->kind != MdKind::Doc) {
+        return {};
+    }
+    md::Node* paragraph = md::NodeFirstChild(b->a, quote);
+    if (!paragraph || paragraph->kind != md::NodeKind::Paragraph) {
+        return {};
+    }
+    md::Node* text = md::NodeFirstChild(b->a, paragraph);
+    if (!text || text->kind != md::NodeKind::Text) {
+        return {};
+    }
+    Str value = md::NodeGetStr(b->a, text, md::NodeStrKind::Value);
+    int nl = -1;
+    for (int i = 0; i < len(value); i++) {
+        if (value.s[i] == '\n') {
+            nl = i;
+            break;
+        }
+    }
+    Str line = value;
+    bool hasRest = false;
+    Str rest = {};
+    if (nl >= 0) {
+        int lineEnd = nl;
+        if (lineEnd > 0 && value.s[lineEnd - 1] == '\r') {
+            lineEnd--;
+        }
+        line = Str((char*)value.s, lineEnd);
+        hasRest = true;
+        rest = Str((char*)value.s + nl + 1, len(value) - nl - 1);
+    }
+    int32_t start = 0;
+    int32_t end = 0;
+    if (!md::NodePosition(b->positions, text, &start, &end)) {
+        return {};
+    }
+    Str parsed = b->parsed;
+    if (start < 0 || start > len(parsed)) {
+        return {};
+    }
+    if (start > 0 && parsed.s[start - 1] == '\\') {
+        return {};
+    }
+    if (len(line) > len(parsed) - start ||
+        memcmp(parsed.s + start, line.s, (size_t)len(line)) != 0) {
+        return {};
+    }
+    if (len(line) < 4 || line.s[0] != '[' || line.s[1] != '!' ||
+        line.s[len(line) - 1] != ']') {
+        return {};
+    }
+    Str written((char*)line.s + 2, len(line) - 3);
+    Str name = b->extensions->BlockSurfaceName(written);
+    if (len(name) == 0) {
+        return {};
+    }
+    if (hasRest) {
+        int nlAt = -1;
+        for (int i = start; i < len(parsed); i++) {
+            if (parsed.s[i] == '\n') {
+                nlAt = i;
+                break;
+            }
+        }
+        if (nlAt < 0) {
+            return {};
+        }
+        Str tail((char*)parsed.s + nlAt + 1, len(parsed) - (nlAt + 1));
+        Str content = MdTrimStartSpace(tail);
+        if (len(content) > 0 && content.s[0] == '>') {
+            content = Str((char*)content.s + 1, len(content) - 1);
+            content = MdTrimStartSpace(content);
+        }
+        MdSetSpanStart(b, text, len(parsed) - len(content));
+        md::NodeSetStr(b->a, text, md::NodeStrKind::Value, rest);
+        if (len(rest) == 0) {
+            MdDropFirstChildren(b->a, paragraph, 1);
+        }
+    } else {
+        md::Node* second = md::NodeChild(b->a, paragraph, 1);
+        if (!second) {
+            MdDropFirstChildren(b->a, paragraph,
+                                md::NodeChildCount(b->a, paragraph));
+        } else if (second->kind == md::NodeKind::Break) {
+            MdDropFirstChildren(b->a, paragraph, 2);
+        } else {
+            return {};
+        }
+    }
+    md::Node* first = md::NodeFirstChild(b->a, paragraph);
+    if (first) {
+        int32_t childStart = 0;
+        int32_t childEnd = 0;
+        if (md::NodePosition(b->positions, first, &childStart, &childEnd)) {
+            MdSetSpanStart(b, paragraph, childStart);
+        }
+    } else {
+        MdDropFirstChildren(b->a, quote, 1);
+    }
+    return name;
+}
+
 static void MdBlockNode(MdBuild* b, const md::Node* n) {
     if (b->extensions) {
         MarkdownParseContext context;
@@ -2541,11 +2804,22 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
             Pop(b);
             break;
         }
-        case md::NodeKind::Blockquote:
+        case md::NodeKind::Blockquote: {
+            // The tree is ours for this parse. take_surface_marker rewrites
+            // the marker paragraph before the children are folded.
+            Str surface = TakeSurfaceMarker(b, const_cast<md::Node*>(n));
+            if (len(surface) > 0) {
+                MdNode* node = Push(b, MdKind::Surface);
+                node->surfaceName = StrDup(b->a, surface);
+                MdBlockChildren(b, n);
+                Pop(b);
+                break;
+            }
             Push(b, MdKind::Quote);
             MdBlockChildren(b, n);
             Pop(b);
             break;
+        }
         case md::NodeKind::List: {
             MdNode* l = Push(b, MdKind::List);
             l->ordered = n->Has(md::NodeOrdered);
@@ -2889,6 +3163,227 @@ MdNode* MdParseCachedForTest(Ctx* cx, Arena* frame, Str source,
     return MdParseCached(cx, frame, source, false, extensions);
 }
 
+static bool MdIsTrimSpace(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+static Str MdTrimCopy(Arena* a, Str s) {
+    int b = 0;
+    int e = len(s);
+    while (b < e && MdIsTrimSpace(s.s[b])) {
+        b++;
+    }
+    while (e > b && MdIsTrimSpace(s.s[e - 1])) {
+        e--;
+    }
+    if (b == 0 && e == len(s)) {
+        return s;
+    }
+    return StrDup(a, Str((char*)s.s + b, e - b));
+}
+
+static void MdAppendRuns(Arena* a, const MdNode* n, StrBuilder& out) {
+    for (const MdRun* r = n->runFirst; r; r = r->next) {
+        if (len(r->imgSrc) > 0) {
+            out.Append(StrL("!["));
+            out.Append(r->text);
+            out.Append(StrL("]("));
+            out.Append(r->imgSrc);
+            if (len(r->imgTitle) > 0) {
+                out.Append(StrL(" \""));
+                out.Append(r->imgTitle);
+                out.AppendChar('"');
+            }
+            out.AppendChar(')');
+            continue;
+        }
+        if (r->hasCustom) {
+            out.Append(r->custom.ToMarkdown());
+            continue;
+        }
+        Str text = r->text;
+        auto wrap = [&](Str pre, Str post) {
+            StrBuilder wrapped(a);
+            wrapped.Append(pre);
+            wrapped.Append(text);
+            wrapped.Append(post);
+            text = wrapped.TakeStr();
+        };
+        if (r->marks & MdCode) {
+            wrap(StrL("`"), StrL("`"));
+        }
+        if (r->marks & MdItalic) {
+            wrap(StrL("*"), StrL("*"));
+        }
+        if (r->marks & MdBold) {
+            wrap(StrL("**"), StrL("**"));
+        }
+        if (r->marks & MdDel) {
+            wrap(StrL("~~"), StrL("~~"));
+        }
+        if ((r->marks & MdLink) && len(r->href) > 0) {
+            StrBuilder linked(a);
+            linked.AppendChar('[');
+            linked.Append(text);
+            linked.Append(StrL("]("));
+            linked.Append(r->href);
+            linked.AppendChar(')');
+            text = linked.TakeStr();
+        }
+        out.Append(text);
+    }
+}
+
+// `bareEmpty`: a block surface's blank line is `>`, a blockquote's is `> `.
+static void MdAppendQuoteLines(StrBuilder& out, Str content, bool bareEmpty) {
+    if (len(content) == 0) {
+        return;
+    }
+    int i = 0;
+    bool first = true;
+    while (i <= len(content)) {
+        if (!first) {
+            out.AppendChar('\n');
+        }
+        first = false;
+        int start = i;
+        while (i < len(content) && content.s[i] != '\n') {
+            i++;
+        }
+        int n = i - start;
+        if (n > 0 && content.s[start + n - 1] == '\r') {
+            n--;
+        }
+        if (n == 0 && bareEmpty) {
+            out.AppendChar('>');
+        } else {
+            out.Append(StrL("> "));
+            if (n > 0) {
+                out.Append(Str((char*)content.s + start, n));
+            }
+        }
+        if (i >= len(content)) {
+            break;
+        }
+        i++;
+    }
+}
+
+static void MdAppendRaw(Arena* a, const MdNode* n, StrBuilder& out);
+
+Str MdToMarkdown(Arena* a, const MdNode* n) {
+    StrBuilder raw(a);
+    MdAppendRaw(a, n, raw);
+    return MdTrimCopy(a, raw.TakeStr());
+}
+
+static void MdAppendJoined(Arena* a, const MdNode* n, StrBuilder& out,
+                           const char* sep) {
+    bool any = false;
+    for (const MdNode* c = n ? n->first : nullptr; c; c = c->next) {
+        if (any) {
+            out.Append(Str(sep));
+        }
+        out.Append(MdToMarkdown(a, c));
+        any = true;
+    }
+}
+
+static void MdAppendRaw(Arena* a, const MdNode* n, StrBuilder& out) {
+    if (!n) {
+        return;
+    }
+    switch (n->kind) {
+        case MdKind::Doc:
+        case MdKind::Group:
+        case MdKind::Html:
+            MdAppendJoined(a, n, out, "\n\n");
+            break;
+        case MdKind::Paragraph:
+            MdAppendRuns(a, n, out);
+            out.Append(StrL("\n\n"));
+            break;
+        case MdKind::Heading: {
+            int level = n->level > 0 && n->level < 8 ? n->level : 1;
+            for (int i = 0; i < level; i++) {
+                out.AppendChar('#');
+            }
+            out.AppendChar(' ');
+            MdAppendRuns(a, n, out);
+            break;
+        }
+        case MdKind::Quote: {
+            StrBuilder inner(a);
+            MdAppendJoined(a, n, inner, "\n\n");
+            MdAppendQuoteLines(out, inner.TakeStr(), false);
+            break;
+        }
+        case MdKind::Surface: {
+            StrBuilder inner(a);
+            MdAppendJoined(a, n, inner, "\n\n");
+            Str content = inner.TakeStr();
+            StrBuilder logical(a);
+            logical.Append(StrL("[!"));
+            logical.Append(n->surfaceName);
+            logical.AppendChar(']');
+            if (len(content) > 0) {
+                logical.AppendChar('\n');
+                logical.Append(content);
+            }
+            MdAppendQuoteLines(out, logical.TakeStr(), true);
+            break;
+        }
+        case MdKind::List: {
+            int ix = 0;
+            for (const MdNode* c = n->first; c; c = c->next) {
+                if (c->kind != MdKind::Item) {
+                    continue;
+                }
+                if (ix > 0) {
+                    out.AppendChar('\n');
+                }
+                if (n->ordered) {
+                    out.Append(StrDup(
+                        a, fmt("%u. ", OrderedListOrdinal((uint32_t)n->start,
+                                                          (uint32_t)ix))));
+                } else {
+                    out.Append(StrL("- "));
+                }
+                out.Append(MdToMarkdown(a, c));
+                ix++;
+            }
+            break;
+        }
+        case MdKind::Item: {
+            if (n->hasCheck) {
+                out.Append(n->checked ? StrL("[x] ") : StrL("[ ] "));
+            }
+            MdAppendJoined(a, n, out, "\n");
+            break;
+        }
+        case MdKind::Code:
+            out.Append(StrL("```"));
+            out.Append(n->lang);
+            out.AppendChar('\n');
+            MdAppendRuns(a, n, out);
+            out.Append(StrL("\n```"));
+            break;
+        case MdKind::Rule:
+            out.Append(StrL("---"));
+            break;
+        case MdKind::Definition:
+            out.AppendChar('[');
+            out.Append(n->raw);
+            out.Append(StrL("]:"));
+            break;
+        case MdKind::Table:
+        case MdKind::Row:
+        case MdKind::Cell:
+        case MdKind::Custom:
+            break;
+    }
+}
+
 // ─── render ───────────────────────────────────────────────────────────────
 
 // The fallback handle_link_click takes when no handler was given: cx.open_url.
@@ -3151,6 +3646,7 @@ const SelBlock* TextView::SrcOpen(Str marker, Str post, bool join) {
     b->post = post;
     b->linePre = srcLinePre;
     b->join = join;
+    b->surfacePre = srcSurfacePre;
     srcBlock = b;
     srcLineStart = true;
     srcRunLast = nullptr;
@@ -5470,6 +5966,15 @@ struct RenderedLeafSpan {
     int rowSourceEnd = -1;
 };
 
+// A custom block drawn inside a block surface. It has no row of its own, so
+// a reveal of its rendered text is a line at `sourceStart` (range_highlight.rs
+// surface_customs / TextLeafKey::block).
+struct SurfaceCustomSpan {
+    int renderedStart = 0;
+    int renderedEnd = 0;
+    int sourceStart = 0;
+};
+
 struct RenderedIndex {
     Str text = {};
     // The source the parse read, which remap compares with the next one.
@@ -5477,6 +5982,7 @@ struct RenderedIndex {
     // In document order, so by their position in `text`.
     Vec<RenderedLeafSpan> leaves;
     Vec<Span> objects;
+    Vec<SurfaceCustomSpan> surfaceCustoms;
     // Where the text of each top-level block sits, in document order.
     Vec<Span> blocks;
     // Where the pieces of `text` came from in the source, with the rendered
@@ -5601,7 +6107,7 @@ struct RenderedIndexBuilder {
         }
     }
 
-    void PushBlock(const MdNode* n) {
+    void PushBlock(const MdNode* n, bool inSurface) {
         int start = len(text);
         switch (n->kind) {
             case MdKind::Doc:
@@ -5609,13 +6115,20 @@ struct RenderedIndexBuilder {
             case MdKind::Html:
             case MdKind::Group:
                 for (const MdNode* c = n->first; c; c = c->next) {
-                    PushBlock(c);
+                    PushBlock(c, inSurface);
                 }
                 break;
+            case MdKind::Surface:
+                // Plain text is the children's, with no extra line of the
+                // container's (node.rs Surface arm). The marker is not text.
+                for (const MdNode* c = n->first; c; c = c->next) {
+                    PushBlock(c, true);
+                }
+                return;
             case MdKind::List:
             case MdKind::Item:
                 for (const MdNode* c = n->first; c; c = c->next) {
-                    PushBlock(c);
+                    PushBlock(c, inSurface);
                 }
                 return;
             case MdKind::Paragraph:
@@ -5629,6 +6142,13 @@ struct RenderedIndexBuilder {
                 PushTable(n);
                 break;
             case MdKind::Custom:
+                if (inSurface && n->custom.hasSpan) {
+                    SurfaceCustomSpan custom;
+                    custom.renderedStart = len(text);
+                    custom.renderedEnd = len(text) + len(n->custom.text);
+                    custom.sourceStart = n->custom.span.start;
+                    VecAppend(index->surfaceCustoms, custom);
+                }
                 PushObjectSource(len(text), n->custom.text, n->custom);
                 text.Append(n->custom.text);
                 break;
@@ -5650,7 +6170,7 @@ RenderedIndex* RenderedIndexNew(const MdNode* doc, Str source) {
     builder.index = index;
     for (const MdNode* c = doc ? doc->first : nullptr; c; c = c->next) {
         int start = len(builder.text);
-        builder.PushBlock(c);
+        builder.PushBlock(c, false);
         VecAppend(index->blocks, Span{start, len(builder.text)});
     }
     index->text = builder.text.TakeStr();
@@ -6107,6 +6627,17 @@ bool RenderedIndexLocate(const RenderedIndex* index, Span range,
         out->offset = nearText;
         return true;
     }
+    // A custom block inside a surface is not a leaf and not its own row.
+    // Revealing its text scrolls to the block (RevealTarget::Line).
+    for (int i = 0; i < len(index->surfaceCustoms); i++) {
+        const SurfaceCustomSpan& custom = index->surfaceCustoms[i];
+        if (custom.renderedStart < range.end &&
+            custom.renderedEnd > range.start) {
+            out->key = TextLeafKey{custom.sourceStart, 0};
+            out->offset = 0;
+            return true;
+        }
+    }
     out->block = true;
     out->blockIx = blockIx;
     return true;
@@ -6264,6 +6795,10 @@ static MarkdownExtensions CopyParserExtensions(Arena* a,
     for (auto renderer : src.inlineRenderers) {
         renderer.name = StrDup(a, renderer.name);
         copy.inlineRenderers.Append(a, renderer);
+    }
+    for (auto surface : src.blockSurfaces) {
+        surface.name = StrDup(a, surface.name);
+        copy.blockSurfaces.Append(a, surface);
     }
     return copy;
 }
@@ -6933,6 +7468,57 @@ void TextView::RevealMark(El* t, int lo, int offset) {
     revealOut = nullptr;
 }
 
+// node.rs draws_nothing: a link definition, a break, an empty paragraph,
+// or a container of only those. A surface of them draws no container.
+static bool MdRunDraws(const MdRun* run) {
+    if (!run) {
+        return false;
+    }
+    if (len(run->imgSrc) > 0 || run->hasCustom) {
+        return true;
+    }
+    for (int i = 0; i < len(run->text); i++) {
+        char c = run->text.s[i];
+        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool MdDrawsNothing(const MdNode* n) {
+    if (!n) {
+        return true;
+    }
+    switch (n->kind) {
+        case MdKind::Definition:
+            return true;
+        case MdKind::Paragraph: {
+            if (!n->runFirst) {
+                return true;
+            }
+            for (const MdRun* run = n->runFirst; run; run = run->next) {
+                if (MdRunDraws(run)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        case MdKind::Doc:
+        case MdKind::Quote:
+        case MdKind::Surface:
+        case MdKind::Group:
+            for (const MdNode* c = n->first; c; c = c->next) {
+                if (!MdDrawsNothing(c)) {
+                    return false;
+                }
+            }
+            return true;
+        default:
+            return false;
+    }
+}
+
 El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
     bool outer = blockDepth++ == 0;
     if (outer) {
@@ -6940,7 +7526,19 @@ El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
     }
     int blockIx = 0;
     for (MdNode* c = n->first; c; c = c->next, blockIx++) {
-        El* e = Block(c, depth, inList, c->next == nullptr);
+        // A surface's last visible block carries the gap, not a trailing
+        // definition (node.rs is_last over draws_nothing).
+        bool last = c->next == nullptr;
+        if (n->kind == MdKind::Surface) {
+            last = true;
+            for (MdNode* rest = c->next; rest; rest = rest->next) {
+                if (!MdDrawsNothing(rest)) {
+                    last = false;
+                    break;
+                }
+            }
+        }
+        El* e = Block(c, depth, inList, last);
         if (e && c->kind != MdKind::Heading && c->kind != MdKind::Rule) {
             flowPrev = 3;
         }
@@ -7037,6 +7635,48 @@ El* TextView::PluginBlock(MdNode* n) {
     return nullptr;
 }
 
+// CustomBlockElement::prepaint: a custom inside a surface reports its box
+// and asks to scroll unless the box is already inside the view, or taller
+// than the view and already filling it. Asking from both edges would not
+// settle.
+static void SurfaceCustomPainted(PaintCtx* ctx, El* element, void* data) {
+    TextView* view = (TextView*)data;
+    TextViewState* managed = view && ctx ? view->state.Get(ctx->app) : nullptr;
+    if (!managed || !managed->reveal.pending || !element) {
+        return;
+    }
+    Bounds bounds = element->Bounds();
+    WinSize size = ctx->window ? WindowSize(ctx->window) : WinSize{};
+    Bounds visible = managed->reveal.hasMask ? managed->reveal.mask
+                     : ctx->hasHitMask ? ctx->hitMask
+                                       : Bounds{0, 0, size.dipW, size.dipH};
+    float slack = 0.5f;
+    bool inside = bounds.y >= visible.y - slack &&
+                  bounds.y + bounds.h <= visible.y + visible.h + slack;
+    bool fills = bounds.y <= visible.y + slack &&
+                 bounds.y + bounds.h >= visible.y + visible.h - slack;
+    managed->reveal.line = bounds;
+    if (inside || fills) {
+        managed->reveal.pending = false;
+    }
+}
+
+static void HookSurfaceCustom(TextView* view, El* element, const MdNode* n) {
+    if (!view || !element || !n || !n->custom.hasSpan || !view->revealTarget ||
+        view->revealTarget->block || !view->revealOut) {
+        return;
+    }
+    if (!(view->revealTarget->key == TextLeafKey{n->custom.span.start, 0})) {
+        return;
+    }
+    element->BoundsOut(view->revealOut);
+    element->lifecycle = ArenaNew<ElLifecycle>(view->a);
+    if (element->lifecycle) {
+        element->lifecycle->afterPaint = &SurfaceCustomPainted;
+        element->lifecycle->user = view;
+    }
+}
+
 El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
     // paragraph_gap is rems(0.75) by default, held as DIPs at a 16 px rem.
     float gap = Rems(cx, paragraphGap / 16.f);
@@ -7051,6 +7691,9 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             content =
                 MarkBlockPlugin(content, n->custom.text, n->custom.markdown,
                                 n->custom.hasSpan, n->custom.span);
+            if (surfaceDepth > 0) {
+                HookSurfaceCustom(this, content, n);
+            }
         }
         if (!content && n->custom.text.s) {
             SrcOpen({}, {});
@@ -7157,6 +7800,80 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
                 ->PadT(top)
                 ->PadB(isLast ? 0.f : space)
                 ->Child(Div(a)->H(1)->W(kFill)->Bg(textViewStyle.border));
+        }
+        case MdKind::Surface: {
+            if (MdDrawsNothing(n)) {
+                // A stream that has only sent the marker has nothing to hold.
+                return nullptr;
+            }
+            El* container = markdownExtensions
+                                .RenderBlockSurface(n->surfaceName, cx);
+            if (!container) {
+                container = Div(a);
+            }
+            // Unless the container sets its own width, it takes the row's, as
+            // a blockquote does, so lists and tables inside wrap to the view.
+            if (container->style.width == kAuto && container->style
+                                                           .widthFrac == 0) {
+                container->W(kFill);
+            }
+            if (container->style.minW == kAuto) {
+                container->MinW(0);
+            }
+            // Nested tables measure while the children render, before the
+            // container's own text style would otherwise apply. The quote
+            // path is how a face and a weight reach CellFont.
+            gpui::Style savedQuote = quoteStyle;
+            uint32_t savedQuoteFields = quoteFields;
+            bool savedQuoteOn = quoteOn;
+            quoteStyle = {};
+            quoteFields = 0;
+            if (container->style.fontSize > 0) {
+                quoteStyle.fontSize = container->style.fontSize;
+                quoteFields |= StyleFieldFontSize;
+            }
+            if (container->style.fontWeight || container->style.fontBold ||
+                container->style.fontSemibold || container->style.fontMedium) {
+                quoteStyle.fontWeight = container->style.fontWeight;
+                quoteStyle.fontBold = container->style.fontBold;
+                quoteStyle.fontSemibold = container->style.fontSemibold;
+                quoteStyle.fontMedium = container->style.fontMedium;
+                quoteFields |= StyleFieldFontWeight;
+            }
+            if (container->style.fontMono) {
+                quoteStyle.fontMono = true;
+                quoteFields |= StyleFieldFontMono;
+            }
+            if (container->style.fontFamily) {
+                quoteStyle.fontFamily = container->style.fontFamily;
+                quoteFields |= StyleFieldFontFamily;
+            }
+            quoteOn = quoteFields != 0;
+            Str savedPre = srcLinePre;
+            Str savedSurface = srcSurfacePre;
+            srcLinePre = SrcCat(a, srcLinePre, StrL("> "));
+            // The marker is not painted. A source copy quotes under it, once,
+            // whichever block of the surface the selection starts in.
+            {
+                StrBuilder marker(a);
+                marker.Append(savedPre);
+                marker.Append(StrL("> [!"));
+                marker.Append(n->surfaceName);
+                marker.Append(StrL("]\n"));
+                srcSurfacePre = marker.TakeStr();
+            }
+            uint8_t savedPrev = flowPrev;
+            flowPrev = 0;
+            surfaceDepth++;
+            Blocks(container, n, depth, false);
+            surfaceDepth--;
+            flowPrev = savedPrev;
+            srcLinePre = savedPre;
+            srcSurfacePre = savedSurface;
+            quoteStyle = savedQuote;
+            quoteFields = savedQuoteFields;
+            quoteOn = savedQuoteOn;
+            return Div(a)->W(kFill)->PadB(mb)->Child(container);
         }
         case MdKind::Quote: {
             Rgba quoteFg = textViewStyle.mutedForeground;
@@ -7821,6 +8538,9 @@ TextView* TextView::MarkdownExtensionsSet(
     for (int i = 0; i < extensions.inlineRenderers.len; i++) {
         markdownExtensions.inlineRenderers
             .Append(a, extensions.inlineRenderers[i]);
+    }
+    for (int i = 0; i < extensions.blockSurfaces.len; i++) {
+        markdownExtensions.blockSurfaces.Append(a, extensions.blockSurfaces[i]);
     }
     return this;
 }

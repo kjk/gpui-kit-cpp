@@ -16,13 +16,15 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `48ac25b50c81ca5e34ec1631e3efabe22f4af64a` (2026-11-07,
-toolbar: Add `Toolbar::axis` for vertical toolbars (#3821)).
-A vertical toolbar moves focus with Up and Down and reports a vertical
-orientation. Left and Right stay with the focused control. The default
-remains horizontal, and the themed toolbar still lays its items in a row.
+Processed through `803d5d861605edf62ca6fb3d43fe4dabbadc1f41` (2026-11-07,
+text: Add block surfaces to `TextView` (#3830)).
+A top-level blockquote whose first line is a registered `[!name]` marker
+becomes a container the application draws, and the marker is not document
+text. Names match ASCII-case-insensitively. The same registration rebuilt
+with a new callback does not reparse. The markdown example registers
+`note` and `card`.
 The current update target is
-`48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
+`46bf6d498fa101a3b11cc64e6d8c20d28d17b720`.
 
 ## Known gaps vs Rust
 

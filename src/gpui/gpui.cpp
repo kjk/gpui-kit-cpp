@@ -9554,6 +9554,16 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
                     sep = false;
                 }
                 if (src && want) {
+                    // A block surface's marker is one line for the whole
+                    // container. Later blocks of the same surface share the
+                    // string, so a selection that starts below the first
+                    // block still opens with `> [!name]`.
+                    Str prevSurface = blk ? blk->surfacePre : Str{};
+                    if (len(want->surfacePre) > 0 &&
+                        (want->surfacePre.s != prevSurface.s ||
+                         len(want->surfacePre) != len(prevSurface))) {
+                        CopyPut(&o, want->surfacePre);
+                    }
                     CopyPut(&o, want->pre);
                 }
                 blk = want;

@@ -2976,6 +2976,192 @@ static void TestMarkdownExtensionsParserConfiguration(Arena* a) {
     utassert(!first.HasSameParserConfiguration(mdx));
 }
 
+static El* RenderSummarySurface(Ctx* cx, void*) {
+    return Div(cx->a);
+}
+
+static bool MdSame(const MdNode* a, const MdNode* b) {
+    if (!a || !b) {
+        return a == b;
+    }
+    if (a->kind != b->kind || a->ordered != b->ordered ||
+        a->start != b->start || a->level != b->level ||
+        a->hasCheck != b->hasCheck || a->checked != b->checked ||
+        !StrEq(a->surfaceName, b->surfaceName) || !StrEq(a->raw, b->raw) ||
+        !StrEq(a->lang, b->lang)) {
+        return false;
+    }
+    const MdRun* ra = a->runFirst;
+    const MdRun* rb = b->runFirst;
+    while (ra && rb) {
+        if (ra->marks != rb->marks || !StrEq(ra->text, rb->text)) {
+            return false;
+        }
+        ra = ra->next;
+        rb = rb->next;
+    }
+    if (ra || rb) {
+        return false;
+    }
+    const MdNode* ca = a->first;
+    const MdNode* cb = b->first;
+    while (ca && cb) {
+        if (!MdSame(ca, cb)) {
+            return false;
+        }
+        ca = ca->next;
+        cb = cb->next;
+    }
+    return !ca && !cb;
+}
+
+static Str SurfaceChildrenMarkdown(Arena* a, MdNode* surface) {
+    StrBuilder out(a);
+    bool any = false;
+    for (MdNode* c = surface ? surface->first : nullptr; c; c = c->next) {
+        if (any) {
+            out.Append(StrL("\n\n"));
+        }
+        out.Append(MdToMarkdown(a, c));
+        any = true;
+    }
+    return out.TakeStr();
+}
+
+static int FindIn(const char* hay, const char* needle) {
+    Str h(hay);
+    Str n(needle);
+    for (int i = 0; i + len(n) <= len(h); i++) {
+        if (memcmp(h.s + i, n.s, (size_t)len(n)) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// block_surface_tests.rs
+static void TestBlockSurfaces(Arena* a) {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {&app, win, a, {}};
+    MarkdownExtensions extensions;
+    extensions.ParserRevision(1)
+        .BlockSurface(a, StrL("summary"), &RenderSummarySurface);
+    auto parse = [&](const char* source, const MarkdownExtensions* ext) {
+        return MdParseCachedForTest(&cx, a, Str(source), ext);
+    };
+
+    struct Case {
+        const char* source;
+        const char* children;
+    };
+    Case cases[] = {
+        {"> [!summary]\n> one\n> two", "one two"},
+        {"> [!SUMMARY]\n>\n> one", "one"},
+        {"> [!Summary]  \n> one", "one"},
+        {"> [!summary] \n> *one*", "*one*"},
+        {"> [!summary]\nlazy", "lazy"},
+        {"> [!summary]\n> - one\n> - two", "- one\n- two"},
+        {"> [!summary]", ""},
+    };
+    for (const Case& c : cases) {
+        MdNode* doc = parse(c.source, &extensions);
+        utassert(Children(doc) == 1);
+        MdNode* surface = Child(doc, 0);
+        utassert(surface && surface->kind == MdKind::Surface);
+        utassert(StrEq(surface->surfaceName, StrL("summary")));
+        utassert(StrEq(SurfaceChildrenMarkdown(a, surface), Str(c.children)));
+    }
+
+    const char* spanned = "> [!summary]\n>  one";
+    MdNode* spannedDoc = parse(spanned, &extensions);
+    MdNode* surface = Child(spannedDoc, 0);
+    utassert(surface && surface->kind == MdKind::Surface);
+    utassert(surface->blockStart == 0);
+    utassert(surface->first && surface->first->kind == MdKind::Paragraph);
+    utassert(surface->first->leafStart == FindIn(spanned, "one"));
+
+    const char* negatives[] = {
+        "> [!other]\n> one",
+        "> [!summary] Title\n> one",
+        "> [!summary]*one*",
+        "> [!summary\n> one",
+        "> \\[!summary]\n> one",
+        "> &#91;!summary]\n> one",
+        "> one\n> [!summary]",
+        "> > [!summary]\n> > one",
+        "- > [!summary]\n  > one",
+        "[!summary]\n\none",
+        "[!summary]: http://x\n\n> [!summary]\n> one",
+    };
+    MarkdownExtensions plain;
+    plain.ParserRevision(1);
+    for (const char* source : negatives) {
+        utassert(MdSame(parse(source, &extensions), parse(source, &plain)));
+    }
+
+    const char* round = "> [!SUMMARY]\n> one\n>\n> - two";
+    MdNode* roundDoc = parse(round, &extensions);
+    Str written = MdToMarkdown(a, Child(roundDoc, 0));
+    utassert(StrEq(written, StrL("> [!summary]\n> one\n>\n> - two")));
+    MdNode* again = parse(written.s, &extensions);
+    utassert(StrEq(MdToMarkdown(a, Child(again, 0)), written));
+
+    utassert(!plain.HasSameParserConfiguration(extensions));
+    MarkdownExtensions rebuilt;
+    rebuilt.ParserRevision(1)
+        .BlockSurface(a, StrL("SUMMARY"), &RenderSummarySurface);
+    utassert(extensions.HasSameParserConfiguration(rebuilt));
+    utassert(extensions.ParserFingerprint() == rebuilt.ParserFingerprint());
+
+    WindowKeyedFree(win);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+static int gSurfaceContainerRenders = 0;
+
+static El* RenderCountedSurface(Ctx* cx, void*) {
+    gSurfaceContainerRenders++;
+    return Div(cx->a);
+}
+
+// a_new_container_needs_no_new_parse
+static void ANewSurfaceContainerNeedsNoNewParse() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Str source = StrL("> [!summary]\n> one");
+    gSurfaceContainerRenders = 0;
+    MarkdownExtensions first;
+    first.ParserRevision(1)
+        .BlockSurface(a, StrL("summary"), &RenderCountedSurface);
+    // IntoEl is what binds the keyed state. A second frame with the same
+    // names and a new callback renders again and keeps that document.
+    TextView* firstView = TextView::New(&cx, source)
+                              ->MarkdownExtensionsSet(first);
+    firstView->IntoEl();
+    TextViewState* state = firstView->state.Get(&app);
+    const MdNode* document = state ? state->ParsedDocument() : nullptr;
+    int before = gSurfaceContainerRenders;
+    utassert(before > 0 && document);
+    MarkdownExtensions second;
+    second.ParserRevision(1)
+        .BlockSurface(a, StrL("summary"), &RenderCountedSurface);
+    TextView::New(&cx, source)->MarkdownExtensionsSet(second)->IntoEl();
+    utassert(gSurfaceContainerRenders > before);
+    utassert(state && state->ParsedDocument() == document);
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 static void TestMarkdownFrontmatter() {
     App app;
     Window* win = new Window();
@@ -6069,6 +6255,58 @@ static bool TswSelectedTextIs(const TswView& v, const char* want) {
 // again after (port-status.md "A TextView's parser plugins are the view's").
 
 // state.rs select_all_returns_rendered_text
+static Str Trimmed(char* buf, int n);
+static const TextHit* HitContaining(Window* win, const char* text);
+
+static El* RenderSummaryPanel(Ctx* cx, void*) {
+    return Div(cx->a)
+        ->Bg(Rgba{10, 20, 30, 255})
+        ->Pad(20)
+        ->Child(Div(cx->a)->H(30)->Child(TextEl(cx->a, StrL("Summary"))));
+}
+
+// block_surface.rs: the marker is not text, a select-all copies the source,
+// and a source copy of the surface quotes under the marker.
+static void ARegisteredMarkerDrawsItsBlockquoteInAPanel() {
+    const char* document =
+        "before text\n\n> [!summary]\n> inside one\n>\n> inside two\n\n"
+        "after text";
+    TswView v = TswOpen(document, TswContainer::Window);
+    Arena* ext = ArenaNew();
+    MarkdownExtensions extensions;
+    extensions.BlockSurface(ext, StrL("summary"), &RenderSummaryPanel);
+    v.Root()->extensions = &extensions;
+    TswFlush(v);
+    utassert(StrEq(v.State()->RenderedText().AsStr(),
+                   StrL("before text\ninside one\ninside two\nafter text\n")));
+    v.State()->SetSelectionFormat(gpui::SelectionFormat::Source, v.app, v.win);
+    v.State()->SelectAll(v.win, v.app);
+    TswFlush(v);
+    utassert(TswSelectedTextIs(v, document));
+
+    const char* quoted = "> [!summary]\n> first *em*\n>\n> mid\n>\n> last";
+    TswSetText(v, Str(quoted));
+    TswFlush(v);
+    TestDraw(v.win);
+    const TextHit* mid = HitContaining(v.win, "mid");
+    utassert(mid != nullptr);
+    if (mid) {
+        Point start = {mid->bounds.x + 0.1f,
+                       mid->bounds.y + mid->bounds.h * 0.5f};
+        Point end = {mid->bounds.x + mid->bounds.w - 0.1f,
+                     mid->bounds.y + mid->bounds.h * 0.5f};
+        TestSimulateMouseDown(v.win, start);
+        TestSimulateMouseMove(v.win, end, true);
+        TestDraw(v.win);
+        char buf[512];
+        int n = v.State()->SelectedText(v.win, buf, (int)sizeof(buf));
+        Str selected = Trimmed(buf, n);
+        utassert(StrEq(selected, StrL("> [!summary]\n> mid")));
+    }
+    TswClose(&v);
+    ArenaDelete(ext);
+}
+
 static void SelectAllReturnsRenderedText() {
     TswView v = TswOpen("**quick** value", TswContainer::Window);
     v.State()->SelectAll(v.win, v.app);
@@ -8059,6 +8297,7 @@ static void TestTextStateWindow() {
     HtmlPushStrKeepsEarlierBlocks();
     ElementTextOfTheSameStringIsNotComparedAgain();
     SetTextThenPushStrAppendsToReplacedContent();
+    ARegisteredMarkerDrawsItsBlockquoteInAPanel();
     SelectAllReturnsRenderedText();
     SelectAllInSourceFormatReturnsSource();
     ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
@@ -8811,6 +9050,58 @@ static void BlockquoteTypographyReachesNestedTableMeasurement() {
     }
     El* box = root ? BorderBoxEl(root, 1.5f) : nullptr;
     utassert(box && box->style.borderColor.b == 255);
+    TestAppFree(app);
+}
+
+static El* RenderLargeSurface(Ctx* cx, void*) {
+    return Div(cx->a)->Font(30.f)->Mono()->Bold();
+}
+
+struct SurfaceTableView {
+    static El* Render(SurfaceTableView*, Ctx* cx) {
+        MarkdownExtensions extensions;
+        extensions.BlockSurface(cx->a, StrL("large"), &RenderLargeSurface);
+        return TextView::New(cx,
+                             StrL("> [!large]\n> | 0123456789 |\n> | --- |\n"))
+            ->Font(15.f)
+            ->MarkdownExtensionsSet(extensions)
+            ->IntoEl();
+    }
+};
+
+// block_surface_typography_reaches_nested_table_measurement. The real shaper
+// stands in for Rust's wide mono: the surface's 30px bold mono reaches the
+// cell the way a blockquote's text style does, and the table keeps its size.
+static void BlockSurfaceTypographyReachesNestedTableMeasurement() {
+    App* app = TestAppNew();
+    Entity<SurfaceTableView> view = EntityNew<SurfaceTableView>(app);
+    Window* win = TestWindowOpen(app, view, 800, 400);
+    WindowSetRemSize(win, 16.f);
+    TestDraw(win);
+    El* root = EntityRender(win->app, win, win->frameArena, view.id);
+    const RuntimeStyle& th = RuntimeStyleNow(win->app);
+    LayoutEl(&win->paint, root, 0, 0, 800, 400, th.fontSize, th.foreground);
+    El* digits = StreamTextEl(root, StrL("0123456789"));
+    El* cell = FindTableCell(root);
+    utassert(digits && cell);
+    if (digits && cell) {
+        float tableSize = 15.f * (14.f / 15.f);
+        utassertnear(digits->laidFont, tableSize);
+        Size mono = MeasureText(&win->paint, StrL("0123456789"), tableSize, 0,
+                                false, kFontWeightBold | kFontMono);
+        Size plain = MeasureText(&win->paint, StrL("0123456789"), tableSize, 0,
+                                 false, 0);
+        float scale = win->paint.dpi > 0 ? win->paint.dpi / 96.f : 1.f;
+        float px = (mono.w + 24.f) * scale;
+        float whole = (float)(int)px;
+        if (whole < px) {
+            whole += 1.f;
+        }
+        utassertnear(cell->style.maxW, whole / scale);
+        if (mono.w > plain.w + 0.01f) {
+            utassert(cell->style.maxW > plain.w + 24.f);
+        }
+    }
     TestAppFree(app);
 }
 
@@ -9569,6 +9860,8 @@ void TestTextView() {
     InheritedInvertedColorSuppressesTheDefaultHighlighter();
     TestTextViewRootNamesItsForeground();
     TestMarkdownExtensionsParserConfiguration(a);
+    TestBlockSurfaces(a);
+    ANewSurfaceContainerNeedsNoNewParse();
     TestMarkdownFrontmatter();
     TestMarkdownInlinePlugin();
     UnclaimedInlineMathParsesItsSpanAsProse();
@@ -9675,5 +9968,6 @@ void TestTextView() {
     ListAndBlockquoteRefinementsStayExplicitOnAnInvertedSurface();
     ListAndBlockquoteViewRefinementsKeepUnspecifiedStyleProperties();
     BlockquoteTypographyReachesNestedTableMeasurement();
+    BlockSurfaceTypographyReachesNestedTableMeasurement();
     ArenaDelete(a);
 }

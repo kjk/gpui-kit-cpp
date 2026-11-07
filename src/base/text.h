@@ -184,6 +184,15 @@ struct MarkdownBlockRenderer {
     void* data = nullptr;
 };
 
+// markdown_ext.rs block_surface. The callback is Rust's
+// `Fn(&mut Window, &mut App) -> Div`: this tree's builders take a Ctx.
+using MarkdownBlockSurfaceFn = El* (*)(Ctx * cx, void* data);
+struct MarkdownBlockSurface {
+    Str name = {};
+    MarkdownBlockSurfaceFn fn = nullptr;
+    void* data = nullptr;
+};
+
 struct MarkdownInlineRenderer {
     Str name = {};
     MarkdownBlockRenderFn render = nullptr;
@@ -200,6 +209,9 @@ struct MarkdownExtensions {
     ArenaVec<MarkdownBlockRenderer> blockRenderers{};
     ArenaVec<MarkdownBlockParser> inlineParsers{};
     ArenaVec<MarkdownInlineRenderer> inlineRenderers{};
+    // block_surfaces: name is ASCII lowercase. A later registration of the
+    // same name replaces the callback and does not change the parse.
+    ArenaVec<MarkdownBlockSurface> blockSurfaces{};
     uint64_t revision = 0;
     // parser_revision: what the caller changes when a parser's captures or a
     // plugin's configuration change. Equal revisions let registrations
@@ -220,6 +232,18 @@ struct MarkdownExtensions {
     MarkdownExtensions& Plugin(Arena* a, const MarkdownPlugin& plugin);
     const MarkdownBlockRenderer* Renderer(Str name) const;
     const MarkdownInlineRenderer* InlineRenderer(Str name) const;
+    // block_surface: register `name` (matched ASCII-case-insensitively, stored
+    // lowercase). Replaces a previous registration of the same name.
+    MarkdownExtensions& BlockSurface(Arena* a, Str name,
+                                     MarkdownBlockSurfaceFn fn,
+                                     void* data = nullptr);
+    bool HasBlockSurfaces() const { return blockSurfaces.len > 0; }
+    // block_surface_name: the stored lowercase name, or empty when `written`
+    // is not registered.
+    Str BlockSurfaceName(Str written) const;
+    const MarkdownBlockSurface* BlockSurfaceOf(Str name) const;
+    // render_block_surface. Null when `name` is not registered.
+    El* RenderBlockSurface(Str name, Ctx* cx) const;
     // `has_same_parser_configuration`: whether replacing these handles can
     // change the parsed tree. A render method commonly rebuilds equivalent
     // plugin closures every frame — their revisions all differ, but the
@@ -302,6 +326,9 @@ enum class MdKind : uint8_t {
     Paragraph,
     Heading,
     Quote,
+    // A blockquote whose first line is a registered `[!name]` marker. The
+    // marker is not document text. `surfaceName` is the lowercase name.
+    Surface,
     List,
     Item,
     Code,
@@ -353,6 +380,9 @@ struct MdNode {
     // into children — a plugin matches on the tag it names, which is what
     // Rust's `Node::Html(raw)` arm reads.
     Str raw = {};
+    // Surface: the registered name, ASCII lowercase. Empty for every other
+    // kind. Not `raw` — that is an HTML block's source.
+    Str surfaceName = {};
     // List: the first ordered number.
     int start = 1;
     // Heading: 1..6.
@@ -1362,6 +1392,10 @@ struct TextView {
     // current runtime lays all blocks rather than virtualizing them through
     // gpui::list, but preserves the state and interaction contract.
     bool scrollable = false;
+    // How many block surfaces the block being built sits inside. A custom
+    // block in one has no row of its own, so a reveal of it scrolls the
+    // block's bounds (node.rs CustomBlockElement::prepaint).
+    int surfaceDepth = 0;
     // TextView::max_lines. -1 is absent; zero is a valid empty cap.
     int maxLines = -1;
     // How many scrolling tables have been built this frame, which is what
@@ -1559,6 +1593,9 @@ struct TextView {
     // What the next block's first line carries in front of that prefix: a
     // list item's `- ` or `1. `, spent by the first block of the item.
     Str srcMarker = {};
+    // The `> [!name]\n` of the block surface being built. Every block inside
+    // it shares this string, and the copier emits it once on entry.
+    Str srcSurfacePre = {};
     // The Markdown marker the list being built hands its next item, which is
     // not the bullet glyph the item is drawn with.
     Str srcItemMarker = {};
@@ -1730,6 +1767,10 @@ SourceRangeSelection TextHitsSourceRange(const PaintCtx* ctx, int selA,
 TextViewParseJob* TextViewParseNowForTest(TextViewState* s, App* app);
 MdNode* MdParseCachedForTest(Ctx* cx, Arena* frame, Str source,
                              const MarkdownExtensions* extensions);
+
+// BlockNode::to_markdown, trimmed the way node.rs trims it. Surfaces quote
+// their children under `> [!name]`. For tests.
+Str MdToMarkdown(Arena* a, const MdNode* n);
 
 // state.rs::init: Copy and SelectAll in the TextView key context.
 void TextViewInitKeys();
