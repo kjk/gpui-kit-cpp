@@ -2732,8 +2732,8 @@ Str FontFamilyName(uint8_t id) {
     return gFontFamilies[id];
 }
 
-uint16_t StyleFontWeightBits(const Style& s, uint16_t unset) {
-    switch ((FontWeight)s.fontWeight) {
+uint8_t FontWeightBits(FontWeight weight, uint8_t unknown) {
+    switch (weight) {
         case FontWeight::Thin:
             return kFontWeightThin;
         case FontWeight::ExtraLight:
@@ -2753,7 +2753,13 @@ uint16_t StyleFontWeightBits(const Style& s, uint16_t unset) {
         case FontWeight::Black:
             return kFontWeightBlack;
         default:
-            break;
+            return unknown;
+    }
+}
+
+uint16_t StyleFontWeightBits(const Style& s, uint16_t unset) {
+    if (uint8_t w = FontWeightBits((FontWeight)s.fontWeight, 0)) {
+        return w;
     }
     if (s.fontBold) {
         return kFontWeightBold;
