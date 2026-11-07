@@ -1565,7 +1565,34 @@ struct ChartSeries;
 // chart's default fill for a ramp across the plot, which has no one colour.
 Rgba ChartBarTooltipColor(const ChartSeries& c, int index);
 
-struct ChartSeries {
+// The value-axis options a chart's paint reads: what the point charts'
+// PointAxes builds and BarChart's value-axis setters fill.
+struct ChartAxisOptions {
+    // y_axis: tick labels at each of the yTickCount y ticks.
+    bool yAxis = false;
+    // y_axis_label_placement / value_axis_label_placement.
+    AxisLabelPlacement axisLabelPlacement = AxisLabelPlacement::Outside;
+    // y_tick_count: the y ticks, both ends included, which place the
+    // horizontal grid lines and the labels. At least 2.
+    int yTickCount = 5;
+    // y_tick_format / value_tick_format; null is whole numbers bare and the
+    // rest to one decimal.
+    ChartTickFormatFn tickFormat = nullptr;
+    void* tickFormatUser = nullptr;
+    // x_tick_count / band_tick_count: label that many items spread from the
+    // first to the last instead of every tickMargin-th. -1 is None.
+    int xTickCount = -1;
+    // grid_columns: vertical grid lines, the first on the left edge.
+    int gridColumns = 0;
+    // grid_dashed.
+    bool gridDashed = true;
+    // y_padding: the space kept above the highest value and below the
+    // lowest.
+    float yPaddingTop = 10;
+    float yPaddingBottom = 0;
+};
+
+struct ChartSeries : ChartAxisOptions {
     ChartKind kind = ChartKind::Area;
     const float* ys = nullptr;
     // The first series as the caller gave it, when it gave doubles: what the
@@ -1596,29 +1623,6 @@ struct ChartSeries {
     // many points and the data fills the leading ones. 0 is the data's own
     // length; a count below it has no effect.
     int pointCount = 0;
-    // The point charts' PointAxes and BarChart's value-axis options.
-    // y_axis: tick labels at each of the yTickCount y ticks.
-    bool yAxis = false;
-    // y_axis_label_placement / value_axis_label_placement.
-    AxisLabelPlacement axisLabelPlacement = AxisLabelPlacement::Outside;
-    // y_tick_count: the y ticks, both ends included, which place the
-    // horizontal grid lines and the labels. At least 2.
-    int yTickCount = 5;
-    // y_tick_format / value_tick_format; null is whole numbers bare and the
-    // rest to one decimal.
-    ChartTickFormatFn tickFormat = nullptr;
-    void* tickFormatUser = nullptr;
-    // x_tick_count / band_tick_count: label that many items spread from the
-    // first to the last instead of every tickMargin-th. -1 is None.
-    int xTickCount = -1;
-    // grid_columns: vertical grid lines, the first on the left edge.
-    int gridColumns = 0;
-    // grid_dashed.
-    bool gridDashed = true;
-    // y_padding: the space kept above the highest value and below the
-    // lowest.
-    float yPaddingTop = 10;
-    float yPaddingBottom = 0;
     // reference_line: dashed lines across the plot at these values.
     const double* referenceLines = nullptr;
     int nReferenceLines = 0;
