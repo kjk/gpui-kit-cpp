@@ -1515,6 +1515,17 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
         InputToggleFold(s, win->app, win, foldLine);
         return;
     }
+    // The placeholder after a folded line's text. Only that element unfolds
+    // it; the rest of the row still places the caret. Rust's handler calls
+    // stop_propagation, so the press never reaches the text under it.
+    if (in.button == MouseButton::Left) {
+        int placeholder = InputFoldPlaceholderAt(s, in.x, in.y);
+        if (placeholder >= 0) {
+            FoldMapSetFolded(&s->folds, placeholder, false);
+            AppInvalidate(win);
+            return;
+        }
+    }
     // A tap asks for the virtual keyboard. Focus alone does not when it
     // moves from another input, or stays here, after the user hid it.
     // state.rs on_mouse_down. A fold chevron stopped the press above, the

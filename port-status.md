@@ -16,13 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `582d926ce31295960a862a583971d02728217fa2` (2026-11-05,
-shell: Bound script-supplied counts before they reach native allocation (#3805)).
-`pagination_items` refuses a page above 4294967295 or more than 1000000
-visible pages. `MessageScrollerState` holds at most 1000000 rows, in the
-constructor and in `reset`, `append`, `prepend` and `splice`.
-`show_fps_monitor({ frame_budget })` refuses a budget no `Duration` can
-hold.
+Processed through `e7ee94020095e76b86fb1f63acbe7d3106ab73e8` (2026-11-05,
+input: Draw a placeholder for a folded line (#3791)). A code editor can
+draw an element after the text of a folded line and fill that line
+across the editor. Clicking the element unfolds the line. Both are
+unset until the application sets them.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
@@ -44,7 +42,16 @@ The current update target is
   inline completion that inserts rows under the caret does not push
   gutter bars and boundary pills down with those rows (`input.cpp`).
   Rust shifts the marks with the ghost text. The decorations story has
-  no inline completion.
+  no inline completion. Fold placeholders and fold backgrounds follow
+  those same laid-out rows: Rust's `layout_folded_lines` moves rows
+  below the ghost text down by its height, and this tree does not.
+- **A folded line's placeholder is an element, not a prepaint root.**
+  It is absolutely positioned on the last visual row and hit-tested
+  from the box that row recorded (`input.cpp`). Rust prepaints it at
+  the same place and `stop_propagation` keeps the press off the text.
+  A click outside that box still places the caret. It is not part of
+  the line's width, so a soft-wrapped row that already fills the
+  column clips it, as upstream does.
 - **Selection order is the caller's document order.** Rust numbers
   paint-order participants after a complete frame and refreshes once
   when a partial redraw cannot place a retained sibling

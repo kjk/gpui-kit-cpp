@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "582d926ce31295960a862a583971d02728217fa2",
+  sha: "e7ee94020095e76b86fb1f63acbe7d3106ab73e8",
   date: "2026-11-05",
-  subject: "shell: Bound script-supplied counts before they reach native allocation (#3805)",
+  subject: "input: Draw a placeholder for a folded line (#3791)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

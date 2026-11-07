@@ -4703,6 +4703,15 @@ struct FoldIconBox {
     Bounds bounds = {};
 };
 
+// highlighting.rs FoldPlaceholderRenderer. The element drawn right after the
+// text of a folded line. `line` is that line's buffer row. Clicking the
+// element unfolds the line; the rest of the row still places the caret.
+struct FoldPlaceholderRenderer {
+    void* data = nullptr;
+    El* (*render)(void* data, Ctx* cx, int line) = nullptr;
+    void (*drop)(void* data) = nullptr;
+};
+
 // SearchSession: one search over an input. Read it on the field; write it
 // only through the search methods. It grows, so leave unused fields alone.
 struct SearchSession {
@@ -5485,6 +5494,15 @@ struct InputState {
     // last frame's and are rebuilt with it.
     FoldMap folds;
     Vec<FoldIconBox> foldIcons;
+    // set_fold_placeholder_renderer / set_fold_background. Unset draws
+    // nothing past the chevron. The boxes are where the last frame's
+    // placeholders landed, the way the chevrons leave theirs.
+    FoldPlaceholderRenderer foldPlaceholder = {};
+    bool hasFoldBackground = false;
+    Rgba foldBackground = {};
+    Vec<FoldIconBox> foldPlaceholders;
+    bool lastFoldBackgroundSet = false;
+    Bounds lastFoldBackground = {};
     // The line-number + fold strip, which is what says where the gutter is.
     // Rust hangs a hitbox over the whole column and shows the chevrons
     // while it is hovered; the column is the same x for every row, so one
@@ -6358,6 +6376,18 @@ bool InputUnfoldAt(InputState* s, App* app, Window* win, RopePoint position);
 // apply_highlighter_fold_candidates: what the highlighter found, taken only
 // when this field is a code editor with folding on.
 void InputSetFoldCandidates(InputState* s, const FoldRange* ranges, int n);
+// set_fold_placeholder_renderer. Null `render` clears it. Clicking the
+// element the renderer returns unfolds that line.
+void InputSetFoldPlaceholderRenderer(InputState* s,
+                                     FoldPlaceholderRenderer renderer);
+// set_fold_background. Null clears it. The colour fills each folded line
+// across the editor, under the text, as VS Code's editor.foldBackground.
+void InputSetFoldBackground(InputState* s, const Rgba* color);
+// The fold-background quad the last frame painted, the first folded line
+// when several are on screen. False when it painted none.
+bool InputLastFoldBackground(const InputState* s, Bounds* out);
+// The placeholder a press at (x, y) landed on, or -1.
+int InputFoldPlaceholderAt(const InputState* s, float x, float y);
 // The field a press at (x, y) landed in, or null.
 InputState* InputAtPosition(PaintCtx* ctx, float x, float y);
 

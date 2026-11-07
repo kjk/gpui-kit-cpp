@@ -2446,6 +2446,11 @@ struct EditorUnderlay {
     Ctx cx = {};
     InputEditorStyle projected = {};
     bool lineNumbers = false;
+    // layout_folded_lines: one quad per folded line, painted under the text
+    // and under the active-line wash. The bands are the lines themselves.
+    El* foldBands[64] = {};
+    int nFoldBands = 0;
+    Rgba foldColor = {};
 };
 
 // element.rs prepaint: wrap_width comes off the bounds layout has just given
@@ -2492,6 +2497,20 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
     if (s && s->softWrap && e->w > 0 && e->w != s->wrap.measuredWidth &&
         ctx->window) {
         AppInvalidate(ctx->window);
+    }
+    if (u->nFoldBands > 0 && u->foldColor.a != 0) {
+        for (int i = 0; i < u->nFoldBands; i++) {
+            const El* band = u->foldBands[i];
+            if (!band || band->w <= 0 || band->h <= 0) {
+                continue;
+            }
+            FillRound(ctx, band->x, band->y, band->w, band->h, 0,
+                      PaintFade(ctx, u->foldColor));
+            if (s && !s->lastFoldBackgroundSet) {
+                s->lastFoldBackground = {band->x, band->y, band->w, band->h};
+                s->lastFoldBackgroundSet = true;
+            }
+        }
     }
     if (u->activeLine && u->activeColor.a != 0) {
         const El* band = u->activeLine;
@@ -2782,8 +2801,14 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // which is one frame stale and is what Rust's hitbox is too.
     bool gutterHover = folding && GutterHovered(state, cx->win);
     VecClear(state->foldIcons);
+    VecClear(state->foldPlaceholders);
+    state->lastFoldBackgroundSet = false;
     if (folding) {
         VecReserve(state->foldIcons, state->folds.candidates.len);
+        if (state->foldPlaceholder.render) {
+            int slots = state->folds.candidates.len;
+            VecReserve(state->foldPlaceholders, slots > 0 ? slots : 1);
+        }
     }
     // The row the caret is on, which is the one the active-line wash covers
     // and the one the fold gutter keeps a chevron showing on. A caret inside
@@ -3518,9 +3543,70 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (!el) {
             continue;
         }
+        // layout_folded_lines: the placeholder sits after the last wrapped
+        // row's text and is not part of the line's width, so it is absolute.
+        // A left-aligned row's offset is 0; center and right add the slack
+        // alignment_offset would, from the text column measured last frame.
+        // Ghost completion rows are overlaid on the document rows, so this
+        // does not add the ghost height Rust adds under the caret.
+        bool foldedLine = folding && FoldMapIsFolded(&state->folds, row);
+        if (foldedLine && state->foldPlaceholder.render && nVis > 0) {
+            int segLo = wrapStarts[nVis - 1];
+            Str lastText = Str(lineText.s + segLo, len(lineText) - segLo);
+            TabShown lastShown = ShowTabs(
+                a, cx->win ? &cx->win->paint : nullptr, state, lastText);
+            float end =
+                MeasureText(cx->win ? &cx->win->paint : nullptr, lastShown.text,
+                            font, 0, false, InputFontWord(style))
+                    .w;
+            float indent = nVis > 1 ? wrapIndent : 0;
+            if (state->align != 0 && state->contentBox.w > 0) {
+                float gutterW = 0;
+                if (lineNumbers) {
+                    gutterW = numW + kLineNumberRightMargin + foldW;
+                }
+                gutterW += InputGutterStripWidth(state);
+                float slack = state->contentBox.w - gutterW - end;
+                if (slack > 0) {
+                    indent += state->align == 1 ? slack * 0.5f : slack;
+                }
+            }
+            El* mark = state->foldPlaceholder
+                           .render(state->foldPlaceholder.data, cx, row);
+            if (mark) {
+                El* slot = Div(a)
+                               ->Absolute()
+                               ->Left(indent + end)
+                               ->Top((nVis - 1) * lineH)
+                               ->H(lineH)
+                               ->FlexRow()
+                               ->ItemsCenter()
+                               ->Child(mark);
+                if (state->foldPlaceholders.len < state->foldPlaceholders.cap) {
+                    FoldIconBox box;
+                    box.line = row;
+                    VecAppend(state->foldPlaceholders, box);
+                    mark->BoundsOut(
+                        &state
+                             ->foldPlaceholders[state->foldPlaceholders.len - 1]
+                             .bounds);
+                }
+                if (lineEl) {
+                    lineEl->Child(slot);
+                } else {
+                    el = Div(a)->W(kFill)->Child(el)->Child(slot);
+                }
+            }
+        }
         if (!lineNumbers) {
             if (InputGutterStripWidth(state) > 0) {
                 el->PadL(InputGutterStripWidth(state));
+            }
+            if (underlay && foldedLine && state->hasFoldBackground &&
+                underlay->nFoldBands < (int)(sizeof(underlay->foldBands) /
+                                             sizeof(underlay->foldBands[0]))) {
+                underlay->foldBands[underlay->nFoldBands++] = el;
+                underlay->foldColor = state->foldBackground;
             }
             col->Child(el);
             continue;
@@ -3543,6 +3629,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // paints it under every row, before the decorations.
         if (row == caretRow && style.activeLine.a != 0 && underlay) {
             underlay->activeLine = band;
+        }
+        if (underlay && foldedLine && state->hasFoldBackground &&
+            underlay->nFoldBands < (int)(sizeof(underlay->foldBands) /
+                                         sizeof(underlay->foldBands[0]))) {
+            underlay->foldBands[underlay->nFoldBands++] = band;
+            underlay->foldColor = state->foldBackground;
         }
         // The caret's line is numbered in the foreground, the rest muted.
         El* num =
@@ -3870,6 +3962,9 @@ InputState::~InputState() {
     if (highlighter.drop) {
         highlighter.drop(highlighter.data);
     }
+    if (foldPlaceholder.drop) {
+        foldPlaceholder.drop(foldPlaceholder.data);
+    }
     delete overscroll;
     overscroll = nullptr;
     WidthCacheDrop(&wrap);
@@ -4105,6 +4200,67 @@ int LayoutModeMinRows(const LayoutMode& m) {
 
 bool LayoutModeIsFolding(const LayoutMode& m) {
     return m.kind == LayoutModeKind::CodeEditor && m.folding;
+}
+
+int InputFoldPlaceholderAt(const InputState* s, float x, float y) {
+    if (!s) {
+        return -1;
+    }
+    for (int i = 0; i < s->foldPlaceholders.len; i++) {
+        const Bounds& b = s->foldPlaceholders[i].bounds;
+        if (b.w <= 0 || b.h <= 0) {
+            continue;
+        }
+        if (x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h) {
+            return s->foldPlaceholders[i].line;
+        }
+    }
+    return -1;
+}
+
+bool InputLastFoldBackground(const InputState* s, Bounds* out) {
+    if (!s || !s->lastFoldBackgroundSet) {
+        return false;
+    }
+    if (out) {
+        *out = s->lastFoldBackground;
+    }
+    return true;
+}
+
+void InputSetFoldPlaceholderRenderer(InputState* s,
+                                     FoldPlaceholderRenderer renderer) {
+    if (!s) {
+        return;
+    }
+    if (s->foldPlaceholder.drop && s->foldPlaceholder.data &&
+        s->foldPlaceholder.data != renderer.data) {
+        s->foldPlaceholder.drop(s->foldPlaceholder.data);
+    }
+    if (!renderer.render) {
+        renderer.data = nullptr;
+        renderer.drop = nullptr;
+    }
+    s->foldPlaceholder = renderer;
+    if (s->focusWin) {
+        AppInvalidate(s->focusWin);
+    }
+}
+
+void InputSetFoldBackground(InputState* s, const Rgba* color) {
+    if (!s) {
+        return;
+    }
+    if (!color) {
+        s->hasFoldBackground = false;
+        s->foldBackground = {};
+    } else {
+        s->hasFoldBackground = true;
+        s->foldBackground = *color;
+    }
+    if (s->focusWin) {
+        AppInvalidate(s->focusWin);
+    }
 }
 
 int InputFoldIconAt(const InputState* s, float x, float y) {

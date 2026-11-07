@@ -11903,6 +11903,54 @@ static void OverviewRulerMarksFollowEditsFoldsAndNewDecorations() {
     ArenaDelete(a);
 }
 
+// element.rs a_folded_line_shows_its_placeholder_right_after_the_text_and_
+// unfolds_on_click. The 20×10 placeholder is centered on the row; a press
+// 6px above its middle is still the text, and a press 10px past the shaped
+// text unfolds the line.
+struct FoldPlaceholderDrawn {
+    int lines[8] = {};
+    int n = 0;
+};
+
+static El* RenderFoldPlaceholder(void* data, Ctx* cx, int line) {
+    FoldPlaceholderDrawn* drawn = (FoldPlaceholderDrawn*)data;
+    if (drawn && drawn->n < 8) {
+        drawn->lines[drawn->n++] = line;
+    }
+    return Div(cx->a)->W(20)->H(10);
+}
+
+static void AFoldedLineShowsItsPlaceholderRightAfterTheTextAndUnfoldsOnClick() {
+    DecorationEditor d = DecorationEditorOpen("top {\nhidden\n}\nlast", false);
+    FoldPlaceholderDrawn drawn;
+    FoldPlaceholderRenderer renderer = {};
+    renderer.data = &drawn;
+    renderer.render = &RenderFoldPlaceholder;
+    InputSetFoldPlaceholderRenderer(d.editor, renderer);
+    FoldRange fold = {0, 3};
+    InputSetFoldCandidates(d.editor, &fold, 1);
+    TestDraw(d.win);
+    utassert(drawn.n == 0);
+
+    FoldMapSetFolded(&d.editor->folds, 0, true);
+    AppInvalidate(d.win);
+    TestDraw(d.win);
+    utassert(drawn.n == 1 && drawn.lines[0] == 0);
+
+    InputPaintedVisualRow rows[8];
+    int nRows = InputLastVisualRows(d.editor, d.win, rows, 8);
+    utassert(nRows >= 1);
+    float lineH = d.editor->lastLineH;
+    Point at = {rows[0].text.x + rows[0].width + 10.f,
+                rows[0].text.y + lineH * 0.5f};
+    Point above = {at.x, at.y - 6.f};
+    TestSimulateMouseDown(d.win, above);
+    utassert(FoldMapIsFolded(&d.editor->folds, 0));
+    TestSimulateMouseDown(d.win, at);
+    utassert(!FoldMapIsFolded(&d.editor->folds, 0));
+    TestAppFree(d.app);
+}
+
 static void RunElementWindowTests() {
     GutterCollectionsKeepEmptyRangesAsLineBoundaries();
     GutterQueriesFindBoundariesInsideTheSpan();
@@ -11917,6 +11965,7 @@ static void RunElementWindowTests() {
     HorizontalScrollExtentExcludesPlaceholder();
     HorizontalScrollExtentCoversTheWidestLaidOutLine();
     EditorLineNumberGutterResizesWithDocumentLines();
+    AFoldedLineShowsItsPlaceholderRightAfterTheTextAndUnfoldsOnClick();
     GeometricDecorationsClipScrolledViewportAndCullOffscreenRanges();
     GeometricDecorationsUseShapedWrapBoundariesAndNewlineCells();
     SoftWrapFollowsTheColumnInTheFrameItIsLaidOut();
