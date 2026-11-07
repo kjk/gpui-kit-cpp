@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `be82d05b2b5d2b3bd7e00b839da3ac900dea6ae7` (2026-11-02,
-table: Name each row after its cells (#3773)).
-A table row is named by joining its cell labels with ", ". An empty
-join leaves the row unnamed. A delegate row label replaces a label
-set while the row was built. There is no accessibility-active flag,
-so the name is built every frame, as cell labels already are.
+Processed through `0a81b348c440ce66c80f493836cfd47c38ea3755` (2026-11-03,
+list: Draw accent-filled rows in accent_foreground (#3774)).
+A searchable-list cursor row, its hover, and a list item whose active
+highlight is off paint accent_foreground on the accent fill. The
+check mark inherits that color. The default theme is unchanged
+because its accent foreground matches the page foreground.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

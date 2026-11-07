@@ -87,6 +87,11 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
             ListActiveStyleOf(ListSettingsNow(cx->app), th.tokens.listActive,
                               th.listActiveBorder, th.tokens.accent, true);
         row->Bg(st.bg);
+        // The active highlight is a faint tint and keeps the page
+        // foreground. An accent fill pairs with accent_foreground.
+        if (!ListSettingsNow(cx->app).activeHighlight) {
+            row->Fg(th.accentFg);
+        }
     }
     // `h_flex().w_full().justify_between().gap_x_1()`: the children take
     // the row, beside the check slot when the item has a check icon --

@@ -409,14 +409,21 @@ El* SearchableListItemElement::IntoEl() {
             ->ItemsCenter()
             ->JustifyBetween();
     UiListSize(cx, row, size);
-    if (!disabled && !selected) {
-        row->HoverBg(BackgroundOpacity(th.tokens.accent, 0.7f));
-    }
-    if (selected) {
-        row->Bg(th.tokens.accent);
-    }
+    // refine_style lands before the fill, so the accent colors win.
     if (styleSet) {
         row->Refine(style, styleSet);
+    }
+    if (!disabled && !selected) {
+        row->HoverBg(BackgroundOpacity(th.tokens.accent, 0.7f))
+            ->HoverFg(th.accentFg);
+    }
+    if (selected) {
+        row->Bg(th.tokens.accent)->Fg(th.accentFg);
+    }
+    // A disabled row dims after the fill, so a selected disabled row keeps
+    // the accent background and takes muted_foreground.
+    if (disabled) {
+        row->Fg(th.mutedFg);
     }
     // The label side takes what the check leaves and clips past it, so a
     // long option truncates instead of pushing the check out of the row.
@@ -433,9 +440,9 @@ El* SearchableListItemElement::IntoEl() {
                     ->ItemsCenter()
                     ->JustifyBetween()
                     ->Child(left);
-    El* check = IconEl(a, checkIcon, UiIconPx(cx, UiSize::XSmall))
-                    ->Shrink0()
-                    ->Fg(th.foreground);
+    // The check inherits the row's text color, so it stays legible on the
+    // accent fill and dims with a disabled label.
+    El* check = IconEl(a, checkIcon, UiIconPx(cx, UiSize::XSmall))->Shrink0();
     if (!checked) {
         check->Opacity(0);
     }

@@ -362,6 +362,45 @@ static void DelegateHooksDriveSearchRenderingAndSelection() {
     EntityDropAll(&app);
 }
 
+// accent_fill_rows.rs
+// searchable_list_cursor_and_hover_rows_use_accent_foreground. A light
+// theme whose accent foreground is white and whose page foreground is
+// near black. The cursor row takes the accent foreground. A plain row
+// keeps the page foreground and stores the accent foreground as its
+// hover color, which paint applies while the pointer is on the row.
+static void SearchableListCursorAndHoverRowsUseAccentForeground() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Rgba foreground = Rgb(0x0a, 0x0a, 0x0a);
+    Rgba accentForeground = Rgb(0xff, 0xff, 0xff);
+    Rgba accent = Rgb(0x25, 0x63, 0xeb);
+    ThemeUpdate(&app, [&](Theme* t) {
+        t->foreground = foreground;
+        t->accentFg = accentForeground;
+        t->accent = accent;
+    });
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, nullptr, a, {}};
+
+    El* cursor = SearchableListItemElement::New(&cx, 0)
+                     ->Selected(true)
+                     ->Child(Div(a))
+                     ->IntoEl();
+    utassert(cursor->style.hasColor &&
+             RgbaEq(cursor->style.color, accentForeground));
+
+    El* plain = SearchableListItemElement::New(&cx, 1)
+                    ->Selected(false)
+                    ->Child(Div(a))
+                    ->IntoEl();
+    utassert(plain->style.hasColor && RgbaEq(plain->style.color, foreground));
+    utassert(plain->style.hasHoverFg &&
+             RgbaEq(plain->style.hoverFg, accentForeground));
+
+    ArenaDelete(a);
+    AppGlobalClear(&app);
+}
+
 void TestSearchableList() {
     TestSuite("searchable_list");
     TheQueryIsACaseInsensitiveSubstringOfTheTitle();
@@ -374,6 +413,7 @@ void TestSearchableList() {
     SearchableVecMapsMatchedRowsToItems();
     SearchableGroupKeepsMatchedRows();
     ItemElementReservesItsCheckAndUsesListSizing();
+    SearchableListCursorAndHoverRowsUseAccentForeground();
     StateAccessorsUseGroupedIndexPaths();
     DelegateHooksDriveSearchRenderingAndSelection();
 }

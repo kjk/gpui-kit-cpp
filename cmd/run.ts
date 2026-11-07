@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "be82d05b2b5d2b3bd7e00b839da3ac900dea6ae7",
-  date: "2026-11-02",
-  subject: "table: Name each row after its cells (#3773)",
+  sha: "0a81b348c440ce66c80f493836cfd47c38ea3755",
+  date: "2026-11-03",
+  subject: "list: Draw accent-filled rows in accent_foreground (#3774)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

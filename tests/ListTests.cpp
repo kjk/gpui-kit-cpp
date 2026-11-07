@@ -610,6 +610,43 @@ static void TheDelegateTableOwnsTheWholeContract() {
     EntityDropAll(&app);
 }
 
+// accent_fill_rows.rs list_item_accent_selection_uses_accent_foreground.
+// The default active highlight keeps the page foreground. Turning it
+// off fills the selected row with accent and paints accent_foreground.
+static void ListItemAccentSelectionUsesAccentForeground() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Rgba foreground = Rgb(0x0a, 0x0a, 0x0a);
+    Rgba accentForeground = Rgb(0xff, 0xff, 0xff);
+    ThemeUpdate(&app, [&](Theme* t) {
+        t->foreground = foreground;
+        t->accentFg = accentForeground;
+        t->accent = Rgb(0x25, 0x63, 0xeb);
+    });
+    Arena* a = ArenaNew();
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {&app, win, a, {}};
+
+    El* tinted = component::ListItem::New(&cx, Div(a))
+                     ->Selected(true)
+                     ->IntoEl(StrL("row"), {}, {});
+    utassert(tinted->style.hasColor && RgbaEq(tinted->style.color, foreground));
+
+    ListSettings settings = ListSettingsNow(&app);
+    settings.activeHighlight = false;
+    ListSettingsSet(&app, settings);
+    El* filled = component::ListItem::New(&cx, Div(a))
+                     ->Selected(true)
+                     ->IntoEl(StrL("row"), {}, {});
+    utassert(filled->style.hasColor &&
+             RgbaEq(filled->style.color, accentForeground));
+
+    delete win;
+    ArenaDelete(a);
+    AppGlobalClear(&app);
+}
+
 void TestList() {
     TheKeyTable();
     NextAndPrevWrap();
@@ -625,4 +662,5 @@ void TestList() {
     MeasuresAnExistingRowWhenTheRequestedItemIsAbsent();
     ListStateHasListRole();
     AListWithoutAHeightFillsItsBox();
+    ListItemAccentSelectionUsesAccentForeground();
 }
