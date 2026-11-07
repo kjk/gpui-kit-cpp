@@ -24,31 +24,14 @@ BreakClass BreakProperty(uint32_t codepoint) {
 
 static uint32_t Decode(Str text, int32_t* offset) {
     int32_t start = *offset;
-    uint8_t first = (uint8_t)text.s[start];
-    *offset = start + 1;
-    if (first < 0x80) {
-        return first;
-    }
-    int count = first >= 0xC2 && first <= 0xDF   ? 2
-                : first >= 0xE0 && first <= 0xEF ? 3
-                : first >= 0xF0 && first <= 0xF4 ? 4
-                                                 : 0;
-    if (!count || count > len(text) - start) {
+    uint32_t value = 0;
+    int n =
+        Utf8StrictAt((const uint8_t*)text.s + start, len(text) - start, &value);
+    if (n <= 0) {
+        *offset = start + 1;
         return 0xFFFD;
     }
-    uint32_t value = first & (0x7F >> count);
-    for (int i = 1; i < count; i++) {
-        uint8_t next = (uint8_t)text.s[start + i];
-        if ((next & 0xC0) != 0x80) {
-            return 0xFFFD;
-        }
-        value = (value << 6) | (next & 63);
-    }
-    if ((count == 3 && value < 0x800) || (count == 4 && value < 0x10000) ||
-        (value >= 0xD800 && value <= 0xDFFF) || value > 0x10FFFF) {
-        return 0xFFFD;
-    }
-    *offset = start + count;
+    *offset = start + n;
     return value;
 }
 

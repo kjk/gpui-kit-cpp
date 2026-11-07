@@ -1256,6 +1256,62 @@ int Utf8Encode(char* out, uint32_t cp) {
     return 4;
 }
 
+int Utf8StrictAt(const uint8_t* b, int avail, uint32_t* cp) {
+    if (avail <= 0) {
+        return 0;
+    }
+    uint8_t lead = b[0];
+    if (lead < 0x80) {
+        if (cp) {
+            *cp = lead;
+        }
+        return 1;
+    }
+    // The second byte's range is what rules out overlong forms (0xE0, 0xF0),
+    // surrogates (0xED) and values past U+10FFFF (0xF4).
+    int need = 0;
+    uint8_t lo = 0x80;
+    uint8_t hi = 0xBF;
+    if (lead >= 0xC2 && lead <= 0xDF) {
+        need = 2;
+    } else if (lead == 0xE0) {
+        need = 3;
+        lo = 0xA0;
+    } else if (lead == 0xED) {
+        need = 3;
+        hi = 0x9F;
+    } else if (lead >= 0xE1 && lead <= 0xEF) {
+        need = 3;
+    } else if (lead == 0xF0) {
+        need = 4;
+        lo = 0x90;
+    } else if (lead >= 0xF1 && lead <= 0xF3) {
+        need = 4;
+    } else if (lead == 0xF4) {
+        need = 4;
+        hi = 0x8F;
+    } else {
+        return 0;
+    }
+    uint32_t value = lead & (0x7F >> need);
+    for (int k = 1; k < need; k++) {
+        if (k >= avail) {
+            return -1;
+        }
+        uint8_t byte = b[k];
+        uint8_t min = k == 1 ? lo : (uint8_t)0x80;
+        uint8_t max = k == 1 ? hi : (uint8_t)0xBF;
+        if (byte < min || byte > max) {
+            return 0;
+        }
+        value = (value << 6) | (byte & 0x3F);
+    }
+    if (cp) {
+        *cp = value;
+    }
+    return need;
+}
+
 int Utf8At(Str s, int i, uint32_t* out) {
     const uint8_t* p = (const uint8_t*)s.s + i;
     uint8_t c = p[0];

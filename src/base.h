@@ -1340,6 +1340,13 @@ constexpr int Utf8LeadLen(uint8_t lead) {
 int Utf8At(Str s, int i, uint32_t* out);
 // Where the character before `i` starts.
 int Utf8Prev(Str s, int i);
+// Strict UTF-8 (the WHATWG decoder's byte ranges, Rust's `str::from_utf8`):
+// no overlong form, no surrogate, nothing past U+10FFFF. At `b[0..avail)`,
+// returns the length of the well-formed sequence `b` starts and its code
+// point in `*cp` (may be null); 0 when `b[0]` cannot lead a sequence or a
+// later byte breaks it; -1 when every byte present is right but the sequence
+// runs past `avail` — a tail the next chunk may complete.
+int Utf8StrictAt(const uint8_t* b, int avail, uint32_t* cp);
 // Rust's `str::is_char_boundary`: `i` is 0, the end, or a byte that is not a
 // UTF-8 continuation byte. Out of range is false.
 bool Utf8IsCharBoundary(Str s, int i);

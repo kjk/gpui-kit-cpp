@@ -38,34 +38,6 @@ void Utf8CarryInit(Utf8Carry* carry) {
     if (carry) carry->pendingLen = 0;
 }
 
-// 0 for a byte that leads nothing.
-static int Utf8Width(uint8_t lead) {
-    int w = Utf8LeadLen(lead);
-    return w == 1 && lead >= 0x80 ? 0 : w;
-}
-
-static bool Utf8SequenceOk(const uint8_t* bytes, int width) {
-    if (width <= 1) return width == 1;
-    for (int i = 1; i < width; i++) {
-        if ((bytes[i] & 0xC0) != 0x80) return false;
-    }
-    uint32_t cp = 0;
-    if (width == 2) {
-        cp = ((uint32_t)(bytes[0] & 0x1F) << 6) | (bytes[1] & 0x3F);
-        if (cp < 0x80) return false;
-    } else if (width == 3) {
-        cp = ((uint32_t)(bytes[0] & 0x0F) << 12) |
-             ((uint32_t)(bytes[1] & 0x3F) << 6) | (bytes[2] & 0x3F);
-        if (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF)) return false;
-    } else {
-        cp = ((uint32_t)(bytes[0] & 0x07) << 18) |
-             ((uint32_t)(bytes[1] & 0x3F) << 12) |
-             ((uint32_t)(bytes[2] & 0x3F) << 6) | (bytes[3] & 0x3F);
-        if (cp < 0x10000 || cp > 0x10FFFF) return false;
-    }
-    return true;
-}
-
 static Str DecodeBytes(Utf8Carry* carry, const uint8_t* bytes, int count,
                        bool finish) {
     int incoming = count > 0 ? count : 0;
@@ -81,20 +53,15 @@ static Str DecodeBytes(Utf8Carry* carry, const uint8_t* bytes, int count,
     StrBuilder out;
     int i = 0;
     while (i < total) {
-        int width = Utf8Width(buf[i]);
-        if (width == 0) {
-            out.Append(StrL("\xEF\xBF\xBD"));
-            i++;
-            continue;
-        }
-        if (i + width > total) {
+        int width = Utf8StrictAt(buf + i, total - i, nullptr);
+        if (width < 0) {
             if (finish) {
                 out.Append(StrL("\xEF\xBF\xBD"));
                 i = total;
             }
             break;
         }
-        if (!Utf8SequenceOk(buf + i, width)) {
+        if (width == 0) {
             out.Append(StrL("\xEF\xBF\xBD"));
             i++;
             continue;

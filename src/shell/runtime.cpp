@@ -8437,103 +8437,32 @@ static void AppendFffd(StrBuilder* out) {
     out->Append(StrL("\xEF\xBF\xBD"));
 }
 
-// WHATWG UTF-8 decoder: one U+FFFD per maximal invalid subpart. A sequence
-// still open at the end is one replacement. Fatal mode refuses any of that.
+// WHATWG UTF-8 decoder: one U+FFFD per invalid byte, and a sequence still
+// open at the end is one replacement. Fatal mode refuses any of that.
 static bool DecodeUtf8(StrBuilder* out, const uint8_t* bytes, int count,
                        bool fatal) {
     int i = 0;
     while (i < count) {
-        uint8_t lead = bytes[i];
-        if (lead <= 0x7F) {
-            out->AppendChar((char)lead);
-            i++;
+        int n = Utf8StrictAt(bytes + i, count - i, nullptr);
+        if (n > 0) {
+            out->Append(Str((const char*)bytes + i, n));
+            i += n;
             continue;
         }
-        int need = 0;
-        unsigned lo = 0x80;
-        unsigned hi = 0xBF;
-        if (lead >= 0xC2 && lead <= 0xDF)
-            need = 2;
-        else if (lead == 0xE0) {
-            need = 3;
-            lo = 0xA0;
-        } else if ((lead >= 0xE1 && lead <= 0xEC) || lead == 0xEE ||
-                   lead == 0xEF)
-            need = 3;
-        else if (lead == 0xED) {
-            need = 3;
-            hi = 0x9F;
-        } else if (lead == 0xF0) {
-            need = 4;
-            lo = 0x90;
-        } else if (lead >= 0xF1 && lead <= 0xF3)
-            need = 4;
-        else if (lead == 0xF4) {
-            need = 4;
-            hi = 0x8F;
-        } else {
-            if (fatal) return false;
-            AppendFffd(out);
-            i++;
-            continue;
-        }
-        if (i + need > count) {
-            if (fatal) return false;
-            AppendFffd(out);
-            return true;
-        }
-        bool bad = false;
-        for (int k = 1; k < need; k++) {
-            unsigned byte = bytes[i + k];
-            unsigned min = k == 1 ? lo : 0x80;
-            unsigned max = k == 1 ? hi : 0xBF;
-            if (byte < min || byte > max) {
-                bad = true;
-                break;
-            }
-        }
-        if (bad) {
-            if (fatal) return false;
-            AppendFffd(out);
-            i++;
-            continue;
-        }
-        out->Append(Str((const char*)bytes + i, need));
-        i += need;
+        if (fatal) return false;
+        AppendFffd(out);
+        if (n < 0) return true;
+        i++;
     }
     return true;
 }
 
 // A completable UTF-8 tail, or 0 when the end is whole or already invalid.
 static int IncompleteTail(const uint8_t* bytes, int count) {
-    int len = count;
-    for (int back = 1; back <= len && back <= 3; back++) {
-        uint8_t byte = bytes[len - back];
-        if ((byte & 0xC0) == 0x80) continue;
-        int expected = 0;
-        if (byte >= 0xC2 && byte <= 0xDF)
-            expected = 2;
-        else if (byte >= 0xE0 && byte <= 0xEF)
-            expected = 3;
-        else if (byte >= 0xF0 && byte <= 0xF4)
-            expected = 4;
-        else
-            return 0;
-        if (back >= expected) return 0;
-        if (len - back + 1 < len) {
-            uint8_t next = bytes[len - back + 1];
-            bool valid = true;
-            if (byte == 0xE0)
-                valid = next >= 0xA0 && next <= 0xBF;
-            else if (byte == 0xED)
-                valid = next >= 0x80 && next <= 0x9F;
-            else if (byte == 0xF0)
-                valid = next >= 0x90 && next <= 0xBF;
-            else if (byte == 0xF4)
-                valid = next >= 0x80 && next <= 0x8F;
-            if (!valid) return 0;
-        }
-        return back;
+    for (int back = 1; back <= count && back <= 3; back++) {
+        const uint8_t* lead = bytes + count - back;
+        if ((*lead & 0xC0) == 0x80) continue;
+        return Utf8StrictAt(lead, back, nullptr) < 0 ? back : 0;
     }
     return 0;
 }
