@@ -5503,19 +5503,41 @@ void InputUnselect(InputState* s, App* app, Window* win) {
     Notify(app, win);
 }
 
-void InputSetSelectedRange(InputState* s, App* app, Window* win, int a, int b) {
+bool InputIsSelectionReversed(const InputState* s) {
+    return s && !s->selectedRange.IsEmpty() && s->selectionReversed;
+}
+
+void InputSetSelectedRangeWithDirection(InputState* s, App* app, Window* win,
+                                        int a, int b, bool reversed) {
+    if (!s) {
+        return;
+    }
+    // Rust's Range::is_empty is start >= end, so a backwards range is a
+    // caret at the start rather than a selection.
+    if (a > b) {
+        b = a;
+    }
     Str t = InputValue(s);
     s->cursorLineEndAffinity = false;
     InputNormalizeTokenRange(s, &a, &b);
+    if (a > b) {
+        b = a;
+    }
     // A non-empty range grows out to character boundaries; an empty one stays
     // empty and clips to the boundary before it.
     Bias endBias = a == b ? Bias::Left : Bias::Right;
     int start = RopeClipOffset(t, a, Bias::Left);
     int end = RopeClipOffset(t, b, endBias);
-    InputMoveTo(s, app, win, start);
+    int anchor = reversed && start != end ? end : start;
+    int head = reversed && start != end ? start : end;
+    InputMoveTo(s, app, win, anchor);
     s->selectionReversed = false;
     s->hasSelectedWordRange = false;
-    InputSelectTo(s, app, win, end);
+    InputSelectTo(s, app, win, head);
+}
+
+void InputSetSelectedRange(InputState* s, App* app, Window* win, int a, int b) {
+    InputSetSelectedRangeWithDirection(s, app, win, a, b, false);
 }
 
 void InputSetSelectedTextRangeUtf16(InputState* s, App* app, Window* win,

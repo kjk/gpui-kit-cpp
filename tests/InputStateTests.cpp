@@ -13140,6 +13140,41 @@ static void InputEditsEventsReplayEachChange() {
     EntityDropAll(&app);
 }
 
+// state.rs
+// selected_range_restores_unicode_direction_without_splitting_characters.
+static void SelectedRangeRestoresUnicodeDirection() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    InputSetValue(&s, StrL("中😀a"));
+    InputSetSelectedRangeWithDirection(&s, nullptr, nullptr, 3, 8, true);
+    utassert(RangeIs(s, 3, 8));
+    utassert(InputIsSelectionReversed(&s));
+    utassert(s.selectionReversed);
+    Str text = InputValue(&s);
+    utassert(RopeOffsetToOffsetUtf16(text, s.selectedRange.start) == 1);
+    utassert(RopeOffsetToOffsetUtf16(text, s.selectedRange.end) == 4);
+    int a = s.selectedRange.start;
+    int b = s.selectedRange.end;
+    bool reversed = InputIsSelectionReversed(&s);
+    InputSetSelectedRangeWithDirection(&s, nullptr, nullptr, a, b, reversed);
+    utassert(InputIsSelectionReversed(&s));
+    utassert(RangeIs(s, 3, 8));
+    InputSetSelectedRange(&s, nullptr, nullptr, 3, 8);
+    text = InputValue(&s);
+    utassert(RopeOffsetToOffsetUtf16(text, s.selectedRange.start) == 1);
+    utassert(RopeOffsetToOffsetUtf16(text, s.selectedRange.end) == 4);
+    utassert(!s.selectionReversed);
+    utassert(!InputIsSelectionReversed(&s));
+    InputSetSelectedRange(&s, nullptr, nullptr, 8, 3);
+    utassert(RangeIs(s, 8, 8));
+    utassert(!InputIsSelectionReversed(&s));
+    InputSetSelectedRangeWithDirection(&s, nullptr, nullptr, 4, 4, true);
+    utassert(!InputIsSelectionReversed(&s));
+    utassert(s.selectedRange.start == s.selectedRange.end);
+    utassert(RopeOffsetToOffsetUtf16(InputValue(&s), s.selectedRange.start) ==
+             1);
+}
+
 void TestInputState() {
     TextareaPrewrapPreparesContentRowsBeforeLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
@@ -13151,6 +13186,7 @@ void TestInputState() {
     TestSuite("input_state");
     LastInputEditsFollowTheChange();
     InputEditsEventsReplayEachChange();
+    SelectedRangeRestoresUnicodeDirection();
     ScrollbarRendererReceivesTheEditorsScrollRange();
     FocusedInputAsksItsScrollContainerToRevealIt();
     TapAsksForTheVirtualKeyboard();

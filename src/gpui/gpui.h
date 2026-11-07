@@ -5918,6 +5918,13 @@ void InputSelectToWithAffinity(InputState* s, App* app, Window* win, int offset,
 void InputSelectAll(InputState* s, App* app, Window* win);
 void InputUnselect(InputState* s, App* app, Window* win);
 void InputSetSelectedRange(InputState* s, App* app, Window* win, int a, int b);
+// is_selection_reversed: the caret is at the start of a non-empty range.
+bool InputIsSelectionReversed(const InputState* s);
+// set_selected_range_with_direction. `reversed` puts the caret at `a` and
+// the anchor at `b`. An empty range, including one whose start is past its
+// end, collapses to a caret and is not reversed.
+void InputSetSelectedRangeWithDirection(InputState* s, App* app, Window* win,
+                                        int a, int b, bool reversed);
 // EntityInputHandler::set_selected_text_range. `startUtf16`/`endUtf16` are
 // UTF-16 offsets, which may arrive backwards. The end that moved becomes
 // the cursor, so dragging the start handle leaves a reversed selection.

@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `73cbcf72f0bf42f7fb56acbaf88372787c3f1b2d` (2026-11-01,
-input: Expose edits from the latest change (#3751)). Each notified
-input change carries the edits in application order and the document
-after each one. A composition commit and a mask rewrite report one
-replacement of the whole document. set_value stays silent.
+Processed through `51b134470df23ea154312a1ddeb673addca0142a` (2026-11-01,
+input: Restore backward selections through set_selected_range (#3756)).
+A selection can be saved with its caret direction and put back.
+set_selected_range still clears that direction, and a range whose
+start is past its end stays a caret.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
