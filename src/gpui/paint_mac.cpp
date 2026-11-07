@@ -59,58 +59,41 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
-static Vec<Str> gInstalledFonts;
-static bool gInstalledFontsReady = false;
-
-const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
+void PaintListInstalledFonts(PaintApp* pa, Vec<Str>* out) {
     (void)pa;
-    if (!gInstalledFontsReady) {
-        gInstalledFontsReady = true;
-        CFArrayRef names = CTFontManagerCopyAvailableFontFamilyNames();
-        if (names) {
-            CFIndex count = CFArrayGetCount(names);
-            for (CFIndex i = 0; i < count; i++) {
-                auto cf = (CFStringRef)CFArrayGetValueAtIndex(names, i);
-                if (!cf) {
-                    continue;
-                }
-                char utf8[256];
-                if (CFStringGetCString(cf, utf8, sizeof(utf8),
-                                       kCFStringEncodingUTF8) &&
-                    utf8[0]) {
-                    VecAppend(gInstalledFonts, StrDup(Str(utf8)));
-                }
+    CFArrayRef names = CTFontManagerCopyAvailableFontFamilyNames();
+    if (names) {
+        CFIndex count = CFArrayGetCount(names);
+        for (CFIndex i = 0; i < count; i++) {
+            auto cf = (CFStringRef)CFArrayGetValueAtIndex(names, i);
+            if (!cf) {
+                continue;
             }
-            CFRelease(names);
+            char utf8[256];
+            if (CFStringGetCString(cf, utf8, sizeof(utf8),
+                                   kCFStringEncodingUTF8) &&
+                utf8[0]) {
+                VecAppend(*out, StrDup(Str(utf8)));
+            }
         }
+        CFRelease(names);
     }
-    if (n) {
-        *n = gInstalledFonts.len;
-    }
-    return gInstalledFonts.els;
 }
 
 Str PaintSystemUIFontMappedFamily() {
     return StrL(".AppleSystemUIFont");
 }
 
-void PaintTargetFree(PaintCtx* ctx) {
-    if (!ctx || !ctx->rt) {
-        return;
-    }
-    delete ctx->rt;
-    ctx->rt = nullptr;
+void PaintTargetDestroy(PaintTarget* rt) {
+    delete rt;
 }
 
 // `native` is the CGContextRef the view's drawRect handed us. It is only
 // valid for this frame, so the target is rebuilt every time.
-bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
-    (void)pxW;
-    (void)pxH;
-    if (!ctx || !ctx->pa || !native) {
+bool PaintTargetBegin(PaintCtx* ctx, void* native, int, int) {
+    if (!PaintTargetReplace(ctx, native)) {
         return false;
     }
-    PaintTargetFree(ctx);
     auto* t = new PaintTarget();
     t->cg = (CGContextRef)native;
     ctx->rt = t;
@@ -348,15 +331,6 @@ void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
     }
 }
 
-bool CanvasScrollRect(PaintCtx*, float, float, float, float, float, float) {
-    return false;
-}
-
-bool CanvasReadPixels(PaintCtx*, float, float, float, float, uint8_t*, int,
-                      int*, int*) {
-    return false;
-}
-
 void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
     if (scene::Recording()) {
         scene::RecPushClip(ctx, x, y, w, h);
@@ -384,30 +358,18 @@ void CanvasPopClip(PaintCtx* ctx) {
 // ─── paths ────────────────────────────────────────────────────────────────
 
 struct Path {
+    PathHead head;
     CGMutablePathRef path = nullptr;
-    bool winding = true;
-    bool fig = false;
     float cx = 0, cy = 0; // current point, for the arc-without-a-figure case
 };
 
-Path* PathNew(PaintCtx* ctx, bool winding) {
-    if (scene::Recording()) {
-        return scene::RecPathNew(ctx, winding);
-    }
-    if (!ctx) {
-        return nullptr;
-    }
+Path* PathAlloc() {
     auto* p = new Path();
     p->path = CGPathCreateMutable();
-    p->winding = winding;
     return p;
 }
 
-void PathFree(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathFree(p);
-        return;
-    }
+void PathDestroy(Path* p) {
     if (!p) {
         return;
     }
@@ -417,90 +379,37 @@ void PathFree(Path* p) {
     delete p;
 }
 
-void PathMoveTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathMoveTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+void PathEmitMove(Path* p, float x, float y) {
     CGPathMoveToPoint(p->path, nullptr, x, y);
-    p->fig = true;
     p->cx = x;
     p->cy = y;
 }
 
-void PathLineTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathLineTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitLine(Path* p, float x, float y) {
     CGPathAddLineToPoint(p->path, nullptr, x, y);
     p->cx = x;
     p->cy = y;
 }
 
-void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
-                 float y) {
-    if (scene::Recording()) {
-        scene::RecPathCubicTo(p, x1, y1, x2, y2, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitCubic(Path* p, float x1, float y1, float x2, float y2, float x,
+                   float y) {
     CGPathAddCurveToPoint(p->path, nullptr, x1, y1, x2, y2, x, y);
     p->cx = x;
     p->cy = y;
 }
 
-void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
-               bool clockwise) {
-    if (scene::Recording()) {
-        scene::RecPathArcTo(p, cx, cy, r, a0, a1, clockwise);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+void PathEmitArc(Path* p, float cx, float cy, float r, float a0, float a1,
+                 bool clockwise) {
     // CGPathAddArc sweeps toward increasing angle when its `clockwise` flag is
     // false. Our angles grow clockwise on screen because this space is y-down,
     // so the flag is inverted.
     CGPathAddArc(p->path, nullptr, cx, cy, r, a0, a1, !clockwise);
-    p->fig = true;
     p->cx = cx + r * cosf(a1);
     p->cy = cy + r * sinf(a1);
 }
 
-void PathClose(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathClose(p);
-        return;
-    }
-    if (!p || !p->fig) {
-        return;
-    }
+void PathEmitClose(Path* p) {
     CGPathCloseSubpath(p->path);
-    p->fig = false;
-}
-
-// Nothing to cache: this backend hands the path to Core Graphics, which owns
-// whatever it wants to keep about it.
-void PathRealize(PaintCtx* ctx, Path* p) {
-    (void)ctx;
-    (void)p;
 }
 
 void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
@@ -516,7 +425,7 @@ void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
     CGContextTranslateCTM(cg, dx, dy);
     SetFill(ctx, cg, c);
     CGContextAddPath(cg, p->path);
-    if (p->winding) {
+    if (p->head.winding) {
         CGContextFillPath(cg);
     } else {
         CGContextEOFillPath(cg);
@@ -563,7 +472,7 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
     CGContextSaveGState(cg);
     CGContextTranslateCTM(cg, dx, dy);
     CGContextAddPath(cg, p->path);
-    if (p->winding) {
+    if (p->head.winding) {
         CGContextClip(cg);
     } else {
         CGContextEOClip(cg);
@@ -642,17 +551,7 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
 // framework the build does not already link. ImageIO would do the same job
 // one layer down.
 
-struct MacImageFrame {
-    CGImageRef image = nullptr;
-    CGImageRef grayImage = nullptr;
-    int w = 0;
-    int h = 0;
-    int durationMs = 100;
-};
-
-struct RenderImage : RenderImageFrames<MacImageFrame> {};
-
-static void MacFrameFree(MacImageFrame* frame) {
+void ImageFrameFree(ImageFrame* frame) {
     if (frame->image) {
         CGImageRelease(frame->image);
     }
@@ -716,13 +615,13 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
         return nullptr;
     }
     size_t count = CGImageSourceGetCount(src);
-    auto* img = RenderImageAlloc<RenderImage>(RenderImageStatus::Ready);
+    auto* img = RenderImageAlloc(RenderImageStatus::Ready);
     for (size_t i = 0; i < count; i++) {
         CGImageRef cg = CGImageSourceCreateImageAtIndex(src, i, nullptr);
         if (!cg) {
             continue;
         }
-        MacImageFrame frame = {};
+        ImageFrame frame = {};
         frame.image = cg;
         frame.w = (int)CGImageGetWidth(cg);
         frame.h = (int)CGImageGetHeight(cg);
@@ -766,56 +665,14 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
     if (space) CGColorSpaceRelease(space);
     CGDataProviderRelease(provider);
     if (!cg) return nullptr;
-    MacImageFrame frame = {};
+    ImageFrame frame = {};
     frame.image = cg;
     frame.w = w;
     frame.h = h;
-    return RenderImageWithFrame<RenderImage>(frame);
+    return RenderImageWithFrame(frame);
 }
 
-RenderImage* RenderImageNewLoading() {
-    return RenderImageAlloc<RenderImage>(RenderImageStatus::Loading);
-}
-
-void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
-    RenderImageAdoptFrames(img, decoded, MacFrameFree);
-}
-
-void RenderImageRetain(RenderImage* img) {
-    if (img) {
-        img->refs++;
-    }
-}
-
-void RenderImageRelease(RenderImage* img) {
-    if (!RenderImageUnref(img)) {
-        return;
-    }
-    RenderImageFramesFree(img, MacFrameFree);
-    delete img;
-}
-
-uint64_t RenderImageGeneration(const RenderImage* img) {
-    return img ? img->generation : 0;
-}
-
-RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
-    return img ? img->status : RenderImageStatus::Failed;
-}
-
-Size RenderImageSizePx(const RenderImage* img, int frameIndex) {
-    return RenderImageFrameSizePx(img, frameIndex);
-}
-
-int RenderImageFrameCount(const RenderImage* img) {
-    return img ? img->frames.len : 0;
-}
-
-int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
-    return RenderImageFrameDuration(img, frameIndex);
-}
-
-static CGImageRef ImageForDraw(MacImageFrame* frame, bool grayscale) {
+static CGImageRef ImageForDraw(ImageFrame* frame, bool grayscale) {
     if (!grayscale || frame->grayImage) {
         return grayscale ? frame->grayImage : frame->image;
     }
@@ -898,14 +755,7 @@ struct MacLine {
 };
 
 struct TextLayout {
-    // The byte length of the text it was shaped from (TextLayoutTextLen).
-    int textLen = 0;
-    uint64_t generation = 0;
-    int refs = 1;
-    // What TextLayoutNew reported, kept so TextLayoutSize can answer without
-    // measuring again: the lines' extent, and how far the aligned ones reach.
-    Size size = {};
-    Size cover = {};
+    TextLayoutHead head;
     CFAttributedStringRef attr = nullptr;
     MacLine* lines = nullptr;
     int nLines = 0;
@@ -1037,15 +887,9 @@ static CTFontRef FontFor(PaintApp* pa, float fontSize, uint16_t weight) {
     return ct;
 }
 
-TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint16_t weight, float lineH,
-                          Size* outSize, TextAlign align) {
-    if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
-        return nullptr;
-    }
-    if (fontSize <= 0) {
-        fontSize = 16.f;
-    }
+TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
+                            bool wrap, uint16_t weight, float lineH,
+                            Size* outSize, TextAlign align) {
     CTFontRef font = FontFor(ctx->pa, fontSize, weight);
     if (!font) {
         return nullptr;
@@ -1143,8 +987,6 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     }
 
     auto* tl = new TextLayout();
-    tl->textLen = len(s);
-    tl->generation = PaintResourceGenerationNew();
     tl->attr = attr;
     tl->lines = lines;
     tl->nLines = nLines;
@@ -1168,8 +1010,8 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         tl->strikeOff = (float)ascent * 0.31f;
     }
 
-    tl->size = Size{width, tl->box * (float)nLines};
-    tl->cover = tl->size;
+    Size size = {width, tl->box * (float)nLines};
+    tl->head.cover = size;
     // GPUI's aligned_origin_x, per line: inside the box the run was laid out
     // in, or inside the widest line when it had none.
     if (align != TextAlign::Left) {
@@ -1178,35 +1020,16 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         for (int i = 0; i < nLines; i++) {
             lines[i].dx = (alignW - lines[i].width) * f;
             float right = lines[i].dx + lines[i].width;
-            if (right > tl->cover.w) {
-                tl->cover.w = right;
-            }
+            tl->head.cover.w = std::max(tl->head.cover.w, right);
         }
     }
     if (outSize) {
-        outSize->w = tl->size.w;
-        outSize->h = tl->size.h;
+        *outSize = size;
     }
     return tl;
 }
 
-Size TextLayoutSize(TextLayout* tl) {
-    return tl ? tl->cover : Size{0, 0};
-}
-
-void TextLayoutAddRef(TextLayout* tl) {
-    if (tl) {
-        tl->refs++;
-    }
-}
-
-void TextLayoutRelease(TextLayout* tl) {
-    if (!tl) {
-        return;
-    }
-    if (--tl->refs > 0) {
-        return;
-    }
+void TextLayoutDestroy(TextLayout* tl) {
     for (int i = 0; i < tl->nLines; i++) {
         if (tl->lines[i].line) {
             CFRelease(tl->lines[i].line);
@@ -1217,19 +1040,6 @@ void TextLayoutRelease(TextLayout* tl) {
         CFRelease(tl->attr);
     }
     delete tl;
-}
-
-uint64_t TextLayoutGeneration(const TextLayout* tl) {
-    return tl ? tl->generation : 0;
-}
-
-int TextLayoutTextLen(const TextLayout* tl) {
-    return tl ? tl->textLen : 0;
-}
-
-bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
-                          float y, Rgba base, const TextSpan* spans, int n) {
-    return PaintTextLayoutSpansRecordOnly(ctx, tl, text, x, y, base, spans, n);
 }
 
 void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
@@ -1254,8 +1064,8 @@ void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
         // ellipsis.
         float boxH = tl->box * (float)tl->nLines;
         CGContextSaveGState(cg);
-        CGContextClipToRect(cg,
-                            CGRectMake(x, y - boxH, tl->cover.w, boxH * 3.f));
+        CGContextClipToRect(
+            cg, CGRectMake(x, y - boxH, tl->head.cover.w, boxH * 3.f));
     }
     SetFill(ctx, cg, c);
     CGContextSetTextMatrix(cg, CGAffineTransformMakeScale(1, -1));

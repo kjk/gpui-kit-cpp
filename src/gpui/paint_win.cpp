@@ -269,14 +269,7 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
-static Vec<Str> gInstalledFonts;
-static bool gInstalledFontsReady = false;
-
-static void LoadInstalledFonts(IDWriteFactory* dwrite) {
-    if (gInstalledFontsReady) {
-        return;
-    }
-    gInstalledFontsReady = true;
+static void ListSystemFamilies(IDWriteFactory* dwrite, Vec<Str>* out) {
     if (!dwrite) {
         return;
     }
@@ -311,7 +304,7 @@ static void LoadInstalledFonts(IDWriteFactory* dwrite) {
                     WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, utf8,
                                         (int)sizeof(utf8), nullptr, nullptr);
                 if (bytes > 1) {
-                    VecAppend(gInstalledFonts, StrDup(Str(utf8, bytes - 1)));
+                    VecAppend(*out, StrDup(Str(utf8, bytes - 1)));
                 }
             }
         }
@@ -321,22 +314,16 @@ static void LoadInstalledFonts(IDWriteFactory* dwrite) {
     coll->Release();
 }
 
-const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
-    if (!gInstalledFontsReady) {
-        IDWriteFactory* dwrite = pa ? pa->dwrite : nullptr;
-        IDWriteFactory* owned = nullptr;
-        if (!dwrite) {
-            DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
-                                __uuidof(IDWriteFactory), (IUnknown**)&owned);
-            dwrite = owned;
-        }
-        LoadInstalledFonts(dwrite);
-        Rel(&owned);
+void PaintListInstalledFonts(PaintApp* pa, Vec<Str>* out) {
+    IDWriteFactory* dwrite = pa ? pa->dwrite : nullptr;
+    IDWriteFactory* owned = nullptr;
+    if (!dwrite) {
+        DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
+                            __uuidof(IDWriteFactory), (IUnknown**)&owned);
+        dwrite = owned;
     }
-    if (n) {
-        *n = gInstalledFonts.len;
-    }
-    return gInstalledFonts.els;
+    ListSystemFamilies(dwrite, out);
+    Rel(&owned);
 }
 
 Str PaintSystemUIFontMappedFamily() {
@@ -1725,22 +1712,7 @@ static int WideOffToUtf8(Str s, int woff) {
 // a lost device, so the bitmap is rebuilt beside it when the target it was
 // made for is no longer the one being drawn into.
 
-struct WinImageFrame {
-    uint8_t* bgra = nullptr;
-    ID2D1Bitmap* bmp = nullptr;
-    ID2D1Bitmap* grayBmp = nullptr;
-    // The render target `bmp` belongs to. D2D bitmaps are device resources
-    // and do not survive it. Use its generation rather than its address: a
-    // newly allocated target may occupy the same address as the old one.
-    uint64_t bmpTargetGeneration = 0;
-    int w = 0;
-    int h = 0;
-    int durationMs = 100;
-};
-
-struct RenderImage : RenderImageFrames<WinImageFrame> {};
-
-static void WinFrameFree(WinImageFrame* frame) {
+void ImageFrameFree(ImageFrame* frame) {
     Rel(&frame->bmp);
     Rel(&frame->grayBmp);
     Free(nullptr, frame->bgra);
@@ -1763,7 +1735,7 @@ static int WicFrameDurationMs(IWICBitmapFrameDecode* frame) {
 }
 
 static bool WicDecodeFrame(IWICImagingFactory* wic,
-                           IWICBitmapFrameDecode* frame, WinImageFrame* out) {
+                           IWICBitmapFrameDecode* frame, ImageFrame* out) {
     IWICFormatConverter* conv = nullptr;
     HRESULT hr = wic->CreateFormatConverter(&conv);
     if (SUCCEEDED(hr)) {
@@ -1833,10 +1805,10 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
         hr = dec->GetFrameCount(&frameCount);
     }
     if (SUCCEEDED(hr) && frameCount > 0) {
-        img = RenderImageAlloc<RenderImage>(RenderImageStatus::Ready);
+        img = RenderImageAlloc(RenderImageStatus::Ready);
         for (UINT i = 0; i < frameCount; i++) {
             IWICBitmapFrameDecode* frame = nullptr;
-            WinImageFrame decoded = {};
+            ImageFrame decoded = {};
             if (SUCCEEDED(dec->GetFrame(i, &frame)) && frame &&
                 WicDecodeFrame(wic, frame, &decoded)) {
                 VecAppend(img->frames, decoded);
@@ -1858,7 +1830,7 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
                                  int h) {
     (void)pa;
     if (!bgra || w <= 0 || h <= 0 || w > 0x7fffffff / 4 / h) return nullptr;
-    WinImageFrame frame = {};
+    ImageFrame frame = {};
     frame.w = w;
     frame.h = h;
     frame.bgra = (uint8_t*)Alloc(nullptr, w * h * 4);
@@ -1866,38 +1838,12 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
         return nullptr;
     }
     memcpy(frame.bgra, bgra, (size_t)w * (size_t)h * 4);
-    return RenderImageWithFrame<RenderImage>(frame);
+    return RenderImageWithFrame(frame);
 }
 
-RenderImage* RenderImageNewLoading() {
-    return RenderImageAlloc<RenderImage>(RenderImageStatus::Loading);
-}
-
-void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
-    RenderImageAdoptFrames(img, decoded, WinFrameFree);
-}
-
-void RenderImageRetain(RenderImage* img) {
-    if (img) {
-        img->refs++;
-    }
-}
-
-void RenderImageRelease(RenderImage* img) {
-    if (!RenderImageUnref(img)) {
-        return;
-    }
+// The final RenderImageRelease invalidates the GPU renderer's textures.
+void RenderImageDropNative(RenderImage* img) {
     gpuw::RenderImageFree(img->generation);
-    RenderImageFramesFree(img, WinFrameFree);
-    delete img;
-}
-
-uint64_t RenderImageGeneration(const RenderImage* img) {
-    return img ? img->generation : 0;
-}
-
-RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
-    return img ? img->status : RenderImageStatus::Failed;
 }
 
 void PaintFlipChainDesc(void* out, int pxW, int pxH, int buffers) {
@@ -1929,7 +1875,7 @@ bool PaintImagePixels(const RenderImage* img, const uint8_t** bgra, int* w,
     if (frameIndex < 0) {
         return false;
     }
-    const WinImageFrame& frame = img->frames[frameIndex];
+    const ImageFrame& frame = img->frames[frameIndex];
     if (!frame.bgra || frame.w <= 0 || frame.h <= 0) {
         return false;
     }
@@ -1945,19 +1891,7 @@ bool PaintImagePixels(const RenderImage* img, const uint8_t** bgra, int* w,
     return true;
 }
 
-Size RenderImageSizePx(const RenderImage* img, int frameIndex) {
-    return RenderImageFrameSizePx(img, frameIndex);
-}
-
-int RenderImageFrameCount(const RenderImage* img) {
-    return img ? img->frames.len : 0;
-}
-
-int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
-    return RenderImageFrameDuration(img, frameIndex);
-}
-
-static ID2D1Bitmap* ImageBitmap(PaintCtx* ctx, WinImageFrame* frame,
+static ID2D1Bitmap* ImageBitmap(PaintCtx* ctx, ImageFrame* frame,
                                 bool grayscale) {
     if (frame->bmpTargetGeneration != ctx->rt->generation) {
         Rel(&frame->bmp);
@@ -2102,11 +2036,8 @@ static void ApplyLineHeight(IDWriteTextLayout* layout, float fontSize,
 }
 
 struct TextLayout {
-    // The byte length of the text it was shaped from (TextLayoutTextLen).
-    int textLen = 0;
+    TextLayoutHead head;
     IDWriteTextLayout* layout = nullptr;
-    uint64_t generation = 0;
-    int refs = 1;
 };
 
 static IDWriteTextLayout* Dw(TextLayout* tl) {
@@ -2190,9 +2121,9 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         outSize->h = m.height;
     }
     auto* tl = new TextLayout();
-    tl->textLen = len(s);
+    tl->head.textLen = len(s);
     tl->layout = layout;
-    tl->generation = PaintResourceGenerationNew();
+    tl->head.generation = PaintResourceGenerationNew();
     return tl;
 }
 
@@ -2209,26 +2140,9 @@ Size TextLayoutSize(TextLayout* tl) {
     return Size{left + m.widthIncludingTrailingWhitespace, m.height};
 }
 
-void TextLayoutAddRef(TextLayout* tl) {
-    if (tl) {
-        tl->refs++;
-    }
-}
-
-void TextLayoutRelease(TextLayout* tl) {
-    if (!tl || --tl->refs > 0) {
-        return;
-    }
+void TextLayoutDestroy(TextLayout* tl) {
     Rel(&tl->layout);
     delete tl;
-}
-
-uint64_t TextLayoutGeneration(const TextLayout* tl) {
-    return tl ? tl->generation : 0;
-}
-
-int TextLayoutTextLen(const TextLayout* tl) {
-    return tl ? tl->textLen : 0;
 }
 
 void* PaintTextLayoutNative(TextLayout* tl) {

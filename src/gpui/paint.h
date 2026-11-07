@@ -301,6 +301,17 @@ bool CanvasScrollRect(PaintCtx* ctx, float x, float y, float w, float h,
 // `outW` * `outH` * 4 bytes. False when the target cannot be read back.
 bool CanvasReadPixels(PaintCtx* ctx, float x, float y, float w, float h,
                       uint8_t* bgra, int cap, int* outW, int* outH);
+// Only Direct2D can do either; cairo, Core Graphics and Canvas2D say no.
+#if GPUI_OS_LINUX || GPUI_OS_MAC || GPUI_OS_WASM
+inline bool CanvasScrollRect(PaintCtx*, float, float, float, float, float,
+                             float) {
+    return false;
+}
+inline bool CanvasReadPixels(PaintCtx*, float, float, float, float, uint8_t*,
+                             int, int*, int*) {
+    return false;
+}
+#endif
 
 // ─── paths ────────────────────────────────────────────────────────────────
 //
@@ -348,6 +359,12 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
 // with nothing to cache leaves this empty, and nothing has to call it — it is
 // what src/gpui/scene.cpp calls when it puts a path in its cache.
 void PathRealize(PaintCtx* ctx, Path* p);
+// cairo, Core Graphics and Canvas2D own whatever they keep about a path.
+#if GPUI_OS_LINUX || GPUI_OS_MAC || GPUI_OS_WASM
+inline void PathRealize(PaintCtx* ctx, Path* p) {
+    (void)ctx, (void)p;
+}
+#endif
 
 // ─── images ───────────────────────────────────────────────────────────────
 //

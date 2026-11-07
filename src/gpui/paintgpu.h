@@ -98,43 +98,35 @@ namespace gpuw {
 // Release the renderer-wide device resources after every target belonging to
 // the PaintApp has been freed.
 void PaintAppFree();
-bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH);
-bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH);
-bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra);
-bool PaintTargetEnd(PaintCtx* ctx);
-void PaintTargetFree(PaintCtx* ctx);
+// Each entry point is declared with Paint.h's own type, so its signature is
+// written once, there. RenderImageDraw is overloaded there and is spelled out.
+decltype(::gpui::PaintTargetBegin) PaintTargetBegin;
+decltype(::gpui::PaintTargetBeginOffscreen) PaintTargetBeginOffscreen;
+decltype(::gpui::PaintTargetEndOffscreen) PaintTargetEndOffscreen;
+decltype(::gpui::PaintTargetEnd) PaintTargetEnd;
+decltype(::gpui::PaintTargetFree) PaintTargetFree;
 
-void CanvasClear(PaintCtx* ctx, Rgba c);
-void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c);
-void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
-                     Rgba c);
-void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
-                       float r, float stroke, Rgba c, const float* dash);
-void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
-                float stroke, Rgba c, const float* dash);
-void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
-                   float stroke, Rgba c);
-void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h);
-void CanvasPopClip(PaintCtx* ctx);
+decltype(::gpui::CanvasClear) CanvasClear;
+decltype(::gpui::CanvasFillRect) CanvasFillRect;
+decltype(::gpui::CanvasFillRound) CanvasFillRound;
+decltype(::gpui::CanvasStrokeRound) CanvasStrokeRound;
+decltype(::gpui::CanvasLine) CanvasLine;
+decltype(::gpui::CanvasEllipse) CanvasEllipse;
+decltype(::gpui::CanvasPushClip) CanvasPushClip;
+decltype(::gpui::CanvasPopClip) CanvasPopClip;
 
-Path* PathNew(PaintCtx* ctx, bool winding);
-void PathFree(Path* p);
-void PathMoveTo(Path* p, float x, float y);
-void PathLineTo(Path* p, float x, float y);
-void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
-                 float y);
-void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
-               bool clockwise);
-void PathClose(Path* p);
-void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy);
-void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
-                      float y1, Rgba from, Rgba to, float dx, float dy);
-void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
-                float dx, float dy);
-void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
-                        float y0, float x1, float y1, Rgba from, Rgba to,
-                        bool roundCaps, float dx, float dy);
-void PathRealize(PaintCtx* ctx, Path* p);
+decltype(::gpui::PathNew) PathNew;
+decltype(::gpui::PathFree) PathFree;
+decltype(::gpui::PathMoveTo) PathMoveTo;
+decltype(::gpui::PathLineTo) PathLineTo;
+decltype(::gpui::PathCubicTo) PathCubicTo;
+decltype(::gpui::PathArcTo) PathArcTo;
+decltype(::gpui::PathClose) PathClose;
+decltype(::gpui::PathFill) PathFill;
+decltype(::gpui::PathFillGradient) PathFillGradient;
+decltype(::gpui::PathStroke) PathStroke;
+decltype(::gpui::PathStrokeGradient) PathStrokeGradient;
+decltype(::gpui::PathRealize) PathRealize;
 
 void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
                      Bounds imageBounds, int frameIndex, float radius,
@@ -142,8 +134,7 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
 // The final RenderImageRelease invalidates textures keyed by this identity.
 void RenderImageFree(uint64_t imageGeneration);
 int RenderImageCacheCountForTest(uint64_t imageGeneration);
-void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
-                    bool clip, float clipW);
+decltype(::gpui::TextLayoutDraw) TextLayoutDraw;
 
 // What the last frame cost, for the benchmark harness: how many instances the
 // frame put in the buffer, how many draw calls it took, and how many glyphs

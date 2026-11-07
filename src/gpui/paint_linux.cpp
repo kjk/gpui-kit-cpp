@@ -66,31 +66,21 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
-static Vec<Str> gInstalledFonts;
-static bool gInstalledFontsReady = false;
-
-const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
+void PaintListInstalledFonts(PaintApp* pa, Vec<Str>* out) {
     (void)pa;
-    if (!gInstalledFontsReady) {
-        gInstalledFontsReady = true;
-        PangoFontMap* map = pango_cairo_font_map_get_default();
-        PangoFontFamily** families = nullptr;
-        int count = 0;
-        if (map) {
-            pango_font_map_list_families(map, &families, &count);
-        }
-        for (int i = 0; i < count; i++) {
-            const char* name = pango_font_family_get_name(families[i]);
-            if (name && name[0]) {
-                VecAppend(gInstalledFonts, StrDup(Str(name)));
-            }
-        }
-        g_free(families);
+    PangoFontMap* map = pango_cairo_font_map_get_default();
+    PangoFontFamily** families = nullptr;
+    int count = 0;
+    if (map) {
+        pango_font_map_list_families(map, &families, &count);
     }
-    if (n) {
-        *n = gInstalledFonts.len;
+    for (int i = 0; i < count; i++) {
+        const char* name = pango_font_family_get_name(families[i]);
+        if (name && name[0]) {
+            VecAppend(*out, StrDup(Str(name)));
+        }
     }
-    return gInstalledFonts.els;
+    g_free(families);
 }
 
 Str PaintSystemUIFontMappedFamily() {
@@ -99,26 +89,19 @@ Str PaintSystemUIFontMappedFamily() {
     return StrL("IBM Plex Sans");
 }
 
-void PaintTargetFree(PaintCtx* ctx) {
-    if (!ctx || !ctx->rt) {
-        return;
+void PaintTargetDestroy(PaintTarget* rt) {
+    if (rt->cr) {
+        cairo_destroy(rt->cr);
     }
-    if (ctx->rt->cr) {
-        cairo_destroy(ctx->rt->cr);
-    }
-    delete ctx->rt;
-    ctx->rt = nullptr;
+    delete rt;
 }
 
 // `native` is the window's cairo_surface_t; the context is per-frame because
 // an XCB/Xlib surface is resized under us between expose events.
-bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
-    (void)pxW;
-    (void)pxH;
-    if (!ctx || !ctx->pa || !native) {
+bool PaintTargetBegin(PaintCtx* ctx, void* native, int, int) {
+    if (!PaintTargetReplace(ctx, native)) {
         return false;
     }
-    PaintTargetFree(ctx);
     auto* t = new PaintTarget();
     t->cr = cairo_create((cairo_surface_t*)native);
     if (!t->cr || cairo_status(t->cr) != CAIRO_STATUS_SUCCESS) {
@@ -353,15 +336,6 @@ void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
     }
 }
 
-bool CanvasScrollRect(PaintCtx*, float, float, float, float, float, float) {
-    return false;
-}
-
-bool CanvasReadPixels(PaintCtx*, float, float, float, float, uint8_t*, int,
-                      int*, int*) {
-    return false;
-}
-
 void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
     if (scene::Recording()) {
         scene::RecPushClip(ctx, x, y, w, h);
@@ -408,28 +382,15 @@ struct CairoPathOp {
 };
 
 struct Path {
+    PathHead head;
     Vec<CairoPathOp> ops;
-    bool winding = true;
-    bool fig = false;
 };
 
-Path* PathNew(PaintCtx* ctx, bool winding) {
-    if (scene::Recording()) {
-        return scene::RecPathNew(ctx, winding);
-    }
-    if (!ctx) {
-        return nullptr;
-    }
-    auto* p = new Path();
-    p->winding = winding;
-    return p;
+Path* PathAlloc() {
+    return new Path();
 }
 
-void PathFree(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathFree(p);
-        return;
-    }
+void PathDestroy(Path* p) {
     delete p;
 }
 
@@ -439,34 +400,15 @@ static void Push(Path* p, const CairoPathOp& op) {
     }
 }
 
-void PathMoveTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathMoveTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+void PathEmitMove(Path* p, float x, float y) {
     CairoPathOp op;
     op.cmd = kPathMove;
     op.a = x;
     op.b = y;
     Push(p, op);
-    p->fig = true;
 }
 
-void PathLineTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathLineTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitLine(Path* p, float x, float y) {
     CairoPathOp op;
     op.cmd = kPathLine;
     op.a = x;
@@ -474,19 +416,8 @@ void PathLineTo(Path* p, float x, float y) {
     Push(p, op);
 }
 
-void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
-                 float y) {
-    if (scene::Recording()) {
-        scene::RecPathCubicTo(p, x1, y1, x2, y2, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitCubic(Path* p, float x1, float y1, float x2, float y2, float x,
+                   float y) {
     CairoPathOp op;
     op.cmd = kPathCubic;
     op.a = x1;
@@ -498,15 +429,10 @@ void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
     Push(p, op);
 }
 
-void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
-               bool clockwise) {
-    if (scene::Recording()) {
-        scene::RecPathArcTo(p, cx, cy, r, a0, a1, clockwise);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+// cairo_arc draws a line from the current point to the arc start, which is
+// why an arc opens a figure the same way a move does.
+void PathEmitArc(Path* p, float cx, float cy, float r, float a0, float a1,
+                 bool clockwise) {
     CairoPathOp op;
     op.cmd = kPathArc;
     op.clockwise = clockwise;
@@ -516,23 +442,12 @@ void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
     op.d = a0;
     op.e = a1;
     Push(p, op);
-    // cairo_arc draws a line from the current point to the arc start, so an
-    // arc opens a figure the same way a move does.
-    p->fig = true;
 }
 
-void PathClose(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathClose(p);
-        return;
-    }
-    if (!p || !p->fig) {
-        return;
-    }
+void PathEmitClose(Path* p) {
     CairoPathOp op;
     op.cmd = kPathClose;
     Push(p, op);
-    p->fig = false;
 }
 
 static bool Replay(cairo_t* cr, Path* p) {
@@ -540,8 +455,8 @@ static bool Replay(cairo_t* cr, Path* p) {
         return false;
     }
     cairo_new_path(cr);
-    cairo_set_fill_rule(
-        cr, p->winding ? CAIRO_FILL_RULE_WINDING : CAIRO_FILL_RULE_EVEN_ODD);
+    cairo_set_fill_rule(cr, p->head.winding ? CAIRO_FILL_RULE_WINDING
+                                            : CAIRO_FILL_RULE_EVEN_ODD);
     for (int i = 0; i < p->ops.len; i++) {
         const CairoPathOp& o = p->ops[i];
         switch (o.cmd) {
@@ -567,13 +482,6 @@ static bool Replay(cairo_t* cr, Path* p) {
         }
     }
     return true;
-}
-
-// Nothing to cache: this backend hands the path to cairo, which owns
-// whatever it wants to keep about it.
-void PathRealize(PaintCtx* ctx, Path* p) {
-    (void)ctx;
-    (void)p;
 }
 
 void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
@@ -715,16 +623,6 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
 // paints the pixels. Animation walks GdkPixbufAnimationIter once, copying
 // each frame because the iterator reuses its pixbuf.
 
-struct LinuxImageFrame {
-    cairo_surface_t* surface = nullptr;
-    cairo_surface_t* graySurface = nullptr;
-    int w = 0;
-    int h = 0;
-    int durationMs = 100;
-};
-
-struct RenderImage : RenderImageFrames<LinuxImageFrame> {};
-
 static cairo_surface_t* SurfaceFromPixbuf(GdkPixbuf* pix) {
     if (!pix) {
         return nullptr;
@@ -793,7 +691,7 @@ static bool AppendPixbufFrame(RenderImage* img, GdkPixbuf* pix, int delayMs) {
     if (!surface) {
         return false;
     }
-    LinuxImageFrame frame = {};
+    ImageFrame frame = {};
     frame.surface = surface;
     frame.w = cairo_image_surface_get_width(surface);
     frame.h = cairo_image_surface_get_height(surface);
@@ -802,7 +700,7 @@ static bool AppendPixbufFrame(RenderImage* img, GdkPixbuf* pix, int delayMs) {
     return true;
 }
 
-static void LinuxFrameFree(LinuxImageFrame* frame) {
+void ImageFrameFree(ImageFrame* frame) {
     if (!frame) {
         return;
     }
@@ -841,7 +739,7 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
         g_object_unref(loader);
         return nullptr;
     }
-    auto* img = RenderImageAlloc<RenderImage>(RenderImageStatus::Ready);
+    auto* img = RenderImageAlloc(RenderImageStatus::Ready);
     if (gdk_pixbuf_animation_is_static_image(anim)) {
         AppendPixbufFrame(img, gdk_pixbuf_animation_get_static_image(anim), 0);
     } else {
@@ -898,56 +796,14 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
     int stride = cairo_image_surface_get_stride(surface);
     PaintCopyBgraRows(dst, (size_t)stride, bgra, (size_t)w * 4, w, h);
     cairo_surface_mark_dirty(surface);
-    LinuxImageFrame frame = {};
+    ImageFrame frame = {};
     frame.surface = surface;
     frame.w = w;
     frame.h = h;
-    return RenderImageWithFrame<RenderImage>(frame);
+    return RenderImageWithFrame(frame);
 }
 
-RenderImage* RenderImageNewLoading() {
-    return RenderImageAlloc<RenderImage>(RenderImageStatus::Loading);
-}
-
-void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
-    RenderImageAdoptFrames(img, decoded, LinuxFrameFree);
-}
-
-void RenderImageRetain(RenderImage* img) {
-    if (img) {
-        img->refs++;
-    }
-}
-
-void RenderImageRelease(RenderImage* img) {
-    if (!RenderImageUnref(img)) {
-        return;
-    }
-    RenderImageFramesFree(img, LinuxFrameFree);
-    delete img;
-}
-
-uint64_t RenderImageGeneration(const RenderImage* img) {
-    return img ? img->generation : 0;
-}
-
-RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
-    return img ? img->status : RenderImageStatus::Failed;
-}
-
-Size RenderImageSizePx(const RenderImage* img, int frameIndex) {
-    return RenderImageFrameSizePx(img, frameIndex);
-}
-
-int RenderImageFrameCount(const RenderImage* img) {
-    return img ? img->frames.len : 0;
-}
-
-int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
-    return RenderImageFrameDuration(img, frameIndex);
-}
-
-static cairo_surface_t* ImageSurface(LinuxImageFrame* frame, bool grayscale) {
+static cairo_surface_t* ImageSurface(ImageFrame* frame, bool grayscale) {
     if (!frame || !frame->surface) {
         return nullptr;
     }
@@ -986,7 +842,7 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
         return;
     }
     frameIndex = RenderImageFrameIndex(img, frameIndex);
-    LinuxImageFrame* frame = &img->frames[frameIndex];
+    ImageFrame* frame = &img->frames[frameIndex];
     cairo_surface_t* surface = ImageSurface(frame, grayscale);
     if (!surface || frame->w <= 0 || frame->h <= 0) {
         return;
@@ -1026,14 +882,8 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
 // DirectWrite backend nothing has to convert offsets.
 
 struct TextLayout {
-    // The byte length of the text it was shaped from (TextLayoutTextLen).
-    int textLen = 0;
-    uint64_t generation = 0;
+    TextLayoutHead head;
     PangoLayout* layout = nullptr;
-    // What TextLayoutNew reported, kept so TextLayoutSize can answer without
-    // measuring again.
-    Size size = {};
-    int refs = 1;
     // GPUI's line box (fontSize * phi) and what Pango would use on its own.
     float box = 0;
     float natural = 0;
@@ -1045,8 +895,6 @@ struct TextLayout {
     float dx = 0;
     // The width Pango was given, restored after an ellipsized draw.
     int width = -1;
-    // TextLayoutSize: how far the aligned lines reach.
-    Size cover = {};
 };
 
 // DirectWrite gets "Segoe UI" and "Consolas"; fontconfig resolves these two
@@ -1082,14 +930,11 @@ static PangoWeight PangoWeightFor(uint16_t weight, float fontSize) {
     return fontSize >= 18.f ? PANGO_WEIGHT_SEMIBOLD : PANGO_WEIGHT_NORMAL;
 }
 
-TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint16_t weight, float lineH,
-                          Size* outSize, TextAlign align) {
-    if (!ctx || !ctx->pa || !ctx->pa->pango || !s.s || len(s) <= 0) {
+TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
+                            bool wrap, uint16_t weight, float lineH,
+                            Size* outSize, TextAlign align) {
+    if (!ctx->pa->pango) {
         return nullptr;
-    }
-    if (fontSize <= 0) {
-        fontSize = 16.f;
     }
     PangoLayout* l = pango_layout_new(ctx->pa->pango);
     if (!l) {
@@ -1150,9 +995,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     }
 
     auto* tl = new TextLayout();
-    tl->textLen = len(s);
     tl->width = pango_layout_get_width(l);
-    tl->generation = PaintResourceGenerationNew();
     tl->layout = l;
     tl->lines = pango_layout_get_line_count(l);
     if (tl->lines < 1) {
@@ -1170,8 +1013,8 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
                                  (int)((tl->box - tl->natural) * PANGO_SCALE));
         pango_layout_get_pixel_size(l, &pw, &ph);
     }
-    tl->size = Size{(float)pw, tl->box * (float)tl->lines};
-    tl->cover = tl->size;
+    Size size = {(float)pw, tl->box * (float)tl->lines};
+    tl->head.cover = size;
     if (align != TextAlign::Left) {
         if (tl->width < 0 && maxW > (float)pw) {
             float f = align == TextAlign::Center ? 0.5f : 1.f;
@@ -1180,56 +1023,24 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         PangoRectangle logical = {};
         pango_layout_get_pixel_extents(l, nullptr, &logical);
         float right = tl->dx + (float)(logical.x + logical.width);
-        if (right > tl->cover.w) {
-            tl->cover.w = right;
-        }
+        tl->head.cover.w = std::max(tl->head.cover.w, right);
     }
     if (outSize) {
-        outSize->w = tl->size.w;
-        outSize->h = tl->size.h;
+        *outSize = size;
     }
     return tl;
 }
 
-Size TextLayoutSize(TextLayout* tl) {
-    return tl ? tl->cover : Size{0, 0};
-}
-
-void TextLayoutAddRef(TextLayout* tl) {
-    if (tl) {
-        tl->refs++;
-    }
-}
-
-void TextLayoutRelease(TextLayout* tl) {
-    if (!tl) {
-        return;
-    }
-    if (--tl->refs > 0) {
-        return;
-    }
+void TextLayoutDestroy(TextLayout* tl) {
     if (tl->layout) {
         g_object_unref(tl->layout);
     }
     delete tl;
 }
 
-uint64_t TextLayoutGeneration(const TextLayout* tl) {
-    return tl ? tl->generation : 0;
-}
-
-int TextLayoutTextLen(const TextLayout* tl) {
-    return tl ? tl->textLen : 0;
-}
-
 // Where the glyphs sit inside the phi-tall line box.
 static float BoxPad(TextLayout* tl) {
     return (tl->box - tl->natural) * 0.5f;
-}
-
-bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
-                          float y, Rgba base, const TextSpan* spans, int n) {
-    return PaintTextLayoutSpansRecordOnly(ctx, tl, text, x, y, base, spans, n);
 }
 
 void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,

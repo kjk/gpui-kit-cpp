@@ -2,13 +2,24 @@
 #define GPUI_GPUI_PAINT_BACKEND_H_
 /* What the paint_*.cpp backends share behind Paint.h: the generation counter
    their resources are stamped with, the end-of-frame scene replay, and the
-   bookkeeping of a RenderImage that holds decoded frames.
+   bookkeeping of a RenderImage and a TextLayout, and the Paint.h entry points
+   whose bodies do not depend on the drawing library.
 
-   None of it is Paint.h API. A mobile host adapter supplies Paint.h itself and
-   may use these or not; defining a Paint.h function here would collide with
-   its own. */
+   A mobile host adapter supplies Paint.h itself and may use the helpers or
+   not; the Paint.h functions paint_backend.cpp defines are behind
+   GPUI_PAINT_IN_TREE, so they never collide with its own. */
 
 #include "gpui/paint.h"
+
+// The native image types ImageFrame holds, named without their SDK headers
+// (ID2D1Bitmap, cairo_surface_t, CGImageRef).
+#if GPUI_OS_WINDOWS
+struct ID2D1Bitmap;
+#elif GPUI_OS_LINUX
+struct _cairo_surface;
+#elif GPUI_OS_MAC
+struct CGImage;
+#endif
 
 namespace gpui {
 
@@ -25,13 +36,6 @@ uint64_t PaintResourceGenerationNew();
 // left unpainted would flash).
 bool PaintSceneFinish(PaintCtx* ctx, bool replayUnchanged);
 
-// PaintTextLayoutSpans for a backend that cannot draw per-span colours
-// itself: the scene records the spans when it is recording (and replays them
-// as plain runs), and otherwise the caller is told to fall back.
-bool PaintTextLayoutSpansRecordOnly(PaintCtx* ctx, TextLayout* tl, Str text,
-                                    float x, float y, Rgba base,
-                                    const TextSpan* spans, int n);
-
 // Copy h rows of w BGRA pixels between buffers whose rows are dstStride and
 // srcStride bytes apart, leaving any row padding of the destination alone.
 void PaintCopyBgraRows(uint8_t* dst, size_t dstStride, const uint8_t* src,
@@ -43,104 +47,157 @@ void PaintCopyBgraRows(uint8_t* dst, size_t dstStride, const uint8_t* src,
 void PaintGrayBgraRows(uint8_t* dst, size_t dstStride, const uint8_t* src,
                        size_t srcStride, int w, int h);
 
-// The part of a RenderImage every frame-holding backend keeps the same way: a
-// refcount (Rust's Arc<RenderImage>), a generation, a load status and the
-// decoded frames. A backend writes `struct RenderImage : RenderImageFrames<
-// MyFrame> {};`; a Frame has `w`, `h` and `durationMs`.
-template <typename Frame>
-struct RenderImageFrames {
+// ─── what the in-tree backends define once ────────────────────────────────
+//
+// Paint.h entry points whose bodies do not depend on the drawing library are
+// defined once, in paint_backend.cpp, over the shapes below. The macros say
+// which backends share which: iOS and Android supply Paint.h through their
+// host adapter and take none of it.
+
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC || GPUI_OS_WASM
+#define GPUI_PAINT_IN_TREE 1
+#else
+#define GPUI_PAINT_IN_TREE 0
+#endif
+// The backends that keep decoded frames (WIC, gdk-pixbuf, ImageIO). The
+// browser keeps its picture itself.
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC
+#define GPUI_PAINT_IMAGE_FRAMES 1
+#else
+#define GPUI_PAINT_IMAGE_FRAMES 0
+#endif
+// The backends that draw through a 2D library one call at a time (cairo, Core
+// Graphics, Canvas2D) rather than dispatching between Direct2D and the GPU
+// renderer.
+#if GPUI_OS_LINUX || GPUI_OS_MAC || GPUI_OS_WASM
+#define GPUI_PAINT_DIRECT 1
+#else
+#define GPUI_PAINT_DIRECT 0
+#endif
+
+#if GPUI_PAINT_IN_TREE
+
+// The first member of every in-tree backend's TextLayout, which must stay a
+// standard-layout struct: the shared TextLayoutAddRef / Release / Generation /
+// TextLen (and, on a direct backend, TextLayoutSize) reach it through a
+// pointer cast, since the rest of the struct is the backend's own.
+struct TextLayoutHead {
+    // The byte length of the text it was shaped from (TextLayoutTextLen).
+    int textLen = 0;
+    uint64_t generation = 0;
+    int refs = 1;
+    // TextLayoutSize on a direct backend: how far the aligned lines reach,
+    // kept so it can answer without measuring again.
+    Size cover = {};
+};
+
+// The backend's half of the last TextLayoutRelease: free what it shaped
+// with, then the layout.
+void TextLayoutDestroy(TextLayout* tl);
+
+// The backend's half of PaintInstalledFontNames: append every installed
+// family's name (StrDup'd) to `out`. Asked once per process; the shared half
+// keeps the answer.
+void PaintListInstalledFonts(PaintApp* pa, Vec<Str>* out);
+
+// One decoded frame. `w`, `h` and `durationMs` are what the shared accessors
+// read; the rest is the backend's, declared without its SDK header.
+#if GPUI_PAINT_IMAGE_FRAMES
+struct ImageFrame {
+    int w = 0;
+    int h = 0;
+    int durationMs = 100;
+#if GPUI_OS_WINDOWS
+    uint8_t* bgra = nullptr;
+    ID2D1Bitmap* bmp = nullptr;
+    ID2D1Bitmap* grayBmp = nullptr;
+    // The render target `bmp` belongs to. D2D bitmaps are device resources
+    // and do not survive it. Use its generation rather than its address: a
+    // newly allocated target may occupy the same address as the old one.
+    uint64_t bmpTargetGeneration = 0;
+#elif GPUI_OS_LINUX
+    _cairo_surface* surface = nullptr;
+    _cairo_surface* graySurface = nullptr;
+#elif GPUI_OS_MAC
+    CGImage* image = nullptr;
+    CGImage* grayImage = nullptr;
+#endif
+};
+// The backend's: release what one frame holds.
+void ImageFrameFree(ImageFrame* frame);
+#endif
+
+// Every in-tree backend's RenderImage: a refcount (Rust's Arc<RenderImage>),
+// a generation, a load status, and the decoded frames or the browser's own
+// picture.
+struct RenderImage {
     int refs = 1;
     uint64_t generation = 0;
     RenderImageStatus status = RenderImageStatus::Ready;
-    Vec<Frame> frames;
+#if GPUI_PAINT_IMAGE_FRAMES
+    Vec<ImageFrame> frames;
+#endif
+#if GPUI_OS_WASM
+    int js = 0;
+#endif
 };
 
+// What goes with an image besides its frames when the last reference does:
+// the GPU renderer's textures keyed by its generation on Windows, the
+// browser's picture on wasm.
+#if GPUI_OS_WINDOWS || GPUI_OS_WASM
+void RenderImageDropNative(RenderImage* img);
+#else
+inline void RenderImageDropNative(RenderImage*) {}
+#endif
+
+RenderImage* RenderImageAlloc(RenderImageStatus status);
+
+#if GPUI_PAINT_IMAGE_FRAMES
 // A frame index a caller may hand in, made one that exists: anything out of
 // range is the first frame. -1 when the image has no frames.
-template <typename Img>
-int RenderImageFrameIndex(const Img* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return -1;
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        return 0;
-    }
-    return frameIndex;
-}
-
-template <typename Img>
-Img* RenderImageAlloc(RenderImageStatus status) {
-    auto* img = new Img();
-    img->generation = PaintResourceGenerationNew();
-    img->status = status;
-    return img;
-}
-
+int RenderImageFrameIndex(const RenderImage* img, int frameIndex);
 // A Ready image holding one frame.
-template <typename Img, typename Frame>
-Img* RenderImageWithFrame(const Frame& frame) {
-    Img* img = RenderImageAlloc<Img>(RenderImageStatus::Ready);
-    VecAppend(img->frames, frame);
-    return img;
-}
+RenderImage* RenderImageWithFrame(const ImageFrame& frame);
+void RenderImageFramesFree(RenderImage* img);
+#endif
 
-template <typename Img, typename Frame>
-void RenderImageFramesFree(Img* img, void (*frameFree)(Frame*)) {
-    for (int i = 0; i < img->frames.len; i++) {
-        frameFree(&img->frames[i]);
-    }
-    VecReset(img->frames);
-}
+#if GPUI_PAINT_DIRECT
+// The backend's half of TextLayoutNew, handed a context with a PaintApp,
+// text that is not empty and a font size above zero. The shared half stamps
+// the head's textLen and generation.
+TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
+                            bool wrap, uint16_t weight, float lineH,
+                            Size* outSize, TextAlign align);
+// The first member of a direct backend's Path, which stays standard-layout
+// for the same reason TextLayout does: the shared PathNew / MoveTo / LineTo /
+// CubicTo / ArcTo / Close keep the fill rule and the open-figure rule here
+// and hand each segment to the backend's PathEmit* below.
+struct PathHead {
+    // The nonzero fill rule; false is even-odd.
+    bool winding = true;
+    // A figure is open: a line or curve with none starts one at its end
+    // point instead, and a close with none does nothing.
+    bool fig = false;
+};
+// The backend's halves of PathNew and PathFree, past the scene's recording.
+Path* PathAlloc();
+void PathDestroy(Path* p);
+void PathEmitMove(Path* p, float x, float y);
+void PathEmitLine(Path* p, float x, float y);
+void PathEmitCubic(Path* p, float x1, float y1, float x2, float y2, float x,
+                   float y);
+void PathEmitArc(Path* p, float cx, float cy, float r, float a0, float a1,
+                 bool clockwise);
+void PathEmitClose(Path* p);
+// The backend's half of PaintTargetFree: release and delete the target.
+void PaintTargetDestroy(PaintTarget* rt);
+// The start of a PaintTargetBegin handed a native surface: false without a
+// PaintApp or a surface, otherwise the previous frame's target is freed.
+bool PaintTargetReplace(PaintCtx* ctx, void* native);
+#endif
 
-// RenderImageComplete: a Loading handle takes over the frames of what was
-// decoded for it (or turns Failed when nothing was), and the decoded image is
-// released.
-template <typename Img, typename Frame>
-void RenderImageAdoptFrames(Img* img, Img* decoded, void (*frameFree)(Frame*)) {
-    if (!img) {
-        if (decoded) {
-            RenderImageRelease(decoded);
-        }
-        return;
-    }
-    if (decoded && decoded->frames.len > 0) {
-        RenderImageFramesFree(img, frameFree);
-        img->frames.els = decoded->frames.els;
-        img->frames.len = decoded->frames.len;
-        img->frames.cap = decoded->frames.cap;
-        decoded->frames.els = nullptr;
-        decoded->frames.len = 0;
-        decoded->frames.cap = 0;
-        img->status = RenderImageStatus::Ready;
-    } else {
-        img->status = RenderImageStatus::Failed;
-    }
-    if (decoded) {
-        RenderImageRelease(decoded);
-    }
-}
-
-// RenderImageRelease's count: true when this was the last reference and the
-// caller frees the image.
-template <typename Img>
-bool RenderImageUnref(Img* img) {
-    return img && --img->refs == 0;
-}
-
-template <typename Img>
-Size RenderImageFrameSizePx(const Img* img, int frameIndex) {
-    int i = RenderImageFrameIndex(img, frameIndex);
-    if (i < 0) {
-        return {};
-    }
-    return {(float)img->frames[i].w, (float)img->frames[i].h};
-}
-
-template <typename Img>
-int RenderImageFrameDuration(const Img* img, int frameIndex) {
-    int i = RenderImageFrameIndex(img, frameIndex);
-    return i < 0 ? 0 : img->frames[i].durationMs;
-}
+#endif // GPUI_PAINT_IN_TREE
 
 } // namespace gpui
 #endif // GPUI_GPUI_PAINT_BACKEND_H_
