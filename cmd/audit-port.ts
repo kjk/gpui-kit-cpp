@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "f6c2069d44825bc1c32a49d62ffd24e114e7e012";
+const pinnedGpuiComponent = "6fdd3e7e038993309124835d6339bcfb0b464739";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button

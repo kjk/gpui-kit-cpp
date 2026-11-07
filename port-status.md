@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f6c2069d44825bc1c32a49d62ffd24e114e7e012` (2026-11-03,
-story: Wrap long questionnaire summaries inside their section (#3776)).
-Questionnaire sections cap their width at 448 or 600 instead of
-fixing it, and the summary lines fill that width, center, and wrap.
+Processed through `6fdd3e7e038993309124835d6339bcfb0b464739` (2026-11-03,
+shell: Stop a Git dependency selector from being read as a `git fetch` option (#3778)).
+`git fetch` now passes `--` before the remote and the ref. A
+selector whose first character is `-` is rejected.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

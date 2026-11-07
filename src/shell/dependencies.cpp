@@ -491,9 +491,10 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
         } else {
             reference = StrDup(fmt("refs/tags/%s", dependency.tag));
         }
-        Str args[6] = {StrL("fetch"), StrL("--force"), StrL("--depth"),
-                       StrL("1"),     StrL("origin"),  reference};
-        ok = RunGit(name, StrL("fetch"), args, 6, mirror, nullptr, error);
+        Str args[7] = {StrL("fetch"), StrL("--force"), StrL("--depth"),
+                       StrL("1"),     StrL("--"),      StrL("origin"),
+                       reference};
+        ok = RunGit(name, StrL("fetch"), args, 7, mirror, nullptr, error);
     }
     if (ok) {
         Str args[2] = {StrL("rev-parse"), StrL("FETCH_HEAD")};

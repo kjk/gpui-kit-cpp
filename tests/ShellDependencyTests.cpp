@@ -241,6 +241,7 @@ static void ManifestsDescribeGitDependenciesBeforeAnythingRuns() {
         "\"huacnlee//omarchy-ui\"",
         "\"huacnlee/omarchy-ui#\"",
         "\"https://github.com/huacnlee/omarchy-ui#\"",
+        "\"file:///tmp/omarchy-ui#--upload-pack=touch${IFS}/tmp/pwned;true\"",
         "\"not a git dependency\"",
     };
     for (int i = 0; i < (int)(sizeof(malformed) / sizeof(malformed[0])); i++) {
@@ -268,6 +269,9 @@ static void ManifestsDescribeGitDependenciesBeforeAnythingRuns() {
          "path inside the Git repository"},
         {"{\"git\":\"https://github.com/example/omarchy-ui.git\","
          "\"branch\":\"main:refs/heads/injected\"}",
+         "valid Git ref name"},
+        {"{\"git\":\"https://github.com/example/omarchy-ui.git\","
+         "\"branch\":\"--upload-pack=touch\"}",
          "valid Git ref name"},
         {"{\"git\":\"  \",\"branch\":\"main\"}", "must not be empty"},
     };

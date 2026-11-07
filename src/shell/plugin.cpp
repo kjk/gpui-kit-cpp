@@ -235,7 +235,10 @@ static bool ValidGitRefName(Str reference) {
     if (!reference || StrEq(reference, StrL("@"))) return false;
     char first = reference.s[0];
     char last = reference.s[len(reference) - 1];
-    if (first == '.' || first == '/' || last == '.' || last == '/')
+    // A leading '-' is not a ref. Git would read it as a fetch option
+    // when the selector is passed without an option terminator.
+    if (first == '.' || first == '/' || first == '-' || last == '.' ||
+        last == '/')
         return false;
     if (StrContains(reference, StrL("..")) ||
         StrContains(reference, StrL("@{")) ||
