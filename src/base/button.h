@@ -23,6 +23,13 @@ namespace gpui {
 // builds. `resolve_style` puts them in the one fixed order — the value state,
 // then disabled — so no two buttons drift apart, and both land at layout, so
 // they win over the look the caller chains onto the element afterwards.
+// The neutral control geometry Button, Tab and Toggle share, named `id`
+// among its siblings. Centering is control geometry: an ordinary child of a
+// fixed-size control sits in the middle on both axes, independent of the
+// caller's padding. relative(1): the inherited text leading must not make
+// the control taller than the geometry its caller requested.
+El* ControlBox(Arena* a, Str id);
+
 struct ButtonStyles {
     StateStyle selected = {};
     StateStyle disabled = {};

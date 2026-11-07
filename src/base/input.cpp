@@ -864,6 +864,29 @@ static float TabSliceWidth(void* user, Str text) {
     return w;
 }
 
+// How a field's tabs measure: its font, the width of a space and the stop
+// `tabSize` spaces make. A field with no state yet is two spaces of 14 px.
+struct TabMetrics {
+    TabSliceMeasure measure;
+    float space = 0;
+    float stop = 0;
+    int tabSize = 2;
+};
+
+static TabMetrics TabMetricsFor(PaintCtx* ctx, const InputState* s) {
+    TabMetrics m;
+    m.tabSize = s && s->mode.tabSize > 0 ? s->mode.tabSize : 2;
+    m.measure.ctx = ctx;
+    m.measure.font = s && s->lastFont > 0 ? s->lastFont : 14.f;
+    m.measure.word = s ? s->lastFontWord : 0;
+    m.space = TabSliceWidth(&m.measure, StrL(" "));
+    if (m.space <= 0) {
+        m.space = m.measure.font * 0.6f;
+    }
+    m.stop = m.space * (float)m.tabSize;
+    return m;
+}
+
 static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
                          Str line) {
     TabShown shown;
@@ -884,60 +907,49 @@ static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
     if (!tab) {
         return shown;
     }
-    int tabSize = s->mode.tabSize > 0 ? s->mode.tabSize : 2;
-    float font = s->lastFont > 0 ? s->lastFont : 14.f;
-    TabSliceMeasure measure = {ctx, font, s->lastFontWord};
-    float space = TabSliceWidth(&measure, StrL(" "));
-    if (space <= 0) {
-        space = font * 0.6f;
-    }
-    float stop = space * (float)tabSize;
-    int cap = len(line) * (tabSize + 1) + 8;
+    TabMetrics tm = TabMetricsFor(ctx, s);
+    int cap = len(line) * (tm.tabSize + 1) + 8;
     char* buf = (char*)Alloc(a, cap + 1);
     int* map = (int*)Alloc(a, (int)sizeof(int) * (len(line) + 1));
     if (!buf || !map) {
         return shown;
     }
     int di = 0;
-    double shaped = 0;
-    double shift = 0;
-    int i = 0;
-    while (i < len(line)) {
-        map[i] = di;
-        if (line.s[i] == '\t') {
-            float tabW = TabSliceWidth(&measure, Str(line.s + i, 1));
-            double expanded = shaped + shift;
-            double end = shaped + (double)tabW;
-            double next = TabNextStop(expanded, stop);
-            int nsp = (int)((next - expanded) / (double)space + 0.5);
-            if (nsp < 1) {
-                nsp = 1;
+    bool full = false;
+    TabWalk(
+        line, tm.stop,
+        [&](Str slice) { return TabSliceWidth(&tm.measure, slice); },
+        [&](const TabSegment& seg) {
+            if (seg.tab) {
+                int nsp =
+                    (int)((seg.right - seg.left) / (double)tm.space + 0.5);
+                if (nsp < 1) {
+                    nsp = 1;
+                }
+                if (di + nsp > cap) {
+                    full = true;
+                    return false;
+                }
+                map[seg.start] = di;
+                for (int k = 0; k < nsp; k++) {
+                    buf[di++] = ' ';
+                }
+                return true;
             }
-            if (di + nsp > cap) {
-                return shown;
+            int n = seg.end - seg.start;
+            if (di + n > cap) {
+                full = true;
+                return false;
             }
-            for (int k = 0; k < nsp; k++) {
-                buf[di++] = ' ';
+            for (int k = 0; k < n; k++) {
+                map[seg.start + k] = di + k;
+                buf[di + k] = line.s[seg.start + k];
             }
-            shift = next - end;
-            shaped = end;
-            i++;
-            continue;
-        }
-        int j = i + 1;
-        while (j < len(line) && line.s[j] != '\t') {
-            j++;
-        }
-        if (di + (j - i) > cap) {
-            return shown;
-        }
-        for (int k = i; k < j; k++) {
-            map[k] = di + (k - i);
-            buf[di + (k - i)] = line.s[k];
-        }
-        di += j - i;
-        shaped += (double)TabSliceWidth(&measure, Str(line.s + i, j - i));
-        i = j;
+            di += n;
+            return true;
+        });
+    if (full) {
+        return shown;
     }
     map[len(line)] = di;
     buf[di] = 0;
@@ -951,54 +963,29 @@ static int TabSourceAtX(PaintCtx* ctx, const InputState* s, Str text, float x) {
     if (len(text) <= 0 || x <= 0) {
         return 0;
     }
-    int tabSize = s && s->mode.tabSize > 0 ? s->mode.tabSize : 2;
-    float font = s && s->lastFont > 0 ? s->lastFont : 14.f;
-    uint16_t word = s ? s->lastFontWord : 0;
-    TabSliceMeasure measure = {ctx, font, word};
-    float space = TabSliceWidth(&measure, StrL(" "));
-    if (space <= 0) {
-        space = font * 0.6f;
-    }
-    float stop = space * (float)tabSize;
-    double shaped = 0;
-    double shift = 0;
-    int i = 0;
-    while (i < len(text)) {
-        if (text.s[i] == '\t') {
-            float tabW = TabSliceWidth(&measure, Str(text.s + i, 1));
-            double expanded = shaped + shift;
-            double end = shaped + (double)tabW;
-            double next = TabNextStop(expanded, stop);
-            if (x < (float)next) {
-                return i;
+    TabMetrics tm = TabMetricsFor(ctx, s);
+    float font = tm.measure.font;
+    uint16_t word = tm.measure.word;
+    int hit = len(text);
+    TabWalk(
+        text, tm.stop,
+        [&](Str slice) { return TabSliceWidth(&tm.measure, slice); },
+        [&](const TabSegment& seg) {
+            if (x >= (float)seg.right) {
+                return true;
             }
-            shift = next - end;
-            shaped = end;
-            i++;
-            continue;
-        }
-        int j = i + 1;
-        while (j < len(text) && text.s[j] != '\t') {
-            j++;
-        }
-        Str run = Str(text.s + i, j - i);
-        float w = TabSliceWidth(&measure, run);
-        double runX = shaped + shift;
-        if (x < (float)(runX + (double)w)) {
-            int local = TextIndexAt(ctx, TextNoLineBreaks(GetTempArena(), run),
-                                    font, 0, false, x - (float)runX, 0, word);
-            if (local < 0) {
-                local = 0;
+            if (seg.tab) {
+                hit = seg.start;
+                return false;
             }
-            if (local > len(run)) {
-                local = len(run);
-            }
-            return i + local;
-        }
-        shaped += (double)w;
-        i = j;
-    }
-    return len(text);
+            Str run = Str(text.s + seg.start, seg.end - seg.start);
+            int local =
+                TextIndexAt(ctx, TextNoLineBreaks(GetTempArena(), run), font, 0,
+                            false, x - (float)seg.left, 0, word);
+            hit = seg.start + std::max(0, std::min(local, len(run)));
+            return false;
+        });
+    return hit;
 }
 
 static void WrapLineFragments(void* user, Str slice, int base,

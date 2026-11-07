@@ -505,28 +505,9 @@ float TabExpandedWidth(Str text, float stop,
     if (!has || stop <= 0.f) {
         return measure(user, text);
     }
-    double shaped = 0;
-    double shift = 0;
-    int i = 0;
-    while (i < len(text)) {
-        if (text.s[i] == '\t') {
-            float tabW = measure(user, Str(text.s + i, 1));
-            double start = shaped + shift;
-            double end = shaped + (double)tabW;
-            double next = TabNextStop(start, stop);
-            shift = next - end;
-            shaped = end;
-            i++;
-            continue;
-        }
-        int j = i + 1;
-        while (j < len(text) && text.s[j] != '\t') {
-            j++;
-        }
-        shaped += (double)measure(user, Str(text.s + i, j - i));
-        i = j;
-    }
-    return (float)(shaped + shift);
+    return TabWalk(
+        text, stop, [&](Str slice) { return measure(user, slice); },
+        [](const TabSegment&) { return true; });
 }
 
 bool TabExpandGlyphXs(Str text, float stop, float advance, float tabAdvance,

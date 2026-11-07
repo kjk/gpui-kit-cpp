@@ -13,6 +13,15 @@ static void ApplyStyles(El* e, const ButtonStyles* styles, bool selected,
     ElRefine(e, StateStyleResolve(StateStyle{}, active, 2));
 }
 
+El* ControlBox(Arena* a, Str id) {
+    return Div(a)
+        ->Flex()
+        ->ItemsCenter()
+        ->JustifyCenter()
+        ->LineHeight(1.f)
+        ->PathClick(id);
+}
+
 El* Button::New(Ctx* cx, Str id, bool disabled, Listener onClick,
                 bool focusable, const ButtonStyles* styles, bool selected) {
     Arena* a = cx->a;
@@ -20,17 +29,7 @@ El* Button::New(Ctx* cx, Str id, bool disabled, Listener onClick,
     // siblings, since GPUI scopes it by the stack of ids above it. That is why
     // upstream writes `Button::new("prev")` inside a pagination rather than
     // `Button::new(format!("{base}-prev"))` — the fold does that part.
-    El* e = Div(a)
-                // Centering is control geometry: an ordinary child of a
-                // fixed-height unstyled Button sits in the middle on both
-                // axes, independent of the caller's padding.
-                ->Flex()
-                ->ItemsCenter()
-                ->JustifyCenter()
-                // relative(1): the inherited text leading must not make the
-                // button taller than the geometry its caller requested.
-                ->LineHeight(1.f)
-                ->PathClick(id)
+    El* e = ControlBox(a, id)
                 ->SuppressTextSelection()
                 ->Role(AccessibilityRole::Button)
                 ->AriaDisabled(disabled);
