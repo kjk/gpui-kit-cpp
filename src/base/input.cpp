@@ -8962,19 +8962,33 @@ static void ApplyAnchors(InputState* s, CursorSelection* c,
     }
 }
 
+// Where `f(cursor, isActive)` sends each caret, the active one first; n of
+// them, in the temp arena.
+template <class F>
+static MoveTarget* CursorTargets(InputState* s, F f, int* n) {
+    Arena* a = GetTempArena();
+    CursorSelection* all = AllCursors(a, s, n);
+    auto* targets = (MoveTarget*)Alloc(a, *n * (int)sizeof(MoveTarget));
+    for (int i = 0; i < *n; i++) {
+        targets[i] = f(all[i], i == 0);
+    }
+    return targets;
+}
+
+// A secondary caret's target snapped to a character boundary inside the text.
+static int TargetBoundary(InputState* s, const MoveTarget& t, int textLen) {
+    int off = InputCursorBoundary(s, t.offset, Bias::Left);
+    return off < 0 ? 0 : (off > textLen ? textLen : off);
+}
+
 // move_all_cursors: `f(cursor, isActive)` says where each caret goes; each
 // collapses there and overlapping ones merge. The active one's move is the
 // single-cursor move_to — scroll, blink, the coalescing break — with the
 // others put back after it.
 template <class F>
 static void MoveAllCursors(InputState* s, App* app, Window* win, F f) {
-    Arena* a = GetTempArena();
     int n = 0;
-    CursorSelection* all = AllCursors(a, s, &n);
-    auto* targets = (MoveTarget*)Alloc(a, n * (int)sizeof(MoveTarget));
-    for (int i = 0; i < n; i++) {
-        targets[i] = f(all[i], i == 0);
-    }
+    MoveTarget* targets = CursorTargets(s, f, &n);
     InputMoveToWithAffinity(s, app, win, targets[0].offset,
                             targets[0].lineEndAffinity);
     CursorSelection active = ActiveCursor(s);
@@ -8982,9 +8996,8 @@ static void MoveAllCursors(InputState* s, App* app, Window* win, F f) {
     SetActiveCursor(s, active);
     int textLen = len(InputValue(s));
     for (int i = 1; i < n; i++) {
-        int off = InputCursorBoundary(s, targets[i].offset, Bias::Left);
         CursorSelection c;
-        c.range = SelectionAt(off < 0 ? 0 : (off > textLen ? textLen : off));
+        c.range = SelectionAt(TargetBoundary(s, targets[i], textLen));
         ApplyAnchors(s, &c, targets[i]);
         VecAppend(s->extraCursors, c);
     }
@@ -9014,13 +9027,8 @@ template <class F>
 static void SelectAllCursorsTo(InputState* s, App* app, Window* win, F f) {
     UndoBreakCoalescing(&s->undo);
     PauseBlink(s, app, win);
-    Arena* a = GetTempArena();
     int n = 0;
-    CursorSelection* all = AllCursors(a, s, &n);
-    auto* targets = (MoveTarget*)Alloc(a, n * (int)sizeof(MoveTarget));
-    for (int i = 0; i < n; i++) {
-        targets[i] = f(all[i], i == 0);
-    }
+    MoveTarget* targets = CursorTargets(s, f, &n);
     InputSelectToWithAffinity(s, app, win, targets[0].offset,
                               targets[0].lineEndAffinity);
     if (targets[0].anchors) {
@@ -9029,9 +9037,8 @@ static void SelectAllCursorsTo(InputState* s, App* app, Window* win, F f) {
     }
     int textLen = len(InputValue(s));
     for (int i = 1; i < n; i++) {
-        int off = InputCursorBoundary(s, targets[i].offset, Bias::Left);
         CursorSelection c = s->extraCursors[i - 1];
-        ExtendSelection(&c, off < 0 ? 0 : (off > textLen ? textLen : off));
+        ExtendSelection(&c, TargetBoundary(s, targets[i], textLen));
         if (c.IsEmpty() || targets[i].anchors) {
             ApplyAnchors(s, &c, targets[i]);
         }

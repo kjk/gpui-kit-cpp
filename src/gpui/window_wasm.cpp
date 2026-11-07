@@ -768,7 +768,11 @@ static EM_BOOL OnMouseUp(int, const EmscriptenMouseEvent* e, void*) {
     return EM_TRUE;
 }
 
-static EM_BOOL OnMouseMove(int, const EmscriptenMouseEvent* e, void*) {
+// A move or a leave: where the pointer is on the canvas and which button,
+// if any, is held, made into the PlatformInput `make` builds.
+static EM_BOOL DispatchPointer(const EmscriptenMouseEvent* e,
+                               PlatformInput (*make)(float, float, bool,
+                                                     MouseButton, Modifiers)) {
     Window* win = gWin;
     if (!win || !win->plat || !win->plat->open) {
         return EM_FALSE;
@@ -776,22 +780,17 @@ static EM_BOOL OnMouseMove(int, const EmscriptenMouseEvent* e, void*) {
     MouseButton held = MouseButton::Left;
     bool any = HeldButton(e->buttons, &held);
     Point p = CanvasPoint((float)e->clientX, (float)e->clientY);
-    PlatformInput in = InputMouseMove(p.x, p.y, any, held, ModsOf(e));
+    PlatformInput in = make(p.x, p.y, any, held, ModsOf(e));
     WindowDispatchInput(win, &in);
     return EM_TRUE;
 }
 
+static EM_BOOL OnMouseMove(int, const EmscriptenMouseEvent* e, void*) {
+    return DispatchPointer(e, InputMouseMove);
+}
+
 static EM_BOOL OnMouseLeave(int, const EmscriptenMouseEvent* e, void*) {
-    Window* win = gWin;
-    if (!win || !win->plat || !win->plat->open) {
-        return EM_FALSE;
-    }
-    MouseButton held = MouseButton::Left;
-    bool any = HeldButton(e->buttons, &held);
-    Point p = CanvasPoint((float)e->clientX, (float)e->clientY);
-    PlatformInput in = InputMouseExited(p.x, p.y, any, held, ModsOf(e));
-    WindowDispatchInput(win, &in);
-    return EM_TRUE;
+    return DispatchPointer(e, InputMouseExited);
 }
 
 static EM_BOOL OnWheel(int, const EmscriptenWheelEvent* e, void*) {

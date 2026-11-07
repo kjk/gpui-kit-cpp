@@ -6685,8 +6685,12 @@ static Str gShellThemeMono;
 // have replaced: that is what lets an application state the one size it has an
 // opinion about — usually `md`, the window's base text size — without
 // restating a line height, a weight, and two font families it does not.
-static bool ReadThemeTextStyle(JSContext* ctx, JSValueConst object,
-                               const char* name, TextStyleToken* token) {
+// The plain object `object[name]` holds, in *out for the caller to free, or
+// JS_UNDEFINED when it is absent or null. False with a TypeError ("`what`
+// must be an object") when it is anything else.
+static bool OptionalObjectProperty(JSContext* ctx, JSValueConst object,
+                                   const char* name, Str what, JSValue* out) {
+    *out = JS_UNDEFINED;
     JSValue value = JS_GetPropertyStr(ctx, object, name);
     if (JS_IsException(value)) return false;
     if (JS_IsUndefined(value) || JS_IsNull(value)) {
@@ -6695,9 +6699,20 @@ static bool ReadThemeTextStyle(JSContext* ctx, JSValueConst object,
     }
     if (!JS_IsObject(value) || JS_IsArray(value)) {
         JS_FreeValue(ctx, value);
-        JS_ThrowTypeError(ctx, "theme typography `%s` must be an object", name);
+        JS_ThrowTypeError(ctx, "%.*s must be an object", len(what), what.s);
         return false;
     }
+    *out = value;
+    return true;
+}
+
+static bool ReadThemeTextStyle(JSContext* ctx, JSValueConst object,
+                               const char* name, TextStyleToken* token) {
+    JSValue value;
+    if (!OptionalObjectProperty(
+            ctx, object, name, fmt("theme typography `%s`", Str(name)), &value))
+        return false;
+    if (JS_IsUndefined(value)) return true;
     struct Field {
         const char* key;
         float* target;
@@ -6784,17 +6799,11 @@ static bool ReadThemeFamily(JSContext* ctx, JSValueConst object,
 // is one that accepts the scale it was given.
 static bool ReadThemeTypography(JSContext* ctx, JSValueConst tokensValue,
                                 TypographyTokens* typography) {
-    JSValue value = JS_GetPropertyStr(ctx, tokensValue, "typography");
-    if (JS_IsException(value)) return false;
-    if (JS_IsUndefined(value) || JS_IsNull(value)) {
-        JS_FreeValue(ctx, value);
-        return true;
-    }
-    if (!JS_IsObject(value) || JS_IsArray(value)) {
-        JS_FreeValue(ctx, value);
-        JS_ThrowTypeError(ctx, "theme tokens.typography must be an object");
+    JSValue value;
+    if (!OptionalObjectProperty(ctx, tokensValue, "typography",
+                                StrL("theme tokens.typography"), &value))
         return false;
-    }
+    if (JS_IsUndefined(value)) return true;
     // `mono_md` is not a sixth step of the scale above — it is the size `mono`
     // is set at, and the two are read together.
     bool ok = ReadThemeFamily(ctx, value, "sans", &gShellThemeSans,

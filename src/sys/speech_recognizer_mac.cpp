@@ -212,7 +212,6 @@ static uint32_t LastChar(Str s) {
 // joined: `text` with the separator it needs after the committed phrases.
 static Str JoinedTemp(const SysSpeechSession* s, Str text) {
     if (s->hasLastCommitted && len(text) > 0) {
-        int n = 0;
         if (SpeechNeedsSpace(s->lastCommitted, FirstChar(text))) {
             return fmt(" %s", text);
         }

@@ -86,12 +86,10 @@ static void DirWatchThread(DirWatchPlat* w) {
 
 DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
                                DirWatchError* err) {
-    auto* w = (DirWatchPlat*)DirWatchPlatAllocPosix(dir, create,
-                                                    sizeof(DirWatchPlat), err);
+    auto* w = DirWatchPlatNewPosix<DirWatchPlat>(id, dir, create, err);
     if (!w) {
         return nullptr;
     }
-    w->id = id;
     w->fd = -1;
     w->stopRead = -1;
     w->stopWrite = -1;

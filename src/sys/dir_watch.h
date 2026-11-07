@@ -108,6 +108,16 @@ void DirWatchPlatClose(DirWatchPlat* plat);
 // with `err` set to Failed when either could not be done.
 void* DirWatchPlatAllocPosix(const char* dir, bool create, size_t size,
                              DirWatchError* err);
+// The same as the platform's own DirWatchPlat, stamped with its watch `id`.
+template <typename Plat>
+Plat* DirWatchPlatNewPosix(DirWatchId id, const char* dir, bool create,
+                           DirWatchError* err) {
+    auto* w = (Plat*)DirWatchPlatAllocPosix(dir, create, sizeof(Plat), err);
+    if (w) {
+        w->id = id;
+    }
+    return w;
+}
 
 } // namespace gpui
 #endif // GPUI_SYS_DIR_WATCH_H_

@@ -91,12 +91,10 @@ static void DirWatchFreeOnQueue(void* p) {
 
 DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
                                DirWatchError* err) {
-    auto* w = (DirWatchPlat*)DirWatchPlatAllocPosix(dir, create,
-                                                    sizeof(DirWatchPlat), err);
+    auto* w = DirWatchPlatNewPosix<DirWatchPlat>(id, dir, create, err);
     if (!w) {
         return nullptr;
     }
-    w->id = id;
     struct stat st = {};
     if (!realpath(dir, w->real) || stat(w->real, &st) != 0 ||
         !S_ISDIR(st.st_mode)) {
