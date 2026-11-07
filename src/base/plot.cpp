@@ -23,10 +23,9 @@ void PathCaches::SlotPair(int index, PathCache** first, PathCache** second) {
     if (second) *second = Slot(index * 2 + 1);
 }
 
+// The eight bytes of v low first: its memory order on every target here.
 ShapeKey& ShapeKey::U64(uint64_t v) {
-    for (int i = 0; i < 8; i++) {
-        value = (value ^ (uint8_t)(v >> (i * 8))) * 1099511628211ull;
-    }
+    value = Fnv1a64(value, &v, sizeof(v));
     return *this;
 }
 

@@ -529,6 +529,16 @@ static gpui::Selection Utf16RangeToUtf8(gpui::Str s, NSRange r) {
     return out;
 }
 
+// The text an NSTextInputClient call hands over, an NSString or an
+// NSAttributedString, as UTF-8 that lives as long as the autorelease pool.
+static gpui::Str TextInputString(id string) {
+    NSString* str = [string isKindOfClass:[NSAttributedString class]]
+                        ? [(NSAttributedString*)string string]
+                        : (NSString*)string;
+    const char* utf8 = [str UTF8String];
+    return utf8 ? gpui::Str(utf8, (int)strlen(utf8)) : gpui::Str{};
+}
+
 @implementation GpuiView
 
 - (BOOL)isAccessibilityElement {
@@ -885,11 +895,7 @@ static gpui::Selection Utf16RangeToUtf8(gpui::Str s, NSRange r) {
     if (!in) {
         return;
     }
-    NSString* str = [string isKindOfClass:[NSAttributedString class]]
-                        ? [(NSAttributedString*)string string]
-                        : (NSString*)string;
-    const char* utf8 = [str UTF8String];
-    gpui::Str text = utf8 ? gpui::Str(utf8, (int)strlen(utf8)) : gpui::Str{};
+    gpui::Str text = TextInputString(string);
     gpui::Str doc = gpui::InputValue(in);
     gpui::Selection range = {};
     bool hasRange = replacement.location != NSNotFound;
@@ -921,11 +927,8 @@ static gpui::Selection Utf16RangeToUtf8(gpui::Str s, NSRange r) {
     if (!in) {
         return;
     }
-    NSString* str = [string isKindOfClass:[NSAttributedString class]]
-                        ? [(NSAttributedString*)string string]
-                        : (NSString*)string;
-    const char* utf8 = [str UTF8String];
-    if (!utf8 || !*utf8) {
+    gpui::Str text = TextInputString(string);
+    if (len(text) == 0) {
         // An empty commit ends the composition without leaving anything.
         gpui::InputReplaceAndMarkText(in, win->app, win, nullptr, gpui::Str{},
                                       nullptr);
@@ -940,8 +943,7 @@ static gpui::Selection Utf16RangeToUtf8(gpui::Str s, NSRange r) {
     }
     // A null range is the marked run, which is what a commit replaces.
     gpui::InputReplaceTextInRange(in, win->app, win,
-                                  hasRange ? &range : nullptr,
-                                  gpui::Str(utf8, (int)strlen(utf8)));
+                                  hasRange ? &range : nullptr, text);
     gpui::AppInvalidate(win);
 }
 

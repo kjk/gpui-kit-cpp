@@ -637,11 +637,7 @@ static const int kWidthCacheMaxEntries = 32768;
 static const int kWidthCacheMaxBytes = 4 * 1024 * 1024;
 
 static uint32_t WidthCacheHash(Str text) {
-    uint32_t hash = 2166136261u;
-    for (int i = 0; i < len(text); i++) {
-        hash ^= (uint8_t)text.s[i];
-        hash *= 16777619u;
-    }
+    uint32_t hash = Fnv1a32(kFnv1aBasis32, text.s, (size_t)len(text));
     return hash ? hash : 1u;
 }
 
@@ -1458,14 +1454,8 @@ static void RowExtraCursors(Arena* a, El* el, const InputState* state,
     }
 }
 
-// One bullet per character, not per byte, for a masked field.
-static Str MaskedRun(Arena* a, Str text) {
-    int chars = 0;
-    for (int i = 0; i < len(text); i++) {
-        if (((unsigned char)text.s[i] & 0xc0) != 0x80) {
-            chars++;
-        }
-    }
+Str InputMaskedText(Arena* a, Str text) {
+    int chars = Utf8CharCount(text);
     char* dots = (char*)Alloc(a, chars * 3 + 1);
     int n = 0;
     for (int i = 0; i < chars; i++) {
@@ -1479,13 +1469,8 @@ static Str MaskedRun(Arena* a, Str text) {
 // A byte offset into the text, in the bullets that stand in for it: three
 // bytes per character, so the caret and the selection land between bullets.
 static int MaskedOffset(Str text, int off) {
-    int chars = 0;
-    for (int i = 0; i < off && i < len(text); i++) {
-        if (((unsigned char)text.s[i] & 0xc0) != 0x80) {
-            chars++;
-        }
-    }
-    return chars * 3;
+    int n = off < len(text) ? off : len(text);
+    return n > 0 ? Utf8CharCount(Str(text.s, n)) * 3 : 0;
 }
 
 struct TokenClick {
@@ -1971,7 +1956,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
             style.mutedForeground));
     }
 
-    Str run = masked ? MaskedRun(a, text) : text;
+    Str run = masked ? InputMaskedText(a, text) : text;
     int cursor = InputCursor(state);
     Selection sel = showSel ? state->selectedRange : Selection{};
     Selection mark = {};
@@ -2624,6 +2609,21 @@ El* Textarea::New(Ctx* cx, InputState* state) {
     return New(cx, state, InputEditorStyle{});
 }
 
+// The height the rows are virtualized against: what the field was laid out
+// at, capped at the window (600 before there is one) so a mistaken content
+// height still virtualizes, and the cap when nothing was laid out yet.
+static float InputViewportHeight(Ctx* cx, const InputState* state) {
+    float vh = state->viewH;
+    float vhCap = 600.f;
+    if (cx->win && cx->win->paint.viewH > 0) {
+        vhCap = cx->win->paint.viewH;
+    }
+    if (vh <= 0 || vh > vhCap) {
+        vh = vhCap;
+    }
+    return vh;
+}
+
 // The multi-line editor. Rust lays every visible row out through the display
 // map; without one, each logical line is its own run and the selection is
 // clipped to it — which is the same picture as long as nothing soft-wraps.
@@ -2685,14 +2685,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // The placeholder frame scrolls too. An offset past the end would
         // slide this spacer out of the box for the frame before the rows
         // exist.
-        float vh = state->viewH;
-        float vhCap = 600.f;
-        if (cx->win && cx->win->paint.viewH > 0) {
-            vhCap = cx->win->paint.viewH;
-        }
-        if (vh <= 0 || vh > vhCap) {
-            vh = vhCap;
-        }
+        float vh = InputViewportHeight(cx, state);
         state->scrollY =
             InputClampVerticalScrollOffset(state->scrollY, height, vh);
         return col->Child(Div(a)->H(height));
@@ -2817,14 +2810,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // the inner column's laid-out height (the whole document) or nothing
     // yet on the first frame of a file; either would build every line.
     // Cap at the window so a mistaken content height still virtualizes.
-    float vh = state->viewH;
-    float vhCap = 600.f;
-    if (cx->win && cx->win->paint.viewH > 0) {
-        vhCap = cx->win->paint.viewH;
-    }
-    if (vh <= 0 || vh > vhCap) {
-        vh = vhCap;
-    }
+    float vh = InputViewportHeight(cx, state);
     // calculate_visible_range clamps before it picks rows, in every mode.
     // The room a code editor keeps below its last line is part of that
     // range. A target past the end used to paint an empty frame.
@@ -4656,13 +4642,7 @@ RopePoint InputCursorPosition(const InputState* s) {
     RopePoint p = InputOffsetToPoint(s, InputCursor(s));
     Str line = InputSliceLine(s, p.row);
     int n = p.column < len(line) ? p.column : len(line);
-    int chars = 0;
-    for (int i = 0; i < n; i++) {
-        if (((uint8_t)line.s[i] & 0xC0) != 0x80) {
-            chars++;
-        }
-    }
-    p.column = chars;
+    p.column = n > 0 ? Utf8CharCount(Str(line.s, n)) : 0;
     return p;
 }
 
@@ -6268,10 +6248,7 @@ static bool RewritesTypedChar(const InputState* s, Selection selection,
         }
         return false;
     };
-    int chars = 0;
-    for (int i = 0; i < len(oldText); i++) {
-        chars += ((uint8_t)oldText.s[i] & 0xC0) != 0x80 ? 1 : 0;
-    }
+    int chars = Utf8CharCount(oldText);
     return !s->silentReplace && selection.IsEmpty() &&
            selection.end == range.end && chars == 1 && !hasNewline(oldText) &&
            !hasNewline(newText);
@@ -7611,6 +7588,42 @@ void InputShowCompletions(InputState* s, App* app, Window* win) {
     InputRequestCompletion(s, app, win, true, CompletionTriggerKind::Invoked);
 }
 
+// insert_completion's write: `text` over `range` and the item's
+// `additionalTextEdits` with it — the import a name needs, at the top of the
+// document, while the name goes in at the caret. With `dismiss`, the menu the
+// item came from closes first; the item's strings and edits live in its arena,
+// so they are copied out before that. completion_inserting: the write is not
+// typing, so it opens no menu and asks for no suggestion.
+static void InsertCompletionEdits(InputState* s, App* app, Window* win,
+                                  const CompletionItem& item, Selection range,
+                                  Str text, bool dismiss) {
+    Vec<TextEditItem> edits;
+    if (item.nAdditionalEdits < 0 ||
+        (item.nAdditionalEdits > 0 && !item.additionalEdits) ||
+        !VecReserve(edits, item.nAdditionalEdits + 1)) {
+        return;
+    }
+    TextEditItem primary = {};
+    primary.range = range;
+    primary.newText = StrDup(GetTempArena(), text);
+    VecAppend(edits, primary);
+    for (int i = 0; i < item.nAdditionalEdits; i++) {
+        TextEditItem edit = item.additionalEdits[i];
+        edit.newText = StrDup(GetTempArena(), edit.newText);
+        VecAppend(edits, edit);
+    }
+    if (dismiss) {
+        InputDismissCompletion(s);
+    }
+    s->silentReplace = true;
+    if (len(edits) == 1) {
+        InputReplaceTextInRange(s, app, win, &edits[0].range, edits[0].newText);
+    } else {
+        InputApplyEdits(s, app, win, edits.els, len(edits));
+    }
+    s->silentReplace = false;
+}
+
 void InputAcceptCompletion(InputState* s, App* app, Window* win) {
     if (!s || !s->completion.open) {
         return;
@@ -7627,33 +7640,7 @@ void InputAcceptCompletion(InputState* s, App* app, Window* win) {
     range.start = s->completion.triggerStart >= 0 ? s->completion.triggerStart
                                                   : InputCursor(s);
     range.end = InputCursor(s);
-    // `additionalTextEdits` go in with it — the import a name needs, at the
-    // top of the document, while the name goes in at the caret. Both the
-    // item's strings and its edits live in the menu's arena, so they are
-    // copied out before it is dismissed.
-    Vec<TextEditItem> edits;
-    if (item.nAdditionalEdits < 0 ||
-        (item.nAdditionalEdits > 0 && !item.additionalEdits) ||
-        !VecReserve(edits, item.nAdditionalEdits + 1)) {
-        return;
-    }
-    TextEditItem primary = {};
-    primary.range = range;
-    primary.newText = StrDup(GetTempArena(), text);
-    VecAppend(edits, primary);
-    for (int i = 0; i < item.nAdditionalEdits; i++) {
-        TextEditItem edit = item.additionalEdits[i];
-        edit.newText = StrDup(GetTempArena(), edit.newText);
-        VecAppend(edits, edit);
-    }
-    InputDismissCompletion(s);
-    s->silentReplace = true;
-    if (len(edits) == 1) {
-        InputReplaceTextInRange(s, app, win, &edits[0].range, edits[0].newText);
-    } else {
-        InputApplyEdits(s, app, win, edits.els, len(edits));
-    }
-    s->silentReplace = false;
+    InsertCompletionEdits(s, app, win, item, range, text, true);
 }
 
 // ─── the overlay seam (lsp/overlay.rs) ───────────────────────────────────
@@ -7783,30 +7770,7 @@ void InputInsertCompletion(InputState* s, App* app, Window* win,
     if (item->insertText.len > 0) {
         range.start = range.end;
     }
-    Vec<TextEditItem> edits;
-    if (item->nAdditionalEdits < 0 ||
-        (item->nAdditionalEdits > 0 && !item->additionalEdits) ||
-        !VecReserve(edits, item->nAdditionalEdits + 1)) {
-        return;
-    }
-    TextEditItem primary = {};
-    primary.range = range;
-    primary.newText = StrDup(GetTempArena(), text);
-    VecAppend(edits, primary);
-    for (int i = 0; i < item->nAdditionalEdits; i++) {
-        TextEditItem edit = item->additionalEdits[i];
-        edit.newText = StrDup(GetTempArena(), edit.newText);
-        VecAppend(edits, edit);
-    }
-    // completion_inserting: the write is not typing, so it opens no menu and
-    // asks for no suggestion.
-    s->silentReplace = true;
-    if (len(edits) == 1) {
-        InputReplaceTextInRange(s, app, win, &edits[0].range, edits[0].newText);
-    } else {
-        InputApplyEdits(s, app, win, edits.els, len(edits));
-    }
-    s->silentReplace = false;
+    InsertCompletionEdits(s, app, win, *item, range, text, false);
 }
 
 bool InputCompletionAction(InputState* s, App* app, Window* win,
@@ -9327,6 +9291,25 @@ static bool TransactionHasTokenDelta(const UndoTransaction* t) {
     return false;
 }
 
+// The end of replaying a transaction either way: the cursors recorded on that
+// side of it (or `sel` when none were), token replay off, and the auto-closed
+// pairs as they were.
+static void UndoRestoreState(InputState* s, const CursorSelection* sels,
+                             int nSels, Selection sel,
+                             const AutoClosedPairRange* pairs, int nPairs) {
+    if (nSels > 0) {
+        RestoreCursors(s, sels, nSels);
+    } else {
+        s->cursorLineEndAffinity = false;
+        s->selectedRange = sel;
+        s->selectionReversed = false;
+    }
+    if (s->tokens) {
+        s->tokens->replaying = false;
+    }
+    AutoClosedRestore(s->autoClosed, pairs, nPairs);
+}
+
 static void DoUndo(InputState* s, App* app, Window* win) {
     HighlightChange highlightChange(s);
     UndoSetIgnoring(&s->undo, true);
@@ -9347,17 +9330,8 @@ static void DoUndo(InputState* s, App* app, Window* win) {
                              t->changes[i].tokenDelta, true);
             }
         }
-        if (t->nSelsBefore > 0) {
-            RestoreCursors(s, t->selsBefore, t->nSelsBefore);
-        } else {
-            s->cursorLineEndAffinity = false;
-            s->selectedRange = sel;
-            s->selectionReversed = false;
-        }
-        if (s->tokens) {
-            s->tokens->replaying = false;
-        }
-        AutoClosedRestore(s->autoClosed, t->pairsBefore, t->nPairsBefore);
+        UndoRestoreState(s, t->selsBefore, t->nSelsBefore, sel, t->pairsBefore,
+                         t->nPairsBefore);
     }
     UndoSetIgnoring(&s->undo, false);
 }
@@ -9380,17 +9354,8 @@ static void DoRedo(InputState* s, App* app, Window* win) {
                              t->changes[i].tokenDelta, false);
             }
         }
-        if (t->nSelsAfter > 0) {
-            RestoreCursors(s, t->selsAfter, t->nSelsAfter);
-        } else {
-            s->cursorLineEndAffinity = false;
-            s->selectedRange = sel;
-            s->selectionReversed = false;
-        }
-        if (s->tokens) {
-            s->tokens->replaying = false;
-        }
-        AutoClosedRestore(s->autoClosed, t->pairsAfter, t->nPairsAfter);
+        UndoRestoreState(s, t->selsAfter, t->nSelsAfter, sel, t->pairsAfter,
+                         t->nPairsAfter);
     }
     UndoSetIgnoring(&s->undo, false);
 }
@@ -12005,7 +11970,7 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
         Str run = text;
         int at = offset;
         if (s->masked) {
-            run = MaskedRun(GetTempArena(), text);
+            run = InputMaskedText(GetTempArena(), text);
             at = MaskedOffset(text, offset);
         }
         float x = 0, y = 0, h = 0;

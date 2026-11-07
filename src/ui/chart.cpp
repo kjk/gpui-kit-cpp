@@ -82,12 +82,7 @@ plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
 }
 
 void ChartAppear::SetKey(Str key) {
-    uint64_t h = 14695981039346656037ull;
-    for (int i = 0; i < len(key); i++) {
-        h ^= (uint8_t)key.s[i];
-        h *= 1099511628211ull;
-    }
-    generation = h;
+    generation = Fnv1a64(14695981039346656037ull, key.s, (size_t)len(key));
 }
 
 uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {

@@ -6,6 +6,7 @@
 #include "gpui/paint.h"
 #include "gpui/paintgpu.h"
 #include "gpui/accessibility_win.h"
+#include "sys/clock.h"
 #include "sys/executor.h"
 
 #include <dwmapi.h>
@@ -157,15 +158,7 @@ double TimeNow() {
     if (TestPlatformNow(&simulated)) {
         return simulated;
     }
-    static LARGE_INTEGER freq = {};
-    static LARGE_INTEGER start = {};
-    if (freq.QuadPart == 0) {
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&start);
-    }
-    LARGE_INTEGER now = {};
-    QueryPerformanceCounter(&now);
-    return (double)(now.QuadPart - start.QuadPart) / (double)freq.QuadPart;
+    return ClockMonotonicSecondsSinceStart();
 }
 
 // user32!GetDpiForWindow is Windows 10 1607 and later, so it has to be
@@ -1443,6 +1436,25 @@ static void ApplyMenuTheme(HWND hwnd, bool dark) {
 // stays sharp on a high-DPI display.
 static const int kMenuImageSize = 16;
 
+HBITMAP WinDib32New(int w, int h, void** bits) {
+    BITMAPINFO bi = {};
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = w;
+    // Negative: the rows run top down, the way every caller reads them.
+    bi.bmiHeader.biHeight = -h;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    *bits = nullptr;
+    HBITMAP bmp =
+        CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, bits, nullptr, 0);
+    if (bmp && !*bits) {
+        DeleteObject(bmp);
+        bmp = nullptr;
+    }
+    return bmp;
+}
+
 // One icon as a bitmap the menu can show: the SVG rasterized into a 32-bit
 // top-down DIB, premultiplied, so Windows blends it over whatever it draws
 // behind the row.
@@ -1452,20 +1464,9 @@ static HBITMAP MenuIconBitmap(Window* win, const PlatMenuItem& it, int px,
     if (!win || px <= 0 || (!fromSvg && (!it.iconPath || !it.iconPath[0]))) {
         return nullptr;
     }
-    BITMAPINFO bi = {};
-    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bi.bmiHeader.biWidth = px;
-    bi.bmiHeader.biHeight = -px;
-    bi.bmiHeader.biPlanes = 1;
-    bi.bmiHeader.biBitCount = 32;
-    bi.bmiHeader.biCompression = BI_RGB;
     void* bits = nullptr;
-    HBITMAP bmp =
-        CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (!bmp || !bits) {
-        if (bmp) {
-            DeleteObject(bmp);
-        }
+    HBITMAP bmp = WinDib32New(px, px, &bits);
+    if (!bmp) {
         return nullptr;
     }
     // `Icon::data` rasterizes from its bytes; a path goes through the assets.

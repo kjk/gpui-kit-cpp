@@ -175,56 +175,33 @@ static bool IndentEscape(char e, uint32_t c) {
     }
 }
 
+// Match one atom of the pattern against the character at *ti, stepping *pi
+// past the atom (as IndentSkipAtom does) and *ti past the character when it
+// matched.
 static bool IndentAtom(Str pat, int* pi, Str text, int* ti) {
-    if (*pi >= len(pat)) {
+    int start = *pi;
+    if (!IndentSkipAtom(pat, pi)) {
         return false;
     }
-    char c = pat.s[*pi];
-    if (c == '^' || c == '$' || c == '*' || c == '+' || c == '?') {
+    if (*ti >= len(text)) {
         return false;
     }
+    char c = pat.s[start];
+    uint32_t t = (uint8_t)text.s[*ti];
+    bool ok = false;
     if (c == '.') {
-        (*pi)++;
-        if (*ti >= len(text)) {
-            return false;
-        }
+        ok = true;
+    } else if (c == '\\' && *pi - start == 2) {
+        ok = IndentEscape(pat.s[start + 1], t);
+    } else if (c == '[') {
+        ok = IndentClassMatch(Str(pat.s + start + 1, *pi - start - 2), t);
+    } else {
+        ok = text.s[*ti] == c;
+    }
+    if (ok) {
         (*ti)++;
-        return true;
     }
-    if (c == '\\' && *pi + 1 < len(pat)) {
-        (*pi) += 2;
-        if (*ti >= len(text)) {
-            return false;
-        }
-        bool ok = IndentEscape(pat.s[*pi - 1], (uint8_t)text.s[*ti]);
-        if (ok) {
-            (*ti)++;
-        }
-        return ok;
-    }
-    if (c == '[') {
-        int start = *pi + 1;
-        int end = IndentClassEnd(pat, start);
-        if (end < 0) {
-            return false;
-        }
-        *pi = end + 1;
-        if (*ti >= len(text)) {
-            return false;
-        }
-        bool ok = IndentClassMatch(Str(pat.s + start, end - start),
-                                   (uint8_t)text.s[*ti]);
-        if (ok) {
-            (*ti)++;
-        }
-        return ok;
-    }
-    (*pi)++;
-    if (*ti >= len(text) || text.s[*ti] != c) {
-        return false;
-    }
-    (*ti)++;
-    return true;
+    return ok;
 }
 
 bool IndentPatternMatch(Str pattern, Str text) {

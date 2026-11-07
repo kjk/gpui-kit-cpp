@@ -646,18 +646,9 @@ bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
     if (!ctx || !ctx->pa || pxW <= 0 || pxH <= 0) {
         return false;
     }
-    BITMAPINFO bi = {};
-    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bi.bmiHeader.biWidth = pxW;
-    // Negative: the rows run top down, the way every caller reads them.
-    bi.bmiHeader.biHeight = -pxH;
-    bi.bmiHeader.biPlanes = 1;
-    bi.bmiHeader.biBitCount = 32;
-    bi.bmiHeader.biCompression = BI_RGB;
     void* bits = nullptr;
-    HBITMAP bmp =
-        CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (!bmp || !bits) {
+    HBITMAP bmp = WinDib32New(pxW, pxH, &bits);
+    if (!bmp) {
         return false;
     }
     memset(bits, 0, (size_t)pxW * (size_t)pxH * 4);

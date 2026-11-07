@@ -1340,6 +1340,12 @@ constexpr int Utf8LeadLen(uint8_t lead) {
 int Utf8At(Str s, int i, uint32_t* out);
 // Where the character before `i` starts.
 int Utf8Prev(Str s, int i);
+// Rust's `str::is_char_boundary`: `i` is 0, the end, or a byte that is not a
+// UTF-8 continuation byte. Out of range is false.
+bool Utf8IsCharBoundary(Str s, int i);
+// How many characters the UTF-8 in `s` holds: one per byte that is not a
+// continuation byte, which is Rust's `chars().count()` on valid UTF-8.
+int Utf8CharCount(Str s);
 
 // The value of the HTML named character reference `name` (without the `&`
 // and `;`, matched case-sensitively against WHATWG's 2125 names) as UTF-8,

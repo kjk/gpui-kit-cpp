@@ -257,7 +257,10 @@ static Tiling ReadTiling(Window* win, bool maximized) {
     return out;
 }
 
-static void SendWmState(Window* win, Atom a, Atom b, int action) {
+// A request about `win` to the window manager: a 32-bit ClientMessage of
+// type `type` carrying l0..l4, sent to the root window the way EWMH asks.
+static void SendWmMessage(Window* win, Atom type, long l0, long l1, long l2,
+                          long l3, long l4) {
     PlatWindow* pw = win->plat;
     if (!pw) {
         return;
@@ -265,15 +268,22 @@ static void SendWmState(Window* win, Atom a, Atom b, int action) {
     XEvent ev = {};
     ev.type = ClientMessage;
     ev.xclient.window = pw->xwin;
-    ev.xclient.message_type = aNetWmState;
+    ev.xclient.message_type = type;
     ev.xclient.format = 32;
-    ev.xclient.data.l[0] = action; // 0 remove, 1 add, 2 toggle
-    ev.xclient.data.l[1] = (long)a;
-    ev.xclient.data.l[2] = (long)b;
-    ev.xclient.data.l[3] = 1; // normal application
+    ev.xclient.data.l[0] = l0;
+    ev.xclient.data.l[1] = l1;
+    ev.xclient.data.l[2] = l2;
+    ev.xclient.data.l[3] = l3;
+    ev.xclient.data.l[4] = l4;
     XSendEvent(gDpy, gRoot, False,
                SubstructureNotifyMask | SubstructureRedirectMask, &ev);
     XFlush(gDpy);
+}
+
+static void SendWmState(Window* win, Atom a, Atom b, int action) {
+    // action: 0 remove, 1 add, 2 toggle. The last 1 says the request comes
+    // from a normal application.
+    SendWmMessage(win, aNetWmState, action, (long)a, (long)b, 1, 0);
 }
 
 static void SetUndecorated(XWindow xwin) {
@@ -698,24 +708,11 @@ static void OnKeyRelease(Window* win, XKeyEvent* ke) {
 static const int kMoveResizeMove = 8;
 
 static void StartMoveResize(Window* win, int rootX, int rootY, int dir) {
-    PlatWindow* pw = win->plat;
-    if (!pw) {
+    if (!win->plat) {
         return;
     }
     XUngrabPointer(gDpy, CurrentTime);
-    XEvent ev = {};
-    ev.type = ClientMessage;
-    ev.xclient.window = pw->xwin;
-    ev.xclient.message_type = aNetWmMoveResize;
-    ev.xclient.format = 32;
-    ev.xclient.data.l[0] = rootX;
-    ev.xclient.data.l[1] = rootY;
-    ev.xclient.data.l[2] = dir;
-    ev.xclient.data.l[3] = Button1;
-    ev.xclient.data.l[4] = 1;
-    XSendEvent(gDpy, gRoot, False,
-               SubstructureNotifyMask | SubstructureRedirectMask, &ev);
-    XFlush(gDpy);
+    SendWmMessage(win, aNetWmMoveResize, rootX, rootY, dir, Button1, 1);
 }
 
 static void StartMoveDrag(Window* win, int rootX, int rootY) {
@@ -726,22 +723,12 @@ static void StartMoveDrag(Window* win, int rootX, int rootY) {
 // client-decorated window asks the window manager for. Windows gets the same
 // menu from DefWindowProc on WM_NCRBUTTONUP over HTCAPTION.
 static void ShowWindowMenu(Window* win, int rootX, int rootY) {
-    PlatWindow* pw = win->plat;
-    if (!pw) {
+    if (!win->plat) {
         return;
     }
     XUngrabPointer(gDpy, CurrentTime);
-    XEvent ev = {};
-    ev.type = ClientMessage;
-    ev.xclient.window = pw->xwin;
-    ev.xclient.message_type = aGtkShowWindowMenu;
-    ev.xclient.format = 32;
-    ev.xclient.data.l[0] = 0; // the device, which we do not track
-    ev.xclient.data.l[1] = rootX;
-    ev.xclient.data.l[2] = rootY;
-    XSendEvent(gDpy, gRoot, False,
-               SubstructureNotifyMask | SubstructureRedirectMask, &ev);
-    XFlush(gDpy);
+    // The first word is the device, which we do not track.
+    SendWmMessage(win, aGtkShowWindowMenu, 0, rootX, rootY, 0, 0);
 }
 
 static bool ClientDecorated(Window* win) {

@@ -309,12 +309,7 @@ static void LayoutDumpFrame(Window* win, El* root) {
 
 static uint64_t AccessibilityHashBytes(uint64_t hash, const void* data,
                                        int len) {
-    const uint8_t* bytes = (const uint8_t*)data;
-    for (int i = 0; i < len; i++) {
-        hash ^= bytes[i];
-        hash *= 0x100000001b3ull;
-    }
-    return hash;
+    return Fnv1a64(hash, data, (size_t)len);
 }
 
 static uint64_t AccessibilityHashStr(uint64_t hash, Str value) {

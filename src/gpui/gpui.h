@@ -66,6 +66,13 @@ inline Rgba Rgba8(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 inline bool RgbaEq(Rgba a, Rgba b) {
     return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
+// The grey a colour turns into when an image or icon is drawn grayscale:
+// Rec. 709 luma in 8.8 fixed point.
+inline uint8_t RgbLuma709(uint8_t r, uint8_t g, uint8_t b) {
+    return (
+        uint8_t)(((uint32_t)r * 54 + (uint32_t)g * 183 + (uint32_t)b * 19) >>
+                 8);
+}
 inline Rgba RgbaHex(uint32_t hex) {
     // 0xRRGGBB or 0xAARRGGBB if top byte set
     if (hex > 0xFFFFFFu) {

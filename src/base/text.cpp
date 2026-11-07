@@ -246,28 +246,16 @@ uint64_t MarkdownExtensions::ParserFingerprint() const {
     // different order is still the same parser configuration.
     uint64_t names = 0;
     for (int i = 0; i < blockRenderers.len; i++) {
-        uint64_t one = 1469598103934665603ull;
         Str name = blockRenderers[i].name;
-        for (int at = 0; at < len(name); at++) {
-            one = (one ^ (uint64_t)(uint8_t)name.s[at]) * 1099511628211ull;
-        }
-        names += one;
+        names += Fnv1a64(kFnv1aBasis64, name.s, (size_t)len(name));
     }
     for (int i = 0; i < inlineRenderers.len; i++) {
-        uint64_t one = 1469598103934665603ull;
         Str name = inlineRenderers[i].name;
-        for (int at = 0; at < len(name); at++) {
-            one = (one ^ (uint64_t)(uint8_t)name.s[at]) * 1099511628211ull;
-        }
-        names += one;
+        names += Fnv1a64(kFnv1aBasis64, name.s, (size_t)len(name));
     }
     for (int i = 0; i < blockSurfaces.len; i++) {
-        uint64_t one = 1469598103934665603ull;
         Str name = blockSurfaces[i].name;
-        for (int at = 0; at < len(name); at++) {
-            one = (one ^ (uint64_t)(uint8_t)name.s[at]) * 1099511628211ull;
-        }
-        names += one;
+        names += Fnv1a64(kFnv1aBasis64, name.s, (size_t)len(name));
     }
     return h * 1099511628211ull + names;
 }
@@ -4190,16 +4178,6 @@ static void EditorHostWatch(Arena* a, El* el, MdNode* n) {
     el->customUser = key;
 }
 
-static bool Utf8Boundary(Str text, int i) {
-    if (i < 0 || i > len(text)) {
-        return false;
-    }
-    if (i == 0 || i == len(text)) {
-        return true;
-    }
-    return ((unsigned char)text.s[i] & 0xC0) != 0x80;
-}
-
 struct ClippedFg {
     int start = 0;
     int end = 0;
@@ -4247,8 +4225,8 @@ static void ApplyTextForeground(Arena* a, El* t, Str text, int leafOffset,
         if (end < 0) {
             end = 0;
         }
-        if (start < end && Utf8Boundary(text, start) &&
-            Utf8Boundary(text, end)) {
+        if (start < end && Utf8IsCharBoundary(text, start) &&
+            Utf8IsCharBoundary(text, end)) {
             clipped[nc].start = start;
             clipped[nc].end = end;
             clipped[nc].color = ranges[i].color;
@@ -5874,10 +5852,6 @@ struct RenderedIndex {
     }
 };
 
-static bool RenderedCharBoundary(Str s, int at) {
-    return at == len(s) || (at < len(s) && ((uint8_t)s.s[at] & 0xc0) != 0x80);
-}
-
 // paragraph_source_end: where the source of a paragraph's text ends, or -1.
 static int MdParagraphSourceEnd(const MdNode* n) {
     int end = -1;
@@ -5910,8 +5884,8 @@ struct RenderedIndexBuilder {
             if (s.renderedStart >= s.renderedEnd ||
                 s.sourceStart >= s.sourceEnd || s.renderedStart < 0 ||
                 s.renderedEnd > len(piece) ||
-                !RenderedCharBoundary(piece, s.renderedStart) ||
-                !RenderedCharBoundary(piece, s.renderedEnd)) {
+                !Utf8IsCharBoundary(piece, s.renderedStart) ||
+                !Utf8IsCharBoundary(piece, s.renderedEnd)) {
                 continue;
             }
             s.renderedStart += offset;
@@ -6089,8 +6063,8 @@ bool RenderedIndexRangeForSource(const RenderedIndex* index, Span source,
                                  Span* out) {
     if (!index || source.start < 0 || source.start >= source.end ||
         source.end > len(index->source) ||
-        !RenderedCharBoundary(index->source, source.start) ||
-        !RenderedCharBoundary(index->source, source.end)) {
+        !Utf8IsCharBoundary(index->source, source.start) ||
+        !Utf8IsCharBoundary(index->source, source.end)) {
         return false;
     }
     Str text = index->text;
@@ -6107,13 +6081,12 @@ bool RenderedIndexRangeForSource(const RenderedIndex* index, Span source,
             int end = std::min(s.sourceEnd, source.end) - s.sourceStart;
             // floor_char_boundary / ceil_char_boundary.
             piece.start = std::min(s.renderedStart + start, len(text));
-            while (piece.start > 0 &&
-                   !RenderedCharBoundary(text, piece.start)) {
+            while (piece.start > 0 && !Utf8IsCharBoundary(text, piece.start)) {
                 piece.start--;
             }
             piece.end = std::min(s.renderedStart + end, len(text));
             while (piece.end < len(text) &&
-                   !RenderedCharBoundary(text, piece.end)) {
+                   !Utf8IsCharBoundary(text, piece.end)) {
                 piece.end++;
             }
         }
@@ -6145,8 +6118,8 @@ static bool RenderedIndexResolve(const RenderedIndex* index, Span range,
                                  Rgba color, Vec<RangePiece>& pieces) {
     Str text = RenderedIndexText(index);
     if (range.start < 0 || range.start > range.end || range.end > len(text) ||
-        !RenderedCharBoundary(text, range.start) ||
-        !RenderedCharBoundary(text, range.end)) {
+        !Utf8IsCharBoundary(text, range.start) ||
+        !Utf8IsCharBoundary(text, range.end)) {
         return false;
     }
     if (!index) {

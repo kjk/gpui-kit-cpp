@@ -769,10 +769,7 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
     paint->app = cx->app;
     paint->win = cx->win;
     {
-        uint64_t h = 1469598103934665603ull;
-        for (int i = 0; i < len(id); i++) {
-            h = (h ^ (uint8_t)id.s[i]) * 1099511628211ull;
-        }
+        uint64_t h = Fnv1a64(kFnv1aBasis64, id.s, (size_t)len(id));
         h = (h ^ (uint32_t)paint->opts.view.index) * 1099511628211ull;
         h = (h ^ paint->opts.view.gen) * 1099511628211ull;
         paint->layoutKey = h;

@@ -62,12 +62,7 @@ static void RefreshMemory(SysState* s) {
     uint64_t avail = ((uint64_t)vm.free_count + (uint64_t)vm.purgeable_count +
                       (uint64_t)vm.external_page_count) *
                      page;
-    if (avail > total) {
-        avail = total;
-    }
-    s->memTotal = total;
-    s->memUsed = total - avail;
-    s->mem = (float)((double)s->memUsed * 100.0 / (double)total);
+    SysMemorySet(s, total, avail);
 }
 
 static void RefreshDisk(SysState* s) {

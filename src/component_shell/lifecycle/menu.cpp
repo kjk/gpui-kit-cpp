@@ -205,11 +205,7 @@ static shell::ComponentAppEffectCleanup InstallMenus(App* app, void* user) {
 // included, so the value differs from Rust's and only equality is the
 // contract.
 static void HashBytes(uint64_t* h, const void* data, size_t n) {
-    const uint8_t* p = (const uint8_t*)data;
-    for (size_t i = 0; i < n; i++) {
-        *h ^= p[i];
-        *h *= 1099511628211ull;
-    }
+    *h = Fnv1a64(*h, data, n);
 }
 static void HashStr(uint64_t* h, Str s) {
     uint64_t n = (uint64_t)len(s);

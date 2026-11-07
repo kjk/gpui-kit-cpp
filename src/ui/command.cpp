@@ -163,11 +163,7 @@ static float RowHeight(const CommandRow& row) {
 // filtering and measuring read — label, keywords, icon, action, checked,
 // disabled, a group's heading and its item count, and the entry kinds.
 static void LayoutHashBytes(uint64_t* h, const void* p, int n) {
-    const uint8_t* b = (const uint8_t*)p;
-    for (int i = 0; i < n; i++) {
-        *h ^= b[i];
-        *h *= 1099511628211ull;
-    }
+    *h = Fnv1a64(*h, p, (size_t)n);
 }
 static void LayoutHashStr(uint64_t* h, Str s) {
     int n = len(s);

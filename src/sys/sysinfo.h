@@ -86,6 +86,10 @@ void SysCpuSample(SysState* s, uint64_t idle, uint64_t total);
 // The disk numbers out of a volume's size and what is still free on it.
 void SysDiskSet(SysState* s, uint64_t total, uint64_t avail);
 
+// The memory numbers out of the machine's total (not zero) and what of it is
+// available; more available than there is counts as all of it.
+void SysMemorySet(SysState* s, uint64_t total, uint64_t avail);
+
 // One refresh of the process table. Begin stamps the wall clock (100 ns units)
 // the CPU deltas are measured against; Sample sets pi->cpu from the process's
 // CPU time so far (100 ns units) and remembers it for the next refresh; End

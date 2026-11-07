@@ -19,6 +19,11 @@ enum class MessageAlignment : uint8_t {
     End
 };
 
+// What MessageGroup and BubbleGroup render: the children stacked in a
+// column half a rem apart, with the caller's style over it.
+El* MessageGroupColumn(Ctx* cx, const ArenaVec<El*>& children,
+                       const Style& style, uint32_t styleSet);
+
 // A vertical stack of consecutive messages from the same sender.
 struct MessageGroup {
     Arena* a = nullptr;

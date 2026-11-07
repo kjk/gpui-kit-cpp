@@ -26,8 +26,9 @@ MessageGroup* MessageGroup::Refine(const Style& s, uint32_t fields) {
     return this;
 }
 
-El* MessageGroup::IntoEl() {
-    El* column = Div(a)->FlexCol()->MinW(0)->Gap(Rems(cx, 0.5f));
+El* MessageGroupColumn(Ctx* cx, const ArenaVec<El*>& children,
+                       const Style& style, uint32_t styleSet) {
+    El* column = Div(cx->a)->FlexCol()->MinW(0)->Gap(Rems(cx, 0.5f));
     if (styleSet) {
         column->Refine(style, styleSet);
     }
@@ -35,6 +36,10 @@ El* MessageGroup::IntoEl() {
         column->Child(children[i]);
     }
     return column;
+}
+
+El* MessageGroup::IntoEl() {
+    return MessageGroupColumn(cx, children, style, styleSet);
 }
 
 MessageAvatar* MessageAvatar::New(Ctx* cx) {

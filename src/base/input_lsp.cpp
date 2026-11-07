@@ -285,16 +285,6 @@ static int Utf8Next(Str s, int i, uint32_t* cp) {
     return n;
 }
 
-static bool Utf8Boundary(Str s, int index) {
-    if (index < 0 || index > len(s)) {
-        return false;
-    }
-    if (index == 0 || index == len(s)) {
-        return true;
-    }
-    return ((unsigned char)s.s[index] & 0xC0) != 0x80;
-}
-
 // str::floor_char_boundary.
 static int FloorCharBoundary(Str s, int index) {
     if (index < 0) {
@@ -303,7 +293,7 @@ static int FloorCharBoundary(Str s, int index) {
     if (index > len(s)) {
         index = len(s);
     }
-    while (index > 0 && !Utf8Boundary(s, index)) {
+    while (index > 0 && !Utf8IsCharBoundary(s, index)) {
         index--;
     }
     return index;
@@ -465,8 +455,8 @@ int RetainHighlightRanges(Str label, const ByteRange* ranges, int n,
     for (int i = 0; i < n; i++) {
         const ByteRange& range = ranges[i];
         if (range.start < range.end && range.end <= len(label) &&
-            Utf8Boundary(label, range.start) &&
-            Utf8Boundary(label, range.end)) {
+            Utf8IsCharBoundary(label, range.start) &&
+            Utf8IsCharBoundary(label, range.end)) {
             VecAppend(kept, range);
         }
     }

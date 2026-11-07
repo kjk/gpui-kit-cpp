@@ -157,12 +157,9 @@ static void DirWatchThread(DirWatchPlat* w) {
 
 DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
                                DirWatchError* err) {
-    if (!DirWatchMakeDirPosix(dir, create, err)) {
-        return nullptr;
-    }
-    auto* w = (DirWatchPlat*)calloc(1, sizeof(DirWatchPlat));
+    auto* w = (DirWatchPlat*)DirWatchPlatAllocPosix(dir, create,
+                                                    sizeof(DirWatchPlat), err);
     if (!w) {
-        *err = DirWatchError::Failed;
         return nullptr;
     }
     w->id = id;

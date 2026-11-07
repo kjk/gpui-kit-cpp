@@ -280,6 +280,11 @@ struct Button {
     El* IntoEl();
 };
 
+// input/clear_button.rs: the "clean" X button a cleanable input, a select
+// and a date picker show — xsmall, text style, out of the Tab order. The
+// caller adds OnClick. Defined in input.cpp.
+Button* ClearButton(Ctx* cx);
+
 enum class ToggleVariant : uint8_t {
     Ghost,
     Outline

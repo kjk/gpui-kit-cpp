@@ -411,12 +411,7 @@ const SceneStats& Stats(PaintCtx* ctx) {
 // ─── hashing ─────────────────────────────────────────────────────────────
 
 static inline uint64_t HashBytes(uint64_t h, const void* p, int n) {
-    const uint8_t* b = (const uint8_t*)p;
-    for (int i = 0; i < n; i++) {
-        h ^= b[i];
-        h *= 0x100000001b3ull;
-    }
-    return h;
+    return Fnv1a64(h, p, (size_t)n);
 }
 static const uint64_t kHashSeed = 0xcbf29ce484222325ull;
 

@@ -17,6 +17,19 @@
 
 #include "gpui/gpui.h"
 
+// Define `uint32_t fn()`, the accessor for the action called `name`. The hash
+// is cheap, but it is the same hash every frame for the life of the process,
+// so each name is taken once and kept. The defining file includes
+// gpui/keymap.h for ActionOf.
+#define GPUI_DEFINE_ACTION(fn, name)   \
+    uint32_t fn() {                    \
+        static uint32_t id = 0;        \
+        if (!id) {                     \
+            id = ActionOf(StrL(name)); \
+        }                              \
+        return id;                     \
+    }
+
 namespace gpui {
 
 namespace action {

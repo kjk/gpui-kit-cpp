@@ -575,42 +575,34 @@ static bool MiniAtx(Str line, int32_t* level, Str* content) {
     return true;
 }
 
-static bool MiniSetext(Str line, int32_t* level) {
-    Str value = MiniTrim(line);
-    if (!StrStartsWithAny(value, "=-")) {
-        return false;
-    }
+// How many times the first character of `value` repeats in it, with only
+// spaces between; -1 when anything else is there too.
+static int32_t MiniMarkerCount(Str value) {
     char marker = value.s[0];
     int32_t count = 0;
     for (int32_t i = 0; i < len(value); i++) {
         if (value.s[i] == marker) {
             count++;
         } else if (!MiniSpace(value.s[i])) {
-            return false;
+            return -1;
         }
     }
-    if (count == 0) {
+    return count;
+}
+
+static bool MiniSetext(Str line, int32_t* level) {
+    Str value = MiniTrim(line);
+    if (!StrStartsWithAny(value, "=-") || MiniMarkerCount(value) <= 0) {
         return false;
     }
-    *level = marker == '=' ? 1 : 2;
+    *level = value.s[0] == '=' ? 1 : 2;
     return true;
 }
 
 static bool MiniThematic(Str line) {
     Str value = MiniTrim(line);
-    if (len(value) < 3 || !StrStartsWithAny(value, "*-_")) {
-        return false;
-    }
-    char marker = value.s[0];
-    int32_t count = 0;
-    for (int32_t i = 0; i < len(value); i++) {
-        if (value.s[i] == marker) {
-            count++;
-        } else if (!MiniSpace(value.s[i])) {
-            return false;
-        }
-    }
-    return count >= 3;
+    return len(value) >= 3 && StrStartsWithAny(value, "*-_") &&
+           MiniMarkerCount(value) >= 3;
 }
 
 static bool MiniFence(Str line, char* marker, int32_t* count, Str* info) {

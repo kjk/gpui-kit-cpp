@@ -551,24 +551,10 @@ static uint32_t CharOf(const EmscriptenKeyboardEvent* e) {
     if (!key) {
         return 0;
     }
-    uint8_t c0 = (uint8_t)key.s[0];
-    int need = c0 < 0x80 ? 1 : (c0 < 0xe0 ? 2 : (c0 < 0xf0 ? 3 : 4));
-    if (len(key) != need) {
+    uint32_t cp = 0;
+    if (Utf8At(key, 0, &cp) != len(key)) {
         // More than one codepoint: a name, not a character.
         return 0;
-    }
-    uint32_t cp = 0;
-    if (need == 1) {
-        cp = c0;
-    } else if (need == 2) {
-        cp = ((uint32_t)(c0 & 0x1f) << 6) | (uint8_t)(key.s[1] & 0x3f);
-    } else if (need == 3) {
-        cp = ((uint32_t)(c0 & 0x0f) << 12) |
-             ((uint32_t)(key.s[1] & 0x3f) << 6) | (uint8_t)(key.s[2] & 0x3f);
-    } else {
-        cp = ((uint32_t)(c0 & 0x07) << 18) |
-             ((uint32_t)(key.s[1] & 0x3f) << 12) |
-             ((uint32_t)(key.s[2] & 0x3f) << 6) | (uint8_t)(key.s[3] & 0x3f);
     }
     return cp;
 }

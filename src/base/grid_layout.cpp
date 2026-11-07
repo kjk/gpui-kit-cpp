@@ -141,6 +141,13 @@ struct GridPush {
     GridLayoutRules rules;
     Vec<uint8_t> moved;
 
+    // Under `r`, with none of the n items moved yet.
+    GridPush(GridLayoutRules r, int n) : rules(r) {
+        for (int i = 0; i < n; i++) {
+            VecAppend(moved, (uint8_t)0);
+        }
+    }
+
     void MoveElement(GridArea* items, int n, int ix, bool hasX, int x,
                      bool hasY, int y, bool userAction);
     void Away(GridArea* items, int n, int obstacle, int mover, bool userAction);
@@ -473,12 +480,30 @@ void GridCompact(GridArea* items, int n, GridLayoutRules rules) {
     }
 }
 
-void GridReflowed(const GridArea* items, int n, int columns,
-                  Vec<GridArea>* out) {
+// `out` set to a copy of the n items.
+static void SetAreas(Vec<GridArea>* out, const GridArea* items, int n) {
     VecClear(*out);
     for (int i = 0; i < n; i++) {
         VecAppend(*out, items[i]);
     }
+}
+
+// The start of a user move or resize: the index of the item called `id` and
+// `next`, the copy of the layout it is made on. -1 when there is no such item
+// or it is locked.
+static int GridEditStart(const GridArea* items, int n, Str id,
+                         Vec<GridArea>* next) {
+    int ix = FindId(items, n, id);
+    if (ix < 0 || items[ix].locked) {
+        return -1;
+    }
+    SetAreas(next, items, n);
+    return ix;
+}
+
+void GridReflowed(const GridArea* items, int n, int columns,
+                  Vec<GridArea>* out) {
+    SetAreas(out, items, n);
     for (int i = 1; i < len(*out); i++) {
         GridArea key = (*out)[i];
         int j = i;
@@ -503,13 +528,10 @@ void GridReflowed(const GridArea* items, int n, int columns,
 
 bool GridMoveItem(const GridArea* items, int n, Str id, int x, int y,
                   GridLayoutRules rules, Vec<GridArea>* out) {
-    int ix = FindId(items, n, id);
-    if (ix < 0 || items[ix].locked) {
-        return false;
-    }
     Vec<GridArea> next;
-    for (int i = 0; i < n; i++) {
-        VecAppend(next, items[i]);
+    int ix = GridEditStart(items, n, id, &next);
+    if (ix < 0) {
+        return false;
     }
     int room =
         rules.columns > next[ix].colSpan ? rules.columns - next[ix].colSpan : 0;
@@ -527,17 +549,10 @@ bool GridMoveItem(const GridArea* items, int n, Str id, int x, int y,
             return false;
         }
     }
-    GridPush push;
-    push.rules = rules;
-    for (int i = 0; i < n; i++) {
-        VecAppend(push.moved, (uint8_t)0);
-    }
+    GridPush push(rules, n);
     push.MoveElement(next.els, n, ix, true, x, true, y, true);
     Settle(next.els, n, rules, ix);
-    VecClear(*out);
-    for (int i = 0; i < n; i++) {
-        VecAppend(*out, next[i]);
-    }
+    SetAreas(out, next.els, n);
     return true;
 }
 
@@ -559,13 +574,10 @@ static bool ResizeFitsLocked(const GridArea* items, int n, int ix, int col,
 
 bool GridResizeItem(const GridArea* items, int n, Str id, int w, int h,
                     GridLayoutRules rules, Vec<GridArea>* out) {
-    int ix = FindId(items, n, id);
-    if (ix < 0 || items[ix].locked) {
-        return false;
-    }
     Vec<GridArea> next;
-    for (int i = 0; i < n; i++) {
-        VecAppend(next, items[i]);
+    int ix = GridEditStart(items, n, id, &next);
+    if (ix < 0) {
+        return false;
     }
     int clampedW = w;
     int clampedH = h;
@@ -596,11 +608,7 @@ bool GridResizeItem(const GridArea* items, int n, Str id, int w, int h,
         AnyCollision(next.els, n, AreaRect(next[ix]), ix)) {
         return false;
     }
-    GridPush push;
-    push.rules = rules;
-    for (int i = 0; i < n; i++) {
-        VecAppend(push.moved, (uint8_t)0);
-    }
+    GridPush push(rules, n);
     push.moved[ix] = 1;
     Vec<int> order;
     bool horizontal =
@@ -613,10 +621,7 @@ bool GridResizeItem(const GridArea* items, int n, Str id, int w, int h,
         push.MoveElement(next.els, n, hit[i], false, 0, true, below, false);
     }
     Settle(next.els, n, rules, ix);
-    VecClear(*out);
-    for (int i = 0; i < n; i++) {
-        VecAppend(*out, next[i]);
-    }
+    SetAreas(out, next.els, n);
     return true;
 }
 
@@ -1217,27 +1222,16 @@ const GridArea* GridLayoutState::DisplayedAreas(Ctx* cx, int* n) const {
 
 namespace grid_layout {
 
-#define GPUI_ACTION(fn, name)          \
-    uint32_t fn() {                    \
-        static uint32_t id = 0;        \
-        if (!id) {                     \
-            id = ActionOf(StrL(name)); \
-        }                              \
-        return id;                     \
-    }
-
-GPUI_ACTION(MoveLeft, "grid_layout::MoveLeft")
-GPUI_ACTION(MoveRight, "grid_layout::MoveRight")
-GPUI_ACTION(MoveUp, "grid_layout::MoveUp")
-GPUI_ACTION(MoveDown, "grid_layout::MoveDown")
-GPUI_ACTION(ShrinkWidth, "grid_layout::ShrinkWidth")
-GPUI_ACTION(GrowWidth, "grid_layout::GrowWidth")
-GPUI_ACTION(ShrinkHeight, "grid_layout::ShrinkHeight")
-GPUI_ACTION(GrowHeight, "grid_layout::GrowHeight")
-GPUI_ACTION(SelectNextItem, "grid_layout::SelectNextItem")
-GPUI_ACTION(SelectPreviousItem, "grid_layout::SelectPreviousItem")
-
-#undef GPUI_ACTION
+GPUI_DEFINE_ACTION(MoveLeft, "grid_layout::MoveLeft")
+GPUI_DEFINE_ACTION(MoveRight, "grid_layout::MoveRight")
+GPUI_DEFINE_ACTION(MoveUp, "grid_layout::MoveUp")
+GPUI_DEFINE_ACTION(MoveDown, "grid_layout::MoveDown")
+GPUI_DEFINE_ACTION(ShrinkWidth, "grid_layout::ShrinkWidth")
+GPUI_DEFINE_ACTION(GrowWidth, "grid_layout::GrowWidth")
+GPUI_DEFINE_ACTION(ShrinkHeight, "grid_layout::ShrinkHeight")
+GPUI_DEFINE_ACTION(GrowHeight, "grid_layout::GrowHeight")
+GPUI_DEFINE_ACTION(SelectNextItem, "grid_layout::SelectNextItem")
+GPUI_DEFINE_ACTION(SelectPreviousItem, "grid_layout::SelectPreviousItem")
 
 const char* Context() {
     return "GridLayout";

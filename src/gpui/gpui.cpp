@@ -740,6 +740,7 @@ El* El::FlexAuto() {
     style.flexGrow = 1;
     style.flexShrink = 1;
     style.flexBasis = kAuto;
+    style.flexBasisFrac = 0;
     style.flexBasisPercent = false;
     return this;
 }
@@ -747,6 +748,7 @@ El* El::FlexNone() {
     style.flexGrow = 0;
     style.flexShrink = 0;
     style.flexBasis = kAuto;
+    style.flexBasisFrac = 0;
     style.flexBasisPercent = false;
     return this;
 }
@@ -2167,7 +2169,7 @@ int Utf8OffsetToUtf16(Str s, int u8) {
     int i = 0;
     while (i < u8) {
         unsigned char c = (unsigned char)s.s[i];
-        int len = c < 0x80 ? 1 : (c < 0xE0 ? 2 : (c < 0xF0 ? 3 : 4));
+        int len = Utf8LeadLen(c);
         // Everything outside the basic plane is a surrogate pair over there.
         u16 += len == 4 ? 2 : 1;
         i += len;
@@ -2180,7 +2182,7 @@ int Utf16OffsetToUtf8(Str s, int u16) {
     int i = 0;
     while (i < len(s) && at < u16) {
         unsigned char c = (unsigned char)s.s[i];
-        int len = c < 0x80 ? 1 : (c < 0xE0 ? 2 : (c < 0xF0 ? 3 : 4));
+        int len = Utf8LeadLen(c);
         at += len == 4 ? 2 : 1;
         i += len;
     }

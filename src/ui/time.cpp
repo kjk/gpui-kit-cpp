@@ -1432,14 +1432,8 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
                          ->Child(text);
     if (!self->disabled) {
         if (self->cleanable && hasDate) {
-            triggerRow->Child(Button::New(cx, StrL("clean"))
-                                  ->Text()
-                                  ->WithSize(UiSize::XSmall)
-                                  ->Icon(IconName::X)
-                                  ->AccessibilityLabel(Tr("Input.Clear"))
-                                  ->OnClick(clear)
-                                  ->IntoEl()
-                                  ->StopClick());
+            triggerRow
+                ->Child(ClearButton(cx)->OnClick(clear)->IntoEl()->StopClick());
         } else {
             triggerRow->Child(
                 IconEl(a, IconName::Calendar, UiIconPx(cx, UiSize::XSmall))
@@ -1588,14 +1582,8 @@ El* DatePicker::IntoEl() {
     trigger->Child(TextEl(a, title)->Font(font)->Fg(complete ? th.foreground
                                                              : th.mutedFg));
     if (cleanable && hasDate && !disabled) {
-        trigger->Child(Button::New(cx, StrL("clean"))
-                           ->Text()
-                           ->WithSize(UiSize::XSmall)
-                           ->Icon(IconName::X)
-                           ->AccessibilityLabel(Tr("Input.Clear"))
-                           ->OnClick(onClear)
-                           ->IntoEl()
-                           ->StopClick());
+        trigger
+            ->Child(ClearButton(cx)->OnClick(onClear)->IntoEl()->StopClick());
     } else if (open) {
         trigger
             ->Child(IconEl(a, IconName::Calendar, UiIconPx(cx, UiSize::XSmall))

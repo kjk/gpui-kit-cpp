@@ -313,5 +313,8 @@ void InputEndEdgeDrag(InputState* s, App* app, Window* win);
 // Rust's #[cfg(test)] is_edit_menu_open / touch_selection_range.
 bool InputIsEditMenuOpen(const InputState* s);
 bool InputTouchSelectionRange(const InputState* s, Selection* out);
+// What a masked field shows for `text`: one bullet (U+2022) per character,
+// not per byte, in `a`.
+Str InputMaskedText(Arena* a, Str text);
 } // namespace gpui
 #endif // GPUI_BASE_INPUT_H_

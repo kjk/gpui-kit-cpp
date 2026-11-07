@@ -60,6 +60,20 @@ static StateStyle ResolveCheckboxStyle(CheckboxState state, bool disabled,
     return resolved;
 }
 
+// The state styles a checkbox or its indicator was given, resolved for
+// `state` and `disabled` and refined onto `e`; nothing when it has none.
+template <typename Styles>
+static void RefineCheckbox(El* e, CheckboxState state, bool disabled,
+                           const Styles* styles, const StateStyle* instance) {
+    if (styles || instance) {
+        ElRefine(e,
+                 ResolveCheckboxStyle(state, disabled, instance,
+                                      styles ? &styles->checked : nullptr,
+                                      styles ? &styles->indeterminate : nullptr,
+                                      styles ? &styles->disabled : nullptr));
+    }
+}
+
 El* Checkbox::New(Ctx* cx, Str id, CheckboxState state, bool disabled,
                   Listener onChange, const CheckboxStyles* styles,
                   const StateStyle* instance, Str accessibilityLabel,
@@ -81,13 +95,7 @@ El* Checkbox::New(Ctx* cx, Str id, CheckboxState state, bool disabled,
     if (accessibilityLabel.s) {
         e->AriaLabel(accessibilityLabel);
     }
-    if (styles || instance) {
-        ElRefine(e,
-                 ResolveCheckboxStyle(state, disabled, instance,
-                                      styles ? &styles->checked : nullptr,
-                                      styles ? &styles->indeterminate : nullptr,
-                                      styles ? &styles->disabled : nullptr));
-    }
+    RefineCheckbox(e, state, disabled, styles, instance);
     if (disabled) {
         return e;
     }
@@ -108,13 +116,7 @@ El* CheckboxIndicator::New(Ctx* cx, CheckboxState state, bool disabled,
                            const StateStyle* instance) {
     Arena* a = cx->a;
     El* e = Div(a);
-    if (styles || instance) {
-        ElRefine(e,
-                 ResolveCheckboxStyle(state, disabled, instance,
-                                      styles ? &styles->checked : nullptr,
-                                      styles ? &styles->indeterminate : nullptr,
-                                      styles ? &styles->disabled : nullptr));
-    }
+    RefineCheckbox(e, state, disabled, styles, instance);
     return e;
 }
 } // namespace gpui

@@ -300,31 +300,13 @@ Str TimeFieldContext() {
     return StrL("TimeField");
 }
 
-uint32_t TimeFieldIncrement() {
-    static uint32_t id = 0;
-    if (!id) {
-        id = ActionOf(StrL("number_input::Increment"));
-    }
-    return id;
-}
+GPUI_DEFINE_ACTION(TimeFieldIncrement, "number_input::Increment")
 
-uint32_t TimeFieldDecrement() {
-    static uint32_t id = 0;
-    if (!id) {
-        id = ActionOf(StrL("number_input::Decrement"));
-    }
-    return id;
-}
+GPUI_DEFINE_ACTION(TimeFieldDecrement, "number_input::Decrement")
 
-static uint32_t TimeFieldDelete() {
-    static uint32_t id = 0;
-    if (!id) {
-        id = ActionOf(StrL("input::Delete"));
-    }
-    return id;
-}
+static GPUI_DEFINE_ACTION(TimeFieldDelete, "input::Delete")
 
-void TimeFieldInitKeys() {
+    void TimeFieldInitKeys() {
     static uint32_t bound = 0;
     if (bound == KeymapGeneration()) {
         return;

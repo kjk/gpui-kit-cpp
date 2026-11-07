@@ -194,28 +194,34 @@ static NSTimeInterval IdleSeconds(const HttpReq& request) {
     return ms > 0 ? (NSTimeInterval)ms / 1000.0 : 7 * 24 * 3600.0;
 }
 
+// The request for `u` both senders start from: its method (GET when it names
+// none), our User-Agent and the caller's headers. The timeout of a request is
+// how long it may stay idle, which is the limit a long transfer wants.
+static NSMutableURLRequest* NewUrlRequest(NSURL* u, const HttpReq& request) {
+    NSMutableURLRequest* req =
+        [NSMutableURLRequest requestWithURL:u
+                                cachePolicy:NSURLRequestUseProtocolCachePolicy
+                            timeoutInterval:IdleSeconds(request)];
+    [req setHTTPMethod:len(request.method) > 0 ? NSFromStr(request.method)
+                                               : @"GET"];
+    [req setValue:@"gpui/1.0" forHTTPHeaderField:@"User-Agent"];
+    for (int i = 0; i < request.nHeaders; i++) {
+        NSString* name = NSFromStr(request.headers[i].name);
+        NSString* value = NSFromStr(request.headers[i].value);
+        if (name && value) {
+            [req setValue:value forHTTPHeaderField:name];
+        }
+    }
+    return req;
+}
+
 static bool HttpSendStreamed(const HttpReq& request, HttpRsp* out) {
     @autoreleasepool {
         NSURL* u = [NSURL URLWithString:NSFromStr(request.url)];
         if (!u || request.bodyLen < 0) {
             return false;
         }
-        // The timeout of a request is how long it may stay idle, which is
-        // the limit a long transfer wants.
-        NSMutableURLRequest* req = [NSMutableURLRequest
-             requestWithURL:u
-                cachePolicy:NSURLRequestUseProtocolCachePolicy
-            timeoutInterval:IdleSeconds(request)];
-        [req setHTTPMethod:len(request.method) > 0 ? NSFromStr(request.method)
-                                                   : @"GET"];
-        [req setValue:@"gpui/1.0" forHTTPHeaderField:@"User-Agent"];
-        for (int i = 0; i < request.nHeaders; i++) {
-            NSString* name = NSFromStr(request.headers[i].name);
-            NSString* value = NSFromStr(request.headers[i].value);
-            if (name && value) {
-                [req setValue:value forHTTPHeaderField:name];
-            }
-        }
+        NSMutableURLRequest* req = NewUrlRequest(u, request);
         NSInputStream* bodyIn = nil;
         NSOutputStream* bodyOut = nil;
         if (request.readBody) {
@@ -314,21 +320,7 @@ bool HttpSendPlatform(const HttpReq& request, HttpRsp* out) {
         if (!u) {
             return false;
         }
-        NSMutableURLRequest* req = [NSMutableURLRequest
-             requestWithURL:u
-                cachePolicy:NSURLRequestUseProtocolCachePolicy
-            timeoutInterval:IdleSeconds(request)];
-        NSString* verb =
-            len(request.method) > 0 ? NSFromStr(request.method) : @"GET";
-        [req setHTTPMethod:verb];
-        [req setValue:@"gpui/1.0" forHTTPHeaderField:@"User-Agent"];
-        for (int i = 0; i < request.nHeaders; i++) {
-            NSString* name = NSFromStr(request.headers[i].name);
-            NSString* value = NSFromStr(request.headers[i].value);
-            if (name && value) {
-                [req setValue:value forHTTPHeaderField:name];
-            }
-        }
+        NSMutableURLRequest* req = NewUrlRequest(u, request);
         if (len(request.body) > 0) {
             [req setHTTPBody:[NSData
                                  dataWithBytes:request.body.s

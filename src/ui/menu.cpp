@@ -76,14 +76,7 @@ PopupMenu* PopupMenu::Menu(Str label, component::Icon* icon) {
     MenuItem* it = MenuAdd(this, MenuItemKind::Item);
     if (it) {
         it->label = label;
-        if (icon) {
-            it->icon = icon->name;
-            if (icon->source == component::IconSource::Data) {
-                it->iconSvg = icon->data;
-            } else {
-                it->iconPath = icon->path;
-            }
-        }
+        MenuItemSetIcon(it, icon);
     }
     return this;
 }

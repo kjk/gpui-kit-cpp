@@ -32,6 +32,15 @@ bool PaintSceneFinish(PaintCtx* ctx, bool replayUnchanged) {
     return draw;
 }
 
+bool PaintTextLayoutSpansRecordOnly(PaintCtx* ctx, TextLayout* tl, Str text,
+                                    float x, float y, Rgba base,
+                                    const TextSpan* spans, int n) {
+    if (scene::Recording()) {
+        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
+    }
+    return false;
+}
+
 void PaintCopyBgraRows(uint8_t* dst, size_t dstStride, const uint8_t* src,
                        size_t srcStride, int w, int h) {
     for (int y = 0; y < h; y++) {
@@ -46,9 +55,7 @@ void PaintGrayBgraRows(uint8_t* dst, size_t dstStride, const uint8_t* src,
         const uint8_t* s = src + (size_t)y * srcStride;
         uint8_t* d = dst + (size_t)y * dstStride;
         for (int x = 0; x < w; x++, s += 4, d += 4) {
-            uint8_t v = (uint8_t)(((uint32_t)s[2] * 54 + (uint32_t)s[1] * 183 +
-                                   (uint32_t)s[0] * 19) >>
-                                  8);
+            uint8_t v = RgbLuma709(s[2], s[1], s[0]);
             uint8_t a = s[3];
             d[0] = v;
             d[1] = v;

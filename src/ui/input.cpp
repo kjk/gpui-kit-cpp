@@ -11,6 +11,19 @@ namespace gpui {
 
 namespace component {
 
+// input/clear_button.rs: the X a cleanable field, a select or a date picker
+// shows. `.tab_stop(false)`: the X belongs to the field, and Tab should move
+// to the next field rather than stop at it. Icon-only, so the label is what
+// a screen reader announces.
+Button* ClearButton(Ctx* cx) {
+    return Button::New(cx, StrL("clean"))
+        ->Text()
+        ->WithSize(UiSize::XSmall)
+        ->Icon(IconName::X)
+        ->TabStop(false)
+        ->AccessibilityLabel(Tr("Input.Clear"));
+}
+
 static const SyntaxContext kLanguageNotIn[] = {SyntaxContext::String,
                                                SyntaxContext::Comment};
 static const BracketPair kJsonBrackets[] = {
@@ -142,32 +155,16 @@ Entity<OtpState> AnyInputState::AsOtp() const {
     return kind == AnyInputKind::Otp ? otp : Entity<OtpState>{};
 }
 
-static Str MaskedInputValue(Arena* a, Str text) {
-    int chars = 0;
-    for (int i = 0; i < len(text); i++) {
-        if (((uint8_t)text.s[i] & 0xc0) != 0x80) chars++;
-    }
-    char* out = (char*)Alloc(a, chars * 3 + 1);
-    if (!out) return {};
-    int n = 0;
-    for (int i = 0; i < chars; i++) {
-        memcpy(out + n, "\xE2\x80\xA2", 3);
-        n += 3;
-    }
-    out[n] = 0;
-    return Str(out, n);
-}
-
 Str AnyInputState::Value(Arena* a, App* app) const {
     if (kind == AnyInputKind::Otp) {
         OtpState* state = otp.Get(app);
         if (!state) return {};
         Str value = OtpValue(state);
-        return state->masked ? MaskedInputValue(a, value) : StrDup(a, value);
+        return state->masked ? InputMaskedText(a, value) : StrDup(a, value);
     }
     if (!text) return {};
     Str value = InputValue(text);
-    return text->masked ? MaskedInputValue(a, value) : StrDup(a, value);
+    return text->masked ? InputMaskedText(a, value) : StrDup(a, value);
 }
 
 FocusHandle AnyInputState::FocusHandleOf(const Window* window, App* app) const {
@@ -1186,18 +1183,7 @@ El* Input::IntoEl() {
                 ->StopClick());
     }
     if (cleanable && hasValue && !disabled) {
-        // clear_button.rs: `.tab_stop(false)`. The X belongs to the field, and
-        // Tab should move to the next field rather than stop at it.
-        // Icon-only: screen readers have nothing else to announce.
-        field->Child(Button::New(cx, StrL("clean"))
-                         ->Text()
-                         ->WithSize(UiSize::XSmall)
-                         ->Icon(IconName::X)
-                         ->TabStop(false)
-                         ->AccessibilityLabel(Tr("Input.Clear"))
-                         ->OnClick(onClear)
-                         ->IntoEl()
-                         ->StopClick());
+        field->Child(ClearButton(cx)->OnClick(onClear)->IntoEl()->StopClick());
     }
     if (suffix) {
         field->Child(suffix);

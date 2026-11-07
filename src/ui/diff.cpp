@@ -488,6 +488,17 @@ static int Digits(int n) {
     return d;
 }
 
+// The end of parsing either form of a file: the gutter's width from the last
+// modified line's number, and the patch order.
+static DiffFile* FinishParsedFile(DiffFile* file) {
+    file->lineNumberDigits = Digits(
+        len(file->modified.lines)
+            ? file->modified.lines[len(file->modified.lines) - 1].lineNumber
+            : 1);
+    PatchOrder(file);
+    return file;
+}
+
 static void Seal(DiffFile* file, DiffFileStatus status, StrBuilder* origSrc,
                  Vec<int>* origNum, Vec<int>* origStart, Vec<int>* origEnd,
                  StrBuilder* modSrc, Vec<int>* modNum, Vec<int>* modStart,
@@ -1378,12 +1389,7 @@ DiffFile* DiffFile::Unchanged(Str path, Str text) {
         pair.changed = false;
         VecAppend(file->pairs, pair);
     }
-    file->lineNumberDigits = Digits(
-        len(file->modified.lines)
-            ? file->modified.lines[len(file->modified.lines) - 1].lineNumber
-            : 1);
-    PatchOrder(file);
-    return file;
+    return FinishParsedFile(file);
 }
 
 static bool MarkerLabel(Str content, const char* prefix, Str* label) {
@@ -1529,12 +1535,7 @@ DiffFile* DiffFile::ParseConflicts(Str path, Str text, DiffParseError* error) {
         FinishLine(file, &file->modified, file->modified.source, numbers[i],
                    starts[i], ends[i]);
     }
-    file->lineNumberDigits = Digits(
-        len(file->modified.lines)
-            ? file->modified.lines[len(file->modified.lines) - 1].lineNumber
-            : 1);
-    PatchOrder(file);
-    return file;
+    return FinishParsedFile(file);
 }
 
 static Str DetectedLanguage(Str path) {
@@ -2215,12 +2216,6 @@ static void Rebuild(DiffState* state, bool reset) {
     (void)anchor;
 }
 
-static bool Utf8Boundary(Str text, int i) {
-    if (i < 0 || i > text.len) return false;
-    if (i == text.len) return true;
-    return ((unsigned char)text.s[i] & 0xc0) != 0x80;
-}
-
 static int DisplayOff(const DiffFileSide* side, const DiffSourceLine& line,
                       int sourceOff) {
     if (sourceOff < 0) sourceOff = 0;
@@ -2279,7 +2274,8 @@ static void CollectSyntaxSide(const DiffFile* file, int fileIx, DiffSide side,
             int hs = hits[k].start;
             int he = hits[k].end;
             if (hs < 0 || he < hs || he > text.len) continue;
-            if (!Utf8Boundary(text, hs) || !Utf8Boundary(text, he)) continue;
+            if (!Utf8IsCharBoundary(text, hs) || !Utf8IsCharBoundary(text, he))
+                continue;
             int absStart = hs + base;
             int absEnd = he + base;
             int count = end - begin;

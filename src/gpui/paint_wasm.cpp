@@ -105,21 +105,43 @@ EM_JS(void, GpJsInit, (), {
         }
         return G.dec.decode(HEAPU8.subarray(ptr, ptr + len));
     };
+    // How many UTF-8 bytes the UTF-16 unit `c` starts: a high surrogate
+    // starts a 4-byte character and takes the low one after it with it.
+    G.u8w = function(c) {
+        return c < 0x80 ? 1 : c < 0x800 ? 2 : c >= 0xd800 && c < 0xdc00 ? 4 : 3;
+    };
+    // A linear gradient from colour `from` at (x0, y0) to `to` at (x1, y1).
+    G.gradient = function(c, x0, y0, x1, y1, from, to) {
+        const g = c.createLinearGradient(x0, y0, x1, y1);
+        g.addColorStop(0, G.color(from));
+        g.addColorStop(1, G.color(to));
+        return g;
+    };
+    // Stroke path `p` (the current path when it is null) with `style`, round
+    // caps and joins or butt and miter ones, and leave the context's caps
+    // and joins at their defaults again.
+    G.strokeWith = function(c, p, style, stroke, roundCaps) {
+        c.strokeStyle = style;
+        c.lineWidth = stroke;
+        c.lineCap = roundCaps ? "round" : "butt";
+        c.lineJoin = roundCaps ? "round" : "miter";
+        if (p) {
+            c.stroke(p);
+        } else {
+            c.stroke();
+        }
+        c.lineCap = "butt";
+        c.lineJoin = "miter";
+    };
     // The UTF-8 length of a JavaScript string, which is the unit every offset
     // crossing this boundary is measured in: Str carries UTF-8 bytes.
     G.u8len = function(s) {
         let n = 0;
         for (let i = 0; i < s.length; i++) {
-            const c = s.charCodeAt(i);
-            if (c < 0x80) {
-                n += 1;
-            } else if (c < 0x800) {
-                n += 2;
-            } else if (c >= 0xd800 && c < 0xdc00) {
-                n += 4;
+            const w = G.u8w(s.charCodeAt(i));
+            n += w;
+            if (w === 4) {
                 i++;
-            } else {
-                n += 3;
             }
         }
         return n;
@@ -131,16 +153,10 @@ EM_JS(void, GpJsInit, (), {
             if (n >= bytes) {
                 return i;
             }
-            const c = s.charCodeAt(i);
-            if (c < 0x80) {
-                n += 1;
-            } else if (c < 0x800) {
-                n += 2;
-            } else if (c >= 0xd800 && c < 0xdc00) {
-                n += 4;
+            const w = G.u8w(s.charCodeAt(i));
+            n += w;
+            if (w === 4) {
                 i++;
-            } else {
-                n += 3;
             }
         }
         return s.length;
@@ -397,20 +413,15 @@ EM_JS(void, GpJsFill, (int color), {
 // measures it; canvas measures in user units, so it is multiplied out here.
 EM_JS(void, GpJsStroke,
       (float stroke, int color, float dashOn, float dashOff, int roundCaps), {
-    const c = globalThis.__gpui.cur;
-    c.strokeStyle = globalThis.__gpui.color(color);
-    c.lineWidth = stroke;
-    c.lineCap = roundCaps ? "round" : "butt";
-    c.lineJoin = roundCaps ? "round" : "miter";
+    const G = globalThis.__gpui;
+    const c = G.cur;
     if (dashOn > 0 || dashOff > 0) {
         c.setLineDash([dashOn * stroke, dashOff * stroke]);
     }
-    c.stroke();
+    G.strokeWith(c, null, G.color(color), stroke, roundCaps);
     if (dashOn > 0 || dashOff > 0) {
         c.setLineDash([]);
     }
-    c.lineCap = "butt";
-    c.lineJoin = "miter";
 });
 
 EM_JS(void, GpJsLine,
@@ -508,10 +519,7 @@ EM_JS(void, GpJsPathFillGradient,
     }
     c.save();
     c.translate(dx, dy);
-    const g = c.createLinearGradient(x0, y0, x1, y1);
-    g.addColorStop(0, G.color(from));
-    g.addColorStop(1, G.color(to));
-    c.fillStyle = g;
+    c.fillStyle = G.gradient(c, x0, y0, x1, y1, from, to);
     c.fill(e.p, e.winding ? "nonzero" : "evenodd");
     c.restore();
 });
@@ -525,13 +533,7 @@ EM_JS(void, GpJsPathStroke,
     }
     c.save();
     c.translate(dx, dy);
-    c.strokeStyle = G.color(color);
-    c.lineWidth = stroke;
-    c.lineCap = roundCaps ? "round" : "butt";
-    c.lineJoin = roundCaps ? "round" : "miter";
-    c.stroke(e.p);
-    c.lineCap = "butt";
-    c.lineJoin = "miter";
+    G.strokeWith(c, e.p, G.color(color), stroke, roundCaps);
     c.restore();
 });
 
@@ -545,16 +547,8 @@ EM_JS(void, GpJsPathStrokeGradient,
     }
     c.save();
     c.translate(dx, dy);
-    const g = c.createLinearGradient(x0, y0, x1, y1);
-    g.addColorStop(0, G.color(from));
-    g.addColorStop(1, G.color(to));
-    c.strokeStyle = g;
-    c.lineWidth = stroke;
-    c.lineCap = roundCaps ? "round" : "butt";
-    c.lineJoin = roundCaps ? "round" : "miter";
-    c.stroke(e.p);
-    c.lineCap = "butt";
-    c.lineJoin = "miter";
+    G.strokeWith(c, e.p, G.gradient(c, x0, y0, x1, y1, from, to), stroke,
+                 roundCaps);
     c.restore();
 });
 
@@ -1705,17 +1699,7 @@ int TextLayoutTextLen(const TextLayout* tl) {
 
 bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
                           float y, Rgba base, const TextSpan* spans, int n) {
-    if (scene::Recording()) {
-        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
-    }
-    (void)tl;
-    (void)text;
-    (void)x;
-    (void)y;
-    (void)base;
-    (void)spans;
-    (void)n;
-    return false;
+    return PaintTextLayoutSpansRecordOnly(ctx, tl, text, x, y, base, spans, n);
 }
 
 void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,

@@ -94,12 +94,7 @@ static void RefreshMemory(SysState* s) {
                 MeminfoKb(buf, StrL("Cached")) +
                 MeminfoKb(buf, StrL("Buffers"));
     }
-    if (avail > total) {
-        avail = total;
-    }
-    s->memTotal = total;
-    s->memUsed = total - avail;
-    s->mem = (float)((double)s->memUsed * 100.0 / (double)total);
+    SysMemorySet(s, total, avail);
 }
 
 static void RefreshDisk(SysState* s) {

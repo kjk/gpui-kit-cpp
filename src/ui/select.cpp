@@ -628,14 +628,8 @@ El* Select::IntoEl() {
             // `SelectState::clean` calls cx.stop_propagation() first: the ×
             // sits inside the trigger, which is listening for the same click,
             // and a clear that also opened the list would be no clear at all.
-            box->Child(Button::New(cx, StrL("clean"))
-                           ->Text()
-                           ->WithSize(UiSize::XSmall)
-                           ->Icon(IconName::X)
-                           ->AccessibilityLabel(Tr("Input.Clear"))
-                           ->OnClick(onClear)
-                           ->IntoEl()
-                           ->StopClick());
+            box->Child(
+                ClearButton(cx)->OnClick(onClear)->IntoEl()->StopClick());
         } else if (icon != IconName::None) {
             // A custom icon replaces the caret, at xsmall.
             box->Child(IconEl(a, icon, UiIconPx(cx, UiSize::XSmall))

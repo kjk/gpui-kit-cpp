@@ -1288,6 +1288,26 @@ int Utf8Prev(Str s, int i) {
     return j < 0 ? 0 : j;
 }
 
+bool Utf8IsCharBoundary(Str s, int i) {
+    if (i < 0 || i > len(s)) {
+        return false;
+    }
+    if (i == 0 || i == len(s)) {
+        return true;
+    }
+    return ((uint8_t)s.s[i] & 0xC0) != 0x80;
+}
+
+int Utf8CharCount(Str s) {
+    int n = 0;
+    for (int i = 0; i < len(s); i++) {
+        if (((uint8_t)s.s[i] & 0xC0) != 0x80) {
+            n++;
+        }
+    }
+    return n;
+}
+
 Str StrTrim(Str s) {
     if (!s.s || len(s) <= 0) {
         return s;

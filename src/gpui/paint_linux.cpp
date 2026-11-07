@@ -784,11 +784,7 @@ static uint64_t HashPixbuf(GdkPixbuf* pix) {
     hash *= 1099511628211ull;
     hash ^= (uint64_t)h;
     hash *= 1099511628211ull;
-    int n = stride * h;
-    for (int i = 0; i < n; i++) {
-        hash ^= src[i];
-        hash *= 1099511628211ull;
-    }
+    hash = Fnv1a64(hash, src, (size_t)stride * (size_t)h);
     return hash ? hash : 1;
 }
 
@@ -1233,17 +1229,7 @@ static float BoxPad(TextLayout* tl) {
 
 bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
                           float y, Rgba base, const TextSpan* spans, int n) {
-    if (scene::Recording()) {
-        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
-    }
-    (void)tl;
-    (void)text;
-    (void)x;
-    (void)y;
-    (void)base;
-    (void)spans;
-    (void)n;
-    return false;
+    return PaintTextLayoutSpansRecordOnly(ctx, tl, text, x, y, base, spans, n);
 }
 
 void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,

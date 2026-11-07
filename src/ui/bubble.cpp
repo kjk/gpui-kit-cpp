@@ -118,14 +118,7 @@ BubbleGroup* BubbleGroup::Refine(const Style& s, uint32_t fields) {
 }
 
 El* BubbleGroup::IntoEl() {
-    El* column = Div(a)->FlexCol()->MinW(0)->Gap(Rems(cx, 0.5f));
-    if (styleSet) {
-        column->Refine(style, styleSet);
-    }
-    for (int i = 0; i < children.len; i++) {
-        column->Child(children[i]);
-    }
-    return column;
+    return MessageGroupColumn(cx, children, style, styleSet);
 }
 
 BubbleReactions* BubbleReactions::New(Ctx* cx) {

@@ -25,6 +25,13 @@ uint64_t PaintResourceGenerationNew();
 // left unpainted would flash).
 bool PaintSceneFinish(PaintCtx* ctx, bool replayUnchanged);
 
+// PaintTextLayoutSpans for a backend that cannot draw per-span colours
+// itself: the scene records the spans when it is recording (and replays them
+// as plain runs), and otherwise the caller is told to fall back.
+bool PaintTextLayoutSpansRecordOnly(PaintCtx* ctx, TextLayout* tl, Str text,
+                                    float x, float y, Rgba base,
+                                    const TextSpan* spans, int n);
+
 // Copy h rows of w BGRA pixels between buffers whose rows are dstStride and
 // srcStride bytes apart, leaving any row padding of the destination alone.
 void PaintCopyBgraRows(uint8_t* dst, size_t dstStride, const uint8_t* src,

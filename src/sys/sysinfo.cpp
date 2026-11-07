@@ -96,6 +96,15 @@ void SysDiskSet(SysState* s, uint64_t total, uint64_t avail) {
     }
 }
 
+void SysMemorySet(SysState* s, uint64_t total, uint64_t avail) {
+    if (avail > total) {
+        avail = total;
+    }
+    s->memTotal = total;
+    s->memUsed = total - avail;
+    s->mem = (float)((double)s->memUsed * 100.0 / (double)total);
+}
+
 static uint64_t FindPrevCpu(const Vec<ProcSample>& prev, uint32_t pid) {
     for (int i = 0; i < len(prev); i++) {
         if (prev[i].pid == pid) {

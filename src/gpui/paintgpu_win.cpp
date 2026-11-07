@@ -894,11 +894,15 @@ static bool MakeAtlas(Gpu* g) {
         g->dev->CreateShaderResourceView(g->atlas.tex, nullptr, &g->atlas.srv));
 }
 
-static bool MakeWhite(Gpu* g) {
-    uint32_t px = 0xffffffff;
+// An immutable w x h BGRA texture holding `bgra` (rows w * 4 bytes apart), as
+// the shader resource view the draws sample; null when either could not be
+// made.
+static ID3D11ShaderResourceView* MakeBgraTextureView(ID3D11Device* dev,
+                                                     const void* bgra, int w,
+                                                     int h) {
     D3D11_TEXTURE2D_DESC td = {};
-    td.Width = 1;
-    td.Height = 1;
+    td.Width = (UINT)w;
+    td.Height = (UINT)h;
     td.MipLevels = 1;
     td.ArraySize = 1;
     td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
@@ -906,15 +910,22 @@ static bool MakeWhite(Gpu* g) {
     td.Usage = D3D11_USAGE_IMMUTABLE;
     td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
     D3D11_SUBRESOURCE_DATA sd = {};
-    sd.pSysMem = &px;
-    sd.SysMemPitch = 4;
+    sd.pSysMem = bgra;
+    sd.SysMemPitch = (UINT)(w * 4);
     ID3D11Texture2D* tex = nullptr;
-    if (FAILED(g->dev->CreateTexture2D(&td, &sd, &tex))) {
-        return false;
+    if (FAILED(dev->CreateTexture2D(&td, &sd, &tex))) {
+        return nullptr;
     }
-    HRESULT hr = g->dev->CreateShaderResourceView(tex, nullptr, &g->white);
+    ID3D11ShaderResourceView* srv = nullptr;
+    HRESULT hr = dev->CreateShaderResourceView(tex, nullptr, &srv);
     tex->Release();
-    return SUCCEEDED(hr);
+    return SUCCEEDED(hr) ? srv : nullptr;
+}
+
+static bool MakeWhite(Gpu* g) {
+    uint32_t px = 0xffffffff;
+    g->white = MakeBgraTextureView(g->dev, &px, 1, 1);
+    return g->white != nullptr;
 }
 
 // The four stencil states the path fill needs. The colour write is turned
@@ -3174,26 +3185,8 @@ static ID3D11ShaderResourceView* ImageSrv(const RenderImage* img,
         h <= 0) {
         return nullptr;
     }
-    D3D11_TEXTURE2D_DESC td = {};
-    td.Width = (UINT)w;
-    td.Height = (UINT)h;
-    td.MipLevels = 1;
-    td.ArraySize = 1;
-    td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    td.SampleDesc.Count = 1;
-    td.Usage = D3D11_USAGE_IMMUTABLE;
-    td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    D3D11_SUBRESOURCE_DATA sd = {};
-    sd.pSysMem = bgra;
-    sd.SysMemPitch = (UINT)(w * 4);
-    ID3D11Texture2D* tex = nullptr;
-    if (FAILED(gGpu.dev->CreateTexture2D(&td, &sd, &tex))) {
-        return nullptr;
-    }
-    ID3D11ShaderResourceView* srv = nullptr;
-    HRESULT hr = gGpu.dev->CreateShaderResourceView(tex, nullptr, &srv);
-    tex->Release();
-    if (FAILED(hr)) {
+    ID3D11ShaderResourceView* srv = MakeBgraTextureView(gGpu.dev, bgra, w, h);
+    if (!srv) {
         return nullptr;
     }
     ImageSlot* s = &gImages[gImageNext];

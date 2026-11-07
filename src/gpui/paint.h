@@ -61,6 +61,10 @@
 namespace gpui {
 
 #if GPUI_OS_WINDOWS
+// A top-down 32-bit BGRA DIB section, w x h, with its pixels in `bits`; null,
+// with nothing to free, when it could not be made. Defined in window_win.cpp.
+HBITMAP WinDib32New(int w, int h, void** bits);
+
 enum class WinPaintBackend : uint8_t {
     Direct2D,
     D3D11,
