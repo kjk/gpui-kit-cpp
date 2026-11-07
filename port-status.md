@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ba20548537a4de230efba3e16e1a7a2418ea2727` (2026-11-06,
-input: Notify an input moved by its parent only while it is focused (#3828)).
-Publishing an input's layout does not notify, so a parent that moves
-an unfocused field does not rebuild the view around it. The check
-that would is GPUI Fast's, and this tree has no second engine. The
-new test is behind that feature.
+Processed through `b881cadb7cf7c43b579f60bdac496460ab2f6276` (2026-11-06,
+slider: Report a disabled `SliderThumb` to assistive technology (#3825)).
+A slider thumb given its own role marks that accessibility node
+disabled only while the thumb is disabled. An enabled thumb leaves the
+flag unset. The themed slider still reports disabled on the slider
+node itself.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

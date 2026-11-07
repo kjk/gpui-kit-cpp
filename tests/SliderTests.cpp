@@ -266,6 +266,41 @@ static void ATouchDragOnTheTrackMovesTheThumb() {
     EntityDropAll(&app);
 }
 
+// slider.rs a_disabled_thumb_marks_its_node_disabled. The thumb is given
+// Role::Slider the way the test does, then disabled false and true.
+// false leaves the flag unset; true marks the node disabled.
+static void ADisabledThumbMarksItsNodeDisabled() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    SliderState state = SliderStateNew(0, 100, SliderSingle(0), 1);
+    for (int pass = 0; pass < 2; pass++) {
+        bool disabled = pass == 1;
+        El* thumb = SliderThumb::New(&cx, &state)
+                        ->Disabled(disabled)
+                        ->IntoEl()
+                        ->Role(AccessibilityRole::Slider);
+        Vec<AccessibilityNode> nodes;
+        AccessibilityCollect(thumb, &nodes);
+        const AccessibilityNode* node = nullptr;
+        for (int i = 0; i < len(nodes); i++) {
+            if (nodes[i].info.role == AccessibilityRole::Slider) {
+                node = &nodes[i];
+                break;
+            }
+        }
+        utassert(node);
+        utassert(node && (node->info.disabled != 0) == disabled);
+        VecReset(nodes);
+    }
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 // slider.rs a_slider_takes_focus_on_its_own_node. track_focus binds the
 // handle to the slider node, and focusing it marks that node focused.
 static void ASliderTakesFocusOnItsOwnNode() {
@@ -313,5 +348,6 @@ void TestSlider() {
     ReleaseOnlyFiresAfterAPress();
     TheArrowsStepByTheStep();
     ATouchDragOnTheTrackMovesTheThumb();
+    ADisabledThumbMarksItsNodeDisabled();
     ASliderTakesFocusOnItsOwnNode();
 }

@@ -28,8 +28,19 @@ struct SliderTrack {
 struct SliderIndicator {
     static El* New(Ctx* cx, SliderState* state = nullptr);
 };
+// Rust's `SliderThumb::new(&state).disabled(..)`. `New(cx)` is the bare
+// div the themed slider, the showcase and the shell style themselves.
+// `New(cx, state)` is the builder: `IntoEl` marks the node disabled only
+// while `Disabled` is set, so an enabled thumb stays unmarked.
 struct SliderThumb {
+    Ctx* cx = nullptr;
+    SliderState* state = nullptr;
+    bool disabled = false;
+
     static El* New(Ctx* cx);
+    static SliderThumb* New(Ctx* cx, SliderState* state);
+    SliderThumb* Disabled(bool value);
+    El* IntoEl();
 };
 } // namespace gpui
 #endif // GPUI_BASE_SLIDER_H_

@@ -247,4 +247,28 @@ El* SliderThumb::New(Ctx* cx) {
     Arena* a = cx->a;
     return Div(a);
 }
+
+SliderThumb* SliderThumb::New(Ctx* cx, SliderState* state) {
+    SliderThumb* t = ArenaNew<SliderThumb>(cx->a);
+    t->cx = cx;
+    t->state = state;
+    return t;
+}
+
+SliderThumb* SliderThumb::Disabled(bool value) {
+    disabled = value;
+    return this;
+}
+
+El* SliderThumb::IntoEl() {
+    // A caller can give a thumb a role of its own, as for a range's thumbs.
+    // a11y_disabled sets the flag only while disabled, so an enabled thumb
+    // stays unmarked rather than reporting disabled: false.
+    El* e = Div(cx->a);
+    if (disabled) {
+        e->AriaDisabled(true);
+    }
+    (void)state;
+    return e;
+}
 } // namespace gpui
