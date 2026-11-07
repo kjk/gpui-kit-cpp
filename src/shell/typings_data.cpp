@@ -21113,6 +21113,8 @@ static const char kShellTypes61[] = R"GPUI_DTS(  /** A column. */
    * collapsing each broken run into an ellipsis. `visible_pages` defaults to
    * seven and is clamped to a minimum of five; a total of one page or fewer
    * answers an empty list, because a control for a single page is not one.
+   * Throws for a page number above 4294967295 or `visible_pages` above
+   * 1000000.
    *
    * An ellipsis names the pages it stands for, inclusive on both ends, so it
    * can be a "jump to" control rather than inert text.
@@ -21165,10 +21167,10 @@ static const char kShellTypes61[] = R"GPUI_DTS(  /** A column. */
    * A semantic table root, composed the way HTML composes one: no data source
    * and no delegate, just the groups, rows and cells the script nests itself.
    * No styling — draw the grid, the padding and the header weight yourself.
-   *
-   * `row_count` and `column_count` describe the whole table, including rows the
 )GPUI_DTS";
-static const char kShellTypes62[] = R"GPUI_DTS(   * script chose not to render. Give the root an `accessibility_label`; the
+static const char kShellTypes62[] = R"GPUI_DTS(   *
+   * `row_count` and `column_count` describe the whole table, including rows the
+   * script chose not to render. Give the root an `accessibility_label`; the
    * visual `TableCaption` below is not associated with it by assistive
    * technology.
    */
@@ -21419,10 +21421,10 @@ static const char kShellTypes62[] = R"GPUI_DTS(   * script chose not to render. 
    *
    * `render(range, cx)` is called with the visible interval and returns one
    * element per item in it — so a ten-thousand-row list costs the script what a
-   * twenty-row one costs. It is the only callback in this API that is not an
-   * event handler, and the only one the host calls during a frame rather than
 )GPUI_DTS";
-static const char kShellTypes63[] = R"GPUI_DTS(   * between them: GPUI decides which rows exist while it is laying the list
+static const char kShellTypes63[] = R"GPUI_DTS(   * twenty-row one costs. It is the only callback in this API that is not an
+   * event handler, and the only one the host calls during a frame rather than
+   * between them: GPUI decides which rows exist while it is laying the list
    * out, so the call happens from inside layout, twice per frame (once to
    * measure a representative row, once to place the visible ones).
    *
@@ -21696,10 +21698,10 @@ static const char kShellTypes63[] = R"GPUI_DTS(   * between them: GPUI decides w
    * **a slider with no `SliderIndicator` cannot be moved at all**, which is
    * reported in the log rather than drawn; the thumb drags itself.
    *
-   * The two boxes that depend on the value — the fill and the thumb — are
-   * positioned by the shell, from the state, on every frame. That is not a
 )GPUI_DTS";
-static const char kShellTypes64[] = R"GPUI_DTS(   * convenience: a drag never re-enters the script, so a position the script
+static const char kShellTypes64[] = R"GPUI_DTS(   * The two boxes that depend on the value — the fill and the thumb — are
+   * positioned by the shell, from the state, on every frame. That is not a
+   * convenience: a drag never re-enters the script, so a position the script
    * computed would be the one the last render saw, and the slider would
    * announce a value its knob had never moved to. Give the thumb a size and a
    * look; the shell gives it a place.
@@ -21984,10 +21986,10 @@ static const char kShellTypes64[] = R"GPUI_DTS(   * convenience: a drag never re
   /**
    * Draws a dock area.
    *
-   * Base draws **no chrome at all** — an area with none still docks, drags,
-   * resizes and persists, painting only the panels — so every tab bar, dock
 )GPUI_DTS";
-static const char kShellTypes65[] = R"GPUI_DTS(   * frame and drag bar is one of the six handlers below.
+static const char kShellTypes65[] = R"GPUI_DTS(   * Base draws **no chrome at all** — an area with none still docks, drags,
+   * resizes and persists, painting only the panels — so every tab bar, dock
+   * frame and drag bar is one of the six handlers below.
    *
    * Each handler is first called from inside GPUI's layout pass and is given
    * base's own resolved state: never a drag event, a mouse position or a hit
@@ -22199,7 +22201,10 @@ declare module "gpui-fps" {
   export interface FpsMonitorOptions {
     /** Corner or edge of the window. Default `top_right`. */
     anchor?: Anchor;
-    /** Frame budget in milliseconds, for the FRAME grading and the chart's scale. */
+    /**
+     * Frame budget in milliseconds, for the FRAME grading and the chart's
+     * scale. Positive, and no longer than a `Duration` holds.
+     */
     frame_budget?: number;
   }
 
@@ -22274,15 +22279,15 @@ declare module "console" {
 declare module "process" {
   export interface CommandOutput { code: number; stdout: string; stderr: string; }
   export interface RunOptions {
-    /** Must be inside a directory granted in `capabilities.fs.read`. */
+)GPUI_DTS";
+static const char kShellTypes66[] = R"GPUI_DTS(    /** Must be inside a directory granted in `capabilities.fs.read`. */
     cwd?: string;
     /** Defaults to 30 seconds. */
     timeoutMs?: number;
   }
   /**
    * Runs a command to completion and resolves with what it did. Bounded: 30
-)GPUI_DTS";
-static const char kShellTypes66[] = R"GPUI_DTS(   * seconds unless `timeoutMs` says otherwise, 8 MiB of each stream. For a
+   * seconds unless `timeoutMs` says otherwise, 8 MiB of each stream. For a
    * command that runs longer, talks over stdin, or should be read as it
    * works, use `spawn`.
    */

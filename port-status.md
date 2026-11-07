@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f7946e496d268a47c8cb47f0ce6d868de549c006` (2026-11-05,
-shell: Check `Link.href` against the URL scheme rule (#3804)).
-`Link.href` accepts only an absolute `http` or `https` URL with a host.
-Anything else throws when the script sets it. `IsOpenableUrl` is the
-shared check.
+Processed through `582d926ce31295960a862a583971d02728217fa2` (2026-11-05,
+shell: Bound script-supplied counts before they reach native allocation (#3805)).
+`pagination_items` refuses a page above 4294967295 or more than 1000000
+visible pages. `MessageScrollerState` holds at most 1000000 rows, in the
+constructor and in `reset`, `append`, `prepend` and `splice`.
+`show_fps_monitor({ frame_budget })` refuses a budget no `Duration` can
+hold.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

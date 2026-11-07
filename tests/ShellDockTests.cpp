@@ -118,6 +118,37 @@ static void PaginationItemsLayOutThePagesAndTheirGaps() {
     utassert(!fixture.error.IsSet() && spec);
 }
 
+// render.rs pagination_items_refuse_counts_beyond_their_bounds.
+// A visible-page count or a page number past what the result can carry is a
+// script error. The largest u32 total still lays out.
+static void PaginationItemsRefuseCountsBeyondTheirBounds() {
+    ShellDockFixture fixture;
+    utassert(fixture.Load(
+        StrL("pagination-bounds.js"),
+        StrL("import { View, div } from 'gpui';\n"
+             "import { v_flex, pagination_items } from 'gpui-base';\n"
+             "const outcome = (call) => { try { return call().length + ' "
+             "items'; } catch (error) { return String(error.message); } };\n"
+             "export default class Pager extends View { render() {\n"
+             "  return v_flex()\n"
+             "    .child(div().child('window=' + outcome(() => "
+             "pagination_items(1, 1e9, 1e17))))\n"
+             "    .child(div().child('total=' + outcome(() => "
+             "pagination_items(1, 1e17, 7))))\n"
+             "    .child(div().child('largest=' + outcome(() => "
+             "pagination_items(1, 4294967295, 7))));\n"
+             "} }\n")));
+    Str spec = fixture.Render();
+    utassert(!fixture.error.IsSet() && spec);
+    utassert(StrContains(
+        spec, StrL("window=pagination_items(current_page, total_pages, "
+                   "visible_pages?) expects")));
+    utassert(StrContains(
+        spec, StrL("total=pagination_items(current_page, total_pages, "
+                   "visible_pages?) expects")));
+    utassert(StrContains(spec, StrL("largest=6 items")));
+}
+
 // An avatar renders its image slot, or its fallback when there is none, and
 // draws nothing itself.
 static void AnAvatarRendersItsImageOrItsFallback() {
@@ -783,6 +814,7 @@ static void EveryAddedScriptApiIsReachableUnderItsDocumentedName() {
 void TestShellDock() {
     TestSuite("shell_dock");
     PaginationItemsLayOutThePagesAndTheirGaps();
+    PaginationItemsRefuseCountsBeyondTheirBounds();
     AnAvatarRendersItsImageOrItsFallback();
     AnAccordionItemPassesItsOpenStateDownToItsTrigger();
     ACalendarStateAnswersTheMonthGridAndMovesIt();

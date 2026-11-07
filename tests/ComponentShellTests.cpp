@@ -3195,7 +3195,8 @@ void ChatRecordersRefuseWhatRustRefuses() {
          ".jump_button_label(' ')",
          "MessageScroller.jump_button_label expects non-empty text"},
         {"new MessageScroller('m', MessageScrollerState(1.5), () => null)",
-         "MessageScrollerState expects a non-negative integer item_count"},
+         "MessageScrollerState expects an integer item_count from 0 to "
+         "1000000"},
     };
     for (const Case& c : cases) {
         Str message = CallErrorTemp(
@@ -3242,6 +3243,62 @@ void MessageScrollerRendersScriptRows() {
     if (root) LayoutEl(&host.window.paint, root, 0, 0, 300, 400, 14, Rgba{});
     utassert(FindText(root, StrL("first")) != nullptr);
     utassert(FindText(root, StrL("second")) != nullptr);
+}
+
+// render.rs message_scroller_state_refuses_row_counts_beyond_its_bound.
+// Every edit is checked against the total it would leave, and a refused
+// edit leaves the transcript where it was.
+void MessageScrollerStateRefusesRowCountsBeyondItsBound() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { v_flex } from 'gpui-base';\n"
+        "import { MessageScrollerState } from 'gpui-component';\n"
+        "const outcome = (call) => { try { call(); return 'accepted'; } "
+        "catch (error) { return String(error.message); } };\n"
+        "export default class Transcript extends View {\n"
+        "  init() {\n"
+        "    this.outcomes = [\n"
+        "      'new=' + outcome(() => MessageScrollerState.new(1e17)),\n"
+        "    ];\n"
+        "    this.rows = MessageScrollerState.new(2);\n"
+        "    this.outcomes.push(\n"
+        "      'reset=' + outcome(() => this.rows.reset(1e17)),\n"
+        "      'append=' + outcome(() => this.rows.append(1e17)),\n"
+        "      'prepend=' + outcome(() => this.rows.prepend(999999)),\n"
+        "      'splice=' + outcome(() => this.rows.splice({ start: 0, end: 1 "
+        "}, 1e17)),\n"
+        "      'fill=' + outcome(() => this.rows.splice({ start: 0, end: 2 }, "
+        "1000000)),\n"
+        "    );\n"
+        "  }\n"
+        "  render() {\n"
+        "    return v_flex()\n"
+        "      .children(this.outcomes.map((line) => div().child(line)))\n"
+        "      .child(div().child('count=' + this.rows.item_count()));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("new=MessageScrollerState expects an integer "
+                                 "item_count from 0 to 1000000")) != nullptr);
+    utassert(
+        FindText(root, StrL("reset=MessageScrollerState.reset would leave "
+                            "100000000000000000 rows; a transcript holds at "
+                            "most 1000000")) != nullptr);
+    utassert(
+        FindText(root, StrL("append=MessageScrollerState.append would leave "
+                            "100000000000000002 rows; a transcript holds at "
+                            "most 1000000")) != nullptr);
+    utassert(
+        FindText(root, StrL("prepend=MessageScrollerState.prepend would leave "
+                            "1000001 rows; a transcript holds at most "
+                            "1000000")) != nullptr);
+    utassert(
+        FindText(root, StrL("splice=MessageScrollerState.splice would leave "
+                            "100000000000000001 rows; a transcript holds at "
+                            "most 1000000")) != nullptr);
+    utassert(FindText(root, StrL("fill=accepted")) != nullptr);
+    utassert(FindText(root, StrL("count=1000000")) != nullptr);
 }
 
 // chat_host.rs message_scroller_state_is_edited_from_script.
@@ -8783,6 +8840,7 @@ void TestComponentShell() {
     ChatRecordersRefuseWhatRustRefuses();
     MessageScrollerRendersScriptRows();
     MessageScrollerStateIsEditedFromScript();
+    MessageScrollerStateRefusesRowCountsBeyondItsBound();
 
     TestSuite("empty");
     EmptyPublishesAllPartsWithClosedDocumentedMethods();

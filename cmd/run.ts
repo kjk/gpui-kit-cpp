@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f7946e496d268a47c8cb47f0ce6d868de549c006",
+  sha: "582d926ce31295960a862a583971d02728217fa2",
   date: "2026-11-05",
-  subject: "shell: Check `Link.href` against the URL scheme rule (#3804)",
+  subject: "shell: Bound script-supplied counts before they reach native allocation (#3805)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

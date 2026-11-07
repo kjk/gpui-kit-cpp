@@ -5376,6 +5376,27 @@ static void ScriptsSwitchOnARootOwnedPerformanceHud() {
     cx.a = frame;
     cx.self = root.id;
     utassert(!ShellRootFpsMonitorVisible(&cx));
+    // overlay.rs a_hud_frame_budget_beyond_a_duration_is_refused. 1e300
+    // milliseconds is finite and positive, and no Duration can hold it.
+    {
+        CallScopeGuard event =
+            ScopeEnter(&window, &app, ScopePhase::Event, view.id);
+        utassert(
+            !runtime->Eval(StrL("__show_fps_monitor({ frame_budget: 1e300 })"),
+                           StrL("hud-budget.js"), &error));
+        utassert(StrContains(error.message, StrL("frame_budget")));
+        utassert(StrContains(error.message, StrL("Duration")));
+        utassert(!ShellRootFpsMonitorVisible(&cx));
+        ShellErrorClear(&error);
+        utassert(runtime->Eval(
+            StrL("__show_fps_monitor({ anchor: 'bottom_left', frame_budget: "
+                 "8.33 })"),
+            StrL("hud-ok.js"), &error));
+        utassert(!error.IsSet());
+        utassert(ShellRootFpsMonitorVisible(&cx));
+        utassert(ShellRootHideFpsMonitor(&cx));
+        utassert(!ShellRootFpsMonitorVisible(&cx));
+    }
     FpsHudRequest request = {};
     request.anchor = FpsAnchor::BottomLeft;
 

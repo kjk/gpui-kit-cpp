@@ -470,8 +470,9 @@ static bool RecordJumpButtonLabel(PayloadBuild* build,
     return true;
 }
 
-// A row index or count: finite, whole and non-negative. Anything else is a
-// throw, not a rounded or clamped number. row_number.
+// A row index: finite, whole and non-negative. Anything else is a throw,
+// not a rounded or clamped number. row_number, narrowed to the int the
+// virtual list indexes with.
 static bool RowNumber(const shell::ComponentDataValue* value, int* out) {
     if (!value || value->kind != shell::DataKind::Number) return false;
     double n = value->number;
@@ -479,6 +480,51 @@ static bool RowNumber(const shell::ComponentDataValue* value, int* out) {
         return false;
     *out = (int)n;
     return true;
+}
+
+// The rows one transcript may hold. The virtual list keeps a height per
+// row, so a count the script got wrong would otherwise be an allocation
+// that aborts the host. Rust's MAX_MESSAGE_ROWS.
+static constexpr uint64_t kMaxMessageRows = 1000000;
+
+// usize::MAX as f64 on a 64-bit host. 2^64-1 is not representable and
+// rounds up to 2^64, which row_number still accepts; `as usize` saturates.
+static constexpr double kUsizeMaxAsF64 = 18446744073709551616.0;
+
+static bool WholeRowCount(double n, uint64_t* out) {
+    if (!isfinite(n) || n != floor(n) || n < 0.0 || n > kUsizeMaxAsF64)
+        return false;
+    if (n >= kUsizeMaxAsF64) {
+        *out = UINT64_MAX;
+        return true;
+    }
+    // A value in [2^63, 2^64) is a uint64, and a direct cast of it is
+    // undefined when it does not fit in a signed 64-bit intermediate.
+    if (n >= 9223372036854775808.0) {
+        *out = (uint64_t)(n - 9223372036854775808.0) + 9223372036854775808ull;
+        return true;
+    }
+    *out = (uint64_t)n;
+    return true;
+}
+
+static bool RowCountArg(const shell::ComponentDataValue* value, uint64_t* out) {
+    if (!value || value->kind != shell::DataKind::Number) return false;
+    return WholeRowCount(value->number, out);
+}
+
+static uint64_t SaturatingAdd(uint64_t a, uint64_t b) {
+    return a > UINT64_MAX - b ? UINT64_MAX : a + b;
+}
+
+// check_row_total. The total is the count after the edit, in rows.
+static bool CheckRowTotal(shell::StateCall* call, uint64_t total,
+                          const char* context) {
+    if (total <= kMaxMessageRows) return true;
+    return call
+        ->Fail(fmt("%s would leave %llu rows; a transcript holds at "
+                   "most 1000000",
+                   Str(context), (unsigned long long)total));
 }
 
 // An ItemRange (`{ start, end }`) of row indices. item_range.
@@ -568,55 +614,76 @@ static bool LogicalScrollTop(shell::StateCall* call, void* state,
 
 static bool ResetCount(shell::StateCall* call, void* state,
                        const shell::ComponentDataValue* args, int count) {
-    int n = 0;
-    if (!OneRow(call, args, count, &n, "MessageScrollerState.reset"))
-        return false;
+    uint64_t n = 0;
+    if (count != 1 || !RowCountArg(args, &n)) {
+        return call->Fail(
+            StrL("MessageScrollerState.reset expects a non-negative integer"));
+    }
+    if (!CheckRowTotal(call, n, "MessageScrollerState.reset")) return false;
     component::MessageScrollerState* s = ScrollerOf(state);
     if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
     Ctx cx = CallCtx(call);
-    s->Reset(&cx, n);
+    s->Reset(&cx, (int)n);
     call->out = shell::ComponentDataValue::Null();
     return true;
 }
 
 static bool SpliceRows(shell::StateCall* call, void* state,
                        const shell::ComponentDataValue* args, int count) {
-    int start = 0, end = 0, n = 0;
+    int start = 0, end = 0;
+    uint64_t n = 0;
     if (count != 2 || !ItemRange(args, &start, &end) ||
-        !RowNumber(args + 1, &n)) {
+        !RowCountArg(args + 1, &n)) {
         return call->Fail(
             StrL("MessageScrollerState.splice expects an ItemRange and a "
                  "non-negative integer count"));
     }
     component::MessageScrollerState* s = ScrollerOf(state);
     if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    uint64_t current = (uint64_t)s->ItemCount();
+    uint64_t removedEnd = (uint64_t)end < current ? (uint64_t)end : current;
+    uint64_t removed =
+        removedEnd > (uint64_t)start ? removedEnd - (uint64_t)start : 0;
+    if (!CheckRowTotal(call, SaturatingAdd(current - removed, n),
+                       "MessageScrollerState.splice"))
+        return false;
     Ctx cx = CallCtx(call);
     call->out =
-        shell::ComponentDataValue::Boolean(s->Splice(&cx, start, end, n));
+        shell::ComponentDataValue::Boolean(s->Splice(&cx, start, end, (int)n));
     return true;
 }
 
 static bool AppendRows(shell::StateCall* call, void* state,
                        const shell::ComponentDataValue* args, int count) {
-    int n = 0;
-    if (!OneRow(call, args, count, &n, "MessageScrollerState.append"))
-        return false;
+    uint64_t n = 0;
+    if (count != 1 || !RowCountArg(args, &n)) {
+        return call->Fail(
+            StrL("MessageScrollerState.append expects a non-negative integer"));
+    }
     component::MessageScrollerState* s = ScrollerOf(state);
     if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    if (!CheckRowTotal(call, SaturatingAdd((uint64_t)s->ItemCount(), n),
+                       "MessageScrollerState.append"))
+        return false;
     Ctx cx = CallCtx(call);
-    call->out = shell::ComponentDataValue::Boolean(s->Append(&cx, n));
+    call->out = shell::ComponentDataValue::Boolean(s->Append(&cx, (int)n));
     return true;
 }
 
 static bool PrependRows(shell::StateCall* call, void* state,
                         const shell::ComponentDataValue* args, int count) {
-    int n = 0;
-    if (!OneRow(call, args, count, &n, "MessageScrollerState.prepend"))
-        return false;
+    uint64_t n = 0;
+    if (count != 1 || !RowCountArg(args, &n)) {
+        return call->Fail(StrL(
+            "MessageScrollerState.prepend expects a non-negative integer"));
+    }
     component::MessageScrollerState* s = ScrollerOf(state);
     if (!s) return call->Fail(StrL("MessageScrollerState is gone"));
+    if (!CheckRowTotal(call, SaturatingAdd((uint64_t)s->ItemCount(), n),
+                       "MessageScrollerState.prepend"))
+        return false;
     Ctx cx = CallCtx(call);
-    call->out = shell::ComponentDataValue::Boolean(s->Prepend(&cx, n));
+    call->out = shell::ComponentDataValue::Boolean(s->Prepend(&cx, (int)n));
     return true;
 }
 
@@ -673,14 +740,14 @@ static bool ScrollToEnd(shell::StateCall* call, void* state,
 
 static bool NewMessageScrollerState(shell::StateBuild* build,
                                     const ComponentArgument* args, int count) {
-    // `*value <= usize::MAX as f64`, and then an item count the state holds
-    // one row height for: the rows here are indexed by int, so a count past
-    // INT_MAX is refused where Rust would try to allocate it.
+    // Finite, whole, and at most MAX_MESSAGE_ROWS. A larger count is a
+    // script error rather than a height allocated for every row.
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Number ||
         !isfinite(args[0].number) || args[0].number != floor(args[0].number) ||
-        args[0].number < 0.0 || args[0].number > (double)INT_MAX) {
-        return build->Fail(StrL(
-            "MessageScrollerState expects a non-negative integer item_count"));
+        args[0].number < 0.0 || args[0].number > (double)kMaxMessageRows) {
+        return build->Fail(
+            StrL("MessageScrollerState expects an integer item_count from 0 to "
+                 "1000000"));
     }
     EntityState<component::MessageScrollerState>* state =
         build->New<EntityState<component::MessageScrollerState>>();

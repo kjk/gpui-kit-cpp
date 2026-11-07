@@ -5041,15 +5041,21 @@ static JSValue NativeShowFpsMonitor(JSContext* ctx, JSValueConst, int argc,
         if (JS_IsException(budget)) return JS_EXCEPTION;
         if (!JS_IsUndefined(budget) && !JS_IsNull(budget)) {
             double millis = 0;
-            bool valid = JS_IsNumber(budget) &&
-                         JS_ToFloat64(ctx, &millis, budget) == 0 &&
-                         isfinite(millis) && millis > 0;
+            // `(millis > 0).then(|| Duration::try_from_secs_f64(millis /
+            // 1000))`. The ceiling is (u64::MAX + 1) nanoseconds, 2^64 * 1e9,
+            // which is exact in f64. A budget past it used to panic.
+            bool number =
+                JS_IsNumber(budget) && JS_ToFloat64(ctx, &millis, budget) == 0;
             JS_FreeValue(ctx, budget);
-            if (!valid) {
-                return JS_ThrowTypeError(ctx,
-                                         "%s: frame_budget must be a positive "
-                                         "number of milliseconds",
-                                         kApi);
+            double nanos = millis * 1000000.0;
+            const double kMaxNanos = 18446744073709551616.0 * 1000000000.0;
+            if (!number || !(millis > 0.0) || !isfinite(nanos) ||
+                nanos >= kMaxNanos) {
+                return JS_ThrowTypeError(
+                    ctx,
+                    "%s: frame_budget must be a positive number of "
+                    "milliseconds that a Duration can hold",
+                    kApi);
             }
             request.hasFrameBudget = true;
             request.frameBudget = (float)(millis / 1000.0);
@@ -11491,15 +11497,22 @@ static JSValue NativePaginationItems(JSContext* ctx, JSValueConst, int argc,
         (argc > 2 && JS_ToFloat64(ctx, &visible, argv[2]) < 0)) {
         return JS_EXCEPTION;
     }
-    if (!isfinite(current) || current < 0 || !isfinite(total) || total < 0 ||
-        !isfinite(visible) || visible < 0) {
-        return JS_ThrowTypeError(ctx,
-                                 "pagination_items(current_page, total_pages, "
-                                 "visible_pages?) expects non-negative "
-                                 "numbers");
+    // Pages go back to the script as u32. visible_pages bounds the items
+    // base builds, one per visible page (MAX_VIRTUAL_ITEMS_PER_RENDER).
+    const double kMaxPaginationPage = 4294967295.0;
+    const double kMaxVisiblePages = 1000000.0;
+    if (!isfinite(current) || current < 0 || current > kMaxPaginationPage ||
+        !isfinite(total) || total < 0 || total > kMaxPaginationPage ||
+        !isfinite(visible) || visible < 0 || visible > kMaxVisiblePages) {
+        return JS_ThrowTypeError(
+            ctx,
+            "pagination_items(current_page, total_pages, visible_pages?) "
+            "expects non-negative page numbers up to 4294967295 and at most "
+            "1000000 visible pages");
     }
-    PaginationState state = PaginationStateNew((int)current, (int)total);
-    if (visible > 0) state.visiblePages = (int)visible;
+    PaginationState state =
+        PaginationStateNew((int64_t)current, (int64_t)total);
+    if (visible > 0) state.visiblePages = (int64_t)visible;
     PaginationItem items[64] = {};
     int count =
         PaginationItems(&state, items, (int)(sizeof(items) / sizeof(items[0])));
