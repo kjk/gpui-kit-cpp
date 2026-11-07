@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `725f36af48da5c2b04acd63b3f08928a7d2e0f47` (2026-11-06,
-text: Add `on_task_toggle` to make Markdown task checkboxes clickable (#3811)).
-With a handler, clicking a Markdown task checkbox reports the flipped
-checked state and the item and marker byte ranges, and does not edit
-the source. Without a handler the checkbox is not a click target.
+Processed through `0a5c2740d810379ba7e3ea38f978d7565f260783` (2026-11-06,
+slider: Add `Slider::track_focus` (#3824)).
+Focusing a slider binds the focus handle to the slider's own
+accessibility node. `Slider::New` returns that node, so `El::TrackFocus`
+is the method.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

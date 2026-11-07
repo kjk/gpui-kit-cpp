@@ -246,6 +246,38 @@ static void ATouchDragOnTheTrackMovesTheThumb() {
     EntityDropAll(&app);
 }
 
+// slider.rs a_slider_takes_focus_on_its_own_node. track_focus binds the
+// handle to the slider node, and focusing it marks that node focused.
+static void ASliderTakesFocusOnItsOwnNode() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    SliderState state = SliderStateNew(0, 100, SliderSingle(40), 1);
+    FocusHandle focus = FocusHandleNew(&cx);
+    El* slider = Slider::New(&cx, &state)->TrackFocus(focus);
+    FocusHandleFocus(win, focus);
+    Vec<AccessibilityNode> nodes;
+    AccessibilityCollect(slider, &nodes);
+    const AccessibilityNode* node = nullptr;
+    for (int i = 0; i < len(nodes); i++) {
+        if (nodes[i].info.role == AccessibilityRole::Slider) {
+            node = &nodes[i];
+            break;
+        }
+    }
+    utassert(node && node->focusId == focus.id);
+    utassert(node && node->focusId == win->focusId);
+    utassert(FocusHandleIsFocused(win, focus));
+    VecReset(nodes);
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestSlider() {
     TestSuite("slider");
     ValueConversionsAndClampingArePreserved();
@@ -260,4 +292,5 @@ void TestSlider() {
     ReleaseOnlyFiresAfterAPress();
     TheArrowsStepByTheStep();
     ATouchDragOnTheTrackMovesTheThumb();
+    ASliderTakesFocusOnItsOwnNode();
 }

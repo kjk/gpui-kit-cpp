@@ -9,6 +9,9 @@ namespace gpui {
 struct Slider {
     // `accessibilityLabel` is the name a screen reader announces. Empty
     // leaves the node unnamed, which is Rust's `accessibility_label: None`.
+    // Slider::track_focus is El::TrackFocus on the element this returns:
+    // the Role::Slider node itself, so keyboard focus lands on that node
+    // rather than on a wrapper around it.
     static El* New(Ctx* cx, SliderState* state = nullptr,
                    Axis axis = Axis::Horizontal, int clickId = 0,
                    Str accessibilityLabel = {});
