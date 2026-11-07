@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b2aaa3e5f9a387dea74981586bfca33e7e08420d",
+  sha: "725f36af48da5c2b04acd63b3f08928a7d2e0f47",
   date: "2026-11-06",
-  subject: "settings: Show an empty state when search has no matches (#3692)",
+  subject: "text: Add `on_task_toggle` to make Markdown task checkboxes clickable (#3811)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

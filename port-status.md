@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b2aaa3e5f9a387dea74981586bfca33e7e08420d` (2026-11-06,
-settings: Show an empty state when search has no matches (#3692)).
-A settings search with no matches keeps the field focused and editable,
-leaves the selected page in place, and shows the empty state. Clearing
-the query restores that page. The empty state itself was already drawn.
+Processed through `725f36af48da5c2b04acd63b3f08928a7d2e0f47` (2026-11-06,
+text: Add `on_task_toggle` to make Markdown task checkboxes clickable (#3811)).
+With a handler, clicking a Markdown task checkbox reports the flipped
+checked state and the item and marker byte ranges, and does not edit
+the source. Without a handler the checkbox is not a click target.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

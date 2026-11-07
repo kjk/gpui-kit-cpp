@@ -368,6 +368,16 @@ struct MdNode {
     // is what format/html.rs does.
     bool hasCheck = false;
     bool checked = false;
+    // List item: its source span, from the list marker through nested
+    // lists (BlockNode::ListItem span). -1 when the parse has no position.
+    int itemStart = -1;
+    int itemEnd = -1;
+    // List item: the `[ ]` / `[x]` / `[X]` marker, brackets included.
+    // mdast drops it, so the markdown fold records it beside `checked`.
+    // -1 when the item is not a task, or when the marker cannot be found.
+    // HTML list items leave this unset, which is task_marker: None.
+    int markerStart = -1;
+    int markerEnd = -1;
     // The TextLeafKey of this node's text, for a paragraph, heading, code
     // block or table cell whose block the parse placed: the owning block's
     // source start (the table's, for a cell) and the cell ordinal. -1 when
@@ -963,6 +973,21 @@ struct TextViewParse;
 struct TextViewParseJob;
 struct TextViewBaselineAck;
 
+// text_view.rs TaskToggleEvent. A click on a Markdown task checkbox. The
+// view does not edit its source: `checked` is the state the item should
+// now have, and the ranges are bytes of that source.
+struct TaskToggleEvent {
+    bool checked = false;
+    int itemStart = 0;
+    int itemEnd = 0;
+    int markerStart = 0;
+    int markerEnd = 0;
+
+    bool Checked() const { return checked; }
+    Span ItemRange() const { return Span{itemStart, itemEnd}; }
+    Span MarkerRange() const { return Span{markerStart, markerEnd}; }
+};
+
 struct TextViewState {
     EntityId self = {};
     Str text = {};
@@ -1152,6 +1177,12 @@ struct TextViewState {
                             const LineClampEvent* event);
     static void OnFadeTick(TextViewState* self, Ctx* cx,
                            const TickEvent* event);
+    // The view copies its task-toggle handler here for the frame, and the
+    // checkbox click reads `taskToggles[arg]`. Rebuilt every render.
+    Listener onTaskToggle;
+    Vec<TaskToggleEvent> taskToggles;
+    static void OnTaskClick(TextViewState* self, Ctx* cx, const ClickEvent*,
+                            int64_t arg);
 
   private:
     void Changed(App* app, Window* window, bool selectionCompatible);
@@ -1298,6 +1329,8 @@ struct TextView {
     Listener onLink;
     int64_t onLinkContext = 0;
     bool onLinkHasContext = false;
+    // text_view.rs task_toggle_handler. Copied onto the state while rendering.
+    Listener onTaskToggle;
     CodeBlockActionsFn codeActions = nullptr;
     // text_view.rs code_block_highlighter. Unset falls back to the one
     // TextViewDefaults installed, and then to no highlighting at all.
@@ -1449,6 +1482,10 @@ struct TextView {
     // a link opens in the desktop's browser, which is what Rust's
     // handle_link_click falls back to (cx.open_url).
     TextView* OnLink(Listener fn);
+    // text_view.rs on_task_toggle. With a handler, a task checkbox click
+    // reports a TaskToggleEvent and does not change the source. Without
+    // one, the checkbox is not a click target.
+    TextView* OnTaskToggle(Listener fn);
     // text_view.rs on_reveal: scroll a container that does not follow
     // scroll requests to the line of TextViewState::RevealRange. After a
     // frame in which the line was painted but not visible, the listener gets

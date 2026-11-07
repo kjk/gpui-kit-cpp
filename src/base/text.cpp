@@ -2562,6 +2562,53 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
             // of the item's first paragraph, so nothing here has to.
             item->hasCheck = n->Has(md::NodeHasChecked);
             item->checked = n->Has(md::NodeChecked);
+            // task_marker_span: mdast does not keep the `[ ]` / `[x]`. It
+            // opens the item's first paragraph. Before it come only the
+            // list marker, whitespace and link reference definitions, so
+            // it is the first `[` after those definitions.
+            Span itemSpan;
+            if (MdNodeSpan(b, n, &itemSpan)) {
+                item->itemStart = itemSpan.start;
+                item->itemEnd = itemSpan.end;
+                if (item->hasCheck) {
+                    int from = itemSpan.start - b->posShift;
+                    bool marker = true;
+                    for (const md::Node* child : md::NodeKids(b->a, n)) {
+                        if (child->kind == md::NodeKind::Paragraph) {
+                            break;
+                        }
+                        Span childSpan;
+                        if (!MdNodeSpan(b, child, &childSpan)) {
+                            marker = false;
+                            break;
+                        }
+                        from = childSpan.end - b->posShift;
+                    }
+                    Str bytes = b->parsed;
+                    int open = -1;
+                    int close = -1;
+                    if (marker && from >= 0 && from <= len(bytes)) {
+                        for (int i = from; i < len(bytes); i++) {
+                            if ((unsigned char)bytes.s[i] == '[') {
+                                open = i;
+                                break;
+                            }
+                        }
+                        if (open >= 0) {
+                            for (int i = open; i < len(bytes); i++) {
+                                if ((unsigned char)bytes.s[i] == ']') {
+                                    close = i;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (open >= 0 && close >= open) {
+                        item->markerStart = b->posShift + open;
+                        item->markerEnd = b->posShift + close + 1;
+                    }
+                }
+            }
             MdBlockChildren(b, n);
             Pop(b);
             break;
@@ -5263,8 +5310,29 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     }
     El* row = Div(a)->FlexRow()->W(kFill)->ItemsStart();
     if (n->hasCheck) {
-        row->Child(TaskBox(cx, a, textViewStyle,
-                           FontLen(cx, baseFont * kLineHeight), n->checked));
+        El* box = TaskBox(cx, a, textViewStyle,
+                          FontLen(cx, baseFont * kLineHeight), n->checked);
+        // render_list_item_row: a checkbox is clickable only when the view
+        // has a handler and both spans were recorded. The cursor stays the
+        // default arrow. The handler ends the selection and stops the
+        // click, then reports the flipped state. The source is not edited.
+        TextViewState* managed = state.Get(cx);
+        if (box && managed && onTaskToggle.IsValid() && n->markerStart >= 0 &&
+            n->itemStart >= 0) {
+            TaskToggleEvent ev;
+            ev.checked = !n->checked;
+            ev.itemStart = n->itemStart;
+            ev.itemEnd = n->itemEnd;
+            ev.markerStart = n->markerStart;
+            ev.markerEnd = n->markerEnd;
+            int ix = len(managed->taskToggles);
+            VecAppend(managed->taskToggles, ev);
+            box->PathClick(ElementIdNamed(a, StrL("task-toggle"),
+                                          (uint64_t)n->itemStart))
+                ->OnClick(ListenTo(state, &TextViewState::OnTaskClick, ix))
+                ->StopClick();
+        }
+        row->Child(box);
     } else if (len(marker) > 0) {
         // The marker hangs in a 1.4em column, right-aligned, muted, with
         // the trailing space trimmed off the drawn text.
@@ -7337,6 +7405,8 @@ El* TextView::IntoEl() {
         source = managed->text;
         html = managed->format == TextViewFormat::Html;
         managed->selectable = selectable;
+        managed->onTaskToggle = onTaskToggle;
+        VecClear(managed->taskToggles);
         managed->selectionFormat = selFormat;
         managed->scrollable = scrollable;
         managed->maxLines = scrollable ? -1 : maxLines;
@@ -7607,6 +7677,29 @@ TextView* TextView::OnLink(Listener fn) {
     onLinkContext = 0;
     onLinkHasContext = false;
     return this;
+}
+
+TextView* TextView::OnTaskToggle(Listener fn) {
+    onTaskToggle = fn;
+    return this;
+}
+
+void TextViewState::OnTaskClick(TextViewState* self, Ctx* cx, const ClickEvent*,
+                                int64_t arg) {
+    if (!self || !cx) {
+        return;
+    }
+    int ix = (int)arg;
+    if (ix < 0 || ix >= len(self->taskToggles)) {
+        return;
+    }
+    TaskToggleEvent ev = self->taskToggles[ix];
+    // TextSelection::end, then cx.stop_propagation(), then the handler.
+    TextSelection::End(cx->win, cx->app);
+    WindowStopPropagation(cx);
+    if (self->onTaskToggle.IsValid()) {
+        ListenerCall(cx->app, cx->win, self->onTaskToggle, &ev);
+    }
 }
 
 TextView* TextView::OnLinkWithContext(Listener fn, int64_t context) {

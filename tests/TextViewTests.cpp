@@ -2141,6 +2141,8 @@ static gpui::ImageSource BuilderResolvesTheDocumentUri(Str uri, void*) {
 
 // crates/component/src/text/mod.rs test_text_view_builder. The component
 // façade is Base's TextView, so image_source is already this method.
+static void BuilderTaskToggle(void*, Ctx*, const void*) {}
+
 static void TestTextViewBuilder() {
     App app;
     Window* win = new Window();
@@ -2152,6 +2154,10 @@ static void TestTextViewBuilder() {
                          ->Selectable(true)
                          ->Scrollable(true)
                          ->ImageSource(BuilderResolvesTheDocumentUri);
+    Listener taskToggle;
+    taskToggle.SetFn(BuilderTaskToggle);
+    view->OnTaskToggle(taskToggle);
+    utassert(view->onTaskToggle.IsValid());
     utassert(view->selectable && view->scrollable);
     utassert(view->imageSource == BuilderResolvesTheDocumentUri);
     gpui::ImageSource resolved =
@@ -9096,6 +9102,214 @@ static void HtmlParagraphsPaintTheirOwnText() {
     AppGlobalClear(&app);
 }
 
+// format/markdown.rs
+// task_marker_is_the_bracketed_check_wherever_the_item_text_starts.
+static void CollectTaskMarkers(MdNode* n, Vec<Span>* out) {
+    if (!n) {
+        return;
+    }
+    if (n->kind == MdKind::Item && n->markerStart >= 0) {
+        Span span;
+        span.start = n->markerStart;
+        span.end = n->markerEnd;
+        VecAppend(*out, span);
+    }
+    for (MdNode* c = n->first; c; c = c->next) {
+        CollectTaskMarkers(c, out);
+    }
+}
+
+static int TaskRFind(Str hay, Str needle) {
+    if (len(needle) <= 0 || len(needle) > len(hay)) {
+        return -1;
+    }
+    for (int at = len(hay) - len(needle); at >= 0; at--) {
+        if (memcmp(hay.s + at, needle.s, (size_t)len(needle)) == 0) {
+            return at;
+        }
+    }
+    return -1;
+}
+
+static void TaskMarkerIsTheBracketedCheckWhereverTheItemTextStarts(Arena* a) {
+    const char* sources[] = {
+        "- [ ] [link](https://example.com)",
+        "> - [x] quoted",
+        "- [X]\n  on the next line",
+        "- [a]: https://example.com\n  [ ] after a definition",
+    };
+    const char* markers[] = {"[ ]", "[x]", "[X]", "[ ]"};
+    for (int i = 0; i < 4; i++) {
+        Str source = Str(sources[i]);
+        MdNode* doc = ParseMarkdown(a, source);
+        Vec<Span> found;
+        CollectTaskMarkers(doc, &found);
+        Str marker = Str(markers[i]);
+        int start = TaskRFind(source, marker);
+        utassert(len(found) == 1 && start >= 0);
+        if (len(found) == 1) {
+            utassert(found[0].start == start);
+            utassert(found[0].end == start + len(marker));
+        }
+        VecReset(found);
+    }
+}
+
+// text_view.rs task checkbox clicks. The source and the six expected
+// ranges are the Rust test's; the checkbox is 16px before the label.
+static const char* kTaskList =
+    "- [ ] Open\n  - [x] Nested\n* [X] Star\n+ [ ] Plus\n1. [x] One\n2) [ ] "
+    "Two\n";
+static const char* kTaskLabels[] = {"Open", "Nested", "Star",
+                                    "Plus", "One",    "Two"};
+
+struct TaskListHost {
+    App* app = nullptr;
+    Entity<TextViewState> text;
+    bool collect = false;
+    int containerClicks = 0;
+    TaskToggleEvent reported[8] = {};
+    int nReported = 0;
+
+    static void OnContainer(TaskListHost* self, Ctx*, const ClickEvent*) {
+        if (self) {
+            self->containerClicks++;
+        }
+    }
+
+    static void OnToggle(TaskListHost* self, Ctx*, const TaskToggleEvent* ev) {
+        if (!self || !ev || self->nReported >= 8) {
+            return;
+        }
+        self->reported[self->nReported++] = *ev;
+    }
+
+    static El* Render(TaskListHost* self, Ctx* cx) {
+        TextView* view = TextView::New(cx, self->text)->Font(16);
+        if (self->collect) {
+            view->OnTaskToggle(Listen(cx, &TaskListHost::OnToggle));
+        }
+        return Div(cx->a)
+            ->PathClick(StrL("task-list-container"))
+            ->W(300)
+            ->Font(16)
+            ->OnClick(Listen(cx, &TaskListHost::OnContainer))
+            ->Child(TextSelectionLayer::New(cx))
+            ->Child(view->IntoEl());
+    }
+};
+
+static const TextHit* ExactLabel(Window* win, const char* label) {
+    Str want = Str(label);
+    for (int i = 0; i < len(win->paint.texts); i++) {
+        if (StrEq(win->paint.texts[i].text, want)) {
+            return &win->paint.texts[i];
+        }
+    }
+    return nullptr;
+}
+
+// Clicks each checkbox, then the word Open. Returns container clicks.
+static int ClickTaskList(bool collect, TaskListHost** hostOut) {
+    App* app = TestAppNew();
+    utassert(app);
+    if (!app) {
+        return -1;
+    }
+    Entity<TaskListHost> host = EntityNew<TaskListHost>(app);
+    TaskListHost* h = host.Get(app);
+    utassert(h);
+    if (!h) {
+        TestAppFree(app);
+        return -1;
+    }
+    h->app = app;
+    h->collect = collect;
+    h->text = TextViewState::Markdown(app, Str(kTaskList));
+    Window* win = TestWindowOpen(app, host, 800, 600, 1);
+    utassert(win);
+    if (!win) {
+        TestAppFree(app);
+        return -1;
+    }
+    TestRunUntilParked(app);
+    TestDraw(win);
+    for (const char* label : kTaskLabels) {
+        const TextHit* hit = ExactLabel(win, label);
+        utassert(hit);
+        if (!hit) {
+            continue;
+        }
+        // text_position(label, 0) is 1px inside the glyph, mid-line, then
+        // 16px to the left where the checkbox sits.
+        Point at = {hit->bounds.x + 1.f - 16.f,
+                    hit->bounds.y + hit->bounds.h * 0.5f};
+        TestSimulateClick(win, at);
+        TestDraw(win);
+    }
+    const TextHit* open = ExactLabel(win, "Open");
+    utassert(open);
+    if (open) {
+        Point at = {open->bounds.x + 1.f,
+                    open->bounds.y + open->bounds.h * 0.5f};
+        TestSimulateClick(win, at);
+    }
+    int clicks = h->containerClicks;
+    if (hostOut) {
+        *hostOut = h;
+    }
+    return clicks;
+}
+
+static void TaskCheckboxClickReportsItsNewStateItemAndMarker() {
+    TaskListHost* host = nullptr;
+    int clicks = ClickTaskList(true, &host);
+    utassert(host && host->nReported == 6);
+    struct Want {
+        bool checked;
+        const char* item;
+        const char* marker;
+    };
+    Want want[] = {
+        {true, "- [ ] Open\n  - [x] Nested", "[ ]"},
+        {false, "- [x] Nested", "[x]"},
+        {false, "* [X] Star", "[X]"},
+        {true, "+ [ ] Plus", "[ ]"},
+        {false, "1. [x] One", "[x]"},
+        {true, "2) [ ] Two", "[ ]"},
+    };
+    if (host && host->nReported == 6) {
+        for (int i = 0; i < 6; i++) {
+            Str item = Str(want[i].item);
+            Str marker = Str(want[i].marker);
+            // find, not rfind: the nested item is also a suffix of the first.
+            const char* at = strstr(kTaskList, want[i].item);
+            int itemStart = at ? (int)(at - kTaskList) : -1;
+            int markerAt = TaskRFind(item, marker);
+            int markerStart = itemStart + markerAt;
+            const TaskToggleEvent& ev = host->reported[i];
+            utassert(ev.Checked() == want[i].checked);
+            utassert(ev.ItemRange().start == itemStart);
+            utassert(ev.ItemRange().end == itemStart + len(item));
+            utassert(ev.MarkerRange().start == markerStart);
+            utassert(ev.MarkerRange().end == markerStart + len(marker));
+        }
+    }
+    utassert(clicks == 1);
+    if (host && host->app) {
+        TestAppFree(host->app);
+    }
+}
+
+static void TaskCheckboxesWithoutAHandlerAreNotInteractive() {
+    TaskListHost* host = nullptr;
+    int clicks = ClickTaskList(false, &host);
+    utassert(clicks == 7);
+    if (host && host->app) {
+        TestAppFree(host->app);
+    }
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -9173,6 +9387,9 @@ void TestTextView() {
     TextColorOfAnInvertedSurfaceDerivesEveryColorFromIt();
     TextViewFollowsTheTextColorOfItsContainer();
     TestTextViewBuilder();
+    TaskMarkerIsTheBracketedCheckWhereverTheItemTextStarts(a);
+    TaskCheckboxClickReportsItsNewStateItemAndMarker();
+    TaskCheckboxesWithoutAHandlerAreNotInteractive();
     TestTextViewDefaultsAndOptInHighlighting();
     InheritedInvertedColorSuppressesTheDefaultHighlighter();
     TestTextViewRootNamesItsForeground();
