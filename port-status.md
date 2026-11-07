@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `51b134470df23ea154312a1ddeb673addca0142a` (2026-11-01,
-input: Restore backward selections through set_selected_range (#3756)).
-A selection can be saved with its caret direction and put back.
-set_selected_range still clears that direction, and a range whose
-start is past its end stays a caret.
+Processed through `56e9153c4e80775cb6e29d5ef6f6b350bbab71b1` (2026-11-01,
+combobox: Correct filtered selection events and confirmation (#3449)).
+A single-select combobox closes when the chosen value is already
+selected. A change is the values before and after the delegate, not
+the indexes.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

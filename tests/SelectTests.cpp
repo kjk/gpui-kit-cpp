@@ -399,6 +399,106 @@ static El* RenderComboboxFooter(Ctx* cx, void* data) {
     return Div(cx->a);
 }
 
+struct RedirectUser {
+    int confirmations = 0;
+};
+
+static void RedirectWillChange(void*, component::SearchableListState* state,
+                               const component::SearchableListChange*, int) {
+    VecClear(state->selected);
+    VecAppend(state->selected, 2);
+}
+
+static void RedirectConfirm(void* user,
+                            const component::SearchableListState* state,
+                            IndexPath, bool) {
+    RedirectUser* redirect = (RedirectUser*)user;
+    redirect->confirmations++;
+    utassert(state && state->selected.len == 1 && state->selected[0] == 2);
+}
+
+// combobox.rs single_select_confirms_delegate_replacement. on_will_change
+// replaces the pick with "C++"; that is one Change and one Confirm, and
+// the menu closes.
+static void SingleSelectConfirmsDelegateReplacement() {
+    using namespace gpui::component;
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Entity<ComboboxState> state = ComboboxState::New(&app);
+    Ctx cx = {&app, win, a, state.id};
+    ComboboxState* s = state.Get(&app);
+    SearchableListItem items[] = {
+        {StrL("Rust"), StrL("Rust")},
+        {StrL("Go"), StrL("Go")},
+        {StrL("C++"), StrL("C++")},
+    };
+    s->SetItems(items, 3);
+    IndexPath rust = IndexPathNew(0);
+    s->SetSelectedIndices(&rust, 1, &cx);
+    RedirectUser redirect;
+    SearchableListDelegate delegate = {};
+    delegate.user = &redirect;
+    delegate.onWillChange = RedirectWillChange;
+    delegate.onConfirm = RedirectConfirm;
+    s->SetDelegate(delegate);
+    // IntoEl sets this so the list does not confirm a second time. The
+    // combobox confirm is the one the test counts.
+    s->state.suppressDelegateConfirm = true;
+
+    Entity<ComboboxEventSink> sink = EntityNewState<ComboboxEventSink>(&app);
+    SubscribeTo(&app, state, sink, &ComboboxEventSink::OnEvent);
+    s->SetOpen(true, &cx);
+    SearchableListState::OnRowClick(s->List(), &cx, nullptr, 1);
+    ComboboxEventSink* heard = sink.Get(&app);
+    utassert(base::StrEq(s->SelectedValue(), StrL("C++")));
+    utassert(!s->state.open);
+    utassert(redirect.confirmations == 1);
+    utassert(heard && heard->changes == 1 && heard->confirms == 1);
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
+// combobox.rs test_filtered_row_replacement_list_confirm. The visible row
+// is Vue while the committed value is still React; confirming that row
+// selects Vue and closes.
+static void FilteredRowReplacementSelectsTheVisibleValue() {
+    using namespace gpui::component;
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Entity<ComboboxState> state = ComboboxState::New(&app);
+    Ctx cx = {&app, win, a, state.id};
+    ComboboxState* s = state.Get(&app);
+    SearchableListItem items[] = {
+        {StrL("React"), StrL("React")},
+        {StrL("Vue"), StrL("Vue")},
+    };
+    s->Searchable(true);
+    s->SetItems(items, 2);
+    IndexPath react = IndexPathNew(0);
+    s->SetSelectedIndices(&react, 1, &cx);
+    Entity<ComboboxEventSink> sink = EntityNewState<ComboboxEventSink>(&app);
+    SubscribeTo(&app, state, sink, &ComboboxEventSink::OnEvent);
+    s->SetOpen(true, &cx);
+    s->SetQuery(StrL("Vue"), &cx);
+    utassert(base::StrEq(s->SelectedValue(), StrL("React")));
+    utassert(s->state.matches.len == 1 && s->state.matches[0] == 1);
+    SearchableListState::OnRowClick(s->List(), &cx, nullptr, 0);
+    ComboboxEventSink* heard = sink.Get(&app);
+    utassert(base::StrEq(s->SelectedValue(), StrL("Vue")));
+    utassert(!s->state.open);
+    utassert(heard && heard->changes == 1 && heard->confirms == 1);
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void ComboboxOwnsStateEventsAndTriggerContext() {
     using namespace gpui::component;
     App app;
@@ -444,7 +544,8 @@ static void ComboboxOwnsStateEventsAndTriggerContext() {
     utassert(!s->queryInput.focused);
 
     // Programmatic replacement updates the committed snapshot without
-    // emitting, and a same-value single selection neither emits nor closes.
+    // emitting. Re-accepting the current value emits Confirm only and
+    // stays closed (current_item_acceptance_closes_without_change).
     IndexPath vue = IndexPathNew(1);
     s->Multiple(false);
     s->SetSelectedIndices(&vue, 1, &cx);
@@ -453,8 +554,9 @@ static void ComboboxOwnsStateEventsAndTriggerContext() {
     int confirmsBefore = heard->confirms;
     SearchableListState::OnRowClick(s->List(), &cx, nullptr, 1);
     utassert(heard->changes == changesBefore);
-    utassert(heard->confirms == confirmsBefore);
-    utassert(s->state.open);
+    utassert(heard->confirms == confirmsBefore + 1);
+    utassert(!s->state.open);
+    s->SetOpen(true, &cx);
 
     ComboboxRenderProbe probe;
     component::Combobox::New(&cx, StrL("source-combobox"), state)
@@ -723,4 +825,6 @@ void TestSelect() {
     SelectEmitsOneDismissEventForEachOpenToClosedTransition();
     SourceSelectBuilderWritesItsOwnState();
     ComboboxOwnsStateEventsAndTriggerContext();
+    SingleSelectConfirmsDelegateReplacement();
+    FilteredRowReplacementSelectsTheVisibleValue();
 }

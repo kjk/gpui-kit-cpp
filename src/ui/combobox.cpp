@@ -5,16 +5,35 @@ namespace gpui {
 
 namespace component {
 
-static bool SameSelection(const Vec<int>& a, const Vec<int>& b) {
+static Str ItemValueAt(const SearchableListState& st, int ix) {
+    if (!st.items || ix < 0 || ix >= st.nItems) {
+        return {};
+    }
+    return st.items[ix].value;
+}
+
+// A selection is the values it names, in order. Two indexes of one value,
+// or one index whose value a delegate replaced, are not the same pick.
+static bool SameSelectionValues(const SearchableListState& st,
+                                const Vec<int>& a, const Vec<int>& b) {
     if (len(a) != len(b)) {
         return false;
     }
     for (int i = 0; i < len(a); i++) {
-        if (a[i] != b[i]) {
+        if (!base::StrEq(ItemValueAt(st, a[i]), ItemValueAt(st, b[i]))) {
             return false;
         }
     }
     return true;
+}
+
+static bool SelectionHasValue(const SearchableListState& st, Str value) {
+    for (int i = 0; i < st.selected.len; i++) {
+        if (base::StrEq(ItemValueAt(st, st.selected[i]), value)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 int ComboboxTriggerContext::SelectionCount() const {
@@ -225,13 +244,18 @@ void ComboboxState::OnListChange(ComboboxState* self, Ctx* cx,
     if (!self || !event || event->kind != ListEventKind::Confirm) {
         return;
     }
-    bool changed =
-        !SameSelection(self->selectionSnapshot, self->state.selected);
+    // combobox.rs: changed is the values before on_will_change against the
+    // values after it. Re-accepting the current value still closes.
+    bool changed = !SameSelectionValues(self->state, self->selectionSnapshot,
+                                        self->state.selected);
+    bool picked =
+        SelectionHasValue(self->state, ItemValueAt(self->state, event->index));
+    bool shouldClose = !self->multiple && (changed || picked);
     self->SyncSnapshot();
     if (changed) {
         self->Emit(cx, ComboboxEventKind::Change);
     }
-    if (changed && !self->multiple) {
+    if (shouldClose) {
         if (self->state.hasDelegate) {
             int flat = event->index;
             int section = flat >= 0 && flat < self->state.nItems
@@ -247,10 +271,11 @@ void ComboboxState::OnListChange(ComboboxState* self, Ctx* cx,
         self->Emit(cx, ComboboxEventKind::Confirm);
         self->SetOpen(false, cx);
         self->Focus(cx->win);
-    } else if (!changed && !self->multiple && !self->state.open) {
+    } else if (!self->multiple && !self->state.open) {
         // SearchableList's standalone single-select path closes eagerly.
-        // Combobox only closes after the delegate actually changes the
-        // selection, so restore the open list after a veto or same-value pick.
+        // A veto leaves the values unchanged and the clicked value
+        // unselected, so restore the open list. Re-accepting the current
+        // value stays closed.
         self->state.open = true;
         FocusHandleFocus(cx->win, self->state.contentFocus);
         Notify(cx);
