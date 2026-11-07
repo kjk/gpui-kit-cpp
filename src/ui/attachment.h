@@ -62,20 +62,14 @@ struct AttachmentSlotLayout {
 
 // The media slot for an attachment. Add an icon or another element as a child
 // for an icon-style preview; use Src when the attachment has an image.
-struct AttachmentMedia {
+// The slot layout's fields are the media's own, filled by Layout; the size
+// only when the caller set none.
+struct AttachmentMedia : AttachmentSlotLayout {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     ArenaVec<El*> children;
     ArenaVec<El*> overlays;
-    UiSize size = UiSize::Medium;
     bool hasSize = false;
-    AttachmentStatus status = AttachmentStatus::Complete;
-    Axis axis = Axis::Horizontal;
-    bool flush = false;
-    Listener retry;
-    float progress = -1;
-    Str id = {};
-    bool hasId = false;
     Str source = {};
     bool hasSource = false;
     Style style = {};
@@ -167,17 +161,9 @@ struct AttachmentContent {
 // A composition slot for attachment actions. Add existing Button or other
 // controls as children; a separate attachment-specific action wrapper is
 // intentionally unnecessary.
-struct AttachmentActions {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
+struct AttachmentActions : SlotBuilder<AttachmentActions> {
     bool verticalLayout = false;
-    Style style = {};
-    uint32_t styleSet = 0;
 
-    static AttachmentActions* New(Ctx* cx);
-    AttachmentActions* Child(El* e);
-    AttachmentActions* Refine(const Style& s, uint32_t fields);
     AttachmentActions* LayoutForAxis(Axis axis);
     El* IntoEl();
 };

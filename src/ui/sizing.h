@@ -471,6 +471,37 @@ inline El* BindPathClick(El* e, Str name, Listener onClick) {
     }
     return e;
 }
+
+// The slot builders' common half (crates/ui's `ParentElement + Styled` on a
+// struct holding `children` and a `StyleRefinement`): the frame arena and
+// context, the children, and the caller's style refinement, set the same
+// way on every one. `Self` is the builder each setter returns.
+template <typename Self>
+struct SlotBuilder {
+    Arena* a = nullptr;
+    Ctx* cx = nullptr;
+    ArenaVec<El*> children;
+    Style style = {};
+    uint32_t styleSet = 0;
+
+    static Self* New(Ctx* cx) {
+        Self* self = ArenaNew<Self>(cx->a);
+        self->a = cx->a;
+        self->cx = cx;
+        return self;
+    }
+    Self* Child(El* e) {
+        if (e) {
+            children.Append(a, e);
+        }
+        return static_cast<Self*>(this);
+    }
+    Self* Refine(const Style& s, uint32_t fields) {
+        StyleApplyFields(&style, s, fields);
+        styleSet |= fields;
+        return static_cast<Self*>(this);
+    }
+};
 } // namespace component
 } // namespace gpui
 #endif // GPUI_SRC_UI_SIZING_H_

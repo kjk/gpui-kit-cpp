@@ -172,29 +172,12 @@ struct SidebarGroup {
 // The header and the footer: a row of children with selected / collapsed
 // state, a click and the caller's style, set the same way on both.
 template <typename Self>
-struct SidebarBandBuilder {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
-    Style style = {};
-    uint32_t styleSet = 0;
+struct SidebarBandBuilder : SlotBuilder<Self> {
     bool selected = false;
     bool collapsed = false;
     Listener onClick = {};
     ElRefiner refiner = {};
 
-    static Self* New(Ctx* cx) {
-        Self* self = ArenaNew<Self>(cx->a);
-        self->a = cx->a;
-        self->cx = cx;
-        return self;
-    }
-    Self* Child(El* child) {
-        if (child) {
-            children.Append(a, child);
-        }
-        return static_cast<Self*>(this);
-    }
     Self* Selected(bool v) {
         selected = v;
         return static_cast<Self*>(this);
@@ -205,11 +188,6 @@ struct SidebarBandBuilder {
     }
     Self* OnClick(Listener fn) {
         onClick = fn;
-        return static_cast<Self*>(this);
-    }
-    Self* Refine(const Style& v, uint32_t fields) {
-        StyleApplyFields(&style, v, fields);
-        styleSet |= fields;
         return static_cast<Self*>(this);
     }
 };

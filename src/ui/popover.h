@@ -80,9 +80,8 @@ struct Button;
 // the children, and takes the caller's refinement last -- so `Refine` styles
 // the surface the way Rust's Styled impl does, and `Appearance(false)`
 // leaves a bare box for the caller to dress.
-struct Popover {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct Popover : SlotBuilder<Popover> {
+    using SlotBuilder<Popover>::New;
     Str id = {};
     El* trigger = nullptr;
     // trigger(Button): a Selectable trigger, built once the popover knows
@@ -94,14 +93,11 @@ struct Popover {
     El* (*contentFn)(void* user, Ctx* cx) = nullptr;
     void* contentUser = nullptr;
     // ParentElement: the surface's children after the content.
-    ArenaVec<El*> children;
     // appearance(..): popover_style().p_3() on the surface, and the ring
     // around the arrow. On by default.
     bool appearance = true;
     // Styled: the refinement laid on the surface, by field, and a caller's
     // whole refinement (a script's style) applied after it.
-    Style style = {};
-    uint32_t styleSet = 0;
     ElRefiner refiner = {};
     // Set only by Open(). Without it the popover keeps its own state and the
     // trigger's press toggles it, which is Rust's uncontrolled default;
@@ -126,21 +122,18 @@ struct Popover {
     Style triggerStyle = {};
     uint32_t triggerStyleSet = 0;
 
-    static Popover* New(Ctx* cx);
     static Popover* New(Ctx* cx, Str id);
     Popover* Trigger(El* e);
     Popover* Trigger(component::Button* triggerBtn);
     Popover* Content(El* e);
     Popover* ContentBuilder(El* (*fn)(void* user, Ctx* cx), void* user);
     // child(..): another child of the surface, after the content.
-    Popover* Child(El* e);
     // appearance(false): no popover_style or padding on the surface, and no
     // ring around the arrow.
     Popover* Appearance(bool v);
     // Styled: refine the surface's `fields` from `s` (its width, padding,
     // gap, text size, background ...). A background set here is also what
     // the arrow fills with.
-    Popover* Refine(const Style& s, uint32_t fields);
     // A refinement Style's fields cannot name (a shadow, a script's whole
     // style), applied to the surface after Refine.
     Popover* RefineWith(ElRefiner r);

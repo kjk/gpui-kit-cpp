@@ -5,27 +5,6 @@ namespace gpui {
 
 namespace component {
 
-MessageGroup* MessageGroup::New(Ctx* cx) {
-    Arena* a = cx->a;
-    MessageGroup* s = ArenaNew<MessageGroup>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-MessageGroup* MessageGroup::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-MessageGroup* MessageGroup::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
-    return this;
-}
-
 El* MessageGroupColumn(Ctx* cx, const ArenaVec<El*>& children,
                        const Style& style, uint32_t styleSet) {
     El* column = Div(cx->a)->FlexCol()->MinW(0)->Gap(Rems(cx, 0.5f));
@@ -40,27 +19,6 @@ El* MessageGroupColumn(Ctx* cx, const ArenaVec<El*>& children,
 
 El* MessageGroup::IntoEl() {
     return MessageGroupColumn(cx, children, style, styleSet);
-}
-
-MessageAvatar* MessageAvatar::New(Ctx* cx) {
-    Arena* a = cx->a;
-    MessageAvatar* s = ArenaNew<MessageAvatar>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-MessageAvatar* MessageAvatar::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-MessageAvatar* MessageAvatar::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
-    return this;
 }
 
 El* MessageAvatar::IntoEl() {
@@ -85,46 +43,10 @@ El* MessageAvatar::IntoEl() {
     return slot;
 }
 
-MessageHeader* MessageHeader::New(Ctx* cx) {
+El* MessageMetaRow(Ctx* cx, bool contentInset, bool hasContentInset,
+                   const Style& style, uint32_t styleSet,
+                   const ArenaVec<El*>& children) {
     Arena* a = cx->a;
-    MessageHeader* s = ArenaNew<MessageHeader>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-MessageHeader* MessageHeader::ContentInset(bool value) {
-    contentInset = value;
-    hasContentInset = true;
-    return this;
-}
-
-MessageHeader* MessageHeader::WithInheritedContentInset(bool value) {
-    if (!hasContentInset) {
-        contentInset = value;
-        hasContentInset = true;
-    }
-    return this;
-}
-
-MessageHeader* MessageHeader::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-MessageHeader* MessageHeader::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
-    return this;
-}
-
-// MessageHeader and MessageFooter render the same row; only the slot they
-// occupy differs, which is how the source keeps them two types.
-static El* MessageMetaRow(Arena* a, Ctx* cx, bool contentInset,
-                          bool hasContentInset, const Style& style,
-                          uint32_t styleSet, const ArenaVec<El*>& children) {
     const Theme& th = ThemeNow(cx->app);
     El* row = Div(a)
                   ->FlexRow()
@@ -148,19 +70,6 @@ static El* MessageMetaRow(Arena* a, Ctx* cx, bool contentInset,
     return row;
 }
 
-El* MessageHeader::IntoEl() {
-    return MessageMetaRow(a, cx, contentInset, hasContentInset, style, styleSet,
-                          children);
-}
-
-MessageContent* MessageContent::New(Ctx* cx) {
-    Arena* a = cx->a;
-    MessageContent* s = ArenaNew<MessageContent>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
 MessageContent* MessageContent::WithBubble(Bubble* bubble) {
     if (bubble) {
         hasGhostBubble = hasGhostBubble || bubble->IsGhost();
@@ -171,19 +80,6 @@ MessageContent* MessageContent::WithBubble(Bubble* bubble) {
 
 MessageContent* MessageContent::Aligned(MessageAlignment value) {
     alignment = value;
-    return this;
-}
-
-MessageContent* MessageContent::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-MessageContent* MessageContent::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 
@@ -201,46 +97,6 @@ El* MessageContent::IntoEl() {
         column->Child(children[i]);
     }
     return column;
-}
-
-MessageFooter* MessageFooter::New(Ctx* cx) {
-    Arena* a = cx->a;
-    MessageFooter* s = ArenaNew<MessageFooter>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-MessageFooter* MessageFooter::ContentInset(bool value) {
-    contentInset = value;
-    hasContentInset = true;
-    return this;
-}
-
-MessageFooter* MessageFooter::WithInheritedContentInset(bool value) {
-    if (!hasContentInset) {
-        contentInset = value;
-        hasContentInset = true;
-    }
-    return this;
-}
-
-MessageFooter* MessageFooter::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-MessageFooter* MessageFooter::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
-    return this;
-}
-
-El* MessageFooter::IntoEl() {
-    return MessageMetaRow(a, cx, contentInset, hasContentInset, style, styleSet,
-                          children);
 }
 
 Message* Message::New(Ctx* cx) {

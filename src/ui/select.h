@@ -98,131 +98,86 @@ Entity<SearchableListState> SelectListEntity(Entity<SelectState> state);
 
 // What a Select and the Combobox that is one both hold: the Combobox hands
 // its set to the Select underneath whole.
-struct SelectFields {
+struct SelectFields : SearchableListContent {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
     Entity<SearchableListState> state = {};
-    // The items, which are the caller's: they have to outlive the frame, so a
-    // static array rather than one built on the frame arena.
-    const SearchableItem* items = nullptr;
-    int nItems = 0;
-    const Str* sections = nullptr;
-    int nSections = 0;
     Str placeholder = {};
     Str empty = {};
     // `w_full()`: the trigger fills what holds it.
     float width = kFill;
     float menuWidth = 0; // menu_width(px(..)): wider than the trigger
     float menuMaxH = 0;
-    UiSize size = UiSize::Medium;
     IconName icon = IconName::None; // replaces the caret when set
-    // Combobox::check_icon: what marks a selected row.
-    IconName checkIcon = IconName::Check;
     bool disabled = false;
     bool cleanable = false;
     bool appearance = true;
     bool focusRing = true;
-    // searchable(true): a query field at the top of the list, which is what
-    // makes a Select a ComboBox in all but name.
-    InputState* query = nullptr;
-    Listener onQueryFocus = {};
     // render_trigger: what the trigger box holds instead of the title and the
     // caret. Rust hands the closure the selection and lets it build the lot,
     // including its own Caret; a caller here builds the same element and the
     // trigger box only supplies the border, the size and the click.
     El* trigger = nullptr;
-    // Combobox::footer: an action under the option list.
-    El* footer = nullptr;
-    SearchableListDelegate delegate = {};
-    bool hasDelegate = false;
     Listener onToggle;
     Listener onClear;
 };
 
 // The setters both builders take, each returning its own builder.
 template <typename Self>
-struct SelectBuilder : SelectFields {
-    Self* This() { return static_cast<Self*>(this); }
-    Self* Items(const SearchableItem* it, int n) {
-        items = it;
-        nItems = n;
-        return This();
-    }
-    Self* Sections(const Str* titles, int n) {
-        sections = titles;
-        nSections = n;
-        return This();
-    }
+struct SelectBuilder : SearchableContentBuilder<Self, SelectFields> {
     Self* Placeholder(Str s) {
-        placeholder = s;
-        return This();
+        this->placeholder = s;
+        return this->This();
     }
     Self* Empty(Str s) {
-        empty = s;
-        return This();
+        this->empty = s;
+        return this->This();
     }
     Self* W(float v) {
-        width = v;
-        return This();
+        this->width = v;
+        return this->This();
     }
     Self* MenuWidth(float v) {
-        menuWidth = v;
-        return This();
+        this->menuWidth = v;
+        return this->This();
     }
     Self* MenuMaxH(float v) {
-        menuMaxH = v;
-        return This();
-    }
-    Self* WithSize(UiSize s) {
-        size = s;
-        return This();
+        this->menuMaxH = v;
+        return this->This();
     }
     Self* Icon(IconName n) {
-        icon = n;
-        return This();
-    }
-    Self* CheckIcon(IconName n) {
-        checkIcon = n;
-        return This();
+        this->icon = n;
+        return this->This();
     }
     Self* Disabled(bool v) {
-        disabled = v;
-        return This();
+        this->disabled = v;
+        return this->This();
     }
     Self* Cleanable(bool v = true) {
-        cleanable = v;
-        return This();
+        this->cleanable = v;
+        return this->This();
     }
     Self* Appearance(bool v) {
-        appearance = v;
-        return This();
+        this->appearance = v;
+        return this->This();
     }
     // FocusableExt::focus_ring: no focus appearance on this control.
     Self* FocusRing(bool v) {
-        focusRing = v;
-        return This();
+        this->focusRing = v;
+        return this->This();
     }
     Self* Trigger(El* e) {
-        trigger = e;
-        return This();
-    }
-    Self* Footer(El* e) {
-        footer = e;
-        return This();
-    }
-    Self* Delegate(const SearchableListDelegate& value) {
-        delegate = value;
-        hasDelegate = true;
-        return This();
+        this->trigger = e;
+        return this->This();
     }
     Self* OnToggle(Listener fn) {
-        onToggle = fn;
-        return This();
+        this->onToggle = fn;
+        return this->This();
     }
     Self* OnClear(Listener fn) {
-        onClear = fn;
-        return This();
+        this->onClear = fn;
+        return this->This();
     }
 };
 

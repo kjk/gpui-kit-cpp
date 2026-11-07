@@ -589,30 +589,15 @@ El* Select::IntoEl() {
         // The list is the whole dropdown: the query, the sections, the checks
         // and the empty state are all its own.
         SearchableList* list =
-            SearchableList::New(cx, StrL("list"), state, query)
-                ->InSelect(true)
-                ->Items(items, nItems)
-                // Length::Auto is the trigger's own laid-out width: the
-                // popover ring is drawn outside the surface, so the surface
-                // no longer widens by 2 to cover a border of its own.
-                ->W(menuWidth > 0 ? menuWidth : autoMenuW)
-                ->CheckIcon(checkIcon)
-                ->WithSize(size);
-        if (sections) {
-            list->Sections(sections, nSections);
-        }
-        if (query) {
-            list->OnQueryFocus(onQueryFocus);
-        }
+            SearchableList::New(cx, StrL("list"), state, query)->InSelect(true);
+        static_cast<SearchableListContent&>(*list) = *this;
+        // Length::Auto is the trigger's own laid-out width: the popover ring
+        // is drawn outside the surface, so the surface no longer widens by 2
+        // to cover a border of its own.
+        list->W(menuWidth > 0 ? menuWidth : autoMenuW);
         // menu_max_h: rems(20.) unless the caller set one.
         list->MaxH(menuMaxH > 0 ? menuMaxH : Rems(cx, 20.f));
         if (scrollBounce >= 0) list->ScrollBounce(scrollBounce == 1);
-        if (footer) {
-            list->Footer(footer);
-        }
-        if (hasDelegate) {
-            list->Delegate(delegate);
-        }
         if (emptyEl) {
             list->Empty(emptyEl);
         } else if (empty.s) {

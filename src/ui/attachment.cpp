@@ -125,17 +125,12 @@ AttachmentMedia* AttachmentMedia::Refine(const Style& s, uint32_t fields) {
 }
 
 AttachmentMedia* AttachmentMedia::Layout(const AttachmentSlotLayout& layout) {
-    if (!hasSize) {
-        size = layout.size;
-        hasSize = true;
+    UiSize own = size;
+    static_cast<AttachmentSlotLayout&>(*this) = layout;
+    if (hasSize) {
+        size = own;
     }
-    status = layout.status;
-    axis = layout.axis;
-    flush = layout.flush;
-    retry = layout.retry;
-    progress = layout.progress;
-    id = layout.id;
-    hasId = layout.hasId;
+    hasSize = true;
     return this;
 }
 
@@ -478,27 +473,6 @@ El* AttachmentContent::IntoEl() {
         column->Refine(style, styleSet);
     }
     return column;
-}
-
-AttachmentActions* AttachmentActions::New(Ctx* cx) {
-    Arena* a = cx->a;
-    AttachmentActions* s = ArenaNew<AttachmentActions>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-AttachmentActions* AttachmentActions::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-AttachmentActions* AttachmentActions::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
-    return this;
 }
 
 AttachmentActions* AttachmentActions::LayoutForAxis(Axis axis) {

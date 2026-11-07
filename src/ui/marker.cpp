@@ -7,27 +7,6 @@ namespace gpui {
 
 namespace component {
 
-MarkerIcon* MarkerIcon::New(Ctx* cx) {
-    Arena* a = cx->a;
-    MarkerIcon* s = ArenaNew<MarkerIcon>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-MarkerIcon* MarkerIcon::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-MarkerIcon* MarkerIcon::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
-    return this;
-}
-
 El* MarkerIcon::IntoEl() {
     // h_flex().size_4().flex_none().items_center().justify_center()
     El* row = Div(a)

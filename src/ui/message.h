@@ -25,92 +25,67 @@ El* MessageGroupColumn(Ctx* cx, const ArenaVec<El*>& children,
                        const Style& style, uint32_t styleSet);
 
 // A vertical stack of consecutive messages from the same sender.
-struct MessageGroup {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
-    Style style = {};
-    uint32_t styleSet = 0;
-
-    static MessageGroup* New(Ctx* cx);
-    MessageGroup* Child(El* e);
-    MessageGroup* Refine(const Style& s, uint32_t fields);
+struct MessageGroup : SlotBuilder<MessageGroup> {
     El* IntoEl();
 };
 
 // The sender identity slot rendered beside a Message. It reserves the shared
 // `size-8` baseline; the message row keeps it flush with the bottom edge of
 // the visible message surface.
-struct MessageAvatar {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
-    Style style = {};
-    uint32_t styleSet = 0;
-
-    static MessageAvatar* New(Ctx* cx);
-    MessageAvatar* Child(El* e);
-    MessageAvatar* Refine(const Style& s, uint32_t fields);
+struct MessageAvatar : SlotBuilder<MessageAvatar> {
     El* IntoEl();
 };
 
-// Header content such as a sender name and timestamp.
-struct MessageHeader {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
+// The row MessageHeader and MessageFooter both render; the inset padding
+// applies unless the caller turned it off.
+El* MessageMetaRow(Ctx* cx, bool contentInset, bool hasContentInset,
+                   const Style& style, uint32_t styleSet,
+                   const ArenaVec<El*>& children);
+
+// MessageHeader and MessageFooter are the same slot; only where it sits in
+// the message differs, which is how the source keeps them two types.
+template <typename Self>
+struct MessageMetaSlot : SlotBuilder<Self> {
     // Option<bool>: unset inherits from the message's content.
     bool contentInset = false;
     bool hasContentInset = false;
-    Style style = {};
-    uint32_t styleSet = 0;
 
-    static MessageHeader* New(Ctx* cx);
-    MessageHeader* ContentInset(bool value);
+    Self* ContentInset(bool value) {
+        contentInset = value;
+        hasContentInset = true;
+        return static_cast<Self*>(this);
+    }
     // The message's own answer, taken only when the caller gave none.
-    MessageHeader* WithInheritedContentInset(bool value);
-    MessageHeader* Child(El* e);
-    MessageHeader* Refine(const Style& s, uint32_t fields);
-    El* IntoEl();
+    Self* WithInheritedContentInset(bool value) {
+        if (!hasContentInset) {
+            contentInset = value;
+            hasContentInset = true;
+        }
+        return static_cast<Self*>(this);
+    }
+    El* IntoEl() {
+        return MessageMetaRow(this->cx, contentInset, hasContentInset,
+                              this->style, this->styleSet, this->children);
+    }
 };
 
+// Header content such as a sender name and timestamp.
+struct MessageHeader : MessageMetaSlot<MessageHeader> {};
+
 // The message body slot. It can contain bubbles, images, code, or files.
-struct MessageContent {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
+struct MessageContent : SlotBuilder<MessageContent> {
     MessageAlignment alignment = MessageAlignment::Start;
     bool hasGhostBubble = false;
-    Style style = {};
-    uint32_t styleSet = 0;
 
-    static MessageContent* New(Ctx* cx);
     // Add a typed bubble and inherit its ghost-surface metadata layout.
     // Ordinary Child stays available for arbitrary elements.
     MessageContent* WithBubble(Bubble* bubble);
     MessageContent* Aligned(MessageAlignment value);
-    MessageContent* Child(El* e);
-    MessageContent* Refine(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 
 // Footer content such as delivery state, reactions, or action buttons.
-struct MessageFooter {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
-    bool contentInset = false;
-    bool hasContentInset = false;
-    Style style = {};
-    uint32_t styleSet = 0;
-
-    static MessageFooter* New(Ctx* cx);
-    MessageFooter* ContentInset(bool value);
-    MessageFooter* WithInheritedContentInset(bool value);
-    MessageFooter* Child(El* e);
-    MessageFooter* Refine(const Style& s, uint32_t fields);
-    El* IntoEl();
-};
+struct MessageFooter : MessageMetaSlot<MessageFooter> {};
 
 // A composable message row with named avatar, header, content and footer
 // slots. The named slots let the message apply its alignment consistently

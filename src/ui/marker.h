@@ -39,16 +39,7 @@ enum class MarkerAlignment : uint8_t {
 };
 
 // A compact decorative icon slot inside a Marker.
-struct MarkerIcon {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
-    Style style = {};
-    uint32_t styleSet = 0;
-
-    static MarkerIcon* New(Ctx* cx);
-    MarkerIcon* Child(El* e);
-    MarkerIcon* Refine(const Style& s, uint32_t fields);
+struct MarkerIcon : SlotBuilder<MarkerIcon> {
     El* IntoEl();
 };
 

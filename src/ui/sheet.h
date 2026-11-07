@@ -17,9 +17,7 @@ enum class SheetPlacement : uint8_t {
     Bottom
 };
 
-struct Sheet {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct Sheet : SlotBuilder<Sheet> {
     Str title = {};
     El* titleEl = nullptr;
     bool open = false;
@@ -32,7 +30,6 @@ struct Sheet {
     bool overlay = true;
     bool overlayClosable = true;
     El* body = nullptr;
-    ArenaVec<El*> children;
     // footer(): a row under the body, ruled off from it.
     El* footer = nullptr;
     // overflow_y_scrollbar() on the body: the offset is the caller's, the way
@@ -41,10 +38,7 @@ struct Sheet {
     int scrollId = 0;
     Listener onScroll;
     Listener onClose;
-    Style style = {};
-    uint32_t styleSet = 0;
 
-    static Sheet* New(Ctx* cx);
     Sheet* Title(Str s);
     Sheet* Title(El* e);
     Sheet* Placement(SheetPlacement p);
@@ -54,9 +48,7 @@ struct Sheet {
     Sheet* OverlayClosable(bool v = true);
     Sheet* Open(bool v);
     Sheet* Body(El* e);
-    Sheet* Child(El* e);
     Sheet* Footer(El* e);
-    Sheet* Refine(const Style& style, uint32_t fields);
     Sheet* Scroll(int id, float y, Listener fn);
     Sheet* OnClose(Listener fn);
     El* IntoEl(WinSize size);
