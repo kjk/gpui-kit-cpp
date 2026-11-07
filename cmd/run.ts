@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ebc4fd1b3fa5fe24162a3c70a910581cdfeb8651",
+  sha: "fbc3ebf145d0d4593c883271f8ac7a7e6b74c6d6",
   date: "2026-11-02",
-  subject: "menu: Report an unchecked option as unchecked to assistive technology (#3761)",
+  subject: "text: Preserve list body width in fitted containers (#3759)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",

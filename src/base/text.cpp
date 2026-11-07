@@ -4975,7 +4975,10 @@ static El* TaskBox(const Ctx* cx, Arena* a, const TextViewStyle& style,
 }
 
 El* TextView::Item(MdNode* n, Str marker, int depth) {
-    El* content = Div(a)->FlexCol()->Flex1()->MinW(0)->ClipX();
+    // Include the body in intrinsic width measurement, while still letting
+    // it shrink and wrap in a constrained row. flex_1()'s zero basis can
+    // drop a short list out of a fitted bubble.
+    El* content = Div(a)->FlexCol()->FlexAuto()->MinW(0)->ClipX();
     // list_selected_source: the item's first line carries the Markdown
     // marker, and every line under it is indented by the marker's width so
     // continuations and nested lists line up with the item's text. A task

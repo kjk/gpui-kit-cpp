@@ -2955,6 +2955,10 @@ struct El {
     // Flex1() keeps the zero-pixel basis the native components were laid
     // out against.
     El* Flex1Rel();
+    // flex_auto(): grow 1, shrink 1, basis auto. The item still fills a
+    // definite line and still shrinks, and its content counts toward the
+    // line's intrinsic width. flex_1()'s zero basis does not.
+    El* FlexAuto();
     // flex_none(): neither grows nor shrinks, and keeps its own size.
     El* FlexNone();
     El* Basis(float v);

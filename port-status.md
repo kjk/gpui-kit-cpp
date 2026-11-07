@@ -16,15 +16,21 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ebc4fd1b3fa5fe24162a3c70a910581cdfeb8651` (2026-11-02,
-menu: Report an unchecked option as unchecked to assistive technology (#3761)).
-A menu option that is not checked reports toggled off. A plain command
-reports no check state, including one built with checked(false).
+Processed through `fbc3ebf145d0d4593c883271f8ac7a7e6b74c6d6` (2026-11-02,
+text: Preserve list body width in fitted containers (#3759)).
+A list item's body is flex_auto, so its text counts toward the row's
+intrinsic width and the body can still shrink.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
 ## Known gaps vs Rust
 
+- **Fitted text does not contribute its max-content width.** A
+  shrink-to-fit bubble around a TextView sizes to its padding and list
+  markers. A run is width 100%, and that percentage does not fall back
+  to the text's max-content while the parent is being measured
+  (`src/base/text.cpp`). Upstream's fitted-list checks are wider than
+  the same words as a paragraph and wrap inside the container.
 - **Painted text is not observed for tests.** Rust records each label,
   shortcut, text run and avatar name while painting when `test-support`
   is on, and `test_support::texts` returns that log (`observe.rs`,

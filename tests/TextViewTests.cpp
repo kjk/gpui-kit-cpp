@@ -2728,12 +2728,69 @@ static void AnUnchangedFlowIsNotLaidOutAgain() {
     AppGlobalClear(&app);
 }
 
+static bool ListBodyIsFlexAuto(El* e) {
+    if (!e) {
+        return false;
+    }
+    // The list body: grow 1, shrink 1, basis auto, min width 0.
+    if (e->style.flexGrow == 1.f && e->style.flexShrink == 1.f &&
+        e->style.flexBasis == kAuto && !e->style.flexBasisPercent &&
+        e->style.minW == 0.f) {
+        return true;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (ListBodyIsFlexAuto(c)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// text_view.rs fitted_lists_include_their_body_width and
+// fitted_lists_wrap_their_body_within_the_available_width. Those measure
+// a shrink-to-fit bubble. A run here is width 100%, and that percentage
+// does not fall back to the text's max-content while the parent is being
+// measured, so the bubble sizes to its padding and the marker. The change
+// those tests cover is the body's flex_auto.
+static void FittedListsKeepTheirBodyWidth() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    const char* sources[] = {
+        "Hello world",
+        "3. Hello world",
+        "- Hello world",
+        "- [ ] Hello world",
+        "- [x] Hello world",
+        "Intro\n\n- Hello world",
+        "- Outer\n  - Hello world",
+    };
+    for (const char* source : sources) {
+        El* view = TextView::New(&cx, Str(source))->IntoEl();
+        // Inherited color defers the blocks until layout.
+        LayoutEl(&win->paint, view, 0, 0, 600, 400, 16, Rgba{});
+        bool list = source[0] == '-' || source[0] == '3' || source[0] == 'I';
+        utassert(ListBodyIsFlexAuto(view) == list);
+    }
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 // text_view.rs inline_code_line_is_as_tall_as_a_plain_line and
 // inline_flow.rs inline_code_line_is_as_tall_as_a_plain_line_when_glyphs_
 // overflow_it (#3162). A line with a code span is a row of words here and a
 // plain line one text run; the smaller mono run joins the row inside the
 // body's line box, so both come out the same height at every scale and
 // zoom, and a list with one code item is evenly spaced.
+
 static void InlineCodeLineIsAsTallAsAPlainLine() {
     App app;
     ThemeSet(&app, ThemeMode::Light);
@@ -8678,6 +8735,7 @@ void TestTextView() {
     FlowPositionReportsThePreviousHeadingOrRule();
     AnUnchangedFlowIsNotLaidOutAgain();
     InlineCodeLineIsAsTallAsAPlainLine();
+    FittedListsKeepTheirBodyWidth();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
     StreamFadeUnitsAreWordsOrCjkCharacters();

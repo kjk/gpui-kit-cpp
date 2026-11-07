@@ -736,6 +736,13 @@ El* El::Flex1Rel() {
     style.flexBasisPercent = true;
     return this;
 }
+El* El::FlexAuto() {
+    style.flexGrow = 1;
+    style.flexShrink = 1;
+    style.flexBasis = kAuto;
+    style.flexBasisPercent = false;
+    return this;
+}
 El* El::FlexNone() {
     style.flexGrow = 0;
     style.flexShrink = 0;
