@@ -17,20 +17,6 @@ namespace gpui {
 
 #if defined(GPUI_HAVE_CURL) && GPUI_HAVE_CURL
 
-// "image/png; charset=..." -> "image/png", lowercased where it stands.
-static void TrimMediaType(Str* s) {
-    for (int i = 0; i < s->len; i++) {
-        char c = s->s[i];
-        if (c == ';' || c == ' ') {
-            s->len = i;
-            break;
-        }
-        if (c >= 'A' && c <= 'Z') {
-            s->s[i] = (char)(c - 'A' + 'a');
-        }
-    }
-}
-
 struct CurlTransfer {
     const HttpReq* req = nullptr;
     HttpRsp* out = nullptr;
@@ -267,7 +253,7 @@ bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
         if (curl_easy_getinfo(c, CURLINFO_CONTENT_TYPE, &ct) == CURLE_OK &&
             ct) {
             Str s = StrDup(Str(ct));
-            TrimMediaType(&s);
+            HttpTrimMediaType(&s);
             out->contentType = s;
         }
         out->headers = HttpHeadersFromRaw(
@@ -285,19 +271,6 @@ bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
     return ok;
 }
 
-bool HttpGet(Str url, HttpRsp* out) {
-    HttpReq req;
-    req.url = url;
-    return HttpSend(req, out);
-}
-
-bool HttpGetNoRedirect(Str url, HttpRsp* out) {
-    HttpReq req;
-    req.url = url;
-    req.noRedirect = true;
-    return HttpSend(req, out);
-}
-
 #else
 
 bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
@@ -307,21 +280,6 @@ bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
     if (out) {
         out->error = StrDup(StrL("built without libcurl"));
     }
-    return false;
-}
-
-bool HttpGet(Str url, HttpRsp* out) {
-    // Built without libcurl: there is no client here to make the request
-    // with, so every fetch fails the way a request to an unreachable host
-    // would and the picture stays its alt text.
-    (void)url;
-    (void)out;
-    return false;
-}
-
-bool HttpGetNoRedirect(Str url, HttpRsp* out) {
-    (void)url;
-    (void)out;
     return false;
 }
 

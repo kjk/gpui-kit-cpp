@@ -76,6 +76,17 @@ static void PutBool(DbusWriter* w, bool value) {
     PutU32(w, value ? 1u : 0u);
 }
 
+// A rectangle as AT-SPI's (iiii): x, y, width, height. Answers the reply's
+// signature.
+static const char* PutExtents(DbusWriter* w, Bounds b) {
+    PutAlign(w, 8);
+    PutI32(w, (int)b.x);
+    PutI32(w, (int)b.y);
+    PutI32(w, (int)b.w);
+    PutI32(w, (int)b.h);
+    return "(iiii)";
+}
+
 static void PutString(DbusWriter* w, Str value) {
     PutAlign(w, 4);
     PutU32(w, (uint32_t)std::max(0, len(value)));
@@ -1390,12 +1401,7 @@ static bool HandleComponent(const Incoming& in, const LinuxAccessible& object) {
     } else if (StrIs(in.member, "GetExtents")) {
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Bounds bounds = ComponentBounds(object, coordType);
-        PutAlign(&body, 8);
-        PutI32(&body, (int)bounds.x);
-        PutI32(&body, (int)bounds.y);
-        PutI32(&body, (int)bounds.w);
-        PutI32(&body, (int)bounds.h);
-        signature = "(iiii)";
+        signature = PutExtents(&body, bounds);
     } else if (StrIs(in.member, "GetPosition")) {
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Bounds bounds = ComponentBounds(object, coordType);
@@ -1556,18 +1562,9 @@ static int Utf8CharacterForByte(Str text, int byte) {
 static uint32_t Utf8CodepointForCharacter(Str text, int character) {
     int at = Utf8ByteForCharacter(text, character);
     if (at < 0 || at >= len(text)) return 0;
-    const uint8_t* s = (const uint8_t*)text.s + at;
-    int left = len(text) - at;
-    if (s[0] < 0x80) return s[0];
-    if ((s[0] & 0xe0) == 0xc0 && left >= 2)
-        return ((uint32_t)(s[0] & 0x1f) << 6) | (s[1] & 0x3f);
-    if ((s[0] & 0xf0) == 0xe0 && left >= 3)
-        return ((uint32_t)(s[0] & 0x0f) << 12) |
-               ((uint32_t)(s[1] & 0x3f) << 6) | (s[2] & 0x3f);
-    if ((s[0] & 0xf8) == 0xf0 && left >= 4)
-        return ((uint32_t)(s[0] & 7) << 18) | ((uint32_t)(s[1] & 0x3f) << 12) |
-               ((uint32_t)(s[2] & 0x3f) << 6) | (s[3] & 0x3f);
-    return 0xfffd;
+    uint32_t cp = 0;
+    Utf8At(text, at, &cp);
+    return cp;
 }
 
 static bool TextSpace(uint32_t cp) {
@@ -1767,23 +1764,13 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         (void)ReadI32(in.body, in.bodyLen, &at);
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Bounds bounds = ComponentBounds(object, coordType);
-        PutAlign(&body, 8);
-        PutI32(&body, (int)bounds.x);
-        PutI32(&body, (int)bounds.y);
-        PutI32(&body, (int)bounds.w);
-        PutI32(&body, (int)bounds.h);
-        signature = "(iiii)";
+        signature = PutExtents(&body, bounds);
     } else if (textInterface && StrIs(in.member, "GetRangeExtents")) {
         (void)ReadI32(in.body, in.bodyLen, &at);
         (void)ReadI32(in.body, in.bodyLen, &at);
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Bounds bounds = ComponentBounds(object, coordType);
-        PutAlign(&body, 8);
-        PutI32(&body, (int)bounds.x);
-        PutI32(&body, (int)bounds.y);
-        PutI32(&body, (int)bounds.w);
-        PutI32(&body, (int)bounds.h);
-        signature = "(iiii)";
+        signature = PutExtents(&body, bounds);
     } else if (textInterface && (StrIs(in.member, "GetDefaultAttributes") ||
                                  StrIs(in.member, "GetDefaultAttributeSet"))) {
         PutEmptyStringDict(&body);

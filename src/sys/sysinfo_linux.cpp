@@ -5,6 +5,7 @@
    "/", and the battery from /sys/class/power_supply. */
 
 #include "sys/sysinfo.h"
+#include "sys/clock.h"
 
 #include <dirent.h>
 #include <stdio.h>
@@ -30,17 +31,7 @@ static uint64_t TickTo100ns() {
 }
 
 void SysStateInit(SysState* s) {
-    VecReset(s->prevProcs);
-    VecReset(s->procs);
-    s->cpu = 0;
-    s->mem = 0;
-    s->memTotal = 0;
-    s->memUsed = 0;
-    ZeroStruct(&s->prevCpu);
-    ZeroStruct(&s->disk);
-    ZeroStruct(&s->battery);
-    long n = sysconf(_SC_NPROCESSORS_ONLN);
-    s->ncpu = n > 0 ? (int)n : 1;
+    SysStateReset(s, (int)sysconf(_SC_NPROCESSORS_ONLN));
 }
 
 void SysStateFree(SysState* s) {
@@ -66,22 +57,7 @@ static void RefreshCpu(SysState* s) {
     for (int i = 0; i < n; i++) {
         total += v[i];
     }
-    SysTimes cur;
-    cur.idle = idle;
-    // The Windows half splits kernel and user; here the whole total goes in
-    // `kernel` (which includes idle there too) and `user` stays 0.
-    cur.kernel = total;
-    cur.user = 0;
-    cur.valid = true;
-    if (s->prevCpu.valid) {
-        uint64_t idleD = cur.idle - s->prevCpu.idle;
-        uint64_t totalD = cur.kernel - s->prevCpu.kernel;
-        if (totalD > 0) {
-            double used = (double)(totalD - idleD) / (double)totalD;
-            s->cpu = (float)(used * 100.0);
-        }
-    }
-    s->prevCpu = cur;
+    SysCpuSample(s, idle, total);
 }
 
 // The value of a "Key:  1234 kB" line, in bytes.
@@ -132,13 +108,7 @@ static void RefreshDisk(SysState* s) {
         return;
     }
     uint64_t unit = st.f_frsize ? st.f_frsize : st.f_bsize;
-    s->disk.total = (uint64_t)st.f_blocks * unit;
-    uint64_t avail = (uint64_t)st.f_bavail * unit;
-    s->disk.used = s->disk.total > avail ? s->disk.total - avail : 0;
-    if (s->disk.total > 0) {
-        s->disk.usedPct =
-            (float)((double)s->disk.used * 100.0 / (double)s->disk.total);
-    }
+    SysDiskSet(s, (uint64_t)st.f_blocks * unit, (uint64_t)st.f_bavail * unit);
 }
 
 static void RefreshBattery(SysState* s) {
@@ -175,15 +145,6 @@ static void RefreshBattery(SysState* s) {
         break;
     }
     closedir(d);
-}
-
-static uint64_t FindPrevCpu(const Vec<ProcSample>& prev, uint32_t pid) {
-    for (int i = 0; i < len(prev); i++) {
-        if (prev[i].pid == pid) {
-            return prev[i].cpu100ns;
-        }
-    }
-    return 0;
 }
 
 // /proc/<pid>/stat: the process name is field 2 in parentheses and can itself
@@ -241,17 +202,8 @@ static void RefreshProcesses(SysState* s) {
     if (!d) {
         return;
     }
-    Vec<ProcessInfo> next;
-    Vec<ProcSample> samples;
-
-    // Wall clock in the same 100 ns units the CPU totals use.
-    static uint64_t sPrevWall = 0;
-    struct timespec ts = {};
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t now =
-        (uint64_t)ts.tv_sec * 10000000ull + (uint64_t)(ts.tv_nsec / 100);
-    uint64_t wallDelta = (sPrevWall && now > sPrevWall) ? (now - sPrevWall) : 0;
-    sPrevWall = now;
+    SysProcScan scan;
+    SysProcScanBegin(&scan, ClockMonotonicNs() / 100);
 
     struct dirent* ent = nullptr;
     while ((ent = readdir(d)) != nullptr) {
@@ -273,24 +225,12 @@ static void RefreshProcesses(SysState* s) {
         if (!ReadProcStat(buf.s, &pi, &cpu)) {
             continue;
         }
-        uint64_t prev = FindPrevCpu(s->prevProcs, pid);
-        if (prev && wallDelta > 0) {
-            uint64_t delta = cpu >= prev ? cpu - prev : 0;
-            pi.cpu = (float)((double)delta * 100.0 /
-                             ((double)wallDelta * (double)s->ncpu));
-        }
-        ProcSample sm;
-        sm.pid = pid;
-        sm.cpu100ns = cpu;
-        VecAppend(samples, sm);
-        VecAppend(next, pi);
+        SysProcScanSample(s, &scan, &pi, cpu);
+        VecAppend(scan.procs, pi);
     }
     closedir(d);
 
-    VecReset(s->prevProcs);
-    s->prevProcs = samples;
-    VecReset(s->procs);
-    s->procs = next;
+    SysProcScanEnd(s, &scan);
 }
 
 void SysRefresh(SysState* s) {
@@ -345,16 +285,8 @@ bool SysSelfPrivateMemory(uint64_t* bytes) {
     return false;
 }
 
-// clock_gettime(CLOCK_THREAD_CPUTIME_ID): this thread's user plus kernel time.
 bool SysSelfThreadCpu(double* seconds) {
-    struct timespec ts = {};
-    if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) != 0) {
-        return false;
-    }
-    if (seconds) {
-        *seconds = (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-    }
-    return true;
+    return ClockThreadCpuSeconds(seconds);
 }
 
 } // namespace gpui

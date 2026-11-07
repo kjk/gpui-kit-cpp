@@ -157,8 +157,7 @@ static void DirWatchThread(DirWatchPlat* w) {
 
 DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
                                DirWatchError* err) {
-    if (create && mkdir(dir, 0777) != 0 && errno != EEXIST) {
-        *err = DirWatchError::Failed;
+    if (!DirWatchMakeDirPosix(dir, create, err)) {
         return nullptr;
     }
     auto* w = (DirWatchPlat*)calloc(1, sizeof(DirWatchPlat));

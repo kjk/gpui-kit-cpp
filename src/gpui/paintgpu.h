@@ -80,6 +80,10 @@ bool PaintImagePixels(const RenderImage* img, const uint8_t** bgra, int* w,
 // IDWriteTextLayout*. TextLayout is wrapped so its stable scene generation
 // can live beside the native object.
 void* PaintTextLayoutNative(TextLayout* tl);
+// Fill the DXGI_SWAP_CHAIN_DESC1* `desc` for a window's flip-model chain of
+// `buffers` BGRA buffers, pxW x pxH, opaque and unscaled: what all three
+// backends present through, so they are compared on the same terms.
+void PaintFlipChainDesc(void* desc, int pxW, int pxH, int buffers);
 
 // ─── the GPU backend ─────────────────────────────────────────────────────
 //

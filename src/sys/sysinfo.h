@@ -72,6 +72,34 @@ enum class ProcessSort : uint8_t {
 void SysSortProcesses(SysState* s, ProcessSort field, bool descending,
                       int keepTop);
 
+// ─── for the sysinfo_*.cpp halves ──────────────────────────────────────────
+// The arithmetic each platform's SysStateInit / SysRefresh shares, so the
+// platform file only reads its own counters.
+
+// Empty every reading and remember `ncpu` cores (at least one).
+void SysStateReset(SysState* s, int ncpu);
+
+// Machine-wide CPU use since the previous sample, from the idle and total
+// (busy plus idle) time counters in any one unit.
+void SysCpuSample(SysState* s, uint64_t idle, uint64_t total);
+
+// The disk numbers out of a volume's size and what is still free on it.
+void SysDiskSet(SysState* s, uint64_t total, uint64_t avail);
+
+// One refresh of the process table. Begin stamps the wall clock (100 ns units)
+// the CPU deltas are measured against; Sample sets pi->cpu from the process's
+// CPU time so far (100 ns units) and remembers it for the next refresh; End
+// replaces the state's table with what was collected in `procs`.
+struct SysProcScan {
+    Vec<ProcessInfo> procs;
+    Vec<ProcSample> samples;
+    uint64_t wallDelta = 0;
+};
+void SysProcScanBegin(SysProcScan* scan, uint64_t wall100ns);
+void SysProcScanSample(SysState* s, SysProcScan* scan, ProcessInfo* pi,
+                       uint64_t cpu100ns);
+void SysProcScanEnd(SysState* s, SysProcScan* scan);
+
 TempStr FormatBytesTemp(uint64_t bytes);
 TempStr FormatPctTemp(float v, int decimals);
 

@@ -2,6 +2,7 @@
    WIC decode are shared with the fixed D3D11/D3D12 builds too. */
 
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 // The custom GPU renderer beside this one. In WIN_BACKEND_ALL builds,
 // __paint=d3d11|d3d12 selects it; fixed custom builds
 // always hand every entry point to their one submission half.
@@ -22,16 +23,6 @@
 #include <wincodec.h>
 
 namespace gpui {
-
-static uint64_t gNextPaintResourceGeneration = 1;
-
-static uint64_t PaintResourceGenerationNew() {
-    uint64_t id = gNextPaintResourceGeneration++;
-    if (id == 0) {
-        id = gNextPaintResourceGeneration++;
-    }
-    return id;
-}
 
 static WinPaintOptions gWinPaintOptions = {
 #if WIN_BACKEND_D3D11 && !WIN_BACKEND_ALL
@@ -524,25 +515,10 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
         t->generation = PaintResourceGenerationNew();
         t->hwnd = hwnd;
         t->transparent = ctx->transparent;
+        // Three buffers, matching GPUI's own DirectX renderer
+        // (directx_renderer.rs BUFFER_COUNT).
         DXGI_SWAP_CHAIN_DESC1 desc = {};
-        desc.Width = (UINT)pxW;
-        desc.Height = (UINT)pxH;
-        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        desc.SampleDesc.Count = 1;
-        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        // Three buffers and FLIP_SEQUENTIAL, matching GPUI's own DirectX
-        // renderer (directx_renderer.rs BUFFER_COUNT). Flipping is what puts
-        // the frame on the redirection surface DWM composites and
-        // PrintWindow(PW_RENDERFULLCONTENT) reads; SEQUENTIAL keeps the back
-        // buffer's contents across a present, so a frame that only redraws
-        // part of the window still comes out whole.
-        desc.BufferCount = 3;
-        desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-        desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-        // Stretch is the default and is what DWM does with the last buffer
-        // while the window is between sizes. None keeps left-side content
-        // where it was; the new strip is empty until this frame presents.
-        desc.Scaling = DXGI_SCALING_NONE;
+        PaintFlipChainDesc(&desc, pxW, pxH, 3);
         HRESULT hr = S_OK;
         if (t->transparent) {
             // A composition chain must stretch and is the one kind that may
@@ -762,24 +738,10 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
     return ok;
 }
 
-// Close the recording and draw what it collected. Both backends end a frame
-// through here, so the scene is replayed once for the two of them.
-static bool SceneFinish(PaintCtx* ctx) {
-    if (!SceneOn() || !scene::Recording()) {
-        return true;
-    }
-    Bounds damage = {};
-    bool draw = scene::FrameEnd(ctx, &damage);
-    if (draw) {
-        if (!scene::ReplayScroll(ctx)) {
-            scene::Replay(ctx, &damage);
-        }
-    }
-    return draw;
-}
-
 bool PaintTargetEnd(PaintCtx* ctx) {
-    SceneFinish(ctx);
+    // Both backends end a frame through here, so the scene is replayed once
+    // for the two of them.
+    PaintSceneFinish(ctx, false);
     if (PaintGpuOn()) {
         return gpuw::PaintTargetEnd(ctx);
     }
@@ -1496,6 +1458,30 @@ void PathFillGradientV(PaintCtx* ctx, Path* p, float y0, float y1, Rgba top,
     PathFillGradient(ctx, p, 0, y0, 0, y1, top, bot);
 }
 
+// A two-stop linear gradient brush from (x0, y0) to (x1, y1), faded for the
+// current layer; the caller releases it. Null when Direct2D made none.
+static ID2D1LinearGradientBrush* LinearBrush(PaintCtx* ctx, float x0, float y0,
+                                             float x1, float y1, Rgba from,
+                                             Rgba to) {
+    D2D1_GRADIENT_STOP gs[2];
+    gs[0].position = 0.f;
+    gs[0].color = ToD2D(PaintFade(ctx, from));
+    gs[1].position = 1.f;
+    gs[1].color = ToD2D(PaintFade(ctx, to));
+    ID2D1GradientStopCollection* stops = nullptr;
+    ctx->rt->rt->CreateGradientStopCollection(gs, 2, &stops);
+    if (!stops) {
+        return nullptr;
+    }
+    ID2D1LinearGradientBrush* gb = nullptr;
+    ctx->rt->rt->CreateLinearGradientBrush(
+        D2D1::LinearGradientBrushProperties(D2D1::Point2F(x0, y0),
+                                            D2D1::Point2F(x1, y1)),
+        stops, &gb);
+    stops->Release();
+    return gb;
+}
+
 void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
                       float y1, Rgba from, Rgba to, float dx, float dy) {
     if (scene::Recording()) {
@@ -1510,30 +1496,13 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
     if (!g || !ctx || !ctx->rt) {
         return;
     }
-    D2D1_GRADIENT_STOP gs[2];
-    gs[0].position = 0.f;
-    gs[0].color = ToD2D(PaintFade(ctx, from));
-    gs[1].position = 1.f;
-    gs[1].color = ToD2D(PaintFade(ctx, to));
-    ID2D1GradientStopCollection* stops = nullptr;
-    ctx->rt->rt->CreateGradientStopCollection(gs, 2, &stops);
-    bool filled = false;
-    if (stops) {
-        ID2D1LinearGradientBrush* gb = nullptr;
-        ctx->rt->rt->CreateLinearGradientBrush(
-            D2D1::LinearGradientBrushProperties(D2D1::Point2F(x0, y0),
-                                                D2D1::Point2F(x1, y1)),
-            stops, &gb);
-        if (gb) {
-            bool offset = PathOffsetBegin(ctx, dx, dy);
-            ctx->rt->rt->FillGeometry(g, gb);
-            PathOffsetEnd(ctx, offset);
-            gb->Release();
-            filled = true;
-        }
-        stops->Release();
-    }
-    if (!filled) {
+    ID2D1LinearGradientBrush* gb = LinearBrush(ctx, x0, y0, x1, y1, from, to);
+    if (gb) {
+        bool offset = PathOffsetBegin(ctx, dx, dy);
+        ctx->rt->rt->FillGeometry(g, gb);
+        PathOffsetEnd(ctx, offset);
+        gb->Release();
+    } else {
         PathFill(ctx, p, from, dx, dy);
     }
 }
@@ -1578,32 +1547,15 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
         return;
     }
     // The brush PathFillGradient builds, handed to DrawGeometry.
-    D2D1_GRADIENT_STOP gs[2];
-    gs[0].position = 0.f;
-    gs[0].color = ToD2D(PaintFade(ctx, from));
-    gs[1].position = 1.f;
-    gs[1].color = ToD2D(PaintFade(ctx, to));
-    ID2D1GradientStopCollection* stops = nullptr;
-    ctx->rt->rt->CreateGradientStopCollection(gs, 2, &stops);
-    bool stroked = false;
-    if (stops) {
-        ID2D1LinearGradientBrush* gb = nullptr;
-        ctx->rt->rt->CreateLinearGradientBrush(
-            D2D1::LinearGradientBrushProperties(D2D1::Point2F(x0, y0),
-                                                D2D1::Point2F(x1, y1)),
-            stops, &gb);
-        if (gb) {
-            ID2D1StrokeStyle* ss = DashStyle(ctx, nullptr, roundCaps);
-            bool offset = PathOffsetBegin(ctx, dx, dy);
-            ctx->rt->rt->DrawGeometry(g, gb, stroke, ss);
-            PathOffsetEnd(ctx, offset);
-            Rel(&ss);
-            gb->Release();
-            stroked = true;
-        }
-        stops->Release();
-    }
-    if (!stroked) {
+    ID2D1LinearGradientBrush* gb = LinearBrush(ctx, x0, y0, x1, y1, from, to);
+    if (gb) {
+        ID2D1StrokeStyle* ss = DashStyle(ctx, nullptr, roundCaps);
+        bool offset = PathOffsetBegin(ctx, dx, dy);
+        ctx->rt->rt->DrawGeometry(g, gb, stroke, ss);
+        PathOffsetEnd(ctx, offset);
+        Rel(&ss);
+        gb->Release();
+    } else {
         PathStroke(ctx, p, stroke, from, roundCaps, dx, dy);
     }
 }
@@ -1795,12 +1747,13 @@ struct WinImageFrame {
     int durationMs = 100;
 };
 
-struct RenderImage {
-    int refs = 1;
-    uint64_t generation = 0;
-    RenderImageStatus status = RenderImageStatus::Ready;
-    Vec<WinImageFrame> frames;
-};
+struct RenderImage : RenderImageFrames<WinImageFrame> {};
+
+static void WinFrameFree(WinImageFrame* frame) {
+    Rel(&frame->bmp);
+    Rel(&frame->grayBmp);
+    Free(nullptr, frame->bgra);
+}
 
 static int WicFrameDurationMs(IWICBitmapFrameDecode* frame) {
     IWICMetadataQueryReader* metadata = nullptr;
@@ -1889,8 +1842,7 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
         hr = dec->GetFrameCount(&frameCount);
     }
     if (SUCCEEDED(hr) && frameCount > 0) {
-        img = new RenderImage();
-        img->generation = PaintResourceGenerationNew();
+        img = RenderImageAlloc<RenderImage>(RenderImageStatus::Ready);
         for (UINT i = 0; i < frameCount; i++) {
             IWICBitmapFrameDecode* frame = nullptr;
             WinImageFrame decoded = {};
@@ -1915,56 +1867,23 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
                                  int h) {
     (void)pa;
     if (!bgra || w <= 0 || h <= 0 || w > 0x7fffffff / 4 / h) return nullptr;
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
     WinImageFrame frame = {};
     frame.w = w;
     frame.h = h;
     frame.bgra = (uint8_t*)Alloc(nullptr, w * h * 4);
     if (!frame.bgra) {
-        delete img;
         return nullptr;
     }
     memcpy(frame.bgra, bgra, (size_t)w * (size_t)h * 4);
-    VecAppend(img->frames, frame);
-    return img;
+    return RenderImageWithFrame<RenderImage>(frame);
 }
 
 RenderImage* RenderImageNewLoading() {
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
-    img->status = RenderImageStatus::Loading;
-    return img;
+    return RenderImageAlloc<RenderImage>(RenderImageStatus::Loading);
 }
 
 void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
-    if (!img) {
-        if (decoded) {
-            RenderImageRelease(decoded);
-        }
-        return;
-    }
-    if (decoded && decoded->frames.len > 0) {
-        for (int i = 0; i < img->frames.len; i++) {
-            WinImageFrame& frame = img->frames[i];
-            Rel(&frame.bmp);
-            Rel(&frame.grayBmp);
-            Free(nullptr, frame.bgra);
-        }
-        VecReset(img->frames);
-        img->frames.els = decoded->frames.els;
-        img->frames.len = decoded->frames.len;
-        img->frames.cap = decoded->frames.cap;
-        decoded->frames.els = nullptr;
-        decoded->frames.len = 0;
-        decoded->frames.cap = 0;
-        img->status = RenderImageStatus::Ready;
-    } else {
-        img->status = RenderImageStatus::Failed;
-    }
-    if (decoded) {
-        RenderImageRelease(decoded);
-    }
+    RenderImageAdoptFrames(img, decoded, WinFrameFree);
 }
 
 void RenderImageRetain(RenderImage* img) {
@@ -1974,17 +1893,11 @@ void RenderImageRetain(RenderImage* img) {
 }
 
 void RenderImageRelease(RenderImage* img) {
-    if (!img || --img->refs != 0) {
+    if (!RenderImageUnref(img)) {
         return;
     }
     gpuw::RenderImageFree(img->generation);
-    for (int i = 0; i < img->frames.len; i++) {
-        WinImageFrame& frame = img->frames[i];
-        Rel(&frame.bmp);
-        Rel(&frame.grayBmp);
-        Free(nullptr, frame.bgra);
-    }
-    VecReset(img->frames);
+    RenderImageFramesFree(img, WinFrameFree);
     delete img;
 }
 
@@ -1996,15 +1909,34 @@ RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
     return img ? img->status : RenderImageStatus::Failed;
 }
 
+void PaintFlipChainDesc(void* out, int pxW, int pxH, int buffers) {
+    auto* desc = (DXGI_SWAP_CHAIN_DESC1*)out;
+    *desc = {};
+    desc->Width = (UINT)pxW;
+    desc->Height = (UINT)pxH;
+    desc->Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc->SampleDesc.Count = 1;
+    desc->BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    desc->BufferCount = (UINT)buffers;
+    // Flipping is what puts the frame on the redirection surface DWM
+    // composites and PrintWindow(PW_RENDERFULLCONTENT) reads; SEQUENTIAL keeps
+    // the back buffer's contents across a present, so a frame that only
+    // redraws part of the window still comes out whole.
+    desc->SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    desc->AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+    // Stretch is the default and is what DWM does with the last buffer while
+    // the window is between sizes. None keeps left-side content where it was;
+    // the new strip is empty until this frame presents.
+    desc->Scaling = DXGI_SCALING_NONE;
+}
+
 // The GPU backend makes its own texture out of the same pixels rather than a
 // second D2D bitmap.
 bool PaintImagePixels(const RenderImage* img, const uint8_t** bgra, int* w,
                       int* h, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
+    frameIndex = RenderImageFrameIndex(img, frameIndex);
+    if (frameIndex < 0) {
         return false;
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
     }
     const WinImageFrame& frame = img->frames[frameIndex];
     if (!frame.bgra || frame.w <= 0 || frame.h <= 0) {
@@ -2023,13 +1955,7 @@ bool PaintImagePixels(const RenderImage* img, const uint8_t** bgra, int* w,
 }
 
 Size RenderImageSizePx(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return {};
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return {(float)img->frames[frameIndex].w, (float)img->frames[frameIndex].h};
+    return RenderImageFrameSizePx(img, frameIndex);
 }
 
 int RenderImageFrameCount(const RenderImage* img) {
@@ -2037,13 +1963,7 @@ int RenderImageFrameCount(const RenderImage* img) {
 }
 
 int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return 0;
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return img->frames[frameIndex].durationMs;
+    return RenderImageFrameDuration(img, frameIndex);
 }
 
 static ID2D1Bitmap* ImageBitmap(PaintCtx* ctx, WinImageFrame* frame,
@@ -2068,16 +1988,8 @@ static ID2D1Bitmap* ImageBitmap(PaintCtx* ctx, WinImageFrame* frame,
         if (!gray) {
             return nullptr;
         }
-        memcpy(gray, pixels, n);
-        for (size_t i = 0; i < n; i += 4) {
-            uint8_t y = (uint8_t)(((uint32_t)gray[i + 2] * 54 +
-                                   (uint32_t)gray[i + 1] * 183 +
-                                   (uint32_t)gray[i] * 19) >>
-                                  8);
-            gray[i] = y;
-            gray[i + 1] = y;
-            gray[i + 2] = y;
-        }
+        PaintGrayBgraRows(gray, (size_t)frame->w * 4, pixels,
+                          (size_t)frame->w * 4, frame->w, frame->h);
         pixels = gray;
     }
     D2D1_BITMAP_PROPERTIES props = D2D1::BitmapProperties(D2D1::PixelFormat(
@@ -2111,9 +2023,7 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
         imageBounds.h <= 0) {
         return;
     }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
+    frameIndex = RenderImageFrameIndex(img, frameIndex);
     ID2D1RenderTarget* rt = ctx->rt->rt;
     ID2D1Bitmap* bitmap = ImageBitmap(ctx, &img->frames[frameIndex], grayscale);
     if (!bitmap) {

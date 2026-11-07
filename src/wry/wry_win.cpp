@@ -3931,6 +3931,24 @@ struct PendingResponse {
     Str headers;
 };
 
+// A post can fail when the webview's container was destroyed while a worker
+// was preparing its answer. Nothing may call WebView2 from that worker; just
+// release the agile COM references and copied response there. The request is
+// already being torn down with its view. ApplyResponse ends the same way once
+// the answer is in.
+static void DiscardResponse(PendingResponse* p) {
+    RequestResponder* r = p->responder;
+    if (r->deferral) {
+        r->deferral->Release();
+    }
+    r->args->Release();
+    r->env->Release();
+    StrFree(p->headers);
+    free(p->body);
+    delete p;
+    delete r;
+}
+
 static void ApplyResponse(PendingResponse* p) {
     RequestResponder* r = p->responder;
     ICoreWebView2WebResourceResponse* response =
@@ -3944,31 +3962,8 @@ static void ApplyResponse(PendingResponse* p) {
     }
     if (r->deferral) {
         r->deferral->Complete();
-        r->deferral->Release();
     }
-    r->args->Release();
-    r->env->Release();
-    StrFree(p->headers);
-    free(p->body);
-    delete p;
-    delete r;
-}
-
-// A post can fail when the webview's container was destroyed while a worker
-// was preparing its answer. Nothing may call WebView2 from that worker; just
-// release the agile COM references and copied response there. The request is
-// already being torn down with its view.
-static void DiscardResponse(PendingResponse* p) {
-    RequestResponder* r = p->responder;
-    if (r->deferral) {
-        r->deferral->Release();
-    }
-    r->args->Release();
-    r->env->Release();
-    StrFree(p->headers);
-    free(p->body);
-    delete p;
-    delete r;
+    DiscardResponse(p);
 }
 
 void Respond(RequestResponder* responder, const Response* response) {
@@ -4272,8 +4267,9 @@ static HRESULT OnProcessFailed(void* ctx, ICoreWebView2*,
     return S_OK;
 }
 
-static HRESULT OnContentLoading(void* ctx, ICoreWebView2* sender,
-                                ICoreWebView2ContentLoadingEventArgs*) {
+// on_page_load_handler, with the URL the webview is on now.
+static HRESULT ReportPageLoad(void* ctx, ICoreWebView2* sender,
+                              PageLoadEvent event) {
     WebView* wv = LiveWebView(ctx);
     if (!wv) {
         return S_OK;
@@ -4284,27 +4280,20 @@ static HRESULT OnContentLoading(void* ctx, ICoreWebView2* sender,
         if (FAILED(hr)) {
             return hr;
         }
-        wv->onPageLoadHandler(wv->ctx, PageLoadEvent::Started, url);
+        wv->onPageLoadHandler(wv->ctx, event, url);
     }
     return S_OK;
+}
+
+static HRESULT OnContentLoading(void* ctx, ICoreWebView2* sender,
+                                ICoreWebView2ContentLoadingEventArgs*) {
+    return ReportPageLoad(ctx, sender, PageLoadEvent::Started);
 }
 
 static HRESULT OnNavigationCompleted(
     void* ctx, ICoreWebView2* sender,
     ICoreWebView2NavigationCompletedEventArgs*) {
-    WebView* wv = LiveWebView(ctx);
-    if (!wv) {
-        return S_OK;
-    }
-    if (sender && wv->onPageLoadHandler) {
-        Str url;
-        HRESULT hr = UrlFromWebViewInner(sender, &url);
-        if (FAILED(hr)) {
-            return hr;
-        }
-        wv->onPageLoadHandler(wv->ctx, PageLoadEvent::Finished, url);
-    }
-    return S_OK;
+    return ReportPageLoad(ctx, sender, PageLoadEvent::Finished);
 }
 
 static HRESULT OnNavigationStarting(

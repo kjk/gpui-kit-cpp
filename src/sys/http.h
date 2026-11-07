@@ -161,6 +161,11 @@ Str HttpProxyDirectDup();
 bool HttpGet(Str url, HttpRsp* out);
 bool HttpGetNoRedirect(Str url, HttpRsp* out);
 
+// A Content-Type header cut down to its media type, for each platform's
+// client: "image/png; charset=..." -> "image/png", lowercased where it
+// stands.
+void HttpTrimMediaType(Str* s);
+
 // Big enough for any picture a document sensibly holds, small enough that a
 // URL pointing at a disk image cannot take the process down with it.
 constexpr int kHttpMaxBody = 16 * 1024 * 1024;

@@ -55,20 +55,6 @@ static Str FromWide(const wchar_t* w) {
     return Str(s, n - 1);
 }
 
-// "image/png; charset=..." -> "image/png", lowercased where it stands.
-static void TrimMediaType(Str* s) {
-    for (int i = 0; i < s->len; i++) {
-        char c = s->s[i];
-        if (c == ';' || c == ' ') {
-            s->len = i;
-            break;
-        }
-        if (c >= 'A' && c <= 'Z') {
-            s->s[i] = (char)(c - 'A' + 'a');
-        }
-    }
-}
-
 // Everything after the handles are open. Split out so the closes above it
 // happen once rather than at each of the ways this can stop.
 static void ReadRedirect(HINTERNET req, const wchar_t* base, HttpRsp* out) {
@@ -196,7 +182,7 @@ static bool ReadResponse(HINTERNET req, const wchar_t* base,
                             WINHTTP_HEADER_NAME_BY_INDEX, ctype, &size,
                             WINHTTP_NO_HEADER_INDEX)) {
         Str ct = FromWide(ctype);
-        TrimMediaType(&ct);
+        HttpTrimMediaType(&ct);
         out->contentType = ct;
     }
 
@@ -460,19 +446,6 @@ bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
         }
     }
     return ok;
-}
-
-bool HttpGet(Str url, HttpRsp* out) {
-    HttpReq req;
-    req.url = url;
-    return HttpSend(req, out);
-}
-
-bool HttpGetNoRedirect(Str url, HttpRsp* out) {
-    HttpReq req;
-    req.url = url;
-    req.noRedirect = true;
-    return HttpSend(req, out);
 }
 
 bool HttpAsyncLaunch(HttpAsyncJob* job) {

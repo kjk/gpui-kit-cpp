@@ -124,20 +124,6 @@
 
 namespace gpui {
 
-// "image/png; charset=..." -> "image/png", lowercased where it stands.
-static void TrimMediaType(Str* s) {
-    for (int i = 0; i < s->len; i++) {
-        char c = s->s[i];
-        if (c == ';' || c == ' ') {
-            s->len = i;
-            break;
-        }
-        if (c >= 'A' && c <= 'Z') {
-            s->s[i] = (char)(c - 'A' + 'a');
-        }
-    }
-}
-
 static Str StrFromNS(NSString* s) {
     if (!s) {
         return {};
@@ -171,6 +157,24 @@ static Str HeadersFromResponse(NSHTTPURLResponse* rsp) {
         out.AppendChar('\n');
     }
     return out.TakeStr();
+}
+
+// Status, redirect target, media type and headers of an answer, the same for
+// the streaming and the buffered request.
+static void ResponseHeadFill(HttpRsp* out, NSHTTPURLResponse* rsp,
+                             bool noRedirect) {
+    out->status = (int)[rsp statusCode];
+    if (noRedirect && out->status >= 300 && out->status < 400) {
+        NSString* location = [rsp valueForHTTPHeaderField:@"Location"];
+        NSURL* target =
+            location ? [NSURL URLWithString:location relativeToURL:[rsp URL]]
+                     : nil;
+        out->redirectUrl = StrFromNS([[target absoluteURL] absoluteString]);
+    }
+    Str ct = StrFromNS([rsp valueForHTTPHeaderField:@"Content-Type"]);
+    HttpTrimMediaType(&ct);
+    out->contentType = ct;
+    out->headers = HeadersFromResponse(rsp);
 }
 
 static NSString* NSFromStr(Str s) {
@@ -288,18 +292,7 @@ static bool HttpSendStreamed(const HttpReq& request, HttpRsp* out) {
             VecReset(out->body);
             return false;
         }
-        out->status = (int)[rsp statusCode];
-        if (request.noRedirect && out->status >= 300 && out->status < 400) {
-            NSString* location = [rsp valueForHTTPHeaderField:@"Location"];
-            NSURL* target = location ? [NSURL URLWithString:location
-                                              relativeToURL:[rsp URL]]
-                                     : nil;
-            out->redirectUrl = StrFromNS([[target absoluteURL] absoluteString]);
-        }
-        Str ct = StrFromNS([rsp valueForHTTPHeaderField:@"Content-Type"]);
-        TrimMediaType(&ct);
-        out->contentType = ct;
-        out->headers = HeadersFromResponse(rsp);
+        ResponseHeadFill(out, rsp, request.noRedirect);
         return true;
     }
 }
@@ -389,18 +382,7 @@ bool HttpSendPlatform(const HttpReq& request, HttpRsp* out) {
             }
             return false;
         }
-        out->status = (int)[rsp statusCode];
-        if (noRedirect && out->status >= 300 && out->status < 400) {
-            NSString* location = [rsp valueForHTTPHeaderField:@"Location"];
-            NSURL* target = location ? [NSURL URLWithString:location
-                                              relativeToURL:[rsp URL]]
-                                     : nil;
-            out->redirectUrl = StrFromNS([[target absoluteURL] absoluteString]);
-        }
-        Str ct = StrFromNS([rsp valueForHTTPHeaderField:@"Content-Type"]);
-        TrimMediaType(&ct);
-        out->contentType = ct;
-        out->headers = HeadersFromResponse(rsp);
+        ResponseHeadFill(out, rsp, noRedirect);
 
         NSUInteger n = body ? [body length] : 0;
         if (n > (NSUInteger)kHttpMaxBody) {
@@ -415,19 +397,6 @@ bool HttpSendPlatform(const HttpReq& request, HttpRsp* out) {
         }
         return true;
     }
-}
-
-bool HttpGet(Str url, HttpRsp* out) {
-    HttpReq req;
-    req.url = url;
-    return HttpSend(req, out);
-}
-
-bool HttpGetNoRedirect(Str url, HttpRsp* out) {
-    HttpReq req;
-    req.url = url;
-    req.noRedirect = true;
-    return HttpSend(req, out);
 }
 
 } // namespace gpui

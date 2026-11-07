@@ -342,6 +342,16 @@ struct WinAccessibilityNode : IRawElementProviderSimple,
     HRESULT Missing() const {
         return Node() ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
     }
+    // The node, for a pattern only a node of `role` supports: gone is
+    // ELEMENTNOTAVAILABLE, another role INVALIDOPERATION.
+    HRESULT NodeOfRole(AccessibilityRole role,
+                       const AccessibilityNode** out) const {
+        *out = Node();
+        if (!*out) {
+            return UIA_E_ELEMENTNOTAVAILABLE;
+        }
+        return (*out)->info.role == role ? S_OK : UIA_E_INVALIDOPERATION;
+    }
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override;
     ULONG STDMETHODCALLTYPE AddRef() override;
@@ -1493,20 +1503,10 @@ HRESULT WinAccessibilityNode::get_CanSelectMultiple(BOOL* out) {
 }
 
 HRESULT WinAccessibilityNode::get_IsSelectionRequired(BOOL* out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    if (!AccessibilitySelectionContainerRole(node->info.role)) {
-        return UIA_E_INVALIDOPERATION;
-    }
     // AccessKit does not carry this container policy in the subset GPUI
-    // exports, so do not promise that an empty selection is forbidden.
-    *out = FALSE;
-    return S_OK;
+    // exports, so do not promise that an empty selection is forbidden: the
+    // same checks and the same FALSE as CanSelectMultiple.
+    return get_CanSelectMultiple(out);
 }
 
 HRESULT WinAccessibilityNode::Select() {
@@ -1738,12 +1738,9 @@ HRESULT WinAccessibilityNode::get_RowSpan(int* out) {
     if (!out) {
         return E_INVALIDARG;
     }
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    if (node->info.role != AccessibilityRole::Cell) {
-        return UIA_E_INVALIDOPERATION;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
+        return hr;
     }
     *out = 1;
     return S_OK;
@@ -1753,12 +1750,9 @@ HRESULT WinAccessibilityNode::get_ColumnSpan(int* out) {
     if (!out) {
         return E_INVALIDARG;
     }
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    if (node->info.role != AccessibilityRole::Cell) {
-        return UIA_E_INVALIDOPERATION;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
+        return hr;
     }
     // The pinned semantic table API records one column index per cell and no
     // span, so one is the only value the portable tree can promise.
@@ -1769,12 +1763,9 @@ HRESULT WinAccessibilityNode::get_ColumnSpan(int* out) {
 HRESULT WinAccessibilityNode::get_ContainingGrid(
     IRawElementProviderSimple** out) {
     int index = root->NodeIndex(id);
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    if (node->info.role != AccessibilityRole::Cell) {
-        return UIA_E_INVALIDOPERATION;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
+        return hr;
     }
     int table =
         AccessibilityAncestor(root, index, AccessibilityRole::Table, false);
@@ -1782,12 +1773,9 @@ HRESULT WinAccessibilityNode::get_ContainingGrid(
 }
 
 HRESULT WinAccessibilityNode::GetRowHeaders(SAFEARRAY** out) {
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    if (node->info.role != AccessibilityRole::Table) {
-        return UIA_E_INVALIDOPERATION;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = NodeOfRole(AccessibilityRole::Table, &node); FAILED(hr)) {
+        return hr;
     }
     // AccessKit's role set used by these crates has ColumnHeader but no row
     // header role, so an honest empty provider array is preferable to treating
@@ -1796,12 +1784,9 @@ HRESULT WinAccessibilityNode::GetRowHeaders(SAFEARRAY** out) {
 }
 
 HRESULT WinAccessibilityNode::GetColumnHeaders(SAFEARRAY** out) {
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    if (node->info.role != AccessibilityRole::Table) {
-        return UIA_E_INVALIDOPERATION;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = NodeOfRole(AccessibilityRole::Table, &node); FAILED(hr)) {
+        return hr;
     }
     return AccessibilityProviderArray(root, root->NodeIndex(id),
                                       AccessibilityRole::ColumnHeader, -1, out);
@@ -1820,24 +1805,18 @@ HRESULT WinAccessibilityNode::get_RowOrColumnMajor(RowOrColumnMajor* out) {
 }
 
 HRESULT WinAccessibilityNode::GetRowHeaderItems(SAFEARRAY** out) {
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    if (node->info.role != AccessibilityRole::Cell) {
-        return UIA_E_INVALIDOPERATION;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
+        return hr;
     }
     return AccessibilityEmptyProviderArray(out);
 }
 
 HRESULT WinAccessibilityNode::GetColumnHeaderItems(SAFEARRAY** out) {
     int index = root->NodeIndex(id);
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    if (node->info.role != AccessibilityRole::Cell) {
-        return UIA_E_INVALIDOPERATION;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
+        return hr;
     }
     int table =
         AccessibilityAncestor(root, index, AccessibilityRole::Table, false);

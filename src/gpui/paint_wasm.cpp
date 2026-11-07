@@ -23,6 +23,7 @@
      Pango and DirectWrite on everything Latin. */
 
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/scene.h"
 
 #include <emscripten/emscripten.h>
@@ -30,29 +31,8 @@
 
 namespace gpui {
 
-static uint64_t gNextPaintResourceGeneration = 1;
 static bool gOffscreenWasRecording = false;
 static bool gNoSceneBegin = false;
-
-static bool SceneFinish(PaintCtx* ctx) {
-    if (!SceneOn() || !scene::Recording()) {
-        return true;
-    }
-    Bounds damage = {};
-    bool draw = scene::FrameEnd(ctx, &damage);
-    if (draw) {
-        scene::Replay(ctx, &damage);
-    }
-    return draw;
-}
-
-static uint64_t PaintResourceGenerationNew() {
-    uint64_t id = gNextPaintResourceGeneration++;
-    if (id == 0) {
-        id = gNextPaintResourceGeneration++;
-    }
-    return id;
-}
 
 // ─── the JavaScript half ──────────────────────────────────────────────────
 //
@@ -1157,7 +1137,7 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
 }
 
 bool PaintTargetEnd(PaintCtx* ctx) {
-    SceneFinish(ctx);
+    PaintSceneFinish(ctx, false);
     if (!ctx || !ctx->rt) {
         return false;
     }

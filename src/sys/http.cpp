@@ -27,6 +27,32 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
     return ok;
 }
 
+bool HttpGet(Str url, HttpRsp* out) {
+    HttpReq req;
+    req.url = url;
+    return HttpSend(req, out);
+}
+
+bool HttpGetNoRedirect(Str url, HttpRsp* out) {
+    HttpReq req;
+    req.url = url;
+    req.noRedirect = true;
+    return HttpSend(req, out);
+}
+
+void HttpTrimMediaType(Str* s) {
+    for (int i = 0; i < s->len; i++) {
+        char c = s->s[i];
+        if (c == ';' || c == ' ') {
+            s->len = i;
+            break;
+        }
+        if (c >= 'A' && c <= 'Z') {
+            s->s[i] = (char)(c - 'A' + 'a');
+        }
+    }
+}
+
 Str HttpLastError() {
     return Str(gLastError);
 }
@@ -298,11 +324,11 @@ static void SlotDrop(FetchSlot* s) {
     s->state = FetchState::None;
 }
 
-// Runs on the browser thread after fetch() has landed. The slot index is still
-// ours: eviction skips Pending.
-static void FetchDone(FetchJob* job, HttpAsyncResult result) {
-    HttpRsp* response = result.response;
-    bool got = result.ok && response && response->status >= 200 &&
+// A fetch has its answer: a 2xx body moves into the job's slot, anything else
+// marks it Failed, and a slot discarded meanwhile is dropped. The slot index
+// is still ours: eviction skips Pending. Answers whether it was discarded.
+static bool FetchLand(FetchJob* job, bool ok, HttpRsp* response) {
+    bool got = ok && response && response->status >= 200 &&
                response->status < 300 && len(response->body) > 0;
 
     gFetchLock.Lock();
@@ -326,7 +352,12 @@ static void FetchDone(FetchJob* job, HttpAsyncResult result) {
     s->task = 0;
     gFetchPending--;
     gFetchLock.Unlock();
+    return discard;
+}
 
+// Runs on the browser thread after fetch() has landed.
+static void FetchDone(FetchJob* job, HttpAsyncResult result) {
+    bool discard = FetchLand(job, result.ok, result.response);
     Func0 done = job->done;
     StrFree(job->url);
     Free(nullptr, job);
@@ -342,29 +373,7 @@ static void FetchDone(FetchJob* job, HttpAsyncResult result) {
 static void FetchWorker(FetchJob* job) {
     HttpRsp response;
     bool ok = HttpGet(job->url, &response);
-    bool got = ok && response.status >= 200 && response.status < 300 &&
-               len(response.body) > 0;
-
-    gFetchLock.Lock();
-    FetchSlot* s = &gFetch[job->slot];
-    bool discard = s->discard;
-    if (discard) {
-        SlotDrop(s);
-    } else if (got) {
-        s->body = response.body.els;
-        s->len = len(response.body);
-        response.body.els = nullptr;
-        response.body.len = 0;
-        response.body.cap = 0;
-        s->state = FetchState::Done;
-    } else {
-        s->state = FetchState::Failed;
-    }
-    s->job = nullptr;
-    s->task = 0;
-    gFetchPending--;
-    gFetchLock.Unlock();
-
+    bool discard = FetchLand(job, ok, &response);
     Func0 done = job->done;
     HttpRspFree(&response);
     StrFree(job->url);

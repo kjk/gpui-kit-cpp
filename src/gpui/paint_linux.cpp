@@ -4,6 +4,7 @@
    convention the element tree uses, so nothing here flips coordinates. */
 
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/scene.h"
 
 #include <math.h>
@@ -14,29 +15,8 @@
 
 namespace gpui {
 
-static uint64_t gNextPaintResourceGeneration = 1;
 static bool gOffscreenWasRecording = false;
 static bool gNoSceneBegin = false;
-
-static bool SceneFinish(PaintCtx* ctx) {
-    if (!SceneOn() || !scene::Recording()) {
-        return true;
-    }
-    Bounds damage = {};
-    bool draw = scene::FrameEnd(ctx, &damage);
-    if (draw) {
-        scene::Replay(ctx, &damage);
-    }
-    return draw;
-}
-
-static uint64_t PaintResourceGenerationNew() {
-    uint64_t id = gNextPaintResourceGeneration++;
-    if (id == 0) {
-        id = gNextPaintResourceGeneration++;
-    }
-    return id;
-}
 
 struct PaintApp {
     // A cairo-backed font map context, so a layout can be shaped and measured
@@ -200,10 +180,7 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
         const uint8_t* src = cairo_image_surface_get_data(gOffscreenSurface);
         // CAIRO_FORMAT_ARGB32 is already premultiplied BGRA on a little
         // endian machine; the rows are copied without their padding.
-        for (int y = 0; y < h; y++) {
-            memcpy(outBgra + (size_t)y * (size_t)w * 4,
-                   src + (size_t)y * (size_t)stride, (size_t)w * 4);
-        }
+        PaintCopyBgraRows(outBgra, (size_t)w * 4, src, (size_t)stride, w, h);
     }
     PaintTargetFree(ctx);
     cairo_surface_destroy(gOffscreenSurface);
@@ -213,7 +190,7 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
 }
 
 bool PaintTargetEnd(PaintCtx* ctx) {
-    SceneFinish(ctx);
+    PaintSceneFinish(ctx, false);
     if (!ctx || !ctx->rt || !ctx->rt->cr) {
         return false;
     }
@@ -624,6 +601,30 @@ void PathFillGradientV(PaintCtx* ctx, Path* p, float y0, float y1, Rgba top,
     PathFillGradient(ctx, p, 0, y0, 0, y1, top, bot);
 }
 
+// The two stops of a PathFillGradient / PathStrokeGradient pattern, faded for
+// the current layer.
+static void AddStops(PaintCtx* ctx, cairo_pattern_t* pat, Rgba from, Rgba to) {
+    from = PaintFade(ctx, from);
+    to = PaintFade(ctx, to);
+    cairo_pattern_add_color_stop_rgba(pat, 0, from.r / 255.0, from.g / 255.0,
+                                      from.b / 255.0, from.a / 255.0);
+    cairo_pattern_add_color_stop_rgba(pat, 1, to.r / 255.0, to.g / 255.0,
+                                      to.b / 255.0, to.a / 255.0);
+}
+
+// Stroke the path in `cr` with its source, joined and capped round or square,
+// and put the caps back for the next draw.
+static void StrokeCurrentPath(cairo_t* cr, float stroke, bool roundCaps) {
+    cairo_set_line_width(cr, stroke);
+    cairo_set_line_cap(cr,
+                       roundCaps ? CAIRO_LINE_CAP_ROUND : CAIRO_LINE_CAP_BUTT);
+    cairo_set_line_join(
+        cr, roundCaps ? CAIRO_LINE_JOIN_ROUND : CAIRO_LINE_JOIN_MITER);
+    cairo_stroke(cr);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
+}
+
 void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
                       float y1, Rgba from, Rgba to, float dx, float dy) {
     if (scene::Recording()) {
@@ -647,12 +648,7 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
         cairo_restore(cr);
         return;
     }
-    from = PaintFade(ctx, from);
-    to = PaintFade(ctx, to);
-    cairo_pattern_add_color_stop_rgba(pat, 0, from.r / 255.0, from.g / 255.0,
-                                      from.b / 255.0, from.a / 255.0);
-    cairo_pattern_add_color_stop_rgba(pat, 1, to.r / 255.0, to.g / 255.0,
-                                      to.b / 255.0, to.a / 255.0);
+    AddStops(ctx, pat, from, to);
     cairo_set_source(cr, pat);
     cairo_fill(cr);
     cairo_pattern_destroy(pat);
@@ -676,14 +672,7 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
         return;
     }
     SetColor(ctx, cr, c);
-    cairo_set_line_width(cr, stroke);
-    cairo_set_line_cap(cr,
-                       roundCaps ? CAIRO_LINE_CAP_ROUND : CAIRO_LINE_CAP_BUTT);
-    cairo_set_line_join(
-        cr, roundCaps ? CAIRO_LINE_JOIN_ROUND : CAIRO_LINE_JOIN_MITER);
-    cairo_stroke(cr);
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT);
-    cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
+    StrokeCurrentPath(cr, stroke, roundCaps);
     cairo_restore(cr);
 }
 
@@ -712,21 +701,9 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
         return;
     }
     // PathFillGradient's pattern as the source of PathStroke's stroke.
-    from = PaintFade(ctx, from);
-    to = PaintFade(ctx, to);
-    cairo_pattern_add_color_stop_rgba(pat, 0, from.r / 255.0, from.g / 255.0,
-                                      from.b / 255.0, from.a / 255.0);
-    cairo_pattern_add_color_stop_rgba(pat, 1, to.r / 255.0, to.g / 255.0,
-                                      to.b / 255.0, to.a / 255.0);
+    AddStops(ctx, pat, from, to);
     cairo_set_source(cr, pat);
-    cairo_set_line_width(cr, stroke);
-    cairo_set_line_cap(cr,
-                       roundCaps ? CAIRO_LINE_CAP_ROUND : CAIRO_LINE_CAP_BUTT);
-    cairo_set_line_join(
-        cr, roundCaps ? CAIRO_LINE_JOIN_ROUND : CAIRO_LINE_JOIN_MITER);
-    cairo_stroke(cr);
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT);
-    cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
+    StrokeCurrentPath(cr, stroke, roundCaps);
     cairo_pattern_destroy(pat);
     cairo_restore(cr);
 }
@@ -746,12 +723,7 @@ struct LinuxImageFrame {
     int durationMs = 100;
 };
 
-struct RenderImage {
-    int refs = 1;
-    uint64_t generation = 0;
-    RenderImageStatus status = RenderImageStatus::Ready;
-    Vec<LinuxImageFrame> frames;
-};
+struct RenderImage : RenderImageFrames<LinuxImageFrame> {};
 
 static cairo_surface_t* SurfaceFromPixbuf(GdkPixbuf* pix) {
     if (!pix) {
@@ -873,8 +845,7 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
         g_object_unref(loader);
         return nullptr;
     }
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
+    auto* img = RenderImageAlloc<RenderImage>(RenderImageStatus::Ready);
     if (gdk_pixbuf_animation_is_static_image(anim)) {
         AppendPixbufFrame(img, gdk_pixbuf_animation_get_static_image(anim), 0);
     } else {
@@ -929,53 +900,21 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
     }
     uint8_t* dst = cairo_image_surface_get_data(surface);
     int stride = cairo_image_surface_get_stride(surface);
-    for (int y = 0; y < h; y++) {
-        memcpy(dst + (size_t)y * stride, bgra + (size_t)y * w * 4,
-               (size_t)w * 4);
-    }
+    PaintCopyBgraRows(dst, (size_t)stride, bgra, (size_t)w * 4, w, h);
     cairo_surface_mark_dirty(surface);
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
     LinuxImageFrame frame = {};
     frame.surface = surface;
     frame.w = w;
     frame.h = h;
-    VecAppend(img->frames, frame);
-    return img;
+    return RenderImageWithFrame<RenderImage>(frame);
 }
 
 RenderImage* RenderImageNewLoading() {
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
-    img->status = RenderImageStatus::Loading;
-    return img;
+    return RenderImageAlloc<RenderImage>(RenderImageStatus::Loading);
 }
 
 void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
-    if (!img) {
-        if (decoded) {
-            RenderImageRelease(decoded);
-        }
-        return;
-    }
-    if (decoded && decoded->frames.len > 0) {
-        for (int i = 0; i < img->frames.len; i++) {
-            LinuxFrameFree(&img->frames[i]);
-        }
-        VecReset(img->frames);
-        img->frames.els = decoded->frames.els;
-        img->frames.len = decoded->frames.len;
-        img->frames.cap = decoded->frames.cap;
-        decoded->frames.els = nullptr;
-        decoded->frames.len = 0;
-        decoded->frames.cap = 0;
-        img->status = RenderImageStatus::Ready;
-    } else {
-        img->status = RenderImageStatus::Failed;
-    }
-    if (decoded) {
-        RenderImageRelease(decoded);
-    }
+    RenderImageAdoptFrames(img, decoded, LinuxFrameFree);
 }
 
 void RenderImageRetain(RenderImage* img) {
@@ -985,13 +924,10 @@ void RenderImageRetain(RenderImage* img) {
 }
 
 void RenderImageRelease(RenderImage* img) {
-    if (!img || --img->refs != 0) {
+    if (!RenderImageUnref(img)) {
         return;
     }
-    for (int i = 0; i < img->frames.len; i++) {
-        LinuxFrameFree(&img->frames[i]);
-    }
-    VecReset(img->frames);
+    RenderImageFramesFree(img, LinuxFrameFree);
     delete img;
 }
 
@@ -1004,13 +940,7 @@ RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
 }
 
 Size RenderImageSizePx(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return {};
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return {(float)img->frames[frameIndex].w, (float)img->frames[frameIndex].h};
+    return RenderImageFrameSizePx(img, frameIndex);
 }
 
 int RenderImageFrameCount(const RenderImage* img) {
@@ -1018,13 +948,7 @@ int RenderImageFrameCount(const RenderImage* img) {
 }
 
 int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return 0;
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return img->frames[frameIndex].durationMs;
+    return RenderImageFrameDuration(img, frameIndex);
 }
 
 static cairo_surface_t* ImageSurface(LinuxImageFrame* frame, bool grayscale) {
@@ -1045,19 +969,8 @@ static cairo_surface_t* ImageSurface(LinuxImageFrame* frame, bool grayscale) {
     }
     unsigned char* dst = cairo_image_surface_get_data(gray);
     int dstStride = cairo_image_surface_get_stride(gray);
-    for (int y = 0; y < frame->h; y++) {
-        for (int x = 0; x < frame->w; x++) {
-            unsigned char* s = src + y * srcStride + x * 4;
-            unsigned char* d = dst + y * dstStride + x * 4;
-            uint8_t v = (uint8_t)(((uint32_t)s[2] * 54 + (uint32_t)s[1] * 183 +
-                                   (uint32_t)s[0] * 19) >>
-                                  8);
-            d[0] = v;
-            d[1] = v;
-            d[2] = v;
-            d[3] = s[3];
-        }
-    }
+    PaintGrayBgraRows(dst, (size_t)dstStride, src, (size_t)srcStride, frame->w,
+                      frame->h);
     cairo_surface_mark_dirty(gray);
     frame->graySurface = gray;
     return gray;
@@ -1076,9 +989,7 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
         imageBounds.w <= 0 || imageBounds.h <= 0) {
         return;
     }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
+    frameIndex = RenderImageFrameIndex(img, frameIndex);
     LinuxImageFrame* frame = &img->frames[frameIndex];
     cairo_surface_t* surface = ImageSurface(frame, grayscale);
     if (!surface || frame->w <= 0 || frame->h <= 0) {

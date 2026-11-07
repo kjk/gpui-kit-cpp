@@ -8,6 +8,8 @@
 #include "gpui/platform.h"
 #include "gpui/paint.h"
 #include "gpui/accessibility_linux.h"
+#include "gpui/window_loop.h"
+#include "sys/clock.h"
 #include "sys/executor.h"
 
 #include <X11/Xlib.h>
@@ -95,16 +97,7 @@ double TimeNow() {
     if (TestPlatformNow(&simulated)) {
         return simulated;
     }
-    static bool started = false;
-    static struct timespec start = {};
-    struct timespec now = {};
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    if (!started) {
-        start = now;
-        started = true;
-    }
-    return (double)(now.tv_sec - start.tv_sec) +
-           (double)(now.tv_nsec - start.tv_nsec) / 1e9;
+    return ClockMonotonicSecondsSinceStart();
 }
 
 static Window* FindWindow(App* app, XWindow xwin) {
@@ -490,14 +483,6 @@ static int KeyFor(KeySym ks) {
     return 0;
 }
 
-// Decode one UTF-8 codepoint; returns how many bytes it used.
-static int Utf8Next(const char* s, int len, uint32_t* out) {
-    if (len <= 0) {
-        return 0;
-    }
-    return Utf8At(Str(s, len), 0, out);
-}
-
 // --- input method ---------------------------------------------------------
 //
 // On-the-spot preedit: the input method hands over what it is composing and
@@ -513,7 +498,7 @@ static int Utf8ByteOfChar(const char* s, int len, int chars) {
     int c = 0;
     while (i < len && c < chars) {
         uint32_t cp = 0;
-        int adv = Utf8Next(s + i, len - i, &cp);
+        int adv = Utf8At(Str(s, len), i, &cp);
         if (adv <= 0) {
             break;
         }
@@ -669,7 +654,7 @@ static void OnKeyPress(Window* win, XKeyEvent* ke) {
     int i = 0;
     while (i < n) {
         uint32_t cp = 0;
-        int adv = Utf8Next(buf + i, n - i, &cp);
+        int adv = Utf8At(Str(buf, n), i, &cp);
         if (adv <= 0) {
             break;
         }
@@ -1127,16 +1112,14 @@ void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
     }
 }
 
-void OpenUrl(Str url) {
-    if (!url.s || len(url) <= 0) {
-        return;
-    }
-    TempStr value = StrDupTemp(len(url) < 1023 ? url : Str(url.s, 1023));
+// Hand `target` to xdg-open and wait only for the intermediate child: the
+// grandchild is orphaned deliberately, so nobody is left to reap it and
+// nothing here waits on the program it opens.
+static void XdgOpen(const char* target) {
     pid_t pid = fork();
     if (pid == 0) {
-        // The grandchild is orphaned deliberately: nobody is left to reap it.
         if (fork() == 0) {
-            execlp("xdg-open", "xdg-open", value.s, (char*)nullptr);
+            execlp("xdg-open", "xdg-open", target, (char*)nullptr);
             _exit(127);
         }
         _exit(0);
@@ -1145,6 +1128,14 @@ void OpenUrl(Str url) {
         int st = 0;
         waitpid(pid, &st, 0);
     }
+}
+
+void OpenUrl(Str url) {
+    if (!url.s || len(url) <= 0) {
+        return;
+    }
+    TempStr value = StrDupTemp(len(url) < 1023 ? url : Str(url.s, 1023));
+    XdgOpen(value.s);
 }
 
 void OpenPath(Str path) {
@@ -1156,18 +1147,7 @@ void OpenPath(Str path) {
     // has its own copy at the second fork, so the parent frees after the
     // intermediate exits.
     Str value = StrDup(path);
-    pid_t pid = fork();
-    if (pid == 0) {
-        if (fork() == 0) {
-            execlp("xdg-open", "xdg-open", value.s, (char*)nullptr);
-            _exit(127);
-        }
-        _exit(0);
-    }
-    if (pid > 0) {
-        int st = 0;
-        waitpid(pid, &st, 0);
-    }
+    XdgOpen(value.s);
     StrFree(value);
 }
 
@@ -2525,32 +2505,11 @@ int AppRun(App* app) {
             break;
         }
 
-        for (int i = 0; i < app->windows.len; i++) {
-            Window* w = app->windows[i];
-            if (w->plat && w->plat->dirty) {
-                Redraw(w);
-            }
-        }
+        RunLoopRedrawDirty<PlatWindow>(app, Redraw);
 
         // Sleep until the next tick, or until X has something to say.
-        double now = TimeNow();
-        double waitS = 1.0;
         bool anyDirty = false;
-        for (int i = 0; i < app->windows.len; i++) {
-            Window* w = app->windows[i];
-            if (!w->plat) {
-                continue;
-            }
-            if (w->plat->dirty) {
-                anyDirty = true;
-            }
-            if (w->plat->nextTick > 0) {
-                double d = w->plat->nextTick - now;
-                if (d < waitS) {
-                    waitS = d;
-                }
-            }
-        }
+        double waitS = RunLoopWaitFor<PlatWindow>(app, &anyDirty);
         bool idle = !anyDirty && XPending(gDpy) == 0 && ExecQueued() == 0;
         PlatPollFd* extra = nullptr;
         int extraTimeoutMs = -1;
@@ -2584,17 +2543,7 @@ int AppRun(App* app) {
         AccessibilityLinuxPump();
         ExecDrain();
 
-        now = TimeNow();
-        for (int i = 0; i < app->windows.len; i++) {
-            Window* w = app->windows[i];
-            if (!w->plat || w->plat->nextTick <= 0) {
-                continue;
-            }
-            if (now >= w->plat->nextTick) {
-                // WindowTimerTick re-arms through PlatSetTimer.
-                WindowTimerTick(w);
-            }
-        }
+        RunLoopTickDue<PlatWindow>(app);
     }
     return app->exitCode;
 }
