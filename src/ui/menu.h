@@ -46,6 +46,9 @@ struct MenuItem {
     // chosen, by a click or by Enter.
     Listener onClick = {};
     bool checked = false;
+    // menu_with_check: an option, so an unchecked row still reports its
+    // state. A plain item, including one built with checked(false), does not.
+    bool checkable = false;
     bool disabled = false;
     bool isLink = false;
     Str href = {};

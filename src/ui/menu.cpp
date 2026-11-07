@@ -92,6 +92,7 @@ PopupMenu* PopupMenu::MenuWithCheck(Str label, bool checked) {
     if (it) {
         it->label = label;
         it->checked = checked;
+        it->checkable = true;
     }
     return this;
 }
@@ -512,8 +513,10 @@ El* PopupMenu::IntoEl() {
                 ->AriaLabel(it.label)
                 ->AriaSelected(lit)
                 ->AriaDisabled(it.disabled || it.kind == MenuItemKind::Label)
-                ->AriaToggled(it.checked ? AccessibilityToggled::True
-                                         : AccessibilityToggled::Unset)
+                ->AriaToggled((it.checked || it.checkable)
+                                  ? (it.checked ? AccessibilityToggled::True
+                                                : AccessibilityToggled::False)
+                                  : AccessibilityToggled::Unset)
                 ->FlexRow()
                 ->W(kFill)
                 ->MinH(itemH)

@@ -1343,7 +1343,8 @@ static El* MenuItemNamed(El* e, const char* label) {
 
 // menu.rs a_checked_menu_item_reports_its_check. The check mark is drawn
 // beside the row; the node has to say it is toggled or a screen reader
-// cannot tell which option is chosen.
+// cannot tell which option is chosen. An option left unchecked says so,
+// and a plain command has no check state.
 static void ACheckedMenuItemReportsItsCheck() {
     App* app = TestAppNew();
     Arena* a = ArenaNew();
@@ -1353,12 +1354,29 @@ static void ACheckedMenuItemReportsItsCheck() {
     El* menu = PopupMenu::New(&cx, StrL("place"))
                    ->MenuWithCheck(StrL("Left"), true)
                    ->MenuWithCheck(StrL("Right"), false)
+                   ->Separator()
+                   ->Menu(StrL("Reset"))
                    ->IntoEl();
     El* left = MenuItemNamed(menu, "Left");
     El* right = MenuItemNamed(menu, "Right");
+    El* reset = MenuItemNamed(menu, "Reset");
     utassert(left && left->accessibility.toggled == AccessibilityToggled::True);
     utassert(right && right->accessibility
+                              .toggled == AccessibilityToggled::False);
+    utassert(reset && reset->accessibility
                               .toggled == AccessibilityToggled::Unset);
+    // checked(false) on a plain item is not an option. checked(true) still
+    // reports on, which is how an application menu marks one action.
+    El* commands = PopupMenu::New(&cx, StrL("commands"))
+                       ->Menu(StrL("Go"))
+                       ->Checked(false)
+                       ->Menu(StrL("Stop"))
+                       ->Checked(true)
+                       ->IntoEl();
+    El* go = MenuItemNamed(commands, "Go");
+    El* stop = MenuItemNamed(commands, "Stop");
+    utassert(go && go->accessibility.toggled == AccessibilityToggled::Unset);
+    utassert(stop && stop->accessibility.toggled == AccessibilityToggled::True);
     delete win;
     ArenaDelete(a);
     TestAppFree(app);

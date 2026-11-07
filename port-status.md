@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c32021ccd919072519b992f385c1630e59d57b44` (2026-11-01,
-table: Move assistive technology focus with the selected row or cell (#3758)).
-While the table has focus, the selected row or cell is the active
-descendant. An unfocused table still reports the selection.
+Processed through `ebc4fd1b3fa5fe24162a3c70a910581cdfeb8651` (2026-11-02,
+menu: Report an unchecked option as unchecked to assistive technology (#3761)).
+A menu option that is not checked reports toggled off. A plain command
+reports no check state, including one built with checked(false).
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
