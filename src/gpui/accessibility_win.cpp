@@ -52,7 +52,27 @@ static void VariantString(VARIANT* out, Str value) {
     out->bstrVal = AccessibilityBstr(value);
 }
 
+// The roles UI Automation exposes as an Edit control with a Value pattern.
+static bool AccessibilityTextRole(AccessibilityRole role) {
+    switch (role) {
+        case AccessibilityRole::DateInput:
+        case AccessibilityRole::DateTimeInput:
+        case AccessibilityRole::EmailInput:
+        case AccessibilityRole::MultilineTextInput:
+        case AccessibilityRole::PasswordInput:
+        case AccessibilityRole::PhoneNumberInput:
+        case AccessibilityRole::TextInput:
+        case AccessibilityRole::UrlInput:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static int AccessibilityControlType(AccessibilityRole role) {
+    if (AccessibilityTextRole(role)) {
+        return UIA_EditControlTypeId;
+    }
     switch (role) {
         case AccessibilityRole::Alert:
         case AccessibilityRole::Heading:
@@ -72,15 +92,6 @@ static int AccessibilityControlType(AccessibilityRole role) {
             return UIA_HeaderItemControlTypeId;
         case AccessibilityRole::ComboBox:
             return UIA_ComboBoxControlTypeId;
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::UrlInput:
-            return UIA_EditControlTypeId;
         case AccessibilityRole::Link:
             return UIA_HyperlinkControlTypeId;
         case AccessibilityRole::List:
@@ -203,22 +214,6 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
         case AccessibilityRole::None:
         default:
             return L"group";
-    }
-}
-
-static bool AccessibilityTextRole(AccessibilityRole role) {
-    switch (role) {
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::UrlInput:
-            return true;
-        default:
-            return false;
     }
 }
 
