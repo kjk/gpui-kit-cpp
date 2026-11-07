@@ -7206,8 +7206,12 @@ static void OrdinaryInputSchedulesNoFollowupFrame() {
     InputFocus(view.input, view.app, view.win);
     ViewTypeText(view, "hello");
     TestRunUntilParked(view.app);
+    // A moved caret is reported to the platform's IME on the next frame.
+    // Run those reports, then draw a frame in which nothing moves.
+    TestSimulateNextFrame(view.win);
     view.win->animFrame = false;
     TestDraw(view.win);
+    utassert(TestSimulateNextFrame(view.win) == 0);
     utassert(!view.win->animFrame);
     InputViewFree(&view);
 }

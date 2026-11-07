@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `803d5d861605edf62ca6fb3d43fe4dabbadc1f41` (2026-11-07,
-text: Add block surfaces to `TextView` (#3830)).
-A top-level blockquote whose first line is a registered `[!name]` marker
-becomes a container the application draws, and the marker is not document
-text. Names match ASCII-case-insensitively. The same registration rebuilt
-with a new callback does not reparse. The markdown example registers
-`note` and `card`.
+Processed through `46bf6d498fa101a3b11cc64e6d8c20d28d17b720` (2026-11-07,
+input: Let the completions test run the IME caret reports before counting
+frames (#3837)).
+Typing into an ordinary input reports the caret to the IME on the next
+frame. The completions test runs those reports, then draws a frame in
+which nothing moves, and that frame schedules nothing.
 The current update target is
 `46bf6d498fa101a3b11cc64e6d8c20d28d17b720`.
 

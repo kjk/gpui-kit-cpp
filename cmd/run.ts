@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "803d5d861605edf62ca6fb3d43fe4dabbadc1f41",
+  sha: "46bf6d498fa101a3b11cc64e6d8c20d28d17b720",
   date: "2026-11-07",
-  subject: "text: Add block surfaces to `TextView` (#3830)",
+  subject: "input: Let the completions test run the IME caret reports before counting frames (#3837)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
