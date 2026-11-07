@@ -325,24 +325,12 @@ static bool ParseUnixAddress(Str address, sockaddr_un* out, socklen_t* outLen) {
     memset(out, 0, sizeof(*out));
     out->sun_family = AF_UNIX;
     int at = abstract ? 1 : 0;
-    for (int p = key; p < end && at < (int)sizeof(out->sun_path) - 1; p++) {
-        if (copy.s[p] == '%' && p + 2 < end) {
-            auto hex = [](char ch) -> int {
-                if (ch >= '0' && ch <= '9') return ch - '0';
-                if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
-                if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
-                return -1;
-            };
-            int hi = hex(copy.s[p + 1]);
-            int lo = hex(copy.s[p + 2]);
-            if (hi >= 0 && lo >= 0) {
-                out->sun_path[at++] = (char)((hi << 4) | lo);
-                p += 2;
-                continue;
-            }
-        }
-        out->sun_path[at++] = copy.s[p];
-    }
+    // Decoded in place in the copy, then as much as fits.
+    int decoded = PercentDecode(Str(copy.s + key, end - key), copy.s + key);
+    int room = (int)sizeof(out->sun_path) - 1 - at;
+    int take = std::min(decoded, room);
+    memcpy(out->sun_path + at, copy.s + key, (size_t)take);
+    at += take;
     *outLen =
         (socklen_t)(offsetof(sockaddr_un, sun_path) + at + (abstract ? 0 : 1));
     return at > (abstract ? 1 : 0);
@@ -357,9 +345,8 @@ static bool Authenticate() {
     memcpy(auth.s + at, "AUTH EXTERNAL ", 14);
     at += 14;
     for (const char* p = uid.s; *p && at + 4 < len(auth); p++) {
-        static const char hex[] = "0123456789abcdef";
-        auth.s[at++] = hex[((uint8_t)*p) >> 4];
-        auth.s[at++] = hex[((uint8_t)*p) & 15];
+        HexEncode(p, 1, auth.s + at);
+        at += 2;
     }
     auth.s[at++] = '\r';
     auth.s[at++] = '\n';

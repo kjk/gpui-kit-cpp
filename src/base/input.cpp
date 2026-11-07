@@ -284,29 +284,6 @@ static void Notify(App* app, Window* win);
 // WidthRange still contains the new width, and the shaped widths of the
 // slices it did measure. A font, tab size or indent change drops both.
 
-static int WrapEncodeUtf8(uint32_t c, char* out) {
-    if (c < 0x80) {
-        out[0] = (char)c;
-        return 1;
-    }
-    if (c < 0x800) {
-        out[0] = (char)(0xC0 | (c >> 6));
-        out[1] = (char)(0x80 | (c & 0x3F));
-        return 2;
-    }
-    if (c < 0x10000) {
-        out[0] = (char)(0xE0 | (c >> 12));
-        out[1] = (char)(0x80 | ((c >> 6) & 0x3F));
-        out[2] = (char)(0x80 | (c & 0x3F));
-        return 3;
-    }
-    out[0] = (char)(0xF0 | (c >> 18));
-    out[1] = (char)(0x80 | ((c >> 12) & 0x3F));
-    out[2] = (char)(0x80 | ((c >> 6) & 0x3F));
-    out[3] = (char)(0x80 | (c & 0x3F));
-    return 4;
-}
-
 // An indexed AVL sum tree: untouched lines keep their row storage after a
 // splice.
 struct InputWrapNode {
@@ -577,7 +554,7 @@ static float WrapCharWidthOf(void* user, uint32_t c) {
         return found->width;
     }
     char buf[4];
-    int n = WrapEncodeUtf8(c, buf);
+    int n = Utf8Encode(buf, c);
     float w = 0;
     if (!WrapAdvance(wm, Str(buf, n), &w)) {
         // Nothing to shape against: an estimate, not kept, so the next
@@ -8667,22 +8644,7 @@ bool InputCodeActionAction(InputState* s, App* app, Window* win,
 
 void InputTypeChar(InputState* s, App* app, Window* win, uint32_t ch) {
     char buf[4];
-    int n = 0;
-    if (ch < 0x80) {
-        buf[n++] = (char)ch;
-    } else if (ch < 0x800) {
-        buf[n++] = (char)(0xC0 | (ch >> 6));
-        buf[n++] = (char)(0x80 | (ch & 0x3F));
-    } else if (ch < 0x10000) {
-        buf[n++] = (char)(0xE0 | (ch >> 12));
-        buf[n++] = (char)(0x80 | ((ch >> 6) & 0x3F));
-        buf[n++] = (char)(0x80 | (ch & 0x3F));
-    } else {
-        buf[n++] = (char)(0xF0 | (ch >> 18));
-        buf[n++] = (char)(0x80 | ((ch >> 12) & 0x3F));
-        buf[n++] = (char)(0x80 | ((ch >> 6) & 0x3F));
-        buf[n++] = (char)(0x80 | (ch & 0x3F));
-    }
+    int n = Utf8Encode(buf, ch);
     InputReplaceTextInRange(s, app, win, nullptr, Str(buf, n));
     PauseBlink(s, app, win);
     // A menu of actions on what was selected has nothing to say about a
@@ -11221,25 +11183,6 @@ bool MaskIsValidAt(const MaskPattern& p, uint32_t ch, int pos) {
     return false;
 }
 
-// Append one codepoint as UTF-8.
-static void PushChar(StrBuilder& sb, uint32_t c) {
-    if (c < 0x80) {
-        sb.AppendChar((char)c);
-    } else if (c < 0x800) {
-        sb.AppendChar((char)(0xC0 | (c >> 6)));
-        sb.AppendChar((char)(0x80 | (c & 0x3F)));
-    } else if (c < 0x10000) {
-        sb.AppendChar((char)(0xE0 | (c >> 12)));
-        sb.AppendChar((char)(0x80 | ((c >> 6) & 0x3F)));
-        sb.AppendChar((char)(0x80 | (c & 0x3F)));
-    } else {
-        sb.AppendChar((char)(0xF0 | (c >> 18)));
-        sb.AppendChar((char)(0x80 | ((c >> 12) & 0x3F)));
-        sb.AppendChar((char)(0x80 | ((c >> 6) & 0x3F)));
-        sb.AppendChar((char)(0x80 | (c & 0x3F)));
-    }
-}
-
 // The Number arm of mask(): regroup the integer part in threes, keep at most
 // `fraction` decimals, and put the sign back on the front.
 static Str MaskNumber(Arena* a, const MaskPattern& p, Str text) {
@@ -11280,13 +11223,13 @@ static Str MaskNumber(Arena* a, const MaskPattern& p, Str text) {
     StrBuilder grouped;
     for (int i = 0; i < digits.len; i++) {
         if (i > 0 && i % 3 == 0) {
-            PushChar(grouped, p.separator);
+            grouped.AppendUtf8(p.separator);
         }
         grouped.AppendChar(digits.els[i]);
     }
     StrBuilder out;
     if (sign) {
-        PushChar(out, sign);
+        out.AppendUtf8(sign);
     }
     for (int i = grouped.len - 1; i >= 0; i--) {
         out.AppendChar(grouped.els[i]);
@@ -11300,7 +11243,7 @@ static Str MaskNumber(Arena* a, const MaskPattern& p, Str text) {
             if (p.fraction >= 0 && kept >= p.fraction) {
                 break;
             }
-            PushChar(out, c);
+            out.AppendUtf8(c);
             kept++;
             i += n;
         }
@@ -11332,7 +11275,7 @@ Str MaskApply(Arena* a, const MaskPattern& p, Str text) {
             break;
         }
         uint32_t masked = TokenMaskChar(tok, sep, ch);
-        PushChar(out, masked);
+        out.AppendUtf8(masked);
         // A separator the text did not supply is filled in without consuming
         // anything, so the next token sees the same character.
         if (ch == masked) {
@@ -11353,7 +11296,7 @@ Str MaskUnapply(Arena* a, const MaskPattern& p, Str maskText) {
             uint32_t c = 0;
             int n = Utf8At(maskText, i, &c);
             if (c != p.separator) {
-                PushChar(out, c);
+                out.AppendUtf8(c);
                 hasDot = hasDot || c == '.';
             }
             i += n;
@@ -11384,7 +11327,7 @@ Str MaskUnapply(Arena* a, const MaskPattern& p, Str maskText) {
         uint32_t sep = 0;
         MaskTokenAt(p, pos, &tok, &sep);
         if (TokenUnmaskChar(tok)) {
-            PushChar(out, ch);
+            out.AppendUtf8(ch);
         }
         ti += n;
     }
@@ -11403,7 +11346,7 @@ Str MaskPlaceholder(Arena* a, const MaskPattern& p) {
         MaskTokenAt(p, pos, &tok, &sep);
         // MaskToken::placeholder: a separator shows itself, everything else an
         // underscore.
-        PushChar(out, tok == MaskToken::Sep ? sep : (uint32_t)'_');
+        out.AppendUtf8(tok == MaskToken::Sep ? sep : (uint32_t)'_');
     }
     return StrDup(a, Str(out.els, out.len));
 }
@@ -11446,7 +11389,7 @@ Str NormalizeNumberInput(Arena* a, Str text) {
     for (int i = 0; i < len(text);) {
         uint32_t c = 0;
         i += Utf8At(text, i, &c);
-        PushChar(out, NormalizeChar(c));
+        out.AppendUtf8(NormalizeChar(c));
     }
     return StrDup(a, Str(out.els, out.len));
 }

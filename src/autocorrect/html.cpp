@@ -113,13 +113,8 @@ static bool AtOpenTag(Str s, int i, const char* name) {
 }
 
 void ScanHtml(Results* res, Str raw) {
-    int ignoreStart = 0;
+    IgnoreRun run{res, raw};
     int i = 0;
-    auto flush = [&](int upTo) {
-        if (upTo > ignoreStart) {
-            EmitIgnore(res, Str(raw.s + ignoreStart, upTo - ignoreStart));
-        }
-    };
     while (i < len(raw)) {
         if (raw.s[i] != '<') {
             // text = (!("<" | comment start) ~ ANY)+ — a text node.
@@ -127,9 +122,7 @@ void ScanHtml(Results* res, Str raw) {
             while (i < len(raw) && raw.s[i] != '<') {
                 i++;
             }
-            flush(start);
-            EmitText(res, StrL("text"), Str(raw.s + start, i - start));
-            ignoreStart = i;
+            run.Text(StrL("text"), start, i - start);
             continue;
         }
         // `<!-- … -->`
@@ -143,9 +136,7 @@ void ScanHtml(Results* res, Str raw) {
                 }
             }
             if (end > 0) {
-                flush(i);
-                EmitText(res, StrL("comment"), Str(raw.s + i, end - i));
-                ignoreStart = end;
+                run.Text(StrL("comment"), i, end - i);
                 i = end;
                 continue;
             }
@@ -204,10 +195,10 @@ void ScanHtml(Results* res, Str raw) {
                 break;
             }
             if (el.rule) {
-                flush(i + tag);
+                run.Flush(i + tag);
                 EmitInlineScript(res, Str(el.rule),
                                  Str(raw.s + i + tag, close - (i + tag)));
-                ignoreStart = close;
+                run.start = close;
             }
             i = close + closeLen;
             handled = true;
@@ -225,7 +216,7 @@ void ScanHtml(Results* res, Str raw) {
         // A '<' that never closes — pest's `other`, one char at a time.
         i++;
     }
-    flush(len(raw));
+    run.Flush(len(raw));
 }
 
 } // namespace autocorrect

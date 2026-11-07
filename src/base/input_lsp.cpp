@@ -309,39 +309,11 @@ static int Utf8Next(Str s, int i, uint32_t* cp) {
     if (i < 0 || i >= len(s) || !s.s) {
         return 0;
     }
-    unsigned char c = (unsigned char)s.s[i];
-    int n = 1;
-    uint32_t v = c;
-    if (c < 0x80) {
-        *cp = c;
-        return 1;
-    }
-    if ((c & 0xE0) == 0xC0) {
-        n = 2;
-        v = c & 0x1F;
-    } else if ((c & 0xF0) == 0xE0) {
-        n = 3;
-        v = c & 0x0F;
-    } else if ((c & 0xF8) == 0xF0) {
-        n = 4;
-        v = c & 0x07;
-    } else {
+    // A byte that is not valid UTF-8 there is one U+FFFD.
+    int n = Utf8At(s, i, cp);
+    if (n == 1 && *cp >= 0x80) {
         *cp = 0xFFFD;
-        return 1;
     }
-    if (i + n > len(s)) {
-        *cp = 0xFFFD;
-        return 1;
-    }
-    for (int k = 1; k < n; k++) {
-        unsigned char cc = (unsigned char)s.s[i + k];
-        if ((cc & 0xC0) != 0x80) {
-            *cp = 0xFFFD;
-            return 1;
-        }
-        v = (v << 6) | (cc & 0x3F);
-    }
-    *cp = v;
     return n;
 }
 

@@ -170,6 +170,27 @@ void EmitIgnore(Results* res, Str part);
 // "COMMENT" also parse the enable/disable toggle, exactly like
 // code.rs format_or_lint.
 void EmitText(Results* res, Str rule, Str part);
+
+// What every scanner keeps between correctable regions: where the run of
+// text it passes through verbatim began. `Flush` emits that run up to a
+// byte; `Text` flushes it, emits the region raw[at, at+n) under `rule`, and
+// starts the next run after it.
+struct IgnoreRun {
+    Results* res = nullptr;
+    Str raw = {};
+    int start = 0;
+
+    void Flush(int upTo) {
+        if (upTo > start) {
+            EmitIgnore(res, Str(raw.s + start, upTo - start));
+        }
+    }
+    void Text(Str rule, int at, int n) {
+        Flush(at);
+        EmitText(res, rule, Str(raw.s + at, n));
+        start = at + n;
+    }
+};
 // A fenced code block (markdown): lint/format the code as `lang` through
 // LintFor/FormatFor, offset line numbers — code.rs
 // format_or_lint_for_inline_scripts. `part` is the whole block including

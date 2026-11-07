@@ -6,23 +6,6 @@
 
 namespace markdown {
 
-Constructs Constructs::Gfm() {
-    Constructs constructs;
-    constructs.gfmAutolinkLiteral = true;
-    constructs.gfmFootnoteDefinition = true;
-    constructs.gfmLabelStartFootnote = true;
-    constructs.gfmStrikethrough = true;
-    constructs.gfmTable = true;
-    constructs.gfmTaskListItem = true;
-    return constructs;
-}
-
-ParseOptions ParseOptions::Gfm() {
-    ParseOptions options;
-    options.constructs = Constructs::Gfm();
-    return options;
-}
-
 Node* ToMdast(Arena* a, Str source, const ParseOptions& options) {
     return ToMdast(a, source, options, nullptr);
 }

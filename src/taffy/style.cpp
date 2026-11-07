@@ -300,8 +300,10 @@ bool MaxTrackSizingFunction::HasDefiniteValue(Optf parentSize) const {
     }
 }
 
-Optf MaxTrackSizingFunction::DefiniteValue(Optf parentSize,
-                                           CalcResolver calc) const {
+// `definite_value`, the same for a min and a max track sizing function: a
+// length, or a percentage or calc() once there is a parent size to take it of.
+static Optf TrackSizingDefiniteValue(CompactLength raw, Optf parentSize,
+                                     CalcResolver calc) {
     switch (raw.Tag()) {
         case CompactLength::kLengthTag:
             return Some(raw.Value());
@@ -314,6 +316,11 @@ Optf MaxTrackSizingFunction::DefiniteValue(Optf parentSize,
         return Some(calc.Resolve(raw.CalcValue(), parentSize));
     }
     return None();
+}
+
+Optf MaxTrackSizingFunction::DefiniteValue(Optf parentSize,
+                                           CalcResolver calc) const {
+    return TrackSizingDefiniteValue(raw, parentSize, calc);
 }
 
 Optf MaxTrackSizingFunction::DefiniteLimit(Optf parentSize,
@@ -336,18 +343,7 @@ Optf MaxTrackSizingFunction::DefiniteLimit(Optf parentSize,
 
 Optf MinTrackSizingFunction::DefiniteValue(Optf parentSize,
                                            CalcResolver calc) const {
-    switch (raw.Tag()) {
-        case CompactLength::kLengthTag:
-            return Some(raw.Value());
-        case CompactLength::kPercentTag:
-            return IsSome(parentSize) ? Some(raw.Value() * parentSize) : None();
-        default:
-            break;
-    }
-    if (raw.IsCalc() && IsSome(parentSize)) {
-        return Some(calc.Resolve(raw.CalcValue(), parentSize));
-    }
-    return None();
+    return TrackSizingDefiniteValue(raw, parentSize, calc);
 }
 
 // `#[derive(PartialEq)]` on Style — see the comment beside the declaration in

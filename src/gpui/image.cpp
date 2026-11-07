@@ -48,32 +48,13 @@ static void Base64Decode(Str s, Vec<uint8_t>* out) {
     }
 }
 
-static int HexValue(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
 static void PercentDecode(Str s, Vec<uint8_t>* out) {
-    for (int i = 0; i < len(s); i++) {
-        if (s.s[i] == '%' && i + 2 < len(s)) {
-            int hi = HexValue(s.s[i + 1]);
-            int lo = HexValue(s.s[i + 2]);
-            if (hi >= 0 && lo >= 0) {
-                VecAppend(*out, (uint8_t)(hi * 16 + lo));
-                i += 2;
-                continue;
-            }
-        }
-        VecAppend(*out, (uint8_t)s.s[i]);
+    int at = len(*out);
+    uint8_t* dst = VecAppendBlanks(*out, len(s));
+    if (!dst) {
+        return;
     }
+    VecResize(*out, at + base::PercentDecode(s, (char*)dst));
 }
 
 // "data:image/png;base64,iVBOR..." — the payload after the comma, decoded by

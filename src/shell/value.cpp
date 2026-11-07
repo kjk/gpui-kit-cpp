@@ -103,35 +103,12 @@ bool BridgedAsPixels(const Bridged& value, float* out, ShellError* error) {
     return BridgedAsF32(value, out, error);
 }
 
-static int HexDigit(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
 static bool ParseHex(Str value, Hsla* out) {
-    if (!out || (len(value) != 3 && len(value) != 6 && len(value) != 8)) {
+    Rgba color;
+    if (!out || (len(value) != 3 && len(value) != 6 && len(value) != 8) ||
+        !RgbaParseHexDigits(value, &color)) {
         return false;
     }
-    uint32_t rgba = 0;
-    if (len(value) == 3) {
-        int r = HexDigit(value.s[0]);
-        int g = HexDigit(value.s[1]);
-        int b = HexDigit(value.s[2]);
-        if (r < 0 || g < 0 || b < 0) return false;
-        rgba = (uint32_t)(r * 17) << 24 | (uint32_t)(g * 17) << 16 |
-               (uint32_t)(b * 17) << 8 | 0xffu;
-    } else {
-        for (int i = 0; i < len(value); i++) {
-            int digit = HexDigit(value.s[i]);
-            if (digit < 0) return false;
-            rgba = (rgba << 4) | (uint32_t)digit;
-        }
-        if (len(value) == 6) rgba = (rgba << 8) | 0xffu;
-    }
-    Rgba color = {(uint8_t)(rgba >> 24), (uint8_t)(rgba >> 16),
-                  (uint8_t)(rgba >> 8), (uint8_t)rgba};
     *out = HslaFromRgba(color);
     return true;
 }

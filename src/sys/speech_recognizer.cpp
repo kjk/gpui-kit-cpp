@@ -70,13 +70,6 @@ bool SpeechStartsOver(Str utterance, Str text) {
     return common * 2 < total;
 }
 
-// char::is_whitespace, for what a phrase can begin or end with.
-static bool IsWhitespace(uint32_t c) {
-    return c == ' ' || (c >= 0x09 && c <= 0x0D) || c == 0x85 || c == 0xA0 ||
-           c == 0x1680 || (c >= 0x2000 && c <= 0x200A) || c == 0x2028 ||
-           c == 0x2029 || c == 0x202F || c == 0x205F || c == 0x3000;
-}
-
 // Characters of scripts written without spaces between words: Chinese,
 // Japanese and their punctuation.
 static bool IsUnspacedScript(uint32_t c) {
@@ -88,8 +81,8 @@ static bool IsUnspacedScript(uint32_t c) {
 bool SpeechNeedsSpace(uint32_t before, uint32_t after) {
     bool closing = after == ',' || after == '.' || after == '?' ||
                    after == '!' || after == ';' || after == ':' || after == ')';
-    return !IsWhitespace(before) && !IsWhitespace(after) && !closing &&
-           !IsUnspacedScript(before) && !IsUnspacedScript(after);
+    return !IsUnicodeWhitespace(before) && !IsUnicodeWhitespace(after) &&
+           !closing && !IsUnspacedScript(before) && !IsUnspacedScript(after);
 }
 
 } // namespace gpui

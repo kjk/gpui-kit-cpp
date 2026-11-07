@@ -96,6 +96,82 @@ LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId node,
                                 const LayoutInput& inputs,
                                 BlockContext* blockCtx);
 
+// ─── the styled-size chain every algorithm opens with ───────────────────
+//
+// Each of taffy's compute functions (leaf, block, flexbox, grid, absolute)
+// resolves a node's size styles the same way, spelled out each time in the
+// Rust; here the steps are named once.
+
+// `box_sizing_adjustment`: content-box styles the content box, so every
+// styled size grows by the padding and border; border-box adds nothing.
+inline SizeF BoxSizingAdjustment(BoxSizing boxSizing, SizeF paddingBorderSize) {
+    return boxSizing == BoxSizing::ContentBox ? paddingBorderSize
+                                              : SizeF::Zero();
+}
+
+// `size.maybe_resolve(context, calc).maybe_apply_aspect_ratio(aspect_ratio)
+// .maybe_add(box_sizing_adjustment)`: one styled size (size, min-size or
+// max-size) as the border-box size it asks for.
+inline SizeFOpt ResolveStyledSize(const SizeDim& size, SizeFOpt context,
+                                  CalcResolver calc, Optf aspectRatio,
+                                  SizeF boxSizingAdjustment) {
+    return MaybeAdd(
+        MaybeApplyAspectRatio(size.MaybeResolve(context, calc), aspectRatio),
+        boxSizingAdjustment);
+}
+
+// If both min and max are set in an axis and max <= min, that determines
+// the size in that axis.
+inline SizeFOpt MinMaxDefiniteSize(SizeFOpt minSize, SizeFOpt maxSize) {
+    SizeFOpt out = SizeFOptNone();
+    if (IsSome(minSize.w) && IsSome(maxSize.w) && maxSize.w <= minSize.w) {
+        out.w = minSize.w;
+    }
+    if (IsSome(minSize.h) && IsSome(maxSize.h) && maxSize.h <= minSize.h) {
+        out.h = minSize.h;
+    }
+    return out;
+}
+
+// The early return a container takes when only its size was asked for and
+// its styles already fix it: both axes known, or the width when only the
+// width was asked for. True, with `*out` set, when it applies.
+inline bool ComputeSizeFromStyles(const LayoutInput& inputs,
+                                  SizeFOpt styledKnownDimensions,
+                                  LayoutOutput* out) {
+    if (inputs.runMode != RunMode::ComputeSize) {
+        return false;
+    }
+    if (BothAxisDefined(styledKnownDimensions)) {
+        *out = LayoutOutput::FromOuterSize(
+            {styledKnownDimensions.w, styledKnownDimensions.h});
+        return true;
+    }
+    if (inputs.axis == RequestedAxis::Horizontal &&
+        IsSome(styledKnownDimensions.w)) {
+        *out = LayoutOutput::FromOuterSize({styledKnownDimensions.w, 0.0f});
+        return true;
+    }
+    return false;
+}
+
+// How far `position: relative` shifts a box, from its resolved insets: left
+// wins over right (right over left in RTL), top over bottom, and a missing
+// pair does not move it.
+inline PointF RelativePositionOffset(RectFOpt inset, Direction direction) {
+    Optf negRight = inset.right;
+    if (IsSome(negRight)) {
+        negRight = -negRight;
+    }
+    Optf negBottom = inset.bottom;
+    if (IsSome(negBottom)) {
+        negBottom = -negBottom;
+    }
+    Optf dx =
+        IsRtl(direction) ? Or(negRight, inset.left) : Or(inset.left, negRight);
+    return {UnwrapOr(dx, 0.0f), UnwrapOr(Or(inset.top, negBottom), 0.0f)};
+}
+
 // ─── shared CSS alignment — taffy/src/compute/common/alignment.rs ────────
 
 // The `safe`/`unsafe` overflow-position fallback for a self-level alignment

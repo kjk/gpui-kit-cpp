@@ -180,8 +180,19 @@ inline const Attribute* TokenAttrs(Arena* a, const Token* token) {
     return token ? ArenaPtrGet(a, token->attrs) : nullptr;
 }
 
-const Attribute* Attr(Arena* a, const Node* node, Str name);
-Str AttrValue(Arena* a, const Node* node, Str name);
+// The node's attribute called `name` (ASCII case-insensitive), or null. Here
+// rather than in a .cpp so html5ever-mini, which implements this header too,
+// shares them.
+inline const Attribute* Attr(Arena* a, const Node* node, Str name) {
+    for (const Attribute* attr = NodeAttrs(a, node); attr;
+         attr = AttributeNext(a, attr)) {
+        if (base::StrEqI(AttributeName(a, attr), name)) return attr;
+    }
+    return nullptr;
+}
+inline Str AttrValue(Arena* a, const Node* node, Str name) {
+    return AttributeValue(a, Attr(a, node, name));
+}
 
 } // namespace html5ever
 #endif // GPUI_HTML5EVER_HTML5EVER_H_

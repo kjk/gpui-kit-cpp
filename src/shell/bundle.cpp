@@ -211,13 +211,7 @@ bool BundleFileName(Str name, Str* out) {
             cleaned.AppendChar(banned ? '-' : (char)c);
             i++;
         } else {
-            int n = 1;
-            if ((c & 0xe0) == 0xc0)
-                n = 2;
-            else if ((c & 0xf0) == 0xe0)
-                n = 3;
-            else if ((c & 0xf8) == 0xf0)
-                n = 4;
+            int n = Utf8LeadLen((uint8_t)c);
             if (i + n > len(name)) n = 1;
             cleaned.Append(Str(name.s + i, n));
             i += n;
@@ -258,19 +252,7 @@ bool BundleNamesFrom(const PluginManifest& manifest, BundlePlatform platform,
 
 static Str XmlEscape(Str value) {
     StrBuilder out;
-    for (int i = 0; i < len(value); i++) {
-        char c = value.s[i];
-        if (c == '&')
-            out.Append(StrL("&amp;"));
-        else if (c == '<')
-            out.Append(StrL("&lt;"));
-        else if (c == '>')
-            out.Append(StrL("&gt;"));
-        else if (c == '"')
-            out.Append(StrL("&quot;"));
-        else
-            out.AppendChar(c);
-    }
+    AppendHtmlEscaped(out, value, true, true);
     return out.TakeStr();
 }
 

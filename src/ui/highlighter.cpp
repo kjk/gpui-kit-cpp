@@ -1154,19 +1154,7 @@ static bool SynHlResolveStyle(void* data, Str name, TextSpan* out) {
     return true;
 }
 
-static int HexNibble(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
+// "#rrggbb" / "#rrggbbaa".
 static bool ParseHighlightHex(Str s, Rgba* out) {
     if (!out || !s.s || s.s[0] != '#') {
         return false;
@@ -1175,21 +1163,7 @@ static bool ParseHighlightHex(Str s, Rgba* out) {
     if (n != 7 && n != 9) {
         return false;
     }
-    int v[8];
-    for (int i = 0; i < n - 1; i++) {
-        v[i] = HexNibble(s.s[i + 1]);
-        if (v[i] < 0) {
-            return false;
-        }
-    }
-    if (n == 7) {
-        *out = Rgb((uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]),
-                   (uint8_t)(v[4] * 16 + v[5]));
-        return true;
-    }
-    *out = Rgba8((uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]),
-                 (uint8_t)(v[4] * 16 + v[5]), (uint8_t)(v[6] * 16 + v[7]));
-    return true;
+    return RgbaParseHexDigits(Str(s.s + 1, n - 1), out);
 }
 
 // StatusColors reads the active theme's highlight object. A missing key, or

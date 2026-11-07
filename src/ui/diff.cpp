@@ -357,16 +357,7 @@ void DiffDisplayChunks(Str text, Vec<DiffChunk>* out) {
     int end = 0;
     int i = 0;
     while (i < text.len) {
-        int next = i + 1;
-        unsigned char c = (unsigned char)text.s[i];
-        if ((c & 0x80) == 0)
-            next = i + 1;
-        else if ((c & 0xe0) == 0xc0)
-            next = i + 2;
-        else if ((c & 0xf0) == 0xe0)
-            next = i + 3;
-        else if ((c & 0xf8) == 0xf0)
-            next = i + 4;
+        int next = i + Utf8LeadLen((uint8_t)text.s[i]);
         if (next > text.len) next = text.len;
         if (next - start > kMax && start < i) {
             PushChunk(out, start, i);
@@ -390,11 +381,7 @@ void DiffDisplayChunks(Str text, Vec<DiffChunk>* out) {
 }
 
 static int ColumnStep(unsigned char c) {
-    if ((c & 0x80) == 0) return 1;
-    if ((c & 0xe0) == 0xc0) return 2;
-    if ((c & 0xf0) == 0xe0) return 3;
-    if ((c & 0xf8) == 0xf0) return 4;
-    return 1;
+    return Utf8LeadLen(c);
 }
 
 static void FinishLine(DiffFile* file, DiffFileSide* side, Str source,
@@ -613,17 +600,8 @@ static bool Utf8Ok(const uint8_t* b, int n) {
     int i = 0;
     while (i < n) {
         uint8_t c = b[i];
-        int need = 1;
-        if ((c & 0x80) == 0)
-            need = 1;
-        else if ((c & 0xe0) == 0xc0)
-            need = 2;
-        else if ((c & 0xf0) == 0xe0)
-            need = 3;
-        else if ((c & 0xf8) == 0xf0)
-            need = 4;
-        else
-            return false;
+        int need = Utf8LeadLen(c);
+        if (need == 1 && c >= 0x80) return false;
         if (i + need > n) return false;
         for (int k = 1; k < need; k++) {
             if ((b[i + k] & 0xc0) != 0x80) return false;

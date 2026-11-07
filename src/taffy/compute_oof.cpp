@@ -318,9 +318,8 @@ OofBoxLayout LayoutOofBox(TaffyTree* tree, const OofCandidate& candidate,
     RectF padding = cs.padding.ResolveOrZero(Some(areaWidth), calc);
     RectF border = cs.border.ResolveOrZero(Some(areaWidth), calc);
     SizeF paddingBorderSum = (padding + border).SumAxes();
-    SizeF boxSizingAdjustment = cs.boxSizing == BoxSizing::ContentBox
-                                    ? paddingBorderSum
-                                    : SizeF::Zero();
+    SizeF boxSizingAdjustment =
+        BoxSizingAdjustment(cs.boxSizing, paddingBorderSum);
     RectFOpt inset = cs.inset.MaybeResolveZip(AsOptional(usedArea), calc);
     Optf left = inset.left;
     Optf right = inset.right;

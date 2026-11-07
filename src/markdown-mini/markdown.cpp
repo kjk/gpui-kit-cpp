@@ -45,7 +45,7 @@ static bool MiniDigit(char c) {
 }
 
 static bool MiniHex(char c) {
-    return MiniDigit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+    return base::HexDigitValue(c) >= 0;
 }
 
 static bool MiniPunctuation(char c) {
@@ -324,28 +324,7 @@ static bool MiniLink(MiniParser* p, Node* parent, Str text, int32_t at,
 
 static base::TempStr MiniUtf8Temp(uint32_t cp) {
     base::TempStr out = base::AllocStrTemp(4);
-    if (cp < 0x80) {
-        out.s[0] = (char)cp;
-        out.len = 1;
-        return out;
-    }
-    if (cp < 0x800) {
-        out.s[0] = (char)(0xc0 | (cp >> 6));
-        out.s[1] = (char)(0x80 | (cp & 0x3f));
-        out.len = 2;
-        return out;
-    }
-    if (cp < 0x10000) {
-        out.s[0] = (char)(0xe0 | (cp >> 12));
-        out.s[1] = (char)(0x80 | ((cp >> 6) & 0x3f));
-        out.s[2] = (char)(0x80 | (cp & 0x3f));
-        out.len = 3;
-        return out;
-    }
-    out.s[0] = (char)(0xf0 | (cp >> 18));
-    out.s[1] = (char)(0x80 | ((cp >> 12) & 0x3f));
-    out.s[2] = (char)(0x80 | ((cp >> 6) & 0x3f));
-    out.s[3] = (char)(0x80 | (cp & 0x3f));
+    out.len = base::Utf8Encode(out.s, cp);
     return out;
 }
 
@@ -1024,25 +1003,6 @@ static void MiniBlocks(MiniParser* p, Node* parent, int32_t start,
     }
 }
 
-Constructs Constructs::Gfm() {
-    Constructs constructs;
-    // These flags describe the requested dialect and remain API-compatible.
-    // The mini implementation intentionally ignores the GFM-only constructs.
-    constructs.gfmAutolinkLiteral = true;
-    constructs.gfmFootnoteDefinition = true;
-    constructs.gfmLabelStartFootnote = true;
-    constructs.gfmStrikethrough = true;
-    constructs.gfmTable = true;
-    constructs.gfmTaskListItem = true;
-    return constructs;
-}
-
-ParseOptions ParseOptions::Gfm() {
-    ParseOptions options;
-    options.constructs = Constructs::Gfm();
-    return options;
-}
-
 // The mini parser keeps no positions, so the table stays empty and
 // TextView's source ranges answer None under -markdown=mini.
 Node* ToMdast(Arena* a, Str source, const ParseOptions& options,
@@ -1092,18 +1052,12 @@ Str DecodeNumeric(Arena* a, Str value, int radix) {
     uint32_t cp = 0;
     bool bad = len(value) <= 0 || (radix != 10 && radix != 16);
     for (int32_t i = 0; !bad && i < len(value); i++) {
-        uint8_t c = (uint8_t)value.s[i];
-        uint32_t digit = 0;
-        if (c >= '0' && c <= '9') {
-            digit = (uint32_t)(c - '0');
-        } else if (c >= 'a' && c <= 'f') {
-            digit = (uint32_t)(c - 'a' + 10);
-        } else if (c >= 'A' && c <= 'F') {
-            digit = (uint32_t)(c - 'A' + 10);
-        } else {
+        int d = base::HexDigitValue(value.s[i]);
+        if (d < 0) {
             bad = true;
             break;
         }
+        uint32_t digit = (uint32_t)d;
         if (digit >= (uint32_t)radix ||
             cp > (0x10ffffu - digit) / (uint32_t)radix) {
             bad = true;

@@ -681,41 +681,10 @@ MdNode* HtmlParse(Arena* a, Str source) {
 
 // gpui::Rgba::try_from: #rgb, #rgba, #rrggbb, #rrggbbaa. The short forms
 // duplicate each digit. Anything else is not a color.
-static int MarkHexDigit(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
 static bool ParseMarkHex(Str value, Rgba* out) {
     value = StrTrim(value);
     if (len(value) < 2 || value.s[0] != '#') return false;
-    const char* hex = value.s + 1;
-    int n = len(value) - 1;
-    if (n != 3 && n != 4 && n != 6 && n != 8) return false;
-    int v[8];
-    for (int i = 0; i < n; i++) {
-        v[i] = MarkHexDigit(hex[i]);
-        if (v[i] < 0) return false;
-    }
-    uint8_t r = 0;
-    uint8_t g = 0;
-    uint8_t b = 0;
-    uint8_t a = 255;
-    if (n == 3 || n == 4) {
-        r = (uint8_t)((v[0] << 4) | v[0]);
-        g = (uint8_t)((v[1] << 4) | v[1]);
-        b = (uint8_t)((v[2] << 4) | v[2]);
-        if (n == 4) a = (uint8_t)((v[3] << 4) | v[3]);
-    } else {
-        r = (uint8_t)((v[0] << 4) | v[1]);
-        g = (uint8_t)((v[2] << 4) | v[3]);
-        b = (uint8_t)((v[4] << 4) | v[5]);
-        if (n == 8) a = (uint8_t)((v[6] << 4) | v[7]);
-    }
-    *out = Rgba{r, g, b, a};
-    return true;
+    return RgbaParseHexDigits(Str(value.s + 1, len(value) - 1), out);
 }
 
 // html.rs parse_mark_color. Hex goes through Rgba::try_from. The four

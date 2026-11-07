@@ -92,29 +92,14 @@ static bool ParseString(JsonParser* jp, Str* out) {
                 }
                 unsigned cp = 0;
                 for (int i = 0; i < 4; i++) {
-                    char h = *jp->p++;
-                    unsigned v = 0;
-                    if (h >= '0' && h <= '9') {
-                        v = (unsigned)(h - '0');
-                    } else if (h >= 'a' && h <= 'f') {
-                        v = (unsigned)(h - 'a') + 10;
-                    } else if (h >= 'A' && h <= 'F') {
-                        v = (unsigned)(h - 'A') + 10;
-                    } else {
+                    int v = HexDigitValue(*jp->p++);
+                    if (v < 0) {
                         return false;
                     }
-                    cp = cp * 16 + v;
+                    cp = cp * 16 + (unsigned)v;
                 }
-                if (cp < 0x80) {
-                    buf[n++] = (char)cp;
-                } else if (cp < 0x800) {
-                    buf[n++] = (char)(0xC0 | (cp >> 6));
-                    buf[n++] = (char)(0x80 | (cp & 0x3F));
-                } else {
-                    buf[n++] = (char)(0xE0 | (cp >> 12));
-                    buf[n++] = (char)(0x80 | ((cp >> 6) & 0x3F));
-                    buf[n++] = (char)(0x80 | (cp & 0x3F));
-                }
+                // Four hex digits: at most U+FFFF, three bytes.
+                n += Utf8Encode(buf + n, cp);
                 break;
             }
             default:

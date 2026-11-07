@@ -31,41 +31,6 @@ static uint8_t ToByte(float v01) {
     return v01 >= 1.f ? 255 : (uint8_t)(v01 * 255.f);
 }
 
-bool RgbaParseHex(Str s, Rgba* out) {
-    if (!s.s || len(s) < 4 || s.s[0] != '#') {
-        return false;
-    }
-    int n = len(s) - 1;
-    if (n != 3 && n != 4 && n != 6 && n != 8) {
-        return false;
-    }
-    int v[8] = {};
-    for (int i = 0; i < n; i++) {
-        char c = s.s[i + 1];
-        if (c >= '0' && c <= '9') {
-            v[i] = c - '0';
-        } else if (c >= 'a' && c <= 'f') {
-            v[i] = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'F') {
-            v[i] = c - 'A' + 10;
-        } else {
-            return false;
-        }
-    }
-    uint8_t ch[4] = {0, 0, 0, 255};
-    if (n <= 4) {
-        for (int i = 0; i < n; i++) {
-            ch[i] = (uint8_t)(v[i] * 17);
-        }
-    } else {
-        for (int i = 0; i < n / 2; i++) {
-            ch[i] = (uint8_t)(v[i * 2] * 16 + v[i * 2 + 1]);
-        }
-    }
-    *out = Rgba{ch[0], ch[1], ch[2], ch[3]};
-    return true;
-}
-
 Rgba RgbaOpacity(Rgba c, float a01) {
     a01 = ClampF(a01, 0, 1);
     c.a = (uint8_t)((float)c.a * a01);
@@ -9370,45 +9335,6 @@ int TextHitOffsetIn(PaintCtx* ctx, float x, float y, bool nearest, int scope,
         *outScope = h->scope;
     }
     return h->docOff + TextHitLocal(ctx, h, rel);
-}
-
-// The character at `i` and how many bytes it took. A byte that is not valid
-// UTF-8 counts as one character of its own value: the rules above only ask
-// which class it lands in, and every stray byte lands in the same one.
-int Utf8At(Str s, int i, uint32_t* out) {
-    const uint8_t* p = (const uint8_t*)s.s + i;
-    uint8_t c = p[0];
-    if (c < 0x80) {
-        *out = c;
-        return 1;
-    }
-    int n = (c & 0xE0) == 0xC0   ? 2
-            : (c & 0xF0) == 0xE0 ? 3
-            : (c & 0xF8) == 0xF0 ? 4
-                                 : 1;
-    if (n == 1 || i + n > len(s)) {
-        *out = c;
-        return 1;
-    }
-    uint32_t cp = (uint32_t)(c & (0xFF >> (n + 1)));
-    for (int k = 1; k < n; k++) {
-        if ((p[k] & 0xC0) != 0x80) {
-            *out = c;
-            return 1;
-        }
-        cp = (cp << 6) | (uint32_t)(p[k] & 0x3F);
-    }
-    *out = cp;
-    return n;
-}
-
-// Where the character before `i` starts.
-int Utf8Prev(Str s, int i) {
-    int j = i - 1;
-    while (j > 0 && ((uint8_t)s.s[j] & 0xC0) == 0x80) {
-        j--;
-    }
-    return j < 0 ? 0 : j;
 }
 
 bool TextMultiClickRange(PaintCtx* ctx, float x, float y, int clickCount,

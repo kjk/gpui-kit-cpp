@@ -495,28 +495,7 @@ static int Utf8Next(const char* s, int len, uint32_t* out) {
     if (len <= 0) {
         return 0;
     }
-    auto b = (const unsigned char*)s;
-    if (b[0] < 0x80) {
-        *out = b[0];
-        return 1;
-    }
-    if ((b[0] & 0xe0) == 0xc0 && len >= 2) {
-        *out = ((uint32_t)(b[0] & 0x1f) << 6) | (b[1] & 0x3f);
-        return 2;
-    }
-    if ((b[0] & 0xf0) == 0xe0 && len >= 3) {
-        *out = ((uint32_t)(b[0] & 0x0f) << 12) |
-               ((uint32_t)(b[1] & 0x3f) << 6) | (b[2] & 0x3f);
-        return 3;
-    }
-    if ((b[0] & 0xf8) == 0xf0 && len >= 4) {
-        *out = ((uint32_t)(b[0] & 0x07) << 18) |
-               ((uint32_t)(b[1] & 0x3f) << 12) |
-               ((uint32_t)(b[2] & 0x3f) << 6) | (b[3] & 0x3f);
-        return 4;
-    }
-    *out = b[0];
-    return 1;
+    return Utf8At(Str(s, len), 0, out);
 }
 
 // --- input method ---------------------------------------------------------
@@ -526,30 +505,6 @@ static int Utf8Next(const char* s, int len, uint32_t* out) {
 // scrolls with the rest of the document. XIM builds the string by edits
 // rather than sending it whole, so the window keeps it and replays the whole
 // of it into the field on every change — which is what the mark is for.
-
-// One code point, encoded. XIM may hand the preedit over as wide characters.
-static int PreeditUtf8Encode(uint32_t cp, char* out) {
-    if (cp < 0x80) {
-        out[0] = (char)cp;
-        return 1;
-    }
-    if (cp < 0x800) {
-        out[0] = (char)(0xC0 | (cp >> 6));
-        out[1] = (char)(0x80 | (cp & 0x3F));
-        return 2;
-    }
-    if (cp < 0x10000) {
-        out[0] = (char)(0xE0 | (cp >> 12));
-        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        out[2] = (char)(0x80 | (cp & 0x3F));
-        return 3;
-    }
-    out[0] = (char)(0xF0 | (cp >> 18));
-    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    out[3] = (char)(0x80 | (cp & 0x3F));
-    return 4;
-}
 
 // The byte offset of character `chars` into a UTF-8 run. XIM counts in
 // characters; everything above here counts in bytes.
@@ -621,7 +576,7 @@ static void PreeditDraw(XIC, XPointer client, XPointer call) {
             const wchar_t* w = d->text->string.wide_char;
             for (int i = 0; w && i < d->text->length && insLen < len(ins) - 8;
                  i++) {
-                insLen += PreeditUtf8Encode((uint32_t)w[i], ins.s + insLen);
+                insLen += Utf8Encode(ins.s + insLen, (uint32_t)w[i]);
             }
         } else if (d->text->string.multi_byte) {
             const char* m = d->text->string.multi_byte;
