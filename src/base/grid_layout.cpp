@@ -1,5 +1,10 @@
 #include "base/grid_layout.h"
 
+#include "base/actions.h"
+#include "gpui/keymap.h"
+
+#include <math.h>
+
 namespace gpui {
 
 static int AtLeastOne(int value) {
@@ -667,6 +672,647 @@ void GridAreaWriteJson(JsonWriter* writer, const GridArea& area) {
     }
     writer->Bool("locked", area.locked);
     writer->EndObject();
+}
+
+static int Snap(float length, float step) {
+    if (step <= 0) {
+        return 0;
+    }
+    float rounded = roundf(length / step);
+    if (rounded < 0) {
+        return 0;
+    }
+    return (int)rounded;
+}
+
+static float AtLeastZero(float value) {
+    return value < 0 ? 0 : value;
+}
+
+GridMetrics GridMetrics::New(float width, int columns, float rowHeight,
+                             float gapWidth, float gapHeight) {
+    float cols = (float)(columns < 1 ? 1 : columns);
+    GridMetrics metrics;
+    metrics.width = width;
+    metrics.columnWidth = AtLeastZero((width - gapWidth * (cols - 1.f)) / cols);
+    metrics.rowHeight = rowHeight;
+    metrics.gapWidth = gapWidth;
+    metrics.gapHeight = gapHeight;
+    return metrics;
+}
+
+float GridMetrics::Left(int col) const {
+    return (columnWidth + gapWidth) * (float)col;
+}
+float GridMetrics::Top(int row) const {
+    return (rowHeight + gapHeight) * (float)row;
+}
+float GridMetrics::SpanWidth(int colSpan) const {
+    float gaps = colSpan > 0 ? (float)(colSpan - 1) : 0;
+    return AtLeastZero(columnWidth * (float)colSpan + gapWidth * gaps);
+}
+float GridMetrics::SpanHeight(int rowSpan) const {
+    float gaps = rowSpan > 0 ? (float)(rowSpan - 1) : 0;
+    return AtLeastZero(rowHeight * (float)rowSpan + gapHeight * gaps);
+}
+int GridMetrics::ColumnAt(float left) const {
+    return Snap(left, columnWidth + gapWidth);
+}
+int GridMetrics::RowAt(float top) const {
+    return Snap(top, rowHeight + gapHeight);
+}
+int GridMetrics::ColumnsSpanning(float span) const {
+    int n = Snap(span + gapWidth, columnWidth + gapWidth);
+    return n < 1 ? 1 : n;
+}
+int GridMetrics::RowsSpanning(float span) const {
+    int n = Snap(span + gapHeight, rowHeight + gapHeight);
+    return n < 1 ? 1 : n;
+}
+
+static bool AddSigned(int value, int delta, int* out) {
+    int64_t sum = (int64_t)value + (int64_t)delta;
+    if (sum < 0 || sum > 0x7fffffff) {
+        return false;
+    }
+    *out = (int)sum;
+    return true;
+}
+
+static bool SameLayout(const Vec<GridArea>& a, const Vec<GridArea>& b) {
+    if (len(a) != len(b)) {
+        return false;
+    }
+    for (int i = 0; i < len(a); i++) {
+        const GridArea& x = a[i];
+        const GridArea& y = b[i];
+        if (!StrEq(x.id, y.id) || x.col != y.col || x.row != y.row ||
+            x.colSpan != y.colSpan || x.rowSpan != y.rowSpan ||
+            x.minColSpan != y.minColSpan || x.minRowSpan != y.minRowSpan ||
+            x.maxColSpan != y.maxColSpan || x.maxRowSpan != y.maxRowSpan ||
+            x.locked != y.locked) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static const GridArea* FindArea(const GridArea* items, int n, Str id) {
+    for (int i = 0; i < n; i++) {
+        if (StrEq(items[i].id, id)) {
+            return &items[i];
+        }
+    }
+    return nullptr;
+}
+
+GridLayoutState::GridLayoutState() {
+    focus = FocusHandleNew((App*)nullptr);
+}
+
+GridLayoutState::~GridLayoutState() {
+    if (ids) {
+        ArenaDelete(ids);
+    }
+}
+
+GridLayoutRules GridLayoutState::Rules() const {
+    GridLayoutRules rules;
+    rules.columns = columns;
+    rules.hasCompaction = hasCompaction;
+    rules.compaction = compaction;
+    rules.preventCollision = preventCollision;
+    return rules;
+}
+
+void GridLayoutState::Normalize() {
+    if (len(areas) <= 0) {
+        return;
+    }
+    GridNormalize(areas.els, len(areas), Rules());
+}
+
+void GridLayoutState::Adopt(const GridArea* items, int n) {
+    Arena* fresh = ArenaNew();
+    Vec<GridArea> next;
+    for (int i = 0; i < n; i++) {
+        GridArea area = items[i];
+        area.id = StrDup(fresh, area.id);
+        VecAppend(next, area);
+    }
+    Str keep = {};
+    bool found = false;
+    if (hasSelected) {
+        for (int i = 0; i < len(next); i++) {
+            if (StrEq(next[i].id, selected)) {
+                keep = next[i].id;
+                found = true;
+                break;
+            }
+        }
+    }
+    areas = next;
+    if (ids) {
+        ArenaDelete(ids);
+    }
+    ids = fresh;
+    selected = keep;
+    hasSelected = found;
+}
+
+GridLayoutState* GridLayoutState::Cols(int cols) {
+    columns = cols < 1 ? 1 : cols;
+    Normalize();
+    return this;
+}
+GridLayoutState* GridLayoutState::Compaction(bool has, Axis axis) {
+    hasCompaction = has;
+    compaction = axis;
+    Normalize();
+    return this;
+}
+GridLayoutState* GridLayoutState::PreventCollision(bool prevent) {
+    preventCollision = prevent;
+    return this;
+}
+GridLayoutState* GridLayoutState::Draggable(bool value) {
+    draggable = value;
+    return this;
+}
+GridLayoutState* GridLayoutState::Resizable(bool value) {
+    resizable = value;
+    return this;
+}
+GridLayoutState* GridLayoutState::DefaultAreas(const GridArea* items, int n) {
+    Adopt(items, n < 0 ? 0 : n);
+    Normalize();
+    return this;
+}
+
+const GridArea* GridLayoutState::Areas(int* n) const {
+    if (n) {
+        *n = len(areas);
+    }
+    return areas.els;
+}
+const GridArea* GridLayoutState::Area(Str id) const {
+    return FindArea(areas.els, len(areas), id);
+}
+bool GridLayoutState::SelectedItem(Str* out) const {
+    if (!hasSelected) {
+        return false;
+    }
+    if (out) {
+        *out = selected;
+    }
+    return true;
+}
+bool GridLayoutState::ActiveItem(Str* out) const {
+    if (!hasDrag) {
+        return false;
+    }
+    if (out) {
+        *out = drag.item;
+    }
+    return true;
+}
+
+void GridLayoutState::SetAreas(Ctx* cx, const GridArea* items, int n) {
+    hasDrag = false;
+    VecClear(drag.start);
+    VecClear(drag.preview);
+    Adopt(items, n < 0 ? 0 : n);
+    Normalize();
+    if (cx) {
+        Notify(cx);
+    }
+}
+void GridLayoutState::SetCols(Ctx* cx, int cols) {
+    columns = cols < 1 ? 1 : cols;
+    hasDrag = false;
+    VecClear(drag.start);
+    VecClear(drag.preview);
+    Normalize();
+    if (cx) {
+        Notify(cx);
+    }
+}
+void GridLayoutState::SetCompaction(Ctx* cx, bool has, Axis axis) {
+    hasCompaction = has;
+    compaction = axis;
+    hasDrag = false;
+    VecClear(drag.start);
+    VecClear(drag.preview);
+    Normalize();
+    if (cx) {
+        Notify(cx);
+    }
+}
+void GridLayoutState::SetPreventCollision(Ctx* cx, bool prevent) {
+    preventCollision = prevent;
+    if (cx) {
+        Notify(cx);
+    }
+}
+void GridLayoutState::SetDraggable(Ctx* cx, bool value) {
+    draggable = value;
+    if (cx) {
+        Notify(cx);
+    }
+}
+void GridLayoutState::SetResizable(Ctx* cx, bool value) {
+    resizable = value;
+    if (cx) {
+        Notify(cx);
+    }
+}
+void GridLayoutState::SetSelectedItem(Ctx* cx, bool has, Str id) {
+    Str next = {};
+    bool hasNext = false;
+    if (has) {
+        const GridArea* area = Area(id);
+        if (area) {
+            next = area->id;
+            hasNext = true;
+        }
+    }
+    if (hasSelected == hasNext && StrEq(selected, next)) {
+        return;
+    }
+    hasSelected = hasNext;
+    selected = next;
+    if (cx) {
+        Notify(cx);
+    }
+}
+
+bool GridLayoutState::Commit(Ctx* cx, const Vec<GridArea>* next) {
+    if (!next || SameLayout(areas, *next)) {
+        return false;
+    }
+    areas = *next;
+    GridLayoutEvent ev;
+    ev.kind = GridLayoutEventKind::Change;
+    ev.areas = areas.els;
+    ev.nAreas = len(areas);
+    EntityEmit(cx ? cx->app : nullptr, cx ? cx->win : nullptr, self, &ev);
+    if (cx) {
+        Notify(cx);
+    }
+    return true;
+}
+
+bool GridLayoutState::MoveItem(Ctx* cx, Str id, int col, int row) {
+    Vec<GridArea> next;
+    if (!GridMoveItem(areas.els, len(areas), id, col, row, Rules(), &next)) {
+        return false;
+    }
+    return Commit(cx, &next);
+}
+
+bool GridLayoutState::ResizeItem(Ctx* cx, Str id, int colSpan, int rowSpan) {
+    Vec<GridArea> next;
+    if (!GridResizeItem(areas.els, len(areas), id, colSpan, rowSpan, Rules(),
+                        &next)) {
+        return false;
+    }
+    return Commit(cx, &next);
+}
+
+bool GridLayoutState::IsGestureAllowed(Str id, GridGesture gesture) const {
+    bool allowed = gesture == GridGesture::Move ? draggable : resizable;
+    const GridArea* area = Area(id);
+    return allowed && area && !area->locked;
+}
+
+bool GridLayoutState::SelectedArea(GridArea* out) const {
+    if (!hasSelected || !out) {
+        return false;
+    }
+    const GridArea* area = Area(selected);
+    if (!area) {
+        return false;
+    }
+    *out = *area;
+    return true;
+}
+
+bool GridLayoutState::NudgeSelected(Ctx* cx, int cols, int rows) {
+    GridArea area;
+    if (!SelectedArea(&area) || !IsGestureAllowed(area.id, GridGesture::Move)) {
+        return false;
+    }
+    int col = 0;
+    int row = 0;
+    if (!AddSigned(area.col, cols, &col) || !AddSigned(area.row, rows, &row)) {
+        return false;
+    }
+    keyboardActive = true;
+    bool moved = MoveItem(cx, area.id, col, row);
+    if (cx) {
+        Notify(cx);
+    }
+    return moved;
+}
+
+bool GridLayoutState::ResizeSelected(Ctx* cx, int cols, int rows) {
+    GridArea area;
+    if (!SelectedArea(&area) ||
+        !IsGestureAllowed(area.id, GridGesture::Resize)) {
+        return false;
+    }
+    int colSpan = 0;
+    int rowSpan = 0;
+    if (!AddSigned(area.colSpan, cols, &colSpan) ||
+        !AddSigned(area.rowSpan, rows, &rowSpan)) {
+        return false;
+    }
+    keyboardActive = true;
+    bool resized = ResizeItem(cx, area.id, colSpan, rowSpan);
+    if (cx) {
+        Notify(cx);
+    }
+    return resized;
+}
+
+void GridLayoutState::Select(Ctx* cx, bool has, Str id) {
+    Str next = {};
+    bool hasNext = false;
+    if (has) {
+        const GridArea* area = Area(id);
+        if (area) {
+            next = area->id;
+            hasNext = true;
+        }
+    }
+    if (hasSelected == hasNext && StrEq(selected, next)) {
+        return;
+    }
+    hasSelected = hasNext;
+    selected = next;
+    GridLayoutEvent ev;
+    ev.kind = GridLayoutEventKind::Select;
+    ev.hasId = hasNext;
+    ev.id = next;
+    EntityEmit(cx ? cx->app : nullptr, cx ? cx->win : nullptr, self, &ev);
+}
+
+bool GridLayoutState::SelectAdjacent(Ctx* cx, bool forward) {
+    Vec<int> order;
+    IndicesOf(areas.els, len(areas), false, &order);
+    if (len(order) == 0) {
+        return false;
+    }
+    int current = -1;
+    if (hasSelected) {
+        for (int i = 0; i < len(order); i++) {
+            if (StrEq(areas[order[i]].id, selected)) {
+                current = i;
+                break;
+            }
+        }
+    }
+    int next = -1;
+    if (current < 0) {
+        next = forward ? 0 : len(order) - 1;
+    } else if (forward && current + 1 < len(order)) {
+        next = current + 1;
+    } else if (!forward && current > 0) {
+        next = current - 1;
+    } else {
+        return false;
+    }
+    keyboardActive = true;
+    Select(cx, true, areas[order[next]].id);
+    if (cx) {
+        Notify(cx);
+    }
+    return true;
+}
+
+void GridLayoutState::Press(Ctx* cx, Str id, float x, float y) {
+    hasPress = true;
+    pressX = x;
+    pressY = y;
+    keyboardActive = false;
+    Select(cx, true, id);
+    if (cx && cx->win) {
+        WindowSetFocusId(cx->win, focus.id);
+    }
+    if (cx) {
+        Notify(cx);
+    }
+}
+
+void GridLayoutState::BeginDrag(Ctx* cx, Str id, GridGesture gesture) {
+    float originX = pressX;
+    float originY = pressY;
+    if (!hasPress && cx && cx->win) {
+        originX = cx->win->mouseX;
+        originY = cx->win->mouseY;
+    }
+    hasPress = false;
+    Select(cx, true, id);
+    hasDrag = true;
+    drag.gesture = gesture;
+    drag.originX = originX;
+    drag.originY = originY;
+    drag.deltaX = 0;
+    drag.deltaY = 0;
+    drag.hasMetrics = false;
+    VecClear(drag.start);
+    VecClear(drag.preview);
+    for (int i = 0; i < len(areas); i++) {
+        VecAppend(drag.start, areas[i]);
+        VecAppend(drag.preview, areas[i]);
+    }
+    const GridArea* area = FindArea(drag.start.els, len(drag.start), id);
+    drag.item = area ? area->id : Str{};
+    if (cx) {
+        Notify(cx);
+    }
+}
+
+void GridLayoutState::DragTo(Ctx* cx, float x, float y, Bounds bounds,
+                             float rowHeight, float gapWidth, float gapHeight) {
+    if (!hasDrag) {
+        return;
+    }
+    GridMetrics metrics =
+        GridMetrics::New(bounds.w, columns, rowHeight, gapWidth, gapHeight);
+    const GridArea* start =
+        FindArea(drag.start.els, len(drag.start), drag.item);
+    if (!start) {
+        return;
+    }
+    GridArea origin = *start;
+    drag.deltaX = x - drag.originX;
+    drag.deltaY = y - drag.originY;
+    drag.metrics = metrics;
+    drag.hasMetrics = true;
+    Vec<GridArea> next;
+    bool ok = false;
+    if (drag.gesture == GridGesture::Move) {
+        float left = metrics.Left(origin.col) + drag.deltaX;
+        float top = metrics.Top(origin.row) + drag.deltaY;
+        int room = columns > origin.colSpan ? columns - origin.colSpan : 0;
+        int col = metrics.ColumnAt(left);
+        if (col > room) {
+            col = room;
+        }
+        ok = GridMoveItem(drag.start.els, len(drag.start), origin.id, col,
+                          metrics.RowAt(top), Rules(), &next);
+    } else {
+        int colSpan = metrics.ColumnsSpanning(
+            metrics.SpanWidth(origin.colSpan) + drag.deltaX);
+        int rowSpan = metrics.RowsSpanning(metrics.SpanHeight(origin.rowSpan) +
+                                           drag.deltaY);
+        ok = GridResizeItem(drag.start.els, len(drag.start), origin.id, colSpan,
+                            rowSpan, Rules(), &next);
+    }
+    if (ok) {
+        drag.preview = next;
+    }
+    if (cx) {
+        Notify(cx);
+    }
+}
+
+void GridLayoutState::EndDrag(Ctx* cx) {
+    hasPress = false;
+    if (!hasDrag) {
+        return;
+    }
+    Vec<GridArea> preview = drag.preview;
+    hasDrag = false;
+    VecClear(drag.start);
+    VecClear(drag.preview);
+    if (cx) {
+        Notify(cx);
+    }
+    Commit(cx, &preview);
+}
+
+bool GridLayoutState::CancelDrag(Ctx* cx) {
+    if (!hasDrag) {
+        return false;
+    }
+    hasDrag = false;
+    VecClear(drag.start);
+    VecClear(drag.preview);
+    if (cx && cx->win) {
+        cx->win->activeDrag = {};
+    }
+    if (cx) {
+        Notify(cx);
+    }
+    return true;
+}
+
+const GridArea* GridLayoutState::DisplayedAreas(Ctx* cx, int* n) const {
+    if (hasDrag && WindowActiveDrag(cx)) {
+        if (n) {
+            *n = len(drag.preview);
+        }
+        return drag.preview.els;
+    }
+    if (n) {
+        *n = len(areas);
+    }
+    return areas.els;
+}
+
+namespace grid_layout {
+
+#define GPUI_ACTION(fn, name)          \
+    uint32_t fn() {                    \
+        static uint32_t id = 0;        \
+        if (!id) {                     \
+            id = ActionOf(StrL(name)); \
+        }                              \
+        return id;                     \
+    }
+
+GPUI_ACTION(MoveLeft, "grid_layout::MoveLeft")
+GPUI_ACTION(MoveRight, "grid_layout::MoveRight")
+GPUI_ACTION(MoveUp, "grid_layout::MoveUp")
+GPUI_ACTION(MoveDown, "grid_layout::MoveDown")
+GPUI_ACTION(ShrinkWidth, "grid_layout::ShrinkWidth")
+GPUI_ACTION(GrowWidth, "grid_layout::GrowWidth")
+GPUI_ACTION(ShrinkHeight, "grid_layout::ShrinkHeight")
+GPUI_ACTION(GrowHeight, "grid_layout::GrowHeight")
+GPUI_ACTION(SelectNextItem, "grid_layout::SelectNextItem")
+GPUI_ACTION(SelectPreviousItem, "grid_layout::SelectPreviousItem")
+
+#undef GPUI_ACTION
+
+const char* Context() {
+    return "GridLayout";
+}
+
+} // namespace grid_layout
+
+void GridLayoutInitKeys() {
+    static uint32_t bound = 0;
+    if (bound == KeymapGeneration()) {
+        return;
+    }
+    bound = KeymapGeneration();
+    const char* ctx = grid_layout::Context();
+    KeyBinding bindings[] = {
+        {"left", grid_layout::MoveLeft(), ctx},
+        {"right", grid_layout::MoveRight(), ctx},
+        {"up", grid_layout::MoveUp(), ctx},
+        {"down", grid_layout::MoveDown(), ctx},
+        {"shift-left", grid_layout::ShrinkWidth(), ctx},
+        {"shift-right", grid_layout::GrowWidth(), ctx},
+        {"shift-up", grid_layout::ShrinkHeight(), ctx},
+        {"shift-down", grid_layout::GrowHeight(), ctx},
+        {"tab", grid_layout::SelectNextItem(), ctx},
+        {"shift-tab", grid_layout::SelectPreviousItem(), ctx},
+        {"escape", action::Cancel(), ctx},
+    };
+    KeymapBind(bindings, (int)(sizeof(bindings) / sizeof(bindings[0])));
+}
+
+bool GridLayoutHandleAction(GridLayoutState* state, Ctx* cx, uint32_t action) {
+    if (!state) {
+        return false;
+    }
+    if (action == grid_layout::MoveLeft()) {
+        return state->NudgeSelected(cx, -1, 0);
+    }
+    if (action == grid_layout::MoveRight()) {
+        return state->NudgeSelected(cx, 1, 0);
+    }
+    if (action == grid_layout::MoveUp()) {
+        return state->NudgeSelected(cx, 0, -1);
+    }
+    if (action == grid_layout::MoveDown()) {
+        return state->NudgeSelected(cx, 0, 1);
+    }
+    if (action == grid_layout::ShrinkWidth()) {
+        return state->ResizeSelected(cx, -1, 0);
+    }
+    if (action == grid_layout::GrowWidth()) {
+        return state->ResizeSelected(cx, 1, 0);
+    }
+    if (action == grid_layout::ShrinkHeight()) {
+        return state->ResizeSelected(cx, 0, -1);
+    }
+    if (action == grid_layout::GrowHeight()) {
+        return state->ResizeSelected(cx, 0, 1);
+    }
+    if (action == grid_layout::SelectNextItem()) {
+        return state->SelectAdjacent(cx, true);
+    }
+    if (action == grid_layout::SelectPreviousItem()) {
+        return state->SelectAdjacent(cx, false);
+    }
+    if (action == action::Cancel()) {
+        return state->CancelDrag(cx);
+    }
+    return false;
 }
 
 } // namespace gpui

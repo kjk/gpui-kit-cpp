@@ -18,6 +18,7 @@ void BaseInit(App* app) {
     TimeFieldInitKeys();
     InputInitKeys();
     TreeInitKeys();
+    GridLayoutInitKeys();
 
     // The modules whose escape binding is otherwise installed lazily by the
     // first rendered instance. Rust installs these during crate init.

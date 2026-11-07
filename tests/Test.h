@@ -164,6 +164,7 @@ void TestRoot();
 void TestSankey();
 void TestJson();
 void TestGridAreaLayout();
+void TestGridLayoutState();
 void TestInspector();
 void TestThemeColor();
 void TestThemeFont();
