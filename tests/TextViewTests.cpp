@@ -8866,6 +8866,76 @@ static void HostForegroundsFollowTheRenderContext() {
     AppGlobalClear(&app);
 }
 
+static void CollectLeafText(El* e, StrBuilder* out) {
+    if (!e || !out) {
+        return;
+    }
+    if (e->text.s) {
+        out->Append(e->text);
+    }
+    for (El* c = e->first; c; c = c->next) {
+        CollectLeafText(c, out);
+    }
+}
+
+static bool TextHas(Str hay, const char* needle) {
+    int n = 0;
+    if (needle) {
+        while (needle[n]) {
+            n++;
+        }
+    }
+    if (n == 0) {
+        return true;
+    }
+    for (int i = 0; i + n <= len(hay); i++) {
+        if (memcmp(hay.s + i, needle, (size_t)n) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// html_paragraph_ids.rs html_paragraphs_paint_their_own_text. Span-less
+// HTML paragraphs shared one element id upstream and then painted only the
+// last paragraph. Layout here is by tree position, so each paragraph is
+// its own elements; this checks their text is still in the tree.
+static void HtmlParagraphsPaintTheirOwnText() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    const char* html =
+        "<p>1 at the end <code>y</code></p>\n"
+        "<p>2 in the middle <code>y</code> z</p>\n"
+        "<p>3 link <a href=\"#\">w <code>y</code> v</a> z</p>\n"
+        "<p>4 link <a href=\"#\">w <code>y</code></a> z</p>\n"
+        "<p>5 <code>y</code> at the start</p>\n"
+        "<p>6 two <code>a</code> and <code>b</code> end</p>";
+    El* view = TextView::NewHtml(&cx, Str(html))->IntoEl();
+    LayoutEl(&win->paint, view, 0, 0, 600, 800, 16, Rgba{});
+    StrBuilder built;
+    CollectLeafText(view, &built);
+    Str painted = built.TakeStr();
+    const char* fragments[] = {
+        "1 at the end", "2 in the middle", "3 link",
+        "4 link",       "at the start",    "6 two",
+    };
+    for (const char* fragment : fragments) {
+        utassert(TextHas(painted, fragment));
+    }
+    StrFree(painted);
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -8875,6 +8945,7 @@ void TestTextView() {
     GeometryIsAnImmutableSnapshot();
     EmptyKeyedLeafHasALineBox();
     HostForegroundsFollowTheRenderContext();
+    HtmlParagraphsPaintTheirOwnText();
     CollectLeafGeometryNestsAndRestores();
     ParseMarkdownReadsWhatAnEditorRoundTrips(a);
     ParseMarkdownMatchesTextViewParse(a);

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4cbbc0190c03a4a5e875785b45a00174609ffa84",
+  sha: "eb529e76c7d211ec5fbe088af4cf819b4b01f4b6",
   date: "2026-11-03",
-  subject: "text: Supply editor foreground ranges through the render context (#3754)",
+  subject: "text: Give span-less HTML paragraphs unique element ids (#3771)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
