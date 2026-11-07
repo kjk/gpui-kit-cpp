@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0ab9cf4ed6d237457e66efc56c8ffcf915e8ce05` (2026-11-04,
-shell: Register GridLayout in the gpui-shell component catalog (#3789)).
-The shell catalog now builds GridLayout, GridItem and GridDragHandle.
-A script owns which items exist and their limits; an item already in the
-grid keeps the place the user gave it. The JavaScript gallery's
-GridLayout route is a live example.
+Processed through `0ebd729f4441ee57d630bcde4a3743bd1284edd6` (2026-11-05,
+tab: Keep an icon-only tab's width instead of collapsing to the icon (#3792)).
+An icon-only tab keeps the width of its content box, so the icon has
+space on both sides.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

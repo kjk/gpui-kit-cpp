@@ -736,6 +736,40 @@ static void OverflowMenuPrefersTheBarCallback() {
     utassert(tabs == 0 && bars == 1 && ix == 0);
 }
 
+// icon_only_tabs_keep_their_width. The inner box asks for 1.25 times its
+// height, and the laid-out tab is at least that wide.
+struct IconOnlyTab {
+    TabVariant variant = TabVariant::Tab;
+
+    static El* Render(IconOnlyTab* self, Ctx* cx) {
+        return Div(cx->a)->W(400)->H(80)->Child(
+            TabBar::New(cx, StrL("icon-tabs"))
+                ->Variant(self->variant)
+                ->Child(component::Tab::New(cx)->Icon(IconName::BookOpen))
+                ->IntoEl());
+    }
+};
+
+static void IconOnlyTabsKeepTheirWidth() {
+    const TabVariant variants[] = {
+        TabVariant::Tab,  TabVariant::Outline,   TabVariant::Segmented,
+        TabVariant::Pill, TabVariant::Underline, TabVariant::Folder,
+    };
+    for (const TabVariant variant : variants) {
+        App* app = TestAppNew();
+        ThemeSet(app, ThemeMode::Light);
+        Init(app);
+        Entity<IconOnlyTab> view = EntityNew<IconOnlyTab>(app);
+        view.Get(app)->variant = variant;
+        Window* win = TestWindowOpen(app, view, 400, 80);
+        El* root = LaidOut(win);
+        El* tab = FindTabId(root, "0");
+        float content = TabInnerHeight(variant, UiSize::Medium) * 1.25f;
+        utassert(tab && tab->w + 0.01f >= content);
+        TestAppFree(app);
+    }
+}
+
 void TestTab() {
     TestSuite("tab");
     UnderlineIsTallerThanEveryOtherVariant();
@@ -748,6 +782,7 @@ void TestTab() {
     TabBarRetainsStyleSpacingScrollAndUnboundedChildren();
     SegmentedShadowFitsInsideExpandedClips();
     FlexTabsGrowForEveryVariant();
+    IconOnlyTabsKeepTheirWidth();
     FolderTabPaintsItsShapeAndTheNextSeparator();
     ClickingAClippedTabRevealsItAndPartOfTheNext();
     ClickingTheLastTabRevealsTheEndOfTheBar();

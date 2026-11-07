@@ -1149,8 +1149,12 @@ El* TabBar::IntoEl() {
             tab->PadT(marginTop)->PadB(TabMarginBottom(variant, size));
         }
         if (item.icon != IconName::None) {
-            // An icon tab is square and exempt from max_width.
-            inner->W(innerH * 1.25f)
+            // An icon tab is square and exempt from max_width. flex_1 on
+            // the inner box zeroes the basis, so w alone collapses it to
+            // the icon; min_w holds the width it asks for.
+            float iconW = innerH * 1.25f;
+            inner->W(iconW)
+                ->MinW(iconW)
                 ->Child(IconEl(a, item.icon, UiIconPx(cx, size))->Fg(st.fg));
         } else {
             if (padX > 0) {
