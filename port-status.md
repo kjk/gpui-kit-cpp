@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d86516d1faa5d2307794bdf7b4fad3a7fffeebb8` (2026-11-03,
-component: Redraw fully in GPUI Fast lib tests (#3768)).
-GPUI Fast skips a second draw when nothing was invalidated. Frames
-here are built again each time, so the test helper and the CI job
-that calls it do not apply.
+Processed through `f6c2069d44825bc1c32a49d62ffd24e114e7e012` (2026-11-03,
+story: Wrap long questionnaire summaries inside their section (#3776)).
+Questionnaire sections cap their width at 448 or 600 instead of
+fixing it, and the summary lines fill that width, center, and wrap.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

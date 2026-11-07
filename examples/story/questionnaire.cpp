@@ -471,6 +471,12 @@ static El* Muted(Ctx* cx, Str text, float px) {
     return StoryTxt(cx, text, px, ThemeNow(cx->app).mutedFg);
 }
 
+// summary_line: a muted line that fills the section so long debug text
+// wraps inside the card instead of spilling past its edges.
+static El* SummaryLine(Ctx* cx, Str text, float px) {
+    return Muted(cx, text, px)->W(kFill)->Wrap()->TextCenter();
+}
+
 static El* Label(Ctx* cx, const char* text) {
     return StoryTxt(cx, Str(text), 16, ThemeNow(cx->app).foreground)->Medium();
 }
@@ -854,7 +860,7 @@ El* QuestionnaireStory::Render(QuestionnaireStory* self, Ctx* cx) {
         cx, "Complete flow",
         "Required single choice, multiple choice, freeform input, skip, "
         "disabled item, and submit events.");
-    StorySectionBody(flow)->W(448);
+    StorySectionBody(flow)->MaxW(448);
     StorySectionAdd(flow, main);
     page->Child(flow);
 
@@ -862,7 +868,7 @@ El* QuestionnaireStory::Render(QuestionnaireStory* self, Ctx* cx) {
                               "Next validates the active item; external "
                               "errors remain host-owned until cleared or "
                               "fixed.");
-    StorySectionBody(errors)->W(600);
+    StorySectionBody(errors)->MaxW(600);
     StorySectionAdd(errors, Label(cx, "Internal validation"));
     StorySectionAdd(errors, validation);
     StorySectionAdd(errors, Label(cx, "External error lifecycle"));
@@ -882,30 +888,32 @@ El* QuestionnaireStory::Render(QuestionnaireStory* self, Ctx* cx) {
                             true)));
     StorySectionAdd(
         errors,
-        Muted(cx, StoryFmt(cx, "External error: %s", externalError), 12));
+        SummaryLine(cx, StoryFmt(cx, "External error: %s", externalError), 12));
     page->Child(errors);
 
     El* navSection = StorySection(cx, "Navigation state",
                                   "The host can inspect current item, "
                                   "answers, status, available actions, and "
                                   "events.");
-    StorySectionBody(navSection)->W(600);
+    StorySectionBody(navSection)->MaxW(600);
     StorySectionAdd(navSection,
                     QButton(cx, "questionnaire-reset", "Reset complete flow",
                             Listen(cx, &ResetMain), false));
     Str current = snapshot->CurrentItem();
     StorySectionAdd(
         navSection,
-        Muted(cx,
-              StoryFmt(cx, "Current: %s · enabled items: %d · complete: %s",
-                       len(current) ? current : StrL("none"), snapshot->Total(),
-                       snapshot->IsComplete() ? "true" : "false"),
-              14));
-    StorySectionAdd(navSection, Muted(cx, statusSummary, 12));
-    StorySectionAdd(navSection, Muted(cx, navigationSummary, 12));
-    StorySectionAdd(navSection, Muted(cx, answerSummary, 12));
+        SummaryLine(
+            cx,
+            StoryFmt(cx, "Current: %s · enabled items: %d · complete: %s",
+                     len(current) ? current : StrL("none"), snapshot->Total(),
+                     snapshot->IsComplete() ? "true" : "false"),
+            14));
+    StorySectionAdd(navSection, SummaryLine(cx, statusSummary, 12));
+    StorySectionAdd(navSection, SummaryLine(cx, navigationSummary, 12));
+    StorySectionAdd(navSection, SummaryLine(cx, answerSummary, 12));
     for (int i = 0; i < self->eventLog.n; i++) {
-        StorySectionAdd(navSection, Muted(cx, self->eventLog.lines[i], 12));
+        StorySectionAdd(navSection,
+                        SummaryLine(cx, self->eventLog.lines[i], 12));
     }
     page->Child(navSection);
 
@@ -913,26 +921,29 @@ El* QuestionnaireStory::Render(QuestionnaireStory* self, Ctx* cx) {
                             "The fixture exposes focus, answers, drafts, and "
                             "events while testing the full keyboard "
                             "contract.");
-    StorySectionBody(keys)->W(600);
-    El* help = Div(a)->FlexCol()->Gap(4);
-    help->Child(Muted(cx,
-                      StrL("Up/Down: move through choices and the freeform "
-                           "input; text editing keeps native arrow behavior."),
-                      14));
-    help->Child(Muted(cx,
-                      StrL("Left/Right: switch items outside text input and "
-                           "radio focus; Right requires an answer."),
-                      14));
+    StorySectionBody(keys)->MaxW(600);
+    El* help = Div(a)->FlexCol()->W(kFill)->Gap(4)->TextCenter();
     help->Child(
-        Muted(cx,
-              StrL("Enter: confirm a filled answer. Command/Ctrl+Enter: "
-                   "confirm the current item."),
-              14));
-    help->Child(Muted(cx,
-                      StrL("A–Z or 1–9: activate enabled choices. While input "
-                           "is focused, typed characters edit the draft and "
-                           "are not intercepted."),
-                      14));
+        SummaryLine(cx,
+                    StrL("Up/Down: move through choices and the freeform "
+                         "input; text editing keeps native arrow behavior."),
+                    14));
+    help->Child(
+        SummaryLine(cx,
+                    StrL("Left/Right: switch items outside text input and "
+                         "radio focus; Right requires an answer."),
+                    14));
+    help->Child(SummaryLine(cx,
+                            StrL("Enter: confirm a filled answer. "
+                                 "Command/Ctrl+Enter: "
+                                 "confirm the current item."),
+                            14));
+    help->Child(
+        SummaryLine(cx,
+                    StrL("A–Z or 1–9: activate enabled choices. While input "
+                         "is focused, typed characters edit the draft and "
+                         "are not intercepted."),
+                    14));
     StorySectionAdd(keys, help);
     StorySectionAdd(keys, Div(a)
                               ->FlexRow()
@@ -951,13 +962,15 @@ El* QuestionnaireStory::Render(QuestionnaireStory* self, Ctx* cx) {
                                           ->Child(Label(cx, "Numbers"))
                                           ->Child(numbers)));
     StorySectionAdd(
-        keys, Muted(cx,
+        keys,
+        SummaryLine(cx,
                     StoryFmt(cx, "Letters focus: %s · answer=%s · draft=\"%s\"",
                              keyboardFocus, AnswerDebug(a, lettersAnswer),
                              lettersDraft),
                     12));
     for (int i = 0; i < self->keyboardEventLog.n; i++) {
-        StorySectionAdd(keys, Muted(cx, self->keyboardEventLog.lines[i], 12));
+        StorySectionAdd(keys,
+                        SummaryLine(cx, self->keyboardEventLog.lines[i], 12));
     }
     page->Child(keys);
 
@@ -965,7 +978,7 @@ El* QuestionnaireStory::Render(QuestionnaireStory* self, Ctx* cx) {
         cx, "Controlled current, conditional items, and custom actions",
         "The host synchronizes Environment from the Runtime answer; custom "
         "actions use NavigationState visibility.");
-    StorySectionBody(controlled)->W(600);
+    StorySectionBody(controlled)->MaxW(600);
     StorySectionAdd(
         controlled,
         Div(a)
@@ -989,7 +1002,7 @@ El* QuestionnaireStory::Render(QuestionnaireStory* self, Ctx* cx) {
                                    "its close behavior; the questionnaire "
                                    "keeps progress, items, and actions "
                                    "together.");
-    StorySectionBody(composition)->W(600);
+    StorySectionBody(composition)->MaxW(600);
     StorySectionAdd(composition, card);
     StorySectionAdd(composition, DialogSection(self, cx));
     page->Child(composition);
@@ -998,7 +1011,7 @@ El* QuestionnaireStory::Render(QuestionnaireStory* self, Ctx* cx) {
                               "Customize indicator, content, shortcut "
                               "renderers, and style seams while preserving "
                               "Questionnaire state and behavior.");
-    StorySectionBody(custom)->W(600);
+    StorySectionBody(custom)->MaxW(600);
     StorySectionAdd(custom, CustomChoice(self, cx, size));
     page->Child(custom);
     return page;
