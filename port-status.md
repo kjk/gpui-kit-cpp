@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `328aec50f04c351950887e2c22369837cb8e4529` (2026-11-04,
-scrollable_mask: Let the parent scroll a swipe over a horizontal area that fits (#3779)).
-A horizontal mask whose content fits gives a swipe with any vertical
-part to the parent scroller. A strip that overflows, and a purely
-horizontal delta, still keep the gesture.
+Processed through `dfc11142ca41249472057dac55372b45b15ab8e8` (2026-11-04,
+chart: Size a PieChart's hole as a ratio of its ring (#3784)).
+InnerRadiusRatio sizes the hole as a fraction of the ring's outer
+radius, clamped to 0..1, and a NaN ratio is no hole. It and InnerRadius
+replace each other; the last call applies.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

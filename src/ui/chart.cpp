@@ -1288,6 +1288,12 @@ PieChart* PieChart::OuterRadius(float r) {
 }
 PieChart* PieChart::InnerRadius(float r) {
     innerRadius = r;
+    innerRadiusIsRatio = false;
+    return this;
+}
+PieChart* PieChart::InnerRadiusRatio(float ratio) {
+    innerRadius = ratio;
+    innerRadiusIsRatio = true;
     return this;
 }
 PieChart* PieChart::PadAngle(float radians) {
@@ -1305,6 +1311,16 @@ PieChart* PieChart::Id(Str name) {
 
 float PieChart::ResolveOuterRadius(float height) const {
     return outerRadius > 0 ? outerRadius : height * 0.4f;
+}
+
+float PieChart::ResolveInnerRadius(float ring) const {
+    if (!innerRadiusIsRatio) return innerRadius;
+    // A NaN ratio is no hole rather than a NaN radius.
+    float ratio = innerRadius;
+    if (ratio != ratio) return 0;
+    if (ratio < 0) ratio = 0;
+    if (ratio > 1) ratio = 1;
+    return ring * ratio;
 }
 
 // plot/label.rs: the names outside a pie are ten-point text on a two-pixel
@@ -1478,8 +1494,9 @@ static void PaintPieLabels(PaintCtx* ctx, PieChart* p, float cx, float cy,
             edgeR = labelR;
         }
         PieLabelLayout item;
-        item.arcX = cosf(mid) * ((p->innerRadius + edgeR) * 0.5f);
-        item.arcY = sinf(mid) * ((p->innerRadius + edgeR) * 0.5f);
+        float hole = p->ResolveInnerRadius(ring);
+        item.arcX = cosf(mid) * ((hole + edgeR) * 0.5f);
+        item.arcY = sinf(mid) * ((hole + edgeR) * 0.5f);
         item.labelX = cosf(mid) * labelR;
         item.y = sinf(mid) * labelR;
         item.text = s.label;
@@ -1552,7 +1569,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             // Each slice is its own Arc at its own radii, as pie_chart.rs
             // builds one per slice now that Arc takes no radius overrides.
             plot::Arc hit = plot::Arc::New();
-            hit.InnerRadius(p->innerRadius)
+            hit.InnerRadius(p->ResolveInnerRadius(ring))
                 ->OuterRadius(ring - p->slices[i].outerInset);
             if (hit.Contains(ad, local, bounds)) {
                 hoverIndex = i;
@@ -1596,7 +1613,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         }
         float lift = PieSliceLift(ctx, p, i, hoverIndex, focus);
         float ro = ring - s.outerInset + kPieHoverLift * lift;
-        float ri = p->innerRadius;
+        float ri = p->ResolveInnerRadius(ring);
         float a0 = angle, a1 = angle + sweep;
         Rgba color = s.color;
         if (hoverIndex >= 0 && i != hoverIndex) {

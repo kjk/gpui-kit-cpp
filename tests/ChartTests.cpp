@@ -2,6 +2,8 @@
 
 #include "Test.h"
 
+#include <math.h>
+
 using namespace gpui::component;
 
 static bool ChartColorEq(Rgba a, Rgba b) {
@@ -215,6 +217,66 @@ static void UnchangedSankeyLabelsKeepTheScene() {
     ArenaDelete(arena);
     AppFree(app);
 #endif
+}
+
+// pie_chart.rs test_pie_chart_inner_radius_ratio_follows_the_ring
+static void PieInnerRadiusRatioFollowsTheRing() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = &app;
+    Rgba red = RgbaHex(0xff0000);
+    Rgba green = RgbaHex(0x00ff00);
+    PieChart* chart = PieChart::New(&cx)
+                          ->Slice(1, red)
+                          ->Slice(3, green)
+                          ->InnerRadiusRatio(0.5f);
+    float heights[] = {100.f, 250.f};
+    for (float height : heights) {
+        float ring = chart->ResolveOuterRadius(height);
+        utassertnear(chart->ResolveInnerRadius(ring), ring * 0.5f);
+    }
+    struct Case {
+        float ratio;
+        float want;
+    };
+    Case cases[] = {{0.25f, 20.f}, {1.5f, 80.f}, {-1.f, 0.f}, {nanf(""), 0.f}};
+    for (const Case& c : cases) {
+        PieChart* sized = PieChart::New(&cx)
+                              ->Slice(1, red)
+                              ->OuterRadius(80.f)
+                              ->InnerRadiusRatio(c.ratio);
+        float ring = sized->ResolveOuterRadius(100.f);
+        utassertnear(sized->ResolveInnerRadius(ring), c.want);
+    }
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
+// pie_chart.rs test_pie_chart_inner_radius_last_setting_applies.
+// A per-slice inner_radius_fn is not on this chart.
+static void PieInnerRadiusLastSettingApplies() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = &app;
+    Rgba red = RgbaHex(0xff0000);
+    PieChart* fixed = PieChart::New(&cx)
+                          ->Slice(1, red)
+                          ->InnerRadiusRatio(0.5f)
+                          ->InnerRadius(30.f);
+    utassertnear(fixed->ResolveInnerRadius(100.f), 30.f);
+    PieChart* ratio = PieChart::New(&cx)
+                          ->Slice(1, red)
+                          ->InnerRadius(30.f)
+                          ->InnerRadiusRatio(0.5f);
+    utassertnear(ratio->ResolveInnerRadius(100.f), 50.f);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
 }
 
 static void PieSliceRadiusFallsBackToTheRing() {
@@ -954,6 +1016,8 @@ void TestChart() {
     UnchangedPlotLabelsKeepTheScene();
     UnchangedSankeyLabelsKeepTheScene();
     PieSliceRadiusFallsBackToTheRing();
+    PieInnerRadiusRatioFollowsTheRing();
+    PieInnerRadiusLastSettingApplies();
     AChartsIdDefaultsToItsConstructionSite();
     AChartTurnedOffKeepsItsIdButNotItsHitbox();
     AnAppearKeyReplaysTheAppear();

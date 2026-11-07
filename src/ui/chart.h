@@ -95,7 +95,10 @@ struct PieChart {
     // 0 until OuterRadius is set: the ring is then 40% of the laid-out
     // height (resolve_outer_radius).
     float outerRadius = 0;
+    // Pixels, or a fraction of the ring when innerRadiusIsRatio is set.
+    // The last of InnerRadius and InnerRadiusRatio applies.
     float innerRadius = 0;
+    bool innerRadiusIsRatio = false;
     float padAngle = 0;
     // label(): a name outside the ring, on a leader line from the slice's own
     // edge. Set on the chart rather than the slice because a slice with no
@@ -122,6 +125,9 @@ struct PieChart {
     PieChart* Label(Str text);
     PieChart* OuterRadius(float r);
     PieChart* InnerRadius(float r);
+    // A fraction of the ring's outer radius, from 0 (a pie) to 1. NaN is
+    // no hole. Replaces InnerRadius; the last call applies.
+    PieChart* InnerRadiusRatio(float ratio);
     PieChart* PadAngle(float radians);
     PieChart* LabelGap(float gap);
     PieChart* LabelColor(Rgba c);
@@ -164,6 +170,9 @@ struct PieChart {
     // The outer radius the ring is laid out with: the set one, or 40% of
     // `height`.
     float ResolveOuterRadius(float height) const;
+    // The hole in a ring of radius `ring`: the pixel radius, or that
+    // fraction of `ring`. A per-slice inner radius is not on this chart.
+    float ResolveInnerRadius(float ring) const;
     El* IntoEl();
 };
 
