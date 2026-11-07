@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6309631aae1748ae0d05ac1f3ff2dd6ca379cb85",
+  sha: "ba20548537a4de230efba3e16e1a7a2418ea2727",
   date: "2026-11-06",
-  subject: "input: Tell the platform when the caret moves (#3827)",
+  subject: "input: Notify an input moved by its parent only while it is focused (#3828)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

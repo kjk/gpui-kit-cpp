@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6309631aae1748ae0d05ac1f3ff2dd6ca379cb85` (2026-11-06,
-input: Tell the platform when the caret moves (#3827)).
-A focused field whose origin or caret moved schedules one callback
-for the next frame, and that callback tells the platform where the
-IME panel goes. Blur drops the remembered anchor, so the next focus
-reports the caret again.
+Processed through `ba20548537a4de230efba3e16e1a7a2418ea2727` (2026-11-06,
+input: Notify an input moved by its parent only while it is focused (#3828)).
+Publishing an input's layout does not notify, so a parent that moves
+an unfocused field does not rebuild the view around it. The check
+that would is GPUI Fast's, and this tree has no second engine. The
+new test is behind that feature.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
