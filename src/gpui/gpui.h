@@ -75,6 +75,10 @@ inline Rgba RgbaHex(uint32_t hex) {
     return Rgba{(uint8_t)((hex >> 16) & 0xff), (uint8_t)((hex >> 8) & 0xff),
                 (uint8_t)(hex & 0xff), 255};
 }
+// gpui::Rgba::try_from(&str): "#" then three, four, six or eight hex digits,
+// the short forms doubling each digit and the four- and eight-digit forms
+// carrying alpha. A caller that takes fewer forms checks the length first.
+bool RgbaParseHex(Str s, Rgba* out);
 Rgba RgbaOpacity(Rgba c, float a01);
 // A plain per-channel blend, weighted toward `a`. Not Colorize::mix — that is
 // RgbaMixHsl below. This is the arithmetic `default_title_bar_background`
@@ -6815,6 +6819,13 @@ bool TextMultiClickRange(PaintCtx* ctx, float x, float y, int clickCount,
 bool TextMultiClickRangeIn(PaintCtx* ctx, float x, float y, int clickCount,
                            int scope, int* outA, int* outB, int* outScope);
 int HashClickId(Str s);
+// FNV-1a, the hash element ids, action names and content keys are taken with.
+// Each continues from h over n bytes at p; a fresh hash starts from the offset
+// basis.
+const uint32_t kFnv1aBasis32 = 2166136261u;
+const uint64_t kFnv1aBasis64 = 1469598103934665603ull;
+uint32_t Fnv1a32(uint32_t h, const void* p, size_t n);
+uint64_t Fnv1a64(uint64_t h, const void* p, size_t n);
 
 // Which of the three fills a box paints. GPUI resolves this by refining the
 // hovered style and then the active one over the base, so the pressed fill

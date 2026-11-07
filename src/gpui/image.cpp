@@ -439,10 +439,9 @@ int ImageCacheEncodedCount(App* app) {
 }
 
 static uint64_t ImageBytesHash(const uint8_t* bytes, int len) {
-    uint64_t hash = 1469598103934665603ull;
-    for (int i = 0; bytes && i < len; i++) {
-        hash ^= bytes[i];
-        hash *= 1099511628211ull;
+    uint64_t hash = kFnv1aBasis64;
+    if (bytes && len > 0) {
+        hash = Fnv1a64(hash, bytes, (size_t)len);
     }
     return hash ? hash : 1;
 }
@@ -741,6 +740,16 @@ ImageLoadState ImageSrcState(PaintApp* pa, Str src, double* loadingSeconds) {
     return ImageSrcState(ImageLookup::Of(pa), src, loadingSeconds);
 }
 
+// A decoded image's status as the load state an element reads.
+static ImageLoadState RenderImageLoadState(RenderImage* img) {
+    RenderImageStatus status = RenderImageStatusGet(img);
+    if (status == RenderImageStatus::Ready) {
+        return ImageLoadState::Ready;
+    }
+    return status == RenderImageStatus::Loading ? ImageLoadState::Loading
+                                                : ImageLoadState::Failed;
+}
+
 ImageLoadState ImageSourceState(const ImageLookup& cx,
                                 const ImageSource& source,
                                 double* loadingSeconds) {
@@ -754,12 +763,7 @@ ImageLoadState ImageSourceState(const ImageLookup& cx,
             break;
         case ImageSourceKind::Render:
             if (source.render) {
-                RenderImageStatus status = RenderImageStatusGet(source.render);
-                state = status == RenderImageStatus::Ready
-                            ? ImageLoadState::Ready
-                            : (status == RenderImageStatus::Loading
-                                   ? ImageLoadState::Loading
-                                   : ImageLoadState::Failed);
+                state = RenderImageLoadState(source.render);
             }
             break;
         case ImageSourceKind::Image: {
@@ -767,12 +771,7 @@ ImageLoadState ImageSourceState(const ImageLookup& cx,
             if (slot && slot->ops) {
                 state = ImageLoadState::Ready;
             } else if (slot && slot->img) {
-                RenderImageStatus status = RenderImageStatusGet(slot->img);
-                state = status == RenderImageStatus::Ready
-                            ? ImageLoadState::Ready
-                            : (status == RenderImageStatus::Loading
-                                   ? ImageLoadState::Loading
-                                   : ImageLoadState::Failed);
+                state = RenderImageLoadState(slot->img);
             }
             break;
         }

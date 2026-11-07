@@ -111,6 +111,20 @@ static void AddLine(SvgIcon* ic, float x, float y) {
     AddOp(ic, o);
 }
 static void AddCubic(SvgIcon* ic, float x1, float y1, float x2, float y2,
+                     float x, float y);
+
+// A quadratic from the pen (cx, cy) through control (x1, y1) to (x, y),
+// elevated to the cubic with the same curve.
+static void AddQuad(SvgIcon* ic, float cx, float cy, float x1, float y1,
+                    float x, float y) {
+    float c1x = cx + 2.f / 3.f * (x1 - cx);
+    float c1y = cy + 2.f / 3.f * (y1 - cy);
+    float c2x = x + 2.f / 3.f * (x1 - x);
+    float c2y = y + 2.f / 3.f * (y1 - y);
+    AddCubic(ic, c1x, c1y, c2x, c2y, x, y);
+}
+
+static void AddCubic(SvgIcon* ic, float x1, float y1, float x2, float y2,
                      float x, float y) {
     SvgOp o;
     o.cmd = kCubic;
@@ -318,6 +332,15 @@ static void ParsePathD(SvgIcon* ic, Str d) {
     float cx = 0, cy = 0, sx = 0, sy = 0;
     float pcx = 0, pcy = 0; // previous cubic control (for S)
     bool hasPrevC = false;
+    // A curve segment ends at (x, y) with (px, py) as the control point the
+    // next S or T reflects.
+    auto endCurve = [&](float px, float py, float x, float y) {
+        pcx = px;
+        pcy = py;
+        hasPrevC = true;
+        cx = x;
+        cy = y;
+    };
     while (s.p < s.end) {
         SkipWs(&s);
         if (s.p >= s.end) {
@@ -414,11 +437,7 @@ static void ParsePathD(SvgIcon* ic, Str d) {
                 y += cy;
             }
             AddCubic(ic, x1, y1, x2, y2, x, y);
-            pcx = x2;
-            pcy = y2;
-            hasPrevC = true;
-            cx = x;
-            cy = y;
+            endCurve(x2, y2, x, y);
             continue;
         }
         if (op == 'S') {
@@ -436,11 +455,7 @@ static void ParsePathD(SvgIcon* ic, Str d) {
             float x1 = hasPrevC ? (2 * cx - pcx) : cx;
             float y1 = hasPrevC ? (2 * cy - pcy) : cy;
             AddCubic(ic, x1, y1, x2, y2, x, y);
-            pcx = x2;
-            pcy = y2;
-            hasPrevC = true;
-            cx = x;
-            cy = y;
+            endCurve(x2, y2, x, y);
             continue;
         }
         if (op == 'Q') {
@@ -456,16 +471,8 @@ static void ParsePathD(SvgIcon* ic, Str d) {
                 y += cy;
             }
             // elevate quad to cubic
-            float c1x = cx + 2.f / 3.f * (x1 - cx);
-            float c1y = cy + 2.f / 3.f * (y1 - cy);
-            float c2x = x + 2.f / 3.f * (x1 - x);
-            float c2y = y + 2.f / 3.f * (y1 - y);
-            AddCubic(ic, c1x, c1y, c2x, c2y, x, y);
-            pcx = x1;
-            pcy = y1;
-            hasPrevC = true;
-            cx = x;
-            cy = y;
+            AddQuad(ic, cx, cy, x1, y1, x, y);
+            endCurve(x1, y1, x, y);
             continue;
         }
         if (op == 'T') {
@@ -479,16 +486,8 @@ static void ParsePathD(SvgIcon* ic, Str d) {
             }
             float x1 = hasPrevC ? (2 * cx - pcx) : cx;
             float y1 = hasPrevC ? (2 * cy - pcy) : cy;
-            float c1x = cx + 2.f / 3.f * (x1 - cx);
-            float c1y = cy + 2.f / 3.f * (y1 - cy);
-            float c2x = x + 2.f / 3.f * (x1 - x);
-            float c2y = y + 2.f / 3.f * (y1 - y);
-            AddCubic(ic, c1x, c1y, c2x, c2y, x, y);
-            pcx = x1;
-            pcy = y1;
-            hasPrevC = true;
-            cx = x;
-            cy = y;
+            AddQuad(ic, cx, cy, x1, y1, x, y);
+            endCurve(x1, y1, x, y);
             continue;
         }
         if (op == 'A') {
@@ -576,35 +575,12 @@ static float AttrF(Str tag, const char* name, float def) {
 
 // `fill="#rrggbb"` on a shape. "none" and "currentColor" both leave the shape
 // in the caller's colour, which is what every Lucide icon says.
+// Only "#rgb" and "#rrggbb": an SVG colour carries no alpha.
 static bool ParseSvgColor(Str s, Rgba* out) {
-    if (!s.s || len(s) < 4 || s.s[0] != '#') {
+    if (len(s) != 4 && len(s) != 7) {
         return false;
     }
-    int n = len(s) - 1;
-    if (n != 3 && n != 6) {
-        return false;
-    }
-    int v[6] = {};
-    for (int i = 0; i < n; i++) {
-        char c = s.s[i + 1];
-        if (c >= '0' && c <= '9') {
-            v[i] = c - '0';
-        } else if (c >= 'a' && c <= 'f') {
-            v[i] = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'F') {
-            v[i] = c - 'A' + 10;
-        } else {
-            return false;
-        }
-    }
-    if (n == 3) {
-        *out = Rgba{(uint8_t)(v[0] * 17), (uint8_t)(v[1] * 17),
-                    (uint8_t)(v[2] * 17), 255};
-    } else {
-        *out = Rgba{(uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]),
-                    (uint8_t)(v[4] * 16 + v[5]), 255};
-    }
-    return true;
+    return RgbaParseHex(s, out);
 }
 
 // `fill` / `stroke` / `stop-color`, which may be a colour or a reference to
@@ -1543,12 +1519,7 @@ static int gXmlCacheN = 0;
 
 static uint64_t XmlHash(Str xml) {
     // FNV-1a over the source.
-    uint64_t h = 1469598103934665603ull;
-    for (int i = 0; i < len(xml); i++) {
-        h ^= (uint8_t)xml.s[i];
-        h *= 1099511628211ull;
-    }
-    return h;
+    return Fnv1a64(kFnv1aBasis64, xml.s, (size_t)len(xml));
 }
 
 const uint8_t* SvgDrawOpsForXml(Str xml, int* lenOut) {
@@ -1832,8 +1803,10 @@ Str IconNamePath(IconName name) {
     }
 }
 
-bool SvgRasterize(PaintApp* pa, Str assetPath, int px, Rgba color,
-                  uint8_t* outBgra) {
+// Draws one icon, by asset path or from its markup, into a px-square
+// offscreen target and reads it back as BGRA.
+static bool SvgRasterizeWith(PaintApp* pa, Str source, bool isXml, int px,
+                             Rgba color, uint8_t* outBgra) {
     if (!pa || px <= 0 || !outBgra) {
         return false;
     }
@@ -1845,27 +1818,20 @@ bool SvgRasterize(PaintApp* pa, Str assetPath, int px, Rgba color,
     if (!PaintTargetBeginOffscreen(&ctx, px, px)) {
         return false;
     }
-    bool drew = SvgDraw(&ctx, assetPath, 0, 0, (float)px, color);
+    bool drew = isXml ? SvgDrawXml(&ctx, source, 0, 0, (float)px, color)
+                      : SvgDraw(&ctx, source, 0, 0, (float)px, color);
     bool ok = PaintTargetEndOffscreen(&ctx, outBgra);
     return drew && ok;
 }
 
+bool SvgRasterize(PaintApp* pa, Str assetPath, int px, Rgba color,
+                  uint8_t* outBgra) {
+    return SvgRasterizeWith(pa, assetPath, false, px, color, outBgra);
+}
+
 bool SvgRasterizeXml(PaintApp* pa, Str xml, int px, Rgba color,
                      uint8_t* outBgra) {
-    if (!pa || px <= 0 || !outBgra) {
-        return false;
-    }
-    PaintCtx ctx = {};
-    ctx.pa = pa;
-    ctx.dpi = 96;
-    ctx.viewW = (float)px;
-    ctx.viewH = (float)px;
-    if (!PaintTargetBeginOffscreen(&ctx, px, px)) {
-        return false;
-    }
-    bool drew = SvgDrawXml(&ctx, xml, 0, 0, (float)px, color);
-    bool ok = PaintTargetEndOffscreen(&ctx, outBgra);
-    return drew && ok;
+    return SvgRasterizeWith(pa, xml, true, px, color, outBgra);
 }
 
 } // namespace gpui
