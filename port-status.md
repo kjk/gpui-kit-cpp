@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1ded8be69b224f0d5fd6b9209d7eefb554ae41a6` (2026-11-05,
-shell: Expose group hover to scripts (#3796)).
-A script names a group with `group(name)` and styles a descendant with
-`group_hover(name, declare)` while the pointer is over the nearest
-ancestor of that name. The name is not part of the description's shape.
-An empty name is refused before anything is recorded.
+Processed through `675965a79de3aba323716d09aa4dccaa0614c7e1` (2026-11-05,
+deps: Update `rustls-webpki` and `webpki-root-certs` for CVE-2026-111943 (#3801)).
+Upstream bumped the Rust TLS crates that `gpui-shell`'s fetch and
+WebSocket use. This tree's HTTP client is the operating system's, and a
+WebSocket is out of scope, so the lockfile change has nothing to port.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
