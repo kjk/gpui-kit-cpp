@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2c150ee566c6b3b97cbb77a6e56eba0f47cee51b` (2026-11-06,
-text: Draw an inline image without a size at its own size (#3786)).
-An inline picture that names neither dimension is drawn at its own
-pixels. Until those pixels exist it holds a square three quarters of
-the line, and a picture wider than the wrap narrows in ratio. The
-fixture badge names 20 by 20 so it keeps that size.
+Processed through `5b72161ed8dc0ae7909c5b8bb4a551b1c95f7d15` (2026-11-06,
+input: Publish the input's layout at the end of prepaint (#3831)).
+The caret is already published at write-back, which is this tree's
+prepaint, so a menu in the same frame reads this frame's caret. A
+field write during paint does not notify, and there is no second
+engine for GPUI Fast's check to dirty.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
