@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b881cadb7cf7c43b579f60bdac496460ab2f6276",
+  sha: "5d6a1b733c0be01fed9f14822b532cf6d9fd6df3",
   date: "2026-11-06",
-  subject: "slider: Report a disabled `SliderThumb` to assistive technology (#3825)",
+  subject: "motion: Reverse an interrupted transition as CSS does (#3820)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

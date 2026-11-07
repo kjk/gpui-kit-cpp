@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b881cadb7cf7c43b579f60bdac496460ab2f6276` (2026-11-06,
-slider: Report a disabled `SliderThumb` to assistive technology (#3825)).
-A slider thumb given its own role marks that accessibility node
-disabled only while the thumb is disabled. An enabled thumb leaves the
-flag unset. The themed slider still reports disabled on the slider
-node itself.
+Processed through `5d6a1b733c0be01fed9f14822b532cf6d9fd6df3` (2026-11-06,
+motion: Reverse an interrupted transition as CSS does (#3820)).
+An interrupted value transition shortens a reversal back to where it
+logically started, keeps the curve it began with until the next
+retarget, and scales a negative delay by the same factor. A finished
+transition sent back to its start runs at full length.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

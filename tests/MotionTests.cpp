@@ -267,6 +267,102 @@ static void ReversingCarriesOnFromWhereItGotTo() {
     utassertnear(MotionAdvance(&st, 0.f, m, 0.075, false).value, 2.5f);
 }
 
+static Motion LinearMotion(float durationMs) {
+    Motion m = MotionNew(durationMs);
+    m.easing = Easing::Linear();
+    return m;
+}
+
+static float EaseAnticipate(float t) {
+    return t < 0.5f ? -t : t;
+}
+
+static float EaseSquare(float t) {
+    return t * t;
+}
+
+// repeated_reversals_keep_the_logical_start. Back, forth and back again:
+// each reversal is shortened, and a fresh run after that is full length.
+static void RepeatedReversalsKeepTheLogicalStart() {
+    MotionState<float> st;
+    Motion m = LinearMotion(1000);
+    MotionAdvance(&st, 0.f, m, 0, false);
+    MotionAdvance(&st, 1.f, m, 0, false);
+    utassertnear(MotionAdvance(&st, 0.f, m, 0.4, false).value, 0.4f);
+    utassertnear(MotionAdvance(&st, 1.f, m, 0.5, false).value, 0.3f);
+    utassertnear(MotionAdvance(&st, 0.f, m, 0.6, false).value, 0.4f);
+    MotionStep<float> done = MotionAdvance(&st, 0.f, m, 1.001, false);
+    utassert(done.status == MotionStatus::Finished);
+    utassertnear(done.value, 0.f);
+    MotionAdvance(&st, 1.f, m, 1.001, false);
+    utassertnear(MotionAdvance(&st, 1.f, m, 1.501, false).value, 0.5f);
+}
+
+// reversal_scales_negative_delay. At 0.4, reverse over 400ms with delay -80ms.
+static void ReversalScalesNegativeDelay() {
+    MotionState<float> st;
+    Motion m = LinearMotion(1000);
+    m.delayMs = -200;
+    MotionAdvance(&st, 0.f, m, 0, false);
+    utassertnear(MotionAdvance(&st, 1.f, m, 0, false).value, 0.2f);
+    utassertnear(MotionAdvance(&st, 0.f, m, 0.2, false).value, 0.32f);
+    MotionStep<float> done = MotionAdvance(&st, 0.f, m, 0.521, false);
+    utassert(done.status == MotionStatus::Finished);
+}
+
+// reversal_uses_absolute_shortening_for_anticipation. A curve that dips
+// below zero still reverses over a non-zero time.
+static void ReversalUsesAbsoluteShorteningForAnticipation() {
+    MotionState<float> st;
+    Motion m = MotionNew(1000);
+    m.easing = Easing::Custom(EaseAnticipate);
+    MotionAdvance(&st, 0.f, m, 0, false);
+    MotionAdvance(&st, 1.f, m, 0, false);
+    utassert(MotionAdvance(&st, 0.f, m, 0.25, false)
+                 .status == MotionStatus::Running);
+    utassert(MotionAdvance(&st, 0.f, m, 0.5, false)
+                 .status == MotionStatus::Finished);
+}
+
+// non_reversing_retarget_uses_full_duration. A third value runs at full length.
+static void NonReversingRetargetUsesFullDuration() {
+    MotionState<float> st;
+    Motion m = LinearMotion(1000);
+    MotionAdvance(&st, 0.f, m, 0, false);
+    MotionAdvance(&st, 1.f, m, 0, false);
+    MotionAdvance(&st, 0.f, m, 0.4, false);
+    MotionAdvance(&st, 2.f, m, 0.5, false);
+    utassertnear(MotionAdvance(&st, 2.f, m, 1.0, false).value, 1.15f);
+}
+
+// active_policy_is_retained_until_retarget. Changing the curve mid-flight
+// does not bend the running transition. The next retarget uses the new one.
+static void ActivePolicyIsRetainedUntilRetarget() {
+    MotionState<float> st;
+    Motion m = LinearMotion(1000);
+    MotionAdvance(&st, 0.f, m, 0, false);
+    MotionAdvance(&st, 1.f, m, 0, false);
+    Motion next = MotionNew(1000);
+    next.easing = Easing::Custom(EaseSquare);
+    next.delayMs = -200;
+    utassertnear(MotionAdvance(&st, 1.f, next, 0.4, false).value, 0.4f);
+    utassertnear(MotionAdvance(&st, 2.f, next, 0.4, false).value, 0.464f);
+}
+
+// reversal_keeps_positive_delay. A positive delay is not scaled on a reversal.
+static void ReversalKeepsPositiveDelay() {
+    MotionState<float> st;
+    Motion m = LinearMotion(1000);
+    m.delayMs = 200;
+    MotionAdvance(&st, 0.f, m, 0, false);
+    MotionAdvance(&st, 1.f, m, 0, false);
+    utassertnear(MotionAdvance(&st, 0.f, m, 0.6, false).value, 0.4f);
+    utassert(MotionAdvance(&st, 0.f, m, 0.7, false)
+                 .status == MotionStatus::Delayed);
+    utassert(MotionAdvance(&st, 0.f, m, 1.201, false)
+                 .status == MotionStatus::Finished);
+}
+
 // delay_holds_the_previous_value_before_interpolation.
 static void ADelayHoldsThePreviousValue() {
     MotionState<float> st;
@@ -1295,6 +1391,12 @@ void TestMotion() {
     AZeroDurationTargetChangeIsImmediate();
     AChangedTargetTransitionsOverTime();
     ReversingCarriesOnFromWhereItGotTo();
+    RepeatedReversalsKeepTheLogicalStart();
+    ReversalScalesNegativeDelay();
+    ReversalUsesAbsoluteShorteningForAnticipation();
+    NonReversingRetargetUsesFullDuration();
+    ActivePolicyIsRetainedUntilRetarget();
+    ReversalKeepsPositiveDelay();
     ADelayHoldsThePreviousValue();
     AFinishedTransitionStopsAskingForFrames();
     ReducedMotionTakesTheTargetOutright();
