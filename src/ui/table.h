@@ -112,6 +112,11 @@ struct TableDelegate {
     // cell_label. The text a screen reader reads for a cell. Null is None,
     // so a delegate that does not set it leaves the cell unnamed.
     Str (*cellLabel)(Ctx* cx, void* data, int row, int col) = nullptr;
+    // row_label. The name a screen reader reads for the row. Null joins
+    // the row's cell_label values with ", " and skips empty ones, or
+    // leaves the row unnamed when none remain. A name returned here
+    // replaces an aria label set in render_tr.
+    Str (*rowLabel)(Ctx* cx, void* data, int row) = nullptr;
     El* (*renderEmpty)(Ctx* cx, void* data) = nullptr;
     bool (*loading)(Ctx* cx, void* data) = nullptr;
     El* (*renderLoading)(Ctx* cx, void* data, UiSize size) = nullptr;
@@ -199,6 +204,9 @@ struct DataTable {
     // cell_label. Separate from cell_text: an export and a screen reader
     // do not have to read the same string. Null leaves the cell unnamed.
     Str (*cellLabel)(Ctx* cx, void* data, int row, int col) = nullptr;
+    // row_label. Null joins cell_label. A returned name replaces an aria
+    // label the row builder already set.
+    Str (*rowLabel)(Ctx* cx, void* data, int row) = nullptr;
     // fit_column, when the table is not using TableDelegate. Copied onto
     // the state as it builds, which is what a double-click calls later.
     bool (*fitColumn)(Ctx* cx, void* data, int col, float* width) = nullptr;
@@ -244,6 +252,7 @@ struct DataTable {
     DataTable* OnVisibleCols(void (*fn)(Ctx*, void*, int, int));
     DataTable* CellText(Str (*fn)(Ctx*, void*, int, int));
     DataTable* CellLabel(Str (*fn)(Ctx*, void*, int, int));
+    DataTable* RowLabel(Str (*fn)(Ctx*, void*, int));
     // TableDelegate::fit_column, for a table that is not driven by the
     // whole delegate table. The same hook as TableDelegate::fitColumn.
     DataTable* FitColumn(bool (*fn)(Ctx*, void*, int, float*));

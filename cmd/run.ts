@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7a27193a7f5a7047f6ad12474225f7017d9d150e",
-  date: "2026-11-03",
-  subject: "input: Keep the first typed character in the editor search panel (#3772)",
+  sha: "be82d05b2b5d2b3bd7e00b839da3ac900dea6ae7",
+  date: "2026-11-02",
+  subject: "table: Name each row after its cells (#3773)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

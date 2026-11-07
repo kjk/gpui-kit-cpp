@@ -423,6 +423,7 @@ DataTable* DataTable::Delegate(const TableDelegate& value) {
     visibleColsChanged = value.visibleColumnsChanged;
     cellText = value.cellText;
     cellLabel = value.cellLabel;
+    rowLabel = value.rowLabel;
     return this;
 }
 DataTable* DataTable::Rows(int n, void* d,
@@ -503,9 +504,45 @@ DataTable* DataTable::CellLabel(Str (*fn)(Ctx*, void*, int, int)) {
     cellLabel = fn;
     return this;
 }
+DataTable* DataTable::RowLabel(Str (*fn)(Ctx*, void*, int)) {
+    rowLabel = fn;
+    return this;
+}
 DataTable* DataTable::FitColumn(bool (*fn)(Ctx*, void*, int, float*)) {
     fitColumn = fn;
     return this;
+}
+
+// row_label's default: the row's cell_label values, joined with ", ",
+// skipping empty ones. None when nothing remains. There is no
+// window.is_a11y_active, so this runs every frame a cell_label is set,
+// the same way those cell names do.
+static Str JoinedCellLabels(Arena* a, Ctx* cx, void* data,
+                            Str (*cellLabel)(Ctx*, void*, int, int), int row,
+                            int nCols) {
+    if (!a || !cellLabel || nCols <= 0) {
+        return {};
+    }
+    StrBuilder built;
+    bool any = false;
+    for (int c = 0; c < nCols; c++) {
+        Str text = cellLabel(cx, data, row, c);
+        if (!text.s || len(text) == 0) {
+            continue;
+        }
+        if (any) {
+            built.Append(StrL(", "));
+        }
+        built.Append(text);
+        any = true;
+    }
+    if (!any) {
+        return {};
+    }
+    Str owned = built.TakeStr();
+    Str copied = StrDup(a, owned);
+    StrFree(owned);
+    return copied;
 }
 
 static Str TableColumnLabel(const TableColumn& column) {
@@ -908,6 +945,7 @@ El* DataTable::BuildEl() {
         visibleColsChanged = delegate.visibleColumnsChanged;
         cellText = delegate.cellText;
         cellLabel = delegate.cellLabel;
+        rowLabel = delegate.rowLabel;
         if (delegate.groupHeaders) {
             delegate.groupHeaders(cx, data, this);
         }
@@ -1398,6 +1436,15 @@ El* DataTable::BuildEl() {
             ->FlexRow()
             ->Shrink0()
             ->BorderB(1, th.tableRowBorder);
+        // A name from row_label replaces an aria label set in render_tr.
+        // The default joins cell_label in column order, not visual order.
+        Str rowName =
+            rowLabel ? rowLabel(cx, data, r)
+                     : JoinedCellLabels(a, cx, data, cellLabel, r, nColumns);
+        if (rowName.s && len(rowName) > 0) {
+            rowScroll->AriaLabel(rowName);
+            rowFixed->AriaLabel(rowName);
+        }
         El* rows[2] = {rowFixed, rowScroll};
         for (El* row : rows) {
             if (s && viewH > 0) {

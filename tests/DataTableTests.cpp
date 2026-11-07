@@ -1882,6 +1882,58 @@ static void TableExposesItsHeaderAndCellsToAssistiveTechnology() {
     AppGlobalClear(&app);
 }
 
+static El* FindRowIndex(El* e, int index) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->accessibility.role == AccessibilityRole::Row &&
+        e->accessibility.hasRowIndex && e->accessibility.rowIndex == index) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = FindRowIndex(c, index)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+// collections.rs table_rows_are_named_after_their_cells. Row 3 is named
+// from its cells, "3:0, 3:1". A table with no cell labels leaves the row
+// unnamed. The index on the element is one past the data row.
+static void TableRowsAreNamedAfterTheirCells() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    Ctx cx = {&app, win, a, state.id};
+    El* labelled = component::DataTable::New(&cx, StrL("labelled"), state)
+                       ->Columns(kA11yColumns, 2)
+                       ->Rows(4, nullptr, nullptr)
+                       ->CellLabel(A11yCellLabel)
+                       ->BuildEl();
+    El* named = FindRowIndex(labelled, 4);
+    utassert(named && named->accessibility.role == AccessibilityRole::Row);
+    utassert(named &&
+             base::StrEq(named->accessibility.label, StrL("3:0, 3:1")));
+
+    Entity<TableState> plainState = EntityNewState<TableState>(&app);
+    cx.self = plainState.id;
+    El* plain = component::DataTable::New(&cx, StrL("plain"), plainState)
+                    ->Columns(kA11yColumns, 2)
+                    ->Rows(4, nullptr, nullptr)
+                    ->BuildEl();
+    El* unnamed = FindRowIndex(plain, 4);
+    utassert(unnamed && unnamed->accessibility.role == AccessibilityRole::Row);
+    utassert(unnamed && len(unnamed->accessibility.label) == 0);
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 // collections.rs resizing_a_column_in_a_scrolled_table_follows_the_pointer.
 // The painted edge in the drag is not where the press started. The width
 // is the width then plus how far the pointer has moved.
@@ -1934,6 +1986,7 @@ void TestDataTable() {
     TheSourceDelegateDrivesTheTable();
     ColumnTextAlignmentReachesTheHeaderAndTheCells();
     TableExposesItsHeaderAndCellsToAssistiveTechnology();
+    TableRowsAreNamedAfterTheirCells();
     ADumpRangeIsClampedToTheTable();
     TwoTablesOnOnePageAreTwoTables();
     TheDelegateHearsAboutTheRangeOnlyWhenItMoves();
