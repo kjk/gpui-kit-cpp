@@ -9,6 +9,8 @@
 
 #include "gpui/platform.h"
 #include "gpui/paint.h"
+#include "gpui/window_loop.h"
+#include "sys/clock.h"
 #include "sys/executor.h"
 
 #import <Cocoa/Cocoa.h>
@@ -51,16 +53,7 @@ double TimeNow() {
     if (TestPlatformNow(&simulated)) {
         return simulated;
     }
-    static bool started = false;
-    static struct timespec start = {};
-    struct timespec now = {};
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    if (!started) {
-        start = now;
-        started = true;
-    }
-    return (double)(now.tv_sec - start.tv_sec) +
-           (double)(now.tv_nsec - start.tv_nsec) / 1e9;
+    return ClockMonotonicSecondsSinceStart();
 }
 
 // Defined below, once NSEvent is in scope for the whole file.
@@ -527,6 +520,15 @@ static bool PressedButton(MouseButton* out) {
 }
 @end
 
+// An NSTextInputClient range, in UTF-16 units of `s`, as the byte range the
+// field counts in.
+static gpui::Selection Utf16RangeToUtf8(gpui::Str s, NSRange r) {
+    gpui::Selection out = {};
+    out.start = gpui::Utf16OffsetToUtf8(s, (int)r.location);
+    out.end = gpui::Utf16OffsetToUtf8(s, (int)(r.location + r.length));
+    return out;
+}
+
 @implementation GpuiView
 
 - (BOOL)isAccessibilityElement {
@@ -892,17 +894,13 @@ static bool PressedButton(MouseButton* out) {
     gpui::Selection range = {};
     bool hasRange = replacement.location != NSNotFound;
     if (hasRange) {
-        range.start = gpui::Utf16OffsetToUtf8(doc, (int)replacement.location);
-        range.end = gpui::Utf16OffsetToUtf8(
-            doc, (int)(replacement.location + replacement.length));
+        range = Utf16RangeToUtf8(doc, replacement);
     }
     // The selection Cocoa reports is inside the new text, in UTF-16 units.
     gpui::Selection sel = {};
     bool hasSel = selected.location != NSNotFound;
     if (hasSel) {
-        sel.start = gpui::Utf16OffsetToUtf8(text, (int)selected.location);
-        sel.end = gpui::Utf16OffsetToUtf8(
-            text, (int)(selected.location + selected.length));
+        sel = Utf16RangeToUtf8(text, selected);
     }
     gpui::InputReplaceAndMarkText(in, win->app, win,
                                   hasRange ? &range : nullptr, text,
@@ -938,9 +936,7 @@ static bool PressedButton(MouseButton* out) {
     gpui::Selection range = {};
     bool hasRange = replacement.location != NSNotFound;
     if (hasRange) {
-        range.start = gpui::Utf16OffsetToUtf8(doc, (int)replacement.location);
-        range.end = gpui::Utf16OffsetToUtf8(
-            doc, (int)(replacement.location + replacement.length));
+        range = Utf16RangeToUtf8(doc, replacement);
     }
     // A null range is the marked run, which is what a commit replaces.
     gpui::InputReplaceTextInRange(in, win->app, win,
@@ -2391,31 +2387,10 @@ int AppRun(App* app) {
                 break;
             }
 
-            for (int i = 0; i < app->windows.len; i++) {
-                Window* w = app->windows[i];
-                if (w->plat && w->plat->dirty) {
-                    Redraw(w);
-                }
-            }
+            RunLoopRedrawDirty<PlatWindow>(app, Redraw);
 
-            double now = TimeNow();
-            double waitS = 1.0;
             bool anyDirty = false;
-            for (int i = 0; i < app->windows.len; i++) {
-                Window* w = app->windows[i];
-                if (!w->plat) {
-                    continue;
-                }
-                if (w->plat->dirty) {
-                    anyDirty = true;
-                }
-                if (w->plat->nextTick > 0) {
-                    double d = w->plat->nextTick - now;
-                    if (d < waitS) {
-                        waitS = d;
-                    }
-                }
-            }
+            double waitS = RunLoopWaitFor<PlatWindow>(app, &anyDirty);
             if (!anyDirty && ExecQueued() == 0) {
                 NSDate* deadline =
                     waitS <= 0 ? [NSDate distantPast]
@@ -2433,17 +2408,7 @@ int AppRun(App* app) {
             // posted from the main thread itself, which never wakes anything.
             ExecDrain();
 
-            now = TimeNow();
-            for (int i = 0; i < app->windows.len; i++) {
-                Window* w = app->windows[i];
-                if (!w->plat || w->plat->nextTick <= 0) {
-                    continue;
-                }
-                if (now >= w->plat->nextTick) {
-                    // WindowTimerTick re-arms through PlatSetTimer.
-                    WindowTimerTick(w);
-                }
-            }
+            RunLoopTickDue<PlatWindow>(app);
         }
     }
     gRunningApp = nullptr;

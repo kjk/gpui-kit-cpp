@@ -603,8 +603,9 @@ struct FileDropTarget : IDropTarget {
         }
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL pt,
-                                       DWORD* effect) override {
+    // A drag moving over the window, or let go on it: the paths came with
+    // DragEnter, so only the position goes with the phase.
+    HRESULT DispatchAt(FileDropPhase phase, POINTL pt, DWORD* effect) {
         if (effect) {
             *effect = DROPEFFECT_COPY;
         }
@@ -613,9 +614,13 @@ struct FileDropTarget : IDropTarget {
         }
         float x = 0, y = 0;
         At(pt, &x, &y);
-        PlatformInput in = InputFileDrop(FileDropPhase::Pending, x, y, {});
+        PlatformInput in = InputFileDrop(phase, x, y, {});
         WindowDispatchInput(win, &in);
         return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL pt,
+                                       DWORD* effect) override {
+        return DispatchAt(FileDropPhase::Pending, pt, effect);
     }
     HRESULT STDMETHODCALLTYPE DragLeave() override {
         if (win) {
@@ -627,17 +632,7 @@ struct FileDropTarget : IDropTarget {
     }
     HRESULT STDMETHODCALLTYPE Drop(IDataObject*, DWORD, POINTL pt,
                                    DWORD* effect) override {
-        if (effect) {
-            *effect = DROPEFFECT_COPY;
-        }
-        if (!win) {
-            return S_OK;
-        }
-        float x = 0, y = 0;
-        At(pt, &x, &y);
-        PlatformInput in = InputFileDrop(FileDropPhase::Submit, x, y, {});
-        WindowDispatchInput(win, &in);
-        return S_OK;
+        return DispatchAt(FileDropPhase::Submit, pt, effect);
     }
 };
 
