@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "507d9757eb7733fceee3c997ab39be6b9a7bb5fb",
+  sha: "e4bac97652350b6729267904d095bbb0f4ab1097",
   date: "2026-11-05",
-  subject: "text: Highlight the table body row under the pointer (#3812)",
+  subject: "text: Select right-aligned and centered table cell text where it is drawn (#3813)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

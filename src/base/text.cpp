@@ -3908,14 +3908,16 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (RevealIn(n, &reveal)) {
             RevealMark(t, 0, reveal);
         }
-        // text_center / text_right on the cell: the run fills the cell and
-        // each of its wrapped lines is aligned inside it.
-        if (align == MdAlignCenter) {
-            t->TextCenter();
-        } else if (align == MdAlignRight) {
-            t->TextRight();
+        // The cell aligns this box (items_center / items_end). text_align
+        // paints with an offset hit-testing does not share, so a short
+        // centered or right-aligned run shrinks to its glyphs. A run that
+        // wraps is capped at the cell, and those lines start at the left.
+        if (align == MdAlignCenter || align == MdAlignRight) {
+            t->MaxWFrac(1.f);
+        } else {
+            t->W(kFill);
         }
-        t->W(kFill)->ReportLineSpan(FontLen(cx, font * kLineHeight));
+        t->ReportLineSpan(FontLen(cx, font * kLineHeight));
         EditorHostWatch(a, t, n);
         int nRanges = 0;
         const ForegroundRange* ranges = LeafRanges(this, n, &nRanges);
@@ -4937,6 +4939,14 @@ void TextView::AppendTableCells(El* row, MdNode* r, const float* maxW,
                        ->PadX(12)
                        ->PadY(7);
         cell->selTableCell = true;
+        // Align the content box, not its text. A right-aligned or centered
+        // cell is selected where it is drawn. The lead and trail slack
+        // outside the cell still share spare width the columns do not use.
+        if (align == MdAlignCenter) {
+            cell->FlexCol()->ItemsCenter();
+        } else if (align == MdAlignRight) {
+            cell->FlexCol()->ItemsEnd();
+        }
         if (tv->textViewStyle.tableCellFields) {
             cell->Refine(tv->textViewStyle.tableCell, tv->textViewStyle
                                                           .tableCellFields);

@@ -6871,6 +6871,52 @@ static void TableDragFromACellStaysInThatCell() {
     TswClose(&v);
 }
 
+// text_view.rs table_drag_selects_aligned_cell_text_where_it_is_painted.
+// Rust reads painted underlines. The hit recorded for each run is the box
+// the glyphs occupy once the cell aligns that box, which is the same place
+// a drag has to land.
+static void TableDragSelectsAlignedCellTextWhereItIsPainted() {
+    const char* markdown =
+        "| Quarterly revenue | Review status |\n| ---: | :---: |\n| 42 | ok |";
+    TswView v = TswOpen(markdown, TswContainer::Window);
+    TestDraw(v.win);
+    const TextHit* rightHead = HitContaining(v.win, "Quarterly revenue");
+    const TextHit* centerHead = HitContaining(v.win, "Review status");
+    const TextHit* right = HitContaining(v.win, "42");
+    const TextHit* center = HitContaining(v.win, "ok");
+    utassert(rightHead && centerHead && right && center);
+    if (rightHead && centerHead && right && center) {
+        utassert(fabsf(right->bounds.Right() - rightHead->bounds.Right()) <
+                 1.f);
+        utassert(right->bounds.x > rightHead->bounds.x + 1.f);
+        float centerX = center->bounds.x + center->bounds.w * 0.5f;
+        float headX = centerHead->bounds.x + centerHead->bounds.w * 0.5f;
+        utassert(fabsf(centerX - headX) < 1.f);
+        utassert(center->bounds.x > centerHead->bounds.x + 1.f);
+
+        const TextHit* hits[] = {right, center};
+        const char* expect[] = {"42", "ok"};
+        for (int i = 0; i < 2; i++) {
+            float y = hits[i]->bounds.y + hits[i]->bounds.h * 0.5f;
+            Point start = {hits[i]->bounds.x + 0.1f, y};
+            Point end = {hits[i]->bounds.Right() - 0.1f, y};
+            TestSimulateMouseDown(v.win, start);
+            TestDraw(v.win);
+            TestSimulateMouseMove(v.win, end, true);
+            TestDraw(v.win);
+            TestSimulateMouseUp(v.win, end);
+            TestDraw(v.win);
+            char buf[64];
+            int n = v.State()->SelectedText(v.win, buf, (int)sizeof(buf));
+            utassert(StrEq(Trimmed(buf, n), Str(expect[i])));
+            n = TextSelection::SelectedText(v.win, v.app, buf,
+                                            (int)sizeof(buf));
+            utassert(StrEq(Trimmed(buf, n), Str(expect[i])));
+        }
+    }
+    TswClose(&v);
+}
+
 // a_dragged_selection_highlights_through_its_source_range.
 static void ADraggedSelectionHighlightsThroughItsSourceRange() {
     const char* markdown = "hello **world** and `code` &amp; more";
@@ -7863,6 +7909,7 @@ static void TestTextStateWindow() {
     ABackgroundParseConvertsOnceItLands();
     InlineObjectsConvertWholeAndStayUnpainted();
     TableDragFromACellStaysInThatCell();
+    TableDragSelectsAlignedCellTextWhereItIsPainted();
     ADraggedSelectionHighlightsThroughItsSourceRange();
     HtmlViewsConvertNoSource();
     ScrollingCodeBlockKeepsWheelFromTheList();

@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `507d9757eb7733fceee3c997ab39be6b9a7bb5fb` (2026-11-05,
-text: Highlight the table body row under the pointer (#3812)). A
-markdown table body row under the pointer takes `table_row_hover`.
-Unset means no highlight, and the header row never takes it. An
-inverted surface derives that hover at opacity 0.08. Each table frame
-is its own id, so two tables do not share a hover.
+Processed through `e4bac97652350b6729267904d095bbb0f4ab1097` (2026-11-05,
+text: Select right-aligned and centered table cell text where it is
+drawn (#3813)). A right-aligned or centered markdown table cell aligns
+its content box, so a drag selects the text where it is drawn. A short
+run sits at the end or the middle of its column. A run that wraps is
+capped at the cell, and those lines start at the left.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
