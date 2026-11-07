@@ -292,6 +292,10 @@ enum class SpecErrorKind : uint8_t {
     AlreadyParented,
     SelfParent,
     DuplicateChildView,
+    // The element would nest the description past kMaxDescriptionDepth.
+    TooDeep,
+    // The element already encloses the node it was given to.
+    Cycle,
 };
 
 struct SpecError {
@@ -403,6 +407,11 @@ class SpecArena {
     bool PushDockArea(uint64_t handle, SpecId* out, SpecError* error = nullptr);
     const SpecNode* Node(SpecId id) const;
     bool PushOp(SpecId id, const SpecOp& op, SpecError* error = nullptr);
+    // Fills a named slot of `holder` with `element`, consuming the element.
+    // Claims only once the slot is recorded, so a refused call leaves the
+    // element usable.
+    bool FillSlot(SpecId holder, Str name, SpecId element,
+                  SpecError* error = nullptr);
     bool Claim(SpecId id, SpecError* error = nullptr);
     // Whether Claim would succeed, without claiming: a registered call checks
     // every element it was handed before it consumes any of them.
@@ -413,6 +422,25 @@ class SpecArena {
         return CheckLive(id, error);
     }
     bool Attach(SpecId parent, SpecId child, SpecError* error = nullptr);
+    // Whether `holder` can take `elements` without nesting past
+    // kMaxDescriptionDepth or inside itself. `hasHolder` false is a node
+    // about to be pushed, which nothing holds yet.
+    bool CheckHold(bool hasHolder, SpecId holder, const SpecId* elements,
+                   int count, SpecError* error = nullptr) const;
+    // Records `holder` as where `elements` render and raises the heights
+    // above them. Only after CheckHold accepted the same call.
+    void Hold(SpecId holder, const SpecId* elements, int count);
+    // The most levels one description may nest, counting children, filled
+    // slots and registered components' element arguments.
+    static constexpr int kMaxDescriptionDepth = 64;
+    // No parent, slot or component holds this node.
+    static constexpr SpecId kNoHolder = 0xffffffffu;
+    uint8_t Height(SpecId id) const {
+        return id < (SpecId)heights.len ? heights[(int)id] : 0;
+    }
+    SpecId Holder(SpecId id) const {
+        return id < (SpecId)holders.len ? holders[(int)id] : kNoHolder;
+    }
     bool ClaimVirtualItems(uint64_t count, uint64_t limit);
     Str DebugTree(Arena* into, SpecId root) const;
 
@@ -457,6 +485,11 @@ class SpecArena {
     Vec<SpecNode*> nodes;
     Vec<uint8_t> parented;
     Vec<uint8_t> claimed;
+    // The node each one renders under. kNoHolder for a root.
+    Vec<SpecId> holders;
+    // Levels each node spans, itself included. A claimed node can still
+    // grow after it is held, so a raise climbs through its holders.
+    Vec<uint8_t> heights;
     Vec<uint64_t> mountedViews;
     // The references CopyComponent took on its components' policies.
     Vec<Policy*> policies;

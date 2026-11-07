@@ -316,6 +316,139 @@ static void SpecElementsAreSingleUseValues() {
     utassert(error.kind == SpecErrorKind::Expired);
 }
 
+static SpecId DepthChain(SpecArena* arena, int levels) {
+    SpecId node = arena->Push(Kind(ComponentKind::Div));
+    for (int i = 1; i < levels; i++) {
+        SpecId parent = arena->Push(Kind(ComponentKind::Div));
+        utassert(arena->Attach(parent, node));
+        node = parent;
+    }
+    return node;
+}
+
+// spec.rs tests added with the description depth bound, and depth.rs's
+// child-chain script: the call that would pass 64 levels throws, and the
+// refused call records nothing.
+static void SpecDescriptionDepthIsBounded() {
+    {
+        SpecArena arena;
+        SpecId deep = DepthChain(&arena, SpecArena::kMaxDescriptionDepth);
+        SpecId holder = arena.Push(Kind(ComponentKind::Collapsible));
+        SpecError error = {};
+        utassert(!arena.FillSlot(holder, StrL("content"), deep, &error));
+        utassert(error.kind == SpecErrorKind::TooDeep);
+        utassert(arena.Node(holder)->ops.len == 0);
+        utassert(arena.Height(holder) == 1);
+        utassert(arena.Holder(deep) == SpecArena::kNoHolder);
+        utassert(arena.CanClaim(deep));
+        Arena* messages = ArenaNew();
+        Str text = SpecErrorMessage(messages, error);
+        utassert(StrContains(text, StrL("more than 64 levels")));
+        ArenaDelete(messages);
+    }
+    {
+        SpecArena arena;
+        SpecId root = arena.Push(Kind(ComponentKind::Collapsible));
+        SpecId tip = root;
+        for (int i = 1; i < SpecArena::kMaxDescriptionDepth; i++) {
+            SpecId next = arena.Push(Kind(ComponentKind::Collapsible));
+            utassert(arena.FillSlot(tip, StrL("content"), next));
+            tip = next;
+        }
+        SpecId leaf = arena.Push(Kind(ComponentKind::Div));
+        SpecError error = {};
+        utassert(!arena.Attach(tip, leaf, &error));
+        utassert(error.kind == SpecErrorKind::TooDeep);
+        utassert(arena.Height(root) == SpecArena::kMaxDescriptionDepth);
+    }
+    {
+        SpecArena arena;
+        SpecId root = arena.Push(Kind(ComponentKind::Div));
+        SpecId tall = DepthChain(&arena, 4);
+        utassert(arena.Attach(root, tall));
+        SpecId slot = arena.Push(Kind(ComponentKind::Collapsible));
+        utassert(arena.FillSlot(root, StrL("content"), slot));
+        SpecId content = arena.Push(Kind(ComponentKind::Div));
+        utassert(arena.FillSlot(slot, StrL("content"), content));
+        utassert(arena.Height(slot) == 2);
+        utassert(arena.Height(root) == 5);
+    }
+    {
+        SpecArena arena;
+        SpecId outer = arena.Push(Kind(ComponentKind::Collapsible));
+        SpecId inner = arena.Push(Kind(ComponentKind::Div));
+        utassert(arena.FillSlot(outer, StrL("content"), inner));
+        SpecError error = {};
+        utassert(!arena.Attach(inner, outer, &error));
+        utassert(error.kind == SpecErrorKind::Cycle);
+        utassert(!arena.FillSlot(outer, StrL("content"), outer, &error));
+        utassert(error.kind == SpecErrorKind::Cycle);
+    }
+    {
+        SpecArena* source = new SpecArena();
+        SpecId root = DepthChain(source, 3);
+        Template* tmpl = new Template();
+        tmpl->arena = source;
+        tmpl->root = root;
+        SpecArena arena;
+        SpecId before = arena.Push(Kind(ComponentKind::Div));
+        SpecId grafted = arena.Graft(*tmpl);
+        utassert(arena.Height(grafted) == 3);
+        utassert(arena.Holder(grafted) == SpecArena::kNoHolder);
+        const SpecNode* node = arena.Node(grafted);
+        utassert(node && node->children.len >= 1);
+        utassert(arena.Holder(node->children[0]) == grafted);
+        utassert(arena.Attach(before, grafted));
+        utassert(arena.Height(before) == 4);
+        delete tmpl;
+    }
+
+    App app;
+    Window window;
+    window.app = &app;
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    ViewType* type =
+        runtime
+            ? runtime->LoadSource(
+                  StrL("depth.js"),
+                  StrL("import { View, div } from 'gpui';\n"
+                       "export default class Deep extends View { render() {\n"
+                       "  let node = div();\n"
+                       "  let levels = 1;\n"
+                       "  try {\n"
+                       "    for (let i = 0; i < 100000; i++) {\n"
+                       "      node = div().child(node);\n"
+                       "      levels += 1;\n"
+                       "    }\n"
+                       "    return div().child('never');\n"
+                       "  } catch (error) {\n"
+                       "    return div().child(String(levels) + '|' + "
+                       "error.message);\n"
+                       "  }\n"
+                       "} }\n"),
+                  &error)
+            : nullptr;
+    ViewObject* object =
+        type && runtime
+            ? runtime->Instantiate(type, &window, &app, nullptr, &error)
+            : nullptr;
+    Arena* output = ArenaNew();
+    Str spec = object && runtime
+                   ? runtime->RenderToSpec(output, object, &window, &app, {},
+                                           nullptr, &error)
+                   : Str{};
+    utassert(!error.IsSet());
+    utassert(StrContains(spec, StrL("64|")));
+    utassert(StrContains(spec, StrL("more than 64 levels")));
+    ViewObjectRelease(object);
+    ViewTypeRelease(type);
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+    ArenaDelete(output);
+    AppGlobalClear(&app);
+}
+
 static void SpecsAndSnapshotsDumpWithoutEnteringTheVm() {
     SpecArena* specs = new SpecArena();
     SpecId root = specs->Push(Kind(ComponentKind::VFlex));
@@ -6433,6 +6566,7 @@ void TestShellCore() {
     PoliciesFreezeCapabilityGrants();
     ScopeGenerationsExpireAdoptAndRefuseReentry();
     SpecElementsAreSingleUseValues();
+    SpecDescriptionDepthIsBounded();
     SpecsAndSnapshotsDumpWithoutEnteringTheVm();
     ThemeTokenNamesAndValuesComeFromTheTheme();
     RenderContextExposesFrozenGenerationBoundTheme();

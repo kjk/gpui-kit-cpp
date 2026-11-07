@@ -2417,15 +2417,7 @@ static JSValue NativeSlot(JSContext* ctx, JSValueConst, int argc,
         return JS_EXCEPTION;
     }
     shell::SpecError failure = {};
-    if (!impl->scratch->Claim(element, &failure)) {
-        ArenaDelete(arena);
-        return SpecFailure(ctx, failure);
-    }
-    shell::SpecOp op = {};
-    op.kind = shell::SpecOpKind::Slot;
-    op.name = name;
-    op.node = element;
-    if (!impl->scratch->PushOp(owner, op, &failure)) {
+    if (!impl->scratch->FillSlot(owner, name, element, &failure)) {
         ArenaDelete(arena);
         return SpecFailure(ctx, failure);
     }
@@ -3481,8 +3473,9 @@ static bool ComponentPayloadTransaction(
     JSContext* ctx, ShellRuntimeImpl* impl, const char* api,
     shell::Slice<shell::ArgumentDescriptor> descriptors, JSValueConst array,
     shell::PayloadFactory factory, shell::ComponentPayload* payload,
+    bool hasHolder, shell::SpecId holder,
     shell::ComponentArgument** validated = nullptr,
-    int* validatedCount = nullptr) {
+    int* validatedCount = nullptr, Vec<shell::SpecId>* taken = nullptr) {
     int checkpoint = impl->callbacks.Checkpoint();
     ComponentArgumentScope scope;
     scope.ctx = ctx;
@@ -3505,6 +3498,14 @@ static bool ComponentPayloadTransaction(
         }
     }
     if (ok) {
+        shell::SpecError failure = {};
+        if (!impl->scratch->CheckHold(hasHolder, holder, scope.elements.els,
+                                      scope.elements.len, &failure)) {
+            SpecFailure(ctx, failure);
+            ok = false;
+        }
+    }
+    if (ok) {
         shell::PayloadBuild build;
         build.a = scope.a;
         if (factory && !factory(&build, arguments, count)) {
@@ -3524,6 +3525,14 @@ static bool ComponentPayloadTransaction(
         if (!impl->scratch->Claim(scope.elements[i], &failure)) {
             SpecFailure(ctx, failure);
             ok = false;
+        }
+    }
+    if (ok && hasHolder) {
+        impl->scratch->Hold(holder, scope.elements.els, scope.elements.len);
+    }
+    if (ok && taken) {
+        for (int i = 0; i < len(scope.elements); i++) {
+            VecAppend(*taken, scope.elements[i]);
         }
     }
     VecReset(scope.elements);
@@ -3599,15 +3608,22 @@ static JSValue NativeRegisteredConstructor(JSContext* ctx, JSValueConst,
     const shell::ConstructorDescriptor& ctor = descriptor->constructors[index];
     if (ctor.deprecationReplacement) WarnDeprecatedExport(impl, ctor);
     shell::ComponentPayload payload = {};
+    Vec<shell::SpecId> taken;
     if (!ComponentPayloadTransaction(ctx, impl, ctor.exportName, ctor.arguments,
-                                     argv[0], ctor.factory, &payload))
+                                     argv[0], ctor.factory, &payload, false, 0,
+                                     nullptr, nullptr, &taken)) {
+        VecReset(taken);
         return JS_EXCEPTION;
+    }
     shell::Component component = {};
     component.kind = shell::ComponentKind::Registered;
     component.index = componentId;
     component.text = Str(descriptor->name);
     component.payload = payload;
-    return JS_NewUint32(ctx, impl->scratch->Push(component));
+    shell::SpecId id = impl->scratch->Push(component);
+    impl->scratch->Hold(id, taken.els, taken.len);
+    VecReset(taken);
+    return JS_NewUint32(ctx, id);
 }
 
 static bool ComponentDataFromJs(JSContext* ctx, JSValueConst value, Arena* a,
@@ -4011,7 +4027,7 @@ static bool ApplyRegistered(JSContext* ctx, ShellRuntimeImpl* impl,
         int count = 0;
         if (!ComponentPayloadTransaction(
                 ctx, impl, method->name, method->arguments, args,
-                method->recorder, &payload, &arguments, &count)) {
+                method->recorder, &payload, true, id, &arguments, &count)) {
             *result = JS_EXCEPTION;
             return true;
         }
@@ -4059,16 +4075,10 @@ static bool ApplyRegistered(JSContext* ctx, ShellRuntimeImpl* impl,
             return true;
         }
         shell::SpecError failure = {};
-        if (!impl->scratch->Claim((shell::SpecId)element, &failure)) {
+        if (!impl->scratch
+                 ->FillSlot(id, name, (shell::SpecId)element, &failure)) {
             *result = SpecFailure(ctx, failure);
-            return true;
         }
-        shell::SpecOp op = {};
-        op.kind = shell::SpecOpKind::Slot;
-        op.name = name;
-        op.node = (shell::SpecId)element;
-        if (!impl->scratch->PushOp(id, op, &failure))
-            *result = SpecFailure(ctx, failure);
         return true;
     }
     if (IsStyleCall(name, argCount)) return false;

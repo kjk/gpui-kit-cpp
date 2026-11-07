@@ -253,6 +253,19 @@ Str SpecErrorMessage(Arena* arena, const SpecError& error) {
                 arena,
                 StrL("a child view handle can be mounted only once in one "
                      "snapshot; create a second Entity for a second position"));
+        case SpecErrorKind::TooDeep:
+            return StrDup(
+                arena,
+                fmt("this element would nest the description more than %d "
+                    "levels deep; elements, filled slots and component "
+                    "element arguments may nest at most %d levels",
+                    SpecArena::kMaxDescriptionDepth,
+                    SpecArena::kMaxDescriptionDepth));
+        case SpecErrorKind::Cycle:
+            return StrDup(
+                arena,
+                StrL("an element cannot be placed inside itself or inside an "
+                     "element it contains"));
     }
     return {};
 }
@@ -282,6 +295,8 @@ void SpecArena::Reset() {
     VecClear(nodes);
     VecClear(parented);
     VecClear(claimed);
+    VecClear(holders);
+    VecClear(heights);
     VecClear(mountedViews);
     virtualItems = 0;
     structure = 0;
@@ -368,6 +383,8 @@ SpecId SpecArena::Push(const Component& component) {
     VecAppend(nodes, node);
     VecAppend(parented, 0);
     VecAppend(claimed, 0);
+    VecAppend(holders, kNoHolder);
+    VecAppend(heights, (uint8_t)1);
     return (SpecId)(nodes.len - 1);
 }
 
@@ -422,12 +439,94 @@ bool SpecArena::CheckLive(SpecId id, SpecError* error) const {
     return true;
 }
 
+bool SpecArena::CheckHold(bool hasHolder, SpecId holder, const SpecId* elements,
+                          int count, SpecError* error) const {
+    uint32_t height = 0;
+    for (int i = 0; i < count; i++) {
+        SpecId element = elements ? elements[i] : 0;
+        if (element >= (SpecId)heights.len) {
+            SetSpecError(error, SpecErrorKind::Expired);
+            return false;
+        }
+        uint32_t next = (uint32_t)heights[(int)element] + 1;
+        if (next > height) height = next;
+    }
+    if (height > (uint32_t)kMaxDescriptionDepth) {
+        SetSpecError(error, SpecErrorKind::TooDeep);
+        return false;
+    }
+    if (!hasHolder) return true;
+    if (holder >= (SpecId)heights.len) {
+        SetSpecError(error, SpecErrorKind::Expired);
+        return false;
+    }
+    SpecId node = holder;
+    for (;;) {
+        if (height <= heights[(int)node]) return true;
+        if (height > (uint32_t)kMaxDescriptionDepth) {
+            SetSpecError(error, SpecErrorKind::TooDeep);
+            return false;
+        }
+        SpecId next = holders[(int)node];
+        if (next == kNoHolder) break;
+        node = next;
+        height += 1;
+    }
+    for (int i = 0; i < count; i++) {
+        if (elements && elements[i] == node) {
+            SetSpecError(error, SpecErrorKind::Cycle);
+            return false;
+        }
+    }
+    return true;
+}
+
+void SpecArena::Hold(SpecId holder, const SpecId* elements, int count) {
+    uint32_t height = 0;
+    for (int i = 0; i < count; i++) {
+        if (!elements || elements[i] >= (SpecId)holders.len) continue;
+        holders[(int)elements[i]] = holder;
+        uint32_t next = (uint32_t)heights[(int)elements[i]] + 1;
+        if (next > height) height = next;
+    }
+    SpecId node = holder;
+    while (node < (SpecId)heights.len && height > heights[(int)node]) {
+        heights[(int)node] = (uint8_t)height;
+        SpecId next = holders[(int)node];
+        if (next == kNoHolder) break;
+        node = next;
+        height += 1;
+    }
+}
+
 bool SpecArena::PushOp(SpecId id, const SpecOp& op, SpecError* error) {
     if (!CheckLive(id, error)) return false;
-    // After the check, not before: a rejected call records nothing, so it must
-    // not move the shape either.
+    bool slot = op.kind == SpecOpKind::Slot;
+    if (slot) {
+        if (!CheckLive(op.node, error)) return false;
+        if (holders[(int)op.node] != kNoHolder) {
+            SetSpecError(error, SpecErrorKind::Claimed);
+            return false;
+        }
+        if (!CheckHold(true, id, &op.node, 1, error)) return false;
+    }
+    // After the checks, not before: a rejected call records nothing, so it
+    // must not move the shape either.
     structure = StructureMix(structure, OpShape(op));
-    return nodes[(int)id]->ops.Append(arena, CopyOp(op));
+    if (!nodes[(int)id]->ops.Append(arena, CopyOp(op))) return false;
+    if (slot) Hold(id, &op.node, 1);
+    return true;
+}
+
+bool SpecArena::FillSlot(SpecId holder, Str name, SpecId element,
+                         SpecError* error) {
+    if (!CanClaim(element, error)) return false;
+    SpecOp op = {};
+    op.kind = SpecOpKind::Slot;
+    op.name = name;
+    op.node = element;
+    if (!PushOp(holder, op, error)) return false;
+    return Claim(element, error);
 }
 
 bool SpecArena::Claim(SpecId id, SpecError* error) {
@@ -460,13 +559,16 @@ bool SpecArena::Attach(SpecId parent, SpecId child, SpecError* error) {
         SetSpecError(error, SpecErrorKind::SelfParent);
         return false;
     }
+    if (!CheckHold(true, parent, &child, 1, error)) return false;
     // The tree is the half of the shape the nodes themselves do not carry: the
     // same components in a different arrangement are a different structure,
     // and a template could not fill one from the other.
     structure = StructureMix(StructureMix(structure, parent),
                              (uint64_t)child ^ (1ull << 32));
     parented[(int)child] = 1;
-    return nodes[(int)parent]->children.Append(arena, child);
+    if (!nodes[(int)parent]->children.Append(arena, child)) return false;
+    Hold(parent, &child, 1);
+    return true;
 }
 
 // Re-run the recorder over copied arguments: adapter payloads may contain
@@ -529,10 +631,20 @@ SpecId SpecArena::Graft(const Template& tmpl) {
         VecAppend(nodes, node);
         VecAppend(parented, source->parented[i]);
         VecAppend(claimed, source->claimed[i]);
+        SpecId held = kNoHolder;
+        if (i < source->holders.len && source->holders[i] != kNoHolder) {
+            held = source->holders[i] + base;
+        }
+        VecAppend(holders, held);
+        VecAppend(heights,
+                  i < source->heights.len ? source->heights[i] : (uint8_t)1);
     }
     // The root arrives with no parent so the caller can attach it, whatever it
     // was in the template.
     parented[(int)(tmpl.root + base)] = 0;
+    if ((int)(tmpl.root + base) < holders.len) {
+        holders[(int)(tmpl.root + base)] = kNoHolder;
+    }
 
     // One mix for the whole graft rather than one per node: the template's own
     // fingerprint already summarizes everything inside it, and a description

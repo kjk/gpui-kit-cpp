@@ -627,7 +627,9 @@ static const char kShellTypes1[] = R"GPUI_DTS(     * reported rather than swallo
      */
     map<Self extends Element, T>(this: Self, transform: (element: Self) => T): T;
     /**
-     * Adds one child. The child is consumed; using it again throws.
+     * Adds one child. The child is consumed; using it again throws. A
+     * description nests at most 64 levels, counting filled slots; the call
+     * that would go deeper throws.
      *
      * A **string is an element**, exactly as `&str`, `String` and
      * `SharedString` implement `IntoElement` in GPUI: `.child("hello")` is how
@@ -675,9 +677,9 @@ static const char kShellTypes1[] = R"GPUI_DTS(     * reported rather than swallo
     image<Self extends Element>(this: Self, element: Element): Self;
     /** Fills an `Avatar`'s `fallback` slot, which takes an `AvatarFallback`. */
     fallback<Self extends Element>(this: Self, element: Element): Self;
-    /** Fills an `AccordionItem`'s `header` slot, which takes an `AccordionHeader`. */
 )GPUI_DTS";
-static const char kShellTypes2[] = R"GPUI_DTS(    header<Self extends Element>(this: Self, element: Element): Self;
+static const char kShellTypes2[] = R"GPUI_DTS(    /** Fills an `AccordionItem`'s `header` slot, which takes an `AccordionHeader`. */
+    header<Self extends Element>(this: Self, element: Element): Self;
     /** Fills a component's named `footer` slot. */
     footer<Self extends Element>(this: Self, element: Element): Self;
     /** Fills an `AccordionItem`'s `panel` slot, which takes an `AccordionPanel`. */
@@ -895,11 +897,11 @@ static const char kShellTypes2[] = R"GPUI_DTS(    header<Self extends Element>(t
      * It is called once the frame is done, as an event handler is, so it may
      * change state and call `cx.notify()`: load the page above when
      * `range.start` reaches 0, or the next one when `range.end` reaches
-     * `count`. The item renderer cannot do this, because it runs inside
+)GPUI_DTS";
+static const char kShellTypes3[] = R"GPUI_DTS(     * `count`. The item renderer cannot do this, because it runs inside
      * layout.
      *
-)GPUI_DTS";
-static const char kShellTypes3[] = R"GPUI_DTS(     * What calls it is the range itself, not what moved it: the first frame,
+     * What calls it is the range itself, not what moved it: the first frame,
      * a wheel or trackpad scroll, a `Scrollbar` drag, a change of
      * `item_count`, a change of the list's height. A frame that leaves both
      * the same calls nothing. Only `list` reports it; on `uniform_list` and
@@ -1126,10 +1128,10 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * What calls it is the range 
      * order without making it reachable, which is what a container that
      * forwards focus to its first child wants.
      */
-    tab_stop<Self extends Element>(this: Self, value: boolean): Self;
-    /** Sets the absolute HTTP(S) target opened by a `Link`. */
 )GPUI_DTS";
-static const char kShellTypes4[] = R"GPUI_DTS(    href<Self extends Element>(this: Self, url: string): Self;
+static const char kShellTypes4[] = R"GPUI_DTS(    tab_stop<Self extends Element>(this: Self, value: boolean): Self;
+    /** Sets the absolute HTTP(S) target opened by a `Link`. */
+    href<Self extends Element>(this: Self, url: string): Self;
     /**
      * A stable name for this element, used as its identity.
      *
@@ -1344,9 +1346,9 @@ static const char kShellTypes4[] = R"GPUI_DTS(    href<Self extends Element>(thi
     /**
      * Displays the tab at `index` in `group` when this element is clicked.
      *
-     * One of the twelve **dock commands**, which are how an element a dock's
 )GPUI_DTS";
-static const char kShellTypes5[] = R"GPUI_DTS(     * chrome drew says what it does. A chrome handler runs once per container
+static const char kShellTypes5[] = R"GPUI_DTS(     * One of the twelve **dock commands**, which are how an element a dock's
+     * chrome drew says what it does. A chrome handler runs once per container
      * per frame for as long as the dock is on screen, so it may not register an
      * event handler — one created there would pile up for as long as the dock
      * stood. A command carries no script value: it names a container in the
@@ -1557,12 +1559,12 @@ static const char kShellTypes5[] = R"GPUI_DTS(     * chrome drew says what it do
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
-     * 12px
+)GPUI_DTS";
+static const char kShellTypes6[] = R"GPUI_DTS(     * 12px
      */
     border_12<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes6[] = R"GPUI_DTS(     * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
+     * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 16px
      */
@@ -1894,12 +1896,12 @@ static const char kShellTypes6[] = R"GPUI_DTS(     * Sets the border width of th
      */
     border_r_24<Self extends Element>(this: Self): Self;
     /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+)GPUI_DTS";
+static const char kShellTypes7[] = R"GPUI_DTS(     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 3px
      */
-)GPUI_DTS";
-static const char kShellTypes7[] = R"GPUI_DTS(    border_r_3<Self extends Element>(this: Self): Self;
+    border_r_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
@@ -2207,12 +2209,12 @@ static const char kShellTypes7[] = R"GPUI_DTS(    border_r_3<Self extends Elemen
      */
     border_y_3<Self extends Element>(this: Self): Self;
     /**
-     * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
+)GPUI_DTS";
+static const char kShellTypes8[] = R"GPUI_DTS(     * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 32px
      */
-)GPUI_DTS";
-static const char kShellTypes8[] = R"GPUI_DTS(    border_y_32<Self extends Element>(this: Self): Self;
+    border_y_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
@@ -2544,12 +2546,12 @@ static const char kShellTypes8[] = R"GPUI_DTS(    border_y_32<Self extends Eleme
      */
     bottom_neg_10<Self extends Element>(this: Self): Self;
     /**
-     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+)GPUI_DTS";
+static const char kShellTypes9[] = R"GPUI_DTS(     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-)GPUI_DTS";
-static const char kShellTypes9[] = R"GPUI_DTS(    bottom_neg_11<Self extends Element>(this: Self): Self;
+    bottom_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
@@ -2871,12 +2873,12 @@ static const char kShellTypes9[] = R"GPUI_DTS(    bottom_neg_11<Self extends Ele
     /**
      * Sets cursor style when hovering over an element to `context-menu`.
      *
-     * [Docs](https://tailwindcss.com/docs/cursor)
+)GPUI_DTS";
+static const char kShellTypes10[] = R"GPUI_DTS(     * [Docs](https://tailwindcss.com/docs/cursor)
      */
     cursor_context_menu<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes10[] = R"GPUI_DTS(     * Sets cursor style when hovering over an element to `copy`.
+     * Sets cursor style when hovering over an element to `copy`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
@@ -3204,13 +3206,13 @@ static const char kShellTypes10[] = R"GPUI_DTS(     * Sets cursor style when hov
     gap_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
+)GPUI_DTS";
+static const char kShellTypes11[] = R"GPUI_DTS(     *
      * 16% (1/6)
      */
     gap_1_6<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes11[] = R"GPUI_DTS(     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 6px (0.375rem)
      */
@@ -3566,12 +3568,12 @@ static const char kShellTypes11[] = R"GPUI_DTS(     * Sets the gap between rows 
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
-     * 192px (12rem)
+)GPUI_DTS";
+static const char kShellTypes12[] = R"GPUI_DTS(     * 192px (12rem)
      */
     gap_neg_48<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes12[] = R"GPUI_DTS(     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 80% (4/5)
      */

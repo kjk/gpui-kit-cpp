@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "11aba49d11d57c727764acabfc95ee39916bd2a2",
+  sha: "bbe42361ccf69099957d4c84ea12e6a1d98b0014",
   date: "2026-11-05",
-  subject: "menu: Size items and the default max width in rems (#3809)",
+  subject: "shell: Bound how deep a description may nest (#3808)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

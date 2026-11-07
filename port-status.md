@@ -16,13 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `11aba49d11d57c727764acabfc95ee39916bd2a2` (2026-11-05,
-menu: Size items and the default max width in rems (#3809)). Popup menu
-item heights (1.625rem, 1.25rem when small), row padding (0.5rem), the
-default max width (31.25rem) and the scrollable height cap (28.125rem)
-follow the window rem. At 16px they are the old 26, 20, 8, 500 and 450
-pixels. A caller-supplied max height stays in DIPs. The submenu's
-overlap is 0.5rem and its left-side gap is 1rem.
+Processed through `bbe42361ccf69099957d4c84ea12e6a1d98b0014` (2026-11-05,
+shell: Bound how deep a description may nest (#3808)). A description
+nests at most 64 levels, counting children, filled slots and component
+element arguments. The call that would go deeper throws and records
+nothing. Placing an element inside itself or inside an element it
+contains throws. Grafted templates carry their heights. Nested views
+stay bounded per view, as they do upstream.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
