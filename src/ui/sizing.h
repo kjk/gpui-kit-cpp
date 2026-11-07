@@ -461,6 +461,19 @@ inline El* BindPathClick(El* e, Str name, Listener onClick) {
     return e;
 }
 
+// h_flex().w_full().min_w_0().gap_1().items_center().justify_between(): the
+// row a list option and a picker's trigger lay their text and marks out in,
+// one at each end.
+inline El* SpreadRow(Ctx* cx) {
+    return Div(cx->a)
+        ->FlexRow()
+        ->W(kFill)
+        ->MinW(0)
+        ->Gap(Rems(cx, 0.25f))
+        ->ItemsCenter()
+        ->JustifyBetween();
+}
+
 // The slot builders' common half (crates/ui's `ParentElement + Styled` on a
 // struct holding `children` and a `StyleRefinement`): the frame arena and
 // context, the children, and the caller's style refinement, set the same

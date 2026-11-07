@@ -32,6 +32,36 @@ enum class TimeSegment : uint8_t {
     Period,
 };
 
+// The strftime walk TimeFormat and the date formatter share: text outside a
+// directive is copied, `%%` is a percent sign, and every other `%x` goes to
+// `directive(x, modifier)`, which answers false for one it does not know;
+// that one is kept as written. With `modifiers`, a `-`, `_` or `0` after the
+// `%` is chrono's padding modifier (0 when there is none).
+template <typename Directive>
+void StrftimeWalk(Str pattern, StrBuilder& out, bool modifiers,
+                  Directive directive) {
+    for (int i = 0; i < len(pattern); i++) {
+        char ch = pattern.s[i];
+        if (ch != '%' || i + 1 >= len(pattern)) {
+            out.AppendChar(ch);
+            continue;
+        }
+        char d = pattern.s[++i];
+        char modifier = 0;
+        if (modifiers && (d == '-' || d == '_' || d == '0') &&
+            i + 1 < len(pattern)) {
+            modifier = d;
+            d = pattern.s[++i];
+        }
+        if (d == '%') {
+            out.AppendChar('%');
+        } else if (!directive(d, modifier)) {
+            out.AppendChar('%');
+            out.AppendChar(d);
+        }
+    }
+}
+
 // TimePrecision::format: the chrono format that displays a time at this
 // precision and cycle. Static.
 Str TimePrecisionFormat(TimePrecision precision, HourCycle hourCycle);

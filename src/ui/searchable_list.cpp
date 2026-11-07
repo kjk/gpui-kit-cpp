@@ -429,14 +429,7 @@ El* SearchableListItemElement::IntoEl() {
     for (int i = 0; i < children.len; i++) {
         left->Child(children[i]);
     }
-    El* inner = Div(a)
-                    ->FlexRow()
-                    ->W(kFill)
-                    ->MinW(0)
-                    ->Gap(Rems(cx, 0.25f))
-                    ->ItemsCenter()
-                    ->JustifyBetween()
-                    ->Child(left);
+    El* inner = SpreadRow(cx)->Child(left);
     // The check inherits the row's text color, so it stays legible on the
     // accent fill and dims with a disabled label.
     El* check = IconEl(a, checkIcon, UiIconPx(cx, UiSize::XSmall))->Shrink0();
