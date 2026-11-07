@@ -26,10 +26,7 @@ uint64_t PlatLargePageSize() {
     return largePageSize;
 }
 
-bool PlatMemCommit(void* base, uint64_t size, bool largePages) {
-    if (size == 0) {
-        return true;
-    }
+bool PlatMemCommitPages(void* base, uint64_t size, bool largePages) {
     DWORD flags = MEM_COMMIT;
     if (largePages) {
         flags |= MEM_LARGE_PAGES;
@@ -52,12 +49,6 @@ void* PlatMemReserveCommit(uint64_t size, bool largePages) {
 void PlatMemRelease(void* base, uint64_t size) {
     (void)size;
     VirtualFree(base, 0, MEM_RELEASE);
-}
-
-// 64 MB. MEM_RESERVE costs address space and nothing else, so an arena
-// reserves far more than it will ever commit.
-uint64_t PlatArenaReserveSize() {
-    return 64ull * 1024ull * 1024ull;
 }
 
 int StrCmpI(const char* a, const char* b) {
@@ -175,14 +166,8 @@ bool PlatCanonicalPath(const char* path, char* out, int cap) {
     return true;
 }
 
-// macOS speech example relaunches itself. Every other platform keeps running.
-bool PlatDisclaimSpeechResponsibility(int, char**, int*) {
-    return true;
-}
-
-bool PlatGetExePath(char* out, int cap) {
-    if (!out || cap <= 0) return false;
-    out[0] = 0;
+// kPlatFacts.exePath.
+static bool ExePath(char* out, int cap) {
     DWORD n = GetModuleFileNameA(nullptr, out, (DWORD)cap);
     if (n == 0 || n >= (DWORD)cap) {
         out[0] = 0;
@@ -197,10 +182,7 @@ bool PlatGetExePath(char* out, int cap) {
 }
 
 void PlatGetExeDir(char* out, int cap) {
-    if (!PlatGetExePath(out, cap)) return;
-    int n = (int)strlen(out);
-    while (n > 0 && out[n - 1] != '/') out[--n] = 0;
-    while (n > 0 && out[n - 1] == '/') out[--n] = 0;
+    PlatExeDirFromExePath(out, cap);
 }
 
 bool PlatFileIsExecutable(const char* path) {
@@ -353,59 +335,14 @@ void PlatSleepMs(int ms) {
     Sleep((DWORD)(ms < 0 ? 0 : ms));
 }
 
-char PlatPathSep() {
-    return '\\';
-}
-bool PlatPathsCaseFold() {
-    return true;
-}
-bool PlatIsWindows() {
-    return true;
-}
-bool PlatSecondaryIsCommand() {
-    return false;
-}
-bool PlatTitleBarCloseIsElement() {
-    return false;
-}
-bool PlatShowsWindowControls() {
-    return true;
-}
-float PlatCaretWidth() {
-    return 1.f;
-}
-bool PlatScrollBounce() {
-    return false;
-}
-bool PlatCleanOnEscape() {
-    return true;
-}
-bool PlatScrollBounceTouch() {
-    return false;
-}
-bool PlatOverscrollPhaselessStops() {
-    return false;
-}
-const char* PlatMonoFontName() {
-    return "Consolas";
-}
-const char* PlatShellDataDir() {
-    return "\\AppData\\Roaming";
-}
-const char* PlatShellPlatformName() {
-    return "windows";
-}
-bool PlatBlockSelectUsesControl() {
-    return false;
-}
-bool PlatScrollGestureLocks() {
-    return true;
-}
-bool PlatAsyncIo() {
-    return false;
-}
-float PlatWindowShadowSize() {
-    return 0.f;
-}
+const PlatFacts kPlatFacts = {
+    .pathSep = '\\',
+    .pathsCaseFold = true,
+    .isWindows = true,
+    .monoFontName = "Consolas",
+    .shellDataDir = "\\AppData\\Roaming",
+    .shellPlatformName = "windows",
+    .exePath = ExePath,
+};
 
 } // namespace base

@@ -5,10 +5,9 @@
 
    Virtual memory is not here, because wasm has none of the reserve/commit
    shape mmap gives: that half is Base_mem_posix.cpp. What differs per target
-   — where the executable lives, how a process reports its own usage, stat
-   timestamps, and the Plat* facts that are not the same on every POSIX
-   target — is in Base_linux.cpp, Base_mac.cpp, Base_wasm.cpp, Base_ios.cpp
-   and Base_android.cpp. */
+   — where the executable lives, how a process reports its own usage, and
+   the target's kPlatFacts — is in Base_linux.cpp, Base_mac.cpp,
+   Base_wasm.cpp, Base_ios.cpp and Base_android.cpp. */
 
 #include "base.h"
 
@@ -23,9 +22,32 @@
 
 namespace base {
 
-// Defined beside the executable-path half: st_mtim on Linux, Android and
-// wasm, st_mtimespec on macOS and iOS.
-uint64_t PlatStatModifiedNs(const struct stat* st);
+// A stat's modification time in nanoseconds. POSIX.1-2008 names the field
+// st_mtim (Linux, Android, wasm); Apple's libc names it st_mtimespec (macOS,
+// iOS). Overload resolution picks whichever member this libc's struct has,
+// so the one body serves every POSIX target without asking which it is.
+template <typename S>
+static auto StatMtime(const S* st, int) -> decltype(st->st_mtim) {
+    return st->st_mtim;
+}
+template <typename S>
+static auto StatMtime(const S* st, long) -> decltype(st->st_mtimespec) {
+    return st->st_mtimespec;
+}
+
+uint64_t PlatStatModifiedNs(const struct stat* st) {
+    auto t = StatMtime(st, 0);
+    return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
+}
+
+bool PlatProcSelfExePath(char* out, int cap) {
+    ssize_t n = readlink("/proc/self/exe", out, (size_t)cap - 1);
+    if (n <= 0) {
+        return false;
+    }
+    out[n] = 0;
+    return true;
+}
 
 int StrCmpI(const char* a, const char* b) {
     return strcasecmp(a ? a : "", b ? b : "");
@@ -125,21 +147,6 @@ bool PlatCanonicalPath(const char* path, char* out, int cap) {
     memcpy(out, resolved, (size_t)n + 1);
     free(resolved);
     return true;
-}
-
-// Strip the file name off an absolute path, in place. PlatGetExeDir on both
-// POSIX platforms ends with this.
-void PlatDirNameInPlace(char* path) {
-    if (!path) {
-        return;
-    }
-    int i = (int)strlen(path);
-    while (i > 0 && path[i - 1] != '/') {
-        path[--i] = 0;
-    }
-    while (i > 1 && path[i - 1] == '/') {
-        path[--i] = 0;
-    }
 }
 
 int PlatListDir(const char* dir, DirEntry* out, int max) {
@@ -244,16 +251,6 @@ void PlatSleepMs(int ms) {
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (long)(ms % 1000) * 1000000L;
     nanosleep(&ts, nullptr);
-}
-
-char PlatPathSep() {
-    return '/';
-}
-bool PlatPathsCaseFold() {
-    return false;
-}
-bool PlatIsWindows() {
-    return false;
 }
 
 } // namespace base

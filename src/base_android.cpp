@@ -1,77 +1,17 @@
-/* Android answers for the Plat* facts that are not shared with every POSIX
-   target. Strings, directories, threads and the clock stay in base_posix.cpp.
-   Stat timestamps match Linux (st_mtim). */
+/* Android answers for the Plat* facts (base.h's PlatFacts): what differs
+   here from the defaults. Strings, directories, threads, the clock and stat
+   timestamps are in base_posix.cpp. */
 
 #include "base.h"
 
-#include <sys/stat.h>
-#include <unistd.h>
-
 namespace base {
 
-// macOS speech example relaunches itself. Every other platform keeps running.
-bool PlatDisclaimSpeechResponsibility(int, char**, int*) {
-    return true;
-}
-
-bool PlatGetExePath(char* out, int cap) {
-    if (!out || cap <= 0) return false;
-    out[0] = 0;
-    ssize_t n = readlink("/proc/self/exe", out, (size_t)cap - 1);
-    if (n <= 0) return false;
-    out[n] = 0;
-    return true;
-}
-
-uint64_t PlatStatModifiedNs(const struct stat* st) {
-    return (uint64_t)st->st_mtim.tv_sec * 1000000000ull + (uint64_t)st->st_mtim
-                                                              .tv_nsec;
-}
-
-bool PlatSecondaryIsCommand() {
-    return false;
-}
-bool PlatTitleBarCloseIsElement() {
-    return false;
-}
-bool PlatShowsWindowControls() {
-    return true;
-}
-float PlatCaretWidth() {
-    return 1.f;
-}
-bool PlatScrollBounce() {
-    return true;
-}
-bool PlatCleanOnEscape() {
-    return false;
-}
-bool PlatScrollBounceTouch() {
-    return true;
-}
-bool PlatOverscrollPhaselessStops() {
-    return false;
-}
-const char* PlatMonoFontName() {
-    return "DejaVu Sans Mono";
-}
-const char* PlatShellDataDir() {
-    return "/.local/share";
-}
-const char* PlatShellPlatformName() {
-    return "linux";
-}
-bool PlatBlockSelectUsesControl() {
-    return false;
-}
-bool PlatScrollGestureLocks() {
-    return true;
-}
-bool PlatAsyncIo() {
-    return false;
-}
-float PlatWindowShadowSize() {
-    return 0.f;
-}
+const PlatFacts kPlatFacts = {
+    .scrollBounce = true,
+    // The back button arrives as Escape.
+    .cleanOnEscape = false,
+    .scrollBounceTouch = true,
+    .exePath = PlatProcSelfExePath,
+};
 
 } // namespace base

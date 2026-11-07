@@ -10,25 +10,8 @@
 
 namespace base {
 
-void PlatDirNameInPlace(char* path);
-
-// macOS speech example relaunches itself. Every other platform keeps running.
-bool PlatDisclaimSpeechResponsibility(int, char**, int*) {
-    return true;
-}
-
-bool PlatGetExePath(char* out, int cap) {
-    if (!out || cap <= 0) return false;
-    out[0] = 0;
-    ssize_t n = readlink("/proc/self/exe", out, (size_t)cap - 1);
-    if (n <= 0) return false;
-    out[n] = 0;
-    return true;
-}
-
 void PlatGetExeDir(char* out, int cap) {
-    if (!PlatGetExePath(out, cap)) return;
-    PlatDirNameInPlace(out);
+    PlatExeDirFromExePath(out, cap);
 }
 
 bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
@@ -61,55 +44,13 @@ bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
     return true;
 }
 
-uint64_t PlatStatModifiedNs(const struct stat* st) {
-    return (uint64_t)st->st_mtim.tv_sec * 1000000000ull + (uint64_t)st->st_mtim
-                                                              .tv_nsec;
-}
-
-bool PlatSecondaryIsCommand() {
-    return false;
-}
-bool PlatShowsWindowControls() {
-    return true;
-}
-bool PlatTitleBarCloseIsElement() {
-    return true;
-}
-float PlatCaretWidth() {
-    return 1.f;
-}
-bool PlatScrollBounce() {
-    return false;
-}
-bool PlatCleanOnEscape() {
-    return true;
-}
-bool PlatScrollBounceTouch() {
-    return false;
-}
-bool PlatOverscrollPhaselessStops() {
-    return false;
-}
-const char* PlatMonoFontName() {
-    return "DejaVu Sans Mono";
-}
-const char* PlatShellDataDir() {
-    return "/.local/share";
-}
-const char* PlatShellPlatformName() {
-    return "linux";
-}
-bool PlatBlockSelectUsesControl() {
-    return true;
-}
-bool PlatScrollGestureLocks() {
-    return true;
-}
-bool PlatAsyncIo() {
-    return false;
-}
-float PlatWindowShadowSize() {
-    return 20.f;
-}
+const PlatFacts kPlatFacts = {
+    // The title bar is ours, close button included.
+    .titleBarCloseIsElement = true,
+    .blockSelectUsesControl = true,
+    // A client-decorated X11 window draws its own shadow.
+    .windowShadowSize = 20.f,
+    .exePath = PlatProcSelfExePath,
+};
 
 } // namespace base

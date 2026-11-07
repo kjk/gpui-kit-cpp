@@ -982,49 +982,8 @@ void PlatAccessibilityFocusChanged(Window* win, int focusId) {
     (void)focusId;
 }
 
-// A page has no popup menu of its own, so NativeMenu::Show draws one — Rust's
-// FallbackMenuOverlay, which is what the X11 window gets too.
-bool PlatHasMenu() {
-    return false;
-}
-
-int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
-                 float y, bool dark) {
-    (void)win;
-    (void)items;
-    (void)n;
-    (void)x;
-    (void)y;
-    (void)dark;
-    return 0;
-}
-
-bool PlatHasAppMenu() {
-    // A tab has no menu bar to put anything in.
-    return false;
-}
-
-void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
-    (void)app;
-    (void)items;
-    (void)n;
-}
-
-void PlatSetMenuBarVisible(bool) {}
-
 bool PlatReduceMotion() {
     return GpJsReduceMotion() != 0;
-}
-
-bool PlatReduceMotionKnown(bool* out) {
-    if (out) {
-        *out = PlatReduceMotion();
-    }
-    return true;
-}
-
-void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
-    (void)onChange;
 }
 
 void OpenUrl(Str url) {

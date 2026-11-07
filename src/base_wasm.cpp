@@ -51,14 +51,8 @@ void* PlatMemReserve(uint64_t size) {
     return aligned_alloc((size_t)PlatPageSize(), (size_t)size);
 }
 
-bool PlatMemCommit(void* base, uint64_t size, bool largePages) {
+bool PlatMemCommitPages(void* base, uint64_t size, bool largePages) {
     (void)largePages;
-    if (size == 0) {
-        return true;
-    }
-    if (!base) {
-        return false;
-    }
     // The zeroing is the whole job. Arena::Push only memsets the part of a
     // block that was already committed and takes the newly committed part on
     // trust, because on a real OS a fresh page arrives zeroed. malloc makes
@@ -85,32 +79,10 @@ void PlatMemRelease(void* base, uint64_t size) {
     free(base);
 }
 
-// 4 MB, where the hosted targets say 64. A reservation is spent memory here,
-// and a page that opened six arenas at 64 MB apiece would ask the browser for
-// nearly half a gigabyte before drawing a pixel. An arena that outgrows this
-// chains another block, so the only cost of the smaller number is the odd
-// extra block.
-uint64_t PlatArenaReserveSize() {
-    return 4ull * 1024ull * 1024ull;
-}
-
 // There is no executable and no directory it sits in. Assets are preloaded
 // into MEMFS at the root by the build (see cmd/build-wasm.ts), which is what
 // gpui/assets.cpp walks from.
-// macOS speech example relaunches itself. Every other platform keeps running.
-bool PlatDisclaimSpeechResponsibility(int, char**, int*) {
-    return true;
-}
-
-bool PlatGetExePath(char* out, int cap) {
-    if (out && cap > 0) out[0] = 0;
-    return false;
-}
-
 void PlatGetExeDir(char* out, int cap) {
-    if (!out || cap <= 0) {
-        return;
-    }
     StrCopyZ(out, cap, "/");
 }
 
@@ -132,55 +104,17 @@ bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
     return true;
 }
 
-uint64_t PlatStatModifiedNs(const struct stat* st) {
-    return (uint64_t)st->st_mtim.tv_sec * 1000000000ull + (uint64_t)st->st_mtim
-                                                              .tv_nsec;
-}
-
-bool PlatSecondaryIsCommand() {
-    return false;
-}
-bool PlatTitleBarCloseIsElement() {
-    return false;
-}
-bool PlatShowsWindowControls() {
-    return true;
-}
-float PlatCaretWidth() {
-    return 1.f;
-}
-bool PlatScrollBounce() {
-    return false;
-}
-bool PlatCleanOnEscape() {
-    return true;
-}
-bool PlatScrollBounceTouch() {
-    return false;
-}
-bool PlatOverscrollPhaselessStops() {
-    return false;
-}
-const char* PlatMonoFontName() {
-    return "DejaVu Sans Mono";
-}
-const char* PlatShellDataDir() {
-    return "/.local/share";
-}
-const char* PlatShellPlatformName() {
-    return "emscripten";
-}
-bool PlatBlockSelectUsesControl() {
-    return false;
-}
-bool PlatScrollGestureLocks() {
-    return false;
-}
-bool PlatAsyncIo() {
-    return true;
-}
-float PlatWindowShadowSize() {
-    return 0.f;
-}
+const PlatFacts kPlatFacts = {
+    .shellPlatformName = "emscripten",
+    .scrollGestureLocks = false,
+    // fetch() answers on the main thread; there is no worker to block.
+    .asyncIo = true,
+    // 4 MB, where the hosted targets say 64. A reservation is spent memory
+    // here, and a page that opened six arenas at 64 MB apiece would ask the
+    // browser for nearly half a gigabyte before drawing a pixel. An arena
+    // that outgrows this chains another block, so the only cost of the
+    // smaller number is the odd extra block.
+    .arenaReserveSize = 4ull * 1024ull * 1024ull,
+};
 
 } // namespace base

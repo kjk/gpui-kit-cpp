@@ -2249,4 +2249,107 @@ static int VsnprintfUtf8(Str buf, const char* fmt, va_list args) {
 #endif
     return vsnprintf(buf.s, (size_t)len(buf), fmt, args);
 }
+
+// The Plat* facts, read from the platform's kPlatFacts (base.h).
+char PlatPathSep() {
+    return kPlatFacts.pathSep;
+}
+bool PlatPathsCaseFold() {
+    return kPlatFacts.pathsCaseFold;
+}
+bool PlatIsWindows() {
+    return kPlatFacts.isWindows;
+}
+bool PlatSecondaryIsCommand() {
+    return kPlatFacts.secondaryIsCommand;
+}
+bool PlatShowsWindowControls() {
+    return kPlatFacts.showsWindowControls;
+}
+bool PlatTitleBarCloseIsElement() {
+    return kPlatFacts.titleBarCloseIsElement;
+}
+float PlatCaretWidth() {
+    return kPlatFacts.caretWidth;
+}
+bool PlatScrollBounce() {
+    return kPlatFacts.scrollBounce;
+}
+bool PlatCleanOnEscape() {
+    return kPlatFacts.cleanOnEscape;
+}
+bool PlatScrollBounceTouch() {
+    return kPlatFacts.scrollBounceTouch;
+}
+bool PlatOverscrollPhaselessStops() {
+    return kPlatFacts.overscrollPhaselessStops;
+}
+const char* PlatMonoFontName() {
+    return kPlatFacts.monoFontName;
+}
+const char* PlatShellDataDir() {
+    return kPlatFacts.shellDataDir;
+}
+const char* PlatShellPlatformName() {
+    return kPlatFacts.shellPlatformName;
+}
+bool PlatBlockSelectUsesControl() {
+    return kPlatFacts.blockSelectUsesControl;
+}
+bool PlatScrollGestureLocks() {
+    return kPlatFacts.scrollGestureLocks;
+}
+bool PlatAsyncIo() {
+    return kPlatFacts.asyncIo;
+}
+float PlatWindowShadowSize() {
+    return kPlatFacts.windowShadowSize;
+}
+uint64_t PlatArenaReserveSize() {
+    return kPlatFacts.arenaReserveSize;
+}
+
+bool PlatGetExePath(char* out, int cap) {
+    if (!out || cap <= 0) {
+        return false;
+    }
+    out[0] = 0;
+    return kPlatFacts.exePath && kPlatFacts.exePath(out, cap);
+}
+
+bool PlatDisclaimSpeechResponsibility(int argc, char** argv, int* status) {
+    if (!kPlatFacts.disclaimSpeechResponsibility) {
+        return true;
+    }
+    return kPlatFacts.disclaimSpeechResponsibility(argc, argv, status);
+}
+
+void PlatDirNameInPlace(char* path) {
+    if (!path) {
+        return;
+    }
+    int i = (int)strlen(path);
+    while (i > 0 && path[i - 1] != '/') {
+        path[--i] = 0;
+    }
+    while (i > 1 && path[i - 1] == '/') {
+        path[--i] = 0;
+    }
+}
+
+void PlatExeDirFromExePath(char* out, int cap) {
+    if (PlatGetExePath(out, cap)) {
+        PlatDirNameInPlace(out);
+    }
+}
+
+bool PlatMemCommit(void* base, uint64_t size, bool largePages) {
+    if (size == 0) {
+        return true;
+    }
+    if (!base) {
+        return false;
+    }
+    return PlatMemCommitPages(base, size, largePages);
+}
 } // namespace base

@@ -146,7 +146,10 @@ uint64_t PlatLargePageSize();
 // First-block guess, not a limit. Wasm has no reserve/commit split.
 uint64_t PlatArenaReserveSize();
 void* PlatMemReserve(uint64_t size);
+// True for an empty range, false for a null base; otherwise
+// PlatMemCommitPages, the platform half, commits the range.
 bool PlatMemCommit(void* base, uint64_t size, bool largePages);
+bool PlatMemCommitPages(void* base, uint64_t size, bool largePages);
 void* PlatMemReserveCommit(uint64_t size, bool largePages);
 void PlatMemRelease(void* base, uint64_t size);
 
@@ -161,6 +164,13 @@ bool PlatCanonicalPath(const char* path, char* out, int cap);
 void PlatGetExeDir(char* out, int cap);
 // The running executable's path. False when this platform has none.
 bool PlatGetExePath(char* out, int cap);
+// PlatGetExePath, then strip the file name: PlatGetExeDir wherever the
+// executable's directory is where it sits.
+void PlatExeDirFromExePath(char* out, int cap);
+// Strip the file name off an absolute '/'-separated path, in place.
+void PlatDirNameInPlace(char* path);
+// readlink("/proc/self/exe"): the executable path on Linux and Android.
+bool PlatProcSelfExePath(char* out, int cap);
 // macOS speech example: relaunch so this binary, not the terminal, is the
 // TCC responsible process (`responsibility_spawnattrs_setdisclaim`). True
 // means keep running. False means *status is the child's exit code and the
@@ -191,31 +201,75 @@ int PlatListDir(const char* dir, DirEntry* out, int max);
 int PlatCoreCount();
 bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes);
 
-// Facts a portable translation unit may ask. The definition lives in the
-// platform file that target compiles: base_win.cpp, base_posix.cpp for the
-// three path facts every non-Windows target shares, and one of
-// base_{linux,mac,wasm,ios,android}.cpp for the rest. Those definitions do
-// not test GPUI_OS_*.
+// Facts a portable translation unit may ask. Each Plat* function below is
+// defined once, in base.cpp, and returns its field of kPlatFacts. Each
+// platform file (base_{win,linux,mac,wasm,ios,android}.cpp) defines
+// kPlatFacts, naming only the facts where it differs from these defaults:
+// the value is data, one line per platform, and the function exists once.
+struct PlatFacts {
+    char pathSep = '/';
+    bool pathsCaseFold = false;
+    bool isWindows = false;
+    // The shortcut modifier, Rust's `secondary-`, is Command (macOS).
+    bool secondaryIsCommand = false;
+    // The title bar draws its own minimize/maximize/close buttons.
+    bool showsWindowControls = true;
+    // Linux draws the title-bar close button as an element click. Elsewhere
+    // the window manager owns closing, so a script close handler is not that
+    // button.
+    bool titleBarCloseIsElement = false;
+    // blink_cursor.rs CURSOR_WIDTH: 1px on every platform. Paint snaps the
+    // caret onto the device pixel grid so that width stays one device pixel.
+    float caretWidth = 1.f;
+    // An overscrolled view rubber-bands back.
+    bool scrollBounce = false;
+    // Android delivers its back button as Escape, so clean_on_escape must
+    // not clear the field there. iOS has no back button; Escape still clears.
+    bool cleanOnEscape = true;
+    // The UIScrollView feel (tracking 0.55, no stretch cap). iOS and Android.
+    // macOS bounces too, with the NSScrollView feel, so this is not that.
+    bool scrollBounceTouch = false;
+    // A smooth-scrolling mouse on macOS sends precise packets with no phase.
+    // NSScrollView does not bounce those. Other platforms still throw the
+    // edge.
+    bool overscrollPhaselessStops = false;
+    const char* monoFontName = "DejaVu Sans Mono";
+    // Appended to the home directory for the shell's data directory.
+    const char* shellDataDir = "/.local/share";
+    // The shell's platform name. iOS and Android answer "linux" too.
+    const char* shellPlatformName = "linux";
+    // Alt+click block selection also takes Ghostty's Ctrl+Alt (Linux).
+    bool blockSelectUsesControl = false;
+    // Precise scroll deltas keep the OngoingScroll axis lock for the gesture.
+    bool scrollGestureLocks = true;
+    // Requests answer asynchronously instead of on a worker (the browser).
+    bool asyncIo = false;
+    // The shadow a client-decorated window draws around itself.
+    float windowShadowSize = 0.f;
+    // 64 MB. Untouched address space costs nothing on a hosted OS, so an
+    // arena reserves far more than it will ever commit and rarely has to
+    // chain a second block.
+    uint64_t arenaReserveSize = 64ull * 1024ull * 1024ull;
+    // PlatGetExePath's platform half, handed a buffer that is not empty and
+    // already starts with 0. Null where there is no executable path.
+    bool (*exePath)(char* out, int cap) = nullptr;
+    // PlatDisclaimSpeechResponsibility's platform half. Null (everywhere but
+    // macOS) keeps running.
+    bool (*disclaimSpeechResponsibility)(int argc, char** argv,
+                                         int* status) = nullptr;
+};
+extern const PlatFacts kPlatFacts;
+
 char PlatPathSep();
 bool PlatPathsCaseFold();
 bool PlatIsWindows();
 bool PlatSecondaryIsCommand();
 bool PlatShowsWindowControls();
-// Linux draws the title-bar close button as an element click. Elsewhere the
-// window manager owns closing, so a script close handler is not that button.
 bool PlatTitleBarCloseIsElement();
-// blink_cursor.rs CURSOR_WIDTH: 1px on every platform. Paint snaps the
-// caret onto the device pixel grid so that width stays one device pixel.
 float PlatCaretWidth();
 bool PlatScrollBounce();
-// Android delivers its back button as Escape, so clean_on_escape must not
-// clear the field there. iOS has no back button; Escape still clears.
 bool PlatCleanOnEscape();
-// The UIScrollView feel (tracking 0.55, no stretch cap). iOS and Android.
-// macOS bounces too, with the NSScrollView feel, so this is not that.
 bool PlatScrollBounceTouch();
-// A smooth-scrolling mouse on macOS sends precise packets with no phase.
-// NSScrollView does not bounce those. Other platforms still throw the edge.
 bool PlatOverscrollPhaselessStops();
 const char* PlatMonoFontName();
 const char* PlatShellDataDir();
