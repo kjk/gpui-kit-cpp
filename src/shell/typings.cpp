@@ -1,5 +1,6 @@
 #include "shell/typings.h"
 
+#include "shell/common.h"
 #include "shell/component_registry.h"
 
 #include <limits.h>
@@ -56,11 +57,6 @@ static bool SourceImportsBuiltins(Str source, const char* componentModule) {
 
 static bool IsScript(Str name) {
     return StrEndsWith(name, ".js") || StrEndsWith(name, ".mjs");
-}
-
-static bool SkipDirectory(Str name) {
-    return !name || name.s[0] == '.' || StrEq(name, StrL("node_modules")) ||
-           StrEq(name, StrL("target"));
 }
 
 static bool AppendDirectory(Vec<TypesDirectory>* directories, Str path,
@@ -366,7 +362,7 @@ bool ShellWriteTypeDeclarations(Str root, const HostModules* modules,
             if (item.isSymlink || item.name[0] == '.') continue;
             if (item.isDir) {
                 if (directory.depth >= kShellTypesMaxDepth ||
-                    SkipDirectory(Str(item.name)))
+                    SourceTreeSkipsDirectory(Str(item.name)))
                     continue;
                 TempStr child =
                     JoinPathTemp(Str(directory.path), Str(item.name));

@@ -1,5 +1,8 @@
 #include "component_shell/searchable_rows.h"
 
+#include <float.h>
+#include <math.h>
+
 namespace gpui::component_shell {
 
 using component::SearchableListItem;
@@ -66,6 +69,26 @@ void RetainedSearchableItems::Free() {
     VecReset(items);
     if (arena) ArenaDelete(arena);
     arena = nullptr;
+}
+
+bool IsIdAndThreeCallbacks(const ComponentArgument* args, int count) {
+    return count == 4 && args[0].kind == shell::ComponentArgumentKind::String &&
+           args[1].kind == shell::ComponentArgumentKind::Callback &&
+           args[2].kind == shell::ComponentArgumentKind::Callback &&
+           args[3].kind == shell::ComponentArgumentKind::Callback &&
+           len(StrTrim(args[0].string)) != 0;
+}
+
+bool MenuWidthArgument(PayloadBuild* build, const char* component,
+                       const ComponentArgument* args, int count, float* out) {
+    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Number ||
+        !isfinite(args[0].number) || args[0].number <= 0 ||
+        args[0].number > (double)FLT_MAX) {
+        return build->Fail(
+            fmt("%s.menu_width received an invalid value", Str(component)));
+    }
+    *out = (float)args[0].number;
+    return true;
 }
 
 } // namespace gpui::component_shell

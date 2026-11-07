@@ -224,22 +224,6 @@ static PopupAnchor AnchorOf(Str name, bool* found) {
     return ix < 0 ? PopupAnchor::TopLeft : (PopupAnchor)ix;
 }
 
-// A dock command carries no script value: it names a container in the area and
-// what to ask it. That is why a tab can report its click at all — a chrome
-// handler runs once per frame for as long as the dock is on screen, so a
-// callback registered inside one would pile up the way a virtual list's row
-// handlers would.
-
-static bool IsDockCommandName(Str name) {
-    static const char names[] =
-        "select_tab\0close_panel\0toggle_zoom\0drag_tab\0drop_tab\0"
-        "toggle_dock\0resize_dock\0";
-    for (const char* at = names; *at; at += strlen(at) + 1) {
-        if (StrEq(name, at)) return true;
-    }
-    return false;
-}
-
 static void ResolveBehavior(const shell::SpecNode* node,
                             MaterialBehavior* out) {
     for (const shell::SpecOp& op : node->ops) {
@@ -327,7 +311,7 @@ static void ResolveBehavior(const shell::SpecNode* node,
             continue;
         }
         if (op.kind != shell::SpecOpKind::Method) continue;
-        if (IsDockCommandName(op.name)) {
+        if (shell::IsDockCommandName(op.name)) {
             if (out->dockCommandCount < (int)(sizeof(out->dockCommands) /
                                               sizeof(out->dockCommands[0]))) {
                 out->dockCommands[out->dockCommandCount++] = &op;

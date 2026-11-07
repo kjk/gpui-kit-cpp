@@ -1,9 +1,9 @@
 #ifndef GPUI_COMPONENT_SHELL_SEARCHABLE_ROWS_H_
 #define GPUI_COMPONENT_SHELL_SEARCHABLE_ROWS_H_
 
-// The row half delegate_select and delegate_combobox share: a script's row
-// snapshot turned into SearchableListItems, and the retained copy the host
-// keeps between renders.
+// What delegate_select and delegate_combobox share: a script's row snapshot
+// turned into SearchableListItems, the retained copy the host keeps between
+// renders, and the arguments both validate the same way.
 
 #include "component_shell/support.h"
 #include "ui/searchable_list.h"
@@ -28,6 +28,13 @@ struct RetainedSearchableItems {
     void Set(const component::SearchableListItem* next, int count);
     void Free();
 };
+
+// The constructor's shape: a non-empty string id, then three callbacks.
+bool IsIdAndThreeCallbacks(const ComponentArgument* args, int count);
+// `<component>.menu_width(width)`: a positive width an f32 can hold. False
+// after build->Fail.
+bool MenuWidthArgument(PayloadBuild* build, const char* component,
+                       const ComponentArgument* args, int count, float* out);
 
 } // namespace gpui::component_shell
 

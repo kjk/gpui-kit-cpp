@@ -366,7 +366,7 @@ static bool RecordPositive(PayloadBuild* build, const ComponentArgument* args,
     Op* op = build->New<Op>();
     op->kind = K;
     // The C++ charts count in int; a larger count means the same thing.
-    op->count = value > 2147483647.0 ? 2147483647 : (int)value;
+    op->count = SaturatingInt(value);
     return true;
 }
 

@@ -192,6 +192,11 @@ void ProcessEventPushExit(ProcessEventBox* box, ProcessStreamEvent event);
 
 int ProcessTimeoutMilliseconds(double seconds);
 
+// Appends one read from a bounded run's stdout or stderr (`name`), refusing
+// to let either grow past 8 MiB.
+bool ProcessCaptureAppend(StrBuilder* out, const char* bytes, int count,
+                          Str* error, const char* name);
+
 // process.run's deadline: `options->timeoutSeconds`, or 30 seconds.
 double ProcessBoundedTimeoutSeconds(const ProcessOptions* options);
 // The reason a bounded run stopped before its child exited.

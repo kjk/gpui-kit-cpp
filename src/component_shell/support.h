@@ -75,6 +75,24 @@ inline constexpr const char* kSizeLiterals[] = {"xsmall", "small", "medium",
 // schema has already refused.
 UiSize SizeOfLiteral(Str literal);
 
+// `size(size)` for a component whose ops are a `T` with a `kind` and a
+// `size`: records the literal, which the schema has already checked, as op
+// `K`.
+template <class T, typename T::Kind K>
+bool RecordSizeOp(PayloadBuild* build, const ComponentArgument* args, int) {
+    T* op = build->New<T>();
+    op->kind = K;
+    op->size = SizeOfLiteral(args[0].string);
+    return true;
+}
+
+// Whether an f64 argument reads as a Rust usize: a finite whole number from
+// zero up to, but not including, 2^64 — `usize::MAX as f64` rounds up to
+// 2^64 on 64-bit targets, so that value itself is refused.
+bool IsUsizeNumber(double value);
+// A usize count in the int the C++ widgets hold; a larger one saturates.
+int SaturatingInt(double value);
+
 // Refuses style on a component that has nowhere to put it. A data-carrying
 // part such as MenuItem renders no box of its own; silently dropping a
 // script's `.bg(..)` would look like a shell bug.

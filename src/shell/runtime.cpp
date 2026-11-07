@@ -6,6 +6,7 @@
 #include "shell/a11y.h"
 #include "shell/component_registry.h"
 #include "shell/action.h"
+#include "shell/common.h"
 #include "shell/dependencies.h"
 #include "shell/dock.h"
 #include "shell/fetch.h"
@@ -224,12 +225,15 @@ struct CallbackArena {
     // back when the call fails, so a rejected call leaves no handler behind.
     int Checkpoint() const { return len(entries); }
 
+    static void Destroy(JSContext* ctx, CallbackEntry* entry) {
+        if (ctx) JS_FreeValue(ctx, entry->function);
+        PolicyRelease(entry->policy);
+        delete entry;
+    }
+
     void RollbackTo(JSContext* ctx, int checkpoint) {
         while (len(entries) > checkpoint) {
-            CallbackEntry* entry = entries[len(entries) - 1];
-            if (ctx) JS_FreeValue(ctx, entry->function);
-            PolicyRelease(entry->policy);
-            delete entry;
+            Destroy(ctx, entries[len(entries) - 1]);
             entries.len--;
         }
         if (buildingStart > len(entries)) buildingStart = len(entries);
@@ -245,13 +249,7 @@ struct CallbackArena {
 
     void Abort(JSContext* ctx) {
         if (!building) return;
-        while (len(entries) > buildingStart) {
-            CallbackEntry* entry = entries[len(entries) - 1];
-            if (ctx) JS_FreeValue(ctx, entry->function);
-            PolicyRelease(entry->policy);
-            delete entry;
-            entries.len--;
-        }
+        RollbackTo(ctx, buildingStart);
         building = false;
     }
 
@@ -263,29 +261,32 @@ struct CallbackArena {
         return nullptr;
     }
 
-    void Retire(JSContext* ctx, uint64_t generation) {
+    // Destroys every entry `retire` picks, keeping the rest in order.
+    template <class F>
+    void RetireIf(JSContext* ctx, F retire) {
         int out = 0;
         for (int i = 0; i < len(entries); i++) {
             CallbackEntry* entry = entries[i];
-            if (entry->committed && entry->generation == generation) {
-                JS_FreeValue(ctx, entry->function);
-                PolicyRelease(entry->policy);
-                delete entry;
-            } else {
+            if (retire(entry))
+                Destroy(ctx, entry);
+            else
                 entries[out++] = entry;
-            }
         }
         entries.len = out;
         if (buildingStart > out) buildingStart = out;
+    }
+
+    void Retire(JSContext* ctx, uint64_t generation) {
+        RetireIf(ctx, [&](const CallbackEntry* entry) {
+            return entry->committed && entry->generation == generation;
+        });
     }
 
     void RetireId(JSContext* ctx, shell::CallbackId id) {
         for (int i = 0; i < len(entries); i++) {
             CallbackEntry* entry = entries[i];
             if (entry->id != id) continue;
-            JS_FreeValue(ctx, entry->function);
-            PolicyRelease(entry->policy);
-            delete entry;
+            Destroy(ctx, entry);
             for (int j = i + 1; j < len(entries); j++) {
                 entries[j - 1] = entries[j];
             }
@@ -297,28 +298,13 @@ struct CallbackArena {
 
     void RetireApplication(JSContext* ctx, AppModule* application) {
         if (!application) return;
-        int out = 0;
-        for (int i = 0; i < len(entries); i++) {
-            CallbackEntry* entry = entries[i];
-            if (entry->application == application) {
-                JS_FreeValue(ctx, entry->function);
-                PolicyRelease(entry->policy);
-                delete entry;
-            } else {
-                entries[out++] = entry;
-            }
-        }
-        entries.len = out;
-        if (buildingStart > out) buildingStart = out;
+        RetireIf(ctx, [&](const CallbackEntry* entry) {
+            return entry->application == application;
+        });
     }
 
     void Clear(JSContext* ctx) {
-        for (int i = 0; i < len(entries); i++) {
-            CallbackEntry* entry = entries[i];
-            JS_FreeValue(ctx, entry->function);
-            PolicyRelease(entry->policy);
-            delete entry;
-        }
+        for (int i = 0; i < len(entries); i++) Destroy(ctx, entries[i]);
         VecReset(entries);
         building = false;
         buildingStart = 0;
@@ -825,6 +811,8 @@ static uint32_t NewTask(ShellRuntimeImpl* impl, ShellTaskKind kind,
 
 static void BeginExecution(ShellRuntimeImpl* impl);
 static Str ExceptionText(Arena* arena, JSContext* ctx);
+static void LogException(JSContext* ctx);
+static void DrainJobsLogged(ShellRuntime* runtime);
 static void DriveStorage(Policy* policy);
 
 static void ProcessJobWork(ProcessJob* job) {
@@ -996,18 +984,11 @@ static void SettleShellTask(ShellTaskLease* lease, bool failed, Str message,
     JS_FreeValue(impl->context, value);
     JS_FreeValue(impl->context, settle);
     if (JS_IsException(settled)) {
-        Arena* arena = ArenaNew();
-        log(ExceptionText(arena, impl->context));
-        ArenaDelete(arena);
+        LogException(impl->context);
         return;
     }
     JS_FreeValue(impl->context, settled);
-    ShellError error = {};
-    runtime->DrainJobs(kMaxJobBatch, &error);
-    if (error.IsSet()) {
-        log(error.message);
-        ShellErrorClear(&error);
-    }
+    DrainJobsLogged(runtime);
 }
 
 static JSValue ProcessJobResolved(ShellRuntimeImpl* impl, void* user) {
@@ -1260,17 +1241,10 @@ static void StorageFlushDone(StorageFlushState* state,
         JS_FreeValue(impl->context, value);
         JS_FreeValue(impl->context, settle);
         if (JS_IsException(settled)) {
-            Arena* arena = ArenaNew();
-            log(ExceptionText(arena, impl->context));
-            ArenaDelete(arena);
+            LogException(impl->context);
         } else {
             JS_FreeValue(impl->context, settled);
-            ShellError error = {};
-            runtime->DrainJobs(kMaxJobBatch, &error);
-            if (error.IsSet()) {
-                log(error.message);
-                ShellErrorClear(&error);
-            }
+            DrainJobsLogged(runtime);
         }
     } else if (task) {
         task->storageFlush = nullptr;
@@ -1428,6 +1402,24 @@ static bool StackBlank(Str text) {
 // One line that says what happened, then the script stack. The first line
 // is what a failure surface shows collapsed, so a value that is not an
 // Error is described in words rather than dumped.
+// Logs the exception pending on ctx, for a callback whose failure has no
+// caller to throw to.
+static void LogException(JSContext* ctx) {
+    Arena* arena = ArenaNew();
+    log(ExceptionText(arena, ctx));
+    ArenaDelete(arena);
+}
+
+// Runs the promise jobs a callback queued, logging a failure among them.
+static void DrainJobsLogged(ShellRuntime* runtime) {
+    ShellError error = {};
+    runtime->DrainJobs(kMaxJobBatch, &error);
+    if (error.IsSet()) {
+        log(error.message);
+        ShellErrorClear(&error);
+    }
+}
+
 static Str ExceptionText(Arena* arena, JSContext* ctx) {
     JSValue exception = JS_GetException(ctx);
     StrBuilder out(arena);
@@ -1994,17 +1986,6 @@ static JSModuleDef* LoadHostModule(JSContext* ctx, Str name) {
     return definition;
 }
 
-static bool PathIsAbsolute(Str path) {
-    if (!path.s || len(path) == 0) return false;
-    if (path.s[0] == '/' || path.s[0] == '\\') return true;
-    if (len(path) >= 3 && path.s[1] == ':' &&
-        ((path.s[0] >= 'A' && path.s[0] <= 'Z') ||
-         (path.s[0] >= 'a' && path.s[0] <= 'z')) &&
-        (path.s[2] == '/' || path.s[2] == '\\'))
-        return true;
-    return false;
-}
-
 static bool UrlUnreserved(unsigned char byte) {
     return (byte >= 'A' && byte <= 'Z') || (byte >= 'a' && byte <= 'z') ||
            (byte >= '0' && byte <= '9') || byte == '-' || byte == '.' ||
@@ -2042,7 +2023,7 @@ static Str FileUrlFromPath(Str path) {
 static void SetFileImportMeta(JSContext* ctx, JSModuleDef* module, Str tagged) {
     if (!ctx || !module) return;
     TempStr path = UntagTemp(tagged);
-    if (!PathIsAbsolute(path)) return;
+    if (!shell::PathIsAbsolute(path)) return;
     Str url = FileUrlFromPath(path);
     if (!url.s) return;
     JSValue meta = JS_GetImportMeta(ctx, module);
@@ -2421,6 +2402,26 @@ static JSValue NativeAttach(JSContext* ctx, JSValueConst, int argc,
     return JS_UNDEFINED;
 }
 
+// A detached state node — a state style or a group_hover — claimed by
+// `owner` through an op of `kind` naming it. The node's id, or the spec
+// failure.
+static JSValue PushDetachedState(JSContext* ctx, ShellRuntimeImpl* impl,
+                                 shell::SpecId owner, shell::SpecOpKind kind,
+                                 Str name) {
+    shell::Component component = {};
+    shell::SpecId state = impl->scratch->Push(component);
+    shell::SpecError failure = {};
+    if (!impl->scratch->Claim(state, &failure))
+        return SpecFailure(ctx, failure);
+    shell::SpecOp op = {};
+    op.kind = kind;
+    op.name = name;
+    op.node = state;
+    if (!impl->scratch->PushOp(owner, op, &failure))
+        return SpecFailure(ctx, failure);
+    return JS_NewUint32(ctx, state);
+}
+
 static JSValue NativeState(JSContext* ctx, JSValueConst, int argc,
                            JSValueConst* argv) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
@@ -2434,23 +2435,10 @@ static JSValue NativeState(JSContext* ctx, JSValueConst, int argc,
         ArenaDelete(arena);
         return JS_EXCEPTION;
     }
-    shell::Component component = {};
-    shell::SpecId state = impl->scratch->Push(component);
-    shell::SpecError failure = {};
-    if (!impl->scratch->Claim(state, &failure)) {
-        ArenaDelete(arena);
-        return SpecFailure(ctx, failure);
-    }
-    shell::SpecOp op = {};
-    op.kind = shell::SpecOpKind::StateStyle;
-    op.name = name;
-    op.node = state;
-    if (!impl->scratch->PushOp(owner, op, &failure)) {
-        ArenaDelete(arena);
-        return SpecFailure(ctx, failure);
-    }
+    JSValue result = PushDetachedState(ctx, impl, owner,
+                                       shell::SpecOpKind::StateStyle, name);
     ArenaDelete(arena);
-    return JS_NewUint32(ctx, state);
+    return result;
 }
 
 // The detached node of a group_hover: the one state style that names the
@@ -2474,23 +2462,10 @@ static JSValue NativeGroupHover(JSContext* ctx, JSValueConst, int argc,
             "group_hover(group, declare) expects the group's name first, as "
             "a non-empty string");
     }
-    shell::Component component = {};
-    shell::SpecId state = impl->scratch->Push(component);
-    shell::SpecError failure = {};
-    if (!impl->scratch->Claim(state, &failure)) {
-        ArenaDelete(arena);
-        return SpecFailure(ctx, failure);
-    }
-    shell::SpecOp op = {};
-    op.kind = shell::SpecOpKind::GroupHover;
-    op.name = group;
-    op.node = state;
-    if (!impl->scratch->PushOp(owner, op, &failure)) {
-        ArenaDelete(arena);
-        return SpecFailure(ctx, failure);
-    }
+    JSValue result = PushDetachedState(ctx, impl, owner,
+                                       shell::SpecOpKind::GroupHover, group);
     ArenaDelete(arena);
-    return JS_NewUint32(ctx, state);
+    return result;
 }
 
 static JSValue NativeSlot(JSContext* ctx, JSValueConst, int argc,
@@ -2531,21 +2506,6 @@ static bool IsCallbackMethod(Str name) {
         // rather than from render, which the Layout scope around the call and
         // the description cache behind it are for.
         "tab_bar\0empty_group\0drop_indicator\0dock\0";
-    for (const char* at = names; *at; at += strlen(at) + 1) {
-        if (StrEq(name, at)) return true;
-    }
-    return false;
-}
-
-// A dock command carries no script value: it names a container in the area
-// and what to ask it. That is why a tab can report its click at all — a chrome
-// handler runs once per frame for as long as the dock is on screen, so a
-// callback registered inside one would pile up the way a virtual list's row
-// handlers would.
-static bool IsDockCommand(Str name) {
-    static const char names[] =
-        "select_tab\0close_panel\0toggle_zoom\0drag_tab\0drop_tab\0"
-        "toggle_dock\0resize_dock\0";
     for (const char* at = names; *at; at += strlen(at) + 1) {
         if (StrEq(name, at)) return true;
     }
@@ -4477,7 +4437,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                     "matches the same name");
             }
         }
-        if (IsDockCommand(name)) {
+        if (shell::IsDockCommandName(name)) {
             // Every command takes the dock handle first, because it is
             // resolved against *that* area: the script passes the container
             // object it was handed and the prelude unpacks the handle out of
@@ -6894,16 +6854,6 @@ static bool ReadThemeTypography(JSContext* ctx, JSValueConst tokensValue,
 
 // A font family name as a JSON string. Families are author-supplied, so the two
 // characters JSON cannot carry raw are escaped rather than assumed absent.
-static void AppendJsonString(StrBuilder* out, Str value) {
-    out->AppendChar('"');
-    for (int i = 0; i < len(value); i++) {
-        char c = value.s[i];
-        if (c == '\\' || c == '"') out->AppendChar('\\');
-        out->AppendChar(c);
-    }
-    out->AppendChar('"');
-}
-
 static void AppendThemeTextStyle(StrBuilder* out, const char* name,
                                  const TextStyleToken& style) {
     out->Append(fmt("\"%s\":{\"size\":%g,\"line_height\":%g,\"weight\":%g}",
@@ -6915,9 +6865,9 @@ static void AppendThemeTypography(StrBuilder* out) {
     TypographyTokens typography = {};
     if (!shell::ThemeTypographyTokens(&typography)) return;
     out->Append(StrL("\"sans\":"));
-    AppendJsonString(out, typography.sans);
+    shell::AppendJsonString(out, typography.sans);
     out->Append(StrL(",\"mono\":"));
-    AppendJsonString(out, typography.mono);
+    shell::AppendJsonString(out, typography.mono);
     out->AppendChar(',');
     AppendThemeTextStyle(out, "xs", typography.xs);
     out->AppendChar(',');
@@ -11790,9 +11740,7 @@ static bool SerializeScriptPanel(Entity<ScriptView> handle, App* app,
     if (JS_IsException(produced) || JS_IsUndefined(produced) ||
         JS_IsNull(produced)) {
         if (JS_IsException(produced)) {
-            Arena* arena = ArenaNew();
-            log(ExceptionText(arena, ctx));
-            ArenaDelete(arena);
+            LogException(ctx);
         } else {
             JS_FreeValue(ctx, produced);
         }
@@ -11830,9 +11778,7 @@ static void DeserializeScriptPanel(Entity<ScriptView> handle, Str json,
     (void)scope;
     JSValue payload = JS_ParseJSON(ctx, json.s, (size_t)len(json), "<panel>");
     if (JS_IsException(payload)) {
-        Arena* arena = ArenaNew();
-        log(ExceptionText(arena, ctx));
-        ArenaDelete(arena);
+        LogException(ctx);
         JS_FreeValue(ctx, method);
         return;
     }
@@ -11840,9 +11786,7 @@ static void DeserializeScriptPanel(Entity<ScriptView> handle, Str json,
     JS_FreeValue(ctx, payload);
     JS_FreeValue(ctx, method);
     if (JS_IsException(result)) {
-        Arena* arena = ArenaNew();
-        log(ExceptionText(arena, ctx));
-        ArenaDelete(arena);
+        LogException(ctx);
     } else {
         JS_FreeValue(ctx, result);
     }
@@ -13592,9 +13536,7 @@ static void DriveProcessStream(ShellRuntime* runtime, ShellRuntimeImpl* impl,
         JS_FreeValue(ctx, args[1]);
         JS_FreeValue(ctx, args[2]);
         if (JS_IsException(result)) {
-            Arena* arena = ArenaNew();
-            log(ExceptionText(arena, ctx));
-            ArenaDelete(arena);
+            LogException(ctx);
         } else {
             JS_FreeValue(ctx, result);
         }
@@ -13605,12 +13547,7 @@ static void DriveProcessStream(ShellRuntime* runtime, ShellRuntimeImpl* impl,
     JS_FreeValue(ctx, global);
     JS_FreeValue(ctx, callback);
     if (sawExit) ForgetTask(impl, id, true);
-    ShellError error = {};
-    runtime->DrainJobs(kMaxJobBatch, &error);
-    if (error.IsSet()) {
-        log(error.message);
-        ShellErrorClear(&error);
-    }
+    DrainJobsLogged(runtime);
 }
 
 void ShellRuntime::ResumeTask(uint32_t id, Ctx* cx) {
@@ -13650,18 +13587,11 @@ void ShellRuntime::ResumeTask(uint32_t id, Ctx* cx) {
     }
     JS_FreeValue(impl->context, callback);
     if (JS_IsException(result)) {
-        Arena* arena = ArenaNew();
-        log(ExceptionText(arena, impl->context));
-        ArenaDelete(arena);
+        LogException(impl->context);
     } else {
         JS_FreeValue(impl->context, result);
     }
-    ShellError error = {};
-    DrainJobs(kMaxJobBatch, &error);
-    if (error.IsSet()) {
-        log(error.message);
-        ShellErrorClear(&error);
-    }
+    DrainJobsLogged(this);
 }
 
 static JSValue ContextObject(ShellRuntimeImpl* impl, uint64_t generation) {
@@ -13718,17 +13648,10 @@ static void DispatchArgs(ShellRuntime* runtime, shell::CallbackId id,
     JS_FreeValue(impl->context, cx);
     for (int i = 0; i < count; i++) JS_FreeValue(impl->context, leading[i]);
     if (JS_IsException(result)) {
-        Arena* arena = ArenaNew();
-        log(ExceptionText(arena, impl->context));
-        ArenaDelete(arena);
+        LogException(impl->context);
     } else {
         JS_FreeValue(impl->context, result);
-        ShellError error = {};
-        runtime->DrainJobs(kMaxJobBatch, &error);
-        if (error.IsSet()) {
-            log(error.message);
-            ShellErrorClear(&error);
-        }
+        DrainJobsLogged(runtime);
     }
 }
 
@@ -14430,9 +14353,7 @@ void ShellRuntime::RenderVirtualItems(shell::CallbackId renderId,
     bool staged = false;
     if (!succeeded) {
         if (opened) impl->callbacks.Abort(impl->context);
-        Arena* arena = ArenaNew();
-        log(ExceptionText(arena, impl->context));
-        ArenaDelete(arena);
+        LogException(impl->context);
     } else {
         staged = opened && impl->callbacks.HasStaged();
         if (staged)
@@ -14592,9 +14513,7 @@ El* ShellRuntime::DescribeDockChrome(Ctx* cx, shell::EntityHandle dock,
         shell::MetricsAdd(&impl->metrics, shell::MetricsTimerKind::FrameScript,
                           elapsed <= 0 ? 0 : (uint64_t)(elapsed * 1e9));
         if (!succeeded) {
-            Arena* arena = ArenaNew();
-            log(ExceptionText(arena, impl->context));
-            ArenaDelete(arena);
+            LogException(impl->context);
             delete batch;
             return nullptr;
         }
@@ -14690,9 +14609,7 @@ El* ShellRuntime::RenderInlineToken(shell::CallbackId render,
     impl->scratch = outer;
     El* el = nullptr;
     if (!succeeded) {
-        Arena* arena = ArenaNew();
-        log(ExceptionText(arena, impl->context));
-        ArenaDelete(arena);
+        LogException(impl->context);
     } else if (hasRoot) {
         ShellError error = {};
         el = ShellMaterializeSpec(cx, this, batch, root, &error);

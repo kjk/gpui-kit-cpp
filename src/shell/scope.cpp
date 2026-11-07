@@ -140,13 +140,9 @@ void* ScopeCurrentApplication() {
 ScopeHostContext::ScopeHostContext(Window* win, App* application, bool owns)
     : window(win), app(application), held(owns) {}
 
+// Starts holding nothing, so the assignment's Release has nothing to release.
 ScopeHostContext::ScopeHostContext(ScopeHostContext&& other) noexcept {
-    window = other.window;
-    app = other.app;
-    held = other.held;
-    other.window = nullptr;
-    other.app = nullptr;
-    other.held = false;
+    *this = static_cast<ScopeHostContext&&>(other);
 }
 
 ScopeHostContext& ScopeHostContext::operator=(

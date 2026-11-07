@@ -21,8 +21,6 @@ extern "C" char** environ;
 
 namespace gpui::shell {
 
-constexpr int kProcessStreamLimit = 8 * 1024 * 1024;
-
 // A child deadline is wall time. TimeNow() is the frame clock, and the
 // test platform replaces it, so a timeout would never arrive while a
 // test holds that clock still.
@@ -68,17 +66,20 @@ static Str ResolveExecutable(Str command, Str* error) {
     return {};
 }
 
+// In a forked child: stdin reads end of file, as Rust's Stdio::null gives.
+static void StdinFromDevNull() {
+    int nullFd = open("/dev/null", O_RDONLY);
+    if (nullFd >= 0) dup2(nullFd, STDIN_FILENO);
+}
+
 static bool DrainFd(int fd, StrBuilder* out, bool* closed, Str* error,
                     const char* name) {
     char bytes[8192];
     for (;;) {
         ssize_t n = read(fd, bytes, sizeof(bytes));
         if (n > 0) {
-            if (out->len > kProcessStreamLimit - (int)n) {
-                ErrorOutSet(error, fmt("child %s exceeded 8 MiB", Str(name)));
+            if (!ProcessCaptureAppend(out, bytes, (int)n, error, name))
                 return false;
-            }
-            out->Append(Str(bytes, (int)n));
             continue;
         }
         if (n == 0) {
@@ -134,8 +135,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         }
         dup2(outPipe[1], STDOUT_FILENO);
         dup2(errPipe[1], STDERR_FILENO);
-        int nullFd = open("/dev/null", O_RDONLY);
-        if (nullFd >= 0) dup2(nullFd, STDIN_FILENO);
+        StdinFromDevNull();
         close(outPipe[0]);
         close(outPipe[1]);
         close(errPipe[0]);
@@ -304,6 +304,13 @@ static int PosixStdinWrite(void* ctx, const char* bytes, int count) {
     }
 }
 
+// Joins a stream thread once, if it was started.
+static void JoinThread(pthread_t* thread, bool* started) {
+    if (!*started) return;
+    pthread_join(*thread, nullptr);
+    *started = false;
+}
+
 static void* PosixStdinMain(void* param) {
     ProcessStream* stream = (ProcessStream*)param;
     ProcessStdinPump(&stream->box, PosixStdinWrite, stream);
@@ -335,14 +342,8 @@ static void* PosixWaiterMain(void* param) {
     }
     if (stream->child > 0) kill(-stream->child, SIGKILL);
     ProcessEventMarkReaped(&stream->box);
-    if (stream->haveReaderOut) {
-        pthread_join(stream->readerOut, nullptr);
-        stream->haveReaderOut = false;
-    }
-    if (stream->haveReaderErr) {
-        pthread_join(stream->readerErr, nullptr);
-        stream->haveReaderErr = false;
-    }
+    JoinThread(&stream->readerOut, &stream->haveReaderOut);
+    JoinThread(&stream->readerErr, &stream->haveReaderErr);
     ProcessStreamEvent event;
     if (!waitFailed) {
         if (WIFSIGNALED(status)) {
@@ -378,22 +379,10 @@ static void ReleaseStream(ProcessStream* stream) {
         kill(-stream->child, SIGKILL);
     }
     ProcessStdinStop(&stream->box);
-    if (stream->haveWaiter) {
-        pthread_join(stream->waiter, nullptr);
-        stream->haveWaiter = false;
-    }
-    if (stream->haveReaderOut) {
-        pthread_join(stream->readerOut, nullptr);
-        stream->haveReaderOut = false;
-    }
-    if (stream->haveReaderErr) {
-        pthread_join(stream->readerErr, nullptr);
-        stream->haveReaderErr = false;
-    }
-    if (stream->haveStdin) {
-        pthread_join(stream->stdinThread, nullptr);
-        stream->haveStdin = false;
-    }
+    JoinThread(&stream->waiter, &stream->haveWaiter);
+    JoinThread(&stream->readerOut, &stream->haveReaderOut);
+    JoinThread(&stream->readerErr, &stream->haveReaderErr);
+    JoinThread(&stream->stdinThread, &stream->haveStdin);
     if (stream->child > 0 && !ProcessEventReaped(&stream->box)) {
         int status = 0;
         while (waitpid(stream->child, &status, 0) < 0 && errno == EINTR) {
@@ -449,8 +438,7 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
         if (stdinPipe) {
             dup2(inPipe[0], STDIN_FILENO);
         } else {
-            int nullFd = open("/dev/null", O_RDONLY);
-            if (nullFd >= 0) dup2(nullFd, STDIN_FILENO);
+            StdinFromDevNull();
         }
         close(outPipe[0]);
         close(outPipe[1]);

@@ -5,6 +5,7 @@
 #include "base.h"
 
 #include "shell/bundle.h"
+#include "shell/common.h"
 
 #include "shell/dependencies.h"
 #include "shell/error.h"
@@ -59,56 +60,9 @@ static Str ParentPath(Str path) {
     return StrDup(Str(path.s, slash));
 }
 
-static bool ReadFileBytes(Str path, Str* out, Str* error) {
-    if (out) *out = {};
-    if (!path || len(path) <= 0 || len(path) >= kMaxPath)
-        return BundleFail(error,
-                          StrL("cannot read: the path is empty or too long"));
-    TempStr name = StrDupTemp(path);
-    FILE* file = fopen(name.s, "rb");
-    if (!file) return BundleFail(error, fmt("cannot read %s", path));
-    if (fseek(file, 0, SEEK_END) != 0) {
-        fclose(file);
-        return BundleFail(error, fmt("cannot read %s", path));
-    }
-    long size = ftell(file);
-    if (size < 0 || size > kBundleReadLimit || fseek(file, 0, SEEK_SET) != 0) {
-        fclose(file);
-        return BundleFail(error, fmt("cannot read %s", path));
-    }
-    char* buffer = (char*)Alloc(nullptr, (size_t)size + 1);
-    if (!buffer) {
-        fclose(file);
-        return BundleFail(error, StrL("allocating a file failed"));
-    }
-    size_t got = size ? fread(buffer, 1, (size_t)size, file) : 0;
-    fclose(file);
-    if (got != (size_t)size) {
-        free(buffer);
-        return BundleFail(error, fmt("cannot read %s", path));
-    }
-    buffer[size] = 0;
-    if (out) *out = Str(buffer, (int)size);
-    return true;
-}
-
-static bool WriteFileBytes(Str path, Str bytes, Str* error) {
-    if (!path || len(path) <= 0 || len(path) >= kMaxPath)
-        return BundleFail(error,
-                          StrL("cannot write: the path is empty or too long"));
-    TempStr name = StrDupTemp(path);
-    FILE* file = fopen(name.s, "wb");
-    if (!file) return BundleFail(error, fmt("cannot write %s", path));
-    bool ok = len(bytes) == 0 || fwrite(bytes.s, 1, (size_t)len(bytes), file) ==
-                                     (size_t)len(bytes);
-    if (fclose(file) != 0) ok = false;
-    if (!ok) return BundleFail(error, fmt("cannot write %s", path));
-    return true;
-}
-
 static bool ReplaceFile(Str destination, Str bytes, Str* error) {
     Str partial = StrDup(fmt("%s.partial", destination));
-    bool ok = WriteFileBytes(partial, bytes, error);
+    bool ok = WriteWholeFile(partial, bytes, error);
     if (ok) {
         remove(destination.s);
         TempStr from = StrDupTemp(partial);
@@ -949,7 +903,7 @@ static bool AddDirectory(BundleTree* tree, Str directory, Str prefix,
             }
         } else if (file) {
             Str bytes;
-            if (!ReadFileBytes(path, &bytes, error) ||
+            if (!ReadWholeFile(path, kBundleReadLimit, &bytes, error) ||
                 !tree->Add(inner, bytes, PlatFileIsExecutable(path.s), false)) {
                 StrFree(bytes);
                 StrFree(inner);
@@ -1331,7 +1285,8 @@ bool BundleWindowsRuntimeFrom(Str cache, Str version, BundleDownloadFn download,
     if (executable) *executable = {};
     if (cache && PlatFileExists(cache.s)) {
         Str bytes;
-        if (!ReadFileBytes(cache, &bytes, error)) return false;
+        if (!ReadWholeFile(cache, kBundleReadLimit, &bytes, error))
+            return false;
         if (PeHeader(bytes) < 0) {
             StrFree(bytes);
             return BundleFail(error,
@@ -1405,7 +1360,7 @@ static bool WriteDirectory(const BundleTree& tree, Str destination,
                 return BundleFail(error, message);
             }
             StrFree(ignored);
-        } else if (!WriteFileBytes(path, item.bytes, error)) {
+        } else if (!WriteWholeFile(path, item.bytes, error)) {
             StrFree(path);
             return false;
         }
@@ -1649,7 +1604,7 @@ static bool BundleLinux(BundleJob* job, Str* built, Str* error) {
     bool ok = ReplaceFile(archive, tar, error);
     StrFree(tar);
     Str archiveBytes;
-    if (ok) ok = ReadFileBytes(archive, &archiveBytes, error);
+    if (ok) ok = ReadWholeFile(archive, kBundleReadLimit, &archiveBytes, error);
     if (ok) {
         values.archive = StrDup(fmt("%s.tar.gz", names.archiveStem));
         values.archiveSha256 = Sha256Hex(archiveBytes);
@@ -1701,7 +1656,8 @@ static bool BundleWindows(BundleJob* job, Str* built, Str* error) {
     Str executable;
     if (StrEq(Str(PlatShellPlatformName()), StrL("windows"))) {
         if (!PlatGetExePath(exePath, kMaxPath) ||
-            !ReadFileBytes(Str(exePath), &executable, error)) {
+            !ReadWholeFile(Str(exePath), kBundleReadLimit, &executable,
+                           error)) {
             if (error && *error) return false;
             return BundleFail(error,
                               StrL("cannot locate the running executable"));
@@ -1789,7 +1745,8 @@ bool ShellBundle(Str directory, const Invocation& invocation, Str* report,
     job.manifest = &manifest;
     if (invocation.icon) {
         Str png;
-        if (!ReadFileBytes(invocation.icon, &png, error)) return false;
+        if (!ReadWholeFile(invocation.icon, kBundleReadLimit, &png, error))
+            return false;
         Str decodeError;
         int iconH = 0;
         if (!PngDecode(png, &job.rgba, &job.iconW, &iconH, &decodeError)) {
@@ -1906,7 +1863,7 @@ static uint32_t ParseOctal(const char* field, int width) {
 
 bool BundleTarMode(Str tarGz, Str path, uint32_t* mode, Str* error) {
     Str gz;
-    if (!ReadFileBytes(tarGz, &gz, error)) return false;
+    if (!ReadWholeFile(tarGz, kBundleReadLimit, &gz, error)) return false;
     Str tar;
     if (!ZlibInflate(gz, true, &tar, error)) {
         StrFree(gz);
@@ -1937,7 +1894,7 @@ bool BundleTarMode(Str tarGz, Str path, uint32_t* mode, Str* error) {
 
 bool BundleZipEntryCount(Str zipPath, int* count, Str* error) {
     Str zip;
-    if (!ReadFileBytes(zipPath, &zip, error)) return false;
+    if (!ReadWholeFile(zipPath, kBundleReadLimit, &zip, error)) return false;
     if (len(zip) < 22 || memcmp(zip.s + len(zip) - 22, "PK\x05\x06", 4) != 0) {
         StrFree(zip);
         return BundleFail(error, StrL("not a zip archive"));

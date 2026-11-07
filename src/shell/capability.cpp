@@ -137,14 +137,9 @@ HttpRequestGrant::HttpRequestGrant() : scheme(StrDup(StrL("https"))) {}
 HttpRequestGrant::HttpRequestGrant(Str value)
     : scheme(StrDup(StrL("https"))), host(Lower(value)) {}
 
+// Starts empty, so the assignment's frees have nothing to free.
 HttpRequestGrant::HttpRequestGrant(const HttpRequestGrant& other) {
-    scheme = StrDup(other.scheme);
-    host = StrDup(other.host);
-    port = other.port;
-    hasPort = other.hasPort;
-    CopyStrings(&methods, other.methods);
-    CopyStrings(&paths, other.paths);
-    CopyStrings(&pathPrefixes, other.pathPrefixes);
+    *this = other;
 }
 
 HttpRequestGrant& HttpRequestGrant::operator=(const HttpRequestGrant& other) {

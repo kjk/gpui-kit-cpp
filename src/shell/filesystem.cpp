@@ -21,6 +21,18 @@ void FsResult::Free() {
     birthtimeMs = 0;
 }
 
+bool FsReadAppend(StrBuilder* output, const char* bytes, int count, Str root,
+                  Str relative, Str* error) {
+    if (output->len > kFsMaxReadBytes - count) {
+        ErrorOutSet(error,
+                    fmt("`%s/%s` grew over the %d-byte limit for fs.readFile",
+                        root, relative, kFsMaxReadBytes));
+        return false;
+    }
+    output->Append(Str(bytes, count));
+    return true;
+}
+
 bool FsOperationWrites(FsOperation operation) {
     return operation == FsOperation::Write ||
            operation == FsOperation::RemoveFile ||

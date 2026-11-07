@@ -193,11 +193,7 @@ static El* Materialize(MaterializeRequest* request) {
 
 static bool Construct(PayloadBuild* build, const ComponentArgument* args,
                       int count) {
-    if (count != 4 || args[0].kind != shell::ComponentArgumentKind::String ||
-        args[1].kind != shell::ComponentArgumentKind::Callback ||
-        args[2].kind != shell::ComponentArgumentKind::Callback ||
-        args[3].kind != shell::ComponentArgumentKind::Callback ||
-        len(StrTrim(args[0].string)) == 0) {
+    if (!IsIdAndThreeCallbacks(args, count)) {
         return build
             ->Fail(StrL("Combobox expects id, rows, on_change, and on_confirm "
                         "callbacks"));
@@ -241,13 +237,12 @@ static bool RecordSearchable(PayloadBuild* build, const ComponentArgument* args,
 
 static bool RecordMenuWidth(PayloadBuild* build, const ComponentArgument* args,
                             int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Number ||
-        !isfinite(args[0].number) || args[0].number <= 0 ||
-        args[0].number > (double)FLT_MAX)
-        return Invalid(build, "menu_width");
+    float width = 0;
+    if (!MenuWidthArgument(build, "Combobox", args, count, &width))
+        return false;
     Op* op = build->New<Op>();
     op->kind = Op::MenuWidth;
-    op->number = (float)args[0].number;
+    op->number = width;
     return true;
 }
 

@@ -119,18 +119,11 @@ struct EventHost {
     }
 };
 
-static int ClampCount(double value) {
-    if (value > 2147483647.0) return 2147483647;
-    return (int)value;
-}
-
 static bool Nonnegative(const ComponentArgument& argument, double* out) {
-    if (argument.kind != ComponentArgumentKind::Number) return false;
-    double value = argument.number;
-    if (!isfinite(value) || value < 0. || value != floor(value) ||
-        value >= 18446744073709551616.0)
+    if (argument.kind != ComponentArgumentKind::Number ||
+        !IsUsizeNumber(argument.number))
         return false;
-    *out = value;
+    *out = argument.number;
     return true;
 }
 
@@ -687,7 +680,7 @@ static bool RecordCount(PayloadBuild* build, const ComponentArgument* args,
         }
         Op* op = build->New<Op>();
         op->kind = K;
-        op->count = ClampCount(value);
+        op->count = SaturatingInt(value);
         return true;
     }
 }
@@ -708,8 +701,8 @@ static bool RecordSpan(PayloadBuild* build, const ComponentArgument* args,
         return build->Fail(fmt("%s expects a positive integer", callable));
     Op* op = build->New<Op>();
     op->kind = K;
-    op->count = ClampCount(cols);
-    op->count2 = ClampCount(rows);
+    op->count = SaturatingInt(cols);
+    op->count2 = SaturatingInt(rows);
     return true;
 }
 
@@ -758,7 +751,7 @@ static bool NewState(shell::StateBuild* build, const ComponentArgument* args,
         if (!Positive(*some, &value))
             return build->Fail(
                 StrL("GridLayoutState(cols) expects a positive integer"));
-        cols = ClampCount(value);
+        cols = SaturatingInt(value);
     }
     if (args[1].kind != ComponentArgumentKind::Optional)
         return build->Fail(StrL("GridLayoutState compaction must be optional"));

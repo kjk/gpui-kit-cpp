@@ -7,8 +7,6 @@
 
 namespace gpui::shell {
 
-constexpr int kProcessStreamLimit = 8 * 1024 * 1024;
-
 // A child deadline is wall time. TimeNow() is the frame clock, and the
 // test platform replaces it, so a 100 ms timeout would never arrive
 // while a test holds that clock still.
@@ -199,21 +197,27 @@ static void Close(HANDLE* handle) {
     *handle = nullptr;
 }
 
+// A failed peek or read on a child's pipe: the child closing its end is the
+// stream ending, anything else is an error.
+static bool PipeEnded(HANDLE* pipe, bool* closed, Str* error,
+                      const char* name) {
+    DWORD code = GetLastError();
+    if (code == ERROR_BROKEN_PIPE) {
+        Close(pipe);
+        *closed = true;
+        return true;
+    }
+    ErrorOutSet(error, fmt("reading child %s failed with Windows error %u",
+                           Str(name), code));
+    return false;
+}
+
 static bool DrainPipe(HANDLE* pipe, StrBuilder* output, bool* closed,
                       Str* error, const char* name) {
     for (;;) {
         DWORD available = 0;
         if (!PeekNamedPipe(*pipe, nullptr, 0, nullptr, &available, nullptr)) {
-            DWORD code = GetLastError();
-            if (code == ERROR_BROKEN_PIPE) {
-                Close(pipe);
-                *closed = true;
-                return true;
-            }
-            ErrorOutSet(error,
-                        fmt("reading child %s failed with Windows error %u",
-                            Str(name), code));
-            return false;
+            return PipeEnded(pipe, closed, error, name);
         }
         if (available == 0) return true;
         char bytes[8192];
@@ -221,23 +225,11 @@ static bool DrainPipe(HANDLE* pipe, StrBuilder* output, bool* closed,
             available < sizeof(bytes) ? available : (DWORD)sizeof(bytes);
         DWORD count = 0;
         if (!ReadFile(*pipe, bytes, wanted, &count, nullptr)) {
-            DWORD code = GetLastError();
-            if (code == ERROR_BROKEN_PIPE) {
-                Close(pipe);
-                *closed = true;
-                return true;
-            }
-            ErrorOutSet(error,
-                        fmt("reading child %s failed with Windows error %u",
-                            Str(name), code));
-            return false;
+            return PipeEnded(pipe, closed, error, name);
         }
         if (count == 0) return true;
-        if (output->len > kProcessStreamLimit - (int)count) {
-            ErrorOutSet(error, fmt("child %s exceeded 8 MiB", Str(name)));
+        if (!ProcessCaptureAppend(output, bytes, (int)count, error, name))
             return false;
-        }
-        output->Append(Str(bytes, (int)count));
     }
 }
 

@@ -187,11 +187,7 @@ static El* Materialize(MaterializeRequest* request) {
 
 static bool Construct(PayloadBuild* build, const ComponentArgument* args,
                       int count) {
-    if (count != 4 || args[0].kind != shell::ComponentArgumentKind::String ||
-        args[1].kind != shell::ComponentArgumentKind::Callback ||
-        args[2].kind != shell::ComponentArgumentKind::Callback ||
-        args[3].kind != shell::ComponentArgumentKind::Callback ||
-        len(StrTrim(args[0].string)) == 0) {
+    if (!IsIdAndThreeCallbacks(args, count)) {
         return build
             ->Fail(StrL("Select expects id, rows callback, row renderer, and "
                         "selection callback"));
@@ -217,13 +213,11 @@ static bool RecordPlaceholder(PayloadBuild* build,
 
 static bool RecordMenuWidth(PayloadBuild* build, const ComponentArgument* args,
                             int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Number ||
-        !isfinite(args[0].number) || args[0].number <= 0 ||
-        args[0].number > (double)FLT_MAX)
-        return build->Fail(StrL("Select.menu_width received an invalid value"));
+    float width = 0;
+    if (!MenuWidthArgument(build, "Select", args, count, &width)) return false;
     Op* op = build->New<Op>();
     op->kind = Op::MenuWidth;
-    op->number = (float)args[0].number;
+    op->number = width;
     return true;
 }
 

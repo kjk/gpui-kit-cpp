@@ -53,14 +53,6 @@ static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
     return true;
 }
 
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    RadioOp* op = build->New<RadioOp>();
-    op->kind = RadioOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
-    return true;
-}
-
 static bool RecordChange(PayloadBuild* build, const ComponentArgument* args,
                          int) {
     RadioOp* op = build->New<RadioOp>();
@@ -147,7 +139,8 @@ static constexpr MethodDescriptor kMethods[] = {
      &RecordBool<RadioOp::Checked>},
     {"tab_stop", kTabStopArgs, "Controls keyboard tab-stop participation.",
      &RecordBool<RadioOp::TabStop>},
-    {"size", kSizeArgs, "Sets semantic size.", &RecordSize},
+    {"size", kSizeArgs, "Sets semantic size.",
+     &RecordSizeOp<RadioOp, RadioOp::Size>},
     {"on_change", kChangeArgs,
      "Reports a click on a radio used on its own. Inside a `RadioGroup` the "
      "group reports the selected index instead.",

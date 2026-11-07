@@ -59,9 +59,15 @@ static int OpenRoot(Str root, bool create, Str* error) {
     return -1;
 }
 
-static bool ValidComponent(Str value) {
-    return value && !StrEq(value, StrL(".")) && !StrEq(value, StrL("..")) &&
-           StrFind(value, "\\") < 0;
+// One component of a granted relative path: not empty, `.` or `..`, no
+// backslash, under 256 bytes. False with the reason otherwise.
+static bool CheckComponent(Str value, Str relative, Str* error) {
+    if (value && !StrEq(value, StrL(".")) && !StrEq(value, StrL("..")) &&
+        StrFind(value, "\\") < 0 && len(value) < 256)
+        return true;
+    ErrorOutSet(error,
+                fmt("refusing invalid path component in `%s`", relative));
+    return false;
 }
 
 static int OpenDirectoryAt(int parent, const char* name) {
@@ -94,10 +100,7 @@ static bool OpenParent(int root, Str relative, int* parent, TempStr* leaf,
     while (ok) {
         char* slash = strchr(at, '/');
         if (slash) *slash = 0;
-        Str component = Str(at);
-        if (!ValidComponent(component) || len(component) >= 256) {
-            ErrorOutSet(error, fmt("refusing invalid path component in `%s`",
-                                   relative));
+        if (!CheckComponent(Str(at), relative, error)) {
             ok = false;
             break;
         }
@@ -166,15 +169,11 @@ static bool ReadFile(int root, Str rootName, Str relative, FsResult* result,
         char bytes[8192];
         ssize_t count = read(file, bytes, sizeof(bytes));
         if (count > 0) {
-            if (output.len > kFsMaxReadBytes - (int)count) {
-                ErrorOutSet(
-                    error,
-                    fmt("`%s/%s` grew over the %d-byte limit for fs.readFile",
-                        rootName, relative, kFsMaxReadBytes));
+            if (!FsReadAppend(&output, bytes, (int)count, rootName, relative,
+                              error)) {
                 ok = false;
                 break;
             }
-            output.Append(Str(bytes, (int)count));
         } else if (count == 0)
             break;
         else if (errno != EINTR) {
@@ -295,10 +294,7 @@ static bool MakeDirectoryRecursive(int root, Str rootName, Str relative,
     while (ok && *at) {
         char* slash = strchr(at, '/');
         if (slash) *slash = 0;
-        Str component = Str(at);
-        if (!ValidComponent(component) || len(component) >= 256) {
-            ErrorOutSet(error, fmt("refusing invalid path component in `%s`",
-                                   relative));
+        if (!CheckComponent(Str(at), relative, error)) {
             ok = false;
             break;
         }

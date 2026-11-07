@@ -29,14 +29,6 @@ static bool RecordName(PayloadBuild* build, const ComponentArgument* args,
     return true;
 }
 
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    AvatarOp* op = build->New<AvatarOp>();
-    op->kind = AvatarOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
-    return true;
-}
-
 // AvatarMaterializer::component: the payload check, then every recorded
 // operation folded into the builder in script order.
 static component::Avatar* Component(MaterializeRequest* request) {
@@ -76,7 +68,8 @@ static constexpr ConstructorDescriptor kConstructors[] = {
 static constexpr MethodDescriptor kMethods[] = {
     {"name", kNameArgs,
      "Sets the person's name and generated initials fallback.", &RecordName},
-    {"size", kSizeArgs, "Sets the avatar's semantic size.", &RecordSize},
+    {"size", kSizeArgs, "Sets the avatar's semantic size.",
+     &RecordSizeOp<AvatarOp, AvatarOp::Size>},
 };
 static constexpr ComponentDescriptor kAvatar = {
     "Avatar", kConstructors, kMethods,

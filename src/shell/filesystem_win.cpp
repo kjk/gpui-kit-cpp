@@ -142,9 +142,15 @@ static HANDLE OpenRoot(Str root, bool create, Str* error) {
     return result;
 }
 
-static bool ValidComponent(const WCHAR* value) {
-    return value[0] && wcscmp(value, L".") != 0 && wcscmp(value, L"..") != 0 &&
-           wcschr(value, L'\\') == nullptr;
+// One component of a granted relative path: not empty, `.` or `..`, no
+// backslash, under 256 UTF-16 units. False with the reason otherwise.
+static bool CheckComponent(const WCHAR* value, Str relative, Str* error) {
+    if (value[0] && wcscmp(value, L".") != 0 && wcscmp(value, L"..") != 0 &&
+        wcschr(value, L'\\') == nullptr && wcslen(value) < 256)
+        return true;
+    ErrorOutSet(error,
+                fmt("refusing invalid path component in `%s`", relative));
+    return false;
 }
 
 static HANDLE OpenDirectoryAt(HANDLE parent, const WCHAR* name,
@@ -187,9 +193,7 @@ static bool OpenParent(HANDLE root, Str rootName, Str relative, HANDLE* parent,
     while (ok) {
         WCHAR* slash = wcschr(at, L'/');
         if (slash) *slash = 0;
-        if (!ValidComponent(at) || wcslen(at) >= 256) {
-            ErrorOutSet(error, fmt("refusing invalid path component in `%s`",
-                                   relative));
+        if (!CheckComponent(at, relative, error)) {
             ok = false;
             break;
         }
@@ -279,15 +283,11 @@ static bool ReadGrantedFile(HANDLE root, Str rootName, Str relative,
             break;
         }
         if (count == 0) break;
-        if (output.len > kFsMaxReadBytes - (int)count) {
-            ErrorOutSet(
-                error,
-                fmt("`%s/%s` grew over the %d-byte limit for fs.readFile",
-                    rootName, relative, kFsMaxReadBytes));
+        if (!FsReadAppend(&output, bytes, (int)count, rootName, relative,
+                          error)) {
             ok = false;
             break;
         }
-        output.Append(Str(bytes, (int)count));
     }
     CloseHandle(file);
     if (ok) result->bytes = output.TakeStr();
@@ -415,9 +415,7 @@ static bool MakeDirectoryRecursive(HANDLE root, Str rootName, Str relative,
     while (ok && *at) {
         WCHAR* slash = wcschr(at, L'/');
         if (slash) *slash = 0;
-        if (!ValidComponent(at) || wcslen(at) >= 256) {
-            ErrorOutSet(error, fmt("refusing invalid path component in `%s`",
-                                   relative));
+        if (!CheckComponent(at, relative, error)) {
             ok = false;
             break;
         }

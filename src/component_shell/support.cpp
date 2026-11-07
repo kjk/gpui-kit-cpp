@@ -40,6 +40,15 @@ El* BuildDeferredSlot(const DeferredSlot* slot, Ctx* cx) {
         cx->a, StrDup(cx->a, fmt("%s: no element", Str(slot->failure)))));
 }
 
+bool IsUsizeNumber(double value) {
+    return isfinite(value) && value >= 0. && value == floor(value) &&
+           value < 18446744073709551616.0;
+}
+
+int SaturatingInt(double value) {
+    return value > 2147483647.0 ? 2147483647 : (int)value;
+}
+
 UiSize SizeOfLiteral(Str literal) {
     if (StrEq(literal, "xsmall")) return UiSize::XSmall;
     if (StrEq(literal, "small")) return UiSize::Small;

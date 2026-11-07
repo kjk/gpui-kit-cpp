@@ -1,6 +1,7 @@
 #include "shell/dependencies.h"
 
 #include "base/json.h"
+#include "shell/common.h"
 #include "shell/error.h"
 #include "shell/process.h"
 #include "shell/standard.h"
@@ -12,20 +13,8 @@
 
 namespace gpui::shell {
 
-static char PathSep() {
-    return base::PlatPathSep();
-}
-
 static bool IsSeparator(char c) {
     return c == '/' || c == '\\';
-}
-
-static Str JoinPath(Str left, Str right) {
-    if (!left) return StrDup(right);
-    if (!right) return StrDup(left);
-    bool separated = IsSeparator(left.s[len(left) - 1]);
-    return StrDup(separated ? fmt("%s%s", left, right)
-                            : fmt("%s%c%s", left, PathSep(), right));
 }
 
 static bool PathEq(Str a, Str b) {
@@ -66,40 +55,15 @@ static Str Canonical(Str path) {
     return StrDup(Str(output.s));
 }
 
-static Str TrimAscii(Str value) {
-    int start = 0;
-    int end = len(value);
-    while (start < end && (uint8_t)value.s[start] <= ' ') start++;
-    while (end > start && (uint8_t)value.s[end - 1] <= ' ') end--;
-    return Str(value.s + start, end - start);
-}
-
-static bool WriteWhole(Str path, Str contents) {
-    if (!path || len(path) >= kMaxPath) return false;
-    TempStr name = StrDupTemp(path);
-    FILE* file = fopen(name.s, "wb");
-    if (!file) return false;
-    bool ok = len(contents) == 0 || fwrite(contents.s, 1, (size_t)len(contents),
-                                           file) == (size_t)len(contents);
-    if (fclose(file) != 0) ok = false;
-    return ok;
-}
-
 // --- the cache root ----------------------------------------------------
 
 Str GitDependencyCacheRoot(Str home) {
-    Str shell = JoinPath(home, StrL(".gpui-shell"));
-    Str cache = JoinPath(shell, StrL("cache"));
-    Str result = JoinPath(cache, StrL("dependencies"));
+    Str shell = PathJoin(home, StrL(".gpui-shell"));
+    Str cache = PathJoin(shell, StrL("cache"));
+    Str result = PathJoin(cache, StrL("dependencies"));
     StrFree(shell);
     StrFree(cache);
     return result;
-}
-
-static bool AbsolutePath(Str path) {
-    if (!path) return false;
-    if (IsSeparator(path.s[0])) return true;
-    return len(path) >= 3 && path.s[1] == ':' && IsSeparator(path.s[2]);
 }
 
 bool GitDependencyUserCacheRoot(Str home, Str userProfile, Str* out,
@@ -119,7 +83,7 @@ bool GitDependencyUserCacheRoot(Str home, Str userProfile, Str* out,
                          "USERPROFILE must name an absolute user directory"));
         return false;
     }
-    if (!AbsolutePath(selected)) {
+    if (!PathIsAbsolute(selected)) {
         ErrorOutSet(error,
                     fmt("cannot locate the Git dependency cache: %s must "
                         "be an absolute path, got `%s`",
@@ -134,15 +98,15 @@ bool GitDependencyCacheFromEnvironment(Str shellHome, Str home, Str userProfile,
                                        Str* out, Str* error) {
     if (out) *out = {};
     if (shellHome && len(shellHome) > 0) {
-        if (!AbsolutePath(shellHome)) {
+        if (!PathIsAbsolute(shellHome)) {
             ErrorOutSet(
                 error, fmt("cannot locate the Git dependency cache: "
                            "GPUI_SHELL_HOME must be an absolute path, got `%s`",
                            shellHome));
             return false;
         }
-        Str cache = JoinPath(shellHome, StrL("cache"));
-        if (out) *out = JoinPath(cache, StrL("dependencies"));
+        Str cache = PathJoin(shellHome, StrL("cache"));
+        if (out) *out = PathJoin(cache, StrL("dependencies"));
         StrFree(cache);
         return true;
     }
@@ -189,7 +153,7 @@ static Str TemporaryPath(Str parent, Str label) {
     Str name =
         StrDup(fmt(".%s.tmp-%u-%llu", label, (unsigned)DependencyProcessId(),
                    (unsigned long long)next));
-    Str result = JoinPath(parent, name);
+    Str result = PathJoin(parent, name);
     StrFree(name);
     return result;
 }
@@ -274,7 +238,7 @@ static Str ConfiguredOrigin(Str name, Str mirror, Str* error) {
 static Str DependencyEntryName(Str name, const GitDependency& dependency,
                                Str root, Str* error) {
     if (!dependency.packageEntry) return StrDup(dependency.entry);
-    Str manifestPath = JoinPath(root, StrL("package.json"));
+    Str manifestPath = PathJoin(root, StrL("package.json"));
     if (!PlatFileExists(manifestPath.s) && !PlatDirExists(manifestPath.s)) {
         StrFree(manifestPath);
         return StrDup(Str(kGitDependencyDefaultEntry));
@@ -331,7 +295,7 @@ static Str DependencyEntryName(Str name, const GitDependency& dependency,
     }
     Str entry = StrDup(main->str);
     ArenaDelete(arena);
-    bool escapes = len(entry) == 0 || AbsolutePath(entry) ||
+    bool escapes = len(entry) == 0 || PathIsAbsolute(entry) ||
                    StrContains(entry, StrL("\\")) ||
                    StrContains(entry, StrL(":"));
     int start = 0;
@@ -427,10 +391,10 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
     }
     if (!DependencyMakeDirectories(root, error)) return false;
     Str remoteKey = GitDependencyRemoteKey(dependency.git);
-    Str locks = JoinPath(root, StrL("locks"));
-    Str mirrors = JoinPath(root, StrL("mirrors"));
-    Str checkoutRoot = JoinPath(root, StrL("checkouts"));
-    Str checkouts = JoinPath(checkoutRoot, remoteKey);
+    Str locks = PathJoin(root, StrL("locks"));
+    Str mirrors = PathJoin(root, StrL("mirrors"));
+    Str checkoutRoot = PathJoin(root, StrL("checkouts"));
+    Str checkouts = PathJoin(checkoutRoot, remoteKey);
     Str lockPath = {};
     Str mirror = {};
     Str configured = {};
@@ -446,11 +410,11 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
               DependencyMakeDirectories(mirrors, error) &&
               DependencyMakeDirectories(checkouts, error);
     if (ok) {
-        lockPath = JoinPath(locks, fmt("%s.lock", remoteKey));
+        lockPath = PathJoin(locks, fmt("%s.lock", remoteKey));
         ok = DependencyLockAcquire(lockPath, name, &lock, error);
     }
     if (ok) {
-        mirror = JoinPath(mirrors, fmt("%s.git", remoteKey));
+        mirror = PathJoin(mirrors, fmt("%s.git", remoteKey));
         if (!PlatDirExists(mirror.s)) {
             Str temporary = TemporaryPath(mirrors, remoteKey);
             Str args[5] = {StrL("clone"), StrL("--mirror"), StrL("--"),
@@ -522,8 +486,8 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
         }
     }
     if (ok) {
-        checkout = JoinPath(checkouts, commit);
-        Str marker = JoinPath(checkout, StrL(".git"));
+        checkout = PathJoin(checkouts, commit);
+        Str marker = PathJoin(checkout, StrL(".git"));
         bool present = PlatDirExists(marker.s);
         StrFree(marker);
         if (!present) {
@@ -541,7 +505,7 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
             if (!ok) {
                 DependencyRemoveTree(temporary);
             } else if (!DependencyRenameDirectory(temporary, checkout)) {
-                Str published = JoinPath(checkout, StrL(".git"));
+                Str published = PathJoin(checkout, StrL(".git"));
                 bool other = PlatDirExists(published.s);
                 StrFree(published);
                 DependencyRemoveTree(temporary);
@@ -569,7 +533,7 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
         ok = entryName.s != nullptr;
     }
     if (ok) {
-        entryPath = JoinPath(checkoutCanonical, entryName);
+        entryPath = PathJoin(checkoutCanonical, entryName);
         entryCanonical = Canonical(entryPath);
         if (!entryCanonical) {
             ErrorOutSet(error, fmt("Git dependency `%s` has no entry `%s`",
@@ -630,29 +594,10 @@ bool GitDependencyStore::MaterializeAll(const PluginManifest& manifest,
 // --- editor links ------------------------------------------------------
 
 static bool IsEditorLinkStub(Str link) {
-    Str marker = JoinPath(link, Str(kEditorLinkMarker));
+    Str marker = PathJoin(link, Str(kEditorLinkMarker));
     bool result = PlatFileExists(marker.s);
     StrFree(marker);
     return result;
-}
-
-static void AppendJsonString(StrBuilder* out, Str value) {
-    out->AppendChar('"');
-    for (int i = 0; i < len(value); i++) {
-        char c = value.s[i];
-        if (c == '"' || c == '\\') {
-            out->AppendChar('\\');
-            out->AppendChar(c);
-        } else if ((uint8_t)c < 0x20) {
-            static const char* digits = "0123456789abcdef";
-            char escaped[] = {
-                '\\', 'u', '0', '0', digits[((uint8_t)c) >> 4], digits[c & 15]};
-            out->Append(Str(escaped, 6));
-        } else {
-            out->AppendChar(c);
-        }
-    }
-    out->AppendChar('"');
 }
 
 // `write_editor_link_stub`: the package that stands in for a symlink the
@@ -662,9 +607,9 @@ static bool WriteEditorLinkStub(Str link, Str name,
                                 const MaterializedDependency& dependency,
                                 Str* error) {
     if (!DependencyMakeDirectories(link, error)) return false;
-    Str markerPath = JoinPath(link, Str(kEditorLinkMarker));
-    Str manifestPath = JoinPath(link, StrL("package.json"));
-    Str indexPath = JoinPath(link, StrL("index.js"));
+    Str markerPath = PathJoin(link, Str(kEditorLinkMarker));
+    Str manifestPath = PathJoin(link, StrL("package.json"));
+    Str indexPath = PathJoin(link, StrL("index.js"));
     // A path as TypeScript wants to read it: rooted, with forward slashes.
     Str specifier = StrDup(dependency.entry);
     for (int i = 0; i < len(specifier); i++)
@@ -684,9 +629,10 @@ static bool WriteEditorLinkStub(Str link, Str name,
     index.Append(StrL(";\n"));
     Str manifestText = manifest.TakeStr();
     Str indexText = index.TakeStr();
-    bool ok = WriteWhole(markerPath, fmt("%s\n", dependency.root)) &&
-              WriteWhole(manifestPath, manifestText) &&
-              WriteWhole(indexPath, indexText);
+    bool ok =
+        WriteWholeFile(markerPath, fmt("%s\n", dependency.root), nullptr) &&
+        WriteWholeFile(manifestPath, manifestText, nullptr) &&
+        WriteWholeFile(indexPath, indexText, nullptr);
     if (!ok) ErrorOutSet(error, fmt("writing %s failed", link));
     StrFree(manifestText);
     StrFree(indexText);
@@ -702,7 +648,7 @@ bool GitDependencyStore::LinkForEditor(
     Str applicationRoot, const MaterializedDependencies& dependencies,
     int* linked, Str* error) {
     if (linked) *linked = 0;
-    Str modules = JoinPath(applicationRoot, Str(kEditorModuleDirectory));
+    Str modules = PathJoin(applicationRoot, Str(kEditorModuleDirectory));
     if (dependencies.items.len == 0 && !PlatDirExists(modules.s)) {
         StrFree(modules);
         return true;
@@ -711,7 +657,7 @@ bool GitDependencyStore::LinkForEditor(
     Vec<Str> declared;
     for (int i = 0; ok && i < dependencies.items.len; i++) {
         const MaterializedDependency& dependency = dependencies.items[i];
-        Str link = JoinPath(modules, dependency.name);
+        Str link = PathJoin(modules, dependency.name);
         VecAppend(declared, link);
         // A scoped name is a directory and a package.
         int lastSeparator = -1;
@@ -778,7 +724,7 @@ void GitDependencyStore::Prune(Str modules, const Vec<Str>& declared) {
             const DirEntry& item = entries[i];
             Str name = Str(item.name);
             if (StrEq(name, StrL(".")) || StrEq(name, StrL(".."))) continue;
-            Str path = JoinPath(directory.path, name);
+            Str path = PathJoin(directory.path, name);
             bool isDeclared = false;
             for (int d = 0; d < len(declared); d++)
                 if (PathEq(declared[d], path)) isDeclared = true;
@@ -814,7 +760,7 @@ void GitDependencyStore::Prune(Str modules, const Vec<Str>& declared) {
 
 bool ShellWriteDependencyLinks(Str applicationRoot, int* linked, Str* error) {
     if (linked) *linked = 0;
-    Str manifestPath = JoinPath(applicationRoot, Str(kShellManifestFile));
+    Str manifestPath = PathJoin(applicationRoot, Str(kShellManifestFile));
     bool present = PlatFileExists(manifestPath.s);
     StrFree(manifestPath);
     if (!present) return true;
