@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b92bb66d148fca10e15d1e3fb77d565ac4d306ec` (2026-11-06,
-table: Add `ColumnFixed::Right` to pin columns to the right (#3833)).
-Right-fixed columns stay on the trailing edge and out of the scrolling
-range. A head drag stays in its own region, and the first right-fixed
-column has no leading resize handle. The data-table story keeps Price
-last and pinned to the right.
+Processed through `48ac25b50c81ca5e34ec1631e3efabe22f4af64a` (2026-11-07,
+toolbar: Add `Toolbar::axis` for vertical toolbars (#3821)).
+A vertical toolbar moves focus with Up and Down and reports a vertical
+orientation. Left and Right stay with the focused control. The default
+remains horizontal, and the themed toolbar still lays its items in a row.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

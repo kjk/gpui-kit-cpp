@@ -3,9 +3,11 @@
 /* Unstyled toolbar — crates/base/src/toolbar.rs
 
    A container that groups a set of controls and owns roving keyboard focus
-   among them. It exposes `Toolbar` semantics (a horizontal toolbar role) and
-   moves focus between its focusable descendants with Left and Right,
-   wrapping at either end. When disabled the arrow keys do nothing; hosted
+   among them. It exposes `Toolbar` semantics and moves focus between its
+   focusable descendants, wrapping at either end. Horizontal (the default)
+   uses Left and Right and reports a horizontal orientation. Vertical uses
+   Up and Down and reports a vertical orientation. When disabled the arrow
+   keys do nothing; hosted
    controls are disabled by their owner. The container tracks a focus handle
    that is not a tab stop, so Tab enters and leaves through its items, and an
    input inside it keeps its own arrow keys (place inputs at the trailing
@@ -22,6 +24,9 @@ namespace gpui {
 struct ToolbarState {
     FocusHandle focus = {};
     bool disabled = false;
+    // The direction captured when the bar was built. Horizontal moves with
+    // Left and Right; vertical moves with Up and Down.
+    Axis axis = Axis::Horizontal;
 
     static void OnKeyDown(ToolbarState* self, Ctx* cx, const KeyEvent* ev);
     // on_any_mouse_down: the handle is for containment only. A press on
@@ -44,6 +49,8 @@ struct Toolbar {
     Ctx* cx = nullptr;
     Str id = {};
     bool disabled = false;
+    // Toolbar::axis. Horizontal is Left/Right; vertical is Up/Down.
+    Axis axis = Axis::Horizontal;
     // The container. Style it, and add children to it, before IntoEl.
     El* root = nullptr;
 
@@ -51,6 +58,9 @@ struct Toolbar {
     // Disables the toolbar's own keyboard navigation. Hosted controls are
     // not disabled with it.
     Toolbar* Disabled(bool value);
+    // The direction the items run. Assistive technology hears the same
+    // orientation. The default is horizontal, which is Left and Right.
+    Toolbar* Axis(Axis value);
     Toolbar* Child(El* child);
     El* IntoEl();
 };

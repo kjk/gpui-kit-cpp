@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b92bb66d148fca10e15d1e3fb77d565ac4d306ec",
-  date: "2026-11-06",
-  subject: "table: Add `ColumnFixed::Right` to pin columns to the right (#3833)",
+  sha: "48ac25b50c81ca5e34ec1631e3efabe22f4af64a",
+  date: "2026-11-07",
+  subject: "toolbar: Add `Toolbar::axis` for vertical toolbars (#3821)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

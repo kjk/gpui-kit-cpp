@@ -47,10 +47,14 @@ void ToolbarState::OnKeyDown(ToolbarState* self, Ctx* cx, const KeyEvent* ev) {
     if (self->disabled || !ev) {
         return;
     }
+    // Horizontal is Left/Right. Vertical is Up/Down, and Left/Right stay
+    // with the focused control.
+    int back = self->axis == Axis::Vertical ? KeyUp : KeyLeft;
+    int forwardKey = self->axis == Axis::Vertical ? KeyDown : KeyRight;
     bool forward = false;
-    if (ev->vk == KeyLeft) {
+    if (ev->vk == back) {
         forward = false;
-    } else if (ev->vk == KeyRight) {
+    } else if (ev->vk == forwardKey) {
         forward = true;
     } else {
         return;
@@ -77,6 +81,11 @@ Toolbar* Toolbar::Disabled(bool value) {
     return this;
 }
 
+Toolbar* Toolbar::Axis(enum Axis value) {
+    axis = value;
+    return this;
+}
+
 Toolbar* Toolbar::Child(El* child) {
     if (child) {
         root->Child(child);
@@ -94,10 +103,14 @@ El* Toolbar::IntoEl() {
             s->focus = FocusHandleNew(cx);
         }
         s->disabled = disabled;
+        s->axis = axis;
         root->TrackFocus(s->focus)->TabStop(false);
     }
+    AccessibilityOrientation orient =
+        axis == Axis::Vertical ? AccessibilityOrientation::Vertical
+                               : AccessibilityOrientation::Horizontal;
     return root->Role(AccessibilityRole::Toolbar)
-        ->AriaOrientation(AccessibilityOrientation::Horizontal)
+        ->AriaOrientation(orient)
         ->OnKeyDown(ListenTo(state, &ToolbarState::OnKeyDown))
         ->OnMouseDown(ListenTo(state, &ToolbarState::OnMouseDown));
 }

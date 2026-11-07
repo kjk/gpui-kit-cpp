@@ -1,7 +1,8 @@
 /* Ported from crates/base/src/toolbar.rs and crates/component/src/toolbar.rs.
  *
- * Base's toolbar owns the toolbar role and roving Left/Right focus among the
- * focusables its handle contains, wrapping at either end; a group is a named
+ * Base's toolbar owns the toolbar role and roving focus among the
+ * focusables its handle contains, wrapping at either end. Horizontal uses
+ * Left and Right; vertical uses Up and Down. A group is a named
  * Group. Component's toolbar passes one density to every sized control,
  * whatever order the builder calls came in, caps it at Medium, and turns a
  * hosted Button into a compact ghost command. */
@@ -18,6 +19,7 @@ struct RoveView {
     FocusHandle after = {};
     int count = 3;
     bool disabled = false;
+    Axis axis = Axis::Horizontal;
 
     static El* Item(Arena* a, FocusHandle h) {
         return Div(a)->W(20)->H(20)->TrackFocus(h)->TabStop(true);
@@ -26,7 +28,8 @@ struct RoveView {
     static El* Render(RoveView* self, Ctx* cx) {
         Arena* a = cx->a;
         Toolbar* bar = Toolbar::New(cx, StrL("toolbar"))
-                           ->Disabled(self->disabled);
+                           ->Disabled(self->disabled)
+                           ->Axis(self->axis);
         for (int i = 0; i < self->count; i++) {
             bar->Child(Item(a, self->items[i]));
         }
@@ -47,13 +50,14 @@ struct Rove {
     bool Focused(FocusHandle h) const { return FocusHandleIsFocused(win, h); }
 };
 
-Rove RoveOpen(int count, bool disabled = false) {
+Rove RoveOpen(int count, bool disabled = false, Axis axis = Axis::Horizontal) {
     Rove r;
     r.app = TestAppNew();
     r.view = EntityNew<RoveView>(r.app);
     RoveView* v = r.View();
     v->count = count;
     v->disabled = disabled;
+    v->axis = axis;
     v->before = FocusHandleNew(r.app);
     v->after = FocusHandleNew(r.app);
     for (FocusHandle& h : v->items) {
@@ -149,7 +153,10 @@ static void BaseToolbarBuilders() {
     Arena* a = ArenaNew();
     Ctx cx = {&app, nullptr, a, {}};
     Toolbar* bar = Toolbar::New(&cx, StrL("toolbar"));
-    utassert(!bar->disabled && bar->root->first == nullptr);
+    utassert(!bar->disabled && bar->axis == Axis::Horizontal &&
+             bar->root->first == nullptr);
+    utassert(Toolbar::New(&cx, StrL("vertical"))->Axis(Axis::Vertical)->axis ==
+             Axis::Vertical);
     bar->Disabled(true)->Child(Div(a));
     utassert(bar->disabled && bar->root->first != nullptr);
 
@@ -208,6 +215,21 @@ static void ArrowKeysRoveFocusAcrossItems() {
     // The toolbar itself is not a tab stop: Tab leaves through its items.
     TestSimulateKeystrokes(r.win, "tab");
     utassert(r.Focused(v->after));
+    TestAppFree(r.app);
+}
+
+// toolbar.rs: a_vertical_toolbar_roves_with_up_and_down.
+static void AVerticalToolbarRovesWithUpAndDown() {
+    Rove r = RoveOpen(3, false, Axis::Vertical);
+    RoveView* v = r.View();
+    TestSimulateKeystrokes(r.win, "right");
+    utassert(r.Focused(v->items[0]));
+    TestSimulateKeystrokes(r.win, "down");
+    utassert(r.Focused(v->items[1]));
+    TestSimulateKeystrokes(r.win, "down down");
+    utassert(r.Focused(v->items[0]));
+    TestSimulateKeystrokes(r.win, "up");
+    utassert(r.Focused(v->items[2]));
     TestAppFree(r.app);
 }
 
@@ -402,6 +424,7 @@ void TestToolbar() {
     TestSuite("toolbar");
     BaseToolbarBuilders();
     ArrowKeysRoveFocusAcrossItems();
+    AVerticalToolbarRovesWithUpAndDown();
     ArrowKeysWrapAmongManyPageStops();
     AToolbarWithOneItemKeepsFocusOnIt();
     TheToolbarHandleContainsItsItems();
