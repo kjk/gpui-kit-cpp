@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f95e5bcb7f97444c6da6d542385490892738606c` (2026-11-05,
-shell: Accept only `"*"` as the unrestricted `execute` grant (#3802)).
-A string `capabilities.fs.execute` is the unrestricted grant only when
-it is `*`. Any other string is a manifest error naming that field and
-showing the one-command array form. The manifest schema marks that
-scalar `"const": "*"`.
+Processed through `161ebe417c438f6097af94a47b13469c80b317c7` (2026-11-05,
+shell: Refuse bundle values that would break a line in the generated scripts (#3803)).
+A bundle value rendered into a shell template is refused when it holds
+a control character or U+2028 / U+2029. The error names the field, such
+as `` `name` `` or `` `--download-url` ``.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

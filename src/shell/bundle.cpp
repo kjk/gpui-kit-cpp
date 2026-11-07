@@ -368,21 +368,129 @@ static bool PlaceholderName(Str text, int at, int* nameLen) {
     return i < len(text) && text.s[i] == '@';
 }
 
-static Str ScriptValue(const BundleScriptValues& values, Str name) {
-    if (StrEq(name, StrL("ID"))) return values.id;
-    if (StrEq(name, StrL("NAME"))) return values.name;
-    if (StrEq(name, StrL("COMMAND"))) return values.command;
-    if (StrEq(name, StrL("APP_VERSION"))) return values.appVersion;
-    if (StrEq(name, StrL("RUNTIME_VERSION"))) return values.runtimeVersion;
-    if (StrEq(name, StrL("ICON_SIZE"))) return values.iconSize;
-    if (StrEq(name, StrL("ARCHIVE"))) return values.archive;
-    if (StrEq(name, StrL("ARCHIVE_SHA256"))) return values.archiveSha256;
-    if (StrEq(name, StrL("DOWNLOAD_URL"))) return values.downloadUrl;
-    if (StrEq(name, StrL("STEM"))) return values.stem;
-    return {};
+struct ScriptPlaceholder {
+    const char* name;
+    const char* source;
+    Str value;
+};
+
+static void ScriptPlaceholders(const BundleScriptValues& values,
+                               ScriptPlaceholder out[10]) {
+    out[0] = {"ID", "`id`", values.id};
+    out[1] = {"NAME", "`name`", values.name};
+    out[2] = {"COMMAND", "the command name", values.command};
+    out[3] = {"APP_VERSION", "`version`", values.appVersion};
+    out[4] = {"RUNTIME_VERSION", "the runtime version", values.runtimeVersion};
+    out[5] = {"ICON_SIZE", "the icon size", values.iconSize};
+    out[6] = {"ARCHIVE", "the archive name", values.archive};
+    out[7] = {"ARCHIVE_SHA256", "the archive checksum", values.archiveSha256};
+    out[8] = {"DOWNLOAD_URL", "`--download-url`", values.downloadUrl};
+    out[9] = {"STEM", "the archive directory", values.stem};
 }
 
-Str BundleShellScript(Str templ, const BundleScriptValues& values) {
+static bool ScriptValue(const BundleScriptValues& values, Str name, Str* out) {
+    ScriptPlaceholder slots[10];
+    ScriptPlaceholders(values, slots);
+    for (int i = 0; i < 10; i++) {
+        if (!StrEq(name, Str(slots[i].name))) continue;
+        *out = slots[i].value;
+        return true;
+    }
+    return false;
+}
+
+// A byte that starts no valid sequence reads as itself. Rust strings are
+// Unicode scalar values; the Cc controls are U+0000..U+001F and U+007F..U+009F.
+static uint32_t DecodeScalar(Str text, int i, int* n) {
+    uint8_t c = (uint8_t)text.s[i];
+    int want = c < 0x80         ? 1
+               : (c >> 5) == 6  ? 2
+               : (c >> 4) == 14 ? 3
+               : (c >> 3) == 30 ? 4
+                                : 0;
+    if (want <= 1 || i + want > len(text)) {
+        *n = 1;
+        return c;
+    }
+    uint32_t cp = c & (0x7F >> want);
+    for (int k = 1; k < want; k++) {
+        uint8_t b = (uint8_t)text.s[i + k];
+        if ((b & 0xC0) != 0x80) {
+            *n = 1;
+            return c;
+        }
+        cp = (cp << 6) | (b & 0x3F);
+    }
+    *n = want;
+    return cp;
+}
+
+static bool IsControlOrLineSeparator(uint32_t cp) {
+    return cp <= 0x1F || (cp >= 0x7F && cp <= 0x9F) || cp == 0x2028 ||
+           cp == 0x2029;
+}
+
+static void AppendRustDebug(StrBuilder& out, Str value) {
+    out.AppendChar('"');
+    for (int i = 0; value.s && i < len(value);) {
+        int n = 1;
+        uint32_t cp = DecodeScalar(value, i, &n);
+        if (cp == '"')
+            out.Append(StrL("\\\""));
+        else if (cp == '\\')
+            out.Append(StrL("\\\\"));
+        else if (cp == '\n')
+            out.Append(StrL("\\n"));
+        else if (cp == '\r')
+            out.Append(StrL("\\r"));
+        else if (cp == '\t')
+            out.Append(StrL("\\t"));
+        else if (IsControlOrLineSeparator(cp))
+            out.Append(fmt("\\u{%x}", cp));
+        else if (cp < 0x80)
+            out.AppendChar((char)cp);
+        else
+            out.Append(Str(value.s + i, n));
+        i += n;
+    }
+    out.AppendChar('"');
+}
+
+// Quoting keeps a value one word, but the templates also put values in
+// comments and in the desktop entry install.sh writes, where a line break
+// ends the comment or starts a new key.
+static bool ScriptsCanHold(const BundleScriptValues& values, Str* error) {
+    ScriptPlaceholder slots[10];
+    ScriptPlaceholders(values, slots);
+    for (int i = 0; i < 10; i++) {
+        Str value = slots[i].value;
+        bool bad = false;
+        for (int at = 0; value.s && at < len(value);) {
+            int n = 1;
+            if (IsControlOrLineSeparator(DecodeScalar(value, at, &n))) {
+                bad = true;
+                break;
+            }
+            at += n;
+        }
+        if (!bad) continue;
+        StrBuilder message;
+        message.Append(Str(slots[i].source));
+        message.AppendChar(' ');
+        AppendRustDebug(message, value);
+        message.Append(StrL(
+            " contains a line break or another control character, which the "
+            "bundle's scripts cannot hold"));
+        if (error) {
+            StrFree(*error);
+            *error = message.TakeStr();
+        }
+        return false;
+    }
+    return true;
+}
+
+static Str FillShellScript(Str templ, const BundleScriptValues& values) {
     StrBuilder out;
     int i = 0;
     while (i < len(templ)) {
@@ -399,36 +507,18 @@ Str BundleShellScript(Str templ, const BundleScriptValues& values) {
         }
         Str name = Str(templ.s + i + 1, nameLen);
         if (StrEq(name, StrL("RUNTIME_FUNCTIONS"))) {
-            Str nested = BundleShellScript(Str(kBundleRuntimeSh), values);
+            Str nested = FillShellScript(Str(kBundleRuntimeSh), values);
             out.Append(nested);
             StrFree(nested);
             i += nameLen + 2;
             continue;
         }
-        Str raw = ScriptValue(values, name);
-        if (!raw.s && len(raw) == 0 && !StrEq(name, StrL("ICON_SIZE")) &&
-            !StrEq(name, StrL("ARCHIVE")) &&
-            !StrEq(name, StrL("DOWNLOAD_URL")) &&
-            !StrEq(name, StrL("ARCHIVE_SHA256"))) {
+        Str raw;
+        if (!ScriptValue(values, name, &raw)) {
             // An unknown placeholder is left as written, @ included.
-            bool known = false;
-            const char* keys[] = {"ID",
-                                  "NAME",
-                                  "COMMAND",
-                                  "APP_VERSION",
-                                  "RUNTIME_VERSION",
-                                  "ICON_SIZE",
-                                  "ARCHIVE",
-                                  "ARCHIVE_SHA256",
-                                  "DOWNLOAD_URL",
-                                  "STEM"};
-            for (const char* key : keys)
-                if (StrEq(name, Str(key))) known = true;
-            if (!known) {
-                out.AppendChar('@');
-                i++;
-                continue;
-            }
+            out.AppendChar('@');
+            i++;
+            continue;
         }
         Str quoted = ShellQuote(raw.s ? raw : Str{});
         out.Append(quoted);
@@ -436,6 +526,13 @@ Str BundleShellScript(Str templ, const BundleScriptValues& values) {
         i += nameLen + 2;
     }
     return out.TakeStr();
+}
+
+bool BundleShellScript(Str templ, const BundleScriptValues& values, Str* out,
+                       Str* error) {
+    if (!ScriptsCanHold(values, error)) return false;
+    if (out) *out = FillShellScript(templ, values);
+    return true;
 }
 
 static uint32_t Crc32Bytes(const uint8_t* data, int n) {
@@ -1494,7 +1591,25 @@ bool ShellBundle(Str directory, const Invocation& invocation, Str* report,
         Str plistPath = StrDup(fmt("%s/Info.plist", contents));
         Str pkgPath = StrDup(fmt("%s/PkgInfo", contents));
         Str exePath = StrDup(fmt("%s/MacOS/%s", contents, names.display));
-        Str launcher = BundleShellScript(Str(kBundleMacosLauncherSh), values);
+        Str launcher;
+        Str scriptError = {};
+        if (!BundleShellScript(Str(kBundleMacosLauncherSh), values, &launcher,
+                               &scriptError)) {
+            StrFree(plist);
+            StrFree(plistPath);
+            StrFree(pkgPath);
+            StrFree(exePath);
+            StrFree(contents);
+            tree.Free();
+            names.Free();
+            StrFree(runtime);
+            StrFree(rgba);
+            StrFree(exclude);
+            StrFree(out);
+            bool failed = BundleFail(error, scriptError);
+            StrFree(scriptError);
+            return failed;
+        }
         tree.Add(plistPath, plist, false, false);
         tree.Add(pkgPath, StrDup(StrL("APPL????")), false, false);
         tree.Add(exePath, launcher, true, false);
@@ -1621,7 +1736,21 @@ bool ShellBundle(Str directory, const Invocation& invocation, Str* report,
             StrFree(iconPath);
             values.iconSize = StrDup(fmt("%d", size));
         }
-        Str launcher = BundleShellScript(Str(kBundleLinuxLauncherSh), values);
+        Str launcher;
+        Str scriptError = {};
+        if (!BundleShellScript(Str(kBundleLinuxLauncherSh), values, &launcher,
+                               &scriptError)) {
+            tree.Free();
+            names.Free();
+            StrFree(runtime);
+            StrFree(rgba);
+            StrFree(values.iconSize);
+            StrFree(exclude);
+            StrFree(out);
+            bool failed = BundleFail(error, scriptError);
+            StrFree(scriptError);
+            return failed;
+        }
         Str launcherPath =
             StrDup(fmt("%s/%s", names.archiveStem, names.command));
         tree.Add(launcherPath, launcher, true, false);
@@ -1680,8 +1809,24 @@ bool ShellBundle(Str directory, const Invocation& invocation, Str* report,
         values.archive = StrDup(fmt("%s.tar.gz", names.archiveStem));
         values.archiveSha256 = Sha256Hex(archiveBytes);
         StrFree(archiveBytes);
-        Str installerText =
-            BundleShellScript(Str(kBundleLinuxInstallSh), values);
+        Str installerText;
+        scriptError = {};
+        if (!BundleShellScript(Str(kBundleLinuxInstallSh), values,
+                               &installerText, &scriptError)) {
+            StrFree(archive);
+            StrFree(values.archive);
+            StrFree(values.archiveSha256);
+            tree.Free();
+            names.Free();
+            StrFree(runtime);
+            StrFree(rgba);
+            StrFree(values.iconSize);
+            StrFree(exclude);
+            StrFree(out);
+            bool failed = BundleFail(error, scriptError);
+            StrFree(scriptError);
+            return failed;
+        }
         Str installer = JoinDisk(out, StrL("install.sh"));
         bool installOk = ReplaceFile(installer, installerText, error) &&
                          PlatMakeExecutable(installer.s);

@@ -121,10 +121,12 @@ void TheInfoPlistNamesTheExecutableAndEscapesValues() {
 
 void ShellTemplatesQuoteEveryValueOnce() {
     shell::BundleScriptValues values = Values(StrL("It's @ID@"));
-    Str script = shell::BundleShellScript(
+    Str script;
+    Str error;
+    utassert(shell::BundleShellScript(
         StrL("id=@ID@\nname=@NAME@\nsize=@ICON_SIZE@\nmail=me@example.com "
              "@UNKNOWN@\n"),
-        values);
+        values, &script, &error));
     utassert(
         StrEq(script, StrL("id='com.example.its'\nname='It'\\''s @ID@'\n"
                            "size='256'\nmail=me@example.com @UNKNOWN@\n")));
@@ -135,16 +137,61 @@ void ShellTemplatesQuoteEveryValueOnce() {
                                shell::kBundleLinuxInstallSh,
                                shell::kBundleMacosLauncherSh};
     for (const char* templ : templates) {
-        script = shell::BundleShellScript(Str(templ), values);
+        utassert(shell::BundleShellScript(Str(templ), values, &script, &error));
         utassert(!PlaceholderLeft(script));
         StrFree(script);
     }
-    script = shell::BundleShellScript(
-        StrL("#!/bin/sh\n@RUNTIME_FUNCTIONS@\nexec x\n"), values);
+    utassert(shell::BundleShellScript(
+        StrL("#!/bin/sh\n@RUNTIME_FUNCTIONS@\nexec x\n"), values, &script,
+        &error));
     utassert(StrStartsWith(script, StrL("#!/bin/sh\n")));
     utassert(EndsWith(script, StrL("\nexec x\n")));
     utassert(!StrContains(script, StrL("@RUNTIME_FUNCTIONS@")));
     StrFree(script);
+    StrFree(error);
+}
+
+void ANameThatBreaksALineIsRefused() {
+    const char* names[] = {
+        "A\ntouch /tmp/x",
+        "A\rB",
+        "A\xC2\x85"
+        "B",
+        "A\xE2\x80\xA8"
+        "B",
+        "A\xE2\x80\xA9"
+        "B",
+    };
+    for (const char* name : names) {
+        shell::BundleScriptValues values = Values(Str(name));
+        Str script;
+        Str error;
+        utassert(!shell::BundleShellScript(Str(shell::kBundleLinuxInstallSh),
+                                           values, &script, &error));
+        utassert(StrStartsWith(error, StrL("`name` ")));
+        StrFree(script);
+        StrFree(error);
+    }
+
+    shell::BundleScriptValues published = Values(StrL("A"));
+    published.downloadUrl = StrL("https://example.com/\nB");
+    Str script;
+    Str error;
+    utassert(!shell::BundleShellScript(Str(shell::kBundleLinuxInstallSh),
+                                       published, &script, &error));
+    utassert(StrStartsWith(error, StrL("`--download-url` ")));
+    StrFree(script);
+    StrFree(error);
+    script = {};
+    error = {};
+
+    shell::BundleScriptValues kept = Values(StrL("Folio 时钟 \"Q\" It's"));
+    utassert(shell::BundleShellScript(StrL("# Starts @NAME@\nname=@NAME@\n"),
+                                      kept, &script, &error));
+    utassert(StrEq(script, StrL("# Starts 'Folio 时钟 \"Q\" It'\\''s'\n"
+                                "name='Folio 时钟 \"Q\" It'\\''s'\n")));
+    StrFree(script);
+    StrFree(error);
 }
 
 void AnIcnsFileHoldsEverySizeUpToTheSource() {
@@ -323,6 +370,7 @@ void TestShellBundle() {
     NamesComeFromTheManifest();
     TheInfoPlistNamesTheExecutableAndEscapesValues();
     ShellTemplatesQuoteEveryValueOnce();
+    ANameThatBreaksALineIsRefused();
     AnIcnsFileHoldsEverySizeUpToTheSource();
 #if !GPUI_OS_WASM
     TheApplicationLeavesOutDevelopmentFilesAndTheOutput();

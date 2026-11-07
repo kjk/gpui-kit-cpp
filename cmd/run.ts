@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f95e5bcb7f97444c6da6d542385490892738606c",
+  sha: "161ebe417c438f6097af94a47b13469c80b317c7",
   date: "2026-11-05",
-  subject: 'shell: Accept only `"*"` as the unrestricted `execute` grant (#3802)',
+  subject: "shell: Refuse bundle values that would break a line in the generated scripts (#3803)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

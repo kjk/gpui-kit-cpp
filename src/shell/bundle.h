@@ -60,7 +60,10 @@ struct BundleScriptValues {
     Str stem;
 };
 
-Str BundleShellScript(Str templ, const BundleScriptValues& values);
+// False when a value holds a line break or another control character.
+// `out` is owned on success.
+bool BundleShellScript(Str templ, const BundleScriptValues& values, Str* out,
+                       Str* error);
 bool BundleWriteIcns(const uint8_t* rgba, int width, Str* out, Str* error);
 bool BundleApplicationPaths(Str root, Str prefix, Str exclude, Str* paths,
                             Str* error);
