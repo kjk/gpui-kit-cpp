@@ -285,10 +285,10 @@ static float PopupMenuWidth(Ctx* cx, PopupMenu* menu) {
                 continue;
             }
             // text_sm / text_xs. Border + item-list padding (p_1) + row
-            // padding (px(8.)).
+            // padding (0.5rem on each side).
             Size label =
                 MeasureText(&cx->win->paint, it.label, Rems(cx, 0.875f), 0);
-            float need = 2 + Rems(cx, 0.5f) + 16 + label.w;
+            float need = 2 + Rems(cx, 0.5f) + Rems(cx, 1.f) + label.w;
             if (leftGutter) {
                 need += icon + gap;
             }
@@ -307,8 +307,10 @@ static float PopupMenuWidth(Ctx* cx, PopupMenu* menu) {
             }
         }
     }
-    if (menuW > 500) {
-        menuW = 500;
+    // max_w(rems(31.25)): 500px at the default 16px rem.
+    float maxW = Rems(cx, 31.25f);
+    if (menuW > maxW) {
+        menuW = maxW;
     }
     return menuW;
 }
@@ -346,7 +348,7 @@ El* PopupMenu::IntoEl() {
     }
     // min_w is a floor, not a fixed menu width. Shape the labels that are
     // present and let a context menu or submenu grow up to Rust's default
-    // 500px maximum. Custom rows in the story already carry an explicit
+    // 31.25rem maximum. Custom rows in the story already carry an explicit
     // 250px minimum, so their own content fits within that floor.
     // `min_w(rems(8.))` unless the caller set one.
     // The rem lengths the rows below are built from: the icon and the gap
@@ -374,7 +376,8 @@ El* PopupMenu::IntoEl() {
         float winW = WindowSize(cx->win).dipW;
         s->side = (s->bounds.Right() + subW > winW) ? Side::Left : Side::Right;
     }
-    float itemH = size == UiSize::Small ? 20.f : 26.f;
+    // 1.25rem / 1.625rem: 20px / 26px at the default 16px rem.
+    float itemH = Rems(cx, size == UiSize::Small ? 1.25f : 1.625f);
     float radius = size == UiSize::Small ? th.radius * 0.5f : th.radius;
 
     // The menu is placed out of flow, so it has no parent width to fill: its
@@ -480,8 +483,12 @@ El* PopupMenu::IntoEl() {
                    ->Pad(Rems(cx, 0.25f))
                    ->Gap(Rems(cx, 0.125f));
     if (scrollable) {
+        // Default cap is 28.125rem. Rust also mins that with half the
+        // window; this tree's unset cap is the rem alone, as the old
+        // 450px cap was.
+        float heightCap = maxH > 0 ? maxH : Rems(cx, 28.125f);
         rows->ClipY()
-            ->MaxH(maxH)
+            ->MaxH(heightCap)
             ->ScrollY(s ? s->scrollY : 0)
             ->ScrollFromPath()
             ->OnScroll(ListenTo(state, &PopupMenuState::OnScroll));
@@ -520,7 +527,7 @@ El* PopupMenu::IntoEl() {
                 ->FlexRow()
                 ->W(kFill)
                 ->MinH(itemH)
-                ->PadX(8)
+                ->PadX(Rems(cx, 0.5f))
                 ->Gap(gap) // gap_x_1
                 ->ItemsCenter()
                 ->JustifyBetween()
@@ -662,12 +669,13 @@ El* PopupMenu::IntoEl() {
             }
             sub->Absolute()->Top(-Rems(cx, 0.25f)); // top_neg_1
             // TopLeft hangs the submenu off the row's right, overlapping by
-            // 8. TopRight puts it on the left of the row: its right edge is
-            // 16px before the row's left (anchor TopRight, left -16).
+            // 0.5rem. TopRight puts it on the left of the row: its right
+            // edge is 1rem before the row's left (anchor TopRight, left
+            // -rems(1)).
             if (s && SideIsLeft(s->side)) {
-                sub->Right(menuW + 16);
+                sub->Right(menuW + Rems(cx, 1.f));
             } else {
-                sub->Left(menuW - 8);
+                sub->Left(menuW - Rems(cx, 0.5f));
             }
             sub->Deferred();
             row->Child(sub);

@@ -16,12 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `254d3216d693d6af21630031a6535df7f98934bd` (2026-11-05,
-shell: Box state style refinements to shrink `materialize_node` frames (#3807)).
-Rust boxes hover, active, focus, group-hover, slider and OTP style
-refinements so a deep description uses less stack. The draw is
-unchanged. This tree already resolves those styles from the spec
-arena when it applies them.
+Processed through `11aba49d11d57c727764acabfc95ee39916bd2a2` (2026-11-05,
+menu: Size items and the default max width in rems (#3809)). Popup menu
+item heights (1.625rem, 1.25rem when small), row padding (0.5rem), the
+default max width (31.25rem) and the scrollable height cap (28.125rem)
+follow the window rem. At 16px they are the old 26, 20, 8, 500 and 450
+pixels. A caller-supplied max height stays in DIPs. The submenu's
+overlap is 0.5rem and its left-side gap is 1rem.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
@@ -138,6 +139,9 @@ The current update target is
   are measured and painted at the editor column's current visual rows, but
   collection methods require the owning view to re-render
   (`src/base/input.cpp` PaintEditorUnderlay).
+- **A scrollable menu's default height cap ignores half the window.**
+  Rust uses the smaller of half the window and 28.125rem. This tree
+  uses 28.125rem, or the caller's DIP max (`src/ui/menu.cpp`).
 - **A context menu builder is not cancelled when its field is dropped.**
   The handler is posted with `ExecPost` and keeps the `InputState` pointer.
   Rust skips the call when the input entity is gone
