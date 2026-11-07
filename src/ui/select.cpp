@@ -406,10 +406,8 @@ Select* Select::ScrollBounce(bool v) {
     return this;
 }
 Select* Select::Multiple(bool v) {
-    SearchableListState* s = state.Get(cx);
-    if (s) {
-        s->mode = v ? SearchableListMode::Multi : SearchableListMode::Single;
-        s->closeOnSelect = !v;
+    if (SearchableListState* s = state.Get(cx)) {
+        SearchableListSetMultiple(s, v);
     }
     return this;
 }

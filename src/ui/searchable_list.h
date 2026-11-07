@@ -300,6 +300,8 @@ struct SearchableListState {
 // when there is none; and back. Rows count within a section in array order.
 int SearchableListFlatIndex(const SearchableListState* s, IndexPath path);
 IndexPath SearchableListPath(const SearchableListState* s, int flat);
+// multiple(..): a multi-select list keeps its menu open as items are picked.
+void SearchableListSetMultiple(SearchableListState* s, bool multiple);
 
 // The selection replaced by the one index, which is what a single-select list
 // holds and what a caller seeding one wants. A negative index selects nothing.

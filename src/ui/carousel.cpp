@@ -537,31 +537,26 @@ bool CarouselState::SelectIndex(int index, Ctx* cx) {
     bool wrapped = selectedIndex >= 0 && IsLoopWrap(this, selectedIndex, index);
     return SelectIndexWithWrap(this, index, wrapped, cx);
 }
-bool CarouselState::SelectPrevious(Ctx* cx) {
-    if (selectedIndex < 0) return false;
-    int next = NavigationIndex(this, selectedIndex, false);
+// One step back or forward. With nowhere to go, a drag or a fling in
+// progress is still cancelled, so the track settles where it is.
+static bool SelectStep(CarouselState* s, bool forward, Ctx* cx) {
+    if (s->selectedIndex < 0) return false;
+    int next = NavigationIndex(s, s->selectedIndex, forward);
     if (next < 0) {
-        if (IsInteracting()) {
-            CancelInteractions(this, cx);
+        if (s->IsInteracting()) {
+            CancelInteractions(s, cx);
             if (cx) Notify(cx);
         }
         return false;
     }
-    bool wrapped = IsLoopWrap(this, selectedIndex, next);
-    return SelectIndexWithWrap(this, next, wrapped, cx);
+    bool wrapped = IsLoopWrap(s, s->selectedIndex, next);
+    return SelectIndexWithWrap(s, next, wrapped, cx);
+}
+bool CarouselState::SelectPrevious(Ctx* cx) {
+    return SelectStep(this, false, cx);
 }
 bool CarouselState::SelectNext(Ctx* cx) {
-    if (selectedIndex < 0) return false;
-    int next = NavigationIndex(this, selectedIndex, true);
-    if (next < 0) {
-        if (IsInteracting()) {
-            CancelInteractions(this, cx);
-            if (cx) Notify(cx);
-        }
-        return false;
-    }
-    bool wrapped = IsLoopWrap(this, selectedIndex, next);
-    return SelectIndexWithWrap(this, next, wrapped, cx);
+    return SelectStep(this, true, cx);
 }
 bool CarouselState::SelectFirst(Ctx* cx) {
     return SelectIndex(0, cx);

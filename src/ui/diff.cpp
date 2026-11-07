@@ -1166,13 +1166,19 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
         for (int k = 0; k < len(raw); k++) raw[k] = StripSuffix(raw[k], '\r');
     }
     OpenFile open;
+    // A parse failure keeps nothing: the file being read and every file
+    // already finished go.
+    auto dropParsed = [&]() {
+        delete open.file;
+        open.file = nullptr;
+        for (int f = 0; f < len(*out); f++) delete (*out)[f];
+        VecClear(*out);
+    };
     for (int ix = 0; ix < len(raw);) {
         Str line = raw[ix];
         if (Starts(line, "diff --cc ") || Starts(line, "diff --combined ") ||
             Starts(line, "@@@")) {
-            if (open.file) delete open.file;
-            for (int f = 0; f < len(*out); f++) delete (*out)[f];
-            VecClear(*out);
+            dropParsed();
             *error = Err(ix + 1, "combined diffs are not supported");
             return false;
         }
@@ -1187,9 +1193,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
             DiffParseError local;
             if (!GitPaths(open.file->arena, Slice(line, 11, line.len), &oldPath,
                           &newPath, &op, &np, &local)) {
-                delete open.file;
-                for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                VecClear(*out);
+                dropParsed();
                 *error =
                     local.line ? local : Err(ix + 1, "invalid Git file header");
                 if (!local.line)
@@ -1226,30 +1230,22 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
             Str newPath;
             if (!HeaderPath(open.file->arena, Slice(line, 4, line.len), ix + 1,
                             &oldPresent, &oldPath, error)) {
-                delete open.file;
-                for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                VecClear(*out);
+                dropParsed();
                 return false;
             }
             ix++;
             if (ix >= len(raw) || !Starts(raw[ix], "+++ ")) {
-                delete open.file;
-                for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                VecClear(*out);
+                dropParsed();
                 *error = Err(ix + 1, "expected modified file header");
                 return false;
             }
             if (!HeaderPath(open.file->arena, Slice(raw[ix], 4, raw[ix].len),
                             ix + 1, &newPresent, &newPath, error)) {
-                delete open.file;
-                for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                VecClear(*out);
+                dropParsed();
                 return false;
             }
             if (!oldPresent && !newPresent) {
-                delete open.file;
-                for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                VecClear(*out);
+                dropParsed();
                 *error = Err(ix + 1, "both file sides are missing");
                 return false;
             }
@@ -1280,23 +1276,18 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
         }
         if (Starts(line, "@@ ")) {
             if (!open.file) {
-                for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                VecClear(*out);
+                dropParsed();
                 *error = Err(ix + 1, "hunk has no file header");
                 return false;
             }
             if (!open.headers) {
-                delete open.file;
-                for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                VecClear(*out);
+                dropParsed();
                 *error = Err(
                     ix + 1, "hunk requires original and modified file headers");
                 return false;
             }
             if (!ParseHunk(&open, raw.els, len(raw), &ix, options, error)) {
-                delete open.file;
-                for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                VecClear(*out);
+                dropParsed();
                 return false;
             }
             continue;
@@ -1308,9 +1299,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
         if ((Starts(line, "+") || Starts(line, "-") || Starts(line, " ") ||
              Starts(line, "\\ No newline")) &&
             open.file && open.headers) {
-            delete open.file;
-            for (int f = 0; f < len(*out); f++) delete (*out)[f];
-            VecClear(*out);
+            dropParsed();
             *error = Err(ix + 1, "source line outside a hunk");
             return false;
         }
@@ -1322,9 +1311,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
                 Str path;
                 if (!DecodePath(open.file->arena, Slice(line, 12, line.len),
                                 ix + 1, &path, error)) {
-                    delete open.file;
-                    for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                    VecClear(*out);
+                    dropParsed();
                     return false;
                 }
                 open.file->original.hasPath = true;
@@ -1335,9 +1322,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
                 Str path;
                 if (!DecodePath(open.file->arena, Slice(line, 10, line.len),
                                 ix + 1, &path, error)) {
-                    delete open.file;
-                    for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                    VecClear(*out);
+                    dropParsed();
                     return false;
                 }
                 open.file->original.hasPath = true;
@@ -1349,9 +1334,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
                 Str path;
                 if (!DecodePath(open.file->arena, Slice(line, skip, line.len),
                                 ix + 1, &path, error)) {
-                    delete open.file;
-                    for (int f = 0; f < len(*out); f++) delete (*out)[f];
-                    VecClear(*out);
+                    dropParsed();
                     return false;
                 }
                 open.file->modified.hasPath = true;
@@ -1805,44 +1788,24 @@ void DiffChangedRuns(Str oldText, Str newText, DiffInlineUnit unit,
                   memcmp(oldText.s + a[i].start, newText.s + b[j].start,
                          (size_t)(a[i].end - a[i].start)) == 0;
         if (eq && dp[i * (m + 1) + j] == dp[(i + 1) * (m + 1) + (j + 1)] + 1) {
-            Op op;
-            op.kind = 0;
-            op.start = a[i].start;
-            op.end = a[i].end;
-            VecAppend(ops, op);
+            VecAppend(ops, Op{0, a[i].start, a[i].end});
             equalBytes += a[i].end - a[i].start;
             i++;
             j++;
         } else if (dp[i * (m + 1) + j] == dp[(i + 1) * (m + 1) + j]) {
-            Op op;
-            op.kind = 1;
-            op.start = a[i].start;
-            op.end = a[i].end;
-            VecAppend(ops, op);
+            VecAppend(ops, Op{1, a[i].start, a[i].end});
             i++;
         } else {
-            Op op;
-            op.kind = 2;
-            op.start = b[j].start;
-            op.end = b[j].end;
-            VecAppend(ops, op);
+            VecAppend(ops, Op{2, b[j].start, b[j].end});
             j++;
         }
     }
     while (i < n) {
-        Op op;
-        op.kind = 1;
-        op.start = a[i].start;
-        op.end = a[i].end;
-        VecAppend(ops, op);
+        VecAppend(ops, Op{1, a[i].start, a[i].end});
         i++;
     }
     while (j < m) {
-        Op op;
-        op.kind = 2;
-        op.start = b[j].start;
-        op.end = b[j].end;
-        VecAppend(ops, op);
+        VecAppend(ops, Op{2, b[j].start, b[j].end});
         j++;
     }
     int total = oldText.len + newText.len;

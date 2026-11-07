@@ -523,18 +523,24 @@ static bool SyntaxNextMarkdown(SyntaxLexer* lx) {
     return true;
 }
 
+// `<!-- ... -->` from `start`, which the lexer is at: to the close, or to the
+// end of the text when it never comes.
+static void SyntaxScanHtmlComment(SyntaxLexer* lx, int start) {
+    lx->at += 4;
+    while (lx->at < len(lx->src) && !SyntaxAt(lx, lx->at, "-->")) {
+        lx->at++;
+    }
+    lx->at = lx->at < len(lx->src) ? lx->at + 3 : len(lx->src);
+    SyntaxEmit(lx, start, SyntaxTok::Comment);
+}
+
 // <tag attr="value">, the one shape a scanner can follow without a parse.
 static bool SyntaxNextMarkup(SyntaxLexer* lx) {
     const SyntaxLangDef* d = (const SyntaxLangDef*)lx->def;
     int start = lx->at;
     char c = lx->src.s[lx->at];
     if (SyntaxAt(lx, lx->at, "<!--")) {
-        lx->at += 4;
-        while (lx->at < len(lx->src) && !SyntaxAt(lx, lx->at, "-->")) {
-            lx->at++;
-        }
-        lx->at = lx->at < len(lx->src) ? lx->at + 3 : len(lx->src);
-        SyntaxEmit(lx, start, SyntaxTok::Comment);
+        SyntaxScanHtmlComment(lx, start);
         return true;
     }
     if (!lx->inTag) {
@@ -632,12 +638,7 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
         return true;
     }
     if (d->htmlComment && SyntaxAt(lx, lx->at, "<!--")) {
-        lx->at += 4;
-        while (lx->at < len(lx->src) && !SyntaxAt(lx, lx->at, "-->")) {
-            lx->at++;
-        }
-        lx->at = lx->at < len(lx->src) ? lx->at + 3 : len(lx->src);
-        SyntaxEmit(lx, start, SyntaxTok::Comment);
+        SyntaxScanHtmlComment(lx, start);
         return true;
     }
     if (d->tripleQuote &&

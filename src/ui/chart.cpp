@@ -96,6 +96,18 @@ uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {
     return IdFoldName(site, fmt("%d", line));
 }
 
+// What every chart builder hands its element alike: the id its hover and
+// springs key on, the appear generation, the tooltip's name and content, and
+// whether the runtime's own hover and tooltip run (`tooltip`).
+template <typename B>
+static void ChartApplyIdentity(ChartSeries* chart, const B& b, bool tooltip) {
+    chart->tooltip = tooltip;
+    chart->id = b.id;
+    chart->appear = b.appear.Generation(&chart->appearGeneration);
+    chart->name = b.tooltipName;
+    chart->tooltipContent = b.tooltipContent;
+}
+
 AreaChart* AreaChart::New(Ctx* cx, const double* ys, int n, const char* file,
                           int line) {
     float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
@@ -298,11 +310,7 @@ El* AreaChart::IntoEl() {
     axes.ApplyTo(a, chart);
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     // The builder is on the frame arena, so the element can point at its
     // array rather than copying it.
     chart->more = more.Flatten(a);
@@ -486,11 +494,7 @@ El* LineChart::IntoEl() {
     axes.ApplyTo(a, chart);
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     return e;
 }
 
@@ -664,11 +668,7 @@ El* BarChart::IntoEl() {
     chart->domainMax = domainMax;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     return e;
 }
 
@@ -818,11 +818,7 @@ El* CandlestickChart::IntoEl() {
     chart->bodyWidthRatio = bodyWidthRatio;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     return e;
 }
 
@@ -1221,11 +1217,7 @@ El* RadarChart::IntoEl() {
     chart->nMore = len(more);
     // The labels and the hover are this builder's (PaintRadarChart); the
     // runtime's own hover is for the cartesian charts.
-    chart->tooltip = false;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, false);
     el = e;
     e->customPaint = PaintRadarChart;
     e->customUser = this;

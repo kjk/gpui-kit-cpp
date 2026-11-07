@@ -465,6 +465,11 @@ int SearchableListFlatIndex(const SearchableListState* s, IndexPath path) {
     return -1;
 }
 
+void SearchableListSetMultiple(SearchableListState* s, bool multiple) {
+    s->mode = multiple ? SearchableListMode::Multi : SearchableListMode::Single;
+    s->closeOnSelect = !multiple;
+}
+
 IndexPath SearchableListPath(const SearchableListState* s, int flat) {
     if (!s || !s->items || flat < 0 || flat >= s->nItems) {
         return IndexPathNew(-1);

@@ -936,6 +936,20 @@ static bool InputContentIsSecret(bool hasContentType,
 
 // content_type.rs::ns_text_content_type. These are WHATWG autocomplete names,
 // which are also the values GPUI's NSTextContent adapter publishes on macOS.
+// What an Input or a Textarea hands its state each frame: the paste hook
+// (only while the field is editable) and how inline tokens render, click and
+// hover. `F` is the builder; both carry the same hook fields.
+template <typename F>
+static void ApplyFieldHooks(InputState* state, const F& f, bool editable,
+                            bool secret) {
+    state->pasteHandler = editable ? f.onPaste : nullptr;
+    state->pasteHandlerData = state->pasteHandler ? f.onPasteData : nullptr;
+    InputSetTokenPresentation(
+        state, f.tokenRenderer ? f.tokenRenderer : &DefaultInputTokenRender,
+        f.tokenRendererUser, f.tokenClick, f.tokenClickUser, secret);
+    InputSetTokenHoverPresentation(state, f.tokenHover, f.tokenHoverUser);
+}
+
 // The field's accessibility record: its role, the name (the placeholder when
 // nothing names it), the placeholder, an automation id, and whether the value
 // is exposed.
@@ -1070,14 +1084,9 @@ El* Input::IntoEl() {
     bool focused = InputFrameFocused(cx, state, disabled);
     if (state) {
         bool editable = !disabled && !readonly && !state->readonly;
-        state->pasteHandler = editable ? onPaste : nullptr;
-        state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
         bool secret =
             hasContentType && InputContentIsSecret(hasContentType, contentType);
-        InputSetTokenPresentation(
-            state, tokenRenderer ? tokenRenderer : &DefaultInputTokenRender,
-            tokenRendererUser, tokenClick, tokenClickUser, secret);
-        InputSetTokenHoverPresentation(state, tokenHover, tokenHoverUser);
+        ApplyFieldHooks(state, *this, editable, secret);
     }
     if (inputFocused && !readonly && !(state && state->readonly)) {
         WindowSetTextContentType(
@@ -1314,12 +1323,7 @@ El* Textarea::IntoEl() {
     if (state) {
         bool editable =
             !disabled && !readonly && !state->disabled && !state->readonly;
-        state->pasteHandler = editable ? onPaste : nullptr;
-        state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
-        InputSetTokenPresentation(
-            state, tokenRenderer ? tokenRenderer : &DefaultInputTokenRender,
-            tokenRendererUser, tokenClick, tokenClickUser, false);
-        InputSetTokenHoverPresentation(state, tokenHover, tokenHoverUser);
+        ApplyFieldHooks(state, *this, editable, false);
         state->softWrap = softWrap;
         if (rows > 0) {
             LayoutModeSetRows(&state->mode, rows);
