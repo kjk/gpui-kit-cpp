@@ -472,6 +472,29 @@ struct Batch {
 };
 
 static Batch gB;
+
+// Point the batch at a target and empty it. `newFrame` also resets the clip
+// to the whole surface and the frame's statistics, which a D3D12 frame that
+// continues into a second command list keeps.
+static void BatchBegin(void* target, int pxW, int pxH, bool offscreen,
+                       bool newFrame) {
+    gB.target = target;
+    gB.image = nullptr;
+    gB.image12 = -1;
+    gB.pxW = pxW;
+    gB.pxH = pxH;
+    gB.offscreen = offscreen;
+    gB.insts.len = 0;
+    gB.tris.len = 0;
+    if (newFrame) {
+        gB.clipStack.len = 0;
+        gB.clip[0] = 0;
+        gB.clip[1] = 0;
+        gB.clip[2] = (float)pxW;
+        gB.clip[3] = (float)pxH;
+        gB.stats = FrameStats{};
+    }
+}
 static FrameStats gLastStats;
 
 static void RecoverDevice(PaintCtx* ctx, bool removed);
@@ -1129,6 +1152,20 @@ static void D12CollectImageEvictions() {
     }
 }
 
+// The next image slot, round-robin from imageNext, whose descriptor the open
+// command list does not reference; -1 when every one is in use.
+static int D12FreeImageSlot() {
+    for (int i = 0; i < kD12ImageSlots; i++) {
+        int ix = (gD12.imageNext + i) % kD12ImageSlots;
+        D12ImageSlot* candidate = &gD12.images[ix];
+        if (!candidate->tex ||
+            candidate->usedInCommands != gD12.commandGeneration) {
+            return ix;
+        }
+    }
+    return -1;
+}
+
 static void D12WaitTarget(D12Target* t) {
     if (!t) {
         return;
@@ -1221,6 +1258,30 @@ static bool D12MakeSurfaceHeaps(D12Target* t) {
         &hd, __uuidof(ID3D12DescriptorHeap), (void**)&t->dsvHeap));
 }
 
+// The stencil-and-cover depth buffer and its view, at t->samples.
+static bool D12MakeDepth(D12Target* t) {
+    D3D12_HEAP_PROPERTIES heap = D12Heap(D3D12_HEAP_TYPE_DEFAULT);
+    D3D12_RESOURCE_DESC depth =
+        D12Texture(t->pxW, t->pxH, DXGI_FORMAT_D24_UNORM_S8_UINT, t->samples,
+                   D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+    D3D12_CLEAR_VALUE dv = {};
+    dv.Format = depth.Format;
+    dv.DepthStencil.Depth = 1.f;
+    if (FAILED(gD12.dev->CreateCommittedResource(
+            &heap, D3D12_HEAP_FLAG_NONE, &depth,
+            D3D12_RESOURCE_STATE_DEPTH_WRITE, &dv, __uuidof(ID3D12Resource),
+            (void**)&t->depth))) {
+        return false;
+    }
+    D3D12_DEPTH_STENCIL_VIEW_DESC dsv = {};
+    dsv.Format = depth.Format;
+    dsv.ViewDimension = t->samples > 1 ? D3D12_DSV_DIMENSION_TEXTURE2DMS
+                                       : D3D12_DSV_DIMENSION_TEXTURE2D;
+    gD12.dev->CreateDepthStencilView(t->depth, &dsv, D12Dsv(t));
+    t->clearStencil = true;
+    return true;
+}
+
 static int D12SupportedSamples(int wanted) {
     int n = wanted;
     while (n > 1) {
@@ -1267,24 +1328,9 @@ static bool D12MakeWindowSurfaces(D12Target* t) {
         rv.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DMS;
         gD12.dev->CreateRenderTargetView(t->msaa, &rv, D12Rtv(t, 3));
     }
-    D3D12_RESOURCE_DESC depth =
-        D12Texture(t->pxW, t->pxH, DXGI_FORMAT_D24_UNORM_S8_UINT, t->samples,
-                   D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
-    D3D12_CLEAR_VALUE dv = {};
-    dv.Format = depth.Format;
-    dv.DepthStencil.Depth = 1.f;
-    if (FAILED(gD12.dev->CreateCommittedResource(
-            &heap, D3D12_HEAP_FLAG_NONE, &depth,
-            D3D12_RESOURCE_STATE_DEPTH_WRITE, &dv, __uuidof(ID3D12Resource),
-            (void**)&t->depth))) {
+    if (!D12MakeDepth(t)) {
         return false;
     }
-    D3D12_DEPTH_STENCIL_VIEW_DESC dsv = {};
-    dsv.Format = depth.Format;
-    dsv.ViewDimension = t->samples > 1 ? D3D12_DSV_DIMENSION_TEXTURE2DMS
-                                       : D3D12_DSV_DIMENSION_TEXTURE2D;
-    gD12.dev->CreateDepthStencilView(t->depth, &dsv, D12Dsv(t));
-    t->clearStencil = true;
     return D12MakePipelines(t->samples);
 }
 
@@ -1318,23 +1364,9 @@ static bool D12MakeOffscreenSurfaces(D12Target* t) {
         return false;
     }
     t->samples = 1;
-    D3D12_RESOURCE_DESC depth =
-        D12Texture(t->pxW, t->pxH, DXGI_FORMAT_D24_UNORM_S8_UINT, 1,
-                   D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
-    D3D12_CLEAR_VALUE dv = {};
-    dv.Format = depth.Format;
-    dv.DepthStencil.Depth = 1.f;
-    if (FAILED(gD12.dev->CreateCommittedResource(
-            &heap, D3D12_HEAP_FLAG_NONE, &depth,
-            D3D12_RESOURCE_STATE_DEPTH_WRITE, &dv, __uuidof(ID3D12Resource),
-            (void**)&t->depth))) {
+    if (!D12MakeDepth(t)) {
         return false;
     }
-    D3D12_DEPTH_STENCIL_VIEW_DESC dsv = {};
-    dsv.Format = depth.Format;
-    dsv.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-    gD12.dev->CreateDepthStencilView(t->depth, &dsv, D12Dsv(t));
-    t->clearStencil = true;
     return D12MakePipelines(1);
 }
 
@@ -1403,22 +1435,7 @@ static bool D12BeginCommands(D12Target* t, bool continuing = false) {
                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         gD12.atlasState = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     }
-    gB.target = t;
-    gB.image = nullptr;
-    gB.image12 = -1;
-    gB.pxW = t->pxW;
-    gB.pxH = t->pxH;
-    gB.offscreen = t->offscreen;
-    gB.insts.len = 0;
-    gB.tris.len = 0;
-    if (!continuing) {
-        gB.clipStack.len = 0;
-        gB.clip[0] = 0;
-        gB.clip[1] = 0;
-        gB.clip[2] = (float)t->pxW;
-        gB.clip[3] = (float)t->pxH;
-        gB.stats = FrameStats{};
-    }
+    BatchBegin(t, t->pxW, t->pxH, t->offscreen, !continuing);
     return true;
 }
 
@@ -1635,6 +1652,33 @@ static void Flush() {
     FlushTris(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, kTriColor);
 }
 
+// Upload the batch's instances and draw them as quads with `image` bound and
+// `ds` as the depth-stencil state. False when the instance buffer could not
+// be grown or written; nothing was drawn.
+static bool D11DrawQuads(Gpu* g, ID3D11ShaderResourceView* image,
+                         ID3D11DepthStencilState* ds) {
+    if (!EnsureInstBuf(g, gB.insts.len)) {
+        return false;
+    }
+    D3D11_MAPPED_SUBRESOURCE m = {};
+    if (FAILED(g->ctx->Map(g->instBuf, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
+        return false;
+    }
+    memcpy(m.pData, gB.insts.els, (size_t)gB.insts.len * sizeof(Inst));
+    g->ctx->Unmap(g->instBuf, 0);
+
+    ID3D11ShaderResourceView* srvs[3] = {g->instSrv, g->atlas.srv, image};
+    g->ctx->VSSetShader(g->vsQuad, nullptr, 0);
+    g->ctx->PSSetShader(g->psQuad, nullptr, 0);
+    g->ctx->VSSetShaderResources(0, 3, srvs);
+    g->ctx->PSSetShaderResources(0, 3, srvs);
+    g->ctx->IASetInputLayout(nullptr);
+    g->ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+    g->ctx->OMSetDepthStencilState(ds, 0);
+    g->ctx->DrawInstanced(4, (UINT)gB.insts.len, 0, 0);
+    return true;
+}
+
 static void FlushQuads() {
     Gpu* g = &gGpu;
     if (gB.insts.len == 0 || !gB.target) {
@@ -1644,29 +1688,10 @@ static void FlushQuads() {
         D12SubmitQuads(false);
         return;
     }
-    if (!EnsureInstBuf(g, gB.insts.len)) {
+    if (!D11DrawQuads(g, gB.image ? gB.image : g->white, g->dsOff)) {
         gB.insts.len = 0;
         return;
     }
-    D3D11_MAPPED_SUBRESOURCE m = {};
-    if (FAILED(g->ctx->Map(g->instBuf, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
-        gB.insts.len = 0;
-        return;
-    }
-    memcpy(m.pData, gB.insts.els, (size_t)gB.insts.len * sizeof(Inst));
-    g->ctx->Unmap(g->instBuf, 0);
-
-    ID3D11ShaderResourceView* srvs[3] = {g->instSrv, g->atlas.srv,
-                                         gB.image ? gB.image : g->white};
-    g->ctx->VSSetShader(g->vsQuad, nullptr, 0);
-    g->ctx->PSSetShader(g->psQuad, nullptr, 0);
-    g->ctx->VSSetShaderResources(0, 3, srvs);
-    g->ctx->PSSetShaderResources(0, 3, srvs);
-    g->ctx->IASetInputLayout(nullptr);
-    g->ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-    g->ctx->OMSetDepthStencilState(g->dsOff, 0);
-    g->ctx->DrawInstanced(4, (UINT)gB.insts.len, 0, 0);
-
     gB.stats.instances += gB.insts.len;
     gB.stats.draws++;
     gB.insts.len = 0;
@@ -1934,20 +1959,7 @@ static void BeginFrameState(Gpu* g, GpuTarget* t) {
     // is by definition everything the fan could have touched. A full-surface
     // D24S8 clear every frame is pure bandwidth, and on a light scene it was
     // most of what the frame cost.
-    gB.target = t;
-    gB.image = nullptr;
-    gB.image12 = -1;
-    gB.pxW = t->pxW;
-    gB.pxH = t->pxH;
-    gB.offscreen = t->offscreen;
-    gB.insts.len = 0;
-    gB.tris.len = 0;
-    gB.clipStack.len = 0;
-    gB.clip[0] = 0;
-    gB.clip[1] = 0;
-    gB.clip[2] = (float)t->pxW;
-    gB.clip[3] = (float)t->pxH;
-    gB.stats = FrameStats{};
+    BatchBegin(t, t->pxW, t->pxH, t->offscreen, true);
 }
 
 static bool D12PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
@@ -1978,15 +1990,7 @@ static bool D12PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
         t->samples = PaintGpuSamples();
         t->generation = gDeviceGeneration;
         DXGI_SWAP_CHAIN_DESC1 desc = {};
-        desc.Width = (UINT)pxW;
-        desc.Height = (UINT)pxH;
-        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        desc.SampleDesc.Count = 1;
-        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        desc.BufferCount = kD12FrameCount;
-        desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-        desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-        desc.Scaling = DXGI_SCALING_NONE;
+        PaintFlipChainDesc(&desc, pxW, pxH, kD12FrameCount);
         IDXGISwapChain1* swap1 = nullptr;
         HRESULT hr = gD12.factory->CreateSwapChainForHwnd(
             gD12.queue, hwnd, &desc, nullptr, nullptr, &swap1);
@@ -2166,15 +2170,7 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
         // flip-sequential — so the two are compared on the same terms and a
         // screenshot still comes off the redirection surface.
         DXGI_SWAP_CHAIN_DESC1 desc = {};
-        desc.Width = (UINT)pxW;
-        desc.Height = (UINT)pxH;
-        desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-        desc.SampleDesc.Count = 1;
-        desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-        desc.BufferCount = 3;
-        desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-        desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-        desc.Scaling = DXGI_SCALING_NONE;
+        PaintFlipChainDesc(&desc, pxW, pxH, 3);
         if (FAILED(g->factory->CreateSwapChainForHwnd(
                 g->dev, hwnd, &desc, nullptr, nullptr, &t->swap))) {
             delete t;
@@ -2769,26 +2765,10 @@ static void PathCover(PaintCtx* ctx, GpuPath* p, const Inst& proto, float dx,
 
     // Straight out rather than through FlushQuads: this one draw needs the
     // stencil test, and the state goes back afterwards.
-    if (!EnsureInstBuf(g, gB.insts.len)) {
+    if (!D11DrawQuads(g, g->white, g->dsCover)) {
         gB.insts.len = 0;
         return;
     }
-    D3D11_MAPPED_SUBRESOURCE m = {};
-    if (FAILED(g->ctx->Map(g->instBuf, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) {
-        gB.insts.len = 0;
-        return;
-    }
-    memcpy(m.pData, gB.insts.els, (size_t)gB.insts.len * sizeof(Inst));
-    g->ctx->Unmap(g->instBuf, 0);
-    ID3D11ShaderResourceView* srvs[3] = {g->instSrv, g->atlas.srv, g->white};
-    g->ctx->VSSetShader(g->vsQuad, nullptr, 0);
-    g->ctx->PSSetShader(g->psQuad, nullptr, 0);
-    g->ctx->VSSetShaderResources(0, 3, srvs);
-    g->ctx->PSSetShaderResources(0, 3, srvs);
-    g->ctx->IASetInputLayout(nullptr);
-    g->ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
-    g->ctx->OMSetDepthStencilState(g->dsCover, 0);
-    g->ctx->DrawInstanced(4, 1, 0, 0);
     g->ctx->OMSetDepthStencilState(g->dsOff, 0);
     gB.stats.instances++;
     gB.stats.draws++;
@@ -3076,42 +3056,23 @@ static int D12ImageDescriptor(const RenderImage* img, int frameIndex) {
         h <= 0) {
         return -1;
     }
-    D12ImageSlot* slot = nullptr;
-    int slotIx = -1;
-    for (int i = 0; i < kD12ImageSlots; i++) {
-        int ix = (gD12.imageNext + i) % kD12ImageSlots;
-        D12ImageSlot* candidate = &gD12.images[ix];
-        if (!candidate->tex ||
-            candidate->usedInCommands != gD12.commandGeneration) {
-            slot = candidate;
-            slotIx = ix;
-            break;
-        }
-    }
+    int slotIx = D12FreeImageSlot();
     // A descriptor referenced by the open command list cannot be rewritten.
     // Submit that part of the frame before reusing the heap. Waiting is rare
     // (only after 128 distinct images) and preserves both painter order and
     // the already-rendered target while the command allocator is reset.
-    if (!slot) {
+    if (slotIx < 0) {
         Flush();
         D12Target* t = (D12Target*)gB.target;
         if (!t || !D12FinishCommands(t, true) || !D12BeginCommands(t, true)) {
             return -1;
         }
-        for (int i = 0; i < kD12ImageSlots; i++) {
-            int ix = (gD12.imageNext + i) % kD12ImageSlots;
-            D12ImageSlot* candidate = &gD12.images[ix];
-            if (!candidate->tex ||
-                candidate->usedInCommands != gD12.commandGeneration) {
-                slot = candidate;
-                slotIx = ix;
-                break;
-            }
-        }
-        if (!slot) {
+        slotIx = D12FreeImageSlot();
+        if (slotIx < 0) {
             return -1;
         }
     }
+    D12ImageSlot* slot = &gD12.images[slotIx];
     if (slot->tex) {
         // Submitted lists share this shader-visible heap. Wait through the
         // most recently submitted list before replacing its resource and SRV.

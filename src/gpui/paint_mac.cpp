@@ -6,6 +6,7 @@
    glyphs need the text matrix flipped back. */
 
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/scene.h"
 
 #import <AppKit/AppKit.h>
@@ -16,34 +17,8 @@
 
 namespace gpui {
 
-static uint64_t gNextPaintResourceGeneration = 1;
 static bool gOffscreenWasRecording = false;
 static bool gNoSceneBegin = false;
-
-static bool SceneFinish(PaintCtx* ctx) {
-    if (!SceneOn() || !scene::Recording()) {
-        return true;
-    }
-    Bounds damage = {};
-    bool draw = scene::FrameEnd(ctx, &damage);
-    if (draw) {
-        scene::Replay(ctx, &damage);
-    } else {
-        // Skip means "the last present is still on screen". This context is
-        // the window itself, and AppKit may already have cleared it, so an
-        // identical frame still has to be painted or the area flashes.
-        scene::Replay(ctx, nullptr);
-    }
-    return draw;
-}
-
-static uint64_t PaintResourceGenerationNew() {
-    uint64_t id = gNextPaintResourceGeneration++;
-    if (id == 0) {
-        id = gNextPaintResourceGeneration++;
-    }
-    return id;
-}
 
 // A resolved font, keyed by the size and weight word the element tree asks
 // for. Small and linear: a frame uses a handful of distinct fonts.
@@ -198,10 +173,8 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
             (const uint8_t*)CGBitmapContextGetData(gOffscreenCg);
         size_t stride = CGBitmapContextGetBytesPerRow(gOffscreenCg);
         if (src) {
-            for (int y = 0; y < gOffscreenH; y++) {
-                memcpy(outBgra + (size_t)y * (size_t)gOffscreenW * 4,
-                       src + (size_t)y * stride, (size_t)gOffscreenW * 4);
-            }
+            PaintCopyBgraRows(outBgra, (size_t)gOffscreenW * 4, src, stride,
+                              gOffscreenW, gOffscreenH);
         }
     }
     PaintTargetFree(ctx);
@@ -214,7 +187,10 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
 }
 
 bool PaintTargetEnd(PaintCtx* ctx) {
-    SceneFinish(ctx);
+    // Skip means "the last present is still on screen". This context is the
+    // window itself, and AppKit may already have cleared it, so an identical
+    // frame still has to be painted or the area flashes.
+    PaintSceneFinish(ctx, true);
     if (!ctx || !ctx->rt) {
         return false;
     }
@@ -553,6 +529,20 @@ void PathFillGradientV(PaintCtx* ctx, Path* p, float y0, float y1, Rgba top,
     PathFillGradient(ctx, p, 0, y0, 0, y1, top, bot);
 }
 
+// The gradient PathFillGradient and PathStrokeGradient draw: `from` at 0 and
+// `to` at 1, in device RGB. The caller releases it.
+static CGGradientRef TwoStopGradient(Rgba from, Rgba to) {
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGFloat comps[8] = {from.r / 255.0, from.g / 255.0, from.b / 255.0,
+                        from.a / 255.0, to.r / 255.0,   to.g / 255.0,
+                        to.b / 255.0,   to.a / 255.0};
+    CGFloat stops[2] = {0.0, 1.0};
+    CGGradientRef grad =
+        CGGradientCreateWithColorComponents(space, comps, stops, 2);
+    CGColorSpaceRelease(space);
+    return grad;
+}
+
 void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
                       float y1, Rgba from, Rgba to, float dx, float dy) {
     if (scene::Recording()) {
@@ -565,14 +555,7 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
     }
     from = PaintFade(ctx, from);
     to = PaintFade(ctx, to);
-    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-    CGFloat comps[8] = {from.r / 255.0, from.g / 255.0, from.b / 255.0,
-                        from.a / 255.0, to.r / 255.0,   to.g / 255.0,
-                        to.b / 255.0,   to.a / 255.0};
-    CGFloat stops[2] = {0.0, 1.0};
-    CGGradientRef grad =
-        CGGradientCreateWithColorComponents(space, comps, stops, 2);
-    CGColorSpaceRelease(space);
+    CGGradientRef grad = TwoStopGradient(from, to);
     if (!grad) {
         PathFill(ctx, p, from, dx, dy);
         return;
@@ -629,14 +612,7 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
     }
     from = PaintFade(ctx, from);
     to = PaintFade(ctx, to);
-    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-    CGFloat comps[8] = {from.r / 255.0, from.g / 255.0, from.b / 255.0,
-                        from.a / 255.0, to.r / 255.0,   to.g / 255.0,
-                        to.b / 255.0,   to.a / 255.0};
-    CGFloat stops[2] = {0.0, 1.0};
-    CGGradientRef grad =
-        CGGradientCreateWithColorComponents(space, comps, stops, 2);
-    CGColorSpaceRelease(space);
+    CGGradientRef grad = TwoStopGradient(from, to);
     if (!grad) {
         PathStroke(ctx, p, stroke, from, roundCaps, dx, dy);
         return;
@@ -659,79 +635,6 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
     CGGradientRelease(grad);
 }
 
-// ─── utf-8 / utf-16 offsets ───────────────────────────────────────────────
-//
-// Str is UTF-8 and Core Text indexes UTF-16, so the two have to be mapped the
-// way the DirectWrite backend does.
-
-// Decode one codepoint; returns the bytes consumed.
-static int Utf8Decode(const char* s, int len, uint32_t* out) {
-    if (len <= 0) {
-        return 0;
-    }
-    auto b = (const unsigned char*)s;
-    if (b[0] < 0x80) {
-        *out = b[0];
-        return 1;
-    }
-    if ((b[0] & 0xe0) == 0xc0 && len >= 2) {
-        *out = ((uint32_t)(b[0] & 0x1f) << 6) | (b[1] & 0x3f);
-        return 2;
-    }
-    if ((b[0] & 0xf0) == 0xe0 && len >= 3) {
-        *out = ((uint32_t)(b[0] & 0x0f) << 12) |
-               ((uint32_t)(b[1] & 0x3f) << 6) | (b[2] & 0x3f);
-        return 3;
-    }
-    if ((b[0] & 0xf8) == 0xf0 && len >= 4) {
-        *out = ((uint32_t)(b[0] & 0x07) << 18) |
-               ((uint32_t)(b[1] & 0x3f) << 12) |
-               ((uint32_t)(b[2] & 0x3f) << 6) | (b[3] & 0x3f);
-        return 4;
-    }
-    *out = 0xfffd;
-    return 1;
-}
-
-static int Utf8OffToU16(Str s, int u8off) {
-    if (!s.s || u8off <= 0) {
-        return 0;
-    }
-    if (u8off > len(s)) {
-        u8off = len(s);
-    }
-    int i = 0;
-    int u16 = 0;
-    while (i < u8off) {
-        uint32_t cp = 0;
-        int adv = Utf8Decode(s.s + i, len(s) - i, &cp);
-        if (adv <= 0) {
-            break;
-        }
-        i += adv;
-        u16 += cp >= 0x10000 ? 2 : 1;
-    }
-    return u16;
-}
-
-static int U16OffToUtf8(Str s, int u16off) {
-    if (!s.s || u16off <= 0) {
-        return 0;
-    }
-    int i = 0;
-    int u16 = 0;
-    while (i < len(s) && u16 < u16off) {
-        uint32_t cp = 0;
-        int adv = Utf8Decode(s.s + i, len(s) - i, &cp);
-        if (adv <= 0) {
-            break;
-        }
-        i += adv;
-        u16 += cp >= 0x10000 ? 2 : 1;
-    }
-    return i;
-}
-
 // ─── images ───────────────────────────────────────────────────────────────
 //
 // NSBitmapImageRep decodes everything the system has a codec for — PNG,
@@ -747,12 +650,16 @@ struct MacImageFrame {
     int durationMs = 100;
 };
 
-struct RenderImage {
-    int refs = 1;
-    uint64_t generation = 0;
-    RenderImageStatus status = RenderImageStatus::Ready;
-    Vec<MacImageFrame> frames;
-};
+struct RenderImage : RenderImageFrames<MacImageFrame> {};
+
+static void MacFrameFree(MacImageFrame* frame) {
+    if (frame->image) {
+        CGImageRelease(frame->image);
+    }
+    if (frame->grayImage) {
+        CGImageRelease(frame->grayImage);
+    }
+}
 
 static double CfSeconds(CFDictionaryRef dict, CFStringRef key) {
     if (!dict || !key) {
@@ -809,8 +716,7 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
         return nullptr;
     }
     size_t count = CGImageSourceGetCount(src);
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
+    auto* img = RenderImageAlloc<RenderImage>(RenderImageStatus::Ready);
     for (size_t i = 0; i < count; i++) {
         CGImageRef cg = CGImageSourceCreateImageAtIndex(src, i, nullptr);
         if (!cg) {
@@ -860,54 +766,19 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
     if (space) CGColorSpaceRelease(space);
     CGDataProviderRelease(provider);
     if (!cg) return nullptr;
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
     MacImageFrame frame = {};
     frame.image = cg;
     frame.w = w;
     frame.h = h;
-    VecAppend(img->frames, frame);
-    return img;
+    return RenderImageWithFrame<RenderImage>(frame);
 }
 
 RenderImage* RenderImageNewLoading() {
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
-    img->status = RenderImageStatus::Loading;
-    return img;
+    return RenderImageAlloc<RenderImage>(RenderImageStatus::Loading);
 }
 
 void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
-    if (!img) {
-        if (decoded) {
-            RenderImageRelease(decoded);
-        }
-        return;
-    }
-    if (decoded && decoded->frames.len > 0) {
-        for (int i = 0; i < img->frames.len; i++) {
-            MacImageFrame& frame = img->frames[i];
-            if (frame.image) {
-                CGImageRelease(frame.image);
-            }
-            if (frame.grayImage) {
-                CGImageRelease(frame.grayImage);
-            }
-        }
-        VecReset(img->frames);
-        img->frames.els = decoded->frames.els;
-        img->frames.len = decoded->frames.len;
-        img->frames.cap = decoded->frames.cap;
-        decoded->frames.els = nullptr;
-        decoded->frames.len = 0;
-        decoded->frames.cap = 0;
-        img->status = RenderImageStatus::Ready;
-    } else {
-        img->status = RenderImageStatus::Failed;
-    }
-    if (decoded) {
-        RenderImageRelease(decoded);
-    }
+    RenderImageAdoptFrames(img, decoded, MacFrameFree);
 }
 
 void RenderImageRetain(RenderImage* img) {
@@ -917,19 +788,10 @@ void RenderImageRetain(RenderImage* img) {
 }
 
 void RenderImageRelease(RenderImage* img) {
-    if (!img || --img->refs != 0) {
+    if (!RenderImageUnref(img)) {
         return;
     }
-    for (int i = 0; i < img->frames.len; i++) {
-        MacImageFrame& frame = img->frames[i];
-        if (frame.image) {
-            CGImageRelease(frame.image);
-        }
-        if (frame.grayImage) {
-            CGImageRelease(frame.grayImage);
-        }
-    }
-    VecReset(img->frames);
+    RenderImageFramesFree(img, MacFrameFree);
     delete img;
 }
 
@@ -942,13 +804,7 @@ RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
 }
 
 Size RenderImageSizePx(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return {};
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return {(float)img->frames[frameIndex].w, (float)img->frames[frameIndex].h};
+    return RenderImageFrameSizePx(img, frameIndex);
 }
 
 int RenderImageFrameCount(const RenderImage* img) {
@@ -956,13 +812,7 @@ int RenderImageFrameCount(const RenderImage* img) {
 }
 
 int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return 0;
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return img->frames[frameIndex].durationMs;
+    return RenderImageFrameDuration(img, frameIndex);
 }
 
 static CGImageRef ImageForDraw(MacImageFrame* frame, bool grayscale) {
@@ -1005,9 +855,7 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
         imageBounds.w <= 0 || imageBounds.h <= 0) {
         return;
     }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
+    frameIndex = RenderImageFrameIndex(img, frameIndex);
     CGImageRef image = ImageForDraw(&img->frames[frameIndex], grayscale);
     if (!image) {
         return;
@@ -1454,7 +1302,7 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     if (idx == kCFNotFound) {
         idx = ml.start + ml.len;
     }
-    return U16OffToUtf8(s, (int)idx);
+    return Utf16OffsetToUtf8(s, (int)idx);
 }
 
 float TextLayoutBaseline(TextLayout* tl) {
@@ -1466,8 +1314,9 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
     if (!tl || !out || max <= 0 || u8a >= u8b) {
         return 0;
     }
-    int a = Utf8OffToU16(s, u8a);
-    int b = Utf8OffToU16(s, u8b);
+    // Str is UTF-8 and Core Text indexes UTF-16.
+    int a = Utf8OffsetToUtf16(s, u8a);
+    int b = Utf8OffsetToUtf16(s, u8b);
     int n = 0;
     for (int i = 0; i < tl->nLines && n < max; i++) {
         const MacLine& ml = tl->lines[i];
