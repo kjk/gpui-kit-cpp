@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0a5c2740d810379ba7e3ea38f978d7565f260783",
+  sha: "44a83318e9a6d1feed63dfa359e23c81f2427d1b",
   date: "2026-11-06",
-  subject: "slider: Add `Slider::track_focus` (#3824)",
+  subject: "text: Limit selection highlights to the selected glyphs on each row (#3799)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

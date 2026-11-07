@@ -4184,6 +4184,25 @@ static void HighlightsFollowCenteredAndRightAlignedRows() {
     utassert(center[0].row == 2 && right[0].row == 2);
 }
 
+// inline.rs selection_preserves_spaces_and_skips_empty_rows.
+// The same boxes PaintTextRangeBoxes paints for a TextView selection.
+static void SelectionPreservesSpacesAndSkipsEmptyRows() {
+    GeometryFixture f;
+    Str text = StrL("aa  \n\nbbbbb");
+    Vec<TextGlyphBox> rows = f.Boxes(text, 200, TextAlign::Left, 0, len(text));
+    utassert(len(rows) == 2);
+    if (len(rows) >= 2) {
+        utassert(rows[1].row == 2);
+    }
+    Vec<TextGlyphBox> letters = f.Boxes(text, 200, TextAlign::Left, 0, 2);
+    utassert(len(letters) == 1);
+    if (len(rows) >= 1 && len(letters) == 1) {
+        utassert(fabsf(rows[0].right - letters[0].right * 2.f) < 0.5f);
+    }
+    Vec<TextGlyphBox> breaks = f.Boxes(text, 200, TextAlign::Left, 4, 6);
+    utassert(len(breaks) == 0);
+}
+
 // range_highlight.rs: range_highlight_requires_a_background.
 static void RangeHighlightRequiresABackground() {
     Hsla color = HslaNew(0.15f, 1.f, 0.5f, 0.4f);
@@ -9455,6 +9474,7 @@ void TestTextView() {
     AHighlightStartingAWrappedRowPaintsOnlyThatRow();
     HighlightsAfterAHardLineBreakStartOnItsRow();
     HighlightsFollowCenteredAndRightAlignedRows();
+    SelectionPreservesSpacesAndSkipsEmptyRows();
     RangeHighlightRequiresABackground();
     RenderedTextIsThePlainCopyText();
     AMatchAcrossMarksPaintsInItsParagraph();

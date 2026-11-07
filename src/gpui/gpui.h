@@ -2919,6 +2919,10 @@ struct El {
     // The washes are range highlights, painted as inline.rs's glyph boxes
     // (PaintTextRangeBoxes) rather than with the selection's painter.
     unsigned int glyphWashes : 1 = false;
+    // A TextView inline. Its selection is selection_paint::visit: the
+    // advances of the selected glyphs, not the unused width of the line.
+    // An editor row keeps the full-line wash.
+    unsigned int glyphSelection : 1 = false;
     // The tooltip (El::Tip) shows in the overlay the window's root view
     // owns, Window::rootTooltip, rather than the window's own.
     unsigned int rootTooltip : 1 = false;
@@ -3227,6 +3231,8 @@ struct El {
     El* Strikethrough();
     El* Italic();
     El* Selectable();
+    // TextView selection paints glyph extents. See glyphSelection.
+    El* GlyphSelection();
     El* SelectionOwner(EntityId owner);
     // node.rs CustomBlockElement: this element is a block plugin. A drag
     // that touches its box selects all of `plain`. The markdown, when there
@@ -6579,9 +6585,11 @@ void PaintTextRange(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
 // inline.rs GlyphBox: where one character of laid-out text paints -- its
 // row, its horizontal extent from the text's origin with alignment applied,
 // and the top and height of that row -- and [lo, hi), the text it draws. A
-// character with no glyph of its own (a line break) is drawn by the one
-// before it. Rust reads glyphs off the shaped lines; the backends here
-// answer per character, which is the same boxes but for a ligature.
+// combining mark with no glyph of its own is drawn by the one before it. A
+// line break is not: it stays out of every glyph's range, and an empty row
+// still takes a row index. Rust reads glyphs off the shaped lines; the
+// backends here answer per character, which is the same boxes but for a
+// ligature.
 struct TextGlyphBox {
     int lo = 0;
     int hi = 0;
@@ -6599,8 +6607,10 @@ float TextAlignedRowLeft(TextAlign align, float alignWidth, float width);
 // joined where they touch on a row -- by row, left to right.
 int TextRangeBoxes(const TextGlyphBox* glyphs, int n, int lo, int hi,
                    Vec<TextGlyphBox>* out);
-// A range highlight painted the way inline.rs paints it: its range boxes,
-// each the height of its row. PaintTextRange is the selection's painter.
+// A range highlight, and a TextView selection, painted the way inline.rs
+// paints them: the range's glyph boxes, each the height of its row.
+// PaintTextRange is the editor selection's painter: a range that continues
+// past a line covers the rest of that line.
 void PaintTextRangeBoxes(PaintCtx* ctx, Str s, float fontSize, float maxW,
                          bool wrap, uint16_t weight, float lineH, float x,
                          float y, int lo, int hi, Rgba color,

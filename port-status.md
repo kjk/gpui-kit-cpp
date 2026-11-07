@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0a5c2740d810379ba7e3ea38f978d7565f260783` (2026-11-06,
-slider: Add `Slider::track_focus` (#3824)).
-Focusing a slider binds the focus handle to the slider's own
-accessibility node. `Slider::New` returns that node, so `El::TrackFocus`
-is the method.
+Processed through `44a83318e9a6d1feed63dfa359e23c81f2427d1b` (2026-11-06,
+text: Limit selection highlights to the selected glyphs on each row (#3799)).
+A TextView selection paints the advances of the glyphs it covers, including
+spaces, and skips an empty row instead of filling the unused width of the
+line. Editor rows still extend a selection that continues past a line.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

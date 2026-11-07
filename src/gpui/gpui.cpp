@@ -2283,6 +2283,10 @@ El* El::Selectable() {
     selectable = true;
     return this;
 }
+El* El::GlyphSelection() {
+    glyphSelection = true;
+    return this;
+}
 El* El::BlockPluginSelection(Str plain) {
     selectable = true;
     selBlockPlugin = true;
@@ -3506,8 +3510,10 @@ int TextGlyphBoxes(TextLayout* layout, Str text, Vec<TextGlyphBox>* out) {
         return 0;
     }
     // Each character's box as the backend shaped it -- aligned already, since
-    // the layout was made with its alignment -- and the rows by their tops.
-    Vec<float> rowTops;
+    // the layout was made with its alignment. A row index is the line the
+    // glyph stands on, counting empty lines, which is top / line height:
+    // distinct tops would collapse "aa\\n\\nbb" onto two rows.
+    float lineH = 0;
     for (int at = 0; at < len(text);) {
         uint32_t cp = 0;
         int bytes = Utf8At(text, at, &cp);
@@ -3515,29 +3521,22 @@ int TextGlyphBoxes(TextLayout* layout, Str text, Vec<TextGlyphBox>* out) {
         Bounds rect = {};
         int n = TextLayoutRangeRects(layout, text, at, at + bytes, &rect, 1);
         if (n < 1 || rect.w <= 0) {
-            // Text with no glyph of its own, a line break most often, is
-            // drawn by the glyph before it.
-            if (len(*out) > before) {
+            // A line break belongs to the copy range and to no glyph. Other
+            // text with no glyph of its own is drawn by the glyph before it.
+            bool lineBreak = cp == '\n' || cp == '\r';
+            if (!lineBreak && len(*out) > before) {
                 (*out)[len(*out) - 1].hi = at + bytes;
             }
             at += bytes;
             continue;
         }
-        int row = -1;
-        for (int r = 0; r < len(rowTops); r++) {
-            if (fabsf(rowTops[r] - rect.y) < 0.5f) {
-                row = r;
-                break;
-            }
-        }
-        if (row < 0) {
-            row = len(rowTops);
-            VecAppend(rowTops, rect.y);
+        if (!(lineH > 0) && rect.h > 0) {
+            lineH = rect.h;
         }
         TextGlyphBox g;
         g.lo = at;
         g.hi = at + bytes;
-        g.row = row;
+        g.row = 0;
         g.left = rect.x;
         g.right = rect.x + rect.w;
         g.top = rect.y;
@@ -3545,16 +3544,10 @@ int TextGlyphBoxes(TextLayout* layout, Str text, Vec<TextGlyphBox>* out) {
         VecAppend(*out, g);
         at += bytes;
     }
-    // Rows in the order they stand, top down.
-    int nRows = len(rowTops);
-    for (int i = before; i < len(*out); i++) {
-        int below = 0;
-        for (int r = 0; r < nRows; r++) {
-            if (rowTops[r] < (*out)[i].top - 0.5f) {
-                below++;
-            }
+    if (lineH > 0) {
+        for (int i = before; i < len(*out); i++) {
+            (*out)[i].row = (int)floorf(((*out)[i].top / lineH) + 0.5f);
         }
-        (*out)[i].row = below;
     }
     return len(*out) - before;
 }
@@ -8331,10 +8324,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             }
         }
         if (lo >= 0 && hi > lo) {
-            PaintTextRange(ctx, e->text, font,
-                           e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
-                           ElTextWeight(e), e->style.lineHeight, e->x, e->y, lo,
-                           hi, e->selColor, ElTextAlign(e));
+            // selection_paint::visit on a TextView inline. An editor row
+            // still covers the rest of a line the selection continues past.
+            auto paintSel =
+                e->glyphSelection ? &PaintTextRangeBoxes : &PaintTextRange;
+            paintSel(ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
+                     e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
+                     e->y, lo, hi, e->selColor, ElTextAlign(e));
         }
         // The other cursors' selections, in the same wash.
         for (int i = 0; i < e->nExtraSels; i++) {

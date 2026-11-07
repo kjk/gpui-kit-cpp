@@ -3493,7 +3493,7 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
         }
     }
     if (selectable) {
-        t->Selectable();
+        t->Selectable()->GlyphSelection();
     }
     SrcMark(t, marks, href);
     if ((marks & MdLink) && len(href) > 0) {
@@ -3946,7 +3946,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         }
         ApplyWeight(t, weight);
         if (selectable) {
-            t->Selectable();
+            t->Selectable()->GlyphSelection();
             SrcMark(t, 0);
             SrcMap(t, n->runFirst->segments, n->runFirst->segmentCount, 0);
         }
@@ -4419,7 +4419,7 @@ El* TextView::CodeBlock(MdNode* n) {
                     ->Fg(textViewStyle.foreground)
                     ->Mono();
         if (selectable) {
-            t->Selectable();
+            t->Selectable()->GlyphSelection();
             SrcMark(t, 0);
             SrcMap(t, segments, segmentCount, 0);
         }
@@ -4526,7 +4526,7 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
                     ->Fg(color)
                     ->Mono();
         if (selectable) {
-            t->Selectable();
+            t->Selectable()->GlyphSelection();
             SrcMark(t, 0);
             SrcMap(t, segments, segmentCount, pieceStart);
         }
@@ -7054,7 +7054,7 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             SrcOpen({}, {});
             content = TextEl(a, n->custom.text)->Font(baseFont)->Wrap();
             if (selectable) {
-                content->Selectable();
+                content->Selectable()->GlyphSelection();
                 SrcMark(content, 0);
             }
         }
