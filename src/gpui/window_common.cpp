@@ -4792,6 +4792,10 @@ bool AppIsMaximized(Window* win) {
     return win && win->maximized;
 }
 
+bool AppIsMinimized(Window* win) {
+    return win && win->minimized;
+}
+
 void WindowSetCursorVisible(Window* win, bool visible) {
     if (!win || win->cursorHidden == !visible) {
         return;

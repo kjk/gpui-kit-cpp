@@ -1072,6 +1072,21 @@ static bool PressedButton(MouseButton* out) {
     gpui::AppInvalidate(win);
 }
 
+- (void)windowDidMiniaturize:(NSNotification*)note {
+    (void)note;
+    if (win) {
+        win->minimized = true;
+    }
+}
+
+- (void)windowDidDeminiaturize:(NSNotification*)note {
+    (void)note;
+    if (win) {
+        win->minimized = false;
+        gpui::AppInvalidate(win);
+    }
+}
+
 - (void)windowDidChangeBackingProperties:(NSNotification*)note {
     (void)note;
     gpui::AppInvalidate(win);

@@ -7171,6 +7171,9 @@ struct Window {
     CursorKind cursor = CursorKind::Arrow;
     bool cursorHidden = false;
     bool maximized = false;
+    // iconified (Windows), miniaturized (macOS), _NET_WM_STATE_HIDDEN (X11);
+    // never set in the browser
+    bool minimized = false;
     // Window::client_inset and window_decorations(). WindowBorder writes the
     // stable inset while it renders; fixed UI overlays read it while their
     // own trees are built, which is before their enclosing Root is wrapped.
@@ -8454,6 +8457,7 @@ void WindowOnShouldClose(Window* win, WindowShouldCloseFn fn, void* data);
 void AppClose(Window* win);
 void AppDrag(Window* win);
 bool AppIsMaximized(Window* win);
+bool AppIsMinimized(Window* win);
 } // namespace gpui
 
 // The entry point every example implements. The platform half of the runtime

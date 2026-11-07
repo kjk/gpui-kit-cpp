@@ -867,6 +867,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             return 0;
         case WM_SIZE:
             win->paint.dpi = HostDpi(hwnd);
+            win->minimized = wParam == SIZE_MINIMIZED;
             // Paint now, not after a coalesced WM_PAINT: during a live
             // resize DWM otherwise composites the last flip buffer stretched
             // to the new client, which is the same walk the menus do.
