@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b2e45ae8bd7333fefd140cff590d2bc9908dca80",
+  sha: "507d9757eb7733fceee3c997ab39be6b9a7bb5fb",
   date: "2026-11-05",
-  subject: "shell: Draw nothing where script views would nest inside themselves or too deep (#3817)",
+  subject: "text: Highlight the table body row under the pointer (#3812)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

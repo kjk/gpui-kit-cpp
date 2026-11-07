@@ -16,14 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b2e45ae8bd7333fefd140cff590d2bc9908dca80` (2026-11-05,
-shell: Draw nothing where script views would nest inside themselves or
-too deep (#3817)). A view mounted inside itself, or nested past 65
-levels, draws nothing at that mount. Each view counts its description's
-height plus one, and a dock area counts four more. The drawing stack is
-held for the view's render, because child views and dock panels are
-mounted while it runs. A description still nests at most 64 levels.
-Proxy URLs stay out of the default process environment unless granted.
+Processed through `507d9757eb7733fceee3c997ab39be6b9a7bb5fb` (2026-11-05,
+text: Highlight the table body row under the pointer (#3812)). A
+markdown table body row under the pointer takes `table_row_hover`.
+Unset means no highlight, and the header row never takes it. An
+inverted surface derives that hover at opacity 0.08. Each table frame
+is its own id, so two tables do not share a hover.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

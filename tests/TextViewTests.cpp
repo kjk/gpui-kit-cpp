@@ -1459,6 +1459,20 @@ static void TestSourceShapedTextValues(Arena* a) {
     styledB.WithCodeBlock(codeB, StyleFieldBg);
     utassert(!styledA.Equals(styledB));
 
+    // style.rs: the default has no table-row hover, and setting one changes
+    // equality. Rust's red.
+    TextViewStyle noHover = TextViewStyle::Default();
+    utassert(!noHover.hasTableRowHover);
+    TextViewStyle rowHover = TextViewStyle::Default();
+    Rgba red = RgbaHex(0xff0000);
+    rowHover.WithTableRowHover(red);
+    utassert(rowHover.hasTableRowHover);
+    utassert(rowHover.tableRowHover.r == red.r &&
+             rowHover.tableRowHover.g == red.g &&
+             rowHover.tableRowHover.b == red.b &&
+             rowHover.tableRowHover.a == red.a);
+    utassert(!noHover.Equals(rowHover));
+
     gpui::Style head;
     head.color = Rgb(1, 2, 3);
     styledA = TextViewStyle::Default();
@@ -1592,7 +1606,92 @@ static void TestMarkdownTableThemeTokens() {
         utassert(divider && divider->style.borderR == 1 &&
                  SameTextViewColor(divider->style.borderColor, th.border));
     }
+    // The component palette installs the table-row hover.
+    utassert(installed.style.hasTableRowHover);
+    utassert(SameTextViewColor(installed.style.tableRowHover, th.tableHover));
 
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+// text_view.rs table_body_row_under_the_pointer_takes_the_hover_background.
+// Rust paints one hover quad under the pointer. This tree has no paint log,
+// so the same colors are checked on the element tree before layout applies
+// hover: each table frame is its own id, the header never highlights, and
+// every body row carries the hover background.
+struct TableHoverCounts {
+    int tables = 0;
+    int headers = 0;
+    int bodies = 0;
+    Str tableIds[4] = {};
+};
+
+static void CountTableRowHover(El* e, TableHoverCounts* counts, Rgba hover) {
+    if (!e) return;
+    if (e->id.s && StrStartsWith(e->id, StrL("table-"))) {
+        utassert(e->clickFromPath);
+        if (counts->tables < 4) {
+            counts->tableIds[counts->tables] = e->id;
+        }
+        counts->tables++;
+    }
+    if (e->id.s && StrStartsWith(e->id, StrL("row-"))) {
+        utassert(e->clickFromPath);
+        bool header = StrEq(e->id, StrL("row-0"));
+        if (header) {
+            utassert(!e->style.hasHoverBg);
+            counts->headers++;
+        } else {
+            utassert(e->style.hasHoverBg);
+            utassert(SameTextViewColor(e->style.hoverBg.color, hover));
+            counts->bodies++;
+        }
+    }
+    for (El* child = e->first; child; child = child->next) {
+        CountTableRowHover(child, counts, hover);
+    }
+}
+
+static void TableBodyRowUnderThePointerTakesTheHoverBackground() {
+    // HEAD_BACKGROUND 0x11aa77, ROW_HOVER 0x7711aa, two markdown tables.
+    const Rgba kHead = RgbaHex(0x11aa77);
+    const Rgba kHover = RgbaHex(0x7711aa);
+    Str source = StrL(
+        "| a | b |\n"
+        "| --- | --- |\n"
+        "| 1 | 2 |\n"
+        "| 3 | 4 |\n"
+        "\n"
+        "| a | b |\n"
+        "| --- | --- |\n"
+        "| 1 | 2 |\n"
+        "| 3 | 4 |\n");
+    TextViewStyle style = TextViewStyle::Default();
+    style.WithCodeBackground(kHead).WithTableRowHover(kHover);
+
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    for (int scroll = 0; scroll < 2; scroll++) {
+        El* rendered = TextView::New(&cx, source)
+                           ->TableScroll(scroll != 0)
+                           ->Style(style)
+                           ->IntoEl();
+        TableHoverCounts counts;
+        CountTableRowHover(rendered, &counts, kHover);
+        utassert(counts.tables == 2);
+        utassert(counts.headers == 2);
+        utassert(counts.bodies == 4);
+        utassert(counts.tableIds[0].s && counts.tableIds[1].s);
+        utassert(!StrEq(counts.tableIds[0], counts.tableIds[1]));
+        utassert(StrEq(counts.tableIds[0], StrL("table-1")));
+        utassert(StrEq(counts.tableIds[1], StrL("table-2")));
+    }
     WindowKeyedFree(win);
     ArenaDelete(a);
     delete win;
@@ -1896,6 +1995,12 @@ static void TextColorOfAMatchingSurfaceOnlyReplacesTheBodyText() {
     utassert(SameTextViewColor(adapted.codeBackground, style.codeBackground));
     utassert(!adapted.hasTableBackground);
     utassert(!adapted.isDark);
+
+    // A matching surface keeps a table-row hover that was already set.
+    style.WithTableRowHover(ColorTokens::Light().muted);
+    TextViewStyle kept = style.OnTextColor(destructive);
+    utassert(kept.hasTableRowHover);
+    utassert(SameTextViewColor(kept.tableRowHover, ColorTokens::Light().muted));
 }
 
 // style.rs text_color_of_an_inverted_surface_derives_every_color_from_it.
@@ -1921,6 +2026,14 @@ static void TextColorOfAnInvertedSurfaceDerivesEveryColorFromIt() {
         utassert((adapted.tableHeadFields & StyleFieldColor) &&
                  SameTextViewColor(adapted.tableHead.color, text));
         utassert(adapted.isDark == (dark == 0));
+        // Unset stays unset. A set hover is derived at opacity 0.08.
+        utassert(!adapted.hasTableRowHover);
+        TextViewStyle withHover = style;
+        withHover.WithTableRowHover(colors.muted);
+        TextViewStyle hovered = withHover.OnTextColor(text);
+        utassert(hovered.hasTableRowHover);
+        utassert(
+            SameTextViewColor(hovered.tableRowHover, RgbaOpacity(text, 0.08f)));
     }
 }
 
@@ -9046,6 +9159,7 @@ void TestTextView() {
     TestStreamFadeStaggerStep();
     TestManagedTextViewAndParseTimePlugins(a);
     TestMarkdownTableThemeTokens();
+    TableBodyRowUnderThePointerTakesTheHoverBackground();
     TestTextViewMaxLines();
 #if GPUI_MARKDOWN_FULL
     TestMarkdownTaskList(a);

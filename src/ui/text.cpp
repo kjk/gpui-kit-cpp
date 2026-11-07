@@ -315,6 +315,7 @@ TextViewStyle UiTextViewStyle(const Theme& theme) {
     head.bg = Background(theme.tokens.tableHead);
     head.color = theme.tableHeadFg;
     style.WithTableHead(head, StyleFieldBg | StyleFieldColor);
+    style.WithTableRowHover(theme.tableHover);
 
     gpui::Style inlineCode = {};
     inlineCode.bg = Background(theme.accent);

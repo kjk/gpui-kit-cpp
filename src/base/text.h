@@ -508,6 +508,10 @@ struct TextViewStyle {
     // surface.
     Rgba tableBackground = {};
     bool hasTableBackground = false;
+    // The background of a hovered table body row. Unset means rows do not
+    // highlight. The header row never takes it.
+    Rgba tableRowHover = {};
+    bool hasTableRowHover = false;
     bool isDark = false;
 
     // `TextViewStyle::default()` is a complete, readable style rather than an
@@ -553,14 +557,18 @@ struct TextViewStyle {
     const gpui::Style& BlockquoteStyle() const { return blockquoteStyle; }
     uint32_t BlockquoteStyleFields() const { return blockquoteStyleFields; }
     TextViewStyle& WithDark(bool value);
+    // The background of a table body row while the pointer is over it. The
+    // header row does not highlight. Without this, table rows have no hover
+    // highlight.
+    TextViewStyle& WithTableRowHover(Rgba color);
     // `on_text_color`: this style adapted to body text drawn in `color`, the
     // text color a container sets for its surface.
     //
     // The body text always takes `color`. When `color` is far from this
     // style's foreground in lightness, the surface is inverted from the one
     // this style was made for (a `primary` fill, say): the link, muted text,
-    // code, border and selection colors would vanish on it, so they are all
-    // derived from `color`, and `isDark` flips.
+    // code, border, selection and table row hover colors would vanish on it,
+    // so they are all derived from `color`, and `isDark` flips.
     TextViewStyle OnTextColor(Rgba color) const;
     // `is_inverted_by`: whether body text in `color` sits on a surface
     // inverted from the one this style was made for.

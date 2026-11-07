@@ -468,6 +468,12 @@ TextViewStyle& TextViewStyle::WithDark(bool value) {
     return *this;
 }
 
+TextViewStyle& TextViewStyle::WithTableRowHover(Rgba color) {
+    tableRowHover = color;
+    hasTableRowHover = true;
+    return *this;
+}
+
 static bool TextRgbaEq(Rgba a, Rgba b) {
     return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
@@ -517,6 +523,9 @@ TextViewStyle TextViewStyle::OnTextColor(Rgba color) const {
     // gpui::transparent_black().
     style.tableBackground = Rgba{0, 0, 0, 0};
     style.hasTableBackground = true;
+    if (style.hasTableRowHover) {
+        style.tableRowHover = RgbaOpacity(color, 0.08f);
+    }
     return style;
 }
 
@@ -604,6 +613,8 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
         hasTableBackground != other.hasTableBackground ||
         (hasTableBackground &&
          !TextRgbaEq(tableBackground, other.tableBackground)) ||
+        hasTableRowHover != other.hasTableRowHover ||
+        (hasTableRowHover && !TextRgbaEq(tableRowHover, other.tableRowHover)) ||
         !StyleFieldsEqual(codeBlock, other.codeBlock, codeBlockFields) ||
         !StyleFieldsEqual(table, other.table, tableFields) ||
         !StyleFieldsEqual(tableHead, other.tableHead, tableHeadFields) ||
@@ -5014,6 +5025,12 @@ El* TextView::ScrollTable(MdNode* n) {
                                                          .tableHeadFields);
             }
         }
+        // Each row is its own hit target, so a hover highlight follows the
+        // pointer. The header keeps its own fill.
+        row->PathClick(ElementIdNamed(a, StrL("row"), (uint64_t)rowIx));
+        if (textViewStyle.hasTableRowHover && rowIx > 0) {
+            row->HoverBg(textViewStyle.tableRowHover);
+        }
         // A scrolled track can still meet the viewport with a square edge.
         // The mask that clips it is rectangular.
         RoundTableRow(row, textViewStyle, rowIx == 0, r->next == nullptr);
@@ -5042,8 +5059,11 @@ El* TextView::ScrollTable(MdNode* n) {
     if (textViewStyle.tableFields) {
         scroller->Refine(textViewStyle.table, textViewStyle.tableFields);
     }
+    // Scopes the row ids to this table, as the wrap-mode frame's id does.
+    // The scroll mask does not name a viewport that already has a scroll id.
     scroller->ScrollId((int)key)
         ->OnScroll(ListenTo(ent, &OnMdTableScroll))
+        ->PathClick(ElementIdNamed(a, StrL("table"), (uint64_t)tableIx))
         ->Child(track);
     // horizontal_scroll_area: the viewport clips and the mask over it takes
     // the wheel, so the gesture locks to the axis it started on and a
@@ -5101,8 +5121,16 @@ El* TextView::Table(MdNode* n) {
         minW[i] = cols[i].minW;
     }
 
-    El* table = Div(a)->FlexCol()->W(kFill)->ClipX()->Bg(surface)->Border(
-        1, textViewStyle.border);
+    tableIx++;
+    // Scopes the row ids to this table, so two tables never share hover.
+    El* table =
+        Div(a)
+            ->FlexCol()
+            ->W(kFill)
+            ->ClipX()
+            ->Bg(surface)
+            ->Border(1, textViewStyle.border)
+            ->PathClick(ElementIdNamed(a, StrL("table"), (uint64_t)tableIx));
     if (textViewStyle.tableFields) {
         table->Refine(textViewStyle.table, textViewStyle.tableFields);
     }
@@ -5118,6 +5146,10 @@ El* TextView::Table(MdNode* n) {
                 row->Refine(textViewStyle.tableHead, textViewStyle
                                                          .tableHeadFields);
             }
+        }
+        row->PathClick(ElementIdNamed(a, StrL("row"), (uint64_t)rowIx));
+        if (textViewStyle.hasTableRowHover && rowIx > 0) {
+            row->HoverBg(textViewStyle.tableRowHover);
         }
         RoundTableRow(row, textViewStyle, rowIx == 0, r->next == nullptr);
         AppendTableCells(row, r, maxW, minW, nCols, colAlign);
