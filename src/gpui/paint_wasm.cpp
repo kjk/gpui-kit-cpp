@@ -297,8 +297,17 @@ EM_JS(int, GpJsTargetBeginOffscreen, (int pxW, int pxH), {
     if (!G || pxW <= 0 || pxH <= 0) {
         return 0;
     }
+    // The wasm tests run under Node: no document and no OffscreenCanvas.
+    // Callers already treat a 0 as "no bitmap", which is the same answer
+    // as a browser that refuses the 2d context.
+    if (typeof OffscreenCanvas === "undefined" &&
+        typeof document === "undefined") {
+        return 0;
+    }
     if (!G.off) {
-        G.off = document.createElement("canvas");
+        G.off = typeof OffscreenCanvas !== "undefined"
+            ? new OffscreenCanvas(pxW, pxH)
+            : document.createElement("canvas");
     }
     G.off.width = pxW;
     G.off.height = pxH;
@@ -578,6 +587,14 @@ EM_JS(void, GpJsPathFree, (int id), {
 
 EM_JS(int, GpJsImageFromBgra, (const uint8_t* bgra, int w, int h), {
     const G = globalThis.__gpui;
+    // Node has neither OffscreenCanvas nor a document. Layout only asks
+    // for the bitmap's size; a draw with no context already returns.
+    if (typeof OffscreenCanvas === "undefined" &&
+        typeof document === "undefined") {
+        return G.alloc(G.images, G.imageFree,
+                       {img: null, w: w, h: h, status: 1, url: null,
+                        animated: false});
+    }
     const canvas = typeof OffscreenCanvas !== "undefined"
         ? new OffscreenCanvas(w, h) : document.createElement("canvas");
     canvas.width = w;
@@ -602,6 +619,14 @@ EM_JS(int, GpJsImageFromBgra, (const uint8_t* bgra, int w, int h), {
 
 EM_JS(int, GpJsImageDecode, (const uint8_t* bytes, int len), {
     const G = globalThis.__gpui;
+    // Node has no HTMLImageElement. A failed image is the channel the
+    // rest of the tree already handles; throwing would abort the suite.
+    if (typeof Image === "undefined" || typeof URL === "undefined" ||
+        typeof URL.createObjectURL !== "function") {
+        return G.alloc(G.images, G.imageFree,
+                       {img: null, w: 0, h: 0, status: 2, url: null,
+                        animated: false});
+    }
     // The bytes have to be copied: HEAPU8 is a view on memory that moves when
     // the heap grows, and the decode outlives this call.
     const copy = new Uint8Array(HEAPU8.subarray(bytes, bytes + len));
@@ -733,6 +758,10 @@ EM_JS(void, GpJsImageDraw,
         c.beginPath();
         c.rect(x, y, w, h);
         c.clip();
+    }
+    if (!e.img) {
+        c.restore();
+        return;
     }
     c.drawImage(e.img, imageX, imageY, imageW, imageH);
     c.restore();

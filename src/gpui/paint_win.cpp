@@ -1071,7 +1071,7 @@ bool CanvasScrollRect(PaintCtx* ctx, float x, float y, float w, float h,
     }
     int cw = x1 - x0;
     int ch = y1 - y0;
-    if (cw <= 1 || ch <= 1 || dxPx == 0 && dyPx == 0) {
+    if (cw <= 1 || ch <= 1 || (dxPx == 0 && dyPx == 0)) {
         return false;
     }
     if (abs(dxPx) >= cw || abs(dyPx) >= ch) {

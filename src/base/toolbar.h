@@ -50,7 +50,10 @@ struct Toolbar {
     Str id = {};
     bool disabled = false;
     // Toolbar::axis. Horizontal is Left/Right; vertical is Up/Down.
-    Axis axis = Axis::Horizontal;
+    // The setter below is also named Axis. An unqualified Axis in this
+    // class would mean that setter once the class is complete, which GCC
+    // rejects (-Wchanges-meaning), so the field names the enum explicitly.
+    ::gpui::Axis axis = ::gpui::Axis::Horizontal;
     // The container. Style it, and add children to it, before IntoEl.
     El* root = nullptr;
 
@@ -60,7 +63,7 @@ struct Toolbar {
     Toolbar* Disabled(bool value);
     // The direction the items run. Assistive technology hears the same
     // orientation. The default is horizontal, which is Left and Right.
-    Toolbar* Axis(Axis value);
+    Toolbar* Axis(::gpui::Axis value);
     Toolbar* Child(El* child);
     El* IntoEl();
 };

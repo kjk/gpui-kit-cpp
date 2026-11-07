@@ -17,7 +17,9 @@
 // speech example makes in examples/speech/src/responsibility.rs.
 extern "C" int responsibility_spawnattrs_setdisclaim(posix_spawnattr_t* attrs,
                                                      int disclaim);
-extern char** environ;
+// C linkage, same as base_posix.cpp. The amalgam compiles both into one
+// translation unit; a C++ declaration here is a different symbol.
+extern "C" char** environ;
 
 namespace base {
 
