@@ -95,6 +95,14 @@ struct PopupMenuState {
     // ScrollHandle offset for a scrollable menu. Kept with the menu entity so
     // rebuilding the frame does not jump a long menu back to the top.
     float scrollY = 0;
+    // Frames left to scroll the checked item into view on open. Zero once
+    // done, so the user's scrolling is not overridden afterwards.
+    uint8_t scrollToCheckedFrames = 4;
+    // Last frame's item boxes and the scrolling list, so the next frame can
+    // put the checked item where the first one sat. A trailing separator is
+    // not rendered, so an item's index is its index here.
+    Vec<Bounds> itemBounds;
+    Bounds scrollBounds = {};
     // The menu's own focus handle and where focus was before it came up.
     // Rust's PopupMenu holds both; so does this now, rather than deriving the
     // first from the element's name — the state is what outlives the frame,
@@ -154,7 +162,10 @@ struct PopupMenuState {
     static void OnContextDown(PopupMenuState* self, Ctx* cx,
                               const MouseDownEvent* ev);
 
-    ~PopupMenuState() { VecReset(rows); }
+    ~PopupMenuState() {
+        VecReset(rows);
+        VecReset(itemBounds);
+    }
 };
 
 // Open and close, which are `PopupMenu::show` and `dismiss(&Cancel)`. A menu

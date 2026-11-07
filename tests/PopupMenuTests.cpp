@@ -1464,8 +1464,78 @@ static void SubmenusWithDifferentWidthsChooseTheSideThatFits() {
     utassert(sub.x + sub.w * 0.5f > item.Right());
 }
 
+// menu.rs a_scrollable_menu_opens_on_its_checked_item.
+struct ScrollableOptionsMenu {
+    int checked = -1;
+    Entity<PopupMenuState> menu = {};
+
+    static El* Render(ScrollableOptionsMenu* self, Ctx* cx) {
+        PopupMenu* menu =
+            PopupMenu::New(cx, StrL("options"))->Scrollable(true)->MaxH(160);
+        self->menu = menu->state;
+        for (int ix = 0; ix < 48; ix++) {
+            menu->MenuWithCheck(fmt("Option %d", ix), ix == self->checked);
+        }
+        return Div(cx->a)->SizeFull()->Pad(16)->Child(menu->IntoEl());
+    }
+};
+
+static float MenuItemTop(PopupMenuState* s, int ix) {
+    return s->itemBounds.els[ix].y - s->scrollBounds.y;
+}
+
+static bool MenuItemVisible(PopupMenuState* s, int ix) {
+    Bounds b = s->itemBounds.els[ix];
+    Bounds v = s->scrollBounds;
+    return b.y + b.h > v.y + 0.5f && b.y < v.y + v.h - 0.5f;
+}
+
+static void AScrollableMenuOpensOnItsCheckedItem() {
+    App* app = TestAppNew();
+    Entity<ScrollableOptionsMenu> root = EntityNew<ScrollableOptionsMenu>(app);
+    Window* win = TestWindowOpen(app, root);
+    TestDraw(win);
+    TestDraw(win);
+    PopupMenuState* plain = root.Get(app)->menu.Get(app);
+    utassert(plain && plain->itemBounds.len >= 1);
+    float firstTop = 0;
+    if (plain) {
+        utassert(MenuItemVisible(plain, 0));
+        firstTop = MenuItemTop(plain, 0);
+        TestDraw(win);
+        utassert(MenuItemVisible(plain, 0));
+        utassert(fabsf(MenuItemTop(plain, 0) - firstTop) < 0.5f);
+    }
+    TestAppFree(app);
+
+    app = TestAppNew();
+    root = EntityNew<ScrollableOptionsMenu>(app);
+    root.Get(app)->checked = 30;
+    win = TestWindowOpen(app, root);
+    // The items are measured on the menu's first frame, and it scrolls on
+    // the next one.
+    TestDraw(win);
+    PopupMenuState* checked = root.Get(app)->menu.Get(app);
+    utassert(checked && checked->itemBounds.len > 30);
+    if (checked) {
+        utassert(MenuItemVisible(checked, 30));
+        utassert(!MenuItemVisible(checked, 0));
+        utassert(fabsf(MenuItemTop(checked, 30) - firstTop) < 1.f);
+
+        Point at = {checked->scrollBounds.x + checked->scrollBounds.w * 0.5f,
+                    checked->scrollBounds.y + checked->scrollBounds.h * 0.5f};
+        TestSimulateScrollWheel(win, at, Point{0, 60});
+        TestDraw(win);
+        utassert(fabsf(MenuItemTop(checked, 30) - (firstTop + 60.f)) < 1.f);
+        TestDraw(win);
+        utassert(fabsf(MenuItemTop(checked, 30) - (firstTop + 60.f)) < 1.f);
+    }
+    TestAppFree(app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
+    AScrollableMenuOpensOnItsCheckedItem();
     ACheckedMenuItemReportsItsCheck();
     ASubmenuWithRoomOpensOnTheRight();
     ASubmenuByTheWindowEdgeOpensOnTheLeft();

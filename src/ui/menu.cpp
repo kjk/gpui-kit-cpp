@@ -327,6 +327,55 @@ static void PopupMenuWidthChanged(PaintCtx* ctx, El* e, void* user) {
     }
 }
 
+// Scroll a scrollable menu once, as it opens, so its checked item is the
+// first one in view. The offset is the distance between the first item and
+// the checked one, measured in the same frame, so it does not depend on
+// where the menu was anchored. Items are measured while the frame paints,
+// so until then this asks for another frame, up to four times.
+static void PopupMenuScrollToChecked(PopupMenuState* s, Ctx* cx,
+                                     const ArenaVec<MenuItem>& items) {
+    if (!s || s->scrollToCheckedFrames == 0) {
+        return;
+    }
+    int ix = -1;
+    for (int i = 0; i < items.len; i++) {
+        if (items[i].checked) {
+            ix = i;
+            break;
+        }
+    }
+    if (ix <= 0) {
+        s->scrollToCheckedFrames = 0;
+        return;
+    }
+    bool ready = ix < s->itemBounds.len && s->itemBounds.els[0].h > 0 &&
+                 s->itemBounds.els[ix].h > 0 && s->scrollBounds.h > 0;
+    if (!ready) {
+        s->scrollToCheckedFrames--;
+        if (cx && cx->win) {
+            AppInvalidate(cx->win);
+        }
+        return;
+    }
+    float delta = s->itemBounds.els[ix].y - s->itemBounds.els[0].y;
+    int last = s->itemBounds.len - 1;
+    float topPad = s->itemBounds.els[0].y - s->scrollBounds.y;
+    float contentH = s->itemBounds.els[last].y + s->itemBounds.els[last].h +
+                     topPad - s->scrollBounds.y;
+    float maxScroll = contentH - s->scrollBounds.h;
+    if (maxScroll < 0) {
+        maxScroll = 0;
+    }
+    if (delta < 0) {
+        delta = 0;
+    }
+    if (delta > maxScroll) {
+        delta = maxScroll;
+    }
+    s->scrollY = delta;
+    s->scrollToCheckedFrames = 0;
+}
+
 El* PopupMenu::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     PopupMenuState* s = state.Get(cx);
@@ -487,11 +536,26 @@ El* PopupMenu::IntoEl() {
         // window; this tree's unset cap is the rem alone, as the old
         // 450px cap was.
         float heightCap = maxH > 0 ? maxH : Rems(cx, 28.125f);
+        PopupMenuScrollToChecked(s, cx, items);
+        int nRendered = 0;
+        for (int k = 0; k < items.len; k++) {
+            if (items[k].kind == MenuItemKind::Separator && k + 1 == items
+                                                                         .len) {
+                continue;
+            }
+            nRendered++;
+        }
+        if (s && s->itemBounds.len != nRendered) {
+            VecResize(s->itemBounds, nRendered);
+        }
         rows->ClipY()
             ->MaxH(heightCap)
             ->ScrollY(s ? s->scrollY : 0)
             ->ScrollFromPath()
             ->OnScroll(ListenTo(state, &PopupMenuState::OnScroll));
+        if (s) {
+            rows->BoundsOut(&s->scrollBounds);
+        }
     }
     Listener click = ListenTo(state, &PopupMenuState::OnItemClick, 0);
     Listener linkClick = ListenTo(state, &OnPopupLinkClick, 0);
@@ -499,6 +563,7 @@ El* PopupMenu::IntoEl() {
     Listener submenuClick = ListenTo(state, &PopupMenuState::OnSubmenuClick, 0);
     Listener submenuHover = ListenTo(state, &PopupMenuState::OnSubmenuHover, 0);
     int i = -1;
+    int rendered = 0;
     for (const MenuItem& it : items) {
         i++;
         if (it.kind == MenuItemKind::Separator) {
@@ -506,10 +571,15 @@ El* PopupMenu::IntoEl() {
                 continue;
             }
             // my_0p5 border_b(1): a rule with a little air around it.
-            rows->Child(Div(a)
-                            ->W(kFill)
-                            ->PadY(Rems(cx, 0.125f))
-                            ->Child(Div(a)->W(kFill)->H(1)->Bg(th.border)));
+            El* rule = Div(a)
+                           ->W(kFill)
+                           ->PadY(Rems(cx, 0.125f))
+                           ->Child(Div(a)->W(kFill)->H(1)->Bg(th.border));
+            if (scrollable && s && rendered < s->itemBounds.len) {
+                rule->BoundsOut(&s->itemBounds.els[rendered]);
+            }
+            rendered++;
+            rows->Child(rule);
             continue;
         }
         bool lit =
@@ -680,6 +750,10 @@ El* PopupMenu::IntoEl() {
             sub->Deferred();
             row->Child(sub);
         }
+        if (scrollable && s && rendered < s->itemBounds.len) {
+            row->BoundsOut(&s->itemBounds.els[rendered]);
+        }
+        rendered++;
         rows->Child(row);
     }
     root->Child(rows);

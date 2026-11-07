@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e4bac97652350b6729267904d095bbb0f4ab1097` (2026-11-05,
-text: Select right-aligned and centered table cell text where it is
-drawn (#3813)). A right-aligned or centered markdown table cell aligns
-its content box, so a drag selects the text where it is drawn. A short
-run sits at the end or the middle of its column. A run that wraps is
-capped at the cell, and those lines start at the left.
+Processed through `515968b9821cec2742d472429fd7a21a8322384f` (2026-11-05,
+menu: Open a scrollable menu on its checked item (#3814)). A
+scrollable menu opens with its first checked item at the top of the
+list. It measures the items for up to four frames, then leaves
+scrolling to the user. A menu with nothing checked stays at the top.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
