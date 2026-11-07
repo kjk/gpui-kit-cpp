@@ -359,6 +359,23 @@ static int ChoiceIxOpt(const QuestionnaireState* s, int itemIx, Str value) {
     return -1;
 }
 
+// The item named `item` and its choice `value`, or the schema error that says
+// which of the two is unknown.
+static QuestionnaireSchemaError FindChoice(const QuestionnaireState* s,
+                                           Str item, Str value, int* ix,
+                                           int* c) {
+    *ix = ItemIxOpt(s, item);
+    if (*ix < 0) {
+        return SchemaError(QuestionnaireSchemaErrorKind::UnknownItem, item);
+    }
+    *c = ChoiceIxOpt(s, *ix, value);
+    if (*c < 0) {
+        return SchemaError(QuestionnaireSchemaErrorKind::UnknownChoice,
+                           s->items[*ix].name, value);
+    }
+    return SchemaOk();
+}
+
 static int NChoices(const QuestionnaireState* s, int itemIx) {
     return len(s->items[itemIx].choices);
 }
@@ -1112,14 +1129,11 @@ QuestionnaireSchemaError QuestionnaireState::SetChoiceDisabled(Str item,
                                                                Str value,
                                                                bool disabled,
                                                                Ctx* cx) {
-    int ix = ItemIxOpt(this, item);
-    if (ix < 0) {
-        return SchemaError(QuestionnaireSchemaErrorKind::UnknownItem, item);
-    }
-    int c = ChoiceIxOpt(this, ix, value);
-    if (c < 0) {
-        return SchemaError(QuestionnaireSchemaErrorKind::UnknownChoice,
-                           items[ix].name, value);
+    int ix = -1;
+    int c = -1;
+    QuestionnaireSchemaError found = FindChoice(this, item, value, &ix, &c);
+    if (found.IsError()) {
+        return found;
     }
     if (runtime[ix].choiceDisabled[c] == disabled) {
         return SchemaOk();
@@ -1183,14 +1197,11 @@ void QuestionnaireState::Reset(Ctx* cx) {
 
 QuestionnaireSchemaError QuestionnaireState::ActivateChoice(Str item, Str value,
                                                             Ctx* cx) {
-    int ix = ItemIxOpt(this, item);
-    if (ix < 0) {
-        return SchemaError(QuestionnaireSchemaErrorKind::UnknownItem, item);
-    }
-    int c = ChoiceIxOpt(this, ix, value);
-    if (c < 0) {
-        return SchemaError(QuestionnaireSchemaErrorKind::UnknownChoice,
-                           items[ix].name, value);
+    int ix = -1;
+    int c = -1;
+    QuestionnaireSchemaError found = FindChoice(this, item, value, &ix, &c);
+    if (found.IsError()) {
+        return found;
     }
     QuestionnaireItemRuntime& r = runtime[ix];
     if (r.disabled || r.choiceDisabled[c]) {
@@ -1252,14 +1263,11 @@ void QuestionnaireState::OnPendingConfirm(QuestionnaireState* self, Ctx* cx,
 
 QuestionnaireSchemaError QuestionnaireState::Choose(Str item, Str value,
                                                     Ctx* cx) {
-    int ix = ItemIxOpt(this, item);
-    if (ix < 0) {
-        return SchemaError(QuestionnaireSchemaErrorKind::UnknownItem, item);
-    }
-    int c = ChoiceIxOpt(this, ix, value);
-    if (c < 0) {
-        return SchemaError(QuestionnaireSchemaErrorKind::UnknownChoice,
-                           items[ix].name, value);
+    int ix = -1;
+    int c = -1;
+    QuestionnaireSchemaError found = FindChoice(this, item, value, &ix, &c);
+    if (found.IsError()) {
+        return found;
     }
     if (runtime[ix].disabled || runtime[ix].choiceDisabled[c]) {
         return SchemaOk();

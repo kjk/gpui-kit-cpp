@@ -878,10 +878,32 @@ bool GridLayoutState::ActiveItem(Str* out) const {
     return true;
 }
 
-void GridLayoutState::SetAreas(Ctx* cx, const GridArea* items, int n) {
+void GridLayoutState::ClearDrag() {
     hasDrag = false;
     VecClear(drag.start);
     VecClear(drag.preview);
+}
+
+bool GridLayoutState::ApplySelection(bool has, Str id) {
+    Str next = {};
+    bool hasNext = false;
+    if (has) {
+        const GridArea* area = Area(id);
+        if (area) {
+            next = area->id;
+            hasNext = true;
+        }
+    }
+    if (hasSelected == hasNext && StrEq(selected, next)) {
+        return false;
+    }
+    hasSelected = hasNext;
+    selected = next;
+    return true;
+}
+
+void GridLayoutState::SetAreas(Ctx* cx, const GridArea* items, int n) {
+    ClearDrag();
     Adopt(items, n < 0 ? 0 : n);
     Normalize();
     if (cx) {
@@ -890,9 +912,7 @@ void GridLayoutState::SetAreas(Ctx* cx, const GridArea* items, int n) {
 }
 void GridLayoutState::SetCols(Ctx* cx, int cols) {
     columns = cols < 1 ? 1 : cols;
-    hasDrag = false;
-    VecClear(drag.start);
-    VecClear(drag.preview);
+    ClearDrag();
     Normalize();
     if (cx) {
         Notify(cx);
@@ -901,9 +921,7 @@ void GridLayoutState::SetCols(Ctx* cx, int cols) {
 void GridLayoutState::SetCompaction(Ctx* cx, bool has, Axis axis) {
     hasCompaction = has;
     compaction = axis;
-    hasDrag = false;
-    VecClear(drag.start);
-    VecClear(drag.preview);
+    ClearDrag();
     Normalize();
     if (cx) {
         Notify(cx);
@@ -928,20 +946,9 @@ void GridLayoutState::SetResizable(Ctx* cx, bool value) {
     }
 }
 void GridLayoutState::SetSelectedItem(Ctx* cx, bool has, Str id) {
-    Str next = {};
-    bool hasNext = false;
-    if (has) {
-        const GridArea* area = Area(id);
-        if (area) {
-            next = area->id;
-            hasNext = true;
-        }
-    }
-    if (hasSelected == hasNext && StrEq(selected, next)) {
+    if (!ApplySelection(has, id)) {
         return;
     }
-    hasSelected = hasNext;
-    selected = next;
     if (cx) {
         Notify(cx);
     }
@@ -1037,24 +1044,13 @@ bool GridLayoutState::ResizeSelected(Ctx* cx, int cols, int rows) {
 }
 
 void GridLayoutState::Select(Ctx* cx, bool has, Str id) {
-    Str next = {};
-    bool hasNext = false;
-    if (has) {
-        const GridArea* area = Area(id);
-        if (area) {
-            next = area->id;
-            hasNext = true;
-        }
-    }
-    if (hasSelected == hasNext && StrEq(selected, next)) {
+    if (!ApplySelection(has, id)) {
         return;
     }
-    hasSelected = hasNext;
-    selected = next;
     GridLayoutEvent ev;
     ev.kind = GridLayoutEventKind::Select;
-    ev.hasId = hasNext;
-    ev.id = next;
+    ev.hasId = hasSelected;
+    ev.id = selected;
     EntityEmit(cx ? cx->app : nullptr, cx ? cx->win : nullptr, self, &ev);
 }
 
@@ -1185,9 +1181,7 @@ void GridLayoutState::EndDrag(Ctx* cx) {
         return;
     }
     Vec<GridArea> preview = drag.preview;
-    hasDrag = false;
-    VecClear(drag.start);
-    VecClear(drag.preview);
+    ClearDrag();
     if (cx) {
         Notify(cx);
     }
@@ -1198,9 +1192,7 @@ bool GridLayoutState::CancelDrag(Ctx* cx) {
     if (!hasDrag) {
         return false;
     }
-    hasDrag = false;
-    VecClear(drag.start);
-    VecClear(drag.preview);
+    ClearDrag();
     if (cx && cx->win) {
         cx->win->activeDrag = {};
     }

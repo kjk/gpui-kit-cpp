@@ -1789,6 +1789,24 @@ static void Pop(MdBuild* b) {
     }
 }
 
+// A new run at the end of the current block, carrying the marks, the wash and
+// the link in force.
+static MdRun* NewRun(MdBuild* b) {
+    MdNode* n = b->cur;
+    MdRun* r = ArenaNew<MdRun>(b->a);
+    r->marks = b->marks;
+    r->highlight = b->highlight;
+    r->hasHighlight = b->hasHighlight;
+    r->href = b->href;
+    if (n->runLast) {
+        n->runLast->next = r;
+    } else {
+        n->runFirst = r;
+    }
+    n->runLast = r;
+    return r;
+}
+
 // Appends to the run being built when the marks match and the text is the
 // next byte of the source; otherwise starts a new run. Most of a paragraph is
 // one uninterrupted stretch of source, so this usually collapses to one run
@@ -1832,12 +1850,8 @@ static void AddText(MdBuild* b, Str s,
         r->text.len += len(s);
         return;
     }
-    r = ArenaNew<MdRun>(b->a);
+    r = NewRun(b);
     r->text = s;
-    r->marks = b->marks;
-    r->highlight = b->highlight;
-    r->hasHighlight = b->hasHighlight;
-    r->href = b->href;
     if (added > 0) {
         SourceSegment* copy = TextArenaArray<SourceSegment>(b->a, added);
         if (copy) {
@@ -1848,12 +1862,6 @@ static void AddText(MdBuild* b, Str s,
             r->segmentCount = added;
         }
     }
-    if (n->runLast) {
-        n->runLast->next = r;
-    } else {
-        n->runFirst = r;
-    }
-    n->runLast = r;
 }
 
 // node.rs InlineNode::image: an image sits in the flow beside the words,
@@ -1863,8 +1871,7 @@ static void AddImage(MdBuild* b, Str src, Str alt, float w, float h,
     if (len(src) <= 0) {
         return;
     }
-    MdNode* n = b->cur;
-    MdRun* r = ArenaNew<MdRun>(b->a);
+    MdRun* r = NewRun(b);
     // ImageNode::span, which selected_source_range takes in whole.
     r->hasImgSpan = node && MdNodeSpan(b, node, &r->imgSpan);
     r->imgSrc = src;
@@ -1872,22 +1879,11 @@ static void AddImage(MdBuild* b, Str src, Str alt, float w, float h,
     r->text = alt;
     r->imgW = w;
     r->imgH = h;
-    r->marks = b->marks;
-    r->highlight = b->highlight;
-    r->hasHighlight = b->hasHighlight;
-    r->href = b->href;
-    if (n->runLast) {
-        n->runLast->next = r;
-    } else {
-        n->runFirst = r;
-    }
-    n->runLast = r;
 }
 
 static void AddCustomInline(MdBuild* b, const MarkdownNode& custom,
                             const md::Node* node) {
-    MdNode* n = b->cur;
-    MdRun* r = ArenaNew<MdRun>(b->a);
+    MdRun* r = NewRun(b);
     r->custom = custom;
     // parse_paragraph: `custom.set_span(span)`, the claimed node's position.
     r->custom.hasSpan = MdNodeSpan(b, node, &r->custom.span);
@@ -1913,16 +1909,6 @@ static void AddCustomInline(MdBuild* b, const MarkdownNode& custom,
     // see the same content as the renderer.
     r->text = r->custom.text;
     r->hasCustom = true;
-    r->marks = b->marks;
-    r->highlight = b->highlight;
-    r->hasHighlight = b->hasHighlight;
-    r->href = b->href;
-    if (n->runLast) {
-        n->runLast->next = r;
-    } else {
-        n->runFirst = r;
-    }
-    n->runLast = r;
 }
 
 // "&amp;" -> "&". Returns the entity unchanged when it is not one the crate's
@@ -5492,14 +5478,14 @@ static void OnMdTableScroll(MdTableScroll* st, Ctx* cx, const ScrollEvent* ev) {
     Notify(cx);
 }
 
-El* TextView::ScrollTable(MdNode* n) {
+bool TextView::MeasureTable(MdNode* n, bool scroll, TableColumns* out) {
     // The frame's border_1 on both sides. Column floors live on the cells.
     const float kTableBorder = 2.f;
 
     // node.rs paints the frame from the Base theme's surface and the style's
     // border; the radius arrives through `style.table()`, which is what the
     // themed façade fills in.
-    Rgba surface = textViewStyle.hasTableBackground
+    out->surface = textViewStyle.hasTableBackground
                        ? textViewStyle.tableBackground
                        : base_theme::Theme::Global(cx->app)
                              .tokens.colors.surface;
@@ -5507,18 +5493,18 @@ El* TextView::ScrollTable(MdNode* n) {
     int nCols = 0;
     TableDimensions(n, &rows, &nCols);
     if (rows <= 0 || nCols <= 0) {
-        return Div(a);
+        return false;
     }
     TableCol* cols = TextArenaArray<TableCol>(a, nCols);
     uint8_t* colAlign = TextArenaArray<uint8_t>(a, nCols);
     if (!cols || !colAlign) {
-        return Div(a);
+        return false;
     }
-    MeasureTableColumns(this, n, nCols, true, cols, colAlign);
+    MeasureTableColumns(this, n, nCols, scroll, cols, colAlign);
     float* maxW = TextArenaArray<float>(a, nCols);
     float* minW = TextArenaArray<float>(a, nCols);
     if (!maxW || !minW) {
-        return Div(a);
+        return false;
     }
     float minTotal = kTableBorder;
     for (int i = 0; i < nCols; i++) {
@@ -5526,34 +5512,66 @@ El* TextView::ScrollTable(MdNode* n) {
         minW[i] = cols[i].minW;
         minTotal += cols[i].minW + cols[i].divider;
     }
+    out->nCols = nCols;
+    out->colAlign = colAlign;
+    out->maxW = maxW;
+    out->minW = minW;
+    out->minTotal = minTotal;
+    return true;
+}
+
+El* TextView::TableRow(MdNode* r, int rowIx, const TableColumns& t) {
+    El* row = Div(a)->FlexRow()->W(kFill);
+    if (r->next) {
+        row->BorderB(1, textViewStyle.border);
+    }
+    if (r->head) {
+        row->Bg(textViewStyle.codeBackground)->Fg(textViewStyle.foreground);
+        if (textViewStyle.tableHeadFields) {
+            row->Refine(textViewStyle.tableHead, textViewStyle.tableHeadFields);
+        }
+    }
+    // Each row is its own hit target, so a hover highlight follows the
+    // pointer. The header keeps its own fill.
+    row->PathClick(ElementIdNamed(a, StrL("row"), (uint64_t)rowIx));
+    if (textViewStyle.hasTableRowHover && rowIx > 0) {
+        row->HoverBg(textViewStyle.tableRowHover);
+    }
+    // A scrolled track can still meet the viewport with a square edge.
+    // The mask that clips it is rectangular.
+    RoundTableRow(row, textViewStyle, rowIx == 0, r->next == nullptr);
+    AppendTableCells(row, r, t.maxW, t.minW, t.nCols, t.colAlign);
+    return row;
+}
+
+El* TextView::TableWithActions(El* table, MdNode* n, const TableColumns& t) {
+    El* actions = TableActionsRow(n, t.nCols, t.colAlign);
+    if (!actions) {
+        return table;
+    }
+    // A small gap, so the buttons' hover backgrounds stay clear of the
+    // table's border. Where they sit along the row is the caller's business.
+    // mt_1 on the actions row.
+    return Div(a)
+        ->FlexCol()
+        ->W(kFill)
+        ->Gap(Rems(cx, 0.25f))
+        ->Child(table)
+        ->Child(actions);
+}
+
+El* TextView::ScrollTable(MdNode* n) {
+    TableColumns t;
+    if (!MeasureTable(n, true, &t)) {
+        return Div(a);
+    }
 
     // Row track sized to max(viewport, column floors). The frame stays on
     // the viewport below, so a radius does not travel with the rows.
-    El* track = Div(a)->FlexCol()->W(kFill)->MinW(minTotal);
+    El* track = Div(a)->FlexCol()->W(kFill)->MinW(t.minTotal);
     int rowIx = 0;
     for (MdNode* r = n->first; r; r = r->next, rowIx++) {
-        El* row = Div(a)->FlexRow()->W(kFill);
-        if (r->next) {
-            row->BorderB(1, textViewStyle.border);
-        }
-        if (r->head) {
-            row->Bg(textViewStyle.codeBackground)->Fg(textViewStyle.foreground);
-            if (textViewStyle.tableHeadFields) {
-                row->Refine(textViewStyle.tableHead, textViewStyle
-                                                         .tableHeadFields);
-            }
-        }
-        // Each row is its own hit target, so a hover highlight follows the
-        // pointer. The header keeps its own fill.
-        row->PathClick(ElementIdNamed(a, StrL("row"), (uint64_t)rowIx));
-        if (textViewStyle.hasTableRowHover && rowIx > 0) {
-            row->HoverBg(textViewStyle.tableRowHover);
-        }
-        // A scrolled track can still meet the viewport with a square edge.
-        // The mask that clips it is rectangular.
-        RoundTableRow(row, textViewStyle, rowIx == 0, r->next == nullptr);
-        AppendTableCells(row, r, maxW, minW, nCols, colAlign);
-        track->Child(row);
+        track->Child(TableRow(r, rowIx, t));
     }
     // The viewport owns the visible frame, including any caller-provided
     // radius. The border stays here so the rounded frame does not move
@@ -5572,7 +5590,7 @@ El* TextView::ScrollTable(MdNode* n) {
                        ->W(kFill)
                        ->ClipX()
                        ->ScrollX(st ? st->x : 0)
-                       ->Bg(surface)
+                       ->Bg(t.surface)
                        ->Border(1, textViewStyle.border);
     if (textViewStyle.tableFields) {
         scroller->Refine(textViewStyle.table, textViewStyle.tableFields);
@@ -5589,19 +5607,7 @@ El* TextView::ScrollTable(MdNode* n) {
     // rather than to this table. #2881 had replaced it with a plain
     // overflow-x scroller and lost that; #2890 put it back.
     scroller = HorizontalScrollArea(cx, StrL("md-table"), scroller);
-    El* actions = TableActionsRow(n, nCols, colAlign);
-    if (!actions) {
-        return scroller;
-    }
-    // A small gap, so the buttons' hover backgrounds stay clear of the
-    // table's border. Where they sit along the row is the caller's business.
-    // mt_1 on the actions row.
-    return Div(a)
-        ->FlexCol()
-        ->W(kFill)
-        ->Gap(Rems(cx, 0.25f))
-        ->Child(scroller)
-        ->Child(actions);
+    return TableWithActions(scroller, n, t);
 }
 
 // node.rs render_table, the non-scrolling half. Columns are measured, not
@@ -5613,32 +5619,10 @@ El* TextView::ScrollTable(MdNode* n) {
 // the cell's align attribute. A body cell with none of its own takes the
 // header cell's, which is how a markdown table says it once.
 El* TextView::Table(MdNode* n) {
-    Rgba surface = textViewStyle.hasTableBackground
-                       ? textViewStyle.tableBackground
-                       : base_theme::Theme::Global(cx->app)
-                             .tokens.colors.surface;
-    int rows = 0;
-    int nCols = 0;
-    TableDimensions(n, &rows, &nCols);
-    if (rows <= 0 || nCols <= 0) {
+    TableColumns t;
+    if (!MeasureTable(n, false, &t)) {
         return Div(a);
     }
-    TableCol* cols = TextArenaArray<TableCol>(a, nCols);
-    uint8_t* colAlign = TextArenaArray<uint8_t>(a, nCols);
-    if (!cols || !colAlign) {
-        return Div(a);
-    }
-    MeasureTableColumns(this, n, nCols, false, cols, colAlign);
-    float* maxW = TextArenaArray<float>(a, nCols);
-    float* minW = TextArenaArray<float>(a, nCols);
-    if (!maxW || !minW) {
-        return Div(a);
-    }
-    for (int i = 0; i < nCols; i++) {
-        maxW[i] = cols[i].maxW;
-        minW[i] = cols[i].minW;
-    }
-
     tableIx++;
     // Scopes the row ids to this table, so two tables never share hover.
     El* table =
@@ -5646,7 +5630,7 @@ El* TextView::Table(MdNode* n) {
             ->FlexCol()
             ->W(kFill)
             ->ClipX()
-            ->Bg(surface)
+            ->Bg(t.surface)
             ->Border(1, textViewStyle.border)
             ->PathClick(ElementIdNamed(a, StrL("table"), (uint64_t)tableIx));
     if (textViewStyle.tableFields) {
@@ -5654,35 +5638,9 @@ El* TextView::Table(MdNode* n) {
     }
     int rowIx = 0;
     for (MdNode* r = n->first; r; r = r->next, rowIx++) {
-        El* row = Div(a)->FlexRow()->W(kFill);
-        if (r->next) {
-            row->BorderB(1, textViewStyle.border);
-        }
-        if (r->head) {
-            row->Bg(textViewStyle.codeBackground)->Fg(textViewStyle.foreground);
-            if (textViewStyle.tableHeadFields) {
-                row->Refine(textViewStyle.tableHead, textViewStyle
-                                                         .tableHeadFields);
-            }
-        }
-        row->PathClick(ElementIdNamed(a, StrL("row"), (uint64_t)rowIx));
-        if (textViewStyle.hasTableRowHover && rowIx > 0) {
-            row->HoverBg(textViewStyle.tableRowHover);
-        }
-        RoundTableRow(row, textViewStyle, rowIx == 0, r->next == nullptr);
-        AppendTableCells(row, r, maxW, minW, nCols, colAlign);
-        table->Child(row);
+        table->Child(TableRow(r, rowIx, t));
     }
-    El* actions = TableActionsRow(n, nCols, colAlign);
-    if (!actions) {
-        return table;
-    }
-    return Div(a)
-        ->FlexCol()
-        ->W(kFill)
-        ->Gap(Rems(cx, 0.25f))
-        ->Child(table)
-        ->Child(actions);
+    return TableWithActions(table, n, t);
 }
 
 Rgba TextView::BlockFg() const {
