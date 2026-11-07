@@ -2910,6 +2910,9 @@ struct El {
     unsigned int caretLineEndAffinity : 1 = false;
     // StyledImage::grayscale.
     unsigned int imageGrayscale : 1 = false;
+    // An inline image the document did not size. Layout uses its own pixels,
+    // or a square until those pixels exist, and narrows it to the wrap.
+    unsigned int imageUnsized : 1 = false;
     // Styled::debug / debug_below: a red outline around this element, or
     // around it and every element painted under it. Read only by a debug
     // build's paint, as GPUI's are (#[cfg(debug_assertions)]); El::Debug and
@@ -6611,6 +6614,11 @@ int TextRangeBoxes(const TextGlyphBox* glyphs, int n, int lo, int hi,
 // paints them: the range's glyph boxes, each the height of its row.
 // PaintTextRange is the editor selection's painter: a range that continues
 // past a line covers the rest of that line.
+// inline_flow.rs image_size for a picture with neither dimension, then the
+// narrowing layout_measured_flow applies when that picture is wider than
+// the wrap. A zero intrinsic size is the not-yet-loaded square. `wrapW` of
+// 0 does not narrow.
+Size InlineImageExtent(Size intrinsic, float lineH, float wrapW);
 void PaintTextRangeBoxes(PaintCtx* ctx, Str s, float fontSize, float maxW,
                          bool wrap, uint16_t weight, float lineH, float x,
                          float y, int lo, int hi, Rgba color,

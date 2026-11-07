@@ -3341,12 +3341,14 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
     float w = r->imgW;
     float h = r->imgH;
     // inline_flow.rs image_size: a picture in a run of words that names
-    // neither dimension is three quarters of the line it sits on, and as wide
-    // as its own shape makes it — the badge beside a sentence is a glyph, not
-    // a plate. Only the height is named here; the layout takes the width from
-    // the picture's aspect, which is the one it knows and this does not.
+    // neither dimension is drawn at its own size. Until that size exists it
+    // holds a square three quarters of the line, so the line does not
+    // collapse. Wider than the wrap, it narrows in ratio.
     if (inFlow && w <= 0 && h <= 0) {
-        h = FontLen(cx, font * kLineHeight * 0.75f);
+        e->imageUnsized = true;
+        // The row stretches an auto cross size to the line. The picture's
+        // height is its own, the way the flow sets h() on the fragment.
+        e->SelfStart();
     }
     // A vector picture knows its own shape, so a document that gave only one
     // dimension gets the other rather than a run of text's line height. A

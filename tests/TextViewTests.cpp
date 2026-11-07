@@ -4203,6 +4203,159 @@ static void SelectionPreservesSpacesAndSkipsEmptyRows() {
     utassert(len(breaks) == 0);
 }
 
+static El* FindImageEl(El* e) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->kind == ElKind::Image) {
+        return e;
+    }
+    for (El* child = e->first; child; child = child->next) {
+        if (El* found = FindImageEl(child)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// A decoded picture the document's image callback hands back. The bytes are
+// only there so the size is a real bitmap's.
+static RenderImage* InlinePhotoBitmap(PaintApp* pa, int w, int h) {
+    Vec<uint8_t> px;
+    VecResize(px, w * h * 4);
+    return RenderImageFromBgra(pa, px.els, w, h);
+}
+
+static ImageSource InlinePhotoSource(Str, void* data) {
+    return ImageSource::FromRender((RenderImage*)data);
+}
+
+struct InlineImageHost {
+    App app;
+    Window* win = nullptr;
+    Arena* a = nullptr;
+    Ctx cx = {};
+    RenderImage* photo = nullptr;
+};
+
+static bool InlineImageOpen(InlineImageHost* host) {
+    host->app.paint = PaintAppNew();
+    host->win = new Window();
+    host->win->app = &host->app;
+    host->win->paint.app = &host->app;
+    host->win->paint.window = host->win;
+    host->win->paint.pa = host->app.paint;
+    host->a = ArenaNew();
+    host->cx = Ctx{&host->app, host->win, host->a, {}};
+    return host->app.paint != nullptr;
+}
+
+static void InlineImageClose(InlineImageHost* host) {
+    if (host->photo) {
+        RenderImageRelease(host->photo);
+    }
+    WindowKeyedFree(host->win);
+    ArenaDelete(host->a);
+    delete host->win;
+    EntityDropAll(&host->app);
+    AppGlobalClear(&host->app);
+    ImageCacheClear(&host->app);
+    ImageCacheClear();
+    if (host->app.paint) {
+        PaintAppFree(host->app.paint);
+    }
+}
+
+// inline_flow.rs
+// inline_image_without_explicit_size_is_drawn_at_its_intrinsic_size.
+// image_size(None, None, 160x40, line 20) is the picture's own size.
+static void InlineImageWithoutExplicitSizeIsDrawnAtItsIntrinsicSize() {
+    Size measured = InlineImageExtent(Size{160, 40}, 20, 0);
+    utassert(measured.w == 160 && measured.h == 40);
+
+    InlineImageHost host;
+    if (!InlineImageOpen(&host)) {
+        InlineImageClose(&host);
+        utassert(false);
+        return;
+    }
+    host.photo = InlinePhotoBitmap(host.app.paint, 160, 40);
+    utassert(host.photo != nullptr);
+    Entity<TextViewState> state =
+        TextViewState::Markdown(&host.app, StrL("see ![cat](cat.png) here"));
+    El* view = TextView::New(&host.cx, state)
+                   ->ImageSource(InlinePhotoSource, host.photo)
+                   ->IntoEl();
+    LayoutEl(&host.win->paint, view, 0, 0, 400, 400, 16, Rgba{});
+    El* image = FindImageEl(view);
+    utassert(image != nullptr && image->imageUnsized);
+    if (image) {
+        utassert(fabsf(image->w - 160.f) < 0.01f);
+        utassert(fabsf(image->h - 40.f) < 0.01f);
+    }
+    InlineImageClose(&host);
+}
+
+// inline_flow.rs inline_image_before_it_loads_keeps_a_compact_square.
+// image_size(None, None, None, line 20) is a 15px square.
+static void InlineImageBeforeItLoadsKeepsACompactSquare() {
+    Size measured = InlineImageExtent(Size{}, 20, 0);
+    utassert(measured.w == 15 && measured.h == 15);
+
+    InlineImageHost host;
+    if (!InlineImageOpen(&host)) {
+        InlineImageClose(&host);
+        utassert(false);
+        return;
+    }
+    Entity<TextViewState> state = TextViewState::Markdown(
+        &host.app, StrL("see ![cat](missing.png) here"));
+    El* view = TextView::New(&host.cx, state)->IntoEl();
+    LayoutEl(&host.win->paint, view, 0, 0, 400, 400, 16, Rgba{});
+    El* image = FindImageEl(view);
+    utassert(image != nullptr && image->imageUnsized);
+    if (image) {
+        float side = 16.f * kLineHeight * 0.75f;
+        if (side < 1.f) {
+            side = 1.f;
+        }
+        utassert(fabsf(image->w - side) < 0.01f);
+        utassert(fabsf(image->h - side) < 0.01f);
+    }
+    InlineImageClose(&host);
+}
+
+// inline_flow.rs inline_image_wider_than_the_wrap_is_narrowed_to_it.
+// A 200x60 picture at a 100px wrap is a 100x30 fragment, and the flow is
+// no wider than the wrap.
+static void InlineImageWiderThanTheWrapIsNarrowedToIt() {
+    Size measured = InlineImageExtent(Size{200, 60}, 20, 100);
+    utassert(measured.w == 100 && measured.h == 30);
+
+    InlineImageHost host;
+    if (!InlineImageOpen(&host)) {
+        InlineImageClose(&host);
+        utassert(false);
+        return;
+    }
+    host.photo = InlinePhotoBitmap(host.app.paint, 200, 60);
+    utassert(host.photo != nullptr);
+    Entity<TextViewState> state = TextViewState::Markdown(
+        &host.app, StrL("see ![photo](photo.png) here"));
+    El* view = TextView::New(&host.cx, state)
+                   ->ImageSource(InlinePhotoSource, host.photo)
+                   ->IntoEl();
+    LayoutEl(&host.win->paint, view, 0, 0, 100, 400, 16, Rgba{});
+    El* image = FindImageEl(view);
+    utassert(image != nullptr);
+    if (image) {
+        utassert(fabsf(image->w - 100.f) < 0.01f);
+        utassert(fabsf(image->h - 30.f) < 0.01f);
+    }
+    utassert(view && view->w <= 100.f);
+    InlineImageClose(&host);
+}
+
 // range_highlight.rs: range_highlight_requires_a_background.
 static void RangeHighlightRequiresABackground() {
     Hsla color = HslaNew(0.15f, 1.f, 0.5f, 0.4f);
@@ -9354,6 +9507,9 @@ void TestTextView() {
     TestMarkdownHtmlBlock(a);
 #endif
     TestMarkdownImage(a);
+    InlineImageWithoutExplicitSizeIsDrawnAtItsIntrinsicSize();
+    InlineImageBeforeItLoadsKeepsACompactSquare();
+    InlineImageWiderThanTheWrapIsNarrowedToIt();
 #if GPUI_MARKDOWN_FULL
     TestMarkdownReferenceImages(a);
     TestMarkdownReferenceImageDefinitions(a);

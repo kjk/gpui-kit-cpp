@@ -3802,9 +3802,30 @@ static Size ImageNaturalSize(PaintCtx* ctx, El* e) {
     return {};
 }
 
+Size InlineImageExtent(Size intrinsic, float lineH, float wrapW) {
+    if (intrinsic.w <= 0 || intrinsic.h <= 0) {
+        float side = lineH * 0.75f;
+        if (side < 1.f) {
+            side = 1.f;
+        }
+        return {side, side};
+    }
+    float w = intrinsic.w;
+    float h = intrinsic.h;
+    if (wrapW > 0 && w > wrapW) {
+        h *= wrapW / w;
+        w = wrapW;
+    }
+    return {w, h};
+}
+
 static Size LayoutImageSize(PaintCtx* ctx, El* e, float wSpec, float hSpec,
                             float availW, float font) {
     Size px = ImageNaturalSize(ctx, e);
+    if (wSpec <= 0 && hSpec <= 0 && e->imageUnsized) {
+        float lineH = font > 0 ? font * kLineHeight : 0;
+        return InlineImageExtent(px, lineH, availW);
+    }
     if (px.w <= 0 || px.h <= 0) {
         if (e->imageLoadState == ImageLoadState::Loading) {
             return {wSpec > 0 ? wSpec : 0, hSpec > 0 ? hSpec : 0};
@@ -4188,9 +4209,14 @@ static taffy::SizeF LayoutMeasureSize(taffy::SizeFOpt known,
                     taffy::UnwrapOr(known.h, 8.0f)};
         case ElKind::Image: {
             float availW = avail.width.IsDefinite() ? avail.width.value : 0.0f;
-            Size sz =
-                LayoutImageSize(ctx, e, taffy::UnwrapOr(known.w, 0.0f),
-                                taffy::UnwrapOr(known.h, 0.0f), availW, font);
+            // An unsized inline image answers with its own pixels. A known
+            // cross size from stretch would turn that into a larger width
+            // on the next pass.
+            float wSpec =
+                e->imageUnsized ? 0.0f : taffy::UnwrapOr(known.w, 0.0f);
+            float hSpec =
+                e->imageUnsized ? 0.0f : taffy::UnwrapOr(known.h, 0.0f);
+            Size sz = LayoutImageSize(ctx, e, wSpec, hSpec, availW, font);
             return {sz.w, sz.h};
         }
         default:
@@ -4247,6 +4273,16 @@ static bool ElIsMeasured(const El* e) {
 // `fallback` element.
 static void ResolveImageStyle(PaintCtx* ctx, El* e) {
     Size px = ImageNaturalSize(ctx, e);
+    // The size is the measure's answer: the picture's own pixels, narrowed
+    // to the wrap. Writing them here would freeze the unwrapped size, and
+    // max-width would then clip the width without the height.
+    if (e->imageUnsized && e->style.width == kAuto &&
+        e->style.height == kAuto) {
+        if (px.w > 0 && px.h > 0) {
+            e->style.aspect = px.w / px.h;
+        }
+        return;
+    }
     if (px.w <= 0 || px.h <= 0) {
         return;
     }

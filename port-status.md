@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2905983dc2a0fdc7d1297d13da16ba8e8c197033` (2026-11-06,
-input: Show the arrow over the editor gutter (#3806)).
-The pointer over the gutter is already the arrow. That column is not
-selectable text, and the fold chevron keeps the hand.
+Processed through `2c150ee566c6b3b97cbb77a6e56eba0f47cee51b` (2026-11-06,
+text: Draw an inline image without a size at its own size (#3786)).
+An inline picture that names neither dimension is drawn at its own
+pixels. Until those pixels exist it holds a square three quarters of
+the line, and a picture wider than the wrap narrows in ratio. The
+fixture badge names 20 by 20 so it keeps that size.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
