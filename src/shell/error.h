@@ -14,5 +14,11 @@ struct ShellError {
 void ShellErrorClear(ShellError* error);
 void ShellErrorSet(ShellError* error, Str message);
 
+// Replaces an owned `Str* error` out-parameter with a copy of message. A null
+// out-parameter is a caller that did not ask for the reason.
+void ErrorOutSet(Str* error, Str message);
+// Frees and empties an owned `Str* error` out-parameter, if there is one.
+void ErrorOutClear(Str* error);
+
 } // namespace gpui
 #endif // GPUI_SHELL_ERROR_H_

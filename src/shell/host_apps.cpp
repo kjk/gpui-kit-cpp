@@ -4,6 +4,7 @@
 #include "shell/host.h"
 
 #include "shell/dependencies.h"
+#include "shell/error.h"
 #include "shell/plugin.h"
 #include "shell/runtime.h"
 #include "shell/typings.h"
@@ -31,27 +32,21 @@ static Str JoinOwned(Str left, Str right) {
     return StrDup(fmt("%s%c%s", left, base::PlatPathSep(), right));
 }
 
-static void SetOwned(Str* error, Str message) {
-    if (!error) return;
-    StrFree(*error);
-    *error = StrDup(message);
-}
-
 static bool WriteWhole(Str path, Str contents, Str* error) {
     if (!path || len(path) >= kMaxPath) {
-        SetOwned(error, StrL("cannot write: the path is empty or too long"));
+        ErrorOutSet(error, StrL("cannot write: the path is empty or too long"));
         return false;
     }
     TempStr name = StrDupTemp(path);
     FILE* file = fopen(name.s, "wb");
     if (!file) {
-        SetOwned(error, fmt("cannot write %s", path));
+        ErrorOutSet(error, fmt("cannot write %s", path));
         return false;
     }
     bool ok = len(contents) == 0 || fwrite(contents.s, 1, (size_t)len(contents),
                                            file) == (size_t)len(contents);
     if (fclose(file) != 0) ok = false;
-    if (!ok) SetOwned(error, fmt("cannot write %s", path));
+    if (!ok) ErrorOutSet(error, fmt("cannot write %s", path));
     return ok;
 }
 
@@ -176,12 +171,12 @@ bool ShellResolveApplication(const Invocation& invocation, Str* directory,
             StrFree(apps);
             return true;
         }
-        SetOwned(error,
-                 fmt("no application `%s` is installed: %s has no main.js or "
-                     "gpui-shell.json. `gpui-shell list` shows what is "
-                     "installed; to run a directory, use `gpui-shell run -d "
-                     "%s`.",
-                     invocation.directory, candidate, invocation.directory));
+        ErrorOutSet(
+            error, fmt("no application `%s` is installed: %s has no main.js or "
+                       "gpui-shell.json. `gpui-shell list` shows what is "
+                       "installed; to run a directory, use `gpui-shell run -d "
+                       "%s`.",
+                       invocation.directory, candidate, invocation.directory));
         StrFree(candidate);
         StrFree(apps);
         return false;
@@ -195,7 +190,7 @@ bool ShellResolveApplication(const Invocation& invocation, Str* directory,
         cwd[0] = 0;
         PlatGetCwd(cwd, kMaxPath);
         if (!cwd[0]) {
-            SetOwned(error, StrL("cannot read the current directory"));
+            ErrorOutSet(error, StrL("cannot read the current directory"));
             return false;
         }
         if (directory) *directory = StrDup(Str(cwd));
@@ -204,16 +199,16 @@ bool ShellResolveApplication(const Invocation& invocation, Str* directory,
     if (invocation.application == ApplicationKind::Bundled) {
         if (ShellBundledApplication(directory)) return true;
         Str apps = ShellApplicationsDirectory();
-        SetOwned(error,
-                 fmt("nothing to run: no application is packaged beside this "
-                     "executable. Run one with `gpui-shell run <name>` or "
-                     "`gpui-shell run -d <directory>`; `gpui-shell list` "
-                     "shows what is installed in %s.",
-                     apps));
+        ErrorOutSet(
+            error, fmt("nothing to run: no application is packaged beside this "
+                       "executable. Run one with `gpui-shell run <name>` or "
+                       "`gpui-shell run -d <directory>`; `gpui-shell list` "
+                       "shows what is installed in %s.",
+                       apps));
         StrFree(apps);
         return false;
     }
-    SetOwned(error, StrL("no application was named"));
+    ErrorOutSet(error, StrL("no application was named"));
     return false;
 }
 
@@ -517,21 +512,22 @@ bool ShellCreateApplication(Str directory,
                             Str* created, Str* error) {
     if (created) *created = {};
     if (DirectoryOccupied(directory)) {
-        SetOwned(error, fmt("`%s` already exists and is not empty; `new` only "
-                            "creates an application",
-                            directory));
+        ErrorOutSet(error,
+                    fmt("`%s` already exists and is not empty; `new` only "
+                        "creates an application",
+                        directory));
         return false;
     }
     if (!DependencyMakeDirectories(directory, error)) {
         if (error && !*error)
-            SetOwned(error, fmt("cannot create `%s`", directory));
+            ErrorOutSet(error, fmt("cannot create `%s`", directory));
         return false;
     }
     char canonical[kMaxPath];
     canonical[0] = 0;
     TempStr raw = StrDupTemp(directory);
     if (!raw || !PlatCanonicalPath(raw.s, canonical, kMaxPath)) {
-        SetOwned(error, fmt("cannot read `%s`", directory));
+        ErrorOutSet(error, fmt("cannot read `%s`", directory));
         return false;
     }
     Str root = StrDup(Str(canonical));
@@ -560,9 +556,9 @@ bool ShellCreateApplication(Str directory,
     ShellError declared = {};
     if (!ShellWriteTypeDeclarations(root, nullptr, nullptr, &declared,
                                     components)) {
-        SetOwned(error, fmt("cannot write type declarations: %s",
-                            declared.message ? declared.message
-                                             : StrL("unknown error")));
+        ErrorOutSet(error, fmt("cannot write type declarations: %s",
+                               declared.message ? declared.message
+                                                : StrL("unknown error")));
         ShellErrorClear(&declared);
         StrFree(root);
         return false;
@@ -643,7 +639,7 @@ bool ShellWriteAgents(Str directory, const FrozenComponentRegistry* components,
                       Str* written, Str* error) {
     if (written) *written = {};
     if (!directory || !PlatDirExists(directory.s)) {
-        SetOwned(error, fmt("`%s` is not a directory", directory));
+        ErrorOutSet(error, fmt("`%s` is not a directory", directory));
         return false;
     }
     Str path = JoinOwned(directory, StrL("AGENTS.md"));
@@ -657,11 +653,11 @@ bool ShellWriteAgents(Str directory, const FrozenComponentRegistry* components,
     }
     Str marker = AgentsMarker();
     if (existing && !StrStartsWith(existing, marker)) {
-        SetOwned(error,
-                 fmt("%s exists and was not generated by gpui-shell; it is "
-                     "left alone. Run `gpui-shell agents` to print the "
-                     "instructions instead.",
-                     path));
+        ErrorOutSet(error,
+                    fmt("%s exists and was not generated by gpui-shell; it is "
+                        "left alone. Run `gpui-shell agents` to print the "
+                        "instructions instead.",
+                        path));
         StrFree(marker);
         StrFree(existing);
         StrFree(text);

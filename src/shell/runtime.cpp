@@ -741,6 +741,52 @@ static bool ForgetTask(ShellRuntimeImpl* impl, uint32_t id,
     return true;
 }
 
+// Retires the script callbacks a retained-entity operation handed back.
+static void RetireCallbacks(JSContext* ctx, ShellRuntimeImpl* impl,
+                            Vec<shell::CallbackId>* retired) {
+    for (int i = 0; i < len(*retired); i++) {
+        impl->callbacks.RetireId(ctx, (*retired)[i]);
+    }
+    VecReset(*retired);
+}
+
+// Releases a retained entity and retires the callbacks it held.
+static bool ReleaseRetained(JSContext* ctx, ShellRuntimeImpl* impl,
+                            shell::EntityHandle handle) {
+    Vec<shell::CallbackId> retired;
+    bool released = impl->retained.Release(handle, &retired);
+    RetireCallbacks(ctx, impl, &retired);
+    return released;
+}
+
+// What script code that may fail half-way has made so far: retained
+// entities, tasks and nested views. A failure rolls all three back so the
+// half-built view leaves nothing behind.
+struct ScriptCheckpoint {
+    uint32_t retained = 0;
+    uint32_t nested = 0;
+    int tasks = 0;
+};
+
+static ScriptCheckpoint ScriptCheckpointTake(ShellRuntimeImpl* impl) {
+    ScriptCheckpoint checkpoint;
+    checkpoint.retained = impl->retained.Checkpoint();
+    checkpoint.nested = impl->nextNestedView;
+    checkpoint.tasks = impl->tasks.len;
+    return checkpoint;
+}
+
+static void ScriptCheckpointRollback(JSContext* ctx, ShellRuntimeImpl* impl,
+                                     ScriptCheckpoint checkpoint) {
+    Vec<shell::CallbackId> retired;
+    impl->retained.Rollback(checkpoint.retained, &retired);
+    RetireCallbacks(ctx, impl, &retired);
+    while (impl->tasks.len > checkpoint.tasks) {
+        ForgetTask(impl, impl->tasks[impl->tasks.len - 1]->id);
+    }
+    RollbackNestedViews(impl, checkpoint.nested);
+}
+
 static Entity<ShellTaskDriver> TaskDriver(ShellRuntimeImpl* impl, App* app) {
     if (!impl || !app) return {};
     if (impl->taskDriver.IsValid() && impl->taskApp == app &&
@@ -819,6 +865,51 @@ static bool ShellTaskOwnerAlive(void* user) {
     ShellTask* task = impl ? FindTask(impl, head->task) : nullptr;
     return task && task->kind == head->kind && TaskWindowLive(task) &&
            (!task->owner.IsValid() || EntityGet(task->app, task->owner));
+}
+
+// The promise a host task settles, registered as a task of `kind` that holds
+// its resolve and reject. Zero, with *promise holding the thrown exception,
+// when the promise or the task cannot be made.
+static uint32_t NewPromiseTask(JSContext* ctx, ShellRuntimeImpl* impl,
+                               ShellTaskKind kind,
+                               const shell::ScopeHostContext& host,
+                               JSValue* promise) {
+    JSValue resolving[2] = {JS_UNDEFINED, JS_UNDEFINED};
+    *promise = JS_NewPromiseCapability(ctx, resolving);
+    if (JS_IsException(*promise)) return 0;
+    uint32_t task = NewTask(impl, kind, resolving[0], host.GetApp(),
+                            host.GetWindow(), false, resolving[1]);
+    JS_FreeValue(ctx, resolving[0]);
+    JS_FreeValue(ctx, resolving[1]);
+    if (!task) {
+        JS_FreeValue(ctx, *promise);
+        *promise = JS_ThrowRangeError(
+            ctx, "the runtime reached its outstanding host task limit");
+    }
+    return task;
+}
+
+// NewPromiseTask for a background job: also binds the job's header to the
+// task and the runtime lease. The caller frees its job when this fails.
+static uint32_t NewJobTask(JSContext* ctx, ShellRuntimeImpl* impl,
+                           ShellJobHeader* head, ShellTaskKind kind,
+                           const shell::ScopeHostContext& host,
+                           JSValue* promise) {
+    uint32_t task = NewPromiseTask(ctx, impl, kind, host, promise);
+    if (!task) return 0;
+    head->control = ShellRuntimeAccess::Control(impl->owner);
+    ControlRetain(head->control);
+    head->task = task;
+    head->kind = kind;
+    return task;
+}
+
+// What a job's coroutine checks on every resume.
+static TaskGuard JobGuard(ShellJobHeader* head) {
+    TaskGuard guard;
+    guard.alive = ShellTaskOwnerAlive;
+    guard.user = head;
+    return guard;
 }
 
 // Holds the task record and the runtime lease for as long as the coroutine
@@ -3017,6 +3108,29 @@ static JSValue NativeTemplateEnd(JSContext* ctx, JSValueConst, int argc,
 }
 
 // Converts one argument for the position it fills.
+// Files a script function in the open snapshot build, owned by the current
+// view, policy, generation and application. UINT64_MAX when no build is open.
+static shell::CallbackId PushScopedCallback(ShellRuntimeImpl* impl,
+                                            JSContext* ctx, JSValueConst fn) {
+    return impl->callbacks
+        .Push(ctx, fn, shell::ScopeCurrentView(), shell::ScopeCurrentPolicy(),
+              shell::ScopeCurrentGeneration(),
+              (AppModule*)shell::ScopeCurrentApplication());
+}
+
+// PushScopedCallback for one handler: false, with an exception pending, when
+// there is no snapshot build to file it in.
+static bool RegisterCallback(JSContext* ctx, ShellRuntimeImpl* impl,
+                             JSValueConst fn, shell::CallbackId* out) {
+    *out = PushScopedCallback(impl, ctx, fn);
+    if (*out == UINT64_MAX) {
+        JS_ThrowInternalError(
+            ctx, "a callback was registered outside a snapshot build");
+        return false;
+    }
+    return true;
+}
+
 static bool SlotValueOf(JSContext* ctx, ShellRuntimeImpl* impl,
                         const shell::Template* tmpl, const shell::Slot& slot,
                         JSValueConst argument, Arena* arena,
@@ -3072,15 +3186,8 @@ static bool SlotValueOf(JSContext* ctx, ShellRuntimeImpl* impl,
                                   "must be a function");
                 return false;
             }
-            shell::CallbackId callback = impl->callbacks.Push(
-                ctx, argument, shell::ScopeCurrentView(),
-                shell::ScopeCurrentPolicy(), shell::ScopeCurrentGeneration(),
-                (AppModule*)shell::ScopeCurrentApplication());
-            if (callback == UINT64_MAX) {
-                JS_ThrowInternalError(
-                    ctx, "a callback was registered outside a snapshot build");
-                return false;
-            }
+            shell::CallbackId callback = 0;
+            if (!RegisterCallback(ctx, impl, argument, &callback)) return false;
             out->kind = shell::SlotValueKind::Handler;
             out->handler = callback;
             return true;
@@ -3345,15 +3452,9 @@ static bool ValidateComponentValue(ComponentArgumentScope* scope,
         case shell::SchemaKind::Callback: {
             if (!JS_IsFunction(ctx, value))
                 return ThrowExpects(scope, name, schema);
-            shell::CallbackId callback = scope->impl->callbacks.Push(
-                ctx, value, shell::ScopeCurrentView(),
-                shell::ScopeCurrentPolicy(), shell::ScopeCurrentGeneration(),
-                (AppModule*)shell::ScopeCurrentApplication());
-            if (callback == UINT64_MAX) {
-                JS_ThrowInternalError(
-                    ctx, "a callback was registered outside a snapshot build");
+            shell::CallbackId callback = 0;
+            if (!RegisterCallback(ctx, scope->impl, value, &callback))
                 return false;
-            }
             out->kind = shell::ComponentArgumentKind::Callback;
             out->callback = callback;
             return true;
@@ -3825,6 +3926,17 @@ static JSValue NativeRegisteredState(JSContext* ctx, JSValueConst, int argc,
 // `__gpui_components["Export.release"](proof, handle)`. `magic` is the
 // state's place in the catalog. Every registered state answers it, so a
 // descriptor may not declare a method of the same name.
+// A registered state operation's first two arguments: this runtime's proof
+// and the state's handle. False when the proof is another runtime's.
+static bool RegisteredStateHandle(JSContext* ctx, ShellRuntimeImpl* impl,
+                                  JSValueConst* argv, Arena* a,
+                                  double* handle) {
+    Str proof;
+    return JS_IsString(argv[0]) && JsString(ctx, argv[0], a, &proof) &&
+           StrEq(proof, impl->componentStateProof) &&
+           JS_ToFloat64(ctx, handle, argv[1]) >= 0;
+}
+
 static JSValue NativeRegisteredStateRelease(JSContext* ctx, JSValueConst,
                                             int argc, JSValueConst* argv,
                                             int magic) {
@@ -3837,11 +3949,8 @@ static JSValue NativeRegisteredStateRelease(JSContext* ctx, JSValueConst,
     if (!descriptor || argc < 2)
         return JS_ThrowTypeError(ctx, "unknown registered state operation");
     Arena* a = ArenaNew();
-    Str proof;
     double handle = 0;
-    if (!JS_IsString(argv[0]) || !JsString(ctx, argv[0], a, &proof) ||
-        !StrEq(proof, impl->componentStateProof) ||
-        JS_ToFloat64(ctx, &handle, argv[1]) < 0) {
+    if (!RegisteredStateHandle(ctx, impl, argv, a, &handle)) {
         ArenaDelete(a);
         return JS_ThrowTypeError(ctx, "state belongs to another runtime");
     }
@@ -3871,11 +3980,8 @@ static JSValue NativeRegisteredStateMethod(JSContext* ctx, JSValueConst,
         return JS_ThrowTypeError(ctx, "unknown registered state operation");
     const shell::StateMethodDescriptor& method = descriptor->methods[index];
     Arena* a = ArenaNew();
-    Str proof;
     double handle = 0;
-    if (!JS_IsString(argv[0]) || !JsString(ctx, argv[0], a, &proof) ||
-        !StrEq(proof, impl->componentStateProof) ||
-        JS_ToFloat64(ctx, &handle, argv[1]) < 0) {
+    if (!RegisteredStateHandle(ctx, impl, argv, a, &handle)) {
         ArenaDelete(a);
         return JS_ThrowTypeError(ctx, "state belongs to another runtime");
     }
@@ -4201,15 +4307,12 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
             ArenaDelete(arena);
             return thrown;
         }
-        shell::CallbackId callback = impl->callbacks.Push(
-            ctx, handler, shell::ScopeCurrentView(),
-            shell::ScopeCurrentPolicy(), shell::ScopeCurrentGeneration(),
-            (AppModule*)shell::ScopeCurrentApplication());
+        shell::CallbackId callback = 0;
+        bool registered = RegisterCallback(ctx, impl, handler, &callback);
         JS_FreeValue(ctx, handler);
-        if (callback == UINT64_MAX) {
+        if (!registered) {
             ArenaDelete(arena);
-            return JS_ThrowInternalError(
-                ctx, "a callback was registered outside a snapshot build");
+            return JS_EXCEPTION;
         }
         op.callback = callback;
         if (actionCallback) {
@@ -4270,15 +4373,12 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                 return JS_ThrowTypeError(
                     ctx, "%.*s(handler) expects a function", len(name), name.s);
             }
-            shell::CallbackId callback = impl->callbacks.Push(
-                ctx, handler, shell::ScopeCurrentView(),
-                shell::ScopeCurrentPolicy(), shell::ScopeCurrentGeneration(),
-                (AppModule*)shell::ScopeCurrentApplication());
+            shell::CallbackId callback = 0;
+            bool registered = RegisterCallback(ctx, impl, handler, &callback);
             JS_FreeValue(ctx, handler);
-            if (callback == UINT64_MAX) {
+            if (!registered) {
                 ArenaDelete(arena);
-                return JS_ThrowInternalError(
-                    ctx, "a callback was registered outside a snapshot build");
+                return JS_EXCEPTION;
             }
             op.kind = shell::SpecOpKind::Callback;
             op.callback = callback;
@@ -4642,9 +4742,7 @@ static JSValue NativeViewSetProps(JSContext* ctx, JSValueConst, int argc,
     shell::CallScopeGuard scope =
         shell::ScopeEnter(window, app, ScopePhase::Event, current.view,
                           current.policy, impl->owner, current.application);
-    uint32_t retainedCheckpoint = impl->retained.Checkpoint();
-    uint32_t nestedCheckpoint = impl->nextNestedView;
-    int taskCheckpoint = impl->tasks.len;
+    ScriptCheckpoint made = ScriptCheckpointTake(impl);
     BeginExecution(impl);
     JSValue global = JS_GetGlobalObject(ctx);
     JSValue checkpoint = JS_GetPropertyStr(ctx, global, "__checkpoint_view");
@@ -4684,16 +4782,7 @@ static JSValue NativeViewSetProps(JSContext* ctx, JSValueConst, int argc,
             CaptureException(impl, &restoreError);
         else
             JS_FreeValue(ctx, restored);
-        while (impl->tasks.len > taskCheckpoint) {
-            ForgetTask(impl, impl->tasks[impl->tasks.len - 1]->id);
-        }
-        Vec<shell::CallbackId> retired;
-        impl->retained.Rollback(retainedCheckpoint, &retired);
-        for (int i = 0; i < len(retired); i++) {
-            impl->callbacks.RetireId(ctx, retired[i]);
-        }
-        VecReset(retired);
-        RollbackNestedViews(impl, nestedCheckpoint);
+        ScriptCheckpointRollback(ctx, impl, made);
         JS_FreeValue(ctx, restore);
         if (restoreError.IsSet()) {
             Str message =
@@ -6352,14 +6441,8 @@ static bool RegisterItemCallbacks(JSContext* ctx, ShellRuntimeImpl* impl,
                                   JSValueConst getKeyFn, JSValueConst renderFn,
                                   shell::CallbackId* getKey,
                                   shell::CallbackId* render) {
-    *getKey = impl->callbacks.Push(
-        ctx, getKeyFn, shell::ScopeCurrentView(), shell::ScopeCurrentPolicy(),
-        shell::ScopeCurrentGeneration(),
-        (AppModule*)shell::ScopeCurrentApplication());
-    *render = impl->callbacks.Push(
-        ctx, renderFn, shell::ScopeCurrentView(), shell::ScopeCurrentPolicy(),
-        shell::ScopeCurrentGeneration(),
-        (AppModule*)shell::ScopeCurrentApplication());
+    *getKey = PushScopedCallback(impl, ctx, getKeyFn);
+    *render = PushScopedCallback(impl, ctx, renderFn);
     if (*getKey == UINT64_MAX || *render == UINT64_MAX) {
         JS_ThrowInternalError(
             ctx, "list callbacks were registered outside a snapshot build");
@@ -7622,6 +7705,18 @@ static shell::Storage* AllowedStorage(JSContext* ctx, bool session,
     return storage;
 }
 
+// After a localStorage write: a persistent store starts flushing, and the
+// call answers undefined, the store's own error, or the pending exception.
+static JSValue StorageWritten(JSContext* ctx, bool ok, bool session,
+                              Policy* held, Str error) {
+    if (ok && !session) {
+        DriveStorage(held ? held : shell::ScopeCurrentPolicy());
+    }
+    return ok      ? JS_UNDEFINED
+           : error ? JS_ThrowInternalError(ctx, "%.*s", len(error), error.s)
+                   : JS_EXCEPTION;
+}
+
 static JSValue NativeStorageGet(JSContext* ctx, JSValueConst, int argc,
                                 JSValueConst* argv) {
     Policy* held = nullptr;
@@ -7651,13 +7746,7 @@ static JSValue NativeStorageSet(JSContext* ctx, JSValueConst, int argc,
     bool ok = argc >= 2 && JsString(ctx, argv[0], arena, &key) &&
               JsString(ctx, argv[1], arena, &value) &&
               storage->Set(key, value, &error);
-    if (ok && !session) {
-        DriveStorage(held ? held : shell::ScopeCurrentPolicy());
-    }
-    JSValue result =
-        ok      ? JS_UNDEFINED
-        : error ? JS_ThrowInternalError(ctx, "%.*s", len(error), error.s)
-                : JS_EXCEPTION;
+    JSValue result = StorageWritten(ctx, ok, session, held, error);
     StrFree(error);
     ArenaDelete(arena);
     PolicyRelease(held);
@@ -7674,13 +7763,7 @@ static JSValue NativeStorageRemove(JSContext* ctx, JSValueConst, int argc,
     Str key, error;
     bool ok = argc >= 1 && JsString(ctx, argv[0], arena, &key) &&
               storage->Remove(key, &error);
-    if (ok && !session) {
-        DriveStorage(held ? held : shell::ScopeCurrentPolicy());
-    }
-    JSValue result =
-        ok      ? JS_UNDEFINED
-        : error ? JS_ThrowInternalError(ctx, "%.*s", len(error), error.s)
-                : JS_EXCEPTION;
+    JSValue result = StorageWritten(ctx, ok, session, held, error);
     StrFree(error);
     ArenaDelete(arena);
     PolicyRelease(held);
@@ -7761,23 +7844,13 @@ static JSValue NativeStorageFlush(JSContext* ctx, JSValueConst, int,
         return JS_ThrowTypeError(ctx,
                                  "localStorage.flush() needs a live host task");
     }
-    JSValue resolving[2] = {JS_UNDEFINED, JS_UNDEFINED};
-    JSValue promise = JS_NewPromiseCapability(ctx, resolving);
-    if (JS_IsException(promise)) {
-        PolicyRelease(held);
-        return JS_EXCEPTION;
-    }
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    JSValue promise;
     uint32_t taskId =
-        NewTask(impl, ShellTaskKind::StorageFlush, resolving[0], host.GetApp(),
-                host.GetWindow(), false, resolving[1]);
-    JS_FreeValue(ctx, resolving[0]);
-    JS_FreeValue(ctx, resolving[1]);
+        NewPromiseTask(ctx, impl, ShellTaskKind::StorageFlush, host, &promise);
     if (!taskId) {
-        JS_FreeValue(ctx, promise);
         PolicyRelease(held);
-        return JS_ThrowRangeError(
-            ctx, "the runtime reached its outstanding host task limit");
+        return promise;
     }
     StorageFlushState* state = new StorageFlushState();
     state->control = ShellRuntimeAccess::Control(impl->owner);
@@ -8074,10 +8147,22 @@ static JSValue HostIntoJs(JSContext* ctx, const HostValue& value,
     return JS_NULL;
 }
 
-static bool HostNames(JSContext* ctx, int argc, JSValueConst* argv,
-                      Arena* arena, Str* module, Str* function) {
+// A host call's three arguments: module, function and the argument list.
+// False with an exception pending; `arguments` is the caller's to free
+// either way.
+static bool HostCallFromJs(JSContext* ctx, int argc, JSValueConst* argv,
+                           Arena* arena, Str* module, Str* function,
+                           HostArguments* arguments) {
     return argc >= 3 && JsString(ctx, argv[0], arena, module) &&
-           JsString(ctx, argv[1], arena, function);
+           JsString(ctx, argv[1], arena, function) &&
+           HostArgumentsFromJs(ctx, argv[2], arguments);
+}
+
+static JSValue ThrowHostCallError(JSContext* ctx, Str module, Str function,
+                                  Str message) {
+    return JS_ThrowTypeError(ctx, "`%.*s.%.*s`: %.*s", len(module), module.s,
+                             len(function), function.s, len(message),
+                             message.s ? message.s : "host call failed");
 }
 
 static JSValue NativeHostCall(JSContext* ctx, JSValueConst, int argc,
@@ -8086,8 +8171,8 @@ static JSValue NativeHostCall(JSContext* ctx, JSValueConst, int argc,
     Str module;
     Str function;
     HostArguments arguments;
-    bool ok = HostNames(ctx, argc, argv, arena, &module, &function) &&
-              HostArgumentsFromJs(ctx, argv[2], &arguments);
+    bool ok =
+        HostCallFromJs(ctx, argc, argv, arena, &module, &function, &arguments);
     if (!ok) {
         arguments.Free();
         ArenaDelete(arena);
@@ -8102,10 +8187,7 @@ static JSValue NativeHostCall(JSContext* ctx, JSValueConst, int argc,
     shell::MetricsEnd(&timer);
     JSValue result = JS_EXCEPTION;
     if (!ok) {
-        result = JS_ThrowTypeError(
-            ctx, "`%.*s.%.*s`: %.*s", len(module), module.s, len(function),
-            function.s, len(call.error.message),
-            call.error.message.s ? call.error.message.s : "host call failed");
+        result = ThrowHostCallError(ctx, module, function, call.error.message);
     } else {
         result = HostIntoJs(ctx, call.result);
     }
@@ -8169,8 +8251,8 @@ static JSValue NativeHostAsyncCall(JSContext* ctx, JSValueConst, int argc,
     Str module;
     Str function;
     HostArguments arguments;
-    bool ok = HostNames(ctx, argc, argv, arena, &module, &function) &&
-              HostArgumentsFromJs(ctx, argv[2], &arguments);
+    bool ok =
+        HostCallFromJs(ctx, argc, argv, arena, &module, &function, &arguments);
     if (!ok) {
         arguments.Free();
         ArenaDelete(arena);
@@ -8184,11 +8266,8 @@ static JSValue NativeHostAsyncCall(JSContext* ctx, JSValueConst, int argc,
     ok = HostDispatchBegin(module, function, &request);
     shell::MetricsEnd(&timer);
     if (!ok) {
-        JSValue result = JS_ThrowTypeError(
-            ctx, "`%.*s.%.*s`: %.*s", len(module), module.s, len(function),
-            function.s, len(request.error.message),
-            request.error.message.s ? request.error.message.s
-                                    : "host call failed");
+        JSValue result =
+            ThrowHostCallError(ctx, module, function, request.error.message);
         request.error.Clear();
         request.release.Call();
         HostModulesRelease(request.registry);
@@ -8220,33 +8299,14 @@ static JSValue NativeHostAsyncCall(JSContext* ctx, JSValueConst, int argc,
     request.error.Clear();
     ArenaDelete(arena);
 
-    JSValue resolving[2] = {JS_UNDEFINED, JS_UNDEFINED};
-    JSValue promise = JS_NewPromiseCapability(ctx, resolving);
-    if (JS_IsException(promise)) {
+    JSValue promise;
+    if (!NewJobTask(ctx, impl, &job->head, ShellTaskKind::HostAsync, host,
+                    &promise)) {
         job->Free();
         delete job;
-        return JS_EXCEPTION;
+        return promise;
     }
-    uint32_t task =
-        NewTask(impl, ShellTaskKind::HostAsync, resolving[0], host.GetApp(),
-                host.GetWindow(), false, resolving[1]);
-    JS_FreeValue(ctx, resolving[0]);
-    JS_FreeValue(ctx, resolving[1]);
-    if (!task) {
-        JS_FreeValue(ctx, promise);
-        job->Free();
-        delete job;
-        return JS_ThrowRangeError(
-            ctx, "the runtime reached its outstanding host task limit");
-    }
-    job->head.control = ShellRuntimeAccess::Control(impl->owner);
-    ControlRetain(job->head.control);
-    job->head.task = task;
-    job->head.kind = ShellTaskKind::HostAsync;
-    TaskGuard guard;
-    guard.alive = ShellTaskOwnerAlive;
-    guard.user = &job->head;
-    Task work = ShellHostAsyncTask(guard, job);
+    Task work = ShellHostAsyncTask(JobGuard(&job->head), job);
     if (!work.IsRunning()) {
         JS_FreeValue(ctx, promise);
         return JS_ThrowInternalError(
@@ -8483,30 +8543,15 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
     if (release) PolicyRelease(policy);
     ArenaDelete(arena);
 
-    JSValue resolving[2] = {JS_UNDEFINED, JS_UNDEFINED};
-    JSValue promise = JS_NewPromiseCapability(ctx, resolving);
-    if (JS_IsException(promise)) {
-        job->Free();
-        delete job;
-        return JS_EXCEPTION;
-    }
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    JSValue promise;
     uint32_t task =
-        NewTask(impl, ShellTaskKind::Fetch, resolving[0], host.GetApp(),
-                host.GetWindow(), false, resolving[1]);
-    JS_FreeValue(ctx, resolving[0]);
-    JS_FreeValue(ctx, resolving[1]);
+        NewJobTask(ctx, impl, &job->head, ShellTaskKind::Fetch, host, &promise);
     if (!task) {
-        JS_FreeValue(ctx, promise);
         job->Free();
         delete job;
-        return JS_ThrowRangeError(
-            ctx, "the runtime reached its outstanding host task limit");
+        return promise;
     }
-    job->head.control = ShellRuntimeAccess::Control(impl->owner);
-    ControlRetain(job->head.control);
-    job->head.task = task;
-    job->head.kind = ShellTaskKind::Fetch;
     if (base::PlatAsyncIo()) {
         if (!shell::FetchSendAsync(job->request, job->capabilities,
                                    MkFunc1(ShellFetchDone, job))) {
@@ -8519,10 +8564,7 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
                 ctx, "fetch could not start asynchronous work");
         }
     } else {
-        TaskGuard guard;
-        guard.alive = ShellTaskOwnerAlive;
-        guard.user = &job->head;
-        Task work = ShellFetchTask(guard, job);
+        Task work = ShellFetchTask(JobGuard(&job->head), job);
         if (!work.IsRunning()) {
             JS_FreeValue(ctx, promise);
             return JS_ThrowInternalError(
@@ -9200,36 +9242,18 @@ static JSValue NativeFs(JSContext* ctx, JSValueConst, int argc,
         return JS_ThrowTypeError(ctx,
                                  "filesystem access needs a live host task");
     }
-    JSValue resolving[2] = {JS_UNDEFINED, JS_UNDEFINED};
-    JSValue promise = JS_NewPromiseCapability(ctx, resolving);
-    if (JS_IsException(promise)) {
-        job->Free();
-        delete job;
-        return JS_EXCEPTION;
-    }
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    uint32_t task =
-        NewTask(impl, ShellTaskKind::Filesystem, resolving[0], host.GetApp(),
-                host.GetWindow(), false, resolving[1]);
-    JS_FreeValue(ctx, resolving[0]);
-    JS_FreeValue(ctx, resolving[1]);
+    JSValue promise;
+    uint32_t task = NewJobTask(ctx, impl, &job->head, ShellTaskKind::Filesystem,
+                               host, &promise);
     if (!task) {
-        JS_FreeValue(ctx, promise);
         job->Free();
         delete job;
-        return JS_ThrowRangeError(
-            ctx, "the runtime reached its outstanding host task limit");
+        return promise;
     }
-    job->head.control = ShellRuntimeAccess::Control(impl->owner);
-    ControlRetain(job->head.control);
-    job->head.task = task;
-    job->head.kind = ShellTaskKind::Filesystem;
     ShellTask* shellTask = FindTask(impl, task);
     shellTask->fsJob = job;
-    TaskGuard guard;
-    guard.alive = ShellTaskOwnerAlive;
-    guard.user = &job->head;
-    Task work = ShellFsTask(guard, job);
+    Task work = ShellFsTask(JobGuard(&job->head), job);
     if (!work.IsRunning()) {
         JS_FreeValue(ctx, promise);
         return JS_ThrowInternalError(ctx, "fs could not start background work");
@@ -9237,71 +9261,83 @@ static JSValue NativeFs(JSContext* ctx, JSValueConst, int argc,
     return promise;
 }
 
+// process.run and process.spawn's first argument: a string naming an
+// executable capabilities.fs.execute grants. False with an exception pending.
+static bool GrantedCommandFromJs(JSContext* ctx, int argc, JSValueConst* argv,
+                                 Arena* arena, Str* command) {
+    if (argc < 1 || !JsString(ctx, argv[0], arena, command)) return false;
+    bool release = false;
+    Policy* policy = CurrentPolicy(&release);
+    bool allowed = PolicyCapabilities(policy).MayRun(*command);
+    if (release) PolicyRelease(policy);
+    if (!allowed) {
+        JS_ThrowTypeError(
+            ctx,
+            "running `%.*s` is not granted; add it to capabilities.fs.execute",
+            len(*command), command->s);
+        return false;
+    }
+    return true;
+}
+
+// Their second: an optional array of at most 4096 strings, 1 MiB in all,
+// appended to `args` as owned copies. `api` names the call in the shape
+// errors, `name` in the size one. False with an exception pending; whatever
+// was copied stays in `args` for the caller to free.
+static bool ProcessArgsFromJs(JSContext* ctx, int argc, JSValueConst* argv,
+                              Arena* arena, const char* api, const char* name,
+                              Vec<Str>* args) {
+    int64_t argCount = 0;
+    if (argc > 1 && !JS_IsUndefined(argv[1]) && !JS_IsNull(argv[1])) {
+        if (!JS_IsArray(argv[1]) || JS_GetLength(ctx, argv[1], &argCount) < 0) {
+            JS_ThrowTypeError(ctx, "%s expects args to be an array of strings",
+                              api);
+            return false;
+        }
+        if (argCount < 0 || argCount > 4096) {
+            JS_ThrowRangeError(ctx, "%s accepts at most 4096 arguments", api);
+            return false;
+        }
+    }
+    int totalBytes = 0;
+    for (int64_t i = 0; i < argCount; i++) {
+        JSValue value = JS_GetPropertyUint32(ctx, argv[1], (uint32_t)i);
+        Str argument;
+        bool stringOk =
+            !JS_IsException(value) && JsString(ctx, value, arena, &argument);
+        JS_FreeValue(ctx, value);
+        if (!stringOk) return false;
+        if (len(argument) > 1024 * 1024 - totalBytes) {
+            JS_ThrowRangeError(ctx, "%s arguments exceed the 1 MiB limit",
+                               name);
+            return false;
+        }
+        Str copy = StrDup(argument);
+        if (!copy.s || !VecAppend(*args, copy)) {
+            StrFree(copy);
+            JS_ThrowOutOfMemory(ctx);
+            return false;
+        }
+        totalBytes += len(argument);
+    }
+    return true;
+}
+
 static JSValue NativeProcessRun(JSContext* ctx, JSValueConst, int argc,
                                 JSValueConst* argv) {
     Arena* arena = ArenaNew();
     Str command;
-    bool converted = argc >= 1 && JsString(ctx, argv[0], arena, &command);
-    bool release = false;
-    Policy* policy = CurrentPolicy(&release);
-    bool allowed = converted && PolicyCapabilities(policy).MayRun(command);
-    if (release) PolicyRelease(policy);
-    if (converted && !allowed) {
-        JSValue result = JS_ThrowTypeError(
-            ctx,
-            "running `%.*s` is not granted; add it to capabilities.fs.execute",
-            len(command), command.s);
-        ArenaDelete(arena);
-        return result;
-    }
-    if (!converted) {
+    if (!GrantedCommandFromJs(ctx, argc, argv, arena, &command)) {
         ArenaDelete(arena);
         return JS_EXCEPTION;
     }
 
     ProcessJob* job = new ProcessJob();
     job->command = StrDup(command);
-    bool ok = job->command.s != nullptr;
-    int64_t argCount = 0;
-    if (ok && argc > 1 && !JS_IsUndefined(argv[1]) && !JS_IsNull(argv[1])) {
-        if (!JS_IsArray(argv[1]) || JS_GetLength(ctx, argv[1], &argCount) < 0) {
-            JS_ThrowTypeError(ctx,
-                              "process.run(command, args) expects args to be "
-                              "an array of strings");
-            ok = false;
-        } else if (argCount < 0 || argCount > 4096) {
-            JS_ThrowRangeError(
-                ctx,
-                "process.run(command, args) accepts at most 4096 arguments");
-            ok = false;
-        }
-    }
-    int totalBytes = 0;
-    for (int64_t i = 0; ok && i < argCount; i++) {
-        JSValue value = JS_GetPropertyUint32(ctx, argv[1], (uint32_t)i);
-        Str argument;
-        bool stringOk =
-            !JS_IsException(value) && JsString(ctx, value, arena, &argument);
-        JS_FreeValue(ctx, value);
-        if (!stringOk) {
-            ok = false;
-            break;
-        }
-        if (len(argument) > 1024 * 1024 - totalBytes) {
-            JS_ThrowRangeError(ctx,
-                               "process.run arguments exceed the 1 MiB limit");
-            ok = false;
-            break;
-        }
-        Str copy = StrDup(argument);
-        if (!copy.s || !VecAppend(job->args, copy)) {
-            StrFree(copy);
-            JS_ThrowOutOfMemory(ctx);
-            ok = false;
-            break;
-        }
-        totalBytes += len(argument);
-    }
+    bool ok =
+        job->command.s != nullptr &&
+        ProcessArgsFromJs(ctx, argc, argv, arena, "process.run(command, args)",
+                          "process.run", &job->args);
     Str cwd = {};
     double timeoutSeconds = 0;
     if (ok && argc > 2) {
@@ -9326,36 +9362,18 @@ static JSValue NativeProcessRun(JSContext* ctx, JSValueConst, int argc,
         return JS_ThrowTypeError(ctx, "process.run() needs a live host task");
     }
 
-    JSValue resolving[2] = {JS_UNDEFINED, JS_UNDEFINED};
-    JSValue promise = JS_NewPromiseCapability(ctx, resolving);
-    if (JS_IsException(promise)) {
-        job->Free();
-        delete job;
-        return JS_EXCEPTION;
-    }
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    uint32_t task =
-        NewTask(impl, ShellTaskKind::Process, resolving[0], host.GetApp(),
-                host.GetWindow(), false, resolving[1]);
-    JS_FreeValue(ctx, resolving[0]);
-    JS_FreeValue(ctx, resolving[1]);
+    JSValue promise;
+    uint32_t task = NewJobTask(ctx, impl, &job->head, ShellTaskKind::Process,
+                               host, &promise);
     if (!task) {
-        JS_FreeValue(ctx, promise);
         job->Free();
         delete job;
-        return JS_ThrowRangeError(
-            ctx, "the runtime reached its outstanding host task limit");
+        return promise;
     }
-    job->head.control = ShellRuntimeAccess::Control(impl->owner);
-    ControlRetain(job->head.control);
-    job->head.task = task;
-    job->head.kind = ShellTaskKind::Process;
     ShellTask* shellTask = FindTask(impl, task);
     shellTask->processJob = job;
-    TaskGuard guard;
-    guard.alive = ShellTaskOwnerAlive;
-    guard.user = &job->head;
-    Task work = ShellProcessTask(guard, job);
+    Task work = ShellProcessTask(JobGuard(&job->head), job);
     if (!work.IsRunning()) {
         JS_FreeValue(ctx, promise);
         return JS_ThrowInternalError(
@@ -9442,20 +9460,7 @@ static JSValue NativeProcessSpawn(JSContext* ctx, JSValueConst, int argc,
     const char* api = "process.spawn(command, args, options)";
     Arena* arena = ArenaNew();
     Str command;
-    bool converted = argc >= 1 && JsString(ctx, argv[0], arena, &command);
-    bool release = false;
-    Policy* policy = CurrentPolicy(&release);
-    bool allowed = converted && PolicyCapabilities(policy).MayRun(command);
-    if (release) PolicyRelease(policy);
-    if (converted && !allowed) {
-        JSValue result = JS_ThrowTypeError(
-            ctx,
-            "running `%.*s` is not granted; add it to capabilities.fs.execute",
-            len(command), command.s);
-        ArenaDelete(arena);
-        return result;
-    }
-    if (!converted) {
+    if (!GrantedCommandFromJs(ctx, argc, argv, arena, &command)) {
         ArenaDelete(arena);
         return JS_EXCEPTION;
     }
@@ -9465,43 +9470,7 @@ static JSValue NativeProcessSpawn(JSContext* ctx, JSValueConst, int argc,
     }
 
     Vec<Str> args;
-    bool ok = true;
-    int64_t argCount = 0;
-    if (argc > 1 && !JS_IsUndefined(argv[1]) && !JS_IsNull(argv[1])) {
-        if (!JS_IsArray(argv[1]) || JS_GetLength(ctx, argv[1], &argCount) < 0) {
-            JS_ThrowTypeError(ctx, "%s expects args to be an array of strings",
-                              api);
-            ok = false;
-        } else if (argCount < 0 || argCount > 4096) {
-            JS_ThrowRangeError(ctx, "%s accepts at most 4096 arguments", api);
-            ok = false;
-        }
-    }
-    int totalBytes = 0;
-    for (int64_t i = 0; ok && i < argCount; i++) {
-        JSValue value = JS_GetPropertyUint32(ctx, argv[1], (uint32_t)i);
-        Str argument;
-        bool stringOk =
-            !JS_IsException(value) && JsString(ctx, value, arena, &argument);
-        JS_FreeValue(ctx, value);
-        if (!stringOk) {
-            ok = false;
-            break;
-        }
-        if (len(argument) > 1024 * 1024 - totalBytes) {
-            JS_ThrowRangeError(ctx, "%s arguments exceed the 1 MiB limit", api);
-            ok = false;
-            break;
-        }
-        Str copy = StrDup(argument);
-        if (!copy.s || !VecAppend(args, copy)) {
-            StrFree(copy);
-            JS_ThrowOutOfMemory(ctx);
-            ok = false;
-            break;
-        }
-        totalBytes += len(argument);
-    }
+    bool ok = ProcessArgsFromJs(ctx, argc, argv, arena, api, api, &args);
     Str cwd = {};
     double timeoutSeconds = 0;
     bool stdinPipe = false;
@@ -10069,11 +10038,13 @@ globalThis.__gpui = (() => {
       throw error;
     }
   };
-  globalThis.__context = (generation) => Object.freeze({
+  // A view's cx carries its generation; the ambient one, for code that runs
+  // outside any view, carries none and notifies whichever view is current.
+  const makeContext = (generation, notify) => Object.freeze({
     theme: () => currentTheme(generation),
     open_url: (url) => __open_url(generation, String(url)),
     open_path: (path) => __open_path(generation, String(path)),
-    notify: () => __cx_notify(generation),
+    notify,
     focus_handle: () => focusHandle(__focus_handle_new()),
     new: (Class, props) => {
       if (typeof Class !== "function" || !(Class.prototype instanceof View)) throw new TypeError("cx.new(Class, props) expects a View subclass");
@@ -10100,37 +10071,9 @@ globalThis.__gpui = (() => {
     read_from_clipboard: () => __clipboard_read_text(),
     write_to_clipboard: (text) => __clipboard_write_text(String(text)),
   });
-  ambientContext = Object.freeze({
-    theme: () => currentTheme(undefined),
-    open_url: (url) => __open_url(undefined, String(url)),
-    open_path: (path) => __open_path(undefined, String(path)),
-    notify: () => __cx_notify_current(),
-    focus_handle: () => focusHandle(__focus_handle_new()),
-    new: (Class, props) => {
-      if (typeof Class !== "function" || !(Class.prototype instanceof View)) throw new TypeError("cx.new(Class, props) expects a View subclass");
-      return entity(__view_new(Class, props));
-    },
-    sleep: (ms = 0) => __sleep(Number(ms)),
-    spawn,
-    timer,
-    // GPUI dispatches an event to every handler on the path unless one of
-    // them says otherwise, so a script that puts a handler on a row inside a
-    // list hears both. These are the two halves of App's own answer to that,
-    // under their own names.
-    stop_propagation: () => __stop_propagation(),
-    propagate: () => __propagate(),
-    // App::bind_keys, so cx. The keymap belongs to the application rather
-    // than to a window, which is why binding a chord in one view makes it
-    // live everywhere its `context` predicate matches.
-    bind_keys: (bindings) => {
-      if (!Array.isArray(bindings)) {
-        throw new TypeError("cx.bind_keys(bindings) expects an array of { keystroke, action, context? }");
-      }
-      return __bind_keys(bindings);
-    },
-    read_from_clipboard: () => __clipboard_read_text(),
-    write_to_clipboard: (text) => __clipboard_write_text(String(text)),
-  });
+  globalThis.__context = (generation) =>
+    makeContext(generation, () => __cx_notify(generation));
+  ambientContext = makeContext(undefined, () => __cx_notify_current());
   globalThis.__ambient_context = ambientContext;
   globalThis.window = Object.freeze({
     open_dialog: (build, options) => mountOverlay(
@@ -11823,12 +11766,7 @@ static JSValue NativeCalendarRelease(JSContext* ctx, JSValueConst, int argc,
     if (!impl || argc < 1 || !JsHandle(ctx, argv[0], &handle)) {
         return JS_NewBool(ctx, false);
     }
-    Vec<shell::CallbackId> retired;
-    bool released = impl->retained.Release(handle, &retired);
-    for (int i = 0; i < len(retired); i++)
-        impl->callbacks.RetireId(ctx, retired[i]);
-    VecReset(retired);
-    return JS_NewBool(ctx, released);
+    return JS_NewBool(ctx, ReleaseRetained(ctx, impl, handle));
 }
 
 // ─── Panels come back after a restart ─────────────────────────────────────
@@ -12039,26 +11977,6 @@ static Str ShellRegisterPanelClass(ShellRuntimeImpl* impl, JSContext* ctx,
 // same deviation `cx.new(Class)` already documents — so both apply where they
 // are written, and a failure is catchable at the line that caused it.
 
-static DockPlacement DockPlacementOf(Str name) {
-    if (StrEq(name, StrL("left"))) return DockPlacement::Left;
-    if (StrEq(name, StrL("right"))) return DockPlacement::Right;
-    if (StrEq(name, StrL("bottom"))) return DockPlacement::Bottom;
-    return DockPlacement::Center;
-}
-
-static const char* DockPlacementWord(DockPlacement placement) {
-    switch (placement) {
-        case DockPlacement::Left:
-            return "left";
-        case DockPlacement::Right:
-            return "right";
-        case DockPlacement::Bottom:
-            return "bottom";
-        default:
-            return "center";
-    }
-}
-
 static shell::RetainedEntry* LiveDock(JSContext* ctx, JSValueConst value,
                                       App** app, Window** window,
                                       DockState** state) {
@@ -12198,7 +12116,7 @@ static JSValue NativeDockAddPanel(JSContext* ctx, JSValueConst, int argc,
         ArenaDelete(arena);
         return JS_EXCEPTION;
     }
-    DockPlacement placement = DockPlacementOf(placementName);
+    DockPlacement placement = shell::DockPlacementOfName(placementName);
     // `shell:<application>/<panel>`, which is what the layout file holds and
     // what register_panel finds the class again by.
     Str qualified = shell::ShellPanelName(
@@ -12296,7 +12214,7 @@ static JSValue NativeDockPanels(JSContext* ctx, JSValueConst, int argc,
             json.BeginObject();
             json.Number("id", (double)def.id.AsU64());
             json.String("name", def.name);
-            json.String("placement", Str(DockPlacementWord(placement)));
+            json.String("placement", Str(DockPlacementName(placement)));
             json.Number("node", node);
             json.Number("index", ix);
             json.Bool("active", ix == active);
@@ -12406,7 +12324,7 @@ static JSValue NativeDockSideVerb(JSContext* ctx, JSValueConst, int argc,
         ArenaDelete(arena);
         return JS_EXCEPTION;
     }
-    DockPlacement placement = DockPlacementOf(placementName);
+    DockPlacement placement = shell::DockPlacementOfName(placementName);
     ArenaDelete(arena);
     DockSide* side = DockSideOf(state, placement);
     Ctx cx = {app, window, window ? window->frameArena : nullptr, {}};
@@ -12460,13 +12378,7 @@ static JSValue NativeDockAreaVerb(JSContext* ctx, JSValueConst, int argc,
         if (argc < 1 || !impl || !JsHandle(ctx, argv[0], &handle)) {
             return JS_NewBool(ctx, false);
         }
-        Vec<shell::CallbackId> retired;
-        bool released = impl->retained.Release(handle, &retired);
-        for (int i = 0; i < len(retired); i++) {
-            impl->callbacks.RetireId(ctx, retired[i]);
-        }
-        VecReset(retired);
-        return JS_NewBool(ctx, released);
+        return JS_NewBool(ctx, ReleaseRetained(ctx, impl, handle));
     }
     App* app = nullptr;
     Window* window = nullptr;
@@ -13037,10 +12949,7 @@ ShellRuntime::~ShellRuntime() {
             }
             Vec<shell::CallbackId> retired;
             impl->retained.Clear(&retired);
-            for (int i = 0; i < len(retired); i++) {
-                impl->callbacks.RetireId(impl->context, retired[i]);
-            }
-            VecReset(retired);
+            RetireCallbacks(impl->context, impl, &retired);
             impl->callbacks.Clear(impl->context);
         }
         ClearComponentAppEffects(impl);
@@ -13352,9 +13261,7 @@ static ViewObject* InstantiateObject(ShellRuntime* runtime, ViewType* type,
     shell::CallScopeGuard scope =
         shell::ScopeEnter(window, app, ScopePhase::Event, view, policy, runtime,
                           type->application);
-    uint32_t retainedCheckpoint = impl->retained.Checkpoint();
-    uint32_t nestedCheckpoint = impl->nextNestedView;
-    int taskCheckpoint = impl->tasks.len;
+    ScriptCheckpoint made = ScriptCheckpointTake(impl);
     BeginExecution(impl);
     JSValue global = JS_GetGlobalObject(impl->context);
     JSValue construct = JS_GetPropertyStr(impl->context, global, "__construct");
@@ -13362,16 +13269,7 @@ static ViewObject* InstantiateObject(ShellRuntime* runtime, ViewType* type,
         JS_Call(impl->context, construct, JS_UNDEFINED, 1, &type->value);
     JS_FreeValue(impl->context, construct);
     if (JS_IsException(object)) {
-        Vec<shell::CallbackId> retired;
-        impl->retained.Rollback(retainedCheckpoint, &retired);
-        for (int i = 0; i < len(retired); i++) {
-            impl->callbacks.RetireId(impl->context, retired[i]);
-        }
-        VecReset(retired);
-        while (impl->tasks.len > taskCheckpoint) {
-            ForgetTask(impl, impl->tasks[impl->tasks.len - 1]->id);
-        }
-        RollbackNestedViews(impl, nestedCheckpoint);
+        ScriptCheckpointRollback(impl->context, impl, made);
         JS_FreeValue(impl->context, global);
         CaptureException(impl, error);
         return nullptr;
@@ -13393,16 +13291,7 @@ static ViewObject* InstantiateObject(ShellRuntime* runtime, ViewType* type,
     JS_FreeValue(impl->context, global);
     if (JS_IsException(initialized)) {
         JS_FreeValue(impl->context, object);
-        Vec<shell::CallbackId> retired;
-        impl->retained.Rollback(retainedCheckpoint, &retired);
-        for (int i = 0; i < len(retired); i++) {
-            impl->callbacks.RetireId(impl->context, retired[i]);
-        }
-        VecReset(retired);
-        while (impl->tasks.len > taskCheckpoint) {
-            ForgetTask(impl, impl->tasks[impl->tasks.len - 1]->id);
-        }
-        RollbackNestedViews(impl, nestedCheckpoint);
+        ScriptCheckpointRollback(impl->context, impl, made);
         CaptureException(impl, error);
         return nullptr;
     }
@@ -13939,18 +13828,11 @@ void ShellRuntime::DispatchItemSecondaryClick(shell::CallbackId callback,
                 : (event.button == MouseButton::Middle ? "middle" : "left")));
     JS_SetPropertyStr(impl->context, payload, "click_count",
                       JS_NewInt32(impl->context, event.clickCount));
-    JSValue position = JS_NewObject(impl->context);
-    JS_SetPropertyStr(impl->context, position, "x",
-                      JS_NewFloat64(impl->context, event.x));
-    JS_SetPropertyStr(impl->context, position, "y",
-                      JS_NewFloat64(impl->context, event.y));
-    JS_SetPropertyStr(impl->context, payload, "position", position);
-    JSValue local = JS_NewObject(impl->context);
-    JS_SetPropertyStr(impl->context, local, "x",
-                      JS_NewFloat64(impl->context, event.x - event.el.x));
-    JS_SetPropertyStr(impl->context, local, "y",
-                      JS_NewFloat64(impl->context, event.y - event.el.y));
-    JS_SetPropertyStr(impl->context, payload, "local_position", local);
+    JS_SetPropertyStr(impl->context, payload, "position",
+                      JsPoint(impl->context, event.x, event.y));
+    JS_SetPropertyStr(
+        impl->context, payload, "local_position",
+        JsPoint(impl->context, event.x - event.el.x, event.y - event.el.y));
     JS_SetPropertyStr(impl->context, payload, "modifiers",
                       ModifiersObject(impl->context, event.modifiers));
     JSValue leading[2] = {
@@ -13974,28 +13856,13 @@ void ShellRuntime::DispatchMouseMove(shell::CallbackId callback,
                                      const MouseMoveEvent& event,
                                      Window* window, App* app) {
     JSValue payload = JS_NewObject(impl->context);
-    JSValue position = JS_NewObject(impl->context);
-    JS_SetPropertyStr(impl->context, position, "x",
-                      JS_NewFloat64(impl->context, event.x));
-    JS_SetPropertyStr(impl->context, position, "y",
-                      JS_NewFloat64(impl->context, event.y));
-    JS_SetPropertyStr(impl->context, payload, "position", position);
-    JSValue local = JS_NewObject(impl->context);
-    JS_SetPropertyStr(impl->context, local, "x",
-                      JS_NewFloat64(impl->context, event.x - event.el.x));
-    JS_SetPropertyStr(impl->context, local, "y",
-                      JS_NewFloat64(impl->context, event.y - event.el.y));
-    JS_SetPropertyStr(impl->context, payload, "local_position", local);
-    JSValue bounds = JS_NewObject(impl->context);
-    JS_SetPropertyStr(impl->context, bounds, "x",
-                      JS_NewFloat64(impl->context, event.el.x));
-    JS_SetPropertyStr(impl->context, bounds, "y",
-                      JS_NewFloat64(impl->context, event.el.y));
-    JS_SetPropertyStr(impl->context, bounds, "width",
-                      JS_NewFloat64(impl->context, event.el.w));
-    JS_SetPropertyStr(impl->context, bounds, "height",
-                      JS_NewFloat64(impl->context, event.el.h));
-    JS_SetPropertyStr(impl->context, payload, "bounds", bounds);
+    JS_SetPropertyStr(impl->context, payload, "position",
+                      JsPoint(impl->context, event.x, event.y));
+    JS_SetPropertyStr(
+        impl->context, payload, "local_position",
+        JsPoint(impl->context, event.x - event.el.x, event.y - event.el.y));
+    JS_SetPropertyStr(impl->context, payload, "bounds",
+                      JsBounds(impl->context, event.el));
     JS_SetPropertyStr(impl->context, payload, "x",
                       JS_NewFloat64(impl->context, event.x));
     JS_SetPropertyStr(impl->context, payload, "y",
@@ -14912,16 +14779,8 @@ void ShellRuntime::DispatchTokenClick(shell::CallbackId click,
     JS_SetPropertyStr(
         impl->context, payload, "range",
         RangeJs(impl->context, text, ev->span.start, ev->span.end));
-    JSValue bounds = JS_NewObject(impl->context);
-    JS_SetPropertyStr(impl->context, bounds, "x",
-                      JS_NewFloat64(impl->context, ev->bounds.x));
-    JS_SetPropertyStr(impl->context, bounds, "y",
-                      JS_NewFloat64(impl->context, ev->bounds.y));
-    JS_SetPropertyStr(impl->context, bounds, "width",
-                      JS_NewFloat64(impl->context, ev->bounds.w));
-    JS_SetPropertyStr(impl->context, bounds, "height",
-                      JS_NewFloat64(impl->context, ev->bounds.h));
-    JS_SetPropertyStr(impl->context, payload, "bounds", bounds);
+    JS_SetPropertyStr(impl->context, payload, "bounds",
+                      JsBounds(impl->context, ev->bounds));
     JS_SetPropertyStr(impl->context, payload, "modifiers",
                       ModifiersObject(impl->context, ev->click.modifiers));
     Window* win = cx ? cx->win : nullptr;
@@ -14952,16 +14811,8 @@ void ShellRuntime::DispatchTokenHover(shell::CallbackId hover,
     JS_SetPropertyStr(impl->context, payload, "range", range);
     JS_SetPropertyStr(impl->context, payload, "hovered",
                       JS_NewBool(impl->context, ev->IsHovered()));
-    JSValue bounds = JS_NewObject(impl->context);
-    JS_SetPropertyStr(impl->context, bounds, "x",
-                      JS_NewFloat64(impl->context, ev->bounds.x));
-    JS_SetPropertyStr(impl->context, bounds, "y",
-                      JS_NewFloat64(impl->context, ev->bounds.y));
-    JS_SetPropertyStr(impl->context, bounds, "width",
-                      JS_NewFloat64(impl->context, ev->bounds.w));
-    JS_SetPropertyStr(impl->context, bounds, "height",
-                      JS_NewFloat64(impl->context, ev->bounds.h));
-    JS_SetPropertyStr(impl->context, payload, "bounds", bounds);
+    JS_SetPropertyStr(impl->context, payload, "bounds",
+                      JsBounds(impl->context, ev->bounds));
     Window* win = cx ? cx->win : nullptr;
     App* app = cx ? cx->app : nullptr;
     Dispatch(this, hover, payload, win, app);

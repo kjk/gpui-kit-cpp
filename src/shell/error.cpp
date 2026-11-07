@@ -18,4 +18,16 @@ void ShellErrorSet(ShellError* error, Str message) {
     error->message = StrDup(message);
 }
 
+void ErrorOutSet(Str* error, Str message) {
+    if (!error) return;
+    StrFree(*error);
+    *error = StrDup(message);
+}
+
+void ErrorOutClear(Str* error) {
+    if (!error) return;
+    StrFree(*error);
+    *error = {};
+}
+
 } // namespace gpui

@@ -1,6 +1,7 @@
 #include "shell/dependencies.h"
 
 #include "base/json.h"
+#include "shell/error.h"
 #include "shell/process.h"
 #include "shell/standard.h"
 
@@ -13,12 +14,6 @@ namespace gpui::shell {
 
 static char PathSep() {
     return base::PlatPathSep();
-}
-
-static void DepError(Str* error, Str message) {
-    if (!error) return;
-    StrFree(*error);
-    *error = StrDup(message);
 }
 
 static bool IsSeparator(char c) {
@@ -119,15 +114,16 @@ bool GitDependencyUserCacheRoot(Str home, Str userProfile, Str* out,
         selected = userProfile;
         variable = StrL("USERPROFILE");
     } else {
-        DepError(error,
-                 StrL("cannot locate the Git dependency cache: HOME or "
-                      "USERPROFILE must name an absolute user directory"));
+        ErrorOutSet(error,
+                    StrL("cannot locate the Git dependency cache: HOME or "
+                         "USERPROFILE must name an absolute user directory"));
         return false;
     }
     if (!AbsolutePath(selected)) {
-        DepError(error, fmt("cannot locate the Git dependency cache: %s must "
-                            "be an absolute path, got `%s`",
-                            variable, selected));
+        ErrorOutSet(error,
+                    fmt("cannot locate the Git dependency cache: %s must "
+                        "be an absolute path, got `%s`",
+                        variable, selected));
         return false;
     }
     if (out) *out = GitDependencyCacheRoot(selected);
@@ -139,10 +135,10 @@ bool GitDependencyCacheFromEnvironment(Str shellHome, Str home, Str userProfile,
     if (out) *out = {};
     if (shellHome && len(shellHome) > 0) {
         if (!AbsolutePath(shellHome)) {
-            DepError(error,
-                     fmt("cannot locate the Git dependency cache: "
-                         "GPUI_SHELL_HOME must be an absolute path, got `%s`",
-                         shellHome));
+            ErrorOutSet(
+                error, fmt("cannot locate the Git dependency cache: "
+                           "GPUI_SHELL_HOME must be an absolute path, got `%s`",
+                           shellHome));
             return false;
         }
         Str cache = JoinPath(shellHome, StrL("cache"));
@@ -217,16 +213,16 @@ static bool RunGit(Str name, Str operation, const Str* args, int count,
     bool ok = ProcessRunBounded(StrL("git"), args, count, nullptr, &result,
                                 &failure, &options);
     if (!ok) {
-        DepError(error, fmt("could not %s Git dependency `%s`: %s", operation,
-                            name, failure));
+        ErrorOutSet(error, fmt("could not %s Git dependency `%s`: %s",
+                               operation, name, failure));
         StrFree(failure);
         result.Free();
         return false;
     }
     StrFree(failure);
     if (result.code != 0) {
-        DepError(error, fmt("could not %s Git dependency `%s`: %s", operation,
-                            name, TrimAscii(result.err)));
+        ErrorOutSet(error, fmt("could not %s Git dependency `%s`: %s",
+                               operation, name, TrimAscii(result.err)));
         result.Free();
         return false;
     }
@@ -247,9 +243,9 @@ static Str ConfiguredOrigin(Str name, Str mirror, Str* error) {
         return {};
     Str text = output.out;
     if (len(text) == 0 || text.s[len(text) - 1] != 0) {
-        DepError(error, fmt("Git dependency `%s` cache origin config is "
-                            "malformed; remove %s and retry",
-                            name, mirror));
+        ErrorOutSet(error, fmt("Git dependency `%s` cache origin config is "
+                               "malformed; remove %s and retry",
+                               name, mirror));
         output.Free();
         return {};
     }
@@ -258,10 +254,11 @@ static Str ConfiguredOrigin(Str name, Str mirror, Str* error) {
     for (int i = 0; i < len(origin); i++)
         if (origin.s[i] == 0) embedded = true;
     if (len(origin) == 0 || embedded) {
-        DepError(error, fmt("Git dependency `%s` cache origin config must "
-                            "contain exactly one non-empty URL; remove %s and "
-                            "retry",
-                            name, mirror));
+        ErrorOutSet(error,
+                    fmt("Git dependency `%s` cache origin config must "
+                        "contain exactly one non-empty URL; remove %s and "
+                        "retry",
+                        name, mirror));
         output.Free();
         return {};
     }
@@ -285,9 +282,9 @@ static Str DependencyEntryName(Str name, const GitDependency& dependency,
     Str canonical = Canonical(manifestPath);
     if (!canonical || !WithinPath(root, canonical) ||
         !PlatFileExists(canonical.s)) {
-        DepError(error, fmt("Git dependency `%s` package.json is not a file "
-                            "inside its checkout",
-                            name));
+        ErrorOutSet(error, fmt("Git dependency `%s` package.json is not a file "
+                               "inside its checkout",
+                               name));
         StrFree(manifestPath);
         StrFree(canonical);
         return {};
@@ -295,7 +292,7 @@ static Str DependencyEntryName(Str name, const GitDependency& dependency,
     StrFree(manifestPath);
     TempStr source = ReadBoundedFileTemp(canonical, kShellMaxManifestBytes);
     if (!source.s) {
-        DepError(
+        ErrorOutSet(
             error,
             fmt("reading package.json for Git dependency `%s` failed", name));
         StrFree(canonical);
@@ -305,16 +302,17 @@ static Str DependencyEntryName(Str name, const GitDependency& dependency,
     Arena* arena = ArenaNew();
     JsonValue* value = JsonParse(arena, source);
     if (!value) {
-        DepError(error, fmt("Git dependency `%s` package.json must contain "
-                            "valid JSON",
-                            name));
+        ErrorOutSet(error, fmt("Git dependency `%s` package.json must contain "
+                               "valid JSON",
+                               name));
         ArenaDelete(arena);
         return {};
     }
     if (value->kind != JsonKind::Object) {
-        DepError(error, fmt("Git dependency `%s` package.json must contain a "
-                            "JSON object",
-                            name));
+        ErrorOutSet(error,
+                    fmt("Git dependency `%s` package.json must contain a "
+                        "JSON object",
+                        name));
         ArenaDelete(arena);
         return {};
     }
@@ -324,9 +322,10 @@ static Str DependencyEntryName(Str name, const GitDependency& dependency,
         return StrDup(Str(kGitDependencyDefaultEntry));
     }
     if (main->kind != JsonKind::String) {
-        DepError(error, fmt("Git dependency `%s` package.json `main` must be a "
-                            "string",
-                            name));
+        ErrorOutSet(error,
+                    fmt("Git dependency `%s` package.json `main` must be a "
+                        "string",
+                        name));
         ArenaDelete(arena);
         return {};
     }
@@ -344,9 +343,10 @@ static Str DependencyEntryName(Str name, const GitDependency& dependency,
         start = i + 1;
     }
     if (escapes) {
-        DepError(error, fmt("Git dependency `%s` package.json `main` `%s` must "
-                            "be a path inside its checkout",
-                            name, entry));
+        ErrorOutSet(error,
+                    fmt("Git dependency `%s` package.json `main` `%s` must "
+                        "be a path inside its checkout",
+                        name, entry));
         StrFree(entry);
         return {};
     }
@@ -420,9 +420,9 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
                                      MaterializedDependency* out, Str* error) {
     if (out) *out = {};
     if (!IsValid()) {
-        DepError(error, initError ? initError
-                                  : StrL("the Git dependency cache is "
-                                         "unavailable"));
+        ErrorOutSet(error, initError ? initError
+                                     : StrL("the Git dependency cache is "
+                                            "unavailable"));
         return false;
     }
     if (!DependencyMakeDirectories(root, error)) return false;
@@ -464,8 +464,8 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
                     DependencyRemoveTree(temporary);
                 } else {
                     DependencyRemoveTree(temporary);
-                    DepError(error, StrL("publishing Git dependency mirror "
-                                         "failed"));
+                    ErrorOutSet(error, StrL("publishing Git dependency mirror "
+                                            "failed"));
                     ok = false;
                 }
             }
@@ -477,9 +477,9 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
         ok = configured.s != nullptr;
     }
     if (ok && !StrEq(configured, dependency.git)) {
-        DepError(error, fmt("Git dependency `%s` cache origin is `%s`, "
-                            "expected `%s`; remove %s and retry",
-                            name, configured, dependency.git, mirror));
+        ErrorOutSet(error, fmt("Git dependency `%s` cache origin is `%s`, "
+                               "expected `%s`; remove %s and retry",
+                               name, configured, dependency.git, mirror));
         ok = false;
     }
     if (ok) {
@@ -510,9 +510,10 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
                         (c >= 'A' && c <= 'F');
             }
             if (!valid) {
-                DepError(error, fmt("Git dependency `%s` resolved an invalid "
-                                    "commit id `%s`",
-                                    name, trimmed));
+                ErrorOutSet(error,
+                            fmt("Git dependency `%s` resolved an invalid "
+                                "commit id `%s`",
+                                name, trimmed));
                 ok = false;
             } else {
                 commit = StrDup(trimmed);
@@ -545,8 +546,9 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
                 StrFree(published);
                 DependencyRemoveTree(temporary);
                 if (!other) {
-                    DepError(error, StrL("publishing Git dependency checkout "
-                                         "failed"));
+                    ErrorOutSet(error,
+                                StrL("publishing Git dependency checkout "
+                                     "failed"));
                     ok = false;
                 }
             }
@@ -556,8 +558,8 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
     if (ok) {
         checkoutCanonical = Canonical(checkout);
         if (!checkoutCanonical) {
-            DepError(error,
-                     fmt("resolving dependency checkout %s failed", checkout));
+            ErrorOutSet(error, fmt("resolving dependency checkout %s failed",
+                                   checkout));
             ok = false;
         }
     }
@@ -570,14 +572,15 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
         entryPath = JoinPath(checkoutCanonical, entryName);
         entryCanonical = Canonical(entryPath);
         if (!entryCanonical) {
-            DepError(error, fmt("Git dependency `%s` has no entry `%s`", name,
-                                entryName));
+            ErrorOutSet(error, fmt("Git dependency `%s` has no entry `%s`",
+                                   name, entryName));
             ok = false;
         } else if (!WithinPath(checkoutCanonical, entryCanonical) ||
                    !PlatFileExists(entryCanonical.s)) {
-            DepError(error, fmt("Git dependency `%s` entry `%s` is not a file "
-                                "inside its checkout",
-                                name, entryName));
+            ErrorOutSet(error,
+                        fmt("Git dependency `%s` entry `%s` is not a file "
+                            "inside its checkout",
+                            name, entryName));
             ok = false;
         }
     }
@@ -684,7 +687,7 @@ static bool WriteEditorLinkStub(Str link, Str name,
     bool ok = WriteWhole(markerPath, fmt("%s\n", dependency.root)) &&
               WriteWhole(manifestPath, manifestText) &&
               WriteWhole(indexPath, indexText);
-    if (!ok) DepError(error, fmt("writing %s failed", link));
+    if (!ok) ErrorOutSet(error, fmt("writing %s failed", link));
     StrFree(manifestText);
     StrFree(indexText);
     StrFree(specifier);
@@ -818,7 +821,7 @@ bool ShellWriteDependencyLinks(Str applicationRoot, int* linked, Str* error) {
     PluginManifest manifest;
     ShellError manifestError = {};
     if (!PluginManifestRead(applicationRoot, &manifest, &manifestError)) {
-        DepError(error, manifestError.message);
+        ErrorOutSet(error, manifestError.message);
         ShellErrorClear(&manifestError);
         return false;
     }
@@ -830,6 +833,58 @@ bool ShellWriteDependencyLinks(Str applicationRoot, int* linked, Str* error) {
               store.LinkForEditor(applicationRoot, materialized, linked, error);
     materialized.Free();
     return ok;
+}
+
+bool DependencyMakeDirectories(Str path, Str* error) {
+    if (!path || len(path) >= kMaxPath) {
+        ErrorOutSet(error, StrL("dependency cache path is empty or too long"));
+        return false;
+    }
+    for (int i = 1; i <= len(path); i++) {
+        if (i < len(path) && path.s[i] != '/' && path.s[i] != PlatPathSep())
+            continue;
+        if (!DependencyMakeDirectory(Str(path.s, i))) {
+            ErrorOutSet(error, fmt("creating %s failed", path));
+            return false;
+        }
+    }
+    return true;
+}
+
+bool DependencyLockAcquire(Str path, Str name, DependencyLock* out,
+                           Str* error) {
+    if (out) *out = {};
+    DependencyLock lock;
+    if (!DependencyLockOpen(path, &lock)) {
+        ErrorOutSet(error,
+                    fmt("opening Git dependency cache lock %s failed", path));
+        return false;
+    }
+    double started = TimeNow();
+    for (;;) {
+        int taken = DependencyLockTry(&lock);
+        if (taken > 0) {
+            if (out)
+                *out = lock;
+            else
+                DependencyLockRelease(&lock);
+            return true;
+        }
+        if (taken < 0) {
+            DependencyLockClose(&lock);
+            ErrorOutSet(error, StrL("locking Git dependency cache failed"));
+            return false;
+        }
+        if (TimeNow() - started >= kGitDependencyLockTimeout) {
+            DependencyLockClose(&lock);
+            ErrorOutSet(error,
+                        fmt("timed out waiting for another process to finish "
+                            "Git dependency `%s`",
+                            name));
+            return false;
+        }
+        PlatSleepMs(25);
+    }
 }
 
 } // namespace gpui::shell

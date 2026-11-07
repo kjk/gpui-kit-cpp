@@ -1,16 +1,13 @@
 #include "shell/process.h"
 
+#include "shell/error.h"
+#include "shell/wide.h"
+
 #include <windows.h>
 
 namespace gpui::shell {
 
 constexpr int kProcessStreamLimit = 8 * 1024 * 1024;
-
-static void ProcessError(Str* error, Str message) {
-    if (!error) return;
-    StrFree(*error);
-    *error = StrDup(message);
-}
 
 // A child deadline is wall time. TimeNow() is the frame clock, and the
 // test platform replaces it, so a 100 ms timeout would never arrive
@@ -26,27 +23,6 @@ static double WallSeconds() {
     QueryPerformanceCounter(&now);
     if (freq.QuadPart == 0) return 0;
     return (double)(now.QuadPart - start.QuadPart) / (double)freq.QuadPart;
-}
-
-static WCHAR* WideDup(Str value) {
-    if (!value.s || len(value) < 0) return nullptr;
-    for (int i = 0; i < len(value); i++) {
-        if (value.s[i] == 0) return nullptr;
-    }
-    int count = len(value) == 0
-                    ? 0
-                    : MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
-                                          value.s, len(value), nullptr, 0);
-    if (len(value) > 0 && count <= 0) return nullptr;
-    WCHAR* result = AllocArray<WCHAR>(count + 1);
-    if (!result) return nullptr;
-    if (count > 0 && MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.s,
-                                         len(value), result, count) != count) {
-        Free(nullptr, result);
-        return nullptr;
-    }
-    result[count] = 0;
-    return result;
 }
 
 static bool ExecutableFile(const WCHAR* path) {
@@ -106,8 +82,8 @@ static WCHAR* ResolveExecutable(Str command, Str* error) {
     WCHAR* wide = WideDup(command);
     if (!wide || !wide[0]) {
         Free(nullptr, wide);
-        ProcessError(error, StrL("process.run command must be non-empty UTF-8 "
-                                 "without NUL bytes"));
+        ErrorOutSet(error, StrL("process.run command must be non-empty UTF-8 "
+                                "without NUL bytes"));
         return nullptr;
     }
     if (HasPathComponent(wide)) return wide;
@@ -115,16 +91,16 @@ static WCHAR* ResolveExecutable(Str command, Str* error) {
     DWORD needed = GetEnvironmentVariableW(L"PATH", nullptr, 0);
     if (needed == 0) {
         Free(nullptr, wide);
-        ProcessError(error, fmt("running `%s` failed: the host PATH "
-                                "environment variable is not set",
-                                command));
+        ErrorOutSet(error, fmt("running `%s` failed: the host PATH "
+                               "environment variable is not set",
+                               command));
         return nullptr;
     }
     WCHAR* path = AllocArray<WCHAR>((int)needed + 1);
     if (!path || GetEnvironmentVariableW(L"PATH", path, needed) == 0) {
         Free(nullptr, path);
         Free(nullptr, wide);
-        ProcessError(
+        ErrorOutSet(
             error,
             fmt("running `%s` failed: reading the host PATH failed", command));
         return nullptr;
@@ -160,9 +136,9 @@ static WCHAR* ResolveExecutable(Str command, Str* error) {
     Free(nullptr, path);
     Free(nullptr, wide);
     if (!result) {
-        ProcessError(error, fmt("running `%s` failed: executable was not found "
-                                "on the host PATH",
-                                command));
+        ErrorOutSet(error, fmt("running `%s` failed: executable was not found "
+                               "on the host PATH",
+                               command));
     }
     return result;
 }
@@ -234,9 +210,9 @@ static bool DrainPipe(HANDLE* pipe, StrBuilder* output, bool* closed,
                 *closed = true;
                 return true;
             }
-            ProcessError(error,
-                         fmt("reading child %s failed with Windows error %u",
-                             Str(name), code));
+            ErrorOutSet(error,
+                        fmt("reading child %s failed with Windows error %u",
+                            Str(name), code));
             return false;
         }
         if (available == 0) return true;
@@ -251,14 +227,14 @@ static bool DrainPipe(HANDLE* pipe, StrBuilder* output, bool* closed,
                 *closed = true;
                 return true;
             }
-            ProcessError(error,
-                         fmt("reading child %s failed with Windows error %u",
-                             Str(name), code));
+            ErrorOutSet(error,
+                        fmt("reading child %s failed with Windows error %u",
+                            Str(name), code));
             return false;
         }
         if (count == 0) return true;
         if (output->len > kProcessStreamLimit - (int)count) {
-            ProcessError(error, fmt("child %s exceeded 8 MiB", Str(name)));
+            ErrorOutSet(error, fmt("child %s exceeded 8 MiB", Str(name)));
             return false;
         }
         output->Append(Str(bytes, (int)count));
@@ -312,10 +288,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
                        ProcessCancellation* cancellation, ProcessOutput* output,
                        Str* error, const ProcessOptions* options) {
     if (output) output->Free();
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     WCHAR* executable = ResolveExecutable(command, error);
     if (!executable) return false;
     Vec<WCHAR> commandLine;
@@ -325,8 +298,8 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         ok = AppendArgument(&commandLine, args[i]);
     if (!ok) {
         Free(nullptr, executable);
-        ProcessError(error,
-                     StrL("building the child-process command line failed"));
+        ErrorOutSet(error,
+                    StrL("building the child-process command line failed"));
         return false;
     }
 
@@ -348,7 +321,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         !CreatePipe(&errRead, &errWrite, &security, 0) ||
         !SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0) ||
         !SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0)) {
-        ProcessError(
+        ErrorOutSet(
             error,
             fmt("creating child-process pipes failed with Windows error %u",
                 GetLastError()));
@@ -359,17 +332,17 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
                     &security, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (nullInput == INVALID_HANDLE_VALUE) {
-        ProcessError(error, fmt("opening the child-process null input failed "
-                                "with Windows error %u",
-                                GetLastError()));
+        ErrorOutSet(error, fmt("opening the child-process null input failed "
+                               "with Windows error %u",
+                               GetLastError()));
         ok = false;
         goto cleanup;
     }
     job = CreateJobObjectW(nullptr, nullptr);
     if (!job) {
-        ProcessError(error, fmt("creating the child-process Job Object failed "
-                                "with Windows error %u",
-                                GetLastError()));
+        ErrorOutSet(error, fmt("creating the child-process Job Object failed "
+                               "with Windows error %u",
+                               GetLastError()));
         ok = false;
         goto cleanup;
     }
@@ -377,24 +350,24 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         .LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation,
                                  &limits, sizeof(limits))) {
-        ProcessError(error, fmt("configuring the child-process Job Object "
-                                "failed with Windows error %u",
-                                GetLastError()));
+        ErrorOutSet(error, fmt("configuring the child-process Job Object "
+                               "failed with Windows error %u",
+                               GetLastError()));
         ok = false;
         goto cleanup;
     }
 
     environment = BuildEnvironment(options, &environmentOk);
     if (!environmentOk) {
-        ProcessError(error,
-                     StrL("building the child-process environment failed"));
+        ErrorOutSet(error,
+                    StrL("building the child-process environment failed"));
         ok = false;
         goto cleanup;
     }
     if (options && options->workingDirectory) {
         directory = WideDup(options->workingDirectory);
         if (!directory) {
-            ProcessError(
+            ErrorOutSet(
                 error,
                 StrL("the child-process working directory is not valid UTF-8"));
             ok = false;
@@ -412,13 +385,13 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
             CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
             environment ? environment : emptyEnvironment, directory, &startup,
             &process)) {
-        ProcessError(error, fmt("running `%s` failed with Windows error %u",
-                                command, GetLastError()));
+        ErrorOutSet(error, fmt("running `%s` failed with Windows error %u",
+                               command, GetLastError()));
         ok = false;
         goto cleanup;
     }
     if (!AssignProcessToJobObject(job, process.hProcess)) {
-        ProcessError(
+        ErrorOutSet(
             error,
             fmt("isolating `%s` process tree failed with Windows error %u",
                 command, GetLastError()));
@@ -426,8 +399,8 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         goto cleanup;
     }
     if (ResumeThread(process.hThread) == (DWORD)-1) {
-        ProcessError(error, fmt("resuming `%s` failed with Windows error %u",
-                                command, GetLastError()));
+        ErrorOutSet(error, fmt("resuming `%s` failed with Windows error %u",
+                               command, GetLastError()));
         ok = false;
         goto cleanup;
     }
@@ -441,10 +414,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         bool stdoutClosed = false, stderrClosed = false, done = false;
         DWORD exitCode = (DWORD)-1;
         double started = WallSeconds();
-        double timeoutSeconds = (options && options->timeoutSeconds > 0)
-                                    ? options->timeoutSeconds
-                                    : 30.0;
-        int timeoutMs = (int)(timeoutSeconds * 1000.0 + 0.5);
+        double timeoutSeconds = ProcessBoundedTimeoutSeconds(options);
         while (!done || !stdoutClosed || !stderrClosed) {
             if (!stdoutClosed)
                 ok = DrainPipe(&outRead, &stdoutText, &stdoutClosed, error,
@@ -454,11 +424,9 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
                                "stderr");
             bool cancelled = cancellation && cancellation->IsCancelled();
             if (!ok || cancelled || WallSeconds() - started >= timeoutSeconds) {
-                if (ok && cancelled)
-                    ProcessError(error, fmt("`%s` was cancelled", command));
-                else if (ok)
-                    ProcessError(error, fmt("`%s` timed out after %d ms",
-                                            command, timeoutMs));
+                if (ok)
+                    ProcessBoundedStopError(command, cancelled, timeoutSeconds,
+                                            error);
                 ok = false;
                 TerminateJobObject(job, 1);
                 WaitForSingleObject(process.hProcess, 5000);
@@ -502,12 +470,7 @@ cleanup:
 
 // A streaming child. The waiter joins the readers before it publishes Exit,
 // so a poll never sees the exit ahead of the output that preceded it.
-struct ProcessStream {
-    ProcessEventBox box;
-    Str command;
-    Str cwd;
-    double timeoutSeconds = 0;
-    uint32_t pid = 0;
+struct ProcessStream : ProcessStreamCore {
     HANDLE process = nullptr;
     HANDLE job = nullptr;
     HANDLE outRead = nullptr;
@@ -517,8 +480,6 @@ struct ProcessStream {
     HANDLE readerErr = nullptr;
     HANDLE waiter = nullptr;
     HANDLE stdinThread = nullptr;
-    ProcessDecodeState outDecode;
-    ProcessDecodeState errDecode;
 };
 
 struct ReaderLaunch {
@@ -527,10 +488,6 @@ struct ReaderLaunch {
     ProcessDecodeState* decode = nullptr;
     ProcessStreamEvent::Kind kind = ProcessStreamEvent::Kind::Out;
 };
-
-static int TimeoutMilliseconds(double seconds) {
-    return (int)(seconds * 1000.0 + 0.5);
-}
 
 static void JoinThread(HANDLE* thread) {
     if (!thread || !*thread) return;
@@ -589,31 +546,17 @@ static DWORD WINAPI StreamReaderMain(LPVOID param) {
     return 0;
 }
 
+static int StreamStdinWrite(void* ctx, const char* bytes, int count) {
+    ProcessStream* stream = (ProcessStream*)ctx;
+    DWORD wrote = 0;
+    if (!WriteFile(stream->inWrite, bytes, (DWORD)count, &wrote, nullptr))
+        return -1;
+    return (int)wrote;
+}
+
 static DWORD WINAPI StreamStdinMain(LPVOID param) {
     ProcessStream* stream = (ProcessStream*)param;
-    for (;;) {
-        Vec<char> bytes;
-        bool ended = false;
-        if (!ProcessStdinTake(&stream->box, &bytes, &ended)) break;
-        int offset = 0;
-        bool ok = true;
-        while (offset < bytes.len) {
-            DWORD wrote = 0;
-            if (!WriteFile(stream->inWrite, bytes.els + offset,
-                           (DWORD)(bytes.len - offset), &wrote, nullptr) ||
-                wrote == 0) {
-                ok = false;
-                break;
-            }
-            offset += (int)wrote;
-        }
-        VecReset(bytes);
-        if (!ok) {
-            ProcessStdinFail(&stream->box);
-            break;
-        }
-        if (ended) break;
-    }
+    ProcessStdinPump(&stream->box, StreamStdinWrite, stream);
     Close(&stream->inWrite);
     return 0;
 }
@@ -635,10 +578,7 @@ static DWORD WINAPI StreamWaiterMain(LPVOID param) {
         }
         if (stream->timeoutSeconds > 0 &&
             WallSeconds() - started >= stream->timeoutSeconds) {
-            ProcessEventSetReason(
-                &stream->box,
-                StrDup(fmt("`%s` timed out after %d ms", stream->command,
-                           TimeoutMilliseconds(stream->timeoutSeconds))));
+            ProcessStreamCoreTimedOut(stream);
             if (stream->job) TerminateJobObject(stream->job, 1);
             break;
         }
@@ -650,7 +590,6 @@ static DWORD WINAPI StreamWaiterMain(LPVOID param) {
     JoinThread(&stream->readerOut);
     JoinThread(&stream->readerErr);
     ProcessStreamEvent event;
-    event.kind = ProcessStreamEvent::Kind::Exit;
     if (!waitFailed) {
         DWORD code = 0;
         if (GetExitCodeProcess(stream->process, &code)) {
@@ -658,12 +597,7 @@ static DWORD WINAPI StreamWaiterMain(LPVOID param) {
             event.code = (int)code;
         }
     }
-    Str reason = ProcessEventTakeReason(&stream->box);
-    if (reason) {
-        event.hasError = true;
-        event.text = reason;
-    }
-    ProcessEventPush(&stream->box, event);
+    ProcessEventPushExit(&stream->box, event);
     return 0;
 }
 
@@ -697,11 +631,7 @@ static void ReleaseStream(ProcessStream* stream) {
     Close(&stream->inWrite);
     Close(&stream->process);
     Close(&stream->job);
-    ProcessDecodeFree(&stream->outDecode);
-    ProcessDecodeFree(&stream->errDecode);
-    ProcessEventBoxFree(&stream->box);
-    StrFree(stream->command);
-    StrFree(stream->cwd);
+    ProcessStreamCoreFree(stream);
     delete stream;
 }
 
@@ -709,10 +639,7 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
                         const ProcessSpawnOptions* options, ProcessStream** out,
                         Str* error) {
     if (out) *out = nullptr;
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     WCHAR* executable = ResolveExecutable(command, error);
     if (!executable) return false;
     Vec<WCHAR> commandLine;
@@ -722,19 +649,13 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
     if (built) built = VecAppend(commandLine, (WCHAR)0);
     if (!built) {
         Free(nullptr, executable);
-        ProcessError(error,
-                     StrL("building the child-process command line failed"));
+        ErrorOutSet(error,
+                    StrL("building the child-process command line failed"));
         return false;
     }
 
     ProcessStream* stream = new ProcessStream();
-    ProcessEventBoxInit(&stream->box, options && options->stdinPipe);
-    stream->command = StrDup(command);
-    stream->timeoutSeconds = options ? options->timeoutSeconds : 0;
-    if (options && options->cwd) stream->cwd = StrDup(options->cwd);
-    bool lines = options && options->lines;
-    ProcessDecodeInit(&stream->outDecode, lines);
-    ProcessDecodeInit(&stream->errDecode, lines);
+    ProcessStreamCoreInit(stream, command, options);
 
     SECURITY_ATTRIBUTES security = {};
     security.nLength = sizeof(security);
@@ -755,18 +676,18 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
         !CreatePipe(&stream->errRead, &errWrite, &security, 0) ||
         !SetHandleInformation(stream->outRead, HANDLE_FLAG_INHERIT, 0) ||
         !SetHandleInformation(stream->errRead, HANDLE_FLAG_INHERIT, 0)) {
-        ProcessError(error, fmt("creating child-process pipes failed with "
-                                "Windows error %u",
-                                GetLastError()));
+        ErrorOutSet(error, fmt("creating child-process pipes failed with "
+                               "Windows error %u",
+                               GetLastError()));
         ok = false;
         goto done;
     }
     if (options && options->stdinPipe) {
         if (!CreatePipe(&inRead, &stream->inWrite, &security, 0) ||
             !SetHandleInformation(stream->inWrite, HANDLE_FLAG_INHERIT, 0)) {
-            ProcessError(error, fmt("creating the child stdin pipe failed with "
-                                    "Windows error %u",
-                                    GetLastError()));
+            ErrorOutSet(error, fmt("creating the child stdin pipe failed with "
+                                   "Windows error %u",
+                                   GetLastError()));
             ok = false;
             goto done;
         }
@@ -776,18 +697,18 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (nullInput == INVALID_HANDLE_VALUE) {
             nullInput = nullptr;
-            ProcessError(error, fmt("opening the child-process null input "
-                                    "failed with Windows error %u",
-                                    GetLastError()));
+            ErrorOutSet(error, fmt("opening the child-process null input "
+                                   "failed with Windows error %u",
+                                   GetLastError()));
             ok = false;
             goto done;
         }
     }
     stream->job = CreateJobObjectW(nullptr, nullptr);
     if (!stream->job) {
-        ProcessError(error, fmt("creating the child-process Job Object failed "
-                                "with Windows error %u",
-                                GetLastError()));
+        ErrorOutSet(error, fmt("creating the child-process Job Object failed "
+                               "with Windows error %u",
+                               GetLastError()));
         ok = false;
         goto done;
     }
@@ -795,17 +716,17 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
         .LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     if (!SetInformationJobObject(stream->job, JobObjectExtendedLimitInformation,
                                  &limits, sizeof(limits))) {
-        ProcessError(error, fmt("configuring the child-process Job Object "
-                                "failed with Windows error %u",
-                                GetLastError()));
+        ErrorOutSet(error, fmt("configuring the child-process Job Object "
+                               "failed with Windows error %u",
+                               GetLastError()));
         ok = false;
         goto done;
     }
     if (stream->cwd) {
         directory = WideDup(stream->cwd);
         if (!directory) {
-            ProcessError(error, StrL("the child-process working directory is "
-                                     "not valid UTF-8"));
+            ErrorOutSet(error, StrL("the child-process working directory is "
+                                    "not valid UTF-8"));
             ok = false;
             goto done;
         }
@@ -819,8 +740,8 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
             executable, commandLine.els, nullptr, nullptr, TRUE,
             CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
             emptyEnvironment, directory, &startup, &process)) {
-        ProcessError(error, fmt("running `%s` failed with Windows error %u",
-                                command, GetLastError()));
+        ErrorOutSet(error, fmt("running `%s` failed with Windows error %u",
+                               command, GetLastError()));
         ok = false;
         goto done;
     }
@@ -828,10 +749,10 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
     stream->pid = process.dwProcessId;
     if (!AssignProcessToJobObject(stream->job, stream->process) ||
         ResumeThread(process.hThread) == (DWORD)-1) {
-        ProcessError(error,
-                     fmt("isolating `%s` process tree failed with Windows "
-                         "error %u",
-                         command, GetLastError()));
+        ErrorOutSet(error,
+                    fmt("isolating `%s` process tree failed with Windows "
+                        "error %u",
+                        command, GetLastError()));
         ok = false;
         goto done;
     }
@@ -862,9 +783,9 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
         threadsOk = stream->waiter != nullptr;
     }
     if (!threadsOk) {
-        ProcessError(error, fmt("running `%s` failed: a stream thread could "
-                                "not be started",
-                                command));
+        ErrorOutSet(error, fmt("running `%s` failed: a stream thread could "
+                               "not be started",
+                               command));
         ok = false;
     }
 

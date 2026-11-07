@@ -1,5 +1,7 @@
 #include "shell/standard.h"
 
+#include "shell/error.h"
+
 #include <string.h>
 
 namespace gpui::shell {
@@ -160,10 +162,7 @@ bool ZlibDeflate(Str input, bool gzip, Str* output, Str* error) {
         StrFree(*output);
         *output = {};
     }
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     if (len(input) < 0 || len(input) > kStandardDataLimit) {
         StandardError(error,
                       StrL("compression input exceeds the 64 MiB limit"));
@@ -418,10 +417,7 @@ bool ZlibInflate(Str input, bool gzip, Str* output, Str* error) {
         StrFree(*output);
         *output = {};
     }
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     if (!input.s || len(input) < (gzip ? 18 : 6) ||
         len(input) > kStandardDataLimit) {
         StandardError(
@@ -508,10 +504,7 @@ bool ZlibInflateRaw(Str input, Str* output, Str* error) {
         StrFree(*output);
         *output = {};
     }
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     if (!input.s || len(input) < 0 || len(input) > kStandardDataLimit) {
         StandardError(
             error,

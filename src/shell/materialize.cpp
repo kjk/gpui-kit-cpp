@@ -229,11 +229,6 @@ static PopupAnchor AnchorOf(Str name, bool* found) {
 // handler runs once per frame for as long as the dock is on screen, so a
 // callback registered inside one would pile up the way a virtual list's row
 // handlers would.
-static DockPlacement DockPlacementOfName(Str name) {
-    static const char names[] = "center\0left\0bottom\0right\0";
-    int ix = SeqStrIndex(names, name);
-    return ix < 0 ? DockPlacement::Center : (DockPlacement)ix;
-}
 
 static bool IsDockCommandName(Str name) {
     static const char names[] =
@@ -1858,7 +1853,8 @@ static El* WireDockCommands(Ctx* cx, El* element,
             element = at < 0 ? DockBindTabRest(group, element)
                              : DockBindTab(group, (int)at, element);
         } else if (StrEq(op.name, StrL("toggle_dock")) && (group || region)) {
-            DockPlacement placement = DockPlacementOfName(AsString(op, 1));
+            DockPlacement placement =
+                shell::DockPlacementOfName(AsString(op, 1));
             if (group) {
                 element = DockBindToggle(group, placement, element);
             } else {

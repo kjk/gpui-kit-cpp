@@ -159,5 +159,44 @@ bool ProcessDecodeFeed(ProcessDecodeState* state, ProcessEventBox* box,
 void ProcessDecodeFinish(ProcessDecodeState* state, ProcessEventBox* box,
                          ProcessStreamEvent::Kind kind);
 
+// What every platform's ProcessStream carries before its OS handles. The
+// platform struct derives from it, so the shared half is reached by name.
+struct ProcessStreamCore {
+    ProcessEventBox box;
+    Str command;
+    Str cwd;
+    double timeoutSeconds = 0;
+    uint32_t pid = 0;
+    ProcessDecodeState outDecode;
+    ProcessDecodeState errDecode;
+};
+
+void ProcessStreamCoreInit(ProcessStreamCore* stream, Str command,
+                           const ProcessSpawnOptions* options);
+// Frees the event box, both decoders and the owned strings. The platform has
+// joined its threads and closed its handles first.
+void ProcessStreamCoreFree(ProcessStreamCore* stream);
+// Records the deadline as the reason the waiter is about to kill the child.
+void ProcessStreamCoreTimedOut(ProcessStreamCore* stream);
+
+// The stdin writer thread's body: hands queued bytes to writeSome until the
+// script ends the stream, the stream stops, or a write fails. writeSome writes
+// up to count bytes and returns how many, or <= 0 when the pipe is gone.
+void ProcessStdinPump(ProcessEventBox* box,
+                      int (*writeSome)(void* ctx, const char* bytes, int count),
+                      void* ctx);
+
+// Publishes the Exit event the waiter built, carrying whichever failure was
+// recorded first as its error. Exit is always the last event.
+void ProcessEventPushExit(ProcessEventBox* box, ProcessStreamEvent event);
+
+int ProcessTimeoutMilliseconds(double seconds);
+
+// process.run's deadline: `options->timeoutSeconds`, or 30 seconds.
+double ProcessBoundedTimeoutSeconds(const ProcessOptions* options);
+// The reason a bounded run stopped before its child exited.
+void ProcessBoundedStopError(Str command, bool cancelled, double timeoutSeconds,
+                             Str* error);
+
 } // namespace gpui::shell
 #endif // GPUI_SHELL_PROCESS_H_

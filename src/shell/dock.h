@@ -48,6 +48,10 @@ struct ShellPanelScript {
     bool visible = true;
 };
 
+// A script's placement word, the inverse of DockPlacementName. Anything that
+// is not "left", "bottom" or "right" is the center.
+DockPlacement DockPlacementOfName(Str name);
+
 // Stable, process-wide `shell:<application>/<panel>` names. The intentionally
 // interned allocation is bounded by the number of panel contributions.
 Str ShellPanelName(Str application, Str panel);

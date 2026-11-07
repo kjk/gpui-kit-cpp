@@ -13,6 +13,10 @@
 
 namespace gpui {
 
+// A placement as the layout file spells it: "left", "right", "bottom" or
+// "center".
+const char* DockPlacementName(DockPlacement placement);
+
 // PanelInfo: which of the three a node is. Upstream dropped Tiles; a saved
 // tiles node is read as a tab group.
 enum class PanelInfoKind : uint8_t {

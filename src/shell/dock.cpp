@@ -401,17 +401,10 @@ const DockRenderer* ScriptDockSkin::Renderer() {
     return &renderer;
 }
 
-static const char* PlacementName(DockPlacement placement) {
-    switch (placement) {
-        case DockPlacement::Left:
-            return "left";
-        case DockPlacement::Right:
-            return "right";
-        case DockPlacement::Bottom:
-            return "bottom";
-        default:
-            return "center";
-    }
+DockPlacement DockPlacementOfName(Str name) {
+    static const char names[] = "center\0left\0bottom\0right\0";
+    int ix = SeqStrIndex(names, name);
+    return ix < 0 ? DockPlacement::Center : (DockPlacement)ix;
 }
 
 void ShellTabGroupData(const DockTabGroup* group, StrBuilder* out) {
@@ -454,8 +447,9 @@ void ShellDockData(const DockCtx* dock, StrBuilder* out) {
     JsonWriter json;
     json.out = out;
     json.BeginObject();
-    json.String("placement", Str(PlacementName(dock ? dock->placement
-                                                    : DockPlacement::Center)));
+    json.String(
+        "placement",
+        Str(DockPlacementName(dock ? dock->placement : DockPlacement::Center)));
     json.Number("size", dock ? dock->size : 0);
     json.Bool("open", dock && dock->open);
     json.Bool("collapsible", dock && dock->collapsible);
