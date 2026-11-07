@@ -6,6 +6,7 @@
 
 #include "component_shell/families.h"
 #include "component_shell/support.h"
+#include "shell/style.h"
 #include "ui/grid_layout.h"
 
 #include <math.h>
