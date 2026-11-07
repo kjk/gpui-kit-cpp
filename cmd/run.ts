@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "fbc3ebf145d0d4593c883271f8ac7a7e6b74c6d6",
+  sha: "d2ac0e79475729b07ead3821fa4ec6fd70276517",
   date: "2026-11-02",
-  subject: "text: Preserve list body width in fitted containers (#3759)",
+  subject: "gpui: Upgrade to gpui-pre 0.3.11 and gpui-fast 0.1.13 (#3766)",
   crates: {
     "gpui-kit": "0.8.1",
     "gpui-base": "0.8.1",
@@ -553,20 +553,20 @@ export const gpuiComponent = {
 } as const;
 
 /**
- * Zed reference snapshot recorded in gpui-pre 0.3.10's package metadata.
+ * Zed reference snapshot recorded in gpui-pre 0.3.11's package metadata.
  * Cargo.lock now resolves registry packages rather than a Zed git source.
  */
 export const zedGpui = {
   repo: "https://github.com/zed-industries/zed",
-  sha: "08cbb88a152c3751a43e853425a70e9f631a5918",
-  date: "2026-10-25",
-  subject: "git_ui: Fix git graph lagging when toggling commit details panel (#66132)",
+  sha: "f816e1f9263e3a8ef63c4baaa02e1441ce1c6038",
+  date: "2026-11-01",
+  subject: "gpui: Render macOS window screenshots offscreen (#66344)",
   crates: {
-    "gpui-pre": "0.3.10",
-    "gpui-pre-platform": "0.3.10",
-    "gpui-pre-macros": "0.3.10",
+    "gpui-pre": "0.3.11",
+    "gpui-pre-platform": "0.3.11",
+    "gpui-pre-macros": "0.3.11",
   },
-  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.10",
+  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.11",
 } as const;
 
 /**

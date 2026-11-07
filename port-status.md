@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `fbc3ebf145d0d4593c883271f8ac7a7e6b74c6d6` (2026-11-02,
-text: Preserve list body width in fitted containers (#3759)).
-A list item's body is flex_auto, so its text counts toward the row's
-intrinsic width and the body can still shrink.
+Processed through `d2ac0e79475729b07ead3821fa4ec6fd70276517` (2026-11-02,
+gpui: Upgrade to gpui-pre 0.3.11 and gpui-fast 0.1.13 (#3766)).
+The GPUI reference is Zed `f816e1f9263e`. Kit edits that key a window's
+text system by address, and that sample animation from the executor
+clock, do not change a widget here.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
@@ -114,7 +115,7 @@ The current update target is
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
-  The GPUI reference is `gpui-pre` 0.3.10 (Zed `08cbb88a152c`). Layout is
+  The GPUI reference is `gpui-pre` 0.3.11 (Zed `f816e1f9263e`). Layout is
   taffy 0.15.0. The other ported dependency versions are unchanged.
 - **Base Root's Tab and copy actions are the runtime's.** Base Root's Tab /
   shift-Tab / copy actions are the runtime's for every window (`FocusNext`,
