@@ -54,19 +54,7 @@ static void VariantString(VARIANT* out, Str value) {
 
 // The roles UI Automation exposes as an Edit control with a Value pattern.
 static bool AccessibilityTextRole(AccessibilityRole role) {
-    switch (role) {
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::UrlInput:
-            return true;
-        default:
-            return false;
-    }
+    return AccessibilityRoleIsTextField(role);
 }
 
 static int AccessibilityControlType(AccessibilityRole role) {
@@ -136,6 +124,9 @@ static int AccessibilityControlType(AccessibilityRole role) {
 }
 
 static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
+    if (AccessibilityRoleIsTextField(role)) {
+        return L"textbox";
+    }
     switch (role) {
         case AccessibilityRole::Alert:
             return L"alert";
@@ -197,15 +188,6 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
             return L"table";
         case AccessibilityRole::TabList:
             return L"tablist";
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::UrlInput:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-            return L"textbox";
         case AccessibilityRole::Toolbar:
             return L"toolbar";
         case AccessibilityRole::Tooltip:

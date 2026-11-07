@@ -509,23 +509,24 @@ enum class DispatchPhase : uint8_t {
     Bubble
 };
 
-struct MouseDownEvent {
+// What a press and a release both carry: the button, where it was, the box
+// of the element that heard it, the modifiers, the run of clicks it is in
+// and the pass of the chain.
+struct MouseButtonEvent {
     MouseButton button = MouseButton::Left;
     float x = 0;
     float y = 0;
-    // The box of the element the press landed on, when it has an identity —
-    // the same thing ClickEvent::el carries, and what a handler needs to
-    // place something where the press was inside it. A Rust hitbox has the
-    // bounds too; the event does not, because the closure already has them.
+    // The box of the element the press landed on (or that heard the
+    // release), when it has an identity — the same thing ClickEvent::el
+    // carries, and what a handler needs to place something where the press
+    // was inside it. A Rust hitbox has the bounds too; the event does not,
+    // because the closure already has them. The chain fills it in as the
+    // event walks.
     Bounds el = {};
     Modifiers modifiers = {};
     // How many presses this one is in an unbroken run: 1, 2, 3… What Rust's
     // on_double_click tests — `on_click(|ev, ..| ev.click_count() == 2)`.
     int clickCount = 1;
-    // The press that also activated the window. Windows knows from
-    // WM_MOUSEACTIVATE; X11 has no such notion and a Cocoa view does not
-    // accept the first mouse, so it is false on those two.
-    bool firstMouse = false;
     // Which pass of the chain this is. A handler registered for one phase only
     // ever sees that phase; the field is there for one that took both.
     DispatchPhase phase = DispatchPhase::Bubble;
@@ -534,19 +535,14 @@ struct MouseDownEvent {
     bool IsFocusing() const { return button == MouseButton::Left; }
 };
 
-struct MouseUpEvent {
-    MouseButton button = MouseButton::Left;
-    float x = 0;
-    float y = 0;
-    // The box of the element that heard it, the way MouseDownEvent carries
-    // one. The chain fills it in as the event walks.
-    Bounds el = {};
-    Modifiers modifiers = {};
-    int clickCount = 1;
-    DispatchPhase phase = DispatchPhase::Bubble;
-
-    bool IsFocusing() const { return button == MouseButton::Left; }
+struct MouseDownEvent : MouseButtonEvent {
+    // The press that also activated the window. Windows knows from
+    // WM_MOUSEACTIVATE; X11 has no such notion and a Cocoa view does not
+    // accept the first mouse, so it is false on those two.
+    bool firstMouse = false;
 };
+
+struct MouseUpEvent : MouseButtonEvent {};
 
 struct MouseMoveEvent {
     float x = 0;
@@ -2468,6 +2464,11 @@ enum class AccessibilityRole : uint8_t {
     ListGrid,
     Terminal
 };
+
+// The single- and multi-line text fields (text, password, email, phone,
+// URL, date and date-time), which every platform bridge and the tree's own
+// name and focus rules treat as one kind of control.
+bool AccessibilityRoleIsTextField(AccessibilityRole role);
 
 enum class AccessibilityToggled : uint8_t {
     Unset,

@@ -2573,6 +2573,14 @@ static bool ShadowNumber(JSContext* ctx, JSValueConst object, const char* field,
     return true;
 }
 
+// A plain object's own enumerable string keys, the way every conversion of
+// one here walks it. False with an exception pending.
+static bool OwnEnumerableKeys(JSContext* ctx, JSValueConst object,
+                              JSPropertyEnum** properties, uint32_t* count) {
+    return JS_GetOwnPropertyNames(ctx, properties, count, object,
+                                  JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) >= 0;
+}
+
 static bool BridgeShadowList(JSContext* ctx, JSValueConst array, Arena* arena,
                              shell::Bridged* out) {
     int64_t length = 0;
@@ -2600,8 +2608,7 @@ static bool BridgeShadowList(JSContext* ctx, JSValueConst array, Arena* arena,
         }
         JSPropertyEnum* properties = nullptr;
         uint32_t count = 0;
-        if (JS_GetOwnPropertyNames(ctx, &properties, &count, entry,
-                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0) {
+        if (!OwnEnumerableKeys(ctx, entry, &properties, &count)) {
             JS_FreeValue(ctx, entry);
             return false;
         }
@@ -3754,9 +3761,7 @@ static bool ComponentDataFromJs(JSContext* ctx, JSValueConst value, Arena* a,
     if (JS_IsObject(value)) {
         JSPropertyEnum* properties = nullptr;
         uint32_t count = 0;
-        if (JS_GetOwnPropertyNames(ctx, &properties, &count, value,
-                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
-            return false;
+        if (!OwnEnumerableKeys(ctx, value, &properties, &count)) return false;
         shell::ComponentDataValue* items =
             count > 0 ? (shell::ComponentDataValue*)Alloc(
                             a, (int)(sizeof(shell::ComponentDataValue) * count))
@@ -4911,9 +4916,7 @@ static bool KnownOptions(JSContext* ctx, JSValueConst object,
                          const char* api) {
     JSPropertyEnum* properties = nullptr;
     uint32_t count = 0;
-    if (JS_GetOwnPropertyNames(ctx, &properties, &count, object,
-                               JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
-        return false;
+    if (!OwnEnumerableKeys(ctx, object, &properties, &count)) return false;
     bool ok = true;
     for (uint32_t i = 0; i < count && ok; i++) {
         const char* name = JS_AtomToCString(ctx, properties[i].atom);
@@ -7904,9 +7907,7 @@ static bool HostFromJs(JSContext* ctx, JSValueConst value, int depth,
     if (JS_IsObject(value)) {
         JSPropertyEnum* properties = nullptr;
         uint32_t count = 0;
-        if (JS_GetOwnPropertyNames(ctx, &properties, &count, value,
-                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
-            return false;
+        if (!OwnEnumerableKeys(ctx, value, &properties, &count)) return false;
         if (count > kHostBridgeMaxItems) {
             JS_FreePropertyEnum(ctx, properties, count);
             JS_ThrowRangeError(ctx, "host objects accept at most 10000 fields");
@@ -8208,8 +8209,7 @@ static bool ObjectOnlyOption(JSContext* ctx, JSValueConst object, Str allowed,
                              const char* what) {
     JSPropertyEnum* properties = nullptr;
     uint32_t count = 0;
-    if (JS_GetOwnPropertyNames(ctx, &properties, &count, object,
-                               JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0) {
+    if (!OwnEnumerableKeys(ctx, object, &properties, &count)) {
         return false;
     }
     bool ok = true;
