@@ -64,6 +64,10 @@ static uint64_t OpShape(const SpecOp& op) {
         case SpecOpKind::StateStyle:
             return StructureMix(StructureMix(6, StructureName(op.name)),
                                 op.node);
+        // The group name is left out for the reason arguments are: a row
+        // whose group is keyed by its data is still the same shape.
+        case SpecOpKind::GroupHover:
+            return StructureMix(10, op.node);
         case SpecOpKind::Slot:
             return StructureMix(StructureMix(7, StructureName(op.name)),
                                 op.node);
@@ -513,6 +517,7 @@ SpecId SpecArena::Graft(const Template& tmpl) {
             SpecOp copied = CopyOp(op);
             copied.payload = CopyPayload(arena, op.payload, base);
             if (copied.kind == SpecOpKind::StateStyle ||
+                copied.kind == SpecOpKind::GroupHover ||
                 copied.kind == SpecOpKind::Slot) {
                 copied.node += base;
             }
@@ -632,6 +637,24 @@ static void AppendBridged(StrBuilder* out, const Bridged& value) {
         case BridgedKind::Shadows:
             out->Append(fmt("Shadows([%d])", value.shadowCount));
             break;
+    }
+}
+
+static void AppendArgs(StrBuilder* out, const SpecOp& op);
+
+static void AppendStateOps(StrBuilder* out, const SpecNode* state) {
+    if (!state) {
+        out->AppendChar('?');
+        return;
+    }
+    for (const SpecOp& stateOp : state->ops) {
+        if (stateOp.kind == SpecOpKind::NullaryStyle ||
+            stateOp.kind == SpecOpKind::ParamStyle) {
+            out->Append(StrL("."));
+            out->Append(stateOp.name);
+            if (stateOp.kind == SpecOpKind::ParamStyle)
+                AppendArgs(out, stateOp);
+        }
     }
 }
 
@@ -762,20 +785,15 @@ void SpecArena::WriteTree(StrBuilder* out, SpecId id, int depth) const {
             out->Append(StrL(" :"));
             out->Append(op.name);
             out->AppendChar('(');
-            const SpecNode* state = Node(op.node);
-            if (state) {
-                for (const SpecOp& stateOp : state->ops) {
-                    if (stateOp.kind == SpecOpKind::NullaryStyle ||
-                        stateOp.kind == SpecOpKind::ParamStyle) {
-                        out->Append(StrL("."));
-                        out->Append(stateOp.name);
-                        if (stateOp.kind == SpecOpKind::ParamStyle)
-                            AppendArgs(out, stateOp);
-                    }
-                }
-            } else {
-                out->AppendChar('?');
-            }
+            AppendStateOps(out, Node(op.node));
+            out->AppendChar(')');
+        } else if (op.kind == SpecOpKind::GroupHover) {
+            // Rust's Debug of the group name is a quoted string:
+            // `:group_hover["row"](.w(200))`.
+            out->Append(StrL(" :group_hover[\""));
+            out->Append(op.name);
+            out->Append(StrL("\"]("));
+            AppendStateOps(out, Node(op.node));
             out->AppendChar(')');
         }
     }

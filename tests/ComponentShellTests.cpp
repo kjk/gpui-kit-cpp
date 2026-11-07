@@ -8491,6 +8491,178 @@ void AScriptReleasesComponentStateBeforeItsApplication() {
     utassert(gProbeDrops == 1);
 }
 
+// Lays `root` out through the window's cache, which is the pass that
+// remembers named groups for the next frame. A cache-less LayoutEl is a
+// scratch measure and does not publish them.
+void LayShell(Host& host, El* root) {
+    if (!host.window.layout) host.window.layout = LayoutCacheNew();
+    host.window.paint.app = &host.app;
+    host.window.paint.window = &host.window;
+    if (!root) return;
+    LayoutEl(&host.window.paint, root, 0, 0, 400, 600, 14, Rgba{},
+             host.window.layout);
+}
+
+void FreeShellLayout(Host& host) {
+    LayoutCacheFree(host.window.layout);
+    host.window.layout = nullptr;
+}
+
+// The deepest click listener whose box contains the point.
+El* ListenerAt(El* element, float x, float y) {
+    if (!element) return nullptr;
+    if (x < element->x || x >= element->x + element->w || y < element->y ||
+        y >= element->y + element->h) {
+        return nullptr;
+    }
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = ListenerAt(child, x, y)) return found;
+    }
+    return element->listener.IsValid() ? element : nullptr;
+}
+
+// render.rs group_hover_restyles_an_element_while_the_pointer_is_over_its_
+// group. The spacer widens only while the row is hovered, which is what
+// puts the button under a pointer that missed it on the frame before.
+// Rust's debug spells the group `:group[Str("row")]`; this tree spells a
+// behavior argument `:group("row")`.
+void GroupHoverRestylesWhileThePointerIsOverItsGroup() {
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { h_flex, v_flex, Button } from 'gpui-base';\n"
+             "export default class Row extends View {\n"
+             "  init() { this.clicks = 0; this.renders = 0; }\n"
+             "  render() {\n"
+             "    this.renders += 1;\n"
+             "    return v_flex().w(400).h(100).child(\n"
+             "      h_flex().group('row').w(400).h(40)\n"
+             "        .child(div().id('spacer').w(10).h(40)"
+             ".group_hover('row', (el) => el.w(200)))\n"
+             "        .child(Button.new('after').w(40).h(40)\n"
+             "          .on_click((_event, cx) => { this.clicks += 1; "
+             "cx.notify(); })\n"
+             "          .child(`Clicks: ${this.clicks}`)))\n"
+             "      .child(div().w(10).h(10).group_hover('nowhere', (el) => "
+             "el.w(300)))\n"
+             "      .child(`Renders: ${this.renders}`);\n"
+             "  }\n"
+             "}\n"));
+    host.window.paint.mouseX = -1;
+    host.window.paint.mouseY = -1;
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    Str tree = DebugTreeTemp(host);
+    utassert(StrContains(tree, StrL(":group(\"row\")")));
+    utassert(StrContains(tree, StrL(":group_hover[\"row\"](.w")));
+    utassert(StrContains(tree, StrL(":group_hover[\"nowhere\"](.w")));
+    LayShell(host, root);
+    utassert(FindText(root, StrL("Renders: 1")) != nullptr);
+    El* label = FindText(root, StrL("Clicks: 0"));
+    utassert(label != nullptr);
+    El* button = ListenerAbove(root, StrL("Clicks: 0"));
+    utassert(button != nullptr);
+    if (!button) {
+        FreeShellLayout(host);
+        return;
+    }
+    // Unhovered, the spacer is 10 wide. Growing it to 200 shifts the button
+    // by 190, which is the point Rust clicks at x = 220 when the button
+    // started at 10.
+    float hitX = button->x + 190.f + 15.f;
+    float hitY = button->y + button->h * 0.5f;
+    utassert(ListenerAt(root, hitX, hitY) == nullptr);
+
+    host.window.paint.mouseX = hitX;
+    host.window.paint.mouseY = hitY;
+    root = host.Render();
+    LayShell(host, root);
+    utassert(FindText(root, StrL("Renders: 1")) != nullptr);
+    El* hit = ListenerAt(root, hitX, hitY);
+    utassert(hit != nullptr);
+    if (hit) Click(host, hit);
+    root = host.Render();
+    utassert(FindText(root, StrL("Clicks: 1")) != nullptr);
+    FreeShellLayout(host);
+}
+
+// render.rs a_virtual_list_row_may_declare_a_group_and_a_group_hover.
+// A group and a group hover are styles, so an item renderer may declare
+// them. A handler registered there would be refused.
+void AVirtualListRowMayDeclareAGroupAndAGroupHover() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { h_flex, v_flex, v_virtual_list, Button } from 'gpui-base';\n"
+        "export default class Rows extends View {\n"
+        "  init() { this.errors = []; this.built = 0; }\n"
+        "  render() {\n"
+        "    return v_flex().w(300).h(120).child(\n"
+        "      Button.new('refresh').h(40)\n"
+        "        .on_click((_event, cx) => cx.notify())\n"
+        "        .child(`Built: ${this.built}; Errors: "
+        "${this.errors.join(' | ') || 'none'}`))\n"
+        "      .child(v_virtual_list('rows', 3, 20, (index) => String(index),\n"
+        "        (range) => {\n"
+        "          this.errors = [];\n"
+        "          const rows = [];\n"
+        "          for (let index = range.start; index < range.end; index++) "
+        "{\n"
+        "            try {\n"
+        "              "
+        "rows.push(h_flex().group('row').h(20).child(String(index))\n"
+        "                .child(div().w(10).h(10).opacity(0)"
+        ".group_hover('row', (el) => el.opacity(1))));\n"
+        "              this.built += 1;\n"
+        "            } catch (error) {\n"
+        "              this.errors.push(String(error));\n"
+        "            }\n"
+        "          }\n"
+        "          return rows;\n"
+        "        }));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    LayShell(host, root);
+    // The item renderer runs during layout, after this frame's text was
+    // built. The next render is what reports how many rows it built.
+    ScriptView* script = host.view.Get(&host.app);
+    if (script) script->dirty = true;
+    root = host.Render();
+    utassert(FindTextContaining(root, StrL("Errors: none")) != nullptr);
+    utassert(FindTextContaining(root, StrL("Built: 0")) == nullptr);
+    FreeShellLayout(host);
+}
+
+// render.rs group_and_group_hover_refuse_a_name_they_could_never_match.
+void GroupAndGroupHoverRefuseANameTheyCouldNeverMatch() {
+    struct Case {
+        const char* call;
+        const char* expected;
+    };
+    Case cases[] = {
+        {"div().group('')", "group(name) expects a non-empty string"},
+        {"div().group(7)", "group(name) expects a non-empty string"},
+        {"div().group_hover('', (el) => el.w(10))",
+         "expects the group's name first"},
+        {"div().group_hover(7, (el) => el.w(10))",
+         "expects the group's name first"},
+        {"div().group_hover((el) => el.w(10), 'row')",
+         "expects the group's name first"},
+        {"div().group_hover('row')", "expects a function second"},
+    };
+    for (const Case& c : cases) {
+        TempStr source =
+            fmt("import { div, View } from 'gpui-kit';\n"
+                "export default class Misused extends View {\n"
+                "  render() { return %s; }\n"
+                "}\n",
+                Str(c.call));
+        Host host(source);
+        Str message = RenderRefusal(host);
+        utassert(StrContains(message, Str(c.expected)));
+    }
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -8762,6 +8934,9 @@ void TestComponentShell() {
     TheRuntimeDoesNotDependOnTheComponentCatalog();
 
     TestSuite("public_host");
+    GroupHoverRestylesWhileThePointerIsOverItsGroup();
+    AVirtualListRowMayDeclareAGroupAndAGroupHover();
+    GroupAndGroupHoverRefuseANameTheyCouldNeverMatch();
     PublicHostApiMountsAndMaterializesRegisteredComponentJs();
     RegisteredComponentArgumentErrorsAreReportedDuringRender();
     LoadedApplicationsAreSingleMountAndRuntimeBound();

@@ -256,6 +256,11 @@ enum class SpecOpKind : uint8_t {
     // while a Callback's name is one of a fixed set.
     ActionCallback,
     StateStyle,
+    // Styles applied while the pointer is over the nearest ancestor that
+    // declared the named group. Its own op because the group name is the
+    // script's, discovered at run time, and a StateStyle's name is one of a
+    // fixed set. The name is `name`; the detached node is `node`.
+    GroupHover,
     Slot,
     // A method a registered component's descriptor declared, with the
     // payload its recorder made.

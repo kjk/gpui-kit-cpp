@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0ebd729f4441ee57d630bcde4a3743bd1284edd6` (2026-11-05,
-tab: Keep an icon-only tab's width instead of collapsing to the icon (#3792)).
-An icon-only tab keeps the width of its content box, so the icon has
-space on both sides.
+Processed through `1ded8be69b224f0d5fd6b9209d7eefb554ae41a6` (2026-11-05,
+shell: Expose group hover to scripts (#3796)).
+A script names a group with `group(name)` and styles a descendant with
+`group_hover(name, declare)` while the pointer is over the nearest
+ancestor of that name. The name is not part of the description's shape.
+An empty name is refused before anything is recorded.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

@@ -2518,12 +2518,21 @@ struct ElStyleStates {
     Style active = {};
     Style focus = {};
     Style dragOver = {};
+    // group_hover(name): one refinement, replaced by a later call. The name
+    // is the group's, not a style field. Kept off Style so a named group
+    // does not light the unnamed GroupHoverBg paint path.
+    Style groupHover = {};
     uint32_t refineSet = 0;
     uint32_t hoverSet = 0;
     uint32_t activeSet = 0;
     uint32_t focusSet = 0;
     uint32_t dragOverSet = 0;
+    uint32_t groupHoverSet = 0;
     ArenaStr dragOverKind = kArenaStrNone;
+    // group(name). Empty is "no named group"; the unnamed Group() bit stays
+    // on Style.
+    ArenaStr groupName = kArenaStrNone;
+    ArenaStr groupHoverName = kArenaStrNone;
 };
 
 struct Selection;
@@ -3264,7 +3273,18 @@ struct El {
     // only paints while the pointer is inside it.
     // The press-focus opt-in above.
     El* FocusOnPress(bool v = true);
+    // Unnamed group: descendants with GroupHoverBg / GroupHoverVisible paint
+    // while the pointer is inside this box. A script's group(name) is the
+    // overload below and does not set that bit.
     El* Group();
+    // Names this element so a descendant GroupHover(style, name) follows the
+    // pointer over the nearest ancestor with the same name.
+    El* Group(Str name);
+    // The styles applied while that named ancestor is hovered. A second call
+    // replaces the first. Applied in PrepareEl from the previous frame's
+    // bounds, so a size change reaches layout once the group has been laid
+    // out. An empty name matches nothing.
+    El* GroupHover(const struct StateStyle& s, Str name);
     El* GroupHoverVisible();
     // The other half of `group_hover`: a fill rather than a visibility, for a
     // strip that lights when the pointer is in the box around it.
@@ -3778,6 +3798,28 @@ struct PaintIdLink {
 // `GlobalElementId([View(EntityId(1v1)), Name("a"), Name("b")])`. In `a`.
 Str PaintIdChainDebug(Arena* a, const PaintIdLink* chain);
 
+// How many named groups one frame remembers. A descendant past this cap
+// does not see its group until one of these leaves the tree.
+static constexpr int kNamedGroupCap = 64;
+
+// One named group's box from the frame that just laid out. `idHash` is the
+// element's own id when it has one (a virtual-list row's), else 0 and the
+// tree path is the identity. No owned string: the name lives on the element.
+struct NamedGroupBound {
+    uint64_t path = 0;
+    uint32_t idHash = 0;
+    float x = 0;
+    float y = 0;
+    float w = 0;
+    float h = 0;
+};
+
+// A named group the prepare walk is inside. `name` points at the frame arena.
+struct NamedGroupFrame {
+    Str name = {};
+    bool hovered = false;
+};
+
 struct PaintCtx {
     App* app = nullptr;
     Window* window = nullptr;
@@ -3820,6 +3862,11 @@ struct PaintCtx {
     // Whether the pointer is inside the nearest enclosing `Group()` box,
     // pushed down as the tree paints the way element opacity is.
     bool groupHovered = false;
+    // Named groups around the element being prepared, innermost last.
+    // A group_hover matches the nearest frame with its name. The stack is
+    // only live during PrepareEl; the names point at the frame arena.
+    NamedGroupFrame namedGroups[kNamedGroupCap] = {};
+    int namedGroupDepth = 0;
     int focusId = 0;
     // window.focus_generation: bumped every time the focus moves, so a
     // keystroke can tell that it stayed put without holding onto the element.
@@ -6953,6 +7000,13 @@ struct Window {
     // answers with the box the last layout gave it. Virtual lists bind rows
     // in prePaint from this frame's laid-out box, so they do not read this.
     Vec<ScrollRect> prevScrolls;
+    // Named Group(name) boxes from the last layout, read while preparing the
+    // next one so a group_hover can change size before taffy runs. The
+    // staging array is filled at the end of the layout that produced them.
+    NamedGroupBound prevNamedGroups[kNamedGroupCap] = {};
+    int prevNamedGroupCount = 0;
+    NamedGroupBound namedGroups[kNamedGroupCap] = {};
+    int namedGroupCount = 0;
     // Scroll ids whose bar the pointer covers with an occluder painted above
     // it, taken from the frame that just finished. Hover mode reads this
     // while painting, before that occluder exists again.

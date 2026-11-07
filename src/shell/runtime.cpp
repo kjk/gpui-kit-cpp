@@ -2362,6 +2362,46 @@ static JSValue NativeState(JSContext* ctx, JSValueConst, int argc,
     return JS_NewUint32(ctx, state);
 }
 
+// The detached node of a group_hover: the one state style that names the
+// group whose hover it follows. An empty name matches nothing GPUI registers.
+static JSValue NativeGroupHover(JSContext* ctx, JSValueConst, int argc,
+                                JSValueConst* argv) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    shell::SpecId owner = 0;
+    if (!impl || argc < 2 || !JsSpecId(ctx, argv[0], &owner)) {
+        return JS_ThrowTypeError(
+            ctx,
+            "group_hover(group, declare) expects the group's name first, as "
+            "a non-empty string");
+    }
+    Arena* arena = ArenaNew();
+    Str group;
+    if (!JsString(ctx, argv[1], arena, &group) || len(group) == 0) {
+        ArenaDelete(arena);
+        return JS_ThrowTypeError(
+            ctx,
+            "group_hover(group, declare) expects the group's name first, as "
+            "a non-empty string");
+    }
+    shell::Component component = {};
+    shell::SpecId state = impl->scratch->Push(component);
+    shell::SpecError failure = {};
+    if (!impl->scratch->Claim(state, &failure)) {
+        ArenaDelete(arena);
+        return SpecFailure(ctx, failure);
+    }
+    shell::SpecOp op = {};
+    op.kind = shell::SpecOpKind::GroupHover;
+    op.name = group;
+    op.node = state;
+    if (!impl->scratch->PushOp(owner, op, &failure)) {
+        ArenaDelete(arena);
+        return SpecFailure(ctx, failure);
+    }
+    ArenaDelete(arena);
+    return JS_NewUint32(ctx, state);
+}
+
 static JSValue NativeSlot(JSContext* ctx, JSValueConst, int argc,
                           JSValueConst* argv) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
@@ -2456,7 +2496,7 @@ static bool IsBehavior(Str name) {
     static const char names[] =
         "disabled\0selected\0checked\0accessibility_label\0tooltip\0role\0"
         "aria_selected\0aria_active_descendant\0track_focus\0track_scroll\0"
-        "content_focus_handle\0tab_index\0tab_stop\0href\0id\0"
+        "content_focus_handle\0tab_index\0tab_stop\0href\0id\0group\0"
         "overflow_scroll\0overflow_x_scroll\0overflow_y_scroll\0"
         "overflow_scrollbar\0overflow_x_scrollbar\0overflow_y_scrollbar\0"
         "mode\0scroll_size\0viewport_from_layout\0controls_right\0"
@@ -4302,6 +4342,21 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                 return JS_ThrowTypeError(
                     ctx,
                     "href(url) expects an absolute HTTP(S) URL with a host");
+            }
+        }
+        // The name is all a group_hover below can match, so one that is
+        // missing or empty would leave those styles never applying.
+        if (StrEq(name, StrL("group"))) {
+            bool named = argCount >= 1 &&
+                         op.args[0].kind == shell::BridgedKind::String &&
+                         len(op.args[0].string) > 0;
+            if (!named) {
+                ArenaDelete(arena);
+                return JS_ThrowTypeError(
+                    ctx,
+                    "group(name) expects a non-empty string; "
+                    "`group_hover(name, declare)` on an element inside it "
+                    "matches the same name");
             }
         }
         if (IsDockCommand(name)) {
@@ -9727,7 +9782,26 @@ globalThis.__gpui = (() => {
       return this;
     };
   }
-  for (const name of ["child", "children", "map", "when", "hover", "active", "focus", "range_style",
+  // Applied while the pointer is over the nearest ancestor named with
+  // group(name), rather than over this element. Both arguments are checked
+  // before anything is recorded: with the two swapped, calling the name
+  // would fail as a type error naming neither.
+  explicit.group_hover = function (group, declare) {
+    if (typeof group !== "string") {
+      throw new TypeError(
+        "group_hover(group, declare) expects the group's name first, as a non-empty string",
+      );
+    }
+    if (typeof declare !== "function") {
+      throw new TypeError(
+        "group_hover(group, declare) expects a function second; it receives the element to style",
+      );
+    }
+    const target = element(__group_hover(this.__id, group));
+    declare(target);
+    return this;
+  };
+  for (const name of ["child", "children", "map", "when", "hover", "active", "focus", "group_hover", "range_style",
                       "cell_style", "cell_active_style", "caret_style"]) {
     registeredExplicit[name] = explicit[name];
   }
@@ -12613,6 +12687,8 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
     SetGlobalFunction(impl->context, global, "__path", NativePath, 6);
     SetGlobalFunction(impl->context, global, "__attach", NativeAttach, 2);
     SetGlobalFunction(impl->context, global, "__state", NativeState, 2);
+    SetGlobalFunction(impl->context, global, "__group_hover", NativeGroupHover,
+                      2);
     SetGlobalFunction(impl->context, global, "__slot", NativeSlot, 3);
     SetGlobalFunction(impl->context, global, "__apply", NativeApply, 3);
     // Templates. `begin` swaps the description being recorded for a fresh one

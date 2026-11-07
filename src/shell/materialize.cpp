@@ -596,6 +596,34 @@ static void ApplyStateNode(Ctx* cx, const shell::SpecNode* state, El* target,
         target->Focus(style);
 }
 
+// group(name) and group_hover(name, declare) land with the state styles:
+// GPUI keeps both on the same element a hover does. A second group_hover
+// replaces the first. The name is not part of the element's identity.
+static void ApplyGroupStyles(Ctx* cx, const shell::SpecArena* specs,
+                             const shell::SpecNode* owner, El* target,
+                             ShellError* error) {
+    if (!owner || !target) return;
+    Str group = {};
+    const shell::SpecOp* hover = nullptr;
+    for (const shell::SpecOp& op : owner->ops) {
+        if (op.kind == shell::SpecOpKind::Method &&
+            StrEq(op.name, StrL("group"))) {
+            group = AsString(op, 0);
+        } else if (op.kind == shell::SpecOpKind::GroupHover) {
+            hover = &op;
+        }
+    }
+    if (len(group)) target->Group(group);
+    if (!hover || !specs) return;
+    El* resolved = Div(cx->a);
+    uint32_t fields = 0;
+    ApplyStyleNode(cx->a, specs->Node(hover->node), resolved, &fields, error);
+    StateStyle style;
+    style.style = resolved->style;
+    style.set = fields;
+    target->GroupHover(style, hover->name);
+}
+
 static void ApplyStateStyles(Ctx* cx, const shell::SpecArena* specs,
                              const shell::SpecNode* owner, El* target,
                              ShellError* error) {
@@ -605,6 +633,7 @@ static void ApplyStateStyles(Ctx* cx, const shell::SpecArena* specs,
                    StrL("active"), error);
     ApplyStateNode(cx, StateNode(specs, owner, StrL("focus")), target,
                    StrL("focus"), error);
+    ApplyGroupStyles(cx, specs, owner, target, error);
 }
 
 struct MaterialPath {

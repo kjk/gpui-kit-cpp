@@ -2417,6 +2417,25 @@ El* El::Group() {
     return this;
 }
 
+El* El::Group(Str name) {
+    if (len(name) == 0) return this;
+    EnsureStyleStates()->groupName = ArenaStrDup(arena, name);
+    return this;
+}
+
+El* El::GroupHover(const StateStyle& s, Str name) {
+    // A second call replaces the first, as a second hover does. An empty
+    // name would match no group, so it records nothing.
+    if (!s.set || len(name) == 0) return this;
+    ElStyleStates* states = EnsureStyleStates();
+    states->groupHover = {};
+    states->groupHoverSet = 0;
+    StyleApplyFields(&states->groupHover, s.style, s.set);
+    states->groupHoverSet = s.set;
+    states->groupHoverName = ArenaStrDup(arena, name);
+    return this;
+}
+
 El* El::GroupHoverBg(Background c) {
     style.groupHoverBg = c;
     style.hasGroupHoverBg = true;
@@ -3707,6 +3726,27 @@ static LayoutCache gMeasureCache;
 // part of itself at prepaint lays it out in that cache, and so must not do it
 // from inside a pass that is already using it.
 static int gMeasureDepth = 0;
+// LayoutElIn calls, outermost included. A virtual list lays its rows out
+// from prepaint, inside the frame's layout; only the outermost pass publishes
+// the named-group boxes the next frame reads.
+static int gLayoutDepth = 0;
+
+static uint64_t MixGroupPath(uint64_t path, int index) {
+    uint64_t mixed =
+        path ^ ((uint64_t)(uint32_t)index + 1) * 0x9E3779B185EBCA87ull;
+    mixed *= 1099511628211ull;
+    return mixed ? mixed : 1;
+}
+
+static uint32_t GroupIdHash(Str id) {
+    if (!id.s || len(id) == 0) return 0;
+    uint32_t h = 2166136261u;
+    for (int i = 0; i < len(id); i++) {
+        h ^= (uint8_t)id.s[i];
+        h *= 16777619u;
+    }
+    return h ? h : 1;
+}
 
 bool LayoutInScratchPass() {
     return gMeasureDepth > 0;
@@ -4258,7 +4298,8 @@ static void ResolveImageReplacement(PaintCtx* ctx, El* e) {
 // The style refinement, the inspector's live edit, the inherited font and the
 // inherited color, resolved once per element before anything is measured.
 // The old engine did this on the way down its own recursion.
-static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
+static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
+                      uint64_t path, bool groups) {
     // The element's own refinement first — a semantic state, which is meant
     // to win over whatever the caller chained on — and then the inspector's
     // live edit, which wins over everything.
@@ -4288,6 +4329,40 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
         base::StrEq(ArenaStrGet(e->arena, states->dragOverKind),
                     ctx->dragKind)) {
         StyleApplyFields(&e->style, states->dragOver, states->dragOverSet);
+    }
+    // group(name) / group_hover(name). Min-content measurement does not follow
+    // the pointer. The group's box is the one the previous frame laid out
+    // (or, for a row built at prepaint, the box recorded under its id).
+    int namedMark = ctx ? ctx->namedGroupDepth : 0;
+    if (groups && states && ctx && ctx->window) {
+        Str hoverName = ArenaStrGet(e->arena, states->groupHoverName);
+        if (states->groupHoverSet && len(hoverName)) {
+            for (int i = ctx->namedGroupDepth - 1; i >= 0; i--) {
+                if (!StrEq(ctx->namedGroups[i].name, hoverName)) continue;
+                if (ctx->namedGroups[i].hovered) {
+                    StyleApplyFields(&e->style, states->groupHover,
+                                     states->groupHoverSet);
+                }
+                break;
+            }
+        }
+        Str groupName = ArenaStrGet(e->arena, states->groupName);
+        if (len(groupName) && ctx->namedGroupDepth < kNamedGroupCap) {
+            Window* win = ctx->window;
+            uint32_t idHash = GroupIdHash(e->id);
+            bool hovered = false;
+            for (int i = 0; i < win->prevNamedGroupCount; i++) {
+                const NamedGroupBound& was = win->prevNamedGroups[i];
+                bool same = idHash ? was.idHash == idHash
+                                   : was.idHash == 0 && was.path == path;
+                if (!same) continue;
+                Bounds box = {was.x, was.y, was.w, was.h};
+                hovered = box.w > 0 && box.h > 0 &&
+                          box.Contains({ctx->mouseX, ctx->mouseY});
+                break;
+            }
+            ctx->namedGroups[ctx->namedGroupDepth++] = {groupName, hovered};
+        }
     }
     StyleOverrideApply(e);
     if (e->lifecycle && e->lifecycle->prepareStyle) {
@@ -4430,9 +4505,11 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
     if (pushed) {
         VecAppend(ctx->window->imageCacheStack, e->imageCache);
     }
-    for (El* c = e->first; c; c = c->next) {
-        PrepareEl(ctx, c, font, fg);
+    int childIndex = 0;
+    for (El* c = e->first; c; c = c->next, childIndex++) {
+        PrepareEl(ctx, c, font, fg, MixGroupPath(path, childIndex), groups);
     }
+    if (ctx) ctx->namedGroupDepth = namedMark;
     if (pushed) {
         ctx->window->imageCacheStack.len--;
     }
@@ -5324,6 +5401,27 @@ static void PlaceAnchored(El* e, float viewW, float viewH, Edges frame) {
     }
 }
 
+// Walks in the same child order PrepareEl does, so a path recorded here is
+// the path the next prepare looks up.
+static void RecordNamedGroups(Window* win, El* e, uint64_t path) {
+    if (!win || !e) return;
+    const ElStyleStates* states = e->StyleStates();
+    if (states && len(ArenaStrGet(e->arena, states->groupName)) &&
+        win->namedGroupCount < kNamedGroupCap) {
+        NamedGroupBound& bound = win->namedGroups[win->namedGroupCount++];
+        bound.path = path;
+        bound.idHash = GroupIdHash(e->id);
+        bound.x = e->x;
+        bound.y = e->y;
+        bound.w = e->w;
+        bound.h = e->h;
+    }
+    int childIndex = 0;
+    for (El* c = e->first; c; c = c->next, childIndex++) {
+        RecordNamedGroups(win, c, MixGroupPath(path, childIndex));
+    }
+}
+
 // The one layout pass, with the space it is run in left to the caller: the
 // frame runs it against the viewport, a measure runs it against MinContent.
 static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
@@ -5332,6 +5430,9 @@ static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
     if (!e || !lc) {
         return;
     }
+    gLayoutDepth++;
+    bool outer = gLayoutDepth == 1 && gMeasureDepth == 0;
+    if (outer && ctx) ctx->namedGroupDepth = 0;
     if (!lc->ready) {
         lc->tree.Init(256);
         // GPUI calls `taffy.disable_rounding()`; everything above paint here
@@ -5346,7 +5447,7 @@ static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
     lc->stats = LayoutCacheStats{};
     lc->tree.allocs = 0;
 
-    PrepareEl(ctx, e, inheritFont, inheritFg);
+    PrepareEl(ctx, e, inheritFont, inheritFg, 1, !minContent);
 
     LayoutSyncCtx sc = {lc, ctx, availW, availH};
     // Recycle a root of a different kind before building, so InsertNode
@@ -5458,7 +5559,17 @@ static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
         }
     }
     PlaceAnchored(e, ctx ? ctx->viewW : 0.f, ctx ? ctx->viewH : 0.f, frame);
+    if (outer && !minContent && ctx && ctx->window) {
+        Window* win = ctx->window;
+        win->namedGroupCount = 0;
+        RecordNamedGroups(win, e, 1);
+        win->prevNamedGroupCount = win->namedGroupCount;
+        for (int i = 0; i < win->namedGroupCount; i++) {
+            win->prevNamedGroups[i] = win->namedGroups[i];
+        }
+    }
     lc->stats.allocs = lc->tree.allocs;
+    gLayoutDepth--;
 }
 
 void LayoutEl(PaintCtx* ctx, El* e, float x, float y, float availW,

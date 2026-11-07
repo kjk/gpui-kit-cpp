@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0ebd729f4441ee57d630bcde4a3743bd1284edd6",
+  sha: "1ded8be69b224f0d5fd6b9209d7eefb554ae41a6",
   date: "2026-11-05",
-  subject: "tab: Keep an icon-only tab's width instead of collapsing to the icon (#3792)",
+  subject: "shell: Expose group hover to scripts (#3796)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
