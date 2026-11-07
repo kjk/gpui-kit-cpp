@@ -100,27 +100,13 @@ struct ProtocolCopy {
                     RequestResponder* responder);
 };
 
-struct WebView {
+struct WebView : WebViewHandlers {
     Str id = {}; // heap
     WKWebView* webview = nil;
     WKUserContentController* manager = nil;
     NSView* parentView = nil;
     bool isChild = false;
     bool visible = true;
-
-    void* ctx = nullptr;
-    void (*ipcHandler)(void* ctx, Str url, Str body) = nullptr;
-    bool (*navigationHandler)(void* ctx, Str url) = nullptr;
-    void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
-    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
-                              Str url) = nullptr;
-    NewWindowResponse (*newWindowReqHandler)(
-        void* ctx, Str url, const NewWindowFeatures* features,
-        WebView** createdWebView) = nullptr;
-
-    DownloadStartedHandler downloadStartedHandler = nullptr;
-    DownloadCompletedHandler downloadCompletedHandler = nullptr;
-    DragDropHandler dragDropHandler = nullptr;
 
     Vec<ProtocolCopy> protocols;
 
@@ -1016,15 +1002,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     wv->parentView = parentView;
     wv->isChild = asChild;
     wv->visible = attrs->visible;
-    wv->ctx = attrs->ctx;
-    wv->downloadStartedHandler = attrs->downloadStartedHandler;
-    wv->downloadCompletedHandler = attrs->downloadCompletedHandler;
-    wv->dragDropHandler = attrs->dragDropHandler;
-    wv->ipcHandler = attrs->ipcHandler;
-    wv->navigationHandler = attrs->navigationHandler;
-    wv->documentTitleChangedHandler = attrs->documentTitleChangedHandler;
-    wv->onPageLoadHandler = attrs->onPageLoadHandler;
-    wv->newWindowReqHandler = attrs->newWindowReqHandler;
+    WebViewHandlersSet(wv, attrs);
     wv->liveTasks = [NSMutableSet set];
     wv->schemeHandlers = [NSMutableArray array];
     // `attributes.id.unwrap_or_else(|| COUNTER.next().to_string())`.
