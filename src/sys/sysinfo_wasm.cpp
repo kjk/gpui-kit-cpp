@@ -69,19 +69,7 @@ EM_JS(int, GpJsBatteryCharging, (), {
 // clang-format on
 
 void SysStateInit(SysState* s) {
-    VecReset(s->prevProcs);
-    VecReset(s->procs);
-    s->cpu = 0;
-    s->mem = 0;
-    s->memTotal = 0;
-    s->memUsed = 0;
-    ZeroStruct(&s->prevCpu);
-    ZeroStruct(&s->disk);
-    ZeroStruct(&s->battery);
-    s->ncpu = GpJsCoreCount();
-    if (s->ncpu < 1) {
-        s->ncpu = 1;
-    }
+    SysStateReset(s, GpJsCoreCount());
     GpJsBatteryStart();
 }
 

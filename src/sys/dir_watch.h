@@ -102,5 +102,10 @@ DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
 // there; the caller must not touch `plat` again.
 void DirWatchPlatClose(DirWatchPlat* plat);
 
+// The first step of DirWatchPlatOpen on hosted POSIX (dir_watch_mem_posix.cpp):
+// with `create`, make the folder unless it is already there. False with `err`
+// set to Failed when it could not be made.
+bool DirWatchMakeDirPosix(const char* dir, bool create, DirWatchError* err);
+
 } // namespace gpui
 #endif // GPUI_SYS_DIR_WATCH_H_
