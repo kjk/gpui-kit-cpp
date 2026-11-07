@@ -8644,6 +8644,228 @@ static void FadesInlineCodeStyleBackgroundAndBorder() {
     MotionSetReduced(wasReduced);
 }
 
+static El* FindTextEl(El* e, const char* text) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->text.s && StrEq(e->text, text)) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = FindTextEl(c, text)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+static El* FindKind(El* e, ElKind kind) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->kind == kind) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = FindKind(c, kind)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+static bool SpanIs(El* e, Rgba color) {
+    if (!e || e->nSpans <= 0) {
+        return false;
+    }
+    for (int i = 0; i < e->nSpans; i++) {
+        const Rgba c = e->spans[i].color;
+        if (c.r != color.r || c.g != color.g || c.b != color.b ||
+            c.a != color.a) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool RgbaIs(Rgba c, Rgba color) {
+    return c.r == color.r && c.g == color.g && c.b == color.b && c.a == color.a;
+}
+
+// node.rs
+// host_foregrounds_follow_the_render_context_without_entering_the_paragraph_cache
+// and host_foregrounds_override_mixed_links_and_preserve_atom_byte_coordinates.
+// editor_host.rs render_local_foregrounds_keep_reused_leaf_geometry.
+static void HostForegroundsFollowTheRenderContext() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    const Rgba red = Rgba{255, 0, 0, 255};
+    const Rgba blue = Rgba{0, 0, 255, 255};
+
+    MdNode* doc = ArenaNew<MdNode>(a);
+    doc->kind = MdKind::Doc;
+    MdNode* paragraph = ArenaNew<MdNode>(a);
+    paragraph->kind = MdKind::Paragraph;
+    paragraph->hasEditorKey = true;
+    paragraph->editorKey = 7;
+    MdRun* run = ArenaNew<MdRun>(a);
+    run->text = StrL("a中😀link");
+    run->marks = (uint8_t)(MdBold | MdItalic | MdLink);
+    run->href = StrL("https://example.com");
+    paragraph->runFirst = paragraph->runLast = run;
+    doc->first = doc->last = paragraph;
+
+    auto paint = [&](const RenderContext& rcx) {
+        return TextView::New(&cx, Str{})
+            ->HostForegrounds(rcx)
+            ->RenderDocument(doc);
+    };
+
+    ForegroundRange cover = {0, 12, red};
+    RenderContext rcx =
+        RenderContextWithForegroundRanges(a, RenderContext{}, 7, &cover, 1);
+    El* text = FindTextEl(paint(rcx), "a中😀link");
+    utassert(text && (text->style.fontBold || text->style.fontSemibold) &&
+             text->style.italic);
+    utassert(text && text->nUnderlines > 0);
+    utassert(SpanIs(text, red));
+    utassert(StrEq(run->text, "a中😀link"));
+    utassert(run->marks == (uint8_t)(MdBold | MdItalic | MdLink));
+    utassert(StrEq(run->href, "https://example.com"));
+
+    ForegroundRange replaced = {0, 12, blue};
+    rcx = RenderContextWithForegroundRanges(a, rcx, 7, &replaced, 1);
+    utassert(rcx.nForegrounds == 1 && rcx.foregrounds[0].n == 1);
+    utassert(RgbaIs(rcx.foregrounds[0].ranges[0].color, blue));
+    text = FindTextEl(paint(rcx), "a中😀link");
+    utassert(SpanIs(text, blue));
+
+    rcx = RenderContextWithForegroundRanges(a, rcx, 7, nullptr, 0);
+    text = FindTextEl(paint(rcx), "a中😀link");
+    utassert(text && text->nSpans == 0);
+
+    ForegroundRange split = {2, 3, red};
+    rcx = RenderContextWithForegroundRanges(a, RenderContext{}, 7, &split, 1);
+    text = FindTextEl(paint(rcx), "a中😀link");
+    utassert(text && text->nSpans == 0);
+
+    rcx = RenderContextWithForegroundRanges(a, RenderContext{}, 8, &cover, 1);
+    text = FindTextEl(paint(rcx), "a中😀link");
+    utassert(text && text->nSpans == 0);
+
+    MdNode* mixed = ArenaNew<MdNode>(a);
+    mixed->kind = MdKind::Doc;
+    MdNode* leaf = ArenaNew<MdNode>(a);
+    leaf->kind = MdKind::Paragraph;
+    leaf->hasEditorKey = true;
+    leaf->editorKey = 7;
+    MdRun* head = ArenaNew<MdRun>(a);
+    head->text = StrL("a中😀link");
+    head->marks = (uint8_t)(MdBold | MdLink | MdCode);
+    head->href = StrL("https://example.com");
+    MdRun* atom = ArenaNew<MdRun>(a);
+    atom->hasCustom = true;
+    atom->custom.text = StrL("long fallback");
+    atom->marks = (uint8_t)MdLink;
+    atom->href = StrL("https://example.com");
+    MdRun* tail = ArenaNew<MdRun>(a);
+    tail->text = StrL("尾");
+    MdRun* image = ArenaNew<MdRun>(a);
+    image->imgSrc = StrL("pic.png");
+    MdRun* zee = ArenaNew<MdRun>(a);
+    zee->text = StrL("z");
+    head->next = atom;
+    atom->next = tail;
+    tail->next = image;
+    image->next = zee;
+    leaf->runFirst = head;
+    leaf->runLast = zee;
+    mixed->first = mixed->last = leaf;
+    ForegroundRange layers[3] = {
+        {0, 22, red},
+        {15, 18, blue},
+        {21, 22, blue},
+    };
+    rcx = RenderContextWithForegroundRanges(a, RenderContext{}, 7, layers, 3);
+    El* drawn =
+        TextView::New(&cx, Str{})->HostForegrounds(rcx)->RenderDocument(mixed);
+    text = FindTextEl(drawn, "a中😀link");
+    utassert(SpanIs(text, red) &&
+             (text->style.fontBold || text->style.fontSemibold));
+    utassert(text->nUnderlines > 0);
+    El* object = FindTextEl(drawn, "long fallback");
+    utassert(object && object->style.hasColor &&
+             RgbaIs(object->style.color, red));
+    utassert(object->nUnderlines > 0);
+    utassert(SpanIs(FindTextEl(drawn, "尾"), blue));
+    utassert(SpanIs(FindTextEl(drawn, "z"), blue));
+    El* picture = FindKind(drawn, ElKind::Image);
+    utassert(picture && picture->nSpans == 0);
+    utassert(!picture->style.hasColor || (!RgbaIs(picture->style.color, red) &&
+                                          !RgbaIs(picture->style.color, blue)));
+
+    MdNode* fitted = ArenaNew<MdNode>(a);
+    fitted->kind = MdKind::Doc;
+    MdNode* first = ArenaNew<MdNode>(a);
+    first->kind = MdKind::Paragraph;
+    first->hasEditorKey = true;
+    first->editorKey = 1;
+    MdRun* firstRun = ArenaNew<MdRun>(a);
+    firstRun->text = StrL("a中😀");
+    first->runFirst = first->runLast = firstRun;
+    MdNode* second = ArenaNew<MdNode>(a);
+    second->kind = MdKind::Paragraph;
+    second->hasEditorKey = true;
+    second->editorKey = 2;
+    MdRun* secondRun = ArenaNew<MdRun>(a);
+    secondRun->text = StrL("a中😀tail");
+    second->runFirst = second->runLast = secondRun;
+    first->next = second;
+    fitted->first = first;
+    fitted->last = second;
+    ForegroundRange wide = {0, 15, red};
+    ForegroundRange narrow = {0, 8, red};
+    RenderContext geo =
+        RenderContextWithForegroundRanges(a, RenderContext{}, 1, &narrow, 1);
+    geo = RenderContextWithForegroundRanges(a, geo, 2, &wide, 1);
+    El* before =
+        TextView::New(&cx, Str{})->HostForegrounds(geo)->RenderDocument(fitted);
+    LayoutEl(&win->paint, before, 0, 0, 300, 400, 16, Rgba{});
+    El* beforeA = FindTextEl(before, "a中😀");
+    El* beforeB = FindTextEl(before, "a中😀tail");
+    utassert(beforeA && beforeB);
+    float aw = beforeA->w;
+    float ah = beforeA->h;
+    float bw = beforeB->w;
+    float bh = beforeB->h;
+    ForegroundRange again = {0, 15, blue};
+    geo = RenderContextWithForegroundRanges(a, geo, 1, &again, 1);
+    geo = RenderContextWithForegroundRanges(a, geo, 2, &again, 1);
+    utassert(geo.nForegrounds == 2);
+    utassert(geo.foregrounds[0].key == 1 && geo.foregrounds[0].n == 1);
+    utassert(RgbaIs(geo.foregrounds[0].ranges[0].color, blue));
+    El* after =
+        TextView::New(&cx, Str{})->HostForegrounds(geo)->RenderDocument(fitted);
+    LayoutEl(&win->paint, after, 0, 0, 300, 400, 16, Rgba{});
+    El* afterA = FindTextEl(after, "a中😀");
+    El* afterB = FindTextEl(after, "a中😀tail");
+    utassert(afterA && afterA->w == aw && afterA->h == ah);
+    utassert(afterB && afterB->w == bw && afterB->h == bh);
+    utassert(SpanIs(afterA, blue) && SpanIs(afterB, blue));
+
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -8652,6 +8874,7 @@ void TestTextView() {
     RekeyingClonedLeavesPreservesEachIdentity();
     GeometryIsAnImmutableSnapshot();
     EmptyKeyedLeafHasALineBox();
+    HostForegroundsFollowTheRenderContext();
     CollectLeafGeometryNestsAndRestores();
     ParseMarkdownReadsWhatAnEditorRoundTrips(a);
     ParseMarkdownMatchesTextViewParse(a);

@@ -3684,6 +3684,187 @@ static void EditorHostWatch(Arena* a, El* el, MdNode* n) {
     el->customUser = key;
 }
 
+static bool Utf8Boundary(Str text, int i) {
+    if (i < 0 || i > len(text)) {
+        return false;
+    }
+    if (i == 0 || i == len(text)) {
+        return true;
+    }
+    return ((unsigned char)text.s[i] & 0xC0) != 0x80;
+}
+
+struct ClippedFg {
+    int start = 0;
+    int end = 0;
+    Rgba color = {};
+};
+
+static const ForegroundRange* LeafRanges(const TextView* view, const MdNode* n,
+                                         int* nOut) {
+    *nOut = 0;
+    if (!view || !n || !n->hasEditorKey || !view->hostForegrounds) {
+        return nullptr;
+    }
+    for (int i = 0; i < view->nHostForegrounds; i++) {
+        if (view->hostForegrounds[i].key == n->editorKey) {
+            *nOut = view->hostForegrounds[i].n;
+            return view->hostForegrounds[i].ranges;
+        }
+    }
+    return nullptr;
+}
+
+// foreground_highlights: clip to this fragment, drop a range that is empty,
+// reversed or not on a character boundary, and let a later range win where
+// they overlap. The spans recolor glyphs only, so the line's geometry stays.
+static void ApplyTextForeground(Arena* a, El* t, Str text, int leafOffset,
+                                const ForegroundRange* ranges, int n) {
+    if (!a || !t || !text.s || n <= 0) {
+        return;
+    }
+    ClippedFg* clipped = (ClippedFg*)Alloc(a, n * (int)sizeof(ClippedFg));
+    if (!clipped) {
+        return;
+    }
+    int textLen = len(text);
+    int nc = 0;
+    for (int i = 0; i < n; i++) {
+        int start = ranges[i].start - leafOffset;
+        int end = ranges[i].end - leafOffset;
+        if (start < 0) {
+            start = 0;
+        }
+        if (end > textLen) {
+            end = textLen;
+        }
+        if (end < 0) {
+            end = 0;
+        }
+        if (start < end && Utf8Boundary(text, start) &&
+            Utf8Boundary(text, end)) {
+            clipped[nc].start = start;
+            clipped[nc].end = end;
+            clipped[nc].color = ranges[i].color;
+            nc++;
+        }
+    }
+    if (nc == 0) {
+        return;
+    }
+    TextSpan* spans = (TextSpan*)Alloc(a, nc * 2 * (int)sizeof(TextSpan));
+    if (!spans) {
+        return;
+    }
+    int ns = 0;
+    int at = 0;
+    while (at < textLen && ns < nc * 2) {
+        int win = -1;
+        for (int i = 0; i < nc; i++) {
+            if (clipped[i].start <= at && at < clipped[i].end) {
+                win = i;
+            }
+        }
+        int hi = textLen;
+        if (win >= 0) {
+            hi = clipped[win].end;
+        }
+        for (int i = 0; i < nc; i++) {
+            if (clipped[i].start > at && clipped[i].start < hi) {
+                hi = clipped[i].start;
+            }
+        }
+        if (hi <= at) {
+            break;
+        }
+        if (win >= 0) {
+            spans[ns].lo = at;
+            spans[ns].hi = hi;
+            spans[ns].color = clipped[win].color;
+            ns++;
+        }
+        at = hi;
+    }
+    if (ns > 0) {
+        t->Spans(spans, ns);
+    }
+}
+
+// An object takes the color only when a range covers its whole U+FFFC.
+static bool ObjectForeground(const ForegroundRange* ranges, int n, int offset,
+                             Rgba* out) {
+    if (!ranges || n <= 0 || !out) {
+        return false;
+    }
+    int end = offset + 3;
+    bool found = false;
+    for (int i = 0; i < n; i++) {
+        if (ranges[i].start <= offset && end <= ranges[i].end) {
+            *out = ranges[i].color;
+            found = true;
+        }
+    }
+    return found;
+}
+
+RenderContext RenderContextWithForegroundRanges(Arena* a, RenderContext rcx,
+                                                uint64_t key,
+                                                const ForegroundRange* ranges,
+                                                int n) {
+    if (!a) {
+        return rcx;
+    }
+    if (n < 0) {
+        n = 0;
+    }
+    ForegroundRange* copy = nullptr;
+    if (n > 0 && ranges) {
+        copy = (ForegroundRange*)Alloc(a, n * (int)sizeof(ForegroundRange));
+        if (!copy) {
+            return rcx;
+        }
+        memcpy(copy, ranges, (size_t)n * sizeof(ForegroundRange));
+    } else {
+        n = 0;
+    }
+    bool replace = false;
+    for (int i = 0; i < rcx.nForegrounds; i++) {
+        if (rcx.foregrounds[i].key == key) {
+            replace = true;
+        }
+    }
+    int nOut = replace ? rcx.nForegrounds : rcx.nForegrounds + 1;
+    if (nOut <= 0) {
+        nOut = 1;
+    }
+    LeafForeground* rows =
+        (LeafForeground*)Alloc(a, nOut * (int)sizeof(LeafForeground));
+    if (!rows) {
+        return rcx;
+    }
+    int w = 0;
+    bool wrote = false;
+    for (int i = 0; i < rcx.nForegrounds; i++) {
+        if (rcx.foregrounds[i].key == key) {
+            rows[w].key = key;
+            rows[w].ranges = copy;
+            rows[w].n = n;
+            wrote = true;
+        } else {
+            rows[w] = rcx.foregrounds[i];
+        }
+        w++;
+    }
+    if (!wrote) {
+        rows[w].key = key;
+        rows[w].ranges = copy;
+        rows[w].n = n;
+    }
+    rcx.foregrounds = rows;
+    rcx.nForegrounds = nOut;
+    return rcx;
+}
+
 El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                      uint8_t align) {
     // An editor leaf is laid out even when empty, so the editor gets a
@@ -3725,6 +3906,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         }
         t->W(kFill)->ReportLineSpan(FontLen(cx, font * kLineHeight));
         EditorHostWatch(a, t, n);
+        int nRanges = 0;
+        const ForegroundRange* ranges = LeafRanges(this, n, &nRanges);
+        ApplyTextForeground(a, t, t->text, 0, ranges, nRanges);
         return t;
     }
     // Otherwise the flow is a column of wrapping rows — a hard break ends a
@@ -3760,6 +3944,12 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // word starts: what the word's source map is measured from.
     MdRun* wordRun = nullptr;
     int wordStart = 0;
+    // Leaf byte where the word being gathered starts. Custom objects and
+    // images occupy one U+FFFC, not the fallback text's length.
+    int wordLeaf = 0;
+    int leafAt = 0;
+    int nRanges = 0;
+    const ForegroundRange* ranges = LeafRanges(this, n, &nRanges);
     // Where the run being walked starts in the node's text, which is the
     // byte space its range highlights use.
     int runOffset = 0;
@@ -3788,6 +3978,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             lastWord = w;
             lastWordLo = runOffset + wordStart;
         }
+        ApplyTextForeground(a, w, w->text, wordLeaf, ranges, nRanges);
         row->Child(w);
         wordLen = 0;
     };
@@ -3810,6 +4001,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             context.textStyle.lineHeight = kLineHeight;
             context.textStyle.color =
                 MarkedRunColor(this, color, marks, highlight, hasHighlight);
+            Rgba objColor = {};
+            bool objFg = ObjectForeground(ranges, nRanges, leafAt, &objColor);
+            if (objFg) {
+                context.textStyle.color = objColor;
+            }
             int inheritedWeight =
                 (marks & MdBold) ? (weight > 2 ? weight : 2) : weight;
             context.textStyle.fontBold = inheritedWeight >= 3;
@@ -3831,6 +4027,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 }
             }
             if (rendered.element) {
+                if (objFg) {
+                    rendered.element->Fg(objColor);
+                }
                 if (rendered.hasBaseline) {
                     rendered.element->MarginT(std::max(
                         0.f, context.lineHeight * 0.75f - rendered.baseline));
@@ -3839,6 +4038,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             } else if (r->custom.text) {
                 El* w = Word(r->custom.text, font, color, marks, weight, href,
                              highlight, hasHighlight);
+                if (objFg) {
+                    w->Fg(objColor);
+                }
                 // An inline plugin node is selected as a unit, and maps to
                 // `MarkdownNode::source_range`.
                 SourceSegment* whole = nullptr;
@@ -3852,10 +4054,12 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 }
                 row->Child(SrcMap(w, whole, whole ? 1 : 0, 0, true));
             }
+            leafAt += 3;
             continue;
         }
         if (len(r->imgSrc) > 0) {
             row->Child(SrcImage(ImageRun(r, font, color, inFlow), r));
+            leafAt += 3;
             continue;
         }
         wordRun = r;
@@ -3870,12 +4074,14 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             }
             if (wordLen == 0) {
                 wordStart = i;
+                wordLeaf = leafAt + i;
             }
             word[wordLen++] = c;
             if (c == ' ') {
                 flush();
             }
         }
+        leafAt += len(r->text);
     }
     flush();
     // A reveal past the last word: that word's line.
@@ -6982,6 +7188,12 @@ void TextView::PrepareInheritedColor(PaintCtx*, El* element, Rgba inherited,
     element->style.color = resolved->style.color;
     element->style.hasColor = resolved->style.hasColor;
     element->lifecycle = resolved->lifecycle;
+}
+
+TextView* TextView::HostForegrounds(const RenderContext& rcx) {
+    hostForegrounds = rcx.foregrounds;
+    nHostForegrounds = rcx.nForegrounds;
+    return this;
 }
 
 El* TextView::RenderDocument(MdNode* doc) {

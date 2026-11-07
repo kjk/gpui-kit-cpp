@@ -1183,6 +1183,22 @@ struct TextViewLinkBinding {
     const char* href = nullptr;
 };
 
+// editor_host.rs with_foreground_ranges. One color over a leaf's rendered
+// UTF-8. Images and custom inline objects occupy one U+FFFC (three bytes).
+struct ForegroundRange {
+    int start = 0;
+    int end = 0;
+    Rgba color = {};
+};
+
+// The ranges stored for one leaf key. A later WithForegroundRanges for the
+// same key replaces these.
+struct LeafForeground {
+    uint64_t key = 0;
+    const ForegroundRange* ranges = nullptr;
+    int n = 0;
+};
+
 // editor_host.rs. An external editor marks a leaf and reads where it was
 // laid out. The geometry is a snapshot of that frame's shaped run.
 struct RenderContext {
@@ -1191,7 +1207,18 @@ struct RenderContext {
     void* codeHighlighterData = nullptr;
     ImageSourceFn imageSource = nullptr;
     void* imageSourceData = nullptr;
+    // NodeContext::foregrounds. Replaced per key, never written into the
+    // document.
+    const LeafForeground* foregrounds = nullptr;
+    int nForegrounds = 0;
 };
+
+// with_foreground_ranges. Copies `ranges` into `a` and returns a context
+// whose entry for `key` is that copy. An empty list clears the key.
+RenderContext RenderContextWithForegroundRanges(Arena* a, RenderContext rcx,
+                                                uint64_t key,
+                                                const ForegroundRange* ranges,
+                                                int n);
 
 // Where a block stands among its siblings. The first takes no gap above
 // and the last none below.
@@ -1354,6 +1381,11 @@ struct TextView {
     // NodeContext::range_highlights: the view state's resolved highlights,
     // for this frame. Null when there are none.
     const RangeHighlightFrame* rangeHighlights = nullptr;
+    // NodeContext::foregrounds, from with_foreground_ranges. Null when the
+    // host supplied none. Colors override mark and link ink for this render
+    // and are not stored on the document.
+    const LeafForeground* hostForegrounds = nullptr;
+    int nHostForegrounds = 0;
     // NodeContext::reveal: the pending reveal this frame marks, and where the
     // marked text or block reports itself. Null when there is none.
     const TextViewReveal* revealTarget = nullptr;
@@ -1448,6 +1480,9 @@ struct TextView {
     TextView* Plugin(const MarkdownPlugin& plugin);
     TextView* Plugin(const TextViewPlugin& plugin);
     El* IntoEl();
+    // with_foreground_ranges for this render. The context's table is not
+    // copied; it has to outlive the frame.
+    TextView* HostForegrounds(const RenderContext& rcx);
     // editor_host.rs BlockNode::render of a document the caller built.
     El* RenderDocument(MdNode* doc);
 

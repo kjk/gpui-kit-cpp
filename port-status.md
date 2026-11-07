@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b6a815cbcdadf0fc0183a24f747ff0bc88cb9336` (2026-11-03,
-diff: Reject invalid hunk prefixes before slicing UTF-8 (#3473)).
-A hunk line whose first byte is not a space, plus or minus is an
-error, so a multibyte character is never sliced off as a tag.
+Processed through `4cbbc0190c03a4a5e875785b45a00174609ffa84` (2026-11-03,
+text: Supply editor foreground ranges through the render context (#3754)).
+A host can recolor a keyed leaf for one render. The color overrides
+mark and link ink, keeps the other marks, and does not change layout.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
