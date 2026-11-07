@@ -221,8 +221,9 @@ static void BuilderCarriesTheExactTwoSourceShadows() {
     delete window;
 }
 
-// window_border.rs: only_client_decorated_windows_use_the_client_border. A
-// server-decorated window's content passes through unchanged.
+// window_border.rs: a server-decorated window still wraps its content in
+// div().id("window-backdrop").size_full(), with no frame, padding or shadow,
+// so the id path matches the client-decorated frame.
 static void OnlyClientDecoratedWindowsUseTheClientBorder() {
     App app;
     Window* window = new Window();
@@ -231,7 +232,13 @@ static void OnlyClientDecoratedWindowsUseTheClientBorder() {
     Ctx cx = {&app, window, arena, {}};
     utassert(!WindowClientDecorated(window));
     El* child = Div(arena);
-    utassert(WindowBorder::New(&cx)->Child(child)->IntoEl() == child);
+    El* backdrop = WindowBorder::New(&cx)->Child(child)->IntoEl();
+    utassert(backdrop && backdrop != child && backdrop->first == child);
+    utassert(StrEq(backdrop->id, StrL("window-backdrop")));
+    utassert(backdrop->style.width == kFill && backdrop->style.height == kFill);
+    utassert(backdrop->style.pad.top == 0 && backdrop->style.pad.bottom == 0 &&
+             backdrop->style.pad.left == 0 && backdrop->style.pad.right == 0);
+    utassert(backdrop->style.shadowCount == 0);
     ArenaDelete(arena);
     delete window;
 }

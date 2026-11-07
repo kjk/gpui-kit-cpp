@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "5443158119d6203203e8730dc835ac1b5c4f3063",
+  sha: "526c155418f451b87efb7fb5bcd6b5f64462568c",
   date: "2026-11-03",
-  subject: "button: Add selected_accent for an accent-filled selection (#3775)",
+  subject: "window_border: Keep the element id path stable across decoration changes (#3783)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

@@ -156,21 +156,31 @@ El* WindowBorder::IntoEl() {
         cx->win->resizeHitSize = resizeHitSize;
     }
     // uses_client_border: a server-decorated window's platform owns the
-    // frame, border and shadow, and the content passes through unchanged.
+    // frame, border and shadow. The wrapper stays, with the same
+    // window-backdrop id as the client frame: decorations can change while
+    // the window is open, and an id that appears or disappears would drop
+    // keyed state under the root.
     if (!clientDecorated) {
         if (cx->win) {
             cx->win->paint.clientInset = 0;
             cx->win->clientInset = 0;
         }
-        return child ? child : Div(a)->SizeFull();
+        El* backdrop = Div(a)->PathId(StrL("window-backdrop"))->SizeFull();
+        if (child) backdrop->Child(child);
+        return backdrop;
     }
     // A window tiled on every side keeps its platform inset but draws no
     // shadow: there is nothing for one to fall on.
     float visualShadow = effectiveTiling.AllTiled() ? 0.f : shadowSize;
     Edges insets = WindowBorderInsets(visualShadow, effectiveTiling);
 
-    El* backdrop =
-        Div(a)->FlexCol()->SizeFull()->ClipX()->ClipY()->Bg(Rgba8(0, 0, 0, 0));
+    El* backdrop = Div(a)
+                       ->PathId(StrL("window-backdrop"))
+                       ->FlexCol()
+                       ->SizeFull()
+                       ->ClipX()
+                       ->ClipY()
+                       ->Bg(Rgba8(0, 0, 0, 0));
     if (insets.top > 0) {
         backdrop->PadT(insets.top);
     }
