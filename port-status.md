@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `07c1d9da6837f9d6af60bd5dbf749392ddfd4852` (2026-11-06,
-time_field: Add `TimeField::separator` (#3829)).
-`TimeField::Separator` is the string between numeric segments. It
-stays ":" until a caller sets another, and the AM/PM segment still
-follows without one.
+Processed through `6309631aae1748ae0d05ac1f3ff2dd6ca379cb85` (2026-11-06,
+input: Tell the platform when the caret moves (#3827)).
+A focused field whose origin or caret moved schedules one callback
+for the next frame, and that callback tells the platform where the
+IME panel goes. Blur drops the remembered anchor, so the next focus
+reports the caret again.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

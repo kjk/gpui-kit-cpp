@@ -182,6 +182,9 @@ bool PlatInit(App* app);
 void PlatShutdown(App* app);
 // Restart the window's repeating timer at `ms`; 0 stops it.
 void PlatSetTimer(Window* win, int ms);
+// update_ime_position. PlatInit installs the platform's push; a host with
+// none leaves the caret where the system last asked for it.
+void PlatInstallImePositionUpdate(void (*update)(Window* win));
 // Get the event loop to come back and drain the main-thread queue
 // (sys/executor.h). Called from any thread, including a worker, so each
 // platform picks the one wake its loop can take from outside: a posted

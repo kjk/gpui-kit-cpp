@@ -2181,8 +2181,19 @@ void PlatWake(App* app) {
     });
 }
 
+// update_ime_position: ask AppKit to read the caret again. firstRect
+// answers with where it is now.
+static void UpdateImePosition(Window* win) {
+    if (!win || !win->plat || !win->plat->view) {
+        return;
+    }
+    NSTextInputContext* context = [win->plat->view inputContext];
+    [context invalidateCharacterCoordinates];
+}
+
 bool PlatInit(App* app) {
     (void)app;
+    PlatInstallImePositionUpdate(UpdateImePosition);
     @autoreleasepool {
         [NSApplication sharedApplication];
         // Regular, not accessory: the examples run straight from a terminal

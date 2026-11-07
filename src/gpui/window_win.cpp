@@ -1932,8 +1932,27 @@ void PlatWake(App* app) {
     }
 }
 
+// update_ime_position: the candidate list follows a caret that moved
+// without a composition message to carry it.
+static void UpdateImePosition(Window* win) {
+    if (!win || !win->input || !win->input->focused) {
+        return;
+    }
+    HWND hwnd = Hwnd(win);
+    if (!hwnd) {
+        return;
+    }
+    HIMC imc = ImmGetContext(hwnd);
+    if (!imc) {
+        return;
+    }
+    ImeMoveCandidateWindow(win, imc);
+    ImmReleaseContext(hwnd, imc);
+}
+
 bool PlatInit(App* app) {
     (void)app;
+    PlatInstallImePositionUpdate(UpdateImePosition);
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     // RegisterDragDrop requires OLE. CoInitializeEx above already started
     // the apartment; OleInitialize attaches OLE to it.

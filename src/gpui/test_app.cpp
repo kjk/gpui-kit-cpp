@@ -112,6 +112,10 @@ void TestDraw(Window* win) {
     WindowDrawFrameHeadless(win, win->paint.viewW, win->paint.viewH);
 }
 
+int TestSimulateNextFrame(Window* win) {
+    return WindowFlushImeCoordinates(win);
+}
+
 static bool DrawDirty(App* app) {
     bool drew = false;
     for (int i = 0; i < app->windows.len; i++) {

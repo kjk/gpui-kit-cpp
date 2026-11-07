@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "07c1d9da6837f9d6af60bd5dbf749392ddfd4852",
+  sha: "6309631aae1748ae0d05ac1f3ff2dd6ca379cb85",
   date: "2026-11-06",
-  subject: "time_field: Add `TimeField::separator` (#3829)",
+  subject: "input: Tell the platform when the caret moves (#3827)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

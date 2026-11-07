@@ -13339,6 +13339,31 @@ static void DecorationColorIsStableAcrossCompositions() {
     }
 }
 
+// element.rs a_focused_input_reports_a_moved_caret_to_the_platform.
+// invalidate_character_coordinates asks for the caret on the next frame.
+static int ImeFrame(Window* win) {
+    TestDraw(win);
+    return TestSimulateNextFrame(win);
+}
+
+static void AFocusedInputReportsAMovedCaretToThePlatform() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputSetValue(s, StrL("alpha beta")); });
+    ImeFrame(view.win);
+    utassert(ImeFrame(view.win) == 0);
+    InputFocus(view.input, view.app, view.win);
+    utassert(ImeFrame(view.win) == 1);
+    utassert(ImeFrame(view.win) == 0);
+    InputSetSelectedRange(view.input, view.app, view.win, 5, 5);
+    utassert(ImeFrame(view.win) == 1);
+    utassert(ImeFrame(view.win) == 0);
+    InputBlur(view.input, view.app, view.win);
+    utassert(ImeFrame(view.win) == 0);
+    InputFocus(view.input, view.app, view.win);
+    utassert(ImeFrame(view.win) == 1);
+    InputViewFree(&view);
+}
+
 void TestInputState() {
     LaterHighlightLayerWinsOverEarlierOne();
     DecorationColorIsStableAcrossCompositions();
@@ -13355,6 +13380,7 @@ void TestInputState() {
     SelectedRangeRestoresUnicodeDirection();
     ScrollbarRendererReceivesTheEditorsScrollRange();
     FocusedInputAsksItsScrollContainerToRevealIt();
+    AFocusedInputReportsAMovedCaretToThePlatform();
     TapAsksForTheVirtualKeyboard();
     AccessibilityActionsRecheckLiveEditability();
     AccessibilitySetValuePreservesExactEditorText();

@@ -45,6 +45,9 @@ Window* TestWindowOpen(App* app, Entity<T> root, float w = 1920, float h = 1080,
 
 // window.draw(cx).clear(cx): one frame, whether or not anything asked for it.
 void TestDraw(Window* win);
+// window.simulate_next_frame: run the callbacks the last draw scheduled for
+// the next frame, and answer how many ran.
+int TestSimulateNextFrame(Window* win);
 // The end of an update: every window something invalidated since its last
 // frame is drawn again. A notify sent from inside a frame does not ask for
 // another one, as in Rust.

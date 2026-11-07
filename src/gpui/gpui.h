@@ -5752,6 +5752,16 @@ struct InputState {
     // Rust keeps an Option; `imeMarking` is the Some.
     Selection imeMarked = {};
     bool imeMarking = false;
+    // ime_anchor: the field origin and caret the platform was last told
+    // about. Invalid after blur, so the next focus reports the caret again.
+    bool imeAnchorValid = false;
+    float imeAnchorOriginX = 0;
+    float imeAnchorOriginY = 0;
+    float imeAnchorCaretX = 0;
+    float imeAnchorCaretY = 0;
+    // caretX is relative to the run. A single-line field does not publish
+    // caretWin, so the anchor needs this half too.
+    float imeAnchorCaretRelX = 0;
     // preferred_column: the column a vertical move aims for, so walking down
     // past a short line and back up returns to where it started. -1 for none.
     int preferredColumn = -1;
@@ -7127,6 +7137,8 @@ struct Window {
     // so something that has finished moving stops asking. `anim` is the other
     // thing — a window that draws back to back until it is turned off.
     bool animFrame = false;
+    // invalidate_character_coordinates callbacks waiting for the next frame.
+    int imeCoordinateCallbacks = 0;
     bool inDrawFrame = false;
     // A frame was asked for while one was being drawn.
     bool redrawAfterFrame = false;
@@ -8092,6 +8104,12 @@ void AppSetTitle(Window* win, Str title);
 void AppRequestAnim(Window* win, bool on);
 // One more frame, rather than every frame. Safe to call from inside a render.
 void WindowRequestAnimationFrame(Window* win);
+// invalidate_character_coordinates: the caret moved, so the next frame tells
+// the platform where the IME panel goes. WindowFlushImeCoordinates runs the
+// ones still waiting and answers how many, which is simulate_next_frame's
+// count when the caret is the only thing that asked.
+void WindowInvalidateCharacterCoordinates(Window* win);
+int WindowFlushImeCoordinates(Window* win);
 // window.request_virtual_keyboard: a user gesture asks the platform to
 // show the soft keyboard for the focused field. Platforms without one
 // ignore it. It does not move focus or the layout viewport.

@@ -2252,7 +2252,27 @@ static void PollAll(int xfd, int timeoutMs, PlatPollFd* extra, int nExtra) {
     }
 }
 
+// update_ime_position: the over-the-spot fallback hangs from this point.
+// On-the-spot preedit draws in the field and ignores it.
+static void UpdateImePosition(Window* win) {
+    if (!win || !win->plat || !win->plat->xic || !win->input) {
+        return;
+    }
+    InputState* in = win->input;
+    XPoint spot;
+    spot.x = (short)(in->lastBounds.x + in->caretX - in->scrollX);
+    spot.y = (short)(in->lastBounds.y - in->scrollY + in->lastLineH);
+    XVaNestedList preedit =
+        XVaCreateNestedList(0, XNSpotLocation, &spot, nullptr);
+    if (!preedit) {
+        return;
+    }
+    XSetICValues(win->plat->xic, XNPreeditAttributes, preedit, nullptr);
+    XFree(preedit);
+}
+
 bool PlatInit(App* app) {
+    PlatInstallImePositionUpdate(UpdateImePosition);
     WakeInit();
     if (gDpy) {
         return true;

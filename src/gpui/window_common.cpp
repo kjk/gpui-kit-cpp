@@ -386,11 +386,40 @@ static void NoteScrollbarOcclusion(Window* win);
 // pipeline runs — render, layout, prepaint, paint — with no target bound, so
 // every backend's drawing call finds no surface and draws nothing, the way
 // Rust's TestWindow hands its scene to no renderer.
+static void (*gImePositionUpdate)(Window* win) = nullptr;
+
+void PlatInstallImePositionUpdate(void (*update)(Window* win)) {
+    gImePositionUpdate = update;
+}
+
+void WindowInvalidateCharacterCoordinates(Window* win) {
+    if (!win) {
+        return;
+    }
+    win->imeCoordinateCallbacks++;
+    WindowRequestAnimationFrame(win);
+}
+
+int WindowFlushImeCoordinates(Window* win) {
+    if (!win) {
+        return 0;
+    }
+    int n = win->imeCoordinateCallbacks;
+    win->imeCoordinateCallbacks = 0;
+    if (n > 0 && gImePositionUpdate) {
+        gImePositionUpdate(win);
+    }
+    return n;
+}
+
 static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
                       float dipH, bool headless) {
     if (!win) {
         return;
     }
+    // Callbacks scheduled while the previous frame painted, before this one
+    // measures the caret again.
+    WindowFlushImeCoordinates(win);
     double drawStart = TimeNow();
     // One instant for the whole frame, which is what every transition in it
     // measures against, and the frame that has just been asked for: whatever

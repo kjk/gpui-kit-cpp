@@ -7885,6 +7885,36 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     scene::ContextPop(ctx, parentContext);
 }
 
+// element.rs paint: a focused field tells the platform when its caret
+// anchor moves. The anchor is the field's origin plus the caret point.
+// Blur drops it, so the next focus reports the caret again.
+static void InputNoteImeAnchor(InputState* s, El* e, Window* win) {
+    if (!s || !e || !win) {
+        return;
+    }
+    if (!s->focused || s->focusWin != win) {
+        s->imeAnchorValid = false;
+        return;
+    }
+    float ox = e->x;
+    float oy = e->y;
+    float cx = s->caretWinX;
+    float cy = s->caretWinY;
+    float rel = s->caretX;
+    bool moved = !s->imeAnchorValid || s->imeAnchorOriginX != ox ||
+                 s->imeAnchorOriginY != oy || s->imeAnchorCaretX != cx ||
+                 s->imeAnchorCaretY != cy || s->imeAnchorCaretRelX != rel;
+    s->imeAnchorValid = true;
+    s->imeAnchorOriginX = ox;
+    s->imeAnchorOriginY = oy;
+    s->imeAnchorCaretX = cx;
+    s->imeAnchorCaretY = cy;
+    s->imeAnchorCaretRelX = rel;
+    if (moved) {
+        WindowInvalidateCharacterCoordinates(win);
+    }
+}
+
 static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (!e || (!ctx->rt && !ctx->headless)) {
         return;
@@ -8613,6 +8643,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // ancestor list's after-paint takes the request.
     if (recordedInput) {
         InputRequestReveal(e->input, ctx->window);
+        InputNoteImeAnchor(e->input, e, ctx->window);
     }
     if (pushed) {
         ctx->window->imageCacheStack.len--;

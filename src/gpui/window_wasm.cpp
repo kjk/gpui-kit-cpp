@@ -1133,8 +1133,13 @@ bool ClipboardReadAsync(Window* win, ClipboardReadFn done, void* data) {
 
 // ─── app lifecycle ────────────────────────────────────────────────────────
 
+static void UpdateImePosition(Window* win) {
+    (void)win;
+}
+
 bool PlatInit(App* app) {
     (void)app;
+    PlatInstallImePositionUpdate(UpdateImePosition);
     return true;
 }
 
