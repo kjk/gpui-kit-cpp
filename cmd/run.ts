@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "44a83318e9a6d1feed63dfa359e23c81f2427d1b",
+  sha: "2905983dc2a0fdc7d1297d13da16ba8e8c197033",
   date: "2026-11-06",
-  subject: "text: Limit selection highlights to the selected glyphs on each row (#3799)",
+  subject: "input: Show the arrow over the editor gutter (#3806)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
