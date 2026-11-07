@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1458fe285beba30c8035e46f19f76f1631b29f4f` (2026-11-06,
-slider: Snap a dragged value to steps counted from `min` (#3822)).
-A drag snaps to steps counted from the minimum and stays inside the
-range. A step that is not a positive finite number leaves the value
-continuous. The thumb percentage is then taken from the snapped value.
+Processed through `b92bb66d148fca10e15d1e3fb77d565ac4d306ec` (2026-11-06,
+table: Add `ColumnFixed::Right` to pin columns to the right (#3833)).
+Right-fixed columns stay on the trailing edge and out of the scrolling
+range. A head drag stays in its own region, and the first right-fixed
+column has no leading resize handle. The data-table story keeps Price
+last and pinned to the right.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

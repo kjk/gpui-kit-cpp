@@ -225,11 +225,14 @@ struct TableState {
     // under a head that goes with it.
     float scrollX = 0;
     float viewportW = 0;
-    // fixed_left_cols_count(): how many columns are pinned to the left right
-    // now, which the themed table works out from the columns and writes here
-    // as it builds. It has to be on the state because a scroll is a click,
-    // and a click has no columns to count.
+    // How many columns are pinned to each side right now, which the themed
+    // table works out from the columns and writes here as it builds. They
+    // have to be on the state because a scroll is a click, and a click has
+    // no columns to count. Left-fixed columns are the leading ones and
+    // right-fixed columns the trailing ones; what scrolls is everything
+    // between them. Rust's scrollable_cols().
     int fixedCols = 0;
+    int rightCols = 0;
     // col_fixed: whether the columns that asked to be pinned actually are.
     // Rust keeps the flag on the state rather than the column so one toggle
     // releases all of them at once.
@@ -335,12 +338,14 @@ void TableMoveColumnEvent(TableState* s, Ctx* cx, int from, int to);
 // drag_gap_at: the gap a head dropped at `x` would go into — the one after
 // the last column whose centre is left of `x` — or -1 when dropping there
 // would put the column back where it already is. A column can only be
-// reordered within its own region: rendering pins the first `fixedCount`
-// columns, so a cross-region move would change which columns are pinned
-// without updating their `fixed` flags. The pointer is in the fixed region
-// when it is left of the last fixed column's right edge.
+// reordered within its own region: rendering pins the leading `fixedCount`
+// columns and the trailing `rightCount` columns, so a cross-region move
+// would change which columns are pinned without updating their `fixed`
+// flags. The pointer is in the left region when it is left of the last
+// left-fixed column's right edge, and in the right region when it is at or
+// past the first right-fixed column's left edge.
 int TableDragGapAt(const Bounds* colBounds, int n, float x, int dragCol,
-                   int fixedCount = 0);
+                   int fixedCount = 0, int rightCount = 0);
 // The three per-column arrays grown to hold `n` columns. Rust's col_groups is
 // one Vec of structs; these are three, since a column's width, its place in
 // the order and where its head was painted are written at different moments.
@@ -383,9 +388,10 @@ bool TableShouldLoadMore(const TableState* s, int visibleEnd);
 // scroll_to_row, against the height the body was last laid out at.
 void TableScrollToRow(TableState* s, int row, ScrollStrategy strategy);
 // scroll_to_col, against the width the scrolling pane was last laid out at.
-// The column is the caller's, and what moves is its place in the display
-// order less the pinned ones — Rust's `col_ix.saturating_sub(fixed_left_
-// cols_count())`, since the pinned columns do not move under the offset.
+// The column is the caller's. A right-fixed column is always in view, so
+// asking for one leaves the offset alone. What moves otherwise is its place
+// in the display order less the left-pinned ones — Rust's
+// `col_ix.saturating_sub(scrollable_cols.start)`.
 void TableScrollToCol(TableState* s, int col, ScrollStrategy strategy);
 
 // TableState::refresh, which is `prepare_col_groups`: the widths and the

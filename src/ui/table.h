@@ -10,8 +10,12 @@ namespace gpui {
 
 namespace component {
 
+// The side a fixed column is pinned to when the table scrolls horizontally.
 enum class ColumnFixed : uint8_t {
-    Left
+    // Pin to the left side. The column must be one of the first columns.
+    Left,
+    // Pin to the right side. The column must be one of the last columns.
+    Right
 };
 
 // One column of a DataTable: what its head says, how wide it is, and whether
@@ -24,8 +28,9 @@ struct TableColumn {
     bool selectable = true;
     // Column::resizable: whether this column's right edge takes a drag.
     bool resizable = true;
-    // Column::fixed(ColumnFixed::Left): the column stays put while the rest
-    // scroll under the head. TableState::colFixed is the master switch.
+    // Column::fixed: the column stays pinned to fixedSide while the rest
+    // scroll. Left-fixed columns must come first and right-fixed columns
+    // last. TableState::colFixed is the master switch.
     bool fixed = false;
     // Source fields that the first aggregate representation omitted.
     Str key = {};
@@ -57,6 +62,8 @@ struct TableColumn {
     TableColumn Width(float value) const;
     TableColumn Fixed(ColumnFixed value = ColumnFixed::Left) const;
     TableColumn FixedLeft() const;
+    // Column::fixed_right. Right-fixed columns must be the last columns.
+    TableColumn FixedRight() const;
     TableColumn Resizable(bool value) const;
     TableColumn Movable(bool value) const;
     TableColumn Selectable(bool value) const;
@@ -157,9 +164,10 @@ struct DataTable {
     // data_table.rs accessibility_label: the name a screen reader reads
     // when the table takes focus. Empty leaves it unnamed.
     Str accessibilityLabel = {};
-    // TableOptions::fixed_cols_border: the hairline on the right of the
-    // fixed columns, in the header and on each body row. Off when those
-    // cells draw the edge themselves.
+    // TableOptions::fixed_cols_border: the hairline on the inner edge of
+    // the fixed columns, the right edge of the left-fixed ones and the left
+    // edge of the right-fixed ones, in the header and on each body row. Off
+    // when those cells draw the edge themselves.
     bool fixedColsBorder = true;
     // TableOptions::scrollbar_visible: the right (vertical) and bottom
     // (horizontal) scrollbars of the scrolling body, both on by default.

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1458fe285beba30c8035e46f19f76f1631b29f4f",
+  sha: "b92bb66d148fca10e15d1e3fb77d565ac4d306ec",
   date: "2026-11-06",
-  subject: "slider: Snap a dragged value to steps counted from `min` (#3822)",
+  subject: "table: Add `ColumnFixed::Right` to pin columns to the right (#3833)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

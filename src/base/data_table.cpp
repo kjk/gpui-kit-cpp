@@ -754,22 +754,64 @@ bool TableMoveColumn(TableState* s, int from, int to) {
     return true;
 }
 
+// The columns between the left- and right-fixed ones, as display positions.
+// Right-fixed columns are the trailing `rightCols`, and never more than what
+// the left-fixed prefix leaves.
+static void ScrollableSpan(const TableState* s, int* first, int* end) {
+    int n = s->colCount;
+    int left = s->fixedCols;
+    if (left < 0) {
+        left = 0;
+    }
+    if (left > n) {
+        left = n;
+    }
+    int right = s->rightCols;
+    if (right < 0) {
+        right = 0;
+    }
+    if (right > n - left) {
+        right = n - left;
+    }
+    *first = left;
+    *end = n - right;
+}
+
 int TableDragGapAt(const Bounds* colBounds, int n, float x, int dragCol,
-                   int fixedCount) {
+                   int fixedCount, int rightCount) {
     fixedCount = ClampI(fixedCount, 0, n);
+    rightCount = ClampI(rightCount, 0, n - fixedCount);
     // A column can only be reordered within its own region: rendering pins
-    // the first `fixedCount` columns, so a cross-region move would change
-    // which columns are pinned without updating their `fixed` flags.
-    bool dragInFixed = dragCol < fixedCount;
-    bool pointerInFixed = fixedCount > 0 && x < colBounds[fixedCount - 1]
-                                                    .Right();
-    if (dragInFixed != pointerInFixed) {
+    // the leading and trailing columns by count, so a cross-region move
+    // would change which columns are pinned without updating their `fixed`
+    // flags. -1 left, 0 scrollable, 1 right.
+    int dragSide = 0;
+    if (dragCol < fixedCount) {
+        dragSide = -1;
+    } else if (rightCount > 0 && dragCol >= n - rightCount) {
+        dragSide = 1;
+    }
+    int pointerSide = 0;
+    if (fixedCount > 0 && x < colBounds[fixedCount - 1].Right()) {
+        pointerSide = -1;
+    } else if (rightCount > 0 && x >= colBounds[n - rightCount].x) {
+        pointerSide = 1;
+    }
+    if (dragSide != pointerSide) {
         return -1;
     }
-    // The candidates are the columns of that region alone: the fixed ones
-    // when the pointer is over them, the scrollable ones otherwise.
-    int first = pointerInFixed ? 0 : fixedCount;
-    int end = pointerInFixed ? fixedCount : n;
+    // The candidates are the columns of that region alone. Columns scrolled
+    // beneath a fixed region keep stale bounds, so a pointer over a fixed
+    // region is resolved against those columns only.
+    int first = fixedCount;
+    int end = n - rightCount;
+    if (pointerSide < 0) {
+        first = 0;
+        end = fixedCount;
+    } else if (pointerSide > 0) {
+        first = n - rightCount;
+        end = n;
+    }
     // The gap sits after the last column whose centre is left of `x`.
     int gap = first;
     for (int i = first; i < end; i++) {
@@ -825,12 +867,13 @@ bool TableVisibleColsChanged(TableState* s, int first, int end, int items) {
 }
 
 void TableVisibleCols(const TableState* s, int* first, int* end) {
-    int nFixed = s->fixedCols, nCols = s->colCount;
+    int nFixed = 0, nEnd = 0;
+    ScrollableSpan(s, &nFixed, &nEnd);
     // The pinned columns never move, so the sideways virtual list is built
-    // over the ones after them and counts from zero — state.rs hands it
-    // `col_groups.iter().skip(left_columns_count)`, and the range it reports
-    // back is an index into that shorter run, not into the table's columns.
-    int nScroll = nCols - nFixed;
+    // over the ones between them and counts from zero — state.rs hands it
+    // `col_groups.get(scrollable_cols)`, and the range it reports back is an
+    // index into that shorter run, not into the table's columns.
+    int nScroll = nEnd - nFixed;
     // A pane that has not been laid out yet has no width, and answers an
     // empty range rather than every column.
     float w = s->bodyBounds.w;
@@ -884,28 +927,34 @@ void TableScrollToRow(TableState* s, int row, ScrollStrategy strategy) {
 }
 
 void TableScrollToCol(TableState* s, int col, ScrollStrategy strategy) {
-    float viewport = s->bodyBounds.w;
-    if (viewport <= 0) {
-        return;
-    }
     int d = TableDisplayOfCol(s, col);
     if (d < 0) {
         return;
     }
-    // saturating_sub: a pinned column is already on screen, and asking for
-    // one asks for the start of what moves.
-    d -= s->fixedCols;
+    int first = 0, end = 0;
+    ScrollableSpan(s, &first, &end);
+    // A right-fixed column is always in view.
+    if (d >= end) {
+        return;
+    }
+    float viewport = s->bodyBounds.w;
+    if (viewport <= 0) {
+        return;
+    }
+    // saturating_sub: a left-pinned column is already on screen, and asking
+    // for one asks for the start of what moves.
+    d -= first;
     if (d < 0) {
         d = 0;
     }
-    int n = s->colCount - s->fixedCols;
+    int n = end - first;
     if (n <= 0) {
         return;
     }
     // The widths of the columns that move, in the order they are shown in —
     // which the display order is and the caller's array is not.
     Vec<float> w;
-    for (int i = s->fixedCols; i < s->colCount; i++) {
+    for (int i = first; i < end; i++) {
         int c = TableColAt(s, i);
         VecAppend(w, c < s->colWidth.len ? s->colWidth[c] : 0);
     }
@@ -1013,7 +1062,7 @@ void TableState::OnColDragMove(TableState* self, Ctx* cx,
     TableEnsureCols(self, self->colCount);
     int n = self->colCount;
     int gap = TableDragGapAt(self->colBounds.els, n, ev->event.x, ev->drag.ix,
-                             self->fixedCols);
+                             self->fixedCols, self->rightCols);
     if (self->draggingCol == ev->drag.ix && self->dropGap == gap) {
         return;
     }
@@ -1029,7 +1078,7 @@ void TableState::OnColDrop(TableState* self, Ctx* cx, const DropEvent* ev) {
     TableEnsureCols(self, self->colCount);
     int n = self->colCount;
     int gap = TableDragGapAt(self->colBounds.els, n, ev->x, ev->drag.ix,
-                             self->fixedCols);
+                             self->fixedCols, self->rightCols);
     self->draggingCol = -1;
     self->dropGap = -1;
     if (gap >= 0) {

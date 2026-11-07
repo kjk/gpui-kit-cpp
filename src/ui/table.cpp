@@ -79,6 +79,10 @@ TableColumn TableColumn::FixedLeft() const {
     return Fixed(ColumnFixed::Left);
 }
 
+TableColumn TableColumn::FixedRight() const {
+    return Fixed(ColumnFixed::Right);
+}
+
 TableColumn TableColumn::Resizable(bool value) const {
     TableColumn out = *this;
     out.resizable = value;
@@ -409,7 +413,19 @@ DataTable* DataTable::New(Ctx* cx, Str id, Entity<TableState> state) {
     return t;
 }
 DataTable* DataTable::Columns(const TableColumn* cols, int n) {
-    columns = cols;
+    // The caller's array is often on the frame that built the table, and
+    // that frame is gone by the time a height change rebuilds the rows at
+    // prepaint. The copy lives in the frame arena with the elements.
+    if (!cols || n <= 0) {
+        columns = nullptr;
+        nColumns = 0;
+        return this;
+    }
+    auto* copy = (TableColumn*)Alloc(a, n * (int)sizeof(TableColumn));
+    for (int i = 0; i < n; i++) {
+        copy[i] = cols[i];
+    }
+    columns = copy;
     nColumns = n;
     return this;
 }
@@ -605,8 +621,14 @@ void DataTable::Dump(Vec<Str>* heads, Vec<Str>* cells) {
     DumpRange(0, nRows, heads, cells);
 }
 DataTable* DataTable::GroupHeader(const TableGroupCell* cells, int n) {
+    // Same lifetime as Columns: prepaint rebuilds after the caller's stack
+    // frame is gone, so the bands have to live in the frame arena.
     if (cells && n > 0) {
-        groupHeaders.Append(a, TableGroupHeader{cells, n});
+        auto* copy = (TableGroupCell*)Alloc(a, n * (int)sizeof(TableGroupCell));
+        for (int i = 0; i < n; i++) {
+            copy[i] = cells[i];
+        }
+        groupHeaders.Append(a, TableGroupHeader{copy, n});
     }
     return this;
 }
@@ -715,13 +737,19 @@ static El* LeadingResizeHandle(Ctx* cx, Str id, int prevCol,
         ->W(kTableResizeHandlePadding);
 }
 
-// render_fixed_cols_border. The hairline on the right of the fixed columns.
-// `height` 0 stretches it to its parent, which is one header row or one body
-// row. A positive height is the whole header block: the fixed pane also
-// holds the scrolling body, so the line has to stop where the head does.
-static El* RenderFixedColsBorder(Ctx* cx, float height) {
-    El* e = Div(cx->a)->Absolute()->Top(0)->Right(0)->W(0)->Shrink0()->BorderR(
-        1, ThemeNow(cx->app).border);
+// render_fixed_cols_border. The hairline on the inner edge of the columns
+// pinned to one side: the right edge of the left-fixed columns, the left
+// edge of the right-fixed ones. `height` 0 stretches it to its parent, which
+// is one header row or one body row. A positive height is the whole header
+// block: the fixed pane also holds the scrolling body, so the line has to
+// stop where the head does.
+static El* RenderFixedColsBorder(Ctx* cx, float height, bool onRight) {
+    El* e = Div(cx->a)->Absolute()->Top(0)->W(0)->Shrink0();
+    if (onRight) {
+        e->Left(0)->BorderL(1, ThemeNow(cx->app).border);
+    } else {
+        e->Right(0)->BorderR(1, ThemeNow(cx->app).border);
+    }
     if (height > 0) {
         e->H(height);
     } else {
@@ -730,20 +758,38 @@ static El* RenderFixedColsBorder(Ctx* cx, float height) {
     return e;
 }
 
-// The pane a column is drawn in: the pinned one holds the leading columns
-// that asked for it, and everything else scrolls.
-static int FixedColCount(const DataTable* t, const TableState* s) {
-    if (!s || !s->colFixed) {
-        return 0;
+// scrollable_cols: left-fixed columns are a prefix and right-fixed columns a
+// suffix, each the count of columns that asked for that side. A column that
+// is not pinned to either side scrolls. col_fixed releases both sides.
+static void FixedSideCounts(const DataTable* t, const TableState* s, int* left,
+                            int* right) {
+    *left = 0;
+    *right = 0;
+    if (!s || !s->colFixed || !t) {
+        return;
     }
-    int n = 0;
+    int nLeft = 0;
+    int nRight = 0;
     for (int d = 0; d < t->nColumns; d++) {
-        if (!t->columns[TableColAt(s, d)].fixed) {
-            break;
+        const TableColumn& col = t->columns[TableColAt(s, d)];
+        if (!col.fixed) {
+            continue;
         }
-        n++;
+        if (col.fixedSide == ColumnFixed::Right) {
+            nRight++;
+        } else {
+            nLeft++;
+        }
     }
-    return n;
+    int total = t->nColumns;
+    if (nLeft > total) {
+        nLeft = total;
+    }
+    if (nRight > total - nLeft) {
+        nRight = total - nLeft;
+    }
+    *left = nLeft;
+    *right = nRight;
 }
 
 // One band of an upper head row. The width is the sum of the columns under
@@ -997,11 +1043,14 @@ El* DataTable::BuildEl() {
             }
         }
     }
-    int nFixed = FixedColCount(this, s);
+    int nFixed = 0;
+    int nRight = 0;
+    FixedSideCounts(this, s, &nFixed, &nRight);
     if (s) {
-        // fixed_left_cols_count, written down so a scroll between frames can
-        // read it — the columns are the caller's and a click has none.
+        // scrollable_cols, written down so a scroll between frames can read
+        // it — the columns are the caller's and a click has none.
         s->fixedCols = nFixed;
+        s->rightCols = nRight;
     }
     float scrollX = s ? s->scrollX : 0;
 
@@ -1067,15 +1116,16 @@ El* DataTable::BuildEl() {
         box->OnMouseDownOut(ListenTo(state, &TableState::OnRightClickOutside));
     }
 
-    // The table is two panes side by side: the pinned columns, which only
-    // ever move down, and the rest, which move both ways under a head that
-    // goes with them. Rust gets the same split out of one element tree by
-    // giving the fixed columns an offset of their own; two panes are the
+    // The table is three panes side by side: the left-pinned columns, the
+    // ones that move both ways under a head that goes with them, and the
+    // right-pinned columns. Rust gets the same split out of one element tree
+    // by giving each fixed side an offset of its own; three panes are the
     // shape that falls out of a tree with no such offset in it.
     El* main =
         Div(a)->Id(StrL("table-inner"))->FlexRow()->W(kFill)->ItemsStart();
     El* fixedPane = Div(a)->FlexCol()->Shrink0();
     El* scrollPane = Div(a)->FlexCol()->Flex1()->ClipX();
+    El* rightPane = Div(a)->FlexCol()->Shrink0();
     // render_row_header_cell: the narrow strip down the left a cell-selecting
     // table picks whole rows with. It never scrolls sideways, so it belongs
     // to the fixed pane — which is then there whether or not any column is.
@@ -1084,6 +1134,9 @@ El* DataTable::BuildEl() {
         main->Child(fixedPane);
     }
     main->Child(scrollPane);
+    if (nRight > 0) {
+        main->Child(rightPane);
+    }
     if (s) {
         // The clipping box, which is the width a column is on screen or not
         // against. Read next frame, the way any laid-out box is.
@@ -1114,6 +1167,8 @@ El* DataTable::BuildEl() {
             Div(a)->FlexRow()->W(kFill)->H(headerH)->BorderB(1, th.border));
         El* gs = Div(a)->FlexRow()->Shrink0();
         gsWrap->Child(gs);
+        El* gr =
+            Div(a)->FlexRow()->Shrink0()->H(headerH)->BorderB(1, th.border);
         int col = 0;
         const TableGroupCell* cells = groupHeaders[g].cells;
         for (int i = 0; i < groupHeaders[g].n; i++) {
@@ -1123,9 +1178,10 @@ El* DataTable::BuildEl() {
                 w += ColWidth(s, TableColAt(s, col + k));
             }
             bool last = i == groupHeaders[g].n - 1;
-            // A band that ends where the pinned columns do belongs to that
-            // pane; one that straddles the seam rides with the scrolling
-            // side, which is where most of it is.
+            // A band that ends where the left-pinned columns do belongs to
+            // that pane, and one that starts in the right-pinned columns
+            // belongs there. One that straddles a seam rides with the
+            // scrolling side, which is where most of it is.
             El* band =
                 hasDelegate && delegate.renderGroupTh
                     ? delegate.renderGroupTh(cx, data, cells[i].label, span, w)
@@ -1137,6 +1193,8 @@ El* DataTable::BuildEl() {
             }
             if (col + span <= nFixed) {
                 gf->Child(band);
+            } else if (nRight > 0 && col >= nColumns - nRight) {
+                gr->Child(band);
             } else {
                 gs->Child(band);
             }
@@ -1144,15 +1202,27 @@ El* DataTable::BuildEl() {
         }
         fixedPane->Child(gf);
         scrollPane->Child(gsWrap);
+        if (nRight > 0) {
+            rightPane->Child(gr);
+        }
     }
 
     Listener headClick = ListenTo(state, &TableState::OnHeadClick, 0);
     Listener sortClick = ListenTo(state, &TableState::OnSortClick, 0);
     // render_table_head: the head row is on table_head, in
     // table_head_foreground, pinned pane and scrolling pane alike.
-    // The pinned columns live in their own pane, so they are a second
-    // header row at the same index. state.rs keeps one row for both.
+    // The pinned columns live in their own panes, so each side is another
+    // header row at the same index. state.rs keeps one row for all three.
     El* headFixed = gpui::TableHeader::New(cx, StrL("head-fixed"))
+                        ->Role(AccessibilityRole::Row)
+                        ->AriaRowIndex(0)
+                        ->FlexRow()
+                        ->Shrink0()
+                        ->H(headerH)
+                        ->Bg(th.tokens.tableHead)
+                        ->Fg(th.tableHeadFg)
+                        ->BorderB(1, th.border);
+    El* headRight = gpui::TableHeader::New(cx, StrL("head-right"))
                         ->Role(AccessibilityRole::Row)
                         ->AriaRowIndex(0)
                         ->FlexRow()
@@ -1285,26 +1355,45 @@ El* DataTable::BuildEl() {
                 cx, StrDup(a, fmt("resizable-handle-%d", c)), c, state));
         }
         // resize handle cell left side: is_col_resizable(ix - 1), the column
-        // shown before this one.
+        // shown before this one. The first right-fixed column stays put while
+        // the column before it resizes, so that edge would not follow the
+        // pointer; that column's own handle remains.
         if (s && s->colResizable && d > 0) {
             int prev = TableColAt(s, d - 1);
-            if (columns[prev].resizable) {
+            bool fixedRight = s->colFixed && columns[c].fixed &&
+                              columns[c].fixedSide == ColumnFixed::Right;
+            bool prevFixedRight = s->colFixed && columns[prev].fixed &&
+                                  columns[prev].fixedSide == ColumnFixed::Right;
+            if (columns[prev].resizable && !(fixedRight && !prevFixedRight)) {
                 th_->Child(LeadingResizeHandle(
                     cx, StrDup(a, fmt("resizable-handle-leading-%d", c)), prev,
                     state));
             }
         }
-        (d < nFixed ? headFixed : headScroll)->Child(th_);
+        El* headDest = headScroll;
+        if (d < nFixed) {
+            headDest = headFixed;
+        } else if (nRight > 0 && d >= nColumns - nRight) {
+            headDest = headRight;
+        }
+        headDest->Child(th_);
     }
     headScroll->Child(LastEmptyColEl(cx, lastEmptyCol, data));
     fixedPane->Child(headFixed);
     scrollPane->Child(headWrap);
+    if (nRight > 0) {
+        rightPane->Child(headRight);
+    }
     // The header's copy of render_fixed_cols_border. Rust hangs it on the
     // fixed-column head, which is only the head; here that head shares a
     // pane with the body, so the line is as tall as the head block.
     bool drawFixedBorder = nFixed > 0 && fixedColsBorder;
+    bool drawRightBorder = nRight > 0 && fixedColsBorder;
     if (drawFixedBorder) {
-        fixedPane->Child(RenderFixedColsBorder(cx, headsH));
+        fixedPane->Child(RenderFixedColsBorder(cx, headsH, false));
+    }
+    if (drawRightBorder) {
+        rightPane->Child(RenderFixedColsBorder(cx, headsH, true));
     }
 
     // render_empty: a table with no rows shows this instead of a body.
@@ -1338,6 +1427,8 @@ El* DataTable::BuildEl() {
         gpui::TableBody::New(cx, StrL("body-fixed"))->FlexCol()->Shrink0();
     El* bodyScroll =
         gpui::TableBody::New(cx, StrL("body"))->FlexCol()->W(kFill);
+    El* bodyRight =
+        gpui::TableBody::New(cx, StrL("body-right"))->FlexCol()->Shrink0();
     // The rows are virtualized when the caller gave the body a height: only
     // the ones it can show are built, with a spacer at each end standing in
     // for the rest. Without one every row is built, which is what a short
@@ -1364,11 +1455,14 @@ El* DataTable::BuildEl() {
         if (fill && !stripe && rowsH < bodyH) {
             bodyH = rowsH;
         }
-        // Both panes move down together off the one offset; only the wide one
-        // takes the sideways wheel back.
+        // The three panes move down together off the one offset; only the
+        // wide one takes the sideways wheel back.
         bodyFixed->H(bodyH)->ClipY()->ScrollY(s->scrollY)->ScrollFromPath();
         bodyFixed->OnScroll(ListenTo(state, &TableState::OnScroll));
         bodyFixed->noScrollbar = true;
+        bodyRight->H(bodyH)->ClipY()->ScrollY(s->scrollY)->ScrollFromPath();
+        bodyRight->OnScroll(ListenTo(state, &TableState::OnScroll));
+        bodyRight->noScrollbar = true;
         bodyScroll->H(bodyH)
             ->ClipY()
             ->ScrollY(s->scrollY)
@@ -1387,12 +1481,14 @@ El* DataTable::BuildEl() {
                                        : scrollBounce == 1;
         Listener bounceWheel = ListenTo(state, &TableState::OnBounceWheel);
         bodyFixed->OnScrollWheel(bounceWheel);
+        bodyRight->OnScrollWheel(bounceWheel);
         bodyScroll->OnScrollWheel(bounceWheel);
         bodyScroll->noScrollbarY = !scrollbarV;
         bodyScroll->noScrollbarX = !scrollbarH;
         if (range.first > 0) {
             float pad = (float)range.first * s->rowH;
             bodyFixed->Child(Div(a)->H(pad));
+            bodyRight->Child(Div(a)->H(pad));
             bodyScroll->Child(Div(a)->W(kFill)->H(pad));
         }
     }
@@ -1407,7 +1503,7 @@ El* DataTable::BuildEl() {
         }
         int cFirst = 0, cEnd = 0;
         TableVisibleCols(s, &cFirst, &cEnd);
-        int nScroll = s->colCount - s->fixedCols;
+        int nScroll = s->colCount - s->fixedCols - s->rightCols;
         if (nScroll < 0) {
             nScroll = 0;
         }
@@ -1423,6 +1519,14 @@ El* DataTable::BuildEl() {
                 ->FlexRow()
                 ->Shrink0()
                 ->BorderB(1, th.tableRowBorder);
+        El* rowRight = nullptr;
+        if (nRight > 0) {
+            rowRight = gpui::TableRow::New(
+                           cx, StrDup(a, fmt("row-right-%d", r)), r + 1)
+                           ->FlexRow()
+                           ->Shrink0()
+                           ->BorderB(1, th.tableRowBorder);
+        }
         El* rowScroll = hasDelegate && delegate.renderTr
                             ? delegate.renderTr(cx, data, r)
                             : nullptr;
@@ -1444,9 +1548,15 @@ El* DataTable::BuildEl() {
         if (rowName.s && len(rowName) > 0) {
             rowScroll->AriaLabel(rowName);
             rowFixed->AriaLabel(rowName);
+            if (rowRight) {
+                rowRight->AriaLabel(rowName);
+            }
         }
-        El* rows[2] = {rowFixed, rowScroll};
+        El* rows[3] = {rowFixed, rowScroll, rowRight};
         for (El* row : rows) {
+            if (!row) {
+                continue;
+            }
             if (s && viewH > 0) {
                 // uniform_list: every row the same height, which is what lets
                 // the two spacers stand in for the ones that were not built.
@@ -1561,13 +1671,22 @@ El* DataTable::BuildEl() {
                 cellEl->Flex1()->MaxW(inner > 1 ? inner : 1)->Truncate();
                 td->Child(cellEl);
             }
-            (d < nFixed ? rowFixed : rowScroll)->Child(td);
+            El* rowDest = rowScroll;
+            if (d < nFixed) {
+                rowDest = rowFixed;
+            } else if (rowRight && d >= nColumns - nRight) {
+                rowDest = rowRight;
+            }
+            rowDest->Child(td);
         }
         rowScroll->Child(LastEmptyColEl(cx, lastEmptyCol, data));
-        // The body's copy: one line per row, on the fixed side, so it
-        // scrolls with the row and stops at the last one.
+        // The body's copy: one line per row, on the inner edge of each fixed
+        // side, so it scrolls with the row and stops at the last one.
         if (drawFixedBorder) {
-            rowFixed->Child(RenderFixedColsBorder(cx, 0));
+            rowFixed->Child(RenderFixedColsBorder(cx, 0, false));
+        }
+        if (drawRightBorder && rowRight) {
+            rowRight->Child(RenderFixedColsBorder(cx, 0, true));
         }
         if (s && s->rowSelectable && !s->cellSelectable) {
             BindPathClick(rowScroll,
@@ -1577,13 +1696,22 @@ El* DataTable::BuildEl() {
             BindPathClick(rowFixed, StrDup(a, fmt("row-fixed-%d", r)),
                           ListenerArg(rowClick, r));
             rowFixed->OnMouseDown(ListenerArg(rowDown, r));
+            if (rowRight) {
+                BindPathClick(rowRight, StrDup(a, fmt("row-right-%d", r)),
+                              ListenerArg(rowClick, r));
+                rowRight->OnMouseDown(ListenerArg(rowDown, r));
+            }
         }
         bodyFixed->Child(rowFixed);
         bodyScroll->Child(rowScroll);
+        if (rowRight) {
+            bodyRight->Child(rowRight);
+        }
     }
     if (s && viewH > 0 && range.end < nRows) {
         float pad = (float)(nRows - range.end) * s->rowH;
         bodyFixed->Child(Div(a)->H(pad));
+        bodyRight->Child(Div(a)->H(pad));
         bodyScroll->Child(Div(a)->W(kFill)->H(pad));
     }
     // calculate_extra_rows_needed: a striped table whose rows do not fill the
@@ -1599,7 +1727,8 @@ El* DataTable::BuildEl() {
             ? TableExtraRowsNeeded(viewH, (float)nRows * s->rowH, s->rowH)
             : 0;
     float colsW = 0;
-    for (int d = nFixed; extraRows > 0 && d < nColumns; d++) {
+    int scrollEnd = nColumns - nRight;
+    for (int d = nFixed; extraRows > 0 && d < scrollEnd; d++) {
         colsW += ColWidth(s, TableColAt(s, d));
     }
     for (int r = nRows; r < nRows + extraRows; r++) {
@@ -1624,21 +1753,46 @@ El* DataTable::BuildEl() {
         }
         // Extra rows go through render_table_row upstream, so they carry
         // the same fixed-column line.
+        El* fillRight = nullptr;
+        if (nRight > 0) {
+            fillRight = Div(a)
+                            ->Id(StrDup(a, fmt("row-right-%d", r)))
+                            ->FlexRow()
+                            ->W(kFill)
+                            ->Shrink0()
+                            ->H(s->rowH)
+                            ->BorderB(1, th.tableRowBorder);
+            if (r % 2 == 1) {
+                fillRight->Bg(th.tokens.tableEven);
+            }
+        }
         if (drawFixedBorder) {
-            fillFixed->Child(RenderFixedColsBorder(cx, 0));
+            fillFixed->Child(RenderFixedColsBorder(cx, 0, false));
+        }
+        if (drawRightBorder && fillRight) {
+            fillRight->Child(RenderFixedColsBorder(cx, 0, true));
         }
         bodyFixed->Child(fillFixed);
         bodyScroll->Child(fillScroll);
+        if (fillRight) {
+            bodyRight->Child(fillRight);
+        }
     }
     // The scroll boxes stay put, so their scrollbars do too. The rows move.
     if (s && viewH > 0) {
         El* fixedRows = Div(a)->FlexCol()->W(kFill);
+        El* rightRows = Div(a)->FlexCol()->W(kFill);
         El* scrollRows = Div(a)->FlexCol()->W(kFill);
         fixedRows->first = bodyFixed->first;
         fixedRows->last = bodyFixed->last;
         bodyFixed->first = nullptr;
         bodyFixed->last = nullptr;
         bodyFixed->Child(fixedRows);
+        rightRows->first = bodyRight->first;
+        rightRows->last = bodyRight->last;
+        bodyRight->first = nullptr;
+        bodyRight->last = nullptr;
+        bodyRight->Child(rightRows);
         scrollRows->first = bodyScroll->first;
         scrollRows->last = bodyScroll->last;
         bodyScroll->first = nullptr;
@@ -1650,11 +1804,15 @@ El* DataTable::BuildEl() {
                                                 s->bounceOn, maxExtent);
         if (stretch != 0) {
             fixedRows->PaintOffset(0, stretch);
+            rightRows->PaintOffset(0, stretch);
             scrollRows->PaintOffset(0, stretch);
         }
     }
     fixedPane->Child(bodyFixed);
     scrollPane->Child(bodyScroll);
+    if (nRight > 0) {
+        rightPane->Child(bodyRight);
+    }
     // load_more_if_need: the last row built is near the end, and the delegate
     // says there is more to come.
     if (s && TableShouldLoadMore(s, range.end)) {

@@ -150,6 +150,9 @@ static void SourceColumnBuildersKeepEveryField() {
     utassert(col.paddings.left == 1 && col.paddings.right == 2);
     utassert(col.paddings.top == 3 && col.paddings.bottom == 4);
     utassert(col.fixed && col.fixedSide == component::ColumnFixed::Left);
+    component::Column pinned =
+        component::Column::New(StrL("act"), StrL("Actions")).FixedRight();
+    utassert(pinned.fixed && pinned.fixedSide == component::ColumnFixed::Right);
     utassert(!col.resizable && !col.movable && !col.selectable);
     utassert(col.minWidth == 150 && col.maxWidth == 145);
     // The two builders clamp immediately, in the order Rust applies them.
@@ -342,6 +345,27 @@ static void AHeadDragNeverCrossesTheFixedBoundary() {
     utassert(TableDragGapAt(b, 4, 380, 2, 2) == 4);
     // Without pinned columns nothing changes.
     utassert(TableDragGapAt(b, 4, 380, 0, 0) == 4);
+}
+
+// A right-fixed column stays in the trailing region. The pointer is in it
+// at or past the first right-fixed column's left edge.
+static void AHeadDragNeverCrossesTheRightFixedBoundary() {
+    TableState s;
+    Bounds b[6];
+    SeedCols(&s, b, 6);
+    // One left-fixed column and two right-fixed ones. The right region
+    // starts at column 4, x = 400.
+    utassert(TableDragGapAt(b, 6, 560, 0, 1, 2) == -1);
+    utassert(TableDragGapAt(b, 6, 50, 4, 1, 2) == -1);
+    utassert(TableDragGapAt(b, 6, 450, 1, 1, 2) == -1);
+    utassert(TableDragGapAt(b, 6, 150, 4, 1, 2) == -1);
+    // Within the right region the gap is one of those columns.
+    utassert(TableDragGapAt(b, 6, 560, 4, 1, 2) == 6);
+    utassert(TableDragGapAt(b, 6, 420, 5, 1, 2) == 4);
+    // The scrollable region stops at the right-fixed columns: past the
+    // centre of the last one that scrolls, the gap is the boundary itself.
+    utassert(TableDragGapAt(b, 6, 350, 1, 1, 2) == 4);
+    utassert(TableDragGapAt(b, 6, 200, 2, 1, 2) == -1);
 }
 
 static void AMovedColumnLandsInTheGap() {
@@ -548,6 +572,16 @@ static void TheVisibleColumnsAreTheOnesUnderTheOffset() {
     s.fixedCols = 2;
     TableVisibleCols(&s, &first, &end);
     utassert(first == 0 && end == 4);
+
+    // A right-fixed column is left out of the run as well. Six columns,
+    // one pinned to each side, leaves four that scroll.
+    s.colCount = 6;
+    s.fixedCols = 1;
+    s.rightCols = 1;
+    s.scrollX = 0;
+    s.bodyBounds.w = 250;
+    TableVisibleCols(&s, &first, &end);
+    utassert(first == 0 && end == 4);
 }
 
 // scroll_to_col, which is what set_selected_col and set_selected_cell go
@@ -590,6 +624,30 @@ static void ScrollingToAColumnBringsItIn() {
     s.scrollX = 42;
     TableScrollToCol(&s, 5, ScrollStrategy::Top);
     utassert(s.scrollX == 42);
+
+    // Eight columns, one pinned to each side. The last is always in view,
+    // so scrolling to it keeps the offset. The one before it is the last
+    // that moves: six columns, 600 wide in a 250-wide pane, and the offset
+    // reaches 350.
+    s.colCount = 8;
+    s.colOrderSeeded = false;
+    TableSeedColOrder(&s, 8);
+    TableEnsureCols(&s, 8);
+    for (int c = 0; c < 8; c++) {
+        s.colWidth[c] = 100;
+    }
+    s.fixedCols = 1;
+    s.rightCols = 1;
+    s.bodyBounds.w = 250;
+    s.scrollX = 0;
+    TableScrollToCol(&s, 7, ScrollStrategy::Top);
+    utassert(s.scrollX == 0);
+    TableScrollToCol(&s, 6, ScrollStrategy::Top);
+    utassert(s.scrollX == 350);
+    // A left-fixed column still asks for the start of what moves.
+    s.scrollX = 80;
+    TableScrollToCol(&s, 0, ScrollStrategy::Top);
+    utassert(s.scrollX == 0);
 }
 
 // refresh / prepare_col_groups: the table drops what it worked out for
@@ -1973,6 +2031,145 @@ static void ResizingAColumnFollowsThePointer() {
     AppGlobalClear(&app);
 }
 
+// The first right-fixed column has no leading resize handle: it would
+// resize the previous column while the fixed edge stays put. The previous
+// column's own handle remains. A column that is itself right-fixed still
+// carries the handle of the right-fixed column before it.
+static void TheFirstRightFixedColumnHasNoLeadingHandle() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.win = win;
+    cx.a = a;
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    component::TableColumn cols[3] = {
+        component::TableColumn::New(StrL("a"), StrL("A")).Width(100),
+        component::TableColumn::New(StrL("b"), StrL("B")).Width(100),
+        component::TableColumn::New(StrL("c"), StrL("C"))
+            .Width(100)
+            .FixedRight(),
+    };
+    El* root = component::DataTable::New(&cx, StrL("t"), state)
+                   ->Columns(cols, 3)
+                   ->Rows(1, nullptr, nullptr)
+                   ->IntoEl();
+    utassert(FindNamed(root, "resizable-handle-1"));
+    utassert(!FindNamed(root, "resizable-handle-leading-2"));
+    utassert(FindNamed(root, "resizable-handle-2"));
+
+    cols[1] = cols[1].FixedRight();
+    El* both = component::DataTable::New(&cx, StrL("both"), state)
+                   ->Columns(cols, 3)
+                   ->Rows(1, nullptr, nullptr)
+                   ->IntoEl();
+    utassert(FindNamed(both, "resizable-handle-leading-2"));
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+// collections.rs table_pins_right_fixed_columns_while_scrolling. Eight
+// columns of 180 in a 640-wide window, one pinned to each side. The right
+// cell stays at the right edge, lines up with its header, and does not move
+// when the columns between the pins scroll. Reported ranges count only
+// those six.
+struct RightPinView {
+    Entity<TableState> table = {};
+    int ends[8] = {};
+    int nends = 0;
+
+    static void OnCols(Ctx*, void* data, int, int end) {
+        RightPinView* self = (RightPinView*)data;
+        if (self->nends < 8) {
+            self->ends[self->nends++] = end;
+        }
+    }
+    static El* Cell(Ctx* cx, void*, int, int) { return Div(cx->a); }
+    static El* Render(RightPinView* self, Ctx* cx) {
+        component::TableColumn cols[8];
+        for (int i = 0; i < 8; i++) {
+            Str name = StrDup(cx->a, fmt("Column %d", i));
+            cols[i] = component::TableColumn::New(name, name).Width(180);
+        }
+        cols[0] = cols[0].FixedLeft();
+        cols[7] = cols[7].FixedRight();
+        return component::DataTable::New(cx, StrL("t"), self->table)
+            ->Columns(cols, 8)
+            ->Rows(3, self, Cell)
+            ->OnVisibleCols(OnCols)
+            ->IntoEl();
+    }
+};
+
+static bool FindCol(const Window* win, AccessibilityRole role, int col,
+                    Bounds* out) {
+    for (int i = 0; i < win->accessibility.len; i++) {
+        const AccessibilityNode& node = win->accessibility[i];
+        if (node.info.role == role && node.info.hasColumnIndex &&
+            node.info.columnIndex == col && node.bounds.w > 0) {
+            *out = node.bounds;
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool SameBounds(Bounds a, Bounds b) {
+    return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
+}
+
+static void RightFixedColumnsStayPutWhileScrolling() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<RightPinView> view = EntityNew<RightPinView>(app);
+    RightPinView* self = view.Get(app);
+    self->table = EntityNewState<TableState>(app);
+    Window* win = TestWindowOpen(app, view, 640, 320, 1);
+    Bounds left = {};
+    Bounds right = {};
+    Bounds head = {};
+    utassert(FindCol(win, AccessibilityRole::Cell, 0, &left));
+    utassert(FindCol(win, AccessibilityRole::Cell, 7, &right));
+    utassert(FindCol(win, AccessibilityRole::ColumnHeader, 7, &head));
+    utassert(head.x == right.x);
+    utassert(right.Right() > 600.f && right.Right() <= 640.f);
+
+    TableState* table = self->table.Get(app);
+    TableScrollToCol(table, 7, ScrollStrategy::Top);
+    TestDraw(win);
+    utassert(table->scrollX == 0);
+    Bounds leftNow = {};
+    Bounds rightNow = {};
+    Bounds headNow = {};
+    utassert(FindCol(win, AccessibilityRole::Cell, 0, &leftNow));
+    utassert(FindCol(win, AccessibilityRole::Cell, 7, &rightNow));
+    utassert(FindCol(win, AccessibilityRole::ColumnHeader, 7, &headNow));
+    utassert(SameBounds(leftNow, left));
+    utassert(SameBounds(rightNow, right));
+    utassert(headNow.x == right.x);
+
+    TableScrollToCol(table, 6, ScrollStrategy::Top);
+    TestDraw(win);
+    utassert(table->scrollX > 0);
+    utassert(FindCol(win, AccessibilityRole::Cell, 0, &leftNow));
+    utassert(FindCol(win, AccessibilityRole::Cell, 7, &rightNow));
+    utassert(FindCol(win, AccessibilityRole::ColumnHeader, 7, &headNow));
+    utassert(SameBounds(leftNow, left));
+    utassert(SameBounds(rightNow, right));
+    utassert(headNow.x == right.x);
+    utassert(self->nends > 0);
+    for (int i = 0; i < self->nends; i++) {
+        utassert(self->ends[i] <= 6);
+    }
+    utassert(self->ends[self->nends - 1] == 6);
+    TestAppFree(app);
+}
+
 void TestDataTable() {
     ResizingAColumnFollowsThePointer();
     AFittedColumnHoldsItsContentOnWholeDevicePixels();
@@ -2008,6 +2205,9 @@ void TestDataTable() {
     AResizeIsClamped();
     TheGapIsAfterTheLastCentreLeftOfThePointer();
     AHeadDragNeverCrossesTheFixedBoundary();
+    AHeadDragNeverCrossesTheRightFixedBoundary();
+    TheFirstRightFixedColumnHasNoLeadingHandle();
+    RightFixedColumnsStayPutWhileScrolling();
     AMovedColumnLandsInTheGap();
     LoadMoreAsksNearTheEnd();
     TheKeyTable();

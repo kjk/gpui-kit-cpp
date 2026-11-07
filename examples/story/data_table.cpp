@@ -143,6 +143,8 @@ struct DataTableStory {
 
 // The delegate's perform_sort: the story reorders its own rows, which is the
 // whole point of the event.
+static int DtSourceCol(int col, int nExtra);
+
 static float StockKey(const Stock& s, int col) {
     switch (col) {
         case 4:
@@ -162,6 +164,10 @@ static void SortRows(DataTableStory* self, int col, ColumnSort dir) {
     if (dir == ColumnSort::Default) {
         return;
     }
+    int src = DtSourceCol(col, kExtraCounts[self->extra]);
+    if (src < 0) {
+        return;
+    }
     bool asc = dir == ColumnSort::Ascending;
     // An insertion sort: seventeen rows, and it keeps equal rows in the order
     // the table had them.
@@ -170,13 +176,13 @@ static void SortRows(DataTableStory* self, int col, ColumnSort dir) {
         int j = i - 1;
         while (j >= 0) {
             bool swap;
-            if (col == 3) {
+            if (src == 3) {
                 int c = StrCmp(Str(kStocks[self->order[j]].symbol),
                                Str(kStocks[v].symbol));
                 swap = asc ? c > 0 : c < 0;
             } else {
-                float a = StockKey(kStocks[self->order[j]], col);
-                float b = StockKey(kStocks[v], col);
+                float a = StockKey(kStocks[self->order[j]], src);
+                float b = StockKey(kStocks[v], src);
                 swap = asc ? a > b : a < b;
             }
             if (!swap) {
@@ -330,8 +336,25 @@ static component::PopupMenu* DtContextMenu(Ctx* cx, void* data, int row,
     return menu;
 }
 
-// The base columns' count, which is where the "Column N" extras start.
+// The base columns' count. Price is the right-fixed column and stays last
+// in the display; the "Column N" extras are inserted in front of it.
 static const int kBaseColumns = 45;
+static const int kPriceCol = 4;
+
+// Display column -> index in kColumns. -1 is an extra column.
+static int DtSourceCol(int col, int nExtra) {
+    const int nBefore = kBaseColumns - 1;
+    if (col < kPriceCol) {
+        return col;
+    }
+    if (col < nBefore) {
+        return col + 1;
+    }
+    if (col < nBefore + nExtra) {
+        return -1;
+    }
+    return kPriceCol;
+}
 
 // The Rust delegate fakes every field per row; a hash of the cell does the
 // same job here, and gives the same cell the same value every frame.
@@ -603,7 +626,11 @@ static El* DtCellFor(Ctx* cx, void* data, int row, int col) {
     const int nStocks = (int)(sizeof(kStocks) / sizeof(kStocks[0]));
     const Stock& s = kStocks[self->order[row % nStocks]];
     Rgba trend = s.up ? th.green : th.red;
-    switch (col) {
+    int src = DtSourceCol(col, kExtraCounts[self->extra]);
+    if (src < 0) {
+        return StoryTxt(cx, StrL("--"), 16, th.mutedFg)->LineHeight(1.f);
+    }
+    switch (src) {
         case 0:
             return StoryTxt(cx, StoryFmt(cx, "%d", row), 16, th.mutedFg)
                 ->LineHeight(1.f);
@@ -643,12 +670,7 @@ static El* DtCellFor(Ctx* cx, void* data, int row, int col) {
         default:
             break;
     }
-    if (col >= kBaseColumns) {
-        // The delegate has no field for a "Column N", so every one of them
-        // reads the same.
-        return StoryTxt(cx, StrL("--"), 16, th.mutedFg)->LineHeight(1.f);
-    }
-    DtCellVal v = DtValueFor(cx, s, row, col);
+    DtCellVal v = DtValueFor(cx, s, row, src);
     if (v.kind == DtCell::Number) {
         return StoryTxt(cx, v.text, 16, th.foreground)->LineHeight(1.f);
     }
@@ -694,7 +716,11 @@ static Str DtCellText(Ctx* cx, void* data, int row, int col) {
     DataTableStory* self = (DataTableStory*)data;
     const int nStocks = (int)(sizeof(kStocks) / sizeof(kStocks[0]));
     const Stock& s = kStocks[self->order[row % nStocks]];
-    switch (col) {
+    int src = DtSourceCol(col, kExtraCounts[self->extra]);
+    if (src < 0) {
+        return StrL("--");
+    }
+    switch (src) {
         case 0:
             return StoryFmt(cx, "%d", row);
         case 1:
@@ -712,14 +738,13 @@ static Str DtCellText(Ctx* cx, void* data, int row, int col) {
         default:
             break;
     }
-    if (col >= kBaseColumns) {
-        return StrL("--");
-    }
-    return DtValueFor(cx, s, row, col).text;
+    return DtValueFor(cx, s, row, src).text;
 }
 
-// The columns the Rust delegate declares. Fields: title, width, right,
-// sortable, selectable, resizable, fixed. The first four are pinned.
+// The columns the Rust delegate declares, in source order. Fields: title,
+// width, right, sortable, selectable, resizable, fixed. The first four are
+// pinned to the left. Price is pinned to the right at build time, after the
+// extra columns, because a right-fixed column has to stay last.
 static const component::TableColumn kColumns[] = {
     {StrL("ID"), 60, false, false, false, true, true},
     {StrL("Market"), 60, false, false, true, true, true},
@@ -780,21 +805,23 @@ static bool DtFitColumn(Ctx* cx, void* data, int col, float* out) {
         return false;
     }
     const int nBase = (int)(sizeof(kColumns) / sizeof(kColumns[0]));
-    const int nColumns = nBase + kExtraCounts[self->extra];
+    const int nExtra = kExtraCounts[self->extra];
+    const int nColumns = nBase + nExtra;
     if (col < 0 || col >= nColumns) {
         return false;
     }
+    int src = DtSourceCol(col, nExtra);
     PaintCtx* paint = &cx->win->paint;
     const float cellFont = 16.f;
     int weight = (int)FontWeight::Normal;
-    if (col == 3) {
+    if (src == 3) {
         weight = (int)FontWeight::Medium;
-    } else if (col == 4) {
+    } else if (src == 4) {
         weight = (int)FontWeight::Semibold;
     }
     float widest = 0;
     const int nStocks = (int)(sizeof(kStocks) / sizeof(kStocks[0]));
-    if (col == 0) {
+    if (src == 0) {
         int nRows = kRowCounts[self->rowCount];
         if (nRows < 1) {
             nRows = 1;
@@ -812,11 +839,12 @@ static bool DtFitColumn(Ctx* cx, void* data, int col, float* out) {
             }
         }
     }
-    Str title = col < nBase ? kColumns[col].title
-                            : StoryFmt(cx, "Column %d", col - nBase + 1);
+    int extraN = col - (kBaseColumns - 1) + 1;
+    Str title =
+        src >= 0 ? kColumns[src].title : StoryFmt(cx, "Column %d", extraN);
     float heading =
         MeasureText(paint, title, 14.f, 0, false, (int)FontWeight::Normal).w;
-    if (col < nBase && kColumns[col].sortable) {
+    if (src >= 0 && kColumns[src].sortable) {
         heading += Rems(cx, 0.75f) + 4.f;
     }
     if (heading > widest) {
@@ -936,17 +964,25 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
     const int nBase = (int)(sizeof(kColumns) / sizeof(kColumns[0]));
     // columns_count(): the delegate's own plus however many extras the
     // toolbar asked for, each of which the delegate names "Column N".
+    // Extras go before the right-fixed Price column, which has to stay last.
     const int nExtra = kExtraCounts[self->extra];
     const int nColumns = nBase + nExtra;
     auto* cols = (component::TableColumn*)Alloc(
         a, (int)sizeof(component::TableColumn) * nColumns);
+    int wrote = 0;
     for (int i = 0; i < nBase; i++) {
-        cols[i] = kColumns[i];
+        if (i == kPriceCol) {
+            continue;
+        }
+        cols[wrote++] = kColumns[i];
     }
     for (int i = 0; i < nExtra; i++) {
-        cols[nBase + i] = {StoryFmt(cx, "Column %d", i + 1), 100, false, false,
-                           true};
+        cols[wrote++] = {StoryFmt(cx, "Column %d", i + 1), 100, false, false,
+                         true};
     }
+    cols[wrote] = kColumns[kPriceCol];
+    cols[wrote].fixed = true;
+    cols[wrote].fixedSide = component::ColumnFixed::Right;
     TableState* st = self->table.Get(cx);
     if (st) {
         st->loopSelection = self->options[DtOptLoop];
@@ -971,17 +1007,19 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
     // "Column N" columns with it, so both rows still cover the table.
     const int trailing = kExtraCounts[self->extra];
     const component::TableGroupCell kGroup1[] = {
-        {StrL("Stock"), 4},          {StrL("Market Data"), 10},
+        {StrL("Stock"), 4},          {StrL("Market Data"), 9},
         {StrL("Quotes"), 8},         {StrL("Stats"), 7},
         {StrL("Extended Hours"), 8}, {StrL("Shares & Rankings"), 8 + trailing},
+        {StrL("Quote"), 1},
     };
     const component::TableGroupCell kGroup2[] = {
-        {StrL("Identity"), 4},   {StrL("Price & Change"), 3},
+        {StrL("Identity"), 4},   {StrL("Change"), 2},
         {StrL("Turnover"), 4},   {StrL("Momentum"), 3},
         {StrL("Order Book"), 4}, {StrL("Session"), 4},
         {StrL("Activity"), 3},   {StrL("Valuation"), 2},
         {StrL("Ratios"), 2},     {StrL("Pre & Post Market"), 8},
         {StrL("Shares"), 3},     {StrL("Rankings"), 5 + trailing},
+        {StrL("Last"), 1},
     };
 
     component::DataTable* table =
@@ -1000,7 +1038,7 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
         table->HeaderRowHeight(kHeaderRowH[self->headerRowH]);
     }
     if (self->options[DtOptGroupHeaders]) {
-        table->GroupHeader(kGroup1, 6)->GroupHeader(kGroup2, 12);
+        table->GroupHeader(kGroup1, 7)->GroupHeader(kGroup2, 13);
     }
     if (self->wantExport) {
         self->wantExport = false;
