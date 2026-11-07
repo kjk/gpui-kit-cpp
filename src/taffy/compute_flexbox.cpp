@@ -2355,31 +2355,18 @@ LayoutOutput ComputeFlexboxLayout(TaffyTree* tree, NodeId node,
     const Style& style = tree->GetStyle(node);
     Contain contain = style.contain;
 
-    Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
     SizeF paddingBorderSum = padding.SumAxes() + border.SumAxes();
-    SizeF boxSizingAdjustment =
-        BoxSizingAdjustment(style.boxSizing, paddingBorderSum);
-
-    SizeFOpt minSize = ResolveStyledSize(style.minSize, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment);
-    SizeFOpt maxSize = ResolveStyledSize(style.maxSize, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment);
-    SizeFOpt clampedStyleSize = SizeFOptNone();
-    if (inputs.sizingMode == SizingMode::InherentSize) {
-        clampedStyleSize =
-            MaybeClamp(ResolveStyledSize(style.size, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment),
-                       minSize, maxSize);
-    }
-
-    SizeFOpt minMaxDefiniteSize = MinMaxDefiniteSize(minSize, maxSize);
+    NodeStyledSizes styled =
+        ResolveNodeStyledSizes(style, parentSize, calc, paddingBorderSum,
+                               inputs.sizingMode == SizingMode::InherentSize);
 
     // The container's size is floored by its padding and border.
-    SizeFOpt styledBasedKnownDimensions = Or(
-        knownDimensions,
-        MaybeMax(Or(minMaxDefiniteSize, clampedStyleSize), paddingBorderSum));
+    SizeFOpt styledBasedKnownDimensions =
+        Or(knownDimensions,
+           MaybeMax(Or(styled.minMaxDefiniteSize, styled.clampedSize),
+                    paddingBorderSum));
 
     // Short-circuit when the container's size is fully determined and only
     // the size was asked for.

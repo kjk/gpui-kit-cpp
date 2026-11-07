@@ -1558,14 +1558,11 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     float xInsets[2] = {contentBoxInset.left, contentBoxInset.right};
     blockCtx->ApplyContentBoxInset(xInsets);
 
-    SizeF boxSizingAdjustment =
-        BoxSizingAdjustment(style.boxSizing, paddingBorderSize);
-    SizeFOpt size = ResolveStyledSize(style.size, parentSize, calc, aspectRatio,
-                                      boxSizingAdjustment);
-    SizeFOpt minSize = ResolveStyledSize(style.minSize, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment);
-    SizeFOpt maxSize = ResolveStyledSize(style.maxSize, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment);
+    NodeStyledSizes styled = ResolveNodeStyledSizes(style, parentSize, calc,
+                                                    paddingBorderSize, true);
+    SizeFOpt size = styled.size;
+    SizeFOpt minSize = styled.minSize;
+    SizeFOpt maxSize = styled.maxSize;
 
     // css-sizing-4: a definite size in one axis transfers through
     // `aspect-ratio` to make the other definite. Deriving it from
@@ -1896,30 +1893,16 @@ LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
                              style.alignContent
                                      .keyword != AlignContentKeyword::Normal ||
                              contain.EstablishesIndependentFormattingContext();
-    Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
     SizeF paddingBorderSize = (padding + border).SumAxes();
-    SizeF boxSizingAdjustment =
-        BoxSizingAdjustment(style.boxSizing, paddingBorderSize);
+    NodeStyledSizes styled =
+        ResolveNodeStyledSizes(style, parentSize, calc, paddingBorderSize,
+                               inputs.sizingMode == SizingMode::InherentSize);
 
-    SizeFOpt minSize = ResolveStyledSize(style.minSize, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment);
-    SizeFOpt maxSize = ResolveStyledSize(style.maxSize, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment);
-    SizeFOpt clampedStyleSize = SizeFOptNone();
-    if (inputs.sizingMode == SizingMode::InherentSize) {
-        clampedStyleSize =
-            MaybeClamp(ResolveStyledSize(style.size, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment),
-                       minSize, maxSize);
-    }
-
-    SizeFOpt minMaxDefiniteSize = MinMaxDefiniteSize(minSize, maxSize);
-
-    SizeFOpt styledBasedKnownDimensions =
-        MaybeMax(Or(Or(knownDimensions, minMaxDefiniteSize), clampedStyleSize),
-                 paddingBorderSize);
+    SizeFOpt styledBasedKnownDimensions = MaybeMax(
+        Or(Or(knownDimensions, styled.minMaxDefiniteSize), styled.clampedSize),
+        paddingBorderSize);
 
     LayoutOutput early;
     if (ComputeSizeFromStyles(inputs, styledBasedKnownDimensions, &early)) {

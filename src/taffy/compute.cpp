@@ -63,26 +63,11 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
             const Style& style = tree->GetStyle(root);
 
             if (style.IsBlock()) {
-                Optf aspectRatio = style.aspectRatio;
                 RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
                 RectF border = style.border.ResolveOrZero(parentSize.w, calc);
                 SizeF paddingBorderSize = (padding + border).SumAxes();
-                SizeF boxSizingAdjustment =
-                    BoxSizingAdjustment(style.boxSizing, paddingBorderSize);
-
-                SizeFOpt minSize =
-                    ResolveStyledSize(style.minSize, parentSize, calc,
-                                      aspectRatio, boxSizingAdjustment);
-                SizeFOpt maxSize =
-                    ResolveStyledSize(style.maxSize, parentSize, calc,
-                                      aspectRatio, boxSizingAdjustment);
-                SizeFOpt clampedStyleSize = MaybeClamp(
-                    ResolveStyledSize(style.size, parentSize, calc, aspectRatio,
-                                      boxSizingAdjustment),
-                    minSize, maxSize);
-
-                SizeFOpt minMaxDefiniteSize =
-                    MinMaxDefiniteSize(minSize, maxSize);
+                NodeStyledSizes styled = ResolveNodeStyledSizes(
+                    style, parentSize, calc, paddingBorderSize, true);
 
                 // Block nodes stretch their width to the available space when
                 // it is definite. That space already excludes the margin.
@@ -90,8 +75,8 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
                 availableSpaceBasedSize.w = rootAvailableSpace.width
                                                 .IntoOption();
 
-                SizeFOpt known = Or(knownDimensions, minMaxDefiniteSize);
-                known = Or(known, clampedStyleSize);
+                SizeFOpt known = Or(knownDimensions, styled.minMaxDefiniteSize);
+                known = Or(known, styled.clampedSize);
                 known = Or(known, availableSpaceBasedSize);
                 knownDimensions = MaybeMax(known, paddingBorderSize);
             }

@@ -4315,23 +4315,16 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
 
     // 1. Available grid space.
     // https://www.w3.org/TR/css-grid-1/#available-grid-space
-    Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
     RectF paddingBorder = padding + border;
     SizeF paddingBorderSize = paddingBorder.SumAxes();
-    SizeF boxSizingAdjustment =
-        BoxSizingAdjustment(style.boxSizing, paddingBorderSize);
-
-    SizeFOpt minSize = ResolveStyledSize(style.minSize, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment);
-    SizeFOpt maxSize = ResolveStyledSize(style.maxSize, parentSize, calc,
-                                         aspectRatio, boxSizingAdjustment);
-    SizeFOpt preferredSize = SizeFOptNone();
-    if (inputs.sizingMode == SizingMode::InherentSize) {
-        preferredSize = ResolveStyledSize(style.size, parentSize, calc,
-                                          aspectRatio, boxSizingAdjustment);
-    }
+    NodeStyledSizes styled =
+        ResolveNodeStyledSizes(style, parentSize, calc, paddingBorderSize,
+                               inputs.sizingMode == SizingMode::InherentSize);
+    SizeFOpt minSize = styled.minSize;
+    SizeFOpt maxSize = styled.maxSize;
+    SizeFOpt preferredSize = styled.size;
 
     // A node that scrolls vertically needs *horizontal* space reserved for its
     // scrollbar, hence the transposed axes.

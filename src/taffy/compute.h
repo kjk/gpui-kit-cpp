@@ -133,6 +133,44 @@ inline SizeFOpt MinMaxDefiniteSize(SizeFOpt minSize, SizeFOpt maxSize) {
     return out;
 }
 
+// A container's own size styles, resolved the way the block, flexbox and grid
+// algorithms (and the root of compute_root_layout) each open: the box-sizing
+// adjustment, min-size and max-size, the styled size (only under
+// SizingMode::InherentSize, otherwise None) and that size clamped between
+// them, and the size min and max alone decide. `paddingBorderSize` is the
+// caller's own sum of padding and border, so each keeps the Rust's order of
+// addition.
+struct NodeStyledSizes {
+    SizeFOpt size;
+    SizeFOpt minSize;
+    SizeFOpt maxSize;
+    SizeFOpt clampedSize;
+    SizeFOpt minMaxDefiniteSize;
+};
+
+inline NodeStyledSizes ResolveNodeStyledSizes(const Style& style,
+                                              SizeFOpt parentSize,
+                                              CalcResolver calc,
+                                              SizeF paddingBorderSize,
+                                              bool inherentSize) {
+    Optf aspectRatio = style.aspectRatio;
+    SizeF boxSizingAdjustment =
+        BoxSizingAdjustment(style.boxSizing, paddingBorderSize);
+    NodeStyledSizes out;
+    out.minSize = ResolveStyledSize(style.minSize, parentSize, calc,
+                                    aspectRatio, boxSizingAdjustment);
+    out.maxSize = ResolveStyledSize(style.maxSize, parentSize, calc,
+                                    aspectRatio, boxSizingAdjustment);
+    out.size = SizeFOptNone();
+    if (inherentSize) {
+        out.size = ResolveStyledSize(style.size, parentSize, calc, aspectRatio,
+                                     boxSizingAdjustment);
+    }
+    out.clampedSize = MaybeClamp(out.size, out.minSize, out.maxSize);
+    out.minMaxDefiniteSize = MinMaxDefiniteSize(out.minSize, out.maxSize);
+    return out;
+}
+
 // The early return a container takes when only its size was asked for and
 // its styles already fix it: both axes known, or the width when only the
 // width was asked for. True, with `*out` set, when it applies.
