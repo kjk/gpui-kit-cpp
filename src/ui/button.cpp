@@ -961,6 +961,10 @@ Toggle* Toggle::Checked(bool value) {
     checked = value;
     return this;
 }
+Toggle* Toggle::W(float value) {
+    width = value;
+    return this;
+}
 Toggle* Toggle::OnClick(Listener value) {
     onClick = value;
     return this;
@@ -1047,6 +1051,12 @@ El* Toggle::IntoEl() {
     root->MinW(h)->H(h)->PadX(pad)->Corners(
         cornerTL ? th.radius : 0.f, cornerTR ? th.radius : 0.f,
         cornerBR ? th.radius : 0.f, cornerBL ? th.radius : 0.f);
+    if (width != kAuto) root->W(width);
+    // Always register hover. GPUI refreshes a cached hover style only while
+    // one is present, so a checked toggle that skipped it kept the accent
+    // colour after another item unchecked it while the pointer rested
+    // elsewhere. The style is a no-op unless the item can hover. This tree
+    // reads hover from the pointer each frame, and the no-op is that gate.
     if (!disabled && !checked) {
         root->HoverBg(th.tokens.accent)->HoverFg(th.accentFg);
     }
@@ -1095,6 +1105,10 @@ ToggleGroup* ToggleGroup::Segmented(bool value) {
     segmented = value;
     return this;
 }
+ToggleGroup* ToggleGroup::Single(bool value) {
+    single = value;
+    return this;
+}
 ToggleGroup* ToggleGroup::WithSize(UiSize value) {
     size = value;
     return this;
@@ -1117,13 +1131,22 @@ ToggleGroup* ToggleGroup::Disabled(bool value) {
 struct ToggleGroupState {
     Vec<bool> checked;
     Listener onClick = {};
+    bool single = false;
 
     ~ToggleGroupState() { VecReset(checked); }
 
     static void OnChildClick(ToggleGroupState* self, Ctx* cx, const ClickEvent*,
                              int64_t ix) {
         if (ix < 0 || ix >= len(self->checked)) return;
-        self->checked[(int)ix] = !self->checked[(int)ix];
+        // A single group clears every other item. Clicking its checked item
+        // still flips that one off, using the value from before the clear.
+        bool was = self->checked[(int)ix];
+        if (self->single) {
+            for (int i = 0; i < len(self->checked); i++) {
+                self->checked[i] = false;
+            }
+        }
+        self->checked[(int)ix] = !was;
         ToggleGroupEvent event{self->checked.els, len(self->checked)};
         ListenerCall(cx->app, cx->win, self->onClick, &event);
     }
@@ -1141,6 +1164,7 @@ El* ToggleGroup::IntoEl() {
             for (Toggle* item : items)
                 VecAppend(stored->checked, item->checked);
             stored->onClick = onClick;
+            stored->single = single;
         }
     }
 

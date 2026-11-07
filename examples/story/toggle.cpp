@@ -3,6 +3,9 @@
 struct ToggleStory {
     int toggleSel = 1;
     bool toggles[10] = {};
+    // Single-selection groups. -1 is no selection. Week starts checked.
+    int period = 1;
+    int density = -1;
     StoryToolbarState toolbar;
 
     static El* Render(ToggleStory* self, Ctx* cx);
@@ -42,6 +45,25 @@ static void OnOutlineGroup(ToggleStory* self, Ctx* cx,
 static void OnSegmentedGroup(ToggleStory* self, Ctx* cx,
                              const component::ToggleGroupEvent* event) {
     CopyToggleGroup(self, cx, event, 7);
+}
+
+static int FirstChecked(const component::ToggleGroupEvent* event) {
+    for (int i = 0; event && i < event->count; i++) {
+        if (event->checked[i]) return i;
+    }
+    return -1;
+}
+
+static void OnPeriod(ToggleStory* self, Ctx* cx,
+                     const component::ToggleGroupEvent* event) {
+    self->period = FirstChecked(event);
+    Notify(cx);
+}
+
+static void OnDensity(ToggleStory* self, Ctx* cx,
+                      const component::ToggleGroupEvent* event) {
+    self->density = FirstChecked(event);
+    Notify(cx);
 }
 
 El* ToggleStory::Render(ToggleStory* self, Ctx* cx) {
@@ -128,6 +150,44 @@ El* ToggleStory::Render(ToggleStory* self, Ctx* cx) {
                          ->Checked(self->toggles[9]));
     StorySectionAdd(grp, segmented->IntoEl());
     page->Child(grp);
+
+    El* single = StorySection(
+        cx, "Single selection",
+        "One item at a time. Selecting the chosen item again clears it.");
+    StorySectionBody(single)->FlexCol()->W(512)->ItemsCenter()->Gap(12);
+    component::ToggleGroup* period =
+        component::ToggleGroup::New(cx, StrL("period"))
+            ->Single()
+            ->Segmented()
+            ->Outline()
+            ->WithSize(size)
+            ->OnClick(Listen(cx, &OnPeriod));
+    period->Child(component::Toggle::New(cx, StrL("day"))
+                      ->Label(StrL("Day"))
+                      ->Checked(self->period == 0));
+    period->Child(component::Toggle::New(cx, StrL("week"))
+                      ->Label(StrL("Week"))
+                      ->Checked(self->period == 1));
+    period->Child(component::Toggle::New(cx, StrL("month"))
+                      ->Label(StrL("Month"))
+                      ->Checked(self->period == 2));
+    StorySectionAdd(single, period->IntoEl());
+    component::ToggleGroup* density =
+        component::ToggleGroup::New(cx, StrL("density"))
+            ->Single()
+            ->WithSize(size)
+            ->OnClick(Listen(cx, &OnDensity));
+    density->Child(component::Toggle::New(cx, StrL("compact"))
+                       ->Label(StrL("Compact"))
+                       ->Checked(self->density == 0));
+    density->Child(component::Toggle::New(cx, StrL("comfortable"))
+                       ->Label(StrL("Comfortable"))
+                       ->Checked(self->density == 1));
+    density->Child(component::Toggle::New(cx, StrL("spacious"))
+                       ->Label(StrL("Spacious"))
+                       ->Checked(self->density == 2));
+    StorySectionAdd(single, density->IntoEl());
+    page->Child(single);
     return page;
 }
 

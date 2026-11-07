@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1c902056e22090a9ca0dba66cca3281f035235c5` (2026-11-03,
-grid_layout: Add a grid whose items the user drags and resizes (#3770)).
-Items sit on a column grid, drag to move, and resize from the corner.
-The layout commits when the gesture ends.
+Processed through `5443158119d6203203e8730dc835ac1b5c4f3063` (2026-11-03,
+button: Add selected_accent for an accent-filled selection (#3775)).
+A toggle group can keep at most one item checked. Clicking the checked
+item clears it. The story shows that as Day/Week/Month and a density
+choice.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

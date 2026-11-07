@@ -307,6 +307,8 @@ struct Toggle {
     IconName icon = IconName::None;
     ArenaVec<El*> children;
     bool checked = false;
+    // Styled::w. kAuto leaves the size ladder's min width.
+    float width = kAuto;
     UiSize size = UiSize::Medium;
     ToggleVariant variant = ToggleVariant::Ghost;
     bool disabled = false;
@@ -321,6 +323,7 @@ struct Toggle {
     Toggle* Icon(IconName value);
     Toggle* Child(El* value);
     Toggle* Checked(bool value);
+    Toggle* W(float value);
     Toggle* OnClick(Listener value);
     Toggle* BorderCorners(bool tl, bool tr, bool br, bool bl);
     Toggle* BorderEdges(bool top, bool right, bool bottom, bool left);
@@ -346,6 +349,10 @@ struct ToggleGroup {
     ToggleVariant variant = ToggleVariant::Ghost;
     bool disabled = false;
     bool segmented = false;
+    // At most one item checked. A click clears the others, and a click on
+    // the checked item clears it too. The caller keeps that invariant; the
+    // group does not reconcile a state in which several are already checked.
+    bool single = false;
     Listener onClick = {};
 
     static ToggleGroup* New(Ctx* cx, Str id);
@@ -353,6 +360,7 @@ struct ToggleGroup {
     ToggleGroup* Children(Toggle** values, int count);
     ToggleGroup* OnClick(Listener value);
     ToggleGroup* Segmented(bool value = true);
+    ToggleGroup* Single(bool value = true);
     ToggleGroup* WithSize(UiSize value);
     ToggleGroup* WithVariant(ToggleVariant value);
     ToggleGroup* Ghost();

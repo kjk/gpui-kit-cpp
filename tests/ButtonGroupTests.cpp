@@ -881,6 +881,209 @@ static void CallerOwnedFocusHandleDrivesFocusAndKeyboardActivation() {
     TestAppFree(app);
 }
 
+// toggle.rs test_toggle_group_builder.
+static void ToggleGroupBuilderNop(ToggleGroupHarness*, Ctx*,
+                                  const component::ToggleGroupEvent*) {}
+
+static void TestToggleGroupBuilder() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Entity<ToggleGroupHarness> harness = EntityNew<ToggleGroupHarness>(&app);
+    Ctx cx{&app, win, arena, harness.id};
+    component::ToggleGroup* group =
+        component::ToggleGroup::New(&cx, StrL("complex-group"))
+            ->Child(component::Toggle::New(&cx, StrL("toggle1"))
+                        ->Label(StrL("Option 1")))
+            ->Child(component::Toggle::New(&cx, StrL("toggle2"))
+                        ->Label(StrL("Option 2"))
+                        ->Checked(true))
+            ->Child(component::Toggle::New(&cx, StrL("toggle3"))
+                        ->Label(StrL("Option 3")))
+            ->Outline()
+            ->WithSize(UiSize::Large)
+            ->Segmented()
+            ->Single()
+            ->Disabled(false)
+            ->OnClick(Listen(&cx, &ToggleGroupBuilderNop));
+    utassert(group->items.len == 3);
+    utassert(group->variant == component::ToggleVariant::Outline);
+    utassert(group->size == UiSize::Large);
+    utassert(group->segmented);
+    utassert(group->single);
+    utassert(!group->disabled);
+    utassert(group->onClick.IsValid());
+
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+// toggle.rs: three 60 px items, no gap, the first checked. A click at x=90
+// is the second item; x=30 is the first.
+struct ToggleSelectionHarness {
+    bool single = false;
+    int calls = 0;
+    int count = 0;
+    bool checked[8] = {};
+
+    static void OnChange(ToggleSelectionHarness* self, Ctx*,
+                         const component::ToggleGroupEvent* event) {
+        self->calls++;
+        self->count = std::min(event->count, 8);
+        for (int i = 0; i < self->count; i++) {
+            self->checked[i] = event->checked[i];
+        }
+    }
+
+    static El* Render(ToggleSelectionHarness* self, Ctx* cx) {
+        component::ToggleGroup* group =
+            component::ToggleGroup::New(cx, StrL("selection"))->Segmented();
+        if (self->single) group->Single();
+        group
+            ->Child(component::Toggle::New(cx, StrL("one"))
+                        ->Label(StrL("One"))
+                        ->W(60)
+                        ->Checked(true))
+            ->Child(component::Toggle::New(cx, StrL("two"))
+                        ->Label(StrL("Two"))
+                        ->W(60))
+            ->Child(component::Toggle::New(cx, StrL("three"))
+                        ->Label(StrL("Three"))
+                        ->W(60))
+            ->OnClick(Listen(cx, &ToggleSelectionHarness::OnChange));
+        return group->IntoEl();
+    }
+};
+
+static ToggleSelectionHarness* OpenToggleSelection(App* app, bool single,
+                                                   Window** out) {
+    Entity<ToggleSelectionHarness> harness =
+        EntityNew<ToggleSelectionHarness>(app);
+    harness.Get(app)->single = single;
+    *out = TestWindowOpen(app, harness, 400, 200, 1);
+    return harness.Get(app);
+}
+
+static void ExpectToggleChecks(const ToggleSelectionHarness* state, bool a,
+                               bool b, bool c) {
+    utassert(state && state->calls == 1 && state->count == 3);
+    utassert(state && state->checked[0] == a && state->checked[1] == b &&
+             state->checked[2] == c);
+}
+
+static void SingleToggleGroupMovesTheCheckToTheClickedItem() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Window* win = nullptr;
+    ToggleSelectionHarness* state = OpenToggleSelection(app, true, &win);
+    TestSimulateClick(win, Point{90.f, 16.f});
+    ExpectToggleChecks(state, false, true, false);
+    TestAppFree(app);
+}
+
+static void SingleToggleGroupClearsTheCheckedItemWhenItIsClicked() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Window* win = nullptr;
+    ToggleSelectionHarness* state = OpenToggleSelection(app, true, &win);
+    TestSimulateClick(win, Point{30.f, 16.f});
+    ExpectToggleChecks(state, false, false, false);
+    TestAppFree(app);
+}
+
+static void MultiToggleGroupKeepsTheOtherCheckedItems() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Window* win = nullptr;
+    ToggleSelectionHarness* state = OpenToggleSelection(app, false, &win);
+    TestSimulateClick(win, Point{90.f, 16.f});
+    ExpectToggleChecks(state, true, true, false);
+    TestAppFree(app);
+}
+
+// toggle.rs an_item_unchecked_from_elsewhere_drops_its_hover_color. The
+// probe records the text colour the first toggle hands its content.
+struct ToggleColorHarness {
+    int checked = -1;
+    Rgba color = {};
+    bool saw = false;
+
+    static void OnPrepare(PaintCtx*, El*, Rgba inherited, void* user) {
+        ToggleColorHarness* self = (ToggleColorHarness*)user;
+        self->color = inherited;
+        self->saw = true;
+    }
+
+    static void OnChange(ToggleColorHarness* self, Ctx* cx,
+                         const component::ToggleGroupEvent* event) {
+        self->checked = -1;
+        for (int i = 0; event && i < event->count; i++) {
+            if (event->checked[i]) {
+                self->checked = i;
+                break;
+            }
+        }
+        Notify(cx);
+    }
+
+    static El* Render(ToggleColorHarness* self, Ctx* cx) {
+        El* probe = Div(cx->a)->W(40)->H(16);
+        ElLifecycle* life = ArenaNew<ElLifecycle>(cx->a);
+        life->prepareStyle = &ToggleColorHarness::OnPrepare;
+        life->user = self;
+        probe->lifecycle = life;
+        return component::ToggleGroup::New(cx, StrL("selection"))
+            ->Segmented()
+            ->Single()
+            ->Child(component::Toggle::New(cx, StrL("one"))
+                        ->W(60)
+                        ->Checked(self->checked == 0)
+                        ->Child(probe))
+            ->Child(component::Toggle::New(cx, StrL("two"))
+                        ->Label(StrL("Two"))
+                        ->W(60)
+                        ->Checked(self->checked == 1))
+            ->OnClick(Listen(cx, &ToggleColorHarness::OnChange))
+            ->IntoEl();
+    }
+};
+
+static void AnItemUncheckedFromElsewhereDropsItsHoverColor() {
+    App* app = TestAppNew();
+    component::Init(app);
+    ThemeUpdateScope scope;
+    Theme* theme = ThemeBeginUpdate(app, false, &scope);
+    theme->foreground = Rgb(0, 0, 0);
+    theme->accentFg = Rgb(255, 255, 255);
+    Rgba foreground = theme->foreground;
+    Rgba accentFg = theme->accentFg;
+
+    Entity<ToggleColorHarness> harness = EntityNew<ToggleColorHarness>(app);
+    Window* win = TestWindowOpen(app, harness, 400, 200, 1);
+    ToggleColorHarness* state = harness.Get(app);
+    TestDraw(win);
+    utassert(state->saw && RgbaEq(state->color, foreground));
+
+    TestSimulateMouseMove(win, Point{30.f, 16.f});
+    TestDraw(win);
+    utassert(state->saw && RgbaEq(state->color, accentFg));
+    TestSimulateClick(win, Point{30.f, 16.f});
+    TestDraw(win);
+    utassert(state->checked == 0 && RgbaEq(state->color, accentFg));
+    TestSimulateMouseMove(win, Point{90.f, 16.f});
+    TestDraw(win);
+    utassert(state->checked == 0 && RgbaEq(state->color, accentFg));
+    TestSimulateClick(win, Point{90.f, 16.f});
+    TestDraw(win);
+    utassert(state->checked == 1 && RgbaEq(state->color, foreground));
+    TestAppFree(app);
+}
+
 void TestButtonGroup() {
     TestSuite("button_group");
     BaseButtonCentersOrdinaryChildGeometry();
@@ -889,6 +1092,11 @@ void TestButtonGroup() {
     SourceButtonVariantsRoundingAndIconsRemainConcrete();
     GhostButtonsUseAccentHoverAndButtonActivePress();
     SourceToggleAndSegmentedGroupKeepStateAndGeometry();
+    TestToggleGroupBuilder();
+    SingleToggleGroupMovesTheCheckToTheClickedItem();
+    SingleToggleGroupClearsTheCheckedItemWhenItIsClicked();
+    MultiToggleGroupKeepsTheOtherCheckedItems();
+    AnItemUncheckedFromElsewhereDropsItsHoverColor();
     ButtonGroupsAssignSourceCornersWithoutAWrapperClip();
     ASplitButtonBordersOnlyTheVariantsRustBorders();
     PerSideBordersFollowRoundedCorners();
