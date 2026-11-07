@@ -412,13 +412,20 @@ void PathEmitClose(Path* p) {
     CGPathCloseSubpath(p->path);
 }
 
+// The context a path draws into, or null when there is none or the path is
+// empty.
+static CGContextRef PathCg(PaintCtx* ctx, Path* p) {
+    CGContextRef cg = Cg(ctx);
+    return cg && p && !CGPathIsEmpty(p->path) ? cg : nullptr;
+}
+
 void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
     if (scene::Recording()) {
         scene::RecPathFill(ctx, p, c);
         return;
     }
-    CGContextRef cg = Cg(ctx);
-    if (!cg || !p || CGPathIsEmpty(p->path)) {
+    CGContextRef cg = PathCg(ctx, p);
+    if (!cg) {
         return;
     }
     CGContextSaveGState(cg);
@@ -452,19 +459,25 @@ static CGGradientRef TwoStopGradient(Rgba from, Rgba to) {
     return grad;
 }
 
+// The two stops faded for the current layer (written back: a caller that
+// cannot get a gradient falls back to the faded `from`), as a gradient.
+static CGGradientRef FadedGradient(PaintCtx* ctx, Rgba* from, Rgba* to) {
+    *from = PaintFade(ctx, *from);
+    *to = PaintFade(ctx, *to);
+    return TwoStopGradient(*from, *to);
+}
+
 void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
                       float y1, Rgba from, Rgba to, float dx, float dy) {
     if (scene::Recording()) {
         scene::RecPathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
         return;
     }
-    CGContextRef cg = Cg(ctx);
-    if (!cg || !p || CGPathIsEmpty(p->path)) {
+    CGContextRef cg = PathCg(ctx, p);
+    if (!cg) {
         return;
     }
-    from = PaintFade(ctx, from);
-    to = PaintFade(ctx, to);
-    CGGradientRef grad = TwoStopGradient(from, to);
+    CGGradientRef grad = FadedGradient(ctx, &from, &to);
     if (!grad) {
         PathFill(ctx, p, from, dx, dy);
         return;
@@ -490,8 +503,8 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
         scene::RecPathStroke(ctx, p, stroke, c, roundCaps);
         return;
     }
-    CGContextRef cg = Cg(ctx);
-    if (!cg || !p || CGPathIsEmpty(p->path)) {
+    CGContextRef cg = PathCg(ctx, p);
+    if (!cg) {
         return;
     }
     CGContextSaveGState(cg);
@@ -515,13 +528,11 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
                                      roundCaps);
         return;
     }
-    CGContextRef cg = Cg(ctx);
-    if (!cg || !p || CGPathIsEmpty(p->path)) {
+    CGContextRef cg = PathCg(ctx, p);
+    if (!cg) {
         return;
     }
-    from = PaintFade(ctx, from);
-    to = PaintFade(ctx, to);
-    CGGradientRef grad = TwoStopGradient(from, to);
+    CGGradientRef grad = FadedGradient(ctx, &from, &to);
     if (!grad) {
         PathStroke(ctx, p, stroke, from, roundCaps, dx, dy);
         return;

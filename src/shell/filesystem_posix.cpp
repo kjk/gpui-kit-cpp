@@ -75,6 +75,21 @@ static int OpenDirectoryAt(int parent, const char* name) {
                   O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 }
 
+// One step of a walk: replace the directory `*current` with its child
+// `name`. False, with `error` set and `*current` still open, when the child
+// cannot be opened as a directory.
+static bool DescendInto(int* current, const char* name, Str rootName,
+                        Str relative, Str* error) {
+    int next = OpenDirectoryAt(*current, name);
+    if (next < 0) {
+        SyscallError(error, "open", rootName, relative);
+        return false;
+    }
+    close(*current);
+    *current = next;
+    return true;
+}
+
 static bool OpenParent(int root, Str relative, int* parent, TempStr* leaf,
                        Str rootName, Str* error) {
     *parent = -1;
@@ -108,14 +123,10 @@ static bool OpenParent(int root, Str relative, int* parent, TempStr* leaf,
             *leaf = StrDupTemp(Str(at));
             break;
         }
-        int next = OpenDirectoryAt(current, at);
-        if (next < 0) {
-            SyscallError(error, "open", rootName, relative);
+        if (!DescendInto(&current, at, rootName, relative, error)) {
             ok = false;
             break;
         }
-        close(current);
-        current = next;
         at = slash + 1;
     }
     if (!ok) {
@@ -303,14 +314,10 @@ static bool MakeDirectoryRecursive(int root, Str rootName, Str relative,
             ok = false;
             break;
         }
-        int next = OpenDirectoryAt(current, at);
-        if (next < 0) {
-            SyscallError(error, "open", rootName, relative);
+        if (!DescendInto(&current, at, rootName, relative, error)) {
             ok = false;
             break;
         }
-        close(current);
-        current = next;
         if (!slash) break;
         at = slash + 1;
     }

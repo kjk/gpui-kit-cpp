@@ -484,19 +484,26 @@ static bool Replay(cairo_t* cr, Path* p) {
     return true;
 }
 
+// Every path draw starts here: save the state, move the retained geometry to
+// (dx, dy) and build it in `cr`. False, with the state restored, when there
+// is nothing to draw; otherwise the caller draws and restores.
+static bool BeginPathDraw(cairo_t* cr, Path* p, float dx, float dy) {
+    cairo_save(cr);
+    cairo_translate(cr, dx, dy);
+    if (!Replay(cr, p)) {
+        cairo_restore(cr);
+        return false;
+    }
+    return true;
+}
+
 void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
     if (scene::Recording()) {
         scene::RecPathFill(ctx, p, c);
         return;
     }
     cairo_t* cr = Cr(ctx);
-    if (!cr) {
-        return;
-    }
-    cairo_save(cr);
-    cairo_translate(cr, dx, dy);
-    if (!Replay(cr, p)) {
-        cairo_restore(cr);
+    if (!cr || !BeginPathDraw(cr, p, dx, dy)) {
         return;
     }
     SetColor(ctx, cr, c);
@@ -540,13 +547,7 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
         return;
     }
     cairo_t* cr = Cr(ctx);
-    if (!cr) {
-        return;
-    }
-    cairo_save(cr);
-    cairo_translate(cr, dx, dy);
-    if (!Replay(cr, p)) {
-        cairo_restore(cr);
+    if (!cr || !BeginPathDraw(cr, p, dx, dy)) {
         return;
     }
     cairo_pattern_t* pat = cairo_pattern_create_linear(x0, y0, x1, y1);
@@ -570,13 +571,7 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
         return;
     }
     cairo_t* cr = Cr(ctx);
-    if (!cr) {
-        return;
-    }
-    cairo_save(cr);
-    cairo_translate(cr, dx, dy);
-    if (!Replay(cr, p)) {
-        cairo_restore(cr);
+    if (!cr || !BeginPathDraw(cr, p, dx, dy)) {
         return;
     }
     SetColor(ctx, cr, c);
@@ -601,11 +596,8 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
         PathStroke(ctx, p, stroke, from, roundCaps, dx, dy);
         return;
     }
-    cairo_save(cr);
-    cairo_translate(cr, dx, dy);
-    if (!Replay(cr, p)) {
+    if (!BeginPathDraw(cr, p, dx, dy)) {
         cairo_pattern_destroy(pat);
-        cairo_restore(cr);
         return;
     }
     // PathFillGradient's pattern as the source of PathStroke's stroke.

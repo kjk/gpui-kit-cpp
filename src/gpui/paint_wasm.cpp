@@ -706,9 +706,11 @@ EM_JS(int, GpJsImageFrameCount, (int id), {
     return e && e.animated ? 2 : (e ? 1 : 0);
 });
 
+// Clips to the path GpJsRoundPath just built: a canvas path is not part of
+// the state save() keeps, so it survives into this call.
 EM_JS(void, GpJsImageDraw,
-      (int id, float x, float y, float w, float h, float imageX, float imageY,
-       float imageW, float imageH, float alpha, float r, int grayscale), {
+      (int id, float imageX, float imageY, float imageW, float imageH,
+       float alpha, int grayscale), {
     const G = globalThis.__gpui;
     const c = G.cur, e = G.images[id];
     if (!c || !e || e.w <= 0 || e.h <= 0) {
@@ -719,20 +721,7 @@ EM_JS(void, GpJsImageDraw,
     if (grayscale) {
         c.filter = "grayscale(1)";
     }
-    if (r > 0) {
-        c.beginPath();
-        c.moveTo(x + r, y);
-        c.arcTo(x + w, y, x + w, y + h, r);
-        c.arcTo(x + w, y + h, x, y + h, r);
-        c.arcTo(x, y + h, x, y, r);
-        c.arcTo(x, y, x + w, y, r);
-        c.closePath();
-        c.clip();
-    } else {
-        c.beginPath();
-        c.rect(x, y, w, h);
-        c.clip();
-    }
+    c.clip();
     if (!e.img) {
         c.restore();
         return;
@@ -1506,11 +1495,9 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
         return;
     }
     float a = ctx->opacity < 0 ? 0 : (ctx->opacity > 1 ? 1 : ctx->opacity);
-    float half = (bounds.w < bounds.h ? bounds.w : bounds.h) * 0.5f;
-    float r = radius > half ? half : (radius > 0 ? radius : 0.f);
-    GpJsImageDraw(img->js, bounds.x, bounds.y, bounds.w, bounds.h,
-                  imageBounds.x, imageBounds.y, imageBounds.w, imageBounds.h, a,
-                  r, grayscale ? 1 : 0);
+    GpJsRoundPath(bounds.x, bounds.y, bounds.w, bounds.h, radius);
+    GpJsImageDraw(img->js, imageBounds.x, imageBounds.y, imageBounds.w,
+                  imageBounds.h, a, grayscale ? 1 : 0);
 }
 
 // ─── shaped text ──────────────────────────────────────────────────────────

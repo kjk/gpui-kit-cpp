@@ -450,6 +450,18 @@ struct D12Target {
 
 static D12Gpu gD12;
 static uint64_t gDeviceGeneration = 1;
+
+// A window's target, D3D11's or D3D12's, sized for `hwnd` at this device
+// generation and sample count.
+template <typename Target>
+static void WindowTargetInit(Target* t, HWND hwnd, int pxW, int pxH) {
+    t->hwnd = hwnd;
+    t->pxW = pxW;
+    t->pxH = pxH;
+    t->samples = PaintGpuSamples();
+    t->generation = gDeviceGeneration;
+}
+
 static int gPresentedFrames = 0;
 
 // What is being accumulated right now. Painter order is preserved by
@@ -1995,11 +2007,7 @@ static bool D12PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
     }
     if (!t) {
         t = new D12Target();
-        t->hwnd = hwnd;
-        t->pxW = pxW;
-        t->pxH = pxH;
-        t->samples = PaintGpuSamples();
-        t->generation = gDeviceGeneration;
+        WindowTargetInit(t, hwnd, pxW, pxH);
         DXGI_SWAP_CHAIN_DESC1 desc = {};
         PaintFlipChainDesc(&desc, pxW, pxH, kD12FrameCount);
         IDXGISwapChain1* swap1 = nullptr;
@@ -2172,11 +2180,7 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
     }
     if (!t) {
         t = new GpuTarget();
-        t->hwnd = hwnd;
-        t->pxW = pxW;
-        t->pxH = pxH;
-        t->samples = PaintGpuSamples();
-        t->generation = gDeviceGeneration;
+        WindowTargetInit(t, hwnd, pxW, pxH);
         // The same chain the D2D path presents through — three buffers,
         // flip-sequential — so the two are compared on the same terms and a
         // screenshot still comes off the redirection surface.
@@ -2533,23 +2537,8 @@ void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
         StrokeSegment(ctx, x1, y1, x2, y2, stroke, c);
         return;
     }
-    float dx = x2 - x1;
-    float dy = y2 - y1;
-    float len = sqrtf(dx * dx + dy * dy);
-    if (len < 1e-6f) {
-        return;
-    }
-    dx /= len;
-    dy /= len;
-    for (float at = 0; at < len;) {
-        float end = at + on;
-        if (end > len) {
-            end = len;
-        }
-        StrokeSegment(ctx, x1 + dx * at, y1 + dy * at, x1 + dx * end,
-                      y1 + dy * end, stroke, c);
-        at = end + off;
-    }
+    float phase = 0;
+    DashFeed(ctx, x1, y1, x2, y2, stroke, c, on, off, &phase);
 }
 
 void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,

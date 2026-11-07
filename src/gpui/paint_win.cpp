@@ -977,6 +977,14 @@ void CanvasPopClip(PaintCtx* ctx) {
     }
 }
 
+// Device pixels per DIP on each axis of the target `dc` draws into.
+static void DcPixelScale(ID2D1DeviceContext* dc, float* sx, float* sy) {
+    float dpiX = 96.f, dpiY = 96.f;
+    dc->GetDpi(&dpiX, &dpiY);
+    *sx = dpiX / 96.f;
+    *sy = dpiY / 96.f;
+}
+
 bool CanvasScrollRect(PaintCtx* ctx, float x, float y, float w, float h,
                       float dx, float dy) {
     if (PaintGpuOn() || !ctx || !ctx->rt || !ctx->rt->dc || w < 1.f ||
@@ -987,10 +995,8 @@ bool CanvasScrollRect(PaintCtx* ctx, float x, float y, float w, float h,
         return false;
     }
     ID2D1DeviceContext* dc = ctx->rt->dc;
-    float dpiX = 96.f, dpiY = 96.f;
-    dc->GetDpi(&dpiX, &dpiY);
-    float sx = dpiX / 96.f;
-    float sy = dpiY / 96.f;
+    float sx = 1.f, sy = 1.f;
+    DcPixelScale(dc, &sx, &sy);
     if (sx <= 0.f || sy <= 0.f) {
         return false;
     }
@@ -1091,10 +1097,8 @@ bool CanvasReadPixels(PaintCtx* ctx, float x, float y, float w, float h,
         return false;
     }
     ID2D1DeviceContext* dc = ctx->rt->dc;
-    float dpiX = 96.f, dpiY = 96.f;
-    dc->GetDpi(&dpiX, &dpiY);
-    float sx = dpiX / 96.f;
-    float sy = dpiY / 96.f;
+    float sx = 1.f, sy = 1.f;
+    DcPixelScale(dc, &sx, &sy);
     int x0 = (int)lroundf(x * sx);
     int y0 = (int)lroundf(y * sy);
     int x1 = (int)lroundf((x + w) * sx);
@@ -1110,7 +1114,7 @@ bool CanvasReadPixels(PaintCtx* ctx, float x, float y, float w, float h,
     D2D1_BITMAP_PROPERTIES1 props = D2D1::BitmapProperties1(
         D2D1_BITMAP_OPTIONS_CPU_READ | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
         D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE),
-        dpiX, dpiY);
+        sx * 96.f, sy * 96.f);
     ID2D1Bitmap1* bmp = nullptr;
     HRESULT hr = dc->CreateBitmap(D2D1::SizeU((UINT)pw, (UINT)ph), nullptr, 0,
                                   props, &bmp);
