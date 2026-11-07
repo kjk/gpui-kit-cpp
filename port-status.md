@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0a81b348c440ce66c80f493836cfd47c38ea3755` (2026-11-03,
-list: Draw accent-filled rows in accent_foreground (#3774)).
-A searchable-list cursor row, its hover, and a list item whose active
-highlight is off paint accent_foreground on the accent fill. The
-check mark inherits that color. The default theme is unchanged
-because its accent foreground matches the page foreground.
+Processed through `d86516d1faa5d2307794bdf7b4fad3a7fffeebb8` (2026-11-03,
+component: Redraw fully in GPUI Fast lib tests (#3768)).
+GPUI Fast skips a second draw when nothing was invalidated. Frames
+here are built again each time, so the test helper and the CI job
+that calls it do not apply.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

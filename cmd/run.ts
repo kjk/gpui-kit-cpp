@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0a81b348c440ce66c80f493836cfd47c38ea3755",
+  sha: "d86516d1faa5d2307794bdf7b4fad3a7fffeebb8",
   date: "2026-11-03",
-  subject: "list: Draw accent-filled rows in accent_foreground (#3774)",
+  subject: "component: Redraw fully in GPUI Fast lib tests (#3768)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
