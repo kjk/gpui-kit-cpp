@@ -55,14 +55,6 @@ static bool RecordOutline(PayloadBuild* build, const ComponentArgument*, int) {
     return true;
 }
 
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    DropdownOp* op = build->New<DropdownOp>();
-    op->kind = DropdownOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
-    return true;
-}
-
 static bool RecordVariant(PayloadBuild* build, const ComponentArgument* args,
                           int) {
     Str value = args[0].string;
@@ -219,7 +211,8 @@ static constexpr MethodDescriptor kMethods[] = {
     {"on_click", kOnClickArguments,
      "Invokes the callback when the labeled action half is activated.",
      &RecordCommonBehavior},
-    {"size", kSizeArgs, "Sets the size of both halves.", &RecordSize},
+    {"size", kSizeArgs, "Sets the size of both halves.",
+     &RecordSizeOp<DropdownOp, DropdownOp::Size>},
     {"variant", kVariantArgs, "Sets the semantic variant of both halves.",
      &RecordVariant},
     {"menu_anchor", kAnchorArgs, "Sets the popup menu anchor.", &RecordAnchor},

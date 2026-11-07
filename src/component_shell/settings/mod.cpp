@@ -77,46 +77,15 @@ bool Positive(double value, const char* label, float* out, Str* error) {
     return false;
 }
 
-// A lazy slot the native hierarchy builds when it renders: the frame's
-// description and the slot in it. SettingField::render / title_suffix's
-// closure over `factory.build(window, cx)`.
-struct LazySlot {
-    ShellRuntime* runtime = nullptr;
-    const shell::SpecArena* specs = nullptr;
-    ShellError* error = nullptr;
-    shell::ComponentElementFactory factory = {};
-    const char* failure = nullptr;
-};
-
-static LazySlot* NewLazySlot(MaterializeRequest* request,
-                             shell::ComponentElementFactory factory,
-                             const char* failure) {
-    LazySlot* slot = ArenaNew<LazySlot>(request->cx->a);
-    slot->runtime = request->runtime;
-    slot->specs = request->specs;
-    slot->error = request->error;
-    slot->factory = factory;
-    slot->failure = failure;
-    return slot;
-}
-
-static El* BuildLazySlot(LazySlot* slot, Ctx* cx) {
-    MaterializeRequest request;
-    request.cx = cx;
-    request.runtime = slot->runtime;
-    request.specs = slot->specs;
-    request.error = slot->error;
-    if (El* element = request.BuildFactory(slot->factory)) return element;
-    return Div(cx->a)->Child(TextEl(
-        cx->a, StrDup(cx->a, fmt("%s: no element", Str(slot->failure)))));
-}
-
+// SettingField::render / title_suffix's closure over
+// `factory.build(window, cx)`: a DeferredSlot the native hierarchy builds
+// when it renders.
 static El* RenderField(void* user, const component::RenderOptions*, Ctx* cx) {
-    return BuildLazySlot((LazySlot*)user, cx);
+    return BuildDeferredSlot((DeferredSlot*)user, cx);
 }
 
 static El* RenderTitleSuffix(void* user, Ctx* cx) {
-    return BuildLazySlot((LazySlot*)user, cx);
+    return BuildDeferredSlot((DeferredSlot*)user, cx);
 }
 
 // ─── Materializers ─────────────────────────────────────────────────────────
@@ -133,8 +102,8 @@ static El* MaterializeItem(MaterializeRequest* request) {
     SettingItem* item = ArenaNew<SettingItem>(cx->a);
     item->title = title->value;
     item->field = component::SettingFieldKind::Element;
-    item->fieldElement
-        .user = NewLazySlot(request, field, "Failed to render setting field");
+    item->fieldElement.user =
+        NewDeferredSlot(request, field, "Failed to render setting field");
     item->fieldElement.renderField = &RenderField;
     // sf.style().refine(..): the refinement goes to the field, and an
     // element field's renderer (fields/element.rs) ignores the style it is
@@ -216,7 +185,7 @@ static El* MaterializePage(MaterializeRequest* request) {
     if (suffix.IsSet()) {
         page->titleSuffixFn = &RenderTitleSuffix;
         page->titleSuffixUser =
-            NewLazySlot(request, suffix, "Failed to render title suffix");
+            NewDeferredSlot(request, suffix, "Failed to render title suffix");
     }
     if (!RejectStyle(request, "SettingPage")) return nullptr;
     shell::ComponentChild* children = nullptr;

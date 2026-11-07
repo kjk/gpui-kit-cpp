@@ -1,5 +1,7 @@
 #include "shell/process.h"
 
+#include "shell/error.h"
+
 namespace gpui::shell {
 
 void ProcessCancellation::Cancel() {
@@ -389,6 +391,98 @@ void ProcessDecodeFinish(ProcessDecodeState* state, ProcessEventBox* box,
     VecReset(lines);
     Str tail = LineCarryFinish(&state->lines);
     PushText(box, kind, tail);
+}
+
+void ProcessStreamCoreInit(ProcessStreamCore* stream, Str command,
+                           const ProcessSpawnOptions* options) {
+    ProcessEventBoxInit(&stream->box, options && options->stdinPipe);
+    stream->command = StrDup(command);
+    stream->timeoutSeconds = options ? options->timeoutSeconds : 0;
+    if (options && options->cwd) stream->cwd = StrDup(options->cwd);
+    bool lines = options && options->lines;
+    ProcessDecodeInit(&stream->outDecode, lines);
+    ProcessDecodeInit(&stream->errDecode, lines);
+}
+
+void ProcessStreamCoreFree(ProcessStreamCore* stream) {
+    ProcessDecodeFree(&stream->outDecode);
+    ProcessDecodeFree(&stream->errDecode);
+    ProcessEventBoxFree(&stream->box);
+    StrFree(stream->command);
+    StrFree(stream->cwd);
+}
+
+void ProcessStreamCoreTimedOut(ProcessStreamCore* stream) {
+    ProcessEventSetReason(
+        &stream->box,
+        StrDup(fmt("`%s` timed out after %d ms", stream->command,
+                   ProcessTimeoutMilliseconds(stream->timeoutSeconds))));
+}
+
+void ProcessStdinPump(ProcessEventBox* box,
+                      int (*writeSome)(void* ctx, const char* bytes, int count),
+                      void* ctx) {
+    for (;;) {
+        Vec<char> bytes;
+        bool ended = false;
+        if (!ProcessStdinTake(box, &bytes, &ended)) break;
+        int offset = 0;
+        bool ok = true;
+        while (offset < bytes.len) {
+            int wrote = writeSome(ctx, bytes.els + offset, bytes.len - offset);
+            if (wrote <= 0) {
+                ok = false;
+                break;
+            }
+            offset += wrote;
+        }
+        VecReset(bytes);
+        if (!ok) {
+            ProcessStdinFail(box);
+            break;
+        }
+        if (ended) break;
+    }
+}
+
+void ProcessEventPushExit(ProcessEventBox* box, ProcessStreamEvent event) {
+    event.kind = ProcessStreamEvent::Kind::Exit;
+    Str reason = ProcessEventTakeReason(box);
+    if (reason) {
+        event.hasError = true;
+        event.text = reason;
+    }
+    ProcessEventPush(box, event);
+}
+
+bool ProcessCaptureAppend(StrBuilder* out, const char* bytes, int count,
+                          Str* error, const char* name) {
+    constexpr int kProcessStreamLimit = 8 * 1024 * 1024;
+    if (out->len > kProcessStreamLimit - count) {
+        ErrorOutSet(error, fmt("child %s exceeded 8 MiB", Str(name)));
+        return false;
+    }
+    out->Append(Str(bytes, count));
+    return true;
+}
+
+int ProcessTimeoutMilliseconds(double seconds) {
+    return (int)(seconds * 1000.0 + 0.5);
+}
+
+double ProcessBoundedTimeoutSeconds(const ProcessOptions* options) {
+    return (options && options->timeoutSeconds > 0) ? options->timeoutSeconds
+                                                    : 30.0;
+}
+
+void ProcessBoundedStopError(Str command, bool cancelled, double timeoutSeconds,
+                             Str* error) {
+    if (cancelled) {
+        ErrorOutSet(error, fmt("`%s` was cancelled", command));
+    } else {
+        ErrorOutSet(error, fmt("`%s` timed out after %d ms", command,
+                               ProcessTimeoutMilliseconds(timeoutSeconds)));
+    }
 }
 
 } // namespace gpui::shell

@@ -1,5 +1,8 @@
 #include "shell/filesystem.h"
 
+#include "shell/error.h"
+#include "shell/wide.h"
+
 #include <windows.h>
 #include <winioctl.h>
 #include <winternl.h>
@@ -18,45 +21,6 @@ using NtCreateFileProc = NTSTATUS(NTAPI*)(PHANDLE, ACCESS_MASK,
                                           POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK,
                                           PLARGE_INTEGER, ULONG, ULONG, ULONG,
                                           ULONG, PVOID, ULONG);
-
-static void FsError(Str* error, Str message) {
-    if (!error) return;
-    StrFree(*error);
-    *error = StrDup(message);
-}
-
-static WCHAR* WideDup(Str value) {
-    if (!value.s || len(value) < 0) return nullptr;
-    for (int i = 0; i < len(value); i++) {
-        if (value.s[i] == 0) return nullptr;
-    }
-    int count = len(value) == 0
-                    ? 0
-                    : MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
-                                          value.s, len(value), nullptr, 0);
-    if (len(value) > 0 && count <= 0) return nullptr;
-    WCHAR* result = AllocArray<WCHAR>(count + 1);
-    if (!result) return nullptr;
-    if (count > 0 && MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.s,
-                                         len(value), result, count) != count) {
-        Free(nullptr, result);
-        return nullptr;
-    }
-    result[count] = 0;
-    return result;
-}
-
-static Str Utf8Dup(const WCHAR* value, int count) {
-    int bytes = WideCharToMultiByte(CP_UTF8, 0, value, count, nullptr, 0,
-                                    nullptr, nullptr);
-    if (bytes <= 0) return {};
-    char* result = (char*)Alloc(nullptr, bytes + 1);
-    if (!result) return {};
-    WideCharToMultiByte(CP_UTF8, 0, value, count, result, bytes, nullptr,
-                        nullptr);
-    result[bytes] = 0;
-    return Str(result, bytes);
-}
 
 static NtCreateFileProc NtCreateFileAddress() {
     static NtCreateFileProc function = (NtCreateFileProc)GetProcAddress(
@@ -107,14 +71,14 @@ static bool IsReparse(HANDLE handle) {
 
 static void NtError(Str* error, const char* verb, Str root, Str relative,
                     NTSTATUS status) {
-    FsError(error, fmt("cannot %s `%s/%s`: Windows status 0x%08x", Str(verb),
-                       root, relative, (uint32_t)status));
+    ErrorOutSet(error, fmt("cannot %s `%s/%s`: Windows status 0x%08x",
+                           Str(verb), root, relative, (uint32_t)status));
 }
 
 static bool EnsureAmbientRoot(Str root, Str* error) {
     WCHAR* path = WideDup(root);
     if (!path) {
-        FsError(error, StrL("filesystem root is not valid UTF-8"));
+        ErrorOutSet(error, StrL("filesystem root is not valid UTF-8"));
         return false;
     }
     int length = (int)wcslen(path);
@@ -125,9 +89,9 @@ static bool EnsureAmbientRoot(Str root, Str* error) {
         path[i] = 0;
         if (path[0] && !CreateDirectoryW(path, nullptr) &&
             GetLastError() != ERROR_ALREADY_EXISTS) {
-            FsError(error,
-                    fmt("cannot create granted root `%s`: Windows error %u",
-                        root, GetLastError()));
+            ErrorOutSet(error,
+                        fmt("cannot create granted root `%s`: Windows error %u",
+                            root, GetLastError()));
             Free(nullptr, path);
             return false;
         }
@@ -136,8 +100,9 @@ static bool EnsureAmbientRoot(Str root, Str* error) {
     bool ok = CreateDirectoryW(path, nullptr) ||
               GetLastError() == ERROR_ALREADY_EXISTS;
     if (!ok) {
-        FsError(error, fmt("cannot create granted root `%s`: Windows error %u",
-                           root, GetLastError()));
+        ErrorOutSet(error,
+                    fmt("cannot create granted root `%s`: Windows error %u",
+                        root, GetLastError()));
     }
     Free(nullptr, path);
     return ok;
@@ -146,7 +111,7 @@ static bool EnsureAmbientRoot(Str root, Str* error) {
 static HANDLE OpenRoot(Str root, bool create, Str* error) {
     WCHAR* path = WideDup(root);
     if (!path) {
-        FsError(error, StrL("filesystem root is not valid UTF-8"));
+        ErrorOutSet(error, StrL("filesystem root is not valid UTF-8"));
         return nullptr;
     }
     HANDLE result = CreateFileW(
@@ -169,16 +134,23 @@ static HANDLE OpenRoot(Str root, bool create, Str* error) {
     }
     Free(nullptr, path);
     if (result == INVALID_HANDLE_VALUE) {
-        FsError(error, fmt("cannot open granted root `%s`: Windows error %u",
-                           root, GetLastError()));
+        ErrorOutSet(error,
+                    fmt("cannot open granted root `%s`: Windows error %u", root,
+                        GetLastError()));
         return nullptr;
     }
     return result;
 }
 
-static bool ValidComponent(const WCHAR* value) {
-    return value[0] && wcscmp(value, L".") != 0 && wcscmp(value, L"..") != 0 &&
-           wcschr(value, L'\\') == nullptr;
+// One component of a granted relative path: not empty, `.` or `..`, no
+// backslash, under 256 UTF-16 units. False with the reason otherwise.
+static bool CheckComponent(const WCHAR* value, Str relative, Str* error) {
+    if (value[0] && wcscmp(value, L".") != 0 && wcscmp(value, L"..") != 0 &&
+        wcschr(value, L'\\') == nullptr && wcslen(value) < 256)
+        return true;
+    ErrorOutSet(error,
+                fmt("refusing invalid path component in `%s`", relative));
+    return false;
 }
 
 static HANDLE OpenDirectoryAt(HANDLE parent, const WCHAR* name,
@@ -202,8 +174,8 @@ static bool OpenParent(HANDLE root, Str rootName, Str relative, HANDLE* parent,
     if (StrEq(relative, StrL("."))) {
         if (!DuplicateHandle(GetCurrentProcess(), root, GetCurrentProcess(),
                              parent, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
-            FsError(error, fmt("cannot open `%s/%s`: Windows error %u",
-                               rootName, relative, GetLastError()));
+            ErrorOutSet(error, fmt("cannot open `%s/%s`: Windows error %u",
+                                   rootName, relative, GetLastError()));
             return false;
         }
         wcscpy(leaf, L".");
@@ -211,7 +183,7 @@ static bool OpenParent(HANDLE root, Str rootName, Str relative, HANDLE* parent,
     }
     WCHAR* path = WideDup(relative);
     if (!path) {
-        FsError(error, StrL("filesystem path is not valid UTF-8"));
+        ErrorOutSet(error, StrL("filesystem path is not valid UTF-8"));
         return false;
     }
     HANDLE current = nullptr;
@@ -221,9 +193,7 @@ static bool OpenParent(HANDLE root, Str rootName, Str relative, HANDLE* parent,
     while (ok) {
         WCHAR* slash = wcschr(at, L'/');
         if (slash) *slash = 0;
-        if (!ValidComponent(at) || wcslen(at) >= 256) {
-            FsError(error,
-                    fmt("refusing invalid path component in `%s`", relative));
+        if (!CheckComponent(at, relative, error)) {
             ok = false;
             break;
         }
@@ -288,13 +258,13 @@ static bool ReadGrantedFile(HANDLE root, Str rootName, Str relative,
     }
     LARGE_INTEGER size = {};
     if (!GetFileSizeEx(file, &size)) {
-        FsError(error, fmt("cannot read `%s/%s`: Windows error %u", rootName,
-                           relative, GetLastError()));
+        ErrorOutSet(error, fmt("cannot read `%s/%s`: Windows error %u",
+                               rootName, relative, GetLastError()));
         CloseHandle(file);
         return false;
     }
     if (size.QuadPart > kFsMaxReadBytes) {
-        FsError(
+        ErrorOutSet(
             error,
             fmt("`%s/%s` is %lld bytes, over the %d-byte limit for fs.readFile",
                 rootName, relative, size.QuadPart, kFsMaxReadBytes));
@@ -307,20 +277,17 @@ static bool ReadGrantedFile(HANDLE root, Str rootName, Str relative,
         char bytes[8192];
         DWORD count = 0;
         if (!::ReadFile(file, bytes, sizeof(bytes), &count, nullptr)) {
-            FsError(error, fmt("cannot read `%s/%s`: Windows error %u",
-                               rootName, relative, GetLastError()));
+            ErrorOutSet(error, fmt("cannot read `%s/%s`: Windows error %u",
+                                   rootName, relative, GetLastError()));
             ok = false;
             break;
         }
         if (count == 0) break;
-        if (output.len > kFsMaxReadBytes - (int)count) {
-            FsError(error,
-                    fmt("`%s/%s` grew over the %d-byte limit for fs.readFile",
-                        rootName, relative, kFsMaxReadBytes));
+        if (!FsReadAppend(&output, bytes, (int)count, rootName, relative,
+                          error)) {
             ok = false;
             break;
         }
-        output.Append(Str(bytes, (int)count));
     }
     CloseHandle(file);
     if (ok) result->bytes = output.TakeStr();
@@ -349,16 +316,16 @@ static bool WriteGrantedFile(HANDLE root, Str rootName, Str relative, Str input,
         DWORD wanted = (DWORD)(len(input) - written);
         if (!::WriteFile(file, input.s + written, wanted, &count, nullptr) ||
             count == 0) {
-            FsError(error, fmt("cannot write `%s/%s`: Windows error %u",
-                               rootName, relative, GetLastError()));
+            ErrorOutSet(error, fmt("cannot write `%s/%s`: Windows error %u",
+                                   rootName, relative, GetLastError()));
             CloseHandle(file);
             return false;
         }
         written += (int)count;
     }
     if (!FlushFileBuffers(file)) {
-        FsError(error, fmt("cannot write `%s/%s`: Windows error %u", rootName,
-                           relative, GetLastError()));
+        ErrorOutSet(error, fmt("cannot write `%s/%s`: Windows error %u",
+                               rootName, relative, GetLastError()));
         CloseHandle(file);
         return false;
     }
@@ -385,8 +352,8 @@ static bool ReadDirectory(HANDLE root, Str rootName, Str relative,
                                           sizeof(buffer))) {
             DWORD code = GetLastError();
             if (code == ERROR_NO_MORE_FILES) break;
-            FsError(error, fmt("cannot list `%s/%s`: Windows error %u",
-                               rootName, relative, code));
+            ErrorOutSet(error, fmt("cannot list `%s/%s`: Windows error %u",
+                                   rootName, relative, code));
             ok = false;
             break;
         }
@@ -403,10 +370,10 @@ static bool ReadDirectory(HANDLE root, Str rootName, Str relative,
                 if (!name.s || result->entries.len >= kFsMaxDirectoryEntries ||
                     nameBytes > kFsMaxDirectoryNameBytes) {
                     StrFree(name);
-                    FsError(error, fmt("directory exceeded the %d-entry or "
-                                       "%d-name-byte fs.readdir limit",
-                                       kFsMaxDirectoryEntries,
-                                       kFsMaxDirectoryNameBytes));
+                    ErrorOutSet(error, fmt("directory exceeded the %d-entry or "
+                                           "%d-name-byte fs.readdir limit",
+                                           kFsMaxDirectoryEntries,
+                                           kFsMaxDirectoryNameBytes));
                     ok = false;
                     break;
                 }
@@ -416,8 +383,8 @@ static bool ReadDirectory(HANDLE root, Str rootName, Str relative,
                                             FILE_ATTRIBUTE_REPARSE_POINT) == 0};
                 if (!VecAppend(result->entries, value)) {
                     StrFree(name);
-                    FsError(error,
-                            StrL("allocating an fs.readdir result failed"));
+                    ErrorOutSet(error,
+                                StrL("allocating an fs.readdir result failed"));
                     ok = false;
                     break;
                 }
@@ -448,9 +415,7 @@ static bool MakeDirectoryRecursive(HANDLE root, Str rootName, Str relative,
     while (ok && *at) {
         WCHAR* slash = wcschr(at, L'/');
         if (slash) *slash = 0;
-        if (!ValidComponent(at) || wcslen(at) >= 256) {
-            FsError(error,
-                    fmt("refusing invalid path component in `%s`", relative));
+        if (!CheckComponent(at, relative, error)) {
             ok = false;
             break;
         }
@@ -481,8 +446,8 @@ static bool DeleteHandle(HANDLE handle, Str root, Str relative, Str* error) {
     if (SetFileInformationByHandle(handle, FileDispositionInfo, &disposition,
                                    sizeof(disposition)))
         return true;
-    FsError(error, fmt("cannot remove `%s/%s`: Windows error %u", root,
-                       relative, GetLastError()));
+    ErrorOutSet(error, fmt("cannot remove `%s/%s`: Windows error %u", root,
+                           relative, GetLastError()));
     return false;
 }
 
@@ -528,21 +493,22 @@ static bool ReadLinkHandle(HANDLE handle, Str root, Str relative,
     if (!DeviceIoControl(handle, FSCTL_GET_REPARSE_POINT, nullptr, 0, bytes,
                          sizeof(bytes), &got, nullptr) ||
         got < 20) {
-        FsError(error, fmt("cannot read link `%s/%s`: Windows error %u", root,
-                           relative, GetLastError()));
+        ErrorOutSet(error, fmt("cannot read link `%s/%s`: Windows error %u",
+                               root, relative, GetLastError()));
         return false;
     }
     ULONG tag = *(ULONG*)bytes;
     if (tag != IO_REPARSE_TAG_SYMLINK) {
-        FsError(error, fmt("cannot read link `%s/%s`: not a symbolic link",
-                           root, relative));
+        ErrorOutSet(error, fmt("cannot read link `%s/%s`: not a symbolic link",
+                               root, relative));
         return false;
     }
     USHORT printOffset = *(USHORT*)(bytes + 12);
     USHORT printLength = *(USHORT*)(bytes + 14);
     if ((DWORD)20 + printOffset + printLength > got) {
-        FsError(error, fmt("cannot read link `%s/%s`: reparse data is short",
-                           root, relative));
+        ErrorOutSet(error,
+                    fmt("cannot read link `%s/%s`: reparse data is short", root,
+                        relative));
         return false;
     }
     const WCHAR* print = (const WCHAR*)(bytes + 20 + printOffset);
@@ -552,13 +518,13 @@ static bool ReadLinkHandle(HANDLE handle, Str root, Str relative,
                    : WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, print,
                                          chars, nullptr, 0, nullptr, nullptr);
     if (chars != 0 && utf8 <= 0) {
-        FsError(error, fmt("cannot read link `%s/%s`: target is not UTF-8",
-                           root, relative));
+        ErrorOutSet(error, fmt("cannot read link `%s/%s`: target is not UTF-8",
+                               root, relative));
         return false;
     }
     char* text = (char*)malloc((size_t)utf8 + 1);
     if (!text) {
-        FsError(error, StrL("allocating a symlink target failed"));
+        ErrorOutSet(error, StrL("allocating a symlink target failed"));
         return false;
     }
     if (utf8 > 0) {
@@ -566,21 +532,14 @@ static bool ReadLinkHandle(HANDLE handle, Str root, Str relative,
                             utf8, nullptr, nullptr);
     }
     text[utf8] = 0;
-    result->bytes = StrDup(Str(text, utf8));
+    bool ok = FsSetLinkTarget(result, Str(text, utf8), error);
     free(text);
-    if (!result->bytes.s && utf8 != 0) {
-        FsError(error, StrL("allocating a symlink target failed"));
-        return false;
-    }
-    return true;
+    return ok;
 }
 
 bool FsRename(Str fromRoot, Str fromRelative, Str toRoot, Str toRelative,
               Str* error) {
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     HANDLE sourceRoot = OpenRoot(fromRoot, true, error);
     if (!sourceRoot) return false;
     HANDLE destinationRoot = OpenRoot(toRoot, true, error);
@@ -618,14 +577,15 @@ bool FsRename(Str fromRoot, Str fromRelative, Str toRoot, Str toRelative,
         WCHAR* parentPath = (WCHAR*)malloc(32768 * sizeof(WCHAR));
         DWORD parentChars = 0;
         if (!parentPath) {
-            FsError(error, StrL("allocating a rename failed"));
+            ErrorOutSet(error, StrL("allocating a rename failed"));
             ok = false;
         } else {
             parentChars = GetFinalPathNameByHandleW(
                 destinationParent, parentPath, 32768, FILE_NAME_NORMALIZED);
             if (parentChars == 0 || parentChars >= 32768) {
-                FsError(error, fmt("cannot rename `%s/%s`: Windows error %u",
-                                   fromRoot, fromRelative, GetLastError()));
+                ErrorOutSet(error,
+                            fmt("cannot rename `%s/%s`: Windows error %u",
+                                fromRoot, fromRelative, GetLastError()));
                 ok = false;
             }
         }
@@ -640,7 +600,7 @@ bool FsRename(Str fromRoot, Str fromRelative, Str toRoot, Str toRelative,
         FILE_RENAME_INFO* info =
             ok ? (FILE_RENAME_INFO*)malloc((size_t)bytes) : nullptr;
         if (ok && !info) {
-            FsError(error, StrL("allocating a rename failed"));
+            ErrorOutSet(error, StrL("allocating a rename failed"));
             ok = false;
         } else if (ok) {
             memset(info, 0, (size_t)bytes);
@@ -654,8 +614,9 @@ bool FsRename(Str fromRoot, Str fromRelative, Str toRoot, Str toRelative,
                    (size_t)leafChars * sizeof(WCHAR));
             if (!SetFileInformationByHandle(file, FileRenameInfo, info,
                                             (DWORD)bytes)) {
-                FsError(error, fmt("cannot rename `%s/%s`: Windows error %u",
-                                   fromRoot, fromRelative, GetLastError()));
+                ErrorOutSet(error,
+                            fmt("cannot rename `%s/%s`: Windows error %u",
+                                fromRoot, fromRelative, GetLastError()));
                 ok = false;
             }
             free(info);
@@ -673,14 +634,8 @@ bool FsRename(Str fromRoot, Str fromRelative, Str toRoot, Str toRelative,
 bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
            bool recursive, FsResult* result, Str* error) {
     if (result) result->Free();
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
-    bool writeAccess = operation == FsOperation::Write ||
-                       operation == FsOperation::RemoveFile ||
-                       operation == FsOperation::RemoveDirectory ||
-                       operation == FsOperation::MakeDirectory;
+    ErrorOutClear(error);
+    bool writeAccess = FsOperationWrites(operation);
     HANDLE root = OpenRoot(rootName, writeAccess, error);
     if (!root) return false;
     FsResult unused;
@@ -711,9 +666,9 @@ bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
                     if (!DuplicateHandle(GetCurrentProcess(), parent,
                                          GetCurrentProcess(), &target, 0, FALSE,
                                          DUPLICATE_SAME_ACCESS)) {
-                        FsError(error,
-                                fmt("cannot stat `%s/%s`: Windows error %u",
-                                    rootName, relative, GetLastError()));
+                        ErrorOutSet(error,
+                                    fmt("cannot stat `%s/%s`: Windows error %u",
+                                        rootName, relative, GetLastError()));
                         ok = false;
                     }
                 } else {
@@ -736,16 +691,17 @@ bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
                     // OpenAt asks for the reparse point, so this does not
                     // follow. A link that stayed inside the root is refused
                     // too: confirming the target would need a second walk.
-                    FsError(error, fmt("cannot stat `%s/%s`: symbolic links "
-                                       "are not followed",
-                                       rootName, relative));
+                    ErrorOutSet(error,
+                                fmt("cannot stat `%s/%s`: symbolic links "
+                                    "are not followed",
+                                    rootName, relative));
                     ok = false;
                 } else if (target) {
                     ok = FillWinStats(target, result);
                     if (!ok) {
-                        FsError(error,
-                                fmt("cannot stat `%s/%s`: Windows error %u",
-                                    rootName, relative, GetLastError()));
+                        ErrorOutSet(error,
+                                    fmt("cannot stat `%s/%s`: Windows error %u",
+                                        rootName, relative, GetLastError()));
                     }
                 }
                 if (target) CloseHandle(target);

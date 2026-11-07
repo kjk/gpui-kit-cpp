@@ -1,43 +1,22 @@
 #include "shell/dependencies.h"
 
+#include "shell/error.h"
+#include "shell/wide.h"
+
 #include <windows.h>
 
 namespace gpui::shell {
-
-static void DependencyError(Str* error, Str message) {
-    if (!error) return;
-    StrFree(*error);
-    *error = StrDup(message);
-}
 
 static WCHAR* Wide(Str value) {
     if (!value) return nullptr;
     return (WCHAR*)ToCWstrTemp(value);
 }
 
-bool DependencyMakeDirectories(Str path, Str* error) {
-    if (!path || len(path) >= kMaxPath) {
-        DependencyError(error,
-                        StrL("dependency cache path is empty or too long"));
-        return false;
-    }
-    TempStr buffer = StrDupTemp(path);
-    for (int i = 1; i <= len(path); i++) {
-        if (i < len(path) && buffer.s[i] != '/' && buffer.s[i] != '\\')
-            continue;
-        char saved = buffer.s[i];
-        buffer.s[i] = 0;
-        // A drive root ("C:") is not a directory anyone creates.
-        bool root = i == 2 && buffer.s[1] == ':';
-        if (!root && !CreateDirectoryW(Wide(Str(buffer.s, i)), nullptr) &&
-            GetLastError() != ERROR_ALREADY_EXISTS) {
-            buffer.s[i] = saved;
-            DependencyError(error, fmt("creating %s failed", path));
-            return false;
-        }
-        buffer.s[i] = saved;
-    }
-    return true;
+bool DependencyMakeDirectory(Str path) {
+    // A drive root ("C:") is not a directory anyone creates.
+    if (len(path) == 2 && path.s[1] == ':') return true;
+    return CreateDirectoryW(Wide(path), nullptr) ||
+           GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
 static void RemoveTreeAt(Str path) {
@@ -83,42 +62,29 @@ bool DependencyRenameDirectory(Str from, Str to) {
     return from && to && MoveFileW(Wide(from), Wide(to)) != 0;
 }
 
-bool DependencyLockAcquire(Str path, Str name, DependencyLock* out,
-                           Str* error) {
-    if (out) *out = {};
+bool DependencyLockOpen(Str path, DependencyLock* lock) {
     HANDLE file = CreateFileW(Wide(path), GENERIC_READ | GENERIC_WRITE,
                               FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
                               OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (file == INVALID_HANDLE_VALUE) {
-        DependencyError(
-            error, fmt("opening Git dependency cache lock %s failed", path));
-        return false;
+    if (file == INVALID_HANDLE_VALUE) return false;
+    lock->handle = (intptr_t)file;
+    return true;
+}
+
+int DependencyLockTry(DependencyLock* lock) {
+    OVERLAPPED overlapped = {};
+    if (LockFileEx((HANDLE)lock->handle,
+                   LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0,
+                   &overlapped)) {
+        return 1;
     }
-    double started = TimeNow();
-    for (;;) {
-        OVERLAPPED overlapped = {};
-        if (LockFileEx(file,
-                       LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY, 0,
-                       1, 0, &overlapped)) {
-            if (out) out->handle = (intptr_t)file;
-            return true;
-        }
-        DWORD code = GetLastError();
-        if (code != ERROR_LOCK_VIOLATION && code != ERROR_IO_PENDING) {
-            CloseHandle(file);
-            DependencyError(error, StrL("locking Git dependency cache failed"));
-            return false;
-        }
-        if (TimeNow() - started >= kGitDependencyLockTimeout) {
-            CloseHandle(file);
-            DependencyError(
-                error, fmt("timed out waiting for another process to finish "
-                           "Git dependency `%s`",
-                           name));
-            return false;
-        }
-        PlatSleepMs(25);
-    }
+    DWORD code = GetLastError();
+    return code == ERROR_LOCK_VIOLATION || code == ERROR_IO_PENDING ? 0 : -1;
+}
+
+void DependencyLockClose(DependencyLock* lock) {
+    CloseHandle((HANDLE)lock->handle);
+    lock->handle = 0;
 }
 
 void DependencyLockRelease(DependencyLock* lock) {
@@ -219,23 +185,13 @@ bool DependencyReadDirectoryLink(Str link, Str* target) {
             name += 4;
             nameLen -= 4;
         }
-        int bytes = WideCharToMultiByte(CP_UTF8, 0, name, nameLen, nullptr, 0,
-                                        nullptr, nullptr);
-        if (bytes > 0) {
-            char* utf8 = AllocArray<char>(bytes + 1);
-            if (utf8 && WideCharToMultiByte(CP_UTF8, 0, name, nameLen, utf8,
-                                            bytes, nullptr, nullptr) == bytes) {
-                utf8[bytes] = 0;
-                if (target)
-                    *target = Str(utf8, bytes);
-                else
-                    Free(nullptr, utf8);
-            } else {
-                Free(nullptr, utf8);
-                ok = false;
-            }
-        } else {
+        Str utf8 = Utf8Dup(name, nameLen);
+        if (!utf8.s) {
             ok = false;
+        } else if (target) {
+            *target = utf8;
+        } else {
+            StrFree(utf8);
         }
     } else {
         ok = false;

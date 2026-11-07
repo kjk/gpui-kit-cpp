@@ -151,7 +151,7 @@ static DockPlacement PlacementOf(Str s) {
     return DockPlacement::Center;
 }
 
-static const char* PlacementName(DockPlacement p) {
+const char* DockPlacementName(DockPlacement p) {
     switch (p) {
         case DockPlacement::Left:
             return "left";
@@ -252,7 +252,7 @@ static void WriteDock(JsonWriter* w, const char* key, const DockAreaState* s,
     }
     w->BeginObject(key);
     WriteNode(w, "panel", s, side.node);
-    w->String("placement", Str(PlacementName(side.placement)));
+    w->String("placement", Str(DockPlacementName(side.placement)));
     w->Number("size", side.size);
     w->Bool("open", side.open);
     w->EndObject();

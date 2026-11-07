@@ -40,18 +40,12 @@ static bool Nullary(PayloadBuild* build, const ComponentArgument*, int) {
     return build->Mark<UnitPayload>();
 }
 
-// parse_natural: a finite, non-negative whole number below `usize::MAX as
-// f64`, which rounds to 2^64 and so is itself refused.
-static bool ParseNatural(double value) {
-    return value == value && value >= 0.0 && value < 18446744073709551616.0 &&
-           value == (double)(uint64_t)value;
-}
-
 template <BadgeOp::Kind K>
 static bool RecordNatural(PayloadBuild* build, const ComponentArgument* args,
                           int) {
     double value = args[0].number;
-    if (!ParseNatural(value))
+    // parse_natural.
+    if (!IsUsizeNumber(value))
         return build->Fail(fmt("Badge.%s expects a non-negative integer",
                                Str(K == BadgeOp::Count ? "count" : "max")));
     BadgeOp* op = build->New<BadgeOp>();

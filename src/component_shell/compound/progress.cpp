@@ -60,14 +60,6 @@ static bool RecordLabel(PayloadBuild* build, const ComponentArgument* args,
     return true;
 }
 
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    ProgressOp* op = build->New<ProgressOp>();
-    op->kind = ProgressOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
-    return true;
-}
-
 // ProgressMaterializer::component: the payload check, then every recorded
 // operation folded into the builder in script order.
 static component::Progress* Component(MaterializeRequest* request) {
@@ -125,7 +117,8 @@ static constexpr MethodDescriptor kMethods[] = {
      &RecordLoading},
     {"accessibility_label", kLabelArgs, "Sets the accessible name.",
      &RecordLabel},
-    {"size", kSizeArgs, "Sets the semantic size.", &RecordSize},
+    {"size", kSizeArgs, "Sets the semantic size.",
+     &RecordSizeOp<ProgressOp, ProgressOp::Size>},
 };
 static constexpr ComponentDescriptor kProgress = {
     "Progress", kConstructors, kMethods,

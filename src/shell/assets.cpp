@@ -1,5 +1,7 @@
 #include "shell/assets.h"
 
+#include "shell/error.h"
+
 #include <stdlib.h>
 
 namespace gpui {
@@ -32,10 +34,7 @@ void AppAssets::Uninstall() {
 }
 
 bool AppAssets::Resolve(Str path, Str* relative, Str* error) const {
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     if (!path || len(path) >= kMaxPath || StrStartsWithAny(path, "/\\") ||
         (len(path) >= 2 && path.s[1] == ':')) {
         if (error)

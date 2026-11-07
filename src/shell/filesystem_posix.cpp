@@ -1,5 +1,7 @@
 #include "shell/filesystem.h"
 
+#include "shell/error.h"
+
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -18,21 +20,15 @@ uint64_t PlatStatModifiedNs(const struct stat* st);
 
 namespace gpui::shell {
 
-static void FsError(Str* error, Str message) {
-    if (!error) return;
-    StrFree(*error);
-    *error = StrDup(message);
-}
-
 static void SyscallError(Str* error, const char* verb, Str root, Str relative) {
-    FsError(error, fmt("cannot %s `%s/%s`: %s", Str(verb), root, relative,
-                       Str(strerror(errno))));
+    ErrorOutSet(error, fmt("cannot %s `%s/%s`: %s", Str(verb), root, relative,
+                           Str(strerror(errno))));
 }
 
 static bool EnsureAmbientRoot(Str root, Str* error) {
     char* path = StrDup(root).s;
     if (!path) {
-        FsError(error, StrL("allocating the filesystem root path failed"));
+        ErrorOutSet(error, StrL("allocating the filesystem root path failed"));
         return false;
     }
     int length = (int)strlen(path);
@@ -63,9 +59,15 @@ static int OpenRoot(Str root, bool create, Str* error) {
     return -1;
 }
 
-static bool ValidComponent(Str value) {
-    return value && !StrEq(value, StrL(".")) && !StrEq(value, StrL("..")) &&
-           StrFind(value, "\\") < 0;
+// One component of a granted relative path: not empty, `.` or `..`, no
+// backslash, under 256 bytes. False with the reason otherwise.
+static bool CheckComponent(Str value, Str relative, Str* error) {
+    if (value && !StrEq(value, StrL(".")) && !StrEq(value, StrL("..")) &&
+        StrFind(value, "\\") < 0 && len(value) < 256)
+        return true;
+    ErrorOutSet(error,
+                fmt("refusing invalid path component in `%s`", relative));
+    return false;
 }
 
 static int OpenDirectoryAt(int parent, const char* name) {
@@ -89,7 +91,7 @@ static bool OpenParent(int root, Str relative, int* parent, TempStr* leaf,
     }
     TempStr path = StrDupTemp(relative);
     if (!path.s) {
-        FsError(error, StrL("allocating a filesystem path failed"));
+        ErrorOutSet(error, StrL("allocating a filesystem path failed"));
         return false;
     }
     int current = dup(root);
@@ -98,10 +100,7 @@ static bool OpenParent(int root, Str relative, int* parent, TempStr* leaf,
     while (ok) {
         char* slash = strchr(at, '/');
         if (slash) *slash = 0;
-        Str component = Str(at);
-        if (!ValidComponent(component) || len(component) >= 256) {
-            FsError(error,
-                    fmt("refusing invalid path component in `%s`", relative));
+        if (!CheckComponent(Str(at), relative, error)) {
             ok = false;
             break;
         }
@@ -157,7 +156,7 @@ static bool ReadFile(int root, Str rootName, Str relative, FsResult* result,
         return false;
     }
     if (info.st_size > kFsMaxReadBytes) {
-        FsError(
+        ErrorOutSet(
             error,
             fmt("`%s/%s` is %lld bytes, over the %d-byte limit for fs.readFile",
                 rootName, relative, (int64_t)info.st_size, kFsMaxReadBytes));
@@ -170,15 +169,11 @@ static bool ReadFile(int root, Str rootName, Str relative, FsResult* result,
         char bytes[8192];
         ssize_t count = read(file, bytes, sizeof(bytes));
         if (count > 0) {
-            if (output.len > kFsMaxReadBytes - (int)count) {
-                FsError(
-                    error,
-                    fmt("`%s/%s` grew over the %d-byte limit for fs.readFile",
-                        rootName, relative, kFsMaxReadBytes));
+            if (!FsReadAppend(&output, bytes, (int)count, rootName, relative,
+                              error)) {
                 ok = false;
                 break;
             }
-            output.Append(Str(bytes, (int)count));
         } else if (count == 0)
             break;
         else if (errno != EINTR) {
@@ -261,10 +256,10 @@ static bool ReadDirectory(int root, Str rootName, Str relative,
         nameBytes += nameLen;
         if (result->entries.len >= kFsMaxDirectoryEntries ||
             nameBytes > kFsMaxDirectoryNameBytes) {
-            FsError(error,
-                    fmt("directory exceeded the %d-entry or %d-name-byte "
-                        "fs.readdir limit",
-                        kFsMaxDirectoryEntries, kFsMaxDirectoryNameBytes));
+            ErrorOutSet(error,
+                        fmt("directory exceeded the %d-entry or %d-name-byte "
+                            "fs.readdir limit",
+                            kFsMaxDirectoryEntries, kFsMaxDirectoryNameBytes));
             ok = false;
             break;
         }
@@ -275,7 +270,7 @@ static bool ReadDirectory(int root, Str rootName, Str relative,
         FsEntry value = {StrDup(Str(entry->d_name, nameLen)), directoryEntry};
         if (!value.name.s || !VecAppend(result->entries, value)) {
             StrFree(value.name);
-            FsError(error, StrL("allocating an fs.readdir result failed"));
+            ErrorOutSet(error, StrL("allocating an fs.readdir result failed"));
             ok = false;
             break;
         }
@@ -299,10 +294,7 @@ static bool MakeDirectoryRecursive(int root, Str rootName, Str relative,
     while (ok && *at) {
         char* slash = strchr(at, '/');
         if (slash) *slash = 0;
-        Str component = Str(at);
-        if (!ValidComponent(component) || len(component) >= 256) {
-            FsError(error,
-                    fmt("refusing invalid path component in `%s`", relative));
+        if (!CheckComponent(Str(at), relative, error)) {
             ok = false;
             break;
         }
@@ -354,9 +346,9 @@ static bool StatAt(int root, Str rootName, Str relative, bool followRefusal,
     if (!ok) {
         SyscallError(error, "stat", rootName, relative);
     } else if (followRefusal && S_ISLNK(info.st_mode)) {
-        FsError(error, fmt("cannot stat `%s/%s`: symbolic links are not "
-                           "followed",
-                           rootName, relative));
+        ErrorOutSet(error, fmt("cannot stat `%s/%s`: symbolic links are not "
+                               "followed",
+                               rootName, relative));
         ok = false;
     } else {
         FillPosixStats(info, result);
@@ -379,24 +371,16 @@ static bool ReadLinkAt(int root, Str rootName, Str relative, FsResult* result,
         return false;
     }
     if (n >= (ssize_t)sizeof(bytes)) {
-        FsError(error, fmt("cannot read link `%s/%s`: target is too long",
-                           rootName, relative));
+        ErrorOutSet(error, fmt("cannot read link `%s/%s`: target is too long",
+                               rootName, relative));
         return false;
     }
-    result->bytes = StrDup(Str(bytes, (int)n));
-    if (!result->bytes.s && n != 0) {
-        FsError(error, StrL("allocating a symlink target failed"));
-        return false;
-    }
-    return true;
+    return FsSetLinkTarget(result, Str(bytes, (int)n), error);
 }
 
 bool FsRename(Str fromRoot, Str fromRelative, Str toRoot, Str toRelative,
               Str* error) {
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     int source = OpenRoot(fromRoot, true, error);
     if (source < 0) return false;
     int destination = OpenRoot(toRoot, true, error);
@@ -429,14 +413,8 @@ bool FsRename(Str fromRoot, Str fromRelative, Str toRoot, Str toRelative,
 bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
            bool recursive, FsResult* result, Str* error) {
     if (result) result->Free();
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
-    bool writeAccess = operation == FsOperation::Write ||
-                       operation == FsOperation::RemoveFile ||
-                       operation == FsOperation::RemoveDirectory ||
-                       operation == FsOperation::MakeDirectory;
+    ErrorOutClear(error);
+    bool writeAccess = FsOperationWrites(operation);
     int root = OpenRoot(rootName, writeAccess, error);
     if (root < 0) return false;
     FsResult unused;

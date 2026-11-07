@@ -66,19 +66,12 @@ struct ChangeHost {
     }
 };
 
-static int ClampCount(double value) {
-    return value > 2147483647.0 ? 2147483647 : (int)value;
-}
-
-// nonnegative_usize: a finite whole number from zero to below 2^64 (Rust's
-// `usize::MAX as f64` rounds up to 2^64 on 64-bit targets).
+// nonnegative_usize.
 static bool NonnegativeUsize(const ComponentArgument& argument, double* out) {
-    if (argument.kind != shell::ComponentArgumentKind::Number) return false;
-    double value = argument.number;
-    if (!isfinite(value) || value < 0. || value != floor(value) ||
-        value >= 18446744073709551616.0)
+    if (argument.kind != shell::ComponentArgumentKind::Number ||
+        !IsUsizeNumber(argument.number))
         return false;
-    *out = value;
+    *out = argument.number;
     return true;
 }
 
@@ -306,7 +299,7 @@ static bool IndexedConstruct(PayloadBuild* build, const ComponentArgument* args,
     Payload* payload = build->New<Payload>();
     payload->kind = K;
     payload->id = args[0].string;
-    payload->index = ClampCount(index);
+    payload->index = SaturatingInt(index);
     payload->state = args[2];
     return true;
 }
@@ -387,7 +380,7 @@ static bool RecordUsize(PayloadBuild* build, const ComponentArgument* args,
                        Str(name)));
     Op* op = build->New<Op>();
     op->kind = K;
-    op->count = ClampCount(value);
+    op->count = SaturatingInt(value);
     return true;
 }
 
@@ -468,10 +461,10 @@ static bool NewState(shell::StateBuild* build, const ComponentArgument* args,
                                             ->New<EntityState<CarouselState>>();
     state->app = build->app;
     state->entity =
-        component::CarouselStateNew(build->app, ClampCount(itemCount));
+        component::CarouselStateNew(build->app, SaturatingInt(itemCount));
     if (CarouselState* native = state->entity.Get(build->app)) {
         native->WithAxis(axis).WithLooping(looping);
-        if (hasIndex) native->WithSelectedIndex(ClampCount(index));
+        if (hasIndex) native->WithSelectedIndex(SaturatingInt(index));
     }
     return true;
 }

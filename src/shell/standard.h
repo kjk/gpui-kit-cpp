@@ -9,6 +9,9 @@ constexpr int kStandardDataLimit = 64 * 1024 * 1024;
 
 void Sha256(Str data, uint8_t digest[32]);
 bool SecureRandom(uint8_t* bytes, int count);
+// Linux and Android only (urandom_inotify.cpp): fills bytes[offset, count)
+// from /dev/urandom. True once every byte is filled.
+bool SecureRandomFromUrandom(uint8_t* bytes, int offset, int count);
 
 bool ZlibDeflate(Str input, bool gzip, Str* output, Str* error = nullptr);
 bool ZlibInflate(Str input, bool gzip, Str* output, Str* error = nullptr);

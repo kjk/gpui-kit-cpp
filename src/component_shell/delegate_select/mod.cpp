@@ -1,6 +1,7 @@
 // crates/component-shell/src/shell/delegate_select/mod.rs
 
 #include "component_shell/families.h"
+#include "component_shell/searchable_rows.h"
 #include "component_shell/support.h"
 #include "ui/select.h"
 
@@ -62,77 +63,18 @@ static El* RenderContent(void* user, Ctx* cx, IndexPath path,
     return Div(a)->Child(TextEl(a, item->title));
 }
 
-// delegate(): each row requires a string `id` and `label`.
-static bool Delegate(Ctx* cx, const shell::ComponentDataValue* rows, int count,
-                     SearchableListItem** items, Str* error) {
-    SearchableListItem* out =
-        count ? (SearchableListItem*)Alloc(
-                    cx->a, (int)sizeof(SearchableListItem) * count)
-              : nullptr;
-    for (int i = 0; i < count; i++) {
-        const shell::ComponentDataValue* id = rows[i].Get(StrL("id"));
-        if (!id || id->kind != shell::DataKind::String) {
-            *error =
-                StrDup(cx->a, fmt("Select row %d requires a string `id`", i));
-            return false;
-        }
-        const shell::ComponentDataValue* label = rows[i].Get(StrL("label"));
-        if (!label || label->kind != shell::DataKind::String) {
-            *error = StrDup(cx->a,
-                            fmt("Select row %d requires a string `label`", i));
-            return false;
-        }
-        const shell::ComponentDataValue* disabled = rows[i]
-                                                        .Get(StrL("disabled"));
-        out[i] = SearchableListItem{};
-        out[i].value = id->string;
-        out[i].title = label->string;
-        out[i].disabled = disabled &&
-                          disabled->kind == shell::DataKind::Boolean &&
-                          disabled->boolean;
-    }
-    *items = out;
-    return true;
-}
-
-static bool SameItems(const Vec<SearchableListItem>& a,
-                      const SearchableListItem* b, int count) {
-    if (len(a) != count) return false;
-    for (int i = 0; i < count; i++) {
-        if (!StrEq(a[i].value, b[i].value) || !StrEq(a[i].title, b[i].title) ||
-            a[i].disabled != b[i].disabled)
-            return false;
-    }
-    return true;
-}
-
-// Host: the retained SelectState, the items it holds (strings in `arena`),
-// and the callback the latest render resolved (Rust's Rc<RefCell<..>>).
+// Host: the retained SelectState, the items it holds, and the callback the
+// latest render resolved (Rust's Rc<RefCell<..>>).
 struct Host {
     App* app = nullptr;
     Entity<SelectState> state = {};
-    Arena* arena = nullptr;
-    Vec<SearchableListItem> items;
+    RetainedSearchableItems rows;
     ShellRuntime* runtime = nullptr;
     shell::ComponentCallback callback = {};
 
     ~Host() {
         if (app && state.IsValid()) EntityDrop(app, state.id);
-        VecReset(items);
-        if (arena) ArenaDelete(arena);
-    }
-
-    void SetItems(const SearchableListItem* next, int count) {
-        Arena* fresh = ArenaNew();
-        VecClear(items);
-        for (int i = 0; i < count; i++) {
-            SearchableListItem item = next[i];
-            item.value = StrDup(fresh, next[i].value);
-            item.title = StrDup(fresh, next[i].title);
-            VecAppend(items, item);
-        }
-        if (arena) ArenaDelete(arena);
-        arena = fresh;
+        rows.Free();
     }
 
     static void OnSelect(Host* self, Ctx* cx, const SelectEvent* event) {
@@ -166,7 +108,8 @@ static El* Render(MaterializeRequest* request, const Payload* payload,
                                &rows->count, cx->a, &error))
         return Failure(cx, "Failed to snapshot Select rows", error);
     SearchableListItem* next = nullptr;
-    if (!Delegate(cx, rows->rows, rows->count, &next, &error))
+    if (!SearchableItemsFromRows(cx, "Select", rows->rows, rows->count, &next,
+                                 &error))
         return Failure(cx, "Invalid Select rows", error);
 
     Str key = StrDup(cx->a, fmt("shell-select:%s", payload->id));
@@ -176,7 +119,7 @@ static El* Render(MaterializeRequest* request, const Payload* payload,
     if (!host->state.IsValid()) {
         host->app = cx->app;
         host->state = SelectState::New(cx->app);
-        host->SetItems(next, rows->count);
+        host->rows.Set(next, rows->count);
         SubscribeTo(cx->app, host->state, handle, &Host::OnSelect);
     }
     SelectState* state = host->state.Get(cx);
@@ -192,24 +135,23 @@ static El* Render(MaterializeRequest* request, const Payload* payload,
     bool hasSelected = false;
     if (state->state.selected.len > 0) {
         int ix = state->state.selected[0];
-        if (ix >= 0 && ix < len(host->items)) {
-            selected = StrDup(cx->a, host->items[ix].value);
+        if (ix >= 0 && ix < len(host->rows.items)) {
+            selected = StrDup(cx->a, host->rows.items[ix].value);
             hasSelected = true;
         }
     }
-    if (!SameItems(host->items, next, rows->count))
-        host->SetItems(next, rows->count);
-    state->SetItems(host->items.els, len(host->items));
+    if (!host->rows.Same(next, rows->count)) host->rows.Set(next, rows->count);
+    state->SetItems(host->rows.items.els, len(host->rows.items));
     if (hasSelected) state->SetSelectedValue(selected, nullptr);
 
     component::SearchableListDelegate delegate =
-        component::SearchableListDelegate::Items(host->items.els,
-                                                 len(host->items));
+        component::SearchableListDelegate::Items(host->rows.items.els,
+                                                 len(host->rows.items));
     delegate.user = rows;
     delegate.renderItemContent = &RenderContent;
     component::Select* select =
         component::Select::New(cx, payload->id, host->state)
-            ->Items(host->items.els, len(host->items))
+            ->Items(host->rows.items.els, len(host->rows.items))
             ->Delegate(delegate);
     EachMethod<Op>(request, [&](const Op& op) {
         if (op.kind == Op::Placeholder)
@@ -245,11 +187,7 @@ static El* Materialize(MaterializeRequest* request) {
 
 static bool Construct(PayloadBuild* build, const ComponentArgument* args,
                       int count) {
-    if (count != 4 || args[0].kind != shell::ComponentArgumentKind::String ||
-        args[1].kind != shell::ComponentArgumentKind::Callback ||
-        args[2].kind != shell::ComponentArgumentKind::Callback ||
-        args[3].kind != shell::ComponentArgumentKind::Callback ||
-        len(StrTrim(args[0].string)) == 0) {
+    if (!IsIdAndThreeCallbacks(args, count)) {
         return build
             ->Fail(StrL("Select expects id, rows callback, row renderer, and "
                         "selection callback"));
@@ -275,13 +213,11 @@ static bool RecordPlaceholder(PayloadBuild* build,
 
 static bool RecordMenuWidth(PayloadBuild* build, const ComponentArgument* args,
                             int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Number ||
-        !isfinite(args[0].number) || args[0].number <= 0 ||
-        args[0].number > (double)FLT_MAX)
-        return build->Fail(StrL("Select.menu_width received an invalid value"));
+    float width = 0;
+    if (!MenuWidthArgument(build, "Select", args, count, &width)) return false;
     Op* op = build->New<Op>();
     op->kind = Op::MenuWidth;
-    op->number = (float)args[0].number;
+    op->number = width;
     return true;
 }
 

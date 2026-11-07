@@ -150,26 +150,16 @@ static bool RecordTrigger(PayloadBuild* build, const ComponentArgument* args,
     return true;
 }
 
-static constexpr const char* kAnchorLiterals[] = {
-    "top_left",      "top_center",   "top_right",   "bottom_left",
-    "bottom_center", "bottom_right", "left_center", "right_center"};
-
 // anchor_operation.
 static bool RecordAnchor(PayloadBuild* build, const ComponentArgument* args,
                          int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Enum)
-        return build
-            ->Fail(StrL("HoverCard.card_anchor(anchor) expects an "
-                        "anchor literal"));
-    for (int i = 0; i < 8; i++) {
-        if (!StrEq(args[0].string, kAnchorLiterals[i])) continue;
-        HoverCardOp* op = build->New<HoverCardOp>();
-        op->kind = HoverCardOp::Anchor;
-        op->anchor = (gpui::Anchor)i;
-        return true;
-    }
-    return build
-        ->Fail(fmt("unsupported HoverCard anchor `%s`", args[0].string));
+    gpui::Anchor anchor = {};
+    if (!CardAnchorArgument(build, "HoverCard", args, count, &anchor))
+        return false;
+    HoverCardOp* op = build->New<HoverCardOp>();
+    op->kind = HoverCardOp::Anchor;
+    op->anchor = anchor;
+    return true;
 }
 
 // duration_operation.
@@ -208,10 +198,7 @@ static bool RecordAppearance(PayloadBuild* build, const ComponentArgument* args,
 // open_change_operation.
 static bool RecordOpenChange(PayloadBuild* build, const ComponentArgument* args,
                              int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Callback)
-        return build
-            ->Fail(StrL("HoverCard.on_open_change(callback) expects a "
-                        "callback"));
+    if (!OpenChangeArgument(build, "HoverCard", args, count)) return false;
     HoverCardOp* op = build->New<HoverCardOp>();
     op->kind = HoverCardOp::OnOpenChange;
     op->argument = args[0];
@@ -221,22 +208,18 @@ static bool RecordOpenChange(PayloadBuild* build, const ComponentArgument* args,
 static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kTriggerArgs[] = {
     {"element", SchemaElement()}};
-static constexpr ArgumentDescriptor kAnchorArgs[] = {
-    {"anchor", SchemaEnum(kAnchorLiterals)}};
 static constexpr ArgumentDescriptor kDelayArgs[] = {
     {"milliseconds", SchemaNumber()}};
 static constexpr ArgumentDescriptor kAppearanceArgs[] = {
     {"appearance", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kOpenChangeArgs[] = {
-    {"callback", SchemaCallback("(open: boolean, cx: Context) => void")}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"HoverCard", kIdArgs, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     {"trigger_element", kTriggerArgs,
      "Sets the element that owns the hover interaction.", &RecordTrigger},
-    {"card_anchor", kAnchorArgs, "Positions the card relative to its trigger.",
-     &RecordAnchor},
+    {"card_anchor", kCardAnchorArguments,
+     "Positions the card relative to its trigger.", &RecordAnchor},
     {"open_delay", kDelayArgs,
      "Sets the hover-open delay in milliseconds (0\xe2\x80\x93"
      "60000).",
@@ -247,7 +230,7 @@ static constexpr MethodDescriptor kMethods[] = {
      &RecordDelay<HoverCardOp::CloseDelay>},
     {"appearance", kAppearanceArgs,
      "Controls the component's popover surface styling.", &RecordAppearance},
-    {"on_open_change", kOpenChangeArgs,
+    {"on_open_change", kOpenChangeArguments,
      "Runs when pointer interaction opens or closes the card.",
      &RecordOpenChange},
 };

@@ -109,25 +109,16 @@ static bool Construct(PayloadBuild* build, const ComponentArgument* args,
     return true;
 }
 
-static constexpr const char* kAnchorLiterals[] = {
-    "top_left",      "top_center",   "top_right",   "bottom_left",
-    "bottom_center", "bottom_right", "left_center", "right_center"};
-
 // anchor_op.
 static bool RecordAnchor(PayloadBuild* build, const ComponentArgument* args,
                          int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Enum)
-        return build
-            ->Fail(StrL("Popover.card_anchor(anchor) expects an anchor "
-                        "literal"));
-    for (int i = 0; i < 8; i++) {
-        if (!StrEq(args[0].string, kAnchorLiterals[i])) continue;
-        PopoverOp* op = build->New<PopoverOp>();
-        op->kind = PopoverOp::Anchor;
-        op->anchor = (gpui::Anchor)i;
-        return true;
-    }
-    return build->Fail(fmt("unsupported Popover anchor `%s`", args[0].string));
+    gpui::Anchor anchor = {};
+    if (!CardAnchorArgument(build, "Popover", args, count, &anchor))
+        return false;
+    PopoverOp* op = build->New<PopoverOp>();
+    op->kind = PopoverOp::Anchor;
+    op->anchor = anchor;
+    return true;
 }
 
 // boolean_op(name, ..).
@@ -150,10 +141,7 @@ static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
 
 static bool RecordOpenChange(PayloadBuild* build, const ComponentArgument* args,
                              int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Callback)
-        return build
-            ->Fail(StrL("Popover.on_open_change(callback) expects a "
-                        "callback"));
+    if (!OpenChangeArgument(build, "Popover", args, count)) return false;
     PopoverOp* op = build->New<PopoverOp>();
     op->kind = PopoverOp::OnOpenChange;
     op->callback = args[0];
@@ -163,11 +151,7 @@ static bool RecordOpenChange(PayloadBuild* build, const ComponentArgument* args,
 static constexpr ArgumentDescriptor kConstructorArgs[] = {
     {"id", SchemaString()},
     {"label", SchemaString()}};
-static constexpr ArgumentDescriptor kAnchorArgs[] = {
-    {"anchor", SchemaEnum(kAnchorLiterals)}};
 static constexpr ArgumentDescriptor kValueArgs[] = {{"value", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kOpenChangeArgs[] = {
-    {"callback", SchemaCallback("(open: boolean, cx: Context) => void")}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Popover", kConstructorArgs, &Construct}};
@@ -175,7 +159,7 @@ static constexpr MethodDescriptor kMethods[] = {
     // Not `anchor`: the runtime's element prototype defines that name itself
     // and would shadow this method. HoverCard carries the same method under
     // this name.
-    {"card_anchor", kAnchorArgs,
+    {"card_anchor", kCardAnchorArguments,
      "Positions the popover relative to its trigger.", &RecordAnchor},
     {"default_open", kValueArgs, "Sets the initial uncontrolled open state.",
      &RecordBool<PopoverOp::DefaultOpen>},
@@ -186,7 +170,7 @@ static constexpr MethodDescriptor kMethods[] = {
     {"overlay_closable", kValueArgs,
      "Controls whether pressing outside dismisses the popover.",
      &RecordBool<PopoverOp::OverlayClosable>},
-    {"on_open_change", kOpenChangeArgs,
+    {"on_open_change", kOpenChangeArguments,
      "Runs when pointer interaction changes the open state.",
      &RecordOpenChange},
 };

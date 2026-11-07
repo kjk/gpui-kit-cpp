@@ -79,14 +79,6 @@ static bool RecordCompact(PayloadBuild* build, const ComponentArgument*, int) {
     return true;
 }
 
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    PaginationOp* op = build->New<PaginationOp>();
-    op->kind = PaginationOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
-    return true;
-}
-
 // The on_change closure: the page the reader asked for, which the
 // component fills in.
 static void RunChange(const shell::ComponentEventBinding* binding,
@@ -174,7 +166,8 @@ static constexpr MethodDescriptor kMethods[] = {
      {},
      "Shows only previous and next icon buttons.",
      &RecordCompact},
-    {"size", kSizeArgs, "Sets semantic size.", &RecordSize},
+    {"size", kSizeArgs, "Sets semantic size.",
+     &RecordSizeOp<PaginationOp, PaginationOp::Size>},
 };
 static constexpr ComponentDescriptor kPagination = {
     "Pagination", kConstructors, kMethods,

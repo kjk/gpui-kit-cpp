@@ -3,7 +3,9 @@
 
 #include "shell/host.h"
 
+#include "shell/common.h"
 #include "shell/dependencies.h"
+#include "shell/error.h"
 #include "shell/plugin.h"
 #include "shell/runtime.h"
 #include "shell/typings.h"
@@ -15,78 +17,13 @@ namespace gpui::shell {
 
 extern const char kShellAgentsTemplate[];
 
-static bool AbsolutePath(Str path) {
-    if (!path || len(path) == 0) return false;
-    if (path.s[0] == '/' || path.s[0] == '\\') return true;
-    return len(path) >= 3 && path.s[1] == ':' &&
-           (path.s[2] == '/' || path.s[2] == '\\');
-}
-
-static Str JoinOwned(Str left, Str right) {
-    if (!left || len(left) == 0) return StrDup(right);
-    if (!right || len(right) == 0) return StrDup(left);
-    char last = left.s[len(left) - 1];
-    bool separator = last != '/' && last != '\\';
-    if (!separator) return StrDup(fmt("%s%s", left, right));
-    return StrDup(fmt("%s%c%s", left, base::PlatPathSep(), right));
-}
-
-static void SetOwned(Str* error, Str message) {
-    if (!error) return;
-    StrFree(*error);
-    *error = StrDup(message);
-}
-
-static bool WriteWhole(Str path, Str contents, Str* error) {
-    if (!path || len(path) >= kMaxPath) {
-        SetOwned(error, StrL("cannot write: the path is empty or too long"));
-        return false;
-    }
-    TempStr name = StrDupTemp(path);
-    FILE* file = fopen(name.s, "wb");
-    if (!file) {
-        SetOwned(error, fmt("cannot write %s", path));
-        return false;
-    }
-    bool ok = len(contents) == 0 || fwrite(contents.s, 1, (size_t)len(contents),
-                                           file) == (size_t)len(contents);
-    if (fclose(file) != 0) ok = false;
-    if (!ok) SetOwned(error, fmt("cannot write %s", path));
-    return ok;
-}
-
-static Str ReadWhole(Str path) {
-    if (!path || len(path) >= kMaxPath) return {};
-    TempStr name = StrDupTemp(path);
-    FILE* file = fopen(name.s, "rb");
-    if (!file) return {};
-    if (fseek(file, 0, SEEK_END) != 0) {
-        fclose(file);
-        return {};
-    }
-    long size = ftell(file);
-    if (size < 0 || size > 1024 * 1024 || fseek(file, 0, SEEK_SET) != 0) {
-        fclose(file);
-        return {};
-    }
-    StrBuilder out;
-    if (size > 0) {
-        char* buffer = new char[(size_t)size];
-        size_t got = fread(buffer, 1, (size_t)size, file);
-        out.Append(Str(buffer, (int)got));
-        delete[] buffer;
-    }
-    fclose(file);
-    return out.TakeStr();
-}
-
 Str ShellHomeFrom(Str shellHome, Str home, Str userProfile) {
     if (shellHome && len(shellHome) > 0) {
-        if (AbsolutePath(shellHome)) return StrDup(shellHome);
+        if (PathIsAbsolute(shellHome)) return StrDup(shellHome);
         char cwd[kMaxPath];
         cwd[0] = 0;
         PlatGetCwd(cwd, kMaxPath);
-        return JoinOwned(Str(cwd), shellHome);
+        return PathJoin(Str(cwd), shellHome);
     }
     Str base = home && len(home) > 0 ? home : userProfile;
     Str ownedBase = {};
@@ -97,7 +34,7 @@ Str ShellHomeFrom(Str shellHome, Str home, Str userProfile) {
         ownedBase = StrDup(Str(temp));
         base = ownedBase;
     }
-    Str homeDir = JoinOwned(base, StrL(".gpui-shell"));
+    Str homeDir = PathJoin(base, StrL(".gpui-shell"));
     StrFree(ownedBase);
     return homeDir;
 }
@@ -112,14 +49,14 @@ Str ShellHome() {
 
 Str ShellApplicationsDirectory() {
     Str home = ShellHome();
-    Str apps = JoinOwned(home, StrL("apps"));
+    Str apps = PathJoin(home, StrL("apps"));
     StrFree(home);
     return apps;
 }
 
 static bool IsApplication(Str directory) {
-    Str manifest = JoinOwned(directory, Str(kShellManifestFile));
-    Str entry = JoinOwned(directory, StrL("main.js"));
+    Str manifest = PathJoin(directory, Str(kShellManifestFile));
+    Str entry = PathJoin(directory, StrL("main.js"));
     bool found = (manifest && PlatFileExists(manifest.s)) ||
                  (entry && PlatFileExists(entry.s));
     StrFree(manifest);
@@ -134,10 +71,10 @@ bool ShellBundledApplication(Str* directory) {
     PlatGetExeDir(executable, kMaxPath);
     if (!executable[0]) return false;
     Str root(executable);
-    Str resources = JoinOwned(root, StrL(".."));
-    Str resourcesApp = JoinOwned(resources, StrL("Resources"));
-    Str bundled = JoinOwned(resourcesApp, StrL("app"));
-    Str beside = JoinOwned(root, StrL("app"));
+    Str resources = PathJoin(root, StrL(".."));
+    Str resourcesApp = PathJoin(resources, StrL("Resources"));
+    Str bundled = PathJoin(resourcesApp, StrL("app"));
+    Str beside = PathJoin(root, StrL("app"));
     StrFree(resources);
     StrFree(resourcesApp);
     bool found = false;
@@ -167,7 +104,7 @@ bool ShellResolveApplication(const Invocation& invocation, Str* directory,
     if (directory) *directory = {};
     if (invocation.application == ApplicationKind::Installed) {
         Str apps = ShellApplicationsDirectory();
-        Str candidate = JoinOwned(apps, invocation.directory);
+        Str candidate = PathJoin(apps, invocation.directory);
         if (IsApplication(candidate)) {
             if (directory)
                 *directory = candidate;
@@ -176,12 +113,12 @@ bool ShellResolveApplication(const Invocation& invocation, Str* directory,
             StrFree(apps);
             return true;
         }
-        SetOwned(error,
-                 fmt("no application `%s` is installed: %s has no main.js or "
-                     "gpui-shell.json. `gpui-shell list` shows what is "
-                     "installed; to run a directory, use `gpui-shell run -d "
-                     "%s`.",
-                     invocation.directory, candidate, invocation.directory));
+        ErrorOutSet(
+            error, fmt("no application `%s` is installed: %s has no main.js or "
+                       "gpui-shell.json. `gpui-shell list` shows what is "
+                       "installed; to run a directory, use `gpui-shell run -d "
+                       "%s`.",
+                       invocation.directory, candidate, invocation.directory));
         StrFree(candidate);
         StrFree(apps);
         return false;
@@ -195,7 +132,7 @@ bool ShellResolveApplication(const Invocation& invocation, Str* directory,
         cwd[0] = 0;
         PlatGetCwd(cwd, kMaxPath);
         if (!cwd[0]) {
-            SetOwned(error, StrL("cannot read the current directory"));
+            ErrorOutSet(error, StrL("cannot read the current directory"));
             return false;
         }
         if (directory) *directory = StrDup(Str(cwd));
@@ -204,16 +141,16 @@ bool ShellResolveApplication(const Invocation& invocation, Str* directory,
     if (invocation.application == ApplicationKind::Bundled) {
         if (ShellBundledApplication(directory)) return true;
         Str apps = ShellApplicationsDirectory();
-        SetOwned(error,
-                 fmt("nothing to run: no application is packaged beside this "
-                     "executable. Run one with `gpui-shell run <name>` or "
-                     "`gpui-shell run -d <directory>`; `gpui-shell list` "
-                     "shows what is installed in %s.",
-                     apps));
+        ErrorOutSet(
+            error, fmt("nothing to run: no application is packaged beside this "
+                       "executable. Run one with `gpui-shell run <name>` or "
+                       "`gpui-shell run -d <directory>`; `gpui-shell list` "
+                       "shows what is installed in %s.",
+                       apps));
         StrFree(apps);
         return false;
     }
-    SetOwned(error, StrL("no application was named"));
+    ErrorOutSet(error, StrL("no application was named"));
     return false;
 }
 
@@ -228,7 +165,7 @@ int ShellListApplications() {
     Vec<Str> names;
     for (int i = 0; i < count; i++) {
         if (!entries[i].isDir) continue;
-        Str path = JoinOwned(directory, Str(entries[i].name));
+        Str path = PathJoin(directory, Str(entries[i].name));
         if (IsApplication(path))
             VecAppend(names, path);
         else
@@ -260,7 +197,7 @@ int ShellListApplications() {
                root.s[start - 1] != '\\')
             start--;
         Str name = Str(root.s + start, len(root) - start);
-        Str manifestPath = JoinOwned(root, Str(kShellManifestFile));
+        Str manifestPath = PathJoin(root, Str(kShellManifestFile));
         bool hasManifest = manifestPath && PlatFileExists(manifestPath.s);
         StrFree(manifestPath);
         if (!hasManifest) {
@@ -371,16 +308,6 @@ static Str DisplayName(Str folder) {
     }
     if (!any) return StrDup(StrL("App"));
     return out.TakeStr();
-}
-
-static void AppendJsonString(StrBuilder* out, Str text) {
-    out->AppendChar('"');
-    for (int i = 0; i < len(text); i++) {
-        char c = text.s[i];
-        if (c == '"' || c == '\\') out->AppendChar('\\');
-        out->AppendChar(c);
-    }
-    out->AppendChar('"');
 }
 
 static Str FolderName(Str directory) {
@@ -517,21 +444,22 @@ bool ShellCreateApplication(Str directory,
                             Str* created, Str* error) {
     if (created) *created = {};
     if (DirectoryOccupied(directory)) {
-        SetOwned(error, fmt("`%s` already exists and is not empty; `new` only "
-                            "creates an application",
-                            directory));
+        ErrorOutSet(error,
+                    fmt("`%s` already exists and is not empty; `new` only "
+                        "creates an application",
+                        directory));
         return false;
     }
     if (!DependencyMakeDirectories(directory, error)) {
         if (error && !*error)
-            SetOwned(error, fmt("cannot create `%s`", directory));
+            ErrorOutSet(error, fmt("cannot create `%s`", directory));
         return false;
     }
     char canonical[kMaxPath];
     canonical[0] = 0;
     TempStr raw = StrDupTemp(directory);
     if (!raw || !PlatCanonicalPath(raw.s, canonical, kMaxPath)) {
-        SetOwned(error, fmt("cannot read `%s`", directory));
+        ErrorOutSet(error, fmt("cannot read `%s`", directory));
         return false;
     }
     Str root = StrDup(Str(canonical));
@@ -541,13 +469,14 @@ bool ShellCreateApplication(Str directory,
     Str shown = DisplayName(folder);
     Str entry = EntryText(shown, styled);
     StrFree(shown);
-    Str manifestPath = JoinOwned(root, Str(kShellManifestFile));
-    Str entryPath = JoinOwned(root, StrL("main.js"));
-    Str ignorePath = JoinOwned(root, StrL(".gitignore"));
-    bool ok = WriteWhole(manifestPath, manifest, error) &&
-              WriteWhole(entryPath, entry, error) &&
-              WriteWhole(ignorePath,
-                         StrL("gpui-kit.d.ts\nnode_modules/\ndist/\n"), error);
+    Str manifestPath = PathJoin(root, Str(kShellManifestFile));
+    Str entryPath = PathJoin(root, StrL("main.js"));
+    Str ignorePath = PathJoin(root, StrL(".gitignore"));
+    bool ok =
+        WriteWholeFile(manifestPath, manifest, error) &&
+        WriteWholeFile(entryPath, entry, error) &&
+        WriteWholeFile(ignorePath,
+                       StrL("gpui-kit.d.ts\nnode_modules/\ndist/\n"), error);
     StrFree(manifest);
     StrFree(entry);
     StrFree(manifestPath);
@@ -560,9 +489,9 @@ bool ShellCreateApplication(Str directory,
     ShellError declared = {};
     if (!ShellWriteTypeDeclarations(root, nullptr, nullptr, &declared,
                                     components)) {
-        SetOwned(error, fmt("cannot write type declarations: %s",
-                            declared.message ? declared.message
-                                             : StrL("unknown error")));
+        ErrorOutSet(error, fmt("cannot write type declarations: %s",
+                               declared.message ? declared.message
+                                                : StrL("unknown error")));
         ShellErrorClear(&declared);
         StrFree(root);
         return false;
@@ -643,12 +572,13 @@ bool ShellWriteAgents(Str directory, const FrozenComponentRegistry* components,
                       Str* written, Str* error) {
     if (written) *written = {};
     if (!directory || !PlatDirExists(directory.s)) {
-        SetOwned(error, fmt("`%s` is not a directory", directory));
+        ErrorOutSet(error, fmt("`%s` is not a directory", directory));
         return false;
     }
-    Str path = JoinOwned(directory, StrL("AGENTS.md"));
+    Str path = PathJoin(directory, StrL("AGENTS.md"));
     Str text = ShellAgentsText(components);
-    Str existing = ReadWhole(path);
+    Str existing;
+    ReadWholeFile(path, 1024 * 1024, &existing, nullptr);
     if (existing && StrEq(existing, text)) {
         StrFree(existing);
         StrFree(text);
@@ -657,11 +587,11 @@ bool ShellWriteAgents(Str directory, const FrozenComponentRegistry* components,
     }
     Str marker = AgentsMarker();
     if (existing && !StrStartsWith(existing, marker)) {
-        SetOwned(error,
-                 fmt("%s exists and was not generated by gpui-shell; it is "
-                     "left alone. Run `gpui-shell agents` to print the "
-                     "instructions instead.",
-                     path));
+        ErrorOutSet(error,
+                    fmt("%s exists and was not generated by gpui-shell; it is "
+                        "left alone. Run `gpui-shell agents` to print the "
+                        "instructions instead.",
+                        path));
         StrFree(marker);
         StrFree(existing);
         StrFree(text);
@@ -670,7 +600,7 @@ bool ShellWriteAgents(Str directory, const FrozenComponentRegistry* components,
     }
     StrFree(marker);
     StrFree(existing);
-    bool ok = WriteWhole(path, text, error);
+    bool ok = WriteWholeFile(path, text, error);
     StrFree(text);
     if (!ok) {
         StrFree(path);

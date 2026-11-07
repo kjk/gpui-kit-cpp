@@ -1,6 +1,7 @@
 #include "shell/plugin.h"
 
 #include "base/json.h"
+#include "shell/common.h"
 #include "shell/filesystem.h"
 #include "shell/host_modules.h"
 #include "shell/scope.h"
@@ -220,14 +221,6 @@ static bool ValidatePlaceholders(const Vec<Str>& paths, Str field,
 // and `validate_dependencies`. The manifest is the whole description of a
 // dependency, and every question a Git command would otherwise discover is
 // answered here, before one runs.
-
-static Str TrimAscii(Str value) {
-    int start = 0;
-    int end = len(value);
-    while (start < end && (uint8_t)value.s[start] <= ' ') start++;
-    while (end > start && (uint8_t)value.s[end - 1] <= ' ') end--;
-    return Str(value.s + start, end - start);
-}
 
 // `valid_git_ref_name`: git-check-ref-format's rules, so a selector cannot be
 // a refspec.
@@ -914,12 +907,6 @@ void PluginManifestSchema(StrBuilder* out) {
         "}"));
 }
 
-static bool AbsolutePath(Str path) {
-    if (StrStartsWithAny(path, "/\\")) return true;
-    return len(path) >= 3 && path.s[1] == ':' &&
-           (path.s[2] == '/' || path.s[2] == '\\');
-}
-
 // False when the path names ${homeDir} and there is no home directory: left
 // in, the placeholder would become a relative directory inside the plugin.
 static bool ExpandPath(Str raw, Str plugin, Str data, Str home, Str* out) {
@@ -944,7 +931,7 @@ static bool ExpandPath(Str raw, Str plugin, Str data, Str home, Str* out) {
         }
     }
     Str expanded = built.TakeStr();
-    if (AbsolutePath(expanded)) {
+    if (PathIsAbsolute(expanded)) {
         if (out) *out = expanded;
         return true;
     }
@@ -1020,7 +1007,7 @@ Str ShellHomeDirectory() {
         home = getenv("USERPROFILE");
     if (!home || !*home) return {};
     Str path(home);
-    if (!AbsolutePath(path)) return {};
+    if (!PathIsAbsolute(path)) return {};
     return StrDup(path);
 }
 

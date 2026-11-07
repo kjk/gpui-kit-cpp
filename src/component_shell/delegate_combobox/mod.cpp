@@ -1,6 +1,7 @@
 // crates/component-shell/src/shell/delegate_combobox/mod.rs
 
 #include "component_shell/families.h"
+#include "component_shell/searchable_rows.h"
 #include "component_shell/support.h"
 #include "ui/combobox.h"
 
@@ -42,17 +43,7 @@ static ComboboxEventProbe gProbe = nullptr;
 // and whose title is its label. The delegate's `all` is the snapshot the host
 // keeps; the query filtering Rust's perform_search does is the list's own
 // (SearchableItemMatches, the same case-insensitive title match).
-static bool SameItems(const SearchableListItem* a, int aCount,
-                      const SearchableListItem* b, int bCount) {
-    if (aCount != bCount) return false;
-    for (int i = 0; i < aCount; i++) {
-        if (!StrEq(a[i].value, b[i].value) || !StrEq(a[i].title, b[i].title) ||
-            a[i].disabled != b[i].disabled)
-            return false;
-    }
-    return true;
-}
-
+//
 // snapshot(): the rows, each requiring a string `id` and `label`.
 static bool Snapshot(MaterializeRequest* request,
                      shell::ComponentCallback callback,
@@ -63,33 +54,8 @@ static bool Snapshot(MaterializeRequest* request,
     if (!callback.SnapshotRowsWith(request->runtime, nullptr, 0, cx, &rows, &n,
                                    cx->a, error))
         return false;
-    SearchableListItem* out =
-        n ? (SearchableListItem*)Alloc(cx->a,
-                                       (int)sizeof(SearchableListItem) * n)
-          : nullptr;
-    for (int i = 0; i < n; i++) {
-        const shell::ComponentDataValue* id = rows[i].Get(StrL("id"));
-        if (!id || id->kind != shell::DataKind::String) {
-            *error =
-                StrDup(cx->a, fmt("Combobox row %d requires a string `id`", i));
-            return false;
-        }
-        const shell::ComponentDataValue* label = rows[i].Get(StrL("label"));
-        if (!label || label->kind != shell::DataKind::String) {
-            *error = StrDup(
-                cx->a, fmt("Combobox row %d requires a string `label`", i));
-            return false;
-        }
-        const shell::ComponentDataValue* disabled = rows[i]
-                                                        .Get(StrL("disabled"));
-        out[i] = SearchableListItem{};
-        out[i].value = id->string;
-        out[i].title = label->string;
-        out[i].disabled = disabled &&
-                          disabled->kind == shell::DataKind::Boolean &&
-                          disabled->boolean;
-    }
-    *items = out;
+    if (!SearchableItemsFromRows(cx, "Combobox", rows, n, items, error))
+        return false;
     *count = n;
     return true;
 }
@@ -100,31 +66,15 @@ struct Host {
     App* app = nullptr;
     Entity<Host> self = {};
     Entity<ComboboxState> state = {};
-    // The rows the state holds, with their strings in `arena`.
-    Arena* arena = nullptr;
-    Vec<SearchableListItem> items;
+    // The rows the state holds.
+    RetainedSearchableItems rows;
     ShellRuntime* runtime = nullptr;
     shell::ComponentCallback change = {};
     shell::ComponentCallback confirm = {};
 
     ~Host() {
         if (app && state.IsValid()) EntityDrop(app, state.id);
-        VecReset(items);
-        if (arena) ArenaDelete(arena);
-    }
-
-    // Takes a copy of `next` as the rows, replacing the previous ones.
-    void SetRows(const SearchableListItem* next, int count) {
-        Arena* fresh = ArenaNew();
-        VecClear(items);
-        for (int i = 0; i < count; i++) {
-            SearchableListItem item = next[i];
-            item.value = StrDup(fresh, next[i].value);
-            item.title = StrDup(fresh, next[i].title);
-            VecAppend(items, item);
-        }
-        if (arena) ArenaDelete(arena);
-        arena = fresh;
+        rows.Free();
     }
 
     // report_values: the first value, if any.
@@ -177,7 +127,7 @@ static El* Render(MaterializeRequest* request, const Payload* payload,
         if (ComboboxState* state = host->state.Get(cx)) {
             state->Multiple(false)->Searchable(searchable);
         }
-        host->SetRows(next, count);
+        host->rows.Set(next, count);
         // The two window.subscribe calls: one handler hears both events and
         // routes each to its callback.
         SubscribeTo(cx->app, host->state, handle, &Host::OnEvent);
@@ -187,16 +137,16 @@ static El* Render(MaterializeRequest* request, const Payload* payload,
     host->runtime = request->runtime;
     host->change = change;
     host->confirm = confirm;
-    if (!SameItems(host->items.els, len(host->items), next, count)) {
+    if (!host->rows.Same(next, count)) {
         Str selected = StrDup(cx->a, state->SelectedValue());
         bool hasSelected = state->state.selected.len > 0;
-        host->SetRows(next, count);
-        state->SetItems(host->items.els, len(host->items));
+        host->rows.Set(next, count);
+        state->SetItems(host->rows.items.els, len(host->rows.items));
         if (hasSelected) state->SetSelectedValues(&selected, 1, nullptr);
     }
     component::Combobox* combobox =
         component::Combobox::New(cx, payload->id, host->state)
-            ->Items(host->items.els, len(host->items));
+            ->Items(host->rows.items.els, len(host->rows.items));
     // Combobox::New makes the list searchable, which is its default; the
     // retained state's own setting is what this host was keyed by.
     state->Searchable(searchable);
@@ -243,11 +193,7 @@ static El* Materialize(MaterializeRequest* request) {
 
 static bool Construct(PayloadBuild* build, const ComponentArgument* args,
                       int count) {
-    if (count != 4 || args[0].kind != shell::ComponentArgumentKind::String ||
-        args[1].kind != shell::ComponentArgumentKind::Callback ||
-        args[2].kind != shell::ComponentArgumentKind::Callback ||
-        args[3].kind != shell::ComponentArgumentKind::Callback ||
-        len(StrTrim(args[0].string)) == 0) {
+    if (!IsIdAndThreeCallbacks(args, count)) {
         return build
             ->Fail(StrL("Combobox expects id, rows, on_change, and on_confirm "
                         "callbacks"));
@@ -291,13 +237,12 @@ static bool RecordSearchable(PayloadBuild* build, const ComponentArgument* args,
 
 static bool RecordMenuWidth(PayloadBuild* build, const ComponentArgument* args,
                             int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Number ||
-        !isfinite(args[0].number) || args[0].number <= 0 ||
-        args[0].number > (double)FLT_MAX)
-        return Invalid(build, "menu_width");
+    float width = 0;
+    if (!MenuWidthArgument(build, "Combobox", args, count, &width))
+        return false;
     Op* op = build->New<Op>();
     op->kind = Op::MenuWidth;
-    op->number = (float)args[0].number;
+    op->number = width;
     return true;
 }
 

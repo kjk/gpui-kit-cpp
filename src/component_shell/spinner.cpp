@@ -32,14 +32,6 @@ static bool Construct(PayloadBuild* build, const ComponentArgument*, int) {
     return build->Mark<SpinnerPayload>();
 }
 
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    SpinnerOp* op = build->New<SpinnerOp>();
-    op->kind = SpinnerOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
-    return true;
-}
-
 static bool RecordIcon(PayloadBuild* build, const ComponentArgument* args,
                        int) {
     SpinnerOp* op = build->New<SpinnerOp>();
@@ -123,7 +115,8 @@ static constexpr ArgumentDescriptor kEaseArgs[] = {
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Spinner", {}, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
-    {"size", kSizeArgs, "Sets the spinner's semantic size.", &RecordSize},
+    {"size", kSizeArgs, "Sets the spinner's semantic size.",
+     &RecordSizeOp<SpinnerOp, SpinnerOp::Size>},
     {"icon", kIconArgs, "Selects the icon rotated by the spinner.",
      &RecordIcon},
     {"color", kColorArgs, "Sets the spinner icon color.", &RecordColor},

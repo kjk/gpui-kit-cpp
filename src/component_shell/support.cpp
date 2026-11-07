@@ -40,6 +40,15 @@ El* BuildDeferredSlot(const DeferredSlot* slot, Ctx* cx) {
         cx->a, StrDup(cx->a, fmt("%s: no element", Str(slot->failure)))));
 }
 
+bool IsUsizeNumber(double value) {
+    return isfinite(value) && value >= 0. && value == floor(value) &&
+           value < 18446744073709551616.0;
+}
+
+int SaturatingInt(double value) {
+    return value > 2147483647.0 ? 2147483647 : (int)value;
+}
+
 UiSize SizeOfLiteral(Str literal) {
     if (StrEq(literal, "xsmall")) return UiSize::XSmall;
     if (StrEq(literal, "small")) return UiSize::Small;
@@ -163,6 +172,32 @@ TempStr F64DisplayTemp(double value) {
     TempStr result = fmt("%s", owned);
     StrFree(owned);
     return result;
+}
+
+bool CardAnchorArgument(PayloadBuild* build, const char* component,
+                        const ComponentArgument* args, int count,
+                        gpui::Anchor* out) {
+    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Enum) {
+        return build
+            ->Fail(fmt("%s.card_anchor(anchor) expects an anchor "
+                       "literal",
+                       Str(component)));
+    }
+    for (int i = 0; i < (int)dimof(kCardAnchorLiterals); i++) {
+        if (!StrEq(args[0].string, kCardAnchorLiterals[i])) continue;
+        *out = (gpui::Anchor)i;
+        return true;
+    }
+    return build->Fail(
+        fmt("unsupported %s anchor `%s`", Str(component), args[0].string));
+}
+
+bool OpenChangeArgument(PayloadBuild* build, const char* component,
+                        const ComponentArgument* args, int count) {
+    if (count == 1 && args[0].kind == shell::ComponentArgumentKind::Callback)
+        return true;
+    return build->Fail(
+        fmt("%s.on_open_change(callback) expects a callback", Str(component)));
 }
 
 } // namespace gpui::component_shell
