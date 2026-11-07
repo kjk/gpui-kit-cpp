@@ -2141,31 +2141,30 @@ static El* FoldChevron(Arena* a, InputState* state,
     return cell->Child(icon);
 }
 
-// element.rs compose_decoration_collections, kept flat. Lived beside the
-// highlighter facade until the highlighter became an installed seam; the
-// element composes the decoration layers itself now, which is where Rust
-// does it.
+// element.rs combine_highlights, one decoration at a time. A later
+// decoration is laid over the runs already produced, so it wins on the
+// bytes it covers, including over an earlier decoration. Empty ranges are
+// dropped. The result stays in order, built in the caller's scratch.
 int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
                       int cap, TextSpan* tmp) {
-    // The decorations win over the spans they overlap: every span is cut
-    // back to what the decorations leave it, and the decorations go in
-    // whole. Both lists are in order, and so is the result, built into the
-    // caller's scratch and copied back.
-    int m = 0;
-    int i = 0;
-    for (int d = 0; d < nDecs && m < cap; d++) {
+    if (!spans || !tmp || cap <= 0) return 0;
+    int count = n < cap ? n : cap;
+    if (nDecs <= 0 || !decs) return count;
+    for (int d = 0; d < nDecs; d++) {
         const TextSpan& dec = decs[d];
-        for (; i < n && m < cap; i++) {
+        if (dec.hi <= dec.lo) continue;
+        int m = 0;
+        int i = 0;
+        for (; i < count && m < cap; i++) {
             TextSpan sp = spans[i];
+            if (sp.hi <= sp.lo) continue;
             if (sp.hi <= dec.lo) {
                 tmp[m++] = sp;
                 continue;
             }
-            if (sp.lo >= dec.hi) {
-                break;
-            }
+            if (sp.lo >= dec.hi) break;
             // The part before the decoration survives; the part after it is
-            // put back for the next decoration to look at.
+            // put back for the rest of this decoration to look at.
             if (sp.lo < dec.lo && m < cap) {
                 TextSpan head = sp;
                 head.hi = dec.lo;
@@ -2176,17 +2175,14 @@ int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
                 break;
             }
         }
-        if (m < cap) {
-            tmp[m++] = dec;
+        if (m < cap) tmp[m++] = dec;
+        for (; i < count && m < cap; i++) {
+            if (spans[i].hi > spans[i].lo) tmp[m++] = spans[i];
         }
+        for (int k = 0; k < m; k++) spans[k] = tmp[k];
+        count = m;
     }
-    for (; i < n && m < cap; i++) {
-        tmp[m++] = spans[i];
-    }
-    for (int k = 0; k < m; k++) {
-        spans[k] = tmp[k];
-    }
-    return m;
+    return count;
 }
 
 // element.rs layout_range_decorations and its paint. Rust builds one path per

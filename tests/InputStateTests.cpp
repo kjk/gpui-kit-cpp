@@ -13213,7 +13213,86 @@ static void SelectedRangeRestoresUnicodeDirection() {
              1);
 }
 
+// element.rs later_highlight_layer_wins_over_earlier_one.
+// TextSpan has no font weight: a run shares the line's shaped face, so the
+// Rust assertion that bold survives a later colour has no field here. The
+// colour split is what paint uses.
+static TextSpan PaintSpan(int lo, int hi, Rgba color) {
+    TextSpan span;
+    span.lo = lo;
+    span.hi = hi;
+    span.color = color;
+    return span;
+}
+
+static Rgba GpuiBlue() {
+    return HslaToRgba(Hsla{0.6666666667f, 1.f, 0.5f, 1.f});
+}
+
+static Rgba GpuiRed() {
+    return HslaToRgba(Hsla{0.f, 1.f, 0.5f, 1.f});
+}
+
+static Rgba GpuiGreen() {
+    return HslaToRgba(Hsla{0.3333333333f, 1.f, 0.25f, 1.f});
+}
+
+static void LaterHighlightLayerWinsOverEarlierOne() {
+    Rgba blue = GpuiBlue();
+    Rgba red = GpuiRed();
+    Rgba green = GpuiGreen();
+    TextSpan spans[8];
+    TextSpan tmp[8];
+    spans[0] = PaintSpan(0, 8, blue);
+    TextSpan decoration = PaintSpan(2, 6, red);
+    int n = InputComposeSpans(spans, 1, &decoration, 1, 8, tmp);
+    utassert(n == 3);
+    utassert(spans[0].lo == 0 && spans[0].hi == 2 &&
+             RgbaEq(spans[0].color, blue));
+    utassert(spans[1].lo == 2 && spans[1].hi == 6 &&
+             RgbaEq(spans[1].color, red));
+    utassert(spans[2].lo == 6 && spans[2].hi == 8 &&
+             RgbaEq(spans[2].color, blue));
+
+    // Precedence follows the order layers are passed in, not where a layer
+    // starts: the later, wider layer wins over the earlier one.
+    TextSpan layers[2] = {PaintSpan(2, 6, red), PaintSpan(0, 8, green)};
+    TextSpan base[4];
+    n = InputComposeSpans(base, 0, layers, 2, 4, tmp);
+    utassert(n >= 1);
+    for (int i = 0; i < n; i++) {
+        utassert(RgbaEq(base[i].color, green));
+    }
+}
+
+// element.rs decoration_color_is_stable_across_compositions.
+static void DecorationColorIsStableAcrossCompositions() {
+    Rgba syntax = GpuiBlue();
+    Rgba decoration = GpuiRed();
+    TextSpan spans[1024];
+    TextSpan tmp[1024];
+    TextSpan over[1];
+    for (int runCount = 1; runCount <= 512; runCount++) {
+        for (int ix = 0; ix < runCount; ix++) {
+            spans[ix] = PaintSpan(ix, ix + 1, syntax);
+        }
+        int decoratedAt = runCount - 1;
+        over[0] = PaintSpan(decoratedAt, decoratedAt + 1, decoration);
+        int n = InputComposeSpans(spans, runCount, over, 1, 1024, tmp);
+        bool found = false;
+        for (int i = 0; i < n; i++) {
+            if (spans[i].lo <= decoratedAt && decoratedAt < spans[i].hi) {
+                found = true;
+                utassert(RgbaEq(spans[i].color, decoration));
+            }
+        }
+        utassert(found);
+    }
+}
+
 void TestInputState() {
+    LaterHighlightLayerWinsOverEarlierOne();
+    DecorationColorIsStableAcrossCompositions();
     TextareaPrewrapPreparesContentRowsBeforeLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
     PrewrapCountsWrappedRowsBeforeTheFirstPaint();

@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b90316b4e6abf1504169e4ae2d21a5906fe65107` (2026-11-03,
-shell: Require a network grant for `WebViewState` pages (#3782)).
-A page loads only when the creating script's grant would allow a GET of
-its URL. Navigation to anything else is cancelled, and a message or a
-script evaluation from an ungranted document is dropped.
+Processed through `87e722ed4a835db9e7e8a4a4deeeeb838157f873` (2026-11-04,
+input: Compose decoration styles deterministically (#3777)).
+Highlight layers compose in input order, so a later colour wins on the
+bytes it covers, and that winner stays put however many syntax runs sit
+in front of a decoration.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

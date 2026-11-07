@@ -1409,10 +1409,10 @@ El* Highlighter::IntoEl() {
         }
     }
     // The decoration collection the element lays over what the highlighter
-    // answers: the semantic tokens first, the caller's runs over them —
-    // Rust's `combine_highlights` folds overlapping styles out of a HashSet,
-    // so which wins where both speak is not defined there. It is here: what
-    // the server said wins, which is what the protocol means by layering
+    // answers: the semantic tokens first, the caller's runs over them.
+    // element.rs combine_highlights keeps the active layers in input order
+    // and a later layer wins, which is the order InputComposeSpans applies.
+    // What the server said wins, which is what the protocol means by layering
     // semantic tokens over a lexer. The syntax runs no longer pass through
     // this list — the element queries the highlighter for the visible range
     // (Textarea::New) — so the cap bounds only the decorations, which are
