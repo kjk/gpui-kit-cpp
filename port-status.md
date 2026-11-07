@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e7ee94020095e76b86fb1f63acbe7d3106ab73e8` (2026-11-05,
-input: Draw a placeholder for a folded line (#3791)). A code editor can
-draw an element after the text of a folded line and fill that line
-across the editor. Clicking the element unfolds the line. Both are
-unset until the application sets them.
+Processed through `254d3216d693d6af21630031a6535df7f98934bd` (2026-11-05,
+shell: Box state style refinements to shrink `materialize_node` frames (#3807)).
+Rust boxes hover, active, focus, group-hover, slider and OTP style
+refinements so a deep description uses less stack. The draw is
+unchanged. This tree already resolves those styles from the spec
+arena when it applies them.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

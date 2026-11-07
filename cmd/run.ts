@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "e7ee94020095e76b86fb1f63acbe7d3106ab73e8",
+  sha: "254d3216d693d6af21630031a6535df7f98934bd",
   date: "2026-11-05",
-  subject: "input: Draw a placeholder for a folded line (#3791)",
+  subject: "shell: Box state style refinements to shrink `materialize_node` frames (#3807)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
