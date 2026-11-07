@@ -49,14 +49,7 @@ static int MatchTag(Str s, int i) {
     char quote = 0;
     for (int at = i + 1; at < len(s); at++) {
         char c = s.s[at];
-        if (quote) {
-            if (c == quote) {
-                quote = 0;
-            }
-            continue;
-        }
-        if (c == '"' || c == '\'') {
-            quote = c;
+        if (base::ScanSkipQuoted(c, &quote)) {
             continue;
         }
         if (c == '>') {

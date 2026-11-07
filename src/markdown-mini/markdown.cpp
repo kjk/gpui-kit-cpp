@@ -226,15 +226,10 @@ static int32_t MiniResourceEnd(Str text, int32_t at) {
             i++;
             continue;
         }
-        if (quote) {
-            if (c == quote) {
-                quote = 0;
-            }
+        if (base::ScanSkipQuoted(c, &quote)) {
             continue;
         }
-        if (c == '"' || c == '\'') {
-            quote = c;
-        } else if (c == '(') {
+        if (c == '(') {
             depth++;
         } else if (c == ')' && --depth == 0) {
             return i;

@@ -1276,6 +1276,23 @@ inline bool StrEqI(Str s1, const char* s2) {
     return StrEqI(s1, Str(s2));
 }
 bool StrStartsWith(Str s, Str prefix);
+
+// One step of a scan that skips '"' and '\'' quoted runs: true when `c`
+// opens, sits inside or closes one, so the caller looks no further at it.
+// `quote` is the open quote character, 0 outside.
+inline bool ScanSkipQuoted(char c, char* quote) {
+    if (*quote) {
+        if (c == *quote) {
+            *quote = 0;
+        }
+        return true;
+    }
+    if (c == '"' || c == '\'') {
+        *quote = c;
+        return true;
+    }
+    return false;
+}
 inline bool StrStartsWith(Str s, const char* prefix) {
     return StrStartsWith(s, Str(prefix));
 }

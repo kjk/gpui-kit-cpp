@@ -752,9 +752,7 @@ State DefinitionBefore(Tokenizer* t) {
 }
 
 State DefinitionLabelAfter(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
+    ResetLabelTokens(t);
     if (t->current == ':') {
         Name labelString = Name::DefinitionLabelString;
         t->tokenizeState
@@ -768,9 +766,7 @@ State DefinitionLabelAfter(Tokenizer* t) {
 }
 
 State DefinitionLabelNok(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
+    ResetLabelTokens(t);
     return StateNok();
 }
 
@@ -793,24 +789,14 @@ State DefinitionDestinationBefore(Tokenizer* t) {
 }
 
 State DefinitionDestinationAfter(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
-    t->tokenizeState.token4 = Name::Data;
-    t->tokenizeState.token5 = Name::Data;
-    t->tokenizeState.sizeB = 0;
+    ResetDestinationTokens(t);
     TokenizerAttempt(t, StateNext(StateName::DefinitionAfter),
                      StateNext(StateName::DefinitionAfter));
     return StateRetry(StateName::DefinitionTitleBefore);
 }
 
 State DefinitionDestinationMissing(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
-    t->tokenizeState.token4 = Name::Data;
-    t->tokenizeState.token5 = Name::Data;
-    t->tokenizeState.sizeB = 0;
+    ResetDestinationTokens(t);
     t->tokenizeState.end = 0;
     return StateNok();
 }
@@ -861,9 +847,7 @@ State DefinitionTitleBeforeMarker(Tokenizer* t) {
 }
 
 State DefinitionTitleAfter(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
+    ResetLabelTokens(t);
     if (t->current == '\t' || t->current == ' ') {
         TokenizerAttempt(
             t, StateNext(StateName::DefinitionTitleAfterOptionalWhitespace),
@@ -915,15 +899,22 @@ State FrontmatterOpenSequence(Tokenizer* t) {
     return StateNok();
 }
 
+// The line ending after the opening fence (`open_after`) and after each line
+// of content (`content_end`), then the attempt at a closing fence with the
+// content as the fallback. Rust spells the five calls out in both states.
+static State FrontmatterLineEnding(Tokenizer* t) {
+    Enter(t, Name::LineEnding);
+    Consume(t);
+    Exit(t, Name::LineEnding);
+    TokenizerAttempt(t, StateNext(StateName::FrontmatterAfter),
+                     StateNext(StateName::FrontmatterContentStart));
+    return StateNext(StateName::FrontmatterCloseStart);
+}
+
 State FrontmatterOpenAfter(Tokenizer* t) {
     if (t->current == '\n') {
         Exit(t, Name::FrontmatterFence);
-        Enter(t, Name::LineEnding);
-        Consume(t);
-        Exit(t, Name::LineEnding);
-        TokenizerAttempt(t, StateNext(StateName::FrontmatterAfter),
-                         StateNext(StateName::FrontmatterContentStart));
-        return StateNext(StateName::FrontmatterCloseStart);
+        return FrontmatterLineEnding(t);
     }
     t->tokenizeState.marker = 0;
     return StateNok();
@@ -988,12 +979,7 @@ State FrontmatterContentEnd(Tokenizer* t) {
         t->tokenizeState.marker = 0;
         return StateNok();
     }
-    Enter(t, Name::LineEnding);
-    Consume(t);
-    Exit(t, Name::LineEnding);
-    TokenizerAttempt(t, StateNext(StateName::FrontmatterAfter),
-                     StateNext(StateName::FrontmatterContentStart));
-    return StateNext(StateName::FrontmatterCloseStart);
+    return FrontmatterLineEnding(t);
 }
 
 State FrontmatterAfter(Tokenizer* t) {
