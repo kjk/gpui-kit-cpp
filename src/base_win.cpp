@@ -383,6 +383,9 @@ bool PlatCleanOnEscape() {
 bool PlatScrollBounceTouch() {
     return false;
 }
+bool PlatOverscrollPhaselessStops() {
+    return false;
+}
 const char* PlatMonoFontName() {
     return "Consolas";
 }

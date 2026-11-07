@@ -176,9 +176,25 @@ ScrollOverscroll::~ScrollOverscroll() {
 
 static void OverscrollStartGesture(ScrollOverscroll* self) {
     self->spent = false;
+    self->touched = false;
     self->velocity = 0;
     VecClear(self->moveDy);
     VecClear(self->moveAt);
+}
+
+// A pause starts a new gesture, unless a finger still holds the edge.
+static void OverscrollFollow(ScrollOverscroll* self, double now) {
+    bool inGesture =
+        self->hasLastPacket && now - self->lastPacketAt < kOverscrollGestureGap;
+    self->lastPacketAt = now;
+    self->hasLastPacket = true;
+    // A finger resting on the trackpad sends nothing, however long it
+    // holds the edge; only its own Ended lets go. A pause ends the
+    // other streams.
+    if (!inGesture && !self->physics.IsDragging()) {
+        OverscrollStartGesture(self);
+        self->hasMoved = false;
+    }
 }
 
 static void OverscrollSample(ScrollOverscroll* self, float dy, double now) {
@@ -216,23 +232,16 @@ static void OverscrollSample(ScrollOverscroll* self, float dy, double now) {
     self->hasMoved = true;
 }
 
-bool ScrollOverscroll::Packet(float dy, TouchPhase phase, float extent,
+bool ScrollOverscroll::Packet(float dy, gpui::TouchPhase phase, float extent,
                               double now, float (*scroll)(void*, float),
                               void* user) {
     float before = Offset();
     bool thrown = false;
-    bool inGesture = false;
-    if (hasLastPacket && now - lastPacketAt < kOverscrollGestureGap) {
-        inGesture = true;
-    }
-    lastPacketAt = now;
-    hasLastPacket = true;
-    if (!inGesture && !physics.IsDragging()) {
-        OverscrollStartGesture(this);
-        hasMoved = false;
-    }
+    OverscrollFollow(this, now);
     OverscrollSample(this, dy, now);
-    if (phase == TouchPhase::Started) {
+    // The method TouchPhase hides the enum of the same name.
+    if (phase != gpui::TouchPhase::Moved) touched = true;
+    if (phase == gpui::TouchPhase::Started) {
         physics.Begin(extent);
         spent = false;
         resting = dy == 0;
@@ -256,7 +265,8 @@ bool ScrollOverscroll::Packet(float dy, TouchPhase phase, float extent,
             float unused = rest - scroll(user, rest);
             if (fabsf(unused) > kOverscrollRounding) physics.Pull(unused);
         }
-        if (phase == TouchPhase::Ended || phase == TouchPhase::Cancelled) {
+        if (phase == gpui::TouchPhase::Ended ||
+            phase == gpui::TouchPhase::Cancelled) {
             bool moving = hasMoved && now - movedAt < kOverscrollStill;
             // Only an edge held past its end carries the finger's speed.
             // Let go within the text, the momentum that follows scrolls
@@ -266,9 +276,10 @@ bool ScrollOverscroll::Packet(float dy, TouchPhase phase, float extent,
             thrown = true;
             spent = Offset() != 0;
         }
-    } else if (spent) {
+    } else if (spent || (base::PlatOverscrollPhaselessStops() && !touched)) {
         // Momentum after the edge answered scrolls the text back and does
-        // not throw the edge again.
+        // not throw the edge again. A smooth-scrolling mouse stops at the
+        // edge, as NSScrollView does.
         if (scroll) scroll(user, dy);
     } else if (scroll) {
         float unused = dy - scroll(user, dy);
@@ -284,6 +295,12 @@ bool ScrollOverscroll::Packet(float dy, TouchPhase phase, float extent,
         hasSampled = true;
     }
     return changed;
+}
+
+void ScrollOverscroll::TouchPhase(gpui::TouchPhase phase, double now) {
+    if (phase == gpui::TouchPhase::Moved) return;
+    OverscrollFollow(this, now);
+    touched = true;
 }
 
 bool ScrollOverscroll::Step(double now) {
@@ -311,6 +328,7 @@ void ScrollOverscroll::Reset() {
     hasMoved = false;
     resting = false;
     spent = false;
+    touched = false;
 }
 
 static Bounds PositiveViewport(void* user) {
@@ -575,7 +593,9 @@ bool ScrollBounceOwnedWheel(ScrollOverscroll* over, OngoingScroll* lock,
     Point delta = {ev->deltaX, ev->deltaY};
     if (lock) lock->Filter(&delta, ev->phase);
     if (fabsf(delta.x) > fabsf(delta.y)) {
-        over->Reset();
+        // The caller keeps this packet. Its phase still marks the stream,
+        // so a swipe that starts sideways and turns vertical can bounce.
+        over->TouchPhase(ev->phase, TimeNow());
         return false;
     }
     float before = handle.Offset().y;

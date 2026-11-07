@@ -93,6 +93,9 @@ struct ScrollOverscroll {
     bool hasMoved = false;
     bool resting = false;
     bool spent = false;
+    // A touch or a lift in this stream. Phaseless packets after it are
+    // trackpad momentum. A smooth-scrolling mouse never sends one.
+    bool touched = false;
 
     void SetMotion(ScrollBounceMotion value);
     float Offset() const { return physics.Offset(); }
@@ -101,6 +104,11 @@ struct ScrollOverscroll {
     // Returns whether the stretch changed.
     bool Packet(float dy, TouchPhase phase, float extent, double now,
                 float (*scroll)(void* user, float dy), void* user);
+    // A packet the caller keeps, such as a sideways one. A touch or a
+    // lift there still marks the stream; a move does not.
+    // Named for Rust's touch_phase. The parameter is qualified in the
+    // out-of-line definition: this method hides the TouchPhase enum.
+    void TouchPhase(TouchPhase phase, double now);
     bool Step(double now);
     void Reset();
     ~ScrollOverscroll();

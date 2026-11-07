@@ -315,6 +315,8 @@ static void FlingPath(float speed, float room0, uint32_t stall,
     float dy = -speed / 60.f;
     Vec<float> held;
     OverRoom room{room0};
+    // The momentum of a finger that let go inside the text.
+    over.Packet(0, TouchPhase::Ended, 300, 0, OverUseRoom, &room);
     for (int n = 0; n < 120; n++) {
         double at = frame * (double)n;
         if (n < 100) {
@@ -385,6 +387,7 @@ static void PacketsHandedOverAtOnceDoNotThrowTheEdgeFurther() {
 static void ATouchThatLiftsWithoutMovingLetsGoOfTheEdge() {
     ScrollOverscroll over;
     OverRoom room{0};
+    over.Packet(0, TouchPhase::Ended, 400, 0, OverUseRoom, &room);
     over.Packet(-80, TouchPhase::Moved, 400, 0, OverUseRoom, &room);
     double later = 0.030;
     over.Step(later);
@@ -497,6 +500,7 @@ static void AFlickAwayFromTheEdgesLeavesTheNextDragToTheText() {
 static void AfterAPauseTheNextFlickThrowsTheEdgeAgain() {
     ScrollOverscroll over;
     OverRoom room{0};
+    over.Packet(0, TouchPhase::Ended, 400, 0, OverUseRoom, &room);
     utassert(over.Packet(-40, TouchPhase::Moved, 400, 0, OverUseRoom, &room));
     double at = 0;
     int guard = 0;
@@ -505,6 +509,7 @@ static void AfterAPauseTheNextFlickThrowsTheEdgeAgain() {
         guard++;
     }
     double later = at + 0.25;
+    over.Packet(0, TouchPhase::Ended, 400, later, OverUseRoom, &room);
     utassert(
         over.Packet(-40, TouchPhase::Moved, 400, later, OverUseRoom, &room));
 }
@@ -590,6 +595,7 @@ static void FractionalWheelInputKeepsScrollingDeepInALongList() {
 static void ANewPreciseGestureTakesOverWithoutJumping() {
     ScrollOverscroll over;
     OverRoom room{0};
+    over.Packet(0, TouchPhase::Ended, 400, 0, OverUseRoom, &room);
     over.Packet(-80, TouchPhase::Moved, 400, 0, OverUseRoom, &room);
     over.Step(0.016);
     double later = 0.200;
@@ -603,6 +609,46 @@ static void ANewPreciseGestureTakesOverWithoutJumping() {
     over.Step(later + 0.016);
     utassert(over.Offset() < before);
 }
+
+#if GPUI_OS_MAC
+static void ASmoothScrollingWheelStopsAtTheEdge() {
+    ScrollOverscroll over;
+    OverRoom room{30};
+    for (int n = 0; n < 10; n++) {
+        double at = 0.008 * (double)n;
+        utassert(
+            !over.Packet(-40, TouchPhase::Moved, 400, at, OverUseRoom, &room));
+    }
+    utassert(room.room == 0.f);
+    utassert(over.Offset() == 0.f);
+}
+
+static void AWheelAfterAPauseStopsAtTheEdge() {
+    ScrollOverscroll over;
+    OverRoom room{30};
+    over.Packet(0, TouchPhase::Ended, 400, 0, OverUseRoom, &room);
+    for (int n = 0; n < 10; n++) {
+        double at = 0.25 + 0.008 * (double)n;
+        utassert(
+            !over.Packet(-40, TouchPhase::Moved, 400, at, OverUseRoom, &room));
+    }
+    utassert(over.Offset() == 0.f);
+}
+
+static void ASwipeThatTouchesSidewaysStillBounces() {
+    ScrollOverscroll over;
+    OverRoom room{30};
+    over.TouchPhase(TouchPhase::Started, 0);
+    bool stretched = false;
+    for (int n = 1; n <= 10; n++) {
+        double at = 0.008 * (double)n;
+        if (over.Packet(-40, TouchPhase::Moved, 400, at, OverUseRoom, &room)) {
+            stretched = true;
+        }
+    }
+    utassert(stretched);
+}
+#endif
 
 void TestScrollBounce() {
     TestSuite("scroll_bounce");
@@ -634,4 +680,9 @@ void TestScrollBounce() {
     MomentumBackIntoTheTextScrollsWhileTheEdgeReturns();
     FractionalWheelInputKeepsScrollingDeepInALongList();
     ANewPreciseGestureTakesOverWithoutJumping();
+#if GPUI_OS_MAC
+    ASmoothScrollingWheelStopsAtTheEdge();
+    AWheelAfterAPauseStopsAtTheEdge();
+    ASwipeThatTouchesSidewaysStillBounces();
+#endif
 }

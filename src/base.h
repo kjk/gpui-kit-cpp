@@ -214,6 +214,9 @@ bool PlatCleanOnEscape();
 // The UIScrollView feel (tracking 0.55, no stretch cap). iOS and Android.
 // macOS bounces too, with the NSScrollView feel, so this is not that.
 bool PlatScrollBounceTouch();
+// A smooth-scrolling mouse on macOS sends precise packets with no phase.
+// NSScrollView does not bounce those. Other platforms still throw the edge.
+bool PlatOverscrollPhaselessStops();
 const char* PlatMonoFontName();
 const char* PlatShellDataDir();
 const char* PlatShellPlatformName();

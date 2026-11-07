@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `dfc11142ca41249472057dac55372b45b15ab8e8` (2026-11-04,
-chart: Size a PieChart's hole as a ratio of its ring (#3784)).
-InnerRadiusRatio sizes the hole as a fraction of the ring's outer
-radius, clamped to 0..1, and a NaN ratio is no hole. It and InnerRadius
-replace each other; the last call applies.
+Processed through `ca956729fa5ab72e6d4e26b8811bc932cd519805` (2026-11-04,
+scroll: Stop a smooth-scrolling wheel at the edge on macOS (#3781)).
+On macOS a precise wheel with no touch or lift scrolls and stops at the
+edge. A trackpad touch or lift, including one that arrived on a sideways
+packet, still throws the edge, and a pause of 250 ms ends that stream.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

@@ -171,6 +171,9 @@ bool PlatCleanOnEscape() {
 bool PlatScrollBounceTouch() {
     return false;
 }
+bool PlatOverscrollPhaselessStops() {
+    return true;
+}
 const char* PlatMonoFontName() {
     return "Menlo";
 }

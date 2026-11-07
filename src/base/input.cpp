@@ -5257,12 +5257,18 @@ bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
             Notify(app, win);
         }
     } else {
+        // A sideways packet never reaches Packet. Its phase still marks
+        // the stream, or a swipe that turns vertical stops flat on macOS.
+        double now = TimeNow();
+        if (s->overscroll || phase != TouchPhase::Moved) {
+            InputOverscrollGet(s)->TouchPhase(phase, now);
+        }
         if ((phase == TouchPhase::Ended || phase == TouchPhase::Cancelled) &&
             s->overscroll && s->overscroll->Offset() != 0) {
             InputScrollUser user = {s, app, win, 0};
             float extent = s->viewH > 1.f ? s->viewH : 1.f;
             s->overscroll
-                ->Packet(0, phase, extent, TimeNow(), InputScrollRust, &user);
+                ->Packet(0, phase, extent, now, InputScrollRust, &user);
             Notify(app, win);
         }
         Point want = {oldX - dx, oldY - dy};
