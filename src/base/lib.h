@@ -27,6 +27,7 @@
 #include "base/focus_trap.h"
 #include "base/geometry.h"
 #include "base/global_state.h"
+#include "base/grid_layout.h"
 #include "base/history.h"
 #include "base/undo_history.h"
 #include "base/hover_card.h"

@@ -163,6 +163,7 @@ void TestImageCache();
 void TestRoot();
 void TestSankey();
 void TestJson();
+void TestGridAreaLayout();
 void TestInspector();
 void TestThemeColor();
 void TestThemeFont();

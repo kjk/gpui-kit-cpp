@@ -128,6 +128,7 @@ int GpuiMain(int argc, char** argv) {
     TestRoot();
     TestSankey();
     TestJson();
+    TestGridAreaLayout();
     TestInspector();
     TestThemeColor();
     TestThemeFont();
