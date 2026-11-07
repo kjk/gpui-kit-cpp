@@ -4,6 +4,7 @@
 #include "gpui/keymap.h"
 
 #include <math.h>
+#include <stdio.h>
 
 namespace gpui {
 
@@ -1313,6 +1314,597 @@ bool GridLayoutHandleAction(GridLayoutState* state, Ctx* cx, uint32_t action) {
         return state->CancelDrag(cx);
     }
     return false;
+}
+
+// ─── element (crates/base/src/grid_layout/grid_layout.rs) ────────────────
+
+static const char* kGridDragKind = "grid-layout";
+
+struct ItemFrame {
+    float left = 0;
+    float width = 0;
+    float top = 0;
+    float height = 0;
+};
+
+static ItemFrame FrameOf(const GridArea& area, int columns, float rowHeight,
+                         float gapH) {
+    float cols = (float)(columns < 1 ? 1 : columns);
+    ItemFrame frame;
+    frame.left = (float)area.col / cols;
+    frame.width = (float)area.colSpan / cols;
+    frame.top = (rowHeight + gapH) * (float)area.row;
+    float gaps = area.rowSpan > 0 ? (float)(area.rowSpan - 1) : 0;
+    float height = rowHeight * (float)area.rowSpan + gapH * gaps;
+    frame.height = height < 0 ? 0 : height;
+    return frame;
+}
+
+static bool FollowingFrame(const GridDrag& drag, const GridMetrics& metrics,
+                           int columns, ItemFrame* out) {
+    const GridArea* start =
+        FindArea(drag.start.els, len(drag.start), drag.item);
+    if (!start || !out) {
+        return false;
+    }
+    float track = metrics.width + metrics.gapWidth;
+    if (!(track > 0)) {
+        return false;
+    }
+    float left = metrics.Left(start->col);
+    float top = metrics.Top(start->row);
+    float width = metrics.SpanWidth(start->colSpan);
+    float height = metrics.SpanHeight(start->rowSpan);
+    if (drag.gesture == GridGesture::Move) {
+        float room = metrics.width - width;
+        if (room < 0) {
+            room = 0;
+        }
+        left = left + drag.deltaX;
+        if (left < 0) {
+            left = 0;
+        }
+        if (left > room) {
+            left = room;
+        }
+        top = top + drag.deltaY;
+        if (top < 0) {
+            top = 0;
+        }
+    } else {
+        int minCols = 1;
+        int minRows = 1;
+        int maxCols = 1;
+        int unused = 1;
+        ClampSize(*start, 1, 1, columns, &minCols, &minRows);
+        ClampSize(*start, 0x7fffffff, 1, columns, &maxCols, &unused);
+        width = width + drag.deltaX;
+        float minW = metrics.SpanWidth(minCols);
+        float maxW = metrics.SpanWidth(maxCols);
+        if (width < minW) {
+            width = minW;
+        }
+        if (width > maxW) {
+            width = maxW;
+        }
+        height = height + drag.deltaY;
+        float minH = metrics.SpanHeight(minRows);
+        if (height < minH) {
+            height = minH;
+        }
+        if (start->maxRowSpan > 0) {
+            float maxH = metrics.SpanHeight(start->maxRowSpan);
+            if (height > maxH) {
+                height = maxH;
+            }
+        }
+    }
+    out->left = left / track;
+    out->width = (width + metrics.gapWidth) / track;
+    out->top = top;
+    out->height = height;
+    return true;
+}
+
+static El* PlaceItem(El* element, ItemFrame frame, float gapW) {
+    return element->Absolute()
+        ->LeftRel(frame.left)
+        ->WFrac(frame.width)
+        ->Top(frame.top)
+        ->H(frame.height)
+        ->PadR(gapW);
+}
+
+static uint32_t FrameChannel(const GridLayoutState* state, Str item,
+                             const char* channel) {
+    char buf[160];
+    int n =
+        snprintf(buf, sizeof(buf), "grid:%d:%u:",
+                 state && state->self.id.IsValid() ? state->self.id.index : -1,
+                 state ? state->self.id.gen : 0);
+    if (n < 0) {
+        n = 0;
+    }
+    int room = (int)sizeof(buf) - n - 1;
+    int copy = len(item);
+    if (copy > room) {
+        copy = room;
+    }
+    if (copy > 0 && item.s && n < (int)sizeof(buf)) {
+        memcpy(buf + n, item.s, (size_t)copy);
+        n += copy;
+    }
+    if (n >= (int)sizeof(buf)) {
+        n = (int)sizeof(buf) - 1;
+    }
+    buf[n] = 0;
+    return MotionId(Str(buf, n), Str(channel));
+}
+
+static ItemFrame AnimateFrame(Ctx* cx, const GridLayoutState* state, Str item,
+                              ItemFrame target, const Motion& policy) {
+    ItemFrame frame;
+    frame.left = motion::transition(
+        cx, motion::TransitionId(FrameChannel(state, item, "left")),
+        target.left, policy);
+    frame.width = motion::transition(
+        cx, motion::TransitionId(FrameChannel(state, item, "width")),
+        target.width, policy);
+    frame.top = motion::transition(
+        cx, motion::TransitionId(FrameChannel(state, item, "top")), target.top,
+        policy);
+    frame.height = motion::transition(
+        cx, motion::TransitionId(FrameChannel(state, item, "height")),
+        target.height, policy);
+    return frame;
+}
+
+static int AreaIndexOf(const GridLayoutState* state, Str id) {
+    if (!state) {
+        return -1;
+    }
+    for (int i = 0; i < len(state->areas); i++) {
+        if (StrEq(state->areas[i].id, id)) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static const int64_t kGridHandleOnly = (int64_t)1 << 32;
+
+static void BeginAt(GridLayoutState* self, Ctx* cx, const MouseDownEvent* ev,
+                    int ix, bool begin, GridGesture gesture) {
+    if (!self || ix < 0 || ix >= len(self->areas)) {
+        return;
+    }
+    Str id = self->areas[ix].id;
+    float x = ev ? ev->x : 0;
+    float y = ev ? ev->y : 0;
+    self->Press(cx, id, x, y);
+    if (begin && !self->paintReadOnly && self->IsGestureAllowed(id, gesture)) {
+        self->BeginDrag(cx, id, gesture);
+    }
+}
+
+static void OnGridItemDown(GridLayoutState* self, Ctx* cx,
+                           const MouseDownEvent* ev, int64_t arg) {
+    bool handleOnly = (arg & kGridHandleOnly) != 0;
+    int ix = (int)(arg & 0xffffffff);
+    BeginAt(self, cx, ev, ix, !handleOnly, GridGesture::Move);
+}
+
+static void OnGridResizeDown(GridLayoutState* self, Ctx* cx,
+                             const MouseDownEvent* ev, int64_t arg) {
+    WindowStopPropagation(cx);
+    BeginAt(self, cx, ev, (int)arg, true, GridGesture::Resize);
+}
+
+static void OnGridHandleDown(GridLayoutState* self, Ctx* cx,
+                             const MouseDownEvent* ev, int64_t arg) {
+    BeginAt(self, cx, ev, (int)arg, true, GridGesture::Move);
+}
+
+static void OnGridSurfaceDrag(GridLayoutState* self, Ctx* cx,
+                              const DragMoveEvent* ev) {
+    if (!self || !ev || self->paintReadOnly || !self->hasDrag) {
+        return;
+    }
+    self->DragTo(cx, ev->event.x, ev->event.y, ev->el, self->paintRowHeight,
+                 self->paintGapW, self->paintGapH);
+}
+
+static void OnGridSurfaceUp(GridLayoutState* self, Ctx* cx,
+                            const MouseUpEvent*) {
+    if (self) {
+        self->EndDrag(cx);
+    }
+}
+
+static bool GridMoveAction(uint32_t action) {
+    return action == grid_layout::MoveLeft() ||
+           action == grid_layout::MoveRight() ||
+           action == grid_layout::MoveUp() ||
+           action == grid_layout::MoveDown() ||
+           action == grid_layout::ShrinkWidth() ||
+           action == grid_layout::GrowWidth() ||
+           action == grid_layout::ShrinkHeight() ||
+           action == grid_layout::GrowHeight();
+}
+
+static void OnGridAction(GridLayoutState* self, Ctx* cx,
+                         const ActionEvent* ev) {
+    if (!self || !ev) {
+        return;
+    }
+    if (self->paintReadOnly && GridMoveAction(ev->action)) {
+        const_cast<ActionEvent*>(ev)->propagate = true;
+        return;
+    }
+    if (!GridLayoutHandleAction(self, cx, ev->action)) {
+        const_cast<ActionEvent*>(ev)->propagate = true;
+    }
+}
+
+static void BindGridAction(El* surface, Entity<GridLayoutState> state,
+                           uint32_t action) {
+    surface->OnAction(action, ListenTo(state, &OnGridAction));
+}
+
+GridItem* GridItem::New(Ctx* cx, Str id) {
+    GridItem* item = ArenaNew<GridItem>(cx->a);
+    item->arena = cx->a;
+    item->id = id;
+    return item;
+}
+
+GridItem* GridItem::Label(Str text) {
+    label = text;
+    hasLabel = text.s != nullptr;
+    return this;
+}
+
+GridItem* GridItem::DragHandleOnly(bool value) {
+    handleOnly = value;
+    return this;
+}
+
+GridItem* GridItem::Pad(float x, float y) {
+    style.Pad(x, y);
+    return this;
+}
+
+GridItem* GridItem::Child(El* el) {
+    if (!el || !arena) {
+        return this;
+    }
+    GridItemChild* node = ArenaNew<GridItemChild>(arena);
+    node->el = el;
+    if (lastChild) {
+        lastChild->next = node;
+    } else {
+        children = node;
+    }
+    lastChild = node;
+    return this;
+}
+
+El* GridDragHandle(Ctx* cx, Entity<GridLayoutState> state, Str item) {
+    El* handle = Div(cx->a)->PathClick(StrL("grid-drag-handle"));
+    GridLayoutState* grid = state.Get(cx);
+    int ix = AreaIndexOf(grid, item);
+    if (ix >= 0) {
+        handle->OnMouseDown(ListenTo(state, &OnGridHandleDown, ix))
+            ->OnDrag(Str(kGridDragKind), (int)GridGesture::Move);
+    }
+    return handle;
+}
+
+GridLayout* GridLayout::New(Ctx* cx, Str id, Entity<GridLayoutState> state) {
+    GridLayout* grid = ArenaNew<GridLayout>(cx->a);
+    grid->cx = cx;
+    grid->arena = cx->a;
+    grid->id = id;
+    grid->state = state;
+    return grid;
+}
+
+GridLayout* GridLayout::Label(Str text) {
+    label = text;
+    return this;
+}
+
+GridLayout* GridLayout::Item(GridItem* item) {
+    if (!item || !arena) {
+        return this;
+    }
+    GridItemNode* node = ArenaNew<GridItemNode>(arena);
+    node->item = *item;
+    if (lastItem) {
+        lastItem->next = node;
+    } else {
+        items = node;
+    }
+    lastItem = node;
+    nItems++;
+    return this;
+}
+
+GridLayout* GridLayout::RowHeight(float rems) {
+    rowHeightRems = rems;
+    return this;
+}
+
+GridLayout* GridLayout::Gap(float px) {
+    gapX = px;
+    gapY = px;
+    return this;
+}
+
+GridLayout* GridLayout::GapX(float px) {
+    gapX = px;
+    return this;
+}
+
+GridLayout* GridLayout::GapY(float px) {
+    gapY = px;
+    return this;
+}
+
+GridLayout* GridLayout::Transition(Motion transition) {
+    settle = transition;
+    return this;
+}
+
+GridLayout* GridLayout::DraggingItem(const StateStyle& next) {
+    draggingItem = next;
+    return this;
+}
+
+GridLayout* GridLayout::SelectedItem(const StateStyle& next) {
+    selectedItem = next;
+    return this;
+}
+
+GridLayout* GridLayout::FocusedItem(const StateStyle& next) {
+    focusedItem = next;
+    return this;
+}
+
+GridLayout* GridLayout::Reflow(int cols) {
+    hasReflow = true;
+    reflowCols = cols < 1 ? 1 : cols;
+    return this;
+}
+
+GridLayout* GridLayout::Placeholder(GridPartFn fn, void* data) {
+    placeholder = fn;
+    placeholderData = data;
+    return this;
+}
+
+GridLayout* GridLayout::ResizeHandle(GridPartFn fn, void* data) {
+    resizeHandle = fn;
+    resizeHandleData = data;
+    return this;
+}
+
+void GridLayout::ResolvedGap(float remSize, float* x, float* y) const {
+    (void)remSize;
+    float gx = gapX < 0 ? 0 : gapX;
+    float gy = gapY < 0 ? 0 : gapY;
+    if (x) {
+        *x = gx;
+    }
+    if (y) {
+        *y = gy;
+    }
+}
+
+El* GridLayout::IntoEl() {
+    Arena* a = arena ? arena : (cx ? cx->a : nullptr);
+    if (!a) {
+        return nullptr;
+    }
+    GridLayoutState* grid = state.Get(cx);
+    if (!grid) {
+        return Div(a);
+    }
+    grid->self = state;
+
+    float gapW = 0;
+    float gapH = 0;
+    ResolvedGap(WindowRemSize(cx ? cx->win : nullptr), &gapW, &gapH);
+    float rowH = Rems(cx, rowHeightRems);
+    int columns = hasReflow ? reflowCols : grid->ColumnCount();
+    if (columns < 1) {
+        columns = 1;
+    }
+    grid->paintRowHeight = rowH;
+    grid->paintGapW = gapW;
+    grid->paintGapH = gapH;
+    grid->paintColumns = columns;
+    grid->paintReadOnly = hasReflow;
+
+    Vec<GridArea> reflowed;
+    const GridArea* displayed = nullptr;
+    int nDisplayed = 0;
+    if (hasReflow) {
+        int nAreas = 0;
+        const GridArea* stored = grid->Areas(&nAreas);
+        GridReflowed(stored, nAreas, columns, &reflowed);
+        displayed = reflowed.els;
+        nDisplayed = len(reflowed);
+    } else {
+        displayed = grid->DisplayedAreas(cx, &nDisplayed);
+    }
+
+    bool showDrag = !hasReflow && grid->hasDrag && WindowActiveDrag(cx);
+    Str activeId = {};
+    bool hasActive = showDrag && grid->ActiveItem(&activeId);
+    ItemFrame following;
+    bool hasFollowing = false;
+    if (hasActive && grid->drag.hasMetrics) {
+        hasFollowing =
+            FollowingFrame(grid->drag, grid->drag.metrics, columns, &following);
+    }
+    bool focusVisible =
+        grid->keyboardActive &&
+        FocusHandleIsFocused(cx ? cx->win : nullptr, grid->focus);
+    Str selected = {};
+    bool hasSelected = grid->SelectedItem(&selected);
+
+    int rows = GridRows(displayed, nDisplayed);
+    float height = rowH * (float)rows;
+    if (rows > 0) {
+        height += gapH * (float)(rows - 1);
+    }
+    if (height < 0) {
+        height = 0;
+    }
+
+    El* surface = Div(a)
+                      ->PathId(StrL("grid-layout-surface"))
+                      ->Role(AccessibilityRole::Group)
+                      ->AriaLabel(label.s ? label : StrL("Grid layout"))
+                      ->KeyContext(Str(grid_layout::Context()))
+                      ->TrackFocus(grid->focus)
+                      ->TabStop(true)
+                      ->W(kFill)
+                      ->H(height)
+                      ->OnDragMove(ListenTo(state, &OnGridSurfaceDrag))
+                      ->OnMouseUp(ListenTo(state, &OnGridSurfaceUp),
+                                  DispatchPhase::Capture)
+                      ->OnMouseUpOut(ListenTo(state, &OnGridSurfaceUp));
+    uint32_t actions[] = {
+        grid_layout::MoveLeft(),
+        grid_layout::MoveRight(),
+        grid_layout::MoveUp(),
+        grid_layout::MoveDown(),
+        grid_layout::ShrinkWidth(),
+        grid_layout::GrowWidth(),
+        grid_layout::ShrinkHeight(),
+        grid_layout::GrowHeight(),
+        grid_layout::SelectNextItem(),
+        grid_layout::SelectPreviousItem(),
+        action::Cancel(),
+    };
+    for (int i = 0; i < (int)(sizeof(actions) / sizeof(actions[0])); i++) {
+        BindGridAction(surface, state, actions[i]);
+    }
+
+    El* track = Div(a)->Absolute()->Top(0)->Left(0)->Bottom(0)->Right(-gapW);
+    if (placeholder && hasActive && displayed) {
+        const GridArea* mark = FindArea(displayed, nDisplayed, activeId);
+        if (mark) {
+            El* painted = placeholder(cx, placeholderData);
+            El* box =
+                PlaceItem(Div(a), FrameOf(*mark, columns, rowH, gapH), gapW);
+            if (painted) {
+                box->Child(Div(a)->SizeFull()->Child(painted));
+            }
+            track->Child(box);
+        }
+    }
+
+    Vec<GridItemNode*> order;
+    for (GridItemNode* node = items; node; node = node->next) {
+        if (!hasActive || !StrEq(node->item.id, activeId)) {
+            VecAppend(order, node);
+        }
+    }
+    if (hasActive) {
+        for (GridItemNode* node = items; node; node = node->next) {
+            if (StrEq(node->item.id, activeId)) {
+                VecAppend(order, node);
+            }
+        }
+    }
+
+    for (int i = 0; i < len(order); i++) {
+        const GridItem& item = order[i]->item;
+        const GridArea* area =
+            displayed ? FindArea(displayed, nDisplayed, item.id) : nullptr;
+        if (!area) {
+            continue;
+        }
+        bool active = hasActive && StrEq(item.id, activeId);
+        ItemFrame target = (active && hasFollowing)
+                               ? following
+                               : FrameOf(*area, columns, rowH, gapH);
+        Motion policy = active ? MotionNew(0) : settle;
+        ItemFrame frame = AnimateFrame(cx, grid, item.id, target, policy);
+        bool selectedHere = hasSelected && StrEq(selected, area->id);
+        int ix = AreaIndexOf(grid, item.id);
+        int64_t arg = ix;
+        if (item.handleOnly) {
+            arg |= kGridHandleOnly;
+        }
+        bool movable = !hasReflow && !item.handleOnly &&
+                       grid->IsGestureAllowed(item.id, GridGesture::Move);
+        bool resizable =
+            !hasReflow && grid->IsGestureAllowed(item.id, GridGesture::Resize);
+
+        StateStyle look = item.style;
+        if (selectedHere) {
+            StateStyleRefine(&look, selectedItem);
+            if (focusVisible) {
+                StateStyleRefine(&look, focusedItem);
+            }
+        }
+        if (active) {
+            StateStyleRefine(&look, draggingItem);
+        }
+
+        El* placed = PlaceItem(Div(a)->PathClick(item.id), frame, gapW);
+        placed->Role(AccessibilityRole::Group)->AriaSelected(selectedHere);
+        if (item.hasLabel) {
+            placed->AriaLabel(item.label);
+        }
+        if (ix >= 0) {
+            placed->OnMouseDown(ListenTo(state, &OnGridItemDown, arg));
+        }
+        if (movable) {
+            placed->OnDrag(Str(kGridDragKind), (int)GridGesture::Move);
+        }
+        El* inner = Div(a)->SizeFull();
+        StyleApplyFields(&inner->style, look.style, look.set);
+        for (GridItemChild* child = item.children; child; child = child->next) {
+            inner->Child(child->el);
+        }
+        if (resizable && ix >= 0) {
+            El* corner =
+                Div(a)
+                    ->PathClick(StrL("grid-layout-resize"))
+                    ->Absolute()
+                    ->Right(0)
+                    ->Bottom(0)
+                    ->W(kGridResizeHandle)
+                    ->H(kGridResizeHandle)
+                    ->Cursor(CursorKind::ResizeUpLeftDownRight)
+                    ->OnMouseDown(ListenTo(state, &OnGridResizeDown, ix))
+                    ->OnDrag(Str(kGridDragKind), (int)GridGesture::Resize);
+            if (resizeHandle) {
+                El* grip = resizeHandle(cx, resizeHandleData);
+                if (grip) {
+                    corner->Child(grip);
+                }
+            }
+            inner->Child(corner);
+        }
+        placed->Child(inner);
+        track->Child(placed);
+    }
+    surface->Child(track);
+
+    El* outer = Div(a)->PathId(id)->W(kFill);
+    if (gapX != 0 || gapY != 0) {
+        outer->GapX(gapX)->GapY(gapY);
+    }
+    if (gridStyle.set) {
+        ElRefine(outer, gridStyle);
+    }
+    return outer->Child(surface);
 }
 
 } // namespace gpui

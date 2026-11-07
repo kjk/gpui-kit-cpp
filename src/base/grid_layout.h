@@ -1,11 +1,14 @@
 #ifndef GPUI_BASE_GRID_LAYOUT_H_
 #define GPUI_BASE_GRID_LAYOUT_H_
-/* Grid placement arithmetic — crates/base/src/grid_layout/layout.rs.
-   Cells, not pixels. An area does not own its id: the string is a literal
-   or arena text, and a copied layout aliases it. */
+/* Grid placement — crates/base/src/grid_layout/.
+   Cells, not pixels, until the element asks the metrics for a box. An area
+   does not own its id: the string is a literal or arena text, and a copied
+   layout aliases it. */
 
 #include "gpui/gpui.h"
 #include "base/json.h"
+#include "base/motion.h"
+#include "base/state_style.h"
 
 namespace gpui {
 
@@ -142,6 +145,14 @@ struct GridLayoutState {
     GridDrag drag;
     // Stamped by the element. Emit uses it, the way Context<Self> does.
     Entity<GridLayoutState> self = {};
+    // Stamped each frame from the element. A drag listener is a function on
+    // the state, so the row height and gap the render closed over live here
+    // until the next frame replaces them.
+    float paintRowHeight = 0;
+    float paintGapW = 0;
+    float paintGapH = 0;
+    int paintColumns = 12;
+    bool paintReadOnly = false;
 
     GridLayoutState();
     ~GridLayoutState();
@@ -223,6 +234,99 @@ const char* Context();
 void GridLayoutInitKeys();
 // True when the command applied. False asks the caller to propagate.
 bool GridLayoutHandleAction(GridLayoutState* state, Ctx* cx, uint32_t action);
+
+// The side of the square, at an item's trailing-bottom corner, that the
+// pointer resizes the item by.
+constexpr float kGridResizeHandle = 16.f;
+
+// What marks the drop cells, or the grip in the resize corner. Called while
+// the grid is built, once per frame (the placeholder) or once per resizable
+// item (the grip).
+using GridPartFn = El* (*)(Ctx * cx, void* data);
+
+// One child of a GridItem. The node is arena storage; the item aliases it.
+struct GridItemChild {
+    El* el = nullptr;
+    GridItemChild* next = nullptr;
+};
+
+// One item of a GridLayout, paired with the GridArea of the same id. It does
+// not own its id or its children: both are the caller's, for this frame.
+struct GridItem {
+    Arena* arena = nullptr;
+    Str id = {};
+    Str label = {};
+    bool hasLabel = false;
+    bool handleOnly = false;
+    StateStyle style = {};
+    GridItemChild* children = nullptr;
+    GridItemChild* lastChild = nullptr;
+
+    static GridItem* New(Ctx* cx, Str id);
+    GridItem* Label(Str text);
+    GridItem* DragHandleOnly(bool value);
+    GridItem* Pad(float x, float y);
+    GridItem* Child(El* el);
+};
+
+// The part of an item the pointer moves it by, when the item is
+// drag-handle-only. A press here starts a move; the item's own press still
+// selects.
+El* GridDragHandle(Ctx* cx, Entity<GridLayoutState> state, Str item);
+
+struct GridItemNode {
+    GridItem item = {};
+    GridItemNode* next = nullptr;
+};
+
+// The element. Like every base control it paints nothing of its own: gaps,
+// the placeholder, the resize grip and the dragged and selected styles come
+// from the builders. The component façade supplies them from the theme.
+struct GridLayout {
+    Ctx* cx = nullptr;
+    Arena* arena = nullptr;
+    Str id = {};
+    Str label = {};
+    Entity<GridLayoutState> state = {};
+    GridItemNode* items = nullptr;
+    GridItemNode* lastItem = nullptr;
+    int nItems = 0;
+    StateStyle gridStyle = {};
+    float gapX = 0;
+    float gapY = 0;
+    float rowHeightRems = 2.5f;
+    Motion settle = MotionNew(0);
+    StateStyle draggingItem = {};
+    StateStyle selectedItem = {};
+    StateStyle focusedItem = {};
+    bool hasReflow = false;
+    int reflowCols = 1;
+    GridPartFn placeholder = nullptr;
+    void* placeholderData = nullptr;
+    GridPartFn resizeHandle = nullptr;
+    void* resizeHandleData = nullptr;
+
+    static GridLayout* New(Ctx* cx, Str id, Entity<GridLayoutState> state);
+    GridLayout* Label(Str text);
+    GridLayout* Item(GridItem* item);
+    GridLayout* RowHeight(float rems);
+    GridLayout* Gap(float px);
+    GridLayout* GapX(float px);
+    GridLayout* GapY(float px);
+    GridLayout* Transition(Motion transition);
+    GridLayout* DraggingItem(const StateStyle& style);
+    GridLayout* SelectedItem(const StateStyle& style);
+    GridLayout* FocusedItem(const StateStyle& style);
+    // Display over `cols` columns without writing the stored layout. 0
+    // becomes 1. While reflowed the grid is read-only; selection still works.
+    GridLayout* Reflow(int cols);
+    GridLayout* Placeholder(GridPartFn fn, void* data);
+    GridLayout* ResizeHandle(GridPartFn fn, void* data);
+    // gap_x / gap_y as pixels. A fractional gap is not stored: it counts as
+    // none, which is what resolve_gap does when the length is not absolute.
+    void ResolvedGap(float remSize, float* x, float* y) const;
+    El* IntoEl();
+};
 
 } // namespace gpui
 #endif // GPUI_BASE_GRID_LAYOUT_H_
