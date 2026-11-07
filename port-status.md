@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2859436c4520641f90be0507cb36e9599ea45f33` (2026-11-06,
-dialog: Add `Dialog::accessibility_label` (#3826)).
-`Dialog::AccessibilityLabel` names the dialog for accessibility
-clients. The host element carries that label with its dialog role.
+Processed through `f8676073ec6e8c0efa40742ae14e7df45f811da0` (2026-11-06,
+slider: Allow `min` above the default `max` while building (#3823)).
+The thumb bound is the smaller of the value and max, then the larger of
+that and min, so a builder can set min to 150 while max is still the
+default 100. 175 then sits halfway, and a 160..180 range sits at
+0.2..0.6 once max is 200.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

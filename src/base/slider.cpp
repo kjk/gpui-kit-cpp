@@ -106,14 +106,27 @@ float SliderValueToPct(const SliderState* s, float value) {
     return ClampF(::logf(value / s->min) / logBase, 0.f, 1.f);
 }
 
+// Not ClampF. While a builder is between its min and its max, min can stand
+// above max. clamp would answer max; min(max) then max(min) answers min,
+// which is what update_thumb_pos does so that step does not panic.
+static float BoundThumb(float value, float min, float max) {
+    if (value > max) {
+        value = max;
+    }
+    if (value < min) {
+        value = min;
+    }
+    return value;
+}
+
 void SliderUpdateThumbPos(SliderState* s) {
     if (!s->value.range) {
         s->pctLo = 0;
-        s->pctHi = SliderValueToPct(s, ClampF(s->value.hi, s->min, s->max));
+        s->pctHi = SliderValueToPct(s, BoundThumb(s->value.hi, s->min, s->max));
         return;
     }
-    s->pctLo = SliderValueToPct(s, ClampF(s->value.lo, s->min, s->max));
-    s->pctHi = SliderValueToPct(s, ClampF(s->value.hi, s->min, s->max));
+    s->pctLo = SliderValueToPct(s, BoundThumb(s->value.lo, s->min, s->max));
+    s->pctHi = SliderValueToPct(s, BoundThumb(s->value.hi, s->min, s->max));
 }
 
 // The press as a fraction of the track: along x for a horizontal slider, and

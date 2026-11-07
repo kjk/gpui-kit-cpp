@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "2859436c4520641f90be0507cb36e9599ea45f33",
+  sha: "f8676073ec6e8c0efa40742ae14e7df45f811da0",
   date: "2026-11-06",
-  subject: "dialog: Add `Dialog::accessibility_label` (#3826)",
+  subject: "slider: Allow `min` above the default `max` while building (#3823)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

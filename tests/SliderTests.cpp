@@ -48,6 +48,26 @@ static void LogarithmicStateKeepsMapping() {
     utassertnear(SliderPctToValue(&s, 1.f), 1000.f);
 }
 
+// slider.rs min_can_be_set_above_the_default_max_before_max.
+// .min(150) while max is still the default 100, then .max(200).
+static void MinCanBeSetAboveTheDefaultMaxBeforeMax() {
+    SliderState single = {};
+    SliderSetLimits(&single, 150.f, single.max);
+    SliderSetLimits(&single, 150.f, 200.f);
+    SliderSetValue(&single, SliderSingle(175.f));
+    utassert(!single.value.range);
+    utassertnear(single.value.End(), 175.f);
+    utassertnear(single.pctLo, 0.f);
+    utassertnear(single.pctHi, 0.5f);
+
+    SliderState range = {};
+    SliderSetValue(&range, SliderRange(160.f, 180.f));
+    SliderSetLimits(&range, 150.f, range.max);
+    SliderSetLimits(&range, 150.f, 200.f);
+    utassertnear(range.pctLo, 0.2f);
+    utassertnear(range.pctHi, 0.6f);
+}
+
 static void LogarithmicLimitsAreNudgedInsteadOfPanicking() {
     SliderState s = {};
     SliderSetScale(&s, SliderScale::Logarithmic);
@@ -282,6 +302,7 @@ void TestSlider() {
     TestSuite("slider");
     ValueConversionsAndClampingArePreserved();
     LinearStateKeepsPercentageAndRangeOrdering();
+    MinCanBeSetAboveTheDefaultMaxBeforeMax();
     LogarithmicStateKeepsMapping();
     LogarithmicLimitsAreNudgedInsteadOfPanicking();
     PositionUpdatesTheValueAlongTheAxis();
