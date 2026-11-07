@@ -2,6 +2,7 @@
 
 #include "shell/error.h"
 #include "shell/wide.h"
+#include "sys/clock.h"
 
 #include <windows.h>
 
@@ -11,16 +12,7 @@ namespace gpui::shell {
 // test platform replaces it, so a 100 ms timeout would never arrive
 // while a test holds that clock still.
 static double WallSeconds() {
-    static LARGE_INTEGER freq = {};
-    static LARGE_INTEGER start = {};
-    if (freq.QuadPart == 0) {
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&start);
-    }
-    LARGE_INTEGER now = {};
-    QueryPerformanceCounter(&now);
-    if (freq.QuadPart == 0) return 0;
-    return (double)(now.QuadPart - start.QuadPart) / (double)freq.QuadPart;
+    return ClockMonotonicSecondsSinceStart();
 }
 
 static bool ExecutableFile(const WCHAR* path) {

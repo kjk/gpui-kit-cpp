@@ -336,32 +336,9 @@ static bool ScriptValue(const BundleScriptValues& values, Str name, Str* out) {
     return false;
 }
 
-// A byte that starts no valid sequence reads as itself. Rust strings are
-// Unicode scalar values; the Cc controls are U+0000..U+001F and U+007F..U+009F.
-static uint32_t DecodeScalar(Str text, int i, int* n) {
-    uint8_t c = (uint8_t)text.s[i];
-    int want = c < 0x80         ? 1
-               : (c >> 5) == 6  ? 2
-               : (c >> 4) == 14 ? 3
-               : (c >> 3) == 30 ? 4
-                                : 0;
-    if (want <= 1 || i + want > len(text)) {
-        *n = 1;
-        return c;
-    }
-    uint32_t cp = c & (0x7F >> want);
-    for (int k = 1; k < want; k++) {
-        uint8_t b = (uint8_t)text.s[i + k];
-        if ((b & 0xC0) != 0x80) {
-            *n = 1;
-            return c;
-        }
-        cp = (cp << 6) | (b & 0x3F);
-    }
-    *n = want;
-    return cp;
-}
-
+// Rust strings are Unicode scalar values (decoded with base Utf8At, where a
+// byte that starts no valid sequence reads as itself); the Cc controls are
+// U+0000..U+001F and U+007F..U+009F.
 static bool IsControlOrLineSeparator(uint32_t cp) {
     return cp <= 0x1F || (cp >= 0x7F && cp <= 0x9F) || cp == 0x2028 ||
            cp == 0x2029;
@@ -370,8 +347,8 @@ static bool IsControlOrLineSeparator(uint32_t cp) {
 static void AppendRustDebug(StrBuilder& out, Str value) {
     out.AppendChar('"');
     for (int i = 0; value.s && i < len(value);) {
-        int n = 1;
-        uint32_t cp = DecodeScalar(value, i, &n);
+        uint32_t cp = 0;
+        int n = Utf8At(value, i, &cp);
         if (cp == '"')
             out.Append(StrL("\\\""));
         else if (cp == '\\')
@@ -403,8 +380,9 @@ static bool ScriptsCanHold(const BundleScriptValues& values, Str* error) {
         Str value = slots[i].value;
         bool bad = false;
         for (int at = 0; value.s && at < len(value);) {
-            int n = 1;
-            if (IsControlOrLineSeparator(DecodeScalar(value, at, &n))) {
+            uint32_t cp = 0;
+            int n = Utf8At(value, at, &cp);
+            if (IsControlOrLineSeparator(cp)) {
                 bad = true;
                 break;
             }
@@ -770,12 +748,17 @@ struct BundleTree {
         return false;
     }
 
-    bool Directory(Str path) {
-        if (len(path) == 0 || Has(path)) return true;
+    // The directories above `path`, each added once.
+    bool Parents(Str path) {
         int slash = -1;
         for (int i = 0; i < len(path); i++)
             if (path.s[i] == '/') slash = i;
-        if (slash > 0 && !Directory(Str(path.s, slash))) return false;
+        return slash <= 0 || Directory(Str(path.s, slash));
+    }
+
+    bool Directory(Str path) {
+        if (len(path) == 0 || Has(path)) return true;
+        if (!Parents(path)) return false;
         BundleItem item;
         item.path = StrDup(path);
         item.directory = true;
@@ -784,10 +767,7 @@ struct BundleTree {
     }
 
     bool Add(Str path, Str bytes, bool executable, bool directory) {
-        int slash = -1;
-        for (int i = 0; i < len(path); i++)
-            if (path.s[i] == '/') slash = i;
-        if (slash > 0 && !Directory(Str(path.s, slash))) return false;
+        if (!Parents(path)) return false;
         BundleItem item;
         item.path = StrDup(path);
         item.bytes = bytes;

@@ -1752,17 +1752,10 @@ static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
         return out;
     }
     if (name[0] != '.' && name[0] != '/' && name[0] != '\\') {
-        bool release = false;
-        Policy* policy = shell::ScopeCurrentPolicy();
-        if (!policy) {
-            policy = PolicyDefault();
-            release = true;
-        }
-        HostModules* modules = PolicyHostModules(policy);
+        HostModules* modules = HostModulesCurrent();
         HostModule* found = HostModulesGet(modules, moduleName);
         uint64_t generation = HostModulesGeneration(modules);
         HostModulesRelease(modules);
-        if (release) PolicyRelease(policy);
         if (found) {
             TempStr tagged = fmt("host:%s?m=%llu", moduleName,
                                  (unsigned long long)generation);
@@ -1932,17 +1925,10 @@ static JSModuleDef* LoadHostModule(JSContext* ctx, Str name) {
     Str moduleName;
     uint64_t generation = 0;
     if (!HostModuleTag(name, &moduleName, &generation)) return nullptr;
-    bool release = false;
-    Policy* policy = shell::ScopeCurrentPolicy();
-    if (!policy) {
-        policy = PolicyDefault();
-        release = true;
-    }
-    HostModules* modules = PolicyHostModules(policy);
+    HostModules* modules = HostModulesCurrent();
     HostModule* module = HostModulesGet(modules, moduleName);
     if (!module || HostModulesGeneration(modules) != generation) {
         HostModulesRelease(modules);
-        if (release) PolicyRelease(policy);
         JS_ThrowReferenceError(
             ctx,
             "the HostModule registry changed while `%.*s` was being imported; "
@@ -1955,7 +1941,6 @@ static JSModuleDef* LoadHostModule(JSContext* ctx, Str name) {
         Str function = module->FunctionName(i);
         if (!HostIsIdentifier(function)) {
             HostModulesRelease(modules);
-            if (release) PolicyRelease(policy);
             JS_ThrowReferenceError(ctx,
                                    "HostModule `%.*s` registered `%.*s`, which "
                                    "is not a JavaScript identifier",
@@ -1974,7 +1959,6 @@ static JSModuleDef* LoadHostModule(JSContext* ctx, Str name) {
         source.Append(StrL(",args);\n"));
     }
     HostModulesRelease(modules);
-    if (release) PolicyRelease(policy);
     Str script = source.TakeStr();
     JSValue value =
         JS_Eval(ctx, script.s ? script.s : "", (size_t)len(script), name.s,
@@ -2205,6 +2189,8 @@ static JSValue NativeComponent(JSContext* ctx, JSValueConst, int argc,
     return JS_NewUint32(ctx, id);
 }
 
+// The policy of the current host call, or the default one when there is none;
+// `release` says whether the caller must PolicyRelease it.
 static Policy* CurrentPolicy(bool* release);
 
 static JSValue NativeTextView(JSContext* ctx, JSValueConst, int argc,
@@ -4539,6 +4525,17 @@ static shell::RetainedEntry* LiveRetained(JSContext* ctx,
     return entry;
 }
 
+// The retained state of `kind` a native's first argument names, when it was
+// given at least `minArgs` arguments; null with an exception pending.
+static shell::RetainedEntry* LiveRetainedArg(JSContext* ctx, int argc,
+                                             JSValueConst* argv, int minArgs,
+                                             shell::RetainedKind kind,
+                                             const char* what) {
+    shell::EntityHandle handle = 0;
+    if (argc < minArgs || !JsHandle(ctx, argv[0], &handle)) return nullptr;
+    return LiveRetained(ctx, handle, kind, what);
+}
+
 static JSValue ThrowRetainedLimit(JSContext* ctx) {
     return JS_ThrowRangeError(
         ctx,
@@ -4940,6 +4937,20 @@ static bool DialogOptionsFromJs(JSContext* ctx, JSValueConst value,
            OptionalBoolProperty(ctx, value, keys[1], &out->backdropDismissable);
 }
 
+// The live host an overlay opens in and the nested view `token` names, taken
+// over for mounting; false with an exception pending.
+static bool OverlayContent(JSContext* ctx, const char* api, uint32_t token,
+                           const char* what, Ctx* native,
+                           Entity<ScriptView>* content) {
+    ShellRuntimeImpl* impl = nullptr;
+    if (!OverlayHost(ctx, api, &impl, native)) return false;
+    if (!TakeNestedView(impl, token, content)) {
+        JS_ThrowTypeError(ctx, "%s content has already been released", what);
+        return false;
+    }
+    return true;
+}
+
 static JSValue NativeOpenDialog(JSContext* ctx, JSValueConst, int argc,
                                 JSValueConst* argv) {
     const char* api = "window.open_dialog(content, options)";
@@ -4949,13 +4960,10 @@ static JSValue NativeOpenDialog(JSContext* ctx, JSValueConst, int argc,
     if (argc < 1 || JS_ToUint32(ctx, &token, argv[0]) < 0 ||
         !DialogOptionsFromJs(ctx, argc > 1 ? argv[1] : JS_UNDEFINED, &options))
         return JS_EXCEPTION;
-    ShellRuntimeImpl* impl = nullptr;
     Ctx native = {};
-    if (!OverlayHost(ctx, api, &impl, &native)) return JS_EXCEPTION;
     Entity<ScriptView> content;
-    if (!TakeNestedView(impl, token, &content))
-        return JS_ThrowTypeError(ctx,
-                                 "dialog content has already been released");
+    if (!OverlayContent(ctx, api, token, "dialog", &native, &content))
+        return JS_EXCEPTION;
     int depth = ShellRootOpenDialog(&native, content, options);
     if (depth <= 0) {
         EntityDrop(native.app, content.id);
@@ -5035,13 +5043,10 @@ static JSValue NativeOpenSheet(JSContext* ctx, JSValueConst, int argc,
                               &placement) ||
         argc < 2 || JS_ToUint32(ctx, &token, argv[1]) < 0)
         return JS_EXCEPTION;
-    ShellRuntimeImpl* impl = nullptr;
     Ctx native = {};
-    if (!OverlayHost(ctx, api, &impl, &native)) return JS_EXCEPTION;
     Entity<ScriptView> content;
-    if (!TakeNestedView(impl, token, &content))
-        return JS_ThrowTypeError(ctx,
-                                 "sheet content has already been released");
+    if (!OverlayContent(ctx, api, token, "sheet", &native, &content))
+        return JS_EXCEPTION;
     if (!ShellRootOpenSheet(&native, content, placement)) {
         EntityDrop(native.app, content.id);
         return JS_ThrowInternalError(ctx, "could not mount sheet content");
@@ -5763,10 +5768,8 @@ static JSValue NativeInputNumberOption(JSContext* ctx, JSValueConst, int argc,
                                        JSValueConst* argv, int magic) {
     if (RefuseRetainedMutation(ctx, "numeric input setter"))
         return JS_EXCEPTION;
-    shell::EntityHandle handle = 0;
-    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry =
-        LiveRetained(ctx, handle, shell::RetainedKind::Input, "input");
+    shell::RetainedEntry* entry = LiveRetainedArg(
+        ctx, argc, argv, 2, shell::RetainedKind::Input, "input");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) return ThrowNoHost(ctx, "numeric input setter");
@@ -5793,10 +5796,8 @@ static JSValue NativeInputNumberOption(JSContext* ctx, JSValueConst, int argc,
 static JSValue NativeInputFlag(JSContext* ctx, JSValueConst, int argc,
                                JSValueConst* argv, int magic) {
     if (RefuseRetainedMutation(ctx, "input setter")) return JS_EXCEPTION;
-    shell::EntityHandle handle = 0;
-    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry =
-        LiveRetained(ctx, handle, shell::RetainedKind::Input, "input");
+    shell::RetainedEntry* entry = LiveRetainedArg(
+        ctx, argc, argv, 2, shell::RetainedKind::Input, "input");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) return ThrowNoHost(ctx, "input setter");
@@ -5812,10 +5813,8 @@ static JSValue NativeInputFlag(JSContext* ctx, JSValueConst, int argc,
 static JSValue NativeTextareaRows(JSContext* ctx, JSValueConst, int argc,
                                   JSValueConst* argv, int magic) {
     if (RefuseRetainedMutation(ctx, "textarea setter")) return JS_EXCEPTION;
-    shell::EntityHandle handle = 0;
-    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry =
-        LiveRetained(ctx, handle, shell::RetainedKind::Textarea, "textarea");
+    shell::RetainedEntry* entry = LiveRetainedArg(
+        ctx, argc, argv, 2, shell::RetainedKind::Textarea, "textarea");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) return ThrowNoHost(ctx, "textarea setter");
@@ -5930,10 +5929,8 @@ static JSValue NativeSliderStateNew(JSContext* ctx, JSValueConst, int argc,
 
 static JSValue NativeSliderValue(JSContext* ctx, JSValueConst, int argc,
                                  JSValueConst* argv) {
-    shell::EntityHandle handle = 0;
-    if (argc < 1 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry =
-        LiveRetained(ctx, handle, shell::RetainedKind::Slider, "slider");
+    shell::RetainedEntry* entry = LiveRetainedArg(
+        ctx, argc, argv, 1, shell::RetainedKind::Slider, "slider");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) return ThrowNoHost(ctx, "value()");
@@ -5962,10 +5959,8 @@ static JSValue NativeSliderSetValue(JSContext* ctx, JSValueConst, int argc,
 
 static JSValue NativeSliderBounds(JSContext* ctx, JSValueConst, int argc,
                                   JSValueConst* argv) {
-    shell::EntityHandle handle = 0;
-    if (argc < 1 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry =
-        LiveRetained(ctx, handle, shell::RetainedKind::Slider, "slider");
+    shell::RetainedEntry* entry = LiveRetainedArg(
+        ctx, argc, argv, 1, shell::RetainedKind::Slider, "slider");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) return ThrowNoHost(ctx, "min_value()");
@@ -6233,10 +6228,8 @@ static JSValue NativeFocusNew(JSContext* ctx, JSValueConst, int,
 
 static JSValue NativeFocusOp(JSContext* ctx, JSValueConst, int argc,
                              JSValueConst* argv, int magic) {
-    shell::EntityHandle handle = 0;
-    if (argc < 1 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry =
-        LiveRetained(ctx, handle, shell::RetainedKind::Focus, "focus handle");
+    shell::RetainedEntry* entry = LiveRetainedArg(
+        ctx, argc, argv, 1, shell::RetainedKind::Focus, "focus handle");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) return ThrowNoHost(ctx, "focus operation");
@@ -6484,46 +6477,12 @@ static JSValue NativeLazyList(JSContext* ctx, JSValueConst, int argc,
     return JS_NewUint32(ctx, result);
 }
 
-// Shell's Rust snapshot rounds each Hsla channel to the nearest byte. The
-// general C++ palette conversion intentionally truncates to match Colorize,
-// so keep this API-specific rule here and preserve exact script hex colors.
-static uint8_t ShellThemeByte(float value) {
-    if (value <= 0) return 0;
-    if (value >= 1) return 255;
-    return (uint8_t)lroundf(value * 255.f);
-}
-
+// Shell's Rust snapshot rounds each Hsla channel to the nearest byte
+// (HslaToRgbaRounded). The general C++ palette conversion truncates to match
+// Colorize, so keep this API-specific rule here and preserve exact script hex
+// colors.
 static Rgba ShellThemeRgba(Hsla color) {
-    float h = color.h, s = color.s, l = color.l;
-    float k = (1.f - fabsf(2.f * l - 1.f)) * s;
-    float x = k * (1.f - fabsf(fmodf(h * 6.f, 2.f) - 1.f));
-    float m = l - k * 0.5f;
-    float km = k + m;
-    float xm = x + m;
-    float r = 0, g = 0, b = 0;
-    switch ((int)floorf(h * 6.f)) {
-        case 0:
-        case 6:
-            r = km, g = xm, b = m;
-            break;
-        case 1:
-            r = xm, g = km, b = m;
-            break;
-        case 2:
-            r = m, g = km, b = xm;
-            break;
-        case 3:
-            r = m, g = xm, b = km;
-            break;
-        case 4:
-            r = xm, g = m, b = km;
-            break;
-        default:
-            r = km, g = m, b = xm;
-            break;
-    }
-    return Rgba8(ShellThemeByte(r), ShellThemeByte(g), ShellThemeByte(b),
-                 ShellThemeByte(color.a));
+    return HslaToRgbaRounded(color);
 }
 
 static void AppendThemeColor(StrBuilder* out, Str name, bool comma) {
@@ -6984,6 +6943,26 @@ static JSValue NativeSetTheme(JSContext* ctx, JSValueConst, int argc,
     return JS_UNDEFINED;
 }
 
+// The host a call that may name its `cx` generation runs against: that
+// generation's when it names one, the current host call's otherwise. Unset,
+// with a TypeError pending (the stale generation's own message, or `missing`
+// when there is no host call at all), when neither is live.
+static shell::ScopeHostContext HostForCall(JSContext* ctx,
+                                           bool explicitGeneration,
+                                           uint64_t generation,
+                                           const char* missing) {
+    ShellError error = {};
+    shell::ScopeHostContext host =
+        explicitGeneration ? shell::ScopeHostForGeneration(generation, &error)
+                           : shell::ScopeCurrentHost();
+    if (!host.IsSet()) {
+        Str message = error.IsSet() ? error.message : Str(missing);
+        JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
+    }
+    ShellErrorClear(&error);
+    return host;
+}
+
 // The host a `cx.theme()` or `cx.theme` revision read belongs to.
 //
 // Both entry points take the same optional generation and refuse the same stale
@@ -6991,22 +6970,13 @@ static JSValue NativeSetTheme(JSContext* ctx, JSValueConst, int argc,
 // would be the palette of a frame that is over.
 static shell::ScopeHostContext ThemeHost(JSContext* ctx, int argc,
                                          JSValueConst* argv) {
-    ShellError error = {};
     uint64_t generation = 0;
     bool explicitGeneration = argc > 0 && !JS_IsUndefined(argv[0]);
     if (explicitGeneration && JS_ToIndex(ctx, &generation, argv[0]) < 0) {
         return shell::ScopeHostForGeneration(UINT64_MAX);
     }
-    shell::ScopeHostContext host =
-        explicitGeneration ? shell::ScopeHostForGeneration(generation, &error)
-                           : shell::ScopeCurrentHost();
-    if (!host.IsSet()) {
-        Str message = error.IsSet() ? error.message
-                                    : StrL("cx.theme() needs a live host call");
-        JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
-    }
-    ShellErrorClear(&error);
-    return host;
+    return HostForCall(ctx, explicitGeneration, generation,
+                       "cx.theme() needs a live host call");
 }
 
 // The palette's revision, which is what a script's theme cache compares.
@@ -7085,22 +7055,14 @@ static JSValue NativeOpenUrl(JSContext* ctx, JSValueConst, int argc,
             ctx,
             "cx.open_url(url) expects an absolute HTTP(S) URL with a host");
     }
-    ShellError error = {};
     shell::ScopeHostContext host =
-        explicitGeneration ? shell::ScopeHostForGeneration(generation, &error)
-                           : shell::ScopeCurrentHost();
+        HostForCall(ctx, explicitGeneration, generation,
+                    "cx.open_url(url) needs a live host call");
     if (!host.IsSet()) {
-        Str message = error.IsSet()
-                          ? error.message
-                          : StrL("cx.open_url(url) needs a live host call");
-        JSValue result =
-            JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
-        ShellErrorClear(&error);
         ArenaDelete(arena);
-        return result;
+        return JS_EXCEPTION;
     }
     OpenUrl(url);
-    ShellErrorClear(&error);
     ArenaDelete(arena);
     return JS_UNDEFINED;
 }
@@ -7335,26 +7297,16 @@ static JSValue NativeOpenPath(JSContext* ctx, JSValueConst, int argc,
         return result;
     }
     StrFree(fsError);
-    ShellError error = {};
     shell::ScopeHostContext host =
-        explicitGeneration ? shell::ScopeHostForGeneration(generation, &error)
-                           : shell::ScopeCurrentHost();
+        HostForCall(ctx, explicitGeneration, generation,
+                    "cx.open_path(path) needs a live host call; call it from "
+                    "render, an event handler or a task");
     if (!host.IsSet()) {
-        Str message = error.IsSet()
-                          ? error.message
-                          : StrL(
-                                "cx.open_path(path) needs a live host call; "
-                                "call it from render, an event handler or a "
-                                "task");
-        JSValue result =
-            JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
-        ShellErrorClear(&error);
         granted.Free();
         ArenaDelete(arena);
-        return result;
+        return JS_EXCEPTION;
     }
     OpenPath(JoinGrantedPath(arena, granted));
-    ShellErrorClear(&error);
     granted.Free();
     ArenaDelete(arena);
     return JS_UNDEFINED;
@@ -7366,15 +7318,9 @@ static JSValue NativeNotify(JSContext* ctx, JSValueConst, int argc,
     if (argc < 1 || JS_ToIndex(ctx, &generation, argv[0]) < 0) {
         return JS_EXCEPTION;
     }
-    ShellError error = {};
-    shell::ScopeHostContext host =
-        shell::ScopeHostForGeneration(generation, &error);
-    if (!host.IsSet()) {
-        JSValue result =
-            JS_ThrowTypeError(ctx, "%.*s", len(error.message), error.message.s);
-        ShellErrorClear(&error);
-        return result;
-    }
+    shell::ScopeHostContext host = HostForCall(
+        ctx, true, generation, "cx.notify() needs a live host call");
+    if (!host.IsSet()) return JS_EXCEPTION;
     if (!ScopePhaseAllowsNotify(shell::ScopeCurrentPhase())) {
         return JS_ThrowTypeError(
             ctx,
@@ -8045,15 +7991,46 @@ static JSValue HostIntoJs(JSContext* ctx, const HostValue& value,
     return JS_NULL;
 }
 
-// A host call's three arguments: module, function and the argument list.
-// False with an exception pending; `arguments` is the caller's to free
-// either way.
+// A host call's three arguments: module, function and the argument list, the
+// names in an arena of their own. Free() releases both.
+struct HostCallJs {
+    Arena* arena = nullptr;
+    Str module;
+    Str function;
+    HostArguments arguments;
+
+    void Free() {
+        arguments.Free();
+        ArenaDelete(arena);
+        arena = nullptr;
+    }
+};
+
+// False with an exception pending and nothing left to free.
 static bool HostCallFromJs(JSContext* ctx, int argc, JSValueConst* argv,
-                           Arena* arena, Str* module, Str* function,
-                           HostArguments* arguments) {
-    return argc >= 3 && JsString(ctx, argv[0], arena, module) &&
-           JsString(ctx, argv[1], arena, function) &&
-           HostArgumentsFromJs(ctx, argv[2], arguments);
+                           HostCallJs* out) {
+    out->arena = ArenaNew();
+    bool ok = argc >= 3 && JsString(ctx, argv[0], out->arena, &out->module) &&
+              JsString(ctx, argv[1], out->arena, &out->function) &&
+              HostArgumentsFromJs(ctx, argv[2], &out->arguments);
+    if (!ok) {
+        out->Free();
+    }
+    return ok;
+}
+
+// Hand a parsed call to the host module registry (HostDispatch or
+// HostDispatchBegin), timed as native work in the runtime's metrics.
+template <typename Request>
+static bool HostDispatchMetered(JSContext* ctx, const HostCallJs& js,
+                                bool (*dispatch)(Str, Str, Request*),
+                                Request* request) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    shell::MetricsTimer timer =
+        shell::MetricsBegin(&impl->metrics, shell::MetricsTimerKind::Native);
+    bool ok = dispatch(js.module, js.function, request);
+    shell::MetricsEnd(&timer);
+    return ok;
 }
 
 static JSValue ThrowHostCallError(JSContext* ctx, Str module, Str function,
@@ -8065,34 +8042,22 @@ static JSValue ThrowHostCallError(JSContext* ctx, Str module, Str function,
 
 static JSValue NativeHostCall(JSContext* ctx, JSValueConst, int argc,
                               JSValueConst* argv) {
-    Arena* arena = ArenaNew();
-    Str module;
-    Str function;
-    HostArguments arguments;
-    bool ok =
-        HostCallFromJs(ctx, argc, argv, arena, &module, &function, &arguments);
-    if (!ok) {
-        arguments.Free();
-        ArenaDelete(arena);
+    HostCallJs js;
+    if (!HostCallFromJs(ctx, argc, argv, &js)) {
         return JS_EXCEPTION;
     }
     HostCall call;
-    call.arguments = &arguments;
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    shell::MetricsTimer timer =
-        shell::MetricsBegin(&impl->metrics, shell::MetricsTimerKind::Native);
-    ok = HostDispatch(module, function, &call);
-    shell::MetricsEnd(&timer);
+    call.arguments = &js.arguments;
     JSValue result = JS_EXCEPTION;
-    if (!ok) {
-        result = ThrowHostCallError(ctx, module, function, call.error.message);
+    if (!HostDispatchMetered(ctx, js, HostDispatch, &call)) {
+        result =
+            ThrowHostCallError(ctx, js.module, js.function, call.error.message);
     } else {
         result = HostIntoJs(ctx, call.result);
     }
     call.result.Free();
     call.error.Clear();
-    arguments.Free();
-    ArenaDelete(arena);
+    js.Free();
     return result;
 }
 
@@ -8145,57 +8110,44 @@ static Task ShellHostAsyncTask(TaskGuard guard, HostAsyncJob* job) {
 
 static JSValue NativeHostAsyncCall(JSContext* ctx, JSValueConst, int argc,
                                    JSValueConst* argv) {
-    Arena* arena = ArenaNew();
-    Str module;
-    Str function;
-    HostArguments arguments;
-    bool ok =
-        HostCallFromJs(ctx, argc, argv, arena, &module, &function, &arguments);
-    if (!ok) {
-        arguments.Free();
-        ArenaDelete(arena);
+    HostCallJs js;
+    if (!HostCallFromJs(ctx, argc, argv, &js)) {
         return JS_EXCEPTION;
     }
     HostAsyncRequest request;
-    request.arguments = &arguments;
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    shell::MetricsTimer timer =
-        shell::MetricsBegin(&impl->metrics, shell::MetricsTimerKind::Native);
-    ok = HostDispatchBegin(module, function, &request);
-    shell::MetricsEnd(&timer);
-    if (!ok) {
-        JSValue result =
-            ThrowHostCallError(ctx, module, function, request.error.message);
+    request.arguments = &js.arguments;
+    if (!HostDispatchMetered(ctx, js, HostDispatchBegin, &request)) {
+        JSValue result = ThrowHostCallError(ctx, js.module, js.function,
+                                            request.error.message);
         request.error.Clear();
         request.release.Call();
         HostModulesRelease(request.registry);
-        arguments.Free();
-        ArenaDelete(arena);
+        js.Free();
         return result;
     }
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) {
         request.release.Call();
         HostModulesRelease(request.registry);
-        arguments.Free();
-        ArenaDelete(arena);
+        js.Free();
         return JS_ThrowTypeError(
             ctx, "an asynchronous HostModule call needs a live host task");
     }
 
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
     HostAsyncJob* job = new HostAsyncJob();
-    job->arguments.values.els = arguments.values.els;
-    job->arguments.values.len = arguments.values.len;
-    job->arguments.values.cap = arguments.values.cap;
-    arguments.values.els = nullptr;
-    arguments.values.len = 0;
-    arguments.values.cap = 0;
+    job->arguments.values.els = js.arguments.values.els;
+    job->arguments.values.len = js.arguments.values.len;
+    job->arguments.values.cap = js.arguments.values.cap;
+    js.arguments.values.els = nullptr;
+    js.arguments.values.len = 0;
+    js.arguments.values.cap = 0;
     job->work = request.work;
     job->release = request.release;
     job->registry = request.registry;
     request.registry = nullptr;
     request.error.Clear();
-    ArenaDelete(arena);
+    js.Free();
 
     JSValue promise;
     if (!NewJobTask(ctx, impl, &job->head, ShellTaskKind::HostAsync, host,
@@ -13187,6 +13139,20 @@ static bool ElementId(JSContext* ctx, JSValueConst value, shell::SpecId* id) {
     return ok;
 }
 
+// What a callback that renders an optional element returned: an element, or
+// null/undefined for none. False when it threw or returned anything else.
+// Frees `produced`.
+static bool ProducedElement(JSContext* ctx, JSValue produced,
+                            shell::SpecId* root, bool* hasRoot) {
+    bool ok = !JS_IsException(produced);
+    if (ok && !JS_IsNull(produced) && !JS_IsUndefined(produced)) {
+        ok = ElementId(ctx, produced, root);
+        *hasRoot = ok;
+    }
+    JS_FreeValue(ctx, produced);
+    return ok;
+}
+
 RenderSnapshot* ShellRuntime::BuildSnapshot(ViewObject* object, Window* window,
                                             App* app, EntityId view,
                                             Policy* policy, ShellError* error) {
@@ -14111,6 +14077,28 @@ static bool WithListKeys(ShellRuntime* runtime, ShellRuntimeImpl* impl,
     return true;
 }
 
+// get_key(index): the key it returns, in `keys`. False with an exception
+// pending when it threw or returned something other than a string.
+static bool CallGetKey(JSContext* ctx, JSValue function, int index, Arena* keys,
+                       Str* out) {
+    JSValue value = JS_NewInt32(ctx, index);
+    JSValue result = JS_Call(ctx, function, JS_UNDEFINED, 1, &value);
+    JS_FreeValue(ctx, value);
+    if (JS_IsException(result)) {
+        JS_FreeValue(ctx, result);
+        return false;
+    }
+    bool parsed = JsString(ctx, result, keys, out);
+    JS_FreeValue(ctx, result);
+    if (!parsed) {
+        if (!JS_HasException(ctx)) {
+            JS_ThrowTypeError(ctx, "a list's get_key must return a string");
+        }
+        return false;
+    }
+    return true;
+}
+
 struct OneKeyAsk {
     int index = 0;
     Str key = {};
@@ -14120,22 +14108,8 @@ struct OneKeyAsk {
 static bool AskOneKey(void* user, JSContext* ctx, JSValue function, int,
                       Arena* keys) {
     OneKeyAsk* ask = (OneKeyAsk*)user;
-    JSValue value = JS_NewInt32(ctx, ask->index);
-    JSValue result = JS_Call(ctx, function, JS_UNDEFINED, 1, &value);
-    JS_FreeValue(ctx, value);
-    if (JS_IsException(result)) {
-        JS_FreeValue(ctx, result);
-        return false;
-    }
     Str text;
-    bool parsed = JsString(ctx, result, keys, &text);
-    JS_FreeValue(ctx, result);
-    if (!parsed) {
-        if (!JS_HasException(ctx)) {
-            JS_ThrowTypeError(ctx, "a list's get_key must return a string");
-        }
-        return false;
-    }
+    if (!CallGetKey(ctx, function, ask->index, keys, &text)) return false;
     ask->key = StrDup(text);
     ask->ok = ask->key.s != nullptr;
     return false;
@@ -14153,21 +14127,8 @@ static bool AskFindKey(void* user, JSContext* ctx, JSValue function, int,
     for (;;) {
         int candidate = ListKeySearchNext(&ask->search);
         if (candidate < 0) return false;
-        JSValue value = JS_NewInt32(ctx, candidate);
-        JSValue result = JS_Call(ctx, function, JS_UNDEFINED, 1, &value);
-        JS_FreeValue(ctx, value);
-        if (JS_IsException(result)) {
-            JS_FreeValue(ctx, result);
-            ask->found = -1;
-            return false;
-        }
         Str text;
-        bool parsed = JsString(ctx, result, keys, &text);
-        JS_FreeValue(ctx, result);
-        if (!parsed) {
-            if (!JS_HasException(ctx)) {
-                JS_ThrowTypeError(ctx, "a list's get_key must return a string");
-            }
+        if (!CallGetKey(ctx, function, candidate, keys, &text)) {
             ask->found = -1;
             return false;
         }
@@ -14462,13 +14423,8 @@ El* ShellRuntime::DescribeDockChrome(Ctx* cx, shell::EntityHandle dock,
                                              JS_UNDEFINED, 2, args);
             JS_FreeValue(impl->context, context);
             if (!JS_IsException(state)) JS_FreeValue(impl->context, state);
-            if (JS_IsException(produced)) {
-                succeeded = false;
-            } else if (!JS_IsNull(produced) && !JS_IsUndefined(produced)) {
-                succeeded = ElementId(impl->context, produced, &root);
-                hasRoot = succeeded;
-            }
-            JS_FreeValue(impl->context, produced);
+            succeeded =
+                ProducedElement(impl->context, produced, &root, &hasRoot);
         }
         impl->scratch = outer;
         double elapsed = TimeNow() - started;
@@ -14560,13 +14516,7 @@ El* ShellRuntime::RenderInlineToken(shell::CallbackId render,
         impl->callbacks.tokenRender = false;
         JS_FreeValue(impl->context, context);
         JS_FreeValue(impl->context, payload);
-        if (JS_IsException(produced)) {
-            succeeded = false;
-        } else if (!JS_IsNull(produced) && !JS_IsUndefined(produced)) {
-            succeeded = ElementId(impl->context, produced, &root);
-            hasRoot = succeeded;
-        }
-        JS_FreeValue(impl->context, produced);
+        succeeded = ProducedElement(impl->context, produced, &root, &hasRoot);
     }
     impl->scratch = outer;
     El* el = nullptr;

@@ -1033,11 +1033,7 @@ Str ShellDataHome() {
 }
 
 Str ShellBundleIdForPath(Str root) {
-    uint64_t hash = 0xcbf29ce484222325ull;
-    for (int i = 0; i < len(root); i++) {
-        hash ^= (uint8_t)root.s[i];
-        hash *= 0x100000001b3ull;
-    }
+    uint64_t hash = Fnv1a64(0xcbf29ce484222325ull, root.s, (size_t)len(root));
     int start = len(root);
     while (start > 0 && root.s[start - 1] != '/' && root.s[start - 1] != '\\')
         start--;

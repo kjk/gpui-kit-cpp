@@ -651,7 +651,7 @@ struct HostCallGuard {
     }
 };
 
-static HostModules* CurrentModules() {
+HostModules* HostModulesCurrent() {
     Policy* policy = shell::ScopeCurrentPolicy();
     if (policy) return PolicyHostModules(policy);
     Policy* fallback = PolicyDefault();
@@ -694,7 +694,7 @@ static bool RefuseNestedCall(Str module, Str function, HostError* error) {
 bool HostDispatch(Str module, Str function, HostCall* call) {
     if (!call) return false;
     if (RefuseNestedCall(module, function, &call->error)) return false;
-    HostModules* modules = CurrentModules();
+    HostModules* modules = HostModulesCurrent();
     HostModule* found = HostModulesGet(modules, module);
     if (!found) MissingModule(module, &call->error, modules);
     HostCallGuard guard;
@@ -706,7 +706,7 @@ bool HostDispatch(Str module, Str function, HostCall* call) {
 bool HostDispatchBegin(Str module, Str function, HostAsyncRequest* request) {
     if (!request) return false;
     if (RefuseNestedCall(module, function, &request->error)) return false;
-    HostModules* modules = CurrentModules();
+    HostModules* modules = HostModulesCurrent();
     HostModule* found = HostModulesGet(modules, module);
     if (!found) MissingModule(module, &request->error, modules);
     HostCallGuard guard;

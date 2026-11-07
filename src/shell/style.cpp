@@ -983,42 +983,11 @@ static const Keyword kKeywords[] = {
      },
      0},
     // Flex item sizing.
-    {"flex_1",
-     [](El* e) {
-         e->style.flexGrow = 1;
-         e->style.flexShrink = 1;
-         e->style.flexBasis = 0;
-         e->style.flexBasisFrac = 0;
-         e->style.flexBasisPercent = true;
-     },
-     0},
-    {"flex_auto",
-     [](El* e) {
-         e->style.flexGrow = 1;
-         e->style.flexShrink = 1;
-         e->style.flexBasis = kAuto;
-         e->style.flexBasisFrac = 0;
-         e->style.flexBasisPercent = false;
-     },
-     0},
-    {"flex_initial",
-     [](El* e) {
-         e->style.flexGrow = 0;
-         e->style.flexShrink = 1;
-         e->style.flexBasis = kAuto;
-         e->style.flexBasisFrac = 0;
-         e->style.flexBasisPercent = false;
-     },
-     0},
-    {"flex_none",
-     [](El* e) {
-         e->style.flexGrow = 0;
-         e->style.flexShrink = 0;
-         e->style.flexBasis = kAuto;
-         e->style.flexBasisFrac = 0;
-         e->style.flexBasisPercent = false;
-     },
-     0},
+    {"flex_1", [](El* e) { e->Flex1Rel(); }, 0},
+    {"flex_auto", [](El* e) { e->FlexAuto(); }, 0},
+    // flex: 0 1 auto, which is flex_auto without the grow.
+    {"flex_initial", [](El* e) { e->FlexAuto()->style.flexGrow = 0; }, 0},
+    {"flex_none", [](El* e) { e->FlexNone(); }, 0},
     {"flex_grow_0", [](El* e) { e->style.flexGrow = 0; }, 0},
     {"flex_grow_1", [](El* e) { e->style.flexGrow = 1; }, 0},
     {"flex_shrink_0", [](El* e) { e->style.flexShrink = 0; }, 0},
@@ -1556,17 +1525,8 @@ static void EachKnownName(Visit visit) {
 // One code point of UTF-8, advancing `at`. A malformed byte is taken as
 // itself, which is all a distance needs.
 static uint32_t NextCodepoint(Str s, int* at) {
-    uint8_t c = (uint8_t)s.s[*at];
-    int extra = c >= 0xf0 ? 3 : c >= 0xe0 ? 2 : c >= 0xc0 ? 1 : 0;
-    if (*at + extra >= len(s)) extra = 0;
-    uint32_t cp = extra == 0   ? c
-                  : extra == 1 ? (uint32_t)(c & 0x1f)
-                  : extra == 2 ? (uint32_t)(c & 0x0f)
-                               : (uint32_t)(c & 0x07);
-    for (int i = 1; i <= extra; i++) {
-        cp = (cp << 6) | ((uint8_t)s.s[*at + i] & 0x3f);
-    }
-    *at += extra + 1;
+    uint32_t cp = 0;
+    *at += Utf8At(s, *at, &cp);
     return cp;
 }
 

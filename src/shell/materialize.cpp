@@ -1049,6 +1049,15 @@ static FocusHandle RetainedFocus(ShellRuntime* runtime,
                                                               : FocusHandle{};
 }
 
+// The slider state a component's retained handle names; null when it names
+// none or something else.
+static SliderState* RetainedSlider(ShellRuntime* runtime,
+                                   shell::EntityHandle handle) {
+    shell::RetainedEntry* entry = runtime ? runtime->Retained(handle) : nullptr;
+    return entry && entry->kind == shell::RetainedKind::Slider ? entry->slider
+                                                               : nullptr;
+}
+
 struct ShellTokenUser {
     ShellRuntime* runtime = nullptr;
     shell::CallbackId render = 0;
@@ -3071,12 +3080,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
     if (!element) element = Construct(cx, runtime, node->component, behavior);
 
     if (node->component.kind == shell::ComponentKind::SliderIndicator) {
-        shell::RetainedEntry* retained =
-            runtime ? runtime->Retained(node->component.handle) : nullptr;
-        SliderState* state =
-            retained && retained->kind == shell::RetainedKind::Slider
-                ? retained->slider
-                : nullptr;
+        SliderState* state = RetainedSlider(runtime, node->component.handle);
         const shell::SpecNode* range =
             StateNode(specs, node, StrL("range_style"));
         if (state && range) {
@@ -3118,12 +3122,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         element->style.borderColor = Rgba{0, 0, 0, 0};
     ApplyMotions(cx, node, id, behavior, element);
     if (node->component.kind == shell::ComponentKind::SliderThumb) {
-        shell::RetainedEntry* retained =
-            runtime ? runtime->Retained(node->component.handle) : nullptr;
-        SliderState* state =
-            retained && retained->kind == shell::RetainedKind::Slider
-                ? retained->slider
-                : nullptr;
+        SliderState* state = RetainedSlider(runtime, node->component.handle);
         if (state) {
             float at = behavior.start ? state->pctLo : state->pctHi;
             element->Absolute();

@@ -1,6 +1,7 @@
 #include "shell/process.h"
 
 #include "shell/error.h"
+#include "sys/clock.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -25,9 +26,7 @@ namespace gpui::shell {
 // test platform replaces it, so a timeout would never arrive while a
 // test holds that clock still.
 static double WallSeconds() {
-    struct timespec now;
-    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
-    return (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
+    return ClockMonotonicSecondsSinceStart();
 }
 
 static bool HasSlash(Str command) {
