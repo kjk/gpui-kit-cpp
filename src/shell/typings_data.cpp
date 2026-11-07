@@ -22352,7 +22352,7 @@ static const char kShellTypes66[] = R"GPUI_DTS(    /** Must be inside a director
     arch: string;
     /**
      * Common variables (`HOME`, `USER`, `HOSTNAME`, `LANG`, `TZ`, `PATH`,
-     * `EDITOR`, `DISPLAY`, `HTTP_PROXY`, the XDG directories…), plus those
+     * `EDITOR`, `DISPLAY`, `NO_PROXY`, the XDG directories…), plus those
      * `capabilities.process.env` names, when set; names match regardless of
      * case. Every other variable is absent. A fresh copy on each read; assigning to
      * it changes nothing.

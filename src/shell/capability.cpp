@@ -415,9 +415,9 @@ static const char* const kDefaultEnvNames[] = {
     "XDG_CURRENT_DESKTOP",
     "XDG_SESSION_TYPE",
     "DESKTOP_SESSION",
-    "HTTP_PROXY",
-    "HTTPS_PROXY",
-    "ALL_PROXY",
+    // Hosts that bypass the network proxy. The proxy URLs themselves
+    // (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY) are not listed: they can carry
+    // a user name and password.
     "NO_PROXY",
     "TMPDIR",
     "TEMP",

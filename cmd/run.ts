@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "bbe42361ccf69099957d4c84ea12e6a1d98b0014",
+  sha: "7ec2db24997fd07b020b27656c1bc32f6c9e56c0",
   date: "2026-11-05",
-  subject: "shell: Bound how deep a description may nest (#3808)",
+  subject: "shell: Leave proxy URLs out of the default `process.env` (#3810)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

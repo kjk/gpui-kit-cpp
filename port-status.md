@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bbe42361ccf69099957d4c84ea12e6a1d98b0014` (2026-11-05,
-shell: Bound how deep a description may nest (#3808)). A description
-nests at most 64 levels, counting children, filled slots and component
-element arguments. The call that would go deeper throws and records
-nothing. Placing an element inside itself or inside an element it
-contains throws. Grafted templates carry their heights. Nested views
-stay bounded per view, as they do upstream.
+Processed through `7ec2db24997fd07b020b27656c1bc32f6c9e56c0` (2026-11-05,
+shell: Leave proxy URLs out of the default process.env (#3810)).
+`HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` are absent from the default
+process environment unless the manifest grants them. `NO_PROXY` stays.
+A description still nests at most 64 levels, and nested views stay
+bounded per view.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

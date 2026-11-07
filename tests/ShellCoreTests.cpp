@@ -5702,13 +5702,21 @@ static void ShellDefaultEnvironmentStaysPlain() {
         }
     }
     utassert(sawHome);
+    Capabilities plain;
+    utassert(!plain.MayShowEnvVariable(StrL("HTTP_PROXY")));
+    utassert(!plain.MayShowEnvVariable(StrL("https_proxy")));
+    utassert(!plain.MayShowEnvVariable(StrL("ALL_PROXY")));
+    utassert(plain.MayShowEnvVariable(StrL("no_proxy")));
     Capabilities granted;
-    granted.AddEnvVariable(StrL("my_app_mode"));
-    utassert(granted.MayShowEnvVariable(StrL("HTTP_PROXY")));
-    utassert(granted.MayShowEnvVariable(StrL("http_proxy")));
-    utassert(granted.MayShowEnvVariable(StrL("MY_APP_MODE")));
-    utassert(granted.MayShowEnvVariable(StrL("editor")));
-    utassert(!granted.MayShowEnvVariable(StrL("GITHUB_TOKEN")));
+    granted.AddEnvVariable(StrL("HTTPS_PROXY"));
+    utassert(granted.MayShowEnvVariable(StrL("https_proxy")));
+    Capabilities spelling;
+    spelling.AddEnvVariable(StrL("my_app_mode"));
+    utassert(spelling.MayShowEnvVariable(StrL("PATH")));
+    utassert(spelling.MayShowEnvVariable(StrL("Path")));
+    utassert(spelling.MayShowEnvVariable(StrL("MY_APP_MODE")));
+    utassert(spelling.MayShowEnvVariable(StrL("editor")));
+    utassert(!spelling.MayShowEnvVariable(StrL("GITHUB_TOKEN")));
 }
 
 // text_encoder_and_decoder_follow_the_encoding_standard, plus the
