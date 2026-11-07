@@ -112,6 +112,39 @@ static const char* const* Labels(Arena* a, const Row* rows, int n) {
     return labels;
 }
 
+// LineChart and AreaChart take the same grid, curve, tick and axis methods;
+// only a line draws dots.
+template <bool HasDot, class C>
+static void ApplyCurveOps(const MaterializeRequest* request, C* chart) {
+    EachMethod<Op>(request, [&](const Op& op) {
+        switch (op.kind) {
+            case Op::Grid:
+                chart->Grid(op.flag);
+                break;
+            case Op::Dot:
+                if constexpr (HasDot) chart->Dot();
+                break;
+            case Op::Natural:
+                chart->Natural();
+                break;
+            case Op::Linear:
+                chart->Linear();
+                break;
+            case Op::StepAfter:
+                chart->StepAfter();
+                break;
+            case Op::TickMargin:
+                chart->TickMargin(op.count);
+                break;
+            case Op::Axis:
+                chart->XAxis(op.flag);
+                break;
+            default:
+                break;
+        }
+    });
+}
+
 // ChartHost::render: the chart `kind` names over the snapshot, with every
 // recorded op folded in in script order.
 //
@@ -165,63 +198,14 @@ static El* Render(MaterializeRequest* request, const char* kind,
         component::LineChart* chart = component::LineChart::New(cx, values, n)
                                           ->Id(id)
                                           ->Labels(Labels(a, data, n));
-        EachMethod<Op>(request, [&](const Op& op) {
-            switch (op.kind) {
-                case Op::Grid:
-                    chart->Grid(op.flag);
-                    break;
-                case Op::Dot:
-                    chart->Dot();
-                    break;
-                case Op::Natural:
-                    chart->Natural();
-                    break;
-                case Op::Linear:
-                    chart->Linear();
-                    break;
-                case Op::StepAfter:
-                    chart->StepAfter();
-                    break;
-                case Op::TickMargin:
-                    chart->TickMargin(op.count);
-                    break;
-                case Op::Axis:
-                    chart->XAxis(op.flag);
-                    break;
-                default:
-                    break;
-            }
-        });
+        ApplyCurveOps<true>(request, chart);
         return chart->IntoEl();
     }
     if (strcmp(kind, "AreaChart") == 0) {
         component::AreaChart* chart = component::AreaChart::New(cx, values, n)
                                           ->Id(id)
                                           ->Labels(Labels(a, data, n));
-        EachMethod<Op>(request, [&](const Op& op) {
-            switch (op.kind) {
-                case Op::Grid:
-                    chart->Grid(op.flag);
-                    break;
-                case Op::Natural:
-                    chart->Natural();
-                    break;
-                case Op::Linear:
-                    chart->Linear();
-                    break;
-                case Op::StepAfter:
-                    chart->StepAfter();
-                    break;
-                case Op::TickMargin:
-                    chart->TickMargin(op.count);
-                    break;
-                case Op::Axis:
-                    chart->XAxis(op.flag);
-                    break;
-                default:
-                    break;
-            }
-        });
+        ApplyCurveOps<false>(request, chart);
         return chart->IntoEl();
     }
     if (strcmp(kind, "PieChart") == 0) {

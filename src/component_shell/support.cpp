@@ -165,4 +165,30 @@ TempStr F64DisplayTemp(double value) {
     return result;
 }
 
+bool CardAnchorArgument(PayloadBuild* build, const char* component,
+                        const ComponentArgument* args, int count,
+                        gpui::Anchor* out) {
+    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Enum) {
+        return build
+            ->Fail(fmt("%s.card_anchor(anchor) expects an anchor "
+                       "literal",
+                       Str(component)));
+    }
+    for (int i = 0; i < (int)dimof(kCardAnchorLiterals); i++) {
+        if (!StrEq(args[0].string, kCardAnchorLiterals[i])) continue;
+        *out = (gpui::Anchor)i;
+        return true;
+    }
+    return build->Fail(
+        fmt("unsupported %s anchor `%s`", Str(component), args[0].string));
+}
+
+bool OpenChangeArgument(PayloadBuild* build, const char* component,
+                        const ComponentArgument* args, int count) {
+    if (count == 1 && args[0].kind == shell::ComponentArgumentKind::Callback)
+        return true;
+    return build->Fail(
+        fmt("%s.on_open_change(callback) expects a callback", Str(component)));
+}
+
 } // namespace gpui::component_shell

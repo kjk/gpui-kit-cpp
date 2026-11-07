@@ -76,29 +76,28 @@ bool Prepare(MaterializeRequest* request, InputState* state, uint64_t handle,
     return true;
 }
 
-void ApplyInput(const Binding& binding, component::Input* input) {
-    if (!binding.callbacks || !input) return;
+// Input and Textarea take the same three token hooks.
+template <class W>
+static void ApplyTokens(const Binding& binding, W* widget) {
+    if (!binding.callbacks || !widget) return;
     if (InlineTokenRenderer render = binding.callbacks->Renderer())
-        input->Token(render, binding.callbacks);
+        widget->Token(render, binding.callbacks);
     if (InlineTokenClickListener click = binding.callbacks->Listener())
-        input->OnTokenClick(click, binding.callbacks);
+        widget->OnTokenClick(click, binding.callbacks);
     if (InlineTokenHoverListener hover = binding.callbacks->HoverListener())
-        input->OnTokenHover(hover, binding.callbacks);
+        widget->OnTokenHover(hover, binding.callbacks);
+}
+
+void ApplyInput(const Binding& binding, component::Input* input) {
+    ApplyTokens(binding, input);
 }
 
 void ApplyTextarea(const Binding& binding, component::Textarea* textarea) {
-    if (!binding.callbacks || !textarea) return;
-    if (InlineTokenRenderer render = binding.callbacks->Renderer())
-        textarea->Token(render, binding.callbacks);
-    if (InlineTokenClickListener click = binding.callbacks->Listener())
-        textarea->OnTokenClick(click, binding.callbacks);
-    if (InlineTokenHoverListener hover = binding.callbacks->HoverListener())
-        textarea->OnTokenHover(hover, binding.callbacks);
+    ApplyTokens(binding, textarea);
 }
 
-// The subscription's handler: only a Change reaches the script.
-static void RunChange(const shell::ComponentEventBinding* binding,
-                      ScriptView* view, Ctx* cx, const void* event) {
+void ReportChange(const shell::ComponentEventBinding* binding, ScriptView* view,
+                  Ctx* cx, const void* event, const char* failure) {
     const InputEvent* input = (const InputEvent*)event;
     InputState* state = (InputState*)binding->user;
     if (!input || input->kind != InputEventKind::Change || !state) return;
@@ -106,8 +105,12 @@ static void RunChange(const shell::ComponentEventBinding* binding,
     shell::ComponentDataValue value =
         shell::ComponentDataValue::String(InputValue(state));
     binding->callback
-        .InvokeAndReport(view->runtime, "input change callback failed", &value,
-                         1, cx->win, cx->app);
+        .InvokeAndReport(view->runtime, failure, &value, 1, cx->win, cx->app);
+}
+
+static void RunChange(const shell::ComponentEventBinding* binding,
+                      ScriptView* view, Ctx* cx, const void* event) {
+    ReportChange(binding, view, cx, event, "input change callback failed");
 }
 
 // The state's one change listener, standing for every subscription a host

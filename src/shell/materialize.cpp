@@ -2197,6 +2197,52 @@ static DocumentImages* DocumentImagesFor(Ctx* cx, Policy* policy) {
     return images;
 }
 
+// A NumberInput's retained InputState, bound for this frame: disabled as the
+// node says and its changes routed to the view. Null when the handle names
+// no live input state.
+static shell::RetainedEntry* BindNumberInput(Ctx* cx, ShellRuntime* runtime,
+                                             const shell::Component& component,
+                                             const MaterialBehavior& behavior,
+                                             InputState** out) {
+    shell::RetainedEntry* retained =
+        runtime ? runtime->Retained(component.handle) : nullptr;
+    InputState* state = retained && retained->kind == shell::RetainedKind::Input
+                            ? retained->input
+                            : nullptr;
+    if (!state) return nullptr;
+    state->disabled = behavior.disabled;
+    state->onChange =
+        Listen(cx, &ScriptView::OnInputEvent, (int64_t)(uint32_t)retained->id);
+    *out = state;
+    return retained;
+}
+
+static Str NumberInputId(Ctx* cx, const shell::RetainedEntry* retained) {
+    return StrDup(cx->a, fmt("gpui-shell-number-input-%u", retained->id));
+}
+
+// The same for an OtpInput's retained OtpState.
+static shell::RetainedEntry* BindOtp(Ctx* cx, ShellRuntime* runtime,
+                                     const shell::Component& component,
+                                     const MaterialBehavior& behavior,
+                                     OtpState** out) {
+    shell::RetainedEntry* retained =
+        runtime ? runtime->Retained(component.handle) : nullptr;
+    if (!retained || retained->kind != shell::RetainedKind::Otp) return nullptr;
+    OtpState* state = retained->otp.Get(cx);
+    if (!state) return nullptr;
+    state->disabled = behavior.disabled;
+    state->onChange =
+        Listen(cx, &ScriptView::OnOtpEvent, (int64_t)(uint32_t)retained->id);
+    *out = state;
+    return retained;
+}
+
+static El* OtpElement(Ctx* cx, const shell::RetainedEntry* retained) {
+    Str nativeId = StrDup(cx->a, fmt("gpui-shell-otp-%u", retained->id));
+    return OtpInput::New(cx, nativeId, retained->otp);
+}
+
 static El* Construct(Ctx* cx, ShellRuntime* runtime,
                      const shell::Component& component,
                      const MaterialBehavior& behavior) {
@@ -2469,33 +2515,18 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             return frame;
         }
         case shell::ComponentKind::NumberInput: {
+            InputState* state = nullptr;
             shell::RetainedEntry* retained =
-                runtime ? runtime->Retained(component.handle) : nullptr;
-            InputState* state =
-                retained && retained->kind == shell::RetainedKind::Input
-                    ? retained->input
-                    : nullptr;
-            if (!state) return Div(cx->a);
-            state->disabled = behavior.disabled;
-            state->onChange = Listen(cx, &ScriptView::OnInputEvent,
-                                     (int64_t)(uint32_t)retained->id);
-            Str nativeId =
-                StrDup(cx->a, fmt("gpui-shell-number-input-%u", retained->id));
-            return NumberInput::New(cx, nativeId, state);
+                BindNumberInput(cx, runtime, component, behavior, &state);
+            if (!retained) return Div(cx->a);
+            return NumberInput::New(cx, NumberInputId(cx, retained), state);
         }
         case shell::ComponentKind::OtpInput: {
+            OtpState* state = nullptr;
             shell::RetainedEntry* retained =
-                runtime ? runtime->Retained(component.handle) : nullptr;
-            if (!retained || retained->kind != shell::RetainedKind::Otp)
-                return Div(cx->a);
-            OtpState* state = retained->otp.Get(cx);
-            if (!state) return Div(cx->a);
-            state->disabled = behavior.disabled;
-            state->onChange = Listen(cx, &ScriptView::OnOtpEvent,
-                                     (int64_t)(uint32_t)retained->id);
-            Str nativeId =
-                StrDup(cx->a, fmt("gpui-shell-otp-%u", retained->id));
-            return OtpInput::New(cx, nativeId, retained->otp);
+                BindOtp(cx, runtime, component, behavior, &state);
+            if (!retained) return Div(cx->a);
+            return OtpElement(cx, retained);
         }
         case shell::ComponentKind::VVirtualList:
         case shell::ComponentKind::HVirtualList: {
@@ -2746,17 +2777,11 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
     El* element = nullptr;
     bool childrenConsumed = false;
     if (node->component.kind == shell::ComponentKind::OtpInput) {
+        OtpState* state = nullptr;
         shell::RetainedEntry* retained =
-            runtime ? runtime->Retained(node->component.handle) : nullptr;
-        if (!retained || retained->kind != shell::RetainedKind::Otp)
-            return Div(cx->a);
-        OtpState* state = retained->otp.Get(cx);
-        if (!state) return Div(cx->a);
-        state->disabled = behavior.disabled;
-        state->onChange = Listen(cx, &ScriptView::OnOtpEvent,
-                                 (int64_t)(uint32_t)retained->id);
-        Str nativeId = StrDup(cx->a, fmt("gpui-shell-otp-%u", retained->id));
-        element = OtpInput::New(cx, nativeId, retained->otp);
+            BindOtp(cx, runtime, node->component, behavior, &state);
+        if (!retained) return Div(cx->a);
+        element = OtpElement(cx, retained);
         const shell::SpecNode* cellStyle =
             StateNode(specs, node, StrL("cell_style"));
         const shell::SpecNode* activeStyle =
@@ -2792,18 +2817,11 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
             element->Child(MaterializeNode(cx, runtime, specs, child, error));
         childrenConsumed = true;
     } else if (node->component.kind == shell::ComponentKind::NumberInput) {
+        InputState* state = nullptr;
         shell::RetainedEntry* retained =
-            runtime ? runtime->Retained(node->component.handle) : nullptr;
-        InputState* state =
-            retained && retained->kind == shell::RetainedKind::Input
-                ? retained->input
-                : nullptr;
-        if (!state) return Div(cx->a);
-        state->disabled = behavior.disabled;
-        state->onChange = Listen(cx, &ScriptView::OnInputEvent,
-                                 (int64_t)(uint32_t)retained->id);
-        Str nativeId =
-            StrDup(cx->a, fmt("gpui-shell-number-input-%u", retained->id));
+            BindNumberInput(cx, runtime, node->component, behavior, &state);
+        if (!retained) return Div(cx->a);
+        Str nativeId = NumberInputId(cx, retained);
         Listener onStep = behavior.onStep
                               ? Listen(cx, &ScriptView::OnNumberStep,
                                        (int64_t)behavior.onStep)

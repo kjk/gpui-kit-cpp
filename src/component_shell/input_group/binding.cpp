@@ -101,15 +101,8 @@ struct Host {
 
 static void RunChange(const shell::ComponentEventBinding* binding,
                       ScriptView* view, Ctx* cx, const void* event) {
-    const InputEvent* input = (const InputEvent*)event;
-    InputState* state = (InputState*)binding->user;
-    if (!input || input->kind != InputEventKind::Change || !state) return;
-    if (!binding->callback.IsSet()) return;
-    shell::ComponentDataValue value =
-        shell::ComponentDataValue::String(InputValue(state));
-    binding->callback
-        .InvokeAndReport(view->runtime, "InputGroup text callback failed",
-                         &value, 1, cx->win, cx->app);
+    input_tokens::ReportChange(binding, view, cx, event,
+                               "InputGroup text callback failed");
 }
 
 void Apply(const Binding& binding, Ctx* cx) {

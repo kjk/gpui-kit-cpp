@@ -4579,6 +4579,24 @@ static shell::RetainedEntry* LiveRetained(JSContext* ctx,
     return entry;
 }
 
+static JSValue ThrowRetainedLimit(JSContext* ctx) {
+    return JS_ThrowRangeError(
+        ctx,
+        "the application reached gpui-shell's retained entity limit; "
+        "release unused handles");
+}
+
+// The runtime, when it has room for one more retained entity; null, with a
+// RangeError pending, when it has none.
+static ShellRuntimeImpl* RetainedRoom(JSContext* ctx) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    if (!impl || impl->retained.Len() >= shell::kMaxLiveEntities) {
+        ThrowRetainedLimit(ctx);
+        return nullptr;
+    }
+    return impl;
+}
+
 static bool RefuseRetainedCreation(JSContext* ctx, const char* what) {
     if (shell::ScopeHasCurrent() &&
         (shell::ScopeCurrentPhase() == ScopePhase::Render ||
@@ -4592,13 +4610,16 @@ static bool RefuseRetainedCreation(JSContext* ctx, const char* what) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
     if (impl && impl->retained.Len() + impl->nestedViews.len >=
                     shell::kMaxLiveEntities) {
-        JS_ThrowRangeError(
-            ctx,
-            "the application reached gpui-shell's retained entity limit; "
-            "release unused handles");
+        ThrowRetainedLimit(ctx);
         return true;
     }
     return false;
+}
+
+// "<what> needs a live host call": a script reached a host-backed API with
+// no host call in progress to carry it out.
+static JSValue ThrowNoHost(JSContext* ctx, const char* what) {
+    return JS_ThrowTypeError(ctx, "%s needs a live host call", what);
 }
 
 static bool RefuseRetainedMutation(JSContext* ctx, const char* what) {
@@ -5302,17 +5323,10 @@ static bool OptionalJsString(JSContext* ctx, JSValueConst value, Arena* arena,
 static JSValue NativeInputStateNew(JSContext* ctx, JSValueConst, int argc,
                                    JSValueConst* argv) {
     if (RefuseRetainedCreation(ctx, "InputState.new(...)")) return JS_EXCEPTION;
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    if (!impl || impl->retained.Len() >= shell::kMaxLiveEntities) {
-        return JS_ThrowRangeError(
-            ctx,
-            "the application reached gpui-shell's retained entity limit; "
-            "release unused handles");
-    }
+    ShellRuntimeImpl* impl = RetainedRoom(ctx);
+    if (!impl) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx,
-                                 "InputState.new(...) needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "InputState.new(...)");
     Arena* arena = ArenaNew();
     Str placeholder, value;
     bool ok =
@@ -5335,17 +5349,10 @@ static JSValue NativeTextareaStateNew(JSContext* ctx, JSValueConst, int argc,
                                       JSValueConst* argv) {
     if (RefuseRetainedCreation(ctx, "TextareaState.new(...)"))
         return JS_EXCEPTION;
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    if (!impl || impl->retained.Len() >= shell::kMaxLiveEntities) {
-        return JS_ThrowRangeError(
-            ctx,
-            "the application reached gpui-shell's retained entity limit; "
-            "release unused handles");
-    }
+    ShellRuntimeImpl* impl = RetainedRoom(ctx);
+    if (!impl) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(
-            ctx, "TextareaState.new(...) needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "TextareaState.new(...)");
     Arena* arena = ArenaNew();
     Str placeholder, value;
     int32_t rows = 0;
@@ -5371,37 +5378,54 @@ static JSValue NativeTextareaStateNew(JSContext* ctx, JSValueConst, int argc,
     return JS_NewInt64(ctx, (int64_t)handle);
 }
 
-static JSValue NativeInputValue(JSContext* ctx, JSValueConst, int argc,
-                                JSValueConst* argv) {
-    shell::EntityHandle handle = 0;
-    if (argc < 1 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
+static shell::RetainedEntry* LiveTextState(JSContext* ctx,
+                                           shell::EntityHandle handle) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
     shell::RetainedEntry* entry = impl ? impl->retained.Find(handle) : nullptr;
     if (!entry || (entry->kind != shell::RetainedKind::Input &&
                    entry->kind != shell::RetainedKind::Textarea)) {
-        return JS_ThrowTypeError(ctx, "this text state has been released");
+        JS_ThrowTypeError(ctx, "this text state has been released");
+        return nullptr;
     }
+    return entry;
+}
+
+// What every text-state mutation checks first: not during render or layout,
+// a live text state in argv[0] with at least `minArgs` arguments, and a host
+// call to apply it in. Null with an exception pending.
+static shell::RetainedEntry* MutableTextState(JSContext* ctx, const char* what,
+                                              int argc, int minArgs,
+                                              JSValueConst* argv) {
+    if (RefuseRetainedMutation(ctx, what)) return nullptr;
+    shell::EntityHandle handle = 0;
+    if (argc < minArgs || !JsHandle(ctx, argv[0], &handle)) return nullptr;
+    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    if (!entry) return nullptr;
+    if (!shell::ScopeCurrentHost().IsSet()) {
+        ThrowNoHost(ctx, what);
+        return nullptr;
+    }
+    return entry;
+}
+
+static JSValue NativeInputValue(JSContext* ctx, JSValueConst, int argc,
+                                JSValueConst* argv) {
+    shell::EntityHandle handle = 0;
+    if (argc < 1 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
+    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "value() needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "value()");
     Str value = InputValue(entry->input);
     return JS_NewStringLen(ctx, value.s ? value.s : "", (size_t)len(value));
 }
 
 static JSValue NativeInputSetValue(JSContext* ctx, JSValueConst, int argc,
                                    JSValueConst* argv) {
-    if (RefuseRetainedMutation(ctx, "set_value()")) return JS_EXCEPTION;
-    shell::EntityHandle handle = 0;
-    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    shell::RetainedEntry* entry = impl ? impl->retained.Find(handle) : nullptr;
-    if (!entry || (entry->kind != shell::RetainedKind::Input &&
-                   entry->kind != shell::RetainedKind::Textarea)) {
-        return JS_ThrowTypeError(ctx, "this text state has been released");
-    }
+    shell::RetainedEntry* entry =
+        MutableTextState(ctx, "set_value()", argc, 2, argv);
+    if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "set_value() needs a live host call");
     Arena* arena = ArenaNew();
     Str value;
     bool ok = JsString(ctx, argv[1], arena, &value);
@@ -5664,28 +5688,12 @@ static JSValue ContentJs(JSContext* ctx, const InputContent& content) {
     return o;
 }
 
-static shell::RetainedEntry* LiveTextState(JSContext* ctx,
-                                           shell::EntityHandle handle) {
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    shell::RetainedEntry* entry = impl ? impl->retained.Find(handle) : nullptr;
-    if (!entry || (entry->kind != shell::RetainedKind::Input &&
-                   entry->kind != shell::RetainedKind::Textarea)) {
-        JS_ThrowTypeError(ctx, "this text state has been released");
-        return nullptr;
-    }
-    return entry;
-}
-
 static JSValue NativeInputSetContent(JSContext* ctx, JSValueConst, int argc,
                                      JSValueConst* argv) {
-    if (RefuseRetainedMutation(ctx, "set_value()")) return JS_EXCEPTION;
-    shell::EntityHandle handle = 0;
-    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    shell::RetainedEntry* entry =
+        MutableTextState(ctx, "set_value()", argc, 2, argv);
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "set_value() needs a live host call");
     InputContent content;
     if (!DecodeContent(ctx, argv[1], &content)) return JS_EXCEPTION;
     InputSetValue(entry->input, content);
@@ -5717,16 +5725,10 @@ static JSValue NativeInputTokens(JSContext* ctx, JSValueConst, int argc,
 
 static JSValue NativeInputReplaceWithToken(JSContext* ctx, JSValueConst,
                                            int argc, JSValueConst* argv) {
-    if (RefuseRetainedMutation(ctx, "replace_with_token()"))
-        return JS_EXCEPTION;
-    shell::EntityHandle handle = 0;
-    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    shell::RetainedEntry* entry =
+        MutableTextState(ctx, "replace_with_token()", argc, 2, argv);
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx,
-                                 "replace_with_token() needs a live host call");
     InlineToken token = {};
     if (!DecodeToken(ctx, argv[1], &token)) return JS_EXCEPTION;
     InlineTokenError err = InputReplaceWithToken(entry->input, host.GetApp(),
@@ -5739,16 +5741,10 @@ static JSValue NativeInputReplaceWithToken(JSContext* ctx, JSValueConst,
 
 static JSValue NativeInputReplaceRangeWithToken(JSContext* ctx, JSValueConst,
                                                 int argc, JSValueConst* argv) {
-    if (RefuseRetainedMutation(ctx, "replace_range_with_token()"))
-        return JS_EXCEPTION;
-    shell::EntityHandle handle = 0;
-    if (argc < 3 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    shell::RetainedEntry* entry =
+        MutableTextState(ctx, "replace_range_with_token()", argc, 3, argv);
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(
-            ctx, "replace_range_with_token() needs a live host call");
     InlineToken token = {};
     if (!DecodeToken(ctx, argv[2], &token)) return JS_EXCEPTION;
     int start = 0, end = 0;
@@ -5768,16 +5764,10 @@ static JSValue NativeInputReplaceRangeWithToken(JSContext* ctx, JSValueConst,
 
 static JSValue NativeInputSetSelectedRange(JSContext* ctx, JSValueConst,
                                            int argc, JSValueConst* argv) {
-    if (RefuseRetainedMutation(ctx, "set_selected_range()"))
-        return JS_EXCEPTION;
-    shell::EntityHandle handle = 0;
-    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    shell::RetainedEntry* entry =
+        MutableTextState(ctx, "set_selected_range()", argc, 2, argv);
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx,
-                                 "set_selected_range() needs a live host call");
     int start = 0, end = 0;
     InlineTokenError err = InlineTokenError::Ok;
     if (!DecodeUtf16Range(ctx, argv[1], InputValue(entry->input), &start, &end,
@@ -5792,14 +5782,10 @@ static JSValue NativeInputSetSelectedRange(JSContext* ctx, JSValueConst,
 
 static JSValue NativeInputReplace(JSContext* ctx, JSValueConst, int argc,
                                   JSValueConst* argv) {
-    if (RefuseRetainedMutation(ctx, "replace()")) return JS_EXCEPTION;
-    shell::EntityHandle handle = 0;
-    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
-    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    shell::RetainedEntry* entry =
+        MutableTextState(ctx, "replace()", argc, 2, argv);
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "replace() needs a live host call");
     Arena* arena = ArenaNew();
     Str text;
     bool ok = JsString(ctx, argv[1], arena, &text);
@@ -5823,9 +5809,7 @@ static JSValue NativeInputNumberOption(JSContext* ctx, JSValueConst, int argc,
         LiveRetained(ctx, handle, shell::RetainedKind::Input, "input");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx,
-                                 "numeric input setter needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "numeric input setter");
     bool set = !JS_IsNull(argv[1]) && !JS_IsUndefined(argv[1]);
     double value = 0;
     if (set && (JS_ToFloat64(ctx, &value, argv[1]) < 0 || !isfinite(value))) {
@@ -5855,8 +5839,7 @@ static JSValue NativeInputFlag(JSContext* ctx, JSValueConst, int argc,
         LiveRetained(ctx, handle, shell::RetainedKind::Input, "input");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "input setter needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "input setter");
     bool value = JS_ToBool(ctx, argv[1]) != 0;
     if (magic == 0)
         entry->input->masked = value;
@@ -5875,8 +5858,7 @@ static JSValue NativeTextareaRows(JSContext* ctx, JSValueConst, int argc,
         LiveRetained(ctx, handle, shell::RetainedKind::Textarea, "textarea");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "textarea setter needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "textarea setter");
     if (magic == 2) {
         entry->input->softWrap = JS_ToBool(ctx, argv[1]) != 0;
     } else if (magic == 3) {
@@ -5948,13 +5930,8 @@ static JSValue NativeSliderStateNew(JSContext* ctx, JSValueConst, int argc,
                                     JSValueConst* argv) {
     if (RefuseRetainedCreation(ctx, "SliderState.new(...)"))
         return JS_EXCEPTION;
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    if (!impl || impl->retained.Len() >= shell::kMaxLiveEntities) {
-        return JS_ThrowRangeError(
-            ctx,
-            "the application reached gpui-shell's retained entity limit; "
-            "release unused handles");
-    }
+    ShellRuntimeImpl* impl = RetainedRoom(ctx);
+    if (!impl) return JS_EXCEPTION;
     double min = 0, max = 0, step = 0;
     Arena* arena = ArenaNew();
     Str scale;
@@ -5985,9 +5962,7 @@ static JSValue NativeSliderStateNew(JSContext* ctx, JSValueConst, int argc,
             : 0;
     ArenaDelete(arena);
     if (!ok) return JS_EXCEPTION;
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx,
-                                 "SliderState.new(...) needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "SliderState.new(...)");
     if (!handle)
         return JS_ThrowInternalError(ctx, "creating slider state failed");
     return JS_NewInt64(ctx, (int64_t)handle);
@@ -6001,8 +5976,7 @@ static JSValue NativeSliderValue(JSContext* ctx, JSValueConst, int argc,
         LiveRetained(ctx, handle, shell::RetainedKind::Slider, "slider");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "value() needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "value()");
     return SliderValueJs(ctx, entry->slider->value);
 }
 
@@ -6019,8 +5993,7 @@ static JSValue NativeSliderSetValue(JSContext* ctx, JSValueConst, int argc,
         LiveRetained(ctx, handle, shell::RetainedKind::Slider, "slider");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "set_value() needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "set_value()");
     SliderSetValue(entry->slider, SliderValueClamp(value, entry->slider->min,
                                                    entry->slider->max));
     AppInvalidate(host.GetWindow());
@@ -6035,8 +6008,7 @@ static JSValue NativeSliderBounds(JSContext* ctx, JSValueConst, int argc,
         LiveRetained(ctx, handle, shell::RetainedKind::Slider, "slider");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "min_value() needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "min_value()");
     JSValue out = JS_NewArray(ctx);
     JS_SetPropertyUint32(ctx, out, 0, JS_NewFloat64(ctx, entry->slider->min));
     JS_SetPropertyUint32(ctx, out, 1, JS_NewFloat64(ctx, entry->slider->max));
@@ -6047,13 +6019,8 @@ static JSValue NativeSliderBounds(JSContext* ctx, JSValueConst, int argc,
 static JSValue NativeOtpStateNew(JSContext* ctx, JSValueConst, int argc,
                                  JSValueConst* argv) {
     if (RefuseRetainedCreation(ctx, "OtpState.new(...)")) return JS_EXCEPTION;
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    if (!impl || impl->retained.Len() >= shell::kMaxLiveEntities) {
-        return JS_ThrowRangeError(
-            ctx,
-            "the application reached gpui-shell's retained entity limit; "
-            "release unused handles");
-    }
+    ShellRuntimeImpl* impl = RetainedRoom(ctx);
+    if (!impl) return JS_EXCEPTION;
     int32_t length = 0;
     if (argc < 1 || JS_ToInt32(ctx, &length, argv[0]) < 0 || length < 1 ||
         length > 64) {
@@ -6075,9 +6042,7 @@ static JSValue NativeOtpStateNew(JSContext* ctx, JSValueConst, int argc,
             : 0;
     ArenaDelete(arena);
     if (!ok) return JS_EXCEPTION;
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx,
-                                 "OtpState.new(...) needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "OtpState.new(...)");
     if (!handle) return JS_ThrowInternalError(ctx, "creating OTP state failed");
     return JS_NewInt64(ctx, (int64_t)handle);
 }
@@ -6092,8 +6057,7 @@ static JSValue NativeOtpValue(JSContext* ctx, JSValueConst, int argc,
         return JS_ThrowTypeError(ctx, "this OTP state has been released");
     }
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "value() needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "value()");
     OtpState* state = entry->otp.Get(entry->app);
     if (!state)
         return JS_ThrowTypeError(ctx, "this OTP state has been released");
@@ -6113,8 +6077,7 @@ static JSValue NativeOtpSetValue(JSContext* ctx, JSValueConst, int argc,
         return JS_ThrowTypeError(ctx, "this OTP state has been released");
     }
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "set_value() needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "set_value()");
     OtpState* state = entry->otp.Get(entry->app);
     Arena* arena = ArenaNew();
     Str value;
@@ -6139,9 +6102,7 @@ static JSValue NativeOtpProperty(JSContext* ctx, JSValueConst, int argc,
     if (!state)
         return JS_ThrowTypeError(ctx, "this OTP state has been released");
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx,
-                                 "OTP state access needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "OTP state access");
     if (magic == 0) return JS_NewInt32(ctx, state->length);
     if (magic == 1) return JS_NewBool(ctx, state->masked);
     if (magic == 2) {
@@ -6300,15 +6261,9 @@ static JSValue NativeFocusNew(JSContext* ctx, JSValueConst, int,
     if (RefuseRetainedCreation(ctx, "cx.focus_handle()")) return JS_EXCEPTION;
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!impl || !host.IsSet())
-        return JS_ThrowTypeError(ctx,
-                                 "cx.focus_handle() needs a live host call");
-    if (impl->retained.Len() >= shell::kMaxLiveEntities) {
-        return JS_ThrowRangeError(
-            ctx,
-            "the application reached gpui-shell's retained entity limit; "
-            "release unused handles");
-    }
+    if (!impl || !host.IsSet()) return ThrowNoHost(ctx, "cx.focus_handle()");
+    if (impl->retained.Len() >= shell::kMaxLiveEntities)
+        return ThrowRetainedLimit(ctx);
     shell::EntityHandle handle =
         impl->retained.CreateFocus(host.GetApp(), shell::ScopeCurrentView(),
                                    shell::ScopeCurrentApplication());
@@ -6324,8 +6279,7 @@ static JSValue NativeFocusOp(JSContext* ctx, JSValueConst, int argc,
         LiveRetained(ctx, handle, shell::RetainedKind::Focus, "focus handle");
     if (!entry) return JS_EXCEPTION;
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "focus operation needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "focus operation");
     if (magic == 0) {
         if (RefuseRetainedMutation(ctx, "FocusHandle.focus()"))
             return JS_EXCEPTION;
@@ -6344,14 +6298,9 @@ static JSValue NativeVirtualScrollNew(JSContext* ctx, JSValueConst, int,
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!impl || !host.IsSet())
-        return JS_ThrowTypeError(
-            ctx, "VirtualListScrollHandle.new() needs a live host call");
-    if (impl->retained.Len() >= shell::kMaxLiveEntities) {
-        return JS_ThrowRangeError(
-            ctx,
-            "the application reached gpui-shell's retained entity limit; "
-            "release unused handles");
-    }
+        return ThrowNoHost(ctx, "VirtualListScrollHandle.new()");
+    if (impl->retained.Len() >= shell::kMaxLiveEntities)
+        return ThrowRetainedLimit(ctx);
     shell::EntityHandle handle = impl->retained.CreateVirtualScroll(
         host.GetApp(), shell::ScopeCurrentView(),
         shell::ScopeCurrentApplication());
@@ -7651,7 +7600,7 @@ static JSValue NativeTimer(JSContext* ctx, JSValueConst, int argc,
     }
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) {
-        return JS_ThrowTypeError(ctx, "cx.timer needs a live host call");
+        return ThrowNoHost(ctx, "cx.timer");
     }
     Entity<ShellTaskDriver> driver = TaskDriver(impl, host.GetApp());
     if (!driver.IsValid())
@@ -7903,8 +7852,7 @@ static JSValue NativeClipboard(JSContext* ctx, JSValueConst, int argc,
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) {
         if (release) PolicyRelease(policy);
-        return JS_ThrowTypeError(ctx,
-                                 "clipboard access needs a live host call");
+        return ThrowNoHost(ctx, "clipboard access");
     }
     JSValue result = JS_UNDEFINED;
     if (magic == 0) {
@@ -9583,8 +9531,7 @@ static JSValue NativeProcessExit(JSContext* ctx, JSValueConst, int argc,
                                      "installed no ShellOnExitRequest handler");
     }
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet())
-        return JS_ThrowTypeError(ctx, "process.exit() needs a live host call");
+    if (!host.IsSet()) return ThrowNoHost(ctx, "process.exit()");
     Ctx native = {};
     native.app = host.GetApp();
     native.win = host.GetWindow();
@@ -11608,12 +11555,7 @@ static JSValue NativeCalendarNew(JSContext* ctx, JSValueConst, int,
               {}};
     shell::EntityHandle handle = impl->retained.CreateCalendar(
         &cx, shell::ScopeCurrentView(), shell::ScopeCurrentApplication());
-    if (!handle) {
-        return JS_ThrowRangeError(ctx,
-                                  "the application reached gpui-shell's "
-                                  "retained entity limit; release unused "
-                                  "handles");
-    }
+    if (!handle) return ThrowRetainedLimit(ctx);
     return JS_NewFloat64(ctx, (double)handle);
 }
 
@@ -12058,12 +12000,7 @@ static JSValue NativeDockNew(JSContext* ctx, JSValueConst, int argc,
         id, version >= 0, version, &cx, shell::ScopeCurrentView(),
         shell::ScopeCurrentApplication());
     ArenaDelete(arena);
-    if (!handle) {
-        return JS_ThrowRangeError(ctx,
-                                  "the application reached gpui-shell's "
-                                  "retained entity limit; release unused "
-                                  "handles");
-    }
+    if (!handle) return ThrowRetainedLimit(ctx);
     return JS_NewFloat64(ctx, (double)handle);
 }
 

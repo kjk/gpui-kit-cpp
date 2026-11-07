@@ -161,6 +161,29 @@ void EachMethod(const MaterializeRequest* request, F&& visit) {
 bool ParseColorArgument(PayloadBuild* build, const char* component, Str text,
                         Rgba* out);
 
+// ─── overlays/mod.rs ───────────────────────────────────────────────────────
+//
+// What HoverCard and Popover record the same way.
+
+// `card_anchor`'s literals, in gpui::Anchor order.
+inline constexpr const char* kCardAnchorLiterals[] = {
+    "top_left",      "top_center",   "top_right",   "bottom_left",
+    "bottom_center", "bottom_right", "left_center", "right_center"};
+inline constexpr ArgumentDescriptor kCardAnchorArguments[] = {
+    {"anchor", SchemaEnum(kCardAnchorLiterals)}};
+inline constexpr ArgumentDescriptor kOpenChangeArguments[] = {
+    {"callback", SchemaCallback("(open: boolean, cx: Context) => void")}};
+
+// anchor_op: `<component>.card_anchor(anchor)`'s one literal as an Anchor.
+// False after build->Fail.
+bool CardAnchorArgument(PayloadBuild* build, const char* component,
+                        const ComponentArgument* args, int count,
+                        gpui::Anchor* out);
+// `<component>.on_open_change(callback)`'s one callback. False after
+// build->Fail.
+bool OpenChangeArgument(PayloadBuild* build, const char* component,
+                        const ComponentArgument* args, int count);
+
 // `format!("{value}")` for an f64: the fewest digits that read back as the
 // same double, never in exponent form (`18446744073709552000`, `1.5`, `-1`,
 // `inf`, `NaN`), which is how Rust spells a number inside an error message.
