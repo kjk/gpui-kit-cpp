@@ -507,7 +507,13 @@ TimeField* TimeField::New(Ctx* cx, Str id, Entity<TimeFieldState> state) {
     f->cx = cx;
     f->id = id;
     f->state = state;
+    f->separator = StrL(":");
     return f;
+}
+
+TimeField* TimeField::Separator(Str value) {
+    separator = value;
+    return this;
 }
 
 TimeField* TimeField::Disabled(bool v) {
@@ -581,7 +587,7 @@ El* TimeField::IntoEl() {
     for (int ix = 0; ix < n; ix++) {
         TimeSegment s = all[ix];
         if (ix > 0 && s != TimeSegment::Period) {
-            root->Child(Div(a)->Child(TextEl(a, StrL(":"))));
+            root->Child(Div(a)->Child(TextEl(a, separator)));
         }
         TimeFieldSegmentState segmentState;
         segmentState.segment = s;

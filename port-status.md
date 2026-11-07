@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f8676073ec6e8c0efa40742ae14e7df45f811da0` (2026-11-06,
-slider: Allow `min` above the default `max` while building (#3823)).
-The thumb bound is the smaller of the value and max, then the larger of
-that and min, so a builder can set min to 150 while max is still the
-default 100. 175 then sits halfway, and a 160..180 range sits at
-0.2..0.6 once max is 200.
+Processed through `07c1d9da6837f9d6af60bd5dbf749392ddfd4852` (2026-11-06,
+time_field: Add `TimeField::separator` (#3829)).
+`TimeField::Separator` is the string between numeric segments. It
+stays ":" until a caller sets another, and the AM/PM segment still
+follows without one.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

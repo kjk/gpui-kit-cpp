@@ -176,8 +176,9 @@ void TimeFieldSegmentClearChildren(El* segment);
 
 // Unstyled segmented time editor. Base owns focus, the keyboard model and
 // pointer segment selection; the presentation lays out and decorates the
-// field through Refine and each segment through RenderSegment. A `:`
-// separates the numeric segments; the AM/PM segment follows without one.
+// field through Refine and each segment through RenderSegment. A separator
+// (":" unless Separator says otherwise) stands between the numeric
+// segments; the AM/PM segment follows without one.
 struct TimeField {
     Ctx* cx = nullptr;
     Str id = {};
@@ -187,8 +188,12 @@ struct TimeField {
     uint32_t styleSet = 0;
     TimeFieldSegmentRenderer segment = nullptr;
     void* segmentUser = nullptr;
+    // What stands between the numeric segments. ":" unless Separator says
+    // otherwise. The AM/PM segment still follows without one.
+    Str separator = {};
 
     static TimeField* New(Ctx* cx, Str id, Entity<TimeFieldState> state);
+    TimeField* Separator(Str value);
     TimeField* Disabled(bool v = true);
     // Decorate each segment. The segment already carries its label: two
     // digits, or AM/PM.

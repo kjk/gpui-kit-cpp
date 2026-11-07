@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f8676073ec6e8c0efa40742ae14e7df45f811da0",
+  sha: "07c1d9da6837f9d6af60bd5dbf749392ddfd4852",
   date: "2026-11-06",
-  subject: "slider: Allow `min` above the default `max` while building (#3823)",
+  subject: "time_field: Add `TimeField::separator` (#3829)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

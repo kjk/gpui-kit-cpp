@@ -247,6 +247,37 @@ static void TheStateEmitsUserEditsOnly() {
     delete win;
 }
 
+// time_field.rs the_separator_is_a_colon_unless_set.
+// The builder stores ":" until Separator replaces it, and that string is
+// what stands between the numeric segments.
+static void TheSeparatorIsAColonUnlessSet() {
+    App app = {};
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<TimeFieldState> state = TimeFieldStateNew(&cx);
+    TimeField* plain = TimeField::New(&cx, StrL("time"), state);
+    utassert(base::StrEq(plain->separator, StrL(":")));
+    TimeField* dotted = TimeField::New(&cx, StrL("time"), state)
+                            ->Separator(StrL("."));
+    utassert(base::StrEq(dotted->separator, StrL(".")));
+
+    El* root = dotted->IntoEl();
+    int seps = 0;
+    for (El* c = root->first; c; c = c->next) {
+        if (c->first && base::StrEq(c->first->text, StrL("."))) {
+            seps++;
+        }
+    }
+    utassert(seps == 1);
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 // The element: a time input carrying its value, a `:` between the numeric
 // segments and none before AM/PM, and each segment named so a press finds it.
 static void TheFieldNamesItsSegments() {
@@ -351,6 +382,7 @@ void TestTimeField() {
     TwelveHourSteppingWrapsWithinThePeriod();
     TheFormatFollowsPrecisionAndCycle();
     TheStateEmitsUserEditsOnly();
+    TheSeparatorIsAColonUnlessSet();
     TheFieldNamesItsSegments();
     PressingOutsideTheSegmentsFocusesTheFirstSegment();
 }
