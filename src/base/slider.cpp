@@ -188,7 +188,14 @@ bool SliderStepBy(SliderState* s, int dir, bool isStart) {
         return false;
     }
     float from = isStart ? s->value.Start() : s->value.End();
-    float want = from + step * (float)dir;
+    return SliderMoveTo(s, from + step * (float)dir, isStart);
+}
+
+bool SliderMoveTo(SliderState* s, float want, bool isStart) {
+    if (!s) {
+        return false;
+    }
+    float from = isStart ? s->value.Start() : s->value.End();
     // The same clamp a drag gets: an end never crosses the other one.
     float lo = isStart ? s->min : SliderPctToValue(s, s->pctLo);
     float hi = isStart ? SliderPctToValue(s, s->pctHi) : s->max;
@@ -203,6 +210,38 @@ bool SliderStepBy(SliderState* s, int dir, bool isStart) {
     }
     SliderUpdateThumbPos(s);
     return true;
+}
+
+bool SliderKeyMove(SliderState* s, int key, bool isStart) {
+    if (!s) {
+        return false;
+    }
+    float from = isStart ? s->value.Start() : s->value.End();
+    float page = (s->max - s->min) / 10.f;
+    switch (key) {
+        case KeyRight:
+        case KeyUp:
+            SliderStepBy(s, 1, isStart);
+            return true;
+        case KeyLeft:
+        case KeyDown:
+            SliderStepBy(s, -1, isStart);
+            return true;
+        case KeyPageUp:
+            SliderMoveTo(s, from + page, isStart);
+            return true;
+        case KeyPageDown:
+            SliderMoveTo(s, from - page, isStart);
+            return true;
+        case KeyHome:
+            SliderMoveTo(s, s->min, isStart);
+            return true;
+        case KeyEnd:
+            SliderMoveTo(s, s->max, isStart);
+            return true;
+        default:
+            return false;
+    }
 }
 
 bool SliderHandleRelease(SliderState* s) {

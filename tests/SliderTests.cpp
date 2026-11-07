@@ -236,6 +236,42 @@ static void TheArrowsStepByTheStep() {
     utassertnear(r.value.End(), 50.f);
 }
 
+// Not in slider.rs: Page Up / Page Down move a tenth of the range, Home /
+// End go to its ends, and a key that isn't the slider's is left alone.
+static void PageHomeAndEndJump() {
+    SliderState s = TrackState();
+    SliderSetStep(&s, 1.f);
+    SliderSetValue(&s, SliderSingle(50.f));
+
+    utassert(SliderKeyMove(&s, KeyPageUp, false));
+    utassertnear(s.value.End(), 60.f);
+    utassert(SliderKeyMove(&s, KeyPageDown, false));
+    utassertnear(s.value.End(), 50.f);
+    utassert(SliderKeyMove(&s, KeyEnd, false));
+    utassertnear(s.value.End(), 100.f);
+    utassertnear(s.pctHi, 1.f);
+    utassert(SliderKeyMove(&s, KeyHome, false));
+    utassertnear(s.value.End(), 0.f);
+    // the key is the slider's even at the limit it can't move past
+    utassert(SliderKeyMove(&s, KeyHome, false));
+    utassertnear(s.value.End(), 0.f);
+    utassert(SliderKeyMove(&s, KeyRight, false));
+    utassertnear(s.value.End(), 1.f);
+    utassert(!SliderKeyMove(&s, KeyA, false));
+
+    // a range's low end stops at the high one
+    SliderState r = TrackState();
+    SliderSetValue(&r, SliderRange(30.f, 40.f));
+    utassert(SliderKeyMove(&r, KeyEnd, true));
+    utassertnear(r.value.Start(), 40.f);
+    utassert(SliderKeyMove(&r, KeyEnd, false));
+    utassertnear(r.value.End(), 100.f);
+
+    utassert(SliderMoveTo(&s, 250.f, false));
+    utassertnear(s.value.End(), 100.f);
+    utassert(!SliderMoveTo(&s, 100.f, false));
+}
+
 namespace {
 struct SliderEventCounter {
     int changes = 0;
@@ -405,6 +441,7 @@ void TestSlider() {
     APressTakesTheNearerHalfOfARange();
     ReleaseOnlyFiresAfterAPress();
     TheArrowsStepByTheStep();
+    PageHomeAndEndJump();
     ATouchDragOnTheTrackMovesTheThumb();
     ADisabledThumbMarksItsNodeDisabled();
     ASliderTakesFocusOnItsOwnNode();

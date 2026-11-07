@@ -118,6 +118,10 @@ The current update target is
   X11 would need a 32-bit visual and Cocoa a non-opaque layer; there the
   option is ignored and `WindowIsTransparent` says so. `Blurred` and the
   other appearances are not ported.
+- **A focused slider takes keys.** `slider.rs` leaves them to the
+  accessibility layer, which this tree doesn't have: the arrows step,
+  Page Up / Page Down move a tenth of the range and Home / End go to its
+  ends, as an HTML range input does (`SliderKeyMove`, `src/base/slider.cpp`).
 - **A browser file drop carries names, not paths.** A desktop window accepts
   an OS file drop as gpui's `ExternalPaths` (`OnDrop(StrL("ExternalPaths"))`,
   newline-separated paths on `DropEvent::externalPaths`). Windows registers

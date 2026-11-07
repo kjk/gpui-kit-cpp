@@ -2040,23 +2040,18 @@ static bool SliderKeyStep(Window* win, int key, bool ctrl, bool alt) {
     if (ctrl || alt || !win->focusId) {
         return false;
     }
-    int dir = 0;
-    if (key == KeyRight || key == KeyUp) {
-        dir = 1;
-    } else if (key == KeyLeft || key == KeyDown) {
-        dir = -1;
-    }
-    if (dir == 0) {
-        return false;
-    }
     for (int i = 0; i < win->paint.hits.len; i++) {
         const HitRect& hr = win->paint.hits[i];
         if (hr.id != win->focusId || !hr.slider) {
             continue;
         }
-        if (SliderStepBy(hr.slider, dir,
-                         hr.slider->value.range && hr.slider->dragStart)) {
-            SliderEmit(win, hr.slider, SliderEventKind::Change);
+        SliderState* s = hr.slider;
+        SliderValue before = s->value;
+        if (!SliderKeyMove(s, key, s->value.range && s->dragStart)) {
+            return false;
+        }
+        if (s->value.lo != before.lo || s->value.hi != before.hi) {
+            SliderEmit(win, s, SliderEventKind::Change);
         }
         // The keystroke was the slider's whether or not it could move: an
         // arrow on a slider at its limit is not also a walk of the focus.

@@ -6546,6 +6546,14 @@ bool SliderHandleRelease(SliderState* s);
 // or -1, and `isStart` picks which end of a range moves. Answers whether the
 // value moved.
 bool SliderStepBy(SliderState* s, int dir, bool isStart);
+// Moves one end of the value to `want`, clamped the way a drag is: inside the
+// range, and short of the other end of a range. Answers whether it moved.
+bool SliderMoveTo(SliderState* s, float want, bool isStart);
+// What a key does to a focused slider. Not in slider.rs, which leaves keys to
+// the accessibility layer: the arrows step (SliderStepBy), Page Up / Page Down
+// move a tenth of the range and Home / End go to its ends, as an HTML range
+// input does. Answers whether `key` is one of those, moved or not.
+bool SliderKeyMove(SliderState* s, int key, bool isStart);
 
 struct Overlay {
     int kind = 0; // 0 none, 1 dialog, 2 sheet
