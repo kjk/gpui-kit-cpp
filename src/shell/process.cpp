@@ -36,12 +36,10 @@ void Utf8CarryInit(Utf8Carry* carry) {
     if (carry) carry->pendingLen = 0;
 }
 
+// 0 for a byte that leads nothing.
 static int Utf8Width(uint8_t lead) {
-    if ((lead & 0x80) == 0) return 1;
-    if ((lead & 0xE0) == 0xC0) return 2;
-    if ((lead & 0xF0) == 0xE0) return 3;
-    if ((lead & 0xF8) == 0xF0) return 4;
-    return 0;
+    int w = Utf8LeadLen(lead);
+    return w == 1 && lead >= 0x80 ? 0 : w;
 }
 
 static bool Utf8SequenceOk(const uint8_t* bytes, int width) {

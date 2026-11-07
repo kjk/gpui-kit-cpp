@@ -1185,38 +1185,107 @@ Str StrTrimAscii(Str s) {
     return Str(s.s + start, end - start);
 }
 
-static bool IsUnicodeWhiteSpace(uint32_t cp) {
-    return (cp >= 0x09 && cp <= 0x0D) || cp == 0x20 || cp == 0x85 ||
-           cp == 0xA0 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200A) ||
-           cp == 0x2028 || cp == 0x2029 || cp == 0x202F || cp == 0x205F ||
-           cp == 0x3000;
+void HexEncode(const void* bytes, int n, char* out) {
+    static const char kDigits[] = "0123456789abcdef";
+    const uint8_t* p = (const uint8_t*)bytes;
+    for (int i = 0; i < n; i++) {
+        out[i * 2] = kDigits[p[i] >> 4];
+        out[i * 2 + 1] = kDigits[p[i] & 15];
+    }
 }
 
-// The code point that starts at s[i], and its length in bytes; a byte that
-// starts no valid sequence reads as itself, one byte long, so it is never
-// whitespace past the ASCII range.
-static uint32_t StrTrimDecode(Str s, int i, int* n) {
-    uint8_t c = (uint8_t)s.s[i];
-    int want = c < 0x80         ? 1
-               : (c >> 5) == 6  ? 2
-               : (c >> 4) == 14 ? 3
-               : (c >> 3) == 30 ? 4
-                                : 0;
-    if (want <= 1 || i + want > len(s)) {
-        *n = 1;
-        return c;
+bool ParseHexRgba(Str digits, uint32_t* rgba) {
+    int n = len(digits);
+    if (!digits.s || (n != 3 && n != 4 && n != 6 && n != 8)) {
+        return false;
     }
-    uint32_t cp = c & (0x7F >> want);
-    for (int k = 1; k < want; k++) {
-        uint8_t b = (uint8_t)s.s[i + k];
-        if ((b & 0xC0) != 0x80) {
-            *n = 1;
-            return c;
+    int d[8];
+    for (int i = 0; i < n; i++) {
+        d[i] = HexDigitValue(digits.s[i]);
+        if (d[i] < 0) {
+            return false;
         }
-        cp = (cp << 6) | (b & 0x3F);
     }
-    *n = want;
-    return cp;
+    uint32_t v[4] = {0, 0, 0, 255};
+    bool doubled = n <= 4;
+    for (int i = 0; i < (doubled ? n : n / 2); i++) {
+        v[i] = doubled ? (uint32_t)(d[i] * 17)
+                       : (uint32_t)(d[i * 2] * 16 + d[i * 2 + 1]);
+    }
+    *rgba = (v[0] << 24) | (v[1] << 16) | (v[2] << 8) | v[3];
+    return true;
+}
+
+int PercentDecode(Str s, char* out) {
+    int n = 0;
+    for (int i = 0; i < len(s); i++) {
+        char c = s.s[i];
+        if (c == '%' && i + 2 < len(s)) {
+            int hi = HexDigitValue(s.s[i + 1]);
+            int lo = HexDigitValue(s.s[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                c = (char)((hi << 4) | lo);
+                i += 2;
+            }
+        }
+        out[n++] = c;
+    }
+    return n;
+}
+
+int Utf8Encode(char* out, uint32_t cp) {
+    if (cp < 0x80) {
+        out[0] = (char)cp;
+        return 1;
+    }
+    if (cp < 0x800) {
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000) {
+        out[0] = (char)(0xE0 | (cp >> 12));
+        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    out[0] = (char)(0xF0 | (cp >> 18));
+    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    out[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+}
+
+int Utf8At(Str s, int i, uint32_t* out) {
+    const uint8_t* p = (const uint8_t*)s.s + i;
+    uint8_t c = p[0];
+    if (c < 0x80) {
+        *out = c;
+        return 1;
+    }
+    int n = Utf8LeadLen(c);
+    if (n == 1 || i + n > len(s)) {
+        *out = c;
+        return 1;
+    }
+    uint32_t cp = (uint32_t)(c & (0xFF >> (n + 1)));
+    for (int k = 1; k < n; k++) {
+        if ((p[k] & 0xC0) != 0x80) {
+            *out = c;
+            return 1;
+        }
+        cp = (cp << 6) | (uint32_t)(p[k] & 0x3F);
+    }
+    *out = cp;
+    return n;
+}
+
+int Utf8Prev(Str s, int i) {
+    int j = i - 1;
+    while (j > 0 && ((uint8_t)s.s[j] & 0xC0) == 0x80) {
+        j--;
+    }
+    return j < 0 ? 0 : j;
 }
 
 Str StrTrim(Str s) {
@@ -1226,8 +1295,9 @@ Str StrTrim(Str s) {
     int start = 0;
     int end = len(s);
     while (start < end) {
-        int n = 1;
-        if (!IsUnicodeWhiteSpace(StrTrimDecode(s, start, &n))) {
+        uint32_t cp = 0;
+        int n = Utf8At(s, start, &cp);
+        if (!IsUnicodeWhitespace(cp)) {
             break;
         }
         start += n;
@@ -1239,9 +1309,9 @@ Str StrTrim(Str s) {
                end - at < 4) {
             at--;
         }
-        int n = 1;
-        uint32_t cp = StrTrimDecode(s, at, &n);
-        if (at + n != end || !IsUnicodeWhiteSpace(cp)) {
+        uint32_t cp = 0;
+        int n = Utf8At(s, at, &cp);
+        if (at + n != end || !IsUnicodeWhitespace(cp)) {
             break;
         }
         end = at;
@@ -1455,6 +1525,30 @@ bool StrBuilder::Append(Str src) {
     len += src.len;
     StrBuilderTerminate(*this);
     return true;
+}
+
+bool StrBuilder::AppendUtf8(uint32_t cp) {
+    char buf[4];
+    int n = Utf8Encode(buf, cp);
+    return Append(Str(buf, n));
+}
+
+void AppendHtmlEscaped(StrBuilder& out, Str value, bool escapeGt,
+                       bool escapeQuote) {
+    for (int i = 0; i < len(value); i++) {
+        char c = value.s[i];
+        if (c == '&') {
+            out.Append(StrL("&amp;"));
+        } else if (c == '<') {
+            out.Append(StrL("&lt;"));
+        } else if (c == '>' && escapeGt) {
+            out.Append(StrL("&gt;"));
+        } else if (c == '"' && escapeQuote) {
+            out.Append(StrL("&quot;"));
+        } else {
+            out.AppendChar(c);
+        }
+    }
 }
 
 char StrBuilder::RemoveAt(int idx, int count) {

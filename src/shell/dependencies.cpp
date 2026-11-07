@@ -173,11 +173,7 @@ Str GitDependencyRemoteKey(Str git) {
     Sha256(Str((const char*)input.els, len(input)), digest);
     VecReset(input);
     TempStr hex = AllocStrTemp(64);
-    static const char* digits = "0123456789abcdef";
-    for (int i = 0; i < 32; i++) {
-        hex.s[i * 2] = digits[digest[i] >> 4];
-        hex.s[i * 2 + 1] = digits[digest[i] & 15];
-    }
+    HexEncode(digest, 32, hex.s);
     return StrDup(hex);
 }
 

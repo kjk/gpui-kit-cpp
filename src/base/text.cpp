@@ -1339,15 +1339,6 @@ static void MdSetLeaf(MdBuild* b, MdNode* node, const md::Node* n) {
     }
 }
 
-// The bytes of the UTF-8 character that starts with `lead`.
-static int Utf8CharLen(uint8_t lead) {
-    if (lead < 0x80) return 1;
-    if ((lead >> 5) == 0x6) return 2;
-    if ((lead >> 4) == 0xE) return 3;
-    if ((lead >> 3) == 0x1E) return 4;
-    return 1;
-}
-
 // `str::find` for a byte string: where `needle` first starts in `hay`.
 static int FindBytes(Str hay, const char* needle, int n) {
     for (int i = 0; i + n <= len(hay); i++) {
@@ -1381,26 +1372,7 @@ static void PushSegment(Vec<SourceSegment>& out, SourceSegment s) {
 // A code point as UTF-8, or 0 bytes for one `char::from_u32` refuses.
 static int EncodeUtf8(uint32_t cp, char* out) {
     if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return 0;
-    if (cp < 0x80) {
-        out[0] = (char)cp;
-        return 1;
-    }
-    if (cp < 0x800) {
-        out[0] = (char)(0xC0 | (cp >> 6));
-        out[1] = (char)(0x80 | (cp & 0x3F));
-        return 2;
-    }
-    if (cp < 0x10000) {
-        out[0] = (char)(0xE0 | (cp >> 12));
-        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        out[2] = (char)(0x80 | (cp & 0x3F));
-        return 3;
-    }
-    out[0] = (char)(0xF0 | (cp >> 18));
-    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    out[3] = (char)(0x80 | (cp & 0x3F));
-    return 4;
+    return Utf8Encode(out, cp);
 }
 
 // `u32::from_str_radix`: every byte a digit, at least one, no overflow.
@@ -1408,16 +1380,8 @@ static bool ParseU32(Str s, int radix, uint32_t* out) {
     if (len(s) <= 0) return false;
     uint64_t v = 0;
     for (int i = 0; i < len(s); i++) {
-        char c = s.s[i];
-        int d = -1;
-        if (c >= '0' && c <= '9') {
-            d = c - '0';
-        } else if (radix == 16 && c >= 'a' && c <= 'f') {
-            d = c - 'a' + 10;
-        } else if (radix == 16 && c >= 'A' && c <= 'F') {
-            d = c - 'A' + 10;
-        }
-        if (d < 0) return false;
+        int d = HexDigitValue(s.s[i]);
+        if (d < 0 || d >= radix) return false;
         v = v * (uint64_t)radix + (uint64_t)d;
         if (v > 0xFFFFFFFFull) return false;
     }
@@ -1521,7 +1485,7 @@ int SourceCharOffset(Str raw, int rawCursor, const char* ch, int cl,
         return rawCursor + rel;
     }
     for (int i = rawCursor; i < len(raw);) {
-        int n = Utf8CharLen((uint8_t)raw.s[i]);
+        int n = Utf8LeadLen((uint8_t)raw.s[i]);
         if (i + n > len(raw)) n = len(raw) - i;
         SourceCharPos p;
         p.key = SourceCharKey(raw.s + i, n);
@@ -1585,7 +1549,7 @@ void AlignedSourceSegments(Arena* a, Str raw, Str rendered, int sourceOffset,
             rawCursor += entityLen;
             continue;
         }
-        int cl = Utf8CharLen((uint8_t)rendered.s[r]);
+        int cl = Utf8LeadLen((uint8_t)rendered.s[r]);
         if (r + cl > len(rendered)) cl = len(rendered) - r;
         const char* ch = rendered.s + r;
         int rendEnd = r + cl;
@@ -1680,7 +1644,7 @@ static void MdSourceSegments(MdBuild* b, const md::Node* n, Str rendered,
         int at = out[0].renderedStart;
         int firstCharLen = 0;
         if (at < len(rendered)) {
-            firstCharLen = Utf8CharLen((uint8_t)rendered.s[at]);
+            firstCharLen = Utf8LeadLen((uint8_t)rendered.s[at]);
             if (at + firstCharLen > len(rendered)) {
                 firstCharLen = len(rendered) - at;
             }
@@ -5867,13 +5831,6 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     return row->Child(content);
 }
 
-// char::is_whitespace.
-static bool StreamIsWhitespace(uint32_t c) {
-    return c == ' ' || (c >= 0x09 && c <= 0x0d) || c == 0x85 || c == 0xa0 ||
-           c == 0x1680 || (c >= 0x2000 && c <= 0x200a) || c == 0x2028 ||
-           c == 0x2029 || c == 0x202f || c == 0x205f || c == 0x3000;
-}
-
 // stream_fade.rs is_cjk.
 static bool StreamIsCjk(uint32_t c) {
     return (c >= 0x3040 && c <= 0x30ff)       // Hiragana, Katakana
@@ -5897,10 +5854,10 @@ void StreamFadeUnits(Str text, int start, int end, Vec<Span>* out) {
             step = 1;
         }
         if (at >= start) {
-            bool space = StreamIsWhitespace(c);
+            bool space = IsUnicodeWhitespace(c);
             bool startsUnit = unitHasGlyph && !space &&
                               (StreamIsCjk(c) ||
-                               (hasPrevious && (StreamIsWhitespace(previous) ||
+                               (hasPrevious && (IsUnicodeWhitespace(previous) ||
                                                 StreamIsCjk(previous))));
             if (startsUnit && at > unitStart) {
                 VecAppend(*out, Span{unitStart, at});

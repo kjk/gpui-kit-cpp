@@ -3580,35 +3580,16 @@ static void DispatchFileDrop(Window* win, const FileDropEvent& in) {
     DispatchMouseMove(win, mv);
 }
 
-static int HexValue(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
 static bool AppendDecoded(StrBuilder& out, Str src) {
-    for (int i = 0; i < len(src); i++) {
-        char c = src.s[i];
-        if (c == '%' && i + 2 < len(src)) {
-            int hi = HexValue(src.s[i + 1]);
-            int lo = HexValue(src.s[i + 2]);
-            if (hi >= 0 && lo >= 0) {
-                c = (char)((hi << 4) | lo);
-                i += 2;
-            }
-        }
-        if (!out.AppendChar(c)) {
-            return false;
-        }
+    if (len(src) <= 0) {
+        return true;
     }
-    return true;
+    TempStr decoded = AllocStrTemp(len(src));
+    if (!decoded.s) {
+        return false;
+    }
+    decoded.len = PercentDecode(src, decoded.s);
+    return out.Append(decoded);
 }
 
 Str FileUriListToPaths(Arena* a, Str list) {

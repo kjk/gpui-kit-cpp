@@ -9368,45 +9368,6 @@ int TextHitOffsetIn(PaintCtx* ctx, float x, float y, bool nearest, int scope,
     return h->docOff + TextHitLocal(ctx, h, rel);
 }
 
-// The character at `i` and how many bytes it took. A byte that is not valid
-// UTF-8 counts as one character of its own value: the rules above only ask
-// which class it lands in, and every stray byte lands in the same one.
-int Utf8At(Str s, int i, uint32_t* out) {
-    const uint8_t* p = (const uint8_t*)s.s + i;
-    uint8_t c = p[0];
-    if (c < 0x80) {
-        *out = c;
-        return 1;
-    }
-    int n = (c & 0xE0) == 0xC0   ? 2
-            : (c & 0xF0) == 0xE0 ? 3
-            : (c & 0xF8) == 0xF0 ? 4
-                                 : 1;
-    if (n == 1 || i + n > len(s)) {
-        *out = c;
-        return 1;
-    }
-    uint32_t cp = (uint32_t)(c & (0xFF >> (n + 1)));
-    for (int k = 1; k < n; k++) {
-        if ((p[k] & 0xC0) != 0x80) {
-            *out = c;
-            return 1;
-        }
-        cp = (cp << 6) | (uint32_t)(p[k] & 0x3F);
-    }
-    *out = cp;
-    return n;
-}
-
-// Where the character before `i` starts.
-int Utf8Prev(Str s, int i) {
-    int j = i - 1;
-    while (j > 0 && ((uint8_t)s.s[j] & 0xC0) == 0x80) {
-        j--;
-    }
-    return j < 0 ? 0 : j;
-}
-
 bool TextMultiClickRange(PaintCtx* ctx, float x, float y, int clickCount,
                          int* outA, int* outB) {
     return TextMultiClickRangeIn(ctx, x, y, clickCount, -1, outA, outB,

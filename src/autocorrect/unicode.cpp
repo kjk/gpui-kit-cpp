@@ -12,28 +12,10 @@
 namespace autocorrect {
 
 uint32_t Utf8Next(Str s, int* i) {
-    int at = *i;
-    uint8_t b0 = (uint8_t)s.s[at];
-    // An ASCII byte, an invalid lead, and a truncated tail all take one
-    // byte as itself, so a scan always terminates.
-    int size = 1;
-    uint32_t cp = b0;
-    if ((b0 & 0xE0) == 0xC0 && at + 1 < len(s)) {
-        size = 2;
-        cp = ((uint32_t)(b0 & 0x1F) << 6) | ((uint8_t)s.s[at + 1] & 0x3F);
-    } else if ((b0 & 0xF0) == 0xE0 && at + 2 < len(s)) {
-        size = 3;
-        cp = ((uint32_t)(b0 & 0x0F) << 12) |
-             (((uint32_t)(uint8_t)s.s[at + 1] & 0x3F) << 6) |
-             ((uint8_t)s.s[at + 2] & 0x3F);
-    } else if ((b0 & 0xF8) == 0xF0 && at + 3 < len(s)) {
-        size = 4;
-        cp = ((uint32_t)(b0 & 0x07) << 18) |
-             (((uint32_t)(uint8_t)s.s[at + 1] & 0x3F) << 12) |
-             (((uint32_t)(uint8_t)s.s[at + 2] & 0x3F) << 6) |
-             ((uint8_t)s.s[at + 3] & 0x3F);
-    }
-    *i = at + size;
+    // An ASCII byte, an invalid lead, and a truncated or broken tail all take
+    // one byte as itself, so a scan always terminates.
+    uint32_t cp = 0;
+    *i += base::Utf8At(s, *i, &cp);
     return cp;
 }
 

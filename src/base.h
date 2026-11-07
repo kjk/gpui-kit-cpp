@@ -1279,6 +1279,78 @@ Str SeqStrByIndex(SeqStrings strs, int idx);
 int SeqStrCount(SeqStrings strs);
 void StrLowerAscii(char* s);
 
+// The value of the ASCII hex digit `c` (0-9, a-f, A-F), or -1 for any other
+// byte.
+constexpr int HexDigitValue(char c) {
+    return c >= '0' && c <= '9'   ? c - '0'
+           : c >= 'a' && c <= 'f' ? c - 'a' + 10
+           : c >= 'A' && c <= 'F' ? c - 'A' + 10
+                                  : -1;
+}
+
+// The `n` bytes at `bytes` as 2n lowercase hex digits into `out`, which is
+// not NUL-terminated.
+void HexEncode(const void* bytes, int n, char* out);
+
+// The digits of a hex colour (what follows the `#`): 3, 4, 6 or 8 hex digits
+// as 0xRRGGBBAA, the way `gpui::Rgba::try_from(&str)` reads them — a short
+// form doubles each digit, and a form without alpha is opaque. False for any
+// other length or a byte that is not a hex digit; a caller that accepts
+// fewer forms checks the length first.
+bool ParseHexRgba(Str digits, uint32_t* rgba);
+
+// `s` with every `%XX` (two hex digits) replaced by the byte it names, into
+// `out`, which has room for len(s) bytes — decoding never grows. A `%` not
+// followed by two hex digits is kept as it is. Returns the decoded length;
+// nothing is NUL-terminated and nothing is checked for being UTF-8. `out` may
+// be `s.s` itself: a byte is never written ahead of the ones still to read.
+int PercentDecode(Str s, char* out);
+
+// ─── UTF-8 ───
+
+// Rust's `char::is_whitespace`: the Unicode White_Space property — the ASCII
+// kind (tab through carriage return, space), NEL, NBSP, the ogham mark, the
+// en through hair spaces, the line and paragraph separators, the narrow
+// no-break, medium mathematical and ideographic spaces.
+constexpr bool IsUnicodeWhitespace(uint32_t cp) {
+    return (cp >= 0x09 && cp <= 0x0D) || cp == 0x20 || cp == 0x85 ||
+           cp == 0xA0 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200A) ||
+           cp == 0x2028 || cp == 0x2029 || cp == 0x202F || cp == 0x205F ||
+           cp == 0x3000;
+}
+
+// `cp` as UTF-8 into `out`, which has room for 4 bytes; returns how many it
+// took. Nothing is checked: a surrogate is encoded by the same bit pattern as
+// any other code point, so a caller that must refuse one (or a value past
+// U+10FFFF) does so first.
+int Utf8Encode(char* out, uint32_t cp);
+// How many bytes the UTF-8 sequence that `lead` starts says it takes: 1 for
+// ASCII, 2-4 by the lead's high bits, and 1 for a byte that leads nothing
+// (a continuation byte, 0xF8 and up). Only the lead is looked at.
+constexpr int Utf8LeadLen(uint8_t lead) {
+    return (lead & 0xE0) == 0xC0   ? 2
+           : (lead & 0xF0) == 0xE0 ? 3
+           : (lead & 0xF8) == 0xF0 ? 4
+                                   : 1;
+}
+// The code point at byte `i` of `s` and how many bytes it took. A byte that
+// is not valid UTF-8 there — a stray continuation byte, an invalid lead, a
+// sequence cut short by the end or by a byte that does not continue it —
+// counts as one character of its own value, so a scan always advances.
+int Utf8At(Str s, int i, uint32_t* out);
+// Where the character before `i` starts.
+int Utf8Prev(Str s, int i);
+
+// The value of the HTML named character reference `name` (without the `&`
+// and `;`, matched case-sensitively against WHATWG's 2125 names) as UTF-8,
+// NUL-terminated, in a static table; an empty Str (null `s`) when there is
+// no such name.
+Str HtmlNamedCharRef(Str name);
+// The table HtmlNamedCharRef searches, entry by entry in its (sorted) order,
+// for a test to walk: how many entries, and the name and value of entry `i`.
+int HtmlNamedCharRefCount();
+void HtmlNamedCharRefAt(int i, Str* name, Str* value);
+
 struct StrBuilder : Vec<char> {
     Arena* a = nullptr;
 
@@ -1288,11 +1360,19 @@ struct StrBuilder : Vec<char> {
     bool Reserve(int cap);
     bool AppendChar(char c);
     bool Append(Str src);
+    // `cp` as UTF-8 (see Utf8Encode).
+    bool AppendUtf8(uint32_t cp);
     char RemoveAt(int idx, int count = 1);
     char RemoveLast();
     Str TakeStr();
     char LastChar() const;
 };
+
+// `value` into `out` with `&` and `<` written as character references, and
+// `>` and `"` too when asked: HTML text escapes `>`, an attribute value `"`,
+// and XML both.
+void AppendHtmlEscaped(StrBuilder& out, Str value, bool escapeGt,
+                       bool escapeQuote);
 
 // Lend b a buffer to start in. One byte is held back for the NUL; growing
 // past it allocates and copies, leaving the caller's storage alone.

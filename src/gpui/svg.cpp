@@ -584,27 +584,7 @@ static bool ParseSvgColor(Str s, Rgba* out) {
     if (n != 3 && n != 6) {
         return false;
     }
-    int v[6] = {};
-    for (int i = 0; i < n; i++) {
-        char c = s.s[i + 1];
-        if (c >= '0' && c <= '9') {
-            v[i] = c - '0';
-        } else if (c >= 'a' && c <= 'f') {
-            v[i] = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'F') {
-            v[i] = c - 'A' + 10;
-        } else {
-            return false;
-        }
-    }
-    if (n == 3) {
-        *out = Rgba{(uint8_t)(v[0] * 17), (uint8_t)(v[1] * 17),
-                    (uint8_t)(v[2] * 17), 255};
-    } else {
-        *out = Rgba{(uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]),
-                    (uint8_t)(v[4] * 16 + v[5]), 255};
-    }
-    return true;
+    return RgbaParseHexDigits(Str(s.s + 1, n), out);
 }
 
 // `fill` / `stroke` / `stop-color`, which may be a colour or a reference to

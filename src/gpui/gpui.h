@@ -75,6 +75,17 @@ inline Rgba RgbaHex(uint32_t hex) {
     return Rgba{(uint8_t)((hex >> 16) & 0xff), (uint8_t)((hex >> 8) & 0xff),
                 (uint8_t)(hex & 0xff), 255};
 }
+// The digits of a hex colour (no `#`; 3, 4, 6 or 8 of them) as an Rgba:
+// base's ParseHexRgba, `gpui::Rgba::try_from(&str)`.
+inline bool RgbaParseHexDigits(Str digits, Rgba* out) {
+    uint32_t v = 0;
+    if (!ParseHexRgba(digits, &v)) {
+        return false;
+    }
+    *out = Rgba{(uint8_t)(v >> 24), (uint8_t)(v >> 16), (uint8_t)(v >> 8),
+                (uint8_t)v};
+    return true;
+}
 Rgba RgbaOpacity(Rgba c, float a01);
 // A plain per-channel blend, weighted toward `a`. Not Colorize::mix — that is
 // RgbaMixHsl below. This is the arithmetic `default_title_bar_background`
@@ -4047,13 +4058,8 @@ enum class CharKind : uint8_t {
 };
 
 // `CharKindOf` and `Utf8ClipLeft` are text_boundary.rs's own and live in
-// `base/text_boundary.h`; these two are the `char` iteration Rust gets
-// from `str`, which every caller of either needs first.
-
-// The codepoint at byte `i` and how many bytes it took.
-int Utf8At(Str s, int i, uint32_t* out);
-// Where the character before `i` starts.
-int Utf8Prev(Str s, int i);
+// `base/text_boundary.h`; the `char` iteration Rust gets from `str`, which
+// every caller of either needs first, is base's `Utf8At` / `Utf8Prev`.
 
 // ─── rope ─────────────────────────────────────────────────────────────────
 //

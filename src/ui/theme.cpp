@@ -1436,46 +1436,10 @@ static float Clamp01f(float v) {
     return v < 0 ? 0 : (v > 1 ? 1 : v);
 }
 
-static int HexDigit(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
 // gpui::Rgba::try_from(&str): three, four, six or eight hex digits after the
 // hash, where the short forms double each digit.
 static bool ParseHex(Str s, Rgba* out) {
-    const char* p = s.s + 1;
-    int n = len(s) - 1;
-    if (n != 3 && n != 4 && n != 6 && n != 8) {
-        return false;
-    }
-    int d[8];
-    for (int i = 0; i < n; i++) {
-        d[i] = HexDigit(p[i]);
-        if (d[i] < 0) {
-            return false;
-        }
-    }
-    int v[4] = {0, 0, 0, 255};
-    if (n <= 4) {
-        for (int i = 0; i < n; i++) {
-            v[i] = d[i] * 16 + d[i];
-        }
-    } else {
-        for (int i = 0; i < n / 2; i++) {
-            v[i] = d[(size_t)i * 2] * 16 + d[(size_t)i * 2 + 1];
-        }
-    }
-    *out = Rgba8((uint8_t)v[0], (uint8_t)v[1], (uint8_t)v[2], (uint8_t)v[3]);
-    return true;
+    return RgbaParseHexDigits(Str(s.s + 1, len(s) - 1), out);
 }
 
 // ColorName::scale: the column for `scale`, or the one for 500 when no column

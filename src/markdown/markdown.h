@@ -66,6 +66,26 @@ struct ParseOptions {
     static ParseOptions Gfm();
 };
 
+// Here rather than in markdown.cpp so markdown-mini, which implements this
+// header too, shares them. Mini accepts the flags and ignores the GFM-only
+// constructs.
+inline Constructs Constructs::Gfm() {
+    Constructs constructs;
+    constructs.gfmAutolinkLiteral = true;
+    constructs.gfmFootnoteDefinition = true;
+    constructs.gfmLabelStartFootnote = true;
+    constructs.gfmStrikethrough = true;
+    constructs.gfmTable = true;
+    constructs.gfmTaskListItem = true;
+    return constructs;
+}
+
+inline ParseOptions ParseOptions::Gfm() {
+    ParseOptions options;
+    options.constructs = Constructs::Gfm();
+    return options;
+}
+
 // lib.rs to_mdast. Every node of the tree, and every string in it, is
 // allocated from `a`; `source` is only read.
 Node* ToMdast(Arena* a, Str source, const ParseOptions& options);

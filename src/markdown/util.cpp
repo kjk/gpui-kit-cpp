@@ -26,66 +26,14 @@ Str StrOwn(Arena* a, Str s) {
 
 // ─── util/char.rs ────────────────────────────────────────────────────────
 
-int32_t Utf8Encode(char* out, uint32_t cp) {
-    if (cp < 0x80) {
-        out[0] = (char)cp;
-        return 1;
-    }
-    if (cp < 0x800) {
-        out[0] = (char)(0xc0 | (cp >> 6));
-        out[1] = (char)(0x80 | (cp & 0x3f));
-        return 2;
-    }
-    if (cp < 0x10000) {
-        out[0] = (char)(0xe0 | (cp >> 12));
-        out[1] = (char)(0x80 | ((cp >> 6) & 0x3f));
-        out[2] = (char)(0x80 | (cp & 0x3f));
-        return 3;
-    }
-    out[0] = (char)(0xf0 | (cp >> 18));
-    out[1] = (char)(0x80 | ((cp >> 12) & 0x3f));
-    out[2] = (char)(0x80 | ((cp >> 6) & 0x3f));
-    out[3] = (char)(0x80 | (cp & 0x3f));
-    return 4;
-}
-
-// How many bytes the code point starting with `b` takes. A byte that starts
-// nothing counts as one, which is where `from_utf8_lossy` puts U+FFFD.
-static int32_t Utf8Len(uint8_t b) {
-    if (b < 0x80) {
-        return 1;
-    }
-    if ((b & 0xe0) == 0xc0) {
-        return 2;
-    }
-    if ((b & 0xf0) == 0xe0) {
-        return 3;
-    }
-    if ((b & 0xf8) == 0xf0) {
-        return 4;
-    }
-    return 1;
-}
-
-// The code point at `index`, or U+FFFD when the bytes there are not one.
+// The code point at `index`, or U+FFFD when the bytes there are not one —
+// a byte that starts nothing is where `from_utf8_lossy` puts U+FFFD.
+// base::Utf8At reads such a byte as itself, one byte long, and an ASCII byte
+// is always one, so a one-byte answer past ASCII is the replacement.
 static int32_t Utf8Decode(Str bytes, int32_t index) {
-    uint8_t b = (uint8_t)bytes.s[index];
-    int32_t len = Utf8Len(b);
-    if (len == 1) {
-        return b < 0x80 ? (int32_t)b : 0xfffd;
-    }
-    if (index + len > bytes.len) {
-        return 0xfffd;
-    }
-    uint32_t cp = (uint32_t)(b & (0xff >> (len + 1)));
-    for (int32_t i = 1; i < len; i++) {
-        uint8_t c = (uint8_t)bytes.s[index + i];
-        if ((c & 0xc0) != 0x80) {
-            return 0xfffd;
-        }
-        cp = (cp << 6) | (uint32_t)(c & 0x3f);
-    }
-    return (int32_t)cp;
+    uint32_t cp = 0;
+    int n = base::Utf8At(bytes, index, &cp);
+    return n == 1 && cp >= 0x80 ? 0xfffd : (int32_t)cp;
 }
 
 int32_t CharAfterIndex(Str bytes, int32_t index) {
@@ -109,26 +57,12 @@ int32_t CharBeforeIndex(Str bytes, int32_t index) {
     return Utf8Decode(bytes, start);
 }
 
-// `char::is_whitespace`: the Unicode White_Space property.
-static bool IsUnicodeWhitespace(uint32_t cp) {
-    if (cp <= 0x20) {
-        return cp == 0x20 || (cp >= 0x09 && cp <= 0x0d);
-    }
-    if (cp == 0x85 || cp == 0xa0 || cp == 0x1680) {
-        return true;
-    }
-    if (cp >= 0x2000 && cp <= 0x200a) {
-        return true;
-    }
-    return cp == 0x2028 || cp == 0x2029 || cp == 0x202f || cp == 0x205f ||
-           cp == 0x3000;
-}
-
 CharKind Classify(int32_t cp) {
     if (cp < 0) {
         return CharKind::Whitespace;
     }
-    if (IsUnicodeWhitespace((uint32_t)cp)) {
+    // `char::is_whitespace`: the Unicode White_Space property.
+    if (base::IsUnicodeWhitespace((uint32_t)cp)) {
         return CharKind::Whitespace;
     }
     if ((cp < 0x80 && IsAsciiPunctuation((uint8_t)cp)) ||
@@ -690,34 +624,14 @@ bool CharacterReferenceValueTest(uint8_t marker, uint8_t byte) {
     return IsAsciiDigit(byte);
 }
 
-// The table entry for a name, or null. The value is a NUL-terminated run in
-// `kCharacterReferenceValues`, which outlives every caller — so a caller that
-// wants it in an arena copies it and one that does not need not.
-static const char* NamedValue(Str name) {
-    // The table is sorted by name, so this is a binary search where Rust
-    // walks the 2125 entries with `find`.
-    int32_t lo = 0;
-    int32_t hi = 2125 - 1;
-    while (lo <= hi) {
-        int32_t mid = (lo + hi) / 2;
-        const char* candidate =
-            kCharacterReferenceNames + kCharacterReferences[mid].nameOff;
-        int cmp = StrCmp(Str(candidate), name);
-        if (cmp < 0) {
-            lo = mid + 1;
-        } else if (cmp > 0) {
-            hi = mid - 1;
-        } else {
-            return kCharacterReferenceValues + kCharacterReferences[mid]
-                                                   .valueOff;
-        }
-    }
-    return nullptr;
-}
-
+// The value is a NUL-terminated run in base's table
+// (`base::HtmlNamedCharRef`), which outlives every caller — so a caller that
+// wants it in an arena copies it and one that does not need not. The table is
+// sorted by name, so the lookup is a binary search where Rust walks the 2125
+// entries with `find`.
 Str DecodeNamed(Arena* a, Str name) {
-    const char* value = NamedValue(name);
-    return value ? StrOwn(a, value, (int32_t)strlen(value)) : Str{};
+    Str value = base::HtmlNamedCharRef(name);
+    return value.s ? StrOwn(a, value) : Str{};
 }
 
 // The codepoint a numeric reference names, already through the crate's own
@@ -726,20 +640,15 @@ static uint32_t DecodeNumericCp(Str value, int radix) {
     uint32_t cp = 0;
     bool overflow = false;
     for (int32_t i = 0; i < len(value); i++) {
-        uint8_t c = (uint8_t)value.s[i];
-        uint32_t digit;
-        if (c >= '0' && c <= '9') {
-            digit = (uint32_t)(c - '0');
-        } else if (c >= 'a' && c <= 'f') {
-            digit = (uint32_t)(c - 'a' + 10);
-        } else {
-            digit = (uint32_t)(c - 'A' + 10);
-        }
-        if (cp > 0x10ffff) {
+        // The tokenizer lets only digits of the radix through; the crate's
+        // `from_str_radix(..).unwrap()` has no answer for anything else, and
+        // here it is the replacement character.
+        int digit = base::HexDigitValue(value.s[i]);
+        if (digit < 0 || cp > 0x10ffff) {
             overflow = true;
             break;
         }
-        cp = cp * (uint32_t)radix + digit;
+        cp = cp * (uint32_t)radix + (uint32_t)digit;
     }
     // `char::from_u32` rejects the surrogates and anything past U+10FFFF;
     // the control characters are the crate's own list.
@@ -764,8 +673,7 @@ base::TempStr CharacterReferenceDecodeTemp(Str value, uint8_t marker) {
         out.len = Utf8Encode(out.s, cp);
         return out;
     }
-    const char* found = NamedValue(value);
-    return found ? Str((char*)found, (int32_t)strlen(found)) : Str{};
+    return base::HtmlNamedCharRef(value);
 }
 
 Str CharacterReferenceDecode(Arena* a, Str value, uint8_t marker) {

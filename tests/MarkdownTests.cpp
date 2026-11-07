@@ -151,26 +151,26 @@ static void TestMarkdownConstants() {
     utassert(kCharacterReferenceDecimalSizeMax == len(fmt("%d", 0x10ffff)));
     utassert(kCharacterReferenceHexadecimalSizeMax == len(fmt("%x", 0x10ffff)));
 
-    // The two runs and the table are three parallel things now, so the walk
-    // has to agree with the offsets the table holds: an entry pointing a byte
-    // into the middle of a name would still read as a string, just the wrong
-    // one, and nothing else would notice.
-    utassert(base::SeqStrCount(kCharacterReferenceNames) == 2125);
-    utassert(base::SeqStrCount(kCharacterReferenceValues) == 2125);
-    Str name = base::SeqStrFirst(kCharacterReferenceNames);
-    Str value = base::SeqStrFirst(kCharacterReferenceValues);
+    // CHARACTER_REFERENCES is base's table (base::HtmlNamedCharRef). Its two
+    // runs and the offset table are three parallel things, so the walk has to
+    // agree with the lookup: an entry pointing a byte into the middle of a
+    // name would still read as a string, just the wrong one — out of order,
+    // or found with another value. Sorted is also what `DecodeNamed`'s binary
+    // search needs.
+    utassert(base::HtmlNamedCharRefCount() == 2125);
     int32_t longestName = 0;
+    Str prev = {};
     for (int32_t i = 0; i < 2125; i++) {
-        utassert(kCharacterReferences[i]
-                     .nameOff == name.s - kCharacterReferenceNames);
-        utassert(kCharacterReferences[i]
-                     .valueOff == value.s - kCharacterReferenceValues);
-        utassert(len(name) > 0);
+        Str name, value;
+        base::HtmlNamedCharRefAt(i, &name, &value);
+        utassert(len(name) > 0 && len(value) > 0);
+        utassert(i == 0 || base::StrCmp(prev, name) < 0);
+        Str found = base::HtmlNamedCharRef(name);
+        utassert(found.s == value.s && len(found) == len(value));
         if (len(name) > longestName) {
             longestName = len(name);
         }
-        name = base::SeqStrNext(name);
-        value = base::SeqStrNext(value);
+        prev = name;
     }
     utassert(kCharacterReferenceNamedSizeMax == longestName);
 
@@ -186,15 +186,6 @@ static void TestMarkdownConstants() {
     utassert(rawCount == 4);
     utassert(kHtmlRawSizeMax == longestRaw);
     utassert(base::SeqStrCount(kHtmlBlockNames) == 62);
-
-    // The names are sorted, which is what `DecodeNamed` binary searches.
-    for (int32_t i = 1; i < 2125; i++) {
-        Str prev =
-            Str(kCharacterReferenceNames + kCharacterReferences[i - 1].nameOff);
-        Str cur =
-            Str(kCharacterReferenceNames + kCharacterReferences[i].nameOff);
-        utassert(base::StrCmp(prev, cur) < 0);
-    }
 }
 
 // ─── src/util/char.rs: `test_classify` ────────────────────────────────────

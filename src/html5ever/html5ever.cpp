@@ -114,26 +114,23 @@ static ArenaStr LowerCopy(Arena* a, Str value) {
     return result;
 }
 
-Str NamedEntity(Str name);
+// The digit `c` in base `radix` (10 or 16), or -1.
+static int RadixDigit(char c, int radix) {
+    int digit = HexDigitValue(c);
+    return digit < radix ? digit : -1;
+}
 
 static uint32_t NumericEntity(Str value, int radix) {
     uint32_t cp = 0;
     bool any = false;
     for (int i = 0; i < len(value); i++) {
-        char c = value.s[i];
-        uint32_t digit = 0;
-        if (IsDigit(c)) {
-            digit = (uint32_t)(c - '0');
-        } else if (radix == 16 && c >= 'a' && c <= 'f') {
-            digit = (uint32_t)(c - 'a' + 10);
-        } else if (radix == 16 && c >= 'A' && c <= 'F') {
-            digit = (uint32_t)(c - 'A' + 10);
-        } else {
+        int digit = RadixDigit(value.s[i], radix);
+        if (digit < 0) {
             break;
         }
         any = true;
         if (cp > 0x10ffffu / (uint32_t)radix) return 0xfffd;
-        cp = cp * (uint32_t)radix + digit;
+        cp = cp * (uint32_t)radix + (uint32_t)digit;
     }
     if (!any || cp == 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
         return 0xfffd;
@@ -147,35 +144,6 @@ static uint32_t NumericEntity(Str value, int radix) {
     };
     if (cp >= 0x80 && cp <= 0x9f) cp = controls[cp - 0x80];
     return cp;
-}
-
-static int EncodeUtf8(char* out, uint32_t cp) {
-    if (cp <= 0x7f) {
-        out[0] = (char)cp;
-        return 1;
-    }
-    if (cp <= 0x7ff) {
-        out[0] = (char)(0xc0 | (cp >> 6));
-        out[1] = (char)(0x80 | (cp & 0x3f));
-        return 2;
-    }
-    if (cp <= 0xffff) {
-        out[0] = (char)(0xe0 | (cp >> 12));
-        out[1] = (char)(0x80 | ((cp >> 6) & 0x3f));
-        out[2] = (char)(0x80 | (cp & 0x3f));
-        return 3;
-    }
-    out[0] = (char)(0xf0 | (cp >> 18));
-    out[1] = (char)(0x80 | ((cp >> 12) & 0x3f));
-    out[2] = (char)(0x80 | ((cp >> 6) & 0x3f));
-    out[3] = (char)(0x80 | (cp & 0x3f));
-    return 4;
-}
-
-static void AppendCp(StrBuilder& out, uint32_t cp) {
-    char bytes[4];
-    int n = EncodeUtf8(bytes, cp);
-    out.Append(Str(bytes, n));
 }
 
 static ArenaStr Decode(Arena* a, Str value, bool attribute) {
@@ -198,7 +166,7 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
                 i++;
             }
             if (c == 0) {
-                AppendCp(out, 0xfffd);
+                out.AppendUtf8(0xfffd);
             } else {
                 out.AppendChar(c);
             }
@@ -213,11 +181,7 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
                 i++;
             }
             int digits = i;
-            while (
-                i < len(value) &&
-                (IsDigit(value.s[i]) ||
-                 (radix == 16 && ((value.s[i] >= 'a' && value.s[i] <= 'f') ||
-                                  (value.s[i] >= 'A' && value.s[i] <= 'F'))))) {
+            while (i < len(value) && RadixDigit(value.s[i], radix) >= 0) {
                 i++;
             }
             if (digits == i) {
@@ -228,7 +192,7 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
             uint32_t cp =
                 NumericEntity(Str(value.s + digits, i - digits), radix);
             if (i < len(value) && value.s[i] == ';') i++;
-            AppendCp(out, cp);
+            out.AppendUtf8(cp);
             continue;
         }
         int end = i;
@@ -239,7 +203,7 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
         int matched = -1;
         Str decoded = {};
         for (int n = end - i; n > 0; n--) {
-            decoded = NamedEntity(Str(value.s + i, n));
+            decoded = HtmlNamedCharRef(Str(value.s + i, n));
             if (decoded.s) {
                 matched = n;
                 break;
@@ -1074,33 +1038,9 @@ Node* ParseFragment(Arena* a, Str source, Str context, ParseOptions options) {
     return Parse(a, source, context, options, true);
 }
 
-const Attribute* Attr(Arena* a, const Node* node, Str name) {
-    if (!node) return nullptr;
-    for (const Attribute* attr = NodeAttrs(a, node); attr;
-         attr = AttributeNext(a, attr)) {
-        if (StrEqI(AttributeName(a, attr), name)) return attr;
-    }
-    return nullptr;
-}
-
-Str AttrValue(Arena* a, const Node* node, Str name) {
-    return AttributeValue(a, Attr(a, node, name));
-}
-
+// Text escapes `>`, an attribute value `"`; both escape `&` and `<`.
 static void WriteEscaped(StrBuilder& out, Str value, bool attribute) {
-    for (int i = 0; i < len(value); i++) {
-        char c = value.s[i];
-        if (c == '&')
-            out.Append(StrL("&amp;"));
-        else if (c == '<')
-            out.Append(StrL("&lt;"));
-        else if (c == '>' && !attribute)
-            out.Append(StrL("&gt;"));
-        else if (c == '"' && attribute)
-            out.Append(StrL("&quot;"));
-        else
-            out.AppendChar(c);
-    }
+    AppendHtmlEscaped(out, value, !attribute, attribute);
 }
 
 static void WriteNode(Arena* a, StrBuilder& out, const Node* node,

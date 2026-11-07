@@ -119,32 +119,7 @@ static bool ParseHexColor(Str s, Rgba* out) {
     if (n != 3 && n != 6 && n != 8) {
         return false;
     }
-    int v[8] = {};
-    for (int i = 0; i < n; i++) {
-        char c = s.s[i + 1];
-        if (c >= '0' && c <= '9') {
-            v[i] = c - '0';
-        } else if (c >= 'a' && c <= 'f') {
-            v[i] = c - 'a' + 10;
-        } else if (c >= 'A' && c <= 'F') {
-            v[i] = c - 'A' + 10;
-        } else {
-            return false;
-        }
-    }
-    Rgba c = {};
-    if (n == 3) {
-        c = Rgba{(uint8_t)(v[0] * 17), (uint8_t)(v[1] * 17),
-                 (uint8_t)(v[2] * 17), 255};
-    } else {
-        c = Rgba{(uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]),
-                 (uint8_t)(v[4] * 16 + v[5]), 255};
-        if (n == 8) {
-            c.a = (uint8_t)(v[6] * 16 + v[7]);
-        }
-    }
-    *out = c;
-    return true;
+    return RgbaParseHexDigits(Str(s.s + 1, n), out);
 }
 
 // One colour member: absent leaves the style alone, and a bad one is an error

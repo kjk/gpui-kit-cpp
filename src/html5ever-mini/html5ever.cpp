@@ -36,36 +36,11 @@ static ArenaStr Lower(Arena* a, Str value) {
     return result;
 }
 
-static int EncodeUtf8(char* out, uint32_t cp) {
-    if (cp <= 0x7f) {
-        out[0] = (char)cp;
-        return 1;
-    }
-    if (cp <= 0x7ff) {
-        out[0] = (char)(0xc0 | (cp >> 6));
-        out[1] = (char)(0x80 | (cp & 0x3f));
-        return 2;
-    }
-    if (cp <= 0xffff) {
-        out[0] = (char)(0xe0 | (cp >> 12));
-        out[1] = (char)(0x80 | ((cp >> 6) & 0x3f));
-        out[2] = (char)(0x80 | (cp & 0x3f));
-        return 3;
-    }
-    out[0] = (char)(0xf0 | (cp >> 18));
-    out[1] = (char)(0x80 | ((cp >> 12) & 0x3f));
-    out[2] = (char)(0x80 | ((cp >> 6) & 0x3f));
-    out[3] = (char)(0x80 | (cp & 0x3f));
-    return 4;
-}
-
 static void AppendCp(StrBuilder& out, uint32_t cp) {
     if (cp == 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) {
         cp = 0xfffd;
     }
-    char bytes[4];
-    int n = EncodeUtf8(bytes, cp);
-    out.Append(Str(bytes, n));
+    out.AppendUtf8(cp);
 }
 
 static ArenaStr Decode(Arena* a, Str value) {
@@ -96,12 +71,8 @@ static ArenaStr Decode(Arena* a, Str value) {
             int digits = i;
             uint32_t cp = 0;
             while (i < len(value)) {
-                char c = value.s[i];
-                int d = c >= '0' && c <= '9'                  ? c - '0'
-                        : radix == 16 && c >= 'a' && c <= 'f' ? c - 'a' + 10
-                        : radix == 16 && c >= 'A' && c <= 'F' ? c - 'A' + 10
-                                                              : -1;
-                if (d < 0) break;
+                int d = HexDigitValue(value.s[i]);
+                if (d < 0 || d >= radix) break;
                 cp = cp * (uint32_t)radix + (uint32_t)d;
                 i++;
             }
@@ -390,32 +361,9 @@ Node* ParseFragment(Arena* a, Str source, Str context, ParseOptions options) {
     return Parse(a, source, options);
 }
 
-const Attribute* Attr(Arena* a, const Node* node, Str name) {
-    for (const Attribute* at = NodeAttrs(a, node); at;
-         at = AttributeNext(a, at)) {
-        if (StrEqI(AttributeName(a, at), name)) return at;
-    }
-    return nullptr;
-}
-
-Str AttrValue(Arena* a, const Node* node, Str name) {
-    return AttributeValue(a, Attr(a, node, name));
-}
-
+// Text escapes `>`, an attribute value `"`; both escape `&` and `<`.
 static void WriteEscaped(StrBuilder& out, Str value, bool attribute) {
-    for (int i = 0; i < len(value); i++) {
-        char c = value.s[i];
-        if (c == '&')
-            out.Append(StrL("&amp;"));
-        else if (c == '<')
-            out.Append(StrL("&lt;"));
-        else if (c == '>' && !attribute)
-            out.Append(StrL("&gt;"));
-        else if (c == '"' && attribute)
-            out.Append(StrL("&quot;"));
-        else
-            out.AppendChar(c);
-    }
+    AppendHtmlEscaped(out, value, !attribute, attribute);
 }
 
 static void Write(Arena* a, StrBuilder& out, const Node* node, bool include) {

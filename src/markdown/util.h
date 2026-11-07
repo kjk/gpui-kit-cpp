@@ -63,7 +63,7 @@ inline bool IsAsciiDigit(uint8_t b) {
     return b >= '0' && b <= '9';
 }
 inline bool IsAsciiHexDigit(uint8_t b) {
-    return IsAsciiDigit(b) || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F');
+    return base::HexDigitValue((char)b) >= 0;
 }
 inline bool IsAsciiAlpha(uint8_t b) {
     return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z');
@@ -76,7 +76,7 @@ inline bool IsAsciiControl(uint8_t b) {
 }
 
 // One UTF-8 code point into `out`. Returns how many bytes it took.
-int32_t Utf8Encode(char* out, uint32_t cp);
+using base::Utf8Encode;
 
 // ─── util/slice.rs ───────────────────────────────────────────────────────
 

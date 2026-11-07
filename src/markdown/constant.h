@@ -60,17 +60,8 @@ extern const char kHtmlBlockNames[];
 extern const char kHtmlRawNames[];
 
 // CHARACTER_REFERENCES: name and value of every named character reference,
-// sensitive to casing, sorted the way the crate sorts them. The names and the
-// values are two `SeqStrings` runs and the table is byte offsets into them,
-// so the lookup is still the binary search the sort is for while the table
-// itself carries no pointer — and so no relocation — per entry.
-struct CharacterReference {
-    int32_t nameOff;
-    int32_t valueOff;
-};
-extern const char kCharacterReferenceNames[];
-extern const char kCharacterReferenceValues[];
-extern const CharacterReference kCharacterReferences[2125];
+// sensitive to casing. It is the WHATWG table html5ever decodes with too, so
+// the one copy is base's: `base::HtmlNamedCharRef`.
 
 } // namespace markdown
 

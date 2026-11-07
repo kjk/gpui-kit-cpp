@@ -8723,21 +8723,7 @@ static int Utf8Size(uint32_t cp) {
 }
 
 static void WriteUtf8(uint8_t* out, uint32_t cp) {
-    if (cp < 0x80) {
-        out[0] = (uint8_t)cp;
-    } else if (cp < 0x800) {
-        out[0] = (uint8_t)(0xC0 | (cp >> 6));
-        out[1] = (uint8_t)(0x80 | (cp & 0x3F));
-    } else if (cp < 0x10000) {
-        out[0] = (uint8_t)(0xE0 | (cp >> 12));
-        out[1] = (uint8_t)(0x80 | ((cp >> 6) & 0x3F));
-        out[2] = (uint8_t)(0x80 | (cp & 0x3F));
-    } else {
-        out[0] = (uint8_t)(0xF0 | (cp >> 18));
-        out[1] = (uint8_t)(0x80 | ((cp >> 12) & 0x3F));
-        out[2] = (uint8_t)(0x80 | ((cp >> 6) & 0x3F));
-        out[3] = (uint8_t)(0x80 | (cp & 0x3F));
-    }
+    Utf8Encode((char*)out, cp);
 }
 
 static JSValue NativeTextEncode(JSContext* ctx, JSValueConst, int argc,
@@ -13112,11 +13098,9 @@ static Str RandomComponentStateProof() {
     }
     StrBuilder proof;
     proof.Append(StrL("gpui-shell-state-"));
-    static const char hex[] = "0123456789abcdef";
-    for (uint8_t byte : bytes) {
-        proof.AppendChar(hex[byte >> 4]);
-        proof.AppendChar(hex[byte & 15]);
-    }
+    char hex[sizeof(bytes) * 2];
+    HexEncode(bytes, (int)sizeof(bytes), hex);
+    proof.Append(Str(hex, (int)sizeof(hex)));
     return proof.TakeStr();
 }
 
@@ -14045,32 +14029,10 @@ static void RetainedCallbackIds(const shell::RetainedEntry* entry,
                                 shell::RetainedEvent event,
                                 Vec<shell::CallbackId>* out);
 
-// One codepoint as UTF-8. Written out rather than borrowed from
-// src/markdown/, which is a ported crate this tree keeps to itself.
+// One codepoint as UTF-8.
 static TempStr ShellUtf8Temp(uint32_t cp) {
     TempStr out = AllocStrTemp(4);
-    if (cp < 0x80) {
-        out.s[0] = (char)cp;
-        out.len = 1;
-        return out;
-    }
-    if (cp < 0x800) {
-        out.s[0] = (char)(0xC0 | (cp >> 6));
-        out.s[1] = (char)(0x80 | (cp & 0x3F));
-        out.len = 2;
-        return out;
-    }
-    if (cp < 0x10000) {
-        out.s[0] = (char)(0xE0 | (cp >> 12));
-        out.s[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        out.s[2] = (char)(0x80 | (cp & 0x3F));
-        out.len = 3;
-        return out;
-    }
-    out.s[0] = (char)(0xF0 | (cp >> 18));
-    out.s[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-    out.s[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    out.s[3] = (char)(0x80 | (cp & 0x3F));
+    out.len = Utf8Encode(out.s, cp);
     return out;
 }
 

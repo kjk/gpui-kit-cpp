@@ -28,15 +28,9 @@ static bool IsAsciiAlnumCp(uint32_t cp) {
            (cp >= '0' && cp <= '9');
 }
 
-// The regex crate's \s (Unicode White_Space), the parts of it that occur in
-// documents this linter sees.
+// The regex crate's \s (Unicode White_Space).
 static bool IsSpaceCp(uint32_t cp) {
-    if (cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r' || cp == '\f' ||
-        cp == 0x0B || cp == 0x85 || cp == 0xA0) {
-        return true;
-    }
-    return cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200A) || cp == 0x2028 ||
-           cp == 0x2029 || cp == 0x202F || cp == 0x205F || cp == 0x3000;
+    return base::IsUnicodeWhitespace(cp);
 }
 
 // `[\p{CJK_N}…]` classes: the five scripts plus the literal '|' the macro

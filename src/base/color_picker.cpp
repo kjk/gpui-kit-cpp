@@ -177,19 +177,6 @@ uint32_t ColorPickerSliderColor(const ColorPickerState* s) {
     return c.a == 255 ? rgb : ((uint32_t)c.a << 24) | rgb;
 }
 
-static int HexDigit(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
 bool ColorPickerParseHex(Str text, uint32_t* out) {
     if (!text.s) {
         return false;
@@ -208,33 +195,12 @@ bool ColorPickerParseHex(Str text, uint32_t* out) {
         n--;
     }
     // parse_hex takes 3, 4, 6 and 8 digits, the wider two carrying an alpha.
-    if (n != 3 && n != 4 && n != 6 && n != 8) {
+    uint32_t rgba = 0;
+    if (!ParseHexRgba(Str(p, n), &rgba)) {
         return false;
     }
-    int v[8] = {};
-    for (int i = 0; i < n; i++) {
-        v[i] = HexDigit(p[i]);
-        if (v[i] < 0) {
-            return false;
-        }
-    }
-    uint32_t r, g, b, alpha = 255;
-    if (n == 3 || n == 4) {
-        r = (uint32_t)(v[0] * 17);
-        g = (uint32_t)(v[1] * 17);
-        b = (uint32_t)(v[2] * 17);
-        if (n == 4) {
-            alpha = (uint32_t)(v[3] * 17);
-        }
-    } else {
-        r = (uint32_t)(v[0] * 16 + v[1]);
-        g = (uint32_t)(v[2] * 16 + v[3]);
-        b = (uint32_t)(v[4] * 16 + v[5]);
-        if (n == 8) {
-            alpha = (uint32_t)(v[6] * 16 + v[7]);
-        }
-    }
-    uint32_t rgb = (r << 16) | (g << 8) | b;
+    uint32_t rgb = rgba >> 8;
+    uint32_t alpha = rgba & 0xff;
     *out = alpha == 255 ? rgb : (alpha << 24) | rgb;
     return true;
 }
