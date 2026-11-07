@@ -6514,6 +6514,10 @@ float SliderValueToPct(const SliderState* s, float value);
 // update_thumb_pos: the percentages that follow from the value.
 void SliderUpdateThumbPos(SliderState* s);
 
+// snap_to_step: the nearest step counted from `min`, kept inside the range.
+// A step that is not a positive finite number leaves the value continuous.
+float SliderSnapToStep(float value, float min, float max, float step);
+
 // update_value_by_position. `isStart` moves the low end of a range. Rust ends
 // this with `cx.emit(SliderEvent::Change)`; the window here raises the event
 // instead, so this returns whether the value actually moved.

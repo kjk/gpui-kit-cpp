@@ -149,6 +149,14 @@ bool SliderIsStartAt(const SliderState* s, Axis axis, Point pos) {
     return PctAt(s, axis, pos) < center;
 }
 
+float SliderSnapToStep(float value, float min, float max, float step) {
+    if (!(step > 0.f && isfinite(step))) {
+        return value;
+    }
+    float snapped = min + roundf((value - min) / step) * step;
+    return BoundThumb(snapped, min, max);
+}
+
 bool SliderUpdateByPosition(SliderState* s, Axis axis, Point pos,
                             bool isStart) {
     s->dragging = true;
@@ -156,18 +164,16 @@ bool SliderUpdateByPosition(SliderState* s, Axis axis, Point pos,
     pct = isStart ? ClampF(pct, 0.f, s->pctHi) : ClampF(pct, s->pctLo, 1.f);
 
     float value = SliderPctToValue(s, pct);
-    if (s->step > 0) {
-        value = roundf(value / s->step) * s->step;
-    }
+    value = SliderSnapToStep(value, s->min, s->max, s->step);
 
     SliderValue before = s->value;
     if (isStart) {
-        s->pctLo = pct;
         SliderValueSetStart(&s->value, value);
     } else {
-        s->pctHi = pct;
         SliderValueSetEnd(&s->value, value);
     }
+    // The thumb stands at the value, on its step, not at the pointer.
+    SliderUpdateThumbPos(s);
     return s->value.lo != before.lo || s->value.hi != before.hi;
 }
 

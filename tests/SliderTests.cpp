@@ -7,6 +7,8 @@
 
 #include "Test.h"
 
+#include <math.h>
+
 static void ValueConversionsAndClampingArePreserved() {
     SliderValue single = SliderSingle(5.f);
     utassert(!single.range);
@@ -102,6 +104,58 @@ static void PositionIsClampedToTheTrack() {
     utassertnear(s.value.End(), 0.f);
     SliderUpdateByPosition(&s, Axis::Horizontal, {400, 10}, false);
     utassertnear(s.value.End(), 100.f);
+}
+
+// dragging_snaps_from_min. Steps count from min, and a step that is not a
+// positive finite number leaves the value continuous.
+static void DraggingSnapsFromMin() {
+    utassertnear(SliderSnapToStep(9.4f, 3.f, 100.f, 5.f), 8.f);
+    utassertnear(SliderSnapToStep(11.f, 3.f, 100.f, 5.f), 13.f);
+    utassertnear(SliderSnapToStep(99.f, 3.f, 100.f, 5.f), 98.f);
+    utassertnear(SliderSnapToStep(100.f, 0.f, 99.f, 10.f), 99.f);
+    utassertnear(SliderSnapToStep(42.5f, 0.f, 100.f, 0.f), 42.5f);
+    utassertnear(SliderSnapToStep(42.5f, 0.f, 100.f, -5.f), 42.5f);
+    utassertnear(SliderSnapToStep(42.5f, 0.f, 100.f, NAN), 42.5f);
+    utassertnear(SliderSnapToStep(42.5f, 0.f, 100.f, INFINITY), 42.5f);
+}
+
+// a_drag_snaps_to_steps_counted_from_min. 9 sits between 8 and 13, not 10.
+static void ADragSnapsToStepsCountedFromMin() {
+    SliderState s = SliderStateNew(3.f, 103.f, SliderSingle(0.f), 5.f);
+    SliderSetBounds(&s, {0, 0, 100, 10});
+    SliderUpdateByPosition(&s, Axis::Horizontal, {6, 0}, false);
+    utassertnear(s.value.End(), 8.f);
+}
+
+// a_dropped_thumb_stands_at_its_value. The thumb percentage follows the
+// snapped value, not the pointer.
+static void ADroppedThumbStandsAtItsValue() {
+    SliderState s = SliderStateNew(0.f, 100.f, SliderSingle(0.f), 25.f);
+    SliderSetBounds(&s, {0, 0, 100, 10});
+    SliderUpdateByPosition(&s, Axis::Horizontal, {30, 0}, false);
+    utassertnear(s.value.End(), 25.f);
+    utassertnear(s.pctLo, 0.f);
+    utassertnear(s.pctHi, 0.25f);
+
+    SliderSetValue(&s, SliderRange(25.f, 75.f));
+    SliderUpdateByPosition(&s, Axis::Horizontal, {40, 0}, true);
+    SliderUpdateByPosition(&s, Axis::Horizontal, {60, 0}, false);
+    utassertnear(s.value.Start(), 50.f);
+    utassertnear(s.value.End(), 50.f);
+    utassertnear(s.pctLo, 0.5f);
+    utassertnear(s.pctHi, 0.5f);
+}
+
+// a_zero_step_drags_continuously. 0, negative, NaN and infinity stay at 30.
+static void AZeroStepDragsContinuously() {
+    float steps[4] = {0.f, -5.f, NAN, INFINITY};
+    for (int i = 0; i < 4; i++) {
+        SliderState s = SliderStateNew(0.f, 100.f, SliderSingle(0.f), steps[i]);
+        SliderSetBounds(&s, {0, 0, 100, 10});
+        SliderUpdateByPosition(&s, Axis::Horizontal, {30, 0}, false);
+        utassertnear(s.value.End(), 30.f);
+        utassertnear(s.pctHi, 0.3f);
+    }
 }
 
 static void ValueSnapsToTheStep() {
@@ -342,6 +396,10 @@ void TestSlider() {
     LogarithmicLimitsAreNudgedInsteadOfPanicking();
     PositionUpdatesTheValueAlongTheAxis();
     PositionIsClampedToTheTrack();
+    DraggingSnapsFromMin();
+    ADragSnapsToStepsCountedFromMin();
+    ADroppedThumbStandsAtItsValue();
+    AZeroStepDragsContinuously();
     ValueSnapsToTheStep();
     RangeEndsKeepTheirOrder();
     APressTakesTheNearerHalfOfARange();

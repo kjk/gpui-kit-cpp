@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5d6a1b733c0be01fed9f14822b532cf6d9fd6df3` (2026-11-06,
-motion: Reverse an interrupted transition as CSS does (#3820)).
-An interrupted value transition shortens a reversal back to where it
-logically started, keeps the curve it began with until the next
-retarget, and scales a negative delay by the same factor. A finished
-transition sent back to its start runs at full length.
+Processed through `1458fe285beba30c8035e46f19f76f1631b29f4f` (2026-11-06,
+slider: Snap a dragged value to steps counted from `min` (#3822)).
+A drag snaps to steps counted from the minimum and stays inside the
+range. A step that is not a positive finite number leaves the value
+continuous. The thumb percentage is then taken from the snapped value.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
