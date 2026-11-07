@@ -8264,6 +8264,8 @@ void IdsCollectChildren(El* e);
 void AccessibilityCollect(El* root, Vec<AccessibilityNode>* out);
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId);
+// Where node `nodeId` sits in `win->accessibility`; -1 when it is not there.
+int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId);
 bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
                                 AccessibilityAction action, Str value = {});
 // RangeValue::SetValue needs an absolute numeric setter rather than a run of

@@ -1400,15 +1400,23 @@ static void SliderEmit(Window* win, SliderState* s, SliderEventKind kind) {
 
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId) {
-    if (!win || !nodeId) {
+    if (!nodeId) {
         return nullptr;
     }
-    for (int i = 0; i < win->accessibility.len; i++) {
+    int i = WindowAccessibilityNodeIndex(win, nodeId);
+    return i < 0 ? nullptr : &win->accessibility[i];
+}
+
+int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId) {
+    if (!win) {
+        return -1;
+    }
+    for (int i = 0; i < len(win->accessibility); i++) {
         if (win->accessibility[i].id == nodeId) {
-            return &win->accessibility[i];
+            return i;
         }
     }
-    return nullptr;
+    return -1;
 }
 
 bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,

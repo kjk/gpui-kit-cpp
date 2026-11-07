@@ -175,18 +175,6 @@ static NSString* GpuiAccessibilityRole(gpui::AccessibilityRole role) {
     }
 }
 
-static int GpuiAccessibilityNodeIndex(gpui::Window* win, uint32_t id) {
-    if (!win) {
-        return -1;
-    }
-    for (int i = 0; i < win->accessibility.len; i++) {
-        if (win->accessibility[i].id == id) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 static GpuiAccessibilityElement* GpuiAccessibilityElementFor(gpui::Window* win,
                                                              uint32_t id) {
     if (!win || !win->plat || !id) {
@@ -326,7 +314,7 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     return [[view window] convertRectToScreen:inWindow];
 }
 - (id)accessibilityParent {
-    int index = GpuiAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
+    int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
     if (index < 0) {
         return nil;
     }
@@ -336,7 +324,7 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
                        : (id)gpuiWindow->plat->view;
 }
 - (NSArray*)accessibilityChildren {
-    int index = GpuiAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
+    int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
     return GpuiAccessibilityChildren(gpuiWindow, index);
 }
 - (NSArray<NSString*>*)accessibilityActionNames {
