@@ -5532,12 +5532,4 @@ void* WebViewNativeRaw(WebView* wv) {
     return wv ? wv->webview : nullptr;
 }
 
-// The message loop that drives the window drives WebView2 too.
-int EventLoopPrepare(PollFd** fds, int* timeoutMs) {
-    (void)timeoutMs;
-    *fds = nullptr;
-    return 0;
-}
-void EventLoopDispatch() {}
-
 } // namespace wry

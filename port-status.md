@@ -470,10 +470,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   Wry backend flips a window-relative point using the view's height; this
   port first converts it into the child view, then normalizes the top-left
   origin (`src/wry/wry_mac.cpp` emitDrag).
-- **No webview on wasm.** `src/wry/wry_wasm.cpp` is a stub. The Linux one,
+- **No webview on wasm.** `src/wry/wry_unsupported.cpp` answers. The Linux one,
   `wry_linux.cpp` over WebKitGTK 4.1 (a soft dependency), is compiled and
   linked but not yet seen running in a window; without
-  `libwebkit2gtk-4.1-dev` it is a stub too. `src/wry/readme.md` has both.
+  `libwebkit2gtk-4.1-dev` the same file answers. `src/wry/readme.md` has both.
 
 - **A grid repetition with the wrong number of line-name sets does not
   abort.** Rust panics unless `line_names` is empty or exactly one set

@@ -2,8 +2,8 @@
 
    libasound is a soft dependency, found by cmd/build.ts with pkg-config the
    way libcurl is: GPUI_HAVE_ALSA says it was there. Without it this build
-   has no audio input, and speech works with an application's own AudioInput
-   only.
+   has no audio input (audio_input_unsupported.cpp), and speech works with
+   an application's own AudioInput only.
 
    The plug layer behind `default` converts whatever the card runs at, so
    this asks for 16-bit mono at 48 kHz and takes the rate it is given. A
@@ -173,37 +173,6 @@ void SysAudioInputStop(AudioInputStream* s) {
     snd_pcm_close(s->pcm);
     delete s;
 }
-
-} // namespace gpui
-
-#else // !GPUI_HAVE_ALSA
-
-namespace gpui {
-
-bool SysAudioInputAvailable() {
-    return false;
-}
-
-bool SysAudioInputDeviceName(char* out, int cap) {
-    if (out && cap > 0) {
-        out[0] = 0;
-    }
-    return false;
-}
-
-AudioInputStream* SysAudioInputStart(const AudioInputCallbacks&, uint32_t*,
-                                     AudioInputError* error, char* message,
-                                     int messageCap) {
-    if (error) {
-        *error = AudioInputError::Unsupported;
-    }
-    if (message && messageCap > 0) {
-        message[0] = 0;
-    }
-    return nullptr;
-}
-
-void SysAudioInputStop(AudioInputStream*) {}
 
 } // namespace gpui
 

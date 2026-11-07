@@ -37,6 +37,21 @@
 
 #include "base.h"
 
+// No webview backend: the browser, and Linux built without WebKitGTK
+// (GPUI_HAVE_WEBKITGTK comes from cmd/build.ts's pkg-config probe).
+// wry_unsupported.cpp answers the portable API once for both, and
+// WebViewNew reports GPUI_WRY_UNSUPPORTED_REASON.
+#if GPUI_OS_WASM
+#define GPUI_WRY_UNSUPPORTED 1
+#define GPUI_WRY_UNSUPPORTED_REASON "no webview backend on this platform"
+#elif GPUI_OS_LINUX && !GPUI_HAVE_WEBKITGTK
+#define GPUI_WRY_UNSUPPORTED 1
+#define GPUI_WRY_UNSUPPORTED_REASON \
+    "built without WebKitGTK, so there is no webview here"
+#else
+#define GPUI_WRY_UNSUPPORTED 0
+#endif
+
 namespace wry {
 
 using base::Str;
@@ -567,7 +582,7 @@ Str SyntheticMouseEventJsTemp(const SyntheticMouseEvent* ev);
 // WebKitGTK's GLib main context is turned from inside it — the way GLib lets
 // any foreign loop do it, prepare / query, poll, check / dispatch — instead
 // of the other way round. On every other backend the OS loop already turns
-// the webview, and both calls are no-ops.
+// the webview (or there is none), and both calls are the no-ops below.
 
 /** `struct pollfd`'s layout, which is also `GPollFD`'s. */
 struct PollFd {
@@ -582,6 +597,14 @@ struct PollFd {
 int EventLoopPrepare(PollFd** fds, int* timeoutMs);
 /** After the host's poll has written each `revents`: run what is ready. */
 void EventLoopDispatch();
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC || GPUI_WRY_UNSUPPORTED
+inline int EventLoopPrepare(PollFd** fds, int* timeoutMs) {
+    (void)timeoutMs;
+    *fds = nullptr;
+    return 0;
+}
+inline void EventLoopDispatch() {}
+#endif
 
 /** `wry::webview_version`. Temp-arena backed; empty when there is no webview
     runtime on this machine, which is the one thing worth checking before

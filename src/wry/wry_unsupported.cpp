@@ -1,33 +1,36 @@
-/* No wry backend in the browser — wry has none. This is the seam, answering
- * the portable API with "there is no webview here".
+/* No wry backend, where GPUI_WRY_UNSUPPORTED (wry.h) says so: the portable
+ * API answers "there is no webview here".
  *
  * Part of the C++ port of lb-wry 0.53.3 (see src/wry/readme.md).
  *
- * A page already is a webview, so the thing that would go here is not a port
- * of anything in the crate: it is an `<iframe>` positioned over the gpui
- * canvas through `EM_JS`, the way `window_wasm.cpp` drives the rest of the
- * DOM. Most of the API would then be missing anyway — a cross-origin frame
- * answers no `evaluate_script`, hands over no document title, and serves no
- * custom protocol — so what it would buy is `load_url`, `set_bounds` and
- * `set_visible`, and nothing else here promises those without the rest.
+ * Linux built without libwebkit2gtk-4.1-dev lands here; wry_linux.cpp is the
+ * WebKitGTK backend when it is there.
+ *
+ * The browser has no backend in wry either. A page already is a webview, so
+ * the thing that would go there is not a port of anything in the crate: it
+ * is an `<iframe>` positioned over the gpui canvas through `EM_JS`, the way
+ * `window_wasm.cpp` drives the rest of the DOM. Most of the API would then
+ * be missing anyway — a cross-origin frame answers no `evaluate_script`,
+ * hands over no document title, and serves no custom protocol — so what it
+ * would buy is `load_url`, `set_bounds` and `set_visible`, and nothing else
+ * here promises those without the rest.
  */
 #include "wry/wry.h"
+
+#if GPUI_WRY_UNSUPPORTED
 
 namespace wry {
 
 using base::logf;
 using base::Str;
 
-static void Unsupported() {
+WebView* WebViewNew(void*, const WebViewAttributes*, bool) {
+    WebViewSetLastError(GPUI_WRY_UNSUPPORTED_REASON);
     static bool said = false;
     if (!said) {
         said = true;
-        logf("wry: no webview backend on this platform\n");
+        logf("wry: " GPUI_WRY_UNSUPPORTED_REASON "\n");
     }
-}
-
-WebView* WebViewNew(void*, const WebViewAttributes*, bool) {
-    Unsupported();
     return nullptr;
 }
 void WebViewFree(WebView*) {}
@@ -129,12 +132,6 @@ bool WebViewAvailable() {
     return false;
 }
 
-// There is no webview here to drive.
-int EventLoopPrepare(PollFd** fds, int* timeoutMs) {
-    (void)timeoutMs;
-    *fds = nullptr;
-    return 0;
-}
-void EventLoopDispatch() {}
-
 } // namespace wry
+
+#endif // GPUI_WRY_UNSUPPORTED
