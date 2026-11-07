@@ -50,6 +50,20 @@ static bool IndentClassMatch(Str cls, uint32_t c) {
 
 static bool IndentAtom(Str pat, int* pi, Str text, int* ti);
 
+// The `]` closing a character class whose body starts at `start`, stepping
+// over escapes; -1 when the class is unterminated.
+static int IndentClassEnd(Str pat, int start) {
+    int end = start;
+    while (end < len(pat) && pat.s[end] != ']') {
+        if (pat.s[end] == '\\' && end + 1 < len(pat)) {
+            end += 2;
+        } else {
+            end++;
+        }
+    }
+    return end < len(pat) ? end : -1;
+}
+
 // Walk one atom in the pattern without looking at the text, so a following
 // quantifier can be seen even when the atom matches zero times.
 static bool IndentSkipAtom(Str pat, int* pi) {
@@ -69,15 +83,8 @@ static bool IndentSkipAtom(Str pat, int* pi) {
         return true;
     }
     if (c == '[') {
-        int end = *pi + 1;
-        while (end < len(pat) && pat.s[end] != ']') {
-            if (pat.s[end] == '\\' && end + 1 < len(pat)) {
-                end += 2;
-            } else {
-                end++;
-            }
-        }
-        if (end >= len(pat)) {
+        int end = IndentClassEnd(pat, *pi + 1);
+        if (end < 0) {
             return false;
         }
         *pi = end + 1;
@@ -197,15 +204,8 @@ static bool IndentAtom(Str pat, int* pi, Str text, int* ti) {
     }
     if (c == '[') {
         int start = *pi + 1;
-        int end = start;
-        while (end < len(pat) && pat.s[end] != ']') {
-            if (pat.s[end] == '\\' && end + 1 < len(pat)) {
-                end += 2;
-            } else {
-                end++;
-            }
-        }
-        if (end >= len(pat)) {
+        int end = IndentClassEnd(pat, start);
+        if (end < 0) {
             return false;
         }
         *pi = end + 1;
@@ -961,6 +961,105 @@ int InputDecorationSpans(const InputState* s, TextSpan* out, int cap) {
 
 // ─── range decorations (decorations.rs) ────────────────────────────────────
 
+// The interval index both decoration kinds keep: `indices` orders the entries
+// by start (ties by insertion), and each midpoint of that order stores in
+// `maxEnds` the maximum end of its subtree.
+template <typename T>
+static void IntervalSortByStart(int* indices, int n, const T* decorations) {
+    std::sort(indices, indices + n, [decorations](int a, int b) {
+        int sa = decorations[a].range.start;
+        int sb = decorations[b].range.start;
+        return sa < sb || (sa == sb && a < b);
+    });
+}
+
+template <typename T>
+static int IntervalBuild(const T* decorations, const int* indices, int* maxEnds,
+                         int lo, int hi) {
+    if (hi <= lo) {
+        return 0;
+    }
+    int mid = lo + (hi - lo) / 2;
+    int end = decorations[indices[mid]].range.end;
+    end = std::max(end, IntervalBuild(decorations, indices, maxEnds, lo, mid));
+    end = std::max(end,
+                   IntervalBuild(decorations, indices, maxEnds, mid + 1, hi));
+    maxEnds[mid] = end;
+    return end;
+}
+
+template <typename T>
+static void IntervalRebuild(const T* decorations, int n, Vec<int>& indices,
+                            Vec<int>& maxEnds) {
+    VecClear(indices);
+    VecClear(maxEnds);
+    if (n <= 0) {
+        return;
+    }
+    VecResize(indices, n);
+    VecResize(maxEnds, n);
+    for (int i = 0; i < n; i++) {
+        indices[i] = i;
+        maxEnds[i] = 0;
+    }
+    IntervalSortByStart(indices.els, n, decorations);
+    IntervalBuild(decorations, indices.els, maxEnds.els, 0, n);
+}
+
+// Appends the indices of entries in [lo, hi) of the index that intersect
+// `range` and returns the number of visited nodes. With `emptyTouches`, an
+// empty entry touches the span when it lies inside it, including at its
+// start; the subtree max is then tested as if it could be empty, so a
+// boundary at the span's start is not pruned.
+template <typename T>
+static int IntervalQuery(const T* decorations, const int* indices,
+                         const int* maxEnds, int lo, int hi, Selection range,
+                         bool emptyTouches, Vec<int>* matches) {
+    if (hi <= lo || range.start >= range.end) {
+        return 0;
+    }
+    auto touches = [&](int end, bool empty) {
+        return end > range.start ||
+               (emptyTouches && empty && end == range.start);
+    };
+    int mid = lo + (hi - lo) / 2;
+    if (!touches(maxEnds[mid], true)) {
+        return 1;
+    }
+    int visited = 1 + IntervalQuery(decorations, indices, maxEnds, lo, mid,
+                                    range, emptyTouches, matches);
+    int ix = indices[mid];
+    Selection candidate = decorations[ix].range;
+    if (candidate.start < range.end) {
+        if (touches(candidate.end, candidate.IsEmpty())) {
+            VecAppend(*matches, ix);
+        }
+        visited += IntervalQuery(decorations, indices, maxEnds, mid + 1, hi,
+                                 range, emptyTouches, matches);
+    }
+    return visited;
+}
+
+// Sorts one collection's query matches and hands each distinct entry out once
+// (several ranges can match the same entry). Returns the running count.
+template <typename T>
+static int IntervalEmitMatches(Vec<int>& matches, const T* decorations,
+                               const T** out, int cap, int count) {
+    std::sort(matches.els, matches.els + len(matches));
+    int prev = -1;
+    for (int i = 0; i < len(matches); i++) {
+        if (matches[i] == prev) {
+            continue;
+        }
+        prev = matches[i];
+        if (out && count < cap) {
+            out[count] = &decorations[matches[i]];
+        }
+        count++;
+    }
+    return count;
+}
+
 RangeDecoration RangeDecoration::New(Selection range) {
     RangeDecoration out;
     out.range = range;
@@ -988,56 +1087,17 @@ RangeDecoration RangeDecoration::WithColor(Rgba value) const {
 }
 
 int DecorationIndex::Build(const RangeDecoration* decorations, int lo, int hi) {
-    if (hi <= lo) {
-        return 0;
-    }
-    int mid = lo + (hi - lo) / 2;
-    int end = decorations[indices[mid]].range.end;
-    end = std::max(end, Build(decorations, lo, mid));
-    end = std::max(end, Build(decorations, mid + 1, hi));
-    maxEnds[mid] = end;
-    return end;
+    return IntervalBuild(decorations, indices.els, maxEnds.els, lo, hi);
 }
 
 void DecorationIndex::Rebuild(const RangeDecoration* decorations, int n) {
-    VecClear(indices);
-    VecClear(maxEnds);
-    if (n <= 0) {
-        return;
-    }
-    VecResize(indices, n);
-    VecResize(maxEnds, n);
-    for (int i = 0; i < n; i++) {
-        indices[i] = i;
-        maxEnds[i] = 0;
-    }
-    std::sort(indices.els, indices.els + n, [decorations](int a, int b) {
-        int sa = decorations[a].range.start;
-        int sb = decorations[b].range.start;
-        return sa < sb || (sa == sb && a < b);
-    });
-    Build(decorations, 0, n);
+    IntervalRebuild(decorations, n, indices, maxEnds);
 }
 
 int DecorationIndex::Query(const RangeDecoration* decorations, int lo, int hi,
                            Selection range, Vec<int>* matches) const {
-    if (hi <= lo || range.start >= range.end) {
-        return 0;
-    }
-    int mid = lo + (hi - lo) / 2;
-    if (maxEnds[mid] <= range.start) {
-        return 1;
-    }
-    int visited = 1 + Query(decorations, lo, mid, range, matches);
-    int ix = indices[mid];
-    Selection candidate = decorations[ix].range;
-    if (candidate.start < range.end) {
-        if (candidate.end > range.start) {
-            VecAppend(*matches, ix);
-        }
-        visited += Query(decorations, mid + 1, hi, range, matches);
-    }
-    return visited;
+    return IntervalQuery(decorations, indices.els, maxEnds.els, lo, hi, range,
+                         false, matches);
 }
 
 void RangeDecorationEntries::Reindex() {
@@ -1173,18 +1233,8 @@ int RangeDecorationCollections::Intersecting(const Selection* ranges,
             entry->index.Query(entry->decorations.els, 0,
                                len(entry->decorations), ranges[r], &matches);
         }
-        std::sort(matches.els, matches.els + len(matches));
-        int prev = -1;
-        for (int i = 0; i < len(matches); i++) {
-            if (matches[i] == prev) {
-                continue;
-            }
-            prev = matches[i];
-            if (out && count < cap) {
-                out[count] = &entry->decorations[matches[i]];
-            }
-            count++;
-        }
+        count = IntervalEmitMatches(matches, entry->decorations.els, out, cap,
+                                    count);
     }
     return count;
 }
@@ -1445,67 +1495,21 @@ struct MarkEntries {
 
 template <typename T>
 static int MarkBuild(MarkEntries<T>* entry, int lo, int hi) {
-    if (!entry || hi <= lo) {
-        return 0;
-    }
-    int mid = lo + (hi - lo) / 2;
-    int end = entry->decorations[entry->indices[mid]].range.end;
-    end = std::max(end, MarkBuild(entry, lo, mid));
-    end = std::max(end, MarkBuild(entry, mid + 1, hi));
-    entry->maxEnds[mid] = end;
-    return end;
+    return IntervalBuild(entry->decorations.els, entry->indices.els,
+                         entry->maxEnds.els, lo, hi);
 }
 
 template <typename T>
 static void MarkReindex(MarkEntries<T>* entry) {
-    VecClear(entry->indices);
-    VecClear(entry->maxEnds);
-    int n = len(entry->decorations);
-    if (n <= 0) {
-        return;
-    }
-    VecResize(entry->indices, n);
-    VecResize(entry->maxEnds, n);
-    for (int i = 0; i < n; i++) {
-        entry->indices[i] = i;
-        entry->maxEnds[i] = 0;
-    }
-    const T* decorations = entry->decorations.els;
-    std::sort(entry->indices.els, entry->indices.els + n,
-              [decorations](int a, int b) {
-                  int sa = decorations[a].range.start;
-                  int sb = decorations[b].range.start;
-                  return sa < sb || (sa == sb && a < b);
-              });
-    MarkBuild(entry, 0, n);
+    IntervalRebuild(entry->decorations.els, len(entry->decorations),
+                    entry->indices, entry->maxEnds);
 }
 
 template <typename T>
 static int MarkQuery(const MarkEntries<T>* entry, int lo, int hi,
                      Selection range, Vec<int>* matches) {
-    if (!entry || hi <= lo || range.start >= range.end) {
-        return 0;
-    }
-    // An empty decoration touches the span when it lies inside it, including
-    // at its start. The subtree max is tested as if it could be empty, so a
-    // boundary at the span's start is not pruned.
-    auto touches = [&](int end, bool empty) {
-        return end > range.start || (empty && end == range.start);
-    };
-    int mid = lo + (hi - lo) / 2;
-    if (!touches(entry->maxEnds[mid], true)) {
-        return 1;
-    }
-    int visited = 1 + MarkQuery(entry, lo, mid, range, matches);
-    int ix = entry->indices[mid];
-    Selection candidate = entry->decorations[ix].range;
-    if (candidate.start < range.end) {
-        if (touches(candidate.end, candidate.IsEmpty())) {
-            VecAppend(*matches, ix);
-        }
-        visited += MarkQuery(entry, mid + 1, hi, range, matches);
-    }
-    return visited;
+    return IntervalQuery(entry->decorations.els, entry->indices.els,
+                         entry->maxEnds.els, lo, hi, range, true, matches);
 }
 
 template <typename T>
@@ -1641,13 +1645,8 @@ struct MarkCollections {
                 }
             }
             if (!sorted) {
-                const T* decorations = entry->decorations.els;
-                std::sort(indices.els, indices.els + len(indices),
-                          [decorations](int a, int b) {
-                              int sa = decorations[a].range.start;
-                              int sb = decorations[b].range.start;
-                              return sa < sb || (sa == sb && a < b);
-                          });
+                IntervalSortByStart(indices.els, len(indices),
+                                    entry->decorations.els);
             }
             VecResize(entry->maxEnds, retained);
             for (int i = 0; i < retained; i++) {
@@ -1664,18 +1663,8 @@ struct MarkCollections {
             const MarkEntries<T>* entry = entries[e];
             VecClear(matches);
             MarkQuery(entry, 0, len(entry->decorations), range, &matches);
-            std::sort(matches.els, matches.els + len(matches));
-            int prev = -1;
-            for (int i = 0; i < len(matches); i++) {
-                if (matches[i] == prev) {
-                    continue;
-                }
-                prev = matches[i];
-                if (out && count < cap) {
-                    out[count] = &entry->decorations[matches[i]];
-                }
-                count++;
-            }
+            count = IntervalEmitMatches(matches, entry->decorations.els, out,
+                                        cap, count);
         }
         return count;
     }
@@ -3267,6 +3256,41 @@ static int FittingCount(const int* candidates, int nCandidates, Str text,
     return low;
 }
 
+// What both measured wrappers start from: the indent a continuation row
+// keeps (WrappingIndent::Same, capped at kLineWrapperMaxIndent), the end of
+// every grapheme, and the line-break opportunities that fall on a grapheme
+// boundary.
+static int WrapLineScan(Str text, WrappingIndent indentMode, Vec<int>* ends,
+                        Vec<int>* opportunities) {
+    int n = len(text);
+    int indent = 0;
+    if (indentMode == WrappingIndent::Same) {
+        while (indent < n && text.s[indent] == ' ' &&
+               indent < kLineWrapperMaxIndent) {
+            indent++;
+        }
+    }
+    for (int at = 0; at < n;) {
+        uint32_t c = 0;
+        int bytes = Utf8At(text, at, &c);
+        at += bytes > 0 ? bytes : 1;
+        if (TextIsGraphemeBoundary(text, at)) {
+            VecAppend(*ends, at);
+        }
+    }
+    if (len(*ends) == 0 || (*ends)[len(*ends) - 1] != n) {
+        VecAppend(*ends, n);
+    }
+    Vec<int> all;
+    LineBreakOpportunities(text, &all);
+    for (int i = 0; i < len(all); i++) {
+        if (TextIsGraphemeBoundary(text, all[i])) {
+            VecAppend(*opportunities, all[i]);
+        }
+    }
+    return indent;
+}
+
 void MeasuredWrap(Str text, float width, WrappingIndent indentMode,
                   WrapMeasureFn measure, void* user, Vec<WrapBoundary>* out,
                   WidthRange* valid) {
@@ -3280,34 +3304,10 @@ void MeasuredWrap(Str text, float width, WrappingIndent indentMode,
     if (n <= 0 || !measure) {
         return;
     }
-    int indent = 0;
-    if (indentMode == WrappingIndent::Same) {
-        while (indent < n && text.s[indent] == ' ' &&
-               indent < kLineWrapperMaxIndent) {
-            indent++;
-        }
-    }
-    float indentWidth = measure(user, Str(text.s, indent));
     Vec<int> ends;
-    for (int at = 0; at < n;) {
-        uint32_t c = 0;
-        int bytes = Utf8At(text, at, &c);
-        at += bytes > 0 ? bytes : 1;
-        if (TextIsGraphemeBoundary(text, at)) {
-            VecAppend(ends, at);
-        }
-    }
-    if (len(ends) == 0 || ends[len(ends) - 1] != n) {
-        VecAppend(ends, n);
-    }
-    Vec<int> all;
-    LineBreakOpportunities(text, &all);
     Vec<int> opportunities;
-    for (int i = 0; i < len(all); i++) {
-        if (TextIsGraphemeBoundary(text, all[i])) {
-            VecAppend(opportunities, all[i]);
-        }
-    }
+    int indent = WrapLineScan(text, indentMode, &ends, &opportunities);
+    float indentWidth = measure(user, Str(text.s, indent));
     // A single word can span the rest of the line. Past this window the
     // original grapheme search decides, and that probe is not a word break.
     const int kMaxWordProbeGraphemes = 256;
@@ -3370,36 +3370,10 @@ void MeasuredWrapBoundaries(Str text, float width, WrappingIndent indentMode,
     if (n <= 0) {
         return;
     }
-    int indent = 0;
-    if (indentMode == WrappingIndent::Same) {
-        while (indent < n && text.s[indent] == ' ' &&
-               indent < kLineWrapperMaxIndent) {
-            indent++;
-        }
-    }
-    float indentWidth = measure(user, Str(text.s, indent));
-    // The end of every grapheme.
     Vec<int> ends;
-    for (int at = 0; at < n;) {
-        uint32_t c = 0;
-        int bytes = Utf8At(text, at, &c);
-        at += bytes > 0 ? bytes : 1;
-        if (TextIsGraphemeBoundary(text, at)) {
-            VecAppend(ends, at);
-        }
-    }
-    if (len(ends) == 0 || ends[len(ends) - 1] != n) {
-        VecAppend(ends, n);
-    }
-    // The opportunities that fall on a grapheme boundary.
-    Vec<int> all;
-    LineBreakOpportunities(text, &all);
     Vec<int> opportunities;
-    for (int i = 0; i < len(all); i++) {
-        if (TextIsGraphemeBoundary(text, all[i])) {
-            VecAppend(opportunities, all[i]);
-        }
-    }
+    int indent = WrapLineScan(text, indentMode, &ends, &opportunities);
+    float indentWidth = measure(user, Str(text.s, indent));
     auto widthOf = [&](int start, int end) {
         return measure(user, Str(text.s + start, end - start));
     };
