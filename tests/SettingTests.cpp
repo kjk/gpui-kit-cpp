@@ -447,6 +447,41 @@ static void SearchRenderKeepsOriginalItemIndexes() {
     delete win;
 }
 
+// settings.rs search_placeholder_follows_the_locale_and_keeps_the_page.
+static void SearchPlaceholderFollowsTheLocaleAndKeepsThePage() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+
+    SearchTestSettings(&cx, state)->IntoEl();
+    SettingsState* settings = state.Get(&app);
+    utassert(settings);
+    if (settings) {
+        settings->page = 2;
+        settings->group = -1;
+        // A state created under another locale. The catalogue's zh-CN
+        // placeholder, which is not the English string this process uses.
+        InputSetPlaceholder(&settings->search,
+                            StrL("\xe6\x90\x9c\xe7\xb4\xa2..."));
+        utassert(!StrEq(settings->search.placeholder,
+                        Tr("Settings.search_placeholder")));
+        SearchTestSettings(&cx, state)->IntoEl();
+        utassert(StrEq(settings->search.placeholder,
+                       Tr("Settings.search_placeholder")));
+        utassert(settings->page == 2 && settings->group == -1);
+    }
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 static El* FindChild(El* root, const El* wanted) {
     if (!root) {
         return nullptr;
@@ -904,6 +939,7 @@ void TestSetting() {
     SearchPreservesGroupIdentityUntilTheGroupDisappears();
     ResettingSearchResultsLeavesHiddenSettingsUnchanged();
     SearchRenderKeepsOriginalItemIndexes();
+    SearchPlaceholderFollowsTheLocaleAndKeepsThePage();
     FooterFollowsGroupSearchVisibility();
     ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged();
     ElementItemsAndFieldsWithoutADefault();

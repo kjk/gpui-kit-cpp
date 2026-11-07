@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `515968b9821cec2742d472429fd7a21a8322384f` (2026-11-05,
-menu: Open a scrollable menu on its checked item (#3814)). A
-scrollable menu opens with its first checked item at the top of the
-list. It measures the items for up to four frames, then leaves
-scrolling to the user. A menu with nothing checked stays at the top.
+Processed through `8bfff7108e3a64833801d863685ae80f37c4ee1c` (2026-11-05,
+setting: Follow a locale change in the search placeholder (#3815)).
+The settings search placeholder is localized again when the pane
+renders, so a locale change updates it without rebuilding the state
+or moving the selected page.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

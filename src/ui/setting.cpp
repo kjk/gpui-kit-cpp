@@ -1253,6 +1253,15 @@ static El* SettingsNoResults(Ctx* cx) {
 
 El* Settings::IntoEl() {
     SettingsState* st = state.Get(cx);
+    if (st) {
+        // The placeholder is localized when the state is created. Rebuilding
+        // the state would lose the selected page, so follow a locale change
+        // here. Write only when it changed: set_placeholder notifies.
+        Str placeholder = Tr("Settings.search_placeholder");
+        if (!StrEq(st->search.placeholder, placeholder)) {
+            InputSetPlaceholder(&st->search, placeholder);
+        }
+    }
     Str query = st ? InputValue(&st->search) : Str{};
     // The bindings are this frame's, in the order the fields paint. The
     // listeners hung off the last frame's are still resolving against it
