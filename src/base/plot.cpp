@@ -256,30 +256,6 @@ int ScaleOrdinal::Map(int domainIndex) const {
     return domainIndex % rangeLen;
 }
 
-static uint8_t PlotFontWeight(FontWeight weight) {
-    switch (weight) {
-        case FontWeight::Thin:
-            return kFontWeightThin;
-        case FontWeight::ExtraLight:
-            return kFontWeightExtraLight;
-        case FontWeight::Light:
-            return kFontWeightLight;
-        case FontWeight::Normal:
-            return kFontWeightExplicitNormal;
-        case FontWeight::Medium:
-            return kFontWeightMedium;
-        case FontWeight::Semibold:
-            return kFontWeightSemibold;
-        case FontWeight::Bold:
-            return kFontWeightBold;
-        case FontWeight::ExtraBold:
-            return kFontWeightExtraBold;
-        case FontWeight::Black:
-            return kFontWeightBlack;
-    }
-    return kFontWeightExplicitNormal;
-}
-
 static void PaintPathFill(PaintCtx* ctx, Path* path, Background fill,
                           Bounds bounds) {
     if (!path) {
@@ -507,7 +483,7 @@ void PlotLabel::Paint(PaintCtx* ctx, Bounds bounds) const {
         // Use the window's shaped-text cache, as GPUI's text_system does.
         // Fresh layouts here reshaped every tick and gave an unchanged label
         // a new scene resource generation, forcing a full repaint.
-        int weight = PlotFontWeight(item.fontWeight);
+        int weight = FontWeightBits(item.fontWeight, kFontWeightExplicitNormal);
         Size measured =
             MeasureText(ctx, item.text, item.fontSize, 0, false, weight, 0);
         float x = bounds.x + item.origin.x;

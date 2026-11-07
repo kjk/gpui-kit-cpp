@@ -1213,24 +1213,19 @@ El* DataTable::BuildEl() {
     // table_head_foreground, pinned pane and scrolling pane alike.
     // The pinned columns live in their own panes, so each side is another
     // header row at the same index. state.rs keeps one row for all three.
-    El* headFixed = gpui::TableHeader::New(cx, StrL("head-fixed"))
-                        ->Role(AccessibilityRole::Row)
-                        ->AriaRowIndex(0)
-                        ->FlexRow()
-                        ->Shrink0()
-                        ->H(headerH)
-                        ->Bg(th.tokens.tableHead)
-                        ->Fg(th.tableHeadFg)
-                        ->BorderB(1, th.border);
-    El* headRight = gpui::TableHeader::New(cx, StrL("head-right"))
-                        ->Role(AccessibilityRole::Row)
-                        ->AriaRowIndex(0)
-                        ->FlexRow()
-                        ->Shrink0()
-                        ->H(headerH)
-                        ->Bg(th.tokens.tableHead)
-                        ->Fg(th.tableHeadFg)
-                        ->BorderB(1, th.border);
+    auto pinnedHead = [&](Str id) {
+        return gpui::TableHeader::New(cx, id)
+            ->Role(AccessibilityRole::Row)
+            ->AriaRowIndex(0)
+            ->FlexRow()
+            ->Shrink0()
+            ->H(headerH)
+            ->Bg(th.tokens.tableHead)
+            ->Fg(th.tableHeadFg)
+            ->BorderB(1, th.border);
+    };
+    El* headFixed = pinnedHead(StrL("head-fixed"));
+    El* headRight = pinnedHead(StrL("head-right"));
     El* headWrap = follow(Div(a)
                               ->FlexRow()
                               ->W(kFill)

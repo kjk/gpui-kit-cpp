@@ -74,8 +74,7 @@ Entity<ComboboxState> ComboboxState::New(App* app) {
 
 ComboboxState* ComboboxState::Multiple(bool value) {
     multiple = value;
-    state.mode = value ? SearchableListMode::Multi : SearchableListMode::Single;
-    state.closeOnSelect = !value;
+    SearchableListSetMultiple(&state, value);
     return this;
 }
 
@@ -400,10 +399,8 @@ Combobox* Combobox::Multiple(bool v) {
         owner->Multiple(v);
         return this;
     }
-    SearchableListState* s = state.Get(cx);
-    if (s) {
-        s->mode = v ? SearchableListMode::Multi : SearchableListMode::Single;
-        s->closeOnSelect = !v;
+    if (SearchableListState* s = state.Get(cx)) {
+        SearchableListSetMultiple(s, v);
     }
     return this;
 }

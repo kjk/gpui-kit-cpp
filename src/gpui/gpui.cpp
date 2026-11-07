@@ -2773,46 +2773,49 @@ Str FontFamilyName(uint8_t id) {
     return gFontFamilies[id];
 }
 
-uint16_t ElTextWeight(const El* e) {
-    uint16_t w = kFontWeightNormal;
-    switch ((FontWeight)e->style.fontWeight) {
+uint8_t FontWeightBits(FontWeight weight, uint8_t unknown) {
+    switch (weight) {
         case FontWeight::Thin:
-            w = kFontWeightThin;
-            break;
+            return kFontWeightThin;
         case FontWeight::ExtraLight:
-            w = kFontWeightExtraLight;
-            break;
+            return kFontWeightExtraLight;
         case FontWeight::Light:
-            w = kFontWeightLight;
-            break;
+            return kFontWeightLight;
         case FontWeight::Normal:
-            w = kFontWeightExplicitNormal;
-            break;
+            return kFontWeightExplicitNormal;
         case FontWeight::Medium:
-            w = kFontWeightMedium;
-            break;
+            return kFontWeightMedium;
         case FontWeight::Semibold:
-            w = kFontWeightSemibold;
-            break;
+            return kFontWeightSemibold;
         case FontWeight::Bold:
-            w = kFontWeightBold;
-            break;
+            return kFontWeightBold;
         case FontWeight::ExtraBold:
-            w = kFontWeightExtraBold;
-            break;
+            return kFontWeightExtraBold;
         case FontWeight::Black:
-            w = kFontWeightBlack;
-            break;
+            return kFontWeightBlack;
         default:
-            break;
+            return unknown;
     }
-    if (e->style.fontWeight == 0 && e->style.fontBold) {
-        w = kFontWeightBold;
-    } else if (e->style.fontWeight == 0 && e->style.fontSemibold) {
-        w = kFontWeightSemibold;
-    } else if (e->style.fontWeight == 0 && e->style.fontMedium) {
-        w = kFontWeightMedium;
+}
+
+uint16_t StyleFontWeightBits(const Style& s, uint16_t unset) {
+    if (uint8_t w = FontWeightBits((FontWeight)s.fontWeight, 0)) {
+        return w;
     }
+    if (s.fontBold) {
+        return kFontWeightBold;
+    }
+    if (s.fontSemibold) {
+        return kFontWeightSemibold;
+    }
+    if (s.fontMedium) {
+        return kFontWeightMedium;
+    }
+    return unset;
+}
+
+uint16_t ElTextWeight(const El* e) {
+    uint16_t w = StyleFontWeightBits(e->style, kFontWeightNormal);
     if (e->style.fontMono) {
         w |= kFontMono;
     }

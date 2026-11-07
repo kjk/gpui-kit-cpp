@@ -163,6 +163,25 @@ static int MapTabOff(const int* map, int n, int src) {
     return map[src];
 }
 
+// One wash over [lo, hi) of a row `len` bytes long, clipped to the row and
+// mapped through the tab expansion; nothing when the clip leaves it empty.
+static void AppendRowWash(TextSpan* w, int* n, int lo, int hi, int len,
+                          const int* tabMap, Rgba bg) {
+    if (lo < 0) {
+        lo = 0;
+    }
+    if (hi > len) {
+        hi = len;
+    }
+    if (hi <= lo) {
+        return;
+    }
+    w[*n].lo = MapTabOff(tabMap, len, lo);
+    w[*n].hi = MapTabOff(tabMap, len, hi);
+    w[*n].bg = bg;
+    (*n)++;
+}
+
 static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
                           const InputState* state, int start, int len, int* at,
                           const int* tabMap) {
@@ -178,78 +197,36 @@ static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
     if (style.nMatches <= 0 && nColors == 0) {
         return el;
     }
-    if (style.nMatches <= 0) {
-        auto* w = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * nColors);
-        int n = 0;
-        for (int i = 0; i < state->documentColors.len && w; i++) {
-            const DocumentColor& dc = state->documentColors[i];
-            int lo = dc.range.start - start;
-            int hi = dc.range.end - start;
-            if (lo < 0) {
-                lo = 0;
-            }
-            if (hi > len) {
-                hi = len;
-            }
-            if (hi <= lo) {
-                continue;
-            }
-            w[n].lo = MapTabOff(tabMap, len, lo);
-            w[n].hi = MapTabOff(tabMap, len, hi);
-            w[n].bg = dc.color;
-            n++;
+    int first = 0, count = 0;
+    if (style.nMatches > 0) {
+        while (*at < style.nMatches && style.matches[*at].end <= start) {
+            (*at)++;
         }
-        return n > 0 ? el->Washes(w, n) : el;
-    }
-    while (*at < style.nMatches && style.matches[*at].end <= start) {
-        (*at)++;
-    }
-    int first = *at, count = 0;
-    while (first + count < style.nMatches && style.matches[first + count]
-                                                     .start < start + len) {
-        count++;
-    }
-    if (count <= 0) {
-        return el;
+        first = *at;
+        while (first + count < style.nMatches && style.matches[first + count]
+                                                         .start < start + len) {
+            count++;
+        }
+        if (count <= 0) {
+            return el;
+        }
     }
     auto* w = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * (count + nColors));
-    int n = 0;
-    for (int k = 0; k < count && w; k++) {
-        int ix = first + k;
-        int lo = style.matches[ix].start - start;
-        int hi = style.matches[ix].end - start;
-        if (lo < 0) {
-            lo = 0;
-        }
-        if (hi > len) {
-            hi = len;
-        }
-        if (hi <= lo) {
-            continue;
-        }
-        w[n].lo = MapTabOff(tabMap, len, lo);
-        w[n].hi = MapTabOff(tabMap, len, hi);
-        w[n].bg =
-            ix == style.currentMatch ? style.currentMatchBg : style.matchBg;
-        n++;
+    if (!w) {
+        return el;
     }
-    for (int i = 0; i < nColors && w; i++) {
+    int n = 0;
+    for (int k = 0; k < count; k++) {
+        int ix = first + k;
+        AppendRowWash(
+            w, &n, style.matches[ix].start - start,
+            style.matches[ix].end - start, len, tabMap,
+            ix == style.currentMatch ? style.currentMatchBg : style.matchBg);
+    }
+    for (int i = 0; nColors > 0 && i < state->documentColors.len; i++) {
         const DocumentColor& dc = state->documentColors[i];
-        int lo = dc.range.start - start;
-        int hi = dc.range.end - start;
-        if (lo < 0) {
-            lo = 0;
-        }
-        if (hi > len) {
-            hi = len;
-        }
-        if (hi <= lo) {
-            continue;
-        }
-        w[n].lo = MapTabOff(tabMap, len, lo);
-        w[n].hi = MapTabOff(tabMap, len, hi);
-        w[n].bg = dc.color;
-        n++;
+        AppendRowWash(w, &n, dc.range.start - start, dc.range.end - start, len,
+                      tabMap, dc.color);
     }
     return n > 0 ? el->Washes(w, n) : el;
 }
@@ -891,13 +868,6 @@ static float TabSliceWidth(void* user, Str text) {
     return w;
 }
 
-static double TabFloorPos(double x) {
-    if (x <= 0) {
-        return 0;
-    }
-    return (double)(int64_t)x;
-}
-
 static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
                          Str line) {
     TabShown shown;
@@ -942,8 +912,7 @@ static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
             float tabW = TabSliceWidth(&measure, Str(line.s + i, 1));
             double expanded = shaped + shift;
             double end = shaped + (double)tabW;
-            double next =
-                (double)stop * (TabFloorPos(expanded / (double)stop) + 1.0);
+            double next = TabNextStop(expanded, stop);
             int nsp = (int)((next - expanded) / (double)space + 0.5);
             if (nsp < 1) {
                 nsp = 1;
@@ -1003,8 +972,7 @@ static int TabSourceAtX(PaintCtx* ctx, const InputState* s, Str text, float x) {
             float tabW = TabSliceWidth(&measure, Str(text.s + i, 1));
             double expanded = shaped + shift;
             double end = shaped + (double)tabW;
-            double next =
-                (double)stop * (TabFloorPos(expanded / (double)stop) + 1.0);
+            double next = TabNextStop(expanded, stop);
             if (x < (float)next) {
                 return i;
             }
@@ -1618,6 +1586,16 @@ static void ReconcileTokenHovers(Ctx* cx, InputState* state) {
     InputTokenBoundsClear(state);
 }
 
+// What Input and Textarea both do before building rows: settle the token
+// hovers the last build left, and resolve the projected style against the
+// theme.
+static InputEditorStyle InputBeginRender(Ctx* cx, InputState* state,
+                                         const InputEditorStyle& projected) {
+    ReconcileTokenHovers(cx, state);
+    BaseTheme theme = base_theme::Theme::Global(cx->app);
+    return InputEditorStyleResolve(projected, theme.tokens);
+}
+
 static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
                      const Selection& sel, float lineH,
                      const InputEditorStyle& style, float font,
@@ -1853,6 +1831,16 @@ static uint16_t InputFontWordCascaded(const InputEditorStyle& style,
     return w;
 }
 
+// The line height, font word and foreground this build used, kept on the
+// state for what measures and paints it between frames.
+static void InputRecordRenderMetrics(InputState* state,
+                                     const InputEditorStyle& style,
+                                     float lineH) {
+    state->lastLineH = lineH;
+    state->lastFontWord = InputFontWordCascaded(style, state->cascadeFontWord);
+    state->editorForeground = style.foreground;
+}
+
 // One text run between a row's chips: the whole gap, shaped as one fragment
 // the way Rust shapes it. Where the row breaks is the wrap map's business.
 static void EmitTokenTextRun(El* row, Arena* a, const InputEditorStyle& style,
@@ -1938,17 +1926,12 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     if (!state) {
         return TextEl(a, Str{});
     }
-    ReconcileTokenHovers(cx, state);
-    BaseTheme theme = base_theme::Theme::Global(cx->app);
-    InputEditorStyle resolved =
-        InputEditorStyleResolve(projected, theme.tokens);
+    InputEditorStyle resolved = InputBeginRender(cx, state, projected);
     const InputEditorStyle& style = resolved;
     float font = style.fontSize > 0 ? style.fontSize : 12.f;
     float lineH = InputLineH(cx);
     float lineMult = InputLineMult(cx, lineH, font);
-    state->lastLineH = lineH;
-    state->lastFontWord = InputFontWordCascaded(style, state->cascadeFontWord);
-    state->editorForeground = style.foreground;
+    InputRecordRenderMetrics(state, style, lineH);
     Str text = InputValue(state);
     bool masked = style.mask || state->masked;
     bool showSel = state->HasSelectionFocus(cx->win);
@@ -2650,10 +2633,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (!state) {
         return TextEl(a, Str{});
     }
-    ReconcileTokenHovers(cx, state);
-    BaseTheme theme = base_theme::Theme::Global(cx->app);
-    InputEditorStyle resolved =
-        InputEditorStyleResolve(projected, theme.tokens);
+    InputEditorStyle resolved = InputBeginRender(cx, state, projected);
     const InputEditorStyle& style = resolved;
     float font = style.fontSize > 0 ? style.fontSize : 12.f;
     // EDITOR_LINE_HEIGHT: a code editor takes its rows from its own font, so
@@ -2667,9 +2647,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                       ? Rems(cx, roundf(font * 1.5f) / 16.f)
                       : InputLineH(cx);
     float lineMult = InputLineMult(cx, lineH, font);
-    state->lastLineH = lineH;
-    state->lastFontWord = InputFontWordCascaded(style, state->cascadeFontWord);
-    state->editorForeground = style.foreground;
+    InputRecordRenderMetrics(state, style, lineH);
     Str text = InputValue(state);
     bool caret =
         state->focused && !state->disabled && BlinkVisible(cx, state->blink);
@@ -5808,6 +5786,22 @@ static CursorSelection* AllCursors(Arena* a, const InputState* s, int* n) {
     return out;
 }
 
+// The cursors' indices in start order. A stable sort keeps the active one
+// (index 0) ahead of a cursor that starts where it does, the way Rust's
+// sort_by_key does.
+static int* CursorOrderByStart(Arena* a, const CursorSelection* all, int n) {
+    auto* order = (int*)Alloc(a, n * (int)sizeof(int));
+    for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j > 0 && all[order[j - 1]].range.start > all[i].range.start) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = i;
+    }
+    return order;
+}
+
 // replace_all: `sels[0]` becomes the active cursor.
 static void SetAllCursors(InputState* s, const CursorSelection* sels, int n) {
     if (n <= 0) {
@@ -5856,17 +5850,7 @@ void InputMergeOverlappingCursors(InputState* s) {
     Arena* a = GetTempArena();
     int n = 0;
     CursorSelection* all = AllCursors(a, s, &n);
-    // In start order; a stable sort keeps the active one ahead of a cursor
-    // that starts where it does, the way Rust's sort_by_key does.
-    auto* order = (int*)Alloc(a, n * (int)sizeof(int));
-    for (int i = 0; i < n; i++) {
-        int j = i;
-        while (j > 0 && all[order[j - 1]].range.start > all[i].range.start) {
-            order[j] = order[j - 1];
-            j--;
-        }
-        order[j] = i;
-    }
+    int* order = CursorOrderByStart(a, all, n);
     auto* merged = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
     int m = 0;
     int activeAt = -1;
@@ -6143,15 +6127,7 @@ static Str SelectedTexts(Arena* a, const InputState* s) {
     Str t = InputValue(s);
     int n = 0;
     CursorSelection* all = AllCursors(a, s, &n);
-    auto* order = (int*)Alloc(a, n * (int)sizeof(int));
-    for (int i = 0; i < n; i++) {
-        int j = i;
-        while (j > 0 && all[order[j - 1]].range.start > all[i].range.start) {
-            order[j] = order[j - 1];
-            j--;
-        }
-        order[j] = i;
-    }
+    int* order = CursorOrderByStart(a, all, n);
     int total = 0;
     int parts = 0;
     for (int k = 0; k < n; k++) {
@@ -6636,6 +6612,26 @@ struct HighlightChange {
     }
 };
 
+// The range an edit replaces: the one it names, else the marked text (a
+// commit replaces whatever the input method had provisionally put in, not
+// the selection: the marked text is what the candidate was standing in for),
+// else the selection. Token boundaries widen it unless the token store is
+// replaying or has validated the edit, and range_from_utf16 clamps both ends
+// into the document, so a stale or out-of-range edit lands at the end rather
+// than past it.
+static Selection ResolveEditRange(const InputState* s, const Selection* range) {
+    Selection r = range           ? *range
+                  : s->imeMarking ? s->imeMarked
+                                  : s->selectedRange;
+    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
+        InputNormalizeTokenRange(s, &r.start, &r.end);
+    }
+    int n = len(InputValue(s));
+    r.start = ClampI(r.start, 0, n);
+    r.end = ClampI(r.end, r.start, n);
+    return r;
+}
+
 bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
                              const Selection* range, Str newText) {
     HighlightChange highlightChange(s);
@@ -6671,25 +6667,8 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
 
     Arena* tmp = GetTempArena();
     Str text = NormalizeInput(tmp, s, newText);
-    // A commit with no range of its own replaces whatever the input method
-    // had provisionally put in, not the selection: the marked text is what
-    // the candidate was standing in for.
-    Selection r = range           ? *range
-                  : s->imeMarking ? s->imeMarked
-                                  : s->selectedRange;
-    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
-        InputNormalizeTokenRange(s, &r.start, &r.end);
-    }
+    Selection r = ResolveEditRange(s, range);
     Str before = InputValue(s);
-    // range_from_utf16 clamps both ends into the document: a stale or
-    // out-of-range edit lands at the end rather than past it.
-    r.start = ClampI(r.start, 0, len(before));
-    if (r.end > len(before)) {
-        r.end = len(before);
-    }
-    if (r.end < r.start) {
-        r.end = r.start;
-    }
     int pairedCaret = -1;
     int pairedOpenLen = 0;
     int pairedCloseLen = 0;
@@ -7108,22 +7087,8 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     }
     Arena* tmp = GetTempArena();
     Str text = NormalizeInput(tmp, s, newText);
-    Selection r = range           ? *range
-                  : s->imeMarking ? s->imeMarked
-                                  : s->selectedRange;
-    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
-        InputNormalizeTokenRange(s, &r.start, &r.end);
-    }
+    Selection r = ResolveEditRange(s, range);
     Str before = InputValue(s);
-    if (r.start < 0) {
-        r.start = 0;
-    }
-    if (r.end > len(before)) {
-        r.end = len(before);
-    }
-    if (r.end < r.start) {
-        r.end = r.start;
-    }
     Str oldAll = StrDup(tmp, before);
     // Marked text does not emit a change, so the batch waiting for the
     // next one is empty. The first candidate remembers the document it
@@ -11877,6 +11842,22 @@ static void CommitAllTransactions(UndoManager* m) {
     UndoCommitTransaction(m);
 }
 
+// The transaction what was just done belongs to: the open batch, else the
+// last one recorded. None while undo is ignoring changes, or before anything
+// was recorded.
+static UndoTransaction* UndoRecordingTarget(UndoManager* m) {
+    if (m->ignoring) {
+        return nullptr;
+    }
+    if (m->transactionDepth > 0) {
+        return &m->pending;
+    }
+    if (m->undos.len > 0) {
+        return &m->undos[m->undos.len - 1];
+    }
+    return nullptr;
+}
+
 static AutoClosedPairRange* PairsDup(const AutoClosedPairRange* src, int n) {
     if (!src || n <= 0) {
         return nullptr;
@@ -11895,15 +11876,7 @@ static void UndoRecordAutoClosedPairs(UndoManager* m,
                                       int nBefore,
                                       const AutoClosedPairRange* after,
                                       int nAfter) {
-    if (m->ignoring) {
-        return;
-    }
-    UndoTransaction* t = nullptr;
-    if (m->transactionDepth > 0) {
-        t = &m->pending;
-    } else if (m->undos.len > 0) {
-        t = &m->undos[m->undos.len - 1];
-    }
+    UndoTransaction* t = UndoRecordingTarget(m);
     if (!t) {
         return;
     }
@@ -11925,15 +11898,7 @@ static void UndoRecordAutoClosedPairs(UndoManager* m,
 void UndoRecordSelections(UndoManager* m, const CursorSelection* before,
                           int nBefore, const CursorSelection* after,
                           int nAfter) {
-    if (m->ignoring) {
-        return;
-    }
-    UndoTransaction* t = nullptr;
-    if (m->transactionDepth > 0) {
-        t = &m->pending;
-    } else if (m->undos.len > 0) {
-        t = &m->undos[m->undos.len - 1];
-    }
+    UndoTransaction* t = UndoRecordingTarget(m);
     if (!t) {
         return;
     }

@@ -666,6 +666,22 @@ struct Sequence {
     }
 };
 
+// A run from `from` to `target` under `policy`, starting `now`.
+// `adjustedStart` is where the run logically began, which a reversal is
+// measured against, and `factor` how far a reversal shortened it.
+template <typename T>
+inline void MotionStart(MotionState<T>* st, T from, T adjustedStart,
+                        const Motion& policy, T target, double now,
+                        float factor, float durationMs) {
+    st->from = from;
+    st->reversingAdjustedStart = adjustedStart;
+    st->policy = policy;
+    st->target = target;
+    st->startedAt = now;
+    st->reversingFactor = factor;
+    st->durationMs = durationMs;
+}
+
 // The whole rule, with the state and the clock passed in — which is what makes
 // it testable without a window. `transition_with_status()` in Rust, minus the
 // two lines that fetch the state and ask for a frame.
@@ -682,23 +698,11 @@ MotionStep<T> MotionAdvance(MotionState<T>* st, T target, const Motion& m,
     MotionStep<T> out;
     if (!st->init) {
         st->init = true;
-        st->from = target;
-        st->reversingAdjustedStart = target;
-        st->policy = m;
-        st->target = target;
-        st->startedAt = now;
-        st->reversingFactor = 1.f;
-        st->durationMs = m.durationMs;
+        MotionStart(st, target, target, m, target, now, 1.f, m.durationMs);
     }
     if (reduced || m.durationMs <= 0) {
         if (!MotionEq(st->from, target) || !MotionEq(st->target, target)) {
-            st->from = target;
-            st->reversingAdjustedStart = target;
-            st->policy = m;
-            st->target = target;
-            st->startedAt = now;
-            st->reversingFactor = 1.f;
-            st->durationMs = m.durationMs;
+            MotionStart(st, target, target, m, target, now, 1.f, m.durationMs);
         }
         out.value = target;
         out.status = MotionStatus::Finished;
@@ -730,13 +734,8 @@ MotionStep<T> MotionAdvance(MotionState<T>* st, T target, const Motion& m,
         if (reversing && m.delayMs < 0.f) {
             active.delayMs = m.delayMs * factor;
         }
-        st->reversingAdjustedStart = reversing ? st->target : sampled;
-        st->policy = active;
-        st->from = sampled;
-        st->target = target;
-        st->startedAt = now;
-        st->reversingFactor = factor;
-        st->durationMs = duration;
+        MotionStart(st, sampled, reversing ? st->target : sampled, active,
+                    target, now, factor, duration);
         MotionStatus initialStatus;
         float initial = MotionProgress(active, 0.f, duration, &initialStatus);
         out.value = motion::Interpolate<T>::Between(

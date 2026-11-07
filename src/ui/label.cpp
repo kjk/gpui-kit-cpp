@@ -1,4 +1,5 @@
 #include "ui/label.h"
+#include "base/text_boundary.h"
 
 namespace gpui {
 
@@ -104,48 +105,12 @@ Str Label::FullText() const {
     return Str(out, n);
 }
 
-// Common simple-case mappings keep the comparison portable without pulling
-// a Unicode database into the UI layer. Equal CJK and other uncased
-// codepoints compare directly. Rust's to_lowercase also has a small set of
-// expanding mappings; those remain an explicit dependency-free limitation
-// because their lowered offsets do not map one-to-one to original StyledText
-// byte ranges either.
-static uint32_t LabelLower(uint32_t c) {
-    if (c >= 'A' && c <= 'Z') {
-        return c + 0x20;
-    }
-    if ((c >= 0x00c0 && c <= 0x00d6) || (c >= 0x00d8 && c <= 0x00de)) {
-        return c + 0x20;
-    }
-    // Latin Extended-A is predominantly alternating upper/lower pairs.
-    if (c >= 0x0100 && c <= 0x012f && (c & 1) == 0) {
-        return c + 1;
-    }
-    if (c >= 0x0132 && c <= 0x0137 && (c & 1) == 0) {
-        return c + 1;
-    }
-    if (c >= 0x014a && c <= 0x0177 && (c & 1) == 0) {
-        return c + 1;
-    }
-    if (c >= 0x0391 && c <= 0x03a1) {
-        return c + 0x20;
-    }
-    if (c >= 0x03a3 && c <= 0x03ab) {
-        return c + 0x20;
-    }
-    if (c >= 0x0410 && c <= 0x042f) {
-        return c + 0x20;
-    }
-    if (c >= 0x0400 && c <= 0x040f) {
-        return c + 0x50;
-    }
-    if (c >= 0x0531 && c <= 0x0556) {
-        return c + 0x30;
-    }
-    return c;
-}
-
-// Compare equally-sized UTF-8 slices under the simple case mapping above.
+// Compare equally-sized UTF-8 slices under CharLowerSimple: common
+// simple-case mappings keep the comparison portable without pulling a Unicode
+// database into the UI layer. Equal CJK and other uncased codepoints compare
+// directly. Rust's to_lowercase also has a small set of expanding mappings;
+// those remain an explicit dependency-free limitation because their lowered
+// offsets do not map one-to-one to original StyledText byte ranges either.
 // Every mapping retained here has the same encoded width as its source, so
 // the byte offsets handed to TextSpan remain offsets in the original string.
 static bool LabelEqI(Str left, Str right) {
@@ -159,7 +124,7 @@ static bool LabelEqI(Str left, Str right) {
         uint32_t rc = 0;
         int ln = Utf8At(left, li, &lc);
         int rn = Utf8At(right, ri, &rc);
-        if (ln <= 0 || rn <= 0 || LabelLower(lc) != LabelLower(rc)) {
+        if (ln <= 0 || rn <= 0 || CharLowerSimple(lc) != CharLowerSimple(rc)) {
             return false;
         }
         li += ln;

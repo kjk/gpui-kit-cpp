@@ -1318,6 +1318,29 @@ struct DatePresetAction {
     }
 };
 
+// my_1().gap_2(): the column the presets stack in beside the calendar.
+static El* DatePresetColumn(Ctx* cx) {
+    return Div(cx->a)
+        ->FlexCol()
+        ->Gap(Rems(cx, 0.5f))
+        ->PadY(Rems(cx, 0.25f))
+        ->JustifyEnd();
+}
+
+// The picker's popover: padded, bordered and rounded on the background, and
+// dismissed by a release outside it.
+static El* DatePopupFrame(Ctx* cx, Listener dismiss, El* content) {
+    const Theme& th = ThemeNow(cx->app);
+    return Div(cx->a)
+        ->Pad(Rems(cx, 0.75f))
+        ->Border(1, th.border)
+        ->Radius(std::min(th.radius * 2.f, 8.f))
+        ->Bg(th.tokens.background)
+        ->Fg(th.foreground)
+        ->OnMouseUpOut(dismiss)
+        ->Child(content);
+}
+
 static El* RetainedDatePickerIntoEl(DatePicker* self) {
     Ctx* cx = self->cx;
     Arena* a = self->a;
@@ -1438,12 +1461,7 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
     if (state->open) {
         El* content = Div(a)->FlexRow()->Gap(Rems(cx, 0.75f))->ItemsStart();
         if (self->presets && self->presetsCount > 0) {
-            // my_1().gap_2()
-            El* list = Div(a)
-                           ->FlexCol()
-                           ->Gap(Rems(cx, 0.5f))
-                           ->PadY(Rems(cx, 0.25f))
-                           ->JustifyEnd();
+            El* list = DatePresetColumn(cx);
             for (int i = 0; i < self->presetsCount; i++) {
                 const DateRangePreset& preset = self->presets[i];
                 uint32_t key =
@@ -1498,15 +1516,8 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
             column->Child(row);
         }
         content->Child(column);
-        popup = Div(a)
-                    ->Pad(Rems(cx, 0.75f))
-                    ->Border(1, th.border)
-                    ->Radius(std::min(th.radius * 2.f, 8.f))
-                    ->Bg(th.tokens.background)
-                    ->Fg(th.foreground)
-                    ->OnMouseUpOut(
-                        ListenTo(self->state, &DatePickerState::OnDismiss))
-                    ->Child(content);
+        popup = DatePopupFrame(
+            cx, ListenTo(self->state, &DatePickerState::OnDismiss), content);
     }
 
     El* root = gpui::DatePicker::New(cx, self->id, self->disabled, state->open,
@@ -1624,12 +1635,7 @@ El* DatePicker::IntoEl() {
                                  ->OnYear(onYear);
         El* content = Div(a)->FlexRow()->Gap(Rems(cx, 0.75f))->ItemsStart();
         if (presets && presetsCount > 0) {
-            // my_1().gap_2()
-            El* list = Div(a)
-                           ->FlexCol()
-                           ->Gap(Rems(cx, 0.5f))
-                           ->PadY(Rems(cx, 0.25f))
-                           ->JustifyEnd();
+            El* list = DatePresetColumn(cx);
             for (int i = 0; i < presetsCount; i++) {
                 const DateRangePreset& preset = presets[i];
                 list->Child(component::Button::New(
@@ -1643,14 +1649,7 @@ El* DatePicker::IntoEl() {
             content->Child(list);
         }
         content->Child(calendar->IntoEl());
-        popup = Div(a)
-                    ->Pad(Rems(cx, 0.75f))
-                    ->Border(1, th.border)
-                    ->Radius(std::min(th.radius * 2.f, 8.f))
-                    ->Bg(th.tokens.background)
-                    ->Fg(th.foreground)
-                    ->OnMouseUpOut(onToggle)
-                    ->Child(content);
+        popup = DatePopupFrame(cx, onToggle, content);
     }
     // Both halves of the picker take focus — the outer element and the
     // trigger inside it — so the opt-out has to reach both.

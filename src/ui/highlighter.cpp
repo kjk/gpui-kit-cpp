@@ -585,6 +585,26 @@ DiagnosticPopover* DiagnosticPopover::New(Ctx* cx, InputState* state,
     return popover;
 }
 
+// An editor popover over its trigger: dismissed by a press outside it, and
+// placed above the trigger's bounds — or above the hovered point when the
+// trigger was not laid out — start-aligned, 8 px off.
+static El* PlaceEditorPopover(Ctx* cx, InputState* input, El* surface,
+                              const char* kind, float hoverX, float hoverY) {
+    Entity<InputMenuViewState> view = InputMenuView(cx, input, kind);
+    surface
+        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::PopoverOutside));
+    Bounds trigger = input->popoverTriggerBounds;
+    if (trigger.w <= 0 || trigger.h <= 0) {
+        trigger = {hoverX, hoverY, 1, 1};
+    }
+    return Positioner::Side(cx, trigger)
+        ->Placement(gpui::Placement::Top)
+        ->Align(gpui::Align::Start)
+        ->Margin(8)
+        ->Child(surface)
+        ->IntoEl();
+}
+
 El* DiagnosticPopover::IntoEl() {
     if (!state || diagnostic < 0 || diagnostic >= state->diagnostics.len)
         return nullptr;
@@ -619,20 +639,8 @@ El* DiagnosticPopover::IntoEl() {
                       ->Border(1, foreground)
                       ->BoundsOut(&state->popoverBounds)
                       ->Child(body);
-    Entity<InputMenuViewState> view =
-        InputMenuView(cx, state, "diagnostic-popover");
-    surface
-        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::PopoverOutside));
-    Bounds trigger = state->popoverTriggerBounds;
-    if (trigger.w <= 0 || trigger.h <= 0) {
-        trigger = {state->hoverDiagnosticX, state->hoverDiagnosticY, 1, 1};
-    }
-    return Positioner::Side(cx, trigger)
-        ->Placement(gpui::Placement::Top)
-        ->Align(gpui::Align::Start)
-        ->Margin(8)
-        ->Child(surface)
-        ->IntoEl();
+    return PlaceEditorPopover(cx, state, surface, "diagnostic-popover",
+                              state->hoverDiagnosticX, state->hoverDiagnosticY);
 }
 
 HoverPopover* HoverPopover::New(Ctx* cx, InputState* editor,
@@ -666,20 +674,8 @@ El* HoverPopover::IntoEl() {
                     ->IntoEl())
         ->Fg(theme.foreground)
         ->BoundsOut(&editor->popoverBounds);
-    Entity<InputMenuViewState> view =
-        InputMenuView(cx, editor, "hover-popover");
-    surface
-        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::PopoverOutside));
-    Bounds trigger = editor->popoverTriggerBounds;
-    if (trigger.w <= 0 || trigger.h <= 0) {
-        trigger = {editor->hoverX, editor->hoverY, 1, 1};
-    }
-    return Positioner::Side(cx, trigger)
-        ->Placement(gpui::Placement::Top)
-        ->Align(gpui::Align::Start)
-        ->Margin(8)
-        ->Child(surface)
-        ->IntoEl();
+    return PlaceEditorPopover(cx, editor, surface, "hover-popover",
+                              editor->hoverX, editor->hoverY);
 }
 
 // HighlightTheme::style — what registry.rs resolves a capture name with.

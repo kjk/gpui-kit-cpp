@@ -25,6 +25,40 @@ CharKind CharKindOf(uint32_t c) {
     return IsUnicodeWhitespace(c) ? CharKind::Whitespace : CharKind::Other;
 }
 
+uint32_t CharLowerSimple(uint32_t c) {
+    if (c >= 'A' && c <= 'Z') {
+        return c + 0x20;
+    }
+    if ((c >= 0x00c0 && c <= 0x00d6) || (c >= 0x00d8 && c <= 0x00de)) {
+        return c + 0x20;
+    }
+    if (c >= 0x0100 && c <= 0x012f && (c & 1) == 0) {
+        return c + 1;
+    }
+    if (c >= 0x0132 && c <= 0x0137 && (c & 1) == 0) {
+        return c + 1;
+    }
+    if (c >= 0x014a && c <= 0x0177 && (c & 1) == 0) {
+        return c + 1;
+    }
+    if (c >= 0x0391 && c <= 0x03a1) {
+        return c + 0x20;
+    }
+    if (c >= 0x03a3 && c <= 0x03ab) {
+        return c + 0x20;
+    }
+    if (c >= 0x0410 && c <= 0x042f) {
+        return c + 0x20;
+    }
+    if (c >= 0x0400 && c <= 0x040f) {
+        return c + 0x50;
+    }
+    if (c >= 0x0531 && c <= 0x0556) {
+        return c + 0x30;
+    }
+    return c;
+}
+
 // clip_offset_left: into the string, then back to a character boundary.
 int Utf8ClipLeft(Str s, int off) {
     if (off > len(s)) {

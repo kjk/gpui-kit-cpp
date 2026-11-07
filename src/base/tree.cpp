@@ -214,14 +214,19 @@ void TreeToggleExpand(TreeState* s, Ctx* cx, int entryIx) {
     Notify(cx);
 }
 
-int TreeRevealItem(TreeState* s, Str id) {
-    int item = -1;
+// Which of the caller's items has `id`, in item order (not entry order: a
+// collapsed item has no entry). -1 for none.
+static int TreeItemById(const TreeState* s, Str id) {
     for (int i = 0; i < s->items.len; i++) {
         if (base::StrEq(s->items[i].id, id)) {
-            item = i;
-            break;
+            return i;
         }
     }
+    return -1;
+}
+
+int TreeRevealItem(TreeState* s, Str id) {
+    int item = TreeItemById(s, id);
     if (item < 0) {
         return -1;
     }
@@ -255,13 +260,7 @@ int TreeRevealItem(TreeState* s, Ctx* cx, Str id, ScrollStrategy strategy) {
     if (!s) {
         return -1;
     }
-    int item = -1;
-    for (int i = 0; i < s->items.len; i++) {
-        if (base::StrEq(s->items[i].id, id)) {
-            item = i;
-            break;
-        }
-    }
+    int item = TreeItemById(s, id);
     if (item < 0) {
         return -1;
     }
@@ -298,13 +297,7 @@ void TreeSetSelectedItem(TreeState* s, Ctx* cx, Str id) {
     } else {
         int ix = TreeIndexOf(s, id);
         if (ix < 0) {
-            int item = -1;
-            for (int i = 0; i < s->items.len; i++) {
-                if (base::StrEq(s->items[i].id, id)) {
-                    item = i;
-                    break;
-                }
-            }
+            int item = TreeItemById(s, id);
             if (item >= 0) {
                 TreeExpandAncestors(s, cx, item);
                 TreeRebuild(s);

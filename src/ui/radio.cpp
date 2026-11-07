@@ -1,4 +1,5 @@
 #include "ui/radio.h"
+#include "ui/checkbox.h"
 
 namespace gpui {
 
@@ -110,40 +111,13 @@ El* Radio::IntoEl() {
                   ->FlexRow()
                   ->ItemsStart()
                   ->Gap(Rems(cx, 0.5f));
-    // The explicit name wins over the visible label, and only the name
-    // changes: what is drawn stays the label.
-    Str name = accessibilityLabel.s ? accessibilityLabel : label;
-    if (name.s) {
-        row->AriaLabel(name);
-    }
-    if (tooltip.s) {
-        row->Tip(tooltip);
-        if (tooltipShowDelayMs >= 0) {
-            row->TipShowDelay(tooltipShowDelayMs);
-        }
-    }
+    ChoiceRowAnnounce(row, label, accessibilityLabel, tooltip,
+                      tooltipShowDelayMs);
     refiner.Apply(row);
     row->Child(dot);
     if (label.s || hint.s || children.len > 0) {
-        dot->MarginT(box * 0.125f);
-        El* col = Div(a)->FlexCol()->Gap(Rems(cx, 0.25f))->LineHeight(1.25f);
-        if (label.s) {
-            // input_text_size: the Input/Select ladder. A custom Size sets
-            // no size and inherits.
-            El* text = TextEl(a, label)
-                           ->Fg(disabled ? th.mutedFg : th.foreground);
-            if (size != UiSize::Size) {
-                UiInputTextSize(text, size);
-            }
-            col->Child(text);
-        }
-        if (hint.s) {
-            col->Child(TextEl(a, hint)
-                           ->Font(12)
-                           ->LineHeight(1.2f)
-                           ->Fg(th.mutedFg)
-                           ->Wrap());
-        }
+        El* col =
+            ChoiceLabelColumn(cx, dot, box, label, hint, size, disabled, false);
         for (El* child : children) {
             col->Child(child);
         }

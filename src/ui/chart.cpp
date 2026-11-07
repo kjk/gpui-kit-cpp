@@ -96,6 +96,18 @@ uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {
     return IdFoldName(site, fmt("%d", line));
 }
 
+// What every chart builder hands its element alike: the id its hover and
+// springs key on, the appear generation, the tooltip's name and content, and
+// whether the runtime's own hover and tooltip run (`tooltip`).
+template <typename B>
+static void ChartApplyIdentity(ChartSeries* chart, const B& b, bool tooltip) {
+    chart->tooltip = tooltip;
+    chart->id = b.id;
+    chart->appear = b.appear.Generation(&chart->appearGeneration);
+    chart->name = b.tooltipName;
+    chart->tooltipContent = b.tooltipContent;
+}
+
 AreaChart* AreaChart::New(Ctx* cx, const double* ys, int n, const char* file,
                           int line) {
     float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
@@ -298,11 +310,7 @@ El* AreaChart::IntoEl() {
     axes.ApplyTo(a, chart);
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     // The builder is on the frame arena, so the element can point at its
     // array rather than copying it.
     chart->more = more.Flatten(a);
@@ -486,11 +494,7 @@ El* LineChart::IntoEl() {
     axes.ApplyTo(a, chart);
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     return e;
 }
 
@@ -664,11 +668,7 @@ El* BarChart::IntoEl() {
     chart->domainMax = domainMax;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     return e;
 }
 
@@ -818,11 +818,7 @@ El* CandlestickChart::IntoEl() {
     chart->bodyWidthRatio = bodyWidthRatio;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     return e;
 }
 
@@ -1221,11 +1217,7 @@ El* RadarChart::IntoEl() {
     chart->nMore = len(more);
     // The labels and the hover are this builder's (PaintRadarChart); the
     // runtime's own hover is for the cartesian charts.
-    chart->tooltip = false;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, false);
     el = e;
     e->customPaint = PaintRadarChart;
     e->customUser = this;
@@ -1340,6 +1332,36 @@ static Ctx ChartIdCtx(const PaintCtx* ctx, uint32_t id) {
     out.win = ctx->window;
     out.path = id;
     return out;
+}
+
+// The hover a pie or a sankey keeps: the item under the cursor (none while
+// the chart is still appearing) is tracked through plot::TrackHover, which
+// eases `focus` in and out and lingers on the last item as it fades. On
+// return `hoverIndex` is the item held, -1 for none.
+static void ChartTrackIndexHover(const PaintCtx* ctx, uint32_t id,
+                                 const plot::PlotAppear& appear, Point cursor,
+                                 int* hoverIndex, float* focus,
+                                 Point* lingerCursor) {
+    if (appear.IsAppearing()) {
+        *hoverIndex = -1;
+    }
+    plot::TooltipState live = {};
+    const plot::TooltipState* livePtr = nullptr;
+    if (*hoverIndex >= 0) {
+        live = plot::TooltipState::New(*hoverIndex, cursor, nullptr, 0);
+        livePtr = &live;
+    }
+    plot::PlotHover hover = {};
+    Point linger = cursor;
+    Ctx idCx = ChartIdCtx(ctx, id);
+    if (plot::TrackHover(&idCx, livePtr, *hoverIndex >= 0 ? &cursor : nullptr,
+                         &hover, &linger)) {
+        *focus = hover.Progress();
+        *hoverIndex = hover.State().index;
+        *lingerCursor = linger;
+    } else {
+        *hoverIndex = -1;
+    }
 }
 
 // PlotElement's half of the appear for the charts painted here: sample it
@@ -1576,29 +1598,9 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             }
             pieAngle += sweep;
         }
-        plot::TooltipState live = {};
-        const plot::TooltipState* livePtr = nullptr;
-        Point cursor = local;
         // No tooltip while the ring sweeps in.
-        if (appear.IsAppearing()) {
-            hoverIndex = -1;
-        }
-        if (hoverIndex >= 0) {
-            live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
-            livePtr = &live;
-        }
-        plot::PlotHover hover = {};
-        Point linger = cursor;
-        Ctx idCx = ChartIdCtx(ctx, p->id);
-        if (plot::TrackHover(&idCx, livePtr,
-                             hoverIndex >= 0 ? &cursor : nullptr, &hover,
-                             &linger)) {
-            focus = hover.Progress();
-            hoverIndex = hover.State().index;
-            lingerCursor = linger;
-        } else {
-            hoverIndex = -1;
-        }
+        ChartTrackIndexHover(ctx, p->id, appear, local, &hoverIndex, &focus,
+                             &lingerCursor);
     }
     // The ring sweeps clockwise from its first slice as the chart appears:
     // each slice's angles are scaled toward the ring's start.
@@ -1908,29 +1910,9 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
                 hoverIndex = node.index;
             }
         }
-        plot::TooltipState live = {};
-        const plot::TooltipState* livePtr = nullptr;
-        Point cursor = local;
         // No tooltip while the links draw in.
-        if (appear.IsAppearing()) {
-            hoverIndex = -1;
-        }
-        if (hoverIndex >= 0) {
-            live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
-            livePtr = &live;
-        }
-        plot::PlotHover hover = {};
-        Point linger = cursor;
-        Ctx idCx = ChartIdCtx(ctx, c->id);
-        if (plot::TrackHover(&idCx, livePtr,
-                             hoverIndex >= 0 ? &cursor : nullptr, &hover,
-                             &linger)) {
-            focus = hover.Progress();
-            hoverIndex = hover.State().index;
-            lingerCursor = linger;
-        } else {
-            hoverIndex = -1;
-        }
+        ChartTrackIndexHover(ctx, c->id, appear, local, &hoverIndex, &focus,
+                             &lingerCursor);
     }
 
     // The ribbons first, under the nodes: a horizontal cubic through the

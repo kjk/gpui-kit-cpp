@@ -25,6 +25,19 @@ Minifier& Minifier::PreserveComments(bool value) {
     return *this;
 }
 
+// One character of a whitespace-collapsing copy: with `collapse`, a run of
+// HTML spaces becomes one ' ' (none when `whitespace` says one was just
+// written). Returns whether the copy now ends in collapsed whitespace.
+static bool CollapseSpace(char* out, int* n, char c, bool collapse,
+                          bool whitespace) {
+    if (collapse && HtmlSpace(c)) {
+        if (!whitespace) out[(*n)++] = ' ';
+        return true;
+    }
+    out[(*n)++] = c;
+    return false;
+}
+
 Str Minifier::WriteCollapseWhitespace(Arena* a, Str source) {
     if (!a || len(source) <= 0) return {};
     char* out = (char*)Alloc(a, len(source) + 1);
@@ -32,14 +45,7 @@ Str Minifier::WriteCollapseWhitespace(Arena* a, Str source) {
     int n = 0;
     bool whitespace = precedingWhitespace;
     for (int i = 0; i < len(source); i++) {
-        char c = source.s[i];
-        if (HtmlSpace(c)) {
-            if (!whitespace) out[n++] = ' ';
-            whitespace = true;
-        } else {
-            out[n++] = c;
-            whitespace = false;
-        }
+        whitespace = CollapseSpace(out, &n, source.s[i], true, whitespace);
     }
     precedingWhitespace = whitespace;
     out[n] = 0;
@@ -116,14 +122,8 @@ Str Minifier::Minify(Arena* a, Str source) {
             at = end;
             continue;
         }
-        char c = source.s[at++];
-        if (collapseWhitespace && !raw.s && HtmlSpace(c)) {
-            if (!whitespace) out[n++] = ' ';
-            whitespace = true;
-        } else {
-            out[n++] = c;
-            whitespace = false;
-        }
+        whitespace = CollapseSpace(out, &n, source.s[at++],
+                                   collapseWhitespace && !raw.s, whitespace);
     }
     precedingWhitespace = whitespace;
     out[n] = 0;
@@ -409,11 +409,11 @@ static bool TargetEmpty(Project* p) {
     return !p->para || !p->para->runFirst;
 }
 
-static void AddRun(Project* p, Str text) {
-    if (len(text) <= 0) return;
+// A new run at the end of the text target, carrying the marks, the link and
+// the wash in force.
+static MdRun* NewRun(Project* p) {
     MdNode* target = TextTarget(p);
     MdRun* run = ArenaNew<MdRun>(p->a);
-    run->text = text;
     run->marks = p->marks;
     run->href = p->href;
     run->highlight = p->highlight;
@@ -423,6 +423,12 @@ static void AddRun(Project* p, Str text) {
     else
         target->runFirst = run;
     target->runLast = run;
+    return run;
+}
+
+static void AddRun(Project* p, Str text) {
+    if (len(text) <= 0) return;
+    NewRun(p)->text = text;
     p->endsWithBreak = false;
 }
 
@@ -442,13 +448,7 @@ static void AddText(Project* p, Str text) {
     int n = 0;
     bool space = false;
     for (int i = 0; i < len(text); i++) {
-        if (HtmlSpace(text.s[i])) {
-            if (!space) out[n++] = ' ';
-            space = true;
-        } else {
-            out[n++] = text.s[i];
-            space = false;
-        }
+        space = CollapseSpace(out, &n, text.s[i], true, space);
     }
     bool empty = TargetEmpty(p);
     int start = empty && n > 0 && out[0] == ' ' ? 1 : 0;
@@ -465,21 +465,11 @@ static void AddText(Project* p, Str text) {
 static void AddImage(Project* p, const html5ever::Node* node) {
     Str src = html5ever::AttrValue(p->a, node, StrL("src"));
     if (len(src) <= 0) return;
-    MdNode* target = TextTarget(p);
-    MdRun* run = ArenaNew<MdRun>(p->a);
+    MdRun* run = NewRun(p);
     run->imgSrc = src;
     run->text = html5ever::AttrValue(p->a, node, StrL("alt"));
     run->imgW = ElementLength(p->a, node, "width");
     run->imgH = ElementLength(p->a, node, "height");
-    run->marks = p->marks;
-    run->href = p->href;
-    run->highlight = p->highlight;
-    run->hasHighlight = p->hasHighlight;
-    if (target->runLast)
-        target->runLast->next = run;
-    else
-        target->runFirst = run;
-    target->runLast = run;
 }
 
 static uint8_t AlignValue(Str value) {

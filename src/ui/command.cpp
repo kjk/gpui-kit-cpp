@@ -247,6 +247,31 @@ static void UpdateMatches(CommandState* s, Str query) {
     // leading, trailing and doubled ones a filtered list leaves behind.
     bool pendingSeparator = false;
 
+    // A separator waits until something matches below it.
+    auto flushSeparator = [&]() {
+        if (pendingSeparator) {
+            CommandRow sep;
+            sep.kind = CommandRowKind::Separator;
+            VecAppend(s->rows, sep);
+            pendingSeparator = false;
+        }
+    };
+    // One matching item: its match record, and the row that shows it.
+    auto addItem = [&](int entryIx, int itemIx, IndexPath path,
+                       const CommandItem& it) {
+        CommandMatch m;
+        m.entry = entryIx;
+        m.itemIx = itemIx;
+        m.path = path;
+        m.row = s->rows.len;
+        m.disabled = it.disabled;
+        m.data = it.data;
+        VecAppend(s->matched, m);
+        CommandRow row;
+        row.kind = CommandRowKind::Item;
+        row.match = s->matched.len - 1;
+        VecAppend(s->rows, row);
+    };
     for (int entryIx = 0; entryIx < s->nEntries; entryIx++) {
         const CommandEntry& e = s->entries[entryIx];
         if (e.kind == CommandEntryKind::Separator) {
@@ -258,24 +283,8 @@ static void UpdateMatches(CommandState* s, Str query) {
             if (!ItemMatchesQuery(s, &e.item, query)) {
                 continue;
             }
-            if (pendingSeparator) {
-                CommandRow sep;
-                sep.kind = CommandRowKind::Separator;
-                VecAppend(s->rows, sep);
-                pendingSeparator = false;
-            }
-            CommandMatch m;
-            m.entry = entryIx;
-            m.itemIx = 0;
-            m.path = IndexPathNew(itemIx).Section(0);
-            m.row = s->rows.len;
-            m.disabled = e.item.disabled;
-            m.data = e.item.data;
-            VecAppend(s->matched, m);
-            CommandRow row;
-            row.kind = CommandRowKind::Item;
-            row.match = s->matched.len - 1;
-            VecAppend(s->rows, row);
+            flushSeparator();
+            addItem(entryIx, 0, IndexPathNew(itemIx).Section(0), e.item);
             continue;
         }
 
@@ -291,12 +300,7 @@ static void UpdateMatches(CommandState* s, Str query) {
         if (!any) {
             continue;
         }
-        if (pendingSeparator) {
-            CommandRow sep;
-            sep.kind = CommandRowKind::Separator;
-            VecAppend(s->rows, sep);
-            pendingSeparator = false;
-        }
+        flushSeparator();
         // The heading is hidden while every item in the group is filtered out,
         // which the check above is.
         if (e.group.heading.len > 0) {
@@ -310,18 +314,7 @@ static void UpdateMatches(CommandState* s, Str query) {
             if (!ItemMatchesQuery(s, &it, query)) {
                 continue;
             }
-            CommandMatch m;
-            m.entry = entryIx;
-            m.itemIx = i;
-            m.path = IndexPathNew(i).Section(section);
-            m.row = s->rows.len;
-            m.disabled = it.disabled;
-            m.data = it.data;
-            VecAppend(s->matched, m);
-            CommandRow row;
-            row.kind = CommandRowKind::Item;
-            row.match = s->matched.len - 1;
-            VecAppend(s->rows, row);
+            addItem(entryIx, i, IndexPathNew(i).Section(section), it);
         }
     }
 

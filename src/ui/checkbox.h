@@ -58,6 +58,19 @@ struct Checkbox {
     El* IntoEl();
 };
 
+// What a checkbox and a radio both hang on the row around their indicator.
+// The announced name is the explicit one over the visible label, and only
+// the name changes: what is drawn stays the label. The tooltip takes its own
+// show delay when one is set.
+void ChoiceRowAnnounce(El* row, Str label, Str accessibilityLabel, Str tooltip,
+                       int tooltipShowDelayMs);
+// v_flex().line_height(relative(1.25)).gap_1(): the label over the muted
+// hint, with the indicator nudged down to the label's first line. The caller
+// adds what goes under them and puts the column in the row. `wrapLabel` lets
+// the label wrap, which a checkbox's does and a radio's does not.
+El* ChoiceLabelColumn(Ctx* cx, El* indicator, float box, Str label, Str hint,
+                      UiSize size, bool disabled, bool wrapLabel);
+
 } // namespace component
 } // namespace gpui
 #endif // GPUI_UI_CHECKBOX_H_
