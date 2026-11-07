@@ -8205,6 +8205,14 @@ bool WindowDispatchKeyAction(Window* win, int vk, bool shift, bool ctrl,
 uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
                                 bool alt, bool platform, bool function,
                                 int64_t* arg, bool* pending);
+// Every binding the chord completes, innermost context first. `actions` and
+// `args` receive up to `max` of them. The same action with the same payload
+// is not repeated. `pending` comes back true when the chord only began a
+// sequence, and the count is then 0.
+int WindowResolveKeyActions(Window* win, int vk, bool shift, bool ctrl,
+                            bool alt, bool platform, bool function,
+                            uint32_t* actions, int64_t* args, int max,
+                            bool* pending);
 // Whether the shortcut modifier is down — `secondary-` in a binding spec:
 // Command on macOS, Control everywhere else. The two are separate modifiers
 // now, so the code that means "the copy chord" has to say which.

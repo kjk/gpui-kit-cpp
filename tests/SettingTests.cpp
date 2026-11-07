@@ -482,6 +482,71 @@ static void SearchPlaceholderFollowsTheLocaleAndKeepsThePage() {
     delete win;
 }
 
+// settings.rs escape_clears_the_search_and_passes_through_when_empty.
+// The host's escape binding stands in for a dialog around the pane.
+struct SettingsEscapeHost {
+    Entity<SettingsState> state = {};
+    int dismissed = 0;
+
+    static void OnDismiss(SettingsEscapeHost* self, Ctx*, const ActionEvent*) {
+        if (self) {
+            self->dismissed++;
+        }
+    }
+
+    static El* Render(SettingsEscapeHost* self, Ctx* cx) {
+        uint32_t dismiss = ActionOf(StrL("settings_test::Dismiss"));
+        return Div(cx->a)
+            ->SizeFull()
+            ->KeyContext(StrL("SettingsHost"))
+            ->OnAction(dismiss, Listen(cx, &SettingsEscapeHost::OnDismiss))
+            ->Child(SearchTestSettings(cx, self->state)->IntoEl());
+    }
+};
+
+static void EscapeClearsTheSearchAndPassesThroughWhenEmpty() {
+    App* app = TestAppNew();
+    utassert(app);
+    if (!app) {
+        return;
+    }
+    component::Init(app);
+    Entity<SettingsEscapeHost> host = EntityNew<SettingsEscapeHost>(app);
+    SettingsEscapeHost* h = host.Get(app);
+    utassert(h);
+    if (!h) {
+        TestAppFree(app);
+        return;
+    }
+    h->state = EntityNewState<SettingsState>(app);
+    uint32_t dismiss = ActionOf(StrL("settings_test::Dismiss"));
+    KeyBinding bind[] = {{"escape", dismiss, "SettingsHost"}};
+    KeymapBind(bind, 1);
+
+    Window* win = TestWindowOpen(app, host, 1000, 700, 1);
+    SettingsState* settings = h->state.Get(app);
+    utassert(settings && win);
+    if (settings && win) {
+        InputFocus(&settings->search, app, win);
+        TestDraw(win);
+        TestSimulateInput(win, StrL("font"));
+        El* root = EntityRender(app, win, win->frameArena, host.id);
+        utassert(!FindSettingElement(root, "1-1-0"));
+
+        // A query is cleared, and the host does not see the Escape.
+        TestSimulateKeystrokes(win, "escape");
+        utassert(StrEq(InputValue(&settings->search), StrL("")));
+        root = EntityRender(app, win, win->frameArena, host.id);
+        utassert(FindSettingElement(root, "1-1-0"));
+        utassert(h->dismissed == 0);
+
+        // An empty query leaves Escape to the host.
+        TestSimulateKeystrokes(win, "escape");
+        utassert(h->dismissed == 1);
+    }
+    TestAppFree(app);
+}
+
 static El* FindChild(El* root, const El* wanted) {
     if (!root) {
         return nullptr;
@@ -940,6 +1005,7 @@ void TestSetting() {
     ResettingSearchResultsLeavesHiddenSettingsUnchanged();
     SearchRenderKeepsOriginalItemIndexes();
     SearchPlaceholderFollowsTheLocaleAndKeepsThePage();
+    EscapeClearsTheSearchAndPassesThroughWhenEmpty();
     FooterFollowsGroupSearchVisibility();
     ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged();
     ElementItemsAndFieldsWithoutADefault();

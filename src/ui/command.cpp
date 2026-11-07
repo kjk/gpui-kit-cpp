@@ -662,6 +662,9 @@ void CommandState::OnAction(CommandState* self, Ctx* cx,
     if (id == action::Cancel() || id == input::Escape()) {
         // Escape clears a non-empty query first, and only then leaves the
         // palette — the dialog hosting it closes on the second press.
+        // A focused field resolves Escape to input::Escape and passes it
+        // on; the next binding is this Cancel. Both ids are accepted so a
+        // direct dispatch of either still lands here.
         if (self->searchable && len(InputValue(&self->query)) > 0) {
             CommandSetQuery(self, cx, Str{});
             return;
@@ -1052,10 +1055,11 @@ El* Command::IntoEl() {
         box->Child(footer);
     }
 
-    // `.key_context(CONTEXT)` and the four handlers under it. The field is
-    // inside the palette, so a chord it does not take reaches these on its way
-    // out — which is what the pair of action ids each handler answers to is
-    // about.
+    // `.key_context(CONTEXT)` and the handlers under it. The field is inside
+    // the palette, so a chord it does not take reaches these on its way out —
+    // which is what the pair of action ids each handler answers to is about.
+    // Escape is the exception: the field's binding is tried first and passes
+    // a plain Escape on, and this context's Cancel binding is the next one.
     CommandInitKeys();
     Listener onAction = ListenTo(state, &CommandState::OnAction);
     box->PathFocus(id)
@@ -1067,8 +1071,7 @@ El* Command::IntoEl() {
         ->OnAction(action::Cancel(), onAction)
         ->OnAction(input::MoveUp(), onAction)
         ->OnAction(input::MoveDown(), onAction)
-        ->OnAction(input::Enter(), onAction)
-        ->OnAction(input::Escape(), onAction);
+        ->OnAction(input::Enter(), onAction);
     return box;
 }
 

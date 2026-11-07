@@ -157,6 +157,16 @@ static void TheInnermostContextWins() {
     utassert(KeymapMatch(Chord("escape"), nullptr, 0).action == quit);
     // Nothing is bound to this one.
     utassert(KeymapMatch(Chord("ctrl-j"), stack, 2).action == 0);
+    // An unhandled inner binding is followed by the next context's, and
+    // only then by a binding that named no context. The same action bound
+    // again further out is listed once.
+    KeyMatchList all = KeymapMatchAll(Chord("escape"), stack, 2);
+    utassert(all.n == 3 && !all.pending);
+    utassert(all.action[0] == cancel);
+    utassert(all.action[1] == close);
+    utassert(all.action[2] == quit);
+    all = KeymapMatchAll(Chord("escape"), nullptr, 0);
+    utassert(all.n == 1 && all.action[0] == quit);
     KeymapClear();
 }
 

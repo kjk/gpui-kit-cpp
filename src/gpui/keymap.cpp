@@ -834,18 +834,27 @@ static uint32_t MatchIn(const CtxLevel* levels, int n, const CtxLevel* all,
     return 0;
 }
 
-// The whole stack, innermost level first and the unscoped bindings last.
-// `pending` comes back set when nothing completed but something was begun.
-static uint32_t MatchStack(const CtxLevel* levels, int n, bool* pending,
-                           int64_t* arg) {
-    for (int lvl = 0; lvl < n; lvl++) {
-        uint32_t action =
-            MatchIn(levels + lvl, n - lvl, levels, n, pending, arg);
-        if (action) {
-            return action;
+static bool MatchListed(const KeyMatchList& list, uint32_t action,
+                        int64_t arg) {
+    for (int i = 0; i < list.n; i++) {
+        if (list.action[i] == action && list.arg[i] == arg) {
+            return true;
         }
     }
-    return MatchIn(nullptr, 0, levels, n, pending, arg);
+    return false;
+}
+
+static void MatchRecord(KeyMatchList* list, const CtxLevel* levels, int n,
+                        const CtxLevel* all, int nAll, bool* pending) {
+    int64_t arg = 0;
+    uint32_t action = MatchIn(levels, n, all, nAll, pending, &arg);
+    if (!action || list->n >= kMaxKeyMatches ||
+        MatchListed(*list, action, arg)) {
+        return;
+    }
+    list->action[list->n] = action;
+    list->arg[list->n] = arg;
+    list->n++;
 }
 
 // Whether `b` is in play at this level and names `action`, and if so what its
@@ -924,8 +933,8 @@ bool KeymapAnyBindingForActionArg(uint32_t action, int64_t arg, KeyChord* out) {
     return false;
 }
 
-KeyMatch KeymapMatch(const KeyChord& chord, const uint32_t* contexts,
-                     int nContexts) {
+KeyMatchList KeymapMatchAll(const KeyChord& chord, const uint32_t* contexts,
+                            int nContexts) {
     if (gNPending >= kMaxStrokes) {
         gNPending = 0;
     }
@@ -939,18 +948,34 @@ KeyMatch KeymapMatch(const KeyChord& chord, const uint32_t* contexts,
         levels[i] = ResolveContext(contexts[i]);
     }
 
-    KeyMatch m;
+    KeyMatchList list;
     bool pending = false;
-    m.action = MatchStack(levels, nContexts, &pending, &m.arg);
-    if (!m.action && pending) {
+    for (int lvl = 0; lvl < nContexts; lvl++) {
+        MatchRecord(&list, levels + lvl, nContexts - lvl, levels, nContexts,
+                    &pending);
+    }
+    MatchRecord(&list, nullptr, 0, levels, nContexts, &pending);
+    if (list.n == 0 && pending) {
         // Begun but not finished: the chord stays held, and the window keeps
         // the next keystroke for the keymap.
-        m.pending = true;
-        return m;
+        list.pending = true;
+        return list;
     }
     // Finished, or continued nothing — either way what was held is spent,
     // which is Rust's matcher clearing its pending keystrokes.
     gNPending = 0;
+    return list;
+}
+
+KeyMatch KeymapMatch(const KeyChord& chord, const uint32_t* contexts,
+                     int nContexts) {
+    KeyMatchList all = KeymapMatchAll(chord, contexts, nContexts);
+    KeyMatch m;
+    m.pending = all.pending;
+    if (all.n > 0) {
+        m.action = all.action[0];
+        m.arg = all.arg[0];
+    }
     return m;
 }
 

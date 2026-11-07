@@ -147,6 +147,25 @@ struct KeyMatch {
 KeyMatch KeymapMatch(const KeyChord& chord, const uint32_t* contexts,
                      int nContexts);
 
+// One binding per context that the chord completes, innermost first, then
+// the unscoped binding. GPUI tries each of these until a handler keeps the
+// action; the window does the same when the inner one propagates. A later
+// binding in the same context still replaces an earlier one, and the same
+// action carried out again is listed once — dispatch already walks every
+// handler of an action, so a second copy would run them twice.
+// At most one match per stacked context, plus the unscoped binding.
+const int kMaxKeyMatches = kMaxContextDepth + 1;
+
+struct KeyMatchList {
+    uint32_t action[kMaxKeyMatches] = {};
+    int64_t arg[kMaxKeyMatches] = {};
+    int n = 0;
+    bool pending = false;
+};
+
+KeyMatchList KeymapMatchAll(const KeyChord& chord, const uint32_t* contexts,
+                            int nContexts);
+
 // window.highest_precedence_binding_for_action, and the `_in_context`
 // variant when a context stack is given: the chord a caller would press to
 // reach `action`, which is what a menu row and a tooltip show beside a label.

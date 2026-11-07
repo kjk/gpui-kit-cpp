@@ -1,5 +1,6 @@
 #include "ui/i18n.h"
 #include "ui/setting.h"
+#include "base/input_keys.h"
 #include "base/scroll_bounce.h"
 #include "ui/button.h"
 #include "ui/checkbox.h"
@@ -482,6 +483,21 @@ void SettingsState::OnSearchFocus(SettingsState* self, Ctx* cx,
                                   const ClickEvent*) {
     self->search.focused = true;
     Notify(cx);
+}
+
+void SettingsState::OnSearchEscape(SettingsState* self, Ctx* cx,
+                                   const ActionEvent* ev) {
+    if (!self || !ev) {
+        return;
+    }
+    // clean_on_escape would also consume Escape once the box is empty, so a
+    // hosting dialog would never close. Android's back arrives as Escape and
+    // must not edit the field.
+    if (len(InputValue(&self->search)) == 0 || !PlatCleanOnEscape()) {
+        const_cast<ActionEvent*>(ev)->propagate = true;
+        return;
+    }
+    InputClean(&self->search, cx->app, cx->win);
 }
 
 Settings* Settings::New(Ctx* cx, Str id, Entity<SettingsState> state) {
@@ -1310,7 +1326,14 @@ El* Settings::IntoEl() {
                 ->Prefix(IconEl(a, IconName::Search))
                 ->OnFocus(ListenTo(state, &SettingsState::OnSearchFocus))
                 ->IntoEl();
-        sidebar->Header(Div(a)->W(kFill)->Child(search));
+        // The input passes on an Escape it has no use for. Clear a non-empty
+        // query with it; otherwise let it reach an enclosing dialog.
+        sidebar->Header(
+            Div(a)
+                ->W(kFill)
+                ->OnAction(input::Escape(),
+                           ListenTo(state, &SettingsState::OnSearchEscape))
+                ->Child(search));
         if (st->search.focused) {
             cx->win->input = &st->search;
         }

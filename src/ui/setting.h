@@ -403,6 +403,10 @@ struct SettingsState {
     // from then on.
     static void OnSearchFocus(SettingsState* self, Ctx* cx,
                               const ClickEvent* ev);
+    // The field passes on an Escape it has no use for. A non-empty query is
+    // cleared; an empty one, and Android's back button, keep propagating.
+    static void OnSearchEscape(SettingsState* self, Ctx* cx,
+                               const ActionEvent* ev);
 };
 
 struct Settings {

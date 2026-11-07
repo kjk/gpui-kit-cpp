@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8bfff7108e3a64833801d863685ae80f37c4ee1c` (2026-11-05,
-setting: Follow a locale change in the search placeholder (#3815)).
-The settings search placeholder is localized again when the pane
-renders, so a locale change updates it without rebuilding the state
-or moving the selected page.
+Processed through `929054a81a36a290f65140e20090ce6d561ef526` (2026-11-05,
+setting: Clear the sidebar search on Escape (#3816)).
+Escape in the settings search clears a non-empty query and leaves the
+current page. An empty query, and Escape on Android, keeps propagating
+so a dialog around the pane still closes. A keystroke tries each
+matching binding from the inside out until one is handled.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 

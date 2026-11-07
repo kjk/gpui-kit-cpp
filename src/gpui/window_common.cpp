@@ -14,6 +14,7 @@
 #include "sys/sysinfo.h"
 #include "base/focus_trap.h"
 #include "base/global_state.h"
+#include "base/actions.h"
 #include "base/input.h"
 #include "base/theme.h"
 #include "base/scrollable_mask.h"
@@ -943,13 +944,20 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     // The chord, resolved once. The matcher holds a half-finished sequence on
     // itself, so asking it twice for one keystroke would append the chord
     // twice; the answer is taken here and handed to whoever wants it.
-    int64_t actionArg = 0;
+    // GPUI tries every binding the chord completes, innermost context first,
+    // and stops when a handler keeps the action. An empty settings search
+    // passes Escape on so the dialog outside it can close.
+    int64_t actionArgs[kMaxKeyMatches] = {};
+    uint32_t actions[kMaxKeyMatches] = {};
+    int nActions = 0;
     bool actionPending = false;
-    uint32_t action = 0;
     if (!held) {
-        action = WindowResolveKeyAction(win, key, shift, ctrl, alt, platform,
-                                        function, &actionArg, &actionPending);
+        nActions = WindowResolveKeyActions(win, key, shift, ctrl, alt, platform,
+                                           function, actions, actionArgs,
+                                           kMaxKeyMatches, &actionPending);
     }
+    uint32_t action = nActions > 0 ? actions[0] : 0;
+    int64_t actionArg = nActions > 0 ? actionArgs[0] : 0;
     if (actionPending) {
         // Begun a sequence: nothing under the keymap sees this keystroke.
         win->eatChar = true;
@@ -992,7 +1000,10 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
             act == InputAction::Enter ? InputEnterShift(actionArg) : shift;
         eaten = InputPerform(win->input, win->app, win, act, sh);
         if (eaten) {
-            action = 0; // taken; nothing further looks at it
+            // Taken; nothing further looks at it, including a binding
+            // further out that the field's own context shadowed.
+            action = 0;
+            nActions = 0;
         }
     }
     // Copy, once the focused field has had its go: a field with a selection
@@ -1042,16 +1053,30 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     }
     // The keymap, once the focused field has had its go: a field's own
     // editing is Rust's innermost key context, so a binding further out
-    // cannot take a keystroke away from it. An action that is handled ends
-    // the keystroke here.
-    if (!eaten && action && WindowDispatchAction(win, action, actionArg)) {
-        // The character the keystroke also arrives as is the keymap's now:
-        // the second chord of a sequence is an ordinary letter, and typing it
-        // into the field underneath is what the binding was there to stop.
-        win->eatChar = true;
-        win->eatReturn = false;
-        AppInvalidate(win);
-        return true;
+    // cannot take a keystroke away from it. Each completed binding is tried
+    // innermost first. A handler that propagates, or an action nobody
+    // handled, lets the next context's binding run — GPUI's binding loop.
+    // An action that is handled ends the keystroke here.
+    if (!eaten) {
+        for (int i = 0; i < nActions; i++) {
+            // NoAction matches and stops the search. Nothing handles it, and
+            // a binding further out — a popover's Confirm behind its content
+            // — does not run. The focused control can still take the key.
+            if (actions[i] == action::NoAction()) {
+                break;
+            }
+            if (!WindowDispatchAction(win, actions[i], actionArgs[i])) {
+                continue;
+            }
+            // The character the keystroke also arrives as is the keymap's now:
+            // the second chord of a sequence is an ordinary letter, and typing
+            // it into the field underneath is what the binding was there to
+            // stop.
+            win->eatChar = true;
+            win->eatReturn = false;
+            AppInvalidate(win);
+            return true;
+        }
     }
     // The focus ring, last of the three: `tab` is bound on the window in
     // GPUI, the outermost key context there is, so a field indenting with it

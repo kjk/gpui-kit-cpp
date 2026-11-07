@@ -9811,16 +9811,14 @@ bool WindowDispatchKeyCaptureEvent(Window* win, KeyEvent* ev) {
     return false;
 }
 
-uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
-                                bool alt, bool platform, bool function,
-                                int64_t* arg, bool* pending) {
-    if (arg) {
-        *arg = 0;
-    }
+int WindowResolveKeyActions(Window* win, int vk, bool shift, bool ctrl,
+                            bool alt, bool platform, bool function,
+                            uint32_t* actions, int64_t* args, int max,
+                            bool* pending) {
     if (pending) {
         *pending = false;
     }
-    if (!win || !vk) {
+    if (!win || !vk || !actions || max <= 0) {
         return 0;
     }
     int ix = DispatchAnchor(win);
@@ -9844,8 +9842,8 @@ uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
     chord.alt = alt;
     chord.platform = platform;
     chord.function = function;
-    KeyMatch m = KeymapMatch(chord, contexts, nContexts);
-    if (m.pending) {
+    KeyMatchList matched = KeymapMatchAll(chord, contexts, nContexts);
+    if (matched.pending) {
         // Half of a sequence. Rust holds the keystroke on the matcher and
         // dispatches nothing; here that is "eaten", so nothing under the
         // keymap sees it either.
@@ -9854,10 +9852,32 @@ uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
         }
         return 0;
     }
-    if (arg) {
-        *arg = m.arg;
+    int n = matched.n < max ? matched.n : max;
+    for (int i = 0; i < n; i++) {
+        actions[i] = matched.action[i];
+        if (args) {
+            args[i] = matched.arg[i];
+        }
     }
-    return m.action;
+    return n;
+}
+
+uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
+                                bool alt, bool platform, bool function,
+                                int64_t* arg, bool* pending) {
+    if (arg) {
+        *arg = 0;
+    }
+    uint32_t action = 0;
+    int64_t one = 0;
+    if (WindowResolveKeyActions(win, vk, shift, ctrl, alt, platform, function,
+                                &action, &one, 1, pending) <= 0) {
+        return 0;
+    }
+    if (arg) {
+        *arg = one;
+    }
+    return action;
 }
 
 bool WindowDispatchKeyAction(Window* win, int vk, bool shift, bool ctrl,
