@@ -38,6 +38,8 @@ class RenderSnapshot {
     // against its predecessor's by ScriptView to count how often a rebuild
     // produced the structure it replaced.
     shell::StructureFingerprint Structure() const;
+    // The levels this description spans, its root included.
+    uint8_t Height() const;
     bool IsEmpty() const;
     Str DebugTree(Arena* into) const;
 

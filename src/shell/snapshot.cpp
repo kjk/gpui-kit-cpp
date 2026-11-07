@@ -22,6 +22,12 @@ shell::StructureFingerprint RenderSnapshot::Structure() const {
     return arena ? arena->Structure() : shell::StructureFingerprint{};
 }
 
+uint8_t RenderSnapshot::Height() const {
+    if (!arena) return 1;
+    uint8_t height = arena->Height(root);
+    return height == 0 ? 1 : height;
+}
+
 int RenderSnapshot::Len() const {
     return arena ? arena->Len() : 0;
 }

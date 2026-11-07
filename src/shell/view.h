@@ -10,6 +10,42 @@ namespace gpui {
 
 struct ResizablePanelEvent;
 
+// How a nested mount was refused. None means the last draw of this view
+// published its description.
+enum class NestingRefusal : uint8_t {
+    None = 0,
+    Reentered,
+    TooDeep,
+};
+
+// Levels views drawn one inside another may span together, each counting
+// its description's height and one level for itself: what one view at
+// kMaxDescriptionDepth takes. Layout walks a mounted view without entering
+// the script, so the description bound does not see a chain of views.
+static constexpr uint32_t kMaxNestedViewDepth = 65;
+// What a mounted dock area counts. Base draws several views of its own
+// between the area and a panel.
+static constexpr uint32_t kDockAreaLevels = 4;
+
+bool ShellNestingContains(EntityId entity);
+uint32_t ShellNestingDepth();
+bool ShellNestingEnter(EntityId entity, uint32_t levels);
+void ShellNestingLeave();
+
+// Holds one mount on the drawing stack until the end of the scope.
+struct NestingGuard {
+    bool active = false;
+
+    NestingGuard(EntityId entity, uint32_t levels) {
+        active = ShellNestingEnter(entity, levels);
+    }
+    ~NestingGuard() {
+        if (active) ShellNestingLeave();
+    }
+    NestingGuard(const NestingGuard&) = delete;
+    NestingGuard& operator=(const NestingGuard&) = delete;
+};
+
 struct ShellBoolBinding {
     shell::CallbackId callback = 0;
     bool value = false;
@@ -93,6 +129,9 @@ struct ScriptView {
     // a view about it.
     uint32_t themeRevision = 0;
     bool dirty = true;
+    // Why this view last drew nothing at a nested mount, so a refusal is
+    // logged once per snapshot rather than on every frame.
+    NestingRefusal refused = NestingRefusal::None;
 
     ~ScriptView();
 

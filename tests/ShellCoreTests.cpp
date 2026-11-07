@@ -6564,6 +6564,278 @@ static void ATextareaThatSubmitsOnEnterKeepsTheLineBreakForShiftEnter() {
     ShellErrorClear(&error);
 }
 
+// depth.rs views mounted inside one another. The window open draws the
+// first frame; one more draw is the second, which is where a cached
+// snapshot used to recurse.
+struct NestedViews {
+    App* app = nullptr;
+    ShellRuntime* runtime = nullptr;
+    Window* win = nullptr;
+    Entity<ScriptView> root = {};
+    ShellError error = {};
+
+    bool Open(Str source) {
+        app = TestAppNew();
+        component::Init(app);
+        runtime = ShellRuntime::New(app, &error);
+        ViewType* type =
+            runtime ? runtime->LoadSource(StrL("nested.js"), source, &error)
+                    : nullptr;
+        root =
+            type ? ScriptView::New(app, runtime, type) : Entity<ScriptView>{};
+        ViewTypeRelease(type);
+        win = root.IsValid() ? TestWindowOpen(app, root, 400, 300) : nullptr;
+        return win != nullptr && !error.IsSet();
+    }
+
+    void DrawAgain() { TestDraw(win); }
+
+    void Close() {
+        TestAppFree(app);
+        if (runtime) runtime->Release();
+        ShellErrorClear(&error);
+    }
+};
+
+static Entity<ScriptView> MountedChild(App* app, Entity<ScriptView> view) {
+    Entity<ScriptView> none = {};
+    ScriptView* self = view.Get(app);
+    if (!self || !self->snapshot || !self->runtime) return none;
+    const SpecArena* arena = self->snapshot->Specs();
+    if (!arena) return none;
+    int count = self->snapshot->Len();
+    for (int i = 0; i < count; i++) {
+        const SpecNode* node = arena->Node((SpecId)i);
+        if (!node || node->component.kind != ComponentKind::ChildView) continue;
+        none.id = self->runtime->NestedView(node->component.handle, app);
+        return none;
+    }
+    return {};
+}
+
+static void ViewsMountedInsideEachOtherDrawNothing() {
+    NestedViews world;
+    bool opened = world.Open(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "class A extends View { render() { return div().child('a').child("
+             "globalThis.b); } }\n"
+             "class B extends View { render() { return div().child('b').child("
+             "globalThis.a); } }\n"
+             "export default class Root extends View {\n"
+             "  init(_props, cx) { globalThis.a = cx.new(A); globalThis.b = "
+             "cx.new(B); }\n"
+             "  render() { return div().child(globalThis.a); }\n"
+             "}\n"));
+    if (!opened && world.error.IsSet()) {
+        fprintf(stderr, "nested mutual: %.*s\n", len(world.error.message),
+                world.error.message.s ? world.error.message.s : "");
+    }
+    utassert(opened);
+    if (opened) world.DrawAgain();
+    Entity<ScriptView> a = MountedChild(world.app, world.root);
+    Entity<ScriptView> b = MountedChild(world.app, a);
+    Entity<ScriptView> back = MountedChild(world.app, b);
+    ScriptView* aView = a.Get(world.app);
+    ScriptView* bView = b.Get(world.app);
+    utassert(aView && bView && back.id == a.id);
+    utassert(aView && aView->refused == NestingRefusal::Reentered);
+    utassert(bView && bView->refused == NestingRefusal::None);
+    utassert(world.runtime && world.runtime->ReadMetrics().scriptRenders == 3);
+    world.Close();
+}
+
+static void AViewMountedInsideItselfDrawsNothing() {
+    NestedViews world;
+    bool opened = world.Open(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "class A extends View { render() { return div().child('a').child("
+             "globalThis.a); } }\n"
+             "export default class Root extends View {\n"
+             "  init(_props, cx) { globalThis.a = cx.new(A); }\n"
+             "  render() { return div().child(globalThis.a); }\n"
+             "}\n"));
+    if (!opened && world.error.IsSet()) {
+        fprintf(stderr, "nested self: %.*s\n", len(world.error.message),
+                world.error.message.s ? world.error.message.s : "");
+    }
+    utassert(opened);
+    if (opened) world.DrawAgain();
+    Entity<ScriptView> a = MountedChild(world.app, world.root);
+    Entity<ScriptView> inner = MountedChild(world.app, a);
+    ScriptView* aView = a.Get(world.app);
+    utassert(aView && inner.id == a.id);
+    utassert(aView && aView->refused == NestingRefusal::Reentered);
+    utassert(world.runtime && world.runtime->ReadMetrics().scriptRenders == 2);
+    world.Close();
+}
+
+static void APanelThatMountsItsOwnDockDrawsNothing() {
+    NestedViews world;
+    bool opened = world.Open(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { DockArea, dock_area } from 'gpui-base';\n"
+        "class Panel extends View {\n"
+        "  render() { return div().size_full().child(dock_area("
+        "globalThis.dock)); }\n"
+        "}\n"
+        "export default class Root extends View {\n"
+        "  init(_props, cx) {\n"
+        "    DockArea.register_panel('panel', Panel);\n"
+        "    globalThis.dock = DockArea.new('cycle');\n"
+        "    globalThis.dock.add_panel(cx.new(Panel), { name: 'panel' });\n"
+        "  }\n"
+        "  render() { return div().size_full().child(dock_area("
+        "globalThis.dock)); }\n"
+        "}\n"));
+    if (!opened && world.error.IsSet()) {
+        fprintf(stderr, "nested dock: %.*s\n", len(world.error.message),
+                world.error.message.s ? world.error.message.s : "");
+    }
+    utassert(opened);
+    if (opened) world.DrawAgain();
+    utassert(world.runtime && world.runtime->ReadMetrics().scriptRenders == 2);
+    world.Close();
+}
+
+static void AChainOfViewsIsCutAtTheNestingBound() {
+    NestedViews world;
+    bool opened = world.Open(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "class Link extends View {\n"
+             "  init(props) { this.index = props.index; }\n"
+             "  render() {\n"
+             "    const next = globalThis.chain[this.index + 1];\n"
+             "    return next ? div().child(next) : div().child('end');\n"
+             "  }\n"
+             "}\n"
+             "export default class Root extends View {\n"
+             "  init(_props, cx) {\n"
+             "    globalThis.chain = [];\n"
+             "    for (let i = 0; i < 500; i++) "
+             "globalThis.chain.push(cx.new(Link, { index: i }));\n"
+             "  }\n"
+             "  render() { return div().child(globalThis.chain[0]); }\n"
+             "}\n"));
+    if (!opened && world.error.IsSet()) {
+        fprintf(stderr, "nested chain: %.*s\n", len(world.error.message),
+                world.error.message.s ? world.error.message.s : "");
+    }
+    utassert(opened);
+    if (opened) world.DrawAgain();
+    Entity<ScriptView> chain[32];
+    int count = 0;
+    if (world.root.IsValid()) {
+        chain[0] = world.root;
+        count = 1;
+        while (count < 32) {
+            Entity<ScriptView> next = MountedChild(world.app, chain[count - 1]);
+            if (!next.IsValid()) break;
+            chain[count++] = next;
+        }
+    }
+    int drawn = (int)(kMaxNestedViewDepth / 3);
+    utassert(count == drawn + 2);
+    for (int i = 0; i < drawn && i < count; i++) {
+        ScriptView* view = chain[i].Get(world.app);
+        utassert(view && view->refused == NestingRefusal::None);
+    }
+    ScriptView* cut = count > drawn ? chain[drawn].Get(world.app) : nullptr;
+    utassert(cut && cut->refused == NestingRefusal::TooDeep);
+    ScriptView* past =
+        count > drawn + 1 ? chain[drawn + 1].Get(world.app) : nullptr;
+    utassert(past && past->snapshot == nullptr);
+    world.Close();
+}
+
+static void ViewsAtTheNestingBoundAreDrawn() {
+    int second = (int)kMaxNestedViewDepth - 3 - 41 - 1;
+    TempStr source =
+        fmt("import { View, div } from 'gpui-kit';\n"
+            "import { Checkbox } from 'gpui-base';\n"
+            "class Link extends View {\n"
+            "  init(props) { this.index = props.index; }\n"
+            "  render() {\n"
+            "    const next = globalThis.chain[this.index + 1];\n"
+            "    let node = next ? div().child(next) : div().child('end');\n"
+            "    const levels = [40, %d, 2][this.index];\n"
+            "    for (let level = 3; level <= levels; level++) {\n"
+            "      node = Checkbox.new('checkbox-' + level).child(node);\n"
+            "    }\n"
+            "    return node;\n"
+            "  }\n"
+            "}\n"
+            "export default class Root extends View {\n"
+            "  init(_props, cx) {\n"
+            "    globalThis.chain = [0, 1, 2].map((index) => cx.new(Link, { "
+            "index }));\n"
+            "  }\n"
+            "  render() { return div().child(globalThis.chain[0]); }\n"
+            "}\n",
+            second);
+    NestedViews world;
+    bool opened = world.Open(source);
+    if (!opened && world.error.IsSet()) {
+        fprintf(stderr, "nested bound: %.*s\n", len(world.error.message),
+                world.error.message.s ? world.error.message.s : "");
+    }
+    utassert(opened);
+    if (opened) world.DrawAgain();
+    Entity<ScriptView> chain[8];
+    int count = 0;
+    if (world.root.IsValid()) {
+        chain[0] = world.root;
+        count = 1;
+        while (count < 8) {
+            Entity<ScriptView> next = MountedChild(world.app, chain[count - 1]);
+            if (!next.IsValid()) break;
+            chain[count++] = next;
+        }
+    }
+    utassert(count == 4);
+    for (int i = 0; i < 3 && i < count; i++) {
+        ScriptView* view = chain[i].Get(world.app);
+        utassert(view && view->refused == NestingRefusal::None);
+        if (view && view->snapshot) {
+            uint32_t expect = i == 0 ? 2u : i == 1 ? 40u : (uint32_t)second;
+            utassert(view->snapshot->Height() == expect);
+        }
+    }
+    ScriptView* last = count > 3 ? chain[3].Get(world.app) : nullptr;
+    utassert(last && last->refused == NestingRefusal::TooDeep);
+    world.Close();
+}
+
+static void AViewUnderTwoParentsIsDrawnUnderBoth() {
+    NestedViews world;
+    bool opened = world.Open(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "class Shared extends View { render() { return div().child('shared'); "
+        "} }\n"
+        "class Holder extends View { render() { return "
+        "div().child(globalThis.shared); } }\n"
+        "export default class Root extends View {\n"
+        "  init(_props, cx) {\n"
+        "    globalThis.shared = cx.new(Shared);\n"
+        "    this.left = cx.new(Holder);\n"
+        "    this.right = cx.new(Holder);\n"
+        "  }\n"
+        "  render() { return div().child(this.left).child(this.right); }\n"
+        "}\n"));
+    if (!opened && world.error.IsSet()) {
+        fprintf(stderr, "nested shared: %.*s\n", len(world.error.message),
+                world.error.message.s ? world.error.message.s : "");
+    }
+    utassert(opened);
+    if (opened) world.DrawAgain();
+    Entity<ScriptView> left = MountedChild(world.app, world.root);
+    Entity<ScriptView> shared = MountedChild(world.app, left);
+    ScriptView* sharedView = shared.Get(world.app);
+    utassert(sharedView && sharedView->refused == NestingRefusal::None);
+    utassert(sharedView && sharedView->snapshot != nullptr);
+    utassert(world.runtime && world.runtime->ReadMetrics().scriptRenders == 4);
+    world.Close();
+}
+
 void TestShellCore() {
     TestSuite("shell_core");
     BridgedValuesMatchJavaScriptConversions();
@@ -6575,6 +6847,12 @@ void TestShellCore() {
     ScopeGenerationsExpireAdoptAndRefuseReentry();
     SpecElementsAreSingleUseValues();
     SpecDescriptionDepthIsBounded();
+    ViewsMountedInsideEachOtherDrawNothing();
+    AViewMountedInsideItselfDrawsNothing();
+    APanelThatMountsItsOwnDockDrawsNothing();
+    AChainOfViewsIsCutAtTheNestingBound();
+    ViewsAtTheNestingBoundAreDrawn();
+    AViewUnderTwoParentsIsDrawnUnderBoth();
     SpecsAndSnapshotsDumpWithoutEnteringTheVm();
     ThemeTokenNamesAndValuesComeFromTheTheme();
     RenderContextExposesFrozenGenerationBoundTheme();

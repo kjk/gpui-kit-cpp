@@ -1786,6 +1786,10 @@ static El* DockAreaElement(Ctx* cx, ShellRuntime* runtime,
     // `SizeFull` before the script's own refinement, so it is a default rather
     // than an override: an area with no size draws nothing at all, which is a
     // failure with no visible cause on screen.
+    // The area counts four levels while its panels render: base draws
+    // several views of its own between an area and a panel, and panels are
+    // built inside DockArea::New.
+    NestingGuard nesting(entry->dock.id, kDockAreaLevels);
     return Div(cx->a)->SizeFull()->Child(DockArea::New(
         cx, entry->dockSkin->id, entry->dock, entry->dockSkin->Renderer()));
 }

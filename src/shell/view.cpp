@@ -26,6 +26,62 @@ ScriptView::~ScriptView() {
     if (runtime) runtime->Release();
 }
 
+// Views whose elements are being built, outermost first. Rust keeps this
+// through layout, prepaint and paint. Those phases mount a child view by
+// rendering it; here EntityRender does that inside the parent's Render, so
+// the stack lives for the rest of that call.
+struct NestingEntry {
+    EntityId entity = {};
+    uint32_t levels = 0;
+};
+
+static NestingEntry gNesting[72];
+static int gNestingLen = 0;
+static uint32_t gNestingDepth = 0;
+
+bool ShellNestingContains(EntityId entity) {
+    for (int i = 0; i < gNestingLen; i++) {
+        if (gNesting[i].entity == entity) return true;
+    }
+    return false;
+}
+
+uint32_t ShellNestingDepth() {
+    return gNestingDepth;
+}
+
+bool ShellNestingEnter(EntityId entity, uint32_t levels) {
+    if (gNestingLen >= (int)(sizeof(gNesting) / sizeof(gNesting[0])))
+        return false;
+    gNesting[gNestingLen].entity = entity;
+    gNesting[gNestingLen].levels = levels;
+    gNestingLen++;
+    gNestingDepth += levels;
+    return true;
+}
+
+void ShellNestingLeave() {
+    if (gNestingLen <= 0) return;
+    gNestingLen--;
+    gNestingDepth -= gNesting[gNestingLen].levels;
+}
+
+static void NoteNestingRefusal(ScriptView* self, NestingRefusal refusal) {
+    if (!self || self->refused == refusal) return;
+    self->refused = refusal;
+    if (refusal == NestingRefusal::Reentered) {
+        logf(
+            "script view %d is mounted inside itself; the inner mount "
+            "draws nothing\n",
+            self->self.index);
+    } else if (refusal == NestingRefusal::TooDeep) {
+        logf(
+            "script view %d would nest views more than %u levels deep; it "
+            "draws nothing at this mount\n",
+            self->self.index, kMaxNestedViewDepth);
+    }
+}
+
 Entity<ScriptView> ScriptView::New(App* app, ShellRuntime* runtime,
                                    ViewType* type, Policy* policy) {
     Entity<ScriptView> entity = EntityNew<ScriptView>(app);
@@ -44,6 +100,12 @@ El* ScriptView::Render(ScriptView* self, Ctx* cx) {
     if (!self || !self->runtime || !self->type) {
         return Div(cx->a)
             ->Child(TextEl(cx->a, StrL("Shell view is not initialized")));
+    }
+    // Before the snapshot is rebuilt, so a view mounted inside itself runs
+    // no script at the inner mount.
+    if (ShellNestingContains(self->self)) {
+        NoteNestingRefusal(self, NestingRefusal::Reentered);
+        return Div(cx->a);
     }
     for (auto* batch : self->frameSnapshots) batch->Release();
     VecClear(self->frameSnapshots);
@@ -75,6 +137,7 @@ El* ScriptView::Render(ScriptView* self, Ctx* cx) {
             self->snapshot = next;
             self->dirty = false;
             self->renderBroken = false;
+            self->refused = NestingRefusal::None;
             ShellErrorClear(&self->error);
         } else {
             self->renderBroken = true;
@@ -89,6 +152,15 @@ El* ScriptView::Render(ScriptView* self, Ctx* cx) {
                   : self->error.IsSet()
                       ? self->error.message
                       : StrL("The shell view did not publish a snapshot");
+    // The view itself is one level, plus the description it published.
+    uint32_t described =
+        self->snapshot ? (uint32_t)self->snapshot->Height() : 1;
+    uint32_t height = 1 + described;
+    if (ShellNestingDepth() + height > kMaxNestedViewDepth) {
+        NoteNestingRefusal(self, NestingRefusal::TooDeep);
+        return Div(cx->a);
+    }
+    NestingGuard nesting(self->self, height);
     if (self->snapshot && !reloadFailed && !renderFailed) {
         return ShellMaterialize(cx, self->runtime, self->snapshot,
                                 &self->error);

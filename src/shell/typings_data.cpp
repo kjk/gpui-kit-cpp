@@ -638,7 +638,9 @@ static const char kShellTypes1[] = R"GPUI_DTS(     * reported rather than swallo
      * An `Entity` from `cx.new(...)` is a child too, the way an `Entity<V>` is
      * renderable in GPUI — that is how a retained nested view is mounted. One
      * entity may appear once per parent snapshot; a second mount in the same
-     * description is refused before any of it is published.
+     * description is refused before any of it is published. Views mounted
+     * inside one another may span 65 levels together, one more for each view;
+     * a mount past that, or inside the view itself, draws nothing.
      */
     child<Self extends Element>(this: Self, child: Element | Entity | string | number | boolean): Self;
     /** Adds several children, in order. */
@@ -675,10 +677,10 @@ static const char kShellTypes1[] = R"GPUI_DTS(     * reported rather than swallo
      * is not, so filling both is how a picture gets something to fall back to.
      */
     image<Self extends Element>(this: Self, element: Element): Self;
-    /** Fills an `Avatar`'s `fallback` slot, which takes an `AvatarFallback`. */
-    fallback<Self extends Element>(this: Self, element: Element): Self;
 )GPUI_DTS";
-static const char kShellTypes2[] = R"GPUI_DTS(    /** Fills an `AccordionItem`'s `header` slot, which takes an `AccordionHeader`. */
+static const char kShellTypes2[] = R"GPUI_DTS(    /** Fills an `Avatar`'s `fallback` slot, which takes an `AvatarFallback`. */
+    fallback<Self extends Element>(this: Self, element: Element): Self;
+    /** Fills an `AccordionItem`'s `header` slot, which takes an `AccordionHeader`. */
     header<Self extends Element>(this: Self, element: Element): Self;
     /** Fills a component's named `footer` slot. */
     footer<Self extends Element>(this: Self, element: Element): Self;
@@ -895,10 +897,10 @@ static const char kShellTypes2[] = R"GPUI_DTS(    /** Fills an `AccordionItem`'s
      * half-open `[start, end)`, and `count` is the list's `item_count`.
      *
      * It is called once the frame is done, as an event handler is, so it may
-     * change state and call `cx.notify()`: load the page above when
-     * `range.start` reaches 0, or the next one when `range.end` reaches
 )GPUI_DTS";
-static const char kShellTypes3[] = R"GPUI_DTS(     * `count`. The item renderer cannot do this, because it runs inside
+static const char kShellTypes3[] = R"GPUI_DTS(     * change state and call `cx.notify()`: load the page above when
+     * `range.start` reaches 0, or the next one when `range.end` reaches
+     * `count`. The item renderer cannot do this, because it runs inside
      * layout.
      *
      * What calls it is the range itself, not what moved it: the first frame,
@@ -1125,11 +1127,11 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * `count`. The item renderer 
     tab_index<Self extends Element>(this: Self, index: number): Self;
     /**
      * Whether Tab can land on this element. `false` keeps its place in the
-     * order without making it reachable, which is what a container that
+)GPUI_DTS";
+static const char kShellTypes4[] = R"GPUI_DTS(     * order without making it reachable, which is what a container that
      * forwards focus to its first child wants.
      */
-)GPUI_DTS";
-static const char kShellTypes4[] = R"GPUI_DTS(    tab_stop<Self extends Element>(this: Self, value: boolean): Self;
+    tab_stop<Self extends Element>(this: Self, value: boolean): Self;
     /** Sets the absolute HTTP(S) target opened by a `Link`. */
     href<Self extends Element>(this: Self, url: string): Self;
     /**
@@ -1342,12 +1344,12 @@ static const char kShellTypes4[] = R"GPUI_DTS(    tab_stop<Self extends Element>
      * element out from its own state; one that only paints, such as an
      * opacity or a color, does not.
      */
-    group_hover<Self extends Element>(this: Self, name: string, declare: (el: NativeElement) => NativeElement | void): Self;
+)GPUI_DTS";
+static const char kShellTypes5[] = R"GPUI_DTS(    group_hover<Self extends Element>(this: Self, name: string, declare: (el: NativeElement) => NativeElement | void): Self;
     /**
      * Displays the tab at `index` in `group` when this element is clicked.
      *
-)GPUI_DTS";
-static const char kShellTypes5[] = R"GPUI_DTS(     * One of the twelve **dock commands**, which are how an element a dock's
+     * One of the twelve **dock commands**, which are how an element a dock's
      * chrome drew says what it does. A chrome handler runs once per container
      * per frame for as long as the dock is on screen, so it may not register an
      * event handler — one created there would pile up for as long as the dock
@@ -1551,7 +1553,8 @@ static const char kShellTypes5[] = R"GPUI_DTS(     * One of the twelve **dock co
      */
     border_10<Self extends Element>(this: Self): Self;
     /**
-     * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
+)GPUI_DTS";
+static const char kShellTypes6[] = R"GPUI_DTS(     * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 11px
      */
@@ -1559,8 +1562,7 @@ static const char kShellTypes5[] = R"GPUI_DTS(     * One of the twelve **dock co
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
-)GPUI_DTS";
-static const char kShellTypes6[] = R"GPUI_DTS(     * 12px
+     * 12px
      */
     border_12<Self extends Element>(this: Self): Self;
     /**
@@ -1890,14 +1892,14 @@ static const char kShellTypes6[] = R"GPUI_DTS(     * 12px
      */
     border_r_20<Self extends Element>(this: Self): Self;
     /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+)GPUI_DTS";
+static const char kShellTypes7[] = R"GPUI_DTS(     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 24px
      */
     border_r_24<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes7[] = R"GPUI_DTS(     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 3px
      */
@@ -2203,14 +2205,14 @@ static const char kShellTypes7[] = R"GPUI_DTS(     * Sets the border width of th
      */
     border_y_24<Self extends Element>(this: Self): Self;
     /**
-     * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
+)GPUI_DTS";
+static const char kShellTypes8[] = R"GPUI_DTS(     * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 3px
      */
     border_y_3<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes8[] = R"GPUI_DTS(     * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
+     * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 32px
      */
@@ -2538,7 +2540,8 @@ static const char kShellTypes8[] = R"GPUI_DTS(     * Sets the border width of th
      *
      * 4px (0.25rem)
      */
-    bottom_neg_1<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes9[] = R"GPUI_DTS(    bottom_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
@@ -2546,8 +2549,7 @@ static const char kShellTypes8[] = R"GPUI_DTS(     * Sets the border width of th
      */
     bottom_neg_10<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes9[] = R"GPUI_DTS(     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
@@ -2865,7 +2867,8 @@ static const char kShellTypes9[] = R"GPUI_DTS(     * Sets the bottom value of a 
      */
     cursor_alias<Self extends Element>(this: Self): Self;
     /**
-     * Sets cursor style when hovering over an element to `col-resize`.
+)GPUI_DTS";
+static const char kShellTypes10[] = R"GPUI_DTS(     * Sets cursor style when hovering over an element to `col-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
@@ -2873,8 +2876,7 @@ static const char kShellTypes9[] = R"GPUI_DTS(     * Sets the bottom value of a 
     /**
      * Sets cursor style when hovering over an element to `context-menu`.
      *
-)GPUI_DTS";
-static const char kShellTypes10[] = R"GPUI_DTS(     * [Docs](https://tailwindcss.com/docs/cursor)
+     * [Docs](https://tailwindcss.com/docs/cursor)
      */
     cursor_context_menu<Self extends Element>(this: Self): Self;
     /**
@@ -3199,15 +3201,15 @@ static const char kShellTypes10[] = R"GPUI_DTS(     * [Docs](https://tailwindcss
      */
     gap_1_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
+)GPUI_DTS";
+static const char kShellTypes11[] = R"GPUI_DTS(     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 20% (1/5)
      */
     gap_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-)GPUI_DTS";
-static const char kShellTypes11[] = R"GPUI_DTS(     *
+     *
      * 16% (1/6)
      */
     gap_1_6<Self extends Element>(this: Self): Self;
@@ -3560,7 +3562,8 @@ static const char kShellTypes11[] = R"GPUI_DTS(     *
      */
     gap_neg_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
+)GPUI_DTS";
+static const char kShellTypes12[] = R"GPUI_DTS(     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 160px (10rem)
      */
@@ -3568,8 +3571,7 @@ static const char kShellTypes11[] = R"GPUI_DTS(     *
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
-)GPUI_DTS";
-static const char kShellTypes12[] = R"GPUI_DTS(     * 192px (12rem)
+     * 192px (12rem)
      */
     gap_neg_48<Self extends Element>(this: Self): Self;
     /**
@@ -3883,7 +3885,8 @@ static const char kShellTypes12[] = R"GPUI_DTS(     * 192px (12rem)
      *
      * 256px (16rem)
      */
-    gap_x_64<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes13[] = R"GPUI_DTS(    gap_x_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
@@ -3891,8 +3894,7 @@ static const char kShellTypes12[] = R"GPUI_DTS(     * 192px (12rem)
      */
     gap_x_7<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes13[] = R"GPUI_DTS(     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 288px (18rem)
      */
@@ -4186,7 +4188,8 @@ static const char kShellTypes13[] = R"GPUI_DTS(     * Sets the gap between colum
      */
     gap_x_neg_96<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+)GPUI_DTS";
+static const char kShellTypes14[] = R"GPUI_DTS(     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 100%
      */
@@ -4194,8 +4197,7 @@ static const char kShellTypes13[] = R"GPUI_DTS(     * Sets the gap between colum
     /**
      * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
-)GPUI_DTS";
-static const char kShellTypes14[] = R"GPUI_DTS(     * 1px
+     * 1px
      */
     gap_x_neg_px<Self extends Element>(this: Self): Self;
     /**
@@ -4498,7 +4500,8 @@ static const char kShellTypes14[] = R"GPUI_DTS(     * 1px
      * 44px (2.75rem)
      */
     gap_y_neg_11<Self extends Element>(this: Self): Self;
-    /**
+)GPUI_DTS";
+static const char kShellTypes15[] = R"GPUI_DTS(    /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 448px (28rem)
@@ -4506,8 +4509,7 @@ static const char kShellTypes14[] = R"GPUI_DTS(     * 1px
     gap_y_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-)GPUI_DTS";
-static const char kShellTypes15[] = R"GPUI_DTS(     *
+     *
      * 48px (3rem)
      */
     gap_y_neg_12<Self extends Element>(this: Self): Self;
@@ -4827,7 +4829,8 @@ static const char kShellTypes15[] = R"GPUI_DTS(     *
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 25% (1/4)
-     */
+)GPUI_DTS";
+static const char kShellTypes16[] = R"GPUI_DTS(     */
     h_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
@@ -4840,8 +4843,7 @@ static const char kShellTypes15[] = R"GPUI_DTS(     *
      *
      * 16% (1/6)
      */
-)GPUI_DTS";
-static const char kShellTypes16[] = R"GPUI_DTS(    h_1_6<Self extends Element>(this: Self): Self;
+    h_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
@@ -5227,7 +5229,8 @@ static const char kShellTypes16[] = R"GPUI_DTS(    h_1_6<Self extends Element>(t
      */
     h_neg_3p5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
+)GPUI_DTS";
+static const char kShellTypes17[] = R"GPUI_DTS(     * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 16px (1rem)
      */
@@ -5239,8 +5242,7 @@ static const char kShellTypes16[] = R"GPUI_DTS(    h_1_6<Self extends Element>(t
      */
     h_neg_40<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes17[] = R"GPUI_DTS(     * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
+     * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 192px (12rem)
      */
@@ -5563,15 +5565,15 @@ static const char kShellTypes17[] = R"GPUI_DTS(     * Sets the height of the ele
      * 256px (16rem)
      */
     inset_64<Self extends Element>(this: Self): Self;
-    /**
+)GPUI_DTS";
+static const char kShellTypes18[] = R"GPUI_DTS(    /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
     inset_7<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes18[] = R"GPUI_DTS(     * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+     * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
@@ -5869,14 +5871,14 @@ static const char kShellTypes18[] = R"GPUI_DTS(     * Sets the top, right, botto
      *
      * 384px (24rem)
      */
-    inset_neg_96<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes19[] = R"GPUI_DTS(    inset_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-)GPUI_DTS";
-static const char kShellTypes19[] = R"GPUI_DTS(    inset_neg_full<Self extends Element>(this: Self): Self;
+    inset_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
@@ -6206,14 +6208,14 @@ static const char kShellTypes19[] = R"GPUI_DTS(    inset_neg_full<Self extends E
      */
     left_7<Self extends Element>(this: Self): Self;
     /**
-     * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+)GPUI_DTS";
+static const char kShellTypes20[] = R"GPUI_DTS(     * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
     left_72<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes20[] = R"GPUI_DTS(     * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+     * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
@@ -6553,14 +6555,14 @@ static const char kShellTypes20[] = R"GPUI_DTS(     * Sets the left value of a p
      *
      * 40px (2.5rem)
      */
-    m_10<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes21[] = R"GPUI_DTS(    m_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 44px (2.75rem)
      */
-)GPUI_DTS";
-static const char kShellTypes21[] = R"GPUI_DTS(    m_11<Self extends Element>(this: Self): Self;
+    m_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
@@ -6958,14 +6960,14 @@ static const char kShellTypes21[] = R"GPUI_DTS(    m_11<Self extends Element>(th
      */
     m_neg_3_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+)GPUI_DTS";
+static const char kShellTypes22[] = R"GPUI_DTS(     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 60% (3/5)
      */
     m_neg_3_5<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes22[] = R"GPUI_DTS(     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 14px (0.875rem)
      */
@@ -7342,13 +7344,13 @@ static const char kShellTypes22[] = R"GPUI_DTS(     * Sets the margin of the ele
      * Auto
      */
     max_h_auto<Self extends Element>(this: Self): Self;
-    /**
+)GPUI_DTS";
+static const char kShellTypes23[] = R"GPUI_DTS(    /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 100%
      */
-)GPUI_DTS";
-static const char kShellTypes23[] = R"GPUI_DTS(    max_h_full<Self extends Element>(this: Self): Self;
+    max_h_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
@@ -7734,12 +7736,12 @@ static const char kShellTypes23[] = R"GPUI_DTS(    max_h_full<Self extends Eleme
      */
     max_size_20<Self extends Element>(this: Self): Self;
     /**
-     * Sets the maximum width and height of the element.
+)GPUI_DTS";
+static const char kShellTypes24[] = R"GPUI_DTS(     * Sets the maximum width and height of the element.
      *
      * 96px (6rem)
      */
-)GPUI_DTS";
-static const char kShellTypes24[] = R"GPUI_DTS(    max_size_24<Self extends Element>(this: Self): Self;
+    max_size_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
@@ -8185,11 +8187,11 @@ static const char kShellTypes24[] = R"GPUI_DTS(    max_size_24<Self extends Elem
      */
     max_w_0p5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
+)GPUI_DTS";
+static const char kShellTypes25[] = R"GPUI_DTS(     * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 4px (0.25rem)
-)GPUI_DTS";
-static const char kShellTypes25[] = R"GPUI_DTS(     */
+     */
     max_w_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
@@ -8562,12 +8564,12 @@ static const char kShellTypes25[] = R"GPUI_DTS(     */
      *
      * 66% (2/3)
      */
-    max_w_neg_2_3<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes26[] = R"GPUI_DTS(    max_w_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
-)GPUI_DTS";
-static const char kShellTypes26[] = R"GPUI_DTS(     * 50% (2/4)
+     * 50% (2/4)
      */
     max_w_neg_2_4<Self extends Element>(this: Self): Self;
     /**
@@ -8915,12 +8917,12 @@ static const char kShellTypes26[] = R"GPUI_DTS(     * 50% (2/4)
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
-     * 20px (1.25rem)
+)GPUI_DTS";
+static const char kShellTypes27[] = R"GPUI_DTS(     * 20px (1.25rem)
      */
     mb_5<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes27[] = R"GPUI_DTS(     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 224px (14rem)
      */
@@ -9250,12 +9252,12 @@ static const char kShellTypes27[] = R"GPUI_DTS(     * Sets the bottom margin of 
      */
     mb_neg_96<Self extends Element>(this: Self): Self;
     /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+)GPUI_DTS";
+static const char kShellTypes28[] = R"GPUI_DTS(     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 100%
      */
-)GPUI_DTS";
-static const char kShellTypes28[] = R"GPUI_DTS(    mb_neg_full<Self extends Element>(this: Self): Self;
+    mb_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
@@ -9623,12 +9625,12 @@ static const char kShellTypes28[] = R"GPUI_DTS(    mb_neg_full<Self extends Elem
      */
     min_h_neg_1_5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+)GPUI_DTS";
+static const char kShellTypes29[] = R"GPUI_DTS(     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 16% (1/6)
      */
-)GPUI_DTS";
-static const char kShellTypes29[] = R"GPUI_DTS(    min_h_neg_1_6<Self extends Element>(this: Self): Self;
+    min_h_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
@@ -10036,13 +10038,13 @@ static const char kShellTypes29[] = R"GPUI_DTS(    min_h_neg_1_6<Self extends El
      *
      * 256px (16rem)
      */
-    min_size_64<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes30[] = R"GPUI_DTS(    min_size_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 28px (1.75rem)
-)GPUI_DTS";
-static const char kShellTypes30[] = R"GPUI_DTS(     */
+     */
     min_size_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
@@ -10467,12 +10469,12 @@ static const char kShellTypes30[] = R"GPUI_DTS(     */
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
-     * 80px (5rem)
+)GPUI_DTS";
+static const char kShellTypes31[] = R"GPUI_DTS(     * 80px (5rem)
      */
     min_w_20<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes31[] = R"GPUI_DTS(     * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
+     * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 96px (6rem)
      */
@@ -10844,10 +10846,10 @@ static const char kShellTypes31[] = R"GPUI_DTS(     * Sets the minimum width of 
      */
     min_w_neg_5_6<Self extends Element>(this: Self): Self;
     /**
-     * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
-     *
 )GPUI_DTS";
-static const char kShellTypes32[] = R"GPUI_DTS(     * 24px (1.5rem)
+static const char kShellTypes32[] = R"GPUI_DTS(     * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
+     *
+     * 24px (1.5rem)
      */
     min_w_neg_6<Self extends Element>(this: Self): Self;
     /**
@@ -11193,10 +11195,10 @@ static const char kShellTypes32[] = R"GPUI_DTS(     * 24px (1.5rem)
      */
     ml_neg_0p5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
 )GPUI_DTS";
-static const char kShellTypes33[] = R"GPUI_DTS(     * 4px (0.25rem)
+static const char kShellTypes33[] = R"GPUI_DTS(     * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 4px (0.25rem)
      */
     ml_neg_1<Self extends Element>(this: Self): Self;
     /**
@@ -11530,14 +11532,14 @@ static const char kShellTypes33[] = R"GPUI_DTS(     * 4px (0.25rem)
      */
     mr_1_3<Self extends Element>(this: Self): Self;
     /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+)GPUI_DTS";
+static const char kShellTypes34[] = R"GPUI_DTS(     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 25% (1/4)
      */
     mr_1_4<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes34[] = R"GPUI_DTS(     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 20% (1/5)
      */
@@ -11869,13 +11871,13 @@ static const char kShellTypes34[] = R"GPUI_DTS(     * Sets the right margin of t
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
-     * 12px (0.75rem)
+)GPUI_DTS";
+static const char kShellTypes35[] = R"GPUI_DTS(     * 12px (0.75rem)
      */
     mr_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-)GPUI_DTS";
-static const char kShellTypes35[] = R"GPUI_DTS(     *
+     *
      * 128px (8rem)
      */
     mr_neg_32<Self extends Element>(this: Self): Self;
@@ -12210,14 +12212,14 @@ static const char kShellTypes35[] = R"GPUI_DTS(     *
      */
     mt_56<Self extends Element>(this: Self): Self;
     /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+)GPUI_DTS";
+static const char kShellTypes36[] = R"GPUI_DTS(     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80% (5/6)
      */
     mt_5_6<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes36[] = R"GPUI_DTS(     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 24px (1.5rem)
      */
@@ -12551,14 +12553,14 @@ static const char kShellTypes36[] = R"GPUI_DTS(     * Sets the top margin of the
      *
      * 1px
      */
-    mt_px<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes37[] = R"GPUI_DTS(    mt_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 0px
      */
-)GPUI_DTS";
-static const char kShellTypes37[] = R"GPUI_DTS(    mx_0<Self extends Element>(this: Self): Self;
+    mx_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
@@ -12894,14 +12896,14 @@ static const char kShellTypes37[] = R"GPUI_DTS(    mx_0<Self extends Element>(th
      *
      * 33% (1/3)
      */
-    mx_neg_1_3<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes38[] = R"GPUI_DTS(    mx_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 25% (1/4)
      */
-)GPUI_DTS";
-static const char kShellTypes38[] = R"GPUI_DTS(    mx_neg_1_4<Self extends Element>(this: Self): Self;
+    mx_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
@@ -13237,14 +13239,14 @@ static const char kShellTypes38[] = R"GPUI_DTS(    mx_neg_1_4<Self extends Eleme
      *
      * 10px (0.625rem)
      */
-    my_2p5<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes39[] = R"GPUI_DTS(    my_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 12px (0.75rem)
      */
-)GPUI_DTS";
-static const char kShellTypes39[] = R"GPUI_DTS(    my_3<Self extends Element>(this: Self): Self;
+    my_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
@@ -13582,14 +13584,14 @@ static const char kShellTypes39[] = R"GPUI_DTS(    my_3<Self extends Element>(th
      */
     my_neg_5_6<Self extends Element>(this: Self): Self;
     /**
-     * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
+)GPUI_DTS";
+static const char kShellTypes40[] = R"GPUI_DTS(     * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 24px (1.5rem)
      */
     my_neg_6<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes40[] = R"GPUI_DTS(     * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
+     * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 256px (16rem)
      */
@@ -13966,15 +13968,15 @@ static const char kShellTypes40[] = R"GPUI_DTS(     * Sets the vertical margin o
      * 44px (2.75rem)
      */
     p_neg_11<Self extends Element>(this: Self): Self;
-    /**
+)GPUI_DTS";
+static const char kShellTypes41[] = R"GPUI_DTS(    /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 448px (28rem)
      */
     p_neg_112<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes41[] = R"GPUI_DTS(     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 48px (3rem)
      */
@@ -14340,14 +14342,14 @@ static const char kShellTypes41[] = R"GPUI_DTS(     * Sets the padding of the el
      */
     pb_2_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+)GPUI_DTS";
+static const char kShellTypes42[] = R"GPUI_DTS(     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 40% (2/5)
      */
     pb_2_5<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes42[] = R"GPUI_DTS(     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 10px (0.625rem)
      */
@@ -14671,14 +14673,14 @@ static const char kShellTypes42[] = R"GPUI_DTS(     * Sets the bottom padding of
      */
     pb_neg_4_5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+)GPUI_DTS";
+static const char kShellTypes43[] = R"GPUI_DTS(     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 20px (1.25rem)
      */
     pb_neg_5<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes43[] = R"GPUI_DTS(     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 224px (14rem)
      */
@@ -15008,14 +15010,14 @@ static const char kShellTypes43[] = R"GPUI_DTS(     * Sets the bottom padding of
      */
     pl_9<Self extends Element>(this: Self): Self;
     /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+)GPUI_DTS";
+static const char kShellTypes44[] = R"GPUI_DTS(     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 384px (24rem)
      */
     pl_96<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes44[] = R"GPUI_DTS(     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 100%
      */
@@ -15341,14 +15343,14 @@ static const char kShellTypes44[] = R"GPUI_DTS(     * Sets the left padding of t
     /**
      * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
-     * 512px (32rem)
+)GPUI_DTS";
+static const char kShellTypes45[] = R"GPUI_DTS(     * 512px (32rem)
      */
     pr_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
-)GPUI_DTS";
-static const char kShellTypes45[] = R"GPUI_DTS(     * 64px (4rem)
+     * 64px (4rem)
      */
     pr_16<Self extends Element>(this: Self): Self;
     /**
@@ -15676,14 +15678,14 @@ static const char kShellTypes45[] = R"GPUI_DTS(     * 64px (4rem)
      */
     pr_neg_24<Self extends Element>(this: Self): Self;
     /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+)GPUI_DTS";
+static const char kShellTypes46[] = R"GPUI_DTS(     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 66% (2/3)
      */
     pr_neg_2_3<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes46[] = R"GPUI_DTS(     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 50% (2/4)
      */
@@ -16013,14 +16015,14 @@ static const char kShellTypes46[] = R"GPUI_DTS(     * Sets the right padding of 
      */
     pt_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+)GPUI_DTS";
+static const char kShellTypes47[] = R"GPUI_DTS(     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 160px (10rem)
      */
     pt_40<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes47[] = R"GPUI_DTS(     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 192px (12rem)
      */
@@ -16348,14 +16350,14 @@ static const char kShellTypes47[] = R"GPUI_DTS(     * Sets the top padding of th
      *
      * 320px (20rem)
      */
-    pt_neg_80<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes48[] = R"GPUI_DTS(    pt_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 36px (2.25rem)
      */
-)GPUI_DTS";
-static const char kShellTypes48[] = R"GPUI_DTS(    pt_neg_9<Self extends Element>(this: Self): Self;
+    pt_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
@@ -16687,14 +16689,14 @@ static const char kShellTypes48[] = R"GPUI_DTS(    pt_neg_9<Self extends Element
      */
     px_neg_12<Self extends Element>(this: Self): Self;
     /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+)GPUI_DTS";
+static const char kShellTypes49[] = R"GPUI_DTS(     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
      *
      * 512px (32rem)
      */
     px_neg_128<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes49[] = R"GPUI_DTS(     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
      *
      * 64px (4rem)
      */
@@ -17024,14 +17026,14 @@ static const char kShellTypes49[] = R"GPUI_DTS(     * Sets the horizontal paddin
      */
     py_2<Self extends Element>(this: Self): Self;
     /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+)GPUI_DTS";
+static const char kShellTypes50[] = R"GPUI_DTS(     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
      *
      * 80px (5rem)
      */
     py_20<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes50[] = R"GPUI_DTS(     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
      *
      * 96px (6rem)
      */
@@ -17365,14 +17367,14 @@ static const char kShellTypes50[] = R"GPUI_DTS(     * Sets the vertical padding 
      *
      * 160px (10rem)
      */
-    py_neg_40<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes51[] = R"GPUI_DTS(    py_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
      *
      * 192px (12rem)
      */
-)GPUI_DTS";
-static const char kShellTypes51[] = R"GPUI_DTS(    py_neg_48<Self extends Element>(this: Self): Self;
+    py_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
      *
@@ -17710,14 +17712,14 @@ static const char kShellTypes51[] = R"GPUI_DTS(    py_neg_48<Self extends Elemen
      */
     right_8<Self extends Element>(this: Self): Self;
     /**
-     * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+)GPUI_DTS";
+static const char kShellTypes52[] = R"GPUI_DTS(     * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
     right_80<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes52[] = R"GPUI_DTS(     * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+     * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
@@ -18047,14 +18049,14 @@ static const char kShellTypes52[] = R"GPUI_DTS(     * Sets the right value of a 
      */
     rounded_b_full<Self extends Element>(this: Self): Self;
     /**
-     * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
+)GPUI_DTS";
+static const char kShellTypes53[] = R"GPUI_DTS(     * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 8px (0.5rem)
      */
     rounded_b_lg<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes53[] = R"GPUI_DTS(     * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
+     * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 6px (0.375rem)
      */
@@ -18346,14 +18348,14 @@ static const char kShellTypes53[] = R"GPUI_DTS(     * Sets the border radius of 
      *
      * 9999px
      */
-    rounded_t_full<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes54[] = R"GPUI_DTS(    rounded_t_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 8px (0.5rem)
      */
-)GPUI_DTS";
-static const char kShellTypes54[] = R"GPUI_DTS(    rounded_t_lg<Self extends Element>(this: Self): Self;
+    rounded_t_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
@@ -18695,7 +18697,8 @@ static const char kShellTypes54[] = R"GPUI_DTS(    rounded_t_lg<Self extends Ele
      *
      * 6px (0.375rem)
      */
-    size_1p5<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes55[] = R"GPUI_DTS(    size_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
@@ -18703,8 +18706,7 @@ static const char kShellTypes54[] = R"GPUI_DTS(    rounded_t_lg<Self extends Ele
      */
     size_2<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes55[] = R"GPUI_DTS(     * Sets the width and height of the element.
+     * Sets the width and height of the element.
      *
      * 80px (5rem)
      */
@@ -19174,14 +19176,14 @@ static const char kShellTypes55[] = R"GPUI_DTS(     * Sets the width and height 
      */
     text_decoration_0<Self extends Element>(this: Self): Self;
     /**
-     * Sets the text decoration to be 1px thick.
+)GPUI_DTS";
+static const char kShellTypes56[] = R"GPUI_DTS(     * Sets the text decoration to be 1px thick.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-thickness)
      */
     text_decoration_1<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes56[] = R"GPUI_DTS(     * Sets the text decoration to be 2px thick.
+     * Sets the text decoration to be 2px thick.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-thickness)
      */
@@ -19521,14 +19523,14 @@ static const char kShellTypes56[] = R"GPUI_DTS(     * Sets the text decoration t
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
-     * 384px (24rem)
+)GPUI_DTS";
+static const char kShellTypes57[] = R"GPUI_DTS(     * 384px (24rem)
      */
     top_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
-)GPUI_DTS";
-static const char kShellTypes57[] = R"GPUI_DTS(     * Auto
+     * Auto
      */
     top_auto<Self extends Element>(this: Self): Self;
     /**
@@ -19872,7 +19874,8 @@ static const char kShellTypes57[] = R"GPUI_DTS(     * Auto
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
-     * 448px (28rem)
+)GPUI_DTS";
+static const char kShellTypes58[] = R"GPUI_DTS(     * 448px (28rem)
      */
     w_112<Self extends Element>(this: Self): Self;
     /**
@@ -19880,8 +19883,7 @@ static const char kShellTypes57[] = R"GPUI_DTS(     * Auto
      *
      * 48px (3rem)
      */
-)GPUI_DTS";
-static const char kShellTypes58[] = R"GPUI_DTS(    w_12<Self extends Element>(this: Self): Self;
+    w_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
@@ -20285,14 +20287,14 @@ static const char kShellTypes58[] = R"GPUI_DTS(    w_12<Self extends Element>(th
      */
     w_neg_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
+)GPUI_DTS";
+static const char kShellTypes59[] = R"GPUI_DTS(     * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 160px (10rem)
      */
     w_neg_40<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes59[] = R"GPUI_DTS(     * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
+     * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 192px (12rem)
      */
@@ -20575,15 +20577,15 @@ static const char kShellTypes59[] = R"GPUI_DTS(     * Sets the width of the elem
     stop(color: Color, percentage: number): BackgroundStop;
     linear_gradient(angle: number, from: Color | BackgroundStop, to: Color | BackgroundStop): Background;
     pattern_slash(color: Color, width: number, interval: number): Background;
-    checkerboard(color: Color, size: number): Background;
+)GPUI_DTS";
+static const char kShellTypes60[] = R"GPUI_DTS(    checkerboard(color: Color, size: number): Background;
   };
 
   /**
    * A focus target the script owns, created once and kept on the view.
    *
    * Focus is a fact about the window that outlives any one render, so an
-)GPUI_DTS";
-static const char kShellTypes60[] = R"GPUI_DTS(   * element rebuilt every frame cannot own it. Hand the handle to an element
+   * element rebuilt every frame cannot own it. Hand the handle to an element
    * with `track_focus(...)`, and it is that element the keyboard means.
    *
    * Built with `cx.focus_handle()`, mirroring `App::focus_handle`.
@@ -20875,14 +20877,14 @@ declare module "gpui-base" {
     bounds: { x: number; y: number; width: number; height: number };
     modifiers: { shift: boolean; alt: boolean; control: boolean; platform: boolean };
   }
-  export interface InlineTokenHoverEvent extends InlineTokenSpan {
+)GPUI_DTS";
+static const char kShellTypes61[] = R"GPUI_DTS(  export interface InlineTokenHoverEvent extends InlineTokenSpan {
     hovered: boolean;
     bounds: { x: number; y: number; width: number; height: number };
   }
   /** A row. */
   export function h_flex(): NativeElement;
-)GPUI_DTS";
-static const char kShellTypes61[] = R"GPUI_DTS(  /** A column. */
+  /** A column. */
   export function v_flex(): NativeElement;
 
   /** Activation, focus, disabled and selected state. No styling. */
@@ -21166,11 +21168,11 @@ static const char kShellTypes61[] = R"GPUI_DTS(  /** A column. */
   export const ToggleGroup: ComponentType;
 
   /**
-   * A semantic table root, composed the way HTML composes one: no data source
+)GPUI_DTS";
+static const char kShellTypes62[] = R"GPUI_DTS(   * A semantic table root, composed the way HTML composes one: no data source
    * and no delegate, just the groups, rows and cells the script nests itself.
    * No styling — draw the grid, the padding and the header weight yourself.
-)GPUI_DTS";
-static const char kShellTypes62[] = R"GPUI_DTS(   *
+   *
    * `row_count` and `column_count` describe the whole table, including rows the
    * script chose not to render. Give the root an `accessibility_label`; the
    * visual `TableCaption` below is not associated with it by assistive
@@ -21420,11 +21422,11 @@ static const char kShellTypes62[] = R"GPUI_DTS(   *
 
   /**
    * A list that describes only what is on screen.
-   *
+)GPUI_DTS";
+static const char kShellTypes63[] = R"GPUI_DTS(   *
    * `render(range, cx)` is called with the visible interval and returns one
    * element per item in it — so a ten-thousand-row list costs the script what a
-)GPUI_DTS";
-static const char kShellTypes63[] = R"GPUI_DTS(   * twenty-row one costs. It is the only callback in this API that is not an
+   * twenty-row one costs. It is the only callback in this API that is not an
    * event handler, and the only one the host calls during a frame rather than
    * between them: GPUI decides which rows exist while it is laying the list
    * out, so the call happens from inside layout, twice per frame (once to
@@ -21696,12 +21698,12 @@ static const char kShellTypes63[] = R"GPUI_DTS(   * twenty-row one costs. It is 
    *
    * All four are needed and all four take the same state. The root announces
    * the value and owns the release; the track takes the press and the drag;
-   * the indicator records the box every pointer position is measured against —
+)GPUI_DTS";
+static const char kShellTypes64[] = R"GPUI_DTS(   * the indicator records the box every pointer position is measured against —
    * **a slider with no `SliderIndicator` cannot be moved at all**, which is
    * reported in the log rather than drawn; the thumb drags itself.
    *
-)GPUI_DTS";
-static const char kShellTypes64[] = R"GPUI_DTS(   * The two boxes that depend on the value — the fill and the thumb — are
+   * The two boxes that depend on the value — the fill and the thumb — are
    * positioned by the shell, from the state, on every frame. That is not a
    * convenience: a drag never re-enters the script, so a position the script
    * computed would be the one the last render saw, and the slider would
@@ -21979,7 +21981,8 @@ static const char kShellTypes64[] = R"GPUI_DTS(   * The two boxes that depend on
      * - `deserialize(data)` is handed back whatever `serialize()` wrote, right
      *   after the view is built, with a real host call available.
      *
-     * Registering the same name twice replaces the class, which is what a hot
+)GPUI_DTS";
+static const char kShellTypes65[] = R"GPUI_DTS(     * Registering the same name twice replaces the class, which is what a hot
      * reload does.
      */
     register_panel: (name: string, Class: import("gpui-kit").ViewClass) => string;
@@ -21988,8 +21991,7 @@ static const char kShellTypes64[] = R"GPUI_DTS(   * The two boxes that depend on
   /**
    * Draws a dock area.
    *
-)GPUI_DTS";
-static const char kShellTypes65[] = R"GPUI_DTS(   * Base draws **no chrome at all** — an area with none still docks, drags,
+   * Base draws **no chrome at all** — an area with none still docks, drags,
    * resizes and persists, painting only the panels — so every tab bar, dock
    * frame and drag bar is one of the six handlers below.
    *
@@ -22274,15 +22276,15 @@ interface Console {
  * to `tracing` under the `gpui_shell::script` target.
  */
 declare const console: Console;
-declare module "console" {
+)GPUI_DTS";
+static const char kShellTypes66[] = R"GPUI_DTS(declare module "console" {
   const console: Console;
   export default console;
 }
 declare module "process" {
   export interface CommandOutput { code: number; stdout: string; stderr: string; }
   export interface RunOptions {
-)GPUI_DTS";
-static const char kShellTypes66[] = R"GPUI_DTS(    /** Must be inside a directory granted in `capabilities.fs.read`. */
+    /** Must be inside a directory granted in `capabilities.fs.read`. */
     cwd?: string;
     /** Defaults to 30 seconds. */
     timeoutMs?: number;

@@ -16,12 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7ec2db24997fd07b020b27656c1bc32f6c9e56c0` (2026-11-05,
-shell: Leave proxy URLs out of the default process.env (#3810)).
-`HTTP_PROXY`, `HTTPS_PROXY` and `ALL_PROXY` are absent from the default
-process environment unless the manifest grants them. `NO_PROXY` stays.
-A description still nests at most 64 levels, and nested views stay
-bounded per view.
+Processed through `b2e45ae8bd7333fefd140cff590d2bc9908dca80` (2026-11-05,
+shell: Draw nothing where script views would nest inside themselves or
+too deep (#3817)). A view mounted inside itself, or nested past 65
+levels, draws nothing at that mount. Each view counts its description's
+height plus one, and a dock area counts four more. The drawing stack is
+held for the view's render, because child views and dock panels are
+mounted while it runs. A description still nests at most 64 levels.
+Proxy URLs stay out of the default process environment unless granted.
 The current update target is
 `48ac25b50c81ca5e34ec1631e3efabe22f4af64a`.
 
