@@ -6615,6 +6615,9 @@ void TextMeasClear(PaintCtx* ctx);
 // of text that was never drawn.
 // The font word MeasureText uses for this element: weight, mono, italic.
 uint16_t ElTextWeight(const El* e);
+// The packed weight bits (kFontWeight*) for a style's FontWeight, or for its
+// bold / semibold / medium flags when no weight is set; `unset` when neither.
+uint16_t StyleFontWeightBits(const Style& s, uint16_t unset);
 
 bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                  int off, float* outX, float* outY, float* outH,

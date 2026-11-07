@@ -5209,44 +5209,7 @@ static void CellFont(const TextView* tv, bool head, float* size, int* weight) {
     // children render. The table keeps its own size. MeasureText wants the
     // packed weight word, not GPUI's 100-700 enum.
     if (tv->quoteOn && w == 0 && (tv->quoteFields & StyleFieldFontWeight)) {
-        switch ((FontWeight)tv->quoteStyle.fontWeight) {
-            case FontWeight::Thin:
-                w = kFontWeightThin;
-                break;
-            case FontWeight::ExtraLight:
-                w = kFontWeightExtraLight;
-                break;
-            case FontWeight::Light:
-                w = kFontWeightLight;
-                break;
-            case FontWeight::Normal:
-                w = kFontWeightExplicitNormal;
-                break;
-            case FontWeight::Medium:
-                w = kFontWeightMedium;
-                break;
-            case FontWeight::Semibold:
-                w = kFontWeightSemibold;
-                break;
-            case FontWeight::Bold:
-                w = kFontWeightBold;
-                break;
-            case FontWeight::ExtraBold:
-                w = kFontWeightExtraBold;
-                break;
-            case FontWeight::Black:
-                w = kFontWeightBlack;
-                break;
-            default:
-                if (tv->quoteStyle.fontBold) {
-                    w = kFontWeightBold;
-                } else if (tv->quoteStyle.fontSemibold) {
-                    w = kFontWeightSemibold;
-                } else if (tv->quoteStyle.fontMedium) {
-                    w = kFontWeightMedium;
-                }
-                break;
-        }
+        w = StyleFontWeightBits(tv->quoteStyle, 0);
     }
     if (tv->quoteOn && (tv->quoteFields & StyleFieldFontMono) &&
         tv->quoteStyle.fontMono) {
