@@ -439,7 +439,12 @@ static Notification NotificationOwnedCopy(const Notification& item) {
 }
 
 NotificationListState::~NotificationListState() {
-    NotificationStopAdvancing(this);
+    // Not NotificationStopAdvancing: the window the timer was armed on may
+    // already be gone when the entity is dropped, and a timer whose entity
+    // has gone stale is dropped by the window anyway.
+    isAdvancing = false;
+    advanceTimer = 0;
+    advanceWin = nullptr;
     for (int i = 0; i < items.len; i++) {
         NotificationFreeOwned(&items[i]);
     }
