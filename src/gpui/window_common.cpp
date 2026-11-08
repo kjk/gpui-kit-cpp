@@ -4360,6 +4360,15 @@ double WindowTimersDue(const Window* win) {
         (soonest < 0 || win->scrollDragNotifyDue < soonest)) {
         soonest = win->scrollDragNotifyDue;
     }
+    // A finger still undecided: the long press it may become is due at
+    // the half second. Here rather than in WindowTimerMs alone, so the
+    // test platform's clock sees the same deadline.
+    if (win->touchHost == TouchHostKind::Pending) {
+        double due = win->touchHostStartAt + kTouchLongPressS;
+        if (soonest < 0 || due < soonest) {
+            soonest = due;
+        }
+    }
     return soonest;
 }
 
@@ -4399,12 +4408,6 @@ int WindowTimerMs(Window* win) {
     double timersDue = WindowTimersDue(win);
     if (timersDue > 0 && (soonest < 0 || timersDue < soonest)) {
         soonest = timersDue;
-    }
-    if (win->touchHost == TouchHostKind::Pending) {
-        double due = win->touchHostStartAt + kTouchLongPressS;
-        if (soonest < 0 || due < soonest) {
-            soonest = due;
-        }
     }
     if (soonest < 0) {
         return 0;
