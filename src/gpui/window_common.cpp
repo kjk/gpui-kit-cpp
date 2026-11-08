@@ -1025,6 +1025,12 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     // sequence or drop it — so `held` gates everything but the resolve.
     bool held = KeymapPending();
     win->eatChar = false;
+    // GPUI's key-down listener clears `pending_keyboard_down` for every
+    // keystroke that is not the activating one, and the activating case is
+    // re-armed at the end. Cleared here so none of the returns on the way —
+    // a chord that ran an action, a key the field took — leave an Enter-down
+    // waiting to click on its release.
+    win->keyPressPending = false;
     bool eaten = false;
 
     // The chord, resolved once. The matcher holds a half-finished sequence on

@@ -445,6 +445,8 @@ void WindowSetActive(Window* win, bool active) {
         // back.
         KeymapClearPending();
         win->eatChar = false;
+        win->eatReturn = false;
+        win->eatSysChar = false;
         win->keyPressPending = false;
     }
     win->lastDrawTime = 0;
