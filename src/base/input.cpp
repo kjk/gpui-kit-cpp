@@ -10552,6 +10552,12 @@ void InputBlur(InputState* s, App* app, Window* win) {
     // on_blur clears the reveal cache before any early return, so a field
     // that is unmounted while it loses focus does not keep the old viewport.
     s->hasRevealedViewport = false;
+    // A composition still marked when focus leaves ends here: the platform
+    // does not always follow a focus change with an unmark, and the
+    // transaction the first candidate opened would otherwise stay open and
+    // take every later edit into it. What is marked stays as typed, which
+    // is what an unmark does.
+    InputUnmarkText(s, app, win);
     // Blurring ends the typing session, so a later undo stops here rather than
     // swallowing everything typed before the field lost focus.
     UndoBreakCoalescing(&s->undo);
