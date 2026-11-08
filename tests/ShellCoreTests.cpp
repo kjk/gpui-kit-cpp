@@ -6467,14 +6467,18 @@ static void ShellProcessSpawnStreamsAndRunTakesOptions() {
         view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
     utassert(root != nullptr && !error.IsSet());
     // process.run starts a cold cmd.exe before the streaming children exist,
-    // so a fixed slice count can end before the 100 ms deadline is polled.
-    // Keep ticking until that exit is delivered, or the wall clock runs out.
-    double deadline = TimeNow() + 8.0;
+    // so a fixed slice count can end before the 100 ms deadline is polled,
+    // and on a loaded machine the ping's timeout can be delivered before the
+    // echo child has started, let alone written. Keep ticking until every
+    // child has reported, or the wall clock runs out.
+    double deadline = TimeNow() + 20.0;
     while (TimeNow() < deadline) {
         PumpShellTimers(runtime, &window, 1);
         ShellError probe = {};
         bool delivered = runtime->Eval(
-            StrL("if (String(exitError).indexOf('timed out after 100 ms') < "
+            StrL("if (processResult === 'pending' || "
+                 "lines.indexOf('hello') < 0 || "
+                 "String(exitError).indexOf('timed out after 100 ms') < "
                  "0) throw new Error('wait')"),
             StrL("process-timeout-wait.js"), &probe);
         ShellErrorClear(&probe);
