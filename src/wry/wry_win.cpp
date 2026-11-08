@@ -2552,14 +2552,15 @@ struct DragDropTarget : ComObject<IDropTarget> {
 
     HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL point,
                                         DWORD* effect) override {
+        // Every entry decides both afresh, as wry does: an entry with no
+        // files must not keep the copy cursor the previous drag left.
         Vec<Str> paths;
         enterIsValid = GetDropPaths(data, &paths, nullptr);
-        if (!enterIsValid) {
-            return S_OK;
+        cursorEffect = enterIsValid ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        if (enterIsValid) {
+            Emit(DragDropKind::Enter, &paths, point);
+            StrVecFree(&paths);
         }
-        Emit(DragDropKind::Enter, &paths, point);
-        StrVecFree(&paths);
-        cursorEffect = DROPEFFECT_COPY;
         if (effect) {
             *effect = cursorEffect;
         }
@@ -2581,6 +2582,8 @@ struct DragDropTarget : ComObject<IDropTarget> {
         if (enterIsValid) {
             Emit(DragDropKind::Leave, nullptr, POINTL{});
         }
+        enterIsValid = false;
+        cursorEffect = DROPEFFECT_NONE;
         return S_OK;
     }
 
@@ -2596,6 +2599,8 @@ struct DragDropTarget : ComObject<IDropTarget> {
                 DragFinish(hdrop);
             }
         }
+        enterIsValid = false;
+        cursorEffect = DROPEFFECT_NONE;
         return S_OK;
     }
 };
