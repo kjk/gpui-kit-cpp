@@ -32,11 +32,22 @@ struct ScopeFrame {
     Policy* policy = nullptr;
     ShellRuntime* runtime = nullptr;
     void* application = nullptr;
+    // A ScopeHostContext holds this frame's Window and App right now.
+    bool hostBorrowed = false;
 };
 
 static thread_local Vec<ScopeFrame> gScopeStack;
 static thread_local uint64_t gNextGeneration = 1;
-static thread_local bool gHostContextBorrowed = false;
+
+// The frame `generation` names, wherever it sits in the stack. -1 for none.
+static int ScopeFrameIndex(uint64_t generation) {
+    for (int i = len(gScopeStack) - 1; i >= 0; i--) {
+        if (gScopeStack[i].generation == generation) {
+            return i;
+        }
+    }
+    return -1;
+}
 
 CallScopeGuard::CallScopeGuard(uint64_t value)
     : generation(value), active(true) {}
@@ -63,18 +74,21 @@ CallScopeGuard::~CallScopeGuard() {
 
 void CallScopeGuard::Leave() {
     if (!active) return;
-    if (len(gScopeStack) == 0) {
-        active = false;
-        return;
-    }
-    ScopeFrame& frame = gScopeStack[len(gScopeStack) - 1];
-    if (frame.generation != generation) {
-        active = false;
-        return;
-    }
-    PolicyRelease(frame.policy);
-    gScopeStack.len--;
     active = false;
+    int at = ScopeFrameIndex(generation);
+    if (at < 0) {
+        return;
+    }
+    // Normally the top. A guard that is move-assigned over leaves its old
+    // frame from under the one it just entered, and a guard outlived by
+    // an inner one leaves from the middle; either way the frame comes out
+    // where it is rather than staying on the stack for good.
+    if (at != len(gScopeStack) - 1) {
+        logf("shell: scope %llu left out of order (%d frames above it)\n",
+             (unsigned long long)generation, len(gScopeStack) - 1 - at);
+    }
+    PolicyRelease(gScopeStack[at].policy);
+    VecRemoveAt(gScopeStack, at);
 }
 
 CallScopeGuard ScopeEnter(Window* window, App* app, ScopePhase phase,
@@ -91,8 +105,8 @@ CallScopeGuard ScopeEnter(Window* window, App* app, ScopePhase phase,
 
     uint64_t generation = gNextGeneration++;
     if (generation == 0) generation = gNextGeneration++;
-    ScopeFrame frame = {window, app,        phase,   generation, 0,
-                        view,   heldPolicy, runtime, application};
+    ScopeFrame frame = {window, app,        phase,   generation,  0,
+                        view,   heldPolicy, runtime, application, false};
     VecAppend(gScopeStack, frame);
     return CallScopeGuard(generation);
 }
@@ -137,8 +151,9 @@ void* ScopeCurrentApplication() {
                                 : nullptr;
 }
 
-ScopeHostContext::ScopeHostContext(Window* win, App* application, bool owns)
-    : window(win), app(application), held(owns) {}
+ScopeHostContext::ScopeHostContext(Window* win, App* application,
+                                   uint64_t borrowed)
+    : window(win), app(application), frame(borrowed), held(borrowed != 0) {}
 
 // Starts holding nothing, so the assignment's Release has nothing to release.
 ScopeHostContext::ScopeHostContext(ScopeHostContext&& other) noexcept {
@@ -151,9 +166,11 @@ ScopeHostContext& ScopeHostContext::operator=(
         Release();
         window = other.window;
         app = other.app;
+        frame = other.frame;
         held = other.held;
         other.window = nullptr;
         other.app = nullptr;
+        other.frame = 0;
         other.held = false;
     }
     return *this;
@@ -165,29 +182,34 @@ ScopeHostContext::~ScopeHostContext() {
 
 void ScopeHostContext::Release() {
     if (!held) return;
-    if (!gHostContextBorrowed) {
-        held = false;
-        return;
+    // The frame may already have left, in which case there is nothing to
+    // give back; a frame that took its place has a generation of its own.
+    int at = ScopeFrameIndex(frame);
+    if (at >= 0) {
+        gScopeStack[at].hostBorrowed = false;
     }
-    gHostContextBorrowed = false;
     window = nullptr;
     app = nullptr;
+    frame = 0;
     held = false;
 }
 
-ScopeHostContext ScopeHostContext::Acquire(Window* window, App* app) {
-    if (!window || !app || gHostContextBorrowed) {
-        return ScopeHostContext(nullptr, nullptr, false);
+ScopeHostContext ScopeHostContext::Acquire(Window* window, App* app,
+                                           uint64_t generation) {
+    int at = ScopeFrameIndex(generation);
+    if (!window || !app || at < 0 || gScopeStack[at].hostBorrowed) {
+        return ScopeHostContext(nullptr, nullptr, 0);
     }
-    gHostContextBorrowed = true;
-    return ScopeHostContext(window, app, true);
+    gScopeStack[at].hostBorrowed = true;
+    return ScopeHostContext(window, app, generation);
 }
 
 ScopeHostContext ScopeCurrentHost() {
     const ScopeFrame* frame =
         len(gScopeStack) > 0 ? &gScopeStack[len(gScopeStack) - 1] : nullptr;
     return ScopeHostContext::Acquire(frame ? frame->window : nullptr,
-                                     frame ? frame->app : nullptr);
+                                     frame ? frame->app : nullptr,
+                                     frame ? frame->generation : 0);
 }
 
 Str ScopeStaleContextMessage() {
@@ -203,11 +225,12 @@ ScopeHostContext ScopeHostForGeneration(uint64_t generation,
         len(gScopeStack) > 0 ? &gScopeStack[len(gScopeStack) - 1] : nullptr;
     bool valid = frame && (frame->generation == generation ||
                            frame->adopted == generation);
-    if (!valid || gHostContextBorrowed) {
+    if (!valid || frame->hostBorrowed) {
         ShellErrorSet(error, ScopeStaleContextMessage());
-        return ScopeHostContext(nullptr, nullptr, false);
+        return ScopeHostContext(nullptr, nullptr, 0);
     }
-    return ScopeHostContext::Acquire(frame->window, frame->app);
+    return ScopeHostContext::Acquire(frame->window, frame->app,
+                                     frame->generation);
 }
 
 } // namespace shell
