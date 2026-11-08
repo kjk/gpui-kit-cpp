@@ -526,21 +526,28 @@ static OffscreenTarget gOffscreen;
 // what bracket it.
 static bool gOffscreenWasRecording = false;
 
+// A begin that fails has no end coming: the recorder it stepped aside for
+// resumes here, or the window's scene would stay suspended for the frame.
+static bool OffscreenBeginFailed() {
+    scene::SuspendEnd(gOffscreenWasRecording);
+    return false;
+}
+
 bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
     gOffscreenWasRecording = scene::SuspendBegin();
     if (!ctx || !ctx->pa || pxW <= 0 || pxH <= 0) {
-        return false;
+        return OffscreenBeginFailed();
     }
     void* bits = nullptr;
     HBITMAP bmp = WinDib32New(pxW, pxH, &bits);
     if (!bmp) {
-        return false;
+        return OffscreenBeginFailed();
     }
     memset(bits, 0, (size_t)pxW * (size_t)pxH * 4);
     HDC dc = CreateCompatibleDC(nullptr);
     if (!dc) {
         DeleteObject(bmp);
-        return false;
+        return OffscreenBeginFailed();
     }
     HGDIOBJ oldBmp = SelectObject(dc, bmp);
 
@@ -565,7 +572,7 @@ bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
         SelectObject(dc, oldBmp);
         DeleteDC(dc);
         DeleteObject(bmp);
-        return false;
+        return OffscreenBeginFailed();
     }
     ctx->rt = t;
     RECT rc = {0, 0, pxW, pxH};
@@ -575,7 +582,7 @@ bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
         SelectObject(dc, oldBmp);
         DeleteDC(dc);
         DeleteObject(bmp);
-        return false;
+        return OffscreenBeginFailed();
     }
     gOffscreen.bmp = bmp;
     gOffscreen.dc = dc;
