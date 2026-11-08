@@ -137,9 +137,6 @@ struct NotificationListState {
     int maxItems = kNotificationMaxItems;
     // First-frame fallback until BoundsOut has measured the actual card.
     float itemH = 76;
-    // How far in the transition each card is, so the tick can be turned into
-    // an offset. Written by NotificationAdvance.
-    double lastTickAt = 0;
     // NotificationSettings::delivery: where a notification with none of its
     // own goes.
     NotificationDelivery delivery = NotificationDelivery::InApp;

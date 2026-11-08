@@ -16,9 +16,6 @@ WindowLayers::~WindowLayers() {
         }
     }
     if (win) {
-        if (notifyTimer) {
-            WindowCancelTimer(win, notifyTimer);
-        }
         component::NotificationSystemDismissAll(win);
     }
     VecReset(dialogs);
