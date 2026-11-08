@@ -170,6 +170,10 @@ struct CallbackArena {
     bool layoutHandlers = false;
     uint64_t tokenGeneration = 0;
     uint32_t tokenFrame = 0;
+    // Non-zero while CallInLayout has lent `tokenGeneration` a generation of
+    // its own. BeginTokenFrame must not retire that one — it is the
+    // snapshot's, not the frame's — nor replace it under the caller.
+    int tokenOverride = 0;
 
     uint64_t Begin(JSContext* ctx) {
         Abort(ctx);
@@ -180,6 +184,7 @@ struct CallbackArena {
     }
 
     void BeginTokenFrame(JSContext* ctx, uint32_t frame) {
+        if (tokenOverride > 0) return;
         if (tokenFrame == frame && tokenGeneration) return;
         if (tokenGeneration) Retire(ctx, tokenGeneration);
         tokenGeneration = nextGeneration++;
@@ -14463,6 +14468,9 @@ El* ShellRuntime::RenderInlineToken(shell::CallbackId render,
     shell::SpecArena* outer = impl->scratch;
     shell::SpecArena* batch = new shell::SpecArena(cx->a);
     impl->scratch = batch;
+    // Saved rather than cleared on the way out: a token rendered from inside
+    // a component snapshot must leave that snapshot's mode in place.
+    bool savedToken = impl->callbacks.tokenRender;
     shell::SpecId root = 0;
     bool hasRoot = false;
     bool succeeded = true;
@@ -14493,7 +14501,7 @@ El* ShellRuntime::RenderInlineToken(shell::CallbackId render,
         JSValue args[2] = {payload, context};
         JSValue produced =
             JS_Call(impl->context, entry->function, JS_UNDEFINED, 2, args);
-        impl->callbacks.tokenRender = false;
+        impl->callbacks.tokenRender = savedToken;
         JS_FreeValue(impl->context, context);
         JS_FreeValue(impl->context, payload);
         succeeded = ProducedElement(impl->context, produced, &root, &hasRoot);
@@ -14722,10 +14730,12 @@ static JSValue CallInLayout(ShellRuntime* runtime, CallbackEntry* entry,
     bool savedToken = impl->callbacks.tokenRender;
     uint64_t savedGeneration = impl->callbacks.tokenGeneration;
     if (interactive) {
-        if (generation)
+        if (generation) {
             impl->callbacks.tokenGeneration = generation;
-        else
+            impl->callbacks.tokenOverride++;
+        } else {
             impl->callbacks.BeginTokenFrame(ctx, impl->tokenFrame);
+        }
         impl->callbacks.tokenRender = true;
     }
     Arena* a = ArenaNew();
@@ -14738,7 +14748,10 @@ static JSValue CallInLayout(ShellRuntime* runtime, CallbackEntry* entry,
     for (int i = 0; i < total; i++) JS_FreeValue(ctx, args[i]);
     ArenaDelete(a);
     impl->callbacks.tokenRender = savedToken;
-    if (generation) impl->callbacks.tokenGeneration = savedGeneration;
+    if (interactive && generation) {
+        impl->callbacks.tokenGeneration = savedGeneration;
+        impl->callbacks.tokenOverride--;
+    }
     impl->scratch = outer;
     return value;
 }
