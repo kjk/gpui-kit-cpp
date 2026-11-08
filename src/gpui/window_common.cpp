@@ -4508,6 +4508,9 @@ void WindowClosed(Window* win) {
     PaintTargetFree(&win->paint);
     win->plat = nullptr;
     win->running = false;
+    // No OS window is active any more; a menu choice looking for the active
+    // window must not land on this one.
+    win->active = false;
 }
 
 bool WindowShouldClose(Window* win) {
