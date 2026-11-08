@@ -31,3 +31,4 @@ gpui.d.ts
 gpui-kit.d.ts
 .claude/worktrees/
 /gpui-perf.txt
+/implicit-state-machines.md
