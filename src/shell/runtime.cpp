@@ -825,7 +825,11 @@ static void ProcessJobWork(ProcessJob* job) {
 
 // A task record points back at its job so that cancelling can reach it. The
 // coroutine frees the job, so the pointer is cleared first, on every path.
-// Which of the three it is follows from the kind.
+// Which of the three it is follows from the kind. Fetch and HostAsync carry
+// no such pointer: neither has anything to cancel midway (the request is
+// inside the OS client, the host call inside the module), so a forgotten
+// task of either kind is dropped by its coroutine's guard when the work
+// lands, and there is nothing here to detach.
 static void DetachTaskJob(ShellTask* task) {
     if (!task) {
         return;
@@ -1185,6 +1189,11 @@ static void ShellFetchDone(ShellFetchJob* job, shell::FetchAsyncResult landed) {
         *landed.result = {};
     }
     ShellTaskLease lease{&job->head, job, ShellFetchJobDestroy};
+    // The same owner check the coroutine's guard makes on resume: a task
+    // whose view or window went away is forgotten by the lease, not settled.
+    if (!ShellTaskOwnerAlive(&job->head)) {
+        return;
+    }
     bool failed = !landed.ok || job->result.error.s != nullptr;
     SettleShellTask(&lease, failed, job->result.error, FetchJobResolved, job);
 }
@@ -13468,7 +13477,9 @@ void ShellRuntime::ResumeTask(uint32_t id, Ctx* cx) {
     ShellTask* task = FindTask(impl, id);
     if (!task || task->kind == ShellTaskKind::Spawn) return;
     if (task->owner.IsValid() && !EntityGet(cx->app, task->owner)) {
-        ForgetTask(impl, id, false);
+        // The owner is gone. A repeating timer would keep firing at this id,
+        // so the timer is cancelled with the record.
+        ForgetTask(impl, id, true);
         return;
     }
     if (task->kind == ShellTaskKind::ProcessStream) {
