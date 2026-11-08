@@ -1007,7 +1007,9 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     // Unless a sequence is half-finished: the rest of a binding written as
     // "ctrl-k ctrl-o" belongs to the keymap and to nothing else, which is
     // what GPUI's matcher running ahead of the text input buys. Both the
-    // field and the page's own Copy stand aside for it.
+    // field and the page's own Copy stand aside for it. The matcher still
+    // has to see the keystroke — it is the only thing that can finish the
+    // sequence or drop it — so `held` gates everything but the resolve.
     bool held = KeymapPending();
     win->eatChar = false;
     bool eaten = false;
@@ -1022,11 +1024,9 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     uint32_t actions[kMaxKeyMatches] = {};
     int nActions = 0;
     bool actionPending = false;
-    if (!held) {
-        nActions = WindowResolveKeyActions(win, key, shift, ctrl, alt, platform,
-                                           function, actions, actionArgs,
-                                           kMaxKeyMatches, &actionPending);
-    }
+    nActions = WindowResolveKeyActions(win, key, shift, ctrl, alt, platform,
+                                       function, actions, actionArgs,
+                                       kMaxKeyMatches, &actionPending);
     uint32_t action = nActions > 0 ? actions[0] : 0;
     int64_t actionArg = nActions > 0 ? actionArgs[0] : 0;
     if (actionPending) {
@@ -1148,6 +1148,16 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
             AppInvalidate(win);
             return true;
         }
+    }
+    // The second chord of a sequence is the matcher's whether it finished a
+    // binding nobody handled or finished nothing: Rust's matcher spends its
+    // pending keystrokes either way and the window dispatches nothing else
+    // for them, so the letter it also arrives as types nowhere.
+    if (held) {
+        win->eatChar = true;
+        win->eatReturn = false;
+        AppInvalidate(win);
+        return true;
     }
     // The focus ring, last of the three: `tab` is bound on the window in
     // GPUI, the outermost key context there is, so a field indenting with it
