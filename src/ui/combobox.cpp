@@ -274,10 +274,12 @@ void ComboboxState::OnListChange(ComboboxState* self, Ctx* cx,
         // SearchableList's standalone single-select path closes eagerly.
         // A veto leaves the values unchanged and the clicked value
         // unselected, so restore the open list. Re-accepting the current
-        // value stays closed.
-        self->state.open = true;
-        FocusHandleFocus(cx->win, self->state.contentFocus);
-        Notify(cx);
+        // value stays closed. The toggle is the one owner of the open
+        // transition: it recaptures previousFocus (OnRowClick restored and
+        // cleared it on the way out, so a bare `open = true` left the next
+        // close with nothing to give the focus back to) and re-seeds the
+        // keyboard row from the committed value.
+        SelectToggleOpen(&self->state, cx);
     }
 }
 
