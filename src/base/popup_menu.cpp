@@ -94,16 +94,40 @@ int PopupMenuPrevIndex(const bool* clickable, int n, int selected) {
     return -1;
 }
 
+// The submenu `s` is showing, closed: its row stops showing it and the child
+// state forgets it was up, so the child's own handlers see it as closed and
+// its next open starts from nothing. Rust drops the submenu entity instead.
+void PopupMenuCloseSubmenu(PopupMenuState* s, Ctx* cx) {
+    if (!s) {
+        return;
+    }
+    int ix = s->openSubmenu;
+    s->openSubmenu = -1;
+    if (ix < 0 || !cx || ix >= s->rows.len) {
+        return;
+    }
+    PopupMenuState* child = s->rows[ix].submenuState.Get(cx);
+    if (child && child->open) {
+        PopupMenuDismiss(child, cx);
+    }
+}
+
 void PopupMenuOpen(PopupMenuState* s, Ctx* cx) {
     if (!s->open) {
         // previous_focus_handle: where focus was, so dismissing can put it
         // back. A submenu opening does not park anything — the menu it came
         // out of already has focus, and it is what focus goes back to.
         s->previousFocus = WindowFocused(cx->win);
+        // Rust builds a fresh PopupMenu for every show, so a scrollable menu
+        // scrolls to its checked item each time it opens, not only the
+        // first. Last open's item boxes say nothing about this one.
+        s->scrollToCheckedFrames = 4;
+        VecClear(s->itemBounds);
+        s->scrollBounds = {};
     }
     s->open = true;
     s->selected = -1;
-    s->openSubmenu = -1;
+    PopupMenuCloseSubmenu(s, cx);
     Notify(cx);
 }
 
@@ -117,7 +141,7 @@ void PopupMenuDismiss(PopupMenuState* s, Ctx* cx) {
     s->previousFocus = {};
     s->open = false;
     s->selected = -1;
-    s->openSubmenu = -1;
+    PopupMenuCloseSubmenu(s, cx);
     Notify(cx);
 }
 
@@ -182,7 +206,7 @@ void PopupMenuPerform(PopupMenuState* s, Ctx* cx, PopupMenuAction act,
             // does not notify when the index did not change.
             if (prev >= 0 && prev != s->selected) {
                 s->selected = prev;
-                s->openSubmenu = -1;
+                PopupMenuCloseSubmenu(s, cx);
                 Notify(cx);
             }
             break;
@@ -191,7 +215,7 @@ void PopupMenuPerform(PopupMenuState* s, Ctx* cx, PopupMenuAction act,
             int next = PopupMenuNextIndex(clickable, n, s->selected);
             if (next >= 0 && next != s->selected) {
                 s->selected = next;
-                s->openSubmenu = -1;
+                PopupMenuCloseSubmenu(s, cx);
                 Notify(cx);
             }
             break;
@@ -211,7 +235,7 @@ void PopupMenuPerform(PopupMenuState* s, Ctx* cx, PopupMenuAction act,
             // Escape closes the submenu first, and the menu itself only once
             // there is no submenu left to close.
             if (s->openSubmenu >= 0) {
-                s->openSubmenu = -1;
+                PopupMenuCloseSubmenu(s, cx);
                 Notify(cx);
             } else {
                 PopupMenuDismiss(s, cx);
@@ -225,7 +249,7 @@ void PopupMenuPerform(PopupMenuState* s, Ctx* cx, PopupMenuAction act,
             break;
         case PopupMenuAction::CloseSubmenu:
             if (s->openSubmenu >= 0) {
-                s->openSubmenu = -1;
+                PopupMenuCloseSubmenu(s, cx);
                 Notify(cx);
             }
             break;
@@ -260,7 +284,7 @@ void PopupMenuPerformRows(PopupMenuState* s, Ctx* cx, PopupMenuAction act) {
         s->openSubmenu < 0 && s->parent.IsValid()) {
         PopupMenuState* parent = s->parent.Get(cx);
         if (parent) {
-            parent->openSubmenu = -1;
+            PopupMenuCloseSubmenu(parent, cx);
             Notify(cx);
             return;
         }
@@ -390,7 +414,7 @@ void PopupMenuState::OnItemHover(PopupMenuState* self, Ctx* cx,
     if (ev->hovered) {
         RefocusLeavingSubmenu(self, cx, (int)ix);
         self->selected = (int)ix;
-        self->openSubmenu = -1;
+        PopupMenuCloseSubmenu(self, cx);
     } else if (self->selected == (int)ix && self->openSubmenu != (int)ix &&
                !WindowLastInputWasKeyboard(cx->win)) {
         self->selected = -1;
@@ -403,6 +427,9 @@ void PopupMenuEnterSubmenu(PopupMenuState* s, Ctx* cx, int ix) {
         return;
     }
     s->selected = ix;
+    if (s->openSubmenu != ix) {
+        PopupMenuCloseSubmenu(s, cx);
+    }
     s->openSubmenu = ix;
     PopupMenuState* child = nullptr;
     int first = -1;
@@ -436,6 +463,9 @@ void PopupMenuState::OnSubmenuHover(PopupMenuState* self, Ctx* cx,
     if (ev->hovered) {
         RefocusLeavingSubmenu(self, cx, (int)ix);
         self->selected = (int)ix;
+        if (self->openSubmenu != (int)ix) {
+            PopupMenuCloseSubmenu(self, cx);
+        }
         self->openSubmenu = (int)ix;
         Notify(cx);
     }
