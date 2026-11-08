@@ -225,11 +225,20 @@ static void EmitChange(ColorPickerState* s, Ctx* cx, Hsla color,
     }
 }
 
+// The hex field leaves with the panel. InputBlur is the one path a field
+// loses focus on: it stops the caret's clock and takes the field out of
+// `win->input`, which writing `focused = false` left behind.
+static void BlurHexInput(ColorPickerState* s, Ctx* cx) {
+    if (s->hexInput.focused) {
+        InputBlur(&s->hexInput, cx->app, cx->win);
+    }
+}
+
 void ColorPickerState::OnToggleOpen(ColorPickerState* s, Ctx* cx,
                                     const ClickEvent*) {
     s->open = !s->open;
     if (!s->open) {
-        s->hexInput.focused = false;
+        BlurHexInput(s, cx);
     }
     Notify(cx);
 }
@@ -242,7 +251,7 @@ void ColorPickerState::OnOpenChange(ColorPickerState* s, Ctx* cx,
     }
     s->open = next;
     if (!next) {
-        s->hexInput.focused = false;
+        BlurHexInput(s, cx);
     }
     Notify(cx);
 }
@@ -315,7 +324,12 @@ void ColorPickerState::OnHexChange(ColorPickerState* s, Ctx* cx,
 
 void ColorPickerState::OnHexFocus(ColorPickerState* s, Ctx* cx,
                                   const ClickEvent*) {
-    s->hexInput.focused = true;
+    // The field's own press has usually focused it already; a click that
+    // reaches here first goes through the same InputFocus, so the caret
+    // starts and the window knows which field has the keyboard.
+    if (!s->hexInput.focused) {
+        InputFocus(&s->hexInput, cx->app, cx->win);
+    }
     Notify(cx);
 }
 

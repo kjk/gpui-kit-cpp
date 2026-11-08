@@ -10552,6 +10552,12 @@ void InputBlur(InputState* s, App* app, Window* win) {
     // on_blur clears the reveal cache before any early return, so a field
     // that is unmounted while it loses focus does not keep the old viewport.
     s->hasRevealedViewport = false;
+    // A composition still marked when focus leaves ends here: the platform
+    // does not always follow a focus change with an unmark, and the
+    // transaction the first candidate opened would otherwise stay open and
+    // take every later edit into it. What is marked stays as typed, which
+    // is what an unmark does.
+    InputUnmarkText(s, app, win);
     // Blurring ends the typing session, so a later undo stops here rather than
     // swallowing everything typed before the field lost focus.
     UndoBreakCoalescing(&s->undo);
@@ -10564,6 +10570,10 @@ void InputBlur(InputState* s, App* app, Window* win) {
         InputClearHoverDefinition(s);
         s->hoverText = Str{};
         s->hoverRange = Selection{};
+        // A question waiting for its 150 ms is withdrawn too, or the next
+        // frame would ask it over a field that is no longer focused.
+        s->hoverPending = Selection{};
+        s->hoverAsked = true;
         s->hoverDiagnostic = -1;
         InputClearInlineCompletion(s);
         InputDismissTouchSelection(s, app, win);
@@ -10587,7 +10597,20 @@ void InputBlur(InputState* s, App* app, Window* win) {
         }
     }
     s->focused = false;
-    s->selecting = false;
+    // A drag that was still going ends here, the way the release ends it
+    // (the button comes back up somewhere this field no longer hears): the
+    // word a double click pinned, the alt-press column anchor and the edge
+    // auto-scroll go with `selecting`, or the next press would extend from
+    // them.
+    if (s->selecting) {
+        s->selecting = false;
+        if (s->selectedRange.IsEmpty()) {
+            s->selectionReversed = false;
+        }
+        s->hasSelectedWordRange = false;
+        s->columnSelectStart = {};
+        s->autoScroll.Stop();
+    }
     s->focusWin = nullptr;
     if (win) {
         BlinkStop(app, win, &s->blink);
@@ -12073,13 +12096,20 @@ static void RetainTouchSelection(InputState* s) {
     s->touchRange = ActiveTouchRange(s);
 }
 
+// The edge drag is over: which handle was held and where the finger sat on
+// it go together with the flag, so a snapshot taken later does not report
+// a drag off a stale edge.
+static void EndTouchDrag(InputState* s) {
+    s->touchDragging = false;
+    s->touchDragEdge = 0;
+    s->touchDragOffset = {};
+}
+
 static void ResetTouchSelection(InputState* s) {
     s->touchLive = false;
     s->touchRange = {};
     s->touchMenuOpen = false;
-    s->touchDragging = false;
-    s->touchDragEdge = 0;
-    s->touchDragOffset = {};
+    EndTouchDrag(s);
 }
 
 bool InputTouchSelection(const InputState* s, Window* win,
@@ -12131,7 +12161,7 @@ void InputKeepTouchSelection(InputState* s, App* app, Window* win) {
     }
     RetainTouchSelection(s);
     s->touchMenuOpen = true;
-    s->touchDragging = false;
+    EndTouchDrag(s);
     Notify(app, win);
 }
 
@@ -12352,7 +12382,8 @@ void InputEndEdgeDrag(InputState* s, App* app, Window* win) {
     if (!s || !s->touchDragging) {
         return;
     }
-    s->touchDragging = false;
+    EndTouchDrag(s);
+    s->columnSelectStart = {};
     s->autoScroll.Stop();
     if (s->selectedRange.IsEmpty()) {
         s->selectionReversed = false;

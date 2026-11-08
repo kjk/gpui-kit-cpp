@@ -249,6 +249,10 @@ bool SliderHandleRelease(SliderState* s) {
         return false;
     }
     s->dragging = false;
+    // Which end the press took lives in Rust's DragThumb payload and goes
+    // with the drag. Left set, a later keyboard step would move the start
+    // thumb; slider.rs's Increment and Decrement always move the end.
+    s->dragStart = false;
     return true;
 }
 

@@ -173,6 +173,10 @@ struct PopupMenuState {
 void PopupMenuOpen(PopupMenuState* s, Ctx* cx);
 void PopupMenuDismiss(PopupMenuState* s, Ctx* cx);
 void PopupMenuDismissAll(PopupMenuState* s, Ctx* cx);
+// Close the submenu `s` is showing, if any: `openSubmenu` goes to -1 and the
+// child state is dismissed with it. Every path that drops a submenu goes
+// through here, so a child never stays `open` after its parent let it go.
+void PopupMenuCloseSubmenu(PopupMenuState* s, Ctx* cx);
 
 // The action, applied. `clickable` is the mask over the items as the caller
 // built them this frame; `hasSubmenu` says which of them open onto one.

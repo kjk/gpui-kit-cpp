@@ -595,8 +595,18 @@ void FpsMonitor::OnClockTick(FpsMonitor* self, Ctx* cx, const TickEvent*) {
         self->clockWindow = nullptr;
         self->sleeping = true;
         self->resourceGeneration++;
-        if (self->resourceTask && ExecCancel(self->resourceTask)) {
-            delete self->resourceJob;
+        // A job still in the queue is dropped whole. One a worker already
+        // picked up is orphaned the way the destructor orphans it: its
+        // completion finds no monitor behind it and frees it. Either way the
+        // monitor holds no job, so the first tick after waking probes at
+        // once instead of waiting for a stale sample to land and be thrown
+        // away.
+        if (self->resourceTask) {
+            if (ExecCancel(self->resourceTask)) {
+                delete self->resourceJob;
+            } else if (self->resourceJob) {
+                self->resourceJob->app = nullptr;
+            }
             self->resourceTask = 0;
             self->resourceJob = nullptr;
         }

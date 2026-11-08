@@ -1445,11 +1445,19 @@ void DockState::OnTabDragMove(DockState* self, Ctx* cx,
     Notify(cx);
 }
 
+// The drag has left its target, dropped or not. The placeholder's fly-in
+// origin goes with it: left pending, the next drag's placeholder would spring
+// in from where this one's tab was picked up.
+static void DockDropEnd(DockState* self) {
+    self->dropNode = -1;
+    self->dropFromPending = false;
+}
+
 void DockState::OnTabDragEnd(DockState* self, Ctx* cx, const MouseUpEvent*) {
     if (self->dropNode < 0) {
         return;
     }
-    self->dropNode = -1;
+    DockDropEnd(self);
     Notify(cx);
 }
 
@@ -1467,7 +1475,7 @@ void DockState::OnDropPanel(DockState* self, Ctx* cx, const DropEvent* ev,
         return;
     }
     DockDrop at = DockDropAt(ev->el, ev->x, ev->y);
-    self->dropNode = -1;
+    DockDropEnd(self);
     DockMovePanel(self, cx, ev->drag.ix, (int)node, at);
 }
 
@@ -1478,7 +1486,7 @@ void DockState::OnDropTab(DockState* self, Ctx* cx, const DropEvent* ev,
     }
     // `will_split_placement = None`: a drop on a tab is always a move into
     // that row, whatever zone of the body the pointer had been over.
-    self->dropNode = -1;
+    DockDropEnd(self);
     DockMovePanel(self, cx, ev->drag.ix, DockUnpackNode(nodeAndIx),
                   DockDrop::Center, DockUnpackIx(nodeAndIx));
 }
@@ -1488,7 +1496,7 @@ void DockState::OnDropTabBar(DockState* self, Ctx* cx, const DropEvent* ev,
     if (!DockOwnsDrag(self, ev->drag)) {
         return;
     }
-    self->dropNode = -1;
+    DockDropEnd(self);
     int to = (int)node;
     // The empty space past the last tab. Rust names the last index when the
     // panel is already in this row — which is what moves a tab to the end —

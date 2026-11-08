@@ -154,7 +154,14 @@ El* OtpInput::New(Ctx* cx, Str id, Entity<OtpState> state) {
     // focused follows the window, so a click anywhere else blurs the field
     // without every page having to say so.
     bool has = FocusHandleIsFocused(cx->win, s->focus);
-    if (has != s->focused) {
+    if (s->disabled) {
+        // OtpFocus refuses a disabled field, so a field disabled while it
+        // held focus would otherwise stay `focused`, caret blinking, with
+        // nothing able to type into it. Disabling blurs it.
+        if (s->focused) {
+            OtpBlur(s, cx->app, cx->win);
+        }
+    } else if (has != s->focused) {
         if (has) {
             OtpFocus(s, cx->app, cx->win);
         } else {
