@@ -213,7 +213,11 @@ void EventLoopDispatch() {
 }
 
 // Rust's cookie calls spin `gtk::main_iteration` until the answer is in.
+// A pump between EventLoopPrepare and EventLoopDispatch runs the context's
+// own prepare/check/dispatch, so the host's prepared state no longer
+// describes the context; the next EventLoopDispatch must not check with it.
 static void PumpUntil(const bool* done) {
+    gPrepared = false;
     while (!*done) {
         g_main_context_iteration(nullptr, TRUE);
     }
