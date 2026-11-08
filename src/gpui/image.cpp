@@ -48,32 +48,13 @@ static void Base64Decode(Str s, Vec<uint8_t>* out) {
     }
 }
 
-static int HexValue(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
 static void PercentDecode(Str s, Vec<uint8_t>* out) {
-    for (int i = 0; i < len(s); i++) {
-        if (s.s[i] == '%' && i + 2 < len(s)) {
-            int hi = HexValue(s.s[i + 1]);
-            int lo = HexValue(s.s[i + 2]);
-            if (hi >= 0 && lo >= 0) {
-                VecAppend(*out, (uint8_t)(hi * 16 + lo));
-                i += 2;
-                continue;
-            }
-        }
-        VecAppend(*out, (uint8_t)s.s[i]);
+    int at = len(*out);
+    uint8_t* dst = VecAppendBlanks(*out, len(s));
+    if (!dst) {
+        return;
     }
+    VecResize(*out, at + base::PercentDecode(s, (char*)dst));
 }
 
 // "data:image/png;base64,iVBOR..." — the payload after the comma, decoded by
@@ -439,10 +420,9 @@ int ImageCacheEncodedCount(App* app) {
 }
 
 static uint64_t ImageBytesHash(const uint8_t* bytes, int len) {
-    uint64_t hash = 1469598103934665603ull;
-    for (int i = 0; bytes && i < len; i++) {
-        hash ^= bytes[i];
-        hash *= 1099511628211ull;
+    uint64_t hash = kFnv1aBasis64;
+    if (bytes && len > 0) {
+        hash = Fnv1a64(hash, bytes, (size_t)len);
     }
     return hash ? hash : 1;
 }
@@ -741,6 +721,16 @@ ImageLoadState ImageSrcState(PaintApp* pa, Str src, double* loadingSeconds) {
     return ImageSrcState(ImageLookup::Of(pa), src, loadingSeconds);
 }
 
+// A decoded image's status as the load state an element reads.
+static ImageLoadState RenderImageLoadState(RenderImage* img) {
+    RenderImageStatus status = RenderImageStatusGet(img);
+    if (status == RenderImageStatus::Ready) {
+        return ImageLoadState::Ready;
+    }
+    return status == RenderImageStatus::Loading ? ImageLoadState::Loading
+                                                : ImageLoadState::Failed;
+}
+
 ImageLoadState ImageSourceState(const ImageLookup& cx,
                                 const ImageSource& source,
                                 double* loadingSeconds) {
@@ -754,12 +744,7 @@ ImageLoadState ImageSourceState(const ImageLookup& cx,
             break;
         case ImageSourceKind::Render:
             if (source.render) {
-                RenderImageStatus status = RenderImageStatusGet(source.render);
-                state = status == RenderImageStatus::Ready
-                            ? ImageLoadState::Ready
-                            : (status == RenderImageStatus::Loading
-                                   ? ImageLoadState::Loading
-                                   : ImageLoadState::Failed);
+                state = RenderImageLoadState(source.render);
             }
             break;
         case ImageSourceKind::Image: {
@@ -767,12 +752,7 @@ ImageLoadState ImageSourceState(const ImageLookup& cx,
             if (slot && slot->ops) {
                 state = ImageLoadState::Ready;
             } else if (slot && slot->img) {
-                RenderImageStatus status = RenderImageStatusGet(slot->img);
-                state = status == RenderImageStatus::Ready
-                            ? ImageLoadState::Ready
-                            : (status == RenderImageStatus::Loading
-                                   ? ImageLoadState::Loading
-                                   : ImageLoadState::Failed);
+                state = RenderImageLoadState(slot->img);
             }
             break;
         }

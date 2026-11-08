@@ -77,15 +77,24 @@ static void ApplyBar(ScrollHandleState* handle) {
     if (handle->hasBar && handle->hasBarMode) area->ScrollMode(handle->barMode);
 }
 
+// The payload's ScrollbarHandle, live. Null after request->Fail.
+static ScrollHandleState* LiveHandle(MaterializeRequest* request,
+                                     const Payload* payload,
+                                     HandleEntity** held) {
+    *held = request->StateAs<HandleEntity>(payload->state, "ScrollbarHandle");
+    if (!*held) return nullptr;
+    ScrollHandleState* handle = (*held)->entity.Get(request->cx->app);
+    if (!handle) request->Fail(StrL("ScrollbarHandle is not live"));
+    return handle;
+}
+
 static El* MaterializeScroll(MaterializeRequest* request) {
     const Payload* payload = request->PayloadAs<Payload>();
     if (!payload)
         return request->Fail(StrL("Scroll received an incompatible payload"));
-    HandleEntity* held =
-        request->StateAs<HandleEntity>(payload->state, "ScrollbarHandle");
-    if (!held) return nullptr;
-    ScrollHandleState* handle = held->entity.Get(request->cx->app);
-    if (!handle) return request->Fail(StrL("ScrollbarHandle is not live"));
+    HandleEntity* held = nullptr;
+    ScrollHandleState* handle = LiveHandle(request, payload, &held);
+    if (!handle) return nullptr;
     ResolvedOps ops = ResolveOps(request);
     ScrollbarAxis axis = ops.hasAxis ? ops.axis : ScrollbarAxis::Vertical;
     const ComponentArgument* state = payload->state.Some();
@@ -122,11 +131,9 @@ static El* MaterializeScrollbar(MaterializeRequest* request) {
             ->Fail(StrL("Scrollbar received an incompatible payload"));
     if (!payload->hasId)
         return request->Fail(StrL("Scrollbar requires a stable id"));
-    HandleEntity* held =
-        request->StateAs<HandleEntity>(payload->state, "ScrollbarHandle");
-    if (!held) return nullptr;
-    ScrollHandleState* handle = held->entity.Get(request->cx->app);
-    if (!handle) return request->Fail(StrL("ScrollbarHandle is not live"));
+    HandleEntity* held = nullptr;
+    ScrollHandleState* handle = LiveHandle(request, payload, &held);
+    if (!handle) return nullptr;
     ResolvedOps ops = ResolveOps(request);
     bool styled = request->HasStyle();
     request->TakeStyle();

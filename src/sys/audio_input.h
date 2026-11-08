@@ -26,6 +26,14 @@
 
 #include "base.h"
 
+// Where this build has no input: audio_input_unsupported.cpp answers for it,
+// once. GPUI_HAVE_ALSA comes from cmd/build.ts's pkg-config probe.
+#if GPUI_OS_WASM || (GPUI_OS_LINUX && !GPUI_HAVE_ALSA)
+#define GPUI_AUDIO_INPUT_UNSUPPORTED 1
+#else
+#define GPUI_AUDIO_INPUT_UNSUPPORTED 0
+#endif
+
 namespace gpui {
 
 enum class AudioInputError : uint8_t {

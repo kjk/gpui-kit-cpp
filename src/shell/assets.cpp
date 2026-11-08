@@ -1,5 +1,7 @@
 #include "shell/assets.h"
 
+#include "shell/error.h"
+
 #include <stdlib.h>
 
 namespace gpui {
@@ -16,8 +18,7 @@ AppAssets::AppAssets(Str value) : root(StrDup(value)) {}
 
 AppAssets::~AppAssets() {
     Uninstall();
-    for (int i = 0; i < missing.len; i++) StrFree(missing[i]);
-    VecReset(missing);
+    StrVecFree(&missing);
     StrFree(root);
 }
 
@@ -32,10 +33,7 @@ void AppAssets::Uninstall() {
 }
 
 bool AppAssets::Resolve(Str path, Str* relative, Str* error) const {
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     if (!path || len(path) >= kMaxPath || StrStartsWithAny(path, "/\\") ||
         (len(path) >= 2 && path.s[1] == ':')) {
         if (error)
@@ -133,8 +131,7 @@ bool AppAssets::Exists(Str path) {
 
 bool AppAssets::List(Str path, Vec<Str>* out, Str* error) {
     if (!out) return false;
-    for (int i = 0; i < out->len; i++) StrFree((*out)[i]);
-    VecReset(*out);
+    StrVecFree(out);
     Str relative;
     if (!Resolve(path, &relative, error)) return false;
     shell::FsResult result;

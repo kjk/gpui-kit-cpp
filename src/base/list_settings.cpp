@@ -28,14 +28,7 @@ ListActiveStyle ListActiveStyleOf(const ListSettings& settings,
 }
 
 El* ListActiveOverlay(Arena* a, Rgba border, float radius) {
-    return Div(a)
-        ->Absolute()
-        ->Top(0)
-        ->Left(0)
-        ->Right(0)
-        ->Bottom(0)
-        ->Radius(radius)
-        ->Border(1, border);
+    return Div(a)->Absolute()->Inset0()->Radius(radius)->Border(1, border);
 }
 
 } // namespace gpui

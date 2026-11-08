@@ -2,6 +2,7 @@
 #define GPUI_SHELL_PROCESS_H_
 
 #include "base.h"
+#include "sys/clock.h"
 
 namespace gpui::shell {
 
@@ -158,6 +159,96 @@ bool ProcessDecodeFeed(ProcessDecodeState* state, ProcessEventBox* box,
                        int count, Str* error);
 void ProcessDecodeFinish(ProcessDecodeState* state, ProcessEventBox* box,
                          ProcessStreamEvent::Kind kind);
+
+// What every platform's ProcessStream carries before its OS handles. The
+// platform struct derives from it, so the shared half is reached by name.
+struct ProcessStreamCore {
+    ProcessEventBox box;
+    Str command;
+    Str cwd;
+    double timeoutSeconds = 0;
+    uint32_t pid = 0;
+    ProcessDecodeState outDecode;
+    ProcessDecodeState errDecode;
+};
+
+void ProcessStreamCoreInit(ProcessStreamCore* stream, Str command,
+                           const ProcessSpawnOptions* options);
+// Frees the event box, both decoders and the owned strings. The platform has
+// joined its threads and closed its handles first.
+void ProcessStreamCoreFree(ProcessStreamCore* stream);
+// Records the deadline as the reason the waiter is about to kill the child.
+void ProcessStreamCoreTimedOut(ProcessStreamCore* stream);
+// The shared half of a platform's stream: the derived-to-base conversion,
+// written where ProcessStream is complete, so ProcessStreamPid, Poll, Write
+// and End are written once in process.cpp. Null for null.
+ProcessStreamCore* ProcessStreamCoreOf(ProcessStream* stream);
+// The end of a platform's ProcessStreamStart: hand the stream out when it
+// started, or free it (ProcessStreamFree) and answer false.
+bool ProcessStreamStarted(ProcessStream* stream, bool ok, ProcessStream** out);
+// The error for a stream whose reader, writer or waiter thread did not start.
+void ProcessStreamThreadsFailed(Str command, Str* error);
+
+// The stdin writer thread's body: hands queued bytes to writeSome until the
+// script ends the stream, the stream stops, or a write fails. writeSome writes
+// up to count bytes and returns how many, or <= 0 when the pipe is gone.
+void ProcessStdinPump(ProcessEventBox* box,
+                      int (*writeSome)(void* ctx, const char* bytes, int count),
+                      void* ctx);
+
+// Publishes the Exit event the waiter built, carrying whichever failure was
+// recorded first as its error. Exit is always the last event.
+void ProcessEventPushExit(ProcessEventBox* box, ProcessStreamEvent event);
+
+int ProcessTimeoutMilliseconds(double seconds);
+
+// Appends one read from a bounded run's stdout or stderr (`name`), refusing
+// to let either grow past 8 MiB.
+bool ProcessCaptureAppend(StrBuilder* out, const char* bytes, int count,
+                          Str* error, const char* name);
+
+// process.run's deadline: `options->timeoutSeconds`, or 30 seconds.
+double ProcessBoundedTimeoutSeconds(const ProcessOptions* options);
+// The reason a bounded run stopped before its child exited.
+void ProcessBoundedStopError(Str command, bool cancelled, double timeoutSeconds,
+                             Str* error);
+
+// The bounded run's pump, the same on every host. Each pass drains stdout,
+// then stderr, until both close (`drain(stream, out, closed, name)`, stream 0
+// or 1, false on a read error that set `error`); a drain error, cancellation
+// or the deadline calls `stop()` to end the child and makes the run fail;
+// `poll()` answers 1 once the child has exited, 0 while it runs and -1 when
+// waiting failed (it set `error`). True when the child exited and both pipes
+// closed. `*exited` is whether `poll()` saw the exit.
+template <typename Drain, typename Stop, typename Poll>
+bool ProcessBoundedPump(Str command, const ProcessOptions* options,
+                        ProcessCancellation* cancellation, Str* error,
+                        StrBuilder* out, StrBuilder* err, bool closed[2],
+                        bool* exited, Drain drain, Stop stop, Poll poll) {
+    double started = ClockMonotonicSecondsSinceStart();
+    double timeoutSeconds = ProcessBoundedTimeoutSeconds(options);
+    while (!*exited || !closed[0] || !closed[1]) {
+        bool ok = true;
+        if (!closed[0]) ok = drain(0, out, &closed[0], "stdout");
+        if (ok && !closed[1]) ok = drain(1, err, &closed[1], "stderr");
+        bool cancelled = cancellation && cancellation->IsCancelled();
+        if (!ok || cancelled ||
+            ClockMonotonicSecondsSinceStart() - started >= timeoutSeconds) {
+            if (ok)
+                ProcessBoundedStopError(command, cancelled, timeoutSeconds,
+                                        error);
+            stop();
+            return false;
+        }
+        if (!*exited) {
+            int polled = poll();
+            if (polled < 0) return false;
+            *exited = polled > 0;
+        }
+        if (!*exited || !closed[0] || !closed[1]) PlatSleepMs(5);
+    }
+    return true;
+}
 
 } // namespace gpui::shell
 #endif // GPUI_SHELL_PROCESS_H_

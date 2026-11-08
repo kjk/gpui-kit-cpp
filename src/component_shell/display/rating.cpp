@@ -37,10 +37,7 @@ static bool Construct(PayloadBuild* build, const ComponentArgument* args, int) {
 // rating_count: `usize::MAX as f64` rounds to 2^64 on 64-bit targets, so
 // the upper boundary is exclusive.
 static bool RatingCount(PayloadBuild* build, double value, const char* name) {
-    bool whole = value == value && value >= 0.0 &&
-                 value < 18446744073709551616.0 &&
-                 value == (double)(uint64_t)value;
-    if (whole) return true;
+    if (IsUsizeNumber(value)) return true;
     return build
         ->Fail(fmt("Rating.%s(%s) expects a non-negative integer, got %s",
                    Str(name), Str(name), Str(F64DisplayTemp(value))));
@@ -73,14 +70,6 @@ static bool RecordColor(PayloadBuild* build, const ComponentArgument* args,
     RatingOp* op = build->New<RatingOp>();
     op->kind = RatingOp::Color;
     op->color = color;
-    return true;
-}
-
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    RatingOp* op = build->New<RatingOp>();
-    op->kind = RatingOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
     return true;
 }
 
@@ -163,17 +152,14 @@ static El* Materialize(MaterializeRequest* request) {
     return request->ApplyStyle(rating->IntoEl());
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kValueArgs[] = {{"value", SchemaNumber()}};
 static constexpr ArgumentDescriptor kMaxArgs[] = {{"max", SchemaNumber()}};
 static constexpr ArgumentDescriptor kChangeArgs[] = {
     {"on_change", SchemaCallback("(value: number, cx: Context) => void")}};
 static constexpr ArgumentDescriptor kColorArgs[] = {{"color", SchemaString()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
-    {"Rating", kIdArgs, &Construct}};
+    {"Rating", kIdArguments, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     kDisabledMethod,
     {"value", kValueArgs, "Sets the current number of active stars.",
@@ -184,7 +170,8 @@ static constexpr MethodDescriptor kMethods[] = {
      "Reports the star the reader clicked, so the script can drive `value`.",
      &RecordChange},
     {"color", kColorArgs, "Sets the active star color.", &RecordColor},
-    {"size", kSizeArgs, "Sets the rating's semantic size.", &RecordSize},
+    {"size", kSizeArguments, "Sets the rating's semantic size.",
+     &RecordSizeOp<RatingOp, RatingOp::Size>},
 };
 static constexpr ComponentDescriptor kRating = {
     "Rating", kConstructors, kMethods,

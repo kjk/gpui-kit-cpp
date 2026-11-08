@@ -84,78 +84,57 @@ static void AppendMappedSpan(StrBuilder* out, Str span) {
 
 // The four patterns. Each Match* answers the byte length matched at i or -1.
 
-// `[\p{CJ}|\w\d]+ [,?] [ ]* [\p{CJ}|]+`
-static int MatchLeft(Str s, int i) {
-    int a = MatchClassRun(s, i, IsCjOrWordClassCp);
+// The head every pattern opens with, `[class]+ [punct] [ ]*`: where it ends,
+// or -1.
+static int MatchRunPunctSpaces(Str s, int i, bool (*cls)(uint32_t),
+                               bool (*punct)(char)) {
+    int a = MatchClassRun(s, i, cls);
     if (a <= 0) {
         return -1;
     }
     int at = i + a;
-    if (at >= len(s) || !IsNormalPunct(s.s[at])) {
+    if (at >= len(s) || !punct(s.s[at])) {
         return -1;
     }
     at++;
     while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
-    int b = MatchClassRun(s, at, IsCjClassCp);
-    if (b <= 0) {
+    return at;
+}
+
+// `head [\p{CJ}|]+`: the length from `i`, or -1.
+static int MatchThenCjRun(Str s, int i, int at) {
+    if (at < 0) {
         return -1;
     }
-    return at + b - i;
+    int b = MatchClassRun(s, at, IsCjClassCp);
+    return b > 0 ? at + b - i : -1;
+}
+
+// `[\p{CJ}|\w\d]+ [,?] [ ]* [\p{CJ}|]+`
+static int MatchLeft(Str s, int i) {
+    return MatchThenCjRun(
+        s, i, MatchRunPunctSpaces(s, i, IsCjOrWordClassCp, IsNormalPunct));
 }
 
 // `[\p{CJ}|]+ [,?] [ ]*`
 static int MatchRight(Str s, int i) {
-    int a = MatchClassRun(s, i, IsCjClassCp);
-    if (a <= 0) {
-        return -1;
-    }
-    int at = i + a;
-    if (at >= len(s) || !IsNormalPunct(s.s[at])) {
-        return -1;
-    }
-    at++;
-    while (at < len(s) && s.s[at] == ' ') {
-        at++;
-    }
-    return at - i;
+    int at = MatchRunPunctSpaces(s, i, IsCjClassCp, IsNormalPunct);
+    return at < 0 ? -1 : at - i;
 }
 
 // `[\p{CJ}|]+ [.:!] [ ]* [\p{CJ}|]+`
 static int MatchSpecial(Str s, int i) {
-    int a = MatchClassRun(s, i, IsCjClassCp);
-    if (a <= 0) {
-        return -1;
-    }
-    int at = i + a;
-    if (at >= len(s) || !IsSpecialPunct(s.s[at])) {
-        return -1;
-    }
-    at++;
-    while (at < len(s) && s.s[at] == ' ') {
-        at++;
-    }
-    int b = MatchClassRun(s, at, IsCjClassCp);
-    if (b <= 0) {
-        return -1;
-    }
-    return at + b - i;
+    return MatchThenCjRun(
+        s, i, MatchRunPunctSpaces(s, i, IsCjClassCp, IsSpecialPunct));
 }
 
 // `[\p{CJ}|]+ [.:!] [ ]* ["']? $`
 static int MatchSpecialLast(Str s, int i) {
-    int a = MatchClassRun(s, i, IsCjClassCp);
-    if (a <= 0) {
+    int at = MatchRunPunctSpaces(s, i, IsCjClassCp, IsSpecialPunct);
+    if (at < 0) {
         return -1;
-    }
-    int at = i + a;
-    if (at >= len(s) || !IsSpecialPunct(s.s[at])) {
-        return -1;
-    }
-    at++;
-    while (at < len(s) && s.s[at] == ' ') {
-        at++;
     }
     if (at < len(s) && (s.s[at] == '"' || s.s[at] == '\'')) {
         at++;
@@ -176,9 +155,7 @@ static bool PassReplace(Str in, MatchFn match, StrBuilder* out) {
             changed = true;
             continue;
         }
-        int step = Utf8Len(in, i);
-        out->Append(Str(in.s + i, step));
-        i += step;
+        Utf8CopyNext(in, &i, out);
     }
     return changed;
 }

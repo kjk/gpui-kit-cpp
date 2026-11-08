@@ -90,13 +90,9 @@ struct RetainedCallback {
     CallbackId callback = 0;
 };
 
-struct NumberInputConfig {
+struct NumberInputConfig : NumberRange {
     bool hasStep = false;
     double step = 1;
-    bool hasMin = false;
-    double min = 0;
-    bool hasMax = false;
-    double max = 0;
 };
 
 struct RetainedEntry {

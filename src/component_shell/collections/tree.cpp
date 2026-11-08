@@ -321,8 +321,6 @@ static constexpr ArgumentDescriptor kItemArgs[] = {{"id", SchemaString()},
                                                    {"label", SchemaString()}};
 static constexpr ArgumentDescriptor kExpandedArgs[] = {
     {"expanded", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kTreeArgs[] = {{"id", SchemaString()}};
 
 static constexpr ConstructorDescriptor kItemConstructors[] = {
@@ -330,7 +328,7 @@ static constexpr ConstructorDescriptor kItemConstructors[] = {
 static constexpr MethodDescriptor kItemMethods[] = {
     {"expanded", kExpandedArgs, "Sets native tree item state.",
      &RecordExpanded},
-    {"disabled", kDisabledArgs, "Sets native tree item state.",
+    {"disabled", kDisabledArguments, "Sets native tree item state.",
      &RecordCommonBehavior},
 };
 static constexpr ComponentDescriptor kTreeItem = {

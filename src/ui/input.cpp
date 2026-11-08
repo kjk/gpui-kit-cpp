@@ -11,6 +11,19 @@ namespace gpui {
 
 namespace component {
 
+// input/clear_button.rs: the X a cleanable field, a select or a date picker
+// shows. `.tab_stop(false)`: the X belongs to the field, and Tab should move
+// to the next field rather than stop at it. Icon-only, so the label is what
+// a screen reader announces.
+Button* ClearButton(Ctx* cx) {
+    return Button::New(cx, StrL("clean"))
+        ->Text()
+        ->WithSize(UiSize::XSmall)
+        ->Icon(IconName::X)
+        ->TabStop(false)
+        ->AccessibilityLabel(Tr("Input.Clear"));
+}
+
 static const SyntaxContext kLanguageNotIn[] = {SyntaxContext::String,
                                                SyntaxContext::Comment};
 static const BracketPair kJsonBrackets[] = {
@@ -142,32 +155,16 @@ Entity<OtpState> AnyInputState::AsOtp() const {
     return kind == AnyInputKind::Otp ? otp : Entity<OtpState>{};
 }
 
-static Str MaskedInputValue(Arena* a, Str text) {
-    int chars = 0;
-    for (int i = 0; i < len(text); i++) {
-        if (((uint8_t)text.s[i] & 0xc0) != 0x80) chars++;
-    }
-    char* out = (char*)Alloc(a, chars * 3 + 1);
-    if (!out) return {};
-    int n = 0;
-    for (int i = 0; i < chars; i++) {
-        memcpy(out + n, "\xE2\x80\xA2", 3);
-        n += 3;
-    }
-    out[n] = 0;
-    return Str(out, n);
-}
-
 Str AnyInputState::Value(Arena* a, App* app) const {
     if (kind == AnyInputKind::Otp) {
         OtpState* state = otp.Get(app);
         if (!state) return {};
         Str value = OtpValue(state);
-        return state->masked ? MaskedInputValue(a, value) : StrDup(a, value);
+        return state->masked ? InputMaskedText(a, value) : StrDup(a, value);
     }
     if (!text) return {};
     Str value = InputValue(text);
-    return text->masked ? MaskedInputValue(a, value) : StrDup(a, value);
+    return text->masked ? InputMaskedText(a, value) : StrDup(a, value);
 }
 
 FocusHandle AnyInputState::FocusHandleOf(const Window* window, App* app) const {
@@ -610,30 +607,6 @@ Editor* Editor::AriaLabel(Str value) {
     return this;
 }
 
-Input* Input::ContextMenu(EditorContextMenuFn fn, void* data) {
-    contextMenu = fn;
-    contextMenuData = data;
-    return this;
-}
-
-Textarea* Textarea::ContextMenu(EditorContextMenuFn fn, void* data) {
-    contextMenu = fn;
-    contextMenuData = data;
-    return this;
-}
-
-Editor* Editor::ContextMenu(EditorContextMenuFn fn, void* data) {
-    contextMenu = fn;
-    contextMenuData = data;
-    return this;
-}
-
-Editor* Editor::OnPaste(InputPasteFn fn, void* data) {
-    onPaste = fn;
-    onPasteData = data;
-    return this;
-}
-
 Editor* Editor::Language(Str value) {
     language = value;
     return this;
@@ -772,30 +745,6 @@ Input* Input::OnFocus(Listener fn) {
     onFocus = fn;
     return this;
 }
-Input* Input::OnPaste(InputPasteFn fn, void* data) {
-    onPaste = fn;
-    onPasteData = data;
-    return this;
-}
-
-Input* Input::Token(InlineTokenRenderer fn, void* user) {
-    tokenRenderer = fn;
-    tokenRendererUser = user;
-    return this;
-}
-
-Input* Input::OnTokenClick(InlineTokenClickListener fn, void* user) {
-    tokenClick = fn;
-    tokenClickUser = user;
-    return this;
-}
-
-Input* Input::OnTokenHover(InlineTokenHoverListener fn, void* user) {
-    tokenHover = fn;
-    tokenHoverUser = user;
-    return this;
-}
-
 static El* DefaultInputTokenRender(Ctx* cx, const InlineTokenContext* ctx,
                                    void*) {
     return InputToken::New(cx, *ctx)->IntoEl();
@@ -936,6 +885,42 @@ static bool InputContentIsSecret(bool hasContentType,
 
 // content_type.rs::ns_text_content_type. These are WHATWG autocomplete names,
 // which are also the values GPUI's NSTextContent adapter publishes on macOS.
+// What an Input or a Textarea hands its state each frame: the paste hook
+// (only while the field is editable) and how inline tokens render, click and
+// hover. `F` is the builder; both carry the same hook fields.
+template <typename F>
+static void ApplyFieldHooks(InputState* state, const F& f, bool editable,
+                            bool secret) {
+    state->pasteHandler = editable ? f.onPaste : nullptr;
+    state->pasteHandlerData = state->pasteHandler ? f.onPasteData : nullptr;
+    InputSetTokenPresentation(
+        state, f.tokenRenderer ? f.tokenRenderer : &DefaultInputTokenRender,
+        f.tokenRendererUser, f.tokenClick, f.tokenClickUser, secret);
+    InputSetTokenHoverPresentation(state, f.tokenHover, f.tokenHoverUser);
+}
+
+// The field's accessibility record: its role, the name (the placeholder when
+// nothing names it), the placeholder, an automation id, and whether the value
+// is exposed.
+static void SetFieldAccessibility(InputState* state, AccessibilityRole role,
+                                  Str name, Str accessibilityId,
+                                  bool valueExposed) {
+    InputAccessibility access = InputAccessibility::New(&role);
+    if (!name.s && state->placeholder.s) {
+        name = state->placeholder;
+    }
+    if (name.s) {
+        access = access.WithLabel(name);
+    }
+    if (state->placeholder.s) {
+        access = access.WithPlaceholder(state->placeholder);
+    }
+    if (accessibilityId.s) {
+        access = access.WithAccessibilityId(accessibilityId);
+    }
+    InputSetAccessibility(state, access.WithValueExposed(valueExposed));
+}
+
 static Str InputNativeContentType(bool present, InputContentType value) {
     if (!present) return {};
     switch (value) {
@@ -1048,14 +1033,9 @@ El* Input::IntoEl() {
     bool focused = InputFrameFocused(cx, state, disabled);
     if (state) {
         bool editable = !disabled && !readonly && !state->readonly;
-        state->pasteHandler = editable ? onPaste : nullptr;
-        state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
         bool secret =
             hasContentType && InputContentIsSecret(hasContentType, contentType);
-        InputSetTokenPresentation(
-            state, tokenRenderer ? tokenRenderer : &DefaultInputTokenRender,
-            tokenRendererUser, tokenClick, tokenClickUser, secret);
-        InputSetTokenHoverPresentation(state, tokenHover, tokenHoverUser);
+        ApplyFieldHooks(state, *this, editable, secret);
     }
     if (inputFocused && !readonly && !(state && state->readonly)) {
         WindowSetTextContentType(
@@ -1090,21 +1070,8 @@ El* Input::IntoEl() {
     // mask that is only on right now is omitted by the editor itself.
     bool valueExposed = !InputContentIsSecret(hasContentType, contentType);
     if (state) {
-        InputAccessibility access = InputAccessibility::New(&role);
-        Str aria = ariaLabel.s ? ariaLabel : label;
-        if (!aria.s && state->placeholder.s) {
-            aria = state->placeholder;
-        }
-        if (aria.s) {
-            access = access.WithLabel(aria);
-        }
-        if (state->placeholder.s) {
-            access = access.WithPlaceholder(state->placeholder);
-        }
-        if (accessibilityId.s) {
-            access = access.WithAccessibilityId(accessibilityId);
-        }
-        InputSetAccessibility(state, access.WithValueExposed(valueExposed));
+        SetFieldAccessibility(state, role, ariaLabel.s ? ariaLabel : label,
+                              accessibilityId, valueExposed);
     }
     // The frame is presentational. The editor owns the text role and the
     // one focus registration.
@@ -1168,18 +1135,7 @@ El* Input::IntoEl() {
                 ->StopClick());
     }
     if (cleanable && hasValue && !disabled) {
-        // clear_button.rs: `.tab_stop(false)`. The X belongs to the field, and
-        // Tab should move to the next field rather than stop at it.
-        // Icon-only: screen readers have nothing else to announce.
-        field->Child(Button::New(cx, StrL("clean"))
-                         ->Text()
-                         ->WithSize(UiSize::XSmall)
-                         ->Icon(IconName::X)
-                         ->TabStop(false)
-                         ->AccessibilityLabel(Tr("Input.Clear"))
-                         ->OnClick(onClear)
-                         ->IntoEl()
-                         ->StopClick());
+        field->Child(ClearButton(cx)->OnClick(onClear)->IntoEl()->StopClick());
     }
     if (suffix) {
         field->Child(suffix);
@@ -1265,30 +1221,6 @@ Textarea* Textarea::OnFocus(Listener fn) {
     return this;
 }
 
-Textarea* Textarea::Token(InlineTokenRenderer fn, void* user) {
-    tokenRenderer = fn;
-    tokenRendererUser = user;
-    return this;
-}
-
-Textarea* Textarea::OnTokenClick(InlineTokenClickListener fn, void* user) {
-    tokenClick = fn;
-    tokenClickUser = user;
-    return this;
-}
-
-Textarea* Textarea::OnTokenHover(InlineTokenHoverListener fn, void* user) {
-    tokenHover = fn;
-    tokenHoverUser = user;
-    return this;
-}
-
-Textarea* Textarea::OnPaste(InputPasteFn fn, void* data) {
-    onPaste = fn;
-    onPasteData = data;
-    return this;
-}
-
 El* Textarea::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     bool focused = InputFrameFocused(cx, state, disabled);
@@ -1305,12 +1237,7 @@ El* Textarea::IntoEl() {
     if (state) {
         bool editable =
             !disabled && !readonly && !state->disabled && !state->readonly;
-        state->pasteHandler = editable ? onPaste : nullptr;
-        state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
-        InputSetTokenPresentation(
-            state, tokenRenderer ? tokenRenderer : &DefaultInputTokenRender,
-            tokenRendererUser, tokenClick, tokenClickUser, false);
-        InputSetTokenHoverPresentation(state, tokenHover, tokenHoverUser);
+        ApplyFieldHooks(state, *this, editable, false);
         state->softWrap = softWrap;
         if (rows > 0) {
             LayoutModeSetRows(&state->mode, rows);
@@ -1351,22 +1278,8 @@ El* Textarea::IntoEl() {
     }
     bool interactive = state && !state->disabled && !disabled;
     if (state) {
-        InputAccessibility access = InputAccessibility::New(&accessibilityRole)
-                                        .WithValueExposed(true);
-        Str aria = ariaLabel;
-        if (!aria.s && state->placeholder.s) {
-            aria = state->placeholder;
-        }
-        if (aria.s) {
-            access = access.WithLabel(aria);
-        }
-        if (state->placeholder.s) {
-            access = access.WithPlaceholder(state->placeholder);
-        }
-        if (accessibilityId.s) {
-            access = access.WithAccessibilityId(accessibilityId);
-        }
-        InputSetAccessibility(state, access);
+        SetFieldAccessibility(state, accessibilityRole, ariaLabel,
+                              accessibilityId, true);
     }
     // Presentational frame. The rows carry the text role.
     El* box = InputBase::New(cx, id, interactive, AccessibilityRole::None)
@@ -1537,13 +1450,16 @@ El* NumberInput::IntoEl() {
         state->numberMax = max;
     }
     Str base = id.s ? id : StrL("number");
-    const NumberStep* policy = hasNumberStep ? &numberStep : nullptr;
+    NumberStepTarget target = {};
+    static_cast<NumberRange&>(target) = *this;
+    target.state = state;
+    target.step = numberStep;
+    target.hasStep = hasNumberStep;
+    target.disabled = disabled;
     Func0 decDirect =
-        NumberInputStepCallback(cx, state, StepAction::Decrement, policy,
-                                hasMin, min, hasMax, max, disabled, onStep);
+        NumberInputStepCallback(cx, target, StepAction::Decrement, onStep);
     Func0 incDirect =
-        NumberInputStepCallback(cx, state, StepAction::Increment, policy,
-                                hasMin, min, hasMax, max, disabled, onStep);
+        NumberInputStepCallback(cx, target, StepAction::Increment, onStep);
     // The visual frame is the UI layer; BaseNumberInput below owns the
     // spinbutton semantics and fixed three-part structure.
     El* frame = Div(a)->FlexRow()->W(width)->H(h);

@@ -218,13 +218,7 @@ static El* MaterializeItem(MaterializeRequest* request) {
 struct Hasher {
     uint64_t h = 1469598103934665603ull;
 
-    void Bytes(const void* data, size_t n) {
-        const uint8_t* p = (const uint8_t*)data;
-        for (size_t i = 0; i < n; i++) {
-            h ^= p[i];
-            h *= 1099511628211ull;
-        }
-    }
+    void Bytes(const void* data, size_t n) { h = Fnv1a64(h, data, n); }
     void U64(uint64_t v) { Bytes(&v, sizeof(v)); }
     void Text(Str s) {
         U64((uint64_t)len(s));
@@ -534,8 +528,6 @@ static constexpr ArgumentDescriptor kRootArgs[] = {{"id", SchemaString()}};
 
 static constexpr ArgumentDescriptor kDescriptionArgs[] = {
     {"description", SchemaString()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kDefaultSelectedArgs[] = {
     {"default_selected", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kRequiredArgs[] = {
@@ -549,7 +541,8 @@ static constexpr ArgumentDescriptor kShortcutsArgs[] = {
 static constexpr MethodDescriptor kChoiceMethods[] = {
     {"description", kDescriptionArgs,
      "Adds secondary text under the choice label.", &RecordDescription<false>},
-    {"disabled", kDisabledArgs, "Keeps the choice visible but unselectable.",
+    {"disabled", kDisabledArguments,
+     "Keeps the choice visible but unselectable.",
      &RecordChoiceBool<ChoiceOp::Disabled>},
     {"default_selected", kDefaultSelectedArgs,
      "Selects the choice in the questionnaire's initial snapshot.",
@@ -565,12 +558,12 @@ static constexpr MethodDescriptor kItemMethods[] = {
     {"multiple", kMultipleArgs,
      "Accepts more than one choice for this question.",
      &RecordItemBool<ItemOp::Multiple>},
-    {"disabled", kDisabledArgs,
+    {"disabled", kDisabledArguments,
      "Removes the question from progress, navigation and submission.",
      &RecordItemBool<ItemOp::Disabled>},
 };
 static constexpr MethodDescriptor kInputMethods[] = {
-    {"disabled", kDisabledArgs,
+    {"disabled", kDisabledArguments,
      "Keeps the freeform answer visible but not editable.",
      &RecordInputDisabled},
 };

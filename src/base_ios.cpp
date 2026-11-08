@@ -1,73 +1,16 @@
-/* iOS answers for the Plat* facts that are not shared with every POSIX
-   target. Strings, directories, threads and the clock stay in base_posix.cpp.
-   Stat timestamps match macOS (st_mtimespec); the shortcut modifier, fonts
-   and window chrome do not — iOS is not GPUI_OS_MAC. */
+/* iOS answers for the Plat* facts (base.h's PlatFacts): what differs here
+   from the defaults. Strings, directories, threads, the clock and stat
+   timestamps are in base_posix.cpp. The shortcut modifier, fonts and window
+   chrome are not macOS's — iOS is not GPUI_OS_MAC — and there is no
+   executable path to report. */
 
 #include "base.h"
 
-#include <sys/stat.h>
-
 namespace base {
 
-// macOS speech example relaunches itself. Every other platform keeps running.
-bool PlatDisclaimSpeechResponsibility(int, char**, int*) {
-    return true;
-}
-
-bool PlatGetExePath(char* out, int cap) {
-    if (out && cap > 0) out[0] = 0;
-    return false;
-}
-
-uint64_t PlatStatModifiedNs(const struct stat* st) {
-    return (uint64_t)st->st_mtimespec.tv_sec * 1000000000ull +
-           (uint64_t)st->st_mtimespec.tv_nsec;
-}
-
-bool PlatSecondaryIsCommand() {
-    return false;
-}
-bool PlatTitleBarCloseIsElement() {
-    return false;
-}
-bool PlatShowsWindowControls() {
-    return true;
-}
-float PlatCaretWidth() {
-    return 1.f;
-}
-bool PlatScrollBounce() {
-    return true;
-}
-bool PlatCleanOnEscape() {
-    return true;
-}
-bool PlatScrollBounceTouch() {
-    return true;
-}
-bool PlatOverscrollPhaselessStops() {
-    return false;
-}
-const char* PlatMonoFontName() {
-    return "DejaVu Sans Mono";
-}
-const char* PlatShellDataDir() {
-    return "/.local/share";
-}
-const char* PlatShellPlatformName() {
-    return "linux";
-}
-bool PlatBlockSelectUsesControl() {
-    return false;
-}
-bool PlatScrollGestureLocks() {
-    return true;
-}
-bool PlatAsyncIo() {
-    return false;
-}
-float PlatWindowShadowSize() {
-    return 0.f;
-}
+const PlatFacts kPlatFacts = {
+    .scrollBounce = true,
+    .scrollBounceTouch = true,
+};
 
 } // namespace base

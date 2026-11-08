@@ -118,24 +118,31 @@ static void ApplyStepValidatesAndFallsBackToTheStepEvent() {
     Entity<NumberEventSink> sink = EntityNew<NumberEventSink>(&app);
     Listener onStep = ListenTo(sink, &NumberEventSink::OnStep);
 
+    NumberStepTarget target = {};
+    target.state = &state;
+    target.step = one;
+    target.hasStep = true;
+
     state.validate = &RejectFour;
-    utassert(NumberInputApplyStep(&state, &app, nullptr, StepAction::Increment,
-                                  &one, false, 0, false, 0, false, onStep));
+    utassert(NumberInputApplyStep(target, &app, nullptr, StepAction::Increment,
+                                  onStep));
     utassert(StrEqI(InputValue(&state), "3"));
     utassert(sink.Get(&app)->count == 1);
     utassert(sink.Get(&app)->last == StepAction::Increment);
 
     state.validate = nullptr;
-    utassert(NumberInputApplyStep(&state, &app, nullptr, StepAction::Decrement,
-                                  &one, true, 0, false, 0, false, onStep));
+    target.hasMin = true;
+    utassert(NumberInputApplyStep(target, &app, nullptr, StepAction::Decrement,
+                                  onStep));
     utassert(StrEqI(InputValue(&state), "2"));
     utassert(sink.Get(&app)->count == 1);
     utassert(state.maskPattern.kind == MaskKind::Number);
     utassert(!state.maskPatternSet);
 
     state.disabled = true;
-    utassert(!NumberInputApplyStep(&state, &app, nullptr, StepAction::Increment,
-                                   &one, false, 0, false, 0, false, onStep));
+    target.hasMin = false;
+    utassert(!NumberInputApplyStep(target, &app, nullptr, StepAction::Increment,
+                                   onStep));
     utassert(StrEqI(InputValue(&state), "2"));
     EntityDropAll(&app);
 }

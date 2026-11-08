@@ -126,36 +126,32 @@ struct Alt {
     const char* rule;
 };
 
+// The first of `alts` that matches at `*i`: its span is emitted under its
+// rule and `*i` moves past it. An ignored form (a regexp, an include) just
+// extends the run. False, with `*i` unmoved, when none matches.
+static bool ScanAltAt(IgnoreRun* run, const Alt* alts, int nAlts, int* i) {
+    for (int k = 0; k < nAlts; k++) {
+        int matched = alts[k].match(run->raw, *i);
+        if (matched > 0) {
+            if (alts[k].rule) {
+                run->Text(Str(alts[k].rule), *i, matched);
+            }
+            *i += matched;
+            return true;
+        }
+    }
+    return false;
+}
+
 static void ScanAlts(Results* res, Str raw, const Alt* alts, int nAlts) {
-    int ignoreStart = 0;
+    IgnoreRun run{res, raw};
     int i = 0;
     while (i < len(raw)) {
-        int matched = -1;
-        const Alt* hit = nullptr;
-        for (int k = 0; k < nAlts; k++) {
-            matched = alts[k].match(raw, i);
-            if (matched > 0) {
-                hit = &alts[k];
-                break;
-            }
-        }
-        if (!hit) {
+        if (!ScanAltAt(&run, alts, nAlts, &i)) {
             i++;
-            continue;
         }
-        if (hit->rule) {
-            if (i > ignoreStart) {
-                EmitIgnore(res, Str(raw.s + ignoreStart, i - ignoreStart));
-            }
-            EmitText(res, Str(hit->rule), Str(raw.s + i, matched));
-            ignoreStart = i + matched;
-        }
-        // An ignored form (a regexp, an include) just extends the run.
-        i += matched;
     }
-    if (len(raw) > ignoreStart) {
-        EmitIgnore(res, Str(raw.s + ignoreStart, len(raw) - ignoreStart));
-    }
+    run.Flush(len(raw));
 }
 
 // ─── the languages ────────────────────────────────────────────────────────
@@ -286,41 +282,40 @@ static int ObjcSkipBlank(Str s, int i) {
     return i;
 }
 
-static int ObjcIgnoreString(Str s, int i) {
-    static const char* const kMethods[] = {"NSRegularExpression",
-                                           "NSLocalizedString", "Match"};
-    for (const char* m : kMethods) {
-        int n = LitLen(s, i, m);
+// One of `words`, then `sep`, blanks, and a string `str` matches: the
+// ignored `NSRegularExpression(@"…"` / `pattern: "…"` forms of Objective-C
+// and Swift. The byte length of the whole, or -1.
+static int MatchWordThenString(Str s, int i, const char* const* words,
+                               int nWords, char sep, int (*str)(Str, int)) {
+    for (int k = 0; k < nWords; k++) {
+        int n = LitLen(s, i, words[k]);
         if (n < 0) {
             continue;
         }
         int at = i + n;
-        if (at >= len(s) || s.s[at] != '(') {
+        if (at >= len(s) || s.s[at] != sep) {
             continue;
         }
         at = ObjcSkipBlank(s, at + 1);
-        int sn = ObjcString(s, at);
-        if (sn > 0) {
-            return at + sn - i;
-        }
-    }
-    static const char* const kArgs[] = {"WithPattern", "WithKey"};
-    for (const char* arg : kArgs) {
-        int n = LitLen(s, i, arg);
-        if (n < 0) {
-            continue;
-        }
-        int at = i + n;
-        if (at >= len(s) || s.s[at] != ':') {
-            continue;
-        }
-        at = ObjcSkipBlank(s, at + 1);
-        int sn = ObjcString(s, at);
+        int sn = str(s, at);
         if (sn > 0) {
             return at + sn - i;
         }
     }
     return -1;
+}
+
+static const char* const kObjcIgnoreMethods[] = {"NSRegularExpression",
+                                                 "NSLocalizedString", "Match"};
+
+static int ObjcIgnoreString(Str s, int i) {
+    static const char* const kArgs[] = {"WithPattern", "WithKey"};
+    int n =
+        MatchWordThenString(s, i, kObjcIgnoreMethods,
+                            (int)dimof(kObjcIgnoreMethods), '(', ObjcString);
+    return n > 0 ? n
+                 : MatchWordThenString(s, i, kArgs, (int)dimof(kArgs), ':',
+                                       ObjcString);
 }
 
 void ScanObjectiveC(Results* res, Str raw) {
@@ -555,40 +550,13 @@ static int SwiftString(Str s, int i) {
     return n > 0 ? n : MatchSingleLine(s, i, '"');
 }
 static int SwiftIgnoreString(Str s, int i) {
-    static const char* const kMethods[] = {"NSRegularExpression",
-                                           "NSLocalizedString", "Match"};
-    for (const char* m : kMethods) {
-        int n = LitLen(s, i, m);
-        if (n < 0) {
-            continue;
-        }
-        int at = i + n;
-        if (at >= len(s) || s.s[at] != '(') {
-            continue;
-        }
-        at = ObjcSkipBlank(s, at + 1);
-        int sn = SwiftString(s, at);
-        if (sn > 0) {
-            return at + sn - i;
-        }
-    }
     static const char* const kArgs[] = {"pattern", "key"};
-    for (const char* arg : kArgs) {
-        int n = LitLen(s, i, arg);
-        if (n < 0) {
-            continue;
-        }
-        int at = i + n;
-        if (at >= len(s) || s.s[at] != ':') {
-            continue;
-        }
-        at = ObjcSkipBlank(s, at + 1);
-        int sn = SwiftString(s, at);
-        if (sn > 0) {
-            return at + sn - i;
-        }
-    }
-    return -1;
+    int n =
+        MatchWordThenString(s, i, kObjcIgnoreMethods,
+                            (int)dimof(kObjcIgnoreMethods), '(', SwiftString);
+    return n > 0 ? n
+                 : MatchWordThenString(s, i, kArgs, (int)dimof(kArgs), ':',
+                                       SwiftString);
 }
 
 void ScanSwift(Results* res, Str raw) {
@@ -847,22 +815,15 @@ static int JsHtmlNode(Str s, int i) {
 }
 
 void ScanJavascript(Results* res, Str raw) {
-    int ignoreStart = 0;
+    IgnoreRun run{res, raw};
     int i = 0;
-    auto flush = [&](int upTo) {
-        if (upTo > ignoreStart) {
-            EmitIgnore(res, Str(raw.s + ignoreStart, upTo - ignoreStart));
-        }
-    };
     while (i < len(raw)) {
         int n = CppLineComment(raw, i);
         if (n < 0) {
             n = CppBlockComment(raw, i);
         }
         if (n > 0) {
-            flush(i);
-            EmitText(res, StrL("COMMENT"), Str(raw.s + i, n));
-            ignoreStart = i + n;
+            run.Text(StrL("COMMENT"), i, n);
             i += n;
             continue;
         }
@@ -880,16 +841,12 @@ void ScanJavascript(Results* res, Str raw) {
                 }
                 int vn = JsString(raw, at);
                 if (vn > 0) {
-                    flush(at);
-                    EmitText(res, StrL("string"), Str(raw.s + at, vn));
-                    ignoreStart = at + vn;
+                    run.Text(StrL("string"), at, vn);
                     i = at + vn;
                     continue;
                 }
             }
-            flush(i);
-            EmitText(res, StrL("string"), Str(raw.s + i, n));
-            ignoreStart = i + n;
+            run.Text(StrL("string"), i, n);
             i += n;
             continue;
         }
@@ -915,9 +872,7 @@ void ScanJavascript(Results* res, Str raw) {
                     while (textEnd < end && raw.s[textEnd] != '<') {
                         textEnd++;
                     }
-                    flush(at);
-                    EmitText(res, StrL("text"), Str(raw.s + at, textEnd - at));
-                    ignoreStart = textEnd;
+                    run.Text(StrL("text"), at, textEnd - at);
                     at = textEnd;
                 }
                 i = end;
@@ -932,7 +887,7 @@ void ScanJavascript(Results* res, Str raw) {
         }
         i++;
     }
-    flush(len(raw));
+    run.Flush(len(raw));
 }
 
 // php: only what sits between <?php … ?> is source; the crate ignores
@@ -950,7 +905,7 @@ static int PhpRegexp(Str s, int i) {
 }
 
 void ScanPhp(Results* res, Str raw) {
-    int ignoreStart = 0;
+    IgnoreRun run{res, raw};
     int i = 0;
     bool inPhp = false;
     static const Alt kAlts[] = {
@@ -961,23 +916,8 @@ void ScanPhp(Results* res, Str raw) {
     while (i < len(raw)) {
         if (!inPhp) {
             // Comments are implicit at every level of the grammar, so they
-            // are corrected outside <?php too.
-            int matched = -1;
-            const Alt* hit = nullptr;
-            for (int k = 0; k < 3; k++) {
-                matched = kAlts[k].match(raw, i);
-                if (matched > 0) {
-                    hit = &kAlts[k];
-                    break;
-                }
-            }
-            if (hit) {
-                if (i > ignoreStart) {
-                    EmitIgnore(res, Str(raw.s + ignoreStart, i - ignoreStart));
-                }
-                EmitText(res, Str(hit->rule), Str(raw.s + i, matched));
-                ignoreStart = i + matched;
-                i += matched;
+            // are corrected outside <?php too: the first three alternatives.
+            if (ScanAltAt(&run, kAlts, 3, &i)) {
                 continue;
             }
             if (LitLen(raw, i, "<?php") > 0) {
@@ -993,31 +933,11 @@ void ScanPhp(Results* res, Str raw) {
             i += 2;
             continue;
         }
-        int matched = -1;
-        const Alt* hit = nullptr;
-        for (const Alt& alt : kAlts) {
-            matched = alt.match(raw, i);
-            if (matched > 0) {
-                hit = &alt;
-                break;
-            }
-        }
-        if (!hit) {
+        if (!ScanAltAt(&run, kAlts, (int)dimof(kAlts), &i)) {
             i++;
-            continue;
         }
-        if (hit->rule) {
-            if (i > ignoreStart) {
-                EmitIgnore(res, Str(raw.s + ignoreStart, i - ignoreStart));
-            }
-            EmitText(res, Str(hit->rule), Str(raw.s + i, matched));
-            ignoreStart = i + matched;
-        }
-        i += matched;
     }
-    if (len(raw) > ignoreStart) {
-        EmitIgnore(res, Str(raw.s + ignoreStart, len(raw) - ignoreStart));
-    }
+    run.Flush(len(raw));
 }
 
 // json: a `"…"` that a ':' follows is a key and passes through; every other
@@ -1041,7 +961,7 @@ static int JsonString(Str s, int i) {
 }
 
 void ScanJson(Results* res, Str raw) {
-    int ignoreStart = 0;
+    IgnoreRun run{res, raw};
     int i = 0;
     while (i < len(raw)) {
         int n = CppLineComment(raw, i);
@@ -1051,11 +971,7 @@ void ScanJson(Results* res, Str raw) {
             isComment = n > 0;
         }
         if (isComment) {
-            if (i > ignoreStart) {
-                EmitIgnore(res, Str(raw.s + ignoreStart, i - ignoreStart));
-            }
-            EmitText(res, StrL("COMMENT"), Str(raw.s + i, n));
-            ignoreStart = i + n;
+            run.Text(StrL("COMMENT"), i, n);
             i += n;
             continue;
         }
@@ -1068,26 +984,20 @@ void ScanJson(Results* res, Str raw) {
             }
             bool isKey = at < len(raw) && raw.s[at] == ':';
             if (!isKey) {
-                if (i > ignoreStart) {
-                    EmitIgnore(res, Str(raw.s + ignoreStart, i - ignoreStart));
-                }
-                EmitText(res, StrL("string"), Str(raw.s + i, n));
-                ignoreStart = i + n;
+                run.Text(StrL("string"), i, n);
             }
             i += n;
             continue;
         }
         i++;
     }
-    if (len(raw) > ignoreStart) {
-        EmitIgnore(res, Str(raw.s + ignoreStart, len(raw) - ignoreStart));
-    }
+    run.Flush(len(raw));
 }
 
 // yaml: `# comments` and the value half of `key: value` lines; everything
 // else (list items, plain lines) passes through.
 void ScanYaml(Results* res, Str raw) {
-    int ignoreStart = 0;
+    IgnoreRun run{res, raw};
     int i = 0;
     while (i < len(raw)) {
         int at = i;
@@ -1099,11 +1009,7 @@ void ScanYaml(Results* res, Str raw) {
             while (end < len(raw) && raw.s[end] != '\n') {
                 end++;
             }
-            if (at > ignoreStart) {
-                EmitIgnore(res, Str(raw.s + ignoreStart, at - ignoreStart));
-            }
-            EmitText(res, StrL("comment"), Str(raw.s + at, end - at));
-            ignoreStart = end;
+            run.Text(StrL("comment"), at, end - at);
             i = end < len(raw) ? end + 1 : end;
             continue;
         }
@@ -1148,12 +1054,7 @@ void ScanYaml(Results* res, Str raw) {
                 valueEnd++;
             }
         }
-        if (valueStart > ignoreStart) {
-            EmitIgnore(res, Str(raw.s + ignoreStart, valueStart - ignoreStart));
-        }
-        EmitText(res, StrL("string"),
-                 Str(raw.s + valueStart, valueEnd - valueStart));
-        ignoreStart = valueEnd;
+        run.Text(StrL("string"), valueStart, valueEnd - valueStart);
         i = valueEnd;
         while (i < len(raw) && raw.s[i] != '\n') {
             i++;
@@ -1162,9 +1063,7 @@ void ScanYaml(Results* res, Str raw) {
             i++;
         }
     }
-    if (len(raw) > ignoreStart) {
-        EmitIgnore(res, Str(raw.s + ignoreStart, len(raw) - ignoreStart));
-    }
+    run.Flush(len(raw));
 }
 
 } // namespace autocorrect

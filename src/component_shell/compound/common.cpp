@@ -15,9 +15,7 @@ bool NonemptyId(Str id, const char* component, Str* error) {
 }
 
 bool NonnegativeUsize(double value, Str label, uint64_t* out, Str* error) {
-    // 2^64: `usize::MAX as f64` on the 64-bit targets Rust builds for.
-    if (!isfinite(value) || value < 0 || value != floor(value) ||
-        value >= 18446744073709551616.0) {
+    if (!IsUsizeNumber(value)) {
         *error = fmt("%s expects an exactly representable nonnegative integer",
                      label);
         return false;

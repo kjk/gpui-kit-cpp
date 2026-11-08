@@ -272,12 +272,7 @@ El* ShimmerText::IntoEl() {
     // fraction of this width whatever it is.
     const char* bytes = text.s;
     int n = len(text);
-    int chars = 0;
-    for (int i = 0; i < n; i++) {
-        if (((uint8_t)bytes[i] & 0xC0) != 0x80) {
-            chars++;
-        }
-    }
+    int chars = Utf8CharCount(text);
     if (chars == 0) {
         return container;
     }

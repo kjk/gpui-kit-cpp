@@ -50,6 +50,7 @@ inline constexpr ArgumentDescriptor kDisabledArguments[] = {
     {"disabled", SchemaBoolean()}};
 inline constexpr ArgumentDescriptor kSelectedArguments[] = {
     {"selected", SchemaBoolean()}};
+inline constexpr ArgumentDescriptor kIdArguments[] = {{"id", SchemaString()}};
 
 // `on_click(callback)`, for a component whose materializer honours
 // MaterializeRequest::onClick.
@@ -70,10 +71,45 @@ inline constexpr MethodDescriptor kSelectedMethod = {
 
 inline constexpr const char* kSizeLiterals[] = {"xsmall", "small", "medium",
                                                 "large"};
+inline constexpr ArgumentDescriptor kSizeArguments[] = {
+    {"size", SchemaEnum(kSizeLiterals)}};
 
 // `xsmall`, `small`, `medium` or `large`. Medium for anything else, which the
 // schema has already refused.
 UiSize SizeOfLiteral(Str literal);
+
+// `size(size)` for a component whose ops are a `T` with a `kind` and a
+// `size`: records the literal, which the schema has already checked, as op
+// `K`.
+template <class T, typename T::Kind K>
+bool RecordSizeOp(PayloadBuild* build, const ComponentArgument* args, int) {
+    T* op = build->New<T>();
+    op->kind = K;
+    op->size = SizeOfLiteral(args[0].string);
+    return true;
+}
+
+// `name(value)` taking one boolean, for a component whose ops are a `T` with
+// a `kind` and a `flag`: records it as op `kind`, or fails with
+// "{component}.{name} expects one boolean".
+template <class T, typename K>
+bool RecordFlagOp(PayloadBuild* build, const ComponentArgument* args, int count,
+                  K kind, const char* component, const char* name) {
+    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Boolean)
+        return build
+            ->Fail(fmt("%s.%s expects one boolean", Str(component), Str(name)));
+    T* op = build->New<T>();
+    op->kind = kind;
+    op->flag = args[0].boolean;
+    return true;
+}
+
+// Whether an f64 argument reads as a Rust usize: a finite whole number from
+// zero up to, but not including, 2^64 — `usize::MAX as f64` rounds up to
+// 2^64 on 64-bit targets, so that value itself is refused.
+bool IsUsizeNumber(double value);
+// A usize count in the int the C++ widgets hold; a larger one saturates.
+int SaturatingInt(double value);
 
 // Refuses style on a component that has nowhere to put it. A data-carrying
 // part such as MenuItem renders no box of its own; silently dropping a
@@ -160,6 +196,29 @@ void EachMethod(const MaterializeRequest* request, F&& visit) {
 // recorder, failing with "invalid <component> color: ..." as Rust does.
 bool ParseColorArgument(PayloadBuild* build, const char* component, Str text,
                         Rgba* out);
+
+// ─── overlays/mod.rs ───────────────────────────────────────────────────────
+//
+// What HoverCard and Popover record the same way.
+
+// `card_anchor`'s literals, in gpui::Anchor order.
+inline constexpr const char* kCardAnchorLiterals[] = {
+    "top_left",      "top_center",   "top_right",   "bottom_left",
+    "bottom_center", "bottom_right", "left_center", "right_center"};
+inline constexpr ArgumentDescriptor kCardAnchorArguments[] = {
+    {"anchor", SchemaEnum(kCardAnchorLiterals)}};
+inline constexpr ArgumentDescriptor kOpenChangeArguments[] = {
+    {"callback", SchemaCallback("(open: boolean, cx: Context) => void")}};
+
+// anchor_op: `<component>.card_anchor(anchor)`'s one literal as an Anchor.
+// False after build->Fail.
+bool CardAnchorArgument(PayloadBuild* build, const char* component,
+                        const ComponentArgument* args, int count,
+                        gpui::Anchor* out);
+// `<component>.on_open_change(callback)`'s one callback. False after
+// build->Fail.
+bool OpenChangeArgument(PayloadBuild* build, const char* component,
+                        const ComponentArgument* args, int count);
 
 // `format!("{value}")` for an f64: the fewest digits that read back as the
 // same double, never in exponent form (`18446744073709552000`, `1.5`, `-1`,

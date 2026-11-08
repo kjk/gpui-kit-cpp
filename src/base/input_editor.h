@@ -27,6 +27,57 @@ struct TabSize {
 // run of fractional stops does not land two tabs on one stop.
 float TabExpandedWidth(Str text, float stop,
                        float (*measure)(void* user, Str text), void* user);
+// The tab stop after `x`: the next multiple of `stop` strictly past it (the
+// first stop for anything at or before 0).
+double TabNextStop(double x, float stop);
+
+// One piece of a line as tab stops lay it out: source bytes [start, end),
+// drawn from `left` to `right`. A tab is one byte and reaches the next stop.
+struct TabSegment {
+    int start = 0;
+    int end = 0;
+    double left = 0;
+    double right = 0;
+    bool tab = false;
+};
+
+// The walk every tab-aware measurement shares: each run between tabs
+// measured whole, each tab spanning to the next stop, the cumulative shift
+// kept in double precision. `visit(seg)` sees each piece in order and
+// answers false to stop. Returns the width walked.
+template <typename Measure, typename Visit>
+float TabWalk(Str text, float stop, Measure measure, Visit visit) {
+    double shaped = 0;
+    double shift = 0;
+    int i = 0;
+    while (i < len(text)) {
+        TabSegment seg;
+        seg.start = i;
+        seg.left = shaped + shift;
+        if (text.s[i] == '\t') {
+            double end = shaped + (double)measure(Str(text.s + i, 1));
+            seg.end = i + 1;
+            seg.right = TabNextStop(seg.left, stop);
+            seg.tab = true;
+            shift = seg.right - end;
+            shaped = end;
+        } else {
+            int j = i + 1;
+            while (j < len(text) && text.s[j] != '\t') {
+                j++;
+            }
+            float w = measure(Str(text.s + i, j - i));
+            seg.end = j;
+            seg.right = seg.left + (double)w;
+            shaped += (double)w;
+        }
+        if (!visit(seg)) {
+            break;
+        }
+        i = seg.end;
+    }
+    return (float)(shaped + shift);
+}
 
 // `text`, in `a` if it has to change, with what a shaper breaks a line at
 // (VT, FF, CR, NEL, LS, PS) as spaces of the same byte length, so that one row

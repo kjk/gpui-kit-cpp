@@ -163,6 +163,25 @@ static int MapTabOff(const int* map, int n, int src) {
     return map[src];
 }
 
+// One wash over [lo, hi) of a row `len` bytes long, clipped to the row and
+// mapped through the tab expansion; nothing when the clip leaves it empty.
+static void AppendRowWash(TextSpan* w, int* n, int lo, int hi, int len,
+                          const int* tabMap, Rgba bg) {
+    if (lo < 0) {
+        lo = 0;
+    }
+    if (hi > len) {
+        hi = len;
+    }
+    if (hi <= lo) {
+        return;
+    }
+    w[*n].lo = MapTabOff(tabMap, len, lo);
+    w[*n].hi = MapTabOff(tabMap, len, hi);
+    w[*n].bg = bg;
+    (*n)++;
+}
+
 static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
                           const InputState* state, int start, int len, int* at,
                           const int* tabMap) {
@@ -178,78 +197,36 @@ static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
     if (style.nMatches <= 0 && nColors == 0) {
         return el;
     }
-    if (style.nMatches <= 0) {
-        auto* w = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * nColors);
-        int n = 0;
-        for (int i = 0; i < state->documentColors.len && w; i++) {
-            const DocumentColor& dc = state->documentColors[i];
-            int lo = dc.range.start - start;
-            int hi = dc.range.end - start;
-            if (lo < 0) {
-                lo = 0;
-            }
-            if (hi > len) {
-                hi = len;
-            }
-            if (hi <= lo) {
-                continue;
-            }
-            w[n].lo = MapTabOff(tabMap, len, lo);
-            w[n].hi = MapTabOff(tabMap, len, hi);
-            w[n].bg = dc.color;
-            n++;
+    int first = 0, count = 0;
+    if (style.nMatches > 0) {
+        while (*at < style.nMatches && style.matches[*at].end <= start) {
+            (*at)++;
         }
-        return n > 0 ? el->Washes(w, n) : el;
-    }
-    while (*at < style.nMatches && style.matches[*at].end <= start) {
-        (*at)++;
-    }
-    int first = *at, count = 0;
-    while (first + count < style.nMatches && style.matches[first + count]
-                                                     .start < start + len) {
-        count++;
-    }
-    if (count <= 0) {
-        return el;
+        first = *at;
+        while (first + count < style.nMatches && style.matches[first + count]
+                                                         .start < start + len) {
+            count++;
+        }
+        if (count <= 0) {
+            return el;
+        }
     }
     auto* w = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * (count + nColors));
-    int n = 0;
-    for (int k = 0; k < count && w; k++) {
-        int ix = first + k;
-        int lo = style.matches[ix].start - start;
-        int hi = style.matches[ix].end - start;
-        if (lo < 0) {
-            lo = 0;
-        }
-        if (hi > len) {
-            hi = len;
-        }
-        if (hi <= lo) {
-            continue;
-        }
-        w[n].lo = MapTabOff(tabMap, len, lo);
-        w[n].hi = MapTabOff(tabMap, len, hi);
-        w[n].bg =
-            ix == style.currentMatch ? style.currentMatchBg : style.matchBg;
-        n++;
+    if (!w) {
+        return el;
     }
-    for (int i = 0; i < nColors && w; i++) {
+    int n = 0;
+    for (int k = 0; k < count; k++) {
+        int ix = first + k;
+        AppendRowWash(
+            w, &n, style.matches[ix].start - start,
+            style.matches[ix].end - start, len, tabMap,
+            ix == style.currentMatch ? style.currentMatchBg : style.matchBg);
+    }
+    for (int i = 0; nColors > 0 && i < state->documentColors.len; i++) {
         const DocumentColor& dc = state->documentColors[i];
-        int lo = dc.range.start - start;
-        int hi = dc.range.end - start;
-        if (lo < 0) {
-            lo = 0;
-        }
-        if (hi > len) {
-            hi = len;
-        }
-        if (hi <= lo) {
-            continue;
-        }
-        w[n].lo = MapTabOff(tabMap, len, lo);
-        w[n].hi = MapTabOff(tabMap, len, hi);
-        w[n].bg = dc.color;
-        n++;
+        AppendRowWash(w, &n, dc.range.start - start, dc.range.end - start, len,
+                      tabMap, dc.color);
     }
     return n > 0 ? el->Washes(w, n) : el;
 }
@@ -283,29 +260,6 @@ static void Notify(App* app, Window* win);
 // re-wraps the lines an edit touched. A width change reuses every line whose
 // WidthRange still contains the new width, and the shaped widths of the
 // slices it did measure. A font, tab size or indent change drops both.
-
-static int WrapEncodeUtf8(uint32_t c, char* out) {
-    if (c < 0x80) {
-        out[0] = (char)c;
-        return 1;
-    }
-    if (c < 0x800) {
-        out[0] = (char)(0xC0 | (c >> 6));
-        out[1] = (char)(0x80 | (c & 0x3F));
-        return 2;
-    }
-    if (c < 0x10000) {
-        out[0] = (char)(0xE0 | (c >> 12));
-        out[1] = (char)(0x80 | ((c >> 6) & 0x3F));
-        out[2] = (char)(0x80 | (c & 0x3F));
-        return 3;
-    }
-    out[0] = (char)(0xF0 | (c >> 18));
-    out[1] = (char)(0x80 | ((c >> 12) & 0x3F));
-    out[2] = (char)(0x80 | ((c >> 6) & 0x3F));
-    out[3] = (char)(0x80 | (c & 0x3F));
-    return 4;
-}
 
 // An indexed AVL sum tree: untouched lines keep their row storage after a
 // splice.
@@ -577,7 +531,7 @@ static float WrapCharWidthOf(void* user, uint32_t c) {
         return found->width;
     }
     char buf[4];
-    int n = WrapEncodeUtf8(c, buf);
+    int n = Utf8Encode(buf, c);
     float w = 0;
     if (!WrapAdvance(wm, Str(buf, n), &w)) {
         // Nothing to shape against: an estimate, not kept, so the next
@@ -683,11 +637,7 @@ static const int kWidthCacheMaxEntries = 32768;
 static const int kWidthCacheMaxBytes = 4 * 1024 * 1024;
 
 static uint32_t WidthCacheHash(Str text) {
-    uint32_t hash = 2166136261u;
-    for (int i = 0; i < len(text); i++) {
-        hash ^= (uint8_t)text.s[i];
-        hash *= 16777619u;
-    }
+    uint32_t hash = Fnv1a32(kFnv1aBasis32, text.s, (size_t)len(text));
     return hash ? hash : 1u;
 }
 
@@ -914,11 +864,27 @@ static float TabSliceWidth(void* user, Str text) {
     return w;
 }
 
-static double TabFloorPos(double x) {
-    if (x <= 0) {
-        return 0;
+// How a field's tabs measure: its font, the width of a space and the stop
+// `tabSize` spaces make. A field with no state yet is two spaces of 14 px.
+struct TabMetrics {
+    TabSliceMeasure measure;
+    float space = 0;
+    float stop = 0;
+    int tabSize = 2;
+};
+
+static TabMetrics TabMetricsFor(PaintCtx* ctx, const InputState* s) {
+    TabMetrics m;
+    m.tabSize = s && s->mode.tabSize > 0 ? s->mode.tabSize : 2;
+    m.measure.ctx = ctx;
+    m.measure.font = s && s->lastFont > 0 ? s->lastFont : 14.f;
+    m.measure.word = s ? s->lastFontWord : 0;
+    m.space = TabSliceWidth(&m.measure, StrL(" "));
+    if (m.space <= 0) {
+        m.space = m.measure.font * 0.6f;
     }
-    return (double)(int64_t)x;
+    m.stop = m.space * (float)m.tabSize;
+    return m;
 }
 
 static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
@@ -941,61 +907,49 @@ static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
     if (!tab) {
         return shown;
     }
-    int tabSize = s->mode.tabSize > 0 ? s->mode.tabSize : 2;
-    float font = s->lastFont > 0 ? s->lastFont : 14.f;
-    TabSliceMeasure measure = {ctx, font, s->lastFontWord};
-    float space = TabSliceWidth(&measure, StrL(" "));
-    if (space <= 0) {
-        space = font * 0.6f;
-    }
-    float stop = space * (float)tabSize;
-    int cap = len(line) * (tabSize + 1) + 8;
+    TabMetrics tm = TabMetricsFor(ctx, s);
+    int cap = len(line) * (tm.tabSize + 1) + 8;
     char* buf = (char*)Alloc(a, cap + 1);
     int* map = (int*)Alloc(a, (int)sizeof(int) * (len(line) + 1));
     if (!buf || !map) {
         return shown;
     }
     int di = 0;
-    double shaped = 0;
-    double shift = 0;
-    int i = 0;
-    while (i < len(line)) {
-        map[i] = di;
-        if (line.s[i] == '\t') {
-            float tabW = TabSliceWidth(&measure, Str(line.s + i, 1));
-            double expanded = shaped + shift;
-            double end = shaped + (double)tabW;
-            double next =
-                (double)stop * (TabFloorPos(expanded / (double)stop) + 1.0);
-            int nsp = (int)((next - expanded) / (double)space + 0.5);
-            if (nsp < 1) {
-                nsp = 1;
+    bool full = false;
+    TabWalk(
+        line, tm.stop,
+        [&](Str slice) { return TabSliceWidth(&tm.measure, slice); },
+        [&](const TabSegment& seg) {
+            if (seg.tab) {
+                int nsp =
+                    (int)((seg.right - seg.left) / (double)tm.space + 0.5);
+                if (nsp < 1) {
+                    nsp = 1;
+                }
+                if (di + nsp > cap) {
+                    full = true;
+                    return false;
+                }
+                map[seg.start] = di;
+                for (int k = 0; k < nsp; k++) {
+                    buf[di++] = ' ';
+                }
+                return true;
             }
-            if (di + nsp > cap) {
-                return shown;
+            int n = seg.end - seg.start;
+            if (di + n > cap) {
+                full = true;
+                return false;
             }
-            for (int k = 0; k < nsp; k++) {
-                buf[di++] = ' ';
+            for (int k = 0; k < n; k++) {
+                map[seg.start + k] = di + k;
+                buf[di + k] = line.s[seg.start + k];
             }
-            shift = next - end;
-            shaped = end;
-            i++;
-            continue;
-        }
-        int j = i + 1;
-        while (j < len(line) && line.s[j] != '\t') {
-            j++;
-        }
-        if (di + (j - i) > cap) {
-            return shown;
-        }
-        for (int k = i; k < j; k++) {
-            map[k] = di + (k - i);
-            buf[di + (k - i)] = line.s[k];
-        }
-        di += j - i;
-        shaped += (double)TabSliceWidth(&measure, Str(line.s + i, j - i));
-        i = j;
+            di += n;
+            return true;
+        });
+    if (full) {
+        return shown;
     }
     map[len(line)] = di;
     buf[di] = 0;
@@ -1009,55 +963,29 @@ static int TabSourceAtX(PaintCtx* ctx, const InputState* s, Str text, float x) {
     if (len(text) <= 0 || x <= 0) {
         return 0;
     }
-    int tabSize = s && s->mode.tabSize > 0 ? s->mode.tabSize : 2;
-    float font = s && s->lastFont > 0 ? s->lastFont : 14.f;
-    uint16_t word = s ? s->lastFontWord : 0;
-    TabSliceMeasure measure = {ctx, font, word};
-    float space = TabSliceWidth(&measure, StrL(" "));
-    if (space <= 0) {
-        space = font * 0.6f;
-    }
-    float stop = space * (float)tabSize;
-    double shaped = 0;
-    double shift = 0;
-    int i = 0;
-    while (i < len(text)) {
-        if (text.s[i] == '\t') {
-            float tabW = TabSliceWidth(&measure, Str(text.s + i, 1));
-            double expanded = shaped + shift;
-            double end = shaped + (double)tabW;
-            double next =
-                (double)stop * (TabFloorPos(expanded / (double)stop) + 1.0);
-            if (x < (float)next) {
-                return i;
+    TabMetrics tm = TabMetricsFor(ctx, s);
+    float font = tm.measure.font;
+    uint16_t word = tm.measure.word;
+    int hit = len(text);
+    TabWalk(
+        text, tm.stop,
+        [&](Str slice) { return TabSliceWidth(&tm.measure, slice); },
+        [&](const TabSegment& seg) {
+            if (x >= (float)seg.right) {
+                return true;
             }
-            shift = next - end;
-            shaped = end;
-            i++;
-            continue;
-        }
-        int j = i + 1;
-        while (j < len(text) && text.s[j] != '\t') {
-            j++;
-        }
-        Str run = Str(text.s + i, j - i);
-        float w = TabSliceWidth(&measure, run);
-        double runX = shaped + shift;
-        if (x < (float)(runX + (double)w)) {
-            int local = TextIndexAt(ctx, TextNoLineBreaks(GetTempArena(), run),
-                                    font, 0, false, x - (float)runX, 0, word);
-            if (local < 0) {
-                local = 0;
+            if (seg.tab) {
+                hit = seg.start;
+                return false;
             }
-            if (local > len(run)) {
-                local = len(run);
-            }
-            return i + local;
-        }
-        shaped += (double)w;
-        i = j;
-    }
-    return len(text);
+            Str run = Str(text.s + seg.start, seg.end - seg.start);
+            int local =
+                TextIndexAt(ctx, TextNoLineBreaks(GetTempArena(), run), font, 0,
+                            false, x - (float)seg.left, 0, word);
+            hit = seg.start + std::max(0, std::min(local, len(run)));
+            return false;
+        });
+    return hit;
 }
 
 static void WrapLineFragments(void* user, Str slice, int base,
@@ -1513,14 +1441,8 @@ static void RowExtraCursors(Arena* a, El* el, const InputState* state,
     }
 }
 
-// One bullet per character, not per byte, for a masked field.
-static Str MaskedRun(Arena* a, Str text) {
-    int chars = 0;
-    for (int i = 0; i < len(text); i++) {
-        if (((unsigned char)text.s[i] & 0xc0) != 0x80) {
-            chars++;
-        }
-    }
+Str InputMaskedText(Arena* a, Str text) {
+    int chars = Utf8CharCount(text);
     char* dots = (char*)Alloc(a, chars * 3 + 1);
     int n = 0;
     for (int i = 0; i < chars; i++) {
@@ -1534,13 +1456,8 @@ static Str MaskedRun(Arena* a, Str text) {
 // A byte offset into the text, in the bullets that stand in for it: three
 // bytes per character, so the caret and the selection land between bullets.
 static int MaskedOffset(Str text, int off) {
-    int chars = 0;
-    for (int i = 0; i < off && i < len(text); i++) {
-        if (((unsigned char)text.s[i] & 0xc0) != 0x80) {
-            chars++;
-        }
-    }
-    return chars * 3;
+    int n = off < len(text) ? off : len(text);
+    return n > 0 ? Utf8CharCount(Str(text.s, n)) * 3 : 0;
 }
 
 struct TokenClick {
@@ -1639,6 +1556,16 @@ static void ReconcileTokenHovers(Ctx* cx, InputState* state) {
         }
     }
     InputTokenBoundsClear(state);
+}
+
+// What Input and Textarea both do before building rows: settle the token
+// hovers the last build left, and resolve the projected style against the
+// theme.
+static InputEditorStyle InputBeginRender(Ctx* cx, InputState* state,
+                                         const InputEditorStyle& projected) {
+    ReconcileTokenHovers(cx, state);
+    BaseTheme theme = base_theme::Theme::Global(cx->app);
+    return InputEditorStyleResolve(projected, theme.tokens);
 }
 
 static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
@@ -1876,6 +1803,57 @@ static uint16_t InputFontWordCascaded(const InputEditorStyle& style,
     return w;
 }
 
+// The line height, font word and foreground this build used, kept on the
+// state for what measures and paints it between frames.
+static void InputRecordRenderMetrics(InputState* state,
+                                     const InputEditorStyle& style,
+                                     float lineH) {
+    state->lastLineH = lineH;
+    state->lastFontWord = InputFontWordCascaded(style, state->cascadeFontWord);
+    state->editorForeground = style.foreground;
+}
+
+// What the single-line and the multi-line build start alike: the resolved
+// style, its font and line height (recorded on the state), the line as a
+// multiple of the font, the text, whether the caret shows (show_cursor:
+// focused, not disabled, and this half of the blink is the lit one) and
+// whether the selection does.
+struct InputRenderBasics {
+    InputEditorStyle style = {};
+    float font = 12;
+    float lineH = 0;
+    float lineMult = 1;
+    Str text = {};
+    bool caret = false;
+    bool showSel = false;
+};
+
+// `editorLeading` is the multi-line build's: EDITOR_LINE_HEIGHT, a code
+// editor takes its rows from its own font, so a smaller or larger one keeps
+// its leading in proportion. Every other field keeps Input::LINE_HEIGHT —
+// 1.25rem whatever the text size is — which is what Rust sets on the input
+// rather than on the editor. At the theme's 13px monospace the two are the
+// same 20. The editor's is a multiple of its font, which layout scales by
+// the rem as it does the font, so in DIPs it is that row at the window's
+// rem.
+static InputRenderBasics InputRenderBegin(Ctx* cx, InputState* state,
+                                          const InputEditorStyle& projected,
+                                          bool editorLeading) {
+    InputRenderBasics b;
+    b.style = InputBeginRender(cx, state, projected);
+    b.font = b.style.fontSize > 0 ? b.style.fontSize : 12.f;
+    b.lineH = editorLeading && state->kind == InputKind::Editor
+                  ? Rems(cx, roundf(b.font * 1.5f) / 16.f)
+                  : InputLineH(cx);
+    b.lineMult = InputLineMult(cx, b.lineH, b.font);
+    InputRecordRenderMetrics(state, b.style, b.lineH);
+    b.text = InputValue(state);
+    b.showSel = state->HasSelectionFocus(cx->win);
+    b.caret =
+        state->focused && !state->disabled && BlinkVisible(cx, state->blink);
+    return b;
+}
+
 // One text run between a row's chips: the whole gap, shaped as one fragment
 // the way Rust shapes it. Where the row breaks is the wrap map's business.
 static void EmitTokenTextRun(El* row, Arena* a, const InputEditorStyle& style,
@@ -1961,24 +1939,15 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     if (!state) {
         return TextEl(a, Str{});
     }
-    ReconcileTokenHovers(cx, state);
-    BaseTheme theme = base_theme::Theme::Global(cx->app);
-    InputEditorStyle resolved =
-        InputEditorStyleResolve(projected, theme.tokens);
-    const InputEditorStyle& style = resolved;
-    float font = style.fontSize > 0 ? style.fontSize : 12.f;
-    float lineH = InputLineH(cx);
-    float lineMult = InputLineMult(cx, lineH, font);
-    state->lastLineH = lineH;
-    state->lastFontWord = InputFontWordCascaded(style, state->cascadeFontWord);
-    state->editorForeground = style.foreground;
-    Str text = InputValue(state);
+    InputRenderBasics basics = InputRenderBegin(cx, state, projected, false);
+    const InputEditorStyle& style = basics.style;
+    float font = basics.font;
+    float lineH = basics.lineH;
+    float lineMult = basics.lineMult;
+    Str text = basics.text;
     bool masked = style.mask || state->masked;
-    bool showSel = state->HasSelectionFocus(cx->win);
-    // show_cursor: focused, not disabled, and this half of the blink is the
-    // lit one.
-    bool caret =
-        state->focused && !state->disabled && BlinkVisible(cx, state->blink);
+    bool showSel = basics.showSel;
+    bool caret = basics.caret;
 
     // The row fills its field, so a press to the right of the text still
     // lands on the editor — Rust's InputElement takes the whole content box.
@@ -2011,7 +1980,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
             style.mutedForeground));
     }
 
-    Str run = masked ? MaskedRun(a, text) : text;
+    Str run = masked ? InputMaskedText(a, text) : text;
     int cursor = InputCursor(state);
     Selection sel = showSel ? state->selectedRange : Selection{};
     Selection mark = {};
@@ -2318,8 +2287,12 @@ static const InputPaintedRows* LastPaintedRows(const InputState* s,
     return s->paintedRows;
 }
 
-int InputLastPaintedRows(const InputState* s, const Window* win, Selection* out,
-                         int cap) {
+// Counts the rows last frame painted for which `want(row)` holds, handing
+// each to `fill(row, n)` while it is under `cap` and `out` is set — the
+// shape of every query on the painted rows. 0 when nothing was painted.
+template <typename Want, typename Fill>
+static int CountPaintedRows(const InputState* s, const Window* win, bool out,
+                            int cap, Want want, Fill fill) {
     const InputPaintedRows* pr = LastPaintedRows(s, win);
     if (!pr) {
         return 0;
@@ -2327,27 +2300,36 @@ int InputLastPaintedRows(const InputState* s, const Window* win, Selection* out,
     int n = 0;
     for (int i = 0; i < pr->geometry.nRows; i++) {
         const RangeDecorationRow& row = pr->geometry.rows[i];
-        if (!row.first) {
+        if (!want(row)) {
             continue;
         }
         if (n < cap && out) {
-            out[n] = Selection{row.lineStart, row.lineStart + row.lineLen};
+            fill(row, n);
         }
         n++;
     }
     return n;
 }
 
+int InputLastPaintedRows(const InputState* s, const Window* win, Selection* out,
+                         int cap) {
+    return CountPaintedRows(
+        s, win, out != nullptr, cap,
+        [](const RangeDecorationRow& row) { return row.first; },
+        [&](const RangeDecorationRow& row, int n) {
+            out[n] = Selection{row.lineStart, row.lineStart + row.lineLen};
+        });
+}
+
 int InputLastVisualRows(const InputState* s, Window* win,
                         InputPaintedVisualRow* out, int cap) {
-    const InputPaintedRows* pr = LastPaintedRows(s, win);
-    if (!pr) {
-        return 0;
-    }
-    int n = 0;
-    for (int i = 0; i < pr->geometry.nRows; i++) {
-        const RangeDecorationRow& row = pr->geometry.rows[i];
-        if (n < cap && out && row.text) {
+    return CountPaintedRows(
+        s, win, out != nullptr, cap,
+        [](const RangeDecorationRow&) { return true; },
+        [&](const RangeDecorationRow& row, int n) {
+            if (!row.text) {
+                return;
+            }
             InputPaintedVisualRow& v = out[n];
             v.start = row.start;
             v.len = row.len;
@@ -2362,10 +2344,7 @@ int InputLastVisualRows(const InputState* s, Window* win,
                     0) {
                 v.width = whole.x + whole.w - row.text->x;
             }
-        }
-        n++;
-    }
-    return n;
+        });
 }
 
 int InputLastRangeCorners(const InputState* s, Window* win, Selection range,
@@ -2664,6 +2643,30 @@ El* Textarea::New(Ctx* cx, InputState* state) {
     return New(cx, state, InputEditorStyle{});
 }
 
+// The part of the document range [rangeStart, rangeEnd) on a line that
+// starts at `lineStart`, as offsets into the line. False when none of it is.
+static bool ClipToLine(int rangeStart, int rangeEnd, int lineStart, int lineLen,
+                       int* lo, int* hi) {
+    *lo = std::max(rangeStart - lineStart, 0);
+    *hi = std::min(rangeEnd - lineStart, lineLen);
+    return *hi > *lo;
+}
+
+// The height the rows are virtualized against: what the field was laid out
+// at, capped at the window (600 before there is one) so a mistaken content
+// height still virtualizes, and the cap when nothing was laid out yet.
+static float InputViewportHeight(Ctx* cx, const InputState* state) {
+    float vh = state->viewH;
+    float vhCap = 600.f;
+    if (cx->win && cx->win->paint.viewH > 0) {
+        vhCap = cx->win->paint.viewH;
+    }
+    if (vh <= 0 || vh > vhCap) {
+        vh = vhCap;
+    }
+    return vh;
+}
+
 // The multi-line editor. Rust lays every visible row out through the display
 // map; without one, each logical line is its own run and the selection is
 // clipped to it — which is the same picture as long as nothing soft-wraps.
@@ -2673,31 +2676,15 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (!state) {
         return TextEl(a, Str{});
     }
-    ReconcileTokenHovers(cx, state);
-    BaseTheme theme = base_theme::Theme::Global(cx->app);
-    InputEditorStyle resolved =
-        InputEditorStyleResolve(projected, theme.tokens);
-    const InputEditorStyle& style = resolved;
-    float font = style.fontSize > 0 ? style.fontSize : 12.f;
-    // EDITOR_LINE_HEIGHT: a code editor takes its rows from its own font, so
-    // a smaller or larger one keeps its leading in proportion. Every other
-    // field keeps Input::LINE_HEIGHT — 1.25rem whatever the text size is —
-    // which is what Rust sets on the input rather than on the editor. At the
-    // theme's 13px monospace the two are the same 20. The editor's is a
-    // multiple of its font, which layout scales by the rem as it does the
-    // font, so in DIPs it is that row at the window's rem.
-    float lineH = state->kind == InputKind::Editor
-                      ? Rems(cx, roundf(font * 1.5f) / 16.f)
-                      : InputLineH(cx);
-    float lineMult = InputLineMult(cx, lineH, font);
-    state->lastLineH = lineH;
-    state->lastFontWord = InputFontWordCascaded(style, state->cascadeFontWord);
-    state->editorForeground = style.foreground;
-    Str text = InputValue(state);
-    bool caret =
-        state->focused && !state->disabled && BlinkVisible(cx, state->blink);
+    InputRenderBasics basics = InputRenderBegin(cx, state, projected, true);
+    const InputEditorStyle& style = basics.style;
+    float font = basics.font;
+    float lineH = basics.lineH;
+    float lineMult = basics.lineMult;
+    Str text = basics.text;
+    bool caret = basics.caret;
     int cursor = InputCursor(state);
-    bool showSel = state->HasSelectionFocus(cx->win);
+    bool showSel = basics.showSel;
     Selection sel = showSel ? state->selectedRange : Selection{};
 
     El* col = Div(a)->FlexCol()->W(kFill)->BindInput(state);
@@ -2730,14 +2717,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // The placeholder frame scrolls too. An offset past the end would
         // slide this spacer out of the box for the frame before the rows
         // exist.
-        float vh = state->viewH;
-        float vhCap = 600.f;
-        if (cx->win && cx->win->paint.viewH > 0) {
-            vhCap = cx->win->paint.viewH;
-        }
-        if (vh <= 0 || vh > vhCap) {
-            vh = vhCap;
-        }
+        float vh = InputViewportHeight(cx, state);
         state->scrollY =
             InputClampVerticalScrollOffset(state->scrollY, height, vh);
         return col->Child(Div(a)->H(height));
@@ -2862,14 +2842,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // the inner column's laid-out height (the whole document) or nothing
     // yet on the first frame of a file; either would build every line.
     // Cap at the window so a mistaken content height still virtualizes.
-    float vh = state->viewH;
-    float vhCap = 600.f;
-    if (cx->win && cx->win->paint.viewH > 0) {
-        vhCap = cx->win->paint.viewH;
-    }
-    if (vh <= 0 || vh > vhCap) {
-        vh = vhCap;
-    }
+    float vh = InputViewportHeight(cx, state);
     // calculate_visible_range clamps before it picks rows, in every mode.
     // The room a code editor keeps below its last line is part of that
     // range. A target past the end used to paint an empty frame.
@@ -3328,15 +3301,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     int nRowSpans = 0;
                     for (int k = 0; k < count; k++) {
                         const TextSpan& sp = docSpans[first + k];
-                        int lo = sp.lo - start;
-                        int hi = sp.hi - start;
-                        if (lo < 0) {
-                            lo = 0;
-                        }
-                        if (hi > len(line)) {
-                            hi = len(line);
-                        }
-                        if (hi <= lo) {
+                        int lo = 0;
+                        int hi = 0;
+                        if (!ClipToLine(sp.lo, sp.hi, start, len(line), &lo,
+                                        &hi)) {
                             continue;
                         }
                         rowSpans[nRowSpans] = sp;
@@ -3368,15 +3336,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     int n = 0;
                     for (int d = 0; d < state->diagnostics.len && runs; d++) {
                         const Diagnostic& dg = state->diagnostics[d];
-                        int lo = dg.range.start - start;
-                        int hi = dg.range.end - start;
-                        if (lo < 0) {
-                            lo = 0;
-                        }
-                        if (hi > len(line)) {
-                            hi = len(line);
-                        }
-                        if (hi <= lo) {
+                        int lo = 0;
+                        int hi = 0;
+                        if (!ClipToLine(dg.range.start, dg.range.end, start,
+                                        len(line), &lo, &hi)) {
                             continue;
                         }
                         Rgba c = style.diagnostics.info;
@@ -4701,13 +4664,7 @@ RopePoint InputCursorPosition(const InputState* s) {
     RopePoint p = InputOffsetToPoint(s, InputCursor(s));
     Str line = InputSliceLine(s, p.row);
     int n = p.column < len(line) ? p.column : len(line);
-    int chars = 0;
-    for (int i = 0; i < n; i++) {
-        if (((uint8_t)line.s[i] & 0xC0) != 0x80) {
-            chars++;
-        }
-    }
-    p.column = chars;
+    p.column = n > 0 ? Utf8CharCount(Str(line.s, n)) : 0;
     return p;
 }
 
@@ -5831,6 +5788,22 @@ static CursorSelection* AllCursors(Arena* a, const InputState* s, int* n) {
     return out;
 }
 
+// The cursors' indices in start order. A stable sort keeps the active one
+// (index 0) ahead of a cursor that starts where it does, the way Rust's
+// sort_by_key does.
+static int* CursorOrderByStart(Arena* a, const CursorSelection* all, int n) {
+    auto* order = (int*)Alloc(a, n * (int)sizeof(int));
+    for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j > 0 && all[order[j - 1]].range.start > all[i].range.start) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = i;
+    }
+    return order;
+}
+
 // replace_all: `sels[0]` becomes the active cursor.
 static void SetAllCursors(InputState* s, const CursorSelection* sels, int n) {
     if (n <= 0) {
@@ -5879,17 +5852,7 @@ void InputMergeOverlappingCursors(InputState* s) {
     Arena* a = GetTempArena();
     int n = 0;
     CursorSelection* all = AllCursors(a, s, &n);
-    // In start order; a stable sort keeps the active one ahead of a cursor
-    // that starts where it does, the way Rust's sort_by_key does.
-    auto* order = (int*)Alloc(a, n * (int)sizeof(int));
-    for (int i = 0; i < n; i++) {
-        int j = i;
-        while (j > 0 && all[order[j - 1]].range.start > all[i].range.start) {
-            order[j] = order[j - 1];
-            j--;
-        }
-        order[j] = i;
-    }
+    int* order = CursorOrderByStart(a, all, n);
     auto* merged = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
     int m = 0;
     int activeAt = -1;
@@ -6166,15 +6129,7 @@ static Str SelectedTexts(Arena* a, const InputState* s) {
     Str t = InputValue(s);
     int n = 0;
     CursorSelection* all = AllCursors(a, s, &n);
-    auto* order = (int*)Alloc(a, n * (int)sizeof(int));
-    for (int i = 0; i < n; i++) {
-        int j = i;
-        while (j > 0 && all[order[j - 1]].range.start > all[i].range.start) {
-            order[j] = order[j - 1];
-            j--;
-        }
-        order[j] = i;
-    }
+    int* order = CursorOrderByStart(a, all, n);
     int total = 0;
     int parts = 0;
     for (int k = 0; k < n; k++) {
@@ -6315,10 +6270,7 @@ static bool RewritesTypedChar(const InputState* s, Selection selection,
         }
         return false;
     };
-    int chars = 0;
-    for (int i = 0; i < len(oldText); i++) {
-        chars += ((uint8_t)oldText.s[i] & 0xC0) != 0x80 ? 1 : 0;
-    }
+    int chars = Utf8CharCount(oldText);
     return !s->silentReplace && selection.IsEmpty() &&
            selection.end == range.end && chars == 1 && !hasNewline(oldText) &&
            !hasNewline(newText);
@@ -6659,6 +6611,26 @@ struct HighlightChange {
     }
 };
 
+// The range an edit replaces: the one it names, else the marked text (a
+// commit replaces whatever the input method had provisionally put in, not
+// the selection: the marked text is what the candidate was standing in for),
+// else the selection. Token boundaries widen it unless the token store is
+// replaying or has validated the edit, and range_from_utf16 clamps both ends
+// into the document, so a stale or out-of-range edit lands at the end rather
+// than past it.
+static Selection ResolveEditRange(const InputState* s, const Selection* range) {
+    Selection r = range           ? *range
+                  : s->imeMarking ? s->imeMarked
+                                  : s->selectedRange;
+    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
+        InputNormalizeTokenRange(s, &r.start, &r.end);
+    }
+    int n = len(InputValue(s));
+    r.start = ClampI(r.start, 0, n);
+    r.end = ClampI(r.end, r.start, n);
+    return r;
+}
+
 bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
                              const Selection* range, Str newText) {
     HighlightChange highlightChange(s);
@@ -6694,25 +6666,8 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
 
     Arena* tmp = GetTempArena();
     Str text = NormalizeInput(tmp, s, newText);
-    // A commit with no range of its own replaces whatever the input method
-    // had provisionally put in, not the selection: the marked text is what
-    // the candidate was standing in for.
-    Selection r = range           ? *range
-                  : s->imeMarking ? s->imeMarked
-                                  : s->selectedRange;
-    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
-        InputNormalizeTokenRange(s, &r.start, &r.end);
-    }
+    Selection r = ResolveEditRange(s, range);
     Str before = InputValue(s);
-    // range_from_utf16 clamps both ends into the document: a stale or
-    // out-of-range edit lands at the end rather than past it.
-    r.start = ClampI(r.start, 0, len(before));
-    if (r.end > len(before)) {
-        r.end = len(before);
-    }
-    if (r.end < r.start) {
-        r.end = r.start;
-    }
     int pairedCaret = -1;
     int pairedOpenLen = 0;
     int pairedCloseLen = 0;
@@ -7131,22 +7086,8 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     }
     Arena* tmp = GetTempArena();
     Str text = NormalizeInput(tmp, s, newText);
-    Selection r = range           ? *range
-                  : s->imeMarking ? s->imeMarked
-                                  : s->selectedRange;
-    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
-        InputNormalizeTokenRange(s, &r.start, &r.end);
-    }
+    Selection r = ResolveEditRange(s, range);
     Str before = InputValue(s);
-    if (r.start < 0) {
-        r.start = 0;
-    }
-    if (r.end > len(before)) {
-        r.end = len(before);
-    }
-    if (r.end < r.start) {
-        r.end = r.start;
-    }
     Str oldAll = StrDup(tmp, before);
     // Marked text does not emit a change, so the batch waiting for the
     // next one is empty. The first candidate remembers the document it
@@ -7669,6 +7610,42 @@ void InputShowCompletions(InputState* s, App* app, Window* win) {
     InputRequestCompletion(s, app, win, true, CompletionTriggerKind::Invoked);
 }
 
+// insert_completion's write: `text` over `range` and the item's
+// `additionalTextEdits` with it — the import a name needs, at the top of the
+// document, while the name goes in at the caret. With `dismiss`, the menu the
+// item came from closes first; the item's strings and edits live in its arena,
+// so they are copied out before that. completion_inserting: the write is not
+// typing, so it opens no menu and asks for no suggestion.
+static void InsertCompletionEdits(InputState* s, App* app, Window* win,
+                                  const CompletionItem& item, Selection range,
+                                  Str text, bool dismiss) {
+    Vec<TextEditItem> edits;
+    if (item.nAdditionalEdits < 0 ||
+        (item.nAdditionalEdits > 0 && !item.additionalEdits) ||
+        !VecReserve(edits, item.nAdditionalEdits + 1)) {
+        return;
+    }
+    TextEditItem primary = {};
+    primary.range = range;
+    primary.newText = StrDup(GetTempArena(), text);
+    VecAppend(edits, primary);
+    for (int i = 0; i < item.nAdditionalEdits; i++) {
+        TextEditItem edit = item.additionalEdits[i];
+        edit.newText = StrDup(GetTempArena(), edit.newText);
+        VecAppend(edits, edit);
+    }
+    if (dismiss) {
+        InputDismissCompletion(s);
+    }
+    s->silentReplace = true;
+    if (len(edits) == 1) {
+        InputReplaceTextInRange(s, app, win, &edits[0].range, edits[0].newText);
+    } else {
+        InputApplyEdits(s, app, win, edits.els, len(edits));
+    }
+    s->silentReplace = false;
+}
+
 void InputAcceptCompletion(InputState* s, App* app, Window* win) {
     if (!s || !s->completion.open) {
         return;
@@ -7685,33 +7662,7 @@ void InputAcceptCompletion(InputState* s, App* app, Window* win) {
     range.start = s->completion.triggerStart >= 0 ? s->completion.triggerStart
                                                   : InputCursor(s);
     range.end = InputCursor(s);
-    // `additionalTextEdits` go in with it — the import a name needs, at the
-    // top of the document, while the name goes in at the caret. Both the
-    // item's strings and its edits live in the menu's arena, so they are
-    // copied out before it is dismissed.
-    Vec<TextEditItem> edits;
-    if (item.nAdditionalEdits < 0 ||
-        (item.nAdditionalEdits > 0 && !item.additionalEdits) ||
-        !VecReserve(edits, item.nAdditionalEdits + 1)) {
-        return;
-    }
-    TextEditItem primary = {};
-    primary.range = range;
-    primary.newText = StrDup(GetTempArena(), text);
-    VecAppend(edits, primary);
-    for (int i = 0; i < item.nAdditionalEdits; i++) {
-        TextEditItem edit = item.additionalEdits[i];
-        edit.newText = StrDup(GetTempArena(), edit.newText);
-        VecAppend(edits, edit);
-    }
-    InputDismissCompletion(s);
-    s->silentReplace = true;
-    if (len(edits) == 1) {
-        InputReplaceTextInRange(s, app, win, &edits[0].range, edits[0].newText);
-    } else {
-        InputApplyEdits(s, app, win, edits.els, len(edits));
-    }
-    s->silentReplace = false;
+    InsertCompletionEdits(s, app, win, item, range, text, true);
 }
 
 // ─── the overlay seam (lsp/overlay.rs) ───────────────────────────────────
@@ -7841,30 +7792,7 @@ void InputInsertCompletion(InputState* s, App* app, Window* win,
     if (item->insertText.len > 0) {
         range.start = range.end;
     }
-    Vec<TextEditItem> edits;
-    if (item->nAdditionalEdits < 0 ||
-        (item->nAdditionalEdits > 0 && !item->additionalEdits) ||
-        !VecReserve(edits, item->nAdditionalEdits + 1)) {
-        return;
-    }
-    TextEditItem primary = {};
-    primary.range = range;
-    primary.newText = StrDup(GetTempArena(), text);
-    VecAppend(edits, primary);
-    for (int i = 0; i < item->nAdditionalEdits; i++) {
-        TextEditItem edit = item->additionalEdits[i];
-        edit.newText = StrDup(GetTempArena(), edit.newText);
-        VecAppend(edits, edit);
-    }
-    // completion_inserting: the write is not typing, so it opens no menu and
-    // asks for no suggestion.
-    s->silentReplace = true;
-    if (len(edits) == 1) {
-        InputReplaceTextInRange(s, app, win, &edits[0].range, edits[0].newText);
-    } else {
-        InputApplyEdits(s, app, win, edits.els, len(edits));
-    }
-    s->silentReplace = false;
+    InsertCompletionEdits(s, app, win, *item, range, text, false);
 }
 
 bool InputCompletionAction(InputState* s, App* app, Window* win,
@@ -8667,22 +8595,7 @@ bool InputCodeActionAction(InputState* s, App* app, Window* win,
 
 void InputTypeChar(InputState* s, App* app, Window* win, uint32_t ch) {
     char buf[4];
-    int n = 0;
-    if (ch < 0x80) {
-        buf[n++] = (char)ch;
-    } else if (ch < 0x800) {
-        buf[n++] = (char)(0xC0 | (ch >> 6));
-        buf[n++] = (char)(0x80 | (ch & 0x3F));
-    } else if (ch < 0x10000) {
-        buf[n++] = (char)(0xE0 | (ch >> 12));
-        buf[n++] = (char)(0x80 | ((ch >> 6) & 0x3F));
-        buf[n++] = (char)(0x80 | (ch & 0x3F));
-    } else {
-        buf[n++] = (char)(0xF0 | (ch >> 18));
-        buf[n++] = (char)(0x80 | ((ch >> 12) & 0x3F));
-        buf[n++] = (char)(0x80 | ((ch >> 6) & 0x3F));
-        buf[n++] = (char)(0x80 | (ch & 0x3F));
-    }
+    int n = Utf8Encode(buf, ch);
     InputReplaceTextInRange(s, app, win, nullptr, Str(buf, n));
     PauseBlink(s, app, win);
     // A menu of actions on what was selected has nothing to say about a
@@ -9071,19 +8984,33 @@ static void ApplyAnchors(InputState* s, CursorSelection* c,
     }
 }
 
+// Where `f(cursor, isActive)` sends each caret, the active one first; n of
+// them, in the temp arena.
+template <class F>
+static MoveTarget* CursorTargets(InputState* s, F f, int* n) {
+    Arena* a = GetTempArena();
+    CursorSelection* all = AllCursors(a, s, n);
+    auto* targets = (MoveTarget*)Alloc(a, *n * (int)sizeof(MoveTarget));
+    for (int i = 0; i < *n; i++) {
+        targets[i] = f(all[i], i == 0);
+    }
+    return targets;
+}
+
+// A secondary caret's target snapped to a character boundary inside the text.
+static int TargetBoundary(InputState* s, const MoveTarget& t, int textLen) {
+    int off = InputCursorBoundary(s, t.offset, Bias::Left);
+    return off < 0 ? 0 : (off > textLen ? textLen : off);
+}
+
 // move_all_cursors: `f(cursor, isActive)` says where each caret goes; each
 // collapses there and overlapping ones merge. The active one's move is the
 // single-cursor move_to — scroll, blink, the coalescing break — with the
 // others put back after it.
 template <class F>
 static void MoveAllCursors(InputState* s, App* app, Window* win, F f) {
-    Arena* a = GetTempArena();
     int n = 0;
-    CursorSelection* all = AllCursors(a, s, &n);
-    auto* targets = (MoveTarget*)Alloc(a, n * (int)sizeof(MoveTarget));
-    for (int i = 0; i < n; i++) {
-        targets[i] = f(all[i], i == 0);
-    }
+    MoveTarget* targets = CursorTargets(s, f, &n);
     InputMoveToWithAffinity(s, app, win, targets[0].offset,
                             targets[0].lineEndAffinity);
     CursorSelection active = ActiveCursor(s);
@@ -9091,9 +9018,8 @@ static void MoveAllCursors(InputState* s, App* app, Window* win, F f) {
     SetActiveCursor(s, active);
     int textLen = len(InputValue(s));
     for (int i = 1; i < n; i++) {
-        int off = InputCursorBoundary(s, targets[i].offset, Bias::Left);
         CursorSelection c;
-        c.range = SelectionAt(off < 0 ? 0 : (off > textLen ? textLen : off));
+        c.range = SelectionAt(TargetBoundary(s, targets[i], textLen));
         ApplyAnchors(s, &c, targets[i]);
         VecAppend(s->extraCursors, c);
     }
@@ -9123,13 +9049,8 @@ template <class F>
 static void SelectAllCursorsTo(InputState* s, App* app, Window* win, F f) {
     UndoBreakCoalescing(&s->undo);
     PauseBlink(s, app, win);
-    Arena* a = GetTempArena();
     int n = 0;
-    CursorSelection* all = AllCursors(a, s, &n);
-    auto* targets = (MoveTarget*)Alloc(a, n * (int)sizeof(MoveTarget));
-    for (int i = 0; i < n; i++) {
-        targets[i] = f(all[i], i == 0);
-    }
+    MoveTarget* targets = CursorTargets(s, f, &n);
     InputSelectToWithAffinity(s, app, win, targets[0].offset,
                               targets[0].lineEndAffinity);
     if (targets[0].anchors) {
@@ -9138,9 +9059,8 @@ static void SelectAllCursorsTo(InputState* s, App* app, Window* win, F f) {
     }
     int textLen = len(InputValue(s));
     for (int i = 1; i < n; i++) {
-        int off = InputCursorBoundary(s, targets[i].offset, Bias::Left);
         CursorSelection c = s->extraCursors[i - 1];
-        ExtendSelection(&c, off < 0 ? 0 : (off > textLen ? textLen : off));
+        ExtendSelection(&c, TargetBoundary(s, targets[i], textLen));
         if (c.IsEmpty() || targets[i].anchors) {
             ApplyAnchors(s, &c, targets[i]);
         }
@@ -9400,6 +9320,25 @@ static bool TransactionHasTokenDelta(const UndoTransaction* t) {
     return false;
 }
 
+// The end of replaying a transaction either way: the cursors recorded on that
+// side of it (or `sel` when none were), token replay off, and the auto-closed
+// pairs as they were.
+static void UndoRestoreState(InputState* s, const CursorSelection* sels,
+                             int nSels, Selection sel,
+                             const AutoClosedPairRange* pairs, int nPairs) {
+    if (nSels > 0) {
+        RestoreCursors(s, sels, nSels);
+    } else {
+        s->cursorLineEndAffinity = false;
+        s->selectedRange = sel;
+        s->selectionReversed = false;
+    }
+    if (s->tokens) {
+        s->tokens->replaying = false;
+    }
+    AutoClosedRestore(s->autoClosed, pairs, nPairs);
+}
+
 static void DoUndo(InputState* s, App* app, Window* win) {
     HighlightChange highlightChange(s);
     UndoSetIgnoring(&s->undo, true);
@@ -9420,17 +9359,8 @@ static void DoUndo(InputState* s, App* app, Window* win) {
                              t->changes[i].tokenDelta, true);
             }
         }
-        if (t->nSelsBefore > 0) {
-            RestoreCursors(s, t->selsBefore, t->nSelsBefore);
-        } else {
-            s->cursorLineEndAffinity = false;
-            s->selectedRange = sel;
-            s->selectionReversed = false;
-        }
-        if (s->tokens) {
-            s->tokens->replaying = false;
-        }
-        AutoClosedRestore(s->autoClosed, t->pairsBefore, t->nPairsBefore);
+        UndoRestoreState(s, t->selsBefore, t->nSelsBefore, sel, t->pairsBefore,
+                         t->nPairsBefore);
     }
     UndoSetIgnoring(&s->undo, false);
 }
@@ -9453,17 +9383,8 @@ static void DoRedo(InputState* s, App* app, Window* win) {
                              t->changes[i].tokenDelta, false);
             }
         }
-        if (t->nSelsAfter > 0) {
-            RestoreCursors(s, t->selsAfter, t->nSelsAfter);
-        } else {
-            s->cursorLineEndAffinity = false;
-            s->selectedRange = sel;
-            s->selectionReversed = false;
-        }
-        if (s->tokens) {
-            s->tokens->replaying = false;
-        }
-        AutoClosedRestore(s->autoClosed, t->pairsAfter, t->nPairsAfter);
+        UndoRestoreState(s, t->selsAfter, t->nSelsAfter, sel, t->pairsAfter,
+                         t->nPairsAfter);
     }
     UndoSetIgnoring(&s->undo, false);
 }
@@ -9893,6 +9814,22 @@ static void PendingPasteResolved(void*, App* app, Window* win,
     }
 }
 
+// Moves every cursor (or, with `select`, extends every selection) to what
+// `target()` answers with that cursor made the active one: the shape of every
+// line and word motion.
+template <typename Target>
+static void AllCursorsWith(InputState* s, App* app, Window* win, bool select,
+                           Target target) {
+    auto each = [&](const CursorSelection& c, bool active) {
+        return WithCursor(s, c, active, target);
+    };
+    if (select) {
+        SelectAllCursorsTo(s, app, win, each);
+    } else {
+        MoveAllCursors(s, app, win, each);
+    }
+}
+
 // state.rs's ActivateToken listener: the token the selection is exactly,
 // handed to on_token_click as a keyboard click on the box it was drawn in
 // (token_activation). Nothing happens without one, or while the field is
@@ -9994,21 +9931,14 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             return true;
         case InputAction::MoveHome:
             PauseBlink(s, app, win);
-            MoveAllCursors(s, app, win,
-                           [&](const CursorSelection& c, bool active) {
-                               return WithCursor(s, c, active, [&] {
-                                   return TargetAt(InputStartOfLine(s, win));
-                               });
-                           });
+            AllCursorsWith(s, app, win, false,
+                           [&] { return TargetAt(InputStartOfLine(s, win)); });
             return true;
         case InputAction::MoveEnd:
             PauseBlink(s, app, win);
-            MoveAllCursors(
-                s, app, win, [&](const CursorSelection& c, bool active) {
-                    return WithCursor(s, c, active, [&] {
-                        return TargetAt(InputEndOfLine(s, win), true);
-                    });
-                });
+            AllCursorsWith(s, app, win, false, [&] {
+                return TargetAt(InputEndOfLine(s, win), true);
+            });
             return true;
         case InputAction::MoveToStart:
             InputMoveTo(s, app, win, 0);
@@ -10017,20 +9947,13 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             InputMoveTo(s, app, win, len(t));
             return true;
         case InputAction::MoveToPreviousWord:
-            MoveAllCursors(s, app, win,
-                           [&](const CursorSelection& c, bool active) {
-                               return WithCursor(s, c, active, [&] {
-                                   return TargetAt(InputPreviousStartOfWord(s));
-                               });
-                           });
+            AllCursorsWith(s, app, win, false, [&] {
+                return TargetAt(InputPreviousStartOfWord(s));
+            });
             return true;
         case InputAction::MoveToNextWord:
-            MoveAllCursors(s, app, win,
-                           [&](const CursorSelection& c, bool active) {
-                               return WithCursor(s, c, active, [&] {
-                                   return TargetAt(InputNextEndOfWord(s));
-                               });
-                           });
+            AllCursorsWith(s, app, win, false,
+                           [&] { return TargetAt(InputNextEndOfWord(s)); });
             return true;
 
         case InputAction::SelectLeft:
@@ -10065,36 +9988,22 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             });
             return true;
         case InputAction::SelectToStartOfLine:
-            SelectAllCursorsTo(
-                s, app, win, [&](const CursorSelection& c, bool active) {
-                    return WithCursor(s, c, active, [&] {
-                        return TargetAt(InputStartOfLine(s, win));
-                    });
-                });
+            AllCursorsWith(s, app, win, true,
+                           [&] { return TargetAt(InputStartOfLine(s, win)); });
             return true;
         case InputAction::SelectToEndOfLine:
-            SelectAllCursorsTo(
-                s, app, win, [&](const CursorSelection& c, bool active) {
-                    return WithCursor(s, c, active, [&] {
-                        return TargetAt(InputEndOfLine(s, win), true);
-                    });
-                });
+            AllCursorsWith(s, app, win, true, [&] {
+                return TargetAt(InputEndOfLine(s, win), true);
+            });
             return true;
         case InputAction::SelectToPreviousWordStart:
-            SelectAllCursorsTo(
-                s, app, win, [&](const CursorSelection& c, bool active) {
-                    return WithCursor(s, c, active, [&] {
-                        return TargetAt(InputPreviousStartOfWord(s));
-                    });
-                });
+            AllCursorsWith(s, app, win, true, [&] {
+                return TargetAt(InputPreviousStartOfWord(s));
+            });
             return true;
         case InputAction::SelectToNextWordEnd:
-            SelectAllCursorsTo(s, app, win,
-                               [&](const CursorSelection& c, bool active) {
-                                   return WithCursor(s, c, active, [&] {
-                                       return TargetAt(InputNextEndOfWord(s));
-                                   });
-                               });
+            AllCursorsWith(s, app, win, true,
+                           [&] { return TargetAt(InputNextEndOfWord(s)); });
             return true;
         case InputAction::AddCursorAbove:
             AddCursorVertical(s, app, win, -1);
@@ -11221,25 +11130,6 @@ bool MaskIsValidAt(const MaskPattern& p, uint32_t ch, int pos) {
     return false;
 }
 
-// Append one codepoint as UTF-8.
-static void PushChar(StrBuilder& sb, uint32_t c) {
-    if (c < 0x80) {
-        sb.AppendChar((char)c);
-    } else if (c < 0x800) {
-        sb.AppendChar((char)(0xC0 | (c >> 6)));
-        sb.AppendChar((char)(0x80 | (c & 0x3F)));
-    } else if (c < 0x10000) {
-        sb.AppendChar((char)(0xE0 | (c >> 12)));
-        sb.AppendChar((char)(0x80 | ((c >> 6) & 0x3F)));
-        sb.AppendChar((char)(0x80 | (c & 0x3F)));
-    } else {
-        sb.AppendChar((char)(0xF0 | (c >> 18)));
-        sb.AppendChar((char)(0x80 | ((c >> 12) & 0x3F)));
-        sb.AppendChar((char)(0x80 | ((c >> 6) & 0x3F)));
-        sb.AppendChar((char)(0x80 | (c & 0x3F)));
-    }
-}
-
 // The Number arm of mask(): regroup the integer part in threes, keep at most
 // `fraction` decimals, and put the sign back on the front.
 static Str MaskNumber(Arena* a, const MaskPattern& p, Str text) {
@@ -11280,13 +11170,13 @@ static Str MaskNumber(Arena* a, const MaskPattern& p, Str text) {
     StrBuilder grouped;
     for (int i = 0; i < digits.len; i++) {
         if (i > 0 && i % 3 == 0) {
-            PushChar(grouped, p.separator);
+            grouped.AppendUtf8(p.separator);
         }
         grouped.AppendChar(digits.els[i]);
     }
     StrBuilder out;
     if (sign) {
-        PushChar(out, sign);
+        out.AppendUtf8(sign);
     }
     for (int i = grouped.len - 1; i >= 0; i--) {
         out.AppendChar(grouped.els[i]);
@@ -11300,7 +11190,7 @@ static Str MaskNumber(Arena* a, const MaskPattern& p, Str text) {
             if (p.fraction >= 0 && kept >= p.fraction) {
                 break;
             }
-            PushChar(out, c);
+            out.AppendUtf8(c);
             kept++;
             i += n;
         }
@@ -11332,7 +11222,7 @@ Str MaskApply(Arena* a, const MaskPattern& p, Str text) {
             break;
         }
         uint32_t masked = TokenMaskChar(tok, sep, ch);
-        PushChar(out, masked);
+        out.AppendUtf8(masked);
         // A separator the text did not supply is filled in without consuming
         // anything, so the next token sees the same character.
         if (ch == masked) {
@@ -11353,7 +11243,7 @@ Str MaskUnapply(Arena* a, const MaskPattern& p, Str maskText) {
             uint32_t c = 0;
             int n = Utf8At(maskText, i, &c);
             if (c != p.separator) {
-                PushChar(out, c);
+                out.AppendUtf8(c);
                 hasDot = hasDot || c == '.';
             }
             i += n;
@@ -11384,7 +11274,7 @@ Str MaskUnapply(Arena* a, const MaskPattern& p, Str maskText) {
         uint32_t sep = 0;
         MaskTokenAt(p, pos, &tok, &sep);
         if (TokenUnmaskChar(tok)) {
-            PushChar(out, ch);
+            out.AppendUtf8(ch);
         }
         ti += n;
     }
@@ -11403,7 +11293,7 @@ Str MaskPlaceholder(Arena* a, const MaskPattern& p) {
         MaskTokenAt(p, pos, &tok, &sep);
         // MaskToken::placeholder: a separator shows itself, everything else an
         // underscore.
-        PushChar(out, tok == MaskToken::Sep ? sep : (uint32_t)'_');
+        out.AppendUtf8(tok == MaskToken::Sep ? sep : (uint32_t)'_');
     }
     return StrDup(a, Str(out.els, out.len));
 }
@@ -11446,7 +11336,7 @@ Str NormalizeNumberInput(Arena* a, Str text) {
     for (int i = 0; i < len(text);) {
         uint32_t c = 0;
         i += Utf8At(text, i, &c);
-        PushChar(out, NormalizeChar(c));
+        out.AppendUtf8(NormalizeChar(c));
     }
     return StrDup(a, Str(out.els, out.len));
 }
@@ -11934,6 +11824,22 @@ static void CommitAllTransactions(UndoManager* m) {
     UndoCommitTransaction(m);
 }
 
+// The transaction what was just done belongs to: the open batch, else the
+// last one recorded. None while undo is ignoring changes, or before anything
+// was recorded.
+static UndoTransaction* UndoRecordingTarget(UndoManager* m) {
+    if (m->ignoring) {
+        return nullptr;
+    }
+    if (m->transactionDepth > 0) {
+        return &m->pending;
+    }
+    if (m->undos.len > 0) {
+        return &m->undos[m->undos.len - 1];
+    }
+    return nullptr;
+}
+
 static AutoClosedPairRange* PairsDup(const AutoClosedPairRange* src, int n) {
     if (!src || n <= 0) {
         return nullptr;
@@ -11952,15 +11858,7 @@ static void UndoRecordAutoClosedPairs(UndoManager* m,
                                       int nBefore,
                                       const AutoClosedPairRange* after,
                                       int nAfter) {
-    if (m->ignoring) {
-        return;
-    }
-    UndoTransaction* t = nullptr;
-    if (m->transactionDepth > 0) {
-        t = &m->pending;
-    } else if (m->undos.len > 0) {
-        t = &m->undos[m->undos.len - 1];
-    }
+    UndoTransaction* t = UndoRecordingTarget(m);
     if (!t) {
         return;
     }
@@ -11982,15 +11880,7 @@ static void UndoRecordAutoClosedPairs(UndoManager* m,
 void UndoRecordSelections(UndoManager* m, const CursorSelection* before,
                           int nBefore, const CursorSelection* after,
                           int nAfter) {
-    if (m->ignoring) {
-        return;
-    }
-    UndoTransaction* t = nullptr;
-    if (m->transactionDepth > 0) {
-        t = &m->pending;
-    } else if (m->undos.len > 0) {
-        t = &m->undos[m->undos.len - 1];
-    }
+    UndoTransaction* t = UndoRecordingTarget(m);
     if (!t) {
         return;
     }
@@ -12097,7 +11987,7 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
         Str run = text;
         int at = offset;
         if (s->masked) {
-            run = MaskedRun(GetTempArena(), text);
+            run = InputMaskedText(GetTempArena(), text);
             at = MaskedOffset(text, offset);
         }
         float x = 0, y = 0, h = 0;

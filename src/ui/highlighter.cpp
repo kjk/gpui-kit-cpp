@@ -585,6 +585,26 @@ DiagnosticPopover* DiagnosticPopover::New(Ctx* cx, InputState* state,
     return popover;
 }
 
+// An editor popover over its trigger: dismissed by a press outside it, and
+// placed above the trigger's bounds — or above the hovered point when the
+// trigger was not laid out — start-aligned, 8 px off.
+static El* PlaceEditorPopover(Ctx* cx, InputState* input, El* surface,
+                              const char* kind, float hoverX, float hoverY) {
+    Entity<InputMenuViewState> view = InputMenuView(cx, input, kind);
+    surface
+        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::PopoverOutside));
+    Bounds trigger = input->popoverTriggerBounds;
+    if (trigger.w <= 0 || trigger.h <= 0) {
+        trigger = {hoverX, hoverY, 1, 1};
+    }
+    return Positioner::Side(cx, trigger)
+        ->Placement(gpui::Placement::Top)
+        ->Align(gpui::Align::Start)
+        ->Margin(8)
+        ->Child(surface)
+        ->IntoEl();
+}
+
 El* DiagnosticPopover::IntoEl() {
     if (!state || diagnostic < 0 || diagnostic >= state->diagnostics.len)
         return nullptr;
@@ -619,20 +639,8 @@ El* DiagnosticPopover::IntoEl() {
                       ->Border(1, foreground)
                       ->BoundsOut(&state->popoverBounds)
                       ->Child(body);
-    Entity<InputMenuViewState> view =
-        InputMenuView(cx, state, "diagnostic-popover");
-    surface
-        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::PopoverOutside));
-    Bounds trigger = state->popoverTriggerBounds;
-    if (trigger.w <= 0 || trigger.h <= 0) {
-        trigger = {state->hoverDiagnosticX, state->hoverDiagnosticY, 1, 1};
-    }
-    return Positioner::Side(cx, trigger)
-        ->Placement(gpui::Placement::Top)
-        ->Align(gpui::Align::Start)
-        ->Margin(8)
-        ->Child(surface)
-        ->IntoEl();
+    return PlaceEditorPopover(cx, state, surface, "diagnostic-popover",
+                              state->hoverDiagnosticX, state->hoverDiagnosticY);
 }
 
 HoverPopover* HoverPopover::New(Ctx* cx, InputState* editor,
@@ -666,20 +674,8 @@ El* HoverPopover::IntoEl() {
                     ->IntoEl())
         ->Fg(theme.foreground)
         ->BoundsOut(&editor->popoverBounds);
-    Entity<InputMenuViewState> view =
-        InputMenuView(cx, editor, "hover-popover");
-    surface
-        ->OnMouseDownOut(ListenTo(view, &InputMenuViewState::PopoverOutside));
-    Bounds trigger = editor->popoverTriggerBounds;
-    if (trigger.w <= 0 || trigger.h <= 0) {
-        trigger = {editor->hoverX, editor->hoverY, 1, 1};
-    }
-    return Positioner::Side(cx, trigger)
-        ->Placement(gpui::Placement::Top)
-        ->Align(gpui::Align::Start)
-        ->Margin(8)
-        ->Child(surface)
-        ->IntoEl();
+    return PlaceEditorPopover(cx, editor, surface, "hover-popover",
+                              editor->hoverX, editor->hoverY);
 }
 
 // HighlightTheme::style — what registry.rs resolves a capture name with.
@@ -1154,19 +1150,7 @@ static bool SynHlResolveStyle(void* data, Str name, TextSpan* out) {
     return true;
 }
 
-static int HexNibble(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
+// "#rrggbb" / "#rrggbbaa".
 static bool ParseHighlightHex(Str s, Rgba* out) {
     if (!out || !s.s || s.s[0] != '#') {
         return false;
@@ -1175,21 +1159,7 @@ static bool ParseHighlightHex(Str s, Rgba* out) {
     if (n != 7 && n != 9) {
         return false;
     }
-    int v[8];
-    for (int i = 0; i < n - 1; i++) {
-        v[i] = HexNibble(s.s[i + 1]);
-        if (v[i] < 0) {
-            return false;
-        }
-    }
-    if (n == 7) {
-        *out = Rgb((uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]),
-                   (uint8_t)(v[4] * 16 + v[5]));
-        return true;
-    }
-    *out = Rgba8((uint8_t)(v[0] * 16 + v[1]), (uint8_t)(v[2] * 16 + v[3]),
-                 (uint8_t)(v[4] * 16 + v[5]), (uint8_t)(v[6] * 16 + v[7]));
-    return true;
+    return RgbaParseHexDigits(Str(s.s + 1, n - 1), out);
 }
 
 // StatusColors reads the active theme's highlight object. A missing key, or

@@ -25,6 +25,19 @@ Minifier& Minifier::PreserveComments(bool value) {
     return *this;
 }
 
+// One character of a whitespace-collapsing copy: with `collapse`, a run of
+// HTML spaces becomes one ' ' (none when `whitespace` says one was just
+// written). Returns whether the copy now ends in collapsed whitespace.
+static bool CollapseSpace(char* out, int* n, char c, bool collapse,
+                          bool whitespace) {
+    if (collapse && HtmlSpace(c)) {
+        if (!whitespace) out[(*n)++] = ' ';
+        return true;
+    }
+    out[(*n)++] = c;
+    return false;
+}
+
 Str Minifier::WriteCollapseWhitespace(Arena* a, Str source) {
     if (!a || len(source) <= 0) return {};
     char* out = (char*)Alloc(a, len(source) + 1);
@@ -32,14 +45,7 @@ Str Minifier::WriteCollapseWhitespace(Arena* a, Str source) {
     int n = 0;
     bool whitespace = precedingWhitespace;
     for (int i = 0; i < len(source); i++) {
-        char c = source.s[i];
-        if (HtmlSpace(c)) {
-            if (!whitespace) out[n++] = ' ';
-            whitespace = true;
-        } else {
-            out[n++] = c;
-            whitespace = false;
-        }
+        whitespace = CollapseSpace(out, &n, source.s[i], true, whitespace);
     }
     precedingWhitespace = whitespace;
     out[n] = 0;
@@ -116,14 +122,8 @@ Str Minifier::Minify(Arena* a, Str source) {
             at = end;
             continue;
         }
-        char c = source.s[at++];
-        if (collapseWhitespace && !raw.s && HtmlSpace(c)) {
-            if (!whitespace) out[n++] = ' ';
-            whitespace = true;
-        } else {
-            out[n++] = c;
-            whitespace = false;
-        }
+        whitespace = CollapseSpace(out, &n, source.s[at++],
+                                   collapseWhitespace && !raw.s, whitespace);
     }
     precedingWhitespace = whitespace;
     out[n] = 0;
@@ -409,11 +409,11 @@ static bool TargetEmpty(Project* p) {
     return !p->para || !p->para->runFirst;
 }
 
-static void AddRun(Project* p, Str text) {
-    if (len(text) <= 0) return;
+// A new run at the end of the text target, carrying the marks, the link and
+// the wash in force.
+static MdRun* NewRun(Project* p) {
     MdNode* target = TextTarget(p);
     MdRun* run = ArenaNew<MdRun>(p->a);
-    run->text = text;
     run->marks = p->marks;
     run->href = p->href;
     run->highlight = p->highlight;
@@ -423,6 +423,12 @@ static void AddRun(Project* p, Str text) {
     else
         target->runFirst = run;
     target->runLast = run;
+    return run;
+}
+
+static void AddRun(Project* p, Str text) {
+    if (len(text) <= 0) return;
+    NewRun(p)->text = text;
     p->endsWithBreak = false;
 }
 
@@ -442,13 +448,7 @@ static void AddText(Project* p, Str text) {
     int n = 0;
     bool space = false;
     for (int i = 0; i < len(text); i++) {
-        if (HtmlSpace(text.s[i])) {
-            if (!space) out[n++] = ' ';
-            space = true;
-        } else {
-            out[n++] = text.s[i];
-            space = false;
-        }
+        space = CollapseSpace(out, &n, text.s[i], true, space);
     }
     bool empty = TargetEmpty(p);
     int start = empty && n > 0 && out[0] == ' ' ? 1 : 0;
@@ -465,21 +465,11 @@ static void AddText(Project* p, Str text) {
 static void AddImage(Project* p, const html5ever::Node* node) {
     Str src = html5ever::AttrValue(p->a, node, StrL("src"));
     if (len(src) <= 0) return;
-    MdNode* target = TextTarget(p);
-    MdRun* run = ArenaNew<MdRun>(p->a);
+    MdRun* run = NewRun(p);
     run->imgSrc = src;
     run->text = html5ever::AttrValue(p->a, node, StrL("alt"));
     run->imgW = ElementLength(p->a, node, "width");
     run->imgH = ElementLength(p->a, node, "height");
-    run->marks = p->marks;
-    run->href = p->href;
-    run->highlight = p->highlight;
-    run->hasHighlight = p->hasHighlight;
-    if (target->runLast)
-        target->runLast->next = run;
-    else
-        target->runFirst = run;
-    target->runLast = run;
 }
 
 static uint8_t AlignValue(Str value) {
@@ -681,41 +671,10 @@ MdNode* HtmlParse(Arena* a, Str source) {
 
 // gpui::Rgba::try_from: #rgb, #rgba, #rrggbb, #rrggbbaa. The short forms
 // duplicate each digit. Anything else is not a color.
-static int MarkHexDigit(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
 static bool ParseMarkHex(Str value, Rgba* out) {
     value = StrTrim(value);
     if (len(value) < 2 || value.s[0] != '#') return false;
-    const char* hex = value.s + 1;
-    int n = len(value) - 1;
-    if (n != 3 && n != 4 && n != 6 && n != 8) return false;
-    int v[8];
-    for (int i = 0; i < n; i++) {
-        v[i] = MarkHexDigit(hex[i]);
-        if (v[i] < 0) return false;
-    }
-    uint8_t r = 0;
-    uint8_t g = 0;
-    uint8_t b = 0;
-    uint8_t a = 255;
-    if (n == 3 || n == 4) {
-        r = (uint8_t)((v[0] << 4) | v[0]);
-        g = (uint8_t)((v[1] << 4) | v[1]);
-        b = (uint8_t)((v[2] << 4) | v[2]);
-        if (n == 4) a = (uint8_t)((v[3] << 4) | v[3]);
-    } else {
-        r = (uint8_t)((v[0] << 4) | v[1]);
-        g = (uint8_t)((v[2] << 4) | v[3]);
-        b = (uint8_t)((v[4] << 4) | v[5]);
-        if (n == 8) a = (uint8_t)((v[6] << 4) | v[7]);
-    }
-    *out = Rgba{r, g, b, a};
-    return true;
+    return RgbaParseHexDigits(Str(value.s + 1, len(value) - 1), out);
 }
 
 // html.rs parse_mark_color. Hex goes through Rgba::try_from. The four

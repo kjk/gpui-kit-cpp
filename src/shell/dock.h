@@ -48,6 +48,17 @@ struct ShellPanelScript {
     bool visible = true;
 };
 
+// A dock command carries no script value: it names a container in the area
+// and what to ask it. That is why a tab can report its click at all — a chrome
+// handler runs once per frame for as long as the dock is on screen, so a
+// callback registered inside one would pile up the way a virtual list's row
+// handlers would. Whether `name` is one of those commands.
+bool IsDockCommandName(Str name);
+
+// A script's placement word, the inverse of DockPlacementName. Anything that
+// is not "left", "bottom" or "right" is the center.
+DockPlacement DockPlacementOfName(Str name);
+
 // Stable, process-wide `shell:<application>/<panel>` names. The intentionally
 // interned allocation is bounded by the number of panel contributions.
 Str ShellPanelName(Str application, Str panel);

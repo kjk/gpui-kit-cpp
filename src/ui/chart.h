@@ -74,6 +74,156 @@ struct ChartAppear {
     }
 };
 
+// What every chart builder carries and sets the same way: the frame arena
+// and context it was built in, the tooltip's name, its ElementId and the
+// hover and appear switches. `Self` is the chart, which each setter returns
+// for the chain.
+template <typename Self>
+struct ChartBuilder {
+    Arena* a = nullptr;
+    Ctx* cx = nullptr;
+    Str tooltipName = {};
+    // The chart's ElementId, folded onto the id stack it was built under: its
+    // construction site unless Id renamed it (chart/mod.rs caller_id).
+    uint32_t id = 0;
+    // interactive(..): the hitbox under the cursor and what it drives -- the
+    // hover emphasis and the tooltip. On by default.
+    bool interactive = true;
+    // appear(..) / appear_key(..): whether the data draws in the first time
+    // the chart is painted, and the key that replays it.
+    ChartAppear appear = {};
+
+    Self* This() { return static_cast<Self*>(this); }
+    // name(..): what the tooltip calls the series.
+    Self* Tooltip(Str name) {
+        tooltipName = name;
+        return This();
+    }
+    // id(..): rename the chart's ElementId, replacing the construction site.
+    // Needed where one site builds several of these as siblings, which would
+    // otherwise share one hover state. Unique among those siblings.
+    Self* Id(Str name) {
+        id = IdFoldName(cx ? cx->path : 0, name);
+        return This();
+    }
+    // interactive(false): stand the chart down. Without its hitbox it
+    // neither answers the mouse nor takes the hover from an element drawn
+    // over it -- a loading skeleton, an empty-state ring.
+    Self* Interactive(bool v) {
+        interactive = v;
+        return This();
+    }
+    // appear(..): draw the data in the first time this chart is painted. On
+    // by default; the theme sets how long it takes and reduced motion skips
+    // it. Turn it off for a chart painted again and again as it scrolls in
+    // and out of view, such as one in each row of a long list.
+    Self* Appear(bool v) {
+        appear.SetEnabled(v);
+        return This();
+    }
+    // appear_key(..): draw the data in again whenever `key` changes, such as
+    // the symbol or period a chart shows. Without one the data draws in
+    // once, and later data paints in place.
+    Self* AppearKey(Str key) {
+        appear.SetKey(key);
+        return This();
+    }
+    Self* AppearKey(uint64_t key) {
+        appear.SetKey(key);
+        return This();
+    }
+    // Plot::id: the id the chart keeps its state under, its appear and, when
+    // interactive, its hover.
+    uint32_t PlotId() const { return id; }
+    // Plot::interactive: whether it tracks hover and shows its tooltip.
+    bool PlotInteractive() const { return interactive; }
+    // Plot::appear_generation: false when the chart opted out.
+    bool AppearGeneration(uint64_t* out) const {
+        return appear.Generation(out);
+    }
+};
+
+// The charts whose tooltip has a title and rows: chart/mod.rs
+// TooltipContent and the builder methods that fill it.
+template <typename Self>
+struct ChartTooltipBuilder : ChartBuilder<Self> {
+    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
+    // tooltip_value_color.
+    ChartTooltipContent tooltipContent = {};
+
+    // tooltip_title: the tooltip's title for the datum, instead of its
+    // label.
+    Self* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr) {
+        tooltipContent.title = fn;
+        tooltipContent.titleUser = user;
+        return this->This();
+    }
+    // tooltip_value: each row's value text; the raw number by default. `row`
+    // is the tooltip row: the series' index in the order the chart added
+    // them (always 0 for one series), or open, high, low and close.
+    Self* TooltipValue(ChartTooltipValueFn fn, void* user = nullptr) {
+        tooltipContent.value = fn;
+        tooltipContent.valueUser = user;
+        return this->This();
+    }
+    // tooltip_value_color: each row's value colour, such as green or red by
+    // its sign; the tooltip's text colour by default.
+    Self* TooltipValueColor(ChartTooltipValueColorFn fn, void* user = nullptr) {
+        tooltipContent.valueColor = fn;
+        tooltipContent.valueColorUser = user;
+        return this->This();
+    }
+    // tooltip_content: draw the box's content for a datum yourself, in place
+    // of the title and rows. The crosshair, the dots and where the box sits
+    // stay the chart's.
+    Self* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr) {
+        tooltipContent.content = fn;
+        tooltipContent.contentUser = user;
+        return this->This();
+    }
+    // data(..): the items the chart's points are, one per point, which the
+    // tooltip closures above receive as their datum in place of the chart's
+    // own number. Rust's charts hold `data` and map it; these hold the
+    // numbers, and this is what Rust's closures would have read them from.
+    Self* Data(const void* items, int stride) {
+        tooltipContent.data = items;
+        tooltipContent.dataStride = stride;
+        return this->This();
+    }
+    template <typename T>
+    Self* Data(const T* items) {
+        return Data((const void*)items, (int)sizeof(T));
+    }
+};
+
+// The charts laid out in bands or points along a labelled x axis.
+template <typename Self>
+struct ChartBandBuilder : ChartTooltipBuilder<Self> {
+    const char* const* labels = nullptr;
+    // tick_margin: 1, every point named, as Rust's charts default to.
+    int tickMargin = 1;
+
+    Self* Labels(const char* const* l) {
+        labels = l;
+        return this->This();
+    }
+    Self* TickMargin(int t) {
+        tickMargin = t;
+        return this->This();
+    }
+};
+
+// The charts over one run of values (more series in AreaChart).
+template <typename Self>
+struct SeriesChartBuilder : ChartBandBuilder<Self> {
+    const float* ys = nullptr;
+    // The values as the caller gave them, when it gave doubles (the New
+    // overload): what the chart writes out -- a tooltip's numbers, a bar's
+    // label -- reads them, in f64's Display. Its geometry stays float.
+    const double* exact = nullptr;
+    int n = 0;
+};
+
 // A pie or donut: each slice is a value and a color, drawn clockwise from
 // twelve o'clock (crates/ui/src/chart/pie_chart.rs).
 struct PieSlice {
@@ -88,9 +238,7 @@ struct PieSlice {
     Str tooltipValue = {};
 };
 
-struct PieChart {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct PieChart : ChartBuilder<PieChart> {
     ArenaVec<PieSlice> slices;
     // 0 until OuterRadius is set: the ring is then 40% of the laid-out
     // height (resolve_outer_radius).
@@ -108,16 +256,6 @@ struct PieChart {
     float labelGap = 15;
     bool hasLabelColor = false;
     Rgba labelColor = {};
-    Str tooltipName = {};
-    // The chart's ElementId, folded onto the id stack it was built under: its
-    // construction site unless Id renamed it (chart/mod.rs caller_id).
-    uint32_t id = 0;
-    // interactive(..): the hitbox under the cursor and what it drives -- the
-    // hover emphasis and the tooltip. On by default.
-    bool interactive = true;
-    // appear(..) / appear_key(..): whether the data draws in the first time
-    // the chart is painted, and the key that replays it.
-    ChartAppear appear = {};
 
     static PieChart* New(Ctx* cx, const char* file = __builtin_FILE(),
                          int line = __builtin_LINE());
@@ -131,8 +269,6 @@ struct PieChart {
     PieChart* PadAngle(float radians);
     PieChart* LabelGap(float gap);
     PieChart* LabelColor(Rgba c);
-    // name(..): what the tooltip calls the hovered slice's series.
-    PieChart* Tooltip(Str name);
     // tooltip_name(..): the slice just added names itself in the hover row,
     // without `Label` drawing leader lines around the ring.
     PieChart* TooltipName(Str name);
@@ -140,33 +276,6 @@ struct PieChart {
     // for a value that is already a ratio, or one drawn from an adjusted
     // number that should not be reported as the datum.
     PieChart* TooltipValue(Str value);
-    // id(..): rename the chart's ElementId, replacing the construction site.
-    // Needed where one site builds several of these as siblings, which would
-    // otherwise share one hover state. Unique among those siblings.
-    PieChart* Id(Str name);
-    // interactive(false): stand the chart down. Without its hitbox it
-    // neither answers the mouse nor takes the hover from an element drawn
-    // over it -- a loading skeleton, an empty-state ring.
-    PieChart* Interactive(bool v);
-    // appear(..): draw the data in the first time this chart is painted. On
-    // by default; the theme sets how long it takes and reduced motion skips
-    // it. Turn it off for a chart painted again and again as it scrolls in
-    // and out of view, such as one in each row of a long list.
-    PieChart* Appear(bool v);
-    // appear_key(..): draw the data in again whenever `key` changes, such as
-    // the symbol or period a chart shows. Without one the data draws in
-    // once, and later data paints in place.
-    PieChart* AppearKey(Str key);
-    PieChart* AppearKey(uint64_t key);
-    // Plot::id: the id the chart keeps its state under, its appear and, when
-    // interactive, its hover.
-    uint32_t PlotId() const { return id; }
-    // Plot::interactive: whether it tracks hover and shows its tooltip.
-    bool PlotInteractive() const { return interactive; }
-    // Plot::appear_generation: false when the chart opted out.
-    bool AppearGeneration(uint64_t* out) const {
-        return appear.Generation(out);
-    }
     // The outer radius the ring is laid out with: the set one, or 40% of
     // `height`.
     float ResolveOuterRadius(float height) const;
@@ -179,58 +288,18 @@ struct PieChart {
 // chart/mod.rs PointAxes: the grid, value-axis labels and reference lines a
 // point chart (LineChart, AreaChart) draws, which both builders forward to.
 // ChartSeries carries them to the paint.
-struct PointAxes {
-    bool yAxis = false;
-    AxisLabelPlacement placement = AxisLabelPlacement::Outside;
-    int yTickCount = 5;
-    ChartTickFormatFn tickFormat = nullptr;
-    void* tickFormatUser = nullptr;
-    // -1 is None: every TickMargin-th point is labelled.
-    int xTickCount = -1;
-    int gridColumns = 0;
-    bool gridDashed = true;
-    float yPaddingTop = 10;
-    float yPaddingBottom = 0;
+struct PointAxes : ChartAxisOptions {
     ArenaVec<double> referenceLines;
 
     void ApplyTo(Arena* a, ChartSeries* chart) const;
 };
 
-struct AreaChart {
-    Arena* a = nullptr;
-    Str tooltipName = {};
-    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
-    // tooltip_value_color.
-    ChartTooltipContent tooltipContent = {};
-    // The chart's ElementId, folded onto the id stack it was built under: its
-    // construction site unless Id renamed it (chart/mod.rs caller_id).
-    uint32_t id = 0;
-    // interactive(..): the hitbox under the cursor and what it drives -- the
-    // hover emphasis and the tooltip. On by default.
-    bool interactive = true;
-    // appear(..) / appear_key(..): whether the data draws in the first time
-    // the chart is painted, and the key that replays it.
-    ChartAppear appear = {};
-    Ctx* cx = nullptr;
-    const float* ys = nullptr;
-    // The values as the caller gave them, when it gave doubles (the New
-    // overload): what the chart writes out -- a tooltip's numbers, a bar's
-    // label -- reads them, in f64's Display. Its geometry stays float.
-    const double* exact = nullptr;
-    int n = 0;
-    const char* const* labels = nullptr;
-    // tick_margin: 1, every point named, as Rust's charts default to.
-    int tickMargin = 1;
-    // A stacked chart draws its second series over the first one's grid.
-    bool overlay = false;
+// AreaChart and LineChart: a run of points with a stroke style, a y domain,
+// x axis and grid switches, and the PointAxes both forward to.
+template <typename Self>
+struct PointChartBuilder : SeriesChartBuilder<Self> {
     Rgba stroke = {};
-    Rgba fill = {};
-    // The bottom stop, when the caller gave the two-stop gradient Rust builds
-    // with linear_gradient(0., ..). Alpha 0 means "fade `fill` out".
-    Rgba fillBottom = {};
     ChartStroke strokeStyle = ChartStroke::Natural;
-    // The series after the first, in the order `Y()` named them.
-    ArenaVec<ChartSeriesExtra> more;
     bool hasYDomain = false;
     float yDomainMin = 0;
     float yDomainMax = 0;
@@ -239,6 +308,119 @@ struct AreaChart {
     // x_axis(..) / grid(..): both on by default.
     bool xAxis = true;
     bool grid = true;
+
+    // StrokeStyle: Natural is the default Catmull-Rom curve.
+    Self* Natural() {
+        strokeStyle = ChartStroke::Natural;
+        return this->This();
+    }
+    Self* Linear() {
+        strokeStyle = ChartStroke::Linear;
+        return this->This();
+    }
+    Self* StepAfter() {
+        strokeStyle = ChartStroke::StepAfter;
+        return this->This();
+    }
+    // x_axis(false): no x axis line or labels, and no room kept for them.
+    Self* XAxis(bool v) {
+        xAxis = v;
+        return this->This();
+    }
+    // grid(false): no grid lines.
+    Self* Grid(bool v) {
+        grid = v;
+        return this->This();
+    }
+    // y_domain(min, max): pin the y axis to min..max instead of fitting every
+    // series from zero, where zero is not a meaningful baseline (a price line).
+    // The range keeps the 10 DIPs above max the default leaves, and the series
+    // are clipped to the plot, so a value outside the range stops at its
+    // edge. Nothing is drawn when min equals max.
+    Self* YDomain(float min, float max) {
+        hasYDomain = true;
+        yDomainMin = min;
+        yDomainMax = max;
+        return this->This();
+    }
+    // point_count(count): lay the x axis out for `count` evenly spaced
+    // points instead of the data's own length. The data takes the leading
+    // points in order and the rest stay empty, as an intraday chart does
+    // before the close. A count below the data's length has no effect.
+    Self* PointCount(int count) {
+        pointCount = count;
+        return this->This();
+    }
+    // y_axis: show the y axis's tick labels, one at each of the y ticks.
+    // Default false.
+    Self* YAxis(bool v = true) {
+        axes.yAxis = v;
+        return this->This();
+    }
+    // y_axis_label_placement: in a gutter left of the plot (Outside, the
+    // default), or inside it beside their grid lines.
+    Self* YAxisLabelPlacement(AxisLabelPlacement placement) {
+        axes.axisLabelPlacement = placement;
+        return this->This();
+    }
+    // y_tick_count: how many ticks the y axis carries, evenly spaced from the
+    // baseline to the top edge with both ends included. They place the
+    // horizontal grid lines and the labels, each reading the value the scale
+    // puts at its height. At least 2; default 5.
+    Self* YTickCount(int count) {
+        axes.yTickCount = count > 2 ? count : 2;
+        return this->This();
+    }
+    // y_tick_format: the text of each y-axis tick label from its value.
+    Self* YTickFormat(ChartTickFormatFn format, void* user = nullptr) {
+        axes.tickFormat = format;
+        axes.tickFormatUser = user;
+        return this->This();
+    }
+    // x_tick_count: label `count` of the x values, spread evenly from the
+    // first to the last, instead of every TickMargin-th. With PointCount they
+    // spread over every point the axis is laid out for, so they keep their
+    // places as the data grows.
+    Self* XTickCount(int count) {
+        axes.xTickCount = count < 0 ? 0 : count;
+        return this->This();
+    }
+    // grid_columns: divide the plot into `count` columns with vertical grid
+    // lines, the first on its left edge. Default 0.
+    Self* GridColumns(int count) {
+        axes.gridColumns = count < 0 ? 0 : count;
+        return this->This();
+    }
+    // grid_dashed: default true.
+    Self* GridDashed(bool dashed) {
+        axes.gridDashed = dashed;
+        return this->This();
+    }
+    // reference_line: a dashed line across the plot at `value`, such as a
+    // previous close. Call again for more; one outside the y axis is not
+    // drawn.
+    Self* ReferenceLine(double value) {
+        axes.referenceLines.Append(this->a, value);
+        return this->This();
+    }
+    // y_padding: the space kept clear above the highest value and below the
+    // lowest. Default 10 above, none below.
+    Self* YPadding(float top, float bottom) {
+        axes.yPaddingTop = top;
+        axes.yPaddingBottom = bottom;
+        return this->This();
+    }
+};
+
+struct AreaChart : PointChartBuilder<AreaChart> {
+    // A stacked chart draws its second series over the first one's grid.
+    bool overlay = false;
+    Rgba fill = {};
+    // The bottom stop, when the caller gave the two-stop gradient Rust builds
+    // with linear_gradient(0., ..). Alpha 0 means "fade `fill` out".
+    Rgba fillBottom = {};
+    // The series after the first, in the order `Y()` named them.
+    ArenaVec<ChartSeriesExtra> more;
 
     static AreaChart* New(Ctx* cx, const float* ys, int n,
                           const char* file = __builtin_FILE(),
@@ -253,153 +435,18 @@ struct AreaChart {
     AreaChart* Y(const float* ys);
     // name(..): what the tooltip calls the series.
     AreaChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for the datum, instead of its
-    // label.
-    AreaChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
-    // tooltip_value: each row's value text; the raw number by default. `row`
-    // is the series' index in the order `Y` added them.
-    AreaChart* TooltipValue(ChartTooltipValueFn fn, void* user = nullptr);
-    // tooltip_value_color: each row's value colour, such as green or red by
-    // its sign; the tooltip's text colour by default.
-    AreaChart* TooltipValueColor(ChartTooltipValueColorFn fn,
-                                 void* user = nullptr);
-    // tooltip_content: draw the box's content for a datum yourself, in place
-    // of the title and rows. The crosshair, the dots and where the box sits
-    // stay the chart's.
-    AreaChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
-    // data(..): the items the chart's points are, one per point, which the
-    // tooltip closures above receive as their datum in place of the chart's
-    // own number. Rust's charts hold `data` and map it; these hold the
-    // numbers, and this is what Rust's closures would have read them from.
-    AreaChart* Data(const void* items, int stride);
-    template <typename T>
-    AreaChart* Data(const T* items) {
-        return Data((const void*)items, (int)sizeof(T));
-    }
-    // id(..): rename the chart's ElementId, replacing the construction site.
-    // Needed where one site builds several of these as siblings, which would
-    // otherwise share one hover state. Unique among those siblings.
-    AreaChart* Id(Str name);
-    // interactive(false): stand the chart down. Without its hitbox it
-    // neither answers the mouse nor takes the hover from an element drawn
-    // over it -- a loading skeleton, an empty-state ring.
-    AreaChart* Interactive(bool v);
-    // appear(..): draw the data in the first time this chart is painted. On
-    // by default; the theme sets how long it takes and reduced motion skips
-    // it. Turn it off for a chart painted again and again as it scrolls in
-    // and out of view, such as one in each row of a long list.
-    AreaChart* Appear(bool v);
-    // appear_key(..): draw the data in again whenever `key` changes, such as
-    // the symbol or period a chart shows. Without one the data draws in
-    // once, and later data paints in place.
-    AreaChart* AppearKey(Str key);
-    AreaChart* AppearKey(uint64_t key);
-    // Plot::id: the id the chart keeps its state under, its appear and, when
-    // interactive, its hover.
-    uint32_t PlotId() const { return id; }
-    // Plot::interactive: whether it tracks hover and shows its tooltip.
-    bool PlotInteractive() const { return interactive; }
-    // Plot::appear_generation: false when the chart opted out.
-    bool AppearGeneration(uint64_t* out) const {
-        return appear.Generation(out);
-    }
     AreaChart* Stroke(Rgba c);
     AreaChart* Fill(Rgba c);
     // fill(linear_gradient(0., stop(bottom, 0.), stop(top, 1.))).
     AreaChart* Fill(Rgba top, Rgba bottom);
-    AreaChart* Labels(const char* const* l);
-    AreaChart* TickMargin(int n);
     AreaChart* Overlay(bool v = true);
-    // StrokeStyle: Natural is the default Catmull-Rom curve.
-    AreaChart* Natural();
-    AreaChart* Linear();
-    // x_axis(false): no x axis line or labels, and no room kept for them.
-    AreaChart* XAxis(bool v);
-    // grid(false): no grid lines.
-    AreaChart* Grid(bool v);
-    AreaChart* StepAfter();
-    // y_domain(min, max): pin the y axis to min..max instead of fitting every
-    // series from zero, where zero is not a meaningful baseline (a price line).
-    // The range keeps the 10 DIPs above max the default leaves, and the series
-    // are clipped to the plot, so a value outside the range stops at its
-    // edge. Nothing is drawn when min equals max.
-    AreaChart* YDomain(float min, float max);
-    // point_count(count): lay the x axis out for `count` evenly spaced
-    // points instead of the data's own length. The data takes the leading
-    // points in order and the rest stay empty, as an intraday chart does
-    // before the close. A count below the data's length has no effect.
-    AreaChart* PointCount(int count);
-    // y_axis: show the y axis's tick labels, one at each of the y ticks.
-    // Default false.
-    AreaChart* YAxis(bool v = true);
-    // y_axis_label_placement: in a gutter left of the plot (Outside, the
-    // default), or inside it beside their grid lines.
-    AreaChart* YAxisLabelPlacement(AxisLabelPlacement placement);
-    // y_tick_count: how many ticks the y axis carries, evenly spaced from the
-    // baseline to the top edge with both ends included. They place the
-    // horizontal grid lines and the labels, each reading the value the scale
-    // puts at its height. At least 2; default 5.
-    AreaChart* YTickCount(int count);
-    // y_tick_format: the text of each y-axis tick label from its value.
-    AreaChart* YTickFormat(ChartTickFormatFn format, void* user = nullptr);
-    // x_tick_count: label `count` of the x values, spread evenly from the
-    // first to the last, instead of every TickMargin-th. With PointCount they
-    // spread over every point the axis is laid out for, so they keep their
-    // places as the data grows.
-    AreaChart* XTickCount(int count);
-    // grid_columns: divide the plot into `count` columns with vertical grid
-    // lines, the first on its left edge. Default 0.
-    AreaChart* GridColumns(int count);
-    // grid_dashed: default true.
-    AreaChart* GridDashed(bool dashed);
-    // reference_line: a dashed line across the plot at `value`, such as a
-    // previous close. Call again for more; one outside the y axis is not
-    // drawn.
-    AreaChart* ReferenceLine(double value);
-    // y_padding: the space kept clear above the highest value and below the
-    // lowest. Default 10 above, none below.
-    AreaChart* YPadding(float top, float bottom);
     El* IntoEl();
 };
 
 // LineChart: the same run of points as an area chart, with nothing filled
 // under it.
-struct LineChart {
-    Arena* a = nullptr;
-    Str tooltipName = {};
-    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
-    // tooltip_value_color.
-    ChartTooltipContent tooltipContent = {};
-    // The chart's ElementId, folded onto the id stack it was built under: its
-    // construction site unless Id renamed it (chart/mod.rs caller_id).
-    uint32_t id = 0;
-    // interactive(..): the hitbox under the cursor and what it drives -- the
-    // hover emphasis and the tooltip. On by default.
-    bool interactive = true;
-    // appear(..) / appear_key(..): whether the data draws in the first time
-    // the chart is painted, and the key that replays it.
-    ChartAppear appear = {};
-    Ctx* cx = nullptr;
-    const float* ys = nullptr;
-    // The values as the caller gave them, when it gave doubles (the New
-    // overload): what the chart writes out -- a tooltip's numbers, a bar's
-    // label -- reads them, in f64's Display. Its geometry stays float.
-    const double* exact = nullptr;
-    int n = 0;
-    const char* const* labels = nullptr;
-    // tick_margin: 1, every point named, as Rust's charts default to.
-    int tickMargin = 1;
-    Rgba stroke = {};
-    bool hasYDomain = false;
-    float yDomainMin = 0;
-    float yDomainMax = 0;
-    int pointCount = 0;
-    PointAxes axes;
-    ChartStroke strokeStyle = ChartStroke::Natural;
+struct LineChart : PointChartBuilder<LineChart> {
     bool dot = false;
-    // x_axis(..) / grid(..): both on by default.
-    bool xAxis = true;
-    bool grid = true;
 
     static LineChart* New(Ctx* cx, const float* ys, int n,
                           const char* file = __builtin_FILE(),
@@ -409,138 +456,13 @@ struct LineChart {
     static LineChart* New(Ctx* cx, const double* ys, int n,
                           const char* file = __builtin_FILE(),
                           int line = __builtin_LINE());
-    // name(..): what the tooltip calls the series.
-    LineChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for the datum, instead of its
-    // label.
-    LineChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
-    // tooltip_value: each row's value text; the raw number by default. `row`
-    // is always 0; Rust's closure takes no row index for the one series.
-    LineChart* TooltipValue(ChartTooltipValueFn fn, void* user = nullptr);
-    // tooltip_value_color: each row's value colour, such as green or red by
-    // its sign; the tooltip's text colour by default.
-    LineChart* TooltipValueColor(ChartTooltipValueColorFn fn,
-                                 void* user = nullptr);
-    // tooltip_content: draw the box's content for a datum yourself, in place
-    // of the title and rows. The crosshair, the dots and where the box sits
-    // stay the chart's.
-    LineChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
-    // data(..): the items the chart's points are, one per point, which the
-    // tooltip closures above receive as their datum in place of the chart's
-    // own number. Rust's charts hold `data` and map it; these hold the
-    // numbers, and this is what Rust's closures would have read them from.
-    LineChart* Data(const void* items, int stride);
-    template <typename T>
-    LineChart* Data(const T* items) {
-        return Data((const void*)items, (int)sizeof(T));
-    }
-    // id(..): rename the chart's ElementId, replacing the construction site.
-    // Needed where one site builds several of these as siblings, which would
-    // otherwise share one hover state. Unique among those siblings.
-    LineChart* Id(Str name);
-    // interactive(false): stand the chart down. Without its hitbox it
-    // neither answers the mouse nor takes the hover from an element drawn
-    // over it -- a loading skeleton, an empty-state ring.
-    LineChart* Interactive(bool v);
-    // appear(..): draw the data in the first time this chart is painted. On
-    // by default; the theme sets how long it takes and reduced motion skips
-    // it. Turn it off for a chart painted again and again as it scrolls in
-    // and out of view, such as one in each row of a long list.
-    LineChart* Appear(bool v);
-    // appear_key(..): draw the data in again whenever `key` changes, such as
-    // the symbol or period a chart shows. Without one the data draws in
-    // once, and later data paints in place.
-    LineChart* AppearKey(Str key);
-    LineChart* AppearKey(uint64_t key);
-    // Plot::id: the id the chart keeps its state under, its appear and, when
-    // interactive, its hover.
-    uint32_t PlotId() const { return id; }
-    // Plot::interactive: whether it tracks hover and shows its tooltip.
-    bool PlotInteractive() const { return interactive; }
-    // Plot::appear_generation: false when the chart opted out.
-    bool AppearGeneration(uint64_t* out) const {
-        return appear.Generation(out);
-    }
     LineChart* Stroke(Rgba c);
-    LineChart* Labels(const char* const* l);
-    LineChart* TickMargin(int n);
-    // y_domain(min, max): pin the y axis to min..max instead of fitting the
-    // line from zero, where zero is not a meaningful baseline (a price line).
-    // The range keeps the 10 DIPs above max the default leaves, and the series
-    // are clipped to the plot, so a value outside the range stops at its
-    // edge. Nothing is drawn when min equals max.
-    LineChart* YDomain(float min, float max);
-    // point_count(count): lay the x axis out for `count` evenly spaced
-    // points instead of the data's own length. The data takes the leading
-    // points in order and the rest stay empty, as an intraday chart does
-    // before the close. A count below the data's length has no effect.
-    LineChart* PointCount(int count);
-    // y_axis: show the y axis's tick labels, one at each of the y ticks.
-    // Default false.
-    LineChart* YAxis(bool v = true);
-    // y_axis_label_placement: in a gutter left of the plot (Outside, the
-    // default), or inside it beside their grid lines.
-    LineChart* YAxisLabelPlacement(AxisLabelPlacement placement);
-    // y_tick_count: how many ticks the y axis carries, evenly spaced from the
-    // baseline to the top edge with both ends included. They place the
-    // horizontal grid lines and the labels, each reading the value the scale
-    // puts at its height. At least 2; default 5.
-    LineChart* YTickCount(int count);
-    // y_tick_format: the text of each y-axis tick label from its value.
-    LineChart* YTickFormat(ChartTickFormatFn format, void* user = nullptr);
-    // x_tick_count: label `count` of the x values, spread evenly from the
-    // first to the last, instead of every TickMargin-th. With PointCount they
-    // spread over every point the axis is laid out for, so they keep their
-    // places as the data grows.
-    LineChart* XTickCount(int count);
-    // grid_columns: divide the plot into `count` columns with vertical grid
-    // lines, the first on its left edge. Default 0.
-    LineChart* GridColumns(int count);
-    // grid_dashed: default true.
-    LineChart* GridDashed(bool dashed);
-    // reference_line: a dashed line across the plot at `value`, such as a
-    // previous close. Call again for more; one outside the y axis is not
-    // drawn.
-    LineChart* ReferenceLine(double value);
-    // y_padding: the space kept clear above the highest value and below the
-    // lowest. Default 10 above, none below.
-    LineChart* YPadding(float top, float bottom);
-    LineChart* Natural();
-    LineChart* Linear();
-    LineChart* StepAfter();
     LineChart* Dot(bool v = true);
-    // x_axis(false): no x axis line or labels, and no room kept for them.
-    LineChart* XAxis(bool v);
-    // grid(false): no grid lines.
-    LineChart* Grid(bool v);
     El* IntoEl();
 };
 
 // BarChart: a band per value, the bars rounded at the top.
-struct BarChart {
-    Arena* a = nullptr;
-    Str tooltipName = {};
-    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
-    // tooltip_value_color.
-    ChartTooltipContent tooltipContent = {};
-    // The chart's ElementId, folded onto the id stack it was built under: its
-    // construction site unless Id renamed it (chart/mod.rs caller_id).
-    uint32_t id = 0;
-    // interactive(..): the hitbox under the cursor and what it drives -- the
-    // hover emphasis and the tooltip. On by default.
-    bool interactive = true;
-    // appear(..) / appear_key(..): whether the data draws in the first time
-    // the chart is painted, and the key that replays it.
-    ChartAppear appear = {};
-    Ctx* cx = nullptr;
-    const float* ys = nullptr;
-    // The values as the caller gave them, when it gave doubles (the New
-    // overload): what the chart writes out -- a tooltip's numbers, a bar's
-    // label -- reads them, in f64's Display. Its geometry stays float.
-    const double* exact = nullptr;
-    int n = 0;
-    const char* const* labels = nullptr;
-    int tickMargin = 1;
+struct BarChart : SeriesChartBuilder<BarChart> {
     Rgba fill = {};
     // padding_inner / padding_outer: ScaleBand's gaps — between neighbouring
     // bars as a share of a band, and before the first and after the last.
@@ -591,61 +513,7 @@ struct BarChart {
     static BarChart* New(Ctx* cx, const double* ys, int n,
                          const char* file = __builtin_FILE(),
                          int line = __builtin_LINE());
-    // name(..): what the tooltip calls the series.
-    BarChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for the datum, instead of its
-    // label.
-    BarChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
-    // tooltip_value: each row's value text; the raw number by default. `row`
-    // is always 0; Rust's closure takes no row index for the one bar.
-    BarChart* TooltipValue(ChartTooltipValueFn fn, void* user = nullptr);
-    // tooltip_value_color: each row's value colour, such as green or red by
-    // its sign; the tooltip's text colour by default.
-    BarChart* TooltipValueColor(ChartTooltipValueColorFn fn,
-                                void* user = nullptr);
-    // tooltip_content: draw the box's content for a datum yourself, in place
-    // of the title and rows. The crosshair, the dots and where the box sits
-    // stay the chart's.
-    BarChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
-    // data(..): the items the chart's points are, one per point, which the
-    // tooltip closures above receive as their datum in place of the chart's
-    // own number. Rust's charts hold `data` and map it; these hold the
-    // numbers, and this is what Rust's closures would have read them from.
-    BarChart* Data(const void* items, int stride);
-    template <typename T>
-    BarChart* Data(const T* items) {
-        return Data((const void*)items, (int)sizeof(T));
-    }
-    // id(..): rename the chart's ElementId, replacing the construction site.
-    // Needed where one site builds several of these as siblings, which would
-    // otherwise share one hover state. Unique among those siblings.
-    BarChart* Id(Str name);
-    // interactive(false): stand the chart down. Without its hitbox it
-    // neither answers the mouse nor takes the hover from an element drawn
-    // over it -- a loading skeleton, an empty-state ring.
-    BarChart* Interactive(bool v);
-    // appear(..): draw the data in the first time this chart is painted. On
-    // by default; the theme sets how long it takes and reduced motion skips
-    // it. Turn it off for a chart painted again and again as it scrolls in
-    // and out of view, such as one in each row of a long list.
-    BarChart* Appear(bool v);
-    // appear_key(..): draw the data in again whenever `key` changes, such as
-    // the symbol or period a chart shows. Without one the data draws in
-    // once, and later data paints in place.
-    BarChart* AppearKey(Str key);
-    BarChart* AppearKey(uint64_t key);
-    // Plot::id: the id the chart keeps its state under, its appear and, when
-    // interactive, its hover.
-    uint32_t PlotId() const { return id; }
-    // Plot::interactive: whether it tracks hover and shows its tooltip.
-    bool PlotInteractive() const { return interactive; }
-    // Plot::appear_generation: false when the chart opted out.
-    bool AppearGeneration(uint64_t* out) const {
-        return appear.Generation(out);
-    }
     BarChart* Fill(Rgba c);
-    BarChart* Labels(const char* const* l);
-    BarChart* TickMargin(int n);
     // Show or hide the value-axis tick labels. Enabling this reserves 32 DIPs
     // along the band axis (left of vertical bars, below horizontal ones) for
     // them. Default false.
@@ -714,98 +582,25 @@ struct BarChart {
 
 // CandlestickChart: open, high, low and close per band, the body colored by
 // which way it closed.
-struct CandlestickChart {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct CandlestickChart : ChartBandBuilder<CandlestickChart> {
     const float* opens = nullptr;
     const float* highs = nullptr;
     const float* lows = nullptr;
     const float* closes = nullptr;
     int n = 0;
-    const char* const* labels = nullptr;
-    int tickMargin = 1;
     Rgba up = {};
     Rgba down = {};
     float padding = 0.3f;
     float bodyWidthRatio = 0.8f;
     // max_band_width: 30 by default, as for BarChart.
     float maxBandWidth = kChartMaxBandWidth;
-    Str tooltipName = {};
-    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
-    // tooltip_value_color.
-    ChartTooltipContent tooltipContent = {};
-    // The chart's ElementId, folded onto the id stack it was built under: its
-    // construction site unless Id renamed it (chart/mod.rs caller_id).
-    uint32_t id = 0;
-    // interactive(..): the hitbox under the cursor and what it drives -- the
-    // hover emphasis and the tooltip. On by default.
-    bool interactive = true;
-    // appear(..) / appear_key(..): whether the data draws in the first time
-    // the chart is painted, and the key that replays it.
-    ChartAppear appear = {};
 
     static CandlestickChart* New(Ctx* cx, const float* opens,
                                  const float* highs, const float* lows,
                                  const float* closes, int n,
                                  const char* file = __builtin_FILE(),
                                  int line = __builtin_LINE());
-    CandlestickChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for the datum, instead of its
-    // label.
-    CandlestickChart* TooltipTitle(ChartTooltipTitleFn fn,
-                                   void* user = nullptr);
-    // tooltip_value: each row's value text; the raw number by default. `row`
-    // is 0 to 3 for open, high, low and close.
-    CandlestickChart* TooltipValue(ChartTooltipValueFn fn,
-                                   void* user = nullptr);
-    // tooltip_value_color: each row's value colour, such as green or red by
-    // its sign; the tooltip's text colour by default.
-    CandlestickChart* TooltipValueColor(ChartTooltipValueColorFn fn,
-                                        void* user = nullptr);
-    // tooltip_content: draw the box's content for a datum yourself, in place
-    // of the title and rows. The crosshair, the dots and where the box sits
-    // stay the chart's.
-    CandlestickChart* TooltipContent(ChartTooltipContentFn fn,
-                                     void* user = nullptr);
-    // data(..): the items the chart's points are, one per point, which the
-    // tooltip closures above receive as their datum in place of the chart's
-    // own number. Rust's charts hold `data` and map it; these hold the
-    // numbers, and this is what Rust's closures would have read them from.
-    CandlestickChart* Data(const void* items, int stride);
-    template <typename T>
-    CandlestickChart* Data(const T* items) {
-        return Data((const void*)items, (int)sizeof(T));
-    }
-    // id(..): rename the chart's ElementId, replacing the construction site.
-    // Needed where one site builds several of these as siblings, which would
-    // otherwise share one hover state. Unique among those siblings.
-    CandlestickChart* Id(Str name);
-    // interactive(false): stand the chart down. Without its hitbox it
-    // neither answers the mouse nor takes the hover from an element drawn
-    // over it -- a loading skeleton, an empty-state ring.
-    CandlestickChart* Interactive(bool v);
-    // appear(..): draw the data in the first time this chart is painted. On
-    // by default; the theme sets how long it takes and reduced motion skips
-    // it. Turn it off for a chart painted again and again as it scrolls in
-    // and out of view, such as one in each row of a long list.
-    CandlestickChart* Appear(bool v);
-    // appear_key(..): draw the data in again whenever `key` changes, such as
-    // the symbol or period a chart shows. Without one the data draws in
-    // once, and later data paints in place.
-    CandlestickChart* AppearKey(Str key);
-    CandlestickChart* AppearKey(uint64_t key);
-    // Plot::id: the id the chart keeps its state under, its appear and, when
-    // interactive, its hover.
-    uint32_t PlotId() const { return id; }
-    // Plot::interactive: whether it tracks hover and shows its tooltip.
-    bool PlotInteractive() const { return interactive; }
-    // Plot::appear_generation: false when the chart opted out.
-    bool AppearGeneration(uint64_t* out) const {
-        return appear.Generation(out);
-    }
     CandlestickChart* Colors(Rgba up, Rgba down);
-    CandlestickChart* Labels(const char* const* l);
-    CandlestickChart* TickMargin(int n);
     CandlestickChart* Padding(float v);
     CandlestickChart* BodyWidthRatio(float v);
     // Keep every candle's band at most `width` wide. Default 30.
@@ -847,9 +642,7 @@ int RadarHoveredIndex(int n, float outerRadius, float labelGap, Point position,
 // each `Value` adds one more, with the `Stroke`, `Fill` and `Tooltip` after
 // it belonging to that series, the way Rust's
 // `.value(..).stroke(..).fill(..).name(..)` chain does.
-struct RadarChart {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct RadarChart : ChartTooltipBuilder<RadarChart> {
     const float* values = nullptr;
     // The values as the caller gave them, when it gave doubles (the New
     // overload): what the chart writes out -- a tooltip's numbers, a bar's
@@ -876,20 +669,6 @@ struct RadarChart {
     float labelGap = kRadarDefaultLabelGap;
     Rgba labelColor = {};
     bool hasLabelColor = false;
-    // name(..) of the first series.
-    Str tooltipName = {};
-    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
-    // tooltip_value_color / tooltip_content.
-    ChartTooltipContent tooltipContent = {};
-    // The chart's ElementId, folded onto the id stack it was built under: its
-    // construction site unless Id renamed it (chart/mod.rs caller_id).
-    uint32_t id = 0;
-    // interactive(..): the hitbox under the cursor and what it drives -- a
-    // dot per series on the hovered dimension and the tooltip. On by default.
-    bool interactive = true;
-    // appear(..) / appear_key(..): whether the data draws in the first time
-    // the chart is painted, and the key that replays it.
-    ChartAppear appear = {};
     // The element IntoEl made, which the hover paints over.
     El* el = nullptr;
 
@@ -905,56 +684,6 @@ struct RadarChart {
     RadarChart* Value(const float* ys);
     // name(..): what the tooltip calls the series added last.
     RadarChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for the datum, instead of its
-    // dimension's text label.
-    RadarChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
-    // tooltip_value: each row's value text; the raw number by default. `row`
-    // is the series' index in the order `Value` added them.
-    RadarChart* TooltipValue(ChartTooltipValueFn fn, void* user = nullptr);
-    // tooltip_value_color: each row's value colour; the tooltip's text
-    // colour by default.
-    RadarChart* TooltipValueColor(ChartTooltipValueColorFn fn,
-                                  void* user = nullptr);
-    // tooltip_content: draw the box's content for a datum yourself, in place
-    // of the title and rows. The dots and where the box sits stay the
-    // chart's.
-    RadarChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
-    // data(..): the items the chart's points are, one per point, which the
-    // tooltip closures above receive as their datum in place of the chart's
-    // own number. Rust's charts hold `data` and map it; these hold the
-    // numbers, and this is what Rust's closures would have read them from.
-    RadarChart* Data(const void* items, int stride);
-    template <typename T>
-    RadarChart* Data(const T* items) {
-        return Data((const void*)items, (int)sizeof(T));
-    }
-    // id(..): rename the chart's ElementId, replacing the construction site.
-    // Needed where one site builds several of these as siblings, which would
-    // otherwise share one hover state. Unique among those siblings.
-    RadarChart* Id(Str name);
-    // interactive(false): stand the chart down. Without its hitbox it
-    // neither answers the mouse nor takes the hover from an element drawn
-    // over it -- a loading skeleton, an empty-state ring.
-    RadarChart* Interactive(bool v);
-    // appear(..): draw the data in the first time this chart is painted. On
-    // by default; the theme sets how long it takes and reduced motion skips
-    // it. Turn it off for a chart painted again and again as it scrolls in
-    // and out of view, such as one in each row of a long list.
-    RadarChart* Appear(bool v);
-    // appear_key(..): draw the data in again whenever `key` changes, such as
-    // the symbol or period a chart shows. Without one the data draws in
-    // once, and later data paints in place.
-    RadarChart* AppearKey(Str key);
-    RadarChart* AppearKey(uint64_t key);
-    // Plot::id: the id the chart keeps its state under, its appear and, when
-    // interactive, its hover.
-    uint32_t PlotId() const { return id; }
-    // Plot::interactive: whether it tracks hover and shows its tooltip.
-    bool PlotInteractive() const { return interactive; }
-    // Plot::appear_generation: false when the chart opted out.
-    bool AppearGeneration(uint64_t* out) const {
-        return appear.Generation(out);
-    }
     // stroke(..) / fill(..) of the series added last.
     RadarChart* Stroke(Rgba c);
     RadarChart* Fill(Rgba c);
@@ -1025,9 +754,7 @@ struct SankeyChartNode {
     Str tooltipValue = {};
 };
 
-struct SankeyChart {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct SankeyChart : ChartBuilder<SankeyChart> {
     // As many nodes and links as the caller adds; both grow into the frame
     // arena the builder is on.
     ArenaVec<SankeyChartNode> nodes;
@@ -1044,52 +771,14 @@ struct SankeyChart {
     // Whether the node's throughput is written above its name, which is
     // Rust's value_label.
     bool showValues = false;
-    Str tooltipName = {};
-    // The chart's ElementId, folded onto the id stack it was built under: its
-    // construction site unless Id renamed it (chart/mod.rs caller_id).
-    uint32_t id = 0;
-    // interactive(..): the hitbox under the cursor and what it drives -- the
-    // hover emphasis and the tooltip. On by default.
-    bool interactive = true;
-    // appear(..) / appear_key(..): whether the data draws in the first time
-    // the chart is painted, and the key that replays it.
-    ChartAppear appear = {};
 
     static SankeyChart* New(Ctx* cx, const char* file = __builtin_FILE(),
                             int line = __builtin_LINE());
-    SankeyChart* Tooltip(Str name);
     // tooltip_name(..) / tooltip_value(..) for the node just added: what
     // the hover row says, for a chart drawing its text through CustomLabel,
     // which never reaches the tooltip.
     SankeyChart* TooltipName(Str name);
     SankeyChart* TooltipValue(Str value);
-    // id(..): rename the chart's ElementId, replacing the construction site.
-    // Needed where one site builds several of these as siblings, which would
-    // otherwise share one hover state. Unique among those siblings.
-    SankeyChart* Id(Str name);
-    // interactive(false): stand the chart down. Without its hitbox it
-    // neither answers the mouse nor takes the hover from an element drawn
-    // over it -- a loading skeleton, an empty-state ring.
-    SankeyChart* Interactive(bool v);
-    // appear(..): draw the data in the first time this chart is painted. On
-    // by default; the theme sets how long it takes and reduced motion skips
-    // it. Turn it off for a chart painted again and again as it scrolls in
-    // and out of view, such as one in each row of a long list.
-    SankeyChart* Appear(bool v);
-    // appear_key(..): draw the data in again whenever `key` changes, such as
-    // the symbol or period a chart shows. Without one the data draws in
-    // once, and later data paints in place.
-    SankeyChart* AppearKey(Str key);
-    SankeyChart* AppearKey(uint64_t key);
-    // Plot::id: the id the chart keeps its state under, its appear and, when
-    // interactive, its hover.
-    uint32_t PlotId() const { return id; }
-    // Plot::interactive: whether it tracks hover and shows its tooltip.
-    bool PlotInteractive() const { return interactive; }
-    // Plot::appear_generation: false when the chart opted out.
-    bool AppearGeneration(uint64_t* out) const {
-        return appear.Generation(out);
-    }
     // A node, by the order they are added — a link names them by index.
     SankeyChart* Node(Str label);
     SankeyChart* NodeColored(Str label, Rgba color);

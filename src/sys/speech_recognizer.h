@@ -22,6 +22,14 @@
 
 #include "base.h"
 
+// Where there is no system recognizer: speech_recognizer_unsupported.cpp
+// answers for it, once.
+#if GPUI_OS_LINUX || GPUI_OS_WASM
+#define GPUI_SPEECH_RECOGNIZER_UNSUPPORTED 1
+#else
+#define GPUI_SPEECH_RECOGNIZER_UNSUPPORTED 0
+#endif
+
 namespace gpui {
 
 enum class SysSpeechError : uint8_t {

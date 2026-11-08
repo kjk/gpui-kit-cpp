@@ -40,14 +40,8 @@ void* PlatMemReserve(uint64_t size) {
     return p == MAP_FAILED ? nullptr : p;
 }
 
-bool PlatMemCommit(void* base, uint64_t size, bool largePages) {
+bool PlatMemCommitPages(void* base, uint64_t size, bool largePages) {
     (void)largePages;
-    if (size == 0) {
-        return true;
-    }
-    if (!base) {
-        return false;
-    }
     // Round out to whole pages: the arena commits in its own chunk size, which
     // is not required to be page-aligned at the tail.
     uint64_t page = PlatPageSize();
@@ -72,12 +66,6 @@ void PlatMemRelease(void* base, uint64_t size) {
     if (base && size > 0) {
         munmap(base, (size_t)size);
     }
-}
-
-// 64 MB. Untouched address space costs nothing here, so an arena reserves far
-// more than it will ever commit and rarely has to chain a second block.
-uint64_t PlatArenaReserveSize() {
-    return 64ull * 1024ull * 1024ull;
 }
 
 } // namespace base

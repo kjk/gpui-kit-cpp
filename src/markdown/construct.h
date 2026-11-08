@@ -15,6 +15,22 @@
 
 namespace markdown {
 
+// The label and title partials take their token names in token1..token3,
+// and destination also in token4, token5 and its paren balance in sizeB.
+// Every construct that called one puts them back when it returns; Rust
+// writes the assignments out at each site, these are them once.
+inline void ResetLabelTokens(Tokenizer* t) {
+    t->tokenizeState.token1 = Name::Data;
+    t->tokenizeState.token2 = Name::Data;
+    t->tokenizeState.token3 = Name::Data;
+}
+inline void ResetDestinationTokens(Tokenizer* t) {
+    ResetLabelTokens(t);
+    t->tokenizeState.token4 = Name::Data;
+    t->tokenizeState.token5 = Name::Data;
+    t->tokenizeState.sizeB = 0;
+}
+
 // ─── the state functions ─────────────────────────────────────────────────
 
 State AttentionStart(Tokenizer* t);

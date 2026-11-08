@@ -131,10 +131,7 @@ static El* FinishTyped(MaterializeRequest* request, El* element) {
     return request->ApplyStyle(element);
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kIndexArgs[] = {{"index", SchemaNumber()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ArgumentDescriptor kIndexCallbackArgs[] = {
     // The runtime appends the call context to every component callback, so
     // the declared signature has to name it — otherwise a script that wants
@@ -222,8 +219,6 @@ static El* MaterializeAccordionItem(MaterializeRequest* request) {
 
 static constexpr ArgumentDescriptor kTitleArgs[] = {{"title", SchemaElement()}};
 static constexpr ArgumentDescriptor kOpenArgs[] = {{"open", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 
 static constexpr ConstructorDescriptor kAccordionItemConstructors[] = {
     {"AccordionItem", {}, &ConstructAccordionItem}};
@@ -232,7 +227,7 @@ static constexpr MethodDescriptor kAccordionItemMethods[] = {
      &RecordAccordionItemTitle},
     {"open", kOpenArgs, "Controls expanded state.",
      &RecordAccordionItemBool<AccordionItemKind::Open>},
-    {"disabled", kDisabledArgs, "Disables this item.",
+    {"disabled", kDisabledArguments, "Disables this item.",
      &RecordAccordionItemBool<AccordionItemKind::Disabled>},
 };
 static constexpr ComponentDescriptor kAccordionItem = {
@@ -419,13 +414,13 @@ static constexpr ArgumentDescriptor kToggleArgs[] = {
      SchemaCallback("(openIndices: number[], cx: Context) => void")}};
 
 static constexpr ConstructorDescriptor kAccordionConstructors[] = {
-    {"Accordion", kIdArgs, &ConstructAccordion}};
+    {"Accordion", kIdArguments, &ConstructAccordion}};
 static constexpr MethodDescriptor kAccordionMethods[] = {
     {"multiple", kMultipleArgs, "Allows multiple items to remain open.",
      &RecordAccordionBool<AccordionKind::Multiple>},
     {"bordered", kBorderedArgs, "Controls the joined outer border.",
      &RecordAccordionBool<AccordionKind::Bordered>},
-    {"size", kSizeArgs, kSizeDoc, &RecordAccordionSize},
+    {"size", kSizeArguments, kSizeDoc, &RecordAccordionSize},
     {"on_toggle", kToggleArgs,
      "Reports which sections are open after a click, so the script can drive "
      "`AccordionItem.open`.",
@@ -548,14 +543,15 @@ static El* MaterializeRadioGroup(MaterializeRequest* request) {
 }
 
 static constexpr ConstructorDescriptor kRadioGroupConstructors[] = {
-    {"RadioGroup", kIdArgs, &ConstructRadioGroup<Axis::Vertical>},
-    {"HorizontalRadioGroup", kIdArgs, &ConstructRadioGroup<Axis::Horizontal>},
+    {"RadioGroup", kIdArguments, &ConstructRadioGroup<Axis::Vertical>},
+    {"HorizontalRadioGroup", kIdArguments,
+     &ConstructRadioGroup<Axis::Horizontal>},
 };
 static constexpr MethodDescriptor kRadioGroupMethods[] = {
     {"selected_index", kIndexArgs,
      "Controls the selected zero-based radio index.",
      &RecordRadioGroupSelected},
-    {"disabled", kDisabledArgs, "Disables the group.",
+    {"disabled", kDisabledArguments, "Disables the group.",
      &RecordRadioGroupDisabled},
     {"on_change", kIndexCallbackArgs, kIndexCallbackDoc,
      &RecordRadioGroupChange},
@@ -625,8 +621,6 @@ static El* MaterializeTab(MaterializeRequest* request) {
 }
 
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
-static constexpr ArgumentDescriptor kSelectedArgs[] = {
-    {"selected", SchemaBoolean()}};
 
 static constexpr ConstructorDescriptor kTabConstructors[] = {
     {"Tab", {}, &ConstructTab}};
@@ -635,9 +629,9 @@ static constexpr MethodDescriptor kTabMethods[] = {
      &RecordTabString<TabKind::Label>},
     {"aria_label", kLabelArgs, "Sets the accessible tab label.",
      &RecordTabString<TabKind::AriaLabel>},
-    {"disabled", kDisabledArgs, "Disables the tab.",
+    {"disabled", kDisabledArguments, "Disables the tab.",
      &RecordTabBool<TabKind::Disabled>},
-    {"selected", kSelectedArgs, "Controls selected state.",
+    {"selected", kSelectedArguments, "Controls selected state.",
      &RecordTabBool<TabKind::Selected>},
 };
 static constexpr ComponentDescriptor kTab = {
@@ -787,8 +781,8 @@ static constexpr ArgumentDescriptor kVariantArgs[] = {
 static constexpr ArgumentDescriptor kMenuArgs[] = {{"menu", SchemaBoolean()}};
 
 static constexpr ConstructorDescriptor kTabBarConstructors[] = {
-    {"TabBar", kIdArgs, &ConstructTabBar<0>},
-    {"Tabs", kIdArgs, &ConstructTabBar<1>, "TabBar",
+    {"TabBar", kIdArguments, &ConstructTabBar<0>},
+    {"Tabs", kIdArguments, &ConstructTabBar<1>, "TabBar",
      "Use TabBar; Tabs is retained as a compatibility alias."},
 };
 static constexpr MethodDescriptor kTabBarMethods[] = {
@@ -797,7 +791,7 @@ static constexpr MethodDescriptor kTabBarMethods[] = {
     {"variant", kVariantArgs, "Sets one of the component's five tab variants.",
      &RecordTabBarVariant},
     {"menu", kMenuArgs, "Enables the overflow menu.", &RecordTabBarMenu},
-    {"size", kSizeArgs, kSizeDoc, &RecordTabBarSize},
+    {"size", kSizeArguments, kSizeDoc, &RecordTabBarSize},
     {"on_change", kIndexCallbackArgs, kIndexCallbackDoc, &RecordTabBarChange},
 };
 static constexpr ComponentDescriptor kTabBar = {
@@ -838,7 +832,7 @@ static El* MaterializeStepperItem(MaterializeRequest* request) {
 static constexpr ConstructorDescriptor kStepperItemConstructors[] = {
     {"StepperItem", {}, &ConstructStepperItem}};
 static constexpr MethodDescriptor kStepperItemMethods[] = {
-    {"disabled", kDisabledArgs,
+    {"disabled", kDisabledArguments,
      "Disables this step independently of its parent.",
      &RecordStepperItemDisabled},
 };
@@ -962,7 +956,7 @@ static constexpr ArgumentDescriptor kTextCenterArgs[] = {
     {"text_center", SchemaBoolean()}};
 
 static constexpr ConstructorDescriptor kStepperConstructors[] = {
-    {"Stepper", kIdArgs, &ConstructStepper}};
+    {"Stepper", kIdArguments, &ConstructStepper}};
 static constexpr MethodDescriptor kStepperMethods[] = {
     {"selected_index", kIndexArgs, "Controls the current zero-based step.",
      &RecordStepperSelected},
@@ -972,9 +966,9 @@ static constexpr MethodDescriptor kStepperMethods[] = {
     {"text_center", kTextCenterArgs,
      "Centers each step's text in horizontal layouts.",
      &RecordStepperBool<StepperKind::TextCenter>},
-    {"disabled", kDisabledArgs, "Disables every step.",
+    {"disabled", kDisabledArguments, "Disables every step.",
      &RecordStepperBool<StepperKind::Disabled>},
-    {"size", kSizeArgs, kSizeDoc, &RecordStepperSize},
+    {"size", kSizeArguments, kSizeDoc, &RecordStepperSize},
     {"on_change", kIndexCallbackArgs, kIndexCallbackDoc, &RecordStepperChange},
 };
 static constexpr ComponentDescriptor kStepper = {

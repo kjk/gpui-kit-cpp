@@ -12,13 +12,6 @@ namespace component {
 static const float kSheetMotionMs = 150.f;
 static_assert(kSheetDefaultMarginTop == kTitleBarHeight);
 
-Sheet* Sheet::New(Ctx* cx) {
-    Arena* a = cx->a;
-    Sheet* s = ArenaNew<Sheet>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
 Sheet* Sheet::Title(Str s) {
     title = s;
     titleEl = nullptr;
@@ -57,19 +50,8 @@ Sheet* Sheet::Body(El* e) {
     body = e;
     return this;
 }
-Sheet* Sheet::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
 Sheet* Sheet::Footer(El* e) {
     footer = e;
-    return this;
-}
-Sheet* Sheet::Refine(const Style& value, uint32_t fields) {
-    StyleApplyFields(&style, value, fields);
-    styleSet |= fields;
     return this;
 }
 Sheet* Sheet::Scroll(int id, float y, Listener fn) {

@@ -137,12 +137,7 @@ El* Sheet::IntoEl() {
     Entity<SheetState> state =
         ElementStateEntity<SheetState>(cx, trap, StrL("gpui::SheetState"));
     if (SheetState* s = state.Get(cx)) {
-        s->overlayInteractive = overlayInteractive;
-        s->overlayClosable = overlayClosable;
-        s->hasDismissBefore = hasDismissBefore;
-        s->dismissBeforeY = dismissBeforeY;
-        s->requestClose = requestClose;
-        s->onClose = onClose;
+        static_cast<SheetDismissal&>(*s) = *this;
     }
 
     // Rust tracks and traps focus on the host itself. It is not a Tab stop,

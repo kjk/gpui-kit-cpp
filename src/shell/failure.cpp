@@ -183,15 +183,7 @@ static Str Trim(Arena* arena, Str text) {
 static int CharCount(Str text) {
     int n = 0;
     for (int i = 0; i < len(text);) {
-        unsigned char c = (unsigned char)text.s[i];
-        int w = 1;
-        if ((c & 0xE0) == 0xC0)
-            w = 2;
-        else if ((c & 0xF0) == 0xE0)
-            w = 3;
-        else if ((c & 0xF8) == 0xF0)
-            w = 4;
-        i += w;
+        i += Utf8LeadLen((uint8_t)text.s[i]);
         if (i > len(text)) break;
         n++;
     }

@@ -54,13 +54,6 @@ El* DropdownPlaceContent(El* content, float gap) {
     return content;
 }
 
-Popover* Popover::New(Ctx* cx) {
-    Arena* a = cx->a;
-    Popover* p = ArenaNew<Popover>(a);
-    p->a = a;
-    p->cx = cx;
-    return p;
-}
 Popover* Popover::Trigger(component::Button* triggerBtn) {
     triggerButton = triggerBtn;
     trigger = nullptr;
@@ -81,19 +74,8 @@ Popover* Popover::ContentBuilder(El* (*fn)(void* user, Ctx* cx), void* user) {
     contentUser = user;
     return this;
 }
-Popover* Popover::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
 Popover* Popover::Appearance(bool v) {
     appearance = v;
-    return this;
-}
-Popover* Popover::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 Popover* Popover::RefineWith(ElRefiner r) {

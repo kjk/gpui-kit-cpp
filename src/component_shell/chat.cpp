@@ -331,13 +331,7 @@ static bool RecordEnum(PayloadBuild* build, const ComponentArgument* args,
 template <Op::Kind K>
 static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
                        int count, const char* component, const char* name) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Boolean)
-        return build
-            ->Fail(fmt("%s.%s expects one boolean", Str(component), Str(name)));
-    Op* op = build->New<Op>();
-    op->kind = K;
-    op->flag = args[0].boolean;
-    return true;
+    return RecordFlagOp<Op>(build, args, count, K, component, name);
 }
 
 static constexpr const char* kStatusLiterals[] = {
@@ -760,15 +754,12 @@ static bool NewMessageScrollerState(shell::StateBuild* build,
 
 // ─── Descriptors ───────────────────────────────────────────────────────────
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kTextArgs[] = {{"text", SchemaString()}};
 
 static constexpr ArgumentDescriptor kStatusArgs[] = {
     {"status", SchemaEnum(kStatusLiterals)}};
 static constexpr ArgumentDescriptor kAxisArgs[] = {
     {"axis", SchemaEnum(kAxisLiterals)}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ArgumentDescriptor kAlignmentArgs[] = {
     {"alignment", SchemaEnum(kAlignmentLiterals)}};
 static constexpr ArgumentDescriptor kBubbleVariantArgs[] = {
@@ -795,13 +786,13 @@ static constexpr ArgumentDescriptor kJumpButtonLabelArgs[] = {
 
 // Attachment
 static constexpr ConstructorDescriptor kAttachmentConstructors[] = {
-    {"Attachment", kIdArgs, &ConstructAttachment}};
+    {"Attachment", kIdArguments, &ConstructAttachment}};
 static constexpr MethodDescriptor kAttachmentMethods[] = {
     {"status", kStatusArgs, "Sets the attachment lifecycle status.",
      &RecordAttachmentStatus},
     {"axis", kAxisArgs, "Sets the attachment layout axis.",
      &RecordAttachmentAxis},
-    {"size", kSizeArgs, "Sets the semantic attachment size.",
+    {"size", kSizeArguments, "Sets the semantic attachment size.",
      &RecordAttachmentSize},
 };
 static constexpr ComponentDescriptor kAttachment = {
@@ -826,7 +817,7 @@ static constexpr ComponentDescriptor kBubble = {
 
 // Marker
 static constexpr ConstructorDescriptor kMarkerConstructors[] = {
-    {"Marker", kIdArgs, &ConstructMarker}};
+    {"Marker", kIdArguments, &ConstructMarker}};
 static constexpr MethodDescriptor kMarkerMethods[] = {
     {"variant", kMarkerVariantArgs, "Sets the marker treatment.",
      &RecordMarkerVariant},
@@ -857,7 +848,7 @@ static constexpr ComponentDescriptor kMessage = {
 static constexpr ConstructorDescriptor kShimmerConstructors[] = {
     {"ShimmerText", kTextArgs, &ConstructShimmerText}};
 static constexpr MethodDescriptor kShimmerMethods[] = {
-    {"id", kIdArgs, "Sets an explicit stable animation identity.",
+    {"id", kIdArguments, "Sets an explicit stable animation identity.",
      &RecordShimmerId},
     {"duration_ms", kDurationArgs,
      "Sets one shimmer sweep duration in milliseconds.",

@@ -68,6 +68,16 @@ Str InputContext();
 // the way each component's `init` does.
 void InputInitKeys();
 
+// The platform half of InputInitKeys, one per target's input_keys_*.cpp.
+void InputBindPlatformKeys(const char* ctx);
+// Everywhere but macOS: `extra` (what one platform binds on its own — which
+// chord adds a cursor, what shift-alt-arrow selects) and then the ctrl-chord
+// set every non-mac target shares.
+void InputBindKeysNonMac(const char* ctx, const KeyBinding* extra, int nExtra);
+// wasm, iOS and Android: the non-mac set, with shift-alt cursors rather than
+// ctrl-alt (Linux desktops reserve those, and these targets follow that).
+void InputBindKeysOther(const char* ctx);
+
 // The edit an action names. `arg` is the action's payload — for
 // `input::Enter` it is bit 0 `secondary`, bit 1 `shift`.
 InputAction InputActionOf(uint32_t id, int64_t arg = 0);

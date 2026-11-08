@@ -2,55 +2,19 @@
 #define GPUI_SRC_UI_RADIO_H_
 /* Themed radio — crates/ui/src/radio.rs */
 
-#include "ui/sizing.h"
+#include "ui/checkbox.h"
 
 namespace gpui {
 
 namespace component {
 
-struct Radio {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    Str id = {};
-    Str label = {};
-    // The announced name, when the visible label is not it.
-    Str accessibilityLabel = {};
-    Str hint = {};
-    Str tooltip = {};
-    int tooltipShowDelayMs = -1;
-    bool checked = false;
-    bool disabled = false;
-    UiSize size = UiSize::Medium;
-    bool focusRing = true;
-    int tabIndex = 0;
-    bool tabStop = true;
-    Listener onClick;
+struct Radio : ChoiceBuilder<Radio> {
     // ParentElement: children follow the label in the text column.
     ArenaVec<El*> children;
     // Styled: a caller's whole refinement of the row.
     ElRefiner refiner = {};
 
-    static Radio* New(Ctx* cx, Str id);
     Radio* Child(El* child);
-    Radio* Label(Str s);
-    // Set the name a screen reader announces, when the visible label is not
-    // it. A radio's name comes from its Label by default; setting this
-    // replaces the announced name without changing what is displayed.
-    Radio* AccessibilityLabel(Str s);
-    Radio* Hint(Str s);
-    Radio* Tooltip(Str s);
-    Radio* TooltipShowDelay(int ms);
-    Radio* Checked(bool v);
-    Radio* Disabled(bool v);
-    Radio* WithSize(UiSize s);
-    // FocusableExt::focus_ring: no focus appearance on this control.
-    Radio* FocusRing(bool v);
-    Radio* TabIndex(int v);
-    Radio* TabStop(bool v);
-    Radio* OnClick(Listener fn);
-    // Semantic controlled-value spelling. OnClick is the compatibility
-    // alias; both replace the same callback.
-    Radio* OnChange(Listener fn);
     El* IntoEl();
 };
 

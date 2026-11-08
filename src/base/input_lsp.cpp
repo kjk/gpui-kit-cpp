@@ -1,6 +1,7 @@
 /* crates/base/src/input/editor/lsp provider and overlay facades. */
 
 #include "base/input_lsp.h"
+#include "base/text_boundary.h"
 
 namespace gpui {
 
@@ -249,43 +250,10 @@ int Lsp::SemanticTokensForRange(Selection visible,
     return total;
 }
 
-// chars_eq_ignore_case. Equality, then ASCII case, then a 1:1 lowercase.
-// Rust's `char::to_lowercase` also covers the rest of Unicode. Mappings
-// that expand (U+0130 İ) are not a single-code-point equality there either
-// unless both sides expand the same way; those stay unmatched here.
-static uint32_t CompletionLower(uint32_t c) {
-    if (c >= 'A' && c <= 'Z') {
-        return c + 0x20;
-    }
-    if ((c >= 0x00c0 && c <= 0x00d6) || (c >= 0x00d8 && c <= 0x00de)) {
-        return c + 0x20;
-    }
-    if (c >= 0x0100 && c <= 0x012f && (c & 1) == 0) {
-        return c + 1;
-    }
-    if (c >= 0x0132 && c <= 0x0137 && (c & 1) == 0) {
-        return c + 1;
-    }
-    if (c >= 0x014a && c <= 0x0177 && (c & 1) == 0) {
-        return c + 1;
-    }
-    if (c >= 0x0391 && c <= 0x03a1) {
-        return c + 0x20;
-    }
-    if (c >= 0x03a3 && c <= 0x03ab) {
-        return c + 0x20;
-    }
-    if (c >= 0x0410 && c <= 0x042f) {
-        return c + 0x20;
-    }
-    if (c >= 0x0400 && c <= 0x040f) {
-        return c + 0x50;
-    }
-    if (c >= 0x0531 && c <= 0x0556) {
-        return c + 0x30;
-    }
-    return c;
-}
+// chars_eq_ignore_case. Equality, then ASCII case, then a 1:1 lowercase
+// (CharLowerSimple). Mappings that expand (U+0130 İ) are not a
+// single-code-point equality in Rust either unless both sides expand the same
+// way; those stay unmatched here.
 
 static bool CharsEqIgnoreCase(uint32_t left, uint32_t right) {
     if (left == right) {
@@ -302,57 +270,19 @@ static bool CharsEqIgnoreCase(uint32_t left, uint32_t right) {
     if (al < 0x80 && ar < 0x80 && al == ar) {
         return true;
     }
-    return CompletionLower(left) == CompletionLower(right);
+    return CharLowerSimple(left) == CharLowerSimple(right);
 }
 
 static int Utf8Next(Str s, int i, uint32_t* cp) {
     if (i < 0 || i >= len(s) || !s.s) {
         return 0;
     }
-    unsigned char c = (unsigned char)s.s[i];
-    int n = 1;
-    uint32_t v = c;
-    if (c < 0x80) {
-        *cp = c;
-        return 1;
-    }
-    if ((c & 0xE0) == 0xC0) {
-        n = 2;
-        v = c & 0x1F;
-    } else if ((c & 0xF0) == 0xE0) {
-        n = 3;
-        v = c & 0x0F;
-    } else if ((c & 0xF8) == 0xF0) {
-        n = 4;
-        v = c & 0x07;
-    } else {
+    // A byte that is not valid UTF-8 there is one U+FFFD.
+    int n = Utf8At(s, i, cp);
+    if (n == 1 && *cp >= 0x80) {
         *cp = 0xFFFD;
-        return 1;
     }
-    if (i + n > len(s)) {
-        *cp = 0xFFFD;
-        return 1;
-    }
-    for (int k = 1; k < n; k++) {
-        unsigned char cc = (unsigned char)s.s[i + k];
-        if ((cc & 0xC0) != 0x80) {
-            *cp = 0xFFFD;
-            return 1;
-        }
-        v = (v << 6) | (cc & 0x3F);
-    }
-    *cp = v;
     return n;
-}
-
-static bool Utf8Boundary(Str s, int index) {
-    if (index < 0 || index > len(s)) {
-        return false;
-    }
-    if (index == 0 || index == len(s)) {
-        return true;
-    }
-    return ((unsigned char)s.s[index] & 0xC0) != 0x80;
 }
 
 // str::floor_char_boundary.
@@ -363,7 +293,7 @@ static int FloorCharBoundary(Str s, int index) {
     if (index > len(s)) {
         index = len(s);
     }
-    while (index > 0 && !Utf8Boundary(s, index)) {
+    while (index > 0 && !Utf8IsCharBoundary(s, index)) {
         index--;
     }
     return index;
@@ -525,8 +455,8 @@ int RetainHighlightRanges(Str label, const ByteRange* ranges, int n,
     for (int i = 0; i < n; i++) {
         const ByteRange& range = ranges[i];
         if (range.start < range.end && range.end <= len(label) &&
-            Utf8Boundary(label, range.start) &&
-            Utf8Boundary(label, range.end)) {
+            Utf8IsCharBoundary(label, range.start) &&
+            Utf8IsCharBoundary(label, range.end)) {
             VecAppend(kept, range);
         }
     }

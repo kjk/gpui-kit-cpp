@@ -1,5 +1,8 @@
 #include "shell/process.h"
 
+#include "shell/error.h"
+#include "sys/clock.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -19,23 +22,9 @@ extern "C" char** environ;
 
 namespace gpui::shell {
 
-constexpr int kProcessStreamLimit = 8 * 1024 * 1024;
-
-static void ProcessError(Str* error, Str message) {
-    if (!error) return;
-    StrFree(*error);
-    *error = StrDup(message);
-}
-
 // A child deadline is wall time. TimeNow() is the frame clock, and the
 // test platform replaces it, so a timeout would never arrive while a
 // test holds that clock still.
-static double WallSeconds() {
-    struct timespec now;
-    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
-    return (double)now.tv_sec + (double)now.tv_nsec / 1000000000.0;
-}
-
 static bool HasSlash(Str command) {
     for (int i = 0; i < len(command); i++) {
         if (command.s[i] == '/') return true;
@@ -46,14 +35,14 @@ static bool HasSlash(Str command) {
 static Str ResolveExecutable(Str command, Str* error) {
     if (HasSlash(command)) {
         if (access(command.s, X_OK) == 0) return StrDup(command);
-        ProcessError(error, fmt("running `%s` failed: executable was not found",
-                                command));
+        ErrorOutSet(error, fmt("running `%s` failed: executable was not found",
+                               command));
         return {};
     }
     const char* path = getenv("PATH");
     if (!path) {
-        ProcessError(error,
-                     fmt("running `%s` failed: PATH is not set", command));
+        ErrorOutSet(error,
+                    fmt("running `%s` failed: PATH is not set", command));
         return {};
     }
     const char* at = path;
@@ -66,10 +55,16 @@ static Str ResolveExecutable(Str command, Str* error) {
         if (!end) break;
         at = end + 1;
     }
-    ProcessError(
+    ErrorOutSet(
         error,
         fmt("running `%s` failed: executable was not found on PATH", command));
     return {};
+}
+
+// In a forked child: stdin reads end of file, as Rust's Stdio::null gives.
+static void StdinFromDevNull() {
+    int nullFd = open("/dev/null", O_RDONLY);
+    if (nullFd >= 0) dup2(nullFd, STDIN_FILENO);
 }
 
 static bool DrainFd(int fd, StrBuilder* out, bool* closed, Str* error,
@@ -78,11 +73,8 @@ static bool DrainFd(int fd, StrBuilder* out, bool* closed, Str* error,
     for (;;) {
         ssize_t n = read(fd, bytes, sizeof(bytes));
         if (n > 0) {
-            if (out->len > kProcessStreamLimit - (int)n) {
-                ProcessError(error, fmt("child %s exceeded 8 MiB", Str(name)));
+            if (!ProcessCaptureAppend(out, bytes, (int)n, error, name))
                 return false;
-            }
-            out->Append(Str(bytes, (int)n));
             continue;
         }
         if (n == 0) {
@@ -92,7 +84,7 @@ static bool DrainFd(int fd, StrBuilder* out, bool* closed, Str* error,
         }
         if (errno == EAGAIN || errno == EWOULDBLOCK) return true;
         if (errno == EINTR) continue;
-        ProcessError(error, fmt("reading child %s failed", Str(name)));
+        ErrorOutSet(error, fmt("reading child %s failed", Str(name)));
         return false;
     }
 }
@@ -101,10 +93,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
                        ProcessCancellation* cancellation, ProcessOutput* output,
                        Str* error, const ProcessOptions* options) {
     if (output) output->Free();
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     Str executable = ResolveExecutable(command, error);
     if (!executable) return false;
     int outPipe[2] = {-1, -1};
@@ -114,7 +103,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
             close(outPipe[0]);
             close(outPipe[1]);
         }
-        ProcessError(error, StrL("creating child-process pipes failed"));
+        ErrorOutSet(error, StrL("creating child-process pipes failed"));
         StrFree(executable);
         return false;
     }
@@ -141,8 +130,7 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         }
         dup2(outPipe[1], STDOUT_FILENO);
         dup2(errPipe[1], STDERR_FILENO);
-        int nullFd = open("/dev/null", O_RDONLY);
-        if (nullFd >= 0) dup2(nullFd, STDIN_FILENO);
+        StdinFromDevNull();
         close(outPipe[0]);
         close(outPipe[1]);
         close(errPipe[0]);
@@ -158,52 +146,37 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     if (pid < 0) {
         close(outPipe[0]);
         close(errPipe[0]);
-        ProcessError(error, fmt("running `%s` failed", command));
+        ErrorOutSet(error, fmt("running `%s` failed", command));
         return false;
     }
     fcntl(outPipe[0], F_SETFL, fcntl(outPipe[0], F_GETFL) | O_NONBLOCK);
     fcntl(errPipe[0], F_SETFL, fcntl(errPipe[0], F_GETFL) | O_NONBLOCK);
     StrBuilder stdoutText, stderrText;
-    bool stdoutClosed = false, stderrClosed = false, done = false, ok = true;
+    bool closed[2] = {false, false};
+    bool done = false;
     int status = 0;
-    double started = WallSeconds();
-    double timeoutSeconds = (options && options->timeoutSeconds > 0)
-                                ? options->timeoutSeconds
-                                : 30.0;
-    int timeoutMs = (int)(timeoutSeconds * 1000.0 + 0.5);
-    while (!done || !stdoutClosed || !stderrClosed) {
-        if (!stdoutClosed)
-            ok = DrainFd(outPipe[0], &stdoutText, &stdoutClosed, error,
-                         "stdout");
-        if (ok && !stderrClosed)
-            ok = DrainFd(errPipe[0], &stderrText, &stderrClosed, error,
-                         "stderr");
-        bool cancelled = cancellation && cancellation->IsCancelled();
-        if (!ok || cancelled || WallSeconds() - started >= timeoutSeconds) {
-            if (ok && cancelled) {
-                ProcessError(error, fmt("`%s` was cancelled", command));
-            } else if (ok) {
-                ProcessError(error, fmt("`%s` timed out after %d ms", command,
-                                        timeoutMs));
-            }
+    int pipes[2] = {outPipe[0], errPipe[0]};
+    bool ok = ProcessBoundedPump(
+        command, options, cancellation, error, &stdoutText, &stderrText, closed,
+        &done,
+        [&](int stream, StrBuilder* text, bool* isClosed, const char* name) {
+            return DrainFd(pipes[stream], text, isClosed, error, name);
+        },
+        [&]() {
             kill(-pid, SIGKILL);
             waitpid(pid, &status, 0);
             done = true;
-            ok = false;
-            break;
-        }
-        if (!done) {
+        },
+        [&]() -> int {
             pid_t waited = waitpid(pid, &status, WNOHANG);
-            if (waited == pid)
-                done = true;
-            else if (waited < 0 && errno != EINTR) {
-                ProcessError(error, fmt("waiting for `%s` failed", command));
-                ok = false;
-                break;
+            if (waited == pid) return 1;
+            if (waited < 0 && errno != EINTR) {
+                ErrorOutSet(error, fmt("waiting for `%s` failed", command));
+                return -1;
             }
-        }
-        if (!done || !stdoutClosed || !stderrClosed) PlatSleepMs(5);
-    }
+            return 0;
+        });
+    bool stdoutClosed = closed[0], stderrClosed = closed[1];
     if (!stdoutClosed) close(outPipe[0]);
     if (!stderrClosed) close(errPipe[0]);
     if (!ok) {
@@ -224,14 +197,9 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
 // A streaming child. The waiter joins the readers before it publishes Exit.
 static char* kEmptyEnv[] = {nullptr};
 
-struct ProcessStream {
-    ProcessEventBox box;
-    Str command;
-    Str cwd;
+struct ProcessStream : ProcessStreamCore {
     Vec<Str> owned;
     char** argv = nullptr;
-    double timeoutSeconds = 0;
-    uint32_t pid = 0;
     pid_t child = -1;
     int outFd = -1;
     int errFd = -1;
@@ -244,8 +212,6 @@ struct ProcessStream {
     bool haveReaderErr = false;
     bool haveWaiter = false;
     bool haveStdin = false;
-    ProcessDecodeState outDecode;
-    ProcessDecodeState errDecode;
 };
 
 struct PosixReader {
@@ -254,10 +220,6 @@ struct PosixReader {
     ProcessDecodeState* decode = nullptr;
     ProcessStreamEvent::Kind kind = ProcessStreamEvent::Kind::Out;
 };
-
-static int TimeoutMilliseconds(double seconds) {
-    return (int)(seconds * 1000.0 + 0.5);
-}
 
 static Str SignalName(int signal) {
     switch (signal) {
@@ -319,42 +281,32 @@ static void* PosixReaderMain(void* param) {
     return nullptr;
 }
 
+static int PosixStdinWrite(void* ctx, const char* bytes, int count) {
+    ProcessStream* stream = (ProcessStream*)ctx;
+    for (;;) {
+        ssize_t wrote = write(stream->inFd, bytes, (size_t)count);
+        if (wrote >= 0) return (int)wrote;
+        if (errno != EINTR) return -1;
+    }
+}
+
+// Joins a stream thread once, if it was started.
+static void JoinThread(pthread_t* thread, bool* started) {
+    if (!*started) return;
+    pthread_join(*thread, nullptr);
+    *started = false;
+}
+
 static void* PosixStdinMain(void* param) {
     ProcessStream* stream = (ProcessStream*)param;
-    for (;;) {
-        Vec<char> bytes;
-        bool ended = false;
-        if (!ProcessStdinTake(&stream->box, &bytes, &ended)) break;
-        int offset = 0;
-        bool ok = true;
-        while (offset < bytes.len) {
-            ssize_t wrote = write(stream->inFd, bytes.els + offset,
-                                  (size_t)(bytes.len - offset));
-            if (wrote < 0) {
-                if (errno == EINTR) continue;
-                ok = false;
-                break;
-            }
-            if (wrote == 0) {
-                ok = false;
-                break;
-            }
-            offset += (int)wrote;
-        }
-        VecReset(bytes);
-        if (!ok) {
-            ProcessStdinFail(&stream->box);
-            break;
-        }
-        if (ended) break;
-    }
+    ProcessStdinPump(&stream->box, PosixStdinWrite, stream);
     CloseFd(&stream->inFd);
     return nullptr;
 }
 
 static void* PosixWaiterMain(void* param) {
     ProcessStream* stream = (ProcessStream*)param;
-    double started = WallSeconds();
+    double started = ClockMonotonicSecondsSinceStart();
     int status = 0;
     bool waitFailed = false;
     for (;;) {
@@ -368,27 +320,18 @@ static void* PosixWaiterMain(void* param) {
             break;
         }
         if (stream->timeoutSeconds > 0 &&
-            WallSeconds() - started >= stream->timeoutSeconds) {
-            ProcessEventSetReason(
-                &stream->box,
-                StrDup(fmt("`%s` timed out after %d ms", stream->command,
-                           TimeoutMilliseconds(stream->timeoutSeconds))));
+            ClockMonotonicSecondsSinceStart() - started >=
+                stream->timeoutSeconds) {
+            ProcessStreamCoreTimedOut(stream);
             if (stream->child > 0) kill(-stream->child, SIGKILL);
         }
         PlatSleepMs(20);
     }
     if (stream->child > 0) kill(-stream->child, SIGKILL);
     ProcessEventMarkReaped(&stream->box);
-    if (stream->haveReaderOut) {
-        pthread_join(stream->readerOut, nullptr);
-        stream->haveReaderOut = false;
-    }
-    if (stream->haveReaderErr) {
-        pthread_join(stream->readerErr, nullptr);
-        stream->haveReaderErr = false;
-    }
+    JoinThread(&stream->readerOut, &stream->haveReaderOut);
+    JoinThread(&stream->readerErr, &stream->haveReaderErr);
     ProcessStreamEvent event;
-    event.kind = ProcessStreamEvent::Kind::Exit;
     if (!waitFailed) {
         if (WIFSIGNALED(status)) {
             event.signal = SignalName(WTERMSIG(status));
@@ -397,12 +340,7 @@ static void* PosixWaiterMain(void* param) {
             event.code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
         }
     }
-    Str reason = ProcessEventTakeReason(&stream->box);
-    if (reason) {
-        event.hasError = true;
-        event.text = reason;
-    }
-    ProcessEventPush(&stream->box, event);
+    ProcessEventPushExit(&stream->box, event);
     return nullptr;
 }
 
@@ -428,22 +366,10 @@ static void ReleaseStream(ProcessStream* stream) {
         kill(-stream->child, SIGKILL);
     }
     ProcessStdinStop(&stream->box);
-    if (stream->haveWaiter) {
-        pthread_join(stream->waiter, nullptr);
-        stream->haveWaiter = false;
-    }
-    if (stream->haveReaderOut) {
-        pthread_join(stream->readerOut, nullptr);
-        stream->haveReaderOut = false;
-    }
-    if (stream->haveReaderErr) {
-        pthread_join(stream->readerErr, nullptr);
-        stream->haveReaderErr = false;
-    }
-    if (stream->haveStdin) {
-        pthread_join(stream->stdinThread, nullptr);
-        stream->haveStdin = false;
-    }
+    JoinThread(&stream->waiter, &stream->haveWaiter);
+    JoinThread(&stream->readerOut, &stream->haveReaderOut);
+    JoinThread(&stream->readerErr, &stream->haveReaderErr);
+    JoinThread(&stream->stdinThread, &stream->haveStdin);
     if (stream->child > 0 && !ProcessEventReaped(&stream->box)) {
         int status = 0;
         while (waitpid(stream->child, &status, 0) < 0 && errno == EINTR) {
@@ -452,14 +378,9 @@ static void ReleaseStream(ProcessStream* stream) {
     CloseFd(&stream->outFd);
     CloseFd(&stream->errFd);
     CloseFd(&stream->inFd);
-    ProcessDecodeFree(&stream->outDecode);
-    ProcessDecodeFree(&stream->errDecode);
-    ProcessEventBoxFree(&stream->box);
-    for (int i = 0; i < len(stream->owned); i++) StrFree(stream->owned[i]);
-    VecReset(stream->owned);
+    ProcessStreamCoreFree(stream);
+    StrVecFree(&stream->owned);
     Free(nullptr, stream->argv);
-    StrFree(stream->command);
-    StrFree(stream->cwd);
     delete stream;
 }
 
@@ -467,21 +388,12 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
                         const ProcessSpawnOptions* options, ProcessStream** out,
                         Str* error) {
     if (out) *out = nullptr;
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     Str executable = ResolveExecutable(command, error);
     if (!executable) return false;
     ProcessStream* stream = new ProcessStream();
     bool stdinPipe = options && options->stdinPipe;
-    ProcessEventBoxInit(&stream->box, stdinPipe);
-    stream->command = StrDup(command);
-    stream->timeoutSeconds = options ? options->timeoutSeconds : 0;
-    if (options && options->cwd) stream->cwd = StrDup(options->cwd);
-    bool lines = options && options->lines;
-    ProcessDecodeInit(&stream->outDecode, lines);
-    ProcessDecodeInit(&stream->errDecode, lines);
+    ProcessStreamCoreInit(stream, command, options);
     VecAppend(stream->owned, executable);
     for (int i = 0; i < count; i++) VecAppend(stream->owned, StrDup(args[i]));
     stream->argv = AllocArray<char*>(len(stream->owned) + 1);
@@ -499,7 +411,7 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
         CloseFd(&errPipe[1]);
         CloseFd(&inPipe[0]);
         CloseFd(&inPipe[1]);
-        ProcessError(error, StrL("creating child-process pipes failed"));
+        ErrorOutSet(error, StrL("creating child-process pipes failed"));
         ReleaseStream(stream);
         return false;
     }
@@ -512,8 +424,7 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
         if (stdinPipe) {
             dup2(inPipe[0], STDIN_FILENO);
         } else {
-            int nullFd = open("/dev/null", O_RDONLY);
-            if (nullFd >= 0) dup2(nullFd, STDIN_FILENO);
+            StdinFromDevNull();
         }
         close(outPipe[0]);
         close(outPipe[1]);
@@ -531,7 +442,7 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
         close(outPipe[0]);
         close(errPipe[0]);
         if (inPipe[1] >= 0) close(inPipe[1]);
-        ProcessError(error, fmt("running `%s` failed", command));
+        ErrorOutSet(error, fmt("running `%s` failed", command));
         ReleaseStream(stream);
         return false;
     }
@@ -562,32 +473,12 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
                                    stream) == 0;
         if (threadsOk) stream->haveWaiter = true;
     }
-    if (!threadsOk) {
-        ProcessError(error, fmt("running `%s` failed: a stream thread could "
-                                "not be started",
-                                command));
-        ReleaseStream(stream);
-        return false;
-    }
-    if (out) *out = stream;
-    return true;
+    if (!threadsOk) ProcessStreamThreadsFailed(command, error);
+    return ProcessStreamStarted(stream, threadsOk, out);
 }
 
-uint32_t ProcessStreamPid(const ProcessStream* stream) {
-    return stream ? stream->pid : 0;
-}
-
-void ProcessStreamPoll(ProcessStream* stream, Vec<ProcessStreamEvent>* out) {
-    if (stream) ProcessEventTake(&stream->box, out);
-}
-
-bool ProcessStreamWrite(ProcessStream* stream, Str text, Str* error) {
-    if (!stream) return false;
-    return ProcessStdinEnqueue(&stream->box, text, error);
-}
-
-void ProcessStreamEnd(ProcessStream* stream) {
-    if (stream) ProcessStdinEnd(&stream->box);
+ProcessStreamCore* ProcessStreamCoreOf(ProcessStream* stream) {
+    return stream;
 }
 
 void ProcessStreamKill(ProcessStream* stream) {

@@ -23,6 +23,7 @@
      Pango and DirectWrite on everything Latin. */
 
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/scene.h"
 
 #include <emscripten/emscripten.h>
@@ -30,29 +31,8 @@
 
 namespace gpui {
 
-static uint64_t gNextPaintResourceGeneration = 1;
 static bool gOffscreenWasRecording = false;
 static bool gNoSceneBegin = false;
-
-static bool SceneFinish(PaintCtx* ctx) {
-    if (!SceneOn() || !scene::Recording()) {
-        return true;
-    }
-    Bounds damage = {};
-    bool draw = scene::FrameEnd(ctx, &damage);
-    if (draw) {
-        scene::Replay(ctx, &damage);
-    }
-    return draw;
-}
-
-static uint64_t PaintResourceGenerationNew() {
-    uint64_t id = gNextPaintResourceGeneration++;
-    if (id == 0) {
-        id = gNextPaintResourceGeneration++;
-    }
-    return id;
-}
 
 // ─── the JavaScript half ──────────────────────────────────────────────────
 //
@@ -125,21 +105,43 @@ EM_JS(void, GpJsInit, (), {
         }
         return G.dec.decode(HEAPU8.subarray(ptr, ptr + len));
     };
+    // How many UTF-8 bytes the UTF-16 unit `c` starts: a high surrogate
+    // starts a 4-byte character and takes the low one after it with it.
+    G.u8w = function(c) {
+        return c < 0x80 ? 1 : c < 0x800 ? 2 : c >= 0xd800 && c < 0xdc00 ? 4 : 3;
+    };
+    // A linear gradient from colour `from` at (x0, y0) to `to` at (x1, y1).
+    G.gradient = function(c, x0, y0, x1, y1, from, to) {
+        const g = c.createLinearGradient(x0, y0, x1, y1);
+        g.addColorStop(0, G.color(from));
+        g.addColorStop(1, G.color(to));
+        return g;
+    };
+    // Stroke path `p` (the current path when it is null) with `style`, round
+    // caps and joins or butt and miter ones, and leave the context's caps
+    // and joins at their defaults again.
+    G.strokeWith = function(c, p, style, stroke, roundCaps) {
+        c.strokeStyle = style;
+        c.lineWidth = stroke;
+        c.lineCap = roundCaps ? "round" : "butt";
+        c.lineJoin = roundCaps ? "round" : "miter";
+        if (p) {
+            c.stroke(p);
+        } else {
+            c.stroke();
+        }
+        c.lineCap = "butt";
+        c.lineJoin = "miter";
+    };
     // The UTF-8 length of a JavaScript string, which is the unit every offset
     // crossing this boundary is measured in: Str carries UTF-8 bytes.
     G.u8len = function(s) {
         let n = 0;
         for (let i = 0; i < s.length; i++) {
-            const c = s.charCodeAt(i);
-            if (c < 0x80) {
-                n += 1;
-            } else if (c < 0x800) {
-                n += 2;
-            } else if (c >= 0xd800 && c < 0xdc00) {
-                n += 4;
+            const w = G.u8w(s.charCodeAt(i));
+            n += w;
+            if (w === 4) {
                 i++;
-            } else {
-                n += 3;
             }
         }
         return n;
@@ -151,16 +153,10 @@ EM_JS(void, GpJsInit, (), {
             if (n >= bytes) {
                 return i;
             }
-            const c = s.charCodeAt(i);
-            if (c < 0x80) {
-                n += 1;
-            } else if (c < 0x800) {
-                n += 2;
-            } else if (c >= 0xd800 && c < 0xdc00) {
-                n += 4;
+            const w = G.u8w(s.charCodeAt(i));
+            n += w;
+            if (w === 4) {
                 i++;
-            } else {
-                n += 3;
             }
         }
         return s.length;
@@ -417,20 +413,15 @@ EM_JS(void, GpJsFill, (int color), {
 // measures it; canvas measures in user units, so it is multiplied out here.
 EM_JS(void, GpJsStroke,
       (float stroke, int color, float dashOn, float dashOff, int roundCaps), {
-    const c = globalThis.__gpui.cur;
-    c.strokeStyle = globalThis.__gpui.color(color);
-    c.lineWidth = stroke;
-    c.lineCap = roundCaps ? "round" : "butt";
-    c.lineJoin = roundCaps ? "round" : "miter";
+    const G = globalThis.__gpui;
+    const c = G.cur;
     if (dashOn > 0 || dashOff > 0) {
         c.setLineDash([dashOn * stroke, dashOff * stroke]);
     }
-    c.stroke();
+    G.strokeWith(c, null, G.color(color), stroke, roundCaps);
     if (dashOn > 0 || dashOff > 0) {
         c.setLineDash([]);
     }
-    c.lineCap = "butt";
-    c.lineJoin = "miter";
 });
 
 EM_JS(void, GpJsLine,
@@ -528,10 +519,7 @@ EM_JS(void, GpJsPathFillGradient,
     }
     c.save();
     c.translate(dx, dy);
-    const g = c.createLinearGradient(x0, y0, x1, y1);
-    g.addColorStop(0, G.color(from));
-    g.addColorStop(1, G.color(to));
-    c.fillStyle = g;
+    c.fillStyle = G.gradient(c, x0, y0, x1, y1, from, to);
     c.fill(e.p, e.winding ? "nonzero" : "evenodd");
     c.restore();
 });
@@ -545,13 +533,7 @@ EM_JS(void, GpJsPathStroke,
     }
     c.save();
     c.translate(dx, dy);
-    c.strokeStyle = G.color(color);
-    c.lineWidth = stroke;
-    c.lineCap = roundCaps ? "round" : "butt";
-    c.lineJoin = roundCaps ? "round" : "miter";
-    c.stroke(e.p);
-    c.lineCap = "butt";
-    c.lineJoin = "miter";
+    G.strokeWith(c, e.p, G.color(color), stroke, roundCaps);
     c.restore();
 });
 
@@ -565,16 +547,8 @@ EM_JS(void, GpJsPathStrokeGradient,
     }
     c.save();
     c.translate(dx, dy);
-    const g = c.createLinearGradient(x0, y0, x1, y1);
-    g.addColorStop(0, G.color(from));
-    g.addColorStop(1, G.color(to));
-    c.strokeStyle = g;
-    c.lineWidth = stroke;
-    c.lineCap = roundCaps ? "round" : "butt";
-    c.lineJoin = roundCaps ? "round" : "miter";
-    c.stroke(e.p);
-    c.lineCap = "butt";
-    c.lineJoin = "miter";
+    G.strokeWith(c, e.p, G.gradient(c, x0, y0, x1, y1, from, to), stroke,
+                 roundCaps);
     c.restore();
 });
 
@@ -732,9 +706,11 @@ EM_JS(int, GpJsImageFrameCount, (int id), {
     return e && e.animated ? 2 : (e ? 1 : 0);
 });
 
+// Clips to the path GpJsRoundPath just built: a canvas path is not part of
+// the state save() keeps, so it survives into this call.
 EM_JS(void, GpJsImageDraw,
-      (int id, float x, float y, float w, float h, float imageX, float imageY,
-       float imageW, float imageH, float alpha, float r, int grayscale), {
+      (int id, float imageX, float imageY, float imageW, float imageH,
+       float alpha, int grayscale), {
     const G = globalThis.__gpui;
     const c = G.cur, e = G.images[id];
     if (!c || !e || e.w <= 0 || e.h <= 0) {
@@ -745,20 +721,7 @@ EM_JS(void, GpJsImageDraw,
     if (grayscale) {
         c.filter = "grayscale(1)";
     }
-    if (r > 0) {
-        c.beginPath();
-        c.moveTo(x + r, y);
-        c.arcTo(x + w, y, x + w, y + h, r);
-        c.arcTo(x + w, y + h, x, y + h, r);
-        c.arcTo(x, y + h, x, y, r);
-        c.arcTo(x, y, x + w, y, r);
-        c.closePath();
-        c.clip();
-    } else {
-        c.beginPath();
-        c.rect(x, y, w, h);
-        c.clip();
-    }
+    c.clip();
     if (!e.img) {
         c.restore();
         return;
@@ -1089,26 +1052,19 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
-const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
-    (void)pa;
+void PaintListInstalledFonts(PaintApp* pa, Vec<Str>* out) {
     // WebTextSystem starts with an empty font database and only sees fonts
     // the application adds, usually after init.
-    if (n) {
-        *n = 0;
-    }
-    return nullptr;
+    (void)pa;
+    (void)out;
 }
 
 Str PaintSystemUIFontMappedFamily() {
     return {};
 }
 
-void PaintTargetFree(PaintCtx* ctx) {
-    if (!ctx || !ctx->rt) {
-        return;
-    }
-    delete ctx->rt;
-    ctx->rt = nullptr;
+void PaintTargetDestroy(PaintTarget* rt) {
+    delete rt;
 }
 
 bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
@@ -1157,7 +1113,7 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
 }
 
 bool PaintTargetEnd(PaintCtx* ctx) {
-    SceneFinish(ctx);
+    PaintSceneFinish(ctx, false);
     if (!ctx || !ctx->rt) {
         return false;
     }
@@ -1168,34 +1124,23 @@ bool PaintTargetEnd(PaintCtx* ctx) {
 
 // ─── canvas ───────────────────────────────────────────────────────────────
 
-void CanvasClear(PaintCtx* ctx, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecClear(ctx, c);
-        return;
-    }
+void PaintBackendCanvasClear(PaintCtx* ctx, Rgba c) {
     if (!ctx || !ctx->rt) {
         return;
     }
     GpJsClear((int)Packed(ctx, c));
 }
 
-void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRect(ctx, x, y, w, h, c);
-        return;
-    }
+void PaintBackendCanvasFillRect(PaintCtx* ctx, float x, float y, float w,
+                                float h, Rgba c) {
     if (!ctx || !ctx->rt || w <= 0 || h <= 0 || c.a == 0) {
         return;
     }
     GpJsFillRect(x, y, w, h, (int)Packed(ctx, c));
 }
 
-void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
-                     Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRound(ctx, x, y, w, h, r, c);
-        return;
-    }
+void PaintBackendCanvasFillRound(PaintCtx* ctx, float x, float y, float w,
+                                 float h, float r, Rgba c) {
     if (!ctx || !ctx->rt || w <= 0 || h <= 0 || c.a == 0) {
         return;
     }
@@ -1203,12 +1148,9 @@ void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
     GpJsFill((int)Packed(ctx, c));
 }
 
-void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
-                       float r, float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecStrokeRound(ctx, x, y, w, h, r, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasStrokeRound(PaintCtx* ctx, float x, float y, float w,
+                                   float h, float r, float stroke, Rgba c,
+                                   const float* dash) {
     if (!ctx || !ctx->rt || stroke <= 0 || w <= 0 || h <= 0) {
         return;
     }
@@ -1219,12 +1161,8 @@ void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
                dash ? dash[1] : 0, 0);
 }
 
-void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
-                float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecLine(ctx, x1, y1, x2, y2, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasLine(PaintCtx* ctx, float x1, float y1, float x2,
+                            float y2, float stroke, Rgba c, const float* dash) {
     if (!ctx || !ctx->rt) {
         return;
     }
@@ -1233,12 +1171,8 @@ void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
                dash ? dash[1] : 0, 0);
 }
 
-void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
-                   float stroke, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecEllipse(ctx, cx, cy, rx, ry, stroke, c);
-        return;
-    }
+void PaintBackendCanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx,
+                               float ry, float stroke, Rgba c) {
     if (!ctx || !ctx->rt || rx <= 0 || ry <= 0) {
         return;
     }
@@ -1250,30 +1184,14 @@ void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
     }
 }
 
-bool CanvasScrollRect(PaintCtx*, float, float, float, float, float, float) {
-    return false;
-}
-
-bool CanvasReadPixels(PaintCtx*, float, float, float, float, uint8_t*, int,
-                      int*, int*) {
-    return false;
-}
-
-void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
-    if (scene::Recording()) {
-        scene::RecPushClip(ctx, x, y, w, h);
-        return;
-    }
+void PaintBackendCanvasPushClip(PaintCtx* ctx, float x, float y, float w,
+                                float h) {
     if (ctx && ctx->rt) {
         GpJsPushClip(x, y, w, h);
     }
 }
 
-void CanvasPopClip(PaintCtx* ctx) {
-    if (scene::Recording()) {
-        scene::RecPopClip(ctx);
-        return;
-    }
+void PaintBackendCanvasPopClip(PaintCtx* ctx) {
     if (ctx && ctx->rt) {
         GpJsPopClip();
     }
@@ -1294,9 +1212,8 @@ enum PathCmd {
 };
 
 struct Path {
+    PathHead head;
     Vec<float> ops;
-    bool winding = true;
-    bool fig = false;
     // The Path2D built from `ops`, or 0 while there is none.
     int js = 0;
 };
@@ -1317,23 +1234,11 @@ static void Push(Path* p, float cmd, float a = 0, float b = 0, float c = 0,
     }
 }
 
-Path* PathNew(PaintCtx* ctx, bool winding) {
-    if (scene::Recording()) {
-        return scene::RecPathNew(ctx, winding);
-    }
-    if (!ctx) {
-        return nullptr;
-    }
-    auto* p = new Path();
-    p->winding = winding;
-    return p;
+Path* PathAlloc() {
+    return new Path();
 }
 
-void PathFree(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathFree(p);
-        return;
-    }
+void PathDestroy(Path* p) {
     if (!p) {
         return;
     }
@@ -1343,72 +1248,26 @@ void PathFree(Path* p) {
     delete p;
 }
 
-void PathMoveTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathMoveTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+void PathEmitMove(Path* p, float x, float y) {
     Push(p, kPathMove, x, y);
-    p->fig = true;
 }
 
-void PathLineTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathLineTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitLine(Path* p, float x, float y) {
     Push(p, kPathLine, x, y);
 }
 
-void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
-                 float y) {
-    if (scene::Recording()) {
-        scene::RecPathCubicTo(p, x1, y1, x2, y2, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitCubic(Path* p, float x1, float y1, float x2, float y2, float x,
+                   float y) {
     Push(p, kPathCubic, x1, y1, x2, y2, x, y);
 }
 
-void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
-               bool clockwise) {
-    if (scene::Recording()) {
-        scene::RecPathArcTo(p, cx, cy, r, a0, a1, clockwise);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+void PathEmitArc(Path* p, float cx, float cy, float r, float a0, float a1,
+                 bool clockwise) {
     Push(p, kPathArc, cx, cy, r, a0, a1, 0, clockwise ? 1.f : 0.f);
-    p->fig = true;
 }
 
-void PathClose(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathClose(p);
-        return;
-    }
-    if (!p || !p->fig) {
-        return;
-    }
+void PathEmitClose(Path* p) {
     Push(p, kPathClose);
-    p->fig = false;
 }
 
 static int JsPath(Path* p) {
@@ -1416,23 +1275,13 @@ static int JsPath(Path* p) {
         return 0;
     }
     if (!p->js) {
-        p->js = GpJsPathBuild(p->ops.els, p->ops.len / 8, p->winding ? 1 : 0);
+        p->js =
+            GpJsPathBuild(p->ops.els, p->ops.len / 8, p->head.winding ? 1 : 0);
     }
     return p->js;
 }
 
-// Nothing to cache: this backend hands the path to Canvas2D, which owns
-// whatever it wants to keep about it.
-void PathRealize(PaintCtx* ctx, Path* p) {
-    (void)ctx;
-    (void)p;
-}
-
-void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFill(ctx, p, c);
-        return;
-    }
+void PaintBackendPathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
     // No canvas bound, no Path2D: a headless frame (WindowDrawFrameHeadless)
     // has nothing to draw into, and Node has no Path2D to build one with.
     if (!ctx || !ctx->rt) {
@@ -1450,12 +1299,9 @@ void PathFillGradientV(PaintCtx* ctx, Path* p, float y0, float y1, Rgba top,
     PathFillGradient(ctx, p, 0, y0, 0, y1, top, bot);
 }
 
-void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
-                      float y1, Rgba from, Rgba to, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
-        return;
-    }
+void PaintBackendPathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0,
+                                  float x1, float y1, Rgba from, Rgba to,
+                                  float dx, float dy) {
     // No canvas bound, no Path2D: a headless frame (WindowDrawFrameHeadless)
     // has nothing to draw into, and Node has no Path2D to build one with.
     if (!ctx || !ctx->rt) {
@@ -1469,12 +1315,8 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
                          (int)Packed(ctx, to), dx, dy);
 }
 
-void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
-                float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStroke(ctx, p, stroke, c, roundCaps);
-        return;
-    }
+void PaintBackendPathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
+                            bool roundCaps, float dx, float dy) {
     // No canvas bound, no Path2D: a headless frame (WindowDrawFrameHeadless)
     // has nothing to draw into, and Node has no Path2D to build one with.
     if (!ctx || !ctx->rt) {
@@ -1487,14 +1329,10 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
     GpJsPathStroke(id, stroke, (int)Packed(ctx, c), roundCaps ? 1 : 0, dx, dy);
 }
 
-void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
-                        float y0, float x1, float y1, Rgba from, Rgba to,
-                        bool roundCaps, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
-                                     roundCaps);
-        return;
-    }
+void PaintBackendPathStrokeGradient(PaintCtx* ctx, Path* p, float stroke,
+                                    float x0, float y0, float x1, float y1,
+                                    Rgba from, Rgba to, bool roundCaps,
+                                    float dx, float dy) {
     // No canvas bound, no Path2D: a headless frame (WindowDrawFrameHeadless)
     // has nothing to draw into, and Node has no Path2D to build one with.
     if (!ctx || !ctx->rt) {
@@ -1510,13 +1348,6 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
 
 // ─── images ───────────────────────────────────────────────────────────────
 
-struct RenderImage {
-    int refs = 1;
-    uint64_t generation = 0;
-    RenderImageStatus status = RenderImageStatus::Ready;
-    int js = 0;
-};
-
 RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     (void)pa;
     if (!bytes || len <= 0) {
@@ -1526,8 +1357,7 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     if (!id) {
         return nullptr;
     }
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
+    RenderImage* img = RenderImageAlloc(RenderImageStatus::Ready);
     img->js = id;
     return img;
 }
@@ -1538,16 +1368,8 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
     if (!bgra || w <= 0 || h <= 0 || w > 0x7fffffff / 4 / h) return nullptr;
     int id = GpJsImageFromBgra(bgra, w, h);
     if (!id) return nullptr;
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
+    RenderImage* img = RenderImageAlloc(RenderImageStatus::Ready);
     img->js = id;
-    return img;
-}
-
-RenderImage* RenderImageNewLoading() {
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
-    img->status = RenderImageStatus::Loading;
     return img;
 }
 
@@ -1573,24 +1395,10 @@ void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
     }
 }
 
-void RenderImageRetain(RenderImage* img) {
-    if (img) {
-        img->refs++;
-    }
-}
-
-void RenderImageRelease(RenderImage* img) {
-    if (!img || --img->refs != 0) {
-        return;
-    }
+void RenderImageDropNative(RenderImage* img) {
     if (img->js) {
         GpJsImageFree(img->js);
     }
-    delete img;
-}
-
-uint64_t RenderImageGeneration(const RenderImage* img) {
-    return img ? img->generation : 0;
 }
 
 RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
@@ -1629,49 +1437,31 @@ int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
     return 16;
 }
 
-void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
-                     Bounds imageBounds, int frameIndex, float radius,
-                     bool grayscale) {
-    if (scene::Recording()) {
-        scene::RecImageDraw(ctx, img, bounds, imageBounds, frameIndex, radius,
-                            grayscale);
-        return;
-    }
+void PaintBackendRenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
+                                 Bounds imageBounds, int frameIndex,
+                                 float radius, bool grayscale) {
     (void)frameIndex;
     if (!ctx || !ctx->rt || !img || !img->js || bounds.w <= 0 ||
         bounds.h <= 0 || imageBounds.w <= 0 || imageBounds.h <= 0) {
         return;
     }
     float a = ctx->opacity < 0 ? 0 : (ctx->opacity > 1 ? 1 : ctx->opacity);
-    float half = (bounds.w < bounds.h ? bounds.w : bounds.h) * 0.5f;
-    float r = radius > half ? half : (radius > 0 ? radius : 0.f);
-    GpJsImageDraw(img->js, bounds.x, bounds.y, bounds.w, bounds.h,
-                  imageBounds.x, imageBounds.y, imageBounds.w, imageBounds.h, a,
-                  r, grayscale ? 1 : 0);
+    GpJsRoundPath(bounds.x, bounds.y, bounds.w, bounds.h, radius);
+    GpJsImageDraw(img->js, imageBounds.x, imageBounds.y, imageBounds.w,
+                  imageBounds.h, a, grayscale ? 1 : 0);
 }
 
 // ─── shaped text ──────────────────────────────────────────────────────────
 
 struct TextLayout {
-    // The byte length of the text it was shaped from (TextLayoutTextLen).
-    int textLen = 0;
-    uint64_t generation = 0;
+    TextLayoutHead head;
     int js = 0;
-    int refs = 1;
-    // How far the aligned lines reach, so TextLayoutSize can answer without
-    // measuring again. TextLayoutNew reports the lines' own extent.
-    Size size = {};
 };
 
-TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint16_t weight, float lineH,
-                          Size* outSize, TextAlign align) {
-    if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
-        return nullptr;
-    }
-    if (fontSize <= 0) {
-        fontSize = 16.f;
-    }
+TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
+                            bool wrap, uint16_t weight, float lineH,
+                            Size* outSize, TextAlign align) {
+    (void)ctx;
     float size[3] = {0, 0, 0};
     Str family = FontFamilyName(FontFamilyOf(weight));
     int id = GpJsTextNew((const uint8_t*)s.s, len(s), fontSize, maxW,
@@ -1685,65 +1475,20 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         outSize->h = size[1];
     }
     auto* tl = new TextLayout();
-    tl->textLen = len(s);
-    tl->generation = PaintResourceGenerationNew();
     tl->js = id;
-    tl->size = Size{size[2], size[1]};
+    tl->head.cover = Size{size[2], size[1]};
     return tl;
 }
 
-Size TextLayoutSize(TextLayout* tl) {
-    return tl ? tl->size : Size{0, 0};
-}
-
-void TextLayoutAddRef(TextLayout* tl) {
-    if (tl) {
-        tl->refs++;
-    }
-}
-
-void TextLayoutRelease(TextLayout* tl) {
-    if (!tl) {
-        return;
-    }
-    if (--tl->refs > 0) {
-        return;
-    }
+void TextLayoutDestroy(TextLayout* tl) {
     if (tl->js) {
         GpJsTextFree(tl->js);
     }
     delete tl;
 }
 
-uint64_t TextLayoutGeneration(const TextLayout* tl) {
-    return tl ? tl->generation : 0;
-}
-
-int TextLayoutTextLen(const TextLayout* tl) {
-    return tl ? tl->textLen : 0;
-}
-
-bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
-                          float y, Rgba base, const TextSpan* spans, int n) {
-    if (scene::Recording()) {
-        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
-    }
-    (void)tl;
-    (void)text;
-    (void)x;
-    (void)y;
-    (void)base;
-    (void)spans;
-    (void)n;
-    return false;
-}
-
-void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
-                    bool clip, float clipW) {
-    if (scene::Recording()) {
-        scene::RecTextDraw(ctx, tl, x, y, c, clip, clipW);
-        return;
-    }
+void PaintBackendTextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y,
+                                Rgba c, bool clip, float clipW) {
     // No ellipsis here yet: Canvas2D has no trimming, so it would have to be
     // measured and appended by hand. A truncated run is cut at the box edge.
     (void)clipW;

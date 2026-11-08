@@ -30,6 +30,14 @@
 
 #include "base.h"
 
+// Not implemented: notify_unsupported.cpp answers for these, once. iOS and
+// Android leave it to the host adapter.
+#if GPUI_OS_MAC || GPUI_OS_LINUX || GPUI_OS_WASM
+#define GPUI_NOTIFY_UNSUPPORTED 1
+#else
+#define GPUI_NOTIFY_UNSUPPORTED 0
+#endif
+
 namespace gpui {
 
 // on_system_notification_response: the user clicked a notification, and this

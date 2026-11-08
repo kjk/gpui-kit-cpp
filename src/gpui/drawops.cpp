@@ -77,9 +77,7 @@ static uint32_t ColorToU32(Rgba c) {
 }
 
 static Rgba Grayscale(Rgba c) {
-    uint8_t gray = (uint8_t)(((uint32_t)c.r * 54 + (uint32_t)c.g * 183 +
-                              (uint32_t)c.b * 19) >>
-                             8);
+    uint8_t gray = RgbLuma709(c.r, c.g, c.b);
     return {gray, gray, gray, c.a};
 }
 

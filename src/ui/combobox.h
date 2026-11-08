@@ -92,38 +92,9 @@ struct ComboboxState {
 
 Entity<SearchableListState> ComboboxListEntity(Entity<ComboboxState> state);
 
-struct Combobox {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    Str id = {};
-    Entity<SearchableListState> state = {};
+struct Combobox : SelectBuilder<Combobox> {
     Entity<ComboboxState> comboboxState = {};
-    const SearchableItem* items = nullptr;
-    int nItems = 0;
-    const Str* sections = nullptr;
-    int nSections = 0;
-    Str placeholder = {};
     Str searchPlaceholder = {};
-    Str empty = {};
-    // An optional icon before the title, as the icons story shows.
-    IconName icon = IconName::None;
-    // Combobox::check_icon: what marks a selected row.
-    IconName checkIcon = IconName::Check;
-    // `w_full()`: the trigger fills what holds it.
-    float width = kFill;
-    float menuWidth = 0;
-    float menuMaxH = 0;
-    UiSize size = UiSize::Medium;
-    bool disabled = false;
-    bool cleanable = false;
-    bool appearance = true;
-    bool focusRing = true;
-    InputState* query = nullptr;
-    Listener onQueryFocus = {};
-    // Combobox::render_trigger / Combobox::footer, both forwarded to the
-    // Select underneath.
-    El* trigger = nullptr;
-    El* footer = nullptr;
     void* triggerData = nullptr;
     void* footerData = nullptr;
     void* emptyData = nullptr;
@@ -131,51 +102,27 @@ struct Combobox {
                          const ComboboxTriggerContext* trigger) = nullptr;
     El* (*renderFooter)(Ctx* cx, void* data) = nullptr;
     El* (*renderEmpty)(Ctx* cx, void* data) = nullptr;
-    SearchableListDelegate delegate = {};
-    bool hasDelegate = false;
     Style style = {};
     uint32_t styleSet = 0;
     // The same refinement as an El replay (Select::TriggerRefiner).
     ElRefiner refiner = {};
-    Listener onToggle;
-    Listener onClear;
 
     static Combobox* New(Ctx* cx, Str id, Entity<SearchableListState> state,
                          InputState* query);
     static Combobox* New(Ctx* cx, Str id, Entity<ComboboxState> state);
-    Combobox* Items(const SearchableItem* items, int n);
-    Combobox* Sections(const Str* titles, int n);
-    Combobox* Placeholder(Str s);
     Combobox* SearchPlaceholder(Str s);
-    Combobox* Empty(Str s);
-    Combobox* Icon(IconName n);
-    Combobox* CheckIcon(IconName n);
-    Combobox* W(float v);
-    Combobox* MenuWidth(float v);
-    Combobox* MenuMaxH(float v);
-    Combobox* WithSize(UiSize value);
-    Combobox* Disabled(bool v);
-    Combobox* Cleanable(bool v = true);
-    Combobox* Appearance(bool v);
-    // FocusableExt::focus_ring: no focus appearance on this control.
-    Combobox* FocusRing(bool v);
     Combobox* Multiple(bool v = true);
-    Combobox* Trigger(El* e);
     Combobox* RenderTrigger(void* data,
                             El* (*fn)(Ctx* cx, void* data,
                                       const ComboboxTriggerContext* trigger));
-    Combobox* Footer(El* e);
     Combobox* RenderFooter(void* data, El* (*fn)(Ctx* cx, void* data));
     Combobox* RenderEmpty(void* data, El* (*fn)(Ctx* cx, void* data));
-    Combobox* Delegate(const SearchableListDelegate& value);
     Combobox* Refine(const Style& value, uint32_t fields);
     Combobox* Refiner(ElRefiner value);
     // ComboboxState::max_selected, which the Max2 delegate's on_will_change
     // comes to here.
     Combobox* MaxSelected(int n);
     Combobox* OnQueryFocus(Listener fn);
-    Combobox* OnToggle(Listener fn);
-    Combobox* OnClear(Listener fn);
     El* IntoEl();
 };
 

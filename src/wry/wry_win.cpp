@@ -61,6 +61,7 @@ namespace wry {
 
 using base::AllocStrTemp;
 using base::Arena;
+using base::ComObject;
 using base::Func0;
 using base::GetTempArena;
 using base::logf;
@@ -923,15 +924,20 @@ struct ICoreWebView2Settings3 : ICoreWebView2Settings2 {
     put_AreBrowserAcceleratorKeysEnabled(BOOL value) = 0;
 };
 
+// WebView2 declares the same four autofill properties on
+// ICoreWebView2Settings4 and on ICoreWebView2Profile6, each in its own vtable.
+#define WEBVIEW2_AUTOFILL_METHODS                                    \
+    virtual HRESULT STDMETHODCALLTYPE get_IsPasswordAutosaveEnabled( \
+        BOOL* value) = 0;                                            \
+    virtual HRESULT STDMETHODCALLTYPE put_IsPasswordAutosaveEnabled( \
+        BOOL value) = 0;                                             \
+    virtual HRESULT STDMETHODCALLTYPE get_IsGeneralAutofillEnabled(  \
+        BOOL* value) = 0;                                            \
+    virtual HRESULT STDMETHODCALLTYPE put_IsGeneralAutofillEnabled(  \
+        BOOL value) = 0;
+
 struct ICoreWebView2Settings4 : ICoreWebView2Settings3 {
-    virtual HRESULT STDMETHODCALLTYPE
-    get_IsPasswordAutosaveEnabled(BOOL* value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE
-    put_IsPasswordAutosaveEnabled(BOOL value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE
-    get_IsGeneralAutofillEnabled(BOOL* value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE
-    put_IsGeneralAutofillEnabled(BOOL value) = 0;
+    WEBVIEW2_AUTOFILL_METHODS
 };
 
 struct ICoreWebView2Settings5 : ICoreWebView2Settings4 {
@@ -1017,14 +1023,7 @@ struct ICoreWebView2Profile5 : ICoreWebView2Profile4 {
 };
 
 struct ICoreWebView2Profile6 : ICoreWebView2Profile5 {
-    virtual HRESULT STDMETHODCALLTYPE
-    get_IsPasswordAutosaveEnabled(BOOL* value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE
-    put_IsPasswordAutosaveEnabled(BOOL value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE
-    get_IsGeneralAutofillEnabled(BOOL* value) = 0;
-    virtual HRESULT STDMETHODCALLTYPE
-    put_IsGeneralAutofillEnabled(BOOL value) = 0;
+    WEBVIEW2_AUTOFILL_METHODS
 };
 
 struct ICoreWebView2Profile7 : ICoreWebView2Profile6 {
@@ -2240,8 +2239,7 @@ typedef HRESULT(
 // forwarding the result. Own every argument because Invoke runs after the
 // caller's stack and its override buffers are gone.
 struct EnvironmentCreatedRetryHandler
-    : ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler {
-    LONG refs = 1;
+    : ComObject<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler> {
     CreateWebViewEnvironmentWithOptionsInternalFn create = nullptr;
     int runtimeType = 0;
     WCHAR* userDataFolder = nullptr;
@@ -2250,7 +2248,7 @@ struct EnvironmentCreatedRetryHandler
         nullptr;
     int retries = 1;
 
-    ~EnvironmentCreatedRetryHandler() {
+    ~EnvironmentCreatedRetryHandler() override {
         free(userDataFolder);
         if (options) {
             options->Release();
@@ -2260,32 +2258,6 @@ struct EnvironmentCreatedRetryHandler
         }
     }
 
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
-        if (!ppv) {
-            return E_POINTER;
-        }
-        if (riid == IID_IUnknown ||
-            riid ==
-                __uuidof(
-                    ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler)) {
-            *ppv =
-                (ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*)this;
-            AddRef();
-            return S_OK;
-        }
-        *ppv = nullptr;
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override {
-        return (ULONG)InterlockedIncrement(&refs);
-    }
-    ULONG STDMETHODCALLTYPE Release() override {
-        LONG left = InterlockedDecrement(&refs);
-        if (left == 0) {
-            delete this;
-        }
-        return (ULONG)left;
-    }
     HRESULT STDMETHODCALLTYPE
     Invoke(HRESULT result, ICoreWebView2Environment* environment) override {
         if (SUCCEEDED(result) || retries <= 0) {
@@ -2402,44 +2374,11 @@ bool WebViewAvailable() {
 
 // ─── COM plumbing ────────────────────────────────────────────────────────
 
-// The IUnknown half every callback object shares. Each of these is created
-// with one reference, handed to WebView2, and deleted when the runtime lets
-// go of it.
-template <typename I>
-struct ComObj : I {
-    LONG refs = 1;
-
-    virtual ~ComObj() = default;
-
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
-        if (!ppv) {
-            return E_POINTER;
-        }
-        if (riid == IID_IUnknown || riid == __uuidof(I)) {
-            *ppv = (I*)this;
-            this->AddRef();
-            return S_OK;
-        }
-        *ppv = nullptr;
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override {
-        return (ULONG)InterlockedIncrement(&refs);
-    }
-    ULONG STDMETHODCALLTYPE Release() override {
-        LONG left = InterlockedDecrement(&refs);
-        if (left == 0) {
-            delete this;
-        }
-        return (ULONG)left;
-    }
-};
-
 // Rust builds these with `webview2_com`'s `create(Box::new(closure))`. A
 // closure is a function pointer plus its state here, so the two shapes a
 // WebView2 callback has get one template each.
 template <typename I, typename A1, typename A2>
-struct Handler2 : ComObj<I> {
+struct Handler2 : ComObject<I> {
     void* ctx = nullptr;
     HRESULT (*fn)(void* ctx, A1 a1, A2 a2) = nullptr;
     void (*dropCtx)(void* ctx) = nullptr;
@@ -2456,7 +2395,7 @@ struct Handler2 : ComObj<I> {
 };
 
 template <typename I, typename A1>
-struct Handler1 : ComObj<I> {
+struct Handler1 : ComObject<I> {
     void* ctx = nullptr;
     HRESULT (*fn)(void* ctx, A1 a1) = nullptr;
     void (*dropCtx)(void* ctx) = nullptr;
@@ -2502,7 +2441,7 @@ struct DownloadCallbackState {
     }
 };
 
-struct DownloadStateHandler : ComObj<ICoreWebView2StateChangedEventHandler> {
+struct DownloadStateHandler : ComObject<ICoreWebView2StateChangedEventHandler> {
     DownloadCallbackState* callback = nullptr;
     LONG fired = 0;
 
@@ -2553,13 +2492,6 @@ struct DownloadStateHandler : ComObj<ICoreWebView2StateChangedEventHandler> {
     }
 };
 
-static void FreeDropPaths(Vec<Str>* paths) {
-    for (int i = 0; i < paths->len; i++) {
-        StrFree(paths->els[i]);
-    }
-    VecReset(*paths);
-}
-
 // `DragDropTarget::iterate_filenames`. The HDROP is returned because the
 // pinned Drop arm calls DragFinish after delivering the event; DragEnter only
 // inspects it, exactly as the source does.
@@ -2593,7 +2525,7 @@ static bool GetDropPaths(IDataObject* data, Vec<Str>* paths, HDROP* hdropOut) {
     return true;
 }
 
-struct DragDropTarget : ComObj<IDropTarget> {
+struct DragDropTarget : ComObject<IDropTarget> {
     HWND hwnd = nullptr;
     void* ctx = nullptr;
     DragDropHandler fn = nullptr;
@@ -2627,7 +2559,7 @@ struct DragDropTarget : ComObj<IDropTarget> {
             return S_OK;
         }
         Emit(DragDropKind::Enter, &paths, point);
-        FreeDropPaths(&paths);
+        StrVecFree(&paths);
         cursorEffect = DROPEFFECT_COPY;
         if (effect) {
             *effect = cursorEffect;
@@ -2660,7 +2592,7 @@ struct DragDropTarget : ComObj<IDropTarget> {
             HDROP hdrop = nullptr;
             GetDropPaths(data, &paths, &hdrop);
             Emit(DragDropKind::Drop, &paths, point);
-            FreeDropPaths(&paths);
+            StrVecFree(&paths);
             if (hdrop) {
                 DragFinish(hdrop);
             }
@@ -2774,15 +2706,12 @@ static LRESULT CALLBACK MainThreadDispatcherProc(HWND hwnd, UINT msg, WPARAM wp,
 // than part of the runtime, so it is written out. The exact pinned helper
 // advertises every options interface through 8 even though Wry directly sets
 // fields on only 1, 6 and 8; the loader/runtime query the others themselves.
-struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
-                            ICoreWebView2EnvironmentOptions2,
-                            ICoreWebView2EnvironmentOptions3,
-                            ICoreWebView2EnvironmentOptions4,
-                            ICoreWebView2EnvironmentOptions5,
-                            ICoreWebView2EnvironmentOptions6,
-                            ICoreWebView2EnvironmentOptions7,
-                            ICoreWebView2EnvironmentOptions8 {
-    LONG refs = 1;
+struct EnvironmentOptions
+    : ComObject<
+          ICoreWebView2EnvironmentOptions, ICoreWebView2EnvironmentOptions2,
+          ICoreWebView2EnvironmentOptions3, ICoreWebView2EnvironmentOptions4,
+          ICoreWebView2EnvironmentOptions5, ICoreWebView2EnvironmentOptions6,
+          ICoreWebView2EnvironmentOptions7, ICoreWebView2EnvironmentOptions8> {
     WCHAR* additionalBrowserArguments = nullptr;
     WCHAR* language = nullptr;
     WCHAR* targetCompatibleBrowserVersion = WStrDup(L"137.0.3296.44");
@@ -2796,7 +2725,7 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
     int releaseChannels = 1 | 2 | 4 | 8;
     int scrollBarStyle = kScrollBarStyleDefault;
 
-    ~EnvironmentOptions() {
+    ~EnvironmentOptions() override {
         free(additionalBrowserArguments);
         free(language);
         free(targetCompatibleBrowserVersion);
@@ -2804,45 +2733,6 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
             customSchemeRegistrations[i]->Release();
         }
         VecReset(customSchemeRegistrations);
-    }
-
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
-        if (!ppv) {
-            return E_POINTER;
-        }
-        if (riid == IID_IUnknown ||
-            riid == __uuidof(ICoreWebView2EnvironmentOptions)) {
-            *ppv = (ICoreWebView2EnvironmentOptions*)this;
-        } else if (riid == __uuidof(ICoreWebView2EnvironmentOptions2)) {
-            *ppv = (ICoreWebView2EnvironmentOptions2*)this;
-        } else if (riid == __uuidof(ICoreWebView2EnvironmentOptions3)) {
-            *ppv = (ICoreWebView2EnvironmentOptions3*)this;
-        } else if (riid == __uuidof(ICoreWebView2EnvironmentOptions4)) {
-            *ppv = (ICoreWebView2EnvironmentOptions4*)this;
-        } else if (riid == __uuidof(ICoreWebView2EnvironmentOptions5)) {
-            *ppv = (ICoreWebView2EnvironmentOptions5*)this;
-        } else if (riid == __uuidof(ICoreWebView2EnvironmentOptions6)) {
-            *ppv = (ICoreWebView2EnvironmentOptions6*)this;
-        } else if (riid == __uuidof(ICoreWebView2EnvironmentOptions7)) {
-            *ppv = (ICoreWebView2EnvironmentOptions7*)this;
-        } else if (riid == __uuidof(ICoreWebView2EnvironmentOptions8)) {
-            *ppv = (ICoreWebView2EnvironmentOptions8*)this;
-        } else {
-            *ppv = nullptr;
-            return E_NOINTERFACE;
-        }
-        AddRef();
-        return S_OK;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override {
-        return (ULONG)InterlockedIncrement(&refs);
-    }
-    ULONG STDMETHODCALLTYPE Release() override {
-        LONG left = InterlockedDecrement(&refs);
-        if (left == 0) {
-            delete this;
-        }
-        return (ULONG)left;
     }
 
     HRESULT STDMETHODCALLTYPE
@@ -3049,16 +2939,9 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
 
 // ─── the webview ─────────────────────────────────────────────────────────
 
-struct ProtocolCopy {
-    Str name; // heap
-    void* ctx;
-    void (*handler)(void* ctx, Str id, const Request* request,
-                    RequestResponder* responder);
-};
-
 struct WebViewEventState;
 
-struct WebView {
+struct WebView : WebViewHandlers {
     Str id = {}; // heap
     HWND parent = nullptr;
     HWND hwnd = nullptr;
@@ -3071,23 +2954,11 @@ struct WebView {
     ICoreWebView2Environment* env = nullptr;
     WebViewEventState* eventCallbacks = nullptr;
 
-    void* ctx = nullptr;
-    void (*ipcHandler)(void* ctx, Str url, Str body) = nullptr;
-    bool (*navigationHandler)(void* ctx, Str url) = nullptr;
-    void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
-    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
-                              Str url) = nullptr;
-    void (*processFailedHandler)(void* ctx, int kind) = nullptr;
-    DownloadStartedHandler downloadStartedHandler = nullptr;
-    DownloadCompletedHandler downloadCompletedHandler = nullptr;
     DownloadCallbackState* downloadCallbacks = nullptr;
     DragDropController* dragDropController = nullptr;
     bool oleInitialized = false;
-    NewWindowResponse (*newWindowReqHandler)(
-        void* ctx, Str url, const NewWindowFeatures* features,
-        WebView** createdWebView) = nullptr;
 
-    Vec<ProtocolCopy> protocols;
+    Vec<CustomProtocol> protocols; // names heap
     // "http" or "https", the scheme custom protocols are tunnelled over.
     const char* httpOrHttps = "http";
 };
@@ -3931,6 +3802,24 @@ struct PendingResponse {
     Str headers;
 };
 
+// A post can fail when the webview's container was destroyed while a worker
+// was preparing its answer. Nothing may call WebView2 from that worker; just
+// release the agile COM references and copied response there. The request is
+// already being torn down with its view. ApplyResponse ends the same way once
+// the answer is in.
+static void DiscardResponse(PendingResponse* p) {
+    RequestResponder* r = p->responder;
+    if (r->deferral) {
+        r->deferral->Release();
+    }
+    r->args->Release();
+    r->env->Release();
+    StrFree(p->headers);
+    free(p->body);
+    delete p;
+    delete r;
+}
+
 static void ApplyResponse(PendingResponse* p) {
     RequestResponder* r = p->responder;
     ICoreWebView2WebResourceResponse* response =
@@ -3944,31 +3833,8 @@ static void ApplyResponse(PendingResponse* p) {
     }
     if (r->deferral) {
         r->deferral->Complete();
-        r->deferral->Release();
     }
-    r->args->Release();
-    r->env->Release();
-    StrFree(p->headers);
-    free(p->body);
-    delete p;
-    delete r;
-}
-
-// A post can fail when the webview's container was destroyed while a worker
-// was preparing its answer. Nothing may call WebView2 from that worker; just
-// release the agile COM references and copied response there. The request is
-// already being torn down with its view.
-static void DiscardResponse(PendingResponse* p) {
-    RequestResponder* r = p->responder;
-    if (r->deferral) {
-        r->deferral->Release();
-    }
-    r->args->Release();
-    r->env->Release();
-    StrFree(p->headers);
-    free(p->body);
-    delete p;
-    delete r;
+    DiscardResponse(p);
 }
 
 void Respond(RequestResponder* responder, const Response* response) {
@@ -4116,7 +3982,7 @@ static HRESULT OnWebResourceRequested(
     }
     Str uri = TakePwstrTemp(rawUri);
 
-    ProtocolCopy* found = nullptr;
+    CustomProtocol* found = nullptr;
     for (int i = 0; i < wv->protocols.len; i++) {
         if (IsWorkAroundUri(uri, Str(wv->httpOrHttps), wv->protocols[i].name)) {
             found = &wv->protocols[i];
@@ -4155,13 +4021,7 @@ static HRESULT OnWebResourceRequested(
     if (SUCCEEDED(args->GetDeferral(&deferral))) {
         responder->deferral = deferral;
     }
-    if (found->handler) {
-        found->handler(found->ctx, wv->id, &request, responder);
-    } else {
-        Response response;
-        response.status = 500;
-        Respond(responder, &response);
-    }
+    CustomProtocolDispatch(*found, wv->id, &request, responder);
 
     VecReset(headerStore);
     VecReset(bodyStore);
@@ -4272,8 +4132,9 @@ static HRESULT OnProcessFailed(void* ctx, ICoreWebView2*,
     return S_OK;
 }
 
-static HRESULT OnContentLoading(void* ctx, ICoreWebView2* sender,
-                                ICoreWebView2ContentLoadingEventArgs*) {
+// on_page_load_handler, with the URL the webview is on now.
+static HRESULT ReportPageLoad(void* ctx, ICoreWebView2* sender,
+                              PageLoadEvent event) {
     WebView* wv = LiveWebView(ctx);
     if (!wv) {
         return S_OK;
@@ -4284,27 +4145,20 @@ static HRESULT OnContentLoading(void* ctx, ICoreWebView2* sender,
         if (FAILED(hr)) {
             return hr;
         }
-        wv->onPageLoadHandler(wv->ctx, PageLoadEvent::Started, url);
+        wv->onPageLoadHandler(wv->ctx, event, url);
     }
     return S_OK;
+}
+
+static HRESULT OnContentLoading(void* ctx, ICoreWebView2* sender,
+                                ICoreWebView2ContentLoadingEventArgs*) {
+    return ReportPageLoad(ctx, sender, PageLoadEvent::Started);
 }
 
 static HRESULT OnNavigationCompleted(
     void* ctx, ICoreWebView2* sender,
     ICoreWebView2NavigationCompletedEventArgs*) {
-    WebView* wv = LiveWebView(ctx);
-    if (!wv) {
-        return S_OK;
-    }
-    if (sender && wv->onPageLoadHandler) {
-        Str url;
-        HRESULT hr = UrlFromWebViewInner(sender, &url);
-        if (FAILED(hr)) {
-            return hr;
-        }
-        wv->onPageLoadHandler(wv->ctx, PageLoadEvent::Finished, url);
-    }
-    return S_OK;
+    return ReportPageLoad(ctx, sender, PageLoadEvent::Finished);
 }
 
 static HRESULT OnNavigationStarting(
@@ -4809,31 +4663,19 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     wv->env = env;
     wv->eventCallbacks = new WebViewEventState();
     wv->eventCallbacks->webview = wv;
-    wv->ctx = attrs->ctx;
-    wv->ipcHandler = attrs->ipcHandler;
-    wv->navigationHandler = attrs->navigationHandler;
-    wv->documentTitleChangedHandler = attrs->documentTitleChangedHandler;
-    wv->onPageLoadHandler = attrs->onPageLoadHandler;
-    wv->processFailedHandler = attrs->processFailedHandler;
-    wv->downloadStartedHandler = attrs->downloadStartedHandler;
-    wv->downloadCompletedHandler = attrs->downloadCompletedHandler;
+    WebViewHandlersSet(wv, attrs);
     if (attrs->downloadCompletedHandler) {
         wv->downloadCallbacks = new DownloadCallbackState();
         wv->downloadCallbacks->ctx = attrs->ctx;
         wv->downloadCallbacks->fn = attrs->downloadCompletedHandler;
     }
-    wv->newWindowReqHandler = attrs->newWindowReqHandler;
     wv->httpOrHttps = attrs->useHttpsScheme ? "https" : "http";
     // `attributes.id.unwrap_or_else(|| hwnd.to_string())`.
     wv->id = attrs->id.s
                  ? StrDup(attrs->id)
                  : StrDup(base::FormatTemp("%lld", (int64_t)(intptr_t)hwnd));
     for (int i = 0; i < attrs->customProtocolCount; i++) {
-        ProtocolCopy p;
-        p.name = StrDup(attrs->customProtocols[i].name);
-        p.ctx = attrs->customProtocols[i].ctx;
-        p.handler = attrs->customProtocols[i].handler;
-        VecAppend(wv->protocols, p);
+        CustomProtocolsAppendCopy(&wv->protocols, attrs->customProtocols[i]);
     }
 
     if (attrs->hasTheme) {
@@ -4994,10 +4836,7 @@ void WebViewFree(WebView* wv) {
         wv->eventCallbacks->Release();
         wv->eventCallbacks = nullptr;
     }
-    for (int i = 0; i < wv->protocols.len; i++) {
-        StrFree(wv->protocols[i].name);
-    }
-    VecReset(wv->protocols);
+    CustomProtocolsFree(&wv->protocols);
     StrFree(wv->id);
     delete wv;
 }
@@ -5542,13 +5381,5 @@ void* WebViewEnvironmentRaw(WebView* wv) {
 void* WebViewNativeRaw(WebView* wv) {
     return wv ? wv->webview : nullptr;
 }
-
-// The message loop that drives the window drives WebView2 too.
-int EventLoopPrepare(PollFd** fds, int* timeoutMs) {
-    (void)timeoutMs;
-    *fds = nullptr;
-    return 0;
-}
-void EventLoopDispatch() {}
 
 } // namespace wry

@@ -1,15 +1,21 @@
-/* WHATWG named character references, the same 2125-name table markdown
-   holds in constant.cpp. html5ever cannot include markdown (crate isolation),
-   so the bytes live here and NamedEntity binary-searches them. */
+/* The HTML named character references: WHATWG's 2125 names and the UTF-8
+   each stands for, shared by the markdown and html5ever ports (and anything
+   else that decodes `&name;`). Sources here are UTF-8 and the build passes
+   /utf-8, so a value is the same literal the Rust tables hold. */
 
-#include "html5ever/html5ever.h"
+#include "base.h"
 
-namespace html5ever {
+namespace base {
 
-using base::Str;
-using base::StrCmp;
-
-const char kNamedRefNames[] =
+// markdown-rs walks its list with `find`, so its order is nearly but not
+// quite ascending (`emsp14` before `emsp`, `sup3` before `sup`). Here it is
+// sorted, so HtmlNamedCharRef can binary search it; the pairs are the
+// crate's, and only those two move.
+//
+// The names, sorted, as one run. The table below indexes into it and into
+// the values beside it, so a lookup is still a binary search and the tables
+// carry no pointer — and so no relocation — per entry.
+static const char kHtmlEntityNames[] =
     "AElig\0"
     "AMP\0"
     "Aacute\0"
@@ -2137,8 +2143,7 @@ const char kNamedRefNames[] =
     "zwnj\0";
 
 // Their values, in the same order.
-
-const char kNamedRefValues[] =
+static const char kHtmlEntityValues[] =
     "Æ\0"
     "&\0"
     "Á\0"
@@ -4265,12 +4270,12 @@ const char kNamedRefValues[] =
     "‍\0"
     "‌\0";
 
-struct NamedRef {
+struct HtmlEntity {
     int32_t nameOff;
     int32_t valueOff;
 };
 
-const NamedRef kNamedRefs[2125] = {
+static const HtmlEntity kHtmlEntities[2125] = {
     {0, 0},        // AElig
     {6, 3},        // AMP
     {10, 5},       // Aacute
@@ -6398,23 +6403,31 @@ const NamedRef kNamedRefs[2125] = {
     {16124, 8337}, // zwnj
 };
 
-Str NamedEntity(Str name) {
-    int32_t lo = 0;
-    int32_t hi = 2125 - 1;
+Str HtmlNamedCharRef(Str name) {
+    int lo = 0;
+    int hi = (int)dimof(kHtmlEntities) - 1;
     while (lo <= hi) {
-        int32_t mid = (lo + hi) / 2;
-        const char* candidate = kNamedRefNames + kNamedRefs[mid].nameOff;
+        int mid = (lo + hi) / 2;
+        const char* candidate = kHtmlEntityNames + kHtmlEntities[mid].nameOff;
         int cmp = StrCmp(Str(candidate), name);
         if (cmp < 0) {
             lo = mid + 1;
         } else if (cmp > 0) {
             hi = mid - 1;
         } else {
-            const char* value = kNamedRefValues + kNamedRefs[mid].valueOff;
-            return Str(value);
+            return Str(kHtmlEntityValues + kHtmlEntities[mid].valueOff);
         }
     }
     return {};
 }
 
-} // namespace html5ever
+int HtmlNamedCharRefCount() {
+    return (int)dimof(kHtmlEntities);
+}
+
+void HtmlNamedCharRefAt(int i, Str* name, Str* value) {
+    *name = Str(kHtmlEntityNames + kHtmlEntities[i].nameOff);
+    *value = Str(kHtmlEntityValues + kHtmlEntities[i].valueOff);
+}
+
+} // namespace base

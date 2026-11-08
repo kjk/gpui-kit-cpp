@@ -216,9 +216,8 @@ AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     c.border = style.border.ResolveOrZero(parentSize.w, calc);
     SizeF paddingBorderSum = padding.SumAxes() + c.border.SumAxes();
-    SizeF boxSizingAdjustment = style.boxSizing == BoxSizing::ContentBox
-                                    ? paddingBorderSum
-                                    : SizeF::Zero();
+    SizeF boxSizingAdjustment =
+        BoxSizingAdjustment(style.boxSizing, paddingBorderSum);
 
     // normal behaves as stretch for flex items. Resolved once so a child
     // whose align-self is auto picks up stretch rather than normal.
@@ -265,14 +264,10 @@ AlgoConstants ComputeConstants(TaffyTree* tree, const Style& style,
         availableSpace.Cross(c.dir).kind == AvailableSpace::Kind::Definite;
     c.gap = style.gap.ResolveOrZero(Or(c.nodeInnerSize, SizeFOpt{0, 0}), calc);
 
-    c.minSize =
-        MaybeAdd(MaybeApplyAspectRatio(
-                     style.minSize.MaybeResolve(parentSize, calc), aspectRatio),
-                 boxSizingAdjustment);
-    c.maxSize =
-        MaybeAdd(MaybeApplyAspectRatio(
-                     style.maxSize.MaybeResolve(parentSize, calc), aspectRatio),
-                 boxSizingAdjustment);
+    c.minSize = ResolveStyledSize(style.minSize, parentSize, calc, aspectRatio,
+                                  boxSizingAdjustment);
+    c.maxSize = ResolveStyledSize(style.maxSize, parentSize, calc, aspectRatio,
+                                  boxSizingAdjustment);
     return c;
 }
 
@@ -340,8 +335,7 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
         RectF padding = cs.padding.ResolveOrZero(c.nodeInnerSize.w, calc);
         RectF border = cs.border.ResolveOrZero(c.nodeInnerSize.w, calc);
         SizeF pbSum = (padding + border).SumAxes();
-        SizeF boxSizingAdjustment =
-            cs.boxSizing == BoxSizing::ContentBox ? pbSum : SizeF::Zero();
+        SizeF boxSizingAdjustment = BoxSizingAdjustment(cs.boxSizing, pbSum);
 
         // A known main size derived from the container's own content is
         // indefinite, so item percentages do not resolve against it.
@@ -354,10 +348,8 @@ void GenerateAnonymousFlexItems(TaffyTree* tree, NodeId node,
         item.node = child;
         item.order = (uint32_t)index;
         item.sizeStyle = cs.size;
-        item.size = MaybeAdd(
-            MaybeApplyAspectRatio(
-                cs.size.MaybeResolve(percentResolutionSize, calc), aspectRatio),
-            boxSizingAdjustment);
+        item.size = ResolveStyledSize(cs.size, percentResolutionSize, calc,
+                                      aspectRatio, boxSizingAdjustment);
         item.minSize =
             MaybeAdd(cs.minSize.MaybeResolve(percentResolutionSize, calc),
                      boxSizingAdjustment);
@@ -528,12 +520,9 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
         bool measureBasis = true;
         AvailableSpace keywordMain = AvailableSpace::MaxContent();
         bool hasKeywordMain = false;
-        if (flexBasisStyle.IsContent()) {
-            // Measure under the default constraint. The width/height is not
-            // the flex base size.
-        } else if (flexBasisStyle.IsSizingKeyword()) {
-            SizingKeywordResolution keyword = ResolveSizingKeyword(
-                flexBasisStyle, mainStretch, percentResolutionMainSize, calc);
+        // A keyword that resolves to an exact size is the flex basis; one
+        // that resolves to a constraint is what the item is measured under.
+        auto takeKeyword = [&](SizingKeywordResolution keyword) {
             if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
                 child.flexBasisIsDefinite = true;
                 child.flexBasis = keyword.exact;
@@ -542,23 +531,22 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
                 keywordMain = keyword.measure;
                 hasKeywordMain = true;
             }
+        };
+        if (flexBasisStyle.IsContent()) {
+            // Measure under the default constraint. The width/height is not
+            // the flex base size.
+        } else if (flexBasisStyle.IsSizingKeyword()) {
+            takeKeyword(ResolveSizingKeyword(flexBasisStyle, mainStretch,
+                                             percentResolutionMainSize, calc));
         } else if (IsSome(flexBasis) ||
                    (flexBasisStyle.IsAuto() && IsSome(mainSize))) {
             child.flexBasisIsDefinite = true;
             child.flexBasis = IsSome(flexBasis) ? flexBasis : mainSize;
             measureBasis = false;
         } else if (flexBasisStyle.IsAuto()) {
-            SizingKeywordResolution keyword =
-                ResolveSizingKeyword(child.sizeStyle.Main(dir), mainStretch,
-                                     percentResolutionMainSize, calc);
-            if (keyword.isSome && keyword.kind == SizingKeywordKind::Exact) {
-                child.flexBasisIsDefinite = true;
-                child.flexBasis = keyword.exact;
-                measureBasis = false;
-            } else if (keyword.isSome) {
-                keywordMain = keyword.measure;
-                hasKeywordMain = true;
-            }
+            takeKeyword(ResolveSizingKeyword(child.sizeStyle.Main(dir),
+                                             mainStretch,
+                                             percentResolutionMainSize, calc));
         }
         if (measureBasis && childCrossSizeIsDefinite) {
             // An aspect ratio plus a definite cross size transfers that cross
@@ -657,6 +645,33 @@ void DetermineFlexBaseSize(TaffyTree* tree, const AlgoConstants& c,
 //
 // https://www.w3.org/TR/css-flexbox-1/#algo-line-break
 
+// The main-axis space items wrap against, once the container's main size is
+// known to be definite. Shared by flex-wrap: wrap and flex-wrap: balance.
+static AvailableSpace LineBreakAvailableSpace(const AlgoConstants& c,
+                                              SizeAvail availableSpace) {
+    Optf maxMain = Main(c.maxSize, c.dir);
+    if (IsSome(maxMain)) {
+        float available =
+            UnwrapOr(availableSpace.Main(c.dir).IntoOption(), maxMain);
+        // An indefinite main size is at most the max main size, so items
+        // wrap against that max rather than against the available space.
+        if (!c.hasDefiniteMainSize) {
+            available = F32Min(available, maxMain);
+        }
+        return AvailableSpace::Definite(
+            MaybeMax(available, Main(c.minSize, c.dir)));
+    }
+    if (!c.isRow && !c.hasDefiniteMainSize &&
+        availableSpace.Main(c.dir).kind == AvailableSpace::Kind::Definite) {
+        // A column's automatic main size is content-based. Definite
+        // available space from an ancestor does not decide where lines
+        // wrap. A row still wraps against that space, because an
+        // automatic width resolves against it.
+        return AvailableSpace::MaxContent();
+    }
+    return availableSpace.Main(c.dir);
+}
+
 void CollectFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
                       Vec<FlexItem>* flexItems, Vec<FlexLine>* lines) {
     FlexItem* items = flexItems->els;
@@ -669,29 +684,8 @@ void CollectFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
         return;
     }
 
-    AvailableSpace mainAxisAvailableSpace;
-    Optf maxMain = Main(c.maxSize, c.dir);
-    if (IsSome(maxMain)) {
-        float available =
-            UnwrapOr(availableSpace.Main(c.dir).IntoOption(), maxMain);
-        // An indefinite main size is at most the max main size, so items
-        // wrap against that max rather than against the available space.
-        if (!c.hasDefiniteMainSize) {
-            available = F32Min(available, maxMain);
-        }
-        mainAxisAvailableSpace = AvailableSpace::Definite(
-            MaybeMax(available, Main(c.minSize, c.dir)));
-    } else if (!c.isRow && !c.hasDefiniteMainSize &&
-               availableSpace.Main(c.dir)
-                       .kind == AvailableSpace::Kind::Definite) {
-        // A column's automatic main size is content-based. Definite
-        // available space from an ancestor does not decide where lines
-        // wrap. A row still wraps against that space, because an
-        // automatic width resolves against it.
-        mainAxisAvailableSpace = AvailableSpace::MaxContent();
-    } else {
-        mainAxisAvailableSpace = availableSpace.Main(c.dir);
-    }
+    AvailableSpace mainAxisAvailableSpace =
+        LineBreakAvailableSpace(c, availableSpace);
 
     switch (mainAxisAvailableSpace.kind) {
         case AvailableSpace::Kind::MaxContent:
@@ -741,27 +735,9 @@ void CollectBalancedFlexLines(const AlgoConstants& c, SizeAvail availableSpace,
         return;
     }
 
-    AvailableSpace mainAxisAvailableSpace;
-    if (!c.knownMainSizeIsDefinite) {
-        mainAxisAvailableSpace = AvailableSpace::MaxContent();
-    } else {
-        Optf maxMain = Main(c.maxSize, c.dir);
-        if (IsSome(maxMain)) {
-            float available =
-                UnwrapOr(availableSpace.Main(c.dir).IntoOption(), maxMain);
-            if (!c.hasDefiniteMainSize) {
-                available = F32Min(available, maxMain);
-            }
-            mainAxisAvailableSpace = AvailableSpace::Definite(
-                MaybeMax(available, Main(c.minSize, c.dir)));
-        } else if (!c.isRow && !c.hasDefiniteMainSize &&
-                   availableSpace.Main(c.dir)
-                           .kind == AvailableSpace::Kind::Definite) {
-            mainAxisAvailableSpace = AvailableSpace::MaxContent();
-        } else {
-            mainAxisAvailableSpace = availableSpace.Main(c.dir);
-        }
-    }
+    AvailableSpace mainAxisAvailableSpace =
+        c.knownMainSizeIsDefinite ? LineBreakAvailableSpace(c, availableSpace)
+                                  : AvailableSpace::MaxContent();
 
     if (mainAxisAvailableSpace.kind == AvailableSpace::Kind::MinContent) {
         for (int i = 0; i < total; i++) {
@@ -923,6 +899,25 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                         Or(MaybeMin(styleMax, flexBasisMax), flexBasisMax),
                         INFINITY);
 
+                    // The contribution of an inner main size: the flex-basis
+                    // floor applies to the inner size, and the main-axis
+                    // margin (a negative one too) is added after that floor.
+                    // Asymmetrical between rows and columns. This likely
+                    // relates to
+                    // https://drafts.csswg.org/css-flexbox-1/#algo-main-container
+                    // — "the automatic block size of a block-level flex
+                    // container is its max-content size" — but it was found
+                    // by matching Webkit/Firefox output rather than by
+                    // reading the spec.
+                    auto contributionOf = [&](float innerMainSize) {
+                        float marginSum = MainAxisSum(item.margin, dir);
+                        float outer =
+                            c->isRow ? innerMainSize + marginSum
+                                     : F32Max(innerMainSize, item.flexBasis) +
+                                           marginSum;
+                        return MaybeClamp(outer, styleMin, styleMax);
+                    };
+
                     float contentContribution;
                     if (IsSome(stylePreferred) &&
                         (maxMainSize <= minMainSize ||
@@ -946,20 +941,8 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                         // a cache entry with the content-size pass.
                         float itemPbMain = MainAxisSum(item.padding, dir) +
                                            MainAxisSum(item.border, dir);
-                        float innerMainSize =
-                            F32Max(stylePreferred, itemPbMain);
-                        float marginSum = MainAxisSum(item.margin, dir);
-                        // The flex-basis floor applies to the inner size.
-                        // A negative margin is added after that floor.
-                        if (c->isRow) {
-                            contentContribution = MaybeClamp(
-                                innerMainSize + marginSum, styleMin, styleMax);
-                        } else {
-                            contentContribution = MaybeClamp(
-                                F32Max(innerMainSize, item.flexBasis) +
-                                    marginSum,
-                                styleMin, styleMax);
-                        }
+                        contentContribution =
+                            contributionOf(F32Max(stylePreferred, itemPbMain));
                     } else {
                         Optf crossAxisParentSize = Cross(c->nodeInnerSize, dir);
                         // Available space for child sizing excludes the
@@ -1020,25 +1003,7 @@ void DetermineContainerMainSize(TaffyTree* tree, SizeAvail availableSpace,
                                                     : cross / item.aspectRatio;
                             innerMainSize = F32Max(innerMainSize, transferred);
                         }
-                        float marginSum = MainAxisSum(item.margin, dir);
-
-                        // Asymmetrical between rows and columns. This likely
-                        // relates to
-                        // https://drafts.csswg.org/css-flexbox-1/#algo-main-container
-                        // — "the automatic block size of a block-level flex
-                        // container is its max-content size" — but it was
-                        // found by matching Webkit/Firefox output rather than
-                        // by reading the spec. The flex-basis floor is on the
-                        // inner size; the main-axis margin is applied after.
-                        if (c->isRow) {
-                            contentContribution = MaybeClamp(
-                                innerMainSize + marginSum, styleMin, styleMax);
-                        } else {
-                            contentContribution = MaybeClamp(
-                                F32Max(innerMainSize, item.flexBasis) +
-                                    marginSum,
-                                styleMin, styleMax);
-                        }
+                        contentContribution = contributionOf(innerMainSize);
                     }
 
                     float diff = contentContribution - item.flexBasis;
@@ -1584,8 +1549,7 @@ void DetermineUsedCrossSize(TaffyTree* tree, Vec<FlexLine>* lines,
                 RectF border = cs.border.ResolveOrZero(c.nodeInnerSize.w, calc);
                 SizeF pbSum = (padding + border).SumAxes();
                 SizeF boxSizingAdjustment =
-                    cs.boxSizing == BoxSizing::ContentBox ? pbSum
-                                                          : SizeF::Zero();
+                    BoxSizingAdjustment(cs.boxSizing, pbSum);
                 SizeFOpt maxSizeIgnoringAspectRatio =
                     MaybeAdd(cs.maxSize.MaybeResolve(c.nodeInnerSize, calc),
                              boxSizingAdjustment);
@@ -2388,63 +2352,27 @@ LayoutOutput ComputeFlexboxLayout(TaffyTree* tree, NodeId node,
     CalcResolver calc = tree->calc;
     SizeFOpt knownDimensions = inputs.knownDimensions;
     SizeFOpt parentSize = inputs.parentSize;
-    RunMode runMode = inputs.runMode;
     const Style& style = tree->GetStyle(node);
     Contain contain = style.contain;
 
-    Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
     SizeF paddingBorderSum = padding.SumAxes() + border.SumAxes();
-    SizeF boxSizingAdjustment = style.boxSizing == BoxSizing::ContentBox
-                                    ? paddingBorderSum
-                                    : SizeF::Zero();
-
-    SizeFOpt minSize =
-        MaybeAdd(MaybeApplyAspectRatio(
-                     style.minSize.MaybeResolve(parentSize, calc), aspectRatio),
-                 boxSizingAdjustment);
-    SizeFOpt maxSize =
-        MaybeAdd(MaybeApplyAspectRatio(
-                     style.maxSize.MaybeResolve(parentSize, calc), aspectRatio),
-                 boxSizingAdjustment);
-    SizeFOpt clampedStyleSize = SizeFOptNone();
-    if (inputs.sizingMode == SizingMode::InherentSize) {
-        clampedStyleSize = MaybeClamp(
-            MaybeAdd(
-                MaybeApplyAspectRatio(style.size.MaybeResolve(parentSize, calc),
-                                      aspectRatio),
-                boxSizingAdjustment),
-            minSize, maxSize);
-    }
-
-    // If both min and max are set in an axis and max <= min, that determines
-    // the size in that axis.
-    SizeFOpt minMaxDefiniteSize = SizeFOptNone();
-    if (IsSome(minSize.w) && IsSome(maxSize.w) && maxSize.w <= minSize.w) {
-        minMaxDefiniteSize.w = minSize.w;
-    }
-    if (IsSome(minSize.h) && IsSome(maxSize.h) && maxSize.h <= minSize.h) {
-        minMaxDefiniteSize.h = minSize.h;
-    }
+    NodeStyledSizes styled =
+        ResolveNodeStyledSizes(style, parentSize, calc, paddingBorderSum,
+                               inputs.sizingMode == SizingMode::InherentSize);
 
     // The container's size is floored by its padding and border.
-    SizeFOpt styledBasedKnownDimensions = Or(
-        knownDimensions,
-        MaybeMax(Or(minMaxDefiniteSize, clampedStyleSize), paddingBorderSum));
+    SizeFOpt styledBasedKnownDimensions =
+        Or(knownDimensions,
+           MaybeMax(Or(styled.minMaxDefiniteSize, styled.clampedSize),
+                    paddingBorderSum));
 
     // Short-circuit when the container's size is fully determined and only
     // the size was asked for.
-    if (runMode == RunMode::ComputeSize) {
-        if (BothAxisDefined(styledBasedKnownDimensions)) {
-            return LayoutOutput::FromOuterSize(
-                {styledBasedKnownDimensions.w, styledBasedKnownDimensions.h});
-        }
-        if (inputs.axis == RequestedAxis::Horizontal &&
-            IsSome(styledBasedKnownDimensions.w)) {
-            return LayoutOutput::FromOuterSize(
-                {styledBasedKnownDimensions.w, 0.0f});
-        }
+    LayoutOutput early;
+    if (ComputeSizeFromStyles(inputs, styledBasedKnownDimensions, &early)) {
+        return early;
     }
 
     // The flags describe dimensions the parent passed in. A size taken from

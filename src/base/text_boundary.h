@@ -15,6 +15,12 @@ namespace gpui {
 
 // CharacterKind::from: which of the four classes a character is in.
 CharKind CharKindOf(uint32_t c);
+// A dependency-free simple lowercase: ASCII, Latin-1, the alternating pairs
+// of Latin Extended-A, Greek, Cyrillic and Armenian. Every mapping keeps the
+// encoded UTF-8 width, so byte offsets into the lowered text are offsets into
+// the original. Rust's `char::to_lowercase` covers the rest of Unicode and
+// has a few expanding mappings (U+0130); those stay unmapped here.
+uint32_t CharLowerSimple(uint32_t c);
 // clip_offset_left: into the string, then back to a character boundary.
 int Utf8ClipLeft(Str s, int off);
 

@@ -21,12 +21,42 @@ CharKind CharKindOf(uint32_t c) {
     if (c == '\n' || c == '\r') {
         return CharKind::Newline;
     }
-    // Rust's char::is_whitespace, which is the Unicode White_Space property.
-    bool space = c == ' ' || c == '\t' || c == 0x0B || c == 0x0C || c == 0x85 ||
-                 c == 0xA0 || c == 0x1680 || (c >= 0x2000 && c <= 0x200A) ||
-                 c == 0x2028 || c == 0x2029 || c == 0x202F || c == 0x205F ||
-                 c == 0x3000;
-    return space ? CharKind::Whitespace : CharKind::Other;
+    // Rust's char::is_whitespace (the newlines are answered above).
+    return IsUnicodeWhitespace(c) ? CharKind::Whitespace : CharKind::Other;
+}
+
+uint32_t CharLowerSimple(uint32_t c) {
+    if (c >= 'A' && c <= 'Z') {
+        return c + 0x20;
+    }
+    if ((c >= 0x00c0 && c <= 0x00d6) || (c >= 0x00d8 && c <= 0x00de)) {
+        return c + 0x20;
+    }
+    if (c >= 0x0100 && c <= 0x012f && (c & 1) == 0) {
+        return c + 1;
+    }
+    if (c >= 0x0132 && c <= 0x0137 && (c & 1) == 0) {
+        return c + 1;
+    }
+    if (c >= 0x014a && c <= 0x0177 && (c & 1) == 0) {
+        return c + 1;
+    }
+    if (c >= 0x0391 && c <= 0x03a1) {
+        return c + 0x20;
+    }
+    if (c >= 0x03a3 && c <= 0x03ab) {
+        return c + 0x20;
+    }
+    if (c >= 0x0410 && c <= 0x042f) {
+        return c + 0x20;
+    }
+    if (c >= 0x0400 && c <= 0x040f) {
+        return c + 0x50;
+    }
+    if (c >= 0x0531 && c <= 0x0556) {
+        return c + 0x30;
+    }
+    return c;
 }
 
 // clip_offset_left: into the string, then back to a character boundary.

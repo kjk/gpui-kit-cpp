@@ -6,6 +6,7 @@
 #include "gpui/paint.h"
 #include "gpui/paintgpu.h"
 #include "gpui/accessibility_win.h"
+#include "sys/clock.h"
 #include "sys/executor.h"
 
 #include <dwmapi.h>
@@ -160,15 +161,7 @@ double TimeNow() {
     if (TestPlatformNow(&simulated)) {
         return simulated;
     }
-    static LARGE_INTEGER freq = {};
-    static LARGE_INTEGER start = {};
-    if (freq.QuadPart == 0) {
-        QueryPerformanceFrequency(&freq);
-        QueryPerformanceCounter(&start);
-    }
-    LARGE_INTEGER now = {};
-    QueryPerformanceCounter(&now);
-    return (double)(now.QuadPart - start.QuadPart) / (double)freq.QuadPart;
+    return ClockMonotonicSecondsSinceStart();
 }
 
 // user32!GetDpiForWindow is Windows 10 1607 and later, so it has to be
@@ -538,34 +531,10 @@ static Str ClipboardReadPaths(Arena* a, HANDLE handle);
 
 // IDropTarget for a file drag onto the window. gpui-pre-windows does the
 // same: CF_HDROP on enter, then pending / leave / drop as FileDropEvent.
-struct FileDropTarget : IDropTarget {
-    LONG refs = 1;
+struct FileDropTarget : ComObject<IDropTarget> {
     Window* win = nullptr;
 
     explicit FileDropTarget(Window* w) : win(w) {}
-
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) {
-            return E_POINTER;
-        }
-        if (iid == IID_IUnknown || iid == IID_IDropTarget) {
-            *out = static_cast<IDropTarget*>(this);
-            AddRef();
-            return S_OK;
-        }
-        *out = nullptr;
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override {
-        return (ULONG)InterlockedIncrement(&refs);
-    }
-    ULONG STDMETHODCALLTYPE Release() override {
-        ULONG n = (ULONG)InterlockedDecrement(&refs);
-        if (n == 0) {
-            delete this;
-        }
-        return n;
-    }
 
     void At(POINTL screen, float* x, float* y) {
         POINT pt = {screen.x, screen.y};
@@ -606,8 +575,9 @@ struct FileDropTarget : IDropTarget {
         }
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL pt,
-                                       DWORD* effect) override {
+    // A drag moving over the window, or let go on it: the paths came with
+    // DragEnter, so only the position goes with the phase.
+    HRESULT DispatchAt(FileDropPhase phase, POINTL pt, DWORD* effect) {
         if (effect) {
             *effect = DROPEFFECT_COPY;
         }
@@ -616,9 +586,13 @@ struct FileDropTarget : IDropTarget {
         }
         float x = 0, y = 0;
         At(pt, &x, &y);
-        PlatformInput in = InputFileDrop(FileDropPhase::Pending, x, y, {});
+        PlatformInput in = InputFileDrop(phase, x, y, {});
         WindowDispatchInput(win, &in);
         return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL pt,
+                                       DWORD* effect) override {
+        return DispatchAt(FileDropPhase::Pending, pt, effect);
     }
     HRESULT STDMETHODCALLTYPE DragLeave() override {
         if (win) {
@@ -630,17 +604,7 @@ struct FileDropTarget : IDropTarget {
     }
     HRESULT STDMETHODCALLTYPE Drop(IDataObject*, DWORD, POINTL pt,
                                    DWORD* effect) override {
-        if (effect) {
-            *effect = DROPEFFECT_COPY;
-        }
-        if (!win) {
-            return S_OK;
-        }
-        float x = 0, y = 0;
-        At(pt, &x, &y);
-        PlatformInput in = InputFileDrop(FileDropPhase::Submit, x, y, {});
-        WindowDispatchInput(win, &in);
-        return S_OK;
+        return DispatchAt(FileDropPhase::Submit, pt, effect);
     }
 };
 
@@ -1070,10 +1034,7 @@ void AppQuit(Window* win) {
     }
 }
 
-void AppInvalidate(Window* win) {
-    if (win) {
-        win->invalidations++;
-    }
+void PlatInvalidate(Window* win) {
     HWND hwnd = Hwnd(win);
     if (hwnd) {
         InvalidateRect(hwnd, nullptr, FALSE);
@@ -1463,6 +1424,25 @@ static void ApplyMenuTheme(HWND hwnd, bool dark) {
 // stays sharp on a high-DPI display.
 static const int kMenuImageSize = 16;
 
+HBITMAP WinDib32New(int w, int h, void** bits) {
+    BITMAPINFO bi = {};
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = w;
+    // Negative: the rows run top down, the way every caller reads them.
+    bi.bmiHeader.biHeight = -h;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    *bits = nullptr;
+    HBITMAP bmp =
+        CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, bits, nullptr, 0);
+    if (bmp && !*bits) {
+        DeleteObject(bmp);
+        bmp = nullptr;
+    }
+    return bmp;
+}
+
 // One icon as a bitmap the menu can show: the SVG rasterized into a 32-bit
 // top-down DIB, premultiplied, so Windows blends it over whatever it draws
 // behind the row.
@@ -1472,20 +1452,9 @@ static HBITMAP MenuIconBitmap(Window* win, const PlatMenuItem& it, int px,
     if (!win || px <= 0 || (!fromSvg && (!it.iconPath || !it.iconPath[0]))) {
         return nullptr;
     }
-    BITMAPINFO bi = {};
-    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    bi.bmiHeader.biWidth = px;
-    bi.bmiHeader.biHeight = -px;
-    bi.bmiHeader.biPlanes = 1;
-    bi.bmiHeader.biBitCount = 32;
-    bi.bmiHeader.biCompression = BI_RGB;
     void* bits = nullptr;
-    HBITMAP bmp =
-        CreateDIBSection(nullptr, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
-    if (!bmp || !bits) {
-        if (bmp) {
-            DeleteObject(bmp);
-        }
+    HBITMAP bmp = WinDib32New(px, px, &bits);
+    if (!bmp) {
         return nullptr;
     }
     // `Icon::data` rasterizes from its bytes; a path goes through the assets.
@@ -1597,21 +1566,6 @@ int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
     return selected;
 }
 
-bool PlatHasAppMenu() {
-    // Windows puts an application's menus in its own window, not in a bar the
-    // shell keeps: a menu bar here is a row of the window, which is what
-    // component::AppMenuBar draws. Nothing to install.
-    return false;
-}
-
-void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
-    (void)app;
-    (void)items;
-    (void)n;
-}
-
-void PlatSetMenuBarVisible(bool) {}
-
 // cx.open_url. ShellExecute with no verb runs the shell's default action for
 // the scheme, which is what the user has chosen as their browser.
 // SPI_GETCLIENTAREAANIMATION is the Windows switch behind Settings ▸
@@ -1623,17 +1577,6 @@ bool PlatReduceMotion() {
         return false;
     }
     return !wanted;
-}
-
-bool PlatReduceMotionKnown(bool* out) {
-    if (out) {
-        *out = PlatReduceMotion();
-    }
-    return true;
-}
-
-void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
-    (void)onChange;
 }
 
 void OpenUrl(Str url) {
@@ -1736,13 +1679,7 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     return result;
 }
 
-void ClipboardSetText(Window* win, Str text) {
-    if (TestPlatformClipboardWrite(text)) {
-        return;
-    }
-    if (!text.s || len(text) <= 0) {
-        return;
-    }
+void PlatClipboardSetText(Window* win, Str text) {
     WCHAR* w = ToCWstrTemp(text);
     int wn = (int)wcslen(w);
     HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)(wn + 1) * sizeof(WCHAR));
@@ -1781,16 +1718,7 @@ void ClipboardSetText(Window* win, Str text) {
     }
 }
 
-void WindowSetTextContentType(Window* win, Str value) {
-    (void)win;
-    (void)value;
-}
-
-Str ClipboardGetText(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated.text;
-    }
+Str PlatClipboardGetText(Arena* a, Window* win) {
     if (!OpenClipboard(Hwnd(win))) {
         return {};
     }
@@ -1880,13 +1808,9 @@ static Str ClipboardReadPaths(Arena* a, HANDLE handle) {
     return paths.TakeStr();
 }
 
-ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated;
-    }
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     ClipboardItem out;
-    out.text = ClipboardGetText(a, win);
+    out.text = PlatClipboardGetText(a, win);
     if (!OpenClipboard(Hwnd(win))) {
         return out;
     }

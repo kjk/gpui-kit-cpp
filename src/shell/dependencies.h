@@ -120,6 +120,18 @@ bool DependencyRemoveDirectoryLink(Str link);
 bool DependencyReadDirectoryLink(Str link, Str* target);
 uint32_t DependencyProcessId();
 
+// The primitives the shared halves above are built from, one per host.
+// Creates one directory; true when it now exists (a Windows drive root
+// always does).
+bool DependencyMakeDirectory(Str path);
+// Opens, creating if needed, the lock file. False when it cannot be opened.
+bool DependencyLockOpen(Str path, DependencyLock* lock);
+// 1 when the exclusive lock was taken, 0 when another process holds it, -1
+// when locking failed outright.
+int DependencyLockTry(DependencyLock* lock);
+// Closes a lock file that was opened but not locked.
+void DependencyLockClose(DependencyLock* lock);
+
 // `gpui_shell::write_dependency_links`: fetches and links what a manifest
 // declares, for tooling that has to report the failure to its caller. An
 // application without a manifest, or one that declares nothing, is not an

@@ -146,12 +146,20 @@ uint64_t PlatLargePageSize();
 // First-block guess, not a limit. Wasm has no reserve/commit split.
 uint64_t PlatArenaReserveSize();
 void* PlatMemReserve(uint64_t size);
+// True for an empty range, false for a null base; otherwise
+// PlatMemCommitPages, the platform half, commits the range.
 bool PlatMemCommit(void* base, uint64_t size, bool largePages);
+bool PlatMemCommitPages(void* base, uint64_t size, bool largePages);
 void* PlatMemReserveCommit(uint64_t size, bool largePages);
 void PlatMemRelease(void* base, uint64_t size);
 
 int StrCmpI(const char* a, const char* b);
 int StrCmpNI(const char* a, const char* b, int n);
+// `src` into the `cap`-byte buffer `dst`, cut to cap - 1 bytes and
+// NUL-terminated; returns how many bytes it copied. A null `dst` or a cap
+// below 1 copies nothing.
+int StrCopyCapped(char* dst, int cap, Str src);
+// The same from a NUL-terminated string; null copies "".
 void StrCopyZ(char* dst, int cap, const char* src);
 
 bool PlatDirExists(const char* path);
@@ -161,6 +169,13 @@ bool PlatCanonicalPath(const char* path, char* out, int cap);
 void PlatGetExeDir(char* out, int cap);
 // The running executable's path. False when this platform has none.
 bool PlatGetExePath(char* out, int cap);
+// PlatGetExePath, then strip the file name: PlatGetExeDir wherever the
+// executable's directory is where it sits.
+void PlatExeDirFromExePath(char* out, int cap);
+// Strip the file name off an absolute '/'-separated path, in place.
+void PlatDirNameInPlace(char* path);
+// readlink("/proc/self/exe"): the executable path on Linux and Android.
+bool PlatProcSelfExePath(char* out, int cap);
 // macOS speech example: relaunch so this binary, not the terminal, is the
 // TCC responsible process (`responsibility_spawnattrs_setdisclaim`). True
 // means keep running. False means *status is the child's exit code and the
@@ -191,31 +206,75 @@ int PlatListDir(const char* dir, DirEntry* out, int max);
 int PlatCoreCount();
 bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes);
 
-// Facts a portable translation unit may ask. The definition lives in the
-// platform file that target compiles: base_win.cpp, base_posix.cpp for the
-// three path facts every non-Windows target shares, and one of
-// base_{linux,mac,wasm,ios,android}.cpp for the rest. Those definitions do
-// not test GPUI_OS_*.
+// Facts a portable translation unit may ask. Each Plat* function below is
+// defined once, in base.cpp, and returns its field of kPlatFacts. Each
+// platform file (base_{win,linux,mac,wasm,ios,android}.cpp) defines
+// kPlatFacts, naming only the facts where it differs from these defaults:
+// the value is data, one line per platform, and the function exists once.
+struct PlatFacts {
+    char pathSep = '/';
+    bool pathsCaseFold = false;
+    bool isWindows = false;
+    // The shortcut modifier, Rust's `secondary-`, is Command (macOS).
+    bool secondaryIsCommand = false;
+    // The title bar draws its own minimize/maximize/close buttons.
+    bool showsWindowControls = true;
+    // Linux draws the title-bar close button as an element click. Elsewhere
+    // the window manager owns closing, so a script close handler is not that
+    // button.
+    bool titleBarCloseIsElement = false;
+    // blink_cursor.rs CURSOR_WIDTH: 1px on every platform. Paint snaps the
+    // caret onto the device pixel grid so that width stays one device pixel.
+    float caretWidth = 1.f;
+    // An overscrolled view rubber-bands back.
+    bool scrollBounce = false;
+    // Android delivers its back button as Escape, so clean_on_escape must
+    // not clear the field there. iOS has no back button; Escape still clears.
+    bool cleanOnEscape = true;
+    // The UIScrollView feel (tracking 0.55, no stretch cap). iOS and Android.
+    // macOS bounces too, with the NSScrollView feel, so this is not that.
+    bool scrollBounceTouch = false;
+    // A smooth-scrolling mouse on macOS sends precise packets with no phase.
+    // NSScrollView does not bounce those. Other platforms still throw the
+    // edge.
+    bool overscrollPhaselessStops = false;
+    const char* monoFontName = "DejaVu Sans Mono";
+    // Appended to the home directory for the shell's data directory.
+    const char* shellDataDir = "/.local/share";
+    // The shell's platform name. iOS and Android answer "linux" too.
+    const char* shellPlatformName = "linux";
+    // Alt+click block selection also takes Ghostty's Ctrl+Alt (Linux).
+    bool blockSelectUsesControl = false;
+    // Precise scroll deltas keep the OngoingScroll axis lock for the gesture.
+    bool scrollGestureLocks = true;
+    // Requests answer asynchronously instead of on a worker (the browser).
+    bool asyncIo = false;
+    // The shadow a client-decorated window draws around itself.
+    float windowShadowSize = 0.f;
+    // 64 MB. Untouched address space costs nothing on a hosted OS, so an
+    // arena reserves far more than it will ever commit and rarely has to
+    // chain a second block.
+    uint64_t arenaReserveSize = 64ull * 1024ull * 1024ull;
+    // PlatGetExePath's platform half, handed a buffer that is not empty and
+    // already starts with 0. Null where there is no executable path.
+    bool (*exePath)(char* out, int cap) = nullptr;
+    // PlatDisclaimSpeechResponsibility's platform half. Null (everywhere but
+    // macOS) keeps running.
+    bool (*disclaimSpeechResponsibility)(int argc, char** argv,
+                                         int* status) = nullptr;
+};
+extern const PlatFacts kPlatFacts;
+
 char PlatPathSep();
 bool PlatPathsCaseFold();
 bool PlatIsWindows();
 bool PlatSecondaryIsCommand();
 bool PlatShowsWindowControls();
-// Linux draws the title-bar close button as an element click. Elsewhere the
-// window manager owns closing, so a script close handler is not that button.
 bool PlatTitleBarCloseIsElement();
-// blink_cursor.rs CURSOR_WIDTH: 1px on every platform. Paint snaps the
-// caret onto the device pixel grid so that width stays one device pixel.
 float PlatCaretWidth();
 bool PlatScrollBounce();
-// Android delivers its back button as Escape, so clean_on_escape must not
-// clear the field there. iOS has no back button; Escape still clears.
 bool PlatCleanOnEscape();
-// The UIScrollView feel (tracking 0.55, no stretch cap). iOS and Android.
-// macOS bounces too, with the NSScrollView feel, so this is not that.
 bool PlatScrollBounceTouch();
-// A smooth-scrolling mouse on macOS sends precise packets with no phase.
-// NSScrollView does not bounce those. Other platforms still throw the edge.
 bool PlatOverscrollPhaselessStops();
 const char* PlatMonoFontName();
 const char* PlatShellDataDir();
@@ -386,6 +445,58 @@ struct CondVar {
     CondVar() = default;
     ~CondVar() = default;
 };
+
+#if GPUI_OS_WINDOWS
+// QueryInterface over `self`: IUnknown answers with `First`, and each of
+// `First, Rest...` with its own base. A hit is AddRef'd through `self`.
+template <typename First, typename... Rest, typename Self>
+HRESULT ComQueryInterface(Self* self, REFIID riid, void** ppv) {
+    if (!ppv) {
+        return E_POINTER;
+    }
+    *ppv = nullptr;
+    if (riid == __uuidof(IUnknown)) {
+        *ppv = static_cast<First*>(self);
+    }
+    ((!*ppv && riid == __uuidof(Rest) ? (void)(*ppv = static_cast<Rest*>(self))
+                                      : (void)0),
+     ...);
+    if (!*ppv && riid == __uuidof(First)) {
+        *ppv = static_cast<First*>(self);
+    }
+    if (!*ppv) {
+        return E_NOINTERFACE;
+    }
+    self->AddRef();
+    return S_OK;
+}
+
+// The IUnknown half of every COM object this tree writes out itself. It is
+// created with one reference and deleted on the last Release; QueryInterface
+// answers IUnknown with the first interface and each of `Is` with its own
+// base. A class implementing several interfaces lists them all here instead
+// of deriving from them.
+template <typename... Is>
+struct ComObject : Is... {
+    LONG refs = 1;
+
+    virtual ~ComObject() = default;
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        return ComQueryInterface<Is...>(this, riid, ppv);
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return (ULONG)InterlockedIncrement(&refs);
+    }
+    ULONG STDMETHODCALLTYPE Release() override {
+        LONG left = InterlockedDecrement(&refs);
+        if (left == 0) {
+            delete this;
+        }
+        return (ULONG)left;
+    }
+};
+#endif
 
 bool PlatThreadRun(Func0 f);
 uint64_t PlatThreadId();
@@ -1200,6 +1311,8 @@ LocalTime TimeOfDayNow();
 
 void StrFree(Str s);
 void StrFree(const char*) = delete;
+// Free every string `v` owns, then its array. Null is fine.
+void StrVecFree(Vec<Str>* v);
 
 Str StrDup(Arena*, Str str);
 Str StrDup(Str s);
@@ -1229,6 +1342,23 @@ inline bool StrEqI(Str s1, const char* s2) {
     return StrEqI(s1, Str(s2));
 }
 bool StrStartsWith(Str s, Str prefix);
+
+// One step of a scan that skips '"' and '\'' quoted runs: true when `c`
+// opens, sits inside or closes one, so the caller looks no further at it.
+// `quote` is the open quote character, 0 outside.
+inline bool ScanSkipQuoted(char c, char* quote) {
+    if (*quote) {
+        if (c == *quote) {
+            *quote = 0;
+        }
+        return true;
+    }
+    if (c == '"' || c == '\'') {
+        *quote = c;
+        return true;
+    }
+    return false;
+}
 inline bool StrStartsWith(Str s, const char* prefix) {
     return StrStartsWith(s, Str(prefix));
 }
@@ -1279,6 +1409,91 @@ Str SeqStrByIndex(SeqStrings strs, int idx);
 int SeqStrCount(SeqStrings strs);
 void StrLowerAscii(char* s);
 
+// The value of the ASCII hex digit `c` (0-9, a-f, A-F), or -1 for any other
+// byte.
+constexpr int HexDigitValue(char c) {
+    return c >= '0' && c <= '9'   ? c - '0'
+           : c >= 'a' && c <= 'f' ? c - 'a' + 10
+           : c >= 'A' && c <= 'F' ? c - 'A' + 10
+                                  : -1;
+}
+
+// The `n` bytes at `bytes` as 2n lowercase hex digits into `out`, which is
+// not NUL-terminated.
+void HexEncode(const void* bytes, int n, char* out);
+
+// The digits of a hex colour (what follows the `#`): 3, 4, 6 or 8 hex digits
+// as 0xRRGGBBAA, the way `gpui::Rgba::try_from(&str)` reads them — a short
+// form doubles each digit, and a form without alpha is opaque. False for any
+// other length or a byte that is not a hex digit; a caller that accepts
+// fewer forms checks the length first.
+bool ParseHexRgba(Str digits, uint32_t* rgba);
+
+// `s` with every `%XX` (two hex digits) replaced by the byte it names, into
+// `out`, which has room for len(s) bytes — decoding never grows. A `%` not
+// followed by two hex digits is kept as it is. Returns the decoded length;
+// nothing is NUL-terminated and nothing is checked for being UTF-8. `out` may
+// be `s.s` itself: a byte is never written ahead of the ones still to read.
+int PercentDecode(Str s, char* out);
+
+// ─── UTF-8 ───
+
+// Rust's `char::is_whitespace`: the Unicode White_Space property — the ASCII
+// kind (tab through carriage return, space), NEL, NBSP, the ogham mark, the
+// en through hair spaces, the line and paragraph separators, the narrow
+// no-break, medium mathematical and ideographic spaces.
+constexpr bool IsUnicodeWhitespace(uint32_t cp) {
+    return (cp >= 0x09 && cp <= 0x0D) || cp == 0x20 || cp == 0x85 ||
+           cp == 0xA0 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200A) ||
+           cp == 0x2028 || cp == 0x2029 || cp == 0x202F || cp == 0x205F ||
+           cp == 0x3000;
+}
+
+// `cp` as UTF-8 into `out`, which has room for 4 bytes; returns how many it
+// took. Nothing is checked: a surrogate is encoded by the same bit pattern as
+// any other code point, so a caller that must refuse one (or a value past
+// U+10FFFF) does so first.
+int Utf8Encode(char* out, uint32_t cp);
+// How many bytes the UTF-8 sequence that `lead` starts says it takes: 1 for
+// ASCII, 2-4 by the lead's high bits, and 1 for a byte that leads nothing
+// (a continuation byte, 0xF8 and up). Only the lead is looked at.
+constexpr int Utf8LeadLen(uint8_t lead) {
+    return (lead & 0xE0) == 0xC0   ? 2
+           : (lead & 0xF0) == 0xE0 ? 3
+           : (lead & 0xF8) == 0xF0 ? 4
+                                   : 1;
+}
+// The code point at byte `i` of `s` and how many bytes it took. A byte that
+// is not valid UTF-8 there — a stray continuation byte, an invalid lead, a
+// sequence cut short by the end or by a byte that does not continue it —
+// counts as one character of its own value, so a scan always advances.
+int Utf8At(Str s, int i, uint32_t* out);
+// Where the character before `i` starts.
+int Utf8Prev(Str s, int i);
+// Strict UTF-8 (the WHATWG decoder's byte ranges, Rust's `str::from_utf8`):
+// no overlong form, no surrogate, nothing past U+10FFFF. At `b[0..avail)`,
+// returns the length of the well-formed sequence `b` starts and its code
+// point in `*cp` (may be null); 0 when `b[0]` cannot lead a sequence or a
+// later byte breaks it; -1 when every byte present is right but the sequence
+// runs past `avail` — a tail the next chunk may complete.
+int Utf8StrictAt(const uint8_t* b, int avail, uint32_t* cp);
+// Rust's `str::is_char_boundary`: `i` is 0, the end, or a byte that is not a
+// UTF-8 continuation byte. Out of range is false.
+bool Utf8IsCharBoundary(Str s, int i);
+// How many characters the UTF-8 in `s` holds: one per byte that is not a
+// continuation byte, which is Rust's `chars().count()` on valid UTF-8.
+int Utf8CharCount(Str s);
+
+// The value of the HTML named character reference `name` (without the `&`
+// and `;`, matched case-sensitively against WHATWG's 2125 names) as UTF-8,
+// NUL-terminated, in a static table; an empty Str (null `s`) when there is
+// no such name.
+Str HtmlNamedCharRef(Str name);
+// The table HtmlNamedCharRef searches, entry by entry in its (sorted) order,
+// for a test to walk: how many entries, and the name and value of entry `i`.
+int HtmlNamedCharRefCount();
+void HtmlNamedCharRefAt(int i, Str* name, Str* value);
+
 struct StrBuilder : Vec<char> {
     Arena* a = nullptr;
 
@@ -1288,11 +1503,19 @@ struct StrBuilder : Vec<char> {
     bool Reserve(int cap);
     bool AppendChar(char c);
     bool Append(Str src);
+    // `cp` as UTF-8 (see Utf8Encode).
+    bool AppendUtf8(uint32_t cp);
     char RemoveAt(int idx, int count = 1);
     char RemoveLast();
     Str TakeStr();
     char LastChar() const;
 };
+
+// `value` into `out` with `&` and `<` written as character references, and
+// `>` and `"` too when asked: HTML text escapes `>`, an attribute value `"`,
+// and XML both.
+void AppendHtmlEscaped(StrBuilder& out, Str value, bool escapeGt,
+                       bool escapeQuote);
 
 // Lend b a buffer to start in. One byte is held back for the NUL; growing
 // past it allocates and copies, leaving the caller's storage alone.

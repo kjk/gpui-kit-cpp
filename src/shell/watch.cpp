@@ -1,6 +1,8 @@
 #include "shell/watch.h"
 #include "shell/root.h"
 
+#include "shell/common.h"
+
 #include <string.h>
 
 namespace gpui::shell {
@@ -12,11 +14,6 @@ struct PendingDirectory {
 
 static bool IsSource(Str name) {
     return StrEndsWith(name, ".js") || StrEndsWith(name, ".mjs");
-}
-
-static bool SkipDirectory(Str name) {
-    return !name || name.s[0] == '.' || StrEq(name, StrL("node_modules")) ||
-           StrEq(name, StrL("target"));
 }
 
 bool ScanSourceTree(Str directory, SourceTreeStamp* stamp, ShellError* error,
@@ -64,7 +61,7 @@ bool ScanSourceTree(Str directory, SourceTreeStamp* stamp, ShellError* error,
             if (item.isSymlink || item.name[0] == '.') continue;
             if (item.isDir) {
                 if (dir.depth >= kSourceWatchMaxDepth ||
-                    SkipDirectory(Str(item.name))) {
+                    SourceTreeSkipsDirectory(Str(item.name))) {
                     continue;
                 }
                 if (len(pending) >= kSourceWatchMaxFiles) {

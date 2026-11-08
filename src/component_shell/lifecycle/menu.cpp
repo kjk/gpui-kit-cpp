@@ -205,11 +205,7 @@ static shell::ComponentAppEffectCleanup InstallMenus(App* app, void* user) {
 // included, so the value differs from Rust's and only equality is the
 // contract.
 static void HashBytes(uint64_t* h, const void* data, size_t n) {
-    const uint8_t* p = (const uint8_t*)data;
-    for (size_t i = 0; i < n; i++) {
-        *h ^= p[i];
-        *h *= 1099511628211ull;
-    }
+    *h = Fnv1a64(*h, data, n);
 }
 static void HashStr(uint64_t* h, Str s) {
     uint64_t n = (uint64_t)len(s);
@@ -373,15 +369,13 @@ static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
 static constexpr ArgumentDescriptor kItemArgs[] = {{"label", SchemaString()},
                                                    {"action", SchemaString()}};
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kCheckedArgs[] = {
     {"checked", SchemaBoolean()}};
 
 static constexpr ConstructorDescriptor kItemConstructors[] = {
     {"MenuItem", kItemArgs, &ConstructItem}};
 static constexpr MethodDescriptor kItemMethods[] = {
-    {"disabled", kDisabledArgs, "Sets native menu item state.",
+    {"disabled", kDisabledArguments, "Sets native menu item state.",
      &RecordBool<BoolOp::Disabled>},
     {"checked", kCheckedArgs, "Sets native menu item state.",
      &RecordBool<BoolOp::Checked>},
@@ -402,7 +396,7 @@ static constexpr ComponentDescriptor kMenuSeparator = {
 static constexpr ConstructorDescriptor kMenuConstructors[] = {
     {"Menu", kLabelArgs, &ConstructLabel<0>}};
 static constexpr MethodDescriptor kMenuMethods[] = {
-    {"disabled", kDisabledArgs, "Disables the whole menu.",
+    {"disabled", kDisabledArguments, "Disables the whole menu.",
      &RecordBool<BoolOp::Disabled>},
 };
 static constexpr ComponentDescriptor kMenu = {

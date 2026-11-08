@@ -157,12 +157,7 @@ State LabelEndResourceOpen(Tokenizer* t) {
 }
 
 State LabelEndResourceDestinationAfter(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
-    t->tokenizeState.token4 = Name::Data;
-    t->tokenizeState.token5 = Name::Data;
-    t->tokenizeState.sizeB = 0;
+    ResetDestinationTokens(t);
     if (t->current == '\t' || t->current == '\n' || t->current == ' ') {
         TokenizerAttempt(t, StateNext(StateName::LabelEndResourceBetween),
                          StateNext(StateName::LabelEndResourceEnd));
@@ -172,12 +167,7 @@ State LabelEndResourceDestinationAfter(Tokenizer* t) {
 }
 
 State LabelEndResourceDestinationMissing(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
-    t->tokenizeState.token4 = Name::Data;
-    t->tokenizeState.token5 = Name::Data;
-    t->tokenizeState.sizeB = 0;
+    ResetDestinationTokens(t);
     return StateNok();
 }
 
@@ -194,9 +184,7 @@ State LabelEndResourceBetween(Tokenizer* t) {
 }
 
 State LabelEndResourceTitleAfter(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
+    ResetLabelTokens(t);
     if (t->current == '\t' || t->current == '\n' || t->current == ' ') {
         TokenizerAttempt(t, StateNext(StateName::LabelEndResourceEnd),
                          StateNext(StateName::LabelEndResourceEnd));
@@ -226,9 +214,7 @@ State LabelEndReferenceFull(Tokenizer* t) {
 }
 
 State LabelEndReferenceFullAfter(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
+    ResetLabelTokens(t);
     Name referenceString = Name::ReferenceString;
     int32_t at = SkipToBack(t->events, t->events.len - 1, &referenceString, 1);
     Position position = PositionFromExitEvent(t->events, at);
@@ -241,9 +227,7 @@ State LabelEndReferenceFullAfter(Tokenizer* t) {
 }
 
 State LabelEndReferenceFullMissing(Tokenizer* t) {
-    t->tokenizeState.token1 = Name::Data;
-    t->tokenizeState.token2 = Name::Data;
-    t->tokenizeState.token3 = Name::Data;
+    ResetLabelTokens(t);
     return StateNok();
 }
 

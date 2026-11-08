@@ -76,6 +76,17 @@ static void PutBool(DbusWriter* w, bool value) {
     PutU32(w, value ? 1u : 0u);
 }
 
+// A rectangle as AT-SPI's (iiii): x, y, width, height. Answers the reply's
+// signature.
+static const char* PutExtents(DbusWriter* w, Bounds b) {
+    PutAlign(w, 8);
+    PutI32(w, (int)b.x);
+    PutI32(w, (int)b.y);
+    PutI32(w, (int)b.w);
+    PutI32(w, (int)b.h);
+    return "(iiii)";
+}
+
 static void PutString(DbusWriter* w, Str value) {
     PutAlign(w, 4);
     PutU32(w, (uint32_t)std::max(0, len(value)));
@@ -325,24 +336,12 @@ static bool ParseUnixAddress(Str address, sockaddr_un* out, socklen_t* outLen) {
     memset(out, 0, sizeof(*out));
     out->sun_family = AF_UNIX;
     int at = abstract ? 1 : 0;
-    for (int p = key; p < end && at < (int)sizeof(out->sun_path) - 1; p++) {
-        if (copy.s[p] == '%' && p + 2 < end) {
-            auto hex = [](char ch) -> int {
-                if (ch >= '0' && ch <= '9') return ch - '0';
-                if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
-                if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
-                return -1;
-            };
-            int hi = hex(copy.s[p + 1]);
-            int lo = hex(copy.s[p + 2]);
-            if (hi >= 0 && lo >= 0) {
-                out->sun_path[at++] = (char)((hi << 4) | lo);
-                p += 2;
-                continue;
-            }
-        }
-        out->sun_path[at++] = copy.s[p];
-    }
+    // Decoded in place in the copy, then as much as fits.
+    int decoded = PercentDecode(Str(copy.s + key, end - key), copy.s + key);
+    int room = (int)sizeof(out->sun_path) - 1 - at;
+    int take = std::min(decoded, room);
+    memcpy(out->sun_path + at, copy.s + key, (size_t)take);
+    at += take;
     *outLen =
         (socklen_t)(offsetof(sockaddr_un, sun_path) + at + (abstract ? 0 : 1));
     return at > (abstract ? 1 : 0);
@@ -357,9 +356,8 @@ static bool Authenticate() {
     memcpy(auth.s + at, "AUTH EXTERNAL ", 14);
     at += 14;
     for (const char* p = uid.s; *p && at + 4 < len(auth); p++) {
-        static const char hex[] = "0123456789abcdef";
-        auth.s[at++] = hex[((uint8_t)*p) >> 4];
-        auth.s[at++] = hex[((uint8_t)*p) & 15];
+        HexEncode(p, 1, auth.s + at);
+        at += 2;
     }
     auth.s[at++] = '\r';
     auth.s[at++] = '\n';
@@ -493,27 +491,6 @@ static bool ChildAt(const LinuxAccessible& object, int wanted, int* windowIndex,
         }
     }
     return false;
-}
-
-static bool IsTextRole(AccessibilityRole role) {
-    switch (role) {
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::SearchInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::WeekInput:
-        case AccessibilityRole::MonthInput:
-        case AccessibilityRole::TimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::NumberInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::UrlInput:
-            return true;
-        default:
-            return false;
-    }
 }
 
 static bool IsSelectionRole(AccessibilityRole role) {
@@ -839,7 +816,7 @@ static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object) {
         if (ActionCount(node)) PutString(body, kAction);
         if (node.info.hasNumericValue) PutString(body, kValue);
         if (IsSelectionRole(node.info.role)) PutString(body, kSelection);
-        if (IsTextRole(node.info.role) && node.input) {
+        if (AccessibilityRoleTakesText(node.info.role) && node.input) {
             PutString(body, kText);
             if (node.actions & AccessibilityActionSetValue) {
                 PutString(body, kEditableText);
@@ -971,7 +948,6 @@ static Str ObjectName(const LinuxAccessible& object) {
     return object.win->accessibility[object.nodeIndex].info.label;
 }
 
-static int Utf8Characters(Str text);
 static int Utf8CharacterForByte(Str text, int byte);
 static int SelectedAt(const LinuxAccessible& object, int wanted);
 
@@ -1067,7 +1043,7 @@ static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
         if (StrIs(property, "version"))
             PutVariantU32(body, 1);
         else if (StrIs(property, "CharacterCount"))
-            PutVariantI32(body, Utf8Characters(text));
+            PutVariantI32(body, Utf8CharCount(text));
         else if (StrIs(property, "CaretOffset"))
             PutVariantI32(body,
                           Utf8CharacterForByte(text, InputCursor(node->input)));
@@ -1208,6 +1184,15 @@ static bool HandleProperties(const Incoming& in,
     return true;
 }
 
+// A method a handler answered: its reply goes back to the caller and the body
+// is freed. True, which is what the handler returns.
+static bool SendHandledReply(const Incoming& in, const char* signature,
+                             DbusWriter* body) {
+    SendReply(in.serial, in.sender, signature, body);
+    VecReset(body->bytes);
+    return true;
+}
+
 static bool HandleAccessible(const Incoming& in,
                              const LinuxAccessible& object) {
     if (!StrIs(in.interfaceName, kAccessible)) return false;
@@ -1278,9 +1263,7 @@ static bool HandleAccessible(const Incoming& in,
         VecReset(body.bytes);
         return false;
     }
-    SendReply(in.serial, in.sender, signature, &body);
-    VecReset(body.bytes);
-    return true;
+    return SendHandledReply(in, signature, &body);
 }
 
 static bool HandleApplication(const Incoming& in,
@@ -1403,12 +1386,7 @@ static bool HandleComponent(const Incoming& in, const LinuxAccessible& object) {
     } else if (StrIs(in.member, "GetExtents")) {
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Bounds bounds = ComponentBounds(object, coordType);
-        PutAlign(&body, 8);
-        PutI32(&body, (int)bounds.x);
-        PutI32(&body, (int)bounds.y);
-        PutI32(&body, (int)bounds.w);
-        PutI32(&body, (int)bounds.h);
-        signature = "(iiii)";
+        signature = PutExtents(&body, bounds);
     } else if (StrIs(in.member, "GetPosition")) {
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Bounds bounds = ComponentBounds(object, coordType);
@@ -1443,9 +1421,7 @@ static bool HandleComponent(const Incoming& in, const LinuxAccessible& object) {
         VecReset(body.bytes);
         return false;
     }
-    SendReply(in.serial, in.sender, signature, &body);
-    VecReset(body.bytes);
-    return true;
+    return SendHandledReply(in, signature, &body);
 }
 
 static bool HandleAction(const Incoming& in, const LinuxAccessible& object) {
@@ -1496,9 +1472,7 @@ static bool HandleAction(const Incoming& in, const LinuxAccessible& object) {
         VecReset(body.bytes);
         return false;
     }
-    SendReply(in.serial, in.sender, signature, &body);
-    VecReset(body.bytes);
-    return true;
+    return SendHandledReply(in, signature, &body);
 }
 
 static bool HandleValue(const Incoming& in, const LinuxAccessible& object) {
@@ -1533,17 +1507,7 @@ static bool HandleValue(const Incoming& in, const LinuxAccessible& object) {
     } else {
         return false;
     }
-    SendReply(in.serial, in.sender, signature, &body);
-    VecReset(body.bytes);
-    return true;
-}
-
-static int Utf8Characters(Str text) {
-    int n = 0;
-    for (int i = 0; i < len(text); i++) {
-        if (((uint8_t)text.s[i] & 0xc0) != 0x80) n++;
-    }
-    return n;
+    return SendHandledReply(in, signature, &body);
 }
 
 static int Utf8ByteForCharacter(Str text, int character) {
@@ -1559,28 +1523,15 @@ static int Utf8ByteForCharacter(Str text, int character) {
 
 static int Utf8CharacterForByte(Str text, int byte) {
     byte = std::max(0, std::min(byte, len(text)));
-    int n = 0;
-    for (int i = 0; i < byte; i++) {
-        if (((uint8_t)text.s[i] & 0xc0) != 0x80) n++;
-    }
-    return n;
+    return byte > 0 ? Utf8CharCount(Str(text.s, byte)) : 0;
 }
 
 static uint32_t Utf8CodepointForCharacter(Str text, int character) {
     int at = Utf8ByteForCharacter(text, character);
     if (at < 0 || at >= len(text)) return 0;
-    const uint8_t* s = (const uint8_t*)text.s + at;
-    int left = len(text) - at;
-    if (s[0] < 0x80) return s[0];
-    if ((s[0] & 0xe0) == 0xc0 && left >= 2)
-        return ((uint32_t)(s[0] & 0x1f) << 6) | (s[1] & 0x3f);
-    if ((s[0] & 0xf0) == 0xe0 && left >= 3)
-        return ((uint32_t)(s[0] & 0x0f) << 12) |
-               ((uint32_t)(s[1] & 0x3f) << 6) | (s[2] & 0x3f);
-    if ((s[0] & 0xf8) == 0xf0 && left >= 4)
-        return ((uint32_t)(s[0] & 7) << 18) | ((uint32_t)(s[1] & 0x3f) << 12) |
-               ((uint32_t)(s[2] & 0x3f) << 6) | (s[3] & 0x3f);
-    return 0xfffd;
+    uint32_t cp = 0;
+    Utf8At(text, at, &cp);
+    return cp;
 }
 
 static bool TextSpace(uint32_t cp) {
@@ -1595,7 +1546,7 @@ static bool SentenceEnd(uint32_t cp) {
 
 static void TextGranularRange(Str text, int offset, uint32_t granularity,
                               int* lo, int* hi) {
-    int count = Utf8Characters(text);
+    int count = Utf8CharCount(text);
     if (count <= 0) {
         *lo = 0;
         *hi = 0;
@@ -1705,12 +1656,12 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
     DbusWriter body;
     const char* signature = "";
     if (textInterface && StrIs(in.member, "GetCharacterCount")) {
-        PutI32(&body, Utf8Characters(text));
+        PutI32(&body, Utf8CharCount(text));
         signature = "i";
     } else if (textInterface && StrIs(in.member, "GetText")) {
         int lo = (int)ReadU32(in.body, in.bodyLen, &at);
         int hi = (int)ReadU32(in.body, in.bodyLen, &at);
-        if (hi < 0) hi = Utf8Characters(text);
+        if (hi < 0) hi = Utf8CharCount(text);
         int byteLo = Utf8ByteForCharacter(text, lo);
         int byteHi = Utf8ByteForCharacter(text, hi);
         PutString(&body, TextSlice(text, byteLo, byteHi));
@@ -1780,23 +1731,13 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         (void)ReadI32(in.body, in.bodyLen, &at);
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Bounds bounds = ComponentBounds(object, coordType);
-        PutAlign(&body, 8);
-        PutI32(&body, (int)bounds.x);
-        PutI32(&body, (int)bounds.y);
-        PutI32(&body, (int)bounds.w);
-        PutI32(&body, (int)bounds.h);
-        signature = "(iiii)";
+        signature = PutExtents(&body, bounds);
     } else if (textInterface && StrIs(in.member, "GetRangeExtents")) {
         (void)ReadI32(in.body, in.bodyLen, &at);
         (void)ReadI32(in.body, in.bodyLen, &at);
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Bounds bounds = ComponentBounds(object, coordType);
-        PutAlign(&body, 8);
-        PutI32(&body, (int)bounds.x);
-        PutI32(&body, (int)bounds.y);
-        PutI32(&body, (int)bounds.w);
-        PutI32(&body, (int)bounds.h);
-        signature = "(iiii)";
+        signature = PutExtents(&body, bounds);
     } else if (textInterface && (StrIs(in.member, "GetDefaultAttributes") ||
                                  StrIs(in.member, "GetDefaultAttributeSet"))) {
         PutEmptyStringDict(&body);
@@ -1813,7 +1754,7 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
             (void)ReadU32(in.body, in.bodyLen, &at);
         PutEmptyStringDict(&body);
         PutI32(&body, 0);
-        PutI32(&body, Utf8Characters(text));
+        PutI32(&body, Utf8CharCount(text));
         signature = "a{ss}ii";
     } else if (textInterface && StrIs(in.member, "SetCaretOffset")) {
         int offset = (int)ReadU32(in.body, in.bodyLen, &at);
@@ -1873,9 +1814,7 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         VecReset(body.bytes);
         return false;
     }
-    SendReply(in.serial, in.sender, signature, &body);
-    VecReset(body.bytes);
-    return true;
+    return SendHandledReply(in, signature, &body);
 }
 
 static bool SelectionDescendant(const Window* win, int index, int ancestor) {
@@ -1954,9 +1893,7 @@ static bool HandleSelection(const Incoming& in, const LinuxAccessible& object) {
     } else {
         return false;
     }
-    SendReply(in.serial, in.sender, signature, &body);
-    VecReset(body.bytes);
-    return true;
+    return SendHandledReply(in, signature, &body);
 }
 
 static void SendEmbed() {

@@ -140,23 +140,23 @@ static bool NumberInputCandidateValid(const InputState* state, Str value) {
     return MaskIsValid(state->maskPattern, value);
 }
 
-bool NumberInputApplyStep(InputState* state, App* app, Window* win,
-                          StepAction action, const NumberStep* step,
-                          bool hasMin, double min, bool hasMax, double max,
-                          bool disabled, Listener onStep) {
-    if (!state || disabled || state->disabled) {
+bool NumberInputApplyStep(const NumberStepTarget& target, App* app, Window* win,
+                          StepAction action, Listener onStep) {
+    InputState* state = target.state;
+    if (!state || target.disabled || state->disabled) {
         return false;
     }
     InputFocus(state, app, win);
     NumberInputEnsureMask(state);
-    if (step) {
+    if (target.hasStep) {
         Arena* temp = GetTempArena();
         Str value = InputUnmaskValue(temp, state);
         double current = 0;
         NumberParseValue(value, &current);
-        double amount = step->Value(current, action, app);
-        TempStr next = NumberStepValueTemp(value, action, amount, hasMin, min,
-                                           hasMax, max);
+        double amount = target.step.Value(current, action, app);
+        TempStr next =
+            NumberStepValueTemp(value, action, amount, target.hasMin,
+                                target.min, target.hasMax, target.max);
         if (!next) {
             return false;
         }
@@ -183,42 +183,22 @@ bool NumberInputApplyStep(InputState* state, App* app, Window* win,
 struct NumberInputStepCall {
     App* app = nullptr;
     Window* win = nullptr;
-    InputState* state = nullptr;
-    NumberStep step = {};
-    bool hasStep = false;
-    bool hasMin = false;
-    double min = 0;
-    bool hasMax = false;
-    double max = 0;
-    bool disabled = false;
+    NumberStepTarget target = {};
     Listener onStep = {};
     StepAction action = StepAction::Increment;
 };
 
 static void NumberInputRunStep(NumberInputStepCall* call) {
-    NumberInputApplyStep(call->state, call->app, call->win, call->action,
-                         call->hasStep ? &call->step : nullptr, call->hasMin,
-                         call->min, call->hasMax, call->max, call->disabled,
+    NumberInputApplyStep(call->target, call->app, call->win, call->action,
                          call->onStep);
 }
 
-Func0 NumberInputStepCallback(Ctx* cx, InputState* state, StepAction action,
-                              const NumberStep* step, bool hasMin, double min,
-                              bool hasMax, double max, bool disabled,
-                              Listener onStep) {
+Func0 NumberInputStepCallback(Ctx* cx, const NumberStepTarget& target,
+                              StepAction action, Listener onStep) {
     NumberInputStepCall* call = ArenaNew<NumberInputStepCall>(cx->a);
     call->app = cx->app;
     call->win = cx->win;
-    call->state = state;
-    if (step) {
-        call->step = *step;
-        call->hasStep = true;
-    }
-    call->hasMin = hasMin;
-    call->min = min;
-    call->hasMax = hasMax;
-    call->max = max;
-    call->disabled = disabled;
+    call->target = target;
     call->onStep = onStep;
     call->action = action;
     return MkFunc0(&NumberInputRunStep, call);

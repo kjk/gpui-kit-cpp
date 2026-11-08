@@ -95,12 +95,13 @@ not reach layout. `Option<f32>` is the NaN-tagged `Optf`; a new optional
 value that starts unknown says `SizeFOptNone()`, not `{}`. Grid occupancy is
 a flat matrix where 0.13 uses interval vectors — keep it flat.
 
-**markdown.** Two files are transcribed rather than typed:
-`constant.cpp` (the tag-name lists and the 2125 character references, as
-`SeqStrings` runs plus, for the references, a byte-offset table) from
+**markdown.** Three tables are transcribed rather than typed:
+`constant.cpp` (the tag-name lists, as `SeqStrings` runs) and
+`src/base_entities.cpp` (the 2125 character references, runs plus a
+byte-offset table, shared with html5ever as `base::HtmlNamedCharRef`) from
 `src/util/constant.rs`, and `unicode.cpp` (the punctuation ranges) from
 `src/util/unicode.rs`. If either Rust table moves, transcribe it again;
-`markdown constants` in `tests/` walks both runs against the table. MDX,
+`markdown constants` in `tests/` walks the reference table. MDX,
 `to_html` and `serde` are not ported. `src/markdown-mini/` is ours, not
 upstream — do not ingest new markdown-rs constructs into it; keep its smaller
 contract (`src/markdown-mini/readme.md`).

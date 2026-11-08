@@ -23,11 +23,8 @@ extern "C" char** environ;
 
 namespace base {
 
-void PlatDirNameInPlace(char* path);
-
-bool PlatGetExePath(char* out, int cap) {
-    if (!out || cap <= 0) return false;
-    out[0] = 0;
+// kPlatFacts.exePath.
+static bool ExePath(char* out, int cap) {
     uint32_t n = (uint32_t)cap;
     if (_NSGetExecutablePath(out, &n) != 0) return false;
     out[cap - 1] = 0;
@@ -36,7 +33,8 @@ bool PlatGetExePath(char* out, int cap) {
 
 // examples/speech/src/responsibility.rs. The parent waits and the caller
 // exits with the child's status. A failed relaunch prints and keeps going.
-bool PlatDisclaimSpeechResponsibility(int argc, char** argv, int* status) {
+// kPlatFacts.disclaimSpeechResponsibility.
+static bool DisclaimSpeechResponsibility(int argc, char** argv, int* status) {
     if (getenv("SPEECH_RESPONSIBILITY_DISCLAIMED")) {
         return true;
     }
@@ -110,8 +108,7 @@ bool PlatDisclaimSpeechResponsibility(int argc, char** argv, int* status) {
 }
 
 void PlatGetExeDir(char* out, int cap) {
-    if (!PlatGetExePath(out, cap)) return;
-    PlatDirNameInPlace(out);
+    PlatExeDirFromExePath(out, cap);
 }
 
 bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
@@ -147,55 +144,17 @@ bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
     return true;
 }
 
-uint64_t PlatStatModifiedNs(const struct stat* st) {
-    return (uint64_t)st->st_mtimespec.tv_sec * 1000000000ull +
-           (uint64_t)st->st_mtimespec.tv_nsec;
-}
-
-bool PlatSecondaryIsCommand() {
-    return true;
-}
-bool PlatTitleBarCloseIsElement() {
-    return false;
-}
-bool PlatShowsWindowControls() {
-    return false;
-}
-float PlatCaretWidth() {
-    return 1.f;
-}
-bool PlatScrollBounce() {
-    return true;
-}
-bool PlatCleanOnEscape() {
-    return true;
-}
-bool PlatScrollBounceTouch() {
-    return false;
-}
-bool PlatOverscrollPhaselessStops() {
-    return true;
-}
-const char* PlatMonoFontName() {
-    return "Menlo";
-}
-const char* PlatShellDataDir() {
-    return "/Library/Application Support";
-}
-const char* PlatShellPlatformName() {
-    return "macos";
-}
-bool PlatBlockSelectUsesControl() {
-    return false;
-}
-bool PlatScrollGestureLocks() {
-    return true;
-}
-bool PlatAsyncIo() {
-    return false;
-}
-float PlatWindowShadowSize() {
-    return 0.f;
-}
+const PlatFacts kPlatFacts = {
+    .secondaryIsCommand = true,
+    // The traffic lights are the window's, not the title bar's.
+    .showsWindowControls = false,
+    .scrollBounce = true,
+    .overscrollPhaselessStops = true,
+    .monoFontName = "Menlo",
+    .shellDataDir = "/Library/Application Support",
+    .shellPlatformName = "macos",
+    .exePath = ExePath,
+    .disclaimSpeechResponsibility = DisclaimSpeechResponsibility,
+};
 
 } // namespace base

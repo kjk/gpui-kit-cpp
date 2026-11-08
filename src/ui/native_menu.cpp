@@ -61,14 +61,7 @@ NativeMenu* NativeMenu::MenuWithIcon(Str label, component::Icon* icon,
         it->kind = NativeMenuItemKind::Item;
         it->label = label;
         it->id = id;
-        if (icon) {
-            it->icon = icon->name;
-            if (icon->source == component::IconSource::Data) {
-                it->iconSvg = icon->data;
-            } else {
-                it->iconPath = icon->path;
-            }
-        }
+        MenuItemSetIcon(it, icon);
     }
     return this;
 }

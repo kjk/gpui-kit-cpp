@@ -257,20 +257,26 @@ static void OnEnterMedia(CompileContext* c, NodeKind kind) {
     VecAppend(c->mediaReferenceStack, reference);
 }
 
+// The data-carrying tokens `enter` and `exit` both route to their data
+// handlers. Rust's to_mdast.rs repeats the list in both match arms; here it
+// is one case list the two switches share.
+#define MDAST_DATA_CHUNK_CASES       \
+    case Name::CharacterEscapeValue: \
+    case Name::CodeFlowChunk:        \
+    case Name::CodeTextData:         \
+    case Name::Data:                 \
+    case Name::FrontmatterChunk:     \
+    case Name::HtmlFlowData:         \
+    case Name::HtmlTextData:         \
+    case Name::MathFlowChunk:        \
+    case Name::MathTextData:
+
 static void Enter(CompileContext* c) {
     switch ((*c->events)[c->index].name) {
         case Name::AutolinkEmail:
         case Name::AutolinkProtocol:
-        case Name::CharacterEscapeValue:
         case Name::CharacterReference:
-        case Name::CodeFlowChunk:
-        case Name::CodeTextData:
-        case Name::Data:
-        case Name::FrontmatterChunk:
-        case Name::HtmlFlowData:
-        case Name::HtmlTextData:
-        case Name::MathFlowChunk:
-        case Name::MathTextData:
+            MDAST_DATA_CHUNK_CASES
             OnEnterData(c);
             break;
 
@@ -730,15 +736,7 @@ static void Exit(CompileContext* c) {
             OnExit(c);
             break;
 
-        case Name::CharacterEscapeValue:
-        case Name::CodeFlowChunk:
-        case Name::CodeTextData:
-        case Name::Data:
-        case Name::FrontmatterChunk:
-        case Name::HtmlFlowData:
-        case Name::HtmlTextData:
-        case Name::MathFlowChunk:
-        case Name::MathTextData:
+            MDAST_DATA_CHUNK_CASES
             OnExitData(c);
             break;
 

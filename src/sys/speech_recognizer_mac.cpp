@@ -197,37 +197,22 @@ static void Post(SpeechEventMessage* m) {
     ExecPost(MkFunc0(&OnEvent, m));
 }
 
-static uint32_t FirstChar(Str s, int* bytes) {
-    uint8_t b = (uint8_t)s.s[0];
-    int n = b < 0x80 ? 1 : (b >> 5) == 0x6 ? 2 : (b >> 4) == 0xE ? 3 : 4;
-    if (n > len(s)) {
-        n = 1;
-    }
-    uint32_t c = n == 1   ? b
-                 : n == 2 ? (b & 0x1F)
-                 : n == 3 ? (b & 0x0F)
-                          : (b & 0x07);
-    for (int i = 1; i < n; i++) {
-        c = (c << 6) | ((uint8_t)s.s[i] & 0x3F);
-    }
-    *bytes = n;
+static uint32_t FirstChar(Str s) {
+    uint32_t c = 0;
+    Utf8At(s, 0, &c);
     return c;
 }
 
 static uint32_t LastChar(Str s) {
-    int at = len(s) - 1;
-    while (at > 0 && ((uint8_t)s.s[at] & 0xC0) == 0x80) {
-        at--;
-    }
-    int n = 0;
-    return FirstChar(Str(s.s + at, len(s) - at), &n);
+    uint32_t c = 0;
+    Utf8At(s, Utf8Prev(s, len(s)), &c);
+    return c;
 }
 
 // joined: `text` with the separator it needs after the committed phrases.
 static Str JoinedTemp(const SysSpeechSession* s, Str text) {
     if (s->hasLastCommitted && len(text) > 0) {
-        int n = 0;
-        if (SpeechNeedsSpace(s->lastCommitted, FirstChar(text, &n))) {
+        if (SpeechNeedsSpace(s->lastCommitted, FirstChar(text))) {
             return fmt(" %s", text);
         }
     }
@@ -244,7 +229,8 @@ static void CommitPhrase(SysSpeechSession* s, Str text) {
     s->events.phrase(s->events.user, joined);
 }
 
-static void AppendAudio(SysSpeechSession* s, const int16_t* samples, int count) {
+static void AppendAudio(SysSpeechSession* s, const int16_t* samples,
+                        int count) {
     if (count <= 0) {
         return;
     }
@@ -391,9 +377,7 @@ SysSpeechSession* SysSpeechSessionStart(SysSpeechRecognizer* r,
                                         const SysSpeechEvents& events,
                                         SysSpeechError* error, char* message,
                                         int messageCap) {
-    if (message && messageCap > 0) {
-        message[0] = 0;
-    }
+    StrCopyCapped(message, messageCap, Str{});
     SFSpeechRecognizer* recognizer = OnDevice(r);
     if (!recognizer) {
         *error = SysSpeechError::Unsupported;

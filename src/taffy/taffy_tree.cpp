@@ -674,18 +674,33 @@ LayoutOutput TaffyTree::ComputeChildLayout(NodeId node, LayoutInput inputs) {
     return ComputeBlockChildLayout(node, inputs, nullptr);
 }
 
-float TaffyTree::MeasureChildSize(NodeId node, SizeFOpt knownDimensions,
-                                  SizeFOpt parentSize, SizeAvail availableSpace,
-                                  SizingMode sizingMode, AbsoluteAxis axis,
-                                  LineBool verticalMarginsAreCollapsible) {
+// The LayoutInput the three child-layout entry points below hand on; they
+// differ only in the axis and the run mode.
+static LayoutInput ChildLayoutInput(SizeFOpt knownDimensions,
+                                    SizeFOpt parentSize,
+                                    SizeAvail availableSpace,
+                                    SizingMode sizingMode, RequestedAxis axis,
+                                    RunMode runMode,
+                                    LineBool verticalMarginsAreCollapsible) {
     LayoutInput in;
     in.knownDimensions = knownDimensions;
     in.parentSize = parentSize;
     in.availableSpace = availableSpace;
     in.sizingMode = sizingMode;
-    in.axis = ToRequestedAxis(axis);
-    in.runMode = RunMode::ComputeSize;
+    in.axis = axis;
+    in.runMode = runMode;
     in.verticalMarginsAreCollapsible = verticalMarginsAreCollapsible;
+    return in;
+}
+
+float TaffyTree::MeasureChildSize(NodeId node, SizeFOpt knownDimensions,
+                                  SizeFOpt parentSize, SizeAvail availableSpace,
+                                  SizingMode sizingMode, AbsoluteAxis axis,
+                                  LineBool verticalMarginsAreCollapsible) {
+    LayoutInput in =
+        ChildLayoutInput(knownDimensions, parentSize, availableSpace,
+                         sizingMode, ToRequestedAxis(axis),
+                         RunMode::ComputeSize, verticalMarginsAreCollapsible);
     return GetAbs(ComputeChildLayout(node, in).size, axis);
 }
 
@@ -694,14 +709,10 @@ SizeF TaffyTree::MeasureChildSizeBoth(NodeId node, SizeFOpt knownDimensions,
                                       SizeAvail availableSpace,
                                       SizingMode sizingMode,
                                       LineBool verticalMarginsAreCollapsible) {
-    LayoutInput in;
-    in.knownDimensions = knownDimensions;
-    in.parentSize = parentSize;
-    in.availableSpace = availableSpace;
-    in.sizingMode = sizingMode;
-    in.axis = RequestedAxis::Both;
-    in.runMode = RunMode::ComputeSize;
-    in.verticalMarginsAreCollapsible = verticalMarginsAreCollapsible;
+    LayoutInput in =
+        ChildLayoutInput(knownDimensions, parentSize, availableSpace,
+                         sizingMode, RequestedAxis::Both, RunMode::ComputeSize,
+                         verticalMarginsAreCollapsible);
     return ComputeChildLayout(node, in).size;
 }
 
@@ -709,14 +720,10 @@ LayoutOutput TaffyTree::PerformChildLayout(
     NodeId node, SizeFOpt knownDimensions, SizeFOpt parentSize,
     SizeAvail availableSpace, SizingMode sizingMode,
     LineBool verticalMarginsAreCollapsible) {
-    LayoutInput in;
-    in.knownDimensions = knownDimensions;
-    in.parentSize = parentSize;
-    in.availableSpace = availableSpace;
-    in.sizingMode = sizingMode;
-    in.axis = RequestedAxis::Both;
-    in.runMode = RunMode::PerformLayout;
-    in.verticalMarginsAreCollapsible = verticalMarginsAreCollapsible;
+    LayoutInput in =
+        ChildLayoutInput(knownDimensions, parentSize, availableSpace,
+                         sizingMode, RequestedAxis::Both,
+                         RunMode::PerformLayout, verticalMarginsAreCollapsible);
     return ComputeChildLayout(node, in);
 }
 

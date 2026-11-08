@@ -37,6 +37,21 @@
 
 #include "base.h"
 
+// No webview backend: the browser, and Linux built without WebKitGTK
+// (GPUI_HAVE_WEBKITGTK comes from cmd/build.ts's pkg-config probe).
+// wry_unsupported.cpp answers the portable API once for both, and
+// WebViewNew reports GPUI_WRY_UNSUPPORTED_REASON.
+#if GPUI_OS_WASM
+#define GPUI_WRY_UNSUPPORTED 1
+#define GPUI_WRY_UNSUPPORTED_REASON "no webview backend on this platform"
+#elif GPUI_OS_LINUX && !GPUI_HAVE_WEBKITGTK
+#define GPUI_WRY_UNSUPPORTED 1
+#define GPUI_WRY_UNSUPPORTED_REASON \
+    "built without WebKitGTK, so there is no webview here"
+#else
+#define GPUI_WRY_UNSUPPORTED 0
+#endif
+
 namespace wry {
 
 using base::Str;
@@ -189,6 +204,17 @@ struct CustomProtocol {
                     RequestResponder* responder) = nullptr;
 };
 
+/** A webview's own copy of its custom protocols, whose names it owns (heap):
+    appending returns the entry's index, freeing drops every name. */
+int CustomProtocolsAppendCopy(Vec<CustomProtocol>* protocols,
+                              const CustomProtocol& protocol);
+void CustomProtocolsFree(Vec<CustomProtocol>* protocols);
+/** Hand a request to `protocol`'s handler; one without a handler answers
+    500, which is what Rust's dispatch does for a missing closure. */
+void CustomProtocolDispatch(const CustomProtocol& protocol, Str id,
+                            const Request* request,
+                            RequestResponder* responder);
+
 struct WebView;
 
 /** `wry::NewWindowResponse`. For Create, the handler writes the target
@@ -280,41 +306,11 @@ Str MacDownloadFileNameTemp(Str suggested, int collision);
 
 // ─── attributes ──────────────────────────────────────────────────────────
 
-/** `wry::WebViewAttributes` and, below the line, the Windows half of
-    `WebViewBuilderExtWindows`. Every default here is the one
-    `WebViewAttributes::default()` sets.
-
-    Nothing in this struct is copied until `WebViewNew`, and only what a
-    backend keeps outlives it: the strings and vectors must stay alive for
-    that call, and the handler `ctx` for as long as the webview does. For a
-    Rust `Option<String>`, a null `Str::s` is `None`; a present empty `Str` is
-    `Some("")`. */
-struct WebViewAttributes {
+/** The handler half of `WebViewAttributes`. Every backend's `WebView`
+    derives from it too, so `WebViewNew` keeps the whole set with one
+    assignment: `WebViewHandlersSet(wv, attrs)`. */
+struct WebViewHandlers {
     static bool AllowDownload(void*, Str, Str*) { return true; }
-
-    /** Passed to a custom protocol handler; defaults to the container HWND
-        written out, the way Rust defaults it. */
-    Str id;
-    /** `WebContext::new(data_directory)`. On Windows a web context is its
-        data directory and nothing else, so the directory is the field. */
-    Str dataDirectory;
-    Str userAgent;
-    bool visible = true;
-    bool transparent = false;
-    bool hasBackgroundColor = false;
-    Rgba backgroundColor;
-    /** Loaded if set. Data URLs are not supported; use `html`. */
-    Str url;
-    /** Headers for `url`, if any. */
-    const Header* headers = nullptr;
-    int headerCount = 0;
-    /** Loaded if `url` is empty. */
-    Str html;
-    bool zoomHotkeysEnabled = false;
-    const InitializationScript* initializationScripts = nullptr;
-    int initializationScriptCount = 0;
-    const CustomProtocol* customProtocols = nullptr;
-    int customProtocolCount = 0;
 
     /** The `void*` every handler below is called with. */
     void* ctx = nullptr;
@@ -338,6 +334,48 @@ struct WebViewAttributes {
     NewWindowResponse (*newWindowReqHandler)(
         void* ctx, Str url, const NewWindowFeatures* features,
         WebView** createdWebView) = nullptr;
+};
+
+/** Copy the handlers of `attrs` into a backend webview (which derives from
+    `WebViewHandlers`). */
+inline void WebViewHandlersSet(WebViewHandlers* dst,
+                               const WebViewHandlers* attrs) {
+    *dst = *attrs;
+}
+
+/** `wry::WebViewAttributes` and, below the line, the Windows half of
+    `WebViewBuilderExtWindows`. Every default here is the one
+    `WebViewAttributes::default()` sets.
+
+    Nothing in this struct is copied until `WebViewNew`, and only what a
+    backend keeps outlives it: the strings and vectors must stay alive for
+    that call, and the handler `ctx` for as long as the webview does. For a
+    Rust `Option<String>`, a null `Str::s` is `None`; a present empty `Str` is
+    `Some("")`. */
+struct WebViewAttributes : WebViewHandlers {
+    /** Passed to a custom protocol handler; defaults to the container HWND
+        written out, the way Rust defaults it. */
+    Str id;
+    /** `WebContext::new(data_directory)`. On Windows a web context is its
+        data directory and nothing else, so the directory is the field. */
+    Str dataDirectory;
+    Str userAgent;
+    bool visible = true;
+    bool transparent = false;
+    bool hasBackgroundColor = false;
+    Rgba backgroundColor;
+    /** Loaded if set. Data URLs are not supported; use `html`. */
+    Str url;
+    /** Headers for `url`, if any. */
+    const Header* headers = nullptr;
+    int headerCount = 0;
+    /** Loaded if `url` is empty. */
+    Str html;
+    bool zoomHotkeysEnabled = false;
+    const InitializationScript* initializationScripts = nullptr;
+    int initializationScriptCount = 0;
+    const CustomProtocol* customProtocols = nullptr;
+    int customProtocolCount = 0;
 
     bool clipboard = false;
 #if defined(DEBUG) || defined(_DEBUG)
@@ -567,7 +605,7 @@ Str SyntheticMouseEventJsTemp(const SyntheticMouseEvent* ev);
 // WebKitGTK's GLib main context is turned from inside it — the way GLib lets
 // any foreign loop do it, prepare / query, poll, check / dispatch — instead
 // of the other way round. On every other backend the OS loop already turns
-// the webview, and both calls are no-ops.
+// the webview (or there is none), and both calls are the no-ops below.
 
 /** `struct pollfd`'s layout, which is also `GPollFD`'s. */
 struct PollFd {
@@ -582,6 +620,14 @@ struct PollFd {
 int EventLoopPrepare(PollFd** fds, int* timeoutMs);
 /** After the host's poll has written each `revents`: run what is ready. */
 void EventLoopDispatch();
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC || GPUI_WRY_UNSUPPORTED
+inline int EventLoopPrepare(PollFd** fds, int* timeoutMs) {
+    (void)timeoutMs;
+    *fds = nullptr;
+    return 0;
+}
+inline void EventLoopDispatch() {}
+#endif
 
 /** `wry::webview_version`. Temp-arena backed; empty when there is no webview
     runtime on this machine, which is the one thing worth checking before

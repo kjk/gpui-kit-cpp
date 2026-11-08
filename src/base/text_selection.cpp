@@ -878,6 +878,29 @@ void WindowSelectionFree(Window* win) {
     }
 }
 
+// A participant loses its part of the selection: its snapshot and projected
+// copy text go, it hears Cleared and SelectionChanged, and its own clear hook
+// runs last (read before the events, which may touch the participant).
+static void ParticipantDropSelection(
+    Window* win, TextSelectionParticipantState* participant,
+    Entity<TextSelectionParticipantState> self) {
+    TextSelectionClearFn clear = participant->clear;
+    void* clearUser = participant->clearUser;
+    participant->hasSnapshot = false;
+    participant->drawChanged = false;
+    participant->localSelection = false;
+    StrFree(participant->projectedCopyText);
+    participant->projectedCopyText = {};
+    participant->hasProjectedCopyText = false;
+    TextSelectionEvent cleared;
+    cleared.kind = TextSelectionEventKind::Cleared;
+    EntityEmit(win->app, win, self, &cleared);
+    TextSelectionEvent changed;
+    changed.kind = TextSelectionEventKind::SelectionChanged;
+    EntityEmit(win->app, win, self, &changed);
+    if (clear) clear(clearUser, win->app);
+}
+
 void WindowSelectionClear(Window* win) {
     WindowSelection* s = win ? win->sel : nullptr;
     if (!s || s->clearing) {
@@ -907,21 +930,7 @@ void WindowSelectionClear(Window* win) {
                 (TextSelectionParticipantState*)EntityGet(win->app,
                                                           participants[i]);
             if (!participant) continue;
-            TextSelectionClearFn clear = participant->clear;
-            void* clearUser = participant->clearUser;
-            participant->hasSnapshot = false;
-            participant->drawChanged = false;
-            participant->localSelection = false;
-            StrFree(participant->projectedCopyText);
-            participant->projectedCopyText = {};
-            participant->hasProjectedCopyText = false;
-            TextSelectionEvent cleared;
-            cleared.kind = TextSelectionEventKind::Cleared;
-            EntityEmit(win->app, win, participant->self, &cleared);
-            TextSelectionEvent selectionChanged;
-            selectionChanged.kind = TextSelectionEventKind::SelectionChanged;
-            EntityEmit(win->app, win, participant->self, &selectionChanged);
-            if (clear) clear(clearUser, win->app);
+            ParticipantDropSelection(win, participant, participant->self);
         }
         VecReset(participants);
     }
@@ -1421,10 +1430,7 @@ static int CopyParticipantItem(const ParticipantCopyItem& item, App* app,
         if (n < 0) return 0;
         return n < cap ? n : cap - 1;
     }
-    int n = len(item.text) < cap - 1 ? len(item.text) : cap - 1;
-    if (n > 0) memcpy(out, item.text.s, (size_t)n);
-    out[n] = 0;
-    return n;
+    return StrCopyCapped(out, cap, item.text);
 }
 
 int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
@@ -1674,25 +1680,10 @@ void WindowSelectionFinishFrame(Window* win) {
             break;
         }
         if (participant && participant->window == win) {
-            TextSelectionClearFn clear = participant->clear;
-            void* clearUser = participant->clearUser;
             participant->registered = false;
             participant->window = nullptr;
-            participant->hasSnapshot = false;
-            participant->drawChanged = false;
-            participant->localSelection = false;
-            StrFree(participant->projectedCopyText);
-            participant->projectedCopyText = {};
-            participant->hasProjectedCopyText = false;
-            TextSelectionEvent cleared;
-            cleared.kind = TextSelectionEventKind::Cleared;
-            EntityEmit(win->app, win, Entity<TextSelectionParticipantState>{id},
-                       &cleared);
-            TextSelectionEvent changed;
-            changed.kind = TextSelectionEventKind::SelectionChanged;
-            EntityEmit(win->app, win, Entity<TextSelectionParticipantState>{id},
-                       &changed);
-            if (clear) clear(clearUser, win->app);
+            ParticipantDropSelection(win, participant,
+                                     Entity<TextSelectionParticipantState>{id});
         }
     }
     VecReset(participants);

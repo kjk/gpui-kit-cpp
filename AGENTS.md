@@ -111,9 +111,13 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
 
    A function whose body would have branched on the OS is split across those
    files. A small fact (path separator, caret width, which modifier is
-   secondary) is a `Plat*` function declared in `base.h`, with one definition
-   in the platform file that target compiles — not a preprocessor test and
-   not a `GPUI_OS_*` ternary in a shared `.cpp`. Two POSIX bodies that wasm
+   secondary) is a field of `PlatFacts` in `base.h`, defaulted there, read by
+   one `Plat*` function in `base.cpp`; each `base_<os>.cpp` defines
+   `kPlatFacts` naming only the fields where it differs — not a preprocessor
+   test, not a `GPUI_OS_*` ternary in a shared `.cpp`, and not the same
+   function body written once per platform. A body two platforms share
+   lives once, in a file whose suffix covers exactly them or behind a
+   feature macro (below), never copied. Two POSIX bodies that wasm
    cannot compile, `filesystem_posix.cpp` and `process_posix.cpp`, are kept
    off the wasm set; their browser answers are `filesystem_wasm.cpp` and
    `process_wasm.cpp`.
@@ -124,6 +128,18 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    or an SDK include differs (`windows.h` versus pthreads, `ToCWstrTemp`, the
    Windows paint types). `WIN_BACKEND_*` stays inside `*_win.cpp`. **Never
    call an OS API from a shared file.**
+
+   "Not supported here" is written once. Where several platforms (or a
+   platform without a soft dependency) answer a module with the same stubs,
+   the module's header defines a feature macro from `GPUI_OS_*` and the
+   `GPUI_HAVE_*` flags — `GPUI_WRY_UNSUPPORTED`,
+   `GPUI_AUDIO_INPUT_UNSUPPORTED`, `GPUI_SPEECH_RECOGNIZER_UNSUPPORTED`,
+   `GPUI_NOTIFY_UNSUPPORTED` — and an unsuffixed `<module>_unsupported.cpp`
+   holds the stubs inside `#if` on that macro. A one-line no-op or constant
+   shared by several platforms is an `inline` in the header under the same
+   kind of `#if` (`PlatHasMenu`, `PlatReduceMotionKnown`,
+   `wry::EventLoopPrepare`). iOS and Android stay out of a macro unless they
+   already had the symbol: what they lack, their host adapter supplies.
 
 ## Non-goals
 
@@ -201,9 +217,9 @@ exactly one is 1. Seams:
 | system metrics                     | `src/sys/sysinfo.h`           | `sysinfo_win.cpp`           | `sysinfo_linux.cpp`                  | `sysinfo_mac.cpp`           | host adapter           | host adapter               | `sysinfo_wasm.cpp`                  |
 | one HTTP request                   | `src/sys/http.h`              | `http_win.cpp`              | `http_linux.cpp`                     | `http_mac.cpp`              | host adapter           | host adapter               | `http_wasm.cpp`                     |
 | a directory's changes              | `src/sys/dir_watch.h`         | `dir_watch_win.cpp`         | `dir_watch_inotify.cpp`              | `dir_watch_mac.cpp`         | `dir_watch_ios.cpp`    | `dir_watch_inotify.cpp`    | `dir_watch_wasm.cpp` (stub)         |
-| a webview in the window            | `src/wry/wry.h`               | `wry_win.cpp`               | `wry_linux.cpp` (stub)               | `wry_mac.cpp`               | host adapter           | host adapter               | `wry_wasm.cpp` (stub)               |
-| the default microphone             | `src/sys/audio_input.h`       | `audio_input_win.cpp`       | `audio_input_linux.cpp`              | `audio_input_mac.cpp`       | host adapter           | host adapter               | `audio_input_wasm.cpp` (stub)       |
-| the system speech recognizer       | `src/sys/speech_recognizer.h` | `speech_recognizer_win.cpp` | `speech_recognizer_linux.cpp` (stub) | `speech_recognizer_mac.cpp` | host adapter           | host adapter               | `speech_recognizer_wasm.cpp` (stub) |
+| a webview in the window            | `src/wry/wry.h`               | `wry_win.cpp`               | `wry_linux.cpp` (WebKitGTK)          | `wry_mac.cpp`               | host adapter           | host adapter               | `wry_unsupported.cpp`               |
+| the default microphone             | `src/sys/audio_input.h`       | `audio_input_win.cpp`       | `audio_input_linux.cpp`              | `audio_input_mac.cpp`       | host adapter           | host adapter               | `audio_input_unsupported.cpp`       |
+| the system speech recognizer       | `src/sys/speech_recognizer.h` | `speech_recognizer_win.cpp` | `speech_recognizer_unsupported.cpp` | `speech_recognizer_mac.cpp` | host adapter           | host adapter               | `speech_recognizer_unsupported.cpp` |
 
 `_inotify.cpp` is the shared suffix for Linux and Android (one kernel, one
 inotify), and `_posix.cpp` the one for Linux, macOS, iOS, Android **and** wasm,

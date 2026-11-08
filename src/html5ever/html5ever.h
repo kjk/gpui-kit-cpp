@@ -180,8 +180,117 @@ inline const Attribute* TokenAttrs(Arena* a, const Token* token) {
     return token ? ArenaPtrGet(a, token->attrs) : nullptr;
 }
 
-const Attribute* Attr(Arena* a, const Node* node, Str name);
-Str AttrValue(Arena* a, const Node* node, Str name);
+// The node's attribute called `name` (ASCII case-insensitive), or null. Here
+// rather than in a .cpp so html5ever-mini, which implements this header too,
+// shares them.
+inline const Attribute* Attr(Arena* a, const Node* node, Str name) {
+    for (const Attribute* attr = NodeAttrs(a, node); attr;
+         attr = AttributeNext(a, attr)) {
+        if (base::StrEqI(AttributeName(a, attr), name)) return attr;
+    }
+    return nullptr;
+}
+inline Str AttrValue(Arena* a, const Node* node, Str name) {
+    return AttributeValue(a, Attr(a, node, name));
+}
+
+// The rest of what this crate and html5ever-mini, which implements this
+// header too, would otherwise each write out: the tokenizer's input, tree
+// building's node constructor and append, the numeric character reference's
+// digits, and the serializer's tags.
+
+// What Tokenize is handed and its place in the source: the head of either
+// tokenizer's state.
+struct TokenizerInput {
+    Arena* a = nullptr;
+    Str source = {};
+    int at = 0;
+    int line = 1;
+    TokenSink sink = nullptr;
+    void* user = nullptr;
+    TokenizerOptions options = {};
+
+    void Start(Arena* arena, Str text, TokenSink to, void* data,
+               TokenizerOptions opts) {
+        a = arena;
+        source = text;
+        sink = to;
+        user = data;
+        options = opts;
+    }
+    void Emit(const Token& token) const {
+        if (sink) sink(user, &token);
+    }
+};
+
+inline Node* NodeNew(Arena* a, NodeKind kind, Str name = {}) {
+    Node* node = base::ArenaNew<Node>(a);
+    node->kind = kind;
+    node->name = base::ArenaStrDup(a, name);
+    return node;
+}
+
+// `child` becomes the last child of `parent`.
+inline void NodeAppend(Arena* a, Node* parent, Node* child) {
+    child->parent = base::ArenaPtrOf(a, parent);
+    child->next = {};
+    Node* last = NodeLast(a, parent);
+    if (last)
+        last->next = base::ArenaPtrOf(a, child);
+    else
+        parent->first = base::ArenaPtrOf(a, child);
+    parent->last = base::ArenaPtrOf(a, child);
+}
+
+// A numeric character reference, `at` just past its "&": false unless a `#`
+// follows. Then an `x` or `X` makes it hex; sets the radix, where the
+// digits start and where they end (`*end`, the start when there are none).
+inline bool NumericCharRef(Str s, int at, int* radix, int* digits, int* end) {
+    if (at >= len(s) || s.s[at] != '#') {
+        return false;
+    }
+    at++;
+    *radix = 10;
+    if (at < len(s) && (s.s[at] == 'x' || s.s[at] == 'X')) {
+        *radix = 16;
+        at++;
+    }
+    *digits = at;
+    while (at < len(s)) {
+        int d = base::HexDigitValue(s.s[at]);
+        if (d < 0 || d >= *radix) break;
+        at++;
+    }
+    *end = at;
+    return true;
+}
+
+// `<name attr="value" ...>`, the attribute values escaped.
+inline void SerializeStartTag(Arena* a, base::StrBuilder& out,
+                              const Node* node) {
+    out.AppendChar('<');
+    out.Append(NodeName(a, node));
+    for (const Attribute* at = NodeAttrs(a, node); at;
+         at = AttributeNext(a, at)) {
+        out.AppendChar(' ');
+        out.Append(AttributeName(a, at));
+        out.Append(StrL("=\""));
+        base::AppendHtmlEscaped(out, AttributeValue(a, at), false, true);
+        out.AppendChar('"');
+    }
+    out.AppendChar('>');
+}
+inline void SerializeEndTag(Arena* a, base::StrBuilder& out, const Node* node) {
+    out.Append(StrL("</"));
+    out.Append(NodeName(a, node));
+    out.AppendChar('>');
+}
+inline void SerializeComment(Arena* a, base::StrBuilder& out,
+                             const Node* node) {
+    out.Append(StrL("<!--"));
+    out.Append(NodeData(a, node));
+    out.Append(StrL("-->"));
+}
 
 } // namespace html5ever
 #endif // GPUI_HTML5EVER_HTML5EVER_H_

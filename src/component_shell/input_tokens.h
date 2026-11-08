@@ -91,6 +91,11 @@ bool Prepare(MaterializeRequest* request, InputState* state, uint64_t handle,
 // the element's own Token / OnTokenClick.
 void ApplyInput(const Binding& binding, component::Input* input);
 void ApplyTextarea(const Binding& binding, component::Textarea* textarea);
+
+// A change subscription's handler body: only a Change reaches the script,
+// with the state's text; `failure` names the call when the script throws.
+void ReportChange(const shell::ComponentEventBinding* binding, ScriptView* view,
+                  Ctx* cx, const void* event, const char* failure);
 // Binding::wrap: `element`, with the state's change subscription retained
 // for the current render's listener.
 El* Wrap(const Binding& binding, Ctx* cx, El* element);

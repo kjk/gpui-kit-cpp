@@ -353,33 +353,10 @@ static void Post(SysSpeechSession* s, SpeechMessageKind kind, Str text = {},
 // The IUnknown half of a handler that belongs to a session. A handler is
 // agile: WinRT calls it on whichever thread the event was raised on.
 #define GPUI_SPEECH_HANDLER(Name, Interface, SenderT, ArgsT)                   \
-    struct Name final : Interface {                                            \
-        volatile LONG refs = 1;                                                \
+    struct Name final : ComObject<Interface, IAgileObject> {                   \
         SysSpeechSession* session = nullptr;                                   \
         explicit Name(SysSpeechSession* s) : session(s) { SessionAddRef(s); }  \
-        HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid,                  \
-                                                 void** out) override {        \
-            if (riid == __uuidof(IUnknown) ||                                  \
-                riid == __uuidof(IAgileObject) ||                              \
-                riid == __uuidof(Interface)) {                                 \
-                *out = static_cast<Interface*>(this);                          \
-                AddRef();                                                      \
-                return S_OK;                                                   \
-            }                                                                  \
-            *out = nullptr;                                                    \
-            return E_NOINTERFACE;                                              \
-        }                                                                      \
-        ULONG STDMETHODCALLTYPE AddRef() override {                            \
-            return (ULONG)InterlockedIncrement(&refs);                         \
-        }                                                                      \
-        ULONG STDMETHODCALLTYPE Release() override {                           \
-            LONG left = InterlockedDecrement(&refs);                           \
-            if (left == 0) {                                                   \
-                SessionRelease(session);                                       \
-                delete this;                                                   \
-            }                                                                  \
-            return (ULONG)left;                                                \
-        }                                                                      \
+        ~Name() override { SessionRelease(session); }                          \
         HRESULT STDMETHODCALLTYPE Invoke(SenderT sender, ArgsT args) override; \
     }
 
@@ -469,32 +446,14 @@ HRESULT StartedHandler::Invoke(IAsyncAction*, AsyncStatus) {
 }
 
 // Closes the recognizer once its cancellation has landed.
-struct CloseHandler final : IAsyncActionCompletedHandler {
-    volatile LONG refs = 1;
+struct CloseHandler final
+    : ComObject<IAsyncActionCompletedHandler, IAgileObject> {
     IClosable* closable = nullptr;
 
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** out) override {
-        if (riid == __uuidof(IUnknown) || riid == __uuidof(IAgileObject) ||
-            riid == __uuidof(IAsyncActionCompletedHandler)) {
-            *out = static_cast<IAsyncActionCompletedHandler*>(this);
-            AddRef();
-            return S_OK;
+    ~CloseHandler() override {
+        if (closable) {
+            closable->Release();
         }
-        *out = nullptr;
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override {
-        return (ULONG)InterlockedIncrement(&refs);
-    }
-    ULONG STDMETHODCALLTYPE Release() override {
-        LONG left = InterlockedDecrement(&refs);
-        if (left == 0) {
-            if (closable) {
-                closable->Release();
-            }
-            delete this;
-        }
-        return (ULONG)left;
     }
     HRESULT STDMETHODCALLTYPE Invoke(IAsyncAction*, AsyncStatus) override {
         if (closable) {
@@ -535,13 +494,7 @@ static void ErrorOfHresult(HRESULT hr, SysSpeechError* kind, char* message,
         text = utf8[0] ? fmt("%s (0x%08x)", Str(utf8), (uint32_t)hr)
                        : fmt("HRESULT 0x%08x", (uint32_t)hr);
     }
-    if (message && cap > 0) {
-        int n = len(text) < cap - 1 ? len(text) : cap - 1;
-        if (n > 0) {
-            memcpy(message, text.s, (size_t)n);
-        }
-        message[n] = 0;
-    }
+    StrCopyCapped(message, cap, text);
 }
 
 // status_error
@@ -737,9 +690,7 @@ SysSpeechSession* SysSpeechSessionStart(SysSpeechRecognizer* r,
                                         const SysSpeechEvents& events,
                                         SysSpeechError* error, char* message,
                                         int messageCap) {
-    if (message && messageCap > 0) {
-        message[0] = 0;
-    }
+    StrCopyCapped(message, messageCap, Str{});
     if (!r || !r->language) {
         *error = SysSpeechError::Unsupported;
         return nullptr;

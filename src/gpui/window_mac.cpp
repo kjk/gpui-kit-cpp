@@ -9,6 +9,8 @@
 
 #include "gpui/platform.h"
 #include "gpui/paint.h"
+#include "gpui/window_loop.h"
+#include "sys/clock.h"
 #include "sys/executor.h"
 
 #import <Cocoa/Cocoa.h>
@@ -34,7 +36,6 @@ struct PlatWindow {
     // retaining an arena frame.
     NSMutableDictionary<NSNumber*, GpuiAccessibilityElement*>*
         accessibilityElements = nil;
-    bool dirty = true;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
     // Shown only after the first paint. Ordering front at creation puts an
@@ -51,16 +52,7 @@ double TimeNow() {
     if (TestPlatformNow(&simulated)) {
         return simulated;
     }
-    static bool started = false;
-    static struct timespec start = {};
-    struct timespec now = {};
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    if (!started) {
-        start = now;
-        started = true;
-    }
-    return (double)(now.tv_sec - start.tv_sec) +
-           (double)(now.tv_nsec - start.tv_nsec) / 1e9;
+    return ClockMonotonicSecondsSinceStart();
 }
 
 // Defined below, once NSEvent is in scope for the whole file.
@@ -95,6 +87,11 @@ static NSString* GpuiAccessibilityString(gpui::Str value) {
 
 static NSString* GpuiAccessibilityRole(gpui::AccessibilityRole role) {
     using gpui::AccessibilityRole;
+    if (gpui::AccessibilityRoleTakesText(role)) {
+        return role == AccessibilityRole::MultilineTextInput
+                   ? NSAccessibilityTextAreaRole
+                   : NSAccessibilityTextFieldRole;
+    }
     switch (role) {
         case AccessibilityRole::Alert:
         case AccessibilityRole::Heading:
@@ -111,22 +108,6 @@ static NSString* GpuiAccessibilityRole(gpui::AccessibilityRole role) {
             return NSAccessibilityCheckBoxRole;
         case AccessibilityRole::RadioButton:
             return NSAccessibilityRadioButtonRole;
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::SearchInput:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::WeekInput:
-        case AccessibilityRole::MonthInput:
-        case AccessibilityRole::TimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::NumberInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::UrlInput:
-            return NSAccessibilityTextFieldRole;
-        case AccessibilityRole::PasswordInput:
-            return NSAccessibilityTextFieldRole;
-        case AccessibilityRole::MultilineTextInput:
-            return NSAccessibilityTextAreaRole;
         case AccessibilityRole::Link:
             return NSAccessibilityLinkRole;
         case AccessibilityRole::Image:
@@ -181,18 +162,6 @@ static NSString* GpuiAccessibilityRole(gpui::AccessibilityRole role) {
         default:
             return NSAccessibilityGroupRole;
     }
-}
-
-static int GpuiAccessibilityNodeIndex(gpui::Window* win, uint32_t id) {
-    if (!win) {
-        return -1;
-    }
-    for (int i = 0; i < win->accessibility.len; i++) {
-        if (win->accessibility[i].id == id) {
-            return i;
-        }
-    }
-    return -1;
 }
 
 static GpuiAccessibilityElement* GpuiAccessibilityElementFor(gpui::Window* win,
@@ -334,7 +303,7 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     return [[view window] convertRectToScreen:inWindow];
 }
 - (id)accessibilityParent {
-    int index = GpuiAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
+    int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
     if (index < 0) {
         return nil;
     }
@@ -344,7 +313,7 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
                        : (id)gpuiWindow->plat->view;
 }
 - (NSArray*)accessibilityChildren {
-    int index = GpuiAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
+    int index = gpui::WindowAccessibilityNodeIndex(gpuiWindow, gpuiNodeId);
     return GpuiAccessibilityChildren(gpuiWindow, index);
 }
 - (NSArray<NSString*>*)accessibilityActionNames {
@@ -526,6 +495,25 @@ static bool PressedButton(MouseButton* out) {
     __strong NSString* textContentType;
 }
 @end
+
+// An NSTextInputClient range, in UTF-16 units of `s`, as the byte range the
+// field counts in.
+static gpui::Selection Utf16RangeToUtf8(gpui::Str s, NSRange r) {
+    gpui::Selection out = {};
+    out.start = gpui::Utf16OffsetToUtf8(s, (int)r.location);
+    out.end = gpui::Utf16OffsetToUtf8(s, (int)(r.location + r.length));
+    return out;
+}
+
+// The text an NSTextInputClient call hands over, an NSString or an
+// NSAttributedString, as UTF-8 that lives as long as the autorelease pool.
+static gpui::Str TextInputString(id string) {
+    NSString* str = [string isKindOfClass:[NSAttributedString class]]
+                        ? [(NSAttributedString*)string string]
+                        : (NSString*)string;
+    const char* utf8 = [str UTF8String];
+    return utf8 ? gpui::Str(utf8, (int)strlen(utf8)) : gpui::Str{};
+}
 
 @implementation GpuiView
 
@@ -883,26 +871,18 @@ static bool PressedButton(MouseButton* out) {
     if (!in) {
         return;
     }
-    NSString* str = [string isKindOfClass:[NSAttributedString class]]
-                        ? [(NSAttributedString*)string string]
-                        : (NSString*)string;
-    const char* utf8 = [str UTF8String];
-    gpui::Str text = utf8 ? gpui::Str(utf8, (int)strlen(utf8)) : gpui::Str{};
+    gpui::Str text = TextInputString(string);
     gpui::Str doc = gpui::InputValue(in);
     gpui::Selection range = {};
     bool hasRange = replacement.location != NSNotFound;
     if (hasRange) {
-        range.start = gpui::Utf16OffsetToUtf8(doc, (int)replacement.location);
-        range.end = gpui::Utf16OffsetToUtf8(
-            doc, (int)(replacement.location + replacement.length));
+        range = Utf16RangeToUtf8(doc, replacement);
     }
     // The selection Cocoa reports is inside the new text, in UTF-16 units.
     gpui::Selection sel = {};
     bool hasSel = selected.location != NSNotFound;
     if (hasSel) {
-        sel.start = gpui::Utf16OffsetToUtf8(text, (int)selected.location);
-        sel.end = gpui::Utf16OffsetToUtf8(
-            text, (int)(selected.location + selected.length));
+        sel = Utf16RangeToUtf8(text, selected);
     }
     gpui::InputReplaceAndMarkText(in, win->app, win,
                                   hasRange ? &range : nullptr, text,
@@ -923,11 +903,8 @@ static bool PressedButton(MouseButton* out) {
     if (!in) {
         return;
     }
-    NSString* str = [string isKindOfClass:[NSAttributedString class]]
-                        ? [(NSAttributedString*)string string]
-                        : (NSString*)string;
-    const char* utf8 = [str UTF8String];
-    if (!utf8 || !*utf8) {
+    gpui::Str text = TextInputString(string);
+    if (len(text) == 0) {
         // An empty commit ends the composition without leaving anything.
         gpui::InputReplaceAndMarkText(in, win->app, win, nullptr, gpui::Str{},
                                       nullptr);
@@ -938,14 +915,11 @@ static bool PressedButton(MouseButton* out) {
     gpui::Selection range = {};
     bool hasRange = replacement.location != NSNotFound;
     if (hasRange) {
-        range.start = gpui::Utf16OffsetToUtf8(doc, (int)replacement.location);
-        range.end = gpui::Utf16OffsetToUtf8(
-            doc, (int)(replacement.location + replacement.length));
+        range = Utf16RangeToUtf8(doc, replacement);
     }
     // A null range is the marked run, which is what a commit replaces.
     gpui::InputReplaceTextInRange(in, win->app, win,
-                                  hasRange ? &range : nullptr,
-                                  gpui::Str(utf8, (int)strlen(utf8)));
+                                  hasRange ? &range : nullptr, text);
     gpui::AppInvalidate(win);
 }
 
@@ -1342,7 +1316,7 @@ static void Redraw(Window* win) {
     if (!pw || !pw->view) {
         return;
     }
-    pw->dirty = false;
+    win->dirty = false;
     win->maximized = [pw->window isZoomed] ? true : false;
     [pw->view display];
     OrderFrontOnce(pw);
@@ -1354,15 +1328,6 @@ void AppQuit(Window* win) {
     if (win && win->plat && win->plat->window) {
         // windowWillClose is what calls WindowClosed.
         [win->plat->window close];
-    }
-}
-
-void AppInvalidate(Window* win) {
-    if (win) {
-        win->invalidations++;
-    }
-    if (win && win->plat) {
-        win->plat->dirty = true;
     }
 }
 
@@ -2000,17 +1965,6 @@ bool PlatReduceMotion() {
             : false;
 }
 
-bool PlatReduceMotionKnown(bool* out) {
-    if (out) {
-        *out = PlatReduceMotion();
-    }
-    return true;
-}
-
-void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
-    (void)onChange;
-}
-
 void OpenUrl(Str url) {
     if (!url.s || len(url) <= 0) {
         return;
@@ -2078,14 +2032,8 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     return StrDupTemp(Str(paths.els, len(paths)));
 }
 
-void ClipboardSetText(Window* win, Str text) {
-    if (TestPlatformClipboardWrite(text)) {
-        return;
-    }
+void PlatClipboardSetText(Window* win, Str text) {
     (void)win;
-    if (!text.s || len(text) <= 0) {
-        return;
-    }
     NSString* s = [[NSString alloc] initWithBytes:text.s
                                            length:(NSUInteger)len(text)
                                          encoding:NSUTF8StringEncoding];
@@ -2117,37 +2065,16 @@ void WindowSetTextContentType(Window* win, Str value) {
     [win->plat->view setContentType:content];
 }
 
-Str ClipboardGetText(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated.text;
-    }
+Str PlatClipboardGetText(Arena* a, Window* win) {
     (void)win;
     NSPasteboard* pb = [NSPasteboard generalPasteboard];
     NSString* s = [pb stringForType:NSPasteboardTypeString];
-    if (!s) {
-        return {};
-    }
-    const char* utf8 = [s UTF8String];
-    if (!utf8) {
-        return {};
-    }
-    int n = (int)strlen(utf8);
-    char* buf = (char*)Alloc(a, n + 1);
-    if (!buf) {
-        return {};
-    }
-    memcpy(buf, utf8, (size_t)n + 1);
-    return Str(buf, n);
+    return s ? StrDup(a, Str([s UTF8String])) : Str();
 }
 
-ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated;
-    }
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     ClipboardItem out;
-    out.text = ClipboardGetText(a, win);
+    out.text = PlatClipboardGetText(a, win);
     NSPasteboard* pb = [NSPasteboard generalPasteboard];
     NSData* image = [pb dataForType:NSPasteboardTypePNG];
     if (!image) image = [pb dataForType:NSPasteboardTypeTIFF];
@@ -2396,31 +2323,10 @@ int AppRun(App* app) {
                 break;
             }
 
-            for (int i = 0; i < app->windows.len; i++) {
-                Window* w = app->windows[i];
-                if (w->plat && w->plat->dirty) {
-                    Redraw(w);
-                }
-            }
+            RunLoopRedrawDirty<PlatWindow>(app, Redraw);
 
-            double now = TimeNow();
-            double waitS = 1.0;
             bool anyDirty = false;
-            for (int i = 0; i < app->windows.len; i++) {
-                Window* w = app->windows[i];
-                if (!w->plat) {
-                    continue;
-                }
-                if (w->plat->dirty) {
-                    anyDirty = true;
-                }
-                if (w->plat->nextTick > 0) {
-                    double d = w->plat->nextTick - now;
-                    if (d < waitS) {
-                        waitS = d;
-                    }
-                }
-            }
+            double waitS = RunLoopWaitFor<PlatWindow>(app, &anyDirty);
             if (!anyDirty && ExecQueued() == 0) {
                 NSDate* deadline =
                     waitS <= 0 ? [NSDate distantPast]
@@ -2438,17 +2344,7 @@ int AppRun(App* app) {
             // posted from the main thread itself, which never wakes anything.
             ExecDrain();
 
-            now = TimeNow();
-            for (int i = 0; i < app->windows.len; i++) {
-                Window* w = app->windows[i];
-                if (!w->plat || w->plat->nextTick <= 0) {
-                    continue;
-                }
-                if (now >= w->plat->nextTick) {
-                    // WindowTimerTick re-arms through PlatSetTimer.
-                    WindowTimerTick(w);
-                }
-            }
+            RunLoopTickDue<PlatWindow>(app);
         }
     }
     gRunningApp = nullptr;

@@ -22,7 +22,7 @@ the gpui-kit, Zed GPUI, taffy and markdown pins, and moves the same way
 | `src/error.rs`                                       | — (see below)                  |
 | `src/wkwebview/mod.rs`, `class/**`, `navigation.rs`  | `wry_mac.cpp`                  |
 | `src/webkitgtk/**`                                   | `wry_linux.cpp`, `wry.cpp` (the string work) |
-| —                                                    | `wry_wasm.cpp` — a stub        |
+| —                                                    | `wry_unsupported.cpp` — wasm, and Linux without WebKitGTK |
 | `src/android/**`, `src/wkwebview/ios/**`             | not ported                     |
 
 Everything is in `namespace wry`, not `gpui`, and the directory is isolated

@@ -10,9 +10,6 @@ namespace gpui {
 
 namespace component {
 
-static int SearchableFlatIndex(const SearchableListState* state,
-                               IndexPath path);
-
 SearchableListDelegate SearchableListDelegate::Items(
     const SearchableListItem* values, int count) {
     SearchableListDelegate out;
@@ -127,7 +124,7 @@ bool SearchableListDelegate::IsItemChecked(IndexPath path,
     }
     return value && state &&
            SearchableListIsChecked(state, state->items, state->nItems,
-                                   SearchableFlatIndex(state, path));
+                                   SearchableListFlatIndex(state, path));
 }
 
 void SearchableListDelegate::OnWillChange(SearchableListState* state,
@@ -432,14 +429,7 @@ El* SearchableListItemElement::IntoEl() {
     for (int i = 0; i < children.len; i++) {
         left->Child(children[i]);
     }
-    El* inner = Div(a)
-                    ->FlexRow()
-                    ->W(kFill)
-                    ->MinW(0)
-                    ->Gap(Rems(cx, 0.25f))
-                    ->ItemsCenter()
-                    ->JustifyBetween()
-                    ->Child(left);
+    El* inner = SpreadRow(cx)->Child(left);
     // The check inherits the row's text color, so it stays legible on the
     // accent fill and dims with a disabled label.
     El* check = IconEl(a, checkIcon, UiIconPx(cx, UiSize::XSmall))->Shrink0();
@@ -451,7 +441,7 @@ El* SearchableListItemElement::IntoEl() {
     return row;
 }
 
-static int SearchableFlatIndex(const SearchableListState* s, IndexPath path) {
+int SearchableListFlatIndex(const SearchableListState* s, IndexPath path) {
     if (!s || !s->items || path.section < 0 || path.row < 0) {
         return -1;
     }
@@ -468,7 +458,12 @@ static int SearchableFlatIndex(const SearchableListState* s, IndexPath path) {
     return -1;
 }
 
-static IndexPath SearchablePath(const SearchableListState* s, int flat) {
+void SearchableListSetMultiple(SearchableListState* s, bool multiple) {
+    s->mode = multiple ? SearchableListMode::Multi : SearchableListMode::Single;
+    s->closeOnSelect = !multiple;
+}
+
+IndexPath SearchableListPath(const SearchableListState* s, int flat) {
     if (!s || !s->items || flat < 0 || flat >= s->nItems) {
         return IndexPathNew(-1);
     }
@@ -496,7 +491,7 @@ void SearchableListState::SelectedValues(Vec<Str>* out) const {
 }
 
 bool SearchableListState::AddSelectedIndex(IndexPath index) {
-    int flat = SearchableFlatIndex(this, index);
+    int flat = SearchableListFlatIndex(this, index);
     if (flat < 0) {
         return false;
     }
@@ -510,7 +505,7 @@ bool SearchableListState::AddSelectedIndex(IndexPath index) {
 }
 
 bool SearchableListState::RemoveSelectedIndex(IndexPath index) {
-    int flat = SearchableFlatIndex(this, index);
+    int flat = SearchableListFlatIndex(this, index);
     for (int i = 0; i < selected.len; i++) {
         if (selected[i] != flat) {
             continue;
@@ -586,8 +581,8 @@ bool SearchableListIsChecked(const SearchableListState* s,
         return true;
     }
     if (s->hasDelegate && s->delegate.isItemChecked) {
-        return s->delegate
-            .IsItemChecked(SearchablePath(s, index), &items[index], s, nullptr);
+        return s->delegate.IsItemChecked(SearchableListPath(s, index),
+                                         &items[index], s, nullptr);
     }
     return SelectionIndexOfValue(s, items, nItems, items[index].value) >= 0;
 }
@@ -599,8 +594,8 @@ bool SearchableListIsEnabled(const SearchableListState* s,
         return false;
     }
     if (s->hasDelegate && s->delegate.isItemEnabled &&
-        !s->delegate
-             .IsItemEnabled(SearchablePath(s, index), &items[index], nullptr)) {
+        !s->delegate.IsItemEnabled(SearchableListPath(s, index), &items[index],
+                                   nullptr)) {
         return false;
     }
     if (items[index].disabled || items[index].pinned) {
@@ -724,7 +719,7 @@ void SearchableListState::OnRowClick(SearchableListState* self, Ctx* cx,
     }
     self->closedByConfirm = false;
     if (self->hasDelegate && !self->suppressDelegateConfirm) {
-        self->delegate.OnConfirm(self, SearchablePath(self, index), false);
+        self->delegate.OnConfirm(self, SearchableListPath(self, index), false);
     }
     Notify(cx);
 }
@@ -740,20 +735,6 @@ SearchableList* SearchableList::New(Ctx* cx, Str id,
     s->state = st;
     s->query = query;
     return s;
-}
-SearchableList* SearchableList::Footer(El* e) {
-    footer = e;
-    return this;
-}
-SearchableList* SearchableList::Items(const SearchableItem* it, int n) {
-    items = it;
-    nItems = n;
-    return this;
-}
-SearchableList* SearchableList::Sections(const Str* titles, int n) {
-    sections = titles;
-    nSections = n;
-    return this;
 }
 SearchableList* SearchableList::OnQueryFocus(Listener fn) {
     onQueryFocus = fn;
@@ -777,19 +758,6 @@ SearchableList* SearchableList::InSelect(bool v) {
 }
 SearchableList* SearchableList::ScrollBounce(bool v) {
     scrollBounce = v ? 1 : 0;
-    return this;
-}
-SearchableList* SearchableList::CheckIcon(IconName n) {
-    checkIcon = n;
-    return this;
-}
-SearchableList* SearchableList::WithSize(UiSize value) {
-    size = value;
-    return this;
-}
-SearchableList* SearchableList::Delegate(const SearchableListDelegate& value) {
-    delegate = value;
-    hasDelegate = true;
     return this;
 }
 
@@ -913,7 +881,7 @@ El* SearchableList::IntoEl() {
         }
         bool checked = SearchableListIsChecked(s, items, nItems, ix);
         bool enabled = SearchableListIsEnabled(s, items, nItems, ix);
-        IndexPath path = SearchablePath(s, ix);
+        IndexPath path = SearchableListPath(s, ix);
         if (hasDelegate && delegate.isItemChecked) {
             checked = delegate.IsItemChecked(path, &it, s, cx->app);
         }

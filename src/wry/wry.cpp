@@ -80,19 +80,6 @@ Str ProxyUriTemp(const ProxyConfig* proxy) {
                             proxy->port);
 }
 
-static int HexDigit(char c) {
-    if (c >= '0' && c <= '9') {
-        return c - '0';
-    }
-    if (c >= 'a' && c <= 'f') {
-        return c - 'a' + 10;
-    }
-    if (c >= 'A' && c <= 'F') {
-        return c - 'A' + 10;
-    }
-    return -1;
-}
-
 // `percent_encoding::percent_decode(..).decode_utf8_lossy()`, without the
 // lossy part: a Linux path is bytes, so a sequence that is not UTF-8 is kept
 // as it decoded rather than turned into U+FFFD.
@@ -105,20 +92,7 @@ Str PathFromFileUriTemp(Str uri) {
     if (!res.s) {
         return {};
     }
-    int n = 0;
-    for (int i = 0; i < len(path); i++) {
-        char c = path.s[i];
-        if (c == '%' && i + 2 < len(path)) {
-            int hi = HexDigit(path.s[i + 1]);
-            int lo = HexDigit(path.s[i + 2]);
-            if (hi >= 0 && lo >= 0) {
-                res.s[n++] = (char)(hi * 16 + lo);
-                i += 2;
-                continue;
-            }
-        }
-        res.s[n++] = c;
-    }
+    int n = base::PercentDecode(path, res.s);
     res.s[n] = 0;
     res.len = n;
     return res;
@@ -239,6 +213,34 @@ Str WebViewLastError() {
 
 void WebViewSetLastError(const char* message) {
     gWebViewLastError = message;
+}
+
+int CustomProtocolsAppendCopy(Vec<CustomProtocol>* protocols,
+                              const CustomProtocol& protocol) {
+    CustomProtocol copy = protocol;
+    copy.name = StrDup(protocol.name);
+    int index = len(*protocols);
+    VecAppend(*protocols, copy);
+    return index;
+}
+
+void CustomProtocolsFree(Vec<CustomProtocol>* protocols) {
+    for (int i = 0; i < len(*protocols); i++) {
+        StrFree((*protocols)[i].name);
+    }
+    VecReset(*protocols);
+}
+
+void CustomProtocolDispatch(const CustomProtocol& protocol, Str id,
+                            const Request* request,
+                            RequestResponder* responder) {
+    if (protocol.handler) {
+        protocol.handler(protocol.ctx, id, request, responder);
+        return;
+    }
+    Response response;
+    response.status = 500;
+    Respond(responder, &response);
 }
 
 } // namespace wry

@@ -6,12 +6,9 @@ namespace gpui {
 // nothing else, so two spellings of it are two actions — which is Rust's rule
 // too, where two action types never compare equal.
 static uint32_t HashName(Str s) {
-    uint32_t h = 2166136261u;
+    uint32_t h = kFnv1aBasis32;
     if (s.s) {
-        for (int i = 0; i < len(s); i++) {
-            h ^= (uint8_t)s.s[i];
-            h *= 16777619u;
-        }
+        h = Fnv1a32(h, s.s, (size_t)len(s));
     }
     // 0 is "no action", so a name that hashes there gets nudged off it.
     return h ? h : 1u;

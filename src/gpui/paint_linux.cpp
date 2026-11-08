@@ -4,6 +4,7 @@
    convention the element tree uses, so nothing here flips coordinates. */
 
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/scene.h"
 
 #include <math.h>
@@ -14,29 +15,8 @@
 
 namespace gpui {
 
-static uint64_t gNextPaintResourceGeneration = 1;
 static bool gOffscreenWasRecording = false;
 static bool gNoSceneBegin = false;
-
-static bool SceneFinish(PaintCtx* ctx) {
-    if (!SceneOn() || !scene::Recording()) {
-        return true;
-    }
-    Bounds damage = {};
-    bool draw = scene::FrameEnd(ctx, &damage);
-    if (draw) {
-        scene::Replay(ctx, &damage);
-    }
-    return draw;
-}
-
-static uint64_t PaintResourceGenerationNew() {
-    uint64_t id = gNextPaintResourceGeneration++;
-    if (id == 0) {
-        id = gNextPaintResourceGeneration++;
-    }
-    return id;
-}
 
 struct PaintApp {
     // A cairo-backed font map context, so a layout can be shaped and measured
@@ -86,31 +66,21 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
-static Vec<Str> gInstalledFonts;
-static bool gInstalledFontsReady = false;
-
-const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
+void PaintListInstalledFonts(PaintApp* pa, Vec<Str>* out) {
     (void)pa;
-    if (!gInstalledFontsReady) {
-        gInstalledFontsReady = true;
-        PangoFontMap* map = pango_cairo_font_map_get_default();
-        PangoFontFamily** families = nullptr;
-        int count = 0;
-        if (map) {
-            pango_font_map_list_families(map, &families, &count);
-        }
-        for (int i = 0; i < count; i++) {
-            const char* name = pango_font_family_get_name(families[i]);
-            if (name && name[0]) {
-                VecAppend(gInstalledFonts, StrDup(Str(name)));
-            }
-        }
-        g_free(families);
+    PangoFontMap* map = pango_cairo_font_map_get_default();
+    PangoFontFamily** families = nullptr;
+    int count = 0;
+    if (map) {
+        pango_font_map_list_families(map, &families, &count);
     }
-    if (n) {
-        *n = gInstalledFonts.len;
+    for (int i = 0; i < count; i++) {
+        const char* name = pango_font_family_get_name(families[i]);
+        if (name && name[0]) {
+            VecAppend(*out, StrDup(Str(name)));
+        }
     }
-    return gInstalledFonts.els;
+    g_free(families);
 }
 
 Str PaintSystemUIFontMappedFamily() {
@@ -119,26 +89,19 @@ Str PaintSystemUIFontMappedFamily() {
     return StrL("IBM Plex Sans");
 }
 
-void PaintTargetFree(PaintCtx* ctx) {
-    if (!ctx || !ctx->rt) {
-        return;
+void PaintTargetDestroy(PaintTarget* rt) {
+    if (rt->cr) {
+        cairo_destroy(rt->cr);
     }
-    if (ctx->rt->cr) {
-        cairo_destroy(ctx->rt->cr);
-    }
-    delete ctx->rt;
-    ctx->rt = nullptr;
+    delete rt;
 }
 
 // `native` is the window's cairo_surface_t; the context is per-frame because
 // an XCB/Xlib surface is resized under us between expose events.
-bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
-    (void)pxW;
-    (void)pxH;
-    if (!ctx || !ctx->pa || !native) {
+bool PaintTargetBegin(PaintCtx* ctx, void* native, int, int) {
+    if (!PaintTargetReplace(ctx, native)) {
         return false;
     }
-    PaintTargetFree(ctx);
     auto* t = new PaintTarget();
     t->cr = cairo_create((cairo_surface_t*)native);
     if (!t->cr || cairo_status(t->cr) != CAIRO_STATUS_SUCCESS) {
@@ -200,10 +163,7 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
         const uint8_t* src = cairo_image_surface_get_data(gOffscreenSurface);
         // CAIRO_FORMAT_ARGB32 is already premultiplied BGRA on a little
         // endian machine; the rows are copied without their padding.
-        for (int y = 0; y < h; y++) {
-            memcpy(outBgra + (size_t)y * (size_t)w * 4,
-                   src + (size_t)y * (size_t)stride, (size_t)w * 4);
-        }
+        PaintCopyBgraRows(outBgra, (size_t)w * 4, src, (size_t)stride, w, h);
     }
     PaintTargetFree(ctx);
     cairo_surface_destroy(gOffscreenSurface);
@@ -213,7 +173,7 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
 }
 
 bool PaintTargetEnd(PaintCtx* ctx) {
-    SceneFinish(ctx);
+    PaintSceneFinish(ctx, false);
     if (!ctx || !ctx->rt || !ctx->rt->cr) {
         return false;
     }
@@ -267,11 +227,7 @@ static void RoundRectPath(cairo_t* cr, float x, float y, float w, float h,
     cairo_close_path(cr);
 }
 
-void CanvasClear(PaintCtx* ctx, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecClear(ctx, c);
-        return;
-    }
+void PaintBackendCanvasClear(PaintCtx* ctx, Rgba c) {
     cairo_t* cr = Cr(ctx);
     if (!cr) {
         return;
@@ -283,11 +239,8 @@ void CanvasClear(PaintCtx* ctx, Rgba c) {
     cairo_restore(cr);
 }
 
-void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRect(ctx, x, y, w, h, c);
-        return;
-    }
+void PaintBackendCanvasFillRect(PaintCtx* ctx, float x, float y, float w,
+                                float h, Rgba c) {
     cairo_t* cr = Cr(ctx);
     if (!cr || w <= 0 || h <= 0 || c.a == 0) {
         return;
@@ -297,12 +250,8 @@ void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
     cairo_fill(cr);
 }
 
-void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
-                     Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRound(ctx, x, y, w, h, r, c);
-        return;
-    }
+void PaintBackendCanvasFillRound(PaintCtx* ctx, float x, float y, float w,
+                                 float h, float r, Rgba c) {
     cairo_t* cr = Cr(ctx);
     if (!cr || w <= 0 || h <= 0 || c.a == 0) {
         return;
@@ -312,12 +261,9 @@ void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
     cairo_fill(cr);
 }
 
-void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
-                       float r, float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecStrokeRound(ctx, x, y, w, h, r, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasStrokeRound(PaintCtx* ctx, float x, float y, float w,
+                                   float h, float r, float stroke, Rgba c,
+                                   const float* dash) {
     cairo_t* cr = Cr(ctx);
     if (!cr || stroke <= 0 || w <= 0 || h <= 0) {
         return;
@@ -332,12 +278,8 @@ void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
     cairo_set_dash(cr, nullptr, 0, 0);
 }
 
-void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
-                float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecLine(ctx, x1, y1, x2, y2, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasLine(PaintCtx* ctx, float x1, float y1, float x2,
+                            float y2, float stroke, Rgba c, const float* dash) {
     cairo_t* cr = Cr(ctx);
     if (!cr) {
         return;
@@ -351,12 +293,8 @@ void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
     cairo_set_dash(cr, nullptr, 0, 0);
 }
 
-void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
-                   float stroke, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecEllipse(ctx, cx, cy, rx, ry, stroke, c);
-        return;
-    }
+void PaintBackendCanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx,
+                               float ry, float stroke, Rgba c) {
     cairo_t* cr = Cr(ctx);
     if (!cr || rx <= 0 || ry <= 0) {
         return;
@@ -376,20 +314,8 @@ void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
     }
 }
 
-bool CanvasScrollRect(PaintCtx*, float, float, float, float, float, float) {
-    return false;
-}
-
-bool CanvasReadPixels(PaintCtx*, float, float, float, float, uint8_t*, int,
-                      int*, int*) {
-    return false;
-}
-
-void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
-    if (scene::Recording()) {
-        scene::RecPushClip(ctx, x, y, w, h);
-        return;
-    }
+void PaintBackendCanvasPushClip(PaintCtx* ctx, float x, float y, float w,
+                                float h) {
     cairo_t* cr = Cr(ctx);
     if (!cr) {
         return;
@@ -399,11 +325,7 @@ void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
     cairo_clip(cr);
 }
 
-void CanvasPopClip(PaintCtx* ctx) {
-    if (scene::Recording()) {
-        scene::RecPopClip(ctx);
-        return;
-    }
+void PaintBackendCanvasPopClip(PaintCtx* ctx) {
     cairo_t* cr = Cr(ctx);
     if (cr) {
         cairo_restore(cr);
@@ -431,28 +353,15 @@ struct CairoPathOp {
 };
 
 struct Path {
+    PathHead head;
     Vec<CairoPathOp> ops;
-    bool winding = true;
-    bool fig = false;
 };
 
-Path* PathNew(PaintCtx* ctx, bool winding) {
-    if (scene::Recording()) {
-        return scene::RecPathNew(ctx, winding);
-    }
-    if (!ctx) {
-        return nullptr;
-    }
-    auto* p = new Path();
-    p->winding = winding;
-    return p;
+Path* PathAlloc() {
+    return new Path();
 }
 
-void PathFree(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathFree(p);
-        return;
-    }
+void PathDestroy(Path* p) {
     delete p;
 }
 
@@ -462,34 +371,15 @@ static void Push(Path* p, const CairoPathOp& op) {
     }
 }
 
-void PathMoveTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathMoveTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+void PathEmitMove(Path* p, float x, float y) {
     CairoPathOp op;
     op.cmd = kPathMove;
     op.a = x;
     op.b = y;
     Push(p, op);
-    p->fig = true;
 }
 
-void PathLineTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathLineTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitLine(Path* p, float x, float y) {
     CairoPathOp op;
     op.cmd = kPathLine;
     op.a = x;
@@ -497,19 +387,8 @@ void PathLineTo(Path* p, float x, float y) {
     Push(p, op);
 }
 
-void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
-                 float y) {
-    if (scene::Recording()) {
-        scene::RecPathCubicTo(p, x1, y1, x2, y2, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitCubic(Path* p, float x1, float y1, float x2, float y2, float x,
+                   float y) {
     CairoPathOp op;
     op.cmd = kPathCubic;
     op.a = x1;
@@ -521,15 +400,10 @@ void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
     Push(p, op);
 }
 
-void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
-               bool clockwise) {
-    if (scene::Recording()) {
-        scene::RecPathArcTo(p, cx, cy, r, a0, a1, clockwise);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+// cairo_arc draws a line from the current point to the arc start, which is
+// why an arc opens a figure the same way a move does.
+void PathEmitArc(Path* p, float cx, float cy, float r, float a0, float a1,
+                 bool clockwise) {
     CairoPathOp op;
     op.cmd = kPathArc;
     op.clockwise = clockwise;
@@ -539,23 +413,12 @@ void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
     op.d = a0;
     op.e = a1;
     Push(p, op);
-    // cairo_arc draws a line from the current point to the arc start, so an
-    // arc opens a figure the same way a move does.
-    p->fig = true;
 }
 
-void PathClose(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathClose(p);
-        return;
-    }
-    if (!p || !p->fig) {
-        return;
-    }
+void PathEmitClose(Path* p) {
     CairoPathOp op;
     op.cmd = kPathClose;
     Push(p, op);
-    p->fig = false;
 }
 
 static bool Replay(cairo_t* cr, Path* p) {
@@ -563,8 +426,8 @@ static bool Replay(cairo_t* cr, Path* p) {
         return false;
     }
     cairo_new_path(cr);
-    cairo_set_fill_rule(
-        cr, p->winding ? CAIRO_FILL_RULE_WINDING : CAIRO_FILL_RULE_EVEN_ODD);
+    cairo_set_fill_rule(cr, p->head.winding ? CAIRO_FILL_RULE_WINDING
+                                            : CAIRO_FILL_RULE_EVEN_ODD);
     for (int i = 0; i < p->ops.len; i++) {
         const CairoPathOp& o = p->ops[i];
         switch (o.cmd) {
@@ -592,26 +455,22 @@ static bool Replay(cairo_t* cr, Path* p) {
     return true;
 }
 
-// Nothing to cache: this backend hands the path to cairo, which owns
-// whatever it wants to keep about it.
-void PathRealize(PaintCtx* ctx, Path* p) {
-    (void)ctx;
-    (void)p;
-}
-
-void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFill(ctx, p, c);
-        return;
-    }
-    cairo_t* cr = Cr(ctx);
-    if (!cr) {
-        return;
-    }
+// Every path draw starts here: save the state, move the retained geometry to
+// (dx, dy) and build it in `cr`. False, with the state restored, when there
+// is nothing to draw; otherwise the caller draws and restores.
+static bool BeginPathDraw(cairo_t* cr, Path* p, float dx, float dy) {
     cairo_save(cr);
     cairo_translate(cr, dx, dy);
     if (!Replay(cr, p)) {
         cairo_restore(cr);
+        return false;
+    }
+    return true;
+}
+
+void PaintBackendPathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
+    cairo_t* cr = Cr(ctx);
+    if (!cr || !BeginPathDraw(cr, p, dx, dy)) {
         return;
     }
     SetColor(ctx, cr, c);
@@ -624,20 +483,35 @@ void PathFillGradientV(PaintCtx* ctx, Path* p, float y0, float y1, Rgba top,
     PathFillGradient(ctx, p, 0, y0, 0, y1, top, bot);
 }
 
-void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
-                      float y1, Rgba from, Rgba to, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
-        return;
-    }
+// The two stops of a PathFillGradient / PathStrokeGradient pattern, faded for
+// the current layer.
+static void AddStops(PaintCtx* ctx, cairo_pattern_t* pat, Rgba from, Rgba to) {
+    from = PaintFade(ctx, from);
+    to = PaintFade(ctx, to);
+    cairo_pattern_add_color_stop_rgba(pat, 0, from.r / 255.0, from.g / 255.0,
+                                      from.b / 255.0, from.a / 255.0);
+    cairo_pattern_add_color_stop_rgba(pat, 1, to.r / 255.0, to.g / 255.0,
+                                      to.b / 255.0, to.a / 255.0);
+}
+
+// Stroke the path in `cr` with its source, joined and capped round or square,
+// and put the caps back for the next draw.
+static void StrokeCurrentPath(cairo_t* cr, float stroke, bool roundCaps) {
+    cairo_set_line_width(cr, stroke);
+    cairo_set_line_cap(cr,
+                       roundCaps ? CAIRO_LINE_CAP_ROUND : CAIRO_LINE_CAP_BUTT);
+    cairo_set_line_join(
+        cr, roundCaps ? CAIRO_LINE_JOIN_ROUND : CAIRO_LINE_JOIN_MITER);
+    cairo_stroke(cr);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
+}
+
+void PaintBackendPathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0,
+                                  float x1, float y1, Rgba from, Rgba to,
+                                  float dx, float dy) {
     cairo_t* cr = Cr(ctx);
-    if (!cr) {
-        return;
-    }
-    cairo_save(cr);
-    cairo_translate(cr, dx, dy);
-    if (!Replay(cr, p)) {
-        cairo_restore(cr);
+    if (!cr || !BeginPathDraw(cr, p, dx, dy)) {
         return;
     }
     cairo_pattern_t* pat = cairo_pattern_create_linear(x0, y0, x1, y1);
@@ -647,54 +521,28 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
         cairo_restore(cr);
         return;
     }
-    from = PaintFade(ctx, from);
-    to = PaintFade(ctx, to);
-    cairo_pattern_add_color_stop_rgba(pat, 0, from.r / 255.0, from.g / 255.0,
-                                      from.b / 255.0, from.a / 255.0);
-    cairo_pattern_add_color_stop_rgba(pat, 1, to.r / 255.0, to.g / 255.0,
-                                      to.b / 255.0, to.a / 255.0);
+    AddStops(ctx, pat, from, to);
     cairo_set_source(cr, pat);
     cairo_fill(cr);
     cairo_pattern_destroy(pat);
     cairo_restore(cr);
 }
 
-void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
-                float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStroke(ctx, p, stroke, c, roundCaps);
-        return;
-    }
+void PaintBackendPathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
+                            bool roundCaps, float dx, float dy) {
     cairo_t* cr = Cr(ctx);
-    if (!cr) {
-        return;
-    }
-    cairo_save(cr);
-    cairo_translate(cr, dx, dy);
-    if (!Replay(cr, p)) {
-        cairo_restore(cr);
+    if (!cr || !BeginPathDraw(cr, p, dx, dy)) {
         return;
     }
     SetColor(ctx, cr, c);
-    cairo_set_line_width(cr, stroke);
-    cairo_set_line_cap(cr,
-                       roundCaps ? CAIRO_LINE_CAP_ROUND : CAIRO_LINE_CAP_BUTT);
-    cairo_set_line_join(
-        cr, roundCaps ? CAIRO_LINE_JOIN_ROUND : CAIRO_LINE_JOIN_MITER);
-    cairo_stroke(cr);
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT);
-    cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
+    StrokeCurrentPath(cr, stroke, roundCaps);
     cairo_restore(cr);
 }
 
-void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
-                        float y0, float x1, float y1, Rgba from, Rgba to,
-                        bool roundCaps, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
-                                     roundCaps);
-        return;
-    }
+void PaintBackendPathStrokeGradient(PaintCtx* ctx, Path* p, float stroke,
+                                    float x0, float y0, float x1, float y1,
+                                    Rgba from, Rgba to, bool roundCaps,
+                                    float dx, float dy) {
     cairo_t* cr = Cr(ctx);
     if (!cr) {
         return;
@@ -704,29 +552,14 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
         PathStroke(ctx, p, stroke, from, roundCaps, dx, dy);
         return;
     }
-    cairo_save(cr);
-    cairo_translate(cr, dx, dy);
-    if (!Replay(cr, p)) {
+    if (!BeginPathDraw(cr, p, dx, dy)) {
         cairo_pattern_destroy(pat);
-        cairo_restore(cr);
         return;
     }
     // PathFillGradient's pattern as the source of PathStroke's stroke.
-    from = PaintFade(ctx, from);
-    to = PaintFade(ctx, to);
-    cairo_pattern_add_color_stop_rgba(pat, 0, from.r / 255.0, from.g / 255.0,
-                                      from.b / 255.0, from.a / 255.0);
-    cairo_pattern_add_color_stop_rgba(pat, 1, to.r / 255.0, to.g / 255.0,
-                                      to.b / 255.0, to.a / 255.0);
+    AddStops(ctx, pat, from, to);
     cairo_set_source(cr, pat);
-    cairo_set_line_width(cr, stroke);
-    cairo_set_line_cap(cr,
-                       roundCaps ? CAIRO_LINE_CAP_ROUND : CAIRO_LINE_CAP_BUTT);
-    cairo_set_line_join(
-        cr, roundCaps ? CAIRO_LINE_JOIN_ROUND : CAIRO_LINE_JOIN_MITER);
-    cairo_stroke(cr);
-    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT);
-    cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
+    StrokeCurrentPath(cr, stroke, roundCaps);
     cairo_pattern_destroy(pat);
     cairo_restore(cr);
 }
@@ -737,21 +570,6 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
 // installed), the way WIC is on Windows and ImageIO on macOS. cairo still
 // paints the pixels. Animation walks GdkPixbufAnimationIter once, copying
 // each frame because the iterator reuses its pixbuf.
-
-struct LinuxImageFrame {
-    cairo_surface_t* surface = nullptr;
-    cairo_surface_t* graySurface = nullptr;
-    int w = 0;
-    int h = 0;
-    int durationMs = 100;
-};
-
-struct RenderImage {
-    int refs = 1;
-    uint64_t generation = 0;
-    RenderImageStatus status = RenderImageStatus::Ready;
-    Vec<LinuxImageFrame> frames;
-};
 
 static cairo_surface_t* SurfaceFromPixbuf(GdkPixbuf* pix) {
     if (!pix) {
@@ -812,11 +630,7 @@ static uint64_t HashPixbuf(GdkPixbuf* pix) {
     hash *= 1099511628211ull;
     hash ^= (uint64_t)h;
     hash *= 1099511628211ull;
-    int n = stride * h;
-    for (int i = 0; i < n; i++) {
-        hash ^= src[i];
-        hash *= 1099511628211ull;
-    }
+    hash = Fnv1a64(hash, src, (size_t)stride * (size_t)h);
     return hash ? hash : 1;
 }
 
@@ -825,7 +639,7 @@ static bool AppendPixbufFrame(RenderImage* img, GdkPixbuf* pix, int delayMs) {
     if (!surface) {
         return false;
     }
-    LinuxImageFrame frame = {};
+    ImageFrame frame = {};
     frame.surface = surface;
     frame.w = cairo_image_surface_get_width(surface);
     frame.h = cairo_image_surface_get_height(surface);
@@ -834,7 +648,7 @@ static bool AppendPixbufFrame(RenderImage* img, GdkPixbuf* pix, int delayMs) {
     return true;
 }
 
-static void LinuxFrameFree(LinuxImageFrame* frame) {
+void ImageFrameFree(ImageFrame* frame) {
     if (!frame) {
         return;
     }
@@ -873,8 +687,7 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
         g_object_unref(loader);
         return nullptr;
     }
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
+    auto* img = RenderImageAlloc(RenderImageStatus::Ready);
     if (gdk_pixbuf_animation_is_static_image(anim)) {
         AppendPixbufFrame(img, gdk_pixbuf_animation_get_static_image(anim), 0);
     } else {
@@ -929,105 +742,16 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
     }
     uint8_t* dst = cairo_image_surface_get_data(surface);
     int stride = cairo_image_surface_get_stride(surface);
-    for (int y = 0; y < h; y++) {
-        memcpy(dst + (size_t)y * stride, bgra + (size_t)y * w * 4,
-               (size_t)w * 4);
-    }
+    PaintCopyBgraRows(dst, (size_t)stride, bgra, (size_t)w * 4, w, h);
     cairo_surface_mark_dirty(surface);
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
-    LinuxImageFrame frame = {};
+    ImageFrame frame = {};
     frame.surface = surface;
     frame.w = w;
     frame.h = h;
-    VecAppend(img->frames, frame);
-    return img;
+    return RenderImageWithFrame(frame);
 }
 
-RenderImage* RenderImageNewLoading() {
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
-    img->status = RenderImageStatus::Loading;
-    return img;
-}
-
-void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
-    if (!img) {
-        if (decoded) {
-            RenderImageRelease(decoded);
-        }
-        return;
-    }
-    if (decoded && decoded->frames.len > 0) {
-        for (int i = 0; i < img->frames.len; i++) {
-            LinuxFrameFree(&img->frames[i]);
-        }
-        VecReset(img->frames);
-        img->frames.els = decoded->frames.els;
-        img->frames.len = decoded->frames.len;
-        img->frames.cap = decoded->frames.cap;
-        decoded->frames.els = nullptr;
-        decoded->frames.len = 0;
-        decoded->frames.cap = 0;
-        img->status = RenderImageStatus::Ready;
-    } else {
-        img->status = RenderImageStatus::Failed;
-    }
-    if (decoded) {
-        RenderImageRelease(decoded);
-    }
-}
-
-void RenderImageRetain(RenderImage* img) {
-    if (img) {
-        img->refs++;
-    }
-}
-
-void RenderImageRelease(RenderImage* img) {
-    if (!img || --img->refs != 0) {
-        return;
-    }
-    for (int i = 0; i < img->frames.len; i++) {
-        LinuxFrameFree(&img->frames[i]);
-    }
-    VecReset(img->frames);
-    delete img;
-}
-
-uint64_t RenderImageGeneration(const RenderImage* img) {
-    return img ? img->generation : 0;
-}
-
-RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
-    return img ? img->status : RenderImageStatus::Failed;
-}
-
-Size RenderImageSizePx(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return {};
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return {(float)img->frames[frameIndex].w, (float)img->frames[frameIndex].h};
-}
-
-int RenderImageFrameCount(const RenderImage* img) {
-    return img ? img->frames.len : 0;
-}
-
-int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return 0;
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return img->frames[frameIndex].durationMs;
-}
-
-static cairo_surface_t* ImageSurface(LinuxImageFrame* frame, bool grayscale) {
+static cairo_surface_t* ImageSurface(ImageFrame* frame, bool grayscale) {
     if (!frame || !frame->surface) {
         return nullptr;
     }
@@ -1045,41 +769,23 @@ static cairo_surface_t* ImageSurface(LinuxImageFrame* frame, bool grayscale) {
     }
     unsigned char* dst = cairo_image_surface_get_data(gray);
     int dstStride = cairo_image_surface_get_stride(gray);
-    for (int y = 0; y < frame->h; y++) {
-        for (int x = 0; x < frame->w; x++) {
-            unsigned char* s = src + y * srcStride + x * 4;
-            unsigned char* d = dst + y * dstStride + x * 4;
-            uint8_t v = (uint8_t)(((uint32_t)s[2] * 54 + (uint32_t)s[1] * 183 +
-                                   (uint32_t)s[0] * 19) >>
-                                  8);
-            d[0] = v;
-            d[1] = v;
-            d[2] = v;
-            d[3] = s[3];
-        }
-    }
+    PaintGrayBgraRows(dst, (size_t)dstStride, src, (size_t)srcStride, frame->w,
+                      frame->h);
     cairo_surface_mark_dirty(gray);
     frame->graySurface = gray;
     return gray;
 }
 
-void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
-                     Bounds imageBounds, int frameIndex, float radius,
-                     bool grayscale) {
-    if (scene::Recording()) {
-        scene::RecImageDraw(ctx, img, bounds, imageBounds, frameIndex, radius,
-                            grayscale);
-        return;
-    }
+void PaintBackendRenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
+                                 Bounds imageBounds, int frameIndex,
+                                 float radius, bool grayscale) {
     cairo_t* cr = Cr(ctx);
     if (!cr || !img || img->frames.len <= 0 || bounds.w <= 0 || bounds.h <= 0 ||
         imageBounds.w <= 0 || imageBounds.h <= 0) {
         return;
     }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    LinuxImageFrame* frame = &img->frames[frameIndex];
+    frameIndex = RenderImageFrameIndex(img, frameIndex);
+    ImageFrame* frame = &img->frames[frameIndex];
     cairo_surface_t* surface = ImageSurface(frame, grayscale);
     if (!surface || frame->w <= 0 || frame->h <= 0) {
         return;
@@ -1119,14 +825,8 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
 // DirectWrite backend nothing has to convert offsets.
 
 struct TextLayout {
-    // The byte length of the text it was shaped from (TextLayoutTextLen).
-    int textLen = 0;
-    uint64_t generation = 0;
+    TextLayoutHead head;
     PangoLayout* layout = nullptr;
-    // What TextLayoutNew reported, kept so TextLayoutSize can answer without
-    // measuring again.
-    Size size = {};
-    int refs = 1;
     // GPUI's line box (fontSize * phi) and what Pango would use on its own.
     float box = 0;
     float natural = 0;
@@ -1138,8 +838,6 @@ struct TextLayout {
     float dx = 0;
     // The width Pango was given, restored after an ellipsized draw.
     int width = -1;
-    // TextLayoutSize: how far the aligned lines reach.
-    Size cover = {};
 };
 
 // DirectWrite gets "Segoe UI" and "Consolas"; fontconfig resolves these two
@@ -1175,14 +873,11 @@ static PangoWeight PangoWeightFor(uint16_t weight, float fontSize) {
     return fontSize >= 18.f ? PANGO_WEIGHT_SEMIBOLD : PANGO_WEIGHT_NORMAL;
 }
 
-TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint16_t weight, float lineH,
-                          Size* outSize, TextAlign align) {
-    if (!ctx || !ctx->pa || !ctx->pa->pango || !s.s || len(s) <= 0) {
+TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
+                            bool wrap, uint16_t weight, float lineH,
+                            Size* outSize, TextAlign align) {
+    if (!ctx->pa->pango) {
         return nullptr;
-    }
-    if (fontSize <= 0) {
-        fontSize = 16.f;
     }
     PangoLayout* l = pango_layout_new(ctx->pa->pango);
     if (!l) {
@@ -1243,9 +938,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     }
 
     auto* tl = new TextLayout();
-    tl->textLen = len(s);
     tl->width = pango_layout_get_width(l);
-    tl->generation = PaintResourceGenerationNew();
     tl->layout = l;
     tl->lines = pango_layout_get_line_count(l);
     if (tl->lines < 1) {
@@ -1263,8 +956,8 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
                                  (int)((tl->box - tl->natural) * PANGO_SCALE));
         pango_layout_get_pixel_size(l, &pw, &ph);
     }
-    tl->size = Size{(float)pw, tl->box * (float)tl->lines};
-    tl->cover = tl->size;
+    Size size = {(float)pw, tl->box * (float)tl->lines};
+    tl->head.cover = size;
     if (align != TextAlign::Left) {
         if (tl->width < 0 && maxW > (float)pw) {
             float f = align == TextAlign::Center ? 0.5f : 1.f;
@@ -1273,46 +966,19 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         PangoRectangle logical = {};
         pango_layout_get_pixel_extents(l, nullptr, &logical);
         float right = tl->dx + (float)(logical.x + logical.width);
-        if (right > tl->cover.w) {
-            tl->cover.w = right;
-        }
+        tl->head.cover.w = std::max(tl->head.cover.w, right);
     }
     if (outSize) {
-        outSize->w = tl->size.w;
-        outSize->h = tl->size.h;
+        *outSize = size;
     }
     return tl;
 }
 
-Size TextLayoutSize(TextLayout* tl) {
-    return tl ? tl->cover : Size{0, 0};
-}
-
-void TextLayoutAddRef(TextLayout* tl) {
-    if (tl) {
-        tl->refs++;
-    }
-}
-
-void TextLayoutRelease(TextLayout* tl) {
-    if (!tl) {
-        return;
-    }
-    if (--tl->refs > 0) {
-        return;
-    }
+void TextLayoutDestroy(TextLayout* tl) {
     if (tl->layout) {
         g_object_unref(tl->layout);
     }
     delete tl;
-}
-
-uint64_t TextLayoutGeneration(const TextLayout* tl) {
-    return tl ? tl->generation : 0;
-}
-
-int TextLayoutTextLen(const TextLayout* tl) {
-    return tl ? tl->textLen : 0;
 }
 
 // Where the glyphs sit inside the phi-tall line box.
@@ -1320,27 +986,8 @@ static float BoxPad(TextLayout* tl) {
     return (tl->box - tl->natural) * 0.5f;
 }
 
-bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
-                          float y, Rgba base, const TextSpan* spans, int n) {
-    if (scene::Recording()) {
-        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
-    }
-    (void)tl;
-    (void)text;
-    (void)x;
-    (void)y;
-    (void)base;
-    (void)spans;
-    (void)n;
-    return false;
-}
-
-void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
-                    bool clip, float clipW) {
-    if (scene::Recording()) {
-        scene::RecTextDraw(ctx, tl, x, y, c, clip, clipW);
-        return;
-    }
+void PaintBackendTextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y,
+                                Rgba c, bool clip, float clipW) {
     cairo_t* cr = Cr(ctx);
     if (!cr || !tl || !tl->layout) {
         return;

@@ -100,16 +100,7 @@ AttachmentMedia* AttachmentMedia::Src(Str value) {
 
 AttachmentMedia* AttachmentMedia::Overlay(El* overlay) {
     if (overlay) {
-        overlays.Append(a, Div(a)
-                               ->Absolute()
-                               ->Left(0)
-                               ->Top(0)
-                               ->Right(0)
-                               ->Bottom(0)
-                               ->Flex()
-                               ->ItemsCenter()
-                               ->JustifyCenter()
-                               ->Child(overlay));
+        overlays.Append(a, CenteredOverlay(a)->Child(overlay));
     }
     return this;
 }
@@ -134,17 +125,12 @@ AttachmentMedia* AttachmentMedia::Refine(const Style& s, uint32_t fields) {
 }
 
 AttachmentMedia* AttachmentMedia::Layout(const AttachmentSlotLayout& layout) {
-    if (!hasSize) {
-        size = layout.size;
-        hasSize = true;
+    UiSize own = size;
+    static_cast<AttachmentSlotLayout&>(*this) = layout;
+    if (hasSize) {
+        size = own;
     }
-    status = layout.status;
-    axis = layout.axis;
-    flush = layout.flush;
-    retry = layout.retry;
-    progress = layout.progress;
-    id = layout.id;
-    hasId = layout.hasId;
+    hasSize = true;
     return this;
 }
 
@@ -220,14 +206,8 @@ El* AttachmentMedia::IntoEl() {
     if (hasSource) {
         // GPUI clips rectangularly, so the slot's overflow_hidden cannot
         // round the image: it carries the slot's radius itself.
-        box->Child(ImageEl(a, source)
-                       ->Absolute()
-                       ->Left(0)
-                       ->Top(0)
-                       ->Right(0)
-                       ->Bottom(0)
-                       ->SizeFull()
-                       ->Radius(radius));
+        box->Child(ImageEl(a, source)->Absolute()->Inset0()->SizeFull()->Radius(
+            radius));
     }
     // An icon slot shows the status itself; children come back with
     // Complete.
@@ -258,15 +238,7 @@ El* AttachmentMedia::IntoEl() {
                           : IconEl(a, IconName::Ban, glyph)
                                 ->Fg(Rgb(0xff, 0xff, 0xff));
         }
-        box->Child(Div(a)
-                       ->Absolute()
-                       ->Left(0)
-                       ->Top(0)
-                       ->Right(0)
-                       ->Bottom(0)
-                       ->Flex()
-                       ->ItemsCenter()
-                       ->JustifyCenter()
+        box->Child(CenteredOverlay(a)
                        ->Radius(radius)
                        ->Bg(Rgba8(0, 0, 0, (uint8_t)(opacity * 255.f + 0.5f)))
                        ->Child(control));
@@ -373,14 +345,6 @@ El* AttachmentDescription::IntoEl() {
     return box;
 }
 
-AttachmentContent* AttachmentContent::New(Ctx* cx) {
-    Arena* a = cx->a;
-    AttachmentContent* s = ArenaNew<AttachmentContent>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
 AttachmentContent* AttachmentContent::Title(AttachmentTitle* value) {
     if (value) {
         AttachmentContentChild child;
@@ -406,12 +370,6 @@ AttachmentContent* AttachmentContent::Child(El* e) {
         child.element = e;
         children.Append(a, child);
     }
-    return this;
-}
-
-AttachmentContent* AttachmentContent::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 
@@ -503,27 +461,6 @@ El* AttachmentContent::IntoEl() {
     return column;
 }
 
-AttachmentActions* AttachmentActions::New(Ctx* cx) {
-    Arena* a = cx->a;
-    AttachmentActions* s = ArenaNew<AttachmentActions>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-AttachmentActions* AttachmentActions::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-AttachmentActions* AttachmentActions::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
-    return this;
-}
-
 AttachmentActions* AttachmentActions::LayoutForAxis(Axis axis) {
     verticalLayout = axis == Axis::Vertical;
     return this;
@@ -544,20 +481,6 @@ El* AttachmentActions::IntoEl() {
         row->Refine(style, styleSet);
     }
     return row;
-}
-
-Attachment* Attachment::New(Ctx* cx) {
-    Arena* a = cx->a;
-    Attachment* s = ArenaNew<Attachment>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-Attachment* Attachment::Id(Str value) {
-    id = value;
-    hasId = true;
-    return this;
 }
 
 Attachment* Attachment::OnClick(Listener handler) {
@@ -613,12 +536,6 @@ Attachment* Attachment::Actions(AttachmentActions* value) {
 
 Attachment* Attachment::WithSize(UiSize value) {
     size = value;
-    return this;
-}
-
-Attachment* Attachment::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 
@@ -724,7 +641,7 @@ static El* UploadBar(Arena* a, float percent, float radius, Rgba color) {
     bar->percent = percent;
     bar->radius = radius;
     bar->color = color;
-    El* e = Div(a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0);
+    El* e = Div(a)->Absolute()->Inset0();
     e->customPaint = PaintUploadBar;
     e->customUser = bar;
     return e;
@@ -826,14 +743,8 @@ El* Attachment::IntoEl() {
     if (clickable) {
         // The click layer is added before the actions slot, so the actions'
         // hitboxes stay on top and their buttons keep working.
-        card->Child(Div(a)
-                        ->PathClick(id)
-                        ->Absolute()
-                        ->Left(0)
-                        ->Top(0)
-                        ->Right(0)
-                        ->Bottom(0)
-                        ->OnClick(onClick));
+        card->Child(
+            Div(a)->PathClick(id)->Absolute()->Inset0()->OnClick(onClick));
     }
     if (actions) {
         card->Child(actions->IntoEl());

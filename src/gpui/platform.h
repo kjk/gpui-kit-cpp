@@ -30,7 +30,12 @@ bool PlatReduceMotion();
 // True when the platform has a synchronous reading, written into `out`.
 // Subscribe to live changes. `onChange` is posted to the main thread.
 // Safe to call more than once; only the first starts the listener.
-#if GPUI_OS_IOS || GPUI_OS_ANDROID
+// Linux is the one platform with an asynchronous answer to follow; every
+// other one reads its switch synchronously and follows nothing.
+#if GPUI_OS_LINUX
+bool PlatReduceMotionKnown(bool* out);
+void PlatReduceMotionFollow(void (*onChange)(bool reduce));
+#else
 inline bool PlatReduceMotionKnown(bool* out) {
     if (out) {
         *out = PlatReduceMotion();
@@ -40,9 +45,6 @@ inline bool PlatReduceMotionKnown(bool* out) {
 inline void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
     (void)onChange;
 }
-#else
-bool PlatReduceMotionKnown(bool* out);
-void PlatReduceMotionFollow(void (*onChange)(bool reduce));
 #endif
 
 // `key` is one of the Key* codes in Gpui.h.
@@ -141,6 +143,10 @@ int WindowChromeHit(Window* win, float x, float y);
 
 // Milliseconds until the window next wants waking, or 0 if nothing does.
 int WindowTimerMs(Window* win);
+// The soonest of the window's armed timers and a pending scroll-drag notify,
+// as a TimeNow() instant, or -1 when neither is waiting. WindowTimerMs and
+// the test platform's simulated clock add the animation frame to it.
+double WindowTimersDue(const Window* win);
 
 // The OS window went away. Frees the paint target and clears `plat`.
 void WindowClosed(Window* win);
@@ -192,6 +198,31 @@ void PlatInstallImePositionUpdate(void (*update)(Window* win));
 // queue on macOS. AppNew installs it with ExecSetWake and nothing else calls
 // it.
 void PlatWake(App* app);
+// AppInvalidate's platform half, after it has counted the call and marked
+// `win->dirty`: Windows asks for a WM_PAINT; the Linux, macOS and browser
+// loops repaint a dirty window on their next pass and need nothing more.
+// window_common.cpp defines AppInvalidate for these four; iOS and Android
+// leave it to the host adapter.
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC || GPUI_OS_WASM
+#define GPUI_WINDOW_IN_TREE 1
+#else
+#define GPUI_WINDOW_IN_TREE 0
+#endif
+#if GPUI_WINDOW_IN_TREE
+// The clipboard's platform halves. window_common.cpp's ClipboardSetText,
+// GetText and GetItem answer from the test platform's clipboard when it is
+// installed, drop an empty write, and otherwise call these.
+void PlatClipboardSetText(Window* win, Str text);
+Str PlatClipboardGetText(Arena* a, Window* win);
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win);
+#endif
+#if GPUI_OS_WINDOWS
+void PlatInvalidate(Window* win);
+#else
+inline void PlatInvalidate(Window* win) {
+    (void)win;
+}
+#endif
 
 // A second event loop sharing the main thread with the platform's own. The
 // one there is is GLib's main context, which WebKitGTK (src/wry/wry_linux.cpp)
@@ -314,15 +345,21 @@ struct PlatMenuItem {
 
 // Whether this platform has a popup menu of its own. False sends the caller
 // to a drawn menu instead, which is Rust's FallbackMenuOverlay. Rust pops an
-// OS menu on macOS and Windows only, so iOS and Android draw it too and a
-// host adapter has nothing to supply.
+// OS menu on macOS and Windows only. X11 has no popup menu of its own — a
+// toolkit draws its own — and a page has none either, so Linux and the
+// browser draw it, as iOS and Android do, and a host adapter has nothing to
+// supply.
 //
 // PlatShowMenu shows `items` at (x, y) in the window's client area, in
 // logical pixels, and answers the id of the row that was chosen — 0 for a
 // menu dismissed without choosing one. The OS runs the tracking loop, so it
 // returns once the menu is gone. `dark` asks for the dark rendering where the
 // OS can be told.
-#if GPUI_OS_IOS || GPUI_OS_ANDROID
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC
+bool PlatHasMenu();
+int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
+                 float y, bool dark);
+#else
 inline bool PlatHasMenu() {
     return false;
 }
@@ -331,10 +368,6 @@ inline int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
     (void)win, (void)items, (void)n, (void)x, (void)y, (void)dark;
     return 0;
 }
-#else
-bool PlatHasMenu();
-int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
-                 float y, bool dark);
 #endif
 
 // ─── the application menu bar (App::set_menus) ───────────────────────────
@@ -344,7 +377,11 @@ int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
 // of its windows, so a Mac application that draws its own has two copies of
 // them. Nothing else here does — Windows and X11 leave a menu bar to the
 // application, which is what component::AppMenuBar draws, and a browser tab
-// has nowhere to put one.
+// has nowhere to put one. (A Linux desktop can export a window's menus to a
+// panel over dbus — Unity's appmenu, KDE's global menu — but that is a
+// protocol and a service, not an X11 call, and a window whose menus went
+// unexported would be left with none at all.) iOS and Android leave all
+// three to the host adapter.
 bool PlatHasAppMenu();
 
 // Install `items` as the application's menu bar, replacing whatever was
@@ -364,6 +401,19 @@ void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n);
 // Show or hide the menu bar the platform drew. A no-op where the application
 // draws its own bar.
 void PlatSetMenuBarVisible(bool visible);
+
+// The three where the application draws its own bar: nothing to install.
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_WASM
+inline bool PlatHasAppMenu() {
+    return false;
+}
+inline void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
+    (void)app, (void)items, (void)n;
+}
+inline void PlatSetMenuBarVisible(bool visible) {
+    (void)visible;
+}
+#endif
 
 // The platform reporting which row of the application menu bar was chosen.
 // Implemented in WindowCommon.cpp: the id is looked up in the table the last

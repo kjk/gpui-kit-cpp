@@ -34,37 +34,6 @@ El* Caret::IntoEl(const Ctx* cx, Arena* a) const {
     return out;
 }
 
-static int SelectFlatIndex(const SearchableListState* s, IndexPath path) {
-    if (!s || !s->items || path.row < 0 || path.section < 0) {
-        return -1;
-    }
-    int row = 0;
-    for (int i = 0; i < s->nItems; i++) {
-        if (s->items[i].section != path.section) {
-            continue;
-        }
-        if (row == path.row) {
-            return i;
-        }
-        row++;
-    }
-    return -1;
-}
-
-static IndexPath SelectPath(const SearchableListState* s, int flat) {
-    if (!s || !s->items || flat < 0 || flat >= s->nItems) {
-        return IndexPathNew(-1);
-    }
-    int section = s->items[flat].section;
-    int row = 0;
-    for (int i = 0; i < flat; i++) {
-        if (s->items[i].section == section) {
-            row++;
-        }
-    }
-    return IndexPathNew(row).Section(section);
-}
-
 Entity<SearchableListState> SelectListEntity(Entity<SelectState> state) {
     Entity<SearchableListState> out;
     out.id = state.id;
@@ -142,7 +111,8 @@ void SelectState::SetItems(const SearchableItem* items, int nItems) {
 }
 
 void SelectState::SetSelectedIndex(const IndexPath* selected, Ctx* cx) {
-    SetSelectedIndex(selected ? SelectFlatIndex(&state, *selected) : -1, cx);
+    SetSelectedIndex(selected ? SearchableListFlatIndex(&state, *selected) : -1,
+                     cx);
 }
 
 void SelectState::SetSelectedIndex(int flatIndex, Ctx* cx) {
@@ -186,7 +156,8 @@ bool SelectState::SelectedIndex(IndexPath* out) const {
     if (state.list.selected < 0 || state.list.selected >= state.matches.len) {
         return false;
     }
-    IndexPath path = SelectPath(&state, state.matches[state.list.selected]);
+    IndexPath path =
+        SearchableListPath(&state, state.matches[state.list.selected]);
     if (path.row < 0) {
         return false;
     }
@@ -265,7 +236,7 @@ void SelectState::OnListChange(SelectState* self, Ctx* cx,
     int ix = event->index;
     if (ix >= 0 && ix < self->state.nItems) {
         ev.hasValue = true;
-        ev.index = SelectPath(&self->state, ix);
+        ev.index = SearchableListPath(&self->state, ix);
         ev.value = self->state.items[ix].value;
     }
     self->ClearQueryAndRestore(cx);
@@ -355,20 +326,6 @@ Select* Select::New(Ctx* cx, Str id, Entity<SelectState> state) {
     }
     return out;
 }
-Select* Select::Items(const SearchableItem* it, int n) {
-    items = it;
-    nItems = n;
-    return this;
-}
-Select* Select::Sections(const Str* titles, int n) {
-    sections = titles;
-    nSections = n;
-    return this;
-}
-Select* Select::Placeholder(Str s) {
-    placeholder = s;
-    return this;
-}
 Select* Select::AccessibilityLabel(Str s) {
     accessibilityLabel = s;
     return this;
@@ -377,52 +334,8 @@ Select* Select::TitlePrefix(Str s) {
     titlePrefix = s;
     return this;
 }
-Select* Select::Empty(Str s) {
-    empty = s;
-    return this;
-}
 Select* Select::Empty(El* element) {
     emptyEl = element;
-    return this;
-}
-Select* Select::W(float v) {
-    width = v;
-    return this;
-}
-Select* Select::MenuWidth(float v) {
-    menuWidth = v;
-    return this;
-}
-Select* Select::MenuMaxH(float v) {
-    menuMaxH = v;
-    return this;
-}
-Select* Select::WithSize(UiSize s) {
-    size = s;
-    return this;
-}
-Select* Select::Icon(IconName i) {
-    icon = i;
-    return this;
-}
-Select* Select::CheckIcon(IconName n) {
-    checkIcon = n;
-    return this;
-}
-Select* Select::Disabled(bool v) {
-    disabled = v;
-    return this;
-}
-Select* Select::Cleanable(bool v) {
-    cleanable = v;
-    return this;
-}
-Select* Select::Appearance(bool v) {
-    appearance = v;
-    return this;
-}
-Select* Select::FocusRing(bool v) {
-    focusRing = v;
     return this;
 }
 Select* Select::Searchable(InputState* q, Listener onFocus) {
@@ -435,19 +348,9 @@ Select* Select::ScrollBounce(bool v) {
     return this;
 }
 Select* Select::Multiple(bool v) {
-    SearchableListState* s = state.Get(cx);
-    if (s) {
-        s->mode = v ? SearchableListMode::Multi : SearchableListMode::Single;
-        s->closeOnSelect = !v;
+    if (SearchableListState* s = state.Get(cx)) {
+        SearchableListSetMultiple(s, v);
     }
-    return this;
-}
-Select* Select::OnToggle(Listener fn) {
-    onToggle = fn;
-    return this;
-}
-Select* Select::OnClear(Listener fn) {
-    onClear = fn;
     return this;
 }
 Select* Select::OnMouseDownOut(Listener fn) {
@@ -554,20 +457,6 @@ void SelectClear(SelectState* s, Ctx* cx) {
     }
 }
 
-Select* Select::Trigger(El* e) {
-    trigger = e;
-    return this;
-}
-Select* Select::Footer(El* e) {
-    footer = e;
-    return this;
-}
-Select* Select::Delegate(const SearchableListDelegate& value) {
-    delegate = value;
-    hasDelegate = true;
-    return this;
-}
-
 El* Select::IntoEl() {
     // The whole control is the select's, so its name goes on the stack of ids
     // around what it builds — the open transition below, and the popover's
@@ -659,14 +548,8 @@ El* Select::IntoEl() {
             // `SelectState::clean` calls cx.stop_propagation() first: the ×
             // sits inside the trigger, which is listening for the same click,
             // and a clear that also opened the list would be no clear at all.
-            box->Child(Button::New(cx, StrL("clean"))
-                           ->Text()
-                           ->WithSize(UiSize::XSmall)
-                           ->Icon(IconName::X)
-                           ->AccessibilityLabel(Tr("Input.Clear"))
-                           ->OnClick(onClear)
-                           ->IntoEl()
-                           ->StopClick());
+            box->Child(
+                ClearButton(cx)->OnClick(onClear)->IntoEl()->StopClick());
         } else if (icon != IconName::None) {
             // A custom icon replaces the caret, at xsmall.
             box->Child(IconEl(a, icon, UiIconPx(cx, UiSize::XSmall))
@@ -706,30 +589,15 @@ El* Select::IntoEl() {
         // The list is the whole dropdown: the query, the sections, the checks
         // and the empty state are all its own.
         SearchableList* list =
-            SearchableList::New(cx, StrL("list"), state, query)
-                ->InSelect(true)
-                ->Items(items, nItems)
-                // Length::Auto is the trigger's own laid-out width: the
-                // popover ring is drawn outside the surface, so the surface
-                // no longer widens by 2 to cover a border of its own.
-                ->W(menuWidth > 0 ? menuWidth : autoMenuW)
-                ->CheckIcon(checkIcon)
-                ->WithSize(size);
-        if (sections) {
-            list->Sections(sections, nSections);
-        }
-        if (query) {
-            list->OnQueryFocus(onQueryFocus);
-        }
+            SearchableList::New(cx, StrL("list"), state, query)->InSelect(true);
+        static_cast<SearchableListContent&>(*list) = *this;
+        // Length::Auto is the trigger's own laid-out width: the popover ring
+        // is drawn outside the surface, so the surface no longer widens by 2
+        // to cover a border of its own.
+        list->W(menuWidth > 0 ? menuWidth : autoMenuW);
         // menu_max_h: rems(20.) unless the caller set one.
         list->MaxH(menuMaxH > 0 ? menuMaxH : Rems(cx, 20.f));
         if (scrollBounce >= 0) list->ScrollBounce(scrollBounce == 1);
-        if (footer) {
-            list->Footer(footer);
-        }
-        if (hasDelegate) {
-            list->Delegate(delegate);
-        }
         if (emptyEl) {
             list->Empty(emptyEl);
         } else if (empty.s) {

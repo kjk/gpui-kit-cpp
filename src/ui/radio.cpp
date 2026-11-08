@@ -1,74 +1,14 @@
 #include "ui/radio.h"
+#include "ui/checkbox.h"
 
 namespace gpui {
 
 namespace component {
 
-Radio* Radio::New(Ctx* cx, Str id) {
-    Arena* a = cx->a;
-    Radio* r = ArenaNew<Radio>(a);
-    r->a = a;
-    r->cx = cx;
-    r->id = id;
-    return r;
-}
-
 Radio* Radio::Child(El* child) {
     if (child) {
         children.Append(a, child);
     }
-    return this;
-}
-
-Radio* Radio::Label(Str s) {
-    label = s;
-    return this;
-}
-Radio* Radio::AccessibilityLabel(Str s) {
-    accessibilityLabel = s;
-    return this;
-}
-Radio* Radio::Hint(Str s) {
-    hint = s;
-    return this;
-}
-Radio* Radio::Tooltip(Str s) {
-    tooltip = s;
-    return this;
-}
-Radio* Radio::TooltipShowDelay(int ms) {
-    tooltipShowDelayMs = ms;
-    return this;
-}
-Radio* Radio::Checked(bool v) {
-    checked = v;
-    return this;
-}
-Radio* Radio::Disabled(bool v) {
-    disabled = v;
-    return this;
-}
-Radio* Radio::WithSize(UiSize s) {
-    size = s;
-    return this;
-}
-Radio* Radio::FocusRing(bool v) {
-    focusRing = v;
-    return this;
-}
-Radio* Radio::TabIndex(int v) {
-    tabIndex = v;
-    return this;
-}
-Radio* Radio::TabStop(bool v) {
-    tabStop = v;
-    return this;
-}
-Radio* Radio::OnClick(Listener fn) {
-    return OnChange(fn);
-}
-Radio* Radio::OnChange(Listener fn) {
-    onClick = fn;
     return this;
 }
 
@@ -103,47 +43,13 @@ El* Radio::IntoEl() {
     }
     // gpui_base::Radio owns identity, focus and activation, and refuses the
     // click to the option that is already picked.
-    El* row = gpui::Radio::New(cx, id, checked, disabled, onClick)
-                  ->TabIndex(tabIndex)
-                  ->TabStop(tabStop)
-                  ->FocusRing(focusRing)
-                  ->FlexRow()
-                  ->ItemsStart()
-                  ->Gap(Rems(cx, 0.5f));
-    // The explicit name wins over the visible label, and only the name
-    // changes: what is drawn stays the label.
-    Str name = accessibilityLabel.s ? accessibilityLabel : label;
-    if (name.s) {
-        row->AriaLabel(name);
-    }
-    if (tooltip.s) {
-        row->Tip(tooltip);
-        if (tooltipShowDelayMs >= 0) {
-            row->TipShowDelay(tooltipShowDelayMs);
-        }
-    }
+    El* row = ChoiceRow(
+        cx, gpui::Radio::New(cx, id, checked, disabled, onClick), *this);
     refiner.Apply(row);
     row->Child(dot);
     if (label.s || hint.s || children.len > 0) {
-        dot->MarginT(box * 0.125f);
-        El* col = Div(a)->FlexCol()->Gap(Rems(cx, 0.25f))->LineHeight(1.25f);
-        if (label.s) {
-            // input_text_size: the Input/Select ladder. A custom Size sets
-            // no size and inherits.
-            El* text = TextEl(a, label)
-                           ->Fg(disabled ? th.mutedFg : th.foreground);
-            if (size != UiSize::Size) {
-                UiInputTextSize(text, size);
-            }
-            col->Child(text);
-        }
-        if (hint.s) {
-            col->Child(TextEl(a, hint)
-                           ->Font(12)
-                           ->LineHeight(1.2f)
-                           ->Fg(th.mutedFg)
-                           ->Wrap());
-        }
+        El* col =
+            ChoiceLabelColumn(cx, dot, box, label, hint, size, disabled, false);
         for (El* child : children) {
             col->Child(child);
         }

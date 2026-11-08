@@ -15,52 +15,21 @@ static uint64_t FtToU64(FILETIME ft) {
 }
 
 void SysStateInit(SysState* s) {
-    VecReset(s->prevProcs);
-    VecReset(s->procs);
-    s->cpu = 0;
-    s->mem = 0;
-    s->memTotal = 0;
-    s->memUsed = 0;
-    ZeroStruct(&s->prevCpu);
-    ZeroStruct(&s->disk);
-    ZeroStruct(&s->battery);
     SYSTEM_INFO si = {};
     GetSystemInfo(&si);
-    s->ncpu = (int)si.dwNumberOfProcessors;
-    if (s->ncpu < 1) {
-        s->ncpu = 1;
-    }
+    SysStateReset(s, (int)si.dwNumberOfProcessors);
 }
 
-void SysStateFree(SysState* s) {
-    VecReset(s->prevProcs);
-    VecReset(s->procs);
-}
-
-static void RefreshCpu(SysState* s) {
+void SysRefreshCpu(SysState* s) {
     FILETIME idle, kernel, user;
     if (!GetSystemTimes(&idle, &kernel, &user)) {
         return;
     }
-    SysTimes cur;
-    cur.idle = FtToU64(idle);
-    cur.kernel = FtToU64(kernel);
-    cur.user = FtToU64(user);
-    cur.valid = true;
-    if (s->prevCpu.valid) {
-        uint64_t idleD = cur.idle - s->prevCpu.idle;
-        uint64_t totalD =
-            (cur.kernel - s->prevCpu.kernel) + (cur.user - s->prevCpu.user);
-        // kernel includes idle
-        if (totalD > 0) {
-            double used = (double)(totalD - idleD) / (double)totalD;
-            s->cpu = (float)(used * 100.0);
-        }
-    }
-    s->prevCpu = cur;
+    // Kernel time includes idle.
+    SysCpuSample(s, FtToU64(idle), FtToU64(kernel) + FtToU64(user));
 }
 
-static void RefreshMemory(SysState* s) {
+void SysRefreshMemory(SysState* s) {
     MEMORYSTATUSEX ms = {sizeof(ms)};
     if (GlobalMemoryStatusEx(&ms)) {
         s->memTotal = ms.ullTotalPhys;
@@ -69,7 +38,7 @@ static void RefreshMemory(SysState* s) {
     }
 }
 
-static void RefreshDisk(SysState* s) {
+void SysRefreshDisk(SysState* s) {
     WCHAR drives[512];
     DWORD n = GetLogicalDriveStringsW(511, drives);
     if (n == 0 || n > 511) {
@@ -81,12 +50,7 @@ static void RefreshDisk(SysState* s) {
         if (type == DRIVE_FIXED) {
             ULARGE_INTEGER freeBytes, total, totalFree;
             if (GetDiskFreeSpaceExW(p, &freeBytes, &total, &totalFree)) {
-                s->disk.total = total.QuadPart;
-                s->disk.used = total.QuadPart - freeBytes.QuadPart;
-                if (s->disk.total > 0) {
-                    s->disk.usedPct = (float)((double)s->disk.used * 100.0 /
-                                              (double)s->disk.total);
-                }
+                SysDiskSet(s, total.QuadPart, freeBytes.QuadPart);
                 return;
             }
         }
@@ -94,7 +58,7 @@ static void RefreshDisk(SysState* s) {
     }
 }
 
-static void RefreshBattery(SysState* s) {
+void SysRefreshBattery(SysState* s) {
     SYSTEM_POWER_STATUS ps = {};
     s->battery = {};
     if (!GetSystemPowerStatus(&ps)) {
@@ -108,30 +72,17 @@ static void RefreshBattery(SysState* s) {
     s->battery.pct = (float)ps.BatteryLifePercent;
 }
 
-static uint64_t FindPrevCpu(const Vec<ProcSample>& prev, uint32_t pid) {
-    for (int i = 0; i < len(prev); i++) {
-        if (prev[i].pid == pid) {
-            return prev[i].cpu100ns;
-        }
-    }
-    return 0;
-}
-
-static void RefreshProcesses(SysState* s) {
+void SysRefreshProcesses(SysState* s) {
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (snap == INVALID_HANDLE_VALUE) {
         return;
     }
 
-    Vec<ProcessInfo> next;
-    Vec<ProcSample> samples;
+    SysProcScan scan;
     PROCESSENTRY32W pe = {sizeof(pe)};
     FILETIME nowFt;
     GetSystemTimeAsFileTime(&nowFt);
-    static uint64_t sPrevWall = 0;
-    uint64_t now = FtToU64(nowFt);
-    uint64_t wallDelta = (sPrevWall && now > sPrevWall) ? (now - sPrevWall) : 0;
-    sPrevWall = now;
+    SysProcScanBegin(&scan, FtToU64(nowFt));
 
     if (Process32FirstW(snap, &pe)) {
         do {
@@ -161,37 +112,16 @@ static void RefreshProcesses(SysState* s) {
                 }
                 FILETIME c, e, k, u;
                 if (GetProcessTimes(h, &c, &e, &k, &u)) {
-                    uint64_t cpu = FtToU64(k) + FtToU64(u);
-                    uint64_t prev = FindPrevCpu(s->prevProcs, pi.pid);
-                    if (prev && wallDelta > 0) {
-                        uint64_t d = cpu >= prev ? cpu - prev : 0;
-                        pi.cpu = (float)((double)d * 100.0 /
-                                         ((double)wallDelta * (double)s->ncpu));
-                    }
-                    ProcSample sm;
-                    sm.pid = pi.pid;
-                    sm.cpu100ns = cpu;
-                    VecAppend(samples, sm);
+                    SysProcScanSample(s, &scan, &pi, FtToU64(k) + FtToU64(u));
                 }
                 CloseHandle(h);
             }
-            VecAppend(next, pi);
+            VecAppend(scan.procs, pi);
         } while (Process32NextW(snap, &pe));
     }
     CloseHandle(snap);
 
-    VecReset(s->prevProcs);
-    s->prevProcs = samples;
-    VecReset(s->procs);
-    s->procs = next;
-}
-
-void SysRefresh(SysState* s) {
-    RefreshCpu(s);
-    RefreshMemory(s);
-    RefreshDisk(s);
-    RefreshBattery(s);
-    RefreshProcesses(s);
+    SysProcScanEnd(s, &scan);
 }
 
 // crates/fps/src/memory/windows.rs. PrivateUsage is this process' private

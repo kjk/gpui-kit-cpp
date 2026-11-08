@@ -1231,54 +1231,8 @@ DropdownButton* DropdownButton::Disabled(bool v) {
     disabled = v;
     return this;
 }
-DropdownButton* DropdownButton::Outline() {
-    outline = true;
-    return this;
-}
 DropdownButton* DropdownButton::MenuAccessibilityLabel(Str label) {
     menuAccessibilityLabel = label;
-    return this;
-}
-DropdownButton* DropdownButton::WithVariant(ButtonVariant v) {
-    hasVariant = true;
-    variant = v;
-    if (v != ButtonVariant::Custom) customVariant = {};
-    return this;
-}
-DropdownButton* DropdownButton::Primary() {
-    return WithVariant(ButtonVariant::Primary);
-}
-DropdownButton* DropdownButton::Secondary() {
-    return WithVariant(ButtonVariant::Secondary);
-}
-DropdownButton* DropdownButton::Danger() {
-    return WithVariant(ButtonVariant::Danger);
-}
-DropdownButton* DropdownButton::Warning() {
-    return WithVariant(ButtonVariant::Warning);
-}
-DropdownButton* DropdownButton::Success() {
-    return WithVariant(ButtonVariant::Success);
-}
-DropdownButton* DropdownButton::Info() {
-    return WithVariant(ButtonVariant::Info);
-}
-DropdownButton* DropdownButton::Ghost() {
-    return WithVariant(ButtonVariant::Ghost);
-}
-DropdownButton* DropdownButton::Link() {
-    return WithVariant(ButtonVariant::Link);
-}
-DropdownButton* DropdownButton::Text() {
-    return WithVariant(ButtonVariant::Text);
-}
-DropdownButton* DropdownButton::Custom(const ButtonCustomVariant& value) {
-    customVariant = value;
-    return WithVariant(ButtonVariant::Custom);
-}
-DropdownButton* DropdownButton::WithSize(UiSize s) {
-    hasSize = true;
-    size = s;
     return this;
 }
 
@@ -1439,52 +1393,6 @@ ButtonGroup* ButtonGroup::Layout(Axis value) {
 }
 ButtonGroup* ButtonGroup::Compact() {
     compact = true;
-    return this;
-}
-ButtonGroup* ButtonGroup::Outline() {
-    outline = true;
-    return this;
-}
-ButtonGroup* ButtonGroup::WithVariant(ButtonVariant v) {
-    hasVariant = true;
-    variant = v;
-    if (v != ButtonVariant::Custom) customVariant = {};
-    return this;
-}
-ButtonGroup* ButtonGroup::Primary() {
-    return WithVariant(ButtonVariant::Primary);
-}
-ButtonGroup* ButtonGroup::Secondary() {
-    return WithVariant(ButtonVariant::Secondary);
-}
-ButtonGroup* ButtonGroup::Danger() {
-    return WithVariant(ButtonVariant::Danger);
-}
-ButtonGroup* ButtonGroup::Warning() {
-    return WithVariant(ButtonVariant::Warning);
-}
-ButtonGroup* ButtonGroup::Success() {
-    return WithVariant(ButtonVariant::Success);
-}
-ButtonGroup* ButtonGroup::Info() {
-    return WithVariant(ButtonVariant::Info);
-}
-ButtonGroup* ButtonGroup::Ghost() {
-    return WithVariant(ButtonVariant::Ghost);
-}
-ButtonGroup* ButtonGroup::Link() {
-    return WithVariant(ButtonVariant::Link);
-}
-ButtonGroup* ButtonGroup::Text() {
-    return WithVariant(ButtonVariant::Text);
-}
-ButtonGroup* ButtonGroup::Custom(const ButtonCustomVariant& value) {
-    customVariant = value;
-    return WithVariant(ButtonVariant::Custom);
-}
-ButtonGroup* ButtonGroup::WithSize(UiSize s) {
-    hasSize = true;
-    size = s;
     return this;
 }
 ButtonGroup* ButtonGroup::OnClick(Listener l) {

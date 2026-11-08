@@ -5,27 +5,6 @@ namespace gpui {
 
 namespace component {
 
-BubbleContent* BubbleContent::New(Ctx* cx) {
-    Arena* a = cx->a;
-    BubbleContent* s = ArenaNew<BubbleContent>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-BubbleContent* BubbleContent::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-BubbleContent* BubbleContent::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
-    return this;
-}
-
 El* BubbleContent::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     bool dark = ThemeGet(cx->app) == ThemeMode::Dark;
@@ -96,44 +75,8 @@ El* BubbleContent::IntoEl() {
     return surface;
 }
 
-BubbleGroup* BubbleGroup::New(Ctx* cx) {
-    Arena* a = cx->a;
-    BubbleGroup* s = ArenaNew<BubbleGroup>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-BubbleGroup* BubbleGroup::Child(El* e) {
-    if (e) {
-        children.Append(a, e);
-    }
-    return this;
-}
-
-BubbleGroup* BubbleGroup::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
-    return this;
-}
-
 El* BubbleGroup::IntoEl() {
-    El* column = Div(a)->FlexCol()->MinW(0)->Gap(Rems(cx, 0.5f));
-    if (styleSet) {
-        column->Refine(style, styleSet);
-    }
-    for (int i = 0; i < children.len; i++) {
-        column->Child(children[i]);
-    }
-    return column;
-}
-
-BubbleReactions* BubbleReactions::New(Ctx* cx) {
-    Arena* a = cx->a;
-    BubbleReactions* s = ArenaNew<BubbleReactions>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
+    return MessageGroupColumn(cx, children, style, styleSet);
 }
 
 BubbleReactions* BubbleReactions::Side(BubbleReactionSide value) {
@@ -161,12 +104,6 @@ BubbleReactions* BubbleReactions::Child(El* e) {
         child.element = e;
         children.Append(a, child);
     }
-    return this;
-}
-
-BubbleReactions* BubbleReactions::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 

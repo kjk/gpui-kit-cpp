@@ -14,6 +14,7 @@
  */
 
 #include "sys/gpu.h"
+#include "sys/clock.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <IOKit/IOKitLib.h>
@@ -42,14 +43,6 @@ struct GpuProbe {
 static GpuProbe gProbe;
 // FPS monitors can live in more than one window. Their samples run on the
 // executor, while the probe is process-wide.
-static base::Mutex gProbeLock;
-
-static uint64_t MonoNanos() {
-    struct timespec ts = {};
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ull + (uint64_t)ts.tv_nsec;
-}
-
 static bool NumberU64(CFNumberRef number, uint64_t* out) {
     if (!number || CFGetTypeID(number) != CFNumberGetTypeID()) {
         return false;
@@ -104,17 +97,22 @@ static bool ClientNanoseconds(io_registry_entry_t client, CFStringRef creator,
     return ok;
 }
 
-// Nanoseconds every accelerator has spent on this process, or false when it
-// owns no client that reports them.
-static bool AccumulatedNanoseconds(CFStringRef creator, uint64_t* out) {
+// An iterator over every IOAccelerator service; the caller releases it.
+static bool AcceleratorsOpen(io_iterator_t* accelerators) {
     CFMutableDictionaryRef matching = IOServiceMatching("IOAccelerator");
     if (!matching) {
         return false;
     }
-    io_iterator_t accelerators = IO_OBJECT_NULL;
     // IOServiceGetMatchingServices consumes `matching` on every path.
-    if (IOServiceGetMatchingServices(kIOMainPortDefault, matching,
-                                     &accelerators) != KERN_SUCCESS) {
+    return IOServiceGetMatchingServices(kIOMainPortDefault, matching,
+                                        accelerators) == KERN_SUCCESS;
+}
+
+// Nanoseconds every accelerator has spent on this process, or false when it
+// owns no client that reports them.
+static bool AccumulatedNanoseconds(CFStringRef creator, uint64_t* out) {
+    io_iterator_t accelerators = IO_OBJECT_NULL;
+    if (!AcceleratorsOpen(&accelerators)) {
         return false;
     }
 
@@ -149,13 +147,8 @@ static bool AccumulatedNanoseconds(CFStringRef creator, uint64_t* out) {
 }
 
 static bool HasAccelerators() {
-    CFMutableDictionaryRef matching = IOServiceMatching("IOAccelerator");
-    if (!matching) {
-        return false;
-    }
     io_iterator_t accelerators = IO_OBJECT_NULL;
-    if (IOServiceGetMatchingServices(kIOMainPortDefault, matching,
-                                     &accelerators) != KERN_SUCCESS) {
+    if (!AcceleratorsOpen(&accelerators)) {
         return false;
     }
     io_registry_entry_t accelerator = IOIteratorNext(accelerators);
@@ -168,7 +161,7 @@ static bool HasAccelerators() {
 }
 
 // gProbeLock is held by every caller.
-static bool ProbeOpenLocked() {
+bool GpuProbeOpenLocked() {
     if (gProbe.tried) {
         return gProbe.available;
     }
@@ -188,15 +181,8 @@ static bool ProbeOpenLocked() {
     return true;
 }
 
-bool GpuAvailable() {
-    gProbeLock.Lock();
-    bool available = ProbeOpenLocked();
-    gProbeLock.Unlock();
-    return available;
-}
-
-static float GpuUsagePercentLocked() {
-    if (!ProbeOpenLocked()) {
+float GpuUsagePercentLocked() {
+    if (!GpuProbeOpenLocked()) {
         return -1.f;
     }
     // `None` while this process has yet to open an accelerator client, which
@@ -205,7 +191,7 @@ static float GpuUsagePercentLocked() {
     if (!AccumulatedNanoseconds(gProbe.creator, &used)) {
         return -1.f;
     }
-    uint64_t now = MonoNanos();
+    uint64_t now = ClockMonotonicNs();
     if (!gProbe.primed) {
         gProbe.lastNs = used;
         gProbe.lastAt = now;
@@ -227,15 +213,7 @@ static float GpuUsagePercentLocked() {
     return (float)percent;
 }
 
-float GpuUsagePercent() {
-    gProbeLock.Lock();
-    float usage = GpuUsagePercentLocked();
-    gProbeLock.Unlock();
-    return usage;
-}
-
-void GpuProbeFree() {
-    gProbeLock.Lock();
+void GpuProbeFreeLocked() {
     if (gProbe.creator) {
         CFRelease(gProbe.creator);
     }
@@ -245,7 +223,6 @@ void GpuProbeFree() {
     gProbe.primed = false;
     gProbe.tried = false;
     gProbe.available = false;
-    gProbeLock.Unlock();
 }
 
 } // namespace gpui

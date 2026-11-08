@@ -157,16 +157,10 @@ static void DirWatchThread(DirWatchPlat* w) {
 
 DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
                                DirWatchError* err) {
-    if (create && mkdir(dir, 0777) != 0 && errno != EEXIST) {
-        *err = DirWatchError::Failed;
-        return nullptr;
-    }
-    auto* w = (DirWatchPlat*)calloc(1, sizeof(DirWatchPlat));
+    auto* w = DirWatchPlatNewPosix<DirWatchPlat>(id, dir, create, err);
     if (!w) {
-        *err = DirWatchError::Failed;
         return nullptr;
     }
-    w->id = id;
     w->kq = -1;
     w->dirFd = -1;
     size_t n = strlen(dir);
@@ -199,12 +193,7 @@ DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
         return nullptr;
     }
     DirWatchOpenFiles(w);
-    if (!PlatThreadRun(MkFunc0(DirWatchThread, w))) {
-        *err = DirWatchError::Failed;
-        DirWatchFree(w);
-        return nullptr;
-    }
-    return w;
+    return DirWatchPlatStartThread(w, DirWatchThread, DirWatchFree, err);
 }
 
 void DirWatchPlatClose(DirWatchPlat* w) {

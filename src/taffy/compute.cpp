@@ -63,42 +63,11 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
             const Style& style = tree->GetStyle(root);
 
             if (style.IsBlock()) {
-                Optf aspectRatio = style.aspectRatio;
                 RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
                 RectF border = style.border.ResolveOrZero(parentSize.w, calc);
                 SizeF paddingBorderSize = (padding + border).SumAxes();
-                SizeF boxSizingAdjustment =
-                    style.boxSizing == BoxSizing::ContentBox ? paddingBorderSize
-                                                             : SizeF::Zero();
-
-                SizeFOpt minSize =
-                    MaybeAdd(MaybeApplyAspectRatio(
-                                 style.minSize.MaybeResolve(parentSize, calc),
-                                 aspectRatio),
-                             boxSizingAdjustment);
-                SizeFOpt maxSize =
-                    MaybeAdd(MaybeApplyAspectRatio(
-                                 style.maxSize.MaybeResolve(parentSize, calc),
-                                 aspectRatio),
-                             boxSizingAdjustment);
-                SizeFOpt clampedStyleSize = MaybeClamp(
-                    MaybeAdd(MaybeApplyAspectRatio(
-                                 style.size.MaybeResolve(parentSize, calc),
-                                 aspectRatio),
-                             boxSizingAdjustment),
-                    minSize, maxSize);
-
-                // If both min and max are set in an axis and max <= min, that
-                // determines the size in that axis.
-                SizeFOpt minMaxDefiniteSize = SizeFOptNone();
-                if (IsSome(minSize.w) && IsSome(maxSize.w) &&
-                    maxSize.w <= minSize.w) {
-                    minMaxDefiniteSize.w = minSize.w;
-                }
-                if (IsSome(minSize.h) && IsSome(maxSize.h) &&
-                    maxSize.h <= minSize.h) {
-                    minMaxDefiniteSize.h = minSize.h;
-                }
+                NodeStyledSizes styled = ResolveNodeStyledSizes(
+                    style, parentSize, calc, paddingBorderSize, true);
 
                 // Block nodes stretch their width to the available space when
                 // it is definite. That space already excludes the margin.
@@ -106,8 +75,8 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
                 availableSpaceBasedSize.w = rootAvailableSpace.width
                                                 .IntoOption();
 
-                SizeFOpt known = Or(knownDimensions, minMaxDefiniteSize);
-                known = Or(known, clampedStyleSize);
+                SizeFOpt known = Or(knownDimensions, styled.minMaxDefiniteSize);
+                known = Or(known, styled.clampedSize);
                 known = Or(known, availableSpaceBasedSize);
                 knownDimensions = MaybeMax(known, paddingBorderSize);
             }
@@ -151,18 +120,8 @@ void ComputeRootLayout(TaffyTree* tree, NodeId root, SizeAvail availableSpace) {
         // viewport.
         if (style.position == Position::Relative) {
             RectFOpt inset = style.inset.MaybeResolveZip(icbSize, calc);
-            Optf negRight = inset.right;
-            if (IsSome(negRight)) {
-                negRight = -negRight;
-            }
-            Optf negBottom = inset.bottom;
-            if (IsSome(negBottom)) {
-                negBottom = -negBottom;
-            }
-            Optf dx = IsRtl(style.direction) ? Or(negRight, inset.left)
-                                             : Or(inset.left, negRight);
-            location.x += UnwrapOr(dx, 0.0f);
-            location.y += UnwrapOr(Or(inset.top, negBottom), 0.0f);
+            location =
+                location + RelativePositionOffset(inset, style.direction);
         }
 
         layout.order = 0;
@@ -325,8 +284,7 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
     RectF paddingBorder = padding + border;
     SizeF pbSum = paddingBorder.SumAxes();
-    SizeF boxSizingAdjustment =
-        style.boxSizing == BoxSizing::ContentBox ? pbSum : SizeF::Zero();
+    SizeF boxSizingAdjustment = BoxSizingAdjustment(style.boxSizing, pbSum);
 
     // In ContentSize mode the node's own size styles are ignored.
     SizeFOpt nodeSize = SizeFOptNone();
@@ -337,14 +295,10 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
         nodeSize = knownDimensions;
     } else {
         aspectRatio = style.aspectRatio;
-        SizeFOpt styleSize = MaybeAdd(
-            MaybeApplyAspectRatio(style.size.MaybeResolve(parentSize, calc),
-                                  aspectRatio),
-            boxSizingAdjustment);
-        SizeFOpt styleMinSize = MaybeAdd(
-            MaybeApplyAspectRatio(style.minSize.MaybeResolve(parentSize, calc),
-                                  aspectRatio),
-            boxSizingAdjustment);
+        SizeFOpt styleSize = ResolveStyledSize(
+            style.size, parentSize, calc, aspectRatio, boxSizingAdjustment);
+        SizeFOpt styleMinSize = ResolveStyledSize(
+            style.minSize, parentSize, calc, aspectRatio, boxSizingAdjustment);
         SizeFOpt styleMaxSize = MaybeAdd(
             style.maxSize.MaybeResolve(parentSize, calc), boxSizingAdjustment);
         nodeSize = Or(knownDimensions, styleSize);

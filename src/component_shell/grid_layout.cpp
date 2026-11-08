@@ -119,18 +119,11 @@ struct EventHost {
     }
 };
 
-static int ClampCount(double value) {
-    if (value > 2147483647.0) return 2147483647;
-    return (int)value;
-}
-
 static bool Nonnegative(const ComponentArgument& argument, double* out) {
-    if (argument.kind != ComponentArgumentKind::Number) return false;
-    double value = argument.number;
-    if (!isfinite(value) || value < 0. || value != floor(value) ||
-        value >= 18446744073709551616.0)
+    if (argument.kind != ComponentArgumentKind::Number ||
+        !IsUsizeNumber(argument.number))
         return false;
-    *out = value;
+    *out = argument.number;
     return true;
 }
 
@@ -627,13 +620,7 @@ static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
         component = "GridItem";
         name = "drag_handle_only";
     }
-    if (count != 1 || args[0].kind != ComponentArgumentKind::Boolean)
-        return build
-            ->Fail(fmt("%s.%s expects one boolean", Str(component), Str(name)));
-    Op* op = build->New<Op>();
-    op->kind = K;
-    op->flag = args[0].boolean;
-    return true;
+    return RecordFlagOp<Op>(build, args, count, K, component, name);
 }
 
 // positive or nonnegative integer, named "{component}.{name}(value)".
@@ -687,7 +674,7 @@ static bool RecordCount(PayloadBuild* build, const ComponentArgument* args,
         }
         Op* op = build->New<Op>();
         op->kind = K;
-        op->count = ClampCount(value);
+        op->count = SaturatingInt(value);
         return true;
     }
 }
@@ -708,8 +695,8 @@ static bool RecordSpan(PayloadBuild* build, const ComponentArgument* args,
         return build->Fail(fmt("%s expects a positive integer", callable));
     Op* op = build->New<Op>();
     op->kind = K;
-    op->count = ClampCount(cols);
-    op->count2 = ClampCount(rows);
+    op->count = SaturatingInt(cols);
+    op->count2 = SaturatingInt(rows);
     return true;
 }
 
@@ -758,7 +745,7 @@ static bool NewState(shell::StateBuild* build, const ComponentArgument* args,
         if (!Positive(*some, &value))
             return build->Fail(
                 StrL("GridLayoutState(cols) expects a positive integer"));
-        cols = ClampCount(value);
+        cols = SaturatingInt(value);
     }
     if (args[1].kind != ComponentArgumentKind::Optional)
         return build->Fail(StrL("GridLayoutState compaction must be optional"));
@@ -811,7 +798,6 @@ static constexpr shell::StateDescriptor kState = {
 static constexpr ArgumentDescriptor kIdStateArgs[] = {
     {"id", SchemaString()},
     {"state", SchemaEntity("GridLayoutState")}};
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kHandleArgs[] = {
     {"state", SchemaEntity("GridLayoutState")},
     {"item", SchemaString()}};
@@ -911,7 +897,7 @@ static constexpr MethodDescriptor kItemMethods[] = {
 static constexpr ConstructorDescriptor kGridCtors[] = {
     {"GridLayout", kIdStateArgs, &RootConstruct}};
 static constexpr ConstructorDescriptor kItemCtors[] = {
-    {"GridItem", kIdArgs, &ItemConstruct}};
+    {"GridItem", kIdArguments, &ItemConstruct}};
 static constexpr ConstructorDescriptor kHandleCtors[] = {
     {"GridDragHandle", kHandleArgs, &HandleConstruct}};
 

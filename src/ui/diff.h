@@ -417,20 +417,12 @@ struct DiffSyntaxStyle {
 using DiffSyntaxHighlighter = void (*)(void* data, Str language, Str text,
                                        Vec<DiffSyntaxStyle>* out);
 
-// One prepared style, already mapped onto a line's display text.
-struct DiffSyntaxSpan {
+// One prepared style, already mapped onto a line's display text: `start`
+// and `end` are offsets into that line's display text.
+struct DiffSyntaxSpan : DiffSyntaxStyle {
     int file = 0;
     uint8_t side = 0;
     int line = 0;
-    int start = 0;
-    int end = 0;
-    uint16_t weight = 0;
-    bool italic = false;
-    bool hasColor = false;
-    Rgba color = {};
-    bool hasBackground = false;
-    Rgba background = {};
-    bool underline = false;
 };
 
 struct DiffState {

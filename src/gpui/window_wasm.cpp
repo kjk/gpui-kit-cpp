@@ -39,7 +39,6 @@ struct PlatWindow {
     // The canvas box, in CSS pixels, which are DIPs here.
     int cssW = 0;
     int cssH = 0;
-    bool dirty = true;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
     bool open = true;
@@ -402,7 +401,7 @@ EM_JS(void, GpJsFileNamesRead, (char* out, int cap), {
 // or a paste that has arrived. Both are reasons to draw again.
 extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_wake(void) {
     if (gWin && gWin->plat) {
-        gWin->plat->dirty = true;
+        gWin->dirty = true;
     }
 }
 
@@ -484,21 +483,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_clipboard_read(void) {
         }
     }
     done(data, gWin->app, gWin, item);
-    gWin->plat->dirty = true;
+    gWin->dirty = true;
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_set_theme(int dark) {
     if (gWin && gWin->plat && gWin->plat->open) {
         AppHostSetTheme(gWin->app, dark != 0);
-    }
-}
-
-void AppInvalidate(Window* win) {
-    if (win) {
-        win->invalidations++;
-    }
-    if (win && win->plat) {
-        win->plat->dirty = true;
     }
 }
 
@@ -515,7 +505,7 @@ static void Redraw(Window* win) {
     if (!pw || pw->cssW <= 0 || pw->cssH <= 0) {
         return;
     }
-    pw->dirty = false;
+    win->dirty = false;
     win->paint.dpi = 96;
     WindowDrawFrame(win, (void*)pw, pw->cssW, pw->cssH, (float)pw->cssW,
                     (float)pw->cssH);
@@ -551,24 +541,10 @@ static uint32_t CharOf(const EmscriptenKeyboardEvent* e) {
     if (!key) {
         return 0;
     }
-    uint8_t c0 = (uint8_t)key.s[0];
-    int need = c0 < 0x80 ? 1 : (c0 < 0xe0 ? 2 : (c0 < 0xf0 ? 3 : 4));
-    if (len(key) != need) {
+    uint32_t cp = 0;
+    if (Utf8At(key, 0, &cp) != len(key)) {
         // More than one codepoint: a name, not a character.
         return 0;
-    }
-    uint32_t cp = 0;
-    if (need == 1) {
-        cp = c0;
-    } else if (need == 2) {
-        cp = ((uint32_t)(c0 & 0x1f) << 6) | (uint8_t)(key.s[1] & 0x3f);
-    } else if (need == 3) {
-        cp = ((uint32_t)(c0 & 0x0f) << 12) |
-             ((uint32_t)(key.s[1] & 0x3f) << 6) | (uint8_t)(key.s[2] & 0x3f);
-    } else {
-        cp = ((uint32_t)(c0 & 0x07) << 18) |
-             ((uint32_t)(key.s[1] & 0x3f) << 12) |
-             ((uint32_t)(key.s[2] & 0x3f) << 6) | (uint8_t)(key.s[3] & 0x3f);
     }
     return cp;
 }
@@ -782,7 +758,11 @@ static EM_BOOL OnMouseUp(int, const EmscriptenMouseEvent* e, void*) {
     return EM_TRUE;
 }
 
-static EM_BOOL OnMouseMove(int, const EmscriptenMouseEvent* e, void*) {
+// A move or a leave: where the pointer is on the canvas and which button,
+// if any, is held, made into the PlatformInput `make` builds.
+static EM_BOOL DispatchPointer(const EmscriptenMouseEvent* e,
+                               PlatformInput (*make)(float, float, bool,
+                                                     MouseButton, Modifiers)) {
     Window* win = gWin;
     if (!win || !win->plat || !win->plat->open) {
         return EM_FALSE;
@@ -790,22 +770,17 @@ static EM_BOOL OnMouseMove(int, const EmscriptenMouseEvent* e, void*) {
     MouseButton held = MouseButton::Left;
     bool any = HeldButton(e->buttons, &held);
     Point p = CanvasPoint((float)e->clientX, (float)e->clientY);
-    PlatformInput in = InputMouseMove(p.x, p.y, any, held, ModsOf(e));
+    PlatformInput in = make(p.x, p.y, any, held, ModsOf(e));
     WindowDispatchInput(win, &in);
     return EM_TRUE;
 }
 
+static EM_BOOL OnMouseMove(int, const EmscriptenMouseEvent* e, void*) {
+    return DispatchPointer(e, InputMouseMove);
+}
+
 static EM_BOOL OnMouseLeave(int, const EmscriptenMouseEvent* e, void*) {
-    Window* win = gWin;
-    if (!win || !win->plat || !win->plat->open) {
-        return EM_FALSE;
-    }
-    MouseButton held = MouseButton::Left;
-    bool any = HeldButton(e->buttons, &held);
-    Point p = CanvasPoint((float)e->clientX, (float)e->clientY);
-    PlatformInput in = InputMouseExited(p.x, p.y, any, held, ModsOf(e));
-    WindowDispatchInput(win, &in);
-    return EM_TRUE;
+    return DispatchPointer(e, InputMouseExited);
 }
 
 static EM_BOOL OnWheel(int, const EmscriptenWheelEvent* e, void*) {
@@ -841,7 +816,7 @@ static EM_BOOL OnResize(int, const EmscriptenUiEvent*, void*) {
     if (w != win->plat->cssW || h != win->plat->cssH) {
         win->plat->cssW = w;
         win->plat->cssH = h;
-        win->plat->dirty = true;
+        win->dirty = true;
     }
     return EM_TRUE;
 }
@@ -904,7 +879,7 @@ void AppToggleMaximize(Window* win) {
     bool fullScreen = !GpJsFullscreen();
     GpJsSetFullscreen(fullScreen);
     win->maximized = fullScreen;
-    win->plat->dirty = true;
+    win->dirty = true;
 }
 
 void WindowSetFullScreen(Window* win, bool fullScreen) {
@@ -913,7 +888,7 @@ void WindowSetFullScreen(Window* win, bool fullScreen) {
     }
     GpJsSetFullscreen(fullScreen);
     win->maximized = fullScreen;
-    win->plat->dirty = true;
+    win->dirty = true;
 }
 
 // A tab is as solid as the browser draws it and takes the pointer the browser
@@ -1003,49 +978,8 @@ bool PlatAccessibilityWanted(Window* win) {
     return false;
 }
 
-// A page has no popup menu of its own, so NativeMenu::Show draws one — Rust's
-// FallbackMenuOverlay, which is what the X11 window gets too.
-bool PlatHasMenu() {
-    return false;
-}
-
-int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
-                 float y, bool dark) {
-    (void)win;
-    (void)items;
-    (void)n;
-    (void)x;
-    (void)y;
-    (void)dark;
-    return 0;
-}
-
-bool PlatHasAppMenu() {
-    // A tab has no menu bar to put anything in.
-    return false;
-}
-
-void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
-    (void)app;
-    (void)items;
-    (void)n;
-}
-
-void PlatSetMenuBarVisible(bool) {}
-
 bool PlatReduceMotion() {
     return GpJsReduceMotion() != 0;
-}
-
-bool PlatReduceMotionKnown(bool* out) {
-    if (out) {
-        *out = PlatReduceMotion();
-    }
-    return true;
-}
-
-void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
-    (void)onChange;
 }
 
 void OpenUrl(Str url) {
@@ -1065,26 +999,12 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     return {};
 }
 
-void ClipboardSetText(Window* win, Str text) {
-    if (TestPlatformClipboardWrite(text)) {
-        return;
-    }
+void PlatClipboardSetText(Window* win, Str text) {
     (void)win;
-    if (text.s && len(text) > 0) {
-        GpJsClipboardWrite(text.s, len(text));
-    }
+    GpJsClipboardWrite(text.s, len(text));
 }
 
-void WindowSetTextContentType(Window* win, Str value) {
-    (void)win;
-    (void)value;
-}
-
-Str ClipboardGetText(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated.text;
-    }
+Str PlatClipboardGetText(Arena* a, Window* win) {
     (void)win;
     if (!gInPasteEvent) {
         return {};
@@ -1101,13 +1021,9 @@ Str ClipboardGetText(Arena* a, Window* win) {
     return StrDup(a, tmp);
 }
 
-ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated;
-    }
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     ClipboardItem out;
-    out.text = ClipboardGetText(a, win);
+    out.text = PlatClipboardGetText(a, win);
     if (!gInPasteEvent) {
         return out;
     }
@@ -1229,7 +1145,7 @@ static void Tick(void* arg) {
     }
     for (int i = 0; i < app->windows.len; i++) {
         Window* w = app->windows[i];
-        if (w->plat && w->plat->dirty && w->plat->open) {
+        if (w->plat && w->dirty && w->plat->open) {
             Redraw(w);
         }
     }

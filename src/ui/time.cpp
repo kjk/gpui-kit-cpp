@@ -75,38 +75,6 @@ Calendar* Calendar::Refine(const Style& value, uint32_t fields) {
     styleSet |= fields;
     return this;
 }
-Calendar* Calendar::OnDay(Listener fn) {
-    onDay = fn;
-    return this;
-}
-Calendar* Calendar::OnDate(Listener fn) {
-    onDate = fn;
-    return this;
-}
-Calendar* Calendar::OnPrev(Listener fn) {
-    onPrev = fn;
-    return this;
-}
-Calendar* Calendar::OnNext(Listener fn) {
-    onNext = fn;
-    return this;
-}
-Calendar* Calendar::OnMonthToggle(Listener fn) {
-    onMonthToggle = fn;
-    return this;
-}
-Calendar* Calendar::OnYearToggle(Listener fn) {
-    onYearToggle = fn;
-    return this;
-}
-Calendar* Calendar::OnMonth(Listener fn) {
-    onMonth = fn;
-    return this;
-}
-Calendar* Calendar::OnYear(Listener fn) {
-    onYear = fn;
-    return this;
-}
 
 // size_7 / size_10 / size_8.
 static float CalendarCellSize(const Ctx* cx, UiSize size) {
@@ -320,14 +288,7 @@ El* Calendar::IntoEl() {
     o.yearMin = yearMin;
     o.yearMax = yearMax;
     o.yearPageStart = yearPageStart;
-    o.onDay = onDay;
-    o.onDate = onDate;
-    o.onPrev = onPrev;
-    o.onNext = onNext;
-    o.onMonthToggle = onMonthToggle;
-    o.onYearToggle = onYearToggle;
-    o.onMonth = onMonth;
-    o.onYear = onYear;
+    static_cast<CalendarListeners&>(o) = *this;
     o.item = &ThemedCalendarItem;
     o.user = this;
     El* root = gpui::Calendar::New(cx, StrL("calendar"), o)->W(width);
@@ -675,23 +636,8 @@ Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date,
     int yearDay = DateYearDay(date);
     int isoYear = 0, isoWeek = 0;
     DateIsoWeek(date, &isoYear, &isoWeek);
-    for (int i = 0; i < len(pattern); i++) {
-        char ch = pattern.s[i];
-        if (ch != '%' || i + 1 >= len(pattern)) {
-            out.AppendChar(ch);
-            continue;
-        }
-        char directive = pattern.s[++i];
-        char modifier = 0;
-        if ((directive == '-' || directive == '_' || directive == '0') &&
-            i + 1 < len(pattern)) {
-            modifier = directive;
-            directive = pattern.s[++i];
-        }
+    StrftimeWalk(pattern, out, true, [&](char directive, char modifier) {
         switch (directive) {
-            case '%':
-                out.AppendChar('%');
-                break;
             case 'Y':
                 AppendDateNumeric(&out, date.year, 4, '0', modifier);
                 break;
@@ -795,11 +741,10 @@ Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date,
                 break;
             default:
                 // Keep an unsupported chrono directive visible and stable.
-                out.AppendChar('%');
-                out.AppendChar(directive);
-                break;
+                return false;
         }
-    }
+        return true;
+    });
     return out.TakeStr();
 }
 
@@ -1265,38 +1210,6 @@ DatePicker* DatePicker::OnToggle(Listener fn) {
     onToggle = fn;
     return this;
 }
-DatePicker* DatePicker::OnDay(Listener fn) {
-    onDay = fn;
-    return this;
-}
-DatePicker* DatePicker::OnDate(Listener fn) {
-    onDate = fn;
-    return this;
-}
-DatePicker* DatePicker::OnPrev(Listener fn) {
-    onPrev = fn;
-    return this;
-}
-DatePicker* DatePicker::OnNext(Listener fn) {
-    onNext = fn;
-    return this;
-}
-DatePicker* DatePicker::OnMonthToggle(Listener fn) {
-    onMonthToggle = fn;
-    return this;
-}
-DatePicker* DatePicker::OnYearToggle(Listener fn) {
-    onYearToggle = fn;
-    return this;
-}
-DatePicker* DatePicker::OnMonth(Listener fn) {
-    onMonth = fn;
-    return this;
-}
-DatePicker* DatePicker::OnYear(Listener fn) {
-    onYear = fn;
-    return this;
-}
 
 static Str FormatDate(Arena* a, DateFormat f, int y, int m, int d) {
     const char* sep = f == DateFormat::Dash ? "-" : "/";
@@ -1317,6 +1230,29 @@ struct DatePresetAction {
         }
     }
 };
+
+// my_1().gap_2(): the column the presets stack in beside the calendar.
+static El* DatePresetColumn(Ctx* cx) {
+    return Div(cx->a)
+        ->FlexCol()
+        ->Gap(Rems(cx, 0.5f))
+        ->PadY(Rems(cx, 0.25f))
+        ->JustifyEnd();
+}
+
+// The picker's popover: padded, bordered and rounded on the background, and
+// dismissed by a release outside it.
+static El* DatePopupFrame(Ctx* cx, Listener dismiss, El* content) {
+    const Theme& th = ThemeNow(cx->app);
+    return Div(cx->a)
+        ->Pad(Rems(cx, 0.75f))
+        ->Border(1, th.border)
+        ->Radius(std::min(th.radius * 2.f, 8.f))
+        ->Bg(th.tokens.background)
+        ->Fg(th.foreground)
+        ->OnMouseUpOut(dismiss)
+        ->Child(content);
+}
 
 static El* RetainedDatePickerIntoEl(DatePicker* self) {
     Ctx* cx = self->cx;
@@ -1399,24 +1335,11 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
     if (editsTime) {
         text->FontFeatures(FontFeatures::TabularFigures);
     }
-    El* triggerRow = Div(a)
-                         ->FlexRow()
-                         ->W(kFill)
-                         ->MinW(0)
-                         ->Gap(Rems(cx, 0.25f))
-                         ->ItemsCenter()
-                         ->JustifyBetween()
-                         ->Child(text);
+    El* triggerRow = SpreadRow(cx)->Child(text);
     if (!self->disabled) {
         if (self->cleanable && hasDate) {
-            triggerRow->Child(Button::New(cx, StrL("clean"))
-                                  ->Text()
-                                  ->WithSize(UiSize::XSmall)
-                                  ->Icon(IconName::X)
-                                  ->AccessibilityLabel(Tr("Input.Clear"))
-                                  ->OnClick(clear)
-                                  ->IntoEl()
-                                  ->StopClick());
+            triggerRow
+                ->Child(ClearButton(cx)->OnClick(clear)->IntoEl()->StopClick());
         } else {
             triggerRow->Child(
                 IconEl(a, IconName::Calendar, UiIconPx(cx, UiSize::XSmall))
@@ -1438,12 +1361,7 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
     if (state->open) {
         El* content = Div(a)->FlexRow()->Gap(Rems(cx, 0.75f))->ItemsStart();
         if (self->presets && self->presetsCount > 0) {
-            // my_1().gap_2()
-            El* list = Div(a)
-                           ->FlexCol()
-                           ->Gap(Rems(cx, 0.5f))
-                           ->PadY(Rems(cx, 0.25f))
-                           ->JustifyEnd();
+            El* list = DatePresetColumn(cx);
             for (int i = 0; i < self->presetsCount; i++) {
                 const DateRangePreset& preset = self->presets[i];
                 uint32_t key =
@@ -1498,15 +1416,8 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
             column->Child(row);
         }
         content->Child(column);
-        popup = Div(a)
-                    ->Pad(Rems(cx, 0.75f))
-                    ->Border(1, th.border)
-                    ->Radius(std::min(th.radius * 2.f, 8.f))
-                    ->Bg(th.tokens.background)
-                    ->Fg(th.foreground)
-                    ->OnMouseUpOut(
-                        ListenTo(self->state, &DatePickerState::OnDismiss))
-                    ->Child(content);
+        popup = DatePopupFrame(
+            cx, ListenTo(self->state, &DatePickerState::OnDismiss), content);
     }
 
     El* root = gpui::DatePicker::New(cx, self->id, self->disabled, state->open,
@@ -1577,14 +1488,8 @@ El* DatePicker::IntoEl() {
     trigger->Child(TextEl(a, title)->Font(font)->Fg(complete ? th.foreground
                                                              : th.mutedFg));
     if (cleanable && hasDate && !disabled) {
-        trigger->Child(Button::New(cx, StrL("clean"))
-                           ->Text()
-                           ->WithSize(UiSize::XSmall)
-                           ->Icon(IconName::X)
-                           ->AccessibilityLabel(Tr("Input.Clear"))
-                           ->OnClick(onClear)
-                           ->IntoEl()
-                           ->StopClick());
+        trigger
+            ->Child(ClearButton(cx)->OnClick(onClear)->IntoEl()->StopClick());
     } else if (open) {
         trigger
             ->Child(IconEl(a, IconName::Calendar, UiIconPx(cx, UiSize::XSmall))
@@ -1613,23 +1518,11 @@ El* DatePicker::IntoEl() {
                                  ->View(calendarView)
                                  ->YearRange(yearMin, yearMax, yearPageStart)
                                  ->DisabledMatcher(disabledMatcher)
-                                 ->Bare()
-                                 ->OnDay(onDay)
-                                 ->OnDate(onDate)
-                                 ->OnPrev(onPrev)
-                                 ->OnNext(onNext)
-                                 ->OnMonthToggle(onMonthToggle)
-                                 ->OnYearToggle(onYearToggle)
-                                 ->OnMonth(onMonth)
-                                 ->OnYear(onYear);
+                                 ->Bare();
+        static_cast<CalendarListeners&>(*calendar) = *this;
         El* content = Div(a)->FlexRow()->Gap(Rems(cx, 0.75f))->ItemsStart();
         if (presets && presetsCount > 0) {
-            // my_1().gap_2()
-            El* list = Div(a)
-                           ->FlexCol()
-                           ->Gap(Rems(cx, 0.5f))
-                           ->PadY(Rems(cx, 0.25f))
-                           ->JustifyEnd();
+            El* list = DatePresetColumn(cx);
             for (int i = 0; i < presetsCount; i++) {
                 const DateRangePreset& preset = presets[i];
                 list->Child(component::Button::New(
@@ -1643,14 +1536,7 @@ El* DatePicker::IntoEl() {
             content->Child(list);
         }
         content->Child(calendar->IntoEl());
-        popup = Div(a)
-                    ->Pad(Rems(cx, 0.75f))
-                    ->Border(1, th.border)
-                    ->Radius(std::min(th.radius * 2.f, 8.f))
-                    ->Bg(th.tokens.background)
-                    ->Fg(th.foreground)
-                    ->OnMouseUpOut(onToggle)
-                    ->Child(content);
+        popup = DatePopupFrame(cx, onToggle, content);
     }
     // Both halves of the picker take focus — the outer element and the
     // trigger inside it — so the opt-out has to reach both.

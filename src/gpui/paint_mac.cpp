@@ -6,6 +6,7 @@
    glyphs need the text matrix flipped back. */
 
 #include "gpui/paint.h"
+#include "gpui/paint_backend.h"
 #include "gpui/scene.h"
 
 #import <AppKit/AppKit.h>
@@ -16,34 +17,8 @@
 
 namespace gpui {
 
-static uint64_t gNextPaintResourceGeneration = 1;
 static bool gOffscreenWasRecording = false;
 static bool gNoSceneBegin = false;
-
-static bool SceneFinish(PaintCtx* ctx) {
-    if (!SceneOn() || !scene::Recording()) {
-        return true;
-    }
-    Bounds damage = {};
-    bool draw = scene::FrameEnd(ctx, &damage);
-    if (draw) {
-        scene::Replay(ctx, &damage);
-    } else {
-        // Skip means "the last present is still on screen". This context is
-        // the window itself, and AppKit may already have cleared it, so an
-        // identical frame still has to be painted or the area flashes.
-        scene::Replay(ctx, nullptr);
-    }
-    return draw;
-}
-
-static uint64_t PaintResourceGenerationNew() {
-    uint64_t id = gNextPaintResourceGeneration++;
-    if (id == 0) {
-        id = gNextPaintResourceGeneration++;
-    }
-    return id;
-}
 
 // A resolved font, keyed by the size and weight word the element tree asks
 // for. Small and linear: a frame uses a handful of distinct fonts.
@@ -84,58 +59,41 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
-static Vec<Str> gInstalledFonts;
-static bool gInstalledFontsReady = false;
-
-const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
+void PaintListInstalledFonts(PaintApp* pa, Vec<Str>* out) {
     (void)pa;
-    if (!gInstalledFontsReady) {
-        gInstalledFontsReady = true;
-        CFArrayRef names = CTFontManagerCopyAvailableFontFamilyNames();
-        if (names) {
-            CFIndex count = CFArrayGetCount(names);
-            for (CFIndex i = 0; i < count; i++) {
-                auto cf = (CFStringRef)CFArrayGetValueAtIndex(names, i);
-                if (!cf) {
-                    continue;
-                }
-                char utf8[256];
-                if (CFStringGetCString(cf, utf8, sizeof(utf8),
-                                       kCFStringEncodingUTF8) &&
-                    utf8[0]) {
-                    VecAppend(gInstalledFonts, StrDup(Str(utf8)));
-                }
+    CFArrayRef names = CTFontManagerCopyAvailableFontFamilyNames();
+    if (names) {
+        CFIndex count = CFArrayGetCount(names);
+        for (CFIndex i = 0; i < count; i++) {
+            auto cf = (CFStringRef)CFArrayGetValueAtIndex(names, i);
+            if (!cf) {
+                continue;
             }
-            CFRelease(names);
+            char utf8[256];
+            if (CFStringGetCString(cf, utf8, sizeof(utf8),
+                                   kCFStringEncodingUTF8) &&
+                utf8[0]) {
+                VecAppend(*out, StrDup(Str(utf8)));
+            }
         }
+        CFRelease(names);
     }
-    if (n) {
-        *n = gInstalledFonts.len;
-    }
-    return gInstalledFonts.els;
 }
 
 Str PaintSystemUIFontMappedFamily() {
     return StrL(".AppleSystemUIFont");
 }
 
-void PaintTargetFree(PaintCtx* ctx) {
-    if (!ctx || !ctx->rt) {
-        return;
-    }
-    delete ctx->rt;
-    ctx->rt = nullptr;
+void PaintTargetDestroy(PaintTarget* rt) {
+    delete rt;
 }
 
 // `native` is the CGContextRef the view's drawRect handed us. It is only
 // valid for this frame, so the target is rebuilt every time.
-bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
-    (void)pxW;
-    (void)pxH;
-    if (!ctx || !ctx->pa || !native) {
+bool PaintTargetBegin(PaintCtx* ctx, void* native, int, int) {
+    if (!PaintTargetReplace(ctx, native)) {
         return false;
     }
-    PaintTargetFree(ctx);
     auto* t = new PaintTarget();
     t->cg = (CGContextRef)native;
     ctx->rt = t;
@@ -198,10 +156,8 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
             (const uint8_t*)CGBitmapContextGetData(gOffscreenCg);
         size_t stride = CGBitmapContextGetBytesPerRow(gOffscreenCg);
         if (src) {
-            for (int y = 0; y < gOffscreenH; y++) {
-                memcpy(outBgra + (size_t)y * (size_t)gOffscreenW * 4,
-                       src + (size_t)y * stride, (size_t)gOffscreenW * 4);
-            }
+            PaintCopyBgraRows(outBgra, (size_t)gOffscreenW * 4, src, stride,
+                              gOffscreenW, gOffscreenH);
         }
     }
     PaintTargetFree(ctx);
@@ -214,7 +170,10 @@ bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
 }
 
 bool PaintTargetEnd(PaintCtx* ctx) {
-    SceneFinish(ctx);
+    // Skip means "the last present is still on screen". This context is the
+    // window itself, and AppKit may already have cleared it, so an identical
+    // frame still has to be painted or the area flashes.
+    PaintSceneFinish(ctx, true);
     if (!ctx || !ctx->rt) {
         return false;
     }
@@ -264,11 +223,7 @@ static CGPathRef RoundRectPath(float x, float y, float w, float h, float r) {
     return CGPathCreateWithRoundedRect(rect, r, r, nullptr);
 }
 
-void CanvasClear(PaintCtx* ctx, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecClear(ctx, c);
-        return;
-    }
+void PaintBackendCanvasClear(PaintCtx* ctx, Rgba c) {
     CGContextRef cg = Cg(ctx);
     if (!cg) {
         return;
@@ -277,11 +232,8 @@ void CanvasClear(PaintCtx* ctx, Rgba c) {
     CGContextFillRect(cg, CGContextGetClipBoundingBox(cg));
 }
 
-void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRect(ctx, x, y, w, h, c);
-        return;
-    }
+void PaintBackendCanvasFillRect(PaintCtx* ctx, float x, float y, float w,
+                                float h, Rgba c) {
     CGContextRef cg = Cg(ctx);
     if (!cg || w <= 0 || h <= 0 || c.a == 0) {
         return;
@@ -290,12 +242,8 @@ void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
     CGContextFillRect(cg, CGRectMake(x, y, w, h));
 }
 
-void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
-                     Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRound(ctx, x, y, w, h, r, c);
-        return;
-    }
+void PaintBackendCanvasFillRound(PaintCtx* ctx, float x, float y, float w,
+                                 float h, float r, Rgba c) {
     CGContextRef cg = Cg(ctx);
     if (!cg || w <= 0 || h <= 0 || c.a == 0) {
         return;
@@ -307,12 +255,9 @@ void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
     CGPathRelease(path);
 }
 
-void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
-                       float r, float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecStrokeRound(ctx, x, y, w, h, r, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasStrokeRound(PaintCtx* ctx, float x, float y, float w,
+                                   float h, float r, float stroke, Rgba c,
+                                   const float* dash) {
     CGContextRef cg = Cg(ctx);
     if (!cg || stroke <= 0 || w <= 0 || h <= 0) {
         return;
@@ -329,12 +274,8 @@ void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
     CGPathRelease(path);
 }
 
-void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
-                float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecLine(ctx, x1, y1, x2, y2, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasLine(PaintCtx* ctx, float x1, float y1, float x2,
+                            float y2, float stroke, Rgba c, const float* dash) {
     CGContextRef cg = Cg(ctx);
     if (!cg) {
         return;
@@ -349,12 +290,8 @@ void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
     CGContextSetLineDash(cg, 0, nullptr, 0);
 }
 
-void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
-                   float stroke, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecEllipse(ctx, cx, cy, rx, ry, stroke, c);
-        return;
-    }
+void PaintBackendCanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx,
+                               float ry, float stroke, Rgba c) {
     CGContextRef cg = Cg(ctx);
     if (!cg || rx <= 0 || ry <= 0) {
         return;
@@ -372,20 +309,8 @@ void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
     }
 }
 
-bool CanvasScrollRect(PaintCtx*, float, float, float, float, float, float) {
-    return false;
-}
-
-bool CanvasReadPixels(PaintCtx*, float, float, float, float, uint8_t*, int,
-                      int*, int*) {
-    return false;
-}
-
-void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
-    if (scene::Recording()) {
-        scene::RecPushClip(ctx, x, y, w, h);
-        return;
-    }
+void PaintBackendCanvasPushClip(PaintCtx* ctx, float x, float y, float w,
+                                float h) {
     CGContextRef cg = Cg(ctx);
     if (!cg) {
         return;
@@ -394,11 +319,7 @@ void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
     CGContextClipToRect(cg, CGRectMake(x, y, w, h));
 }
 
-void CanvasPopClip(PaintCtx* ctx) {
-    if (scene::Recording()) {
-        scene::RecPopClip(ctx);
-        return;
-    }
+void PaintBackendCanvasPopClip(PaintCtx* ctx) {
     CGContextRef cg = Cg(ctx);
     if (cg) {
         CGContextRestoreGState(cg);
@@ -408,30 +329,18 @@ void CanvasPopClip(PaintCtx* ctx) {
 // ─── paths ────────────────────────────────────────────────────────────────
 
 struct Path {
+    PathHead head;
     CGMutablePathRef path = nullptr;
-    bool winding = true;
-    bool fig = false;
     float cx = 0, cy = 0; // current point, for the arc-without-a-figure case
 };
 
-Path* PathNew(PaintCtx* ctx, bool winding) {
-    if (scene::Recording()) {
-        return scene::RecPathNew(ctx, winding);
-    }
-    if (!ctx) {
-        return nullptr;
-    }
+Path* PathAlloc() {
     auto* p = new Path();
     p->path = CGPathCreateMutable();
-    p->winding = winding;
     return p;
 }
 
-void PathFree(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathFree(p);
-        return;
-    }
+void PathDestroy(Path* p) {
     if (!p) {
         return;
     }
@@ -441,106 +350,56 @@ void PathFree(Path* p) {
     delete p;
 }
 
-void PathMoveTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathMoveTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+void PathEmitMove(Path* p, float x, float y) {
     CGPathMoveToPoint(p->path, nullptr, x, y);
-    p->fig = true;
     p->cx = x;
     p->cy = y;
 }
 
-void PathLineTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathLineTo(p, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitLine(Path* p, float x, float y) {
     CGPathAddLineToPoint(p->path, nullptr, x, y);
     p->cx = x;
     p->cy = y;
 }
 
-void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
-                 float y) {
-    if (scene::Recording()) {
-        scene::RecPathCubicTo(p, x1, y1, x2, y2, x, y);
-        return;
-    }
-    if (!p) {
-        return;
-    }
-    if (!p->fig) {
-        PathMoveTo(p, x, y);
-        return;
-    }
+void PathEmitCubic(Path* p, float x1, float y1, float x2, float y2, float x,
+                   float y) {
     CGPathAddCurveToPoint(p->path, nullptr, x1, y1, x2, y2, x, y);
     p->cx = x;
     p->cy = y;
 }
 
-void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
-               bool clockwise) {
-    if (scene::Recording()) {
-        scene::RecPathArcTo(p, cx, cy, r, a0, a1, clockwise);
-        return;
-    }
-    if (!p) {
-        return;
-    }
+void PathEmitArc(Path* p, float cx, float cy, float r, float a0, float a1,
+                 bool clockwise) {
     // CGPathAddArc sweeps toward increasing angle when its `clockwise` flag is
     // false. Our angles grow clockwise on screen because this space is y-down,
     // so the flag is inverted.
     CGPathAddArc(p->path, nullptr, cx, cy, r, a0, a1, !clockwise);
-    p->fig = true;
     p->cx = cx + r * cosf(a1);
     p->cy = cy + r * sinf(a1);
 }
 
-void PathClose(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathClose(p);
-        return;
-    }
-    if (!p || !p->fig) {
-        return;
-    }
+void PathEmitClose(Path* p) {
     CGPathCloseSubpath(p->path);
-    p->fig = false;
 }
 
-// Nothing to cache: this backend hands the path to Core Graphics, which owns
-// whatever it wants to keep about it.
-void PathRealize(PaintCtx* ctx, Path* p) {
-    (void)ctx;
-    (void)p;
-}
-
-void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFill(ctx, p, c);
-        return;
-    }
+// The context a path draws into, or null when there is none or the path is
+// empty.
+static CGContextRef PathCg(PaintCtx* ctx, Path* p) {
     CGContextRef cg = Cg(ctx);
-    if (!cg || !p || CGPathIsEmpty(p->path)) {
+    return cg && p && !CGPathIsEmpty(p->path) ? cg : nullptr;
+}
+
+void PaintBackendPathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
+    CGContextRef cg = PathCg(ctx, p);
+    if (!cg) {
         return;
     }
     CGContextSaveGState(cg);
     CGContextTranslateCTM(cg, dx, dy);
     SetFill(ctx, cg, c);
     CGContextAddPath(cg, p->path);
-    if (p->winding) {
+    if (p->head.winding) {
         CGContextFillPath(cg);
     } else {
         CGContextEOFillPath(cg);
@@ -553,18 +412,9 @@ void PathFillGradientV(PaintCtx* ctx, Path* p, float y0, float y1, Rgba top,
     PathFillGradient(ctx, p, 0, y0, 0, y1, top, bot);
 }
 
-void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
-                      float y1, Rgba from, Rgba to, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
-        return;
-    }
-    CGContextRef cg = Cg(ctx);
-    if (!cg || !p || CGPathIsEmpty(p->path)) {
-        return;
-    }
-    from = PaintFade(ctx, from);
-    to = PaintFade(ctx, to);
+// The gradient PathFillGradient and PathStrokeGradient draw: `from` at 0 and
+// `to` at 1, in device RGB. The caller releases it.
+static CGGradientRef TwoStopGradient(Rgba from, Rgba to) {
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
     CGFloat comps[8] = {from.r / 255.0, from.g / 255.0, from.b / 255.0,
                         from.a / 255.0, to.r / 255.0,   to.g / 255.0,
@@ -573,6 +423,25 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
     CGGradientRef grad =
         CGGradientCreateWithColorComponents(space, comps, stops, 2);
     CGColorSpaceRelease(space);
+    return grad;
+}
+
+// The two stops faded for the current layer (written back: a caller that
+// cannot get a gradient falls back to the faded `from`), as a gradient.
+static CGGradientRef FadedGradient(PaintCtx* ctx, Rgba* from, Rgba* to) {
+    *from = PaintFade(ctx, *from);
+    *to = PaintFade(ctx, *to);
+    return TwoStopGradient(*from, *to);
+}
+
+void PaintBackendPathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0,
+                                  float x1, float y1, Rgba from, Rgba to,
+                                  float dx, float dy) {
+    CGContextRef cg = PathCg(ctx, p);
+    if (!cg) {
+        return;
+    }
+    CGGradientRef grad = FadedGradient(ctx, &from, &to);
     if (!grad) {
         PathFill(ctx, p, from, dx, dy);
         return;
@@ -580,7 +449,7 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
     CGContextSaveGState(cg);
     CGContextTranslateCTM(cg, dx, dy);
     CGContextAddPath(cg, p->path);
-    if (p->winding) {
+    if (p->head.winding) {
         CGContextClip(cg);
     } else {
         CGContextEOClip(cg);
@@ -592,14 +461,10 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
     CGGradientRelease(grad);
 }
 
-void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
-                float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStroke(ctx, p, stroke, c, roundCaps);
-        return;
-    }
-    CGContextRef cg = Cg(ctx);
-    if (!cg || !p || CGPathIsEmpty(p->path)) {
+void PaintBackendPathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
+                            bool roundCaps, float dx, float dy) {
+    CGContextRef cg = PathCg(ctx, p);
+    if (!cg) {
         return;
     }
     CGContextSaveGState(cg);
@@ -615,28 +480,15 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
     CGContextRestoreGState(cg);
 }
 
-void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
-                        float y0, float x1, float y1, Rgba from, Rgba to,
-                        bool roundCaps, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
-                                     roundCaps);
+void PaintBackendPathStrokeGradient(PaintCtx* ctx, Path* p, float stroke,
+                                    float x0, float y0, float x1, float y1,
+                                    Rgba from, Rgba to, bool roundCaps,
+                                    float dx, float dy) {
+    CGContextRef cg = PathCg(ctx, p);
+    if (!cg) {
         return;
     }
-    CGContextRef cg = Cg(ctx);
-    if (!cg || !p || CGPathIsEmpty(p->path)) {
-        return;
-    }
-    from = PaintFade(ctx, from);
-    to = PaintFade(ctx, to);
-    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-    CGFloat comps[8] = {from.r / 255.0, from.g / 255.0, from.b / 255.0,
-                        from.a / 255.0, to.r / 255.0,   to.g / 255.0,
-                        to.b / 255.0,   to.a / 255.0};
-    CGFloat stops[2] = {0.0, 1.0};
-    CGGradientRef grad =
-        CGGradientCreateWithColorComponents(space, comps, stops, 2);
-    CGColorSpaceRelease(space);
+    CGGradientRef grad = FadedGradient(ctx, &from, &to);
     if (!grad) {
         PathStroke(ctx, p, stroke, from, roundCaps, dx, dy);
         return;
@@ -659,79 +511,6 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
     CGGradientRelease(grad);
 }
 
-// ─── utf-8 / utf-16 offsets ───────────────────────────────────────────────
-//
-// Str is UTF-8 and Core Text indexes UTF-16, so the two have to be mapped the
-// way the DirectWrite backend does.
-
-// Decode one codepoint; returns the bytes consumed.
-static int Utf8Decode(const char* s, int len, uint32_t* out) {
-    if (len <= 0) {
-        return 0;
-    }
-    auto b = (const unsigned char*)s;
-    if (b[0] < 0x80) {
-        *out = b[0];
-        return 1;
-    }
-    if ((b[0] & 0xe0) == 0xc0 && len >= 2) {
-        *out = ((uint32_t)(b[0] & 0x1f) << 6) | (b[1] & 0x3f);
-        return 2;
-    }
-    if ((b[0] & 0xf0) == 0xe0 && len >= 3) {
-        *out = ((uint32_t)(b[0] & 0x0f) << 12) |
-               ((uint32_t)(b[1] & 0x3f) << 6) | (b[2] & 0x3f);
-        return 3;
-    }
-    if ((b[0] & 0xf8) == 0xf0 && len >= 4) {
-        *out = ((uint32_t)(b[0] & 0x07) << 18) |
-               ((uint32_t)(b[1] & 0x3f) << 12) |
-               ((uint32_t)(b[2] & 0x3f) << 6) | (b[3] & 0x3f);
-        return 4;
-    }
-    *out = 0xfffd;
-    return 1;
-}
-
-static int Utf8OffToU16(Str s, int u8off) {
-    if (!s.s || u8off <= 0) {
-        return 0;
-    }
-    if (u8off > len(s)) {
-        u8off = len(s);
-    }
-    int i = 0;
-    int u16 = 0;
-    while (i < u8off) {
-        uint32_t cp = 0;
-        int adv = Utf8Decode(s.s + i, len(s) - i, &cp);
-        if (adv <= 0) {
-            break;
-        }
-        i += adv;
-        u16 += cp >= 0x10000 ? 2 : 1;
-    }
-    return u16;
-}
-
-static int U16OffToUtf8(Str s, int u16off) {
-    if (!s.s || u16off <= 0) {
-        return 0;
-    }
-    int i = 0;
-    int u16 = 0;
-    while (i < len(s) && u16 < u16off) {
-        uint32_t cp = 0;
-        int adv = Utf8Decode(s.s + i, len(s) - i, &cp);
-        if (adv <= 0) {
-            break;
-        }
-        i += adv;
-        u16 += cp >= 0x10000 ? 2 : 1;
-    }
-    return i;
-}
-
 // ─── images ───────────────────────────────────────────────────────────────
 //
 // NSBitmapImageRep decodes everything the system has a codec for — PNG,
@@ -739,20 +518,14 @@ static int U16OffToUtf8(Str s, int u16off) {
 // framework the build does not already link. ImageIO would do the same job
 // one layer down.
 
-struct MacImageFrame {
-    CGImageRef image = nullptr;
-    CGImageRef grayImage = nullptr;
-    int w = 0;
-    int h = 0;
-    int durationMs = 100;
-};
-
-struct RenderImage {
-    int refs = 1;
-    uint64_t generation = 0;
-    RenderImageStatus status = RenderImageStatus::Ready;
-    Vec<MacImageFrame> frames;
-};
+void ImageFrameFree(ImageFrame* frame) {
+    if (frame->image) {
+        CGImageRelease(frame->image);
+    }
+    if (frame->grayImage) {
+        CGImageRelease(frame->grayImage);
+    }
+}
 
 static double CfSeconds(CFDictionaryRef dict, CFStringRef key) {
     if (!dict || !key) {
@@ -809,14 +582,13 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
         return nullptr;
     }
     size_t count = CGImageSourceGetCount(src);
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
+    auto* img = RenderImageAlloc(RenderImageStatus::Ready);
     for (size_t i = 0; i < count; i++) {
         CGImageRef cg = CGImageSourceCreateImageAtIndex(src, i, nullptr);
         if (!cg) {
             continue;
         }
-        MacImageFrame frame = {};
+        ImageFrame frame = {};
         frame.image = cg;
         frame.w = (int)CGImageGetWidth(cg);
         frame.h = (int)CGImageGetHeight(cg);
@@ -860,112 +632,14 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
     if (space) CGColorSpaceRelease(space);
     CGDataProviderRelease(provider);
     if (!cg) return nullptr;
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
-    MacImageFrame frame = {};
+    ImageFrame frame = {};
     frame.image = cg;
     frame.w = w;
     frame.h = h;
-    VecAppend(img->frames, frame);
-    return img;
+    return RenderImageWithFrame(frame);
 }
 
-RenderImage* RenderImageNewLoading() {
-    auto* img = new RenderImage();
-    img->generation = PaintResourceGenerationNew();
-    img->status = RenderImageStatus::Loading;
-    return img;
-}
-
-void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
-    if (!img) {
-        if (decoded) {
-            RenderImageRelease(decoded);
-        }
-        return;
-    }
-    if (decoded && decoded->frames.len > 0) {
-        for (int i = 0; i < img->frames.len; i++) {
-            MacImageFrame& frame = img->frames[i];
-            if (frame.image) {
-                CGImageRelease(frame.image);
-            }
-            if (frame.grayImage) {
-                CGImageRelease(frame.grayImage);
-            }
-        }
-        VecReset(img->frames);
-        img->frames.els = decoded->frames.els;
-        img->frames.len = decoded->frames.len;
-        img->frames.cap = decoded->frames.cap;
-        decoded->frames.els = nullptr;
-        decoded->frames.len = 0;
-        decoded->frames.cap = 0;
-        img->status = RenderImageStatus::Ready;
-    } else {
-        img->status = RenderImageStatus::Failed;
-    }
-    if (decoded) {
-        RenderImageRelease(decoded);
-    }
-}
-
-void RenderImageRetain(RenderImage* img) {
-    if (img) {
-        img->refs++;
-    }
-}
-
-void RenderImageRelease(RenderImage* img) {
-    if (!img || --img->refs != 0) {
-        return;
-    }
-    for (int i = 0; i < img->frames.len; i++) {
-        MacImageFrame& frame = img->frames[i];
-        if (frame.image) {
-            CGImageRelease(frame.image);
-        }
-        if (frame.grayImage) {
-            CGImageRelease(frame.grayImage);
-        }
-    }
-    VecReset(img->frames);
-    delete img;
-}
-
-uint64_t RenderImageGeneration(const RenderImage* img) {
-    return img ? img->generation : 0;
-}
-
-RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
-    return img ? img->status : RenderImageStatus::Failed;
-}
-
-Size RenderImageSizePx(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return {};
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return {(float)img->frames[frameIndex].w, (float)img->frames[frameIndex].h};
-}
-
-int RenderImageFrameCount(const RenderImage* img) {
-    return img ? img->frames.len : 0;
-}
-
-int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
-    if (!img || img->frames.len <= 0) {
-        return 0;
-    }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
-    return img->frames[frameIndex].durationMs;
-}
-
-static CGImageRef ImageForDraw(MacImageFrame* frame, bool grayscale) {
+static CGImageRef ImageForDraw(ImageFrame* frame, bool grayscale) {
     if (!grayscale || frame->grayImage) {
         return grayscale ? frame->grayImage : frame->image;
     }
@@ -992,22 +666,15 @@ static CGImageRef ImageForDraw(MacImageFrame* frame, bool grayscale) {
     return frame->grayImage;
 }
 
-void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
-                     Bounds imageBounds, int frameIndex, float radius,
-                     bool grayscale) {
-    if (scene::Recording()) {
-        scene::RecImageDraw(ctx, img, bounds, imageBounds, frameIndex, radius,
-                            grayscale);
-        return;
-    }
+void PaintBackendRenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
+                                 Bounds imageBounds, int frameIndex,
+                                 float radius, bool grayscale) {
     CGContextRef cg = Cg(ctx);
     if (!cg || !img || img->frames.len <= 0 || bounds.w <= 0 || bounds.h <= 0 ||
         imageBounds.w <= 0 || imageBounds.h <= 0) {
         return;
     }
-    if (frameIndex < 0 || frameIndex >= img->frames.len) {
-        frameIndex = 0;
-    }
+    frameIndex = RenderImageFrameIndex(img, frameIndex);
     CGImageRef image = ImageForDraw(&img->frames[frameIndex], grayscale);
     if (!image) {
         return;
@@ -1050,14 +717,7 @@ struct MacLine {
 };
 
 struct TextLayout {
-    // The byte length of the text it was shaped from (TextLayoutTextLen).
-    int textLen = 0;
-    uint64_t generation = 0;
-    int refs = 1;
-    // What TextLayoutNew reported, kept so TextLayoutSize can answer without
-    // measuring again: the lines' extent, and how far the aligned ones reach.
-    Size size = {};
-    Size cover = {};
+    TextLayoutHead head;
     CFAttributedStringRef attr = nullptr;
     MacLine* lines = nullptr;
     int nLines = 0;
@@ -1189,15 +849,9 @@ static CTFontRef FontFor(PaintApp* pa, float fontSize, uint16_t weight) {
     return ct;
 }
 
-TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint16_t weight, float lineH,
-                          Size* outSize, TextAlign align) {
-    if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
-        return nullptr;
-    }
-    if (fontSize <= 0) {
-        fontSize = 16.f;
-    }
+TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
+                            bool wrap, uint16_t weight, float lineH,
+                            Size* outSize, TextAlign align) {
     CTFontRef font = FontFor(ctx->pa, fontSize, weight);
     if (!font) {
         return nullptr;
@@ -1295,8 +949,6 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     }
 
     auto* tl = new TextLayout();
-    tl->textLen = len(s);
-    tl->generation = PaintResourceGenerationNew();
     tl->attr = attr;
     tl->lines = lines;
     tl->nLines = nLines;
@@ -1320,8 +972,8 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         tl->strikeOff = (float)ascent * 0.31f;
     }
 
-    tl->size = Size{width, tl->box * (float)nLines};
-    tl->cover = tl->size;
+    Size size = {width, tl->box * (float)nLines};
+    tl->head.cover = size;
     // GPUI's aligned_origin_x, per line: inside the box the run was laid out
     // in, or inside the widest line when it had none.
     if (align != TextAlign::Left) {
@@ -1330,35 +982,16 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         for (int i = 0; i < nLines; i++) {
             lines[i].dx = (alignW - lines[i].width) * f;
             float right = lines[i].dx + lines[i].width;
-            if (right > tl->cover.w) {
-                tl->cover.w = right;
-            }
+            tl->head.cover.w = std::max(tl->head.cover.w, right);
         }
     }
     if (outSize) {
-        outSize->w = tl->size.w;
-        outSize->h = tl->size.h;
+        *outSize = size;
     }
     return tl;
 }
 
-Size TextLayoutSize(TextLayout* tl) {
-    return tl ? tl->cover : Size{0, 0};
-}
-
-void TextLayoutAddRef(TextLayout* tl) {
-    if (tl) {
-        tl->refs++;
-    }
-}
-
-void TextLayoutRelease(TextLayout* tl) {
-    if (!tl) {
-        return;
-    }
-    if (--tl->refs > 0) {
-        return;
-    }
+void TextLayoutDestroy(TextLayout* tl) {
     for (int i = 0; i < tl->nLines; i++) {
         if (tl->lines[i].line) {
             CFRelease(tl->lines[i].line);
@@ -1371,35 +1004,8 @@ void TextLayoutRelease(TextLayout* tl) {
     delete tl;
 }
 
-uint64_t TextLayoutGeneration(const TextLayout* tl) {
-    return tl ? tl->generation : 0;
-}
-
-int TextLayoutTextLen(const TextLayout* tl) {
-    return tl ? tl->textLen : 0;
-}
-
-bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
-                          float y, Rgba base, const TextSpan* spans, int n) {
-    if (scene::Recording()) {
-        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
-    }
-    (void)tl;
-    (void)text;
-    (void)x;
-    (void)y;
-    (void)base;
-    (void)spans;
-    (void)n;
-    return false;
-}
-
-void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
-                    bool clip, float clipW) {
-    if (scene::Recording()) {
-        scene::RecTextDraw(ctx, tl, x, y, c, clip, clipW);
-        return;
-    }
+void PaintBackendTextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y,
+                                Rgba c, bool clip, float clipW) {
     // No ellipsis here yet: Core Text truncates through
     // CTLineCreateTruncatedLine, which means re-typesetting the line rather
     // than setting a mode on the layout, so a truncated run is cut at the box
@@ -1416,8 +1022,8 @@ void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
         // ellipsis.
         float boxH = tl->box * (float)tl->nLines;
         CGContextSaveGState(cg);
-        CGContextClipToRect(cg,
-                            CGRectMake(x, y - boxH, tl->cover.w, boxH * 3.f));
+        CGContextClipToRect(
+            cg, CGRectMake(x, y - boxH, tl->head.cover.w, boxH * 3.f));
     }
     SetFill(ctx, cg, c);
     CGContextSetTextMatrix(cg, CGAffineTransformMakeScale(1, -1));
@@ -1454,7 +1060,7 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     if (idx == kCFNotFound) {
         idx = ml.start + ml.len;
     }
-    return U16OffToUtf8(s, (int)idx);
+    return Utf16OffsetToUtf8(s, (int)idx);
 }
 
 float TextLayoutBaseline(TextLayout* tl) {
@@ -1466,8 +1072,9 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
     if (!tl || !out || max <= 0 || u8a >= u8b) {
         return 0;
     }
-    int a = Utf8OffToU16(s, u8a);
-    int b = Utf8OffToU16(s, u8b);
+    // Str is UTF-8 and Core Text indexes UTF-16.
+    int a = Utf8OffsetToUtf16(s, u8a);
+    int b = Utf8OffsetToUtf16(s, u8b);
     int n = 0;
     for (int i = 0; i < tl->nLines && n < max; i++) {
         const MacLine& ml = tl->lines[i];

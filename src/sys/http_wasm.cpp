@@ -279,16 +279,4 @@ bool HttpSendPlatform(const HttpReq& req, HttpRsp* out) {
     return false;
 }
 
-bool HttpGet(Str url, HttpRsp* out) {
-    (void)url;
-    (void)out;
-    return false;
-}
-
-bool HttpGetNoRedirect(Str url, HttpRsp* out) {
-    (void)url;
-    (void)out;
-    return false;
-}
-
 } // namespace gpui

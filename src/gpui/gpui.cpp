@@ -740,6 +740,7 @@ El* El::FlexAuto() {
     style.flexGrow = 1;
     style.flexShrink = 1;
     style.flexBasis = kAuto;
+    style.flexBasisFrac = 0;
     style.flexBasisPercent = false;
     return this;
 }
@@ -747,6 +748,7 @@ El* El::FlexNone() {
     style.flexGrow = 0;
     style.flexShrink = 0;
     style.flexBasis = kAuto;
+    style.flexBasisFrac = 0;
     style.flexBasisPercent = false;
     return this;
 }
@@ -1196,6 +1198,32 @@ static float ScrollbarThumbMinLength(const El* e, ScrollbarPaintState state) {
                : (state == ScrollbarPaintState::HoverThumb
                       ? e->scrollThumbHoverMinLength
                       : e->scrollThumbMinLength);
+}
+
+// Which of the four styles one axis's bar paints in: Active while that axis is
+// being dragged, HoverThumb with the pointer on the resting thumb, HoverBar
+// with it elsewhere on the bar. origin/length/viewport/content/marginEnd/
+// scroll lay the thumb out along the axis; crossPointer and crossEnd are the
+// pointer and the box's far edge across it, alongPointer the pointer along it.
+static ScrollbarPaintState ScrollbarAxisPaintState(
+    const El* e, float origin, float length, float viewport, float content,
+    float marginEnd, float scroll, bool onBar, float crossPointer,
+    float crossEnd, float alongPointer, bool axisDragging) {
+    if (axisDragging) {
+        return ScrollbarPaintState::Active;
+    }
+    float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
+    ScrollbarThumbGeometry normal = ScrollbarGeometry(
+        origin, length, viewport, content, marginEnd, normalInset,
+        ScrollbarThumbMinLength(e, ScrollbarPaintState::Normal));
+    float normalStart = normal.Start(scroll);
+    bool pointerOnThumb = onBar && crossPointer <= crossEnd - normalInset &&
+                          alongPointer >= normalStart &&
+                          alongPointer < normalStart + normal.length;
+    if (pointerOnThumb) {
+        return ScrollbarPaintState::HoverThumb;
+    }
+    return onBar ? ScrollbarPaintState::HoverBar : ScrollbarPaintState::Normal;
 }
 
 // ─── the scrollbar's motion — crates/base/src/scrollbar.rs ───────────────
@@ -2141,7 +2169,7 @@ int Utf8OffsetToUtf16(Str s, int u8) {
     int i = 0;
     while (i < u8) {
         unsigned char c = (unsigned char)s.s[i];
-        int len = c < 0x80 ? 1 : (c < 0xE0 ? 2 : (c < 0xF0 ? 3 : 4));
+        int len = Utf8LeadLen(c);
         // Everything outside the basic plane is a surrogate pair over there.
         u16 += len == 4 ? 2 : 1;
         i += len;
@@ -2154,7 +2182,7 @@ int Utf16OffsetToUtf8(Str s, int u16) {
     int i = 0;
     while (i < len(s) && at < u16) {
         unsigned char c = (unsigned char)s.s[i];
-        int len = c < 0x80 ? 1 : (c < 0xE0 ? 2 : (c < 0xF0 ? 3 : 4));
+        int len = Utf8LeadLen(c);
         at += len == 4 ? 2 : 1;
         i += len;
     }
@@ -2215,13 +2243,28 @@ bool ClickFromKeyRelease(bool pending, int pendingGen, int focusGen, int key,
     return pendingGen == focusGen;
 }
 
+uint32_t Fnv1a32(uint32_t h, const void* p, size_t n) {
+    const uint8_t* b = (const uint8_t*)p;
+    for (size_t i = 0; i < n; i++) {
+        h ^= b[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
+uint64_t Fnv1a64(uint64_t h, const void* p, size_t n) {
+    const uint8_t* b = (const uint8_t*)p;
+    for (size_t i = 0; i < n; i++) {
+        h ^= b[i];
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
 int HashClickId(Str s) {
-    uint32_t h = 2166136261u;
+    uint32_t h = kFnv1aBasis32;
     if (s.s) {
-        for (int i = 0; i < len(s); i++) {
-            h ^= (uint8_t)s.s[i];
-            h *= 16777619u;
-        }
+        h = Fnv1a32(h, s.s, (size_t)len(s));
     }
     int id = (int)(h & 0x3fffffff);
     // Zero is what "nothing is hovered", "nothing is focused" and "no hit"
@@ -2386,6 +2429,9 @@ El* El::BottomRel(float frac) {
 El* El::Left(float v) {
     style.absLeft = v;
     return this;
+}
+El* El::Inset0() {
+    return Top(0)->Right(0)->Bottom(0)->Left(0);
 }
 El* El::Bottom(float v) {
     style.absBottom = v;
@@ -2732,46 +2778,49 @@ Str FontFamilyName(uint8_t id) {
     return gFontFamilies[id];
 }
 
-uint16_t ElTextWeight(const El* e) {
-    uint16_t w = kFontWeightNormal;
-    switch ((FontWeight)e->style.fontWeight) {
+uint8_t FontWeightBits(FontWeight weight, uint8_t unknown) {
+    switch (weight) {
         case FontWeight::Thin:
-            w = kFontWeightThin;
-            break;
+            return kFontWeightThin;
         case FontWeight::ExtraLight:
-            w = kFontWeightExtraLight;
-            break;
+            return kFontWeightExtraLight;
         case FontWeight::Light:
-            w = kFontWeightLight;
-            break;
+            return kFontWeightLight;
         case FontWeight::Normal:
-            w = kFontWeightExplicitNormal;
-            break;
+            return kFontWeightExplicitNormal;
         case FontWeight::Medium:
-            w = kFontWeightMedium;
-            break;
+            return kFontWeightMedium;
         case FontWeight::Semibold:
-            w = kFontWeightSemibold;
-            break;
+            return kFontWeightSemibold;
         case FontWeight::Bold:
-            w = kFontWeightBold;
-            break;
+            return kFontWeightBold;
         case FontWeight::ExtraBold:
-            w = kFontWeightExtraBold;
-            break;
+            return kFontWeightExtraBold;
         case FontWeight::Black:
-            w = kFontWeightBlack;
-            break;
+            return kFontWeightBlack;
         default:
-            break;
+            return unknown;
     }
-    if (e->style.fontWeight == 0 && e->style.fontBold) {
-        w = kFontWeightBold;
-    } else if (e->style.fontWeight == 0 && e->style.fontSemibold) {
-        w = kFontWeightSemibold;
-    } else if (e->style.fontWeight == 0 && e->style.fontMedium) {
-        w = kFontWeightMedium;
+}
+
+uint16_t StyleFontWeightBits(const Style& s, uint16_t unset) {
+    if (uint8_t w = FontWeightBits((FontWeight)s.fontWeight, 0)) {
+        return w;
     }
+    if (s.fontBold) {
+        return kFontWeightBold;
+    }
+    if (s.fontSemibold) {
+        return kFontWeightSemibold;
+    }
+    if (s.fontMedium) {
+        return kFontWeightMedium;
+    }
+    return unset;
+}
+
+uint16_t ElTextWeight(const El* e) {
+    uint16_t w = StyleFontWeightBits(e->style, kFontWeightNormal);
     if (e->style.fontMono) {
         w |= kFontMono;
     }
@@ -2816,6 +2865,28 @@ static void TextMeasFreeSlot(TextMeasSlot* sl) {
     sl->len = 0;
 }
 
+// Linear probing from the key's hash: the slot holding that key, or the empty
+// one where it would go, or null when the table is full or not yet made.
+static TextMeasSlot* TextMeasProbe(TextMeasCache* c, uint32_t hash, Str s,
+                                   float keyFont, float keyMaxW, bool wrap,
+                                   uint16_t weight, float lineH,
+                                   uint8_t align) {
+    if (!c->slots || c->cap <= 0) {
+        return nullptr;
+    }
+    int mask = c->cap - 1;
+    int i = (int)(hash & (uint32_t)mask);
+    for (int n = 0; n < c->cap; n++) {
+        TextMeasSlot* sl = &((TextMeasSlot*)c->slots)[i];
+        if (!sl->occupied || TextMeasKeyEq(sl, hash, s, keyFont, keyMaxW, wrap,
+                                           weight, lineH, align)) {
+            return sl;
+        }
+        i = (i + 1) & mask;
+    }
+    return nullptr;
+}
+
 static TextMeasSlot* TextMeasFind(TextMeasCache* c, Str s, float fontSize,
                                   float maxW, bool wrap, uint16_t weight,
                                   float lineH, uint32_t* outHash,
@@ -2827,23 +2898,9 @@ static TextMeasSlot* TextMeasFind(TextMeasCache* c, Str s, float fontSize,
     if (outHash) {
         *outHash = hash;
     }
-    if (!c->slots || c->cap <= 0) {
-        return nullptr;
-    }
-    int mask = c->cap - 1;
-    int i = (int)(hash & (uint32_t)mask);
-    for (int n = 0; n < c->cap; n++) {
-        TextMeasSlot* sl = &((TextMeasSlot*)c->slots)[i];
-        if (!sl->occupied) {
-            return nullptr;
-        }
-        if (TextMeasKeyEq(sl, hash, s, keyFont, keyMaxW, wrap, weight, lineH,
-                          align)) {
-            return sl;
-        }
-        i = (i + 1) & mask;
-    }
-    return nullptr;
+    TextMeasSlot* sl =
+        TextMeasProbe(c, hash, s, keyFont, keyMaxW, wrap, weight, lineH, align);
+    return sl && sl->occupied ? sl : nullptr;
 }
 
 static void TextMeasInsertMove(TextMeasCache* c, TextMeasSlot* src);
@@ -2906,25 +2963,8 @@ static TextMeasSlot* TextMeasInsert(PaintCtx* ctx, Str s, float fontSize,
     if (c->cap == 0 || (c->used + 1) * 10 > c->cap * 6) {
         TextMeasGrow(c, c->cap > 0 ? c->cap * 2 : 256);
     }
-    if (!c->slots || c->cap <= 0) {
-        return nullptr;
-    }
-    int mask = c->cap - 1;
-    int i = (int)(hash & (uint32_t)mask);
-    TextMeasSlot* sl = nullptr;
-    for (int n = 0; n < c->cap; n++) {
-        TextMeasSlot* cand = &((TextMeasSlot*)c->slots)[i];
-        if (!cand->occupied) {
-            sl = cand;
-            break;
-        }
-        if (TextMeasKeyEq(cand, hash, s, keyFont, keyMaxW, wrap, weight, lineH,
-                          align)) {
-            sl = cand;
-            break;
-        }
-        i = (i + 1) & mask;
-    }
+    TextMeasSlot* sl =
+        TextMeasProbe(c, hash, s, keyFont, keyMaxW, wrap, weight, lineH, align);
     if (!sl) {
         return nullptr;
     }
@@ -3765,11 +3805,7 @@ static uint64_t MixGroupPath(uint64_t path, int index) {
 
 static uint32_t GroupIdHash(Str id) {
     if (!id.s || len(id) == 0) return 0;
-    uint32_t h = 2166136261u;
-    for (int i = 0; i < len(id); i++) {
-        h ^= (uint8_t)id.s[i];
-        h *= 16777619u;
-    }
+    uint32_t h = Fnv1a32(kFnv1aBasis32, id.s, (size_t)len(id));
     return h ? h : 1;
 }
 
@@ -3900,13 +3936,7 @@ static taffy::Dimension ToDim(float v, float frac) {
 // anything else is the length it says, zero included.
 static taffy::Dimension ToMinDim(float v) {
     // kFill is `min_w_full()`: relative(1.), as it is for a width.
-    if (v == kFill) {
-        return taffy::Dimension::Percent(1.0f);
-    }
-    if (v == kAuto || v < 0) {
-        return taffy::Dimension::Auto();
-    }
-    return taffy::Dimension::Length(v);
+    return ToDim(v, 0);
 }
 
 static taffy::LengthPercentageAuto ToInset(float v, float rel) {
@@ -4695,15 +4725,6 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
 
 // ─── reconciling the tree ────────────────────────────────────────────────
 
-static uint64_t FnvMix(uint64_t h, const void* p, size_t n) {
-    const uint8_t* b = (const uint8_t*)p;
-    for (size_t i = 0; i < n; i++) {
-        h ^= b[i];
-        h *= 1099511628211ull;
-    }
-    return h;
-}
-
 // __layout_reuse=off rebuilds the tree every frame, which is what layout
 // did before the cache. It is the first thing to try if a frame ever comes
 // out laid out stale, and what the two are measured against. Argv wins;
@@ -4772,27 +4793,27 @@ static uint64_t LayoutMeasureKey(PaintCtx* ctx, El* e) {
         return 0;
     }
     // FNV-1a over the bytes that decide the size.
-    uint64_t h = 1469598103934665603ull;
+    uint64_t h = kFnv1aBasis64;
     uint8_t kind = (uint8_t)e->kind;
-    h = FnvMix(h, &kind, 1);
+    h = Fnv1a64(h, &kind, 1);
     if (e->kind == ElKind::Progress) {
         // Progress answers with a constant, so nothing about it moves it.
         return h;
     }
     if (len(e->text) > 0 && e->text.s) {
-        h = FnvMix(h, e->text.s, (size_t)len(e->text));
+        h = Fnv1a64(h, e->text.s, (size_t)len(e->text));
     }
-    h = FnvMix(h, &e->laidFont, sizeof(e->laidFont));
+    h = Fnv1a64(h, &e->laidFont, sizeof(e->laidFont));
     uint16_t weight = ElTextWeight(e);
-    h = FnvMix(h, &weight, sizeof(weight));
-    h = FnvMix(h, &e->style.lineHeight, sizeof(e->style.lineHeight));
+    h = Fnv1a64(h, &weight, sizeof(weight));
+    h = Fnv1a64(h, &e->style.lineHeight, sizeof(e->style.lineHeight));
     uint8_t flags =
         (uint8_t)((e->style.wrap ? 1 : 0) | (e->style.truncate ? 2 : 0));
-    h = FnvMix(h, &flags, 1);
+    h = Fnv1a64(h, &flags, 1);
     if (e->kind == ElKind::Image) {
         Size px = ImageNaturalSize(ctx, e);
-        h = FnvMix(h, &px.w, sizeof(px.w));
-        h = FnvMix(h, &px.h, sizeof(px.h));
+        h = Fnv1a64(h, &px.w, sizeof(px.w));
+        h = Fnv1a64(h, &px.h, sizeof(px.h));
     }
     return h;
 }
@@ -6291,6 +6312,20 @@ static void ChartRun(Path* p, const ChartSeries& c, FX Xat, FY Yat,
 const float kBarRowBandGap = 52.f;
 const float kBarRowValueGap = 36.f;
 
+// ScaleBand: every one of n points takes a band of the width w, with the
+// padding between them coming off each one. A bar or candle chart lays its
+// marks, its tooltip and its labels out on it.
+static component::ScaleBand ChartBandScale(const ChartSeries& c, int n,
+                                           float w) {
+    const float range[2] = {0.f, w};
+    component::ScaleBand band = component::ScaleBand::New(n, range, 2)
+                                    .BandCount(c.bandCount)
+                                    .MaxBandWidth(c.maxBandWidth);
+    band.paddingInner = c.bandPadding;
+    band.paddingOuter = c.bandPaddingOuter;
+    return band;
+}
+
 // One bar: which edge it grows from, what it is filled with, and the value
 // written at its growing end.
 static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
@@ -6891,6 +6926,18 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             return;
         }
         int levels = c.gridLevels > 0 ? c.gridLevels : 4;
+        // Axis i points this way: the first straight up, the rest clockwise
+        // round the circle at equal angles.
+        auto axisAngle = [n](int i) {
+            return -1.5707963f + 6.2831853f * (float)i / (float)n;
+        };
+        // Where series vs puts its vertex on axis i, drawn in from the
+        // centre by the appear progress.
+        auto seriesPoint = [&](const float* vs, int i) {
+            float t = ChartRadarFraction(lo, hi, vs[i]) * appearProgress;
+            float a = axisAngle(i);
+            return Point{cx + radius * t * cosf(a), cy + radius * t * sinf(a)};
+        };
         // The rings, and a spoke out to every axis. A chart overlaid on
         // another one draws on the rings the first one put down.
         for (int ring = 1; ring <= (c.overlay || !c.grid ? 0 : levels);
@@ -6901,7 +6948,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 break;
             }
             for (int i = 0; i <= n; i++) {
-                float a = -1.5707963f + 6.2831853f * (float)(i % n) / (float)n;
+                float a = axisAngle(i % n);
                 float px = cx + rr * cosf(a);
                 float py = cy + rr * sinf(a);
                 if (i == 0) {
@@ -6914,7 +6961,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             PathFree(p);
         }
         for (int i = 0; i < (c.overlay || !c.grid ? 0 : n); i++) {
-            float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
+            float a = axisAngle(i);
             DrawLine(ctx, cx, cy, cx + radius * cosf(a), cy + radius * sinf(a),
                      1.f, th.chartGrid);
         }
@@ -6932,15 +6979,11 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             Path* shape = PathNew(ctx, true);
             if (shape) {
                 for (int i = 0; i < n; i++) {
-                    float t =
-                        ChartRadarFraction(lo, hi, vs[i]) * appearProgress;
-                    float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
-                    float px = cx + radius * t * cosf(a);
-                    float py = cy + radius * t * sinf(a);
+                    Point pt = seriesPoint(vs, i);
                     if (i == 0) {
-                        PathMoveTo(shape, px, py);
+                        PathMoveTo(shape, pt.x, pt.y);
                     } else {
-                        PathLineTo(shape, px, py);
+                        PathLineTo(shape, pt.x, pt.y);
                     }
                 }
                 PathClose(shape);
@@ -6951,12 +6994,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             if (c.dot) {
                 const float kDot = 8.f;
                 for (int i = 0; i < n; i++) {
-                    float t =
-                        ChartRadarFraction(lo, hi, vs[i]) * appearProgress;
-                    float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
-                    float px = cx + radius * t * cosf(a);
-                    float py = cy + radius * t * sinf(a);
-                    FillRound(ctx, px - kDot * 0.5f, py - kDot * 0.5f, kDot,
+                    Point pt = seriesPoint(vs, i);
+                    FillRound(ctx, pt.x - kDot * 0.5f, pt.y - kDot * 0.5f, kDot,
                               kDot, kDot * 0.5f, stroke);
                 }
             }
@@ -6968,7 +7007,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             // and centred at twelve and six o'clock.
             const float kLabelGap = 10.f;
             for (int i = 0; i < n; i++) {
-                float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
+                float a = axisAngle(i);
                 float dx = cosf(a);
                 float px = cx + (radius + kLabelGap) * dx;
                 float py = cy + (radius + kLabelGap) * sinf(a);
@@ -7122,14 +7161,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     };
 
     if (c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick) {
-        // ScaleBand: every point takes a band of the width, with the padding
-        // between them coming off each one.
-        const float range[2] = {0.f, w};
-        component::ScaleBand band = component::ScaleBand::New(n, range, 2)
-                                        .BandCount(c.bandCount)
-                                        .MaxBandWidth(c.maxBandWidth);
-        band.paddingInner = c.bandPadding;
-        band.paddingOuter = c.bandPaddingOuter;
+        component::ScaleBand band = ChartBandScale(c, n, w);
         float bw = band.BandWidth();
         if (bw < 1) {
             bw = 1;
@@ -7296,13 +7328,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         float lineX = ctx->mouseX;
         if (overPlot) {
             if (c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick) {
-                const float range[2] = {0.f, w};
-                component::ScaleBand band =
-                    component::ScaleBand::New(n, range, 2)
-                        .BandCount(c.bandCount)
-                        .MaxBandWidth(c.maxBandWidth);
-                band.paddingInner = c.bandPadding;
-                band.paddingOuter = c.bandPaddingOuter;
+                component::ScaleBand band = ChartBandScale(c, n, w);
                 index = band.NearestIndex(ctx->mouseX - x);
                 float bx = 0;
                 if (index >= n) {
@@ -7397,13 +7423,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                         ->Gap(8)
                         ->Progress(focus);
                 if (bandHover) {
-                    const float range[2] = {0.f, w};
-                    component::ScaleBand band =
-                        component::ScaleBand::New(n, range, 2)
-                            .BandCount(c.bandCount)
-                            .MaxBandWidth(c.maxBandWidth);
-                    band.paddingInner = c.bandPadding;
-                    band.paddingOuter = c.bandPaddingOuter;
+                    component::ScaleBand band = ChartBandScale(c, n, w);
                     float bandX = targetX - x;
                     if (c.kind == ChartKind::Bar) {
                         // bar_chart.rs: the band sits where PlotHover::glide
@@ -7492,12 +7512,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         if (c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick) {
             // A band's name sits under the band, not under a point — or in
             // the gutter beside it, when the bands run down the side.
-            const float range[2] = {0.f, w};
-            component::ScaleBand band = component::ScaleBand::New(n, range, 2)
-                                            .BandCount(c.bandCount)
-                                            .MaxBandWidth(c.maxBandWidth);
-            band.paddingInner = c.bandPadding;
-            band.paddingOuter = c.bandPaddingOuter;
+            component::ScaleBand band = ChartBandScale(c, n, w);
             float bx = 0;
             if (band.Tick(i, &bx)) {
                 if (barRow) {
@@ -8030,6 +8045,27 @@ static int ElSelectionScope(PaintCtx* ctx, const El* e) {
     return e->style.trapId;
 }
 
+// The selectable run e records at docOff in the document order: its box, who
+// owns it and where its source comes from, the trap it sits in — a dialog, a
+// sheet — which is the TextSelectionScopeId a gesture inside it stays within,
+// its paint layer, and the table cell it is in. Callers add what kind of run
+// it is.
+static TextHit ElTextHit(PaintCtx* ctx, const El* e, int docOff) {
+    TextHit th;
+    th.bounds = e->Bounds();
+    th.docOff = docOff;
+    th.owner = e->selectionOwner;
+    th.src = e->selSrc;
+    th.map = e->selMap;
+    th.scope = ElSelectionScope(ctx, e);
+    th.paintLayer = ctx->paintLayer;
+    if (ctx->tableCellDepth > 0) {
+        th.inCell = true;
+        th.cell = ctx->tableCell;
+    }
+    return th;
+}
+
 // with_element_opacity: the opacity in force while this element and its
 // children paint is the one around it times its own, and it goes back to what
 // it was afterwards.
@@ -8474,39 +8510,17 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // node.rs CustomBlockElement: one hit for the whole plugin box. The
     // copy decides later, from the drag points, whether it was selected.
     if (e->selBlockPlugin && e->selectable) {
-        TextHit th;
-        th.bounds = e->Bounds();
+        TextHit th = ElTextHit(ctx, e, ctx->textDocLen);
         th.text = e->text;
         th.blockPlugin = true;
-        th.docOff = ctx->textDocLen;
-        th.owner = e->selectionOwner;
-        th.src = e->selSrc;
-        th.map = e->selMap;
-        th.scope = ElSelectionScope(ctx, e);
-        th.paintLayer = ctx->paintLayer;
-        if (ctx->tableCellDepth > 0) {
-            th.inCell = true;
-            th.cell = ctx->tableCell;
-        }
         VecAppend(ctx->texts, th);
         ctx->textDocLen += 1;
     }
     if (e->kind == ElKind::Image && e->selectable && e->selSrc &&
         !e->selBlockPlugin && ctx->blockPluginDepth == 0) {
-        TextHit th;
-        th.bounds = e->Bounds();
-        th.docOff = ctx->textDocLen;
-        th.owner = e->selectionOwner;
-        th.src = e->selSrc;
-        th.map = e->selMap;
+        TextHit th = ElTextHit(ctx, e, ctx->textDocLen);
         th.join = e->selJoin;
         th.atom = true;
-        th.scope = ElSelectionScope(ctx, e);
-        th.paintLayer = ctx->paintLayer;
-        if (ctx->tableCellDepth > 0) {
-            th.inCell = true;
-            th.cell = ctx->tableCell;
-        }
         VecAppend(ctx->texts, th);
         ctx->textDocLen += 1;
     }
@@ -8525,26 +8539,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         int hi = e->selHi;
         if (e->selectable && e->text.s) {
             int docOff = ctx->textDocLen;
-            TextHit th;
-            th.bounds = e->Bounds();
+            TextHit th = ElTextHit(ctx, e, docOff);
             th.text = e->text;
             th.font = font;
             th.maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
             th.wrap = e->style.wrap;
             th.align = ElTextAlign(e);
-            th.docOff = docOff;
-            th.owner = e->selectionOwner;
-            th.src = e->selSrc;
-            th.map = e->selMap;
             th.join = e->selJoin;
-            // The trap this run sits in — a dialog, a sheet — which is the
-            // TextSelectionScopeId a gesture inside it stays within.
-            th.scope = ElSelectionScope(ctx, e);
-            th.paintLayer = ctx->paintLayer;
-            if (ctx->tableCellDepth > 0) {
-                th.inCell = true;
-                th.cell = ctx->tableCell;
-            }
             VecAppend(ctx->texts, th);
             ctx->textDocLen += len(e->text) + 1;
             int a = ctx->selA;
@@ -9033,22 +9034,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     bool hasHorizontal = barVisible && canHorizontal;
     if (hasVertical) {
         bool onBar = overBox && !covered && ctx->mouseX >= e->x + e->w - trackW;
-        float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
-        ScrollbarThumbGeometry normal = ScrollbarGeometry(
-            e->y, e->h, scrollViewportH, scrollContentH, 0, normalInset,
-            ScrollbarThumbMinLength(e, ScrollbarPaintState::Normal));
-        float normalStart = normal.Start(e->scrollY);
-        bool pointerOnThumb = onBar &&
-                              ctx->mouseX <= e->x + e->w - normalInset &&
-                              ctx->mouseY >= normalStart &&
-                              ctx->mouseY < normalStart + normal.length;
-        bool axisDragging = dragging && !ctx->scrollDragHorizontal;
-        ScrollbarPaintState state =
-            axisDragging
-                ? ScrollbarPaintState::Active
-                : (pointerOnThumb ? ScrollbarPaintState::HoverThumb
-                                  : (onBar ? ScrollbarPaintState::HoverBar
-                                           : ScrollbarPaintState::Normal));
+        ScrollbarPaintState state = ScrollbarAxisPaintState(
+            e, e->y, e->h, scrollViewportH, scrollContentH, 0, e->scrollY,
+            onBar, ctx->mouseX, e->x + e->w, ctx->mouseY,
+            dragging && !ctx->scrollDragHorizontal);
         float inset = ScrollbarThumbInset(e, state);
         ScrollbarThumbGeometry geometry =
             ScrollbarGeometry(e->y, e->h, scrollViewportH, scrollContentH, 0,
@@ -9092,22 +9081,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // pair of numbers it reads.
         bool onBar = overBox && !covered && ctx->mouseY >= e->y + e->h - trackW;
         float marginEnd = hasVertical ? trackW : 0;
-        float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
-        ScrollbarThumbGeometry normal = ScrollbarGeometry(
-            e->x, e->w, e->w, e->contentW, marginEnd, normalInset,
-            ScrollbarThumbMinLength(e, ScrollbarPaintState::Normal));
-        float normalStart = normal.Start(e->scrollX);
-        bool pointerOnThumb = onBar &&
-                              ctx->mouseY <= e->y + e->h - normalInset &&
-                              ctx->mouseX >= normalStart &&
-                              ctx->mouseX < normalStart + normal.length;
-        bool axisDragging = dragging && ctx->scrollDragHorizontal;
-        ScrollbarPaintState state =
-            axisDragging
-                ? ScrollbarPaintState::Active
-                : (pointerOnThumb ? ScrollbarPaintState::HoverThumb
-                                  : (onBar ? ScrollbarPaintState::HoverBar
-                                           : ScrollbarPaintState::Normal));
+        ScrollbarPaintState state = ScrollbarAxisPaintState(
+            e, e->x, e->w, e->w, e->contentW, marginEnd, e->scrollX, onBar,
+            ctx->mouseY, e->y + e->h, ctx->mouseX,
+            dragging && ctx->scrollDragHorizontal);
         float inset = ScrollbarThumbInset(e, state);
         ScrollbarThumbGeometry geometry =
             ScrollbarGeometry(e->x, e->w, e->w, e->contentW, marginEnd, inset,
@@ -9366,45 +9343,6 @@ int TextHitOffsetIn(PaintCtx* ctx, float x, float y, bool nearest, int scope,
         *outScope = h->scope;
     }
     return h->docOff + TextHitLocal(ctx, h, rel);
-}
-
-// The character at `i` and how many bytes it took. A byte that is not valid
-// UTF-8 counts as one character of its own value: the rules above only ask
-// which class it lands in, and every stray byte lands in the same one.
-int Utf8At(Str s, int i, uint32_t* out) {
-    const uint8_t* p = (const uint8_t*)s.s + i;
-    uint8_t c = p[0];
-    if (c < 0x80) {
-        *out = c;
-        return 1;
-    }
-    int n = (c & 0xE0) == 0xC0   ? 2
-            : (c & 0xF0) == 0xE0 ? 3
-            : (c & 0xF8) == 0xF0 ? 4
-                                 : 1;
-    if (n == 1 || i + n > len(s)) {
-        *out = c;
-        return 1;
-    }
-    uint32_t cp = (uint32_t)(c & (0xFF >> (n + 1)));
-    for (int k = 1; k < n; k++) {
-        if ((p[k] & 0xC0) != 0x80) {
-            *out = c;
-            return 1;
-        }
-        cp = (cp << 6) | (uint32_t)(p[k] & 0x3F);
-    }
-    *out = cp;
-    return n;
-}
-
-// Where the character before `i` starts.
-int Utf8Prev(Str s, int i) {
-    int j = i - 1;
-    while (j > 0 && ((uint8_t)s.s[j] & 0xC0) == 0x80) {
-        j--;
-    }
-    return j < 0 ? 0 : j;
 }
 
 bool TextMultiClickRange(PaintCtx* ctx, float x, float y, int clickCount,
@@ -10019,6 +9957,26 @@ static int DispatchAnchor(Window* win) {
     return i;
 }
 
+// The key contexts stacked over dispatch entry ix, innermost first, into
+// contexts (kMaxContextDepth of them at most); returns how many.
+static int DispatchContextsOver(Window* win, int ix, uint32_t* contexts) {
+    int n = 0;
+    for (int i = ix - 1; i >= 0 && n < kMaxContextDepth; i--) {
+        if (win->dispatch[i].subtreeEnd <= ix || !win->dispatch[i].context) {
+            continue;
+        }
+        contexts[n++] = win->dispatch[i].context;
+    }
+    return n;
+}
+
+// Whether dispatch entry i is a live handler for action on the path to the
+// entry at ix — an ancestor of it whose subtree reaches past ix.
+static bool DispatchHandlerOnPath(Window* win, int i, int ix, uint32_t action) {
+    return win->dispatch[i].subtreeEnd > ix &&
+           win->dispatch[i].action == action && win->dispatch[i].fn.IsValid();
+}
+
 static int DispatchAnchorForFocus(Window* win, FocusHandle focus) {
     if (!win || !focus.IsValid()) {
         return -1;
@@ -10041,13 +9999,7 @@ bool WindowBindingForActionAtFocus(Window* win, uint32_t action,
         return false;
     }
     uint32_t contexts[kMaxContextDepth];
-    int nContexts = 0;
-    for (int i = ix - 1; i >= 0 && nContexts < kMaxContextDepth; i--) {
-        if (win->dispatch[i].subtreeEnd <= ix || !win->dispatch[i].context) {
-            continue;
-        }
-        contexts[nContexts++] = win->dispatch[i].context;
-    }
+    int nContexts = DispatchContextsOver(win, ix, contexts);
     return KeymapBindingForAction(action, contexts, nContexts, out);
 }
 
@@ -10069,12 +10021,14 @@ static uint32_t CaptureKeyDownAction() {
     return ActionOf(StrL("gpui::CaptureKeyDown"));
 }
 
-static bool DispatchKeyChain(Window* win, KeyEvent* ev, uint32_t action) {
+// Runs the key listeners recorded under action on the focus path, innermost
+// first (bubble) or outermost first (capture), until one stops propagation.
+static bool DispatchKeyChain(Window* win, KeyEvent* ev, uint32_t action,
+                             bool capture) {
     int ix = DispatchAnchor(win);
-    for (int i = ix - 1; i >= 0; i--) {
-        if (win->dispatch[i].subtreeEnd <= ix ||
-            win->dispatch[i].action != action ||
-            !win->dispatch[i].fn.IsValid()) {
+    for (int k = 0; k < ix; k++) {
+        int i = capture ? k : ix - 1 - k;
+        if (!DispatchHandlerOnPath(win, i, ix, action)) {
             continue;
         }
         ev->propagate = true;
@@ -10090,35 +10044,21 @@ bool WindowDispatchKeyEvent(Window* win, KeyEvent* ev) {
     if (!win || !ev) {
         return false;
     }
-    return DispatchKeyChain(win, ev, KeyDownAction());
+    return DispatchKeyChain(win, ev, KeyDownAction(), false);
 }
 
 bool WindowDispatchKeyUpEvent(Window* win, KeyEvent* ev) {
     if (!win || !ev) {
         return false;
     }
-    return DispatchKeyChain(win, ev, KeyUpAction());
+    return DispatchKeyChain(win, ev, KeyUpAction(), false);
 }
 
 bool WindowDispatchKeyCaptureEvent(Window* win, KeyEvent* ev) {
     if (!win || !ev) {
         return false;
     }
-    uint32_t action = CaptureKeyDownAction();
-    int ix = DispatchAnchor(win);
-    for (int i = 0; i < ix; i++) {
-        if (win->dispatch[i].subtreeEnd <= ix ||
-            win->dispatch[i].action != action ||
-            !win->dispatch[i].fn.IsValid()) {
-            continue;
-        }
-        ev->propagate = true;
-        ListenerCall(win->app, win, win->dispatch[i].fn, ev);
-        if (!ev->propagate) {
-            return true;
-        }
-    }
-    return false;
+    return DispatchKeyChain(win, ev, CaptureKeyDownAction(), true);
 }
 
 int WindowResolveKeyActions(Window* win, int vk, bool shift, bool ctrl,
@@ -10136,13 +10076,7 @@ int WindowResolveKeyActions(Window* win, int vk, bool shift, bool ctrl,
     // The contexts stacked over the focused element, innermost first; the
     // keymap reads as deep a stack as kMaxContextDepth.
     uint32_t contexts[kMaxContextDepth];
-    int nContexts = 0;
-    for (int i = ix - 1; i >= 0 && nContexts < kMaxContextDepth; i--) {
-        if (win->dispatch[i].subtreeEnd <= ix || !win->dispatch[i].context) {
-            continue;
-        }
-        contexts[nContexts++] = win->dispatch[i].context;
-    }
+    int nContexts = DispatchContextsOver(win, ix, contexts);
 
     KeymapDefaults();
     KeyChord chord;
@@ -10213,9 +10147,7 @@ static bool WindowDispatchActionFrom(Window* win, int ix, uint32_t action,
                                      int64_t arg) {
     // A handler that propagates lets the search carry on outwards.
     for (int i = ix - 1; i >= 0; i--) {
-        if (win->dispatch[i].subtreeEnd <= ix ||
-            win->dispatch[i].action != action ||
-            !win->dispatch[i].fn.IsValid()) {
+        if (!DispatchHandlerOnPath(win, i, ix, action)) {
             continue;
         }
         ActionEvent ev;
@@ -10273,13 +10205,11 @@ bool WindowDispatchActionAtFocus(Window* win, FocusHandle focus,
 // GPUI's `with_id` does by pushing nothing for an element that declared no
 // ElementId.
 static uint32_t IdFold(uint32_t parent, Str name) {
-    uint32_t h = parent ? parent : 2166136261u;
+    uint32_t h = parent ? parent : kFnv1aBasis32;
     // The separator is what keeps "ab"+"c" apart from "a"+"bc".
-    h ^= (uint8_t)'/';
-    h *= 16777619u;
-    for (int i = 0; i < len(name); i++) {
-        h ^= (uint8_t)name.s[i];
-        h *= 16777619u;
+    h = Fnv1a32(h, "/", 1);
+    if (name.s) {
+        h = Fnv1a32(h, name.s, (size_t)len(name));
     }
     return h;
 }
@@ -10460,27 +10390,51 @@ static int AccessibilityInputFocus(El* e, InputState* input) {
     return 0;
 }
 
+bool AccessibilityRoleIsTextField(AccessibilityRole role) {
+    switch (role) {
+        case AccessibilityRole::DateInput:
+        case AccessibilityRole::DateTimeInput:
+        case AccessibilityRole::EmailInput:
+        case AccessibilityRole::MultilineTextInput:
+        case AccessibilityRole::PasswordInput:
+        case AccessibilityRole::PhoneNumberInput:
+        case AccessibilityRole::TextInput:
+        case AccessibilityRole::UrlInput:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool AccessibilityRoleTakesText(AccessibilityRole role) {
+    switch (role) {
+        case AccessibilityRole::MonthInput:
+        case AccessibilityRole::NumberInput:
+        case AccessibilityRole::SearchInput:
+        case AccessibilityRole::TimeInput:
+        case AccessibilityRole::WeekInput:
+            return true;
+        default:
+            return AccessibilityRoleIsTextField(role);
+    }
+}
+
 static bool AccessibilityRoleCanFocus(AccessibilityRole role) {
+    if (AccessibilityRoleIsTextField(role)) {
+        return true;
+    }
     switch (role) {
         case AccessibilityRole::Button:
         case AccessibilityRole::CheckBox:
         case AccessibilityRole::ComboBox:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::EmailInput:
         case AccessibilityRole::Link:
         case AccessibilityRole::ListBoxOption:
         case AccessibilityRole::MenuItem:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
         case AccessibilityRole::RadioButton:
         case AccessibilityRole::Slider:
         case AccessibilityRole::SpinButton:
         case AccessibilityRole::Switch:
         case AccessibilityRole::Tab:
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::UrlInput:
             return true;
         default:
             return false;
@@ -10554,19 +10508,14 @@ static Str AccessibilityText(El* e) {
 }
 
 static bool AccessibilityNameFromContents(AccessibilityRole role) {
+    if (AccessibilityRoleIsTextField(role)) {
+        return false;
+    }
     switch (role) {
         case AccessibilityRole::ComboBox:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
         case AccessibilityRole::ProgressIndicator:
         case AccessibilityRole::Slider:
         case AccessibilityRole::SpinButton:
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::UrlInput:
             return false;
         default:
             return true;

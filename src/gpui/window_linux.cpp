@@ -8,6 +8,8 @@
 #include "gpui/platform.h"
 #include "gpui/paint.h"
 #include "gpui/accessibility_linux.h"
+#include "gpui/window_loop.h"
+#include "sys/clock.h"
 #include "sys/executor.h"
 
 #include <X11/Xlib.h>
@@ -49,7 +51,6 @@ struct PlatWindow {
     unsigned int repeatKeycode = 0;
     int pxW = 0;
     int pxH = 0;
-    bool dirty = true;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
     // -1, or the _NET_WM_MOVERESIZE direction the pointer is currently over.
@@ -95,16 +96,7 @@ double TimeNow() {
     if (TestPlatformNow(&simulated)) {
         return simulated;
     }
-    static bool started = false;
-    static struct timespec start = {};
-    struct timespec now = {};
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    if (!started) {
-        start = now;
-        started = true;
-    }
-    return (double)(now.tv_sec - start.tv_sec) +
-           (double)(now.tv_nsec - start.tv_nsec) / 1e9;
+    return ClockMonotonicSecondsSinceStart();
 }
 
 static Window* FindWindow(App* app, XWindow xwin) {
@@ -151,7 +143,7 @@ static void Redraw(Window* win) {
     if (!pw) {
         return;
     }
-    pw->dirty = false;
+    win->dirty = false;
     EnsureSurfaces(win);
     if (!pw->surf || !pw->back) {
         return;
@@ -264,7 +256,10 @@ static Tiling ReadTiling(Window* win, bool maximized) {
     return out;
 }
 
-static void SendWmState(Window* win, Atom a, Atom b, int action) {
+// A request about `win` to the window manager: a 32-bit ClientMessage of
+// type `type` carrying l0..l4, sent to the root window the way EWMH asks.
+static void SendWmMessage(Window* win, Atom type, long l0, long l1, long l2,
+                          long l3, long l4) {
     PlatWindow* pw = win->plat;
     if (!pw) {
         return;
@@ -272,15 +267,22 @@ static void SendWmState(Window* win, Atom a, Atom b, int action) {
     XEvent ev = {};
     ev.type = ClientMessage;
     ev.xclient.window = pw->xwin;
-    ev.xclient.message_type = aNetWmState;
+    ev.xclient.message_type = type;
     ev.xclient.format = 32;
-    ev.xclient.data.l[0] = action; // 0 remove, 1 add, 2 toggle
-    ev.xclient.data.l[1] = (long)a;
-    ev.xclient.data.l[2] = (long)b;
-    ev.xclient.data.l[3] = 1; // normal application
+    ev.xclient.data.l[0] = l0;
+    ev.xclient.data.l[1] = l1;
+    ev.xclient.data.l[2] = l2;
+    ev.xclient.data.l[3] = l3;
+    ev.xclient.data.l[4] = l4;
     XSendEvent(gDpy, gRoot, False,
                SubstructureNotifyMask | SubstructureRedirectMask, &ev);
     XFlush(gDpy);
+}
+
+static void SendWmState(Window* win, Atom a, Atom b, int action) {
+    // action: 0 remove, 1 add, 2 toggle. The last 1 says the request comes
+    // from a normal application.
+    SendWmMessage(win, aNetWmState, action, (long)a, (long)b, 1, 0);
 }
 
 static void SetUndecorated(XWindow xwin) {
@@ -490,35 +492,6 @@ static int KeyFor(KeySym ks) {
     return 0;
 }
 
-// Decode one UTF-8 codepoint; returns how many bytes it used.
-static int Utf8Next(const char* s, int len, uint32_t* out) {
-    if (len <= 0) {
-        return 0;
-    }
-    auto b = (const unsigned char*)s;
-    if (b[0] < 0x80) {
-        *out = b[0];
-        return 1;
-    }
-    if ((b[0] & 0xe0) == 0xc0 && len >= 2) {
-        *out = ((uint32_t)(b[0] & 0x1f) << 6) | (b[1] & 0x3f);
-        return 2;
-    }
-    if ((b[0] & 0xf0) == 0xe0 && len >= 3) {
-        *out = ((uint32_t)(b[0] & 0x0f) << 12) |
-               ((uint32_t)(b[1] & 0x3f) << 6) | (b[2] & 0x3f);
-        return 3;
-    }
-    if ((b[0] & 0xf8) == 0xf0 && len >= 4) {
-        *out = ((uint32_t)(b[0] & 0x07) << 18) |
-               ((uint32_t)(b[1] & 0x3f) << 12) |
-               ((uint32_t)(b[2] & 0x3f) << 6) | (b[3] & 0x3f);
-        return 4;
-    }
-    *out = b[0];
-    return 1;
-}
-
 // --- input method ---------------------------------------------------------
 //
 // On-the-spot preedit: the input method hands over what it is composing and
@@ -527,30 +500,6 @@ static int Utf8Next(const char* s, int len, uint32_t* out) {
 // rather than sending it whole, so the window keeps it and replays the whole
 // of it into the field on every change — which is what the mark is for.
 
-// One code point, encoded. XIM may hand the preedit over as wide characters.
-static int PreeditUtf8Encode(uint32_t cp, char* out) {
-    if (cp < 0x80) {
-        out[0] = (char)cp;
-        return 1;
-    }
-    if (cp < 0x800) {
-        out[0] = (char)(0xC0 | (cp >> 6));
-        out[1] = (char)(0x80 | (cp & 0x3F));
-        return 2;
-    }
-    if (cp < 0x10000) {
-        out[0] = (char)(0xE0 | (cp >> 12));
-        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        out[2] = (char)(0x80 | (cp & 0x3F));
-        return 3;
-    }
-    out[0] = (char)(0xF0 | (cp >> 18));
-    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    out[3] = (char)(0x80 | (cp & 0x3F));
-    return 4;
-}
-
 // The byte offset of character `chars` into a UTF-8 run. XIM counts in
 // characters; everything above here counts in bytes.
 static int Utf8ByteOfChar(const char* s, int len, int chars) {
@@ -558,7 +507,7 @@ static int Utf8ByteOfChar(const char* s, int len, int chars) {
     int c = 0;
     while (i < len && c < chars) {
         uint32_t cp = 0;
-        int adv = Utf8Next(s + i, len - i, &cp);
+        int adv = Utf8At(Str(s, len), i, &cp);
         if (adv <= 0) {
             break;
         }
@@ -621,7 +570,7 @@ static void PreeditDraw(XIC, XPointer client, XPointer call) {
             const wchar_t* w = d->text->string.wide_char;
             for (int i = 0; w && i < d->text->length && insLen < len(ins) - 8;
                  i++) {
-                insLen += PreeditUtf8Encode((uint32_t)w[i], ins.s + insLen);
+                insLen += Utf8Encode(ins.s + insLen, (uint32_t)w[i]);
             }
         } else if (d->text->string.multi_byte) {
             const char* m = d->text->string.multi_byte;
@@ -714,7 +663,7 @@ static void OnKeyPress(Window* win, XKeyEvent* ke) {
     int i = 0;
     while (i < n) {
         uint32_t cp = 0;
-        int adv = Utf8Next(buf + i, n - i, &cp);
+        int adv = Utf8At(Str(buf, n), i, &cp);
         if (adv <= 0) {
             break;
         }
@@ -758,24 +707,11 @@ static void OnKeyRelease(Window* win, XKeyEvent* ke) {
 static const int kMoveResizeMove = 8;
 
 static void StartMoveResize(Window* win, int rootX, int rootY, int dir) {
-    PlatWindow* pw = win->plat;
-    if (!pw) {
+    if (!win->plat) {
         return;
     }
     XUngrabPointer(gDpy, CurrentTime);
-    XEvent ev = {};
-    ev.type = ClientMessage;
-    ev.xclient.window = pw->xwin;
-    ev.xclient.message_type = aNetWmMoveResize;
-    ev.xclient.format = 32;
-    ev.xclient.data.l[0] = rootX;
-    ev.xclient.data.l[1] = rootY;
-    ev.xclient.data.l[2] = dir;
-    ev.xclient.data.l[3] = Button1;
-    ev.xclient.data.l[4] = 1;
-    XSendEvent(gDpy, gRoot, False,
-               SubstructureNotifyMask | SubstructureRedirectMask, &ev);
-    XFlush(gDpy);
+    SendWmMessage(win, aNetWmMoveResize, rootX, rootY, dir, Button1, 1);
 }
 
 static void StartMoveDrag(Window* win, int rootX, int rootY) {
@@ -786,22 +722,12 @@ static void StartMoveDrag(Window* win, int rootX, int rootY) {
 // client-decorated window asks the window manager for. Windows gets the same
 // menu from DefWindowProc on WM_NCRBUTTONUP over HTCAPTION.
 static void ShowWindowMenu(Window* win, int rootX, int rootY) {
-    PlatWindow* pw = win->plat;
-    if (!pw) {
+    if (!win->plat) {
         return;
     }
     XUngrabPointer(gDpy, CurrentTime);
-    XEvent ev = {};
-    ev.type = ClientMessage;
-    ev.xclient.window = pw->xwin;
-    ev.xclient.message_type = aGtkShowWindowMenu;
-    ev.xclient.format = 32;
-    ev.xclient.data.l[0] = 0; // the device, which we do not track
-    ev.xclient.data.l[1] = rootX;
-    ev.xclient.data.l[2] = rootY;
-    XSendEvent(gDpy, gRoot, False,
-               SubstructureNotifyMask | SubstructureRedirectMask, &ev);
-    XFlush(gDpy);
+    // The first word is the device, which we do not track.
+    SendWmMessage(win, aGtkShowWindowMenu, 0, rootX, rootY, 0, 0);
 }
 
 static bool ClientDecorated(Window* win) {
@@ -996,40 +922,6 @@ Point AccessibilityLinuxWindowOrigin(Window* win) {
     return result;
 }
 
-bool PlatHasMenu() {
-    // X11 has no popup menu of its own — a toolkit draws its own — so
-    // NativeMenu::Show draws the menu instead, which is what Rust does here
-    // too.
-    return false;
-}
-
-int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
-                 float y, bool dark) {
-    (void)win;
-    (void)items;
-    (void)n;
-    (void)x;
-    (void)y;
-    (void)dark;
-    return 0;
-}
-
-bool PlatHasAppMenu() {
-    // The same on X11. A desktop can export a window's menus to a panel over
-    // dbus — Unity's appmenu, and KDE's global menu after it — but that is a
-    // protocol and a service, not an X11 call, and a window whose menus went
-    // unexported would be left with none at all.
-    return false;
-}
-
-void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
-    (void)app;
-    (void)items;
-    (void)n;
-}
-
-void PlatSetMenuBarVisible(bool) {}
-
 // cx.open_url. xdg-open is the desktop's own answer to "what opens this";
 // the fork keeps a browser that takes its time from holding up the frame, and
 // the child replaces itself so nothing here waits on it.
@@ -1177,16 +1069,14 @@ void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
     }
 }
 
-void OpenUrl(Str url) {
-    if (!url.s || len(url) <= 0) {
-        return;
-    }
-    TempStr value = StrDupTemp(len(url) < 1023 ? url : Str(url.s, 1023));
+// Hand `target` to xdg-open and wait only for the intermediate child: the
+// grandchild is orphaned deliberately, so nobody is left to reap it and
+// nothing here waits on the program it opens.
+static void XdgOpen(const char* target) {
     pid_t pid = fork();
     if (pid == 0) {
-        // The grandchild is orphaned deliberately: nobody is left to reap it.
         if (fork() == 0) {
-            execlp("xdg-open", "xdg-open", value.s, (char*)nullptr);
+            execlp("xdg-open", "xdg-open", target, (char*)nullptr);
             _exit(127);
         }
         _exit(0);
@@ -1195,6 +1085,14 @@ void OpenUrl(Str url) {
         int st = 0;
         waitpid(pid, &st, 0);
     }
+}
+
+void OpenUrl(Str url) {
+    if (!url.s || len(url) <= 0) {
+        return;
+    }
+    TempStr value = StrDupTemp(len(url) < 1023 ? url : Str(url.s, 1023));
+    XdgOpen(value.s);
 }
 
 void OpenPath(Str path) {
@@ -1206,18 +1104,7 @@ void OpenPath(Str path) {
     // has its own copy at the second fork, so the parent frees after the
     // intermediate exits.
     Str value = StrDup(path);
-    pid_t pid = fork();
-    if (pid == 0) {
-        if (fork() == 0) {
-            execlp("xdg-open", "xdg-open", value.s, (char*)nullptr);
-            _exit(127);
-        }
-        _exit(0);
-    }
-    if (pid > 0) {
-        int st = 0;
-        waitpid(pid, &st, 0);
-    }
+    XdgOpen(value.s);
     StrFree(value);
 }
 
@@ -1301,11 +1188,8 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     return result;
 }
 
-void ClipboardSetText(Window* win, Str text) {
-    if (TestPlatformClipboardWrite(text)) {
-        return;
-    }
-    if (!win || !win->plat || !text.s || len(text) <= 0) {
+void PlatClipboardSetText(Window* win, Str text) {
+    if (!win || !win->plat) {
         return;
     }
     if (gClipboard.s) {
@@ -1314,11 +1198,6 @@ void ClipboardSetText(Window* win, Str text) {
     gClipboard = StrDup(text);
     XSetSelectionOwner(gDpy, aClipboard, win->plat->xwin, CurrentTime);
     XFlush(gDpy);
-}
-
-void WindowSetTextContentType(Window* win, Str value) {
-    (void)win;
-    (void)value;
 }
 
 struct ClipboardTargets {
@@ -1480,11 +1359,7 @@ static ClipboardTargets ReadClipboardTargets(XWindow xwin) {
 // A paste on X11 is a round trip: ask the selection owner to write into a
 // property on our window, then wait for SelectionNotify. Windows and Cocoa
 // read the clipboard directly, so this platform signature hides the wait.
-Str ClipboardGetText(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated.text;
-    }
+Str PlatClipboardGetText(Arena* a, Window* win) {
     if (!win || !win->plat || !gDpy) {
         return {};
     }
@@ -1495,11 +1370,7 @@ Str ClipboardGetText(Arena* a, Window* win) {
     return ReadClipboardTarget(a, xwin, aUtf8String);
 }
 
-ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
-    ClipboardItem simulated;
-    if (TestPlatformClipboardRead(a, &simulated)) {
-        return simulated;
-    }
+ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     ClipboardItem out;
     if (!win || !win->plat || !gDpy) {
         return out;
@@ -1862,7 +1733,7 @@ static void HandleEvent(App* app, XEvent* ev) {
     switch (ev->type) {
         case Expose:
             if (ev->xexpose.count == 0) {
-                pw->dirty = true;
+                win->dirty = true;
             }
             break;
         case ConfigureNotify:
@@ -1870,7 +1741,7 @@ static void HandleEvent(App* app, XEvent* ev) {
                                                            .height != pw->pxH) {
                 pw->pxW = ev->xconfigure.width;
                 pw->pxH = ev->xconfigure.height;
-                pw->dirty = true;
+                win->dirty = true;
             }
             break;
         case PropertyNotify:
@@ -1879,7 +1750,7 @@ static void HandleEvent(App* app, XEvent* ev) {
                 ev->xproperty.atom == aGtkEdgeConstraints) {
                 ReadWmState(win);
                 win->tiling = ReadTiling(win, win->maximized);
-                pw->dirty = true;
+                win->dirty = true;
             }
             break;
         case KeyPress:
@@ -2043,15 +1914,6 @@ static void HandleEvent(App* app, XEvent* ev) {
 void AppQuit(Window* win) {
     if (win && win->plat) {
         DestroyPlatWindow(win);
-    }
-}
-
-void AppInvalidate(Window* win) {
-    if (win) {
-        win->invalidations++;
-    }
-    if (win && win->plat) {
-        win->plat->dirty = true;
     }
 }
 
@@ -2575,32 +2437,11 @@ int AppRun(App* app) {
             break;
         }
 
-        for (int i = 0; i < app->windows.len; i++) {
-            Window* w = app->windows[i];
-            if (w->plat && w->plat->dirty) {
-                Redraw(w);
-            }
-        }
+        RunLoopRedrawDirty<PlatWindow>(app, Redraw);
 
         // Sleep until the next tick, or until X has something to say.
-        double now = TimeNow();
-        double waitS = 1.0;
         bool anyDirty = false;
-        for (int i = 0; i < app->windows.len; i++) {
-            Window* w = app->windows[i];
-            if (!w->plat) {
-                continue;
-            }
-            if (w->plat->dirty) {
-                anyDirty = true;
-            }
-            if (w->plat->nextTick > 0) {
-                double d = w->plat->nextTick - now;
-                if (d < waitS) {
-                    waitS = d;
-                }
-            }
-        }
+        double waitS = RunLoopWaitFor<PlatWindow>(app, &anyDirty);
         bool idle = !anyDirty && XPending(gDpy) == 0 && ExecQueued() == 0;
         PlatPollFd* extra = nullptr;
         int extraTimeoutMs = -1;
@@ -2634,17 +2475,7 @@ int AppRun(App* app) {
         AccessibilityLinuxPump();
         ExecDrain();
 
-        now = TimeNow();
-        for (int i = 0; i < app->windows.len; i++) {
-            Window* w = app->windows[i];
-            if (!w->plat || w->plat->nextTick <= 0) {
-                continue;
-            }
-            if (now >= w->plat->nextTick) {
-                // WindowTimerTick re-arms through PlatSetTimer.
-                WindowTimerTick(w);
-            }
-        }
+        RunLoopTickDue<PlatWindow>(app);
     }
     return app->exitCode;
 }

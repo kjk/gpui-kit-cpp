@@ -25,6 +25,12 @@ inline El* VFlex(Arena* a) {
     return Div(a)->FlexCol();
 }
 
+// div().absolute().inset_0().flex().items_center().justify_center(): a
+// layer over the whole of its parent with its content centered.
+inline El* CenteredOverlay(Arena* a) {
+    return Div(a)->Absolute()->Inset0()->Flex()->ItemsCenter()->JustifyCenter();
+}
+
 inline BoxShadow box_shadow(float x, float y, float blur, float spread,
                             Hsla color) {
     BoxShadow out;

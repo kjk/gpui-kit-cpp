@@ -46,10 +46,8 @@ struct GpuProbe {
 static GpuProbe gProbe;
 // FPS monitors can live in more than one window. Their samples run on the
 // executor, while the PDH query and its reused result buffer are process-wide.
-static Mutex gProbeLock;
-
 // gProbeLock is held by every caller.
-static bool ProbeOpenLocked() {
+bool GpuProbeOpenLocked() {
     if (gProbe.opened) {
         return true;
     }
@@ -82,13 +80,6 @@ static bool ProbeOpenLocked() {
     return true;
 }
 
-bool GpuAvailable() {
-    gProbeLock.Lock();
-    bool available = ProbeOpenLocked();
-    gProbeLock.Unlock();
-    return available;
-}
-
 // The engine type an instance name ends with — `3D`, `Copy`, `VideoDecode` —
 // or an empty Str when the name carries none.
 static TempStr EngineOfTemp(const WCHAR* name) {
@@ -112,8 +103,8 @@ static TempStr EngineOfTemp(const WCHAR* name) {
 
 // gProbeLock is held by the public wrapper for the full collection and buffer
 // walk, so two background samplers cannot overwrite each other's PDH result.
-static float GpuUsagePercentLocked() {
-    if (!ProbeOpenLocked()) {
+float GpuUsagePercentLocked() {
+    if (!GpuProbeOpenLocked()) {
         return -1.f;
     }
     if (PdhCollectQueryData(gProbe.query) != ERROR_SUCCESS) {
@@ -195,15 +186,7 @@ static float GpuUsagePercentLocked() {
     return (float)most;
 }
 
-float GpuUsagePercent() {
-    gProbeLock.Lock();
-    float usage = GpuUsagePercentLocked();
-    gProbeLock.Unlock();
-    return usage;
-}
-
-void GpuProbeFree() {
-    gProbeLock.Lock();
+void GpuProbeFreeLocked() {
     if (gProbe.query) {
         PdhCloseQuery(gProbe.query);
     }
@@ -212,7 +195,6 @@ void GpuProbeFree() {
     VecReset(gProbe.buffer);
     gProbe.opened = false;
     gProbe.failed = false;
-    gProbeLock.Unlock();
 }
 
 } // namespace gpui

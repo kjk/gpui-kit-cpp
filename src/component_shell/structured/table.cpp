@@ -311,13 +311,11 @@ static constexpr ComponentDescriptor kCaption = {"TableCaption",
                                                  &MaterializeCaption};
 
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr MethodDescriptor kTableMethods[] = {
     {"accessibility_label", kLabelArgs,
      "Sets the table's screen-reader accessible name.",
      &RecordAccessibilityLabel},
-    {"size", kSizeArgs,
+    {"size", kSizeArguments,
      "Sets the table density and propagates it to typed descendants.",
      &RecordSize},
 };

@@ -2,20 +2,14 @@
 
 #include "component_shell/families.h"
 #include "component_shell/media/mod.h"
+#include "component_shell/text_editing.h"
 #include "ui/input.h"
 
 namespace gpui::component_shell::media::editor {
 
-struct Op {
-    enum Kind : uint8_t {
-        Appearance,
-        Bordered,
-        Readonly,
-        AriaLabel,
-    } kind = Appearance;
-    bool flag = false;
-    Str text;
-};
+using text_editing::Op;
+
+static constexpr char kName[] = "Editor";
 
 bool RequireLeaf(int children, Str* error) {
     if (children == 0) return true;
@@ -42,22 +36,7 @@ static El* Materialize(MaterializeRequest* request) {
         &state->text.input);
     editor->Disabled(request->disabled);
     if (state->language) editor->Language(Str(state->language));
-    EachMethod<Op>(request, [&](const Op& op) {
-        switch (op.kind) {
-            case Op::Appearance:
-                editor->Appearance(op.flag);
-                break;
-            case Op::Bordered:
-                editor->Bordered(op.flag);
-                break;
-            case Op::Readonly:
-                editor->Readonly(op.flag);
-                break;
-            case Op::AriaLabel:
-                editor->AriaLabel(op.text);
-                break;
-        }
-    });
+    text_editing::ApplyOps(request, editor);
     Str error;
     if (!RequireLeaf(request->ChildrenLen(), &error))
         return request->Fail(error);
@@ -97,37 +76,7 @@ static bool NewEditorState(shell::StateBuild* build,
 
 static bool Construct(PayloadBuild* build, const ComponentArgument* args,
                       int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Entity)
-        return build->Fail(StrL("Editor expects one EditorState entity"));
-    *build->New<ComponentArgument>() = args[0];
-    return true;
-}
-
-// media's bool_method("Editor", name, ...).
-template <Op::Kind K>
-static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
-                       int count) {
-    const char* name = K == Op::Appearance ? "appearance"
-                       : K == Op::Bordered ? "bordered"
-                                           : "readonly";
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Boolean)
-        return build->Fail(fmt("Editor.%s expects one boolean", Str(name)));
-    Op* op = build->New<Op>();
-    op->kind = K;
-    op->flag = args[0].boolean;
-    return true;
-}
-
-static bool RecordAriaLabel(PayloadBuild* build, const ComponentArgument* args,
-                            int count) {
-    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrim(args[0].string)) == 0) {
-        return build->Fail(StrL("Editor.aria_label expects non-empty text"));
-    }
-    Op* op = build->New<Op>();
-    op->kind = Op::AriaLabel;
-    op->text = args[0].string;
-    return true;
+    return text_editing::RecordState(build, kName, "EditorState", args, count);
 }
 
 // ─── Descriptors ───────────────────────────────────────────────────────────
@@ -152,29 +101,24 @@ static constexpr ArgumentDescriptor kConstructorArgs[] = {
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Editor", kConstructorArgs, &Construct}};
 
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kAppearanceArgs[] = {
-    {"appearance", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kBorderedArgs[] = {
-    {"bordered", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kReadonlyArgs[] = {
-    {"readonly", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kAriaLabelArgs[] = {
-    {"label", SchemaString()}};
+using text_editing::kAppearanceArgs;
+using text_editing::kAriaLabelArgs;
+using text_editing::kBorderedArgs;
+using text_editing::kReadonlyArgs;
 
 static constexpr MethodDescriptor kMethods[] = {
     // Rust records `()`: `disabled` is a common behavior the materializer
     // reads from the request.
-    {"disabled", kDisabledArgs, "Disables the editor.", &RecordCommonBehavior},
+    {"disabled", kDisabledArguments, "Disables the editor.",
+     &RecordCommonBehavior},
     {"appearance", kAppearanceArgs, "Controls the editor appearance.",
-     &RecordBool<Op::Appearance>},
+     &text_editing::RecordBoolFor<kName, Op::Appearance>},
     {"bordered", kBorderedArgs, "Controls the editor border.",
-     &RecordBool<Op::Bordered>},
+     &text_editing::RecordBoolFor<kName, Op::Bordered>},
     {"readonly", kReadonlyArgs, "Controls read-only mode.",
-     &RecordBool<Op::Readonly>},
+     &text_editing::RecordBoolFor<kName, Op::Readonly>},
     {"aria_label", kAriaLabelArgs, "Sets the editor accessibility label.",
-     &RecordAriaLabel},
+     &text_editing::RecordAriaLabelFor<kName>},
 };
 
 static constexpr ComponentDescriptor kEditor = {

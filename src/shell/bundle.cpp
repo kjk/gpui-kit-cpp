@@ -5,8 +5,10 @@
 #include "base.h"
 
 #include "shell/bundle.h"
+#include "shell/common.h"
 
 #include "shell/dependencies.h"
+#include "shell/error.h"
 #include "shell/host.h"
 #include "shell/plugin.h"
 #include "shell/standard.h"
@@ -58,56 +60,9 @@ static Str ParentPath(Str path) {
     return StrDup(Str(path.s, slash));
 }
 
-static bool ReadFileBytes(Str path, Str* out, Str* error) {
-    if (out) *out = {};
-    if (!path || len(path) <= 0 || len(path) >= kMaxPath)
-        return BundleFail(error,
-                          StrL("cannot read: the path is empty or too long"));
-    TempStr name = StrDupTemp(path);
-    FILE* file = fopen(name.s, "rb");
-    if (!file) return BundleFail(error, fmt("cannot read %s", path));
-    if (fseek(file, 0, SEEK_END) != 0) {
-        fclose(file);
-        return BundleFail(error, fmt("cannot read %s", path));
-    }
-    long size = ftell(file);
-    if (size < 0 || size > kBundleReadLimit || fseek(file, 0, SEEK_SET) != 0) {
-        fclose(file);
-        return BundleFail(error, fmt("cannot read %s", path));
-    }
-    char* buffer = (char*)Alloc(nullptr, (size_t)size + 1);
-    if (!buffer) {
-        fclose(file);
-        return BundleFail(error, StrL("allocating a file failed"));
-    }
-    size_t got = size ? fread(buffer, 1, (size_t)size, file) : 0;
-    fclose(file);
-    if (got != (size_t)size) {
-        free(buffer);
-        return BundleFail(error, fmt("cannot read %s", path));
-    }
-    buffer[size] = 0;
-    if (out) *out = Str(buffer, (int)size);
-    return true;
-}
-
-static bool WriteFileBytes(Str path, Str bytes, Str* error) {
-    if (!path || len(path) <= 0 || len(path) >= kMaxPath)
-        return BundleFail(error,
-                          StrL("cannot write: the path is empty or too long"));
-    TempStr name = StrDupTemp(path);
-    FILE* file = fopen(name.s, "wb");
-    if (!file) return BundleFail(error, fmt("cannot write %s", path));
-    bool ok = len(bytes) == 0 || fwrite(bytes.s, 1, (size_t)len(bytes), file) ==
-                                     (size_t)len(bytes);
-    if (fclose(file) != 0) ok = false;
-    if (!ok) return BundleFail(error, fmt("cannot write %s", path));
-    return true;
-}
-
 static bool ReplaceFile(Str destination, Str bytes, Str* error) {
     Str partial = StrDup(fmt("%s.partial", destination));
-    bool ok = WriteFileBytes(partial, bytes, error);
+    bool ok = WriteWholeFile(partial, bytes, error);
     if (ok) {
         remove(destination.s);
         TempStr from = StrDupTemp(partial);
@@ -211,13 +166,7 @@ bool BundleFileName(Str name, Str* out) {
             cleaned.AppendChar(banned ? '-' : (char)c);
             i++;
         } else {
-            int n = 1;
-            if ((c & 0xe0) == 0xc0)
-                n = 2;
-            else if ((c & 0xf0) == 0xe0)
-                n = 3;
-            else if ((c & 0xf8) == 0xf0)
-                n = 4;
+            int n = Utf8LeadLen((uint8_t)c);
             if (i + n > len(name)) n = 1;
             cleaned.Append(Str(name.s + i, n));
             i += n;
@@ -258,19 +207,7 @@ bool BundleNamesFrom(const PluginManifest& manifest, BundlePlatform platform,
 
 static Str XmlEscape(Str value) {
     StrBuilder out;
-    for (int i = 0; i < len(value); i++) {
-        char c = value.s[i];
-        if (c == '&')
-            out.Append(StrL("&amp;"));
-        else if (c == '<')
-            out.Append(StrL("&lt;"));
-        else if (c == '>')
-            out.Append(StrL("&gt;"));
-        else if (c == '"')
-            out.Append(StrL("&quot;"));
-        else
-            out.AppendChar(c);
-    }
+    AppendHtmlEscaped(out, value, true, true);
     return out.TakeStr();
 }
 
@@ -399,32 +336,9 @@ static bool ScriptValue(const BundleScriptValues& values, Str name, Str* out) {
     return false;
 }
 
-// A byte that starts no valid sequence reads as itself. Rust strings are
-// Unicode scalar values; the Cc controls are U+0000..U+001F and U+007F..U+009F.
-static uint32_t DecodeScalar(Str text, int i, int* n) {
-    uint8_t c = (uint8_t)text.s[i];
-    int want = c < 0x80         ? 1
-               : (c >> 5) == 6  ? 2
-               : (c >> 4) == 14 ? 3
-               : (c >> 3) == 30 ? 4
-                                : 0;
-    if (want <= 1 || i + want > len(text)) {
-        *n = 1;
-        return c;
-    }
-    uint32_t cp = c & (0x7F >> want);
-    for (int k = 1; k < want; k++) {
-        uint8_t b = (uint8_t)text.s[i + k];
-        if ((b & 0xC0) != 0x80) {
-            *n = 1;
-            return c;
-        }
-        cp = (cp << 6) | (b & 0x3F);
-    }
-    *n = want;
-    return cp;
-}
-
+// Rust strings are Unicode scalar values (decoded with base Utf8At, where a
+// byte that starts no valid sequence reads as itself); the Cc controls are
+// U+0000..U+001F and U+007F..U+009F.
 static bool IsControlOrLineSeparator(uint32_t cp) {
     return cp <= 0x1F || (cp >= 0x7F && cp <= 0x9F) || cp == 0x2028 ||
            cp == 0x2029;
@@ -433,8 +347,8 @@ static bool IsControlOrLineSeparator(uint32_t cp) {
 static void AppendRustDebug(StrBuilder& out, Str value) {
     out.AppendChar('"');
     for (int i = 0; value.s && i < len(value);) {
-        int n = 1;
-        uint32_t cp = DecodeScalar(value, i, &n);
+        uint32_t cp = 0;
+        int n = Utf8At(value, i, &cp);
         if (cp == '"')
             out.Append(StrL("\\\""));
         else if (cp == '\\')
@@ -466,8 +380,9 @@ static bool ScriptsCanHold(const BundleScriptValues& values, Str* error) {
         Str value = slots[i].value;
         bool bad = false;
         for (int at = 0; value.s && at < len(value);) {
-            int n = 1;
-            if (IsControlOrLineSeparator(DecodeScalar(value, at, &n))) {
+            uint32_t cp = 0;
+            int n = Utf8At(value, at, &cp);
+            if (IsControlOrLineSeparator(cp)) {
                 bad = true;
                 break;
             }
@@ -833,12 +748,17 @@ struct BundleTree {
         return false;
     }
 
-    bool Directory(Str path) {
-        if (len(path) == 0 || Has(path)) return true;
+    // The directories above `path`, each added once.
+    bool Parents(Str path) {
         int slash = -1;
         for (int i = 0; i < len(path); i++)
             if (path.s[i] == '/') slash = i;
-        if (slash > 0 && !Directory(Str(path.s, slash))) return false;
+        return slash <= 0 || Directory(Str(path.s, slash));
+    }
+
+    bool Directory(Str path) {
+        if (len(path) == 0 || Has(path)) return true;
+        if (!Parents(path)) return false;
         BundleItem item;
         item.path = StrDup(path);
         item.directory = true;
@@ -847,10 +767,7 @@ struct BundleTree {
     }
 
     bool Add(Str path, Str bytes, bool executable, bool directory) {
-        int slash = -1;
-        for (int i = 0; i < len(path); i++)
-            if (path.s[i] == '/') slash = i;
-        if (slash > 0 && !Directory(Str(path.s, slash))) return false;
+        if (!Parents(path)) return false;
         BundleItem item;
         item.path = StrDup(path);
         item.bytes = bytes;
@@ -948,7 +865,7 @@ static bool AddDirectory(BundleTree* tree, Str directory, Str prefix,
             }
         } else if (file) {
             Str bytes;
-            if (!ReadFileBytes(path, &bytes, error) ||
+            if (!ReadWholeFile(path, kBundleReadLimit, &bytes, error) ||
                 !tree->Add(inner, bytes, PlatFileIsExecutable(path.s), false)) {
                 StrFree(bytes);
                 StrFree(inner);
@@ -970,8 +887,7 @@ static bool AddApplication(BundleTree* tree, Str root, Str prefix, Str exclude,
         return BundleFail(error, StrL("the bundle is empty"));
     Vec<Str> visited;
     bool ok = AddDirectory(tree, root, prefix, exclude, true, &visited, error);
-    for (int i = 0; i < len(visited); i++) StrFree(visited.els[i]);
-    VecReset(visited);
+    StrVecFree(&visited);
     return ok;
 }
 
@@ -1330,7 +1246,8 @@ bool BundleWindowsRuntimeFrom(Str cache, Str version, BundleDownloadFn download,
     if (executable) *executable = {};
     if (cache && PlatFileExists(cache.s)) {
         Str bytes;
-        if (!ReadFileBytes(cache, &bytes, error)) return false;
+        if (!ReadWholeFile(cache, kBundleReadLimit, &bytes, error))
+            return false;
         if (PeHeader(bytes) < 0) {
             StrFree(bytes);
             return BundleFail(error,
@@ -1404,7 +1321,7 @@ static bool WriteDirectory(const BundleTree& tree, Str destination,
                 return BundleFail(error, message);
             }
             StrFree(ignored);
-        } else if (!WriteFileBytes(path, item.bytes, error)) {
+        } else if (!WriteWholeFile(path, item.bytes, error)) {
             StrFree(path);
             return false;
         }
@@ -1492,13 +1409,276 @@ static bool DownloadRelease(Str url, void*, Str* bytes, Str* err) {
     return true;
 }
 
+// What ShellBundle's three platform halves share. ShellBundle frees it once,
+// on every way out, so a half only cleans up what it allocated itself.
+struct BundleJob {
+    Str directory;
+    const Invocation* invocation = nullptr;
+    const PluginManifest* manifest = nullptr;
+    BundleNames names;
+    BundleScriptValues values;
+    BundleTree tree;
+    // The sentence about the runtime every report ends with.
+    Str runtime;
+    // The icon, decoded; null when the invocation named none.
+    Str rgba;
+    int iconW = 0;
+    // The output directory, and its canonical form the walk leaves out.
+    Str out;
+    Str exclude;
+
+    void Free() {
+        tree.Free();
+        names.Free();
+        StrFree(runtime);
+        StrFree(rgba);
+        StrFree(values.iconSize);
+        StrFree(exclude);
+        StrFree(out);
+    }
+};
+
+// A launcher or installer from its template, or false with the reason.
+static bool BundleScriptOrFail(const char* templ,
+                               const BundleScriptValues& values, Str* out,
+                               Str* error) {
+    Str scriptError = {};
+    if (BundleShellScript(Str(templ), values, out, &scriptError)) return true;
+    bool failed = BundleFail(error, scriptError);
+    StrFree(scriptError);
+    return failed;
+}
+
+// An .app directory, written into place through a staging directory.
+static bool BundleMacos(BundleJob* job, Str* built, Str* error) {
+    BundleNames& names = job->names;
+    Str contents = StrDup(fmt("%s/Contents", names.appBundle));
+    Str launcher;
+    if (!BundleScriptOrFail(kBundleMacosLauncherSh, job->values, &launcher,
+                            error)) {
+        StrFree(contents);
+        return false;
+    }
+    Str plist = BundleInfoPlist(*job->manifest, names, job->rgba.s != nullptr);
+    Str plistPath = StrDup(fmt("%s/Info.plist", contents));
+    Str pkgPath = StrDup(fmt("%s/PkgInfo", contents));
+    Str exePath = StrDup(fmt("%s/MacOS/%s", contents, names.display));
+    job->tree.Add(plistPath, plist, false, false);
+    job->tree.Add(pkgPath, StrDup(StrL("APPL????")), false, false);
+    job->tree.Add(exePath, launcher, true, false);
+    StrFree(plistPath);
+    StrFree(pkgPath);
+    StrFree(exePath);
+    if (job->rgba.s) {
+        Str icns;
+        if (!BundleWriteIcns((const uint8_t*)job->rgba.s, job->iconW, &icns,
+                             error)) {
+            StrFree(contents);
+            return false;
+        }
+        Str iconPath =
+            StrDup(fmt("%s/Resources/%s.icns", contents, names.display));
+        job->tree.Add(iconPath, icns, false, false);
+        StrFree(iconPath);
+    }
+    Str appPrefix = StrDup(fmt("%s/Resources/app", contents));
+    bool added = AddApplication(&job->tree, job->directory, appPrefix,
+                                job->exclude, error);
+    StrFree(appPrefix);
+    StrFree(contents);
+    if (!added) return false;
+    Str staging = JoinDisk(job->out, StrL(".bundle-partial"));
+    DependencyRemoveTree(staging);
+    if (!WriteDirectory(job->tree, staging, error)) {
+        DependencyRemoveTree(staging);
+        StrFree(staging);
+        return false;
+    }
+    Str destination = JoinDisk(job->out, names.appBundle);
+    Str marker = JoinDisk(destination, StrL("Contents/Info.plist"));
+    bool ok = true;
+    if (PlatFileExists(destination.s) || PlatDirExists(destination.s)) {
+        if (!PlatFileExists(marker.s)) {
+            ok = BundleFail(error, fmt("%s exists and is not an application "
+                                       "bundle; move it away first",
+                                       destination));
+        } else {
+            DependencyRemoveTree(destination);
+        }
+    }
+    StrFree(marker);
+    if (ok) {
+        Str top = JoinDisk(staging, names.appBundle);
+        ok = DependencyRenameDirectory(top, destination);
+        StrFree(top);
+        if (!ok) BundleFail(error, fmt("cannot write %s", destination));
+    }
+    DependencyRemoveTree(staging);
+    StrFree(staging);
+    if (ok) {
+        *built = StrDup(fmt(
+            "bundled %s\n%s The first launch downloads it when needed.\n"
+            "The bundle is not signed. Sign and notarize it before giving it "
+            "to anyone; see "
+            "https://gpui-kit.com/shell/packaging#signing-on-macos",
+            destination, job->runtime));
+    }
+    StrFree(destination);
+    return ok;
+}
+
+// A .tar.gz holding the launcher and the application, and an install.sh
+// beside it that checks the archive's digest.
+static bool BundleLinux(BundleJob* job, Str* built, Str* error) {
+    BundleNames& names = job->names;
+    BundleScriptValues& values = job->values;
+    if (job->rgba.s) {
+        int size = IconSizeFor(job->iconW);
+        uint8_t* scaled = (uint8_t*)Alloc(nullptr, (size_t)size * size * 4);
+        if (!scaled)
+            return BundleFail(error, StrL("allocating an icon failed"));
+        BoxScale((const uint8_t*)job->rgba.s, job->iconW, scaled, size);
+        Str png;
+        bool encoded = PngEncode(scaled, size, &png, error);
+        free(scaled);
+        if (!encoded) return false;
+        Str iconPath =
+            StrDup(fmt("%s/%s.png", names.archiveStem, names.command));
+        job->tree.Add(iconPath, png, false, false);
+        StrFree(iconPath);
+        values.iconSize = StrDup(fmt("%d", size));
+    }
+    Str launcher;
+    if (!BundleScriptOrFail(kBundleLinuxLauncherSh, values, &launcher, error))
+        return false;
+    Str launcherPath = StrDup(fmt("%s/%s", names.archiveStem, names.command));
+    job->tree.Add(launcherPath, launcher, true, false);
+    StrFree(launcherPath);
+    Str appPrefix = StrDup(fmt("%s/app", names.archiveStem));
+    bool added = AddApplication(&job->tree, job->directory, appPrefix,
+                                job->exclude, error);
+    StrFree(appPrefix);
+    if (!added) return false;
+    Str tar;
+    if (!WriteTar(job->tree, &tar, error)) return false;
+    Str archive = JoinDisk(job->out, fmt("%s.tar.gz", names.archiveStem));
+    bool ok = ReplaceFile(archive, tar, error);
+    StrFree(tar);
+    Str archiveBytes;
+    if (ok) ok = ReadWholeFile(archive, kBundleReadLimit, &archiveBytes, error);
+    if (ok) {
+        values.archive = StrDup(fmt("%s.tar.gz", names.archiveStem));
+        values.archiveSha256 = Sha256Hex(archiveBytes);
+        StrFree(archiveBytes);
+    }
+    Str installerText;
+    if (ok) {
+        ok = BundleScriptOrFail(kBundleLinuxInstallSh, values, &installerText,
+                                error);
+    }
+    Str installer;
+    if (ok) {
+        installer = JoinDisk(job->out, StrL("install.sh"));
+        ok = ReplaceFile(installer, installerText, error) &&
+             PlatMakeExecutable(installer.s);
+        StrFree(installerText);
+    }
+    if (ok) {
+        Str remote;
+        if (job->invocation->downloadUrl) {
+            Str trimmed = TrimTrailingSlash(job->invocation->downloadUrl);
+            remote = StrDup(fmt(
+                "\nPublish both at %s; `curl -fsSL %s/install.sh | sh` then "
+                "installs it.",
+                trimmed, trimmed));
+        }
+        *built = StrDup(
+            fmt("bundled %s\nbundled %s\n"
+                "Unpack the archive and run the launcher in it, or run `sh "
+                "install.sh` beside the archive to install it for the current "
+                "user; `sh install.sh --uninstall` removes it.%s\n%s",
+                archive, installer, remote ? remote : Str{}, job->runtime));
+        StrFree(remote);
+    }
+    StrFree(installer);
+    StrFree(archive);
+    StrFree(values.archive);
+    StrFree(values.archiveSha256);
+    values.archive = values.archiveSha256 = {};
+    return ok;
+}
+
+// A .zip holding gpui-shell.exe, under the application's name, and the
+// application beside it.
+static bool BundleWindows(BundleJob* job, Str* built, Str* error) {
+    BundleNames& names = job->names;
+    char exePath[kMaxPath];
+    exePath[0] = 0;
+    Str executable;
+    if (StrEq(Str(PlatShellPlatformName()), StrL("windows"))) {
+        if (!PlatGetExePath(exePath, kMaxPath) ||
+            !ReadWholeFile(Str(exePath), kBundleReadLimit, &executable,
+                           error)) {
+            if (error && *error) return false;
+            return BundleFail(error,
+                              StrL("cannot locate the running executable"));
+        }
+    } else {
+        Str apps = ShellApplicationsDirectory();
+        Str home = ParentPath(apps);
+        StrFree(apps);
+        Str cache = StrDup(fmt("%s/cache/runtime/v%s/%s/gpui-shell.exe", home,
+                               Str(kShellVersion), Str(kWindowsTarget)));
+        StrFree(home);
+        bool got =
+            BundleWindowsRuntimeFrom(cache, Str(kShellVersion), DownloadRelease,
+                                     nullptr, &executable, error);
+        StrFree(cache);
+        if (!got) return false;
+    }
+    if (!BundleMarkAsGuiProgram(executable, error)) {
+        StrFree(executable);
+        return false;
+    }
+    Str top = StrDup(fmt("%s-x86_64", names.archiveStem));
+    Str exeName = StrDup(fmt("%s/%s.exe", top, names.display));
+    job->tree.Add(exeName, executable, true, false);
+    StrFree(exeName);
+    Str appPrefix = StrDup(fmt("%s/app", top));
+    bool ok = AddApplication(&job->tree, job->directory, appPrefix,
+                             job->exclude, error);
+    StrFree(appPrefix);
+    Str zip;
+    if (ok) ok = WriteZip(job->tree, &zip, error);
+    Str archive;
+    if (ok) {
+        archive = JoinDisk(job->out, fmt("%s.zip", top));
+        ok = ReplaceFile(archive, zip, error);
+        StrFree(zip);
+    }
+    if (ok) {
+        *built = StrDup(
+            fmt("bundled %s\nUnzip it anywhere and open %s.exe; it needs no "
+                "installation. It carries gpui-shell %s.",
+                archive, names.display, Str(kShellVersion)));
+        if (job->rgba.s) {
+            Str extra =
+                StrDup(fmt("%s\nThe icon is not embedded: the executable keeps "
+                           "gpui-shell's.",
+                           *built));
+            StrFree(*built);
+            *built = extra;
+        }
+    }
+    StrFree(archive);
+    StrFree(top);
+    return ok;
+}
+
 bool ShellBundle(Str directory, const Invocation& invocation, Str* report,
                  Str* error) {
     if (report) *report = {};
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     Str manifestOwned = JoinDisk(directory, Str(kShellManifestFile));
     if (!PlatFileExists(manifestOwned.s)) {
         StrFree(manifestOwned);
@@ -1520,13 +1700,17 @@ bool ShellBundle(Str directory, const Invocation& invocation, Str* report,
         return BundleFail(error,
                           StrL("`--download-url` is for the Linux bundle, "
                                "whose install.sh downloads the archive"));
-    Str rgba;
-    int iconW = 0, iconH = 0;
+    BundleJob job;
+    job.directory = directory;
+    job.invocation = &invocation;
+    job.manifest = &manifest;
     if (invocation.icon) {
         Str png;
-        if (!ReadFileBytes(invocation.icon, &png, error)) return false;
+        if (!ReadWholeFile(invocation.icon, kBundleReadLimit, &png, error))
+            return false;
         Str decodeError;
-        if (!PngDecode(png, &rgba, &iconW, &iconH, &decodeError)) {
+        int iconH = 0;
+        if (!PngDecode(png, &job.rgba, &job.iconW, &iconH, &decodeError)) {
             StrFree(png);
             if (decodeError && StrContains(decodeError, StrL("8-bit"))) {
                 bool failed = BundleFail(error, decodeError);
@@ -1538,446 +1722,56 @@ bool ShellBundle(Str directory, const Invocation& invocation, Str* report,
                               fmt("%s is not a PNG image", invocation.icon));
         }
         StrFree(png);
-        if (iconW != iconH || iconW < 16) {
-            StrFree(rgba);
+        if (job.iconW != iconH || job.iconW < 16) {
+            job.Free();
             return BundleFail(error,
                               fmt("%s is %d×%d; the icon must be a square "
                                   "PNG, ideally 1024×1024",
-                                  invocation.icon, iconW, iconH));
+                                  invocation.icon, job.iconW, iconH));
         }
     }
-    Str out = invocation.out ? StrDup(invocation.out) : Str{};
-    if (!out) {
+    job.out = invocation.out ? StrDup(invocation.out) : Str{};
+    if (!job.out) {
         char cwd[kMaxPath];
         cwd[0] = 0;
         PlatGetCwd(cwd, kMaxPath);
-        out = JoinDisk(Str(cwd), StrL("dist"));
+        job.out = JoinDisk(Str(cwd), StrL("dist"));
     }
     Str ignored;
-    if (!DependencyMakeDirectories(out, &ignored)) {
-        StrFree(rgba);
-        StrFree(out);
-        return BundleFail(error,
-                          ignored ? ignored : StrL("cannot create the output"));
+    if (!DependencyMakeDirectories(job.out, &ignored)) {
+        job.Free();
+        bool failed = BundleFail(
+            error, ignored ? ignored : StrL("cannot create the output"));
+        StrFree(ignored);
+        return failed;
     }
     StrFree(ignored);
-    Str exclude;
-    if (!Canonical(out, &exclude, error)) {
-        StrFree(rgba);
-        StrFree(out);
+    if (!Canonical(job.out, &job.exclude, error)) {
+        job.Free();
         return false;
     }
-    BundleNames names;
-    BundleNamesFrom(manifest, platform, &names);
-    Str runtime = StrDup(fmt(
+    BundleNamesFrom(manifest, platform, &job.names);
+    job.runtime = StrDup(fmt(
         "It uses gpui-shell %s or later when one is installed, and downloads "
         "v%s otherwise.",
         Str(kShellVersion), Str(kShellVersion)));
-    BundleScriptValues values;
-    values.id = manifest.id;
-    values.name = manifest.name;
-    values.command = names.command;
-    values.appVersion = manifest.version;
-    values.runtimeVersion = Str(kShellVersion);
-    values.stem = names.archiveStem;
-    values.downloadUrl = invocation.downloadUrl
-                             ? TrimTrailingSlash(invocation.downloadUrl)
-                             : Str{};
-    BundleTree tree;
+    job.values.id = manifest.id;
+    job.values.name = manifest.name;
+    job.values.command = job.names.command;
+    job.values.appVersion = manifest.version;
+    job.values.runtimeVersion = Str(kShellVersion);
+    job.values.stem = job.names.archiveStem;
+    job.values.downloadUrl = invocation.downloadUrl
+                                 ? TrimTrailingSlash(invocation.downloadUrl)
+                                 : Str{};
     Str built;
-    if (platform == BundlePlatform::MacOS) {
-        Str contents = StrDup(fmt("%s/Contents", names.appBundle));
-        Str plist = BundleInfoPlist(manifest, names, rgba.s != nullptr);
-        Str plistPath = StrDup(fmt("%s/Info.plist", contents));
-        Str pkgPath = StrDup(fmt("%s/PkgInfo", contents));
-        Str exePath = StrDup(fmt("%s/MacOS/%s", contents, names.display));
-        Str launcher;
-        Str scriptError = {};
-        if (!BundleShellScript(Str(kBundleMacosLauncherSh), values, &launcher,
-                               &scriptError)) {
-            StrFree(plist);
-            StrFree(plistPath);
-            StrFree(pkgPath);
-            StrFree(exePath);
-            StrFree(contents);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(exclude);
-            StrFree(out);
-            bool failed = BundleFail(error, scriptError);
-            StrFree(scriptError);
-            return failed;
-        }
-        tree.Add(plistPath, plist, false, false);
-        tree.Add(pkgPath, StrDup(StrL("APPL????")), false, false);
-        tree.Add(exePath, launcher, true, false);
-        StrFree(plistPath);
-        StrFree(pkgPath);
-        StrFree(exePath);
-        if (rgba.s) {
-            Str icns;
-            if (!BundleWriteIcns((const uint8_t*)rgba.s, iconW, &icns, error)) {
-                tree.Free();
-                StrFree(contents);
-                names.Free();
-                StrFree(runtime);
-                StrFree(rgba);
-                StrFree(exclude);
-                StrFree(out);
-                return false;
-            }
-            Str iconPath =
-                StrDup(fmt("%s/Resources/%s.icns", contents, names.display));
-            tree.Add(iconPath, icns, false, false);
-            StrFree(iconPath);
-        }
-        Str appPrefix = StrDup(fmt("%s/Resources/app", contents));
-        bool added =
-            AddApplication(&tree, directory, appPrefix, exclude, error);
-        StrFree(appPrefix);
-        StrFree(contents);
-        if (!added) {
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        Str staging = JoinDisk(out, StrL(".bundle-partial"));
-        DependencyRemoveTree(staging);
-        if (!WriteDirectory(tree, staging, error)) {
-            DependencyRemoveTree(staging);
-            StrFree(staging);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        Str destination = JoinDisk(out, names.appBundle);
-        Str marker = JoinDisk(destination, StrL("Contents/Info.plist"));
-        if (PlatFileExists(destination.s) || PlatDirExists(destination.s)) {
-            if (!PlatFileExists(marker.s)) {
-                StrFree(marker);
-                DependencyRemoveTree(staging);
-                StrFree(staging);
-                tree.Free();
-                names.Free();
-                StrFree(runtime);
-                StrFree(rgba);
-                StrFree(exclude);
-                Str message =
-                    StrDup(fmt("%s exists and is not an application "
-                               "bundle; move it away first",
-                               destination));
-                StrFree(destination);
-                StrFree(out);
-                return BundleFail(error, message);
-            }
-            DependencyRemoveTree(destination);
-        }
-        StrFree(marker);
-        Str top = JoinDisk(staging, names.appBundle);
-        bool renamed = DependencyRenameDirectory(top, destination);
-        StrFree(top);
-        DependencyRemoveTree(staging);
-        StrFree(staging);
-        if (!renamed) {
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(exclude);
-            StrFree(out);
-            return BundleFail(error, fmt("cannot write %s", destination));
-        }
-        built = StrDup(fmt(
-            "bundled %s\n%s The first launch downloads it when needed.\n"
-            "The bundle is not signed. Sign and notarize it before giving it "
-            "to anyone; see "
-            "https://gpui-kit.com/shell/packaging#signing-on-macos",
-            destination, runtime));
-        StrFree(destination);
-    } else if (platform == BundlePlatform::Linux) {
-        if (rgba.s) {
-            int size = IconSizeFor(iconW);
-            uint8_t* scaled = (uint8_t*)Alloc(nullptr, (size_t)size * size * 4);
-            if (!scaled) {
-                tree.Free();
-                names.Free();
-                StrFree(runtime);
-                StrFree(rgba);
-                StrFree(exclude);
-                StrFree(out);
-                return BundleFail(error, StrL("allocating an icon failed"));
-            }
-            BoxScale((const uint8_t*)rgba.s, iconW, scaled, size);
-            Str png;
-            bool encoded = PngEncode(scaled, size, &png, error);
-            free(scaled);
-            if (!encoded) {
-                tree.Free();
-                names.Free();
-                StrFree(runtime);
-                StrFree(rgba);
-                StrFree(exclude);
-                StrFree(out);
-                return false;
-            }
-            Str iconPath =
-                StrDup(fmt("%s/%s.png", names.archiveStem, names.command));
-            tree.Add(iconPath, png, false, false);
-            StrFree(iconPath);
-            values.iconSize = StrDup(fmt("%d", size));
-        }
-        Str launcher;
-        Str scriptError = {};
-        if (!BundleShellScript(Str(kBundleLinuxLauncherSh), values, &launcher,
-                               &scriptError)) {
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(values.iconSize);
-            StrFree(exclude);
-            StrFree(out);
-            bool failed = BundleFail(error, scriptError);
-            StrFree(scriptError);
-            return failed;
-        }
-        Str launcherPath =
-            StrDup(fmt("%s/%s", names.archiveStem, names.command));
-        tree.Add(launcherPath, launcher, true, false);
-        StrFree(launcherPath);
-        Str appPrefix = StrDup(fmt("%s/app", names.archiveStem));
-        bool added =
-            AddApplication(&tree, directory, appPrefix, exclude, error);
-        StrFree(appPrefix);
-        if (!added) {
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(values.iconSize);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        Str tar;
-        if (!WriteTar(tree, &tar, error)) {
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(values.iconSize);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        Str archive = JoinDisk(out, fmt("%s.tar.gz", names.archiveStem));
-        bool wrote = ReplaceFile(archive, tar, error);
-        StrFree(tar);
-        if (!wrote) {
-            StrFree(archive);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(values.iconSize);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        Str archiveBytes;
-        if (!ReadFileBytes(archive, &archiveBytes, error)) {
-            StrFree(archive);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(values.iconSize);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        values.archive = StrDup(fmt("%s.tar.gz", names.archiveStem));
-        values.archiveSha256 = Sha256Hex(archiveBytes);
-        StrFree(archiveBytes);
-        Str installerText;
-        scriptError = {};
-        if (!BundleShellScript(Str(kBundleLinuxInstallSh), values,
-                               &installerText, &scriptError)) {
-            StrFree(archive);
-            StrFree(values.archive);
-            StrFree(values.archiveSha256);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(values.iconSize);
-            StrFree(exclude);
-            StrFree(out);
-            bool failed = BundleFail(error, scriptError);
-            StrFree(scriptError);
-            return failed;
-        }
-        Str installer = JoinDisk(out, StrL("install.sh"));
-        bool installOk = ReplaceFile(installer, installerText, error) &&
-                         PlatMakeExecutable(installer.s);
-        StrFree(installerText);
-        if (!installOk) {
-            StrFree(installer);
-            StrFree(archive);
-            StrFree(values.archive);
-            StrFree(values.archiveSha256);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(values.iconSize);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        Str remote;
-        if (invocation.downloadUrl) {
-            Str trimmed = TrimTrailingSlash(invocation.downloadUrl);
-            remote = StrDup(fmt(
-                "\nPublish both at %s; `curl -fsSL %s/install.sh | sh` then "
-                "installs it.",
-                trimmed, trimmed));
-        }
-        built = StrDup(
-            fmt("bundled %s\nbundled %s\n"
-                "Unpack the archive and run the launcher in it, or run `sh "
-                "install.sh` beside the archive to install it for the current "
-                "user; `sh install.sh --uninstall` removes it.%s\n%s",
-                archive, installer, remote ? remote : Str{}, runtime));
-        StrFree(remote);
-        StrFree(installer);
-        StrFree(archive);
-        StrFree(values.archive);
-        StrFree(values.archiveSha256);
-        StrFree(values.iconSize);
-    } else {
-        char exePath[kMaxPath];
-        exePath[0] = 0;
-        Str executable;
-        if (StrEq(Str(PlatShellPlatformName()), StrL("windows"))) {
-            if (!PlatGetExePath(exePath, kMaxPath) ||
-                !ReadFileBytes(Str(exePath), &executable, error)) {
-                tree.Free();
-                names.Free();
-                StrFree(runtime);
-                StrFree(rgba);
-                StrFree(exclude);
-                StrFree(out);
-                if (error && *error) return false;
-                return BundleFail(error,
-                                  StrL("cannot locate the running executable"));
-            }
-        } else {
-            Str apps = ShellApplicationsDirectory();
-            Str home = ParentPath(apps);
-            StrFree(apps);
-            Str cache =
-                StrDup(fmt("%s/cache/runtime/v%s/%s/gpui-shell.exe", home,
-                           Str(kShellVersion), Str(kWindowsTarget)));
-            StrFree(home);
-            bool got = BundleWindowsRuntimeFrom(cache, Str(kShellVersion),
-                                                DownloadRelease, nullptr,
-                                                &executable, error);
-            StrFree(cache);
-            if (!got) {
-                tree.Free();
-                names.Free();
-                StrFree(runtime);
-                StrFree(rgba);
-                StrFree(exclude);
-                StrFree(out);
-                return false;
-            }
-        }
-        if (!BundleMarkAsGuiProgram(executable, error)) {
-            StrFree(executable);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        Str top = StrDup(fmt("%s-x86_64", names.archiveStem));
-        Str exeName = StrDup(fmt("%s/%s.exe", top, names.display));
-        tree.Add(exeName, executable, true, false);
-        StrFree(exeName);
-        Str appPrefix = StrDup(fmt("%s/app", top));
-        bool added =
-            AddApplication(&tree, directory, appPrefix, exclude, error);
-        StrFree(appPrefix);
-        if (!added) {
-            StrFree(top);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        Str zip;
-        if (!WriteZip(tree, &zip, error)) {
-            StrFree(top);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        Str archive = JoinDisk(out, fmt("%s.zip", top));
-        bool wrote = ReplaceFile(archive, zip, error);
-        StrFree(zip);
-        if (!wrote) {
-            StrFree(archive);
-            StrFree(top);
-            tree.Free();
-            names.Free();
-            StrFree(runtime);
-            StrFree(rgba);
-            StrFree(exclude);
-            StrFree(out);
-            return false;
-        }
-        built = StrDup(
-            fmt("bundled %s\nUnzip it anywhere and open %s.exe; it needs no "
-                "installation. It carries gpui-shell %s.",
-                archive, names.display, Str(kShellVersion)));
-        if (rgba.s) {
-            Str extra =
-                StrDup(fmt("%s\nThe icon is not embedded: the executable keeps "
-                           "gpui-shell's.",
-                           built));
-            StrFree(built);
-            built = extra;
-        }
-        StrFree(archive);
-        StrFree(top);
-    }
-    tree.Free();
-    names.Free();
-    StrFree(runtime);
-    StrFree(rgba);
-    StrFree(exclude);
-    StrFree(out);
+    bool ok = platform == BundlePlatform::MacOS
+                  ? BundleMacos(&job, &built, error)
+              : platform == BundlePlatform::Linux
+                  ? BundleLinux(&job, &built, error)
+                  : BundleWindows(&job, &built, error);
+    job.Free();
+    if (!ok) return false;
     if (report)
         *report = built;
     else
@@ -2030,7 +1824,7 @@ static uint32_t ParseOctal(const char* field, int width) {
 
 bool BundleTarMode(Str tarGz, Str path, uint32_t* mode, Str* error) {
     Str gz;
-    if (!ReadFileBytes(tarGz, &gz, error)) return false;
+    if (!ReadWholeFile(tarGz, kBundleReadLimit, &gz, error)) return false;
     Str tar;
     if (!ZlibInflate(gz, true, &tar, error)) {
         StrFree(gz);
@@ -2061,7 +1855,7 @@ bool BundleTarMode(Str tarGz, Str path, uint32_t* mode, Str* error) {
 
 bool BundleZipEntryCount(Str zipPath, int* count, Str* error) {
     Str zip;
-    if (!ReadFileBytes(zipPath, &zip, error)) return false;
+    if (!ReadWholeFile(zipPath, kBundleReadLimit, &zip, error)) return false;
     if (len(zip) < 22 || memcmp(zip.s + len(zip) - 22, "PK\x05\x06", 4) != 0) {
         StrFree(zip);
         return BundleFail(error, StrL("not a zip archive"));

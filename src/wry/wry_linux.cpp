@@ -5,8 +5,8 @@
  *
  * WebKitGTK is a soft dependency, the second after libcurl: cmd/build.ts
  * defines GPUI_HAVE_WEBKITGTK when `pkg-config webkit2gtk-4.1` answers, and
- * without it the bottom of this file answers the portable API with "there is
- * no webview here", which is all this file was before.
+ * without it wry_unsupported.cpp answers the portable API with "there is no
+ * webview here" and this file compiles to nothing.
  *
  * What is Rust's and what is not. The Rust crate's X11 path (`new_x11`) is
  * ported: GDK opens its own connection to the X server, a container window
@@ -238,7 +238,7 @@ enum class DragState : uint8_t {
     Leaving,
 };
 
-struct WebView {
+struct WebView : WebViewHandlers {
     Str id;
     WebKitWebView* webview = nullptr; // our reference; the widget may die
     WebKitWebContext* context = nullptr;
@@ -268,18 +268,6 @@ struct WebView {
     Vec<Str> pendingScripts;
     bool pendingOpen = true;
 
-    void* ctx = nullptr;
-    void (*ipcHandler)(void* ctx, Str url, Str body) = nullptr;
-    bool (*navigationHandler)(void* ctx, Str url) = nullptr;
-    void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
-    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
-                              Str url) = nullptr;
-    NewWindowResponse (*newWindowReqHandler)(
-        void* ctx, Str url, const NewWindowFeatures* features,
-        WebView** createdWebView) = nullptr;
-    DownloadStartedHandler downloadStartedHandler = nullptr;
-    DownloadCompletedHandler downloadCompletedHandler = nullptr;
-    DragDropHandler dragDropHandler = nullptr;
     WebViewPageClick pageClick = nullptr;
     void* pageClickUser = nullptr;
 
@@ -297,13 +285,6 @@ struct WebView {
     Vec<RelatedWebView> related;
     Vec<DownloadState*> downloads;
 };
-
-static void FreeStrs(Vec<Str>* v) {
-    for (int i = 0; i < v->len; i++) {
-        StrFree(v->els[i]);
-    }
-    VecReset(*v);
-}
 
 static Str UriTemp(WebKitWebView* webview) {
     return FromCTemp(webkit_web_view_get_uri(webview));
@@ -374,7 +355,7 @@ static void FlushPendingScripts(WebView* wv) {
     for (int i = 0; i < wv->pendingScripts.len; i++) {
         RunJavascript(wv, wv->pendingScripts[i], nullptr, nullptr);
     }
-    FreeStrs(&wv->pendingScripts);
+    StrVecFree(&wv->pendingScripts);
 }
 
 // `InnerWebView::init`.
@@ -587,7 +568,7 @@ static void OnDragDataReceived(GtkWidget*, GdkDragContext*, gint, gint,
     ev.x = wv->dragX;
     ev.y = wv->dragY;
     wv->dragDropHandler(wv->ctx, &ev);
-    FreeStrs(&wv->dragPaths);
+    StrVecFree(&wv->dragPaths);
     wv->dragPaths = paths;
     wv->hasDragPaths = true;
 }
@@ -626,7 +607,7 @@ static gboolean OnDragDrop(GtkWidget*, GdkDragContext* context, gint x, gint y,
     ev.x = x;
     ev.y = y;
     bool handled = wv->dragDropHandler(wv->ctx, &ev);
-    FreeStrs(&paths);
+    StrVecFree(&paths);
     return handled ? TRUE : FALSE;
 }
 
@@ -1034,15 +1015,7 @@ static GtkWidget* OnCreate(WebKitWebView* webview,
 static WebView* NewGtk(GtkWidget* container, const WebViewAttributes* attrs,
                        WebKitWebView* relatedView) {
     WebView* wv = new WebView();
-    wv->ctx = attrs->ctx;
-    wv->ipcHandler = attrs->ipcHandler;
-    wv->navigationHandler = attrs->navigationHandler;
-    wv->documentTitleChangedHandler = attrs->documentTitleChangedHandler;
-    wv->onPageLoadHandler = attrs->onPageLoadHandler;
-    wv->newWindowReqHandler = attrs->newWindowReqHandler;
-    wv->downloadStartedHandler = attrs->downloadStartedHandler;
-    wv->downloadCompletedHandler = attrs->downloadCompletedHandler;
-    wv->dragDropHandler = attrs->dragDropHandler;
+    WebViewHandlersSet(wv, attrs);
     wv->cancellable = g_cancellable_new();
 
     // A related view shares its opener's context, as WebKit requires.
@@ -1391,8 +1364,8 @@ static void FreeInner(WebView* wv) {
     g_object_unref(wv->manager);
     g_object_unref(wv->context);
     g_object_unref(wv->cancellable);
-    FreeStrs(&wv->pendingScripts);
-    FreeStrs(&wv->dragPaths);
+    StrVecFree(&wv->pendingScripts);
+    StrVecFree(&wv->dragPaths);
     VecReset(wv->related);
     VecReset(wv->downloads);
     StrFree(wv->id);
@@ -1920,136 +1893,4 @@ bool WebViewAvailable() {
 
 #pragma GCC diagnostic pop
 
-#else // no WebKitGTK
-
-// Built without libwebkit2gtk-4.1-dev: the portable API answers "there is no
-// webview here", and EventLoopPrepare never gives the X11 loop anything to
-// poll.
-
-namespace wry {
-
-using base::logf;
-using base::Str;
-
-static void Unsupported() {
-    static bool said = false;
-    if (!said) {
-        said = true;
-        logf("wry: built without WebKitGTK, so there is no webview here\n");
-    }
-}
-
-WebView* WebViewNew(void*, const WebViewAttributes*, bool) {
-    WebViewSetLastError("built without WebKitGTK, so there is no webview here");
-    Unsupported();
-    return nullptr;
-}
-void WebViewFree(WebView*) {}
-Str WebViewId(WebView*) {
-    return {};
-}
-bool WebViewEval(WebView*, Str) {
-    return false;
-}
-bool WebViewEvalWithCallback(WebView*, Str, void*, void (*)(void*, Str)) {
-    return false;
-}
-Str WebViewUrlTemp(WebView*) {
-    return {};
-}
-bool WebViewLoadUrl(WebView*, Str) {
-    return false;
-}
-bool WebViewLoadUrlWithHeaders(WebView*, Str, const Header*, int) {
-    return false;
-}
-bool WebViewLoadHtml(WebView*, Str) {
-    return false;
-}
-bool WebViewReload(WebView*) {
-    return false;
-}
-bool WebViewBounds(WebView*, Rect*) {
-    return false;
-}
-bool WebViewSetBounds(WebView*, Rect) {
-    return false;
-}
-bool WebViewSetVisible(WebView*, bool) {
-    return false;
-}
-bool WebViewFocus(WebView*) {
-    return false;
-}
-bool WebViewFocusParent(WebView*) {
-    return false;
-}
-bool WebViewZoom(WebView*, double) {
-    return false;
-}
-bool WebViewSetUserZoom(WebView*, double) {
-    return false;
-}
-bool WebViewMatchPageScale(WebView*, float) {
-    return false;
-}
-void WebViewSetPageClick(WebView*, WebViewPageClick, void*) {}
-bool WebViewSetBackgroundColor(WebView*, Rgba) {
-    return false;
-}
-bool WebViewSetTheme(WebView*, Theme) {
-    return false;
-}
-bool WebViewSetMemoryUsageLevel(WebView*, MemoryUsageLevel) {
-    return false;
-}
-bool WebViewReparent(WebView*, void*) {
-    return false;
-}
-bool WebViewSetTrafficLightInset(WebView*, Position) {
-    return false;
-}
-bool WebViewPrint(WebView*) {
-    return false;
-}
-bool WebViewClearAllBrowsingData(WebView*) {
-    return false;
-}
-bool WebViewCookies(WebView*, Vec<Cookie>* out) {
-    CookieListFree(out);
-    return false;
-}
-bool WebViewCookiesForUrl(WebView*, Str, Vec<Cookie>* out) {
-    CookieListFree(out);
-    return false;
-}
-bool WebViewSetCookie(WebView*, const Cookie*) {
-    return false;
-}
-bool WebViewDeleteCookie(WebView*, const Cookie*) {
-    return false;
-}
-void WebViewOpenDevtools(WebView*) {}
-void WebViewCloseDevtools(WebView*) {}
-bool WebViewIsDevtoolsOpen(WebView*) {
-    return false;
-}
-void Respond(RequestResponder*, const Response*) {}
-
-int EventLoopPrepare(PollFd** fds, int* timeoutMs) {
-    (void)timeoutMs;
-    *fds = nullptr;
-    return 0;
-}
-void EventLoopDispatch() {}
-
-Str WebViewVersionTemp() {
-    return {};
-}
-bool WebViewAvailable() {
-    return false;
-}
-
-} // namespace wry
-
-#endif
+#endif // GPUI_HAVE_WEBKITGTK

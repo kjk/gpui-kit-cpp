@@ -23,10 +23,9 @@ void PathCaches::SlotPair(int index, PathCache** first, PathCache** second) {
     if (second) *second = Slot(index * 2 + 1);
 }
 
+// The eight bytes of v low first: its memory order on every target here.
 ShapeKey& ShapeKey::U64(uint64_t v) {
-    for (int i = 0; i < 8; i++) {
-        value = (value ^ (uint8_t)(v >> (i * 8))) * 1099511628211ull;
-    }
+    value = Fnv1a64(value, &v, sizeof(v));
     return *this;
 }
 
@@ -256,30 +255,6 @@ int ScaleOrdinal::Map(int domainIndex) const {
     return domainIndex % rangeLen;
 }
 
-static uint8_t PlotFontWeight(FontWeight weight) {
-    switch (weight) {
-        case FontWeight::Thin:
-            return kFontWeightThin;
-        case FontWeight::ExtraLight:
-            return kFontWeightExtraLight;
-        case FontWeight::Light:
-            return kFontWeightLight;
-        case FontWeight::Normal:
-            return kFontWeightExplicitNormal;
-        case FontWeight::Medium:
-            return kFontWeightMedium;
-        case FontWeight::Semibold:
-            return kFontWeightSemibold;
-        case FontWeight::Bold:
-            return kFontWeightBold;
-        case FontWeight::ExtraBold:
-            return kFontWeightExtraBold;
-        case FontWeight::Black:
-            return kFontWeightBlack;
-    }
-    return kFontWeightExplicitNormal;
-}
-
 static void PaintPathFill(PaintCtx* ctx, Path* path, Background fill,
                           Bounds bounds) {
     if (!path) {
@@ -507,7 +482,7 @@ void PlotLabel::Paint(PaintCtx* ctx, Bounds bounds) const {
         // Use the window's shaped-text cache, as GPUI's text_system does.
         // Fresh layouts here reshaped every tick and gave an unchanged label
         // a new scene resource generation, forcing a full repaint.
-        int weight = PlotFontWeight(item.fontWeight);
+        int weight = FontWeightBits(item.fontWeight, kFontWeightExplicitNormal);
         Size measured =
             MeasureText(ctx, item.text, item.fontSize, 0, false, weight, 0);
         float x = bounds.x + item.origin.x;
@@ -902,20 +877,33 @@ static void PaintDot(PaintCtx* ctx, Point point, float size, Background fill,
     CanvasEllipse(ctx, point.x, point.y, radius, radius, 1, edge);
 }
 
-void Line::Paint(PaintCtx* ctx, Bounds bounds) const {
-    Vec<Point> points = ResolveLinePoints(*this, bounds);
-    if (len(points) > 0) {
-        Path* path = PathNew(ctx, false);
-        PlotRun(path, points, curve);
-        PaintPathStroke(ctx, path, strokeWidth, stroke,
-                        StrokeBox(points.els, len(points), strokeWidth));
+// The end of a line-like shape's paint (Line, the radar's polygon): stroke
+// the path built over `points` and free it, then the dots when the shape
+// asks for them.
+template <typename Shape>
+static void StrokeAndDots(PaintCtx* ctx, Path* path, const Vec<Point>& points,
+                          const Shape& shape) {
+    if (path) {
+        PaintPathStroke(ctx, path, shape.strokeWidth, shape.stroke,
+                        StrokeBox(points.els, len(points), shape.strokeWidth));
         PathFree(path);
     }
-    if (dot) {
+    if (shape.dot) {
         for (int i = 0; i < len(points); i++) {
-            PaintDot(ctx, points[i], dotSize, dotFill, hasDotStroke, dotStroke);
+            PaintDot(ctx, points[i], shape.dotSize, shape.dotFill,
+                     shape.hasDotStroke, shape.dotStroke);
         }
     }
+}
+
+void Line::Paint(PaintCtx* ctx, Bounds bounds) const {
+    Vec<Point> points = ResolveLinePoints(*this, bounds);
+    Path* path = nullptr;
+    if (len(points) > 0) {
+        path = PathNew(ctx, false);
+        PlotRun(path, points, curve);
+    }
+    StrokeAndDots(ctx, path, points, *this);
 }
 
 Area Area::New() {
@@ -1450,8 +1438,9 @@ void RadialLine::Paint(PaintCtx* ctx, Bounds bounds) const {
         PaintPathFill(ctx, path, fill, bounds);
         PathFree(path);
     }
+    Path* path = nullptr;
     if (len(points) > 0) {
-        Path* path = PathNew(ctx, false);
+        path = PathNew(ctx, false);
         PathMoveTo(path, points[0].x, points[0].y);
         for (int i = 1; i < len(points); i++) {
             PathLineTo(path, points[i].x, points[i].y);
@@ -1459,15 +1448,8 @@ void RadialLine::Paint(PaintCtx* ctx, Bounds bounds) const {
         if (closed && len(points) > 2) {
             PathClose(path);
         }
-        PaintPathStroke(ctx, path, strokeWidth, stroke,
-                        StrokeBox(points.els, len(points), strokeWidth));
-        PathFree(path);
     }
-    if (dot) {
-        for (int i = 0; i < len(points); i++) {
-            PaintDot(ctx, points[i], dotSize, dotFill, hasDotStroke, dotStroke);
-        }
-    }
+    StrokeAndDots(ctx, path, points, *this);
 }
 
 Stack Stack::New() {

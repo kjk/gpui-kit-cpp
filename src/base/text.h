@@ -1656,6 +1656,23 @@ struct TextView {
     // The `table_actions` row, built from the table it goes under. Null when
     // no hook is set.
     El* TableActionsRow(MdNode* n, int nCols, const uint8_t* colAlign);
+    // What both table renderings start from: the frame's surface colour,
+    // and the measured column bounds and alignment. `minTotal` is the sum of
+    // the floors, dividers and frame border. False when there are no cells.
+    struct TableColumns {
+        Rgba surface = {};
+        int nCols = 0;
+        uint8_t* colAlign = nullptr;
+        float* maxW = nullptr;
+        float* minW = nullptr;
+        float minTotal = 0;
+    };
+    bool MeasureTable(MdNode* n, bool scroll, TableColumns* out);
+    // One row of either rendering: the divider, the header's fill, the hover,
+    // the rounded corners and the cells.
+    El* TableRow(MdNode* r, int rowIx, const TableColumns& t);
+    // The table with its actions row under it, or the table alone.
+    El* TableWithActions(El* table, MdNode* n, const TableColumns& t);
     El* CodeBlock(MdNode* n);
     // The highlighted form of a code block: the installed highlighter says
     // which stretches take which colour and this paints them.

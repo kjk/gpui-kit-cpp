@@ -19,7 +19,7 @@
 namespace gpui {
 
 // Whether this build can read a GPU figure. False on the platforms whose
-// probe is not written (see src/sys/gpu_posix.cpp), which is Rust's
+// probe is not written (gpu.cpp answers for them), which is Rust's
 // `gpu/unsupported.rs`. Windows and macOS both have one.
 bool GpuAvailable();
 
@@ -30,6 +30,19 @@ float GpuUsagePercent();
 // Let go of whatever the probe holds open. The HUD is the only caller and
 // asks at shutdown, the way it does of the rest of sys/.
 void GpuProbeFree();
+
+// Windows and macOS have a probe: gpu.cpp takes the one lock around each of
+// their *Locked halves, below. Every other platform has none, and gpu.cpp
+// answers for it with Rust's unsupported.rs.
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC
+#define GPUI_GPU_PROBE 1
+// Open the probe on first use; false when this machine has nothing to read.
+bool GpuProbeOpenLocked();
+float GpuUsagePercentLocked();
+void GpuProbeFreeLocked();
+#else
+#define GPUI_GPU_PROBE 0
+#endif
 
 } // namespace gpui
 

@@ -2,6 +2,8 @@
 
 #include "shell/scope.h"
 
+#include <string.h>
+
 namespace gpui::shell {
 
 struct ScriptPanelRegistration {
@@ -401,17 +403,20 @@ const DockRenderer* ScriptDockSkin::Renderer() {
     return &renderer;
 }
 
-static const char* PlacementName(DockPlacement placement) {
-    switch (placement) {
-        case DockPlacement::Left:
-            return "left";
-        case DockPlacement::Right:
-            return "right";
-        case DockPlacement::Bottom:
-            return "bottom";
-        default:
-            return "center";
+bool IsDockCommandName(Str name) {
+    static const char names[] =
+        "select_tab\0close_panel\0toggle_zoom\0drag_tab\0drop_tab\0"
+        "toggle_dock\0resize_dock\0";
+    for (const char* at = names; *at; at += strlen(at) + 1) {
+        if (StrEq(name, at)) return true;
     }
+    return false;
+}
+
+DockPlacement DockPlacementOfName(Str name) {
+    static const char names[] = "center\0left\0bottom\0right\0";
+    int ix = SeqStrIndex(names, name);
+    return ix < 0 ? DockPlacement::Center : (DockPlacement)ix;
 }
 
 void ShellTabGroupData(const DockTabGroup* group, StrBuilder* out) {
@@ -454,8 +459,9 @@ void ShellDockData(const DockCtx* dock, StrBuilder* out) {
     JsonWriter json;
     json.out = out;
     json.BeginObject();
-    json.String("placement", Str(PlacementName(dock ? dock->placement
-                                                    : DockPlacement::Center)));
+    json.String(
+        "placement",
+        Str(DockPlacementName(dock ? dock->placement : DockPlacement::Center)));
     json.Number("size", dock ? dock->size : 0);
     json.Bool("open", dock && dock->open);
     json.Bool("collapsible", dock && dock->collapsible);

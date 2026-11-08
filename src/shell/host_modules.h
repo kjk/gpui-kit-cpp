@@ -125,6 +125,9 @@ class HostModule {
 HostModules* HostModulesNew();
 HostModules* HostModulesRetain(HostModules* modules);
 void HostModulesRelease(HostModules* modules);
+// The registry of the current host call's policy, or of the default policy
+// when there is no call; retained, for HostModulesRelease.
+HostModules* HostModulesCurrent();
 HostModules* HostModulesClone(HostModules* modules);
 uint64_t HostModulesGeneration(const HostModules* modules);
 int HostModulesCount(const HostModules* modules);

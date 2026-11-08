@@ -102,5 +102,36 @@ DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
 // there; the caller must not touch `plat` again.
 void DirWatchPlatClose(DirWatchPlat* plat);
 
+// The first step of DirWatchPlatOpen on hosted POSIX (dir_watch_mem_posix.cpp):
+// with `create`, make the folder unless it is already there, then allocate the
+// platform's zeroed DirWatchPlat of `size` bytes (free() releases it). Null
+// with `err` set to Failed when either could not be done.
+void* DirWatchPlatAllocPosix(const char* dir, bool create, size_t size,
+                             DirWatchError* err);
+// The same as the platform's own DirWatchPlat, stamped with its watch `id`.
+template <typename Plat>
+Plat* DirWatchPlatNewPosix(DirWatchId id, const char* dir, bool create,
+                           DirWatchError* err) {
+    auto* w = (Plat*)DirWatchPlatAllocPosix(dir, create, sizeof(Plat), err);
+    if (w) {
+        w->id = id;
+    }
+    return w;
+}
+
+// The last step of DirWatchPlatOpen on hosted POSIX: hand `w` to `thread`,
+// which owns it from then on and frees it when it stops. When the thread
+// cannot be started, `w` is freed here and the open fails.
+template <typename Plat>
+Plat* DirWatchPlatStartThread(Plat* w, void (*thread)(Plat*),
+                              void (*release)(Plat*), DirWatchError* err) {
+    if (!PlatThreadRun(MkFunc0(thread, w))) {
+        *err = DirWatchError::Failed;
+        release(w);
+        return nullptr;
+    }
+    return w;
+}
+
 } // namespace gpui
 #endif // GPUI_SYS_DIR_WATCH_H_

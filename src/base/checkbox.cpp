@@ -1,4 +1,5 @@
 #include "base/checkbox.h"
+#include "base/button.h"
 
 namespace gpui {
 
@@ -40,6 +41,40 @@ CheckboxIndicatorStyles& CheckboxIndicatorStyles::Disabled(
     return *this;
 }
 
+// The instance style refined by the state's style (checked or
+// indeterminate), then by the disabled one. A null state style adds nothing.
+static StateStyle ResolveCheckboxStyle(CheckboxState state, bool disabled,
+                                       const StateStyle* instance,
+                                       const StateStyle* checked,
+                                       const StateStyle* indeterminate,
+                                       const StateStyle* disabledStyle) {
+    StateStyle base = instance ? *instance : StateStyle{};
+    const StateStyle* states[2] = {
+        state == CheckboxState::Checked ? checked : nullptr,
+        state == CheckboxState::Indeterminate ? indeterminate : nullptr,
+    };
+    StateStyle resolved = StateStyleResolve(base, states, 2);
+    if (disabled && disabledStyle) {
+        const StateStyle* disabledState[] = {disabledStyle};
+        resolved = StateStyleResolve(resolved, disabledState, 1);
+    }
+    return resolved;
+}
+
+// The state styles a checkbox or its indicator was given, resolved for
+// `state` and `disabled` and refined onto `e`; nothing when it has none.
+template <typename Styles>
+static void RefineCheckbox(El* e, CheckboxState state, bool disabled,
+                           const Styles* styles, const StateStyle* instance) {
+    if (styles || instance) {
+        ElRefine(e,
+                 ResolveCheckboxStyle(state, disabled, instance,
+                                      styles ? &styles->checked : nullptr,
+                                      styles ? &styles->indeterminate : nullptr,
+                                      styles ? &styles->disabled : nullptr));
+    }
+}
+
 El* Checkbox::New(Ctx* cx, Str id, CheckboxState state, bool disabled,
                   Listener onChange, const CheckboxStyles* styles,
                   const StateStyle* instance, Str accessibilityLabel,
@@ -61,31 +96,11 @@ El* Checkbox::New(Ctx* cx, Str id, CheckboxState state, bool disabled,
     if (accessibilityLabel.s) {
         e->AriaLabel(accessibilityLabel);
     }
-    if (styles || instance) {
-        StateStyle base = instance ? *instance : StateStyle{};
-        const StateStyle* states[2] = {
-            state == CheckboxState::Checked && styles ? &styles->checked
-                                                      : nullptr,
-            state == CheckboxState::Indeterminate && styles
-                ? &styles->indeterminate
-                : nullptr,
-        };
-        StateStyle resolved = StateStyleResolve(base, states, 2);
-        if (disabled && styles) {
-            const StateStyle* disabledState[] = {&styles->disabled};
-            resolved = StateStyleResolve(resolved, disabledState, 1);
-        }
-        ElRefine(e, resolved);
-    }
+    RefineCheckbox(e, state, disabled, styles, instance);
     if (disabled) {
         return e;
     }
-    if (focus.IsValid()) {
-        e->TrackFocus(focus);
-    } else {
-        e->PathId(id);
-    }
-    e->TabIndex(tabIndex)->TabStop(tabStop);
+    ControlFocus(e, focus, id, tabIndex, tabStop);
     if (onChange.IsValid()) {
         e->OnClick(ListenerFill(onChange, (int64_t)CheckboxActivated(state)));
     }
@@ -97,22 +112,7 @@ El* CheckboxIndicator::New(Ctx* cx, CheckboxState state, bool disabled,
                            const StateStyle* instance) {
     Arena* a = cx->a;
     El* e = Div(a);
-    if (styles || instance) {
-        StateStyle base = instance ? *instance : StateStyle{};
-        const StateStyle* states[2] = {
-            state == CheckboxState::Checked && styles ? &styles->checked
-                                                      : nullptr,
-            state == CheckboxState::Indeterminate && styles
-                ? &styles->indeterminate
-                : nullptr,
-        };
-        StateStyle resolved = StateStyleResolve(base, states, 2);
-        if (disabled && styles) {
-            const StateStyle* disabledState[] = {&styles->disabled};
-            resolved = StateStyleResolve(resolved, disabledState, 1);
-        }
-        ElRefine(e, resolved);
-    }
+    RefineCheckbox(e, state, disabled, styles, instance);
     return e;
 }
 } // namespace gpui

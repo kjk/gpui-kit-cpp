@@ -1,4 +1,5 @@
 #include "base/tabs.h"
+#include "base/button.h"
 
 namespace gpui {
 
@@ -23,15 +24,9 @@ El* Tab::New(Ctx* cx, Str id, bool disabled, Listener onClick, bool selected,
     Arena* a = cx->a;
     // `div().id(ix)`: a tab is named by its place in the strip, which the bar
     // above it scopes.
-    El* e = Div(a)
-                // Match Button's neutral control geometry: a fixed-size tab
-                // centers ordinary content while its caller owns the size,
-                // spacing and visual treatment.
-                ->Flex()
-                ->ItemsCenter()
-                ->JustifyCenter()
-                ->LineHeight(1.f)
-                ->PathClick(id)
+    // Button's neutral control geometry: a fixed-size tab centers ordinary
+    // content while its caller owns the size, spacing and visual treatment.
+    El* e = ControlBox(a, id)
                 ->Role(AccessibilityRole::Tab)
                 ->AriaSelected(selected)
                 ->AriaDisabled(disabled)

@@ -75,7 +75,6 @@
 
 namespace wry {
 
-using base::AllocStrTemp;
 using base::logf;
 using base::Str;
 using base::StrDup;
@@ -93,14 +92,7 @@ static NSString* const kIpcScript =
     @"{window.webkit.messageHandlers.ipc.postMessage(s);}})\n"
     @"});";
 
-struct ProtocolCopy {
-    Str name; // heap
-    void* ctx;
-    void (*handler)(void* ctx, Str id, const Request* request,
-                    RequestResponder* responder);
-};
-
-struct WebView {
+struct WebView : WebViewHandlers {
     Str id = {}; // heap
     WKWebView* webview = nil;
     WKUserContentController* manager = nil;
@@ -108,21 +100,7 @@ struct WebView {
     bool isChild = false;
     bool visible = true;
 
-    void* ctx = nullptr;
-    void (*ipcHandler)(void* ctx, Str url, Str body) = nullptr;
-    bool (*navigationHandler)(void* ctx, Str url) = nullptr;
-    void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
-    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
-                              Str url) = nullptr;
-    NewWindowResponse (*newWindowReqHandler)(
-        void* ctx, Str url, const NewWindowFeatures* features,
-        WebView** createdWebView) = nullptr;
-
-    DownloadStartedHandler downloadStartedHandler = nullptr;
-    DownloadCompletedHandler downloadCompletedHandler = nullptr;
-    DragDropHandler dragDropHandler = nullptr;
-
-    Vec<ProtocolCopy> protocols;
+    Vec<CustomProtocol> protocols; // names heap
 
     // `pending_scripts`: an eval before the first navigation commits has
     // nothing to run in, so it is held and replayed by didCommitNavigation.
@@ -172,22 +150,7 @@ static NSString* ToNS(Str s) {
 }
 
 static Str FromNSTemp(NSString* s) {
-    if (!s) {
-        return {};
-    }
-    const char* utf8 = [s UTF8String];
-    if (!utf8) {
-        return {};
-    }
-    int n = (int)strlen(utf8);
-    Str res = AllocStrTemp(n + 1);
-    if (!res.s) {
-        return {};
-    }
-    memcpy(res.s, utf8, (size_t)n);
-    res.s[n] = 0;
-    res.len = n;
-    return res;
+    return s ? base::StrDupTemp(Str([s UTF8String])) : Str();
 }
 
 // `url_from_webview`.
@@ -823,14 +786,7 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task) {
     responder->task = task;
     responder->url = url;
 
-    ProtocolCopy& p = wv->protocols[index];
-    if (p.handler) {
-        p.handler(p.ctx, wv->id, &req, responder);
-    } else {
-        Response response;
-        response.status = 500;
-        Respond(responder, &response);
-    }
+    CustomProtocolDispatch(wv->protocols[index], wv->id, &req, responder);
 
     VecReset(headerStore);
     VecReset(bodyStore);
@@ -1016,15 +972,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     wv->parentView = parentView;
     wv->isChild = asChild;
     wv->visible = attrs->visible;
-    wv->ctx = attrs->ctx;
-    wv->downloadStartedHandler = attrs->downloadStartedHandler;
-    wv->downloadCompletedHandler = attrs->downloadCompletedHandler;
-    wv->dragDropHandler = attrs->dragDropHandler;
-    wv->ipcHandler = attrs->ipcHandler;
-    wv->navigationHandler = attrs->navigationHandler;
-    wv->documentTitleChangedHandler = attrs->documentTitleChangedHandler;
-    wv->onPageLoadHandler = attrs->onPageLoadHandler;
-    wv->newWindowReqHandler = attrs->newWindowReqHandler;
+    WebViewHandlersSet(wv, attrs);
     wv->liveTasks = [NSMutableSet set];
     wv->schemeHandlers = [NSMutableArray array];
     // `attributes.id.unwrap_or_else(|| COUNTER.next().to_string())`.
@@ -1040,12 +988,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
             [config urlSchemeHandlerForURLScheme:scheme]) {
             continue;
         }
-        ProtocolCopy p;
-        p.name = StrDup(attrs->customProtocols[i].name);
-        p.ctx = attrs->customProtocols[i].ctx;
-        p.handler = attrs->customProtocols[i].handler;
-        int protocolIndex = wv->protocols.len;
-        VecAppend(wv->protocols, p);
+        int protocolIndex = CustomProtocolsAppendCopy(
+            &wv->protocols, attrs->customProtocols[i]);
 
         GpuiWrySchemeHandler* handler = [[GpuiWrySchemeHandler alloc] init];
         handler.wv = wv;
@@ -1057,7 +1001,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
             [config setURLSchemeHandler:handler forURLScheme:scheme];
         } @catch (NSException* e) {
             (void)e;
-            logf("wry: could not register the custom protocol '%s'\n", p.name);
+            logf("wry: could not register the custom protocol '%s'\n",
+                 wv->protocols[protocolIndex].name);
             WebViewFree(wv);
             return nullptr;
         }
@@ -1271,14 +1216,8 @@ void WebViewFree(WebView* wv) {
         handler.wv = nullptr;
     }
     [wv->liveTasks removeAllObjects];
-    for (int i = 0; i < wv->protocols.len; i++) {
-        StrFree(wv->protocols[i].name);
-    }
-    VecReset(wv->protocols);
-    for (int i = 0; i < wv->pendingScripts.len; i++) {
-        StrFree(wv->pendingScripts[i]);
-    }
-    VecReset(wv->pendingScripts);
+    CustomProtocolsFree(&wv->protocols);
+    StrVecFree(&wv->pendingScripts);
     StrFree(wv->id);
     // ARC releases the delegates, the webview and the collections as the
     // struct's members go out of scope.
@@ -1811,13 +1750,5 @@ Str WebViewVersionTemp() {
 bool WebViewAvailable() {
     return true;
 }
-
-// The run loop that drives the window drives WKWebView too.
-int EventLoopPrepare(PollFd** fds, int* timeoutMs) {
-    (void)timeoutMs;
-    *fds = nullptr;
-    return 0;
-}
-void EventLoopDispatch() {}
 
 } // namespace wry

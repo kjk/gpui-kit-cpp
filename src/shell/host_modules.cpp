@@ -651,7 +651,7 @@ struct HostCallGuard {
     }
 };
 
-static HostModules* CurrentModules() {
+HostModules* HostModulesCurrent() {
     Policy* policy = shell::ScopeCurrentPolicy();
     if (policy) return PolicyHostModules(policy);
     Policy* fallback = PolicyDefault();
@@ -680,16 +680,21 @@ static void MissingModule(Str module, HostError* error,
     StrFree(message);
 }
 
+// A host function may not call back into the script engine, so a dispatch
+// that arrives while one is running is refused.
+static bool RefuseNestedCall(Str module, Str function, HostError* error) {
+    if (!gInHostCall) return false;
+    error
+        ->Set(fmt("`%s.%s` was reached from inside another host call: a host "
+                  "function may not call back into the script engine",
+                  module, function));
+    return true;
+}
+
 bool HostDispatch(Str module, Str function, HostCall* call) {
     if (!call) return false;
-    if (gInHostCall) {
-        call->error
-            .Set(fmt("`%s.%s` was reached from inside another host call: a "
-                     "host function may not call back into the script engine",
-                     module, function));
-        return false;
-    }
-    HostModules* modules = CurrentModules();
+    if (RefuseNestedCall(module, function, &call->error)) return false;
+    HostModules* modules = HostModulesCurrent();
     HostModule* found = HostModulesGet(modules, module);
     if (!found) MissingModule(module, &call->error, modules);
     HostCallGuard guard;
@@ -700,14 +705,8 @@ bool HostDispatch(Str module, Str function, HostCall* call) {
 
 bool HostDispatchBegin(Str module, Str function, HostAsyncRequest* request) {
     if (!request) return false;
-    if (gInHostCall) {
-        request->error
-            .Set(fmt("`%s.%s` was reached from inside another host call: a "
-                     "host function may not call back into the script engine",
-                     module, function));
-        return false;
-    }
-    HostModules* modules = CurrentModules();
+    if (RefuseNestedCall(module, function, &request->error)) return false;
+    HostModules* modules = HostModulesCurrent();
     HostModule* found = HostModulesGet(modules, module);
     if (!found) MissingModule(module, &request->error, modules);
     HostCallGuard guard;

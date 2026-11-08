@@ -1,5 +1,6 @@
 #include "shell/fetch.h"
 
+#include "shell/error.h"
 #include "shell/plugin.h"
 #include "sys/executor.h"
 #include "sys/http.h"
@@ -21,12 +22,6 @@ struct FetchUrl {
     uint16_t port = 0;
     bool hasPort = false;
 };
-
-static void FetchError(Str* error, Str message) {
-    if (!error) return;
-    StrFree(*error);
-    *error = StrDup(message);
-}
 
 static bool HeaderIsUserAgent(Str name) {
     return StrEqI(name, "user-agent");
@@ -66,7 +61,7 @@ static bool ParsePort(Str text, uint16_t* value) {
 static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
     if (parsed) *parsed = {};
     if (!url.s || len(url) <= 0 || len(url) > 32768) {
-        FetchError(error, StrL("invalid fetch URL"));
+        ErrorOutSet(error, StrL("invalid fetch URL"));
         return false;
     }
     int schemeEnd = -1;
@@ -77,12 +72,12 @@ static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
         }
     }
     if (schemeEnd <= 0) {
-        FetchError(error, StrL("fetch URL must be an absolute http(s) URL"));
+        ErrorOutSet(error, StrL("fetch URL must be an absolute http(s) URL"));
         return false;
     }
     Str scheme(url.s, schemeEnd);
     if (!StrEqI(scheme, StrL("http")) && !StrEqI(scheme, StrL("https"))) {
-        FetchError(error, StrL("fetch URL must use http or https"));
+        ErrorOutSet(error, StrL("fetch URL must use http or https"));
         return false;
     }
     int authorityStart = schemeEnd + 3;
@@ -92,13 +87,13 @@ static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
         authorityEnd++;
     }
     if (authorityEnd == authorityStart) {
-        FetchError(error, StrL("fetch URL has no host"));
+        ErrorOutSet(error, StrL("fetch URL has no host"));
         return false;
     }
     for (int i = authorityStart; i < authorityEnd; i++) {
         unsigned char c = (unsigned char)url.s[i];
         if (c <= 0x20 || c >= 0x7f || c == '@') {
-            FetchError(
+            ErrorOutSet(
                 error,
                 StrL("fetch URL host is invalid or carries credentials"));
             return false;
@@ -113,12 +108,12 @@ static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
         hostEnd = hostStart;
         while (hostEnd < authorityEnd && url.s[hostEnd] != ']') hostEnd++;
         if (hostEnd >= authorityEnd || hostEnd == hostStart) {
-            FetchError(error, StrL("fetch URL has an invalid IPv6 host"));
+            ErrorOutSet(error, StrL("fetch URL has an invalid IPv6 host"));
             return false;
         }
         if (hostEnd + 1 < authorityEnd) {
             if (url.s[hostEnd + 1] != ':') {
-                FetchError(error, StrL("fetch URL authority is invalid"));
+                ErrorOutSet(error, StrL("fetch URL authority is invalid"));
                 return false;
             }
             portStart = hostEnd + 2;
@@ -127,8 +122,8 @@ static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
         for (int i = authorityStart; i < authorityEnd; i++) {
             if (url.s[i] == ':') {
                 if (portStart >= 0) {
-                    FetchError(error,
-                               StrL("an IPv6 fetch host must use brackets"));
+                    ErrorOutSet(error,
+                                StrL("an IPv6 fetch host must use brackets"));
                     return false;
                 }
                 hostEnd = i;
@@ -137,14 +132,14 @@ static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
         }
     }
     if (hostEnd <= hostStart) {
-        FetchError(error, StrL("fetch URL has no host"));
+        ErrorOutSet(error, StrL("fetch URL has no host"));
         return false;
     }
     uint16_t port = 0;
     bool hasPort = portStart >= 0;
     if (hasPort &&
         !ParsePort(Str(url.s + portStart, authorityEnd - portStart), &port)) {
-        FetchError(error, StrL("fetch URL has an invalid port"));
+        ErrorOutSet(error, StrL("fetch URL has an invalid port"));
         return false;
     }
     int pathStart = authorityEnd;
@@ -197,10 +192,7 @@ bool FetchParseUrl(Str url, FetchParsedUrl* out) {
 
 bool FetchAuthorize(Str url, Str method, const Capabilities& capabilities,
                     Str* error) {
-    if (error) {
-        StrFree(*error);
-        *error = {};
-    }
+    ErrorOutClear(error);
     FetchUrl parsed;
     if (!ParseFetchUrl(url, &parsed, error)) return false;
     Str verb = len(method) > 0 ? method : StrL("GET");
@@ -208,10 +200,10 @@ bool FetchAuthorize(Str url, Str method, const Capabilities& capabilities,
                                 parsed.hasPort, verb, parsed.path)) {
         return true;
     }
-    FetchError(error,
-               fmt("HTTP request %s %s is not granted; add it to "
-                   "capabilities.network.hosts or capabilities.network.http",
-                   verb, url));
+    ErrorOutSet(error,
+                fmt("HTTP request %s %s is not granted; add it to "
+                    "capabilities.network.hosts or capabilities.network.http",
+                    verb, url));
     return false;
 }
 
@@ -238,7 +230,7 @@ bool FetchAuthorizeRedirect(const Capabilities& capabilities, Str method,
                             const Vec<FetchHeader>& headers, Str* error) {
     Str inner = {};
     if (!FetchAuthorize(next, method, capabilities, &inner)) {
-        FetchError(error, fmt("redirect target refused: %s", inner));
+        ErrorOutSet(error, fmt("redirect target refused: %s", inner));
         StrFree(inner);
         return false;
     }
@@ -252,35 +244,36 @@ bool FetchAuthorizeRedirect(const Capabilities& capabilities, Str method,
     }
     if (StrEqI(before.scheme, StrL("https")) &&
         !StrEqI(after.scheme, StrL("https"))) {
-        FetchError(error, fmt("redirect from %s to %s refused because it is "
-                              "an HTTPS downgrade",
-                              current, next));
+        ErrorOutSet(error, fmt("redirect from %s to %s refused because it is "
+                               "an HTTPS downgrade",
+                               current, next));
         return false;
     }
     bool sameOrigin = FetchSameOrigin(current, next);
     Str verb = len(method) > 0 ? method : StrL("GET");
     if (!StrEq(verb, StrL("GET")) && !sameOrigin) {
-        FetchError(error,
-                   fmt("cross-origin redirect from %s to %s refused because "
-                       "it would replay a %s request",
-                       current, next, verb));
+        ErrorOutSet(error,
+                    fmt("cross-origin redirect from %s to %s refused because "
+                        "it would replay a %s request",
+                        current, next, verb));
         return false;
     }
     // A bearer credential may follow a same-origin redirect, never a
     // cross-origin one, even when both hosts are individually granted.
     for (int i = 0; i < len(headers); i++) {
         if (StrEqI(headers[i].name, StrL("authorization")) && !sameOrigin) {
-            FetchError(error, fmt("cross-origin redirect from %s to %s refused "
-                                  "because the request carries Authorization",
-                                  current, next));
+            ErrorOutSet(error,
+                        fmt("cross-origin redirect from %s to %s refused "
+                            "because the request carries Authorization",
+                            current, next));
             return false;
         }
     }
     if (len(headers) > 0 && !sameOrigin) {
-        FetchError(error,
-                   fmt("cross-origin redirect from %s to %s refused because "
-                       "caller-supplied request headers would be replayed",
-                       current, next));
+        ErrorOutSet(error,
+                    fmt("cross-origin redirect from %s to %s refused because "
+                        "caller-supplied request headers would be replayed",
+                        current, next));
         return false;
     }
     return true;
@@ -402,14 +395,14 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
         }
     }
     if (!allocated) {
-        FetchError(&out->error, StrL("allocating the fetch request failed"));
+        ErrorOutSet(&out->error, StrL("allocating the fetch request failed"));
         walk.Free();
         return false;
     }
     if (len(walk.body) > kFetchMaxRequestBody) {
-        FetchError(&out->error,
-                   fmt("fetch request body exceeded the %d byte limit",
-                       kFetchMaxRequestBody));
+        ErrorOutSet(&out->error,
+                    fmt("fetch request body exceeded the %d byte limit",
+                        kFetchMaxRequestBody));
         walk.Free();
         return false;
     }
@@ -430,8 +423,8 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
             VecAppend(wire, h);
         }
         if (!AppendDefaultUserAgent(&wire, walk.headers, Str(userAgent))) {
-            FetchError(&out->error,
-                       StrL("allocating the fetch headers failed"));
+            ErrorOutSet(&out->error,
+                        StrL("allocating the fetch headers failed"));
             VecReset(wire);
             walk.Free();
             return false;
@@ -448,7 +441,7 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
         FetchHttpSend send =
             gFetchHttpSendForTests ? gFetchHttpSendForTests : HttpSend;
         if (!send(req, &response)) {
-            FetchError(&out->error, fmt("fetching %s failed", walk.url));
+            ErrorOutSet(&out->error, fmt("fetching %s failed", walk.url));
             HttpRspFree(&response);
             VecReset(wire);
             walk.Free();
@@ -458,14 +451,14 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
         if (FetchFollowsLocation(response.status)) {
             bool ok = true;
             if (!response.redirectUrl) {
-                FetchError(&out->error,
-                           fmt("redirect from %s has no valid Location header",
-                               walk.url));
+                ErrorOutSet(&out->error,
+                            fmt("redirect from %s has no valid Location header",
+                                walk.url));
                 ok = false;
             } else if (redirects >= kFetchMaxRedirects) {
-                FetchError(&out->error,
-                           fmt("fetch exceeded the %d redirect limit",
-                               kFetchMaxRedirects));
+                ErrorOutSet(&out->error,
+                            fmt("fetch exceeded the %d redirect limit",
+                                kFetchMaxRedirects));
                 ok = false;
             }
             if (ok) {
@@ -479,8 +472,8 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
             }
             Str next = ok ? StrDup(response.redirectUrl) : Str{};
             if (ok && !next.s) {
-                FetchError(&out->error,
-                           StrL("allocating the redirect URL failed"));
+                ErrorOutSet(&out->error,
+                            StrL("allocating the redirect URL failed"));
                 ok = false;
             }
             HttpRspFree(&response);
@@ -495,9 +488,9 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
         }
 
         if (len(response.body) > kFetchMaxBody) {
-            FetchError(&out->error,
-                       fmt("response body from %s exceeded the %d byte limit",
-                           walk.url, kFetchMaxBody));
+            ErrorOutSet(&out->error,
+                        fmt("response body from %s exceeded the %d byte limit",
+                            walk.url, kFetchMaxBody));
             HttpRspFree(&response);
             VecReset(wire);
             walk.Free();
@@ -511,8 +504,8 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
         VecReset(wire);
         if (!copied) {
             out->status = 0;
-            FetchError(&out->error,
-                       StrL("allocating the fetch response failed"));
+            ErrorOutSet(&out->error,
+                        StrL("allocating the fetch response failed"));
             walk.Free();
             return false;
         }
@@ -573,14 +566,14 @@ static bool FetchAsyncInit(FetchAsyncState* state, const FetchRequest& request,
         }
     }
     if (!allocated) {
-        FetchError(&state->result.error,
-                   StrL("allocating the fetch request failed"));
+        ErrorOutSet(&state->result.error,
+                    StrL("allocating the fetch request failed"));
         return false;
     }
     if (len(state->walk.body) > kFetchMaxRequestBody) {
-        FetchError(&state->result.error,
-                   fmt("fetch request body exceeded the %d byte limit",
-                       kFetchMaxRequestBody));
+        ErrorOutSet(&state->result.error,
+                    fmt("fetch request body exceeded the %d byte limit",
+                        kFetchMaxRequestBody));
         return false;
     }
     state->capabilities = capabilities;
@@ -600,14 +593,14 @@ static bool FetchAsyncStart(FetchAsyncState* state);
 static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
     HttpRsp* response = landed.response;
     if (!landed.ok || !response) {
-        FetchError(&state->result.error,
-                   fmt("fetching %s failed", state->walk.url));
+        ErrorOutSet(&state->result.error,
+                    fmt("fetching %s failed", state->walk.url));
         FetchAsyncFinish(state, false);
         return;
     }
     if (state->deadline != 0 && TimeNow() >= state->deadline) {
-        FetchError(&state->result.error,
-                   fmt("fetching %s timed out", state->walk.url));
+        ErrorOutSet(&state->result.error,
+                    fmt("fetching %s timed out", state->walk.url));
         FetchAsyncFinish(state, false);
         return;
     }
@@ -615,14 +608,14 @@ static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
     if (FetchFollowsLocation(response->status)) {
         bool ok = true;
         if (!response->redirectUrl) {
-            FetchError(&state->result.error,
-                       fmt("redirect from %s has no valid Location header",
-                           state->walk.url));
+            ErrorOutSet(&state->result.error,
+                        fmt("redirect from %s has no valid Location header",
+                            state->walk.url));
             ok = false;
         } else if (state->redirects >= kFetchMaxRedirects) {
-            FetchError(&state->result.error,
-                       fmt("fetch exceeded the %d redirect limit",
-                           kFetchMaxRedirects));
+            ErrorOutSet(&state->result.error,
+                        fmt("fetch exceeded the %d redirect limit",
+                            kFetchMaxRedirects));
             ok = false;
         }
         if (ok) {
@@ -635,8 +628,8 @@ static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
         }
         Str next = ok ? StrDup(response->redirectUrl) : Str{};
         if (ok && !next.s) {
-            FetchError(&state->result.error,
-                       StrL("allocating the redirect URL failed"));
+            ErrorOutSet(&state->result.error,
+                        StrL("allocating the redirect URL failed"));
             ok = false;
         }
         if (!ok) {
@@ -654,9 +647,9 @@ static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
     }
 
     if (len(response->body) > kFetchMaxBody) {
-        FetchError(&state->result.error,
-                   fmt("response body from %s exceeded the %d byte limit",
-                       state->walk.url, kFetchMaxBody));
+        ErrorOutSet(&state->result.error,
+                    fmt("response body from %s exceeded the %d byte limit",
+                        state->walk.url, kFetchMaxBody));
         FetchAsyncFinish(state, false);
         return;
     }
@@ -665,8 +658,8 @@ static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
         StrDup(Str((const char*)response->body.els, len(response->body)));
     if (!state->result.body.s && len(response->body) != 0) {
         state->result.status = 0;
-        FetchError(&state->result.error,
-                   StrL("allocating the fetch response failed"));
+        ErrorOutSet(&state->result.error,
+                    StrL("allocating the fetch response failed"));
         FetchAsyncFinish(state, false);
         return;
     }
@@ -712,15 +705,15 @@ static bool FetchAsyncStart(FetchAsyncState* state) {
         header.name = state->walk.headers[i].name;
         header.value = state->walk.headers[i].value;
         if (!VecAppend(state->wire, header)) {
-            FetchError(&state->result.error,
-                       StrL("allocating the fetch headers failed"));
+            ErrorOutSet(&state->result.error,
+                        StrL("allocating the fetch headers failed"));
             return false;
         }
     }
     if (!AppendDefaultUserAgent(&state->wire, state->walk.headers,
                                 Str(state->userAgent))) {
-        FetchError(&state->result.error,
-                   StrL("allocating the fetch headers failed"));
+        ErrorOutSet(&state->result.error,
+                    StrL("allocating the fetch headers failed"));
         return false;
     }
     HttpReq request;
@@ -733,15 +726,15 @@ static bool FetchAsyncStart(FetchAsyncState* state) {
     if (gFetchHttpSendForTests) {
         if (!ExecSpawn(MkFunc0(FetchAsyncTestWork, state),
                        MkFunc0(FetchAsyncTestDone, state))) {
-            FetchError(&state->result.error,
-                       StrL("the fetch test transport could not start"));
+            ErrorOutSet(&state->result.error,
+                        StrL("the fetch test transport could not start"));
             return false;
         }
         return true;
     }
     if (!HttpSendAsync(request, MkFunc1(FetchAsyncResponse, state))) {
-        FetchError(&state->result.error,
-                   fmt("fetching %s could not start", state->walk.url));
+        ErrorOutSet(&state->result.error,
+                    fmt("fetching %s could not start", state->walk.url));
         return false;
     }
     return true;

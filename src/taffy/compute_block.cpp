@@ -245,6 +245,26 @@ struct FloatContext {
         }
     }
 
+    // Where FindContentSlot and FindBfcSlot start looking: `*minY` moved down
+    // below the floats `clear` names, and the first segment ending below it
+    // that is past both the cleared floats and segment `after`. segments.len
+    // when there is none.
+    int FirstSlotSegment(float* minY, Clear clear, int after) const {
+        *minY = F32Max(*minY, UnwrapOr(ClearedThreshold(clear), -INFINITY));
+        int atLeast = after >= 0 ? after + 1 : 0;
+        int cleared = ClearedSegment(clear);
+        int hwm = cleared >= 0 ? cleared + 1 : 0;
+        if (atLeast > hwm) {
+            hwm = atLeast;
+        }
+        for (int i = hwm; i < segments.len; i++) {
+            if (segments[i].yEnd > *minY) {
+                return i;
+            }
+        }
+        return segments.len;
+    }
+
     ContentSlot FindContentSlot(float minY,
                                 const float containingBlockInsets[2],
                                 Clear clear, int after) const;
@@ -469,22 +489,7 @@ ContentSlot FloatContext::FindContentSlot(float minY,
         return fallback;
     }
 
-    minY = F32Max(minY, UnwrapOr(ClearedThreshold(clear), -INFINITY));
-
-    int atLeast = after >= 0 ? after + 1 : 0;
-    int cleared = ClearedSegment(clear);
-    int hwm = cleared >= 0 ? cleared + 1 : 0;
-    if (atLeast > hwm) {
-        hwm = atLeast;
-    }
-
-    int startIdx = segments.len;
-    for (int i = hwm; i < segments.len; i++) {
-        if (segments[i].yEnd > minY) {
-            startIdx = i;
-            break;
-        }
-    }
+    int startIdx = FirstSlotSegment(&minY, clear, after);
     if (startIdx >= segments.len) {
         return fallback;
     }
@@ -517,20 +522,7 @@ BfcSlot FloatContext::FindBfcSlot(float minY,
         return fallback;
     }
 
-    minY = F32Max(minY, UnwrapOr(ClearedThreshold(clear), -INFINITY));
-    int atLeast = after >= 0 ? after + 1 : 0;
-    int cleared = ClearedSegment(clear);
-    int hwm = cleared >= 0 ? cleared + 1 : 0;
-    if (atLeast > hwm) {
-        hwm = atLeast;
-    }
-    int startIdx = segments.len;
-    for (int i = hwm; i < segments.len; i++) {
-        if (segments[i].yEnd > minY) {
-            startIdx = i;
-            break;
-        }
-    }
+    int startIdx = FirstSlotSegment(&minY, clear, after);
     if (startIdx >= segments.len) {
         fallback.y = F32Max(LastSegmentEnd(), minY);
         return fallback;
@@ -819,8 +811,7 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
         RectF padding = cs.padding.ResolveOrZero(nodeInnerSize.w, calc);
         RectF border = cs.border.ResolveOrZero(nodeInnerSize.w, calc);
         SizeF pbSum = (padding + border).SumAxes();
-        SizeF boxSizingAdjustment =
-            cs.boxSizing == BoxSizing::ContentBox ? pbSum : SizeF::Zero();
+        SizeF boxSizingAdjustment = BoxSizingAdjustment(cs.boxSizing, pbSum);
 
         BlockItem item;
         item.nodeId = childNodeId;
@@ -851,18 +842,12 @@ void GenerateItemList(TaffyTree* tree, NodeId node, SizeFOpt nodeInnerSize,
             cs.alignContent.keyword == AlignContentKeyword::Normal;
 
         item.sizeStyle = cs.size;
-        item.size = MaybeAdd(
-            MaybeApplyAspectRatio(cs.size.MaybeResolve(nodeInnerSize, calc),
-                                  aspectRatio),
-            boxSizingAdjustment);
-        item.minSize = MaybeAdd(
-            MaybeApplyAspectRatio(cs.minSize.MaybeResolve(nodeInnerSize, calc),
-                                  aspectRatio),
-            boxSizingAdjustment);
-        item.maxSize = MaybeAdd(
-            MaybeApplyAspectRatio(cs.maxSize.MaybeResolve(nodeInnerSize, calc),
-                                  aspectRatio),
-            boxSizingAdjustment);
+        item.size = ResolveStyledSize(cs.size, nodeInnerSize, calc, aspectRatio,
+                                      boxSizingAdjustment);
+        item.minSize = ResolveStyledSize(cs.minSize, nodeInnerSize, calc,
+                                         aspectRatio, boxSizingAdjustment);
+        item.maxSize = ResolveStyledSize(cs.maxSize, nodeInnerSize, calc,
+                                         aspectRatio, boxSizingAdjustment);
         item.inset = cs.inset;
         item.margin = cs.margin;
         item.padding = padding;
@@ -1289,18 +1274,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         if (item.position == Position::Relative) {
             RectFOpt inset = item.inset.MaybeResolveZip(
                 {Some(containerInnerWidth), percentageResolutionHeight}, calc);
-            Optf negRight = inset.right;
-            if (IsSome(negRight)) {
-                negRight = -negRight;
-            }
-            Optf negBottom = inset.bottom;
-            if (IsSome(negBottom)) {
-                negBottom = -negBottom;
-            }
-            insetOffset = {IsRtl(direction)
-                               ? UnwrapOr(Or(negRight, inset.left), 0.0f)
-                               : UnwrapOr(Or(inset.left, negRight), 0.0f),
-                           UnwrapOr(Or(inset.top, negBottom), 0.0f)};
+            insetOffset = RelativePositionOffset(inset, direction);
         }
 
         if (item.isInSameBfc && (!isCollapsingWithFirstMarginSet ||
@@ -1584,21 +1558,11 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     float xInsets[2] = {contentBoxInset.left, contentBoxInset.right};
     blockCtx->ApplyContentBoxInset(xInsets);
 
-    SizeF boxSizingAdjustment = style.boxSizing == BoxSizing::ContentBox
-                                    ? paddingBorderSize
-                                    : SizeF::Zero();
-    SizeFOpt size =
-        MaybeAdd(MaybeApplyAspectRatio(
-                     style.size.MaybeResolve(parentSize, calc), aspectRatio),
-                 boxSizingAdjustment);
-    SizeFOpt minSize =
-        MaybeAdd(MaybeApplyAspectRatio(
-                     style.minSize.MaybeResolve(parentSize, calc), aspectRatio),
-                 boxSizingAdjustment);
-    SizeFOpt maxSize =
-        MaybeAdd(MaybeApplyAspectRatio(
-                     style.maxSize.MaybeResolve(parentSize, calc), aspectRatio),
-                 boxSizingAdjustment);
+    NodeStyledSizes styled = ResolveNodeStyledSizes(style, parentSize, calc,
+                                                    paddingBorderSize, true);
+    SizeFOpt size = styled.size;
+    SizeFOpt minSize = styled.minSize;
+    SizeFOpt maxSize = styled.maxSize;
 
     // css-sizing-4: a definite size in one axis transfers through
     // `aspect-ratio` to make the other definite. Deriving it from
@@ -1917,7 +1881,6 @@ LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
     CalcResolver calc = tree->calc;
     SizeFOpt knownDimensions = inputs.knownDimensions;
     SizeFOpt parentSize = inputs.parentSize;
-    RunMode runMode = inputs.runMode;
     const Style& style = tree->GetStyle(nodeId);
 
     bool isScrollContainer = IsScrollContainer(style.overflow.x) ||
@@ -1930,56 +1893,20 @@ LayoutOutput ComputeBlockLayout(TaffyTree* tree, NodeId nodeId,
                              style.alignContent
                                      .keyword != AlignContentKeyword::Normal ||
                              contain.EstablishesIndependentFormattingContext();
-    Optf aspectRatio = style.aspectRatio;
     RectF padding = style.padding.ResolveOrZero(parentSize.w, calc);
     RectF border = style.border.ResolveOrZero(parentSize.w, calc);
     SizeF paddingBorderSize = (padding + border).SumAxes();
-    SizeF boxSizingAdjustment = style.boxSizing == BoxSizing::ContentBox
-                                    ? paddingBorderSize
-                                    : SizeF::Zero();
+    NodeStyledSizes styled =
+        ResolveNodeStyledSizes(style, parentSize, calc, paddingBorderSize,
+                               inputs.sizingMode == SizingMode::InherentSize);
 
-    SizeFOpt minSize =
-        MaybeAdd(MaybeApplyAspectRatio(
-                     style.minSize.MaybeResolve(parentSize, calc), aspectRatio),
-                 boxSizingAdjustment);
-    SizeFOpt maxSize =
-        MaybeAdd(MaybeApplyAspectRatio(
-                     style.maxSize.MaybeResolve(parentSize, calc), aspectRatio),
-                 boxSizingAdjustment);
-    SizeFOpt clampedStyleSize = SizeFOptNone();
-    if (inputs.sizingMode == SizingMode::InherentSize) {
-        clampedStyleSize = MaybeClamp(
-            MaybeAdd(
-                MaybeApplyAspectRatio(style.size.MaybeResolve(parentSize, calc),
-                                      aspectRatio),
-                boxSizingAdjustment),
-            minSize, maxSize);
-    }
+    SizeFOpt styledBasedKnownDimensions = MaybeMax(
+        Or(Or(knownDimensions, styled.minMaxDefiniteSize), styled.clampedSize),
+        paddingBorderSize);
 
-    // If both min and max are set in an axis and max <= min, that determines
-    // the size in that axis.
-    SizeFOpt minMaxDefiniteSize = SizeFOptNone();
-    if (IsSome(minSize.w) && IsSome(maxSize.w) && maxSize.w <= minSize.w) {
-        minMaxDefiniteSize.w = minSize.w;
-    }
-    if (IsSome(minSize.h) && IsSome(maxSize.h) && maxSize.h <= minSize.h) {
-        minMaxDefiniteSize.h = minSize.h;
-    }
-
-    SizeFOpt styledBasedKnownDimensions =
-        MaybeMax(Or(Or(knownDimensions, minMaxDefiniteSize), clampedStyleSize),
-                 paddingBorderSize);
-
-    if (runMode == RunMode::ComputeSize) {
-        if (BothAxisDefined(styledBasedKnownDimensions)) {
-            return LayoutOutput::FromOuterSize(
-                {styledBasedKnownDimensions.w, styledBasedKnownDimensions.h});
-        }
-        if (inputs.axis == RequestedAxis::Horizontal &&
-            IsSome(styledBasedKnownDimensions.w)) {
-            return LayoutOutput::FromOuterSize(
-                {styledBasedKnownDimensions.w, 0.0f});
-        }
+    LayoutOutput early;
+    if (ComputeSizeFromStyles(inputs, styledBasedKnownDimensions, &early)) {
+        return early;
     }
 
     LayoutInput next = inputs;

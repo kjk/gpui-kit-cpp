@@ -2,8 +2,8 @@
 
    libasound is a soft dependency, found by cmd/build.ts with pkg-config the
    way libcurl is: GPUI_HAVE_ALSA says it was there. Without it this build
-   has no audio input, and speech works with an application's own AudioInput
-   only.
+   has no audio input (audio_input_unsupported.cpp), and speech works with
+   an application's own AudioInput only.
 
    The plug layer behind `default` converts whatever the card runs at, so
    this asks for 16-bit mono at 48 kHz and takes the rate it is given. A
@@ -79,16 +79,6 @@ bool SysAudioInputDeviceName(char* out, int cap) {
     return true;
 }
 
-static void SetMessage(char* message, int cap, const char* text) {
-    if (!message || cap <= 0) {
-        return;
-    }
-    int n = (int)strlen(text);
-    n = n < cap - 1 ? n : cap - 1;
-    memcpy(message, text, (size_t)n);
-    message[n] = 0;
-}
-
 AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
                                      uint32_t* sampleRate,
                                      AudioInputError* error, char* message,
@@ -99,7 +89,7 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
         // No card, no `default`, or no sound server to route it to.
         *error = rc == -EACCES ? AudioInputError::PermissionDenied
                                : AudioInputError::NoInputDevice;
-        SetMessage(message, messageCap, snd_strerror(rc));
+        StrCopyZ(message, messageCap, snd_strerror(rc));
         return nullptr;
     }
     // Mono first; a device that only records stereo is mixed down here.
@@ -137,7 +127,7 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
     }
     if (rc < 0 || rate == 0) {
         *error = AudioInputError::Failed;
-        SetMessage(message, messageCap, snd_strerror(rc));
+        StrCopyZ(message, messageCap, snd_strerror(rc));
         snd_pcm_close(pcm);
         return nullptr;
     }
@@ -148,7 +138,7 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
     s->channels = channels;
     if (pthread_create(&s->thread, nullptr, &CaptureThread, s) != 0) {
         *error = AudioInputError::Failed;
-        SetMessage(message, messageCap, "cannot start the capture thread");
+        StrCopyZ(message, messageCap, "cannot start the capture thread");
         snd_pcm_close(pcm);
         delete s;
         return nullptr;
@@ -173,37 +163,6 @@ void SysAudioInputStop(AudioInputStream* s) {
     snd_pcm_close(s->pcm);
     delete s;
 }
-
-} // namespace gpui
-
-#else // !GPUI_HAVE_ALSA
-
-namespace gpui {
-
-bool SysAudioInputAvailable() {
-    return false;
-}
-
-bool SysAudioInputDeviceName(char* out, int cap) {
-    if (out && cap > 0) {
-        out[0] = 0;
-    }
-    return false;
-}
-
-AudioInputStream* SysAudioInputStart(const AudioInputCallbacks&, uint32_t*,
-                                     AudioInputError* error, char* message,
-                                     int messageCap) {
-    if (error) {
-        *error = AudioInputError::Unsupported;
-    }
-    if (message && messageCap > 0) {
-        message[0] = 0;
-    }
-    return nullptr;
-}
-
-void SysAudioInputStop(AudioInputStream*) {}
 
 } // namespace gpui
 

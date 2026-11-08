@@ -521,7 +521,6 @@ static constexpr Callable kTextareaValue = {kInputGroupTextarea, "value"};
 static constexpr Callable kTextareaPlaceholder = {kInputGroupTextarea,
                                                   "placeholder"};
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kInputStateArgs[] = {
     {"state", SchemaEntity("InputState")}};
 static constexpr ArgumentDescriptor kTextareaStateArgs[] = {
@@ -544,8 +543,6 @@ static constexpr ArgumentDescriptor kOnChangeArgs[] = {
     {"callback", SchemaCallback("(value: string, cx: Context) => void")}};
 static constexpr ArgumentDescriptor kMaskedArgs[] = {
     {"masked", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ArgumentDescriptor kAlignArgs[] = {
     {"align", SchemaEnum(kAlignLiterals)}};
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
@@ -558,11 +555,12 @@ static constexpr ArgumentDescriptor kVariantArgs[] = {
     {"variant", SchemaEnum(kVariantLiterals)}};
 
 static constexpr ConstructorDescriptor kGroupConstructors[] = {
-    {kInputGroup, kIdArgs, &ConstructId<Part::Root, kInputGroup>}};
+    {kInputGroup, kIdArguments, &ConstructId<Part::Root, kInputGroup>}};
 static constexpr ConstructorDescriptor kAddonConstructors[] = {
-    {kInputGroupAddon, kIdArgs, &ConstructId<Part::Addon, kInputGroupAddon>}};
+    {kInputGroupAddon, kIdArguments,
+     &ConstructId<Part::Addon, kInputGroupAddon>}};
 static constexpr ConstructorDescriptor kButtonConstructors[] = {
-    {kInputGroupButton, kIdArgs,
+    {kInputGroupButton, kIdArguments,
      &ConstructId<Part::Button, kInputGroupButton>}};
 static constexpr ConstructorDescriptor kInputConstructors[] = {
     {kInputGroupInput, kInputStateArgs,
@@ -590,7 +588,8 @@ static constexpr MethodDescriptor kGroupMethods[] = {
     {"aria_label", kAriaLabelArgs,
      "Names the group independently of its text control.",
      &RecordString<Op::AriaLabel, kGroupAriaLabel>},
-    {"size", kSizeArgs, "Sets the group's semantic control size.", &RecordSize},
+    {"size", kSizeArguments, "Sets the group's semantic control size.",
+     &RecordSize},
 };
 
 static constexpr MethodDescriptor kAddonMethods[] = {
@@ -617,7 +616,7 @@ static constexpr MethodDescriptor kButtonMethods[] = {
      {},
      "Uses the native outlined button treatment.",
      &RecordOutline},
-    {"size", kSizeArgs,
+    {"size", kSizeArguments,
      "Sets the button size; xsmall and small are the compact input-group "
      "sizes.",
      &RecordSize},

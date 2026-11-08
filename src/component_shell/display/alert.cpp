@@ -57,14 +57,6 @@ static bool RecordVisible(PayloadBuild* build, const ComponentArgument* args,
     return true;
 }
 
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    AlertOp* op = build->New<AlertOp>();
-    op->kind = AlertOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
-    return true;
-}
-
 // AlertMaterializer::component: the variant's constructor, then every
 // operation in script order.
 static component::Alert* Component(MaterializeRequest* request) {
@@ -126,8 +118,6 @@ static constexpr ArgumentDescriptor kConstructorArgs[] = {
 static constexpr ArgumentDescriptor kTitleArgs[] = {{"title", SchemaString()}};
 static constexpr ArgumentDescriptor kVisibleArgs[] = {
     {"visible", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Alert", kConstructorArgs, &Construct<AlertVariant::Default>},
@@ -141,7 +131,8 @@ static constexpr MethodDescriptor kMethods[] = {
     {"banner", {}, "Uses the full-width banner presentation.", &RecordBanner},
     {"visible", kVisibleArgs, "Controls whether the alert is rendered.",
      &RecordVisible},
-    {"size", kSizeArgs, "Sets the alert's semantic size.", &RecordSize},
+    {"size", kSizeArguments, "Sets the alert's semantic size.",
+     &RecordSizeOp<AlertOp, AlertOp::Size>},
 };
 static constexpr ComponentDescriptor kAlert = {
     "Alert", kConstructors, kMethods,

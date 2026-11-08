@@ -124,20 +124,6 @@
 
 namespace gpui {
 
-// "image/png; charset=..." -> "image/png", lowercased where it stands.
-static void TrimMediaType(Str* s) {
-    for (int i = 0; i < s->len; i++) {
-        char c = s->s[i];
-        if (c == ';' || c == ' ') {
-            s->len = i;
-            break;
-        }
-        if (c >= 'A' && c <= 'Z') {
-            s->s[i] = (char)(c - 'A' + 'a');
-        }
-    }
-}
-
 static Str StrFromNS(NSString* s) {
     if (!s) {
         return {};
@@ -173,6 +159,24 @@ static Str HeadersFromResponse(NSHTTPURLResponse* rsp) {
     return out.TakeStr();
 }
 
+// Status, redirect target, media type and headers of an answer, the same for
+// the streaming and the buffered request.
+static void ResponseHeadFill(HttpRsp* out, NSHTTPURLResponse* rsp,
+                             bool noRedirect) {
+    out->status = (int)[rsp statusCode];
+    if (noRedirect && out->status >= 300 && out->status < 400) {
+        NSString* location = [rsp valueForHTTPHeaderField:@"Location"];
+        NSURL* target =
+            location ? [NSURL URLWithString:location relativeToURL:[rsp URL]]
+                     : nil;
+        out->redirectUrl = StrFromNS([[target absoluteURL] absoluteString]);
+    }
+    Str ct = StrFromNS([rsp valueForHTTPHeaderField:@"Content-Type"]);
+    HttpTrimMediaType(&ct);
+    out->contentType = ct;
+    out->headers = HeadersFromResponse(rsp);
+}
+
 static NSString* NSFromStr(Str s) {
     if (len(s) <= 0) {
         return @"";
@@ -190,28 +194,34 @@ static NSTimeInterval IdleSeconds(const HttpReq& request) {
     return ms > 0 ? (NSTimeInterval)ms / 1000.0 : 7 * 24 * 3600.0;
 }
 
+// The request for `u` both senders start from: its method (GET when it names
+// none), our User-Agent and the caller's headers. The timeout of a request is
+// how long it may stay idle, which is the limit a long transfer wants.
+static NSMutableURLRequest* NewUrlRequest(NSURL* u, const HttpReq& request) {
+    NSMutableURLRequest* req =
+        [NSMutableURLRequest requestWithURL:u
+                                cachePolicy:NSURLRequestUseProtocolCachePolicy
+                            timeoutInterval:IdleSeconds(request)];
+    [req setHTTPMethod:len(request.method) > 0 ? NSFromStr(request.method)
+                                               : @"GET"];
+    [req setValue:@"gpui/1.0" forHTTPHeaderField:@"User-Agent"];
+    for (int i = 0; i < request.nHeaders; i++) {
+        NSString* name = NSFromStr(request.headers[i].name);
+        NSString* value = NSFromStr(request.headers[i].value);
+        if (name && value) {
+            [req setValue:value forHTTPHeaderField:name];
+        }
+    }
+    return req;
+}
+
 static bool HttpSendStreamed(const HttpReq& request, HttpRsp* out) {
     @autoreleasepool {
         NSURL* u = [NSURL URLWithString:NSFromStr(request.url)];
         if (!u || request.bodyLen < 0) {
             return false;
         }
-        // The timeout of a request is how long it may stay idle, which is
-        // the limit a long transfer wants.
-        NSMutableURLRequest* req = [NSMutableURLRequest
-             requestWithURL:u
-                cachePolicy:NSURLRequestUseProtocolCachePolicy
-            timeoutInterval:IdleSeconds(request)];
-        [req setHTTPMethod:len(request.method) > 0 ? NSFromStr(request.method)
-                                                   : @"GET"];
-        [req setValue:@"gpui/1.0" forHTTPHeaderField:@"User-Agent"];
-        for (int i = 0; i < request.nHeaders; i++) {
-            NSString* name = NSFromStr(request.headers[i].name);
-            NSString* value = NSFromStr(request.headers[i].value);
-            if (name && value) {
-                [req setValue:value forHTTPHeaderField:name];
-            }
-        }
+        NSMutableURLRequest* req = NewUrlRequest(u, request);
         NSInputStream* bodyIn = nil;
         NSOutputStream* bodyOut = nil;
         if (request.readBody) {
@@ -288,18 +298,7 @@ static bool HttpSendStreamed(const HttpReq& request, HttpRsp* out) {
             VecReset(out->body);
             return false;
         }
-        out->status = (int)[rsp statusCode];
-        if (request.noRedirect && out->status >= 300 && out->status < 400) {
-            NSString* location = [rsp valueForHTTPHeaderField:@"Location"];
-            NSURL* target = location ? [NSURL URLWithString:location
-                                              relativeToURL:[rsp URL]]
-                                     : nil;
-            out->redirectUrl = StrFromNS([[target absoluteURL] absoluteString]);
-        }
-        Str ct = StrFromNS([rsp valueForHTTPHeaderField:@"Content-Type"]);
-        TrimMediaType(&ct);
-        out->contentType = ct;
-        out->headers = HeadersFromResponse(rsp);
+        ResponseHeadFill(out, rsp, request.noRedirect);
         return true;
     }
 }
@@ -321,21 +320,7 @@ bool HttpSendPlatform(const HttpReq& request, HttpRsp* out) {
         if (!u) {
             return false;
         }
-        NSMutableURLRequest* req = [NSMutableURLRequest
-             requestWithURL:u
-                cachePolicy:NSURLRequestUseProtocolCachePolicy
-            timeoutInterval:IdleSeconds(request)];
-        NSString* verb =
-            len(request.method) > 0 ? NSFromStr(request.method) : @"GET";
-        [req setHTTPMethod:verb];
-        [req setValue:@"gpui/1.0" forHTTPHeaderField:@"User-Agent"];
-        for (int i = 0; i < request.nHeaders; i++) {
-            NSString* name = NSFromStr(request.headers[i].name);
-            NSString* value = NSFromStr(request.headers[i].value);
-            if (name && value) {
-                [req setValue:value forHTTPHeaderField:name];
-            }
-        }
+        NSMutableURLRequest* req = NewUrlRequest(u, request);
         if (len(request.body) > 0) {
             [req setHTTPBody:[NSData
                                  dataWithBytes:request.body.s
@@ -389,18 +374,7 @@ bool HttpSendPlatform(const HttpReq& request, HttpRsp* out) {
             }
             return false;
         }
-        out->status = (int)[rsp statusCode];
-        if (noRedirect && out->status >= 300 && out->status < 400) {
-            NSString* location = [rsp valueForHTTPHeaderField:@"Location"];
-            NSURL* target = location ? [NSURL URLWithString:location
-                                              relativeToURL:[rsp URL]]
-                                     : nil;
-            out->redirectUrl = StrFromNS([[target absoluteURL] absoluteString]);
-        }
-        Str ct = StrFromNS([rsp valueForHTTPHeaderField:@"Content-Type"]);
-        TrimMediaType(&ct);
-        out->contentType = ct;
-        out->headers = HeadersFromResponse(rsp);
+        ResponseHeadFill(out, rsp, noRedirect);
 
         NSUInteger n = body ? [body length] : 0;
         if (n > (NSUInteger)kHttpMaxBody) {
@@ -415,19 +389,6 @@ bool HttpSendPlatform(const HttpReq& request, HttpRsp* out) {
         }
         return true;
     }
-}
-
-bool HttpGet(Str url, HttpRsp* out) {
-    HttpReq req;
-    req.url = url;
-    return HttpSend(req, out);
-}
-
-bool HttpGetNoRedirect(Str url, HttpRsp* out) {
-    HttpReq req;
-    req.url = url;
-    req.noRedirect = true;
-    return HttpSend(req, out);
 }
 
 } // namespace gpui

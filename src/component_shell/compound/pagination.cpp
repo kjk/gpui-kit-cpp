@@ -79,14 +79,6 @@ static bool RecordCompact(PayloadBuild* build, const ComponentArgument*, int) {
     return true;
 }
 
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    PaginationOp* op = build->New<PaginationOp>();
-    op->kind = PaginationOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
-    return true;
-}
-
 // The on_change closure: the page the reader asked for, which the
 // component fills in.
 static void RunChange(const shell::ComponentEventBinding* binding,
@@ -144,7 +136,6 @@ static El* Materialize(MaterializeRequest* request) {
     return request->ApplyStyle(wrapper);
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kCurrentArgs[] = {
     {"current_page", SchemaNumber()}};
 static constexpr ArgumentDescriptor kTotalArgs[] = {
@@ -153,11 +144,9 @@ static constexpr ArgumentDescriptor kVisibleArgs[] = {
     {"visible_pages", SchemaNumber()}};
 static constexpr ArgumentDescriptor kChangeArgs[] = {
     {"on_change", SchemaCallback("(page: number, cx: Context) => void")}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
-    {"Pagination", kIdArgs, &Construct}};
+    {"Pagination", kIdArguments, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     kDisabledMethod,
     {"current_page", kCurrentArgs, "Sets the current 1-based page.",
@@ -174,7 +163,8 @@ static constexpr MethodDescriptor kMethods[] = {
      {},
      "Shows only previous and next icon buttons.",
      &RecordCompact},
-    {"size", kSizeArgs, "Sets semantic size.", &RecordSize},
+    {"size", kSizeArguments, "Sets semantic size.",
+     &RecordSizeOp<PaginationOp, PaginationOp::Size>},
 };
 static constexpr ComponentDescriptor kPagination = {
     "Pagination", kConstructors, kMethods,

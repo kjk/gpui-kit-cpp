@@ -220,9 +220,8 @@ static bool RecordCrossSize(PayloadBuild* build, const ComponentArgument* args,
 
 static constexpr ConstructorDescriptor kPanelConstructors[] = {
     {"ResizablePanel", {}, &RecordEmpty}};
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ConstructorDescriptor kGroupConstructors[] = {
-    {"Resizable", kIdArgs, &ConstructGroup}};
+    {"Resizable", kIdArguments, &ConstructGroup}};
 
 static constexpr ArgumentDescriptor kVisibleArgs[] = {
     {"visible", SchemaBoolean()}};

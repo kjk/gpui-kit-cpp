@@ -55,6 +55,16 @@ struct FsResult {
 // directory handle and refuses symlinks/reparse points, so this check and the
 // operation are one authority-preserving traversal rather than a string test
 // followed by an ambient path syscall.
+// Appends one read of `root/relative` to an fs.readFile result, refusing to
+// let it grow past kFsMaxReadBytes.
+bool FsReadAppend(StrBuilder* output, const char* bytes, int count, Str root,
+                  Str relative, Str* error);
+// Whether an operation needs the root opened for writing.
+bool FsOperationWrites(FsOperation operation);
+// Stores a link's target text in result->bytes; false, with the reason, when
+// the copy cannot be allocated.
+bool FsSetLinkTarget(FsResult* result, Str target, Str* error);
+
 bool FsRun(FsOperation operation, Str root, Str relative, Str input,
            bool recursive, FsResult* result, Str* error);
 

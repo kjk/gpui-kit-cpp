@@ -210,6 +210,11 @@ struct GridLayoutState {
     void Adopt(const GridArea* items, int n);
     bool Commit(Ctx* cx, const Vec<GridArea>* next);
     void Select(Ctx* cx, bool has, Str id);
+    // Selects `id` when `has` and the item exists, nothing otherwise. False
+    // when that is already the selection.
+    bool ApplySelection(bool has, Str id);
+    // Drops a drag in progress and the snapshots it carried.
+    void ClearDrag();
     bool SelectedArea(GridArea* out) const;
 };
 

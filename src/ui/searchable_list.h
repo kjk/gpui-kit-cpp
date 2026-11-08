@@ -296,6 +296,13 @@ struct SearchableListState {
     }
 };
 
+// An item's place in the caller's flat array from its section and row, -1
+// when there is none; and back. Rows count within a section in array order.
+int SearchableListFlatIndex(const SearchableListState* s, IndexPath path);
+IndexPath SearchableListPath(const SearchableListState* s, int flat);
+// multiple(..): a multi-select list keeps its menu open as items are picked.
+void SearchableListSetMultiple(SearchableListState* s, bool multiple);
+
 // The selection replaced by the one index, which is what a single-select list
 // holds and what a caller seeding one wants. A negative index selects nothing.
 void SearchableListSelectOnly(SearchableListState* s, int index);
@@ -333,28 +340,73 @@ bool SearchableListClick(SearchableListState* s, int index);
 void SearchableListSearch(SearchableListState* s, const SearchableItem* items,
                           int nItems, Str query);
 
-struct SearchableList {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    Str id = {};
-    Entity<SearchableListState> state = {};
+// What a searchable list shows and how: its items and their sections, the
+// query field, the footer, the check mark, the size and the delegate. A
+// Select holds the same and hands it whole to the list it opens.
+struct SearchableListContent {
+    // The items, which are the caller's: they have to outlive the frame, so a
+    // static array rather than one built on the frame arena.
     const SearchableItem* items = nullptr;
     int nItems = 0;
     // The section headings, one per section index; null for a list with none.
     const Str* sections = nullptr;
     int nSections = 0;
+    // searchable(true): a query field at the top of the list, which is what
+    // makes a Select a ComboBox in all but name.
     InputState* query = nullptr;
     Listener onQueryFocus = {};
-    El* empty = nullptr;
     // Combobox::footer: an action under the option list.
     El* footer = nullptr;
-    float w = 240;
-    float maxH = 320;
     // Combobox::check_icon: what marks a selected row.
     IconName checkIcon = IconName::Check;
     UiSize size = UiSize::Medium;
     SearchableListDelegate delegate = {};
     bool hasDelegate = false;
+};
+
+// The setters of that content, on whichever builder holds it (`Base`
+// derives from SearchableListContent); each returns the builder.
+template <typename Self, typename Base>
+struct SearchableContentBuilder : Base {
+    Self* This() { return static_cast<Self*>(this); }
+    Self* Items(const SearchableItem* it, int n) {
+        this->items = it;
+        this->nItems = n;
+        return This();
+    }
+    Self* Sections(const Str* titles, int n) {
+        this->sections = titles;
+        this->nSections = n;
+        return This();
+    }
+    Self* Footer(El* e) {
+        this->footer = e;
+        return This();
+    }
+    Self* CheckIcon(IconName n) {
+        this->checkIcon = n;
+        return This();
+    }
+    Self* WithSize(UiSize s) {
+        this->size = s;
+        return This();
+    }
+    Self* Delegate(const SearchableListDelegate& value) {
+        this->delegate = value;
+        this->hasDelegate = true;
+        return This();
+    }
+};
+
+struct SearchableList
+    : SearchableContentBuilder<SearchableList, SearchableListContent> {
+    Arena* a = nullptr;
+    Ctx* cx = nullptr;
+    Str id = {};
+    Entity<SearchableListState> state = {};
+    El* empty = nullptr;
+    float w = 240;
+    float maxH = 320;
     // Whether a Select encloses this list. One inside a select leaves the
     // keyboard to the select's own context — escape there closes the popup
     // rather than clearing the highlight — while one standing on its own
@@ -365,16 +417,10 @@ struct SearchableList {
 
     static SearchableList* New(Ctx* cx, Str id, Entity<SearchableListState> st,
                                InputState* query);
-    SearchableList* Items(const SearchableItem* items, int n);
-    SearchableList* Sections(const Str* titles, int n);
     SearchableList* OnQueryFocus(Listener fn);
     SearchableList* Empty(El* e);
-    SearchableList* Footer(El* e);
     SearchableList* W(float v);
     SearchableList* MaxH(float v);
-    SearchableList* CheckIcon(IconName n);
-    SearchableList* WithSize(UiSize value);
-    SearchableList* Delegate(const SearchableListDelegate& value);
     SearchableList* InSelect(bool v);
     // Bounce the option list at its vertical boundaries. On by default on
     // iOS, Android and macOS, off elsewhere.

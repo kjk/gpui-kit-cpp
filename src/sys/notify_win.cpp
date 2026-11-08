@@ -47,18 +47,6 @@ static void FillIconData(NOTIFYICONDATAW* nid) {
     nid->uID = kIconId;
 }
 
-// `tag` is not NUL-terminated; the copy is.
-static void SetTag(Str tag) {
-    int n = len(tag);
-    if (n > kTagCap - 1) {
-        n = kTagCap - 1;
-    }
-    if (n > 0) {
-        memcpy(gNotify.tag, tag.s, (size_t)n);
-    }
-    gNotify.tag[n] = 0;
-}
-
 static LRESULT CALLBACK NotifyWndProc(HWND hwnd, UINT msg, WPARAM wp,
                                       LPARAM lp) {
     if (msg != kNotifyMsg) {
@@ -171,7 +159,7 @@ bool SysNotifyShow(Str tag, Str title, Str body) {
     if (!Shell_NotifyIconW(NIM_MODIFY, &nid)) {
         return false;
     }
-    SetTag(tag);
+    StrCopyCapped(gNotify.tag, kTagCap, tag);
     return true;
 }
 

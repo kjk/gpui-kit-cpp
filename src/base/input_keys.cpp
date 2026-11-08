@@ -81,18 +81,15 @@ Str InputContext() {
     return StrL("Input");
 }
 
-// wasm, iOS and Android: the non-mac set, with shift-alt cursors rather than
-// ctrl-alt (Linux desktops reserve those, and these targets follow that).
-void InputBindKeysOther(const char* ctx) {
+void InputBindKeysNonMac(const char* ctx, const KeyBinding* extra, int nExtra) {
+    if (extra && nExtra > 0) {
+        KeymapBind(extra, nExtra);
+    }
     KeyBinding bindings[] = {
         {"ctrl-backspace", input::DeleteToPreviousWordStart(), ctx},
         {"ctrl-delete", input::DeleteToNextWordEnd(), ctx},
         {"ctrl-]", input::Indent(), ctx},
         {"ctrl-[", input::Outdent(), ctx},
-        {"shift-alt-left", input::SelectLeft(), ctx},
-        {"shift-alt-right", input::SelectRight(), ctx},
-        {"shift-alt-up", input::AddCursorAbove(), ctx},
-        {"shift-alt-down", input::AddCursorBelow(), ctx},
         {"ctrl-shift-left", input::SelectToPreviousWordStart(), ctx},
         {"ctrl-shift-right", input::SelectToNextWordEnd(), ctx},
         {"ctrl-a", input::SelectAll(), ctx},
@@ -118,7 +115,15 @@ void InputBindKeysOther(const char* ctx) {
     KeymapBind(bindings, (int)(sizeof(bindings) / sizeof(bindings[0])));
 }
 
-void InputBindPlatformKeys(const char* ctx);
+void InputBindKeysOther(const char* ctx) {
+    KeyBinding extra[] = {
+        {"shift-alt-left", input::SelectLeft(), ctx},
+        {"shift-alt-right", input::SelectRight(), ctx},
+        {"shift-alt-up", input::AddCursorAbove(), ctx},
+        {"shift-alt-down", input::AddCursorBelow(), ctx},
+    };
+    InputBindKeysNonMac(ctx, extra, (int)(sizeof(extra) / sizeof(extra[0])));
+}
 
 void InputInitKeys() {
     static uint32_t bound = 0;

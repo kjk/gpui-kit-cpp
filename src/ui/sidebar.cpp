@@ -289,25 +289,12 @@ SidebarMenuItem* SidebarMenuItem::ContextMenu(PopupMenu* menu) {
     return this;
 }
 
-SidebarMenu* SidebarMenu::New(Ctx* cx) {
-    Arena* a = cx->a;
-    SidebarMenu* m = ArenaNew<SidebarMenu>(a);
-    m->a = a;
-    m->cx = cx;
-    return m;
-}
 SidebarMenu* SidebarMenu::Child(SidebarMenuItem* item) {
     if (item) {
         items.Append(a, item);
     }
     return this;
 }
-SidebarMenu* SidebarMenu::Refine(const Style& v, uint32_t fields) {
-    StyleApplyFields(&style, v, fields);
-    styleSet |= fields;
-    return this;
-}
-
 El* SidebarMenu::IntoEl(Str id) {
     IdScope scope(cx, id);
     El* col = Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f)); // gap_2
@@ -397,69 +384,11 @@ static El* SidebarBand(Ctx* cx, const ArenaVec<El*>& children, bool selected,
     return BindClick(row, id, onClick);
 }
 
-SidebarHeader* SidebarHeader::New(Ctx* cx) {
-    SidebarHeader* header = ArenaNew<SidebarHeader>(cx->a);
-    header->a = cx->a;
-    header->cx = cx;
-    return header;
-}
-SidebarHeader* SidebarHeader::Child(El* child) {
-    if (child) {
-        children.Append(a, child);
-    }
-    return this;
-}
-SidebarHeader* SidebarHeader::Selected(bool v) {
-    selected = v;
-    return this;
-}
-SidebarHeader* SidebarHeader::Collapsed(bool v) {
-    collapsed = v;
-    return this;
-}
-SidebarHeader* SidebarHeader::OnClick(Listener fn) {
-    onClick = fn;
-    return this;
-}
-SidebarHeader* SidebarHeader::Refine(const Style& v, uint32_t fields) {
-    StyleApplyFields(&style, v, fields);
-    styleSet |= fields;
-    return this;
-}
 El* SidebarHeader::IntoEl() {
     return SidebarBand(cx, children, selected, onClick, StrL("sidebar-header"),
                        style, styleSet, refiner);
 }
 
-SidebarFooter* SidebarFooter::New(Ctx* cx) {
-    SidebarFooter* footer = ArenaNew<SidebarFooter>(cx->a);
-    footer->a = cx->a;
-    footer->cx = cx;
-    return footer;
-}
-SidebarFooter* SidebarFooter::Child(El* child) {
-    if (child) {
-        children.Append(a, child);
-    }
-    return this;
-}
-SidebarFooter* SidebarFooter::Selected(bool v) {
-    selected = v;
-    return this;
-}
-SidebarFooter* SidebarFooter::Collapsed(bool v) {
-    collapsed = v;
-    return this;
-}
-SidebarFooter* SidebarFooter::OnClick(Listener fn) {
-    onClick = fn;
-    return this;
-}
-SidebarFooter* SidebarFooter::Refine(const Style& v, uint32_t fields) {
-    StyleApplyFields(&style, v, fields);
-    styleSet |= fields;
-    return this;
-}
 El* SidebarFooter::IntoEl() {
     // Footer's Styled/InteractiveElement implementation belongs to `base`,
     // which the themed outer row wraps as one child upstream.

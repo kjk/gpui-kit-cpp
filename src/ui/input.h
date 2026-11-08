@@ -135,7 +135,61 @@ struct NativeMenu;
 using EditorContextMenuFn = NativeMenu* (*)(Ctx * cx, NativeMenu* empty,
                                             void* data);
 
-struct Input {
+// The paste hook and the right-click menu an Input, a Textarea and an Editor
+// all take and set the same way. `Self` is the builder each setter returns.
+template <typename Self>
+struct EditorHooks {
+    InputPasteFn onPaste = nullptr;
+    void* onPasteData = nullptr;
+    EditorContextMenuFn contextMenu = nullptr;
+    void* contextMenuData = nullptr;
+
+    // context_menu(..): overrides the built-in right-click menu.
+    Self* ContextMenu(EditorContextMenuFn fn, void* data = nullptr) {
+        contextMenu = fn;
+        contextMenuData = data;
+        return static_cast<Self*>(this);
+    }
+    Self* OnPaste(InputPasteFn fn, void* data = nullptr) {
+        onPaste = fn;
+        onPasteData = data;
+        return static_cast<Self*>(this);
+    }
+};
+
+// ...and, for an Input and a Textarea, how inline tokens render, click and
+// hover.
+template <typename Self>
+struct InputFieldHooks : EditorHooks<Self> {
+    InlineTokenRenderer tokenRenderer = nullptr;
+    void* tokenRendererUser = nullptr;
+    InlineTokenClickListener tokenClick = nullptr;
+    void* tokenClickUser = nullptr;
+    InlineTokenHoverListener tokenHover = nullptr;
+    void* tokenHoverUser = nullptr;
+
+    // The element each atomic token renders as; the input keeps editing
+    // and history. Default is InputToken.
+    Self* Token(InlineTokenRenderer fn, void* user = nullptr) {
+        tokenRenderer = fn;
+        tokenRendererUser = user;
+        return static_cast<Self*>(this);
+    }
+    Self* OnTokenClick(InlineTokenClickListener fn, void* user = nullptr) {
+        tokenClick = fn;
+        tokenClickUser = user;
+        return static_cast<Self*>(this);
+    }
+    // Report pointer presence over a token so the application can show a
+    // tooltip or run custom logic. Hover never selects or edits.
+    Self* OnTokenHover(InlineTokenHoverListener fn, void* user = nullptr) {
+        tokenHover = fn;
+        tokenHoverUser = user;
+        return static_cast<Self*>(this);
+    }
+};
+
+struct Input : InputFieldHooks<Input> {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
@@ -166,22 +220,10 @@ struct Input {
     Listener onFocus;
     Listener onClear;
     Listener onToggleMask;
-    InputPasteFn onPaste = nullptr;
-    void* onPasteData = nullptr;
-    InlineTokenRenderer tokenRenderer = nullptr;
-    void* tokenRendererUser = nullptr;
-    InlineTokenClickListener tokenClick = nullptr;
-    void* tokenClickUser = nullptr;
-    InlineTokenHoverListener tokenHover = nullptr;
-    void* tokenHoverUser = nullptr;
-    EditorContextMenuFn contextMenu = nullptr;
-    void* contextMenuData = nullptr;
     // Styled::style: the caller's refinement, applied to the root last.
     ElRefiner refiner = {};
 
     static Input* New(Ctx* cx, Str id, InputState* state);
-    // context_menu(..): overrides the built-in right-click menu.
-    Input* ContextMenu(EditorContextMenuFn fn, void* data = nullptr);
     Input* Label(Str s);
     Input* WithSize(UiSize s);
     Input* Align(InputAlign v);
@@ -210,14 +252,6 @@ struct Input {
     Input* W(float v);
     Input* OnChange(Listener fn);
     Input* OnFocus(Listener fn);
-    Input* OnPaste(InputPasteFn fn, void* data = nullptr);
-    // The element each atomic token renders as; the input keeps editing
-    // and history. Default is InputToken.
-    Input* Token(InlineTokenRenderer fn, void* user = nullptr);
-    Input* OnTokenClick(InlineTokenClickListener fn, void* user = nullptr);
-    // Report pointer presence over a token so the application can show a
-    // tooltip or run custom logic. Hover never selects or edits.
-    Input* OnTokenHover(InlineTokenHoverListener fn, void* user = nullptr);
     El* IntoEl();
 };
 
@@ -253,7 +287,7 @@ struct SearchPanel {
 // editor.rs Editor. Highlighter remains the compatibility spelling for the
 // earlier façade; Editor is the source-shaped styled control over the same
 // retained InputState engine.
-struct Editor {
+struct Editor : EditorHooks<Editor> {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
@@ -272,10 +306,6 @@ struct Editor {
     int tabIndex = 0;
     AccessibilityRole accessibilityRole = AccessibilityRole::MultilineTextInput;
     Str ariaLabel = {};
-    EditorContextMenuFn contextMenu = nullptr;
-    void* contextMenuData = nullptr;
-    InputPasteFn onPaste = nullptr;
-    void* onPasteData = nullptr;
     // The port keeps EditorState's source-language/decorations settings on
     // the frame value which binds that state. These are forwarded to the
     // compatibility Highlighter implementation; callers can stay on the
@@ -308,8 +338,6 @@ struct Editor {
     Editor* TabIndex(int value);
     Editor* Role(AccessibilityRole value);
     Editor* AriaLabel(Str value);
-    Editor* ContextMenu(EditorContextMenuFn fn, void* data = nullptr);
-    Editor* OnPaste(InputPasteFn fn, void* data = nullptr);
     Editor* Language(Str value);
     Editor* Decorations(const TextSpan* runs, int n);
     Editor* ActiveLine(bool value = true);
@@ -372,7 +400,7 @@ struct HoverPopover {
     El* IntoEl();
 };
 
-struct Textarea {
+struct Textarea : InputFieldHooks<Textarea> {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
@@ -397,22 +425,10 @@ struct Textarea {
     bool readonly = false;
     bool focusRing = true;
     Listener onFocus;
-    InputPasteFn onPaste = nullptr;
-    void* onPasteData = nullptr;
-    InlineTokenRenderer tokenRenderer = nullptr;
-    void* tokenRendererUser = nullptr;
-    InlineTokenClickListener tokenClick = nullptr;
-    void* tokenClickUser = nullptr;
-    InlineTokenHoverListener tokenHover = nullptr;
-    void* tokenHoverUser = nullptr;
-    EditorContextMenuFn contextMenu = nullptr;
-    void* contextMenuData = nullptr;
     // Styled::style: the caller's refinement, applied to the root last.
     ElRefiner refiner = {};
 
     static Textarea* New(Ctx* cx, Str id, InputState* state);
-    // context_menu(..): overrides the built-in right-click menu.
-    Textarea* ContextMenu(EditorContextMenuFn fn, void* data = nullptr);
     // Rust sizes a textarea by rows (`auto_grow(min, max)`); without one it
     // keeps the two-row default. An explicit height wins, as `.h(px(..))`
     // does there.
@@ -429,12 +445,6 @@ struct Textarea {
     Textarea* Bordered(bool v);
     Textarea* FocusRing(bool v);
     Textarea* OnFocus(Listener fn);
-    Textarea* OnPaste(InputPasteFn fn, void* data = nullptr);
-    Textarea* Token(InlineTokenRenderer fn, void* user = nullptr);
-    Textarea* OnTokenClick(InlineTokenClickListener fn, void* user = nullptr);
-    // Report pointer presence over a token so the application can show a
-    // tooltip or run custom logic. Hover never selects or edits.
-    Textarea* OnTokenHover(InlineTokenHoverListener fn, void* user = nullptr);
     El* IntoEl();
 };
 
@@ -568,7 +578,7 @@ struct InputGroup {
     El* IntoEl();
 };
 
-struct NumberInput {
+struct NumberInput : NumberRange {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
@@ -588,10 +598,6 @@ struct NumberInput {
     bool hasTextColor = false;
     NumberStep numberStep = {};
     bool hasNumberStep = true;
-    bool hasMin = false;
-    double min = 0;
-    bool hasMax = false;
-    double max = 0;
     Listener onStep;
     Listener onInc;
     Listener onDec;

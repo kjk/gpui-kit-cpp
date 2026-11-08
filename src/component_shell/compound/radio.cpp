@@ -53,14 +53,6 @@ static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
     return true;
 }
 
-static bool RecordSize(PayloadBuild* build, const ComponentArgument* args,
-                       int) {
-    RadioOp* op = build->New<RadioOp>();
-    op->kind = RadioOp::Size;
-    op->size = SizeOfLiteral(args[0].string);
-    return true;
-}
-
 static bool RecordChange(PayloadBuild* build, const ComponentArgument* args,
                          int) {
     RadioOp* op = build->New<RadioOp>();
@@ -123,7 +115,6 @@ static El* Materialize(MaterializeRequest* request) {
     return typed_compound::FinishPart(request, radio);
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
 static constexpr ArgumentDescriptor kA11yArgs[] = {
     {"accessibility_label", SchemaString()}};
@@ -131,13 +122,11 @@ static constexpr ArgumentDescriptor kCheckedArgs[] = {
     {"checked", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kTabStopArgs[] = {
     {"tab_stop", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ArgumentDescriptor kChangeArgs[] = {
     {"on_change", SchemaCallback("(checked: boolean, cx: Context) => void")}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
-    {"Radio", kIdArgs, &Construct}};
+    {"Radio", kIdArguments, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     {"label", kLabelArgs, "Sets the visible label.",
      &RecordString<RadioOp::Label>},
@@ -147,7 +136,8 @@ static constexpr MethodDescriptor kMethods[] = {
      &RecordBool<RadioOp::Checked>},
     {"tab_stop", kTabStopArgs, "Controls keyboard tab-stop participation.",
      &RecordBool<RadioOp::TabStop>},
-    {"size", kSizeArgs, "Sets semantic size.", &RecordSize},
+    {"size", kSizeArguments, "Sets semantic size.",
+     &RecordSizeOp<RadioOp, RadioOp::Size>},
     {"on_change", kChangeArgs,
      "Reports a click on a radio used on its own. Inside a `RadioGroup` the "
      "group reports the selected index instead.",

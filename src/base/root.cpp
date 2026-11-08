@@ -148,8 +148,7 @@ El* RootSurface(Ctx* cx, Root* root, El* content) {
         }
         if (El* overlay = plugins[i].type->render(plugins[i].state, cx)) {
             if (!overlays) {
-                overlays =
-                    Div(a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0);
+                overlays = Div(a)->Absolute()->Inset0();
             }
             overlays->Child(overlay);
         }

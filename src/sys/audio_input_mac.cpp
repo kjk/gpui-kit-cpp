@@ -50,17 +50,6 @@ static void OnQueueInput(void* user, AudioQueueRef queue,
     }
 }
 
-static void SetMessage(char* message, int cap, Str text) {
-    if (!message || cap <= 0) {
-        return;
-    }
-    int n = len(text) < cap - 1 ? len(text) : cap - 1;
-    if (n > 0) {
-        memcpy(message, text.s, (size_t)n);
-    }
-    message[n] = 0;
-}
-
 bool SysAudioInputAvailable() {
     return true;
 }
@@ -76,7 +65,7 @@ bool SysAudioInputDeviceName(char* out, int cap) {
         return false;
     }
     const char* name = [[device localizedName] UTF8String];
-    SetMessage(out, cap, Str(name && name[0] ? name : "Unnamed device"));
+    StrCopyCapped(out, cap, Str(name && name[0] ? name : "Unnamed device"));
     return true;
 }
 
@@ -84,7 +73,7 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
                                      uint32_t* sampleRate,
                                      AudioInputError* error, char* message,
                                      int messageCap) {
-    SetMessage(message, messageCap, Str{});
+    StrCopyCapped(message, messageCap, Str{});
     AVAuthorizationStatus access =
         [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
     if (access == AVAuthorizationStatusDenied ||
@@ -123,8 +112,9 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
         // kAudioQueueErr_InvalidDevice and its like: nothing to record from.
         *error =
             s->queue ? AudioInputError::Failed : AudioInputError::NoInputDevice;
-        SetMessage(message, messageCap,
-                   fmt("cannot start the audio input queue (%d)", (int)status));
+        StrCopyCapped(
+            message, messageCap,
+            fmt("cannot start the audio input queue (%d)", (int)status));
         if (s->queue) {
             AudioQueueDispose(s->queue, true);
         }

@@ -308,7 +308,6 @@ static El* MaterializeToggle(MaterializeRequest* request) {
     return request->ApplyStyle(toggle->IntoEl());
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
 static constexpr ArgumentDescriptor kAccessibilityLabelArgs[] = {
     {"accessibility_label", SchemaString()}};
@@ -318,11 +317,9 @@ static constexpr ArgumentDescriptor kLoadingArgs[] = {
     {"loading", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kCheckedArgs[] = {
     {"checked", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr ConstructorDescriptor kButtonConstructors[] = {
-    {"Button", kIdArgs, &ConstructButton}};
+    {"Button", kIdArguments, &ConstructButton}};
 static constexpr MethodDescriptor kButtonMethods[] = {
     kOnClickMethod,
     kDisabledMethod,
@@ -335,7 +332,8 @@ static constexpr MethodDescriptor kButtonMethods[] = {
      &RecordButtonString<ButtonOp::Tooltip>},
     {"loading", kLoadingArgs, "Sets the loading presentation.",
      &RecordButtonLoading},
-    {"size", kSizeArgs, "Sets the semantic control size.", &RecordButtonSize},
+    {"size", kSizeArguments, "Sets the semantic control size.",
+     &RecordButtonSize},
     {"outline",
      {},
      "Uses the outline presentation.",
@@ -404,11 +402,11 @@ static constexpr const char* kStateDocumentation =
     "can carry values.";
 
 static constexpr ConstructorDescriptor kCheckboxConstructors[] = {
-    {"Checkbox", kIdArgs, &ConstructCheckbox}};
+    {"Checkbox", kIdArguments, &ConstructCheckbox}};
 static constexpr ConstructorDescriptor kSwitchConstructors[] = {
-    {"Switch", kIdArgs, &ConstructSwitch}};
+    {"Switch", kIdArguments, &ConstructSwitch}};
 static constexpr ConstructorDescriptor kToggleConstructors[] = {
-    {"Toggle", kIdArgs, &ConstructToggle}};
+    {"Toggle", kIdArguments, &ConstructToggle}};
 
 static constexpr ComponentDescriptor kCheckbox = {
     "Checkbox", kCheckboxConstructors, kStateMethods, kStateDocumentation,

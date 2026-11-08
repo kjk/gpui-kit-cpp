@@ -66,6 +66,13 @@ inline Rgba Rgba8(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 inline bool RgbaEq(Rgba a, Rgba b) {
     return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
+// The grey a colour turns into when an image or icon is drawn grayscale:
+// Rec. 709 luma in 8.8 fixed point.
+inline uint8_t RgbLuma709(uint8_t r, uint8_t g, uint8_t b) {
+    return (
+        uint8_t)(((uint32_t)r * 54 + (uint32_t)g * 183 + (uint32_t)b * 19) >>
+                 8);
+}
 inline Rgba RgbaHex(uint32_t hex) {
     // 0xRRGGBB or 0xAARRGGBB if top byte set
     if (hex > 0xFFFFFFu) {
@@ -74,6 +81,25 @@ inline Rgba RgbaHex(uint32_t hex) {
     }
     return Rgba{(uint8_t)((hex >> 16) & 0xff), (uint8_t)((hex >> 8) & 0xff),
                 (uint8_t)(hex & 0xff), 255};
+}
+// The digits of a hex colour (no `#`; 3, 4, 6 or 8 of them) as an Rgba:
+// base's ParseHexRgba, `gpui::Rgba::try_from(&str)`.
+inline bool RgbaParseHexDigits(Str digits, Rgba* out) {
+    uint32_t v = 0;
+    if (!ParseHexRgba(digits, &v)) {
+        return false;
+    }
+    *out = Rgba{(uint8_t)(v >> 24), (uint8_t)(v >> 16), (uint8_t)(v >> 8),
+                (uint8_t)v};
+    return true;
+}
+// The same with its leading "#": `gpui::Rgba::try_from(&str)`. A caller that
+// takes fewer forms checks the length first.
+inline bool RgbaParseHex(Str s, Rgba* out) {
+    if (len(s) < 2 || s.s[0] != '#') {
+        return false;
+    }
+    return RgbaParseHexDigits(Str(s.s + 1, len(s) - 1), out);
 }
 Rgba RgbaOpacity(Rgba c, float a01);
 // A plain per-channel blend, weighted toward `a`. Not Colorize::mix — that is
@@ -483,23 +509,24 @@ enum class DispatchPhase : uint8_t {
     Bubble
 };
 
-struct MouseDownEvent {
+// What a press and a release both carry: the button, where it was, the box
+// of the element that heard it, the modifiers, the run of clicks it is in
+// and the pass of the chain.
+struct MouseButtonEvent {
     MouseButton button = MouseButton::Left;
     float x = 0;
     float y = 0;
-    // The box of the element the press landed on, when it has an identity —
-    // the same thing ClickEvent::el carries, and what a handler needs to
-    // place something where the press was inside it. A Rust hitbox has the
-    // bounds too; the event does not, because the closure already has them.
+    // The box of the element the press landed on (or that heard the
+    // release), when it has an identity — the same thing ClickEvent::el
+    // carries, and what a handler needs to place something where the press
+    // was inside it. A Rust hitbox has the bounds too; the event does not,
+    // because the closure already has them. The chain fills it in as the
+    // event walks.
     Bounds el = {};
     Modifiers modifiers = {};
     // How many presses this one is in an unbroken run: 1, 2, 3… What Rust's
     // on_double_click tests — `on_click(|ev, ..| ev.click_count() == 2)`.
     int clickCount = 1;
-    // The press that also activated the window. Windows knows from
-    // WM_MOUSEACTIVATE; X11 has no such notion and a Cocoa view does not
-    // accept the first mouse, so it is false on those two.
-    bool firstMouse = false;
     // Which pass of the chain this is. A handler registered for one phase only
     // ever sees that phase; the field is there for one that took both.
     DispatchPhase phase = DispatchPhase::Bubble;
@@ -508,19 +535,14 @@ struct MouseDownEvent {
     bool IsFocusing() const { return button == MouseButton::Left; }
 };
 
-struct MouseUpEvent {
-    MouseButton button = MouseButton::Left;
-    float x = 0;
-    float y = 0;
-    // The box of the element that heard it, the way MouseDownEvent carries
-    // one. The chain fills it in as the event walks.
-    Bounds el = {};
-    Modifiers modifiers = {};
-    int clickCount = 1;
-    DispatchPhase phase = DispatchPhase::Bubble;
-
-    bool IsFocusing() const { return button == MouseButton::Left; }
+struct MouseDownEvent : MouseButtonEvent {
+    // The press that also activated the window. Windows knows from
+    // WM_MOUSEACTIVATE; X11 has no such notion and a Cocoa view does not
+    // accept the first mouse, so it is false on those two.
+    bool firstMouse = false;
 };
+
+struct MouseUpEvent : MouseButtonEvent {};
 
 struct MouseMoveEvent {
     float x = 0;
@@ -1539,7 +1561,34 @@ struct ChartSeries;
 // chart's default fill for a ramp across the plot, which has no one colour.
 Rgba ChartBarTooltipColor(const ChartSeries& c, int index);
 
-struct ChartSeries {
+// The value-axis options a chart's paint reads: what the point charts'
+// PointAxes builds and BarChart's value-axis setters fill.
+struct ChartAxisOptions {
+    // y_axis: tick labels at each of the yTickCount y ticks.
+    bool yAxis = false;
+    // y_axis_label_placement / value_axis_label_placement.
+    AxisLabelPlacement axisLabelPlacement = AxisLabelPlacement::Outside;
+    // y_tick_count: the y ticks, both ends included, which place the
+    // horizontal grid lines and the labels. At least 2.
+    int yTickCount = 5;
+    // y_tick_format / value_tick_format; null is whole numbers bare and the
+    // rest to one decimal.
+    ChartTickFormatFn tickFormat = nullptr;
+    void* tickFormatUser = nullptr;
+    // x_tick_count / band_tick_count: label that many items spread from the
+    // first to the last instead of every tickMargin-th. -1 is None.
+    int xTickCount = -1;
+    // grid_columns: vertical grid lines, the first on the left edge.
+    int gridColumns = 0;
+    // grid_dashed.
+    bool gridDashed = true;
+    // y_padding: the space kept above the highest value and below the
+    // lowest.
+    float yPaddingTop = 10;
+    float yPaddingBottom = 0;
+};
+
+struct ChartSeries : ChartAxisOptions {
     ChartKind kind = ChartKind::Area;
     const float* ys = nullptr;
     // The first series as the caller gave it, when it gave doubles: what the
@@ -1570,29 +1619,6 @@ struct ChartSeries {
     // many points and the data fills the leading ones. 0 is the data's own
     // length; a count below it has no effect.
     int pointCount = 0;
-    // The point charts' PointAxes and BarChart's value-axis options.
-    // y_axis: tick labels at each of the yTickCount y ticks.
-    bool yAxis = false;
-    // y_axis_label_placement / value_axis_label_placement.
-    AxisLabelPlacement axisLabelPlacement = AxisLabelPlacement::Outside;
-    // y_tick_count: the y ticks, both ends included, which place the
-    // horizontal grid lines and the labels. At least 2.
-    int yTickCount = 5;
-    // y_tick_format / value_tick_format; null is whole numbers bare and the
-    // rest to one decimal.
-    ChartTickFormatFn tickFormat = nullptr;
-    void* tickFormatUser = nullptr;
-    // x_tick_count / band_tick_count: label that many items spread from the
-    // first to the last instead of every tickMargin-th. -1 is None.
-    int xTickCount = -1;
-    // grid_columns: vertical grid lines, the first on the left edge.
-    int gridColumns = 0;
-    // grid_dashed.
-    bool gridDashed = true;
-    // y_padding: the space kept above the highest value and below the
-    // lowest.
-    float yPaddingTop = 10;
-    float yPaddingBottom = 0;
     // reference_line: dashed lines across the plot at these values.
     const double* referenceLines = nullptr;
     int nReferenceLines = 0;
@@ -2439,6 +2465,15 @@ enum class AccessibilityRole : uint8_t {
     Terminal
 };
 
+// The single- and multi-line text fields (text, password, email, phone,
+// URL, date and date-time), which every platform bridge and the tree's own
+// name and focus rules treat as one kind of control.
+bool AccessibilityRoleIsTextField(AccessibilityRole role);
+// Every role a user types into: the text fields above plus the search,
+// number, week, month and time inputs. The AT-SPI and AppKit bridges expose
+// all of them as editable text.
+bool AccessibilityRoleTakesText(AccessibilityRole role);
+
 enum class AccessibilityToggled : uint8_t {
     Unset,
     False,
@@ -3283,6 +3318,8 @@ struct El {
     El* Left(float v);
     El* Bottom(float v);
     El* Right(float v);
+    // Styled::inset_0: top, right, bottom and left all 0.
+    El* Inset0();
     El* LeftRel(float frac);
     El* RightRel(float frac);
     El* TopRel(float frac);
@@ -4047,13 +4084,8 @@ enum class CharKind : uint8_t {
 };
 
 // `CharKindOf` and `Utf8ClipLeft` are text_boundary.rs's own and live in
-// `base/text_boundary.h`; these two are the `char` iteration Rust gets
-// from `str`, which every caller of either needs first.
-
-// The codepoint at byte `i` and how many bytes it took.
-int Utf8At(Str s, int i, uint32_t* out);
-// Where the character before `i` starts.
-int Utf8Prev(Str s, int i);
+// `base/text_boundary.h`; the `char` iteration Rust gets from `str`, which
+// every caller of either needs first, is base's `Utf8At` / `Utf8Prev`.
 
 // ─── rope ─────────────────────────────────────────────────────────────────
 //
@@ -6615,6 +6647,12 @@ void TextMeasClear(PaintCtx* ctx);
 // of text that was never drawn.
 // The font word MeasureText uses for this element: weight, mono, italic.
 uint16_t ElTextWeight(const El* e);
+// The packed weight bits (kFontWeight*) for a FontWeight; `unknown` for a
+// value that is not one of the nine (0, unset, among them).
+uint8_t FontWeightBits(FontWeight weight, uint8_t unknown);
+// The same for a style's FontWeight, or for its bold / semibold / medium
+// flags when no weight is set; `unset` when neither.
+uint16_t StyleFontWeightBits(const Style& s, uint16_t unset);
 
 bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                  int off, float* outX, float* outY, float* outH,
@@ -6815,6 +6853,13 @@ bool TextMultiClickRange(PaintCtx* ctx, float x, float y, int clickCount,
 bool TextMultiClickRangeIn(PaintCtx* ctx, float x, float y, int clickCount,
                            int scope, int* outA, int* outB, int* outScope);
 int HashClickId(Str s);
+// FNV-1a, the hash element ids, action names and content keys are taken with.
+// Each continues from h over n bytes at p; a fresh hash starts from the offset
+// basis.
+const uint32_t kFnv1aBasis32 = 2166136261u;
+const uint64_t kFnv1aBasis64 = 1469598103934665603ull;
+uint32_t Fnv1a32(uint32_t h, const void* p, size_t n);
+uint64_t Fnv1a64(uint64_t h, const void* p, size_t n);
 
 // Which of the three fills a box paints. GPUI resolves this by refining the
 // hovered style and then the active one over the base, so the pressed fill
@@ -7391,6 +7436,10 @@ struct Window {
     // AppInvalidate calls since the last recorded frame; the next frame takes
     // them as its `invalidations` and zeroes it.
     uint64_t invalidations = 0;
+    // A repaint is owed: AppInvalidate sets it, a platform's redraw clears it.
+    // The browser's frame loop paints only when it is set; Windows asks the
+    // OS for a WM_PAINT instead (PlatInvalidate).
+    bool dirty = true;
 
     Window() = default;
     // Drops the focus registration a field is still holding on this window.
@@ -8133,7 +8182,13 @@ bool ClipboardReadAsync(Window* win, ClipboardReadFn done, void* data);
 // macOS NSTextContent autofill metadata. The other platforms intentionally
 // accept and ignore it, matching gpui-kit's cfg-gated implementation.
 // An empty value clears the metadata.
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_WASM
+inline void WindowSetTextContentType(Window* win, Str value) {
+    (void)win, (void)value;
+}
+#else
 void WindowSetTextContentType(Window* win, Str value);
+#endif
 
 // cx.open_url: hand a link to whatever the desktop opens links with. Rust's
 // takes an `&str` and answers nothing, and so does this — a browser that
@@ -8220,6 +8275,8 @@ void IdsCollectChildren(El* e);
 void AccessibilityCollect(El* root, Vec<AccessibilityNode>* out);
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId);
+// Where node `nodeId` sits in `win->accessibility`; -1 when it is not there.
+int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId);
 bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
                                 AccessibilityAction action, Str value = {});
 // RangeValue::SetValue needs an absolute numeric setter rather than a run of

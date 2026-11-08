@@ -5,32 +5,19 @@ namespace gpui {
 
 namespace action {
 
-// The hash is cheap, but it is the same hash every frame for the life of the
-// process, so each name is taken once and kept.
-#define GPUI_ACTION(fn, name)          \
-    uint32_t fn() {                    \
-        static uint32_t id = 0;        \
-        if (!id) {                     \
-            id = ActionOf(StrL(name)); \
-        }                              \
-        return id;                     \
-    }
-
-GPUI_ACTION(Confirm, "ui::Confirm")
-GPUI_ACTION(NoAction, "gpui::NoAction")
-GPUI_ACTION(Cancel, "ui::Cancel")
-GPUI_ACTION(SelectUp, "ui::SelectUp")
-GPUI_ACTION(SelectDown, "ui::SelectDown")
-GPUI_ACTION(SelectLeft, "ui::SelectLeft")
-GPUI_ACTION(SelectRight, "ui::SelectRight")
-GPUI_ACTION(SelectFirst, "ui::SelectFirst")
-GPUI_ACTION(SelectLast, "ui::SelectLast")
-GPUI_ACTION(SelectPrevColumn, "ui::SelectPrevColumn")
-GPUI_ACTION(SelectNextColumn, "ui::SelectNextColumn")
-GPUI_ACTION(SelectPageUp, "ui::SelectPageUp")
-GPUI_ACTION(SelectPageDown, "ui::SelectPageDown")
-
-#undef GPUI_ACTION
+GPUI_DEFINE_ACTION(Confirm, "ui::Confirm")
+GPUI_DEFINE_ACTION(NoAction, "gpui::NoAction")
+GPUI_DEFINE_ACTION(Cancel, "ui::Cancel")
+GPUI_DEFINE_ACTION(SelectUp, "ui::SelectUp")
+GPUI_DEFINE_ACTION(SelectDown, "ui::SelectDown")
+GPUI_DEFINE_ACTION(SelectLeft, "ui::SelectLeft")
+GPUI_DEFINE_ACTION(SelectRight, "ui::SelectRight")
+GPUI_DEFINE_ACTION(SelectFirst, "ui::SelectFirst")
+GPUI_DEFINE_ACTION(SelectLast, "ui::SelectLast")
+GPUI_DEFINE_ACTION(SelectPrevColumn, "ui::SelectPrevColumn")
+GPUI_DEFINE_ACTION(SelectNextColumn, "ui::SelectNextColumn")
+GPUI_DEFINE_ACTION(SelectPageUp, "ui::SelectPageUp")
+GPUI_DEFINE_ACTION(SelectPageDown, "ui::SelectPageDown")
 
 } // namespace action
 

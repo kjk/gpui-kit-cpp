@@ -58,6 +58,22 @@ struct MenuItem {
     El* element = nullptr;
 };
 
+// A row's icon (MenuItem's or NativeMenuItem's) from the Icon a builder was
+// handed: its name, and its SVG source or else its asset path. Null leaves
+// the row without one.
+template <typename Item>
+void MenuItemSetIcon(Item* it, const Icon* icon) {
+    if (!icon) {
+        return;
+    }
+    it->icon = icon->name;
+    if (icon->source == IconSource::Data) {
+        it->iconSvg = icon->data;
+    } else {
+        it->iconPath = icon->path;
+    }
+}
+
 struct PopupMenu {
     Arena* a = nullptr;
     Ctx* cx = nullptr;

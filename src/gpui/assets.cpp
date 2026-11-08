@@ -218,6 +218,15 @@ bool AssetsFindDir(Str relDir, char* out, int cap) {
     return false;
 }
 
+// relPath as a root-relative path in the OS's own separators, cut to fit
+// kMaxPath.
+static TempStr AssetRelPathTemp(Str relPath) {
+    int n = len(relPath) < kMaxPath - 1 ? len(relPath) : kMaxPath - 1;
+    TempStr rel = StrDupTemp(Str(relPath.s, n));
+    ToNativeSep(rel);
+    return rel;
+}
+
 bool AssetsLoad(Str relPath, Vec<uint8_t>* out) {
     if (!relPath.s || len(relPath) <= 0 || !out) {
         return false;
@@ -225,9 +234,7 @@ bool AssetsLoad(Str relPath, Vec<uint8_t>* out) {
     for (int i = gSourceN - 1; i >= 0; i--)
         if (gSources[i].load(gSources[i].user, relPath, out)) return true;
 
-    int n = len(relPath) < kMaxPath - 1 ? len(relPath) : kMaxPath - 1;
-    TempStr rel = StrDupTemp(Str(relPath.s, n));
-    ToNativeSep(rel);
+    TempStr rel = AssetRelPathTemp(relPath);
 
     for (int i = 0; i < gRootN; i++) {
         TempStr full = JoinPathTemp(Str(gRoots[i]), rel);
@@ -264,9 +271,7 @@ bool AssetsExists(Str relPath) {
         if (gSources[i].exists && gSources[i].exists(gSources[i].user, relPath))
             return true;
 
-    int n = len(relPath) < kMaxPath - 1 ? len(relPath) : kMaxPath - 1;
-    TempStr rel = StrDupTemp(Str(relPath.s, n));
-    ToNativeSep(rel);
+    TempStr rel = AssetRelPathTemp(relPath);
 
     for (int i = 0; i < gRootN; i++) {
         TempStr full = JoinPathTemp(Str(gRoots[i]), rel);

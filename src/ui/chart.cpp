@@ -82,12 +82,7 @@ plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
 }
 
 void ChartAppear::SetKey(Str key) {
-    uint64_t h = 14695981039346656037ull;
-    for (int i = 0; i < len(key); i++) {
-        h ^= (uint8_t)key.s[i];
-        h *= 1099511628211ull;
-    }
-    generation = h;
+    generation = Fnv1a64(14695981039346656037ull, key.s, (size_t)len(key));
 }
 
 uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {
@@ -96,25 +91,53 @@ uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {
     return IdFoldName(site, fmt("%d", line));
 }
 
-AreaChart* AreaChart::New(Ctx* cx, const double* ys, int n, const char* file,
-                          int line) {
-    float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
-    for (int i = 0; i < n; i++) {
-        narrow[i] = (float)ys[i];
-    }
-    AreaChart* c = New(cx, narrow, n, file, line);
-    c->exact = ys;
-    return c;
-}
-AreaChart* AreaChart::New(Ctx* cx, const float* ys, int n, const char* file,
-                          int line) {
-    Arena* a = cx->a;
-    AreaChart* c = ArenaNew<AreaChart>(a);
-    c->a = a;
+// The start of every series chart's New: the chart on the frame arena, the
+// id of the site that built it, and the run it draws.
+template <typename C>
+static C* SeriesChartNew(Ctx* cx, const float* ys, int n, const char* file,
+                         int line) {
+    C* c = ArenaNew<C>(cx->a);
+    c->a = cx->a;
     c->cx = cx;
     c->id = ChartCallerId(cx, file, line);
     c->ys = ys;
     c->n = n;
+    return c;
+}
+
+// A chart's New over doubles (a series chart's, a radar's): it draws them as
+// floats and keeps the doubles for the numbers it writes out (`exact`).
+template <typename C>
+static C* SeriesChartNewExact(Ctx* cx, const double* ys, int n,
+                              const char* file, int line) {
+    float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
+    for (int i = 0; i < n; i++) {
+        narrow[i] = (float)ys[i];
+    }
+    C* c = C::New(cx, narrow, n, file, line);
+    c->exact = ys;
+    return c;
+}
+
+// What every chart builder hands its element alike: the id its hover and
+// springs key on, the appear generation, the tooltip's name and content, and
+// whether the runtime's own hover and tooltip run (`tooltip`).
+template <typename B>
+static void ChartApplyIdentity(ChartSeries* chart, const B& b, bool tooltip) {
+    chart->tooltip = tooltip;
+    chart->id = b.id;
+    chart->appear = b.appear.Generation(&chart->appearGeneration);
+    chart->name = b.tooltipName;
+    chart->tooltipContent = b.tooltipContent;
+}
+
+AreaChart* AreaChart::New(Ctx* cx, const double* ys, int n, const char* file,
+                          int line) {
+    return SeriesChartNewExact<AreaChart>(cx, ys, n, file, line);
+}
+AreaChart* AreaChart::New(Ctx* cx, const float* ys, int n, const char* file,
+                          int line) {
+    AreaChart* c = SeriesChartNew<AreaChart>(cx, ys, n, file, line);
     // area_chart.rs: the stroke defaults to chart_2 and the fill to one
     // flat chart_2 at 0.4.
     c->stroke = ThemeNow(cx->app).chart2;
@@ -147,14 +170,6 @@ AreaChart* AreaChart::Fill(Rgba top, Rgba bottom) {
     return this;
 }
 
-AreaChart* AreaChart::Labels(const char* const* l) {
-    labels = l;
-    return this;
-}
-AreaChart* AreaChart::TickMargin(int t) {
-    tickMargin = t;
-    return this;
-}
 AreaChart* AreaChart::Y(const float* v) {
     ChartSeriesExtra series = {};
     series.ys = v;
@@ -181,107 +196,6 @@ AreaChart* AreaChart::Tooltip(Str name) {
     }
     return this;
 }
-AreaChart* AreaChart::Id(Str name) {
-    id = IdFoldName(cx ? cx->path : 0, name);
-    return this;
-}
-AreaChart* AreaChart::Natural() {
-    strokeStyle = ChartStroke::Natural;
-    return this;
-}
-AreaChart* AreaChart::XAxis(bool v) {
-    xAxis = v;
-    return this;
-}
-AreaChart* AreaChart::Grid(bool v) {
-    grid = v;
-    return this;
-}
-AreaChart* AreaChart::Linear() {
-    strokeStyle = ChartStroke::Linear;
-    return this;
-}
-AreaChart* AreaChart::StepAfter() {
-    strokeStyle = ChartStroke::StepAfter;
-    return this;
-}
-AreaChart* AreaChart::YDomain(float min, float max) {
-    hasYDomain = true;
-    yDomainMin = min;
-    yDomainMax = max;
-    return this;
-}
-AreaChart* AreaChart::PointCount(int count) {
-    pointCount = count;
-    return this;
-}
-AreaChart* AreaChart::YAxis(bool v) {
-    axes.yAxis = v;
-    return this;
-}
-AreaChart* AreaChart::YAxisLabelPlacement(AxisLabelPlacement placement) {
-    axes.placement = placement;
-    return this;
-}
-AreaChart* AreaChart::YTickCount(int count) {
-    axes.yTickCount = count > 2 ? count : 2;
-    return this;
-}
-AreaChart* AreaChart::YTickFormat(ChartTickFormatFn format, void* user) {
-    axes.tickFormat = format;
-    axes.tickFormatUser = user;
-    return this;
-}
-AreaChart* AreaChart::XTickCount(int count) {
-    axes.xTickCount = count < 0 ? 0 : count;
-    return this;
-}
-AreaChart* AreaChart::GridColumns(int count) {
-    axes.gridColumns = count < 0 ? 0 : count;
-    return this;
-}
-AreaChart* AreaChart::GridDashed(bool dashed) {
-    axes.gridDashed = dashed;
-    return this;
-}
-AreaChart* AreaChart::ReferenceLine(double value) {
-    axes.referenceLines.Append(a, value);
-    return this;
-}
-AreaChart* AreaChart::YPadding(float top, float bottom) {
-    axes.yPaddingTop = top;
-    axes.yPaddingBottom = bottom;
-    return this;
-}
-
-AreaChart* AreaChart::TooltipTitle(ChartTooltipTitleFn fn, void* user) {
-    tooltipContent.title = fn;
-    tooltipContent.titleUser = user;
-    return this;
-}
-AreaChart* AreaChart::TooltipValue(ChartTooltipValueFn fn, void* user) {
-    tooltipContent.value = fn;
-    tooltipContent.valueUser = user;
-    return this;
-}
-AreaChart* AreaChart::TooltipValueColor(ChartTooltipValueColorFn fn,
-                                        void* user) {
-    tooltipContent.valueColor = fn;
-    tooltipContent.valueColorUser = user;
-    return this;
-}
-AreaChart* AreaChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
-    tooltipContent.content = fn;
-    tooltipContent.contentUser = user;
-    return this;
-}
-
-AreaChart* AreaChart::Data(const void* items, int stride) {
-    tooltipContent.data = items;
-    tooltipContent.dataStride = stride;
-    return this;
-}
-
 El* AreaChart::IntoEl() {
     El* e = ChartEl(a, ys, n, stroke, fill, fillBottom, tickMargin);
     ChartSeries* chart = e->Chart();
@@ -298,11 +212,7 @@ El* AreaChart::IntoEl() {
     axes.ApplyTo(a, chart);
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     // The builder is on the frame arena, so the element can point at its
     // array rather than copying it.
     chart->more = more.Flatten(a);
@@ -312,23 +222,11 @@ El* AreaChart::IntoEl() {
 
 LineChart* LineChart::New(Ctx* cx, const double* ys, int n, const char* file,
                           int line) {
-    float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
-    for (int i = 0; i < n; i++) {
-        narrow[i] = (float)ys[i];
-    }
-    LineChart* c = New(cx, narrow, n, file, line);
-    c->exact = ys;
-    return c;
+    return SeriesChartNewExact<LineChart>(cx, ys, n, file, line);
 }
 LineChart* LineChart::New(Ctx* cx, const float* ys, int n, const char* file,
                           int line) {
-    Arena* a = cx->a;
-    LineChart* c = ArenaNew<LineChart>(a);
-    c->a = a;
-    c->cx = cx;
-    c->id = ChartCallerId(cx, file, line);
-    c->ys = ys;
-    c->n = n;
+    LineChart* c = SeriesChartNew<LineChart>(cx, ys, n, file, line);
     // line_chart.rs: `self.stroke.unwrap_or(cx.theme().chart_2)`.
     c->stroke = ThemeNow(cx->app).chart2;
     return c;
@@ -337,137 +235,15 @@ LineChart* LineChart::Stroke(Rgba c) {
     stroke = c;
     return this;
 }
-LineChart* LineChart::Labels(const char* const* l) {
-    labels = l;
-    return this;
-}
-LineChart* LineChart::TickMargin(int t) {
-    tickMargin = t;
-    return this;
-}
-LineChart* LineChart::YDomain(float min, float max) {
-    hasYDomain = true;
-    yDomainMin = min;
-    yDomainMax = max;
-    return this;
-}
-LineChart* LineChart::PointCount(int count) {
-    pointCount = count;
-    return this;
-}
-LineChart* LineChart::YAxis(bool v) {
-    axes.yAxis = v;
-    return this;
-}
-LineChart* LineChart::YAxisLabelPlacement(AxisLabelPlacement placement) {
-    axes.placement = placement;
-    return this;
-}
-LineChart* LineChart::YTickCount(int count) {
-    axes.yTickCount = count > 2 ? count : 2;
-    return this;
-}
-LineChart* LineChart::YTickFormat(ChartTickFormatFn format, void* user) {
-    axes.tickFormat = format;
-    axes.tickFormatUser = user;
-    return this;
-}
-LineChart* LineChart::XTickCount(int count) {
-    axes.xTickCount = count < 0 ? 0 : count;
-    return this;
-}
-LineChart* LineChart::GridColumns(int count) {
-    axes.gridColumns = count < 0 ? 0 : count;
-    return this;
-}
-LineChart* LineChart::GridDashed(bool dashed) {
-    axes.gridDashed = dashed;
-    return this;
-}
-LineChart* LineChart::ReferenceLine(double value) {
-    axes.referenceLines.Append(a, value);
-    return this;
-}
-LineChart* LineChart::YPadding(float top, float bottom) {
-    axes.yPaddingTop = top;
-    axes.yPaddingBottom = bottom;
-    return this;
-}
-
 void PointAxes::ApplyTo(Arena* arena, ChartSeries* chart) const {
-    chart->yAxis = yAxis;
-    chart->axisLabelPlacement = placement;
-    chart->yTickCount = yTickCount;
-    chart->tickFormat = tickFormat;
-    chart->tickFormatUser = tickFormatUser;
-    chart->xTickCount = xTickCount;
-    chart->gridColumns = gridColumns;
-    chart->gridDashed = gridDashed;
-    chart->yPaddingTop = yPaddingTop;
-    chart->yPaddingBottom = yPaddingBottom;
+    static_cast<ChartAxisOptions&>(*chart) = *this;
     chart->referenceLines = referenceLines.Flatten(arena);
     chart->nReferenceLines = referenceLines.len;
-}
-LineChart* LineChart::Tooltip(Str name) {
-    tooltipName = name;
-    return this;
-}
-LineChart* LineChart::Id(Str name) {
-    id = IdFoldName(cx ? cx->path : 0, name);
-    return this;
-}
-LineChart* LineChart::Natural() {
-    strokeStyle = ChartStroke::Natural;
-    return this;
-}
-LineChart* LineChart::XAxis(bool v) {
-    xAxis = v;
-    return this;
-}
-LineChart* LineChart::Grid(bool v) {
-    grid = v;
-    return this;
-}
-LineChart* LineChart::Linear() {
-    strokeStyle = ChartStroke::Linear;
-    return this;
-}
-LineChart* LineChart::StepAfter() {
-    strokeStyle = ChartStroke::StepAfter;
-    return this;
 }
 LineChart* LineChart::Dot(bool v) {
     dot = v;
     return this;
 }
-LineChart* LineChart::TooltipTitle(ChartTooltipTitleFn fn, void* user) {
-    tooltipContent.title = fn;
-    tooltipContent.titleUser = user;
-    return this;
-}
-LineChart* LineChart::TooltipValue(ChartTooltipValueFn fn, void* user) {
-    tooltipContent.value = fn;
-    tooltipContent.valueUser = user;
-    return this;
-}
-LineChart* LineChart::TooltipValueColor(ChartTooltipValueColorFn fn,
-                                        void* user) {
-    tooltipContent.valueColor = fn;
-    tooltipContent.valueColorUser = user;
-    return this;
-}
-LineChart* LineChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
-    tooltipContent.content = fn;
-    tooltipContent.contentUser = user;
-    return this;
-}
-
-LineChart* LineChart::Data(const void* items, int stride) {
-    tooltipContent.data = items;
-    tooltipContent.dataStride = stride;
-    return this;
-}
-
 El* LineChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     El* e = ChartEl(a, ys, n, stroke, none, none, tickMargin);
@@ -486,47 +262,23 @@ El* LineChart::IntoEl() {
     axes.ApplyTo(a, chart);
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     return e;
 }
 
 BarChart* BarChart::New(Ctx* cx, const double* ys, int n, const char* file,
                         int line) {
-    float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
-    for (int i = 0; i < n; i++) {
-        narrow[i] = (float)ys[i];
-    }
-    BarChart* c = New(cx, narrow, n, file, line);
-    c->exact = ys;
-    return c;
+    return SeriesChartNewExact<BarChart>(cx, ys, n, file, line);
 }
 BarChart* BarChart::New(Ctx* cx, const float* ys, int n, const char* file,
                         int line) {
-    Arena* a = cx->a;
-    BarChart* c = ArenaNew<BarChart>(a);
-    c->a = a;
-    c->cx = cx;
-    c->id = ChartCallerId(cx, file, line);
-    c->ys = ys;
-    c->n = n;
+    BarChart* c = SeriesChartNew<BarChart>(cx, ys, n, file, line);
     // bar_chart.rs: `default_fill` is chart_2.
     c->fill = ThemeNow(cx->app).chart2;
     return c;
 }
 BarChart* BarChart::Fill(Rgba c) {
     fill = c;
-    return this;
-}
-BarChart* BarChart::Labels(const char* const* l) {
-    labels = l;
-    return this;
-}
-BarChart* BarChart::TickMargin(int t) {
-    tickMargin = t;
     return this;
 }
 BarChart* BarChart::PaddingInner(float v) {
@@ -556,14 +308,6 @@ BarChart* BarChart::Radius(float v) {
 BarChart* BarChart::Domain(float lo, float hi) {
     domainMin = lo;
     domainMax = hi;
-    return this;
-}
-BarChart* BarChart::Tooltip(Str name) {
-    tooltipName = name;
-    return this;
-}
-BarChart* BarChart::Id(Str name) {
-    id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
 BarChart* BarChart::Alignment(BarAlign v) {
@@ -600,33 +344,6 @@ BarChart* BarChart::FillGradientDiagonal(Rgba from, Rgba to) {
     gradientDiagonal = true;
     return this;
 }
-BarChart* BarChart::TooltipTitle(ChartTooltipTitleFn fn, void* user) {
-    tooltipContent.title = fn;
-    tooltipContent.titleUser = user;
-    return this;
-}
-BarChart* BarChart::TooltipValue(ChartTooltipValueFn fn, void* user) {
-    tooltipContent.value = fn;
-    tooltipContent.valueUser = user;
-    return this;
-}
-BarChart* BarChart::TooltipValueColor(ChartTooltipValueColorFn fn, void* user) {
-    tooltipContent.valueColor = fn;
-    tooltipContent.valueColorUser = user;
-    return this;
-}
-BarChart* BarChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
-    tooltipContent.content = fn;
-    tooltipContent.contentUser = user;
-    return this;
-}
-
-BarChart* BarChart::Data(const void* items, int stride) {
-    tooltipContent.data = items;
-    tooltipContent.dataStride = stride;
-    return this;
-}
-
 El* BarChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     El* e = ChartEl(a, ys, n, fill, none, none, tickMargin);
@@ -664,11 +381,7 @@ El* BarChart::IntoEl() {
     chart->domainMax = domainMax;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     return e;
 }
 
@@ -736,25 +449,9 @@ CandlestickChart* CandlestickChart::New(Ctx* cx, const float* opens,
     c->down = ThemeNow(cx->app).chartBearish;
     return c;
 }
-CandlestickChart* CandlestickChart::Tooltip(Str name) {
-    tooltipName = name;
-    return this;
-}
-CandlestickChart* CandlestickChart::Id(Str name) {
-    id = IdFoldName(cx ? cx->path : 0, name);
-    return this;
-}
 CandlestickChart* CandlestickChart::Colors(Rgba u, Rgba d) {
     up = u;
     down = d;
-    return this;
-}
-CandlestickChart* CandlestickChart::Labels(const char* const* l) {
-    labels = l;
-    return this;
-}
-CandlestickChart* CandlestickChart::TickMargin(int t) {
-    tickMargin = t;
     return this;
 }
 CandlestickChart* CandlestickChart::Padding(float v) {
@@ -769,37 +466,6 @@ CandlestickChart* CandlestickChart::MaxBandWidth(float width) {
     maxBandWidth = width;
     return this;
 }
-CandlestickChart* CandlestickChart::TooltipTitle(ChartTooltipTitleFn fn,
-                                                 void* user) {
-    tooltipContent.title = fn;
-    tooltipContent.titleUser = user;
-    return this;
-}
-CandlestickChart* CandlestickChart::TooltipValue(ChartTooltipValueFn fn,
-                                                 void* user) {
-    tooltipContent.value = fn;
-    tooltipContent.valueUser = user;
-    return this;
-}
-CandlestickChart* CandlestickChart::TooltipValueColor(
-    ChartTooltipValueColorFn fn, void* user) {
-    tooltipContent.valueColor = fn;
-    tooltipContent.valueColorUser = user;
-    return this;
-}
-CandlestickChart* CandlestickChart::TooltipContent(ChartTooltipContentFn fn,
-                                                   void* user) {
-    tooltipContent.content = fn;
-    tooltipContent.contentUser = user;
-    return this;
-}
-
-CandlestickChart* CandlestickChart::Data(const void* items, int stride) {
-    tooltipContent.data = items;
-    tooltipContent.dataStride = stride;
-    return this;
-}
-
 El* CandlestickChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     // The closes are the series; the other three ride along beside them.
@@ -818,11 +484,7 @@ El* CandlestickChart::IntoEl() {
     chart->bodyWidthRatio = bodyWidthRatio;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, interactive);
     return e;
 }
 
@@ -1059,13 +721,7 @@ static void PaintRadarChart(PaintCtx* ctx, El* e, void* user) {
 
 RadarChart* RadarChart::New(Ctx* cx, const double* values, int n,
                             const char* file, int line) {
-    float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
-    for (int i = 0; i < n; i++) {
-        narrow[i] = (float)values[i];
-    }
-    RadarChart* c = New(cx, narrow, n, file, line);
-    c->exact = values;
-    return c;
+    return SeriesChartNewExact<RadarChart>(cx, values, n, file, line);
 }
 RadarChart* RadarChart::New(Ctx* cx, const float* values, int n,
                             const char* file, int line) {
@@ -1176,37 +832,6 @@ RadarChart* RadarChart::Tooltip(Str name) {
     }
     return this;
 }
-RadarChart* RadarChart::TooltipTitle(ChartTooltipTitleFn fn, void* user) {
-    tooltipContent.title = fn;
-    tooltipContent.titleUser = user;
-    return this;
-}
-RadarChart* RadarChart::TooltipValue(ChartTooltipValueFn fn, void* user) {
-    tooltipContent.value = fn;
-    tooltipContent.valueUser = user;
-    return this;
-}
-RadarChart* RadarChart::TooltipValueColor(ChartTooltipValueColorFn fn,
-                                          void* user) {
-    tooltipContent.valueColor = fn;
-    tooltipContent.valueColorUser = user;
-    return this;
-}
-RadarChart* RadarChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
-    tooltipContent.content = fn;
-    tooltipContent.contentUser = user;
-    return this;
-}
-
-RadarChart* RadarChart::Data(const void* items, int stride) {
-    tooltipContent.data = items;
-    tooltipContent.dataStride = stride;
-    return this;
-}
-RadarChart* RadarChart::Id(Str name) {
-    id = IdFoldName(cx ? cx->path : 0, name);
-    return this;
-}
 El* RadarChart::IntoEl() {
     El* e = ChartEl(a, values, n, stroke, fill, fill, 1);
     ChartSeries* chart = e->Chart();
@@ -1221,11 +846,7 @@ El* RadarChart::IntoEl() {
     chart->nMore = len(more);
     // The labels and the hover are this builder's (PaintRadarChart); the
     // runtime's own hover is for the cartesian charts.
-    chart->tooltip = false;
-    chart->id = id;
-    chart->appear = appear.Generation(&chart->appearGeneration);
-    chart->name = tooltipName;
-    chart->tooltipContent = tooltipContent;
+    ChartApplyIdentity(chart, *this, false);
     el = e;
     e->customPaint = PaintRadarChart;
     e->customUser = this;
@@ -1300,15 +921,6 @@ PieChart* PieChart::PadAngle(float radians) {
     padAngle = radians;
     return this;
 }
-PieChart* PieChart::Tooltip(Str name) {
-    tooltipName = name;
-    return this;
-}
-PieChart* PieChart::Id(Str name) {
-    id = IdFoldName(cx ? cx->path : 0, name);
-    return this;
-}
-
 float PieChart::ResolveOuterRadius(float height) const {
     return outerRadius > 0 ? outerRadius : height * 0.4f;
 }
@@ -1340,6 +952,36 @@ static Ctx ChartIdCtx(const PaintCtx* ctx, uint32_t id) {
     out.win = ctx->window;
     out.path = id;
     return out;
+}
+
+// The hover a pie or a sankey keeps: the item under the cursor (none while
+// the chart is still appearing) is tracked through plot::TrackHover, which
+// eases `focus` in and out and lingers on the last item as it fades. On
+// return `hoverIndex` is the item held, -1 for none.
+static void ChartTrackIndexHover(const PaintCtx* ctx, uint32_t id,
+                                 const plot::PlotAppear& appear, Point cursor,
+                                 int* hoverIndex, float* focus,
+                                 Point* lingerCursor) {
+    if (appear.IsAppearing()) {
+        *hoverIndex = -1;
+    }
+    plot::TooltipState live = {};
+    const plot::TooltipState* livePtr = nullptr;
+    if (*hoverIndex >= 0) {
+        live = plot::TooltipState::New(*hoverIndex, cursor, nullptr, 0);
+        livePtr = &live;
+    }
+    plot::PlotHover hover = {};
+    Point linger = cursor;
+    Ctx idCx = ChartIdCtx(ctx, id);
+    if (plot::TrackHover(&idCx, livePtr, *hoverIndex >= 0 ? &cursor : nullptr,
+                         &hover, &linger)) {
+        *focus = hover.Progress();
+        *hoverIndex = hover.State().index;
+        *lingerCursor = linger;
+    } else {
+        *hoverIndex = -1;
+    }
 }
 
 // PlotElement's half of the appear for the charts painted here: sample it
@@ -1576,29 +1218,9 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             }
             pieAngle += sweep;
         }
-        plot::TooltipState live = {};
-        const plot::TooltipState* livePtr = nullptr;
-        Point cursor = local;
         // No tooltip while the ring sweeps in.
-        if (appear.IsAppearing()) {
-            hoverIndex = -1;
-        }
-        if (hoverIndex >= 0) {
-            live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
-            livePtr = &live;
-        }
-        plot::PlotHover hover = {};
-        Point linger = cursor;
-        Ctx idCx = ChartIdCtx(ctx, p->id);
-        if (plot::TrackHover(&idCx, livePtr,
-                             hoverIndex >= 0 ? &cursor : nullptr, &hover,
-                             &linger)) {
-            focus = hover.Progress();
-            hoverIndex = hover.State().index;
-            lingerCursor = linger;
-        } else {
-            hoverIndex = -1;
-        }
+        ChartTrackIndexHover(ctx, p->id, appear, local, &hoverIndex, &focus,
+                             &lingerCursor);
     }
     // The ring sweeps clockwise from its first slice as the chart appears:
     // each slice's angles are scaled toward the ring's start.
@@ -1908,29 +1530,9 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
                 hoverIndex = node.index;
             }
         }
-        plot::TooltipState live = {};
-        const plot::TooltipState* livePtr = nullptr;
-        Point cursor = local;
         // No tooltip while the links draw in.
-        if (appear.IsAppearing()) {
-            hoverIndex = -1;
-        }
-        if (hoverIndex >= 0) {
-            live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
-            livePtr = &live;
-        }
-        plot::PlotHover hover = {};
-        Point linger = cursor;
-        Ctx idCx = ChartIdCtx(ctx, c->id);
-        if (plot::TrackHover(&idCx, livePtr,
-                             hoverIndex >= 0 ? &cursor : nullptr, &hover,
-                             &linger)) {
-            focus = hover.Progress();
-            hoverIndex = hover.State().index;
-            lingerCursor = linger;
-        } else {
-            hoverIndex = -1;
-        }
+        ChartTrackIndexHover(ctx, c->id, appear, local, &hoverIndex, &focus,
+                             &lingerCursor);
     }
 
     // The ribbons first, under the nodes: a horizontal cubic through the
@@ -2182,10 +1784,6 @@ SankeyChart* SankeyChart::ShowValues(bool v) {
     showValues = v;
     return this;
 }
-SankeyChart* SankeyChart::Tooltip(Str name) {
-    tooltipName = name;
-    return this;
-}
 SankeyChart* SankeyChart::TooltipName(Str name) {
     if (nodes.len > 0) {
         nodes[nodes.len - 1].tooltipName = name;
@@ -2198,141 +1796,11 @@ SankeyChart* SankeyChart::TooltipValue(Str value) {
     }
     return this;
 }
-SankeyChart* SankeyChart::Id(Str name) {
-    id = IdFoldName(cx ? cx->path : 0, name);
-    return this;
-}
 El* SankeyChart::IntoEl() {
     El* e = Div(a);
     e->customPaint = PaintSankey;
     e->customUser = this;
     return e;
-}
-
-PieChart* PieChart::Interactive(bool v) {
-    interactive = v;
-    return this;
-}
-
-AreaChart* AreaChart::Interactive(bool v) {
-    interactive = v;
-    return this;
-}
-
-LineChart* LineChart::Interactive(bool v) {
-    interactive = v;
-    return this;
-}
-
-BarChart* BarChart::Interactive(bool v) {
-    interactive = v;
-    return this;
-}
-
-CandlestickChart* CandlestickChart::Interactive(bool v) {
-    interactive = v;
-    return this;
-}
-
-RadarChart* RadarChart::Interactive(bool v) {
-    interactive = v;
-    return this;
-}
-
-SankeyChart* SankeyChart::Interactive(bool v) {
-    interactive = v;
-    return this;
-}
-
-PieChart* PieChart::Appear(bool v) {
-    appear.SetEnabled(v);
-    return this;
-}
-PieChart* PieChart::AppearKey(Str key) {
-    appear.SetKey(key);
-    return this;
-}
-PieChart* PieChart::AppearKey(uint64_t key) {
-    appear.SetKey(key);
-    return this;
-}
-
-AreaChart* AreaChart::Appear(bool v) {
-    appear.SetEnabled(v);
-    return this;
-}
-AreaChart* AreaChart::AppearKey(Str key) {
-    appear.SetKey(key);
-    return this;
-}
-AreaChart* AreaChart::AppearKey(uint64_t key) {
-    appear.SetKey(key);
-    return this;
-}
-
-LineChart* LineChart::Appear(bool v) {
-    appear.SetEnabled(v);
-    return this;
-}
-LineChart* LineChart::AppearKey(Str key) {
-    appear.SetKey(key);
-    return this;
-}
-LineChart* LineChart::AppearKey(uint64_t key) {
-    appear.SetKey(key);
-    return this;
-}
-
-BarChart* BarChart::Appear(bool v) {
-    appear.SetEnabled(v);
-    return this;
-}
-BarChart* BarChart::AppearKey(Str key) {
-    appear.SetKey(key);
-    return this;
-}
-BarChart* BarChart::AppearKey(uint64_t key) {
-    appear.SetKey(key);
-    return this;
-}
-
-CandlestickChart* CandlestickChart::Appear(bool v) {
-    appear.SetEnabled(v);
-    return this;
-}
-CandlestickChart* CandlestickChart::AppearKey(Str key) {
-    appear.SetKey(key);
-    return this;
-}
-CandlestickChart* CandlestickChart::AppearKey(uint64_t key) {
-    appear.SetKey(key);
-    return this;
-}
-
-RadarChart* RadarChart::Appear(bool v) {
-    appear.SetEnabled(v);
-    return this;
-}
-RadarChart* RadarChart::AppearKey(Str key) {
-    appear.SetKey(key);
-    return this;
-}
-RadarChart* RadarChart::AppearKey(uint64_t key) {
-    appear.SetKey(key);
-    return this;
-}
-
-SankeyChart* SankeyChart::Appear(bool v) {
-    appear.SetEnabled(v);
-    return this;
-}
-SankeyChart* SankeyChart::AppearKey(Str key) {
-    appear.SetKey(key);
-    return this;
-}
-SankeyChart* SankeyChart::AppearKey(uint64_t key) {
-    appear.SetKey(key);
-    return this;
 }
 
 } // namespace component

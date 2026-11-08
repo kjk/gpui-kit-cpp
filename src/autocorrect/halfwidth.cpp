@@ -20,37 +20,11 @@ static bool IsAlnumCharCp(uint32_t cp) {
 }
 
 static bool IsWhitespaceCp(uint32_t cp) {
-    if (cp == ' ' || cp == '\t' || cp == '\n' || cp == '\r' || cp == '\f' ||
-        cp == 0x0B || cp == 0x85 || cp == 0xA0) {
-        return true;
-    }
-    return cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200A) || cp == 0x2028 ||
-           cp == 0x2029 || cp == 0x202F || cp == 0x205F || cp == 0x3000;
+    return base::IsUnicodeWhitespace(cp);
 }
 
 static void AppendCp(StrBuilder* out, uint32_t cp) {
-    char buf[4];
-    int n;
-    if (cp < 0x80) {
-        buf[0] = (char)cp;
-        n = 1;
-    } else if (cp < 0x800) {
-        buf[0] = (char)(0xC0 | (cp >> 6));
-        buf[1] = (char)(0x80 | (cp & 0x3F));
-        n = 2;
-    } else if (cp < 0x10000) {
-        buf[0] = (char)(0xE0 | (cp >> 12));
-        buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        buf[2] = (char)(0x80 | (cp & 0x3F));
-        n = 3;
-    } else {
-        buf[0] = (char)(0xF0 | (cp >> 18));
-        buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-        buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-        buf[3] = (char)(0x80 | (cp & 0x3F));
-        n = 4;
-    }
-    out->Append(Str(buf, n));
+    out->AppendUtf8(cp);
 }
 
 // ─── halfwidth-word (format_word) ─────────────────────────────────────────
@@ -159,17 +133,25 @@ static bool IsEnglishSep(uint32_t cp) {
            cp == '!' || cp == '&' || cp == ':';
 }
 
+// Moves `*i` past the next run of word characters, skipping what comes
+// before it. False when no word is left.
+static bool SkipWordRun(Str s, int* i) {
+    while (*i < len(s) && !IsWordCp(Utf8At(s, *i))) {
+        Utf8Next(s, i);
+    }
+    if (*i >= len(s)) {
+        return false;
+    }
+    while (*i < len(s) && IsWordCp(Utf8At(s, *i))) {
+        Utf8Next(s, i);
+    }
+    return true;
+}
+
 static bool HasEnglishShape(Str s) {
     int i = 0;
-    while (i < len(s)) {
-        if (!IsWordCp(Utf8At(s, i))) {
-            Utf8Next(s, &i);
-            continue;
-        }
-        // A word run…
-        while (i < len(s) && IsWordCp(Utf8At(s, i))) {
-            Utf8Next(s, &i);
-        }
+    // A word run…
+    while (SkipWordRun(s, &i)) {
         // …then at least one separator…
         int seps = 0;
         while (i < len(s) && IsEnglishSep(Utf8At(s, i))) {
@@ -269,14 +251,7 @@ static bool LooksLikeCodeString(Str s) {
         }
     }
     int i = 0;
-    while (i < len(s)) {
-        if (!IsWordCp(Utf8At(s, i))) {
-            Utf8Next(s, &i);
-            continue;
-        }
-        while (i < len(s) && IsWordCp(Utf8At(s, i))) {
-            Utf8Next(s, &i);
-        }
+    while (SkipWordRun(s, &i)) {
         if (i + 1 < len(s) && s.s[i] == '.' && IsWordCp(Utf8At(s, i + 1))) {
             int j = i + 1;
             while (j < len(s) && IsWordCp(Utf8At(s, j))) {

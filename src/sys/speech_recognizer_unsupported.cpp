@@ -1,9 +1,16 @@
-/* system/unsupported.rs: no platform recognizer.
+/* system/unsupported.rs: no platform recognizer, where
+   GPUI_SPEECH_RECOGNIZER_UNSUPPORTED (sys/speech_recognizer.h) says so.
 
    Linux has no system speech recognizer, as upstream's unsupported.rs says:
-   an application recognizer is required there. */
+   an application recognizer is required there.
+
+   The browser's SpeechRecognition is Chrome's alone, sends audio to its
+   vendor and captures for itself; it is not what SystemRecognizer promises.
+   A page supplies its own recognizer. */
 
 #include "sys/speech_recognizer.h"
+
+#if GPUI_SPEECH_RECOGNIZER_UNSUPPORTED
 
 namespace gpui {
 
@@ -24,9 +31,7 @@ SysSpeechSession* SysSpeechSessionStart(SysSpeechRecognizer*,
     if (error) {
         *error = SysSpeechError::Unsupported;
     }
-    if (message && messageCap > 0) {
-        message[0] = 0;
-    }
+    StrCopyCapped(message, messageCap, Str{});
     return nullptr;
 }
 
@@ -35,3 +40,5 @@ void SysSpeechSessionFinish(SysSpeechSession*) {}
 void SysSpeechSessionDrop(SysSpeechSession*) {}
 
 } // namespace gpui
+
+#endif // GPUI_SPEECH_RECOGNIZER_UNSUPPORTED
