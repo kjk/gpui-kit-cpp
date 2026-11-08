@@ -43,9 +43,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: oven-sh/setup-bun@v2
+      # Bun comes from the npm registry first: setup-bun downloads from GitHub
+      # Releases, which has answered 504 for every lane at once, and npm is a
+      # different CDN with Node already on every runner. The version is pinned
+      # so a run is reproducible; bump it together with the local bun.
+      - name: Install bun from npm
+        id: bun-npm
+        continue-on-error: true
+        shell: bash
+        run: npm install -g bun@1.4.4 && bun --version
+
+      - name: Install bun from GitHub Releases
+        if: steps.bun-npm.outcome != 'success'
+        uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.4
 
       - name: Audit Base/UI port map
         run: bun cmd/audit-port.ts
@@ -152,9 +164,21 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: oven-sh/setup-bun@v2
+      # Bun comes from the npm registry first: setup-bun downloads from GitHub
+      # Releases, which has answered 504 for every lane at once, and npm is a
+      # different CDN with Node already on every runner. The version is pinned
+      # so a run is reproducible; bump it together with the local bun.
+      - name: Install bun from npm
+        id: bun-npm
+        continue-on-error: true
+        shell: bash
+        run: npm install -g bun@1.4.4 && bun --version
+
+      - name: Install bun from GitHub Releases
+        if: steps.bun-npm.outcome != 'success'
+        uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.4.4
 
       # Without WebKitGTK, so the soft-dependency path (wry_linux.cpp's
       # no-webview half) keeps compiling and testing too.
