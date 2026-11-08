@@ -532,6 +532,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // focus; an existing one only constrains Tab while focus remains in it.
     win->previousTrap = win->pendingTrap;
     win->pendingTrap = 0;
+    win->pendingTrapHost = 0;
 
     // Whatever the view pointed win->input at is the focused field. Start its
     // caret and stop the one that lost focus, so no app has to. Rust hangs
