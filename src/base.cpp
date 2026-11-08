@@ -1033,7 +1033,6 @@ static LocalDate gTodayPinned = {};
 
 LocalDate DateToday() {
     if (!gTodayChecked) {
-        gTodayChecked = true;
         const char* env = getenv("GPUI_TODAY");
         if (env) {
             LocalDate pinned;
@@ -1041,6 +1040,9 @@ LocalDate DateToday() {
                 gTodayPinned = pinned;
             }
         }
+        // Published after the pin, so nobody reading the latch first sees
+        // "checked" with the pin still unset.
+        gTodayChecked = true;
     }
     if (gTodayPinned.year != 0) {
         return gTodayPinned;

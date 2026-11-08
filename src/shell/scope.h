@@ -73,12 +73,18 @@ class ScopeHostContext {
   private:
     friend ScopeHostContext ScopeCurrentHost();
     friend ScopeHostContext ScopeHostForGeneration(uint64_t, ShellError*);
-    ScopeHostContext(Window* window, App* app, bool held);
-    static ScopeHostContext Acquire(Window* window, App* app);
+    ScopeHostContext(Window* window, App* app, uint64_t frame);
+    // Borrows the host of the frame with `generation`, which is the top one.
+    // One borrow per frame: a second ask on the same frame answers unset,
+    // while a frame entered inside it may borrow its own.
+    static ScopeHostContext Acquire(Window* window, App* app,
+                                    uint64_t generation);
     void Release();
 
     Window* window = nullptr;
     App* app = nullptr;
+    // The generation of the frame this borrowed from; 0 holds nothing.
+    uint64_t frame = 0;
     bool held = false;
 };
 

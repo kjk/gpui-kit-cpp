@@ -34,6 +34,11 @@ struct WinNotify {
     // The tag of the balloon on screen, empty when none is. Only one is: a
     // second post replaces the first, which is what a tag asks for anyway.
     char tag[kTagCap] = {};
+    // How many balloons were replaced while on screen and have not yet
+    // reported their disappearance. The shell sends NIN_BALLOONHIDE for the
+    // replaced one after the new tag is already stored, and without this
+    // that late message would clear the new balloon's tag.
+    int replacedHides = 0;
     char appName[128] = {};
     SysNotifyResponseFn onResponse = {};
 };
@@ -63,10 +68,15 @@ static LRESULT CALLBACK NotifyWndProc(HWND hwnd, UINT msg, WPARAM wp,
         if (gNotify.onResponse.IsValid() && tag) {
             gNotify.onResponse.Call(tag);
         }
+    } else if (ev == NIN_BALLOONHIDE && gNotify.replacedHides > 0) {
+        // The balloon a later post replaced going away, not the one on
+        // screen now.
+        gNotify.replacedHides--;
     } else if (ev == NIN_BALLOONTIMEOUT || ev == NIN_BALLOONHIDE) {
         // Timed out into the Action Center, or taken off the screen. Either
         // way there is nothing left for a dismiss to retract.
         gNotify.tag[0] = 0;
+        gNotify.replacedHides = 0;
     }
     return 0;
 }
@@ -159,6 +169,10 @@ bool SysNotifyShow(Str tag, Str title, Str body) {
     if (!Shell_NotifyIconW(NIM_MODIFY, &nid)) {
         return false;
     }
+    if (gNotify.tag[0]) {
+        // Replacing a balloon on screen; its hide notice is still to come.
+        gNotify.replacedHides++;
+    }
     StrCopyCapped(gNotify.tag, kTagCap, tag);
     return true;
 }
@@ -179,6 +193,7 @@ void SysNotifyDismiss(Str tag) {
     nid.uFlags = NIF_INFO;
     Shell_NotifyIconW(NIM_MODIFY, &nid);
     gNotify.tag[0] = 0;
+    gNotify.replacedHides = 0;
 }
 
 void SysNotifyOnResponse(SysNotifyResponseFn fn) {
@@ -198,6 +213,7 @@ void SysNotifyShutdown() {
     }
     gNotify.onResponse = {};
     gNotify.tag[0] = 0;
+    gNotify.replacedHides = 0;
 }
 
 } // namespace gpui

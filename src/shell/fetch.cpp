@@ -528,6 +528,8 @@ struct FetchAsyncState {
     Func1<FetchAsyncResult> done;
     int redirects = 0;
     double deadline = 0;
+    bool (*cancelled)(void* user) = nullptr;
+    void* cancelUser = nullptr;
     char userAgent[64] = {};
 
     // The test transport has the blocking signature on purpose: the redirect
@@ -578,6 +580,8 @@ static bool FetchAsyncInit(FetchAsyncState* state, const FetchRequest& request,
     }
     state->capabilities = capabilities;
     state->deadline = request.deadline;
+    state->cancelled = request.cancelled;
+    state->cancelUser = request.cancelUser;
     return FetchAuthorize(state->walk.url, state->walk.method,
                           state->capabilities, &state->result.error);
 }
@@ -592,6 +596,14 @@ static bool FetchAsyncStart(FetchAsyncState* state);
 
 static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
     HttpRsp* response = landed.response;
+    if (state->cancelled && state->cancelled(state->cancelUser)) {
+        // Nobody is waiting for this any more. Whatever landed is not taken
+        // and no further hop is made.
+        ErrorOutSet(&state->result.error,
+                    fmt("fetching %s was cancelled", state->walk.url));
+        FetchAsyncFinish(state, false);
+        return;
+    }
     if (!landed.ok || !response) {
         ErrorOutSet(&state->result.error,
                     fmt("fetching %s failed", state->walk.url));

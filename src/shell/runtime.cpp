@@ -170,6 +170,10 @@ struct CallbackArena {
     bool layoutHandlers = false;
     uint64_t tokenGeneration = 0;
     uint32_t tokenFrame = 0;
+    // Non-zero while CallInLayout has lent `tokenGeneration` a generation of
+    // its own. BeginTokenFrame must not retire that one — it is the
+    // snapshot's, not the frame's — nor replace it under the caller.
+    int tokenOverride = 0;
 
     uint64_t Begin(JSContext* ctx) {
         Abort(ctx);
@@ -180,6 +184,7 @@ struct CallbackArena {
     }
 
     void BeginTokenFrame(JSContext* ctx, uint32_t frame) {
+        if (tokenOverride > 0) return;
         if (tokenFrame == frame && tokenGeneration) return;
         if (tokenGeneration) Retire(ctx, tokenGeneration);
         tokenGeneration = nextGeneration++;
@@ -356,6 +361,7 @@ struct ShellRuntimeImpl;
 static void RetireComponentAppEffects(ShellRuntimeImpl* impl,
                                       void* application);
 static void ClearComponentAppEffects(ShellRuntimeImpl* impl);
+static void DiscardApplication(ShellRuntimeImpl* impl, AppModule* application);
 
 struct ShellRuntimeImpl {
     ShellRuntime* owner = nullptr;
@@ -825,7 +831,11 @@ static void ProcessJobWork(ProcessJob* job) {
 
 // A task record points back at its job so that cancelling can reach it. The
 // coroutine frees the job, so the pointer is cleared first, on every path.
-// Which of the three it is follows from the kind.
+// Which of the three it is follows from the kind. Fetch and HostAsync carry
+// no such pointer: neither has anything to cancel midway (the request is
+// inside the OS client, the host call inside the module), so a forgotten
+// task of either kind is dropped by its coroutine's guard when the work
+// lands, and there is nothing here to detach.
 static void DetachTaskJob(ShellTask* task) {
     if (!task) {
         return;
@@ -1185,8 +1195,20 @@ static void ShellFetchDone(ShellFetchJob* job, shell::FetchAsyncResult landed) {
         *landed.result = {};
     }
     ShellTaskLease lease{&job->head, job, ShellFetchJobDestroy};
+    // The same owner check the coroutine's guard makes on resume: a task
+    // whose view or window went away is forgotten by the lease, not settled.
+    if (!ShellTaskOwnerAlive(&job->head)) {
+        return;
+    }
     bool failed = !landed.ok || job->result.error.s != nullptr;
     SettleShellTask(&lease, failed, job->result.error, FetchJobResolved, job);
+}
+
+// The asynchronous walk asks this before each hop: a task whose view or
+// window has gone, or that a script cancelled, is not worth another
+// redirect. Main thread, like the completion that asks.
+static bool ShellFetchCancelled(void* user) {
+    return !ShellTaskOwnerAlive(user);
 }
 
 // The hosted clients are blocking. Keep them behind the executor-backed Task
@@ -1303,7 +1325,13 @@ static void DriveStorage(Policy* policy) {
     pending = {};
     if (!ExecSpawn(MkFunc0(StorageWriteWork, job),
                    MkFunc0(StorageWriteDone, job))) {
-        storage->AbortWrite(job->write.revision);
+        // The pool is shutting down. The waiters are told, so a pending
+        // flush() rejects rather than hangs.
+        Vec<shell::StorageWaiter*> ready;
+        storage->AbortWrite(job->write.revision, &ready);
+        shell::StorageOutcome outcome = {
+            false, StrL("the localStorage write could not be scheduled")};
+        WakeStorageWaiters(&ready, outcome);
         job->Free();
         delete job;
     }
@@ -1317,7 +1345,7 @@ static void BeginExecution(ShellRuntimeImpl* impl) {
 // QuickJS reports a cut-off as a bare "interrupted". The handler is the
 // only place that knows the phase and the budget, so it leaves them here
 // for the error report. One slot per thread, as the engine's own handler is.
-static ScriptInterruption gInterruption;
+static thread_local ScriptInterruption gInterruption;
 
 static int Interrupt(JSRuntime*, void* opaque) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)opaque;
@@ -8457,6 +8485,11 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
         return promise;
     }
     if (base::PlatAsyncIo()) {
+        // Only the asynchronous walk may ask: its completions land on the
+        // main thread, where the task table lives. The blocking walk below
+        // runs on a worker and is dropped by its coroutine's guard instead.
+        job->request.cancelled = ShellFetchCancelled;
+        job->request.cancelUser = &job->head;
         if (!shell::FetchSendAsync(job->request, job->capabilities,
                                    MkFunc1(ShellFetchDone, job))) {
             ForgetTask(impl, task, false);
@@ -13018,11 +13051,15 @@ ViewType* ShellRuntime::ReloadApp(Str directory, Str entry, Policy* policy,
     VecAppend(impl->modules, application);
 
     TempStr source = ReadModuleFileTemp(canonical, error);
-    if (!source.s) return nullptr;
+    if (!source.s) {
+        DiscardApplication(impl, application);
+        return nullptr;
+    }
     Str tagged = StrDup(fmt("%s?v=%u", canonical, application->generation));
     ViewType* result =
         LoadModule(this, tagged, source, application, policy, error);
     StrFree(tagged);
+    if (!result) DiscardApplication(impl, application);
     return result;
 }
 
@@ -13345,12 +13382,11 @@ void ShellRuntime::ReleaseOwnedEntities(EntityId view) {
     VecReset(callbacks);
 }
 
-void ShellRuntime::ReleaseApplicationState(ViewObject* object) {
-    if (!object || object->runtime != this) return;
-    RetireComponentAppEffects(
-        impl, object->application ? (void*)object->application : (void*)object);
-    if (!object->application) return;
-    AppModule* application = object->application;
+// Everything the runtime holds on behalf of `application` other than its
+// AppModule record: nested views, tasks, retained and arena callbacks,
+// component states and templates.
+static void RetireApplicationState(ShellRuntimeImpl* impl,
+                                   AppModule* application) {
     for (;;) {
         int nested = -1;
         for (int i = impl->nestedViews.len - 1; i >= 0; i--) {
@@ -13387,6 +13423,33 @@ void ShellRuntime::ReleaseApplicationState(ViewObject* object) {
             impl->templates[i] = nullptr;
         }
     }
+}
+
+void ShellRuntime::ReleaseApplicationState(ViewObject* object) {
+    if (!object || object->runtime != this) return;
+    RetireComponentAppEffects(
+        impl, object->application ? (void*)object->application : (void*)object);
+    if (!object->application) return;
+    RetireApplicationState(impl, object->application);
+}
+
+// An application whose entry module never loaded. Whatever its top-level
+// code registered before it failed is retired, and the record leaves
+// `modules`, so `?v=N` imports of that generation are refused rather than
+// resolved against a module that is not there, and a reload loop does not
+// grow the list by one dead record a time.
+static void DiscardApplication(ShellRuntimeImpl* impl, AppModule* application) {
+    if (!impl || !application) return;
+    RetireComponentAppEffects(impl, application);
+    RetireApplicationState(impl, application);
+    for (int i = 0; i < impl->modules.len; i++) {
+        if (impl->modules[i] != application) continue;
+        VecRemoveAt(impl->modules, i);
+        break;
+    }
+    StrFree(application->root);
+    application->dependencies.Free();
+    delete application;
 }
 
 static void DriveProcessStream(ShellRuntime* runtime, ShellRuntimeImpl* impl,
@@ -13468,7 +13531,9 @@ void ShellRuntime::ResumeTask(uint32_t id, Ctx* cx) {
     ShellTask* task = FindTask(impl, id);
     if (!task || task->kind == ShellTaskKind::Spawn) return;
     if (task->owner.IsValid() && !EntityGet(cx->app, task->owner)) {
-        ForgetTask(impl, id, false);
+        // The owner is gone. A repeating timer would keep firing at this id,
+        // so the timer is cancelled with the record.
+        ForgetTask(impl, id, true);
         return;
     }
     if (task->kind == ShellTaskKind::ProcessStream) {
@@ -14446,6 +14511,9 @@ El* ShellRuntime::RenderInlineToken(shell::CallbackId render,
     shell::SpecArena* outer = impl->scratch;
     shell::SpecArena* batch = new shell::SpecArena(cx->a);
     impl->scratch = batch;
+    // Saved rather than cleared on the way out: a token rendered from inside
+    // a component snapshot must leave that snapshot's mode in place.
+    bool savedToken = impl->callbacks.tokenRender;
     shell::SpecId root = 0;
     bool hasRoot = false;
     bool succeeded = true;
@@ -14476,7 +14544,7 @@ El* ShellRuntime::RenderInlineToken(shell::CallbackId render,
         JSValue args[2] = {payload, context};
         JSValue produced =
             JS_Call(impl->context, entry->function, JS_UNDEFINED, 2, args);
-        impl->callbacks.tokenRender = false;
+        impl->callbacks.tokenRender = savedToken;
         JS_FreeValue(impl->context, context);
         JS_FreeValue(impl->context, payload);
         succeeded = ProducedElement(impl->context, produced, &root, &hasRoot);
@@ -14705,10 +14773,12 @@ static JSValue CallInLayout(ShellRuntime* runtime, CallbackEntry* entry,
     bool savedToken = impl->callbacks.tokenRender;
     uint64_t savedGeneration = impl->callbacks.tokenGeneration;
     if (interactive) {
-        if (generation)
+        if (generation) {
             impl->callbacks.tokenGeneration = generation;
-        else
+            impl->callbacks.tokenOverride++;
+        } else {
             impl->callbacks.BeginTokenFrame(ctx, impl->tokenFrame);
+        }
         impl->callbacks.tokenRender = true;
     }
     Arena* a = ArenaNew();
@@ -14721,7 +14791,10 @@ static JSValue CallInLayout(ShellRuntime* runtime, CallbackEntry* entry,
     for (int i = 0; i < total; i++) JS_FreeValue(ctx, args[i]);
     ArenaDelete(a);
     impl->callbacks.tokenRender = savedToken;
-    if (generation) impl->callbacks.tokenGeneration = savedGeneration;
+    if (interactive && generation) {
+        impl->callbacks.tokenGeneration = savedGeneration;
+        impl->callbacks.tokenOverride--;
+    }
     impl->scratch = outer;
     return value;
 }

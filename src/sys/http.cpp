@@ -235,6 +235,10 @@ struct FetchSlot {
     FetchJob* job = nullptr;
     TaskId task = 0;
     bool discard = false;
+    // Moves on every SlotDrop, so a fetch that started on this slot can tell
+    // whether the slot it comes back to is still its own rather than a
+    // successor's that happens to hold a job at the same address.
+    uint32_t gen = 0;
 };
 
 constexpr int kFetchSlots = 24;
@@ -316,6 +320,7 @@ static void SlotDrop(FetchSlot* s) {
     s->task = 0;
     s->discard = false;
     s->state = FetchState::None;
+    s->gen++;
 }
 
 // A fetch has its answer: a 2xx body moves into the job's slot, anything else
@@ -410,6 +415,12 @@ FetchState HttpFetch(Str url, const uint8_t** bytes, int* len) {
         if (s->state == FetchState::None || !base::StrEq(s->url, url)) {
             continue;
         }
+        if (s->discard) {
+            // Still Pending, but HttpFetchClear has disowned it: its answer
+            // will be dropped and nobody told of it. To the caller the URL is
+            // unknown, so a fresh fetch starts in another slot.
+            continue;
+        }
         FetchState st = s->state;
         if (st == FetchState::Done) {
             if (bytes) {
@@ -441,6 +452,7 @@ FetchState HttpFetch(Str url, const uint8_t** bytes, int* len) {
     s->url = StrDup(url);
     s->state = FetchState::Pending;
     s->job = job;
+    uint32_t gen = s->gen;
     job->slot = (int)(s - gFetch);
     job->done = gOnFetchDone;
     job->url = StrDup(url);
@@ -468,8 +480,10 @@ FetchState HttpFetch(Str url, const uint8_t** bytes, int* len) {
     }
     if (!base::PlatAsyncIo()) {
         gFetchLock.Lock();
-        // A very small response may have completed before ExecSpawn returned.
-        if (s->state == FetchState::Pending && s->job == job) {
+        // A very small response may have completed before ExecSpawn
+        // returned, and the slot may already be someone else's: the
+        // generation says whether it is still this fetch's.
+        if (s->gen == gen && s->state == FetchState::Pending) {
             s->task = task;
         }
         gFetchLock.Unlock();

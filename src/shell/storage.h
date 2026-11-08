@@ -58,7 +58,9 @@ class Storage {
     bool BeginWrite(StorageWrite* write, Str* error = nullptr);
     void FinishWrite(uint64_t writeRevision, bool ok,
                      Vec<StorageWaiter*>* ready);
-    void AbortWrite(uint64_t writeRevision);
+    // The write never ran — the executor refused it. The waiters it would
+    // have settled are handed back as failed, so no flush() hangs on it.
+    void AbortWrite(uint64_t writeRevision, Vec<StorageWaiter*>* ready);
     bool Wait(Func1<StorageOutcome> settle, StorageWaiter** waiter,
               bool* immediate, Str* error = nullptr);
     void CancelWaiter(StorageWaiter* waiter);

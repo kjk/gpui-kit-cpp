@@ -265,6 +265,37 @@ static void ScopeGenerationsExpireAdoptAndRefuseReentry() {
         utassert(adopted.IsSet());
     }
     utassert(!ScopeHasCurrent());
+
+    // The borrow belongs to the frame, not the thread: a frame entered while
+    // an outer frame's host is held borrows its own, and giving it back does
+    // not give back the outer one.
+    {
+        CallScopeGuard outer = ScopeEnter(&window, &app, ScopePhase::Event);
+        ScopeHostContext held = ScopeCurrentHost();
+        utassert(held.IsSet());
+        {
+            CallScopeGuard inner =
+                ScopeEnter(&window, &app, ScopePhase::Layout);
+            ScopeHostContext own = ScopeCurrentHost();
+            utassert(own.IsSet());
+            utassert(!ScopeCurrentHost().IsSet());
+        }
+        utassert(!ScopeCurrentHost().IsSet());
+        utassert(ScopeCurrentGeneration() == outer.Generation());
+    }
+    utassert(!ScopeHasCurrent());
+
+    // A guard assigned over leaves its old frame from under the new one,
+    // rather than leaving it on the stack for good.
+    {
+        CallScopeGuard moved = ScopeEnter(&window, &app, ScopePhase::Event);
+        uint64_t old = moved.Generation();
+        moved = ScopeEnter(&window, &app, ScopePhase::Task);
+        utassert(moved.Generation() != old);
+        utassert(ScopeCurrentGeneration() == moved.Generation());
+        utassert(ScopeCurrentPhase() == ScopePhase::Task);
+    }
+    utassert(!ScopeHasCurrent());
 }
 
 static Component Kind(ComponentKind kind, Str text = {}) {
@@ -3582,6 +3613,26 @@ static void ShellStorageWritesRevisionsInOrderAndFlushes() {
     utassert(retrySettlement.calls == 1 && retrySettlement.ok &&
              !storage.IsDirty());
     parked.Free();
+
+    // A write the executor refused settles its waiters as failed and leaves
+    // nothing in flight; a flush() waiting on it does not hang.
+    utassert(storage.Set(StrL("revision"), StrL("four"), &storageError));
+    StorageWrite aborted;
+    utassert(storage.BeginWrite(&aborted, &storageError));
+    utassert(aborted.revision == 4 && storage.HasWriteInFlight());
+    StorageTestSettlement abortedSettlement;
+    utassert(storage.Wait(MkFunc1(RecordStorageSettlement, &abortedSettlement),
+                          &waiter, &immediate, &storageError));
+    utassert(!immediate && waiter != nullptr);
+    storage.AbortWrite(aborted.revision, &ready);
+    utassert(len(ready) == 1 && !storage.HasWriteInFlight());
+    SettleStorageTestWaiters(&ready, StorageOutcome{false, StrL("refused")});
+    utassert(abortedSettlement.calls == 1 && !abortedSettlement.ok);
+    aborted.Free();
+    // Removing a key that is not there is not a change to write.
+    uint64_t before = storage.Revision();
+    utassert(storage.Remove(StrL("never-set"), &storageError));
+    utassert(storage.Revision() == before);
     StrFree(storageError);
 
     const char* path = "shell_storage_flush_test.json";

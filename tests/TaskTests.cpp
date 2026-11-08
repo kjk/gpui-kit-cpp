@@ -63,6 +63,25 @@ Task HoldsALocal(TaskGuard guard, Counters* c) {
     c->finished++;
 }
 
+// Cancels itself from inside its own body, which must not destroy the frame
+// the body is executing in. The handle is read from a global the test fills
+// once the task has suspended for the first time.
+TaskHandle gSelfId;
+int gAfterSelfCancel = 0;
+
+Task CancelsItself(TaskGuard guard, Counters* c) {
+    (void)guard;
+    Tracked tracked{&gTrackedDestroyed};
+    co_await BackgroundSpawn(MkFunc0(TaskWork, c));
+    utassert(TaskCancel(gSelfId));
+    // Still here: the cancel marked the task, and the frame with this local
+    // is intact until the next suspend.
+    gAfterSelfCancel++;
+    utassert(gTrackedDestroyed == 0);
+    co_await BackgroundSpawn(MkFunc0(TaskWork, c));
+    c->finished++;
+}
+
 // Runs the executor to quiescence the way the suite's other async tests do.
 void Settle() {
     ExecWaitIdle(5000);
@@ -96,6 +115,70 @@ void CancellingASuspendedTaskDropsItsContinuation() {
     utassert(gTrackedDestroyed == 1);
     // Cancelling twice is not an error, and a stale handle names nothing.
     utassert(!TaskCancel(t.id));
+}
+
+void CancellingARunningTaskDropsItAtItsNextSuspend() {
+    gCounters = {};
+    gTrackedDestroyed = 0;
+    gAfterSelfCancel = 0;
+    Task t = CancelsItself(TaskGuard{}, &gCounters);
+    gSelfId = t.id;
+    Settle();
+    // The line after the cancel ran; the second await dropped the frame
+    // instead of spawning, so the work ran once and the body never finished.
+    utassert(gAfterSelfCancel == 1 && gCounters.workRan == 1 &&
+             gCounters.finished == 0);
+    utassert(gTrackedDestroyed == 1 && TaskCount() == 0 && !TaskLive(t.id));
+}
+
+// TaskCancelAll is what AppFree runs after the executor stopped: a frame
+// whose continuation ExecShutdown dropped would otherwise wait forever, so
+// it is destroyed, locals and all. The work holds out until the test lets it
+// go, which is the only way to be sure the shutdown gives up on it.
+Mutex gHoldLock;
+bool gHoldReleased = false;
+
+void HeldWork(Counters* c) {
+    for (;;) {
+        gHoldLock.Lock();
+        bool released = gHoldReleased;
+        gHoldLock.Unlock();
+        if (released) {
+            break;
+        }
+        PlatSleepMs(1);
+    }
+    c->workRan++;
+}
+
+Task HoldsALocalUntilReleased(TaskGuard guard, Counters* c) {
+    (void)guard;
+    Tracked tracked{&gTrackedDestroyed};
+    co_await BackgroundSpawn(MkFunc0(HeldWork, c));
+    c->finished++;
+}
+
+void CancelAllDropsTheFramesShutdownOrphaned() {
+    gCounters = {};
+    gTrackedDestroyed = 0;
+    gHoldReleased = false;
+    Task t = HoldsALocalUntilReleased(TaskGuard{}, &gCounters);
+    utassert(TaskCount() == 1);
+    // Gives up on the held worker and stops taking posts.
+    ExecShutdown();
+    utassert(TaskCancelAll() == 1);
+    utassert(TaskCount() == 0 && !TaskLive(t.id) && gTrackedDestroyed == 1);
+    // Now the work finishes; its `done` meets the stopped executor and is
+    // dropped, which is why the frame could be destroyed above. Wait for the
+    // worker to leave before the next test restarts the pool.
+    gHoldLock.Lock();
+    gHoldReleased = true;
+    gHoldLock.Unlock();
+    while (ExecWorkerCount() > 0) {
+        PlatSleepMs(5);
+    }
+    utassert(gCounters.workRan == 1 && gCounters.finished == 0);
+    ExecInit();
 }
 
 void ADeadOwnerDropsTheContinuationWithoutCancelling() {
@@ -140,6 +223,8 @@ void TestTask() {
     ExecInit();
     ACoroutineRunsItsStepsInOrderAndFreesItself();
     CancellingASuspendedTaskDropsItsContinuation();
+    CancellingARunningTaskDropsItAtItsNextSuspend();
+    CancelAllDropsTheFramesShutdownOrphaned();
     ADeadOwnerDropsTheContinuationWithoutCancelling();
     AStaleHandleNamesNothingAfterItsSlotIsReused();
     utassert(TaskCount() == 0);

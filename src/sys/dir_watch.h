@@ -91,6 +91,12 @@ DirWatchId DirWatchAdd(Func0 onChange);
 // is what lets an OS thread that has not noticed a stop yet keep calling.
 void DirWatchSignal(DirWatchId id);
 
+// Watch `id`'s OS half stopped on its own — the folder or its handle went
+// away — and will report nothing more. The watch stays in the table so that
+// DirWatchStop still finds and closes its OS half, but it no longer counts as
+// live. Safe from any thread.
+void DirWatchEnded(DirWatchId id);
+
 // The OS half's own state for one watch; each platform file defines it.
 struct DirWatchPlat;
 

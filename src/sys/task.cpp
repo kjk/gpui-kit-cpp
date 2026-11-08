@@ -98,12 +98,23 @@ static void ResumeTask(TaskHandle id) {
     }
     // The slot stays registered across the resume: the handle names this
     // coroutine for its whole life, however many times it suspends. What ends
-    // it is TaskFinal, when the body reaches its end.
+    // it is TaskFinal, when the body reaches its end. While the body is on the
+    // stack a TaskCancel only marks it; the next suspend sees the mark.
+    promise.running = true;
     h.resume();
+    // The body either suspended again (await_suspend cleared `running` and
+    // handled a mark) or finished (the slot is gone). Nothing else is
+    // possible, but the flag is cleared anyway should the slot still be here.
+    s = SlotOf(id);
+    if (s) {
+        s->handle.promise().running = false;
+    }
 }
 
 Task TaskPromise::get_return_object() {
     id = RegisterTask(std::coroutine_handle<TaskPromise>::from_promise(*this));
+    // The body runs eagerly from here to its first suspend.
+    running = true;
     Task t;
     t.id = id;
     return t;
@@ -134,9 +145,10 @@ bool TaskCancel(TaskHandle id) {
     TaskPromise& promise = s->handle.promise();
     promise.cancelled = true;
     // A continuation is already on its way and carries a pointer into this
-    // frame; it has to be the one to destroy it, once it has arrived. Without
-    // one the frame is ours to drop now.
-    if (!promise.awaiting) {
+    // frame; it has to be the one to destroy it, once it has arrived. A body
+    // that is executing right now cannot have its frame pulled out from under
+    // it either; its next suspend drops it. Otherwise the frame is ours now.
+    if (!promise.awaiting && !promise.running) {
         DropSlot(s);
     }
     return true;
@@ -156,14 +168,25 @@ int TaskCancelAll() {
     // without running it, so waiting for the continuation would wait forever
     // and leak the frame. The header says why this may only run once the pool
     // has stopped.
+    int kept = 0;
     for (int i = 0; i < len(gTasks); i++) {
         if (!gTasks[i].used) {
+            continue;
+        }
+        TaskPromise& promise = gTasks[i].handle.promise();
+        if (promise.running) {
+            // Called from inside a body (an App freed by a coroutine). Its
+            // frame is on the stack; it drops itself at its next suspend.
+            promise.cancelled = true;
+            kept++;
             continue;
         }
         DropSlot(&gTasks[i]);
         dropped++;
     }
-    VecReset(gTasks);
+    if (kept == 0) {
+        VecReset(gTasks);
+    }
     return dropped;
 }
 
@@ -182,11 +205,22 @@ void BackgroundSpawn::await_suspend(std::coroutine_handle<TaskPromise> h) {
     waiting = h;
     TaskPromise& promise = h.promise();
     id = promise.id;
+    promise.running = false;
     if (!id.IsValid()) {
         // The frame could not be registered at all, so nothing can route a
         // continuation back to it. Resuming here would run the body with the
         // awaited result missing, so the frame is dropped instead.
         h.destroy();
+        return;
+    }
+    if (promise.cancelled) {
+        // Cancelled while the body was running — by itself or by code it
+        // called. The frame is suspended now, so it can be dropped here, with
+        // its locals, instead of spawning work nobody will take.
+        TaskSlot* s = SlotOf(id);
+        if (s) {
+            DropSlot(s);
+        }
         return;
     }
     promise.awaiting = true;
