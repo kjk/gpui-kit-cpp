@@ -55,12 +55,18 @@ bool PopoverIsOpen(Ctx* cx, Entity<PopoverState> state) {
     return s && s->open;
 }
 
+// transition_to: the one path a popover opens and closes on, whether the
+// trigger toggled it (`announce`, which reports the change) or the caller's
+// `open` prop was synced to it (sync_open, which does not — the caller
+// already knows). Both park and restore focus the same way.
+static void PopoverTransition(PopoverState* s, Ctx* cx, bool open,
+                              bool announce);
+
 void PopoverSetOpen(Ctx* cx, Entity<PopoverState> state, bool open) {
     PopoverState* s = state.Get(cx);
     if (s) {
         s->self = state.id;
-        s->open = open;
-        BaseDeferredPopoverSet(cx->app, state.id, open);
+        PopoverTransition(s, cx, open, false);
     }
 }
 
@@ -70,6 +76,11 @@ void PopoverSetOpen(Ctx* cx, Entity<PopoverState> state, bool open) {
 // out focus goes back, but only if the popover still has it, since a click
 // somewhere else has already moved it on purpose.
 void PopoverSetOpenFocused(PopoverState* s, Ctx* cx, bool open) {
+    PopoverTransition(s, cx, open, true);
+}
+
+static void PopoverTransition(PopoverState* s, Ctx* cx, bool open,
+                              bool announce) {
     if (!s || s->open == open) {
         return;
     }
@@ -97,7 +108,9 @@ void PopoverSetOpenFocused(PopoverState* s, Ctx* cx, bool open) {
     s->open = open;
     BaseDeferredPopoverSet(cx->app, s->self.IsValid() ? s->self : cx->self,
                            open);
-    PopoverReportOpenChange(s, cx);
+    if (announce) {
+        PopoverReportOpenChange(s, cx);
+    }
 }
 
 // toggle_open, off the trigger's press. Rust stops propagation here so the
