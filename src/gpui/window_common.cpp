@@ -3578,12 +3578,15 @@ static void FileDropStore(Window* win, Str paths) {
 static void FileDropClear(Window* win) {
     StrFree(win->fileDropPaths);
     win->fileDropPaths = {};
+    // Only a file drag that was installed takes the press state back with
+    // it. An Exited after a refused Entered (Windows sends DragLeave either
+    // way) must not turn an in-app drag's pressedMoved back into a click.
     if (win->fileDrop) {
         win->activeDrag = {};
         win->dragOverId = 0;
+        win->pressedMoved = false;
     }
     win->fileDrop = false;
-    win->pressedMoved = false;
 }
 
 // gpui's translation of PlatformInput::FileDrop into an ExternalPaths drag:
