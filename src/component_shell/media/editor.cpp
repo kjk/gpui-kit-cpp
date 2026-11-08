@@ -101,8 +101,6 @@ static constexpr ArgumentDescriptor kConstructorArgs[] = {
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Editor", kConstructorArgs, &Construct}};
 
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 using text_editing::kAppearanceArgs;
 using text_editing::kAriaLabelArgs;
 using text_editing::kBorderedArgs;
@@ -111,7 +109,8 @@ using text_editing::kReadonlyArgs;
 static constexpr MethodDescriptor kMethods[] = {
     // Rust records `()`: `disabled` is a common behavior the materializer
     // reads from the request.
-    {"disabled", kDisabledArgs, "Disables the editor.", &RecordCommonBehavior},
+    {"disabled", kDisabledArguments, "Disables the editor.",
+     &RecordCommonBehavior},
     {"appearance", kAppearanceArgs, "Controls the editor appearance.",
      &text_editing::RecordBoolFor<kName, Op::Appearance>},
     {"bordered", kBorderedArgs, "Controls the editor border.",

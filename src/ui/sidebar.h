@@ -135,20 +135,14 @@ struct SidebarMenuItem {
     El* IntoEl(Str id);
 };
 
-struct SidebarMenu {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct SidebarMenu : StyledBuilder<SidebarMenu> {
     ArenaVec<SidebarMenuItem*> items;
     bool collapsed = false;
-    Style style = {};
-    uint32_t styleSet = 0;
     // A whole StyleRefinement (what the shell's style hands over), applied
     // after the field-masked one above, where Rust's render refines.
     ElRefiner refiner = {};
 
-    static SidebarMenu* New(Ctx* cx);
     SidebarMenu* Child(SidebarMenuItem* item);
-    SidebarMenu* Refine(const Style& v, uint32_t fields);
     El* IntoEl(Str id);
 };
 
@@ -169,43 +163,34 @@ struct SidebarGroup {
     El* IntoEl(Str id);
 };
 
-struct SidebarHeader {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
-    Style style = {};
-    uint32_t styleSet = 0;
+// The header and the footer: a row of children with selected / collapsed
+// state, a click and the caller's style, set the same way on both.
+template <typename Self>
+struct SidebarBandBuilder : SlotBuilder<Self> {
     bool selected = false;
     bool collapsed = false;
     Listener onClick = {};
     ElRefiner refiner = {};
 
-    static SidebarHeader* New(Ctx* cx);
-    SidebarHeader* Child(El* child);
-    SidebarHeader* Selected(bool v);
-    SidebarHeader* Collapsed(bool v);
-    SidebarHeader* OnClick(Listener fn);
-    SidebarHeader* Refine(const Style& v, uint32_t fields);
+    Self* Selected(bool v) {
+        selected = v;
+        return static_cast<Self*>(this);
+    }
+    Self* Collapsed(bool v) {
+        collapsed = v;
+        return static_cast<Self*>(this);
+    }
+    Self* OnClick(Listener fn) {
+        onClick = fn;
+        return static_cast<Self*>(this);
+    }
+};
+
+struct SidebarHeader : SidebarBandBuilder<SidebarHeader> {
     El* IntoEl();
 };
 
-struct SidebarFooter {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
-    Style style = {};
-    uint32_t styleSet = 0;
-    bool selected = false;
-    bool collapsed = false;
-    Listener onClick = {};
-    ElRefiner refiner = {};
-
-    static SidebarFooter* New(Ctx* cx);
-    SidebarFooter* Child(El* child);
-    SidebarFooter* Selected(bool v);
-    SidebarFooter* Collapsed(bool v);
-    SidebarFooter* OnClick(Listener fn);
-    SidebarFooter* Refine(const Style& v, uint32_t fields);
+struct SidebarFooter : SidebarBandBuilder<SidebarFooter> {
     El* IntoEl();
 };
 

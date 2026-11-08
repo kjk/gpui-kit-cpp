@@ -1310,20 +1310,9 @@ El* SpeechIndicator::IntoEl() {
     El* canvas = Div(a)->SizeFull();
     canvas->customPaint = &PaintIndicator;
     canvas->customUser = paint;
-    El* bars =
-        Div(a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0)->Child(canvas);
-    El* stop =
-        Div(a)
-            ->Absolute()
-            ->Left(0)
-            ->Top(0)
-            ->Right(0)
-            ->Bottom(0)
-            ->Flex()
-            ->ItemsCenter()
-            ->JustifyCenter()
-            ->GroupHoverVisible()
-            ->Child(Icon::New(cx, IconName::Square)->Size(size)->IntoEl());
+    El* bars = Div(a)->Absolute()->Inset0()->Child(canvas);
+    El* stop = CenteredOverlay(a)->GroupHoverVisible()->Child(
+        Icon::New(cx, IconName::Square)->Size(size)->IntoEl());
     return Div(a)->SizeFull()->Group()->Child(bars)->Child(stop);
 }
 

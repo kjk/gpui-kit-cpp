@@ -281,8 +281,6 @@ static constexpr ArgumentDescriptor kItemArgs[] = {{"label", SchemaString()},
 static constexpr ArgumentDescriptor kTriggerArgs[] = {
     {"id", SchemaString()},
     {"label", SchemaString()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kCheckedArgs[] = {
     {"checked", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kActionArgs[] = {
@@ -293,7 +291,7 @@ static constexpr ArgumentDescriptor kErrorArgs[] = {
 static constexpr ConstructorDescriptor kItemConstructors[] = {
     {"NativeMenuItem", kItemArgs, &ConstructItem}};
 static constexpr MethodDescriptor kItemMethods[] = {
-    {"disabled", kDisabledArgs, "Disables the native menu item.",
+    {"disabled", kDisabledArguments, "Disables the native menu item.",
      &RecordCommonBehavior},
     {"checked", kCheckedArgs, "Sets the native menu item checked state.",
      &RecordChecked},
@@ -319,7 +317,7 @@ static constexpr ComponentDescriptor kNativeMenuSeparator = {
 static constexpr ConstructorDescriptor kTriggerConstructors[] = {
     {"NativeMenuTrigger", kTriggerArgs, &ConstructTrigger}};
 static constexpr MethodDescriptor kTriggerMethods[] = {
-    {"disabled", kDisabledArgs, "Disables the native menu trigger.",
+    {"disabled", kDisabledArguments, "Disables the native menu trigger.",
      &RecordCommonBehavior},
     {"on_effect_error", kErrorArgs,
      "Reports asynchronous native menu failures.", &RecordErrorCallback},

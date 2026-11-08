@@ -2430,6 +2430,9 @@ El* El::Left(float v) {
     style.absLeft = v;
     return this;
 }
+El* El::Inset0() {
+    return Top(0)->Right(0)->Bottom(0)->Left(0);
+}
 El* El::Bottom(float v) {
     style.absBottom = v;
     return this;
@@ -10387,27 +10390,38 @@ static int AccessibilityInputFocus(El* e, InputState* input) {
     return 0;
 }
 
+bool AccessibilityRoleIsTextField(AccessibilityRole role) {
+    switch (role) {
+        case AccessibilityRole::DateInput:
+        case AccessibilityRole::DateTimeInput:
+        case AccessibilityRole::EmailInput:
+        case AccessibilityRole::MultilineTextInput:
+        case AccessibilityRole::PasswordInput:
+        case AccessibilityRole::PhoneNumberInput:
+        case AccessibilityRole::TextInput:
+        case AccessibilityRole::UrlInput:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static bool AccessibilityRoleCanFocus(AccessibilityRole role) {
+    if (AccessibilityRoleIsTextField(role)) {
+        return true;
+    }
     switch (role) {
         case AccessibilityRole::Button:
         case AccessibilityRole::CheckBox:
         case AccessibilityRole::ComboBox:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::EmailInput:
         case AccessibilityRole::Link:
         case AccessibilityRole::ListBoxOption:
         case AccessibilityRole::MenuItem:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
         case AccessibilityRole::RadioButton:
         case AccessibilityRole::Slider:
         case AccessibilityRole::SpinButton:
         case AccessibilityRole::Switch:
         case AccessibilityRole::Tab:
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::UrlInput:
             return true;
         default:
             return false;
@@ -10481,19 +10495,14 @@ static Str AccessibilityText(El* e) {
 }
 
 static bool AccessibilityNameFromContents(AccessibilityRole role) {
+    if (AccessibilityRoleIsTextField(role)) {
+        return false;
+    }
     switch (role) {
         case AccessibilityRole::ComboBox:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
         case AccessibilityRole::ProgressIndicator:
         case AccessibilityRole::Slider:
         case AccessibilityRole::SpinButton:
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::UrlInput:
             return false;
         default:
             return true;

@@ -122,6 +122,19 @@ State RawFlowInfoBefore(Tokenizer* t) {
     return StateRetry(StateName::RawFlowInfo);
 }
 
+// `info` and `meta` both refuse a `$` or `` ` `` fence whose info string
+// holds its own marker, dropping out of concrete mode; Rust repeats the
+// check in each state.
+static bool RawFlowInfoHasMarker(Tokenizer* t) {
+    if (t->current == (int32_t)t->tokenizeState.marker &&
+        (t->current == '$' || t->current == '`')) {
+        t->concrete = false;
+        RawFlowClear(t);
+        return true;
+    }
+    return false;
+}
+
 State RawFlowInfo(Tokenizer* t) {
     if (t->current < 0 || t->current == '\n') {
         Exit(t, Name::Data);
@@ -135,10 +148,7 @@ State RawFlowInfo(Tokenizer* t) {
                          StateNok());
         return StateRetry(SpaceOrTab(t));
     }
-    if (t->current == (int32_t)t->tokenizeState.marker &&
-        (t->current == '$' || t->current == '`')) {
-        t->concrete = false;
-        RawFlowClear(t);
+    if (RawFlowInfoHasMarker(t)) {
         return StateNok();
     }
     Consume(t);
@@ -162,10 +172,7 @@ State RawFlowMeta(Tokenizer* t) {
         Exit(t, t->tokenizeState.token5);
         return StateRetry(StateName::RawFlowInfoBefore);
     }
-    if (t->current == (int32_t)t->tokenizeState.marker &&
-        (t->current == '$' || t->current == '`')) {
-        t->concrete = false;
-        RawFlowClear(t);
+    if (RawFlowInfoHasMarker(t)) {
         return StateNok();
     }
     Consume(t);

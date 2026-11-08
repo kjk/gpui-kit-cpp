@@ -44,46 +44,9 @@ El* AlertDialogTrigger::New(Ctx* cx, Listener onOpen, DialogHandle handle) {
 }
 
 AlertDialog* AlertDialog::New(Ctx* cx) {
-    Arena* a = cx->a;
-    AlertDialog* d = ArenaNew<AlertDialog>(a);
-    // Viewport host, like Rust Dialog's deferred+anchored overlay.
-    d->cx = cx;
-    d->trap = StrL("alert-dialog");
-    d->root = Div(a)
-                  ->Role(AccessibilityRole::AlertDialog)
-                  ->Fixed()
-                  ->Top(0)
-                  ->Left(0)
-                  ->W(kFill)
-                  ->H(kFill)
-                  // Rust's AlertDialog is a Dialog, so its host centers the
-                  // popup the same way, and styling `root` replaces that.
-                  ->Flex()
-                  ->ItemsCenter()
-                  ->JustifyCenter();
-    return d;
-}
-
-AlertDialog* AlertDialog::Trap(Str name) {
-    trap = name;
-    return this;
-}
-
-AlertDialog* AlertDialog::Open(bool value) {
-    open = value;
-    return this;
-}
-
-AlertDialog* AlertDialog::Handle(DialogHandle value) {
-    handle = value;
-    return this;
-}
-
-AlertDialog* AlertDialog::Backdrop(El* backdrop) {
-    if (backdrop) {
-        root->Child(backdrop);
-    }
-    return this;
+    // Rust's AlertDialog is a Dialog, so its host centers the popup the same
+    // way, and styling `root` replaces that.
+    return NewHost(cx, AccessibilityRole::AlertDialog, StrL("alert-dialog"));
 }
 
 AlertDialog* AlertDialog::Popup(El* popup) {
@@ -96,8 +59,4 @@ AlertDialog* AlertDialog::Popup(El* popup) {
     return this;
 }
 
-El* AlertDialog::IntoEl() {
-    bool visible = handle.IsValid() ? handle.IsOpen(cx->app, open) : open;
-    return visible ? root : Div(cx->a);
-}
 } // namespace gpui

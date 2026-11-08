@@ -26,7 +26,11 @@ struct ExecuteGrant {
     bool Allows(Str command) const;
 };
 
-struct HttpRequestGrant {
+// One `capabilities.network.http` rule: the scheme and host, an optional
+// port, and the methods, exact paths and path prefixes it allows. The
+// manifest's parsed copy (PluginHttpGrant) keeps it in the manifest arena;
+// HttpRequestGrant owns heap copies, normalized by its setters.
+struct HttpGrantFields {
     Str scheme;
     Str host;
     uint16_t port = 0;
@@ -34,7 +38,9 @@ struct HttpRequestGrant {
     Vec<Str> methods;
     Vec<Str> paths;
     Vec<Str> pathPrefixes;
+};
 
+struct HttpRequestGrant : HttpGrantFields {
     HttpRequestGrant();
     explicit HttpRequestGrant(Str host);
     HttpRequestGrant(const HttpRequestGrant& other);

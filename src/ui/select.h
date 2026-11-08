@@ -96,54 +96,102 @@ struct SelectState {
 // of `SelectState.state.list`: one entity lifetime, two typed views.
 Entity<SearchableListState> SelectListEntity(Entity<SelectState> state);
 
-struct Select {
+// What a Select and the Combobox that is one both hold: the Combobox hands
+// its set to the Select underneath whole.
+struct SelectFields : SearchableListContent {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
     Entity<SearchableListState> state = {};
-    Entity<SelectState> selectState = {};
-    // The items, which are the caller's: they have to outlive the frame, so a
-    // static array rather than one built on the frame arena.
-    const SearchableItem* items = nullptr;
-    int nItems = 0;
-    const Str* sections = nullptr;
-    int nSections = 0;
     Str placeholder = {};
-    // The accessible name. The placeholder and the selected value are not
-    // used as one, because they describe the current value rather than the
-    // control itself.
-    Str accessibilityLabel = {};
-    Str titlePrefix = {};
     Str empty = {};
-    El* emptyEl = nullptr;
+    // `w_full()`: the trigger fills what holds it.
     float width = kFill;
     float menuWidth = 0; // menu_width(px(..)): wider than the trigger
     float menuMaxH = 0;
-    // None defers to the platform. 0 off, 1 on.
-    int scrollBounce = -1;
-    UiSize size = UiSize::Medium;
     IconName icon = IconName::None; // replaces the caret when set
-    // Combobox::check_icon, which the Select forwards to its list.
-    IconName checkIcon = IconName::Check;
     bool disabled = false;
     bool cleanable = false;
     bool appearance = true;
     bool focusRing = true;
-    // searchable(true): a query field at the top of the list, which is what
-    // makes a Select a ComboBox in all but name.
-    InputState* query = nullptr;
-    Listener onQueryFocus = {};
     // render_trigger: what the trigger box holds instead of the title and the
     // caret. Rust hands the closure the selection and lets it build the lot,
     // including its own Caret; a caller here builds the same element and the
     // trigger box only supplies the border, the size and the click.
     El* trigger = nullptr;
-    // Combobox::footer: an action under the option list.
-    El* footer = nullptr;
-    SearchableListDelegate delegate = {};
-    bool hasDelegate = false;
     Listener onToggle;
     Listener onClear;
+};
+
+// The setters both builders take, each returning its own builder.
+template <typename Self>
+struct SelectBuilder : SearchableContentBuilder<Self, SelectFields> {
+    Self* Placeholder(Str s) {
+        this->placeholder = s;
+        return this->This();
+    }
+    Self* Empty(Str s) {
+        this->empty = s;
+        return this->This();
+    }
+    Self* W(float v) {
+        this->width = v;
+        return this->This();
+    }
+    Self* MenuWidth(float v) {
+        this->menuWidth = v;
+        return this->This();
+    }
+    Self* MenuMaxH(float v) {
+        this->menuMaxH = v;
+        return this->This();
+    }
+    Self* Icon(IconName n) {
+        this->icon = n;
+        return this->This();
+    }
+    Self* Disabled(bool v) {
+        this->disabled = v;
+        return this->This();
+    }
+    Self* Cleanable(bool v = true) {
+        this->cleanable = v;
+        return this->This();
+    }
+    Self* Appearance(bool v) {
+        this->appearance = v;
+        return this->This();
+    }
+    // FocusableExt::focus_ring: no focus appearance on this control.
+    Self* FocusRing(bool v) {
+        this->focusRing = v;
+        return this->This();
+    }
+    Self* Trigger(El* e) {
+        this->trigger = e;
+        return this->This();
+    }
+    Self* OnToggle(Listener fn) {
+        this->onToggle = fn;
+        return this->This();
+    }
+    Self* OnClear(Listener fn) {
+        this->onClear = fn;
+        return this->This();
+    }
+};
+
+struct Select : SelectBuilder<Select> {
+    using SelectBuilder<Select>::Empty;
+    Entity<SelectState> selectState = {};
+    // The accessible name. The placeholder and the selected value are not
+    // used as one, because they describe the current value rather than the
+    // control itself.
+    Str accessibilityLabel = {};
+    Str titlePrefix = {};
+    El* emptyEl = nullptr;
+    // None defers to the platform. 0 off, 1 on.
+    int scrollBounce = -1;
     Listener onMouseDownOut;
     Bounds* triggerBoundsOut = nullptr;
     Style triggerStyle = {};
@@ -155,37 +203,17 @@ struct Select {
 
     static Select* New(Ctx* cx, Str id, Entity<SearchableListState> state);
     static Select* New(Ctx* cx, Str id, Entity<SelectState> state);
-    Select* Items(const SearchableItem* items, int n);
-    Select* Sections(const Str* titles, int n);
-    Select* Placeholder(Str s);
     // Set the name a screen reader announces for the select.
     Select* AccessibilityLabel(Str s);
     Select* TitlePrefix(Str s);
-    Select* Empty(Str s);
     Select* Empty(El* element);
-    Select* W(float v);
-    Select* MenuWidth(float v);
-    Select* MenuMaxH(float v);
-    Select* WithSize(UiSize s);
-    Select* Icon(IconName n);
-    Select* CheckIcon(IconName n);
-    Select* Disabled(bool v);
-    Select* Cleanable(bool v = true);
-    Select* Appearance(bool v);
-    // FocusableExt::focus_ring: no focus appearance on this control.
-    Select* FocusRing(bool v);
     Select* Searchable(InputState* query, Listener onFocus);
     // Bounce the dropdown list at its vertical boundaries. On by default on
     // iOS, Android and macOS, off elsewhere.
     Select* ScrollBounce(bool v);
-    Select* Trigger(El* e);
-    Select* Footer(El* e);
-    Select* Delegate(const SearchableListDelegate& value);
     // Multiple: the list toggles rather than replaces, and the trigger says
     // how many are picked.
     Select* Multiple(bool v = true);
-    Select* OnToggle(Listener fn);
-    Select* OnClear(Listener fn);
     Select* OnMouseDownOut(Listener fn);
     Select* TriggerBoundsOut(Bounds* bounds);
     Select* TriggerRefine(const Style& style, uint32_t fields);

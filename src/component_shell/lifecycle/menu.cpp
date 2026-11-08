@@ -369,15 +369,13 @@ static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
 static constexpr ArgumentDescriptor kItemArgs[] = {{"label", SchemaString()},
                                                    {"action", SchemaString()}};
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kCheckedArgs[] = {
     {"checked", SchemaBoolean()}};
 
 static constexpr ConstructorDescriptor kItemConstructors[] = {
     {"MenuItem", kItemArgs, &ConstructItem}};
 static constexpr MethodDescriptor kItemMethods[] = {
-    {"disabled", kDisabledArgs, "Sets native menu item state.",
+    {"disabled", kDisabledArguments, "Sets native menu item state.",
      &RecordBool<BoolOp::Disabled>},
     {"checked", kCheckedArgs, "Sets native menu item state.",
      &RecordBool<BoolOp::Checked>},
@@ -398,7 +396,7 @@ static constexpr ComponentDescriptor kMenuSeparator = {
 static constexpr ConstructorDescriptor kMenuConstructors[] = {
     {"Menu", kLabelArgs, &ConstructLabel<0>}};
 static constexpr MethodDescriptor kMenuMethods[] = {
-    {"disabled", kDisabledArgs, "Disables the whole menu.",
+    {"disabled", kDisabledArguments, "Disables the whole menu.",
      &RecordBool<BoolOp::Disabled>},
 };
 static constexpr ComponentDescriptor kMenu = {

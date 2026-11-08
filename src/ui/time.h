@@ -8,7 +8,30 @@ namespace gpui {
 
 namespace component {
 
-struct Calendar {
+// The listener setters a Calendar and a DatePicker both take.
+template <typename Self>
+struct CalendarListenerSetters : CalendarListeners {
+    Self* OnDay(Listener fn) { return Set(&CalendarListeners::onDay, fn); }
+    Self* OnDate(Listener fn) { return Set(&CalendarListeners::onDate, fn); }
+    Self* OnPrev(Listener fn) { return Set(&CalendarListeners::onPrev, fn); }
+    Self* OnNext(Listener fn) { return Set(&CalendarListeners::onNext, fn); }
+    Self* OnMonthToggle(Listener fn) {
+        return Set(&CalendarListeners::onMonthToggle, fn);
+    }
+    Self* OnYearToggle(Listener fn) {
+        return Set(&CalendarListeners::onYearToggle, fn);
+    }
+    Self* OnMonth(Listener fn) { return Set(&CalendarListeners::onMonth, fn); }
+    Self* OnYear(Listener fn) { return Set(&CalendarListeners::onYear, fn); }
+
+  private:
+    Self* Set(Listener CalendarListeners::* field, Listener fn) {
+        this->*field = fn;
+        return static_cast<Self*>(this);
+    }
+};
+
+struct Calendar : CalendarListenerSetters<Calendar> {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     int year = 2026;
@@ -31,14 +54,6 @@ struct Calendar {
     // border_0().rounded_none().p_0(): what a DatePicker's popup asks for,
     // since the popup is the frame and a second one inside it would show.
     bool bare = false;
-    Listener onDay;  // day of month
-    Listener onDate; // DatePickerDateKey(LocalDate)
-    Listener onPrev;
-    Listener onNext;
-    Listener onMonthToggle;
-    Listener onYearToggle;
-    Listener onMonth;
-    Listener onYear;
 
     static Calendar* New(Ctx* cx);
     // The source-shaped facade: behavior stays in Base CalendarState and
@@ -57,14 +72,6 @@ struct Calendar {
     Calendar* DisabledMatcher(DateMatcher matcher);
     Calendar* Bare();
     Calendar* Refine(const Style& value, uint32_t fields);
-    Calendar* OnDay(Listener fn);
-    Calendar* OnDate(Listener fn);
-    Calendar* OnPrev(Listener fn);
-    Calendar* OnNext(Listener fn);
-    Calendar* OnMonthToggle(Listener fn);
-    Calendar* OnYearToggle(Listener fn);
-    Calendar* OnMonth(Listener fn);
-    Calendar* OnYear(Listener fn);
     El* IntoEl();
 };
 
@@ -275,7 +282,7 @@ Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date,
                          LocalTime time = {});
 Str DatePickerFormatValue(Arena* a, Str pattern, Date date);
 
-struct DatePicker {
+struct DatePicker : CalendarListenerSetters<DatePicker> {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
@@ -308,15 +315,7 @@ struct DatePicker {
     const DateRangePreset* presets = nullptr;
     int presetsCount = 0;
     Listener onToggle;
-    Listener onDay;
-    Listener onDate;
     Listener onClear;
-    Listener onPrev;
-    Listener onNext;
-    Listener onMonthToggle;
-    Listener onYearToggle;
-    Listener onMonth;
-    Listener onYear;
     Listener onPreset;
     Entity<DatePickerState> state = {};
     Style style = {};
@@ -349,15 +348,7 @@ struct DatePicker {
                         Listener onSelect = {});
     DatePicker* Open(bool v);
     DatePicker* OnToggle(Listener fn);
-    DatePicker* OnDay(Listener fn);
-    DatePicker* OnDate(Listener fn);
     DatePicker* OnClear(Listener fn);
-    DatePicker* OnPrev(Listener fn);
-    DatePicker* OnNext(Listener fn);
-    DatePicker* OnMonthToggle(Listener fn);
-    DatePicker* OnYearToggle(Listener fn);
-    DatePicker* OnMonth(Listener fn);
-    DatePicker* OnYear(Listener fn);
     El* IntoEl();
 };
 

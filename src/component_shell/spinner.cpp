@@ -104,8 +104,6 @@ static El* Materialize(MaterializeRequest* request) {
 static constexpr const char* kIconLiterals[] = {"loader", "loader_circle"};
 static constexpr const char* kEaseLiterals[] = {"linear", "ease_in_out",
                                                 "ease_out_quint"};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ArgumentDescriptor kIconArgs[] = {
     {"icon", SchemaEnum(kIconLiterals)}};
 static constexpr ArgumentDescriptor kColorArgs[] = {{"color", SchemaString()}};
@@ -115,7 +113,7 @@ static constexpr ArgumentDescriptor kEaseArgs[] = {
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Spinner", {}, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
-    {"size", kSizeArgs, "Sets the spinner's semantic size.",
+    {"size", kSizeArguments, "Sets the spinner's semantic size.",
      &RecordSizeOp<SpinnerOp, SpinnerOp::Size>},
     {"icon", kIconArgs, "Selects the icon rotated by the spinner.",
      &RecordIcon},

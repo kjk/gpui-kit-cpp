@@ -118,8 +118,6 @@ static constexpr ArgumentDescriptor kConstructorArgs[] = {
 static constexpr ArgumentDescriptor kTitleArgs[] = {{"title", SchemaString()}};
 static constexpr ArgumentDescriptor kVisibleArgs[] = {
     {"visible", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Alert", kConstructorArgs, &Construct<AlertVariant::Default>},
@@ -133,7 +131,7 @@ static constexpr MethodDescriptor kMethods[] = {
     {"banner", {}, "Uses the full-width banner presentation.", &RecordBanner},
     {"visible", kVisibleArgs, "Controls whether the alert is rendered.",
      &RecordVisible},
-    {"size", kSizeArgs, "Sets the alert's semantic size.",
+    {"size", kSizeArguments, "Sets the alert's semantic size.",
      &RecordSizeOp<AlertOp, AlertOp::Size>},
 };
 static constexpr ComponentDescriptor kAlert = {

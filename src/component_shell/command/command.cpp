@@ -421,8 +421,6 @@ static bool NewCommandState(shell::StateBuild* build, const ComponentArgument*,
 }
 
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kKeywordArgs[] = {
     {"keyword", SchemaString()}};
 static constexpr ArgumentDescriptor kCheckedArgs[] = {
@@ -464,7 +462,7 @@ static constexpr shell::StateDescriptor kCommandState = {
 static constexpr ConstructorDescriptor kItemConstructors[] = {
     {"CommandItem", kLabelArgs, &ConstructItem}};
 static constexpr MethodDescriptor kItemMethods[] = {
-    {"disabled", kDisabledArgs, "Sets common disabled state.",
+    {"disabled", kDisabledArguments, "Sets common disabled state.",
      &RecordCommonBehavior},
     {"keyword", kKeywordArgs, "Sets the item search keyword.", &RecordKeyword},
     {"checked", kCheckedArgs, "Sets the item checked state.", &RecordChecked},

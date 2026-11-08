@@ -8,6 +8,23 @@
 
 namespace gpui {
 
+// Deletes the entry with `id` from a list of owned entries, keeping the
+// order of the rest. False when there is none.
+template <typename T>
+static bool RemoveOwnedById(Vec<T*>* entries, uint64_t id) {
+    for (int i = 0; i < len(*entries); i++) {
+        if ((*entries)[i]->id == id) {
+            delete (*entries)[i];
+            for (int k = i; k + 1 < len(*entries); k++) {
+                (*entries)[k] = (*entries)[k + 1];
+            }
+            entries->len--;
+            return true;
+        }
+    }
+    return false;
+}
+
 static const SyntaxContext kDefaultNotIn[] = {SyntaxContext::String,
                                               SyntaxContext::Comment};
 static const BracketPair kDefaultBrackets[] = {
@@ -505,28 +522,9 @@ float TabExpandedWidth(Str text, float stop,
     if (!has || stop <= 0.f) {
         return measure(user, text);
     }
-    double shaped = 0;
-    double shift = 0;
-    int i = 0;
-    while (i < len(text)) {
-        if (text.s[i] == '\t') {
-            float tabW = measure(user, Str(text.s + i, 1));
-            double start = shaped + shift;
-            double end = shaped + (double)tabW;
-            double next = TabNextStop(start, stop);
-            shift = next - end;
-            shaped = end;
-            i++;
-            continue;
-        }
-        int j = i + 1;
-        while (j < len(text) && text.s[j] != '\t') {
-            j++;
-        }
-        shaped += (double)measure(user, Str(text.s + i, j - i));
-        i = j;
-    }
-    return (float)(shaped + shift);
+    return TabWalk(
+        text, stop, [&](Str slice) { return measure(user, slice); },
+        [](const TabSegment&) { return true; });
 }
 
 bool TabExpandGlyphXs(Str text, float stop, float advance, float tabAdvance,
@@ -1137,17 +1135,7 @@ bool RangeDecorationCollections::Append(uint64_t id,
 }
 
 bool RangeDecorationCollections::Remove(uint64_t id) {
-    for (int i = 0; i < len(entries); i++) {
-        if (entries[i]->id == id) {
-            delete entries[i];
-            for (int k = i; k + 1 < len(entries); k++) {
-                entries[k] = entries[k + 1];
-            }
-            entries.len--;
-            return true;
-        }
-    }
-    return false;
+    return RemoveOwnedById(&entries, id);
 }
 
 void RangeDecorationCollections::AdjustForEdit(Selection editedRange,
@@ -1554,18 +1542,11 @@ struct MarkCollections {
     }
 
     bool Remove(uint64_t id) {
-        for (int i = 0; i < len(entries); i++) {
-            if (entries[i]->id == id) {
-                delete entries[i];
-                for (int k = i; k + 1 < len(entries); k++) {
-                    entries[k] = entries[k + 1];
-                }
-                entries.len--;
-                revision++;
-                return true;
-            }
+        if (!RemoveOwnedById(&entries, id)) {
+            return false;
         }
-        return false;
+        revision++;
+        return true;
     }
 
     void Clear() {

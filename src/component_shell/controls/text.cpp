@@ -188,7 +188,6 @@ static El* MaterializeKbd(MaterializeRequest* request) {
 }
 
 static constexpr ArgumentDescriptor kTextArgs[] = {{"text", SchemaString()}};
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kKeystrokeArgs[] = {
     {"keystroke", SchemaString()}};
 static constexpr ArgumentDescriptor kSecondaryArgs[] = {
@@ -220,7 +219,7 @@ static constexpr ComponentDescriptor kLabel = {
     &MaterializeLabel};
 
 static constexpr ConstructorDescriptor kLinkConstructors[] = {
-    {"Link", kIdArgs, &ConstructLink}};
+    {"Link", kIdArguments, &ConstructLink}};
 static constexpr MethodDescriptor kLinkMethods[] = {
     kOnClickMethod,
     kDisabledMethod,

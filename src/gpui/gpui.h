@@ -509,23 +509,24 @@ enum class DispatchPhase : uint8_t {
     Bubble
 };
 
-struct MouseDownEvent {
+// What a press and a release both carry: the button, where it was, the box
+// of the element that heard it, the modifiers, the run of clicks it is in
+// and the pass of the chain.
+struct MouseButtonEvent {
     MouseButton button = MouseButton::Left;
     float x = 0;
     float y = 0;
-    // The box of the element the press landed on, when it has an identity —
-    // the same thing ClickEvent::el carries, and what a handler needs to
-    // place something where the press was inside it. A Rust hitbox has the
-    // bounds too; the event does not, because the closure already has them.
+    // The box of the element the press landed on (or that heard the
+    // release), when it has an identity — the same thing ClickEvent::el
+    // carries, and what a handler needs to place something where the press
+    // was inside it. A Rust hitbox has the bounds too; the event does not,
+    // because the closure already has them. The chain fills it in as the
+    // event walks.
     Bounds el = {};
     Modifiers modifiers = {};
     // How many presses this one is in an unbroken run: 1, 2, 3… What Rust's
     // on_double_click tests — `on_click(|ev, ..| ev.click_count() == 2)`.
     int clickCount = 1;
-    // The press that also activated the window. Windows knows from
-    // WM_MOUSEACTIVATE; X11 has no such notion and a Cocoa view does not
-    // accept the first mouse, so it is false on those two.
-    bool firstMouse = false;
     // Which pass of the chain this is. A handler registered for one phase only
     // ever sees that phase; the field is there for one that took both.
     DispatchPhase phase = DispatchPhase::Bubble;
@@ -534,19 +535,14 @@ struct MouseDownEvent {
     bool IsFocusing() const { return button == MouseButton::Left; }
 };
 
-struct MouseUpEvent {
-    MouseButton button = MouseButton::Left;
-    float x = 0;
-    float y = 0;
-    // The box of the element that heard it, the way MouseDownEvent carries
-    // one. The chain fills it in as the event walks.
-    Bounds el = {};
-    Modifiers modifiers = {};
-    int clickCount = 1;
-    DispatchPhase phase = DispatchPhase::Bubble;
-
-    bool IsFocusing() const { return button == MouseButton::Left; }
+struct MouseDownEvent : MouseButtonEvent {
+    // The press that also activated the window. Windows knows from
+    // WM_MOUSEACTIVATE; X11 has no such notion and a Cocoa view does not
+    // accept the first mouse, so it is false on those two.
+    bool firstMouse = false;
 };
+
+struct MouseUpEvent : MouseButtonEvent {};
 
 struct MouseMoveEvent {
     float x = 0;
@@ -1565,7 +1561,34 @@ struct ChartSeries;
 // chart's default fill for a ramp across the plot, which has no one colour.
 Rgba ChartBarTooltipColor(const ChartSeries& c, int index);
 
-struct ChartSeries {
+// The value-axis options a chart's paint reads: what the point charts'
+// PointAxes builds and BarChart's value-axis setters fill.
+struct ChartAxisOptions {
+    // y_axis: tick labels at each of the yTickCount y ticks.
+    bool yAxis = false;
+    // y_axis_label_placement / value_axis_label_placement.
+    AxisLabelPlacement axisLabelPlacement = AxisLabelPlacement::Outside;
+    // y_tick_count: the y ticks, both ends included, which place the
+    // horizontal grid lines and the labels. At least 2.
+    int yTickCount = 5;
+    // y_tick_format / value_tick_format; null is whole numbers bare and the
+    // rest to one decimal.
+    ChartTickFormatFn tickFormat = nullptr;
+    void* tickFormatUser = nullptr;
+    // x_tick_count / band_tick_count: label that many items spread from the
+    // first to the last instead of every tickMargin-th. -1 is None.
+    int xTickCount = -1;
+    // grid_columns: vertical grid lines, the first on the left edge.
+    int gridColumns = 0;
+    // grid_dashed.
+    bool gridDashed = true;
+    // y_padding: the space kept above the highest value and below the
+    // lowest.
+    float yPaddingTop = 10;
+    float yPaddingBottom = 0;
+};
+
+struct ChartSeries : ChartAxisOptions {
     ChartKind kind = ChartKind::Area;
     const float* ys = nullptr;
     // The first series as the caller gave it, when it gave doubles: what the
@@ -1596,29 +1619,6 @@ struct ChartSeries {
     // many points and the data fills the leading ones. 0 is the data's own
     // length; a count below it has no effect.
     int pointCount = 0;
-    // The point charts' PointAxes and BarChart's value-axis options.
-    // y_axis: tick labels at each of the yTickCount y ticks.
-    bool yAxis = false;
-    // y_axis_label_placement / value_axis_label_placement.
-    AxisLabelPlacement axisLabelPlacement = AxisLabelPlacement::Outside;
-    // y_tick_count: the y ticks, both ends included, which place the
-    // horizontal grid lines and the labels. At least 2.
-    int yTickCount = 5;
-    // y_tick_format / value_tick_format; null is whole numbers bare and the
-    // rest to one decimal.
-    ChartTickFormatFn tickFormat = nullptr;
-    void* tickFormatUser = nullptr;
-    // x_tick_count / band_tick_count: label that many items spread from the
-    // first to the last instead of every tickMargin-th. -1 is None.
-    int xTickCount = -1;
-    // grid_columns: vertical grid lines, the first on the left edge.
-    int gridColumns = 0;
-    // grid_dashed.
-    bool gridDashed = true;
-    // y_padding: the space kept above the highest value and below the
-    // lowest.
-    float yPaddingTop = 10;
-    float yPaddingBottom = 0;
     // reference_line: dashed lines across the plot at these values.
     const double* referenceLines = nullptr;
     int nReferenceLines = 0;
@@ -2465,6 +2465,11 @@ enum class AccessibilityRole : uint8_t {
     Terminal
 };
 
+// The single- and multi-line text fields (text, password, email, phone,
+// URL, date and date-time), which every platform bridge and the tree's own
+// name and focus rules treat as one kind of control.
+bool AccessibilityRoleIsTextField(AccessibilityRole role);
+
 enum class AccessibilityToggled : uint8_t {
     Unset,
     False,
@@ -3309,6 +3314,8 @@ struct El {
     El* Left(float v);
     El* Bottom(float v);
     El* Right(float v);
+    // Styled::inset_0: top, right, bottom and left all 0.
+    El* Inset0();
     El* LeftRel(float frac);
     El* RightRel(float frac);
     El* TopRel(float frac);

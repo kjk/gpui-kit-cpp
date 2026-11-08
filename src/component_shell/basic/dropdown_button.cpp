@@ -184,12 +184,6 @@ static constexpr const char* kAnchorLiterals[] = {"top_right", "bottom_right",
 static constexpr ArgumentDescriptor kConstructorArgs[] = {
     {"id", SchemaString()},
     {"label", SchemaString()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kSelectedArgs[] = {
-    {"selected", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ArgumentDescriptor kVariantArgs[] = {
     {"variant", SchemaEnum(kVariantLiterals)}};
 static constexpr ArgumentDescriptor kAnchorArgs[] = {
@@ -204,14 +198,14 @@ static constexpr MethodDescriptor kMethods[] = {
     {"outline", {}, "Uses the outlined button treatment.", &RecordOutline},
     // common_boolean and common_on_click: the shell reads these, and the
     // descriptor carries its own sentences for them.
-    {"disabled", kDisabledArgs, "Records shell-owned common control behavior.",
-     &RecordCommonBehavior},
-    {"selected", kSelectedArgs, "Records shell-owned common control behavior.",
-     &RecordCommonBehavior},
+    {"disabled", kDisabledArguments,
+     "Records shell-owned common control behavior.", &RecordCommonBehavior},
+    {"selected", kSelectedArguments,
+     "Records shell-owned common control behavior.", &RecordCommonBehavior},
     {"on_click", kOnClickArguments,
      "Invokes the callback when the labeled action half is activated.",
      &RecordCommonBehavior},
-    {"size", kSizeArgs, "Sets the size of both halves.",
+    {"size", kSizeArguments, "Sets the size of both halves.",
      &RecordSizeOp<DropdownOp, DropdownOp::Size>},
     {"variant", kVariantArgs, "Sets the semantic variant of both halves.",
      &RecordVariant},

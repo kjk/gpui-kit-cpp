@@ -2819,17 +2819,18 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
                               ? Listen(cx, &ScriptView::OnNumberStep,
                                        (int64_t)behavior.onStep)
                               : Listener{};
-        NumberStep amount = NumberStep::Fixed(retained->number.step);
-        const NumberStep* step =
-            !behavior.onStep && retained->number.hasStep ? &amount : nullptr;
-        Func0 decrement = NumberInputStepCallback(
-            cx, state, StepAction::Decrement, step, retained->number.hasMin,
-            retained->number.min, retained->number.hasMax, retained->number.max,
-            behavior.disabled, onStep);
-        Func0 increment = NumberInputStepCallback(
-            cx, state, StepAction::Increment, step, retained->number.hasMin,
-            retained->number.min, retained->number.hasMax, retained->number.max,
-            behavior.disabled, onStep);
+        ShellNumberBinding* key = ArenaNew<ShellNumberBinding>(cx->a);
+        NumberStepTarget& target = key->target;
+        static_cast<NumberRange&>(target) = retained->number;
+        target.state = state;
+        target.step = NumberStep::Fixed(retained->number.step);
+        target.hasStep = !behavior.onStep && retained->number.hasStep;
+        target.disabled = behavior.disabled;
+        key->onStep = behavior.onStep;
+        Func0 decrement =
+            NumberInputStepCallback(cx, target, StepAction::Decrement, onStep);
+        Func0 increment =
+            NumberInputStepCallback(cx, target, StepAction::Increment, onStep);
         El* decrementButton = NumberStepButton(
             cx, runtime, specs, SlotId(node, "decrement_button"),
             StrL("decrement"), behavior.disabled, decrement, error);
@@ -2848,16 +2849,6 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         element = NumberInput::Compose(cx, nativeId, state, behavior.disabled,
                                        decrementButton, editor, incrementButton,
                                        behavior.controlsRight, ordinary);
-        ShellNumberBinding* key = ArenaNew<ShellNumberBinding>(cx->a);
-        key->state = state;
-        key->step = amount;
-        key->hasStep = retained->number.hasStep;
-        key->hasMin = retained->number.hasMin;
-        key->min = retained->number.min;
-        key->hasMax = retained->number.hasMax;
-        key->max = retained->number.max;
-        key->disabled = behavior.disabled;
-        key->onStep = behavior.onStep;
         element->TrackFocus(state->focus)
             ->OnAccessibilityDecrement(decrement)
             ->OnAccessibilityIncrement(increment)

@@ -195,8 +195,6 @@ static constexpr ArgumentDescriptor kBorderedArgs[] = {
     {"bordered", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kColumnsArgs[] = {
     {"columns", SchemaNumber()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ConstructorDescriptor kListConstructors[] = {
     {"DescriptionList", {}, &ConstructList}};
 static constexpr MethodDescriptor kListMethods[] = {
@@ -205,7 +203,7 @@ static constexpr MethodDescriptor kListMethods[] = {
      &RecordBordered},
     {"columns", kColumnsArgs, "Sets the column count from 1 through 10.",
      &RecordListColumns},
-    {"size", kSizeArgs, "Sets the description-list density.", &RecordSize},
+    {"size", kSizeArguments, "Sets the description-list density.", &RecordSize},
 };
 static constexpr ComponentDescriptor kList = {
     "DescriptionList", kListConstructors, kListMethods,

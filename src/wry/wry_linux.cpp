@@ -238,7 +238,7 @@ enum class DragState : uint8_t {
     Leaving,
 };
 
-struct WebView {
+struct WebView : WebViewHandlers {
     Str id;
     WebKitWebView* webview = nullptr; // our reference; the widget may die
     WebKitWebContext* context = nullptr;
@@ -268,18 +268,6 @@ struct WebView {
     Vec<Str> pendingScripts;
     bool pendingOpen = true;
 
-    void* ctx = nullptr;
-    void (*ipcHandler)(void* ctx, Str url, Str body) = nullptr;
-    bool (*navigationHandler)(void* ctx, Str url) = nullptr;
-    void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
-    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
-                              Str url) = nullptr;
-    NewWindowResponse (*newWindowReqHandler)(
-        void* ctx, Str url, const NewWindowFeatures* features,
-        WebView** createdWebView) = nullptr;
-    DownloadStartedHandler downloadStartedHandler = nullptr;
-    DownloadCompletedHandler downloadCompletedHandler = nullptr;
-    DragDropHandler dragDropHandler = nullptr;
     WebViewPageClick pageClick = nullptr;
     void* pageClickUser = nullptr;
 
@@ -1034,15 +1022,7 @@ static GtkWidget* OnCreate(WebKitWebView* webview,
 static WebView* NewGtk(GtkWidget* container, const WebViewAttributes* attrs,
                        WebKitWebView* relatedView) {
     WebView* wv = new WebView();
-    wv->ctx = attrs->ctx;
-    wv->ipcHandler = attrs->ipcHandler;
-    wv->navigationHandler = attrs->navigationHandler;
-    wv->documentTitleChangedHandler = attrs->documentTitleChangedHandler;
-    wv->onPageLoadHandler = attrs->onPageLoadHandler;
-    wv->newWindowReqHandler = attrs->newWindowReqHandler;
-    wv->downloadStartedHandler = attrs->downloadStartedHandler;
-    wv->downloadCompletedHandler = attrs->downloadCompletedHandler;
-    wv->dragDropHandler = attrs->dragDropHandler;
+    WebViewHandlersSet(wv, attrs);
     wv->cancellable = g_cancellable_new();
 
     // A related view shares its opener's context, as WebKit requires.

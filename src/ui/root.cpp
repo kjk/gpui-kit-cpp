@@ -64,7 +64,7 @@ El* WindowStateLayers(Ctx* cx) {
             return;
         }
         if (!layers) {
-            layers = Div(a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0);
+            layers = Div(a)->Absolute()->Inset0();
         }
         layers->Child(e);
     };
@@ -212,7 +212,7 @@ static El* WindowStateRender(void*, Ctx* cx) {
         return layers;
     }
     if (!layers) {
-        layers = Div(cx->a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0);
+        layers = Div(cx->a)->Absolute()->Inset0();
     }
     if (touch) {
         layers->Child(touch);

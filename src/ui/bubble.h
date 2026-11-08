@@ -41,34 +41,17 @@ enum class BubbleReactionSide : uint8_t {
 //
 // This part owns padding, radius, border, typography and semantic colours, so
 // a caller can refine the surface without changing the bubble's row layout.
-struct BubbleContent {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
+struct BubbleContent : SlotBuilder<BubbleContent> {
     // Filled in by the Bubble that owns this surface.
     BubbleVariant variant = BubbleVariant::Filled;
     MessageAlignment alignment = MessageAlignment::Start;
     bool hasAlignment = false;
-    Style style = {};
-    uint32_t styleSet = 0;
 
-    static BubbleContent* New(Ctx* cx);
-    BubbleContent* Child(El* e);
-    BubbleContent* Refine(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 
 // A vertical stack of consecutive bubbles from one sender.
-struct BubbleGroup {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    ArenaVec<El*> children;
-    Style style = {};
-    uint32_t styleSet = 0;
-
-    static BubbleGroup* New(Ctx* cx);
-    BubbleGroup* Child(El* e);
-    BubbleGroup* Refine(const Style& s, uint32_t fields);
+struct BubbleGroup : SlotBuilder<BubbleGroup> {
     El* IntoEl();
 };
 
@@ -81,23 +64,17 @@ struct BubbleReactionChild {
 
 // A styleable reaction region positioned on a bubble edge. Compose existing
 // Button values inside it to keep button semantics and keyboard behaviour.
-struct BubbleReactions {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct BubbleReactions : StyledBuilder<BubbleReactions> {
     ArenaVec<BubbleReactionChild> children;
     BubbleReactionSide side = BubbleReactionSide::Bottom;
     MessageAlignment alignment = MessageAlignment::End;
-    Style style = {};
-    uint32_t styleSet = 0;
 
-    static BubbleReactions* New(Ctx* cx);
     BubbleReactions* Side(BubbleReactionSide value);
     BubbleReactions* Alignment(MessageAlignment value);
     // A typed action gives up the region's decorative content padding and
     // takes the theme's full radius, so it reads as part of one surface.
     BubbleReactions* Action(Button* action);
     BubbleReactions* Child(El* e);
-    BubbleReactions* Refine(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 

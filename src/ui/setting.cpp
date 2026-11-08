@@ -805,6 +805,19 @@ struct FieldEl {
     Listener onReset = {};
 };
 
+// The Switch or Checkbox a boolean setting renders as. Neither has visible
+// text of its own: the setting title is the name a screen reader announces.
+template <typename B>
+static El* SettingToggleEl(B* b, const SettingItem& it,
+                           const RenderOptions& options, Listener click) {
+    return b->AccessibilityLabel(it.title)
+        ->Checked(it.boolValue && *it.boolValue)
+        ->Disabled(options.disabled)
+        ->OnClick(click)
+        ->WithSize(options.size)
+        ->IntoEl();
+}
+
 static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
                            bool pageResettable, const RenderOptions& options) {
     FieldEl out;
@@ -871,25 +884,11 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
                   : kFill;
     switch (it.field) {
         case SettingFieldKind::Switch:
-            // The control has no visible text of its own. The setting title
-            // is the name a screen reader announces.
-            out.el = Switch::New(cx, id)
-                         ->AccessibilityLabel(it.title)
-                         ->Checked(it.boolValue && *it.boolValue)
-                         ->Disabled(options.disabled)
-                         ->OnClick(click)
-                         ->WithSize(options.size)
-                         ->IntoEl();
+            out.el = SettingToggleEl(Switch::New(cx, id), it, options, click);
             out.dirty = it.boolValue && *it.boolValue != it.defBool;
             break;
         case SettingFieldKind::Checkbox:
-            out.el = Checkbox::New(cx, id)
-                         ->AccessibilityLabel(it.title)
-                         ->Checked(it.boolValue && *it.boolValue)
-                         ->Disabled(options.disabled)
-                         ->OnClick(click)
-                         ->WithSize(options.size)
-                         ->IntoEl();
+            out.el = SettingToggleEl(Checkbox::New(cx, id), it, options, click);
             out.dirty = it.boolValue && *it.boolValue != it.defBool;
             break;
         case SettingFieldKind::Input:

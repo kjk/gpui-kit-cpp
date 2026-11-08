@@ -61,20 +61,12 @@ static ArenaStr Decode(Arena* a, Str value) {
             continue;
         }
         int start = i++;
-        if (i < len(value) && value.s[i] == '#') {
-            i++;
-            int radix = 10;
-            if (i < len(value) && (value.s[i] == 'x' || value.s[i] == 'X')) {
-                radix = 16;
-                i++;
-            }
-            int digits = i;
+        int radix = 10;
+        int digits = 0;
+        if (NumericCharRef(value, i, &radix, &digits, &i)) {
             uint32_t cp = 0;
-            while (i < len(value)) {
-                int d = HexDigitValue(value.s[i]);
-                if (d < 0 || d >= radix) break;
-                cp = cp * (uint32_t)radix + (uint32_t)d;
-                i++;
+            for (int d = digits; d < i; d++) {
+                cp = cp * (uint32_t)radix + (uint32_t)HexDigitValue(value.s[d]);
             }
             if (i == digits) {
                 i = start + 1;
@@ -109,19 +101,7 @@ static ArenaStr Decode(Arena* a, Str value) {
     return ArenaStrDup(a, out.TakeStr());
 }
 
-struct Lex {
-    Arena* a = nullptr;
-    Str source = {};
-    int at = 0;
-    int line = 1;
-    TokenSink sink = nullptr;
-    void* user = nullptr;
-    TokenizerOptions options = {};
-};
-
-static void Emit(Lex* l, const Token& token) {
-    if (l->sink) l->sink(l->user, &token);
-}
+struct Lex : TokenizerInput {};
 
 static void SkipSpace(Lex* l) {
     while (l->at < len(l->source) && Space(l->source.s[l->at])) {
@@ -204,11 +184,7 @@ void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
               TokenizerOptions options) {
     if (!a || !sink) return;
     Lex l;
-    l.a = a;
-    l.source = source;
-    l.sink = sink;
-    l.user = user;
-    l.options = options;
+    l.Start(a, source, sink, user, options);
     Str rawName = {};
     while (l.at < len(source)) {
         if (rawName.s) {
@@ -219,7 +195,7 @@ void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
             token.line = l.line;
             l.at = end;
             rawName = {};
-            Emit(&l, token);
+            l.Emit(token);
             continue;
         }
         if (source.s[l.at] != '<') {
@@ -229,7 +205,7 @@ void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
             token.kind = TokenKind::Character;
             token.data = Decode(a, Str(source.s + start, l.at - start));
             token.line = l.line;
-            Emit(&l, token);
+            l.Emit(token);
             continue;
         }
         if (l.at + 3 < len(source) &&
@@ -245,7 +221,7 @@ void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
             token.kind = TokenKind::Comment;
             token.data = ArenaStrDup(a, Str(source.s + start, l.at - start));
             if (l.at + 2 < len(source)) l.at += 3;
-            Emit(&l, token);
+            l.Emit(token);
             continue;
         }
         if (l.at + 1 < len(source) && source.s[l.at + 1] == '!') {
@@ -275,29 +251,12 @@ void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
             token.kind = TokenKind::Character;
             token.data = ArenaStrDup(a, Str(source.s + l.at++, 1));
         }
-        Emit(&l, token);
+        l.Emit(token);
     }
     Token eof;
     eof.kind = TokenKind::Eof;
     eof.line = l.line;
-    Emit(&l, eof);
-}
-
-static Node* NewNode(Arena* a, NodeKind kind, Str name = {}) {
-    Node* node = ArenaNew<Node>(a);
-    node->kind = kind;
-    node->name = ArenaStrDup(a, name);
-    return node;
-}
-
-static void Append(Arena* a, Node* parent, Node* child) {
-    child->parent = ArenaPtrOf(a, parent);
-    Node* last = NodeLast(a, parent);
-    if (last)
-        last->next = ArenaPtrOf(a, child);
-    else
-        parent->first = ArenaPtrOf(a, child);
-    parent->last = ArenaPtrOf(a, child);
+    l.Emit(eof);
 }
 
 struct Build {
@@ -312,23 +271,23 @@ static void OnToken(void* user, const Token* token) {
     Node* parent = b->stack.len ? b->stack[b->stack.len - 1] : b->doc;
     if (token->kind == TokenKind::Character) {
         if (ArenaStrLen(b->a, token->data) <= 0) return;
-        Node* node = NewNode(b->a, NodeKind::Text);
+        Node* node = NodeNew(b->a, NodeKind::Text);
         node->data = token->data;
-        Append(b->a, parent, node);
+        NodeAppend(b->a, parent, node);
     } else if (token->kind == TokenKind::Comment) {
-        Node* node = NewNode(b->a, NodeKind::Comment);
+        Node* node = NodeNew(b->a, NodeKind::Comment);
         node->data = token->data;
-        Append(b->a, parent, node);
+        NodeAppend(b->a, parent, node);
     } else if (token->kind == TokenKind::Doctype && !b->options.dropDoctype) {
-        Node* node = NewNode(b->a, NodeKind::Doctype);
+        Node* node = NodeNew(b->a, NodeKind::Doctype);
         node->name = token->name;
-        Append(b->a, parent, node);
+        NodeAppend(b->a, parent, node);
     } else if (token->kind == TokenKind::StartTag) {
         Str name = TokenName(b->a, token);
-        Node* node = NewNode(b->a, NodeKind::Element);
+        Node* node = NodeNew(b->a, NodeKind::Element);
         node->name = token->name;
         node->attrs = token->attrs;
-        Append(b->a, parent, node);
+        NodeAppend(b->a, parent, node);
         if (!token->selfClosing && !SeqStrContainsI(kVoidElements, name)) {
             b->stack.Append(b->a, node);
         }
@@ -347,7 +306,7 @@ static Node* Parse(Arena* a, Str source, ParseOptions options) {
     Build build;
     build.a = a;
     build.options = options;
-    build.doc = NewNode(a, NodeKind::Document);
+    build.doc = NodeNew(a, NodeKind::Document);
     Tokenize(a, source, OnToken, &build, options.tokenizer);
     return build.doc;
 }
@@ -362,10 +321,6 @@ Node* ParseFragment(Arena* a, Str source, Str context, ParseOptions options) {
 }
 
 // Text escapes `>`, an attribute value `"`; both escape `&` and `<`.
-static void WriteEscaped(StrBuilder& out, Str value, bool attribute) {
-    AppendHtmlEscaped(out, value, !attribute, attribute);
-}
-
 static void Write(Arena* a, StrBuilder& out, const Node* node, bool include) {
     bool element = node->kind == NodeKind::Element;
     if (include && node->kind == NodeKind::Text) {
@@ -373,23 +328,11 @@ static void Write(Arena* a, StrBuilder& out, const Node* node, bool include) {
         if (parent && SeqStrContainsI(kRawElements, NodeName(a, parent)))
             out.Append(NodeData(a, node));
         else
-            WriteEscaped(out, NodeData(a, node), false);
+            AppendHtmlEscaped(out, NodeData(a, node), true, false);
     } else if (include && node->kind == NodeKind::Comment) {
-        out.Append(StrL("<!--"));
-        out.Append(NodeData(a, node));
-        out.Append(StrL("-->"));
+        SerializeComment(a, out, node);
     } else if (include && element) {
-        out.AppendChar('<');
-        out.Append(NodeName(a, node));
-        for (const Attribute* at = NodeAttrs(a, node); at;
-             at = AttributeNext(a, at)) {
-            out.AppendChar(' ');
-            out.Append(AttributeName(a, at));
-            out.Append(StrL("=\""));
-            WriteEscaped(out, AttributeValue(a, at), true);
-            out.AppendChar('"');
-        }
-        out.AppendChar('>');
+        SerializeStartTag(a, out, node);
     }
     for (const Node* child = NodeFirst(a, node); child;
          child = NodeNext(a, child)) {
@@ -397,9 +340,7 @@ static void Write(Arena* a, StrBuilder& out, const Node* node, bool include) {
     }
     if (include && element &&
         !SeqStrContainsI(kVoidElements, NodeName(a, node))) {
-        out.Append(StrL("</"));
-        out.Append(NodeName(a, node));
-        out.AppendChar('>');
+        SerializeEndTag(a, out, node);
     }
 }
 

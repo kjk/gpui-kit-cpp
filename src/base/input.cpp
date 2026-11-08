@@ -864,6 +864,29 @@ static float TabSliceWidth(void* user, Str text) {
     return w;
 }
 
+// How a field's tabs measure: its font, the width of a space and the stop
+// `tabSize` spaces make. A field with no state yet is two spaces of 14 px.
+struct TabMetrics {
+    TabSliceMeasure measure;
+    float space = 0;
+    float stop = 0;
+    int tabSize = 2;
+};
+
+static TabMetrics TabMetricsFor(PaintCtx* ctx, const InputState* s) {
+    TabMetrics m;
+    m.tabSize = s && s->mode.tabSize > 0 ? s->mode.tabSize : 2;
+    m.measure.ctx = ctx;
+    m.measure.font = s && s->lastFont > 0 ? s->lastFont : 14.f;
+    m.measure.word = s ? s->lastFontWord : 0;
+    m.space = TabSliceWidth(&m.measure, StrL(" "));
+    if (m.space <= 0) {
+        m.space = m.measure.font * 0.6f;
+    }
+    m.stop = m.space * (float)m.tabSize;
+    return m;
+}
+
 static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
                          Str line) {
     TabShown shown;
@@ -884,60 +907,49 @@ static TabShown ShowTabs(Arena* a, PaintCtx* ctx, const InputState* s,
     if (!tab) {
         return shown;
     }
-    int tabSize = s->mode.tabSize > 0 ? s->mode.tabSize : 2;
-    float font = s->lastFont > 0 ? s->lastFont : 14.f;
-    TabSliceMeasure measure = {ctx, font, s->lastFontWord};
-    float space = TabSliceWidth(&measure, StrL(" "));
-    if (space <= 0) {
-        space = font * 0.6f;
-    }
-    float stop = space * (float)tabSize;
-    int cap = len(line) * (tabSize + 1) + 8;
+    TabMetrics tm = TabMetricsFor(ctx, s);
+    int cap = len(line) * (tm.tabSize + 1) + 8;
     char* buf = (char*)Alloc(a, cap + 1);
     int* map = (int*)Alloc(a, (int)sizeof(int) * (len(line) + 1));
     if (!buf || !map) {
         return shown;
     }
     int di = 0;
-    double shaped = 0;
-    double shift = 0;
-    int i = 0;
-    while (i < len(line)) {
-        map[i] = di;
-        if (line.s[i] == '\t') {
-            float tabW = TabSliceWidth(&measure, Str(line.s + i, 1));
-            double expanded = shaped + shift;
-            double end = shaped + (double)tabW;
-            double next = TabNextStop(expanded, stop);
-            int nsp = (int)((next - expanded) / (double)space + 0.5);
-            if (nsp < 1) {
-                nsp = 1;
+    bool full = false;
+    TabWalk(
+        line, tm.stop,
+        [&](Str slice) { return TabSliceWidth(&tm.measure, slice); },
+        [&](const TabSegment& seg) {
+            if (seg.tab) {
+                int nsp =
+                    (int)((seg.right - seg.left) / (double)tm.space + 0.5);
+                if (nsp < 1) {
+                    nsp = 1;
+                }
+                if (di + nsp > cap) {
+                    full = true;
+                    return false;
+                }
+                map[seg.start] = di;
+                for (int k = 0; k < nsp; k++) {
+                    buf[di++] = ' ';
+                }
+                return true;
             }
-            if (di + nsp > cap) {
-                return shown;
+            int n = seg.end - seg.start;
+            if (di + n > cap) {
+                full = true;
+                return false;
             }
-            for (int k = 0; k < nsp; k++) {
-                buf[di++] = ' ';
+            for (int k = 0; k < n; k++) {
+                map[seg.start + k] = di + k;
+                buf[di + k] = line.s[seg.start + k];
             }
-            shift = next - end;
-            shaped = end;
-            i++;
-            continue;
-        }
-        int j = i + 1;
-        while (j < len(line) && line.s[j] != '\t') {
-            j++;
-        }
-        if (di + (j - i) > cap) {
-            return shown;
-        }
-        for (int k = i; k < j; k++) {
-            map[k] = di + (k - i);
-            buf[di + (k - i)] = line.s[k];
-        }
-        di += j - i;
-        shaped += (double)TabSliceWidth(&measure, Str(line.s + i, j - i));
-        i = j;
+            di += n;
+            return true;
+        });
+    if (full) {
+        return shown;
     }
     map[len(line)] = di;
     buf[di] = 0;
@@ -951,54 +963,29 @@ static int TabSourceAtX(PaintCtx* ctx, const InputState* s, Str text, float x) {
     if (len(text) <= 0 || x <= 0) {
         return 0;
     }
-    int tabSize = s && s->mode.tabSize > 0 ? s->mode.tabSize : 2;
-    float font = s && s->lastFont > 0 ? s->lastFont : 14.f;
-    uint16_t word = s ? s->lastFontWord : 0;
-    TabSliceMeasure measure = {ctx, font, word};
-    float space = TabSliceWidth(&measure, StrL(" "));
-    if (space <= 0) {
-        space = font * 0.6f;
-    }
-    float stop = space * (float)tabSize;
-    double shaped = 0;
-    double shift = 0;
-    int i = 0;
-    while (i < len(text)) {
-        if (text.s[i] == '\t') {
-            float tabW = TabSliceWidth(&measure, Str(text.s + i, 1));
-            double expanded = shaped + shift;
-            double end = shaped + (double)tabW;
-            double next = TabNextStop(expanded, stop);
-            if (x < (float)next) {
-                return i;
+    TabMetrics tm = TabMetricsFor(ctx, s);
+    float font = tm.measure.font;
+    uint16_t word = tm.measure.word;
+    int hit = len(text);
+    TabWalk(
+        text, tm.stop,
+        [&](Str slice) { return TabSliceWidth(&tm.measure, slice); },
+        [&](const TabSegment& seg) {
+            if (x >= (float)seg.right) {
+                return true;
             }
-            shift = next - end;
-            shaped = end;
-            i++;
-            continue;
-        }
-        int j = i + 1;
-        while (j < len(text) && text.s[j] != '\t') {
-            j++;
-        }
-        Str run = Str(text.s + i, j - i);
-        float w = TabSliceWidth(&measure, run);
-        double runX = shaped + shift;
-        if (x < (float)(runX + (double)w)) {
-            int local = TextIndexAt(ctx, TextNoLineBreaks(GetTempArena(), run),
-                                    font, 0, false, x - (float)runX, 0, word);
-            if (local < 0) {
-                local = 0;
+            if (seg.tab) {
+                hit = seg.start;
+                return false;
             }
-            if (local > len(run)) {
-                local = len(run);
-            }
-            return i + local;
-        }
-        shaped += (double)w;
-        i = j;
-    }
-    return len(text);
+            Str run = Str(text.s + seg.start, seg.end - seg.start);
+            int local =
+                TextIndexAt(ctx, TextNoLineBreaks(GetTempArena(), run), font, 0,
+                            false, x - (float)seg.left, 0, word);
+            hit = seg.start + std::max(0, std::min(local, len(run)));
+            return false;
+        });
+    return hit;
 }
 
 static void WrapLineFragments(void* user, Str slice, int base,
@@ -1826,6 +1813,47 @@ static void InputRecordRenderMetrics(InputState* state,
     state->editorForeground = style.foreground;
 }
 
+// What the single-line and the multi-line build start alike: the resolved
+// style, its font and line height (recorded on the state), the line as a
+// multiple of the font, the text, whether the caret shows (show_cursor:
+// focused, not disabled, and this half of the blink is the lit one) and
+// whether the selection does.
+struct InputRenderBasics {
+    InputEditorStyle style = {};
+    float font = 12;
+    float lineH = 0;
+    float lineMult = 1;
+    Str text = {};
+    bool caret = false;
+    bool showSel = false;
+};
+
+// `editorLeading` is the multi-line build's: EDITOR_LINE_HEIGHT, a code
+// editor takes its rows from its own font, so a smaller or larger one keeps
+// its leading in proportion. Every other field keeps Input::LINE_HEIGHT —
+// 1.25rem whatever the text size is — which is what Rust sets on the input
+// rather than on the editor. At the theme's 13px monospace the two are the
+// same 20. The editor's is a multiple of its font, which layout scales by
+// the rem as it does the font, so in DIPs it is that row at the window's
+// rem.
+static InputRenderBasics InputRenderBegin(Ctx* cx, InputState* state,
+                                          const InputEditorStyle& projected,
+                                          bool editorLeading) {
+    InputRenderBasics b;
+    b.style = InputBeginRender(cx, state, projected);
+    b.font = b.style.fontSize > 0 ? b.style.fontSize : 12.f;
+    b.lineH = editorLeading && state->kind == InputKind::Editor
+                  ? Rems(cx, roundf(b.font * 1.5f) / 16.f)
+                  : InputLineH(cx);
+    b.lineMult = InputLineMult(cx, b.lineH, b.font);
+    InputRecordRenderMetrics(state, b.style, b.lineH);
+    b.text = InputValue(state);
+    b.showSel = state->HasSelectionFocus(cx->win);
+    b.caret =
+        state->focused && !state->disabled && BlinkVisible(cx, state->blink);
+    return b;
+}
+
 // One text run between a row's chips: the whole gap, shaped as one fragment
 // the way Rust shapes it. Where the row breaks is the wrap map's business.
 static void EmitTokenTextRun(El* row, Arena* a, const InputEditorStyle& style,
@@ -1911,19 +1939,15 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     if (!state) {
         return TextEl(a, Str{});
     }
-    InputEditorStyle resolved = InputBeginRender(cx, state, projected);
-    const InputEditorStyle& style = resolved;
-    float font = style.fontSize > 0 ? style.fontSize : 12.f;
-    float lineH = InputLineH(cx);
-    float lineMult = InputLineMult(cx, lineH, font);
-    InputRecordRenderMetrics(state, style, lineH);
-    Str text = InputValue(state);
+    InputRenderBasics basics = InputRenderBegin(cx, state, projected, false);
+    const InputEditorStyle& style = basics.style;
+    float font = basics.font;
+    float lineH = basics.lineH;
+    float lineMult = basics.lineMult;
+    Str text = basics.text;
     bool masked = style.mask || state->masked;
-    bool showSel = state->HasSelectionFocus(cx->win);
-    // show_cursor: focused, not disabled, and this half of the blink is the
-    // lit one.
-    bool caret =
-        state->focused && !state->disabled && BlinkVisible(cx, state->blink);
+    bool showSel = basics.showSel;
+    bool caret = basics.caret;
 
     // The row fills its field, so a press to the right of the text still
     // lands on the editor — Rust's InputElement takes the whole content box.
@@ -2263,8 +2287,12 @@ static const InputPaintedRows* LastPaintedRows(const InputState* s,
     return s->paintedRows;
 }
 
-int InputLastPaintedRows(const InputState* s, const Window* win, Selection* out,
-                         int cap) {
+// Counts the rows last frame painted for which `want(row)` holds, handing
+// each to `fill(row, n)` while it is under `cap` and `out` is set — the
+// shape of every query on the painted rows. 0 when nothing was painted.
+template <typename Want, typename Fill>
+static int CountPaintedRows(const InputState* s, const Window* win, bool out,
+                            int cap, Want want, Fill fill) {
     const InputPaintedRows* pr = LastPaintedRows(s, win);
     if (!pr) {
         return 0;
@@ -2272,27 +2300,36 @@ int InputLastPaintedRows(const InputState* s, const Window* win, Selection* out,
     int n = 0;
     for (int i = 0; i < pr->geometry.nRows; i++) {
         const RangeDecorationRow& row = pr->geometry.rows[i];
-        if (!row.first) {
+        if (!want(row)) {
             continue;
         }
         if (n < cap && out) {
-            out[n] = Selection{row.lineStart, row.lineStart + row.lineLen};
+            fill(row, n);
         }
         n++;
     }
     return n;
 }
 
+int InputLastPaintedRows(const InputState* s, const Window* win, Selection* out,
+                         int cap) {
+    return CountPaintedRows(
+        s, win, out != nullptr, cap,
+        [](const RangeDecorationRow& row) { return row.first; },
+        [&](const RangeDecorationRow& row, int n) {
+            out[n] = Selection{row.lineStart, row.lineStart + row.lineLen};
+        });
+}
+
 int InputLastVisualRows(const InputState* s, Window* win,
                         InputPaintedVisualRow* out, int cap) {
-    const InputPaintedRows* pr = LastPaintedRows(s, win);
-    if (!pr) {
-        return 0;
-    }
-    int n = 0;
-    for (int i = 0; i < pr->geometry.nRows; i++) {
-        const RangeDecorationRow& row = pr->geometry.rows[i];
-        if (n < cap && out && row.text) {
+    return CountPaintedRows(
+        s, win, out != nullptr, cap,
+        [](const RangeDecorationRow&) { return true; },
+        [&](const RangeDecorationRow& row, int n) {
+            if (!row.text) {
+                return;
+            }
             InputPaintedVisualRow& v = out[n];
             v.start = row.start;
             v.len = row.len;
@@ -2307,10 +2344,7 @@ int InputLastVisualRows(const InputState* s, Window* win,
                     0) {
                 v.width = whole.x + whole.w - row.text->x;
             }
-        }
-        n++;
-    }
-    return n;
+        });
 }
 
 int InputLastRangeCorners(const InputState* s, Window* win, Selection range,
@@ -2609,6 +2643,15 @@ El* Textarea::New(Ctx* cx, InputState* state) {
     return New(cx, state, InputEditorStyle{});
 }
 
+// The part of the document range [rangeStart, rangeEnd) on a line that
+// starts at `lineStart`, as offsets into the line. False when none of it is.
+static bool ClipToLine(int rangeStart, int rangeEnd, int lineStart, int lineLen,
+                       int* lo, int* hi) {
+    *lo = std::max(rangeStart - lineStart, 0);
+    *hi = std::min(rangeEnd - lineStart, lineLen);
+    return *hi > *lo;
+}
+
 // The height the rows are virtualized against: what the field was laid out
 // at, capped at the window (600 before there is one) so a mistaken content
 // height still virtualizes, and the cap when nothing was laid out yet.
@@ -2633,26 +2676,15 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (!state) {
         return TextEl(a, Str{});
     }
-    InputEditorStyle resolved = InputBeginRender(cx, state, projected);
-    const InputEditorStyle& style = resolved;
-    float font = style.fontSize > 0 ? style.fontSize : 12.f;
-    // EDITOR_LINE_HEIGHT: a code editor takes its rows from its own font, so
-    // a smaller or larger one keeps its leading in proportion. Every other
-    // field keeps Input::LINE_HEIGHT — 1.25rem whatever the text size is —
-    // which is what Rust sets on the input rather than on the editor. At the
-    // theme's 13px monospace the two are the same 20. The editor's is a
-    // multiple of its font, which layout scales by the rem as it does the
-    // font, so in DIPs it is that row at the window's rem.
-    float lineH = state->kind == InputKind::Editor
-                      ? Rems(cx, roundf(font * 1.5f) / 16.f)
-                      : InputLineH(cx);
-    float lineMult = InputLineMult(cx, lineH, font);
-    InputRecordRenderMetrics(state, style, lineH);
-    Str text = InputValue(state);
-    bool caret =
-        state->focused && !state->disabled && BlinkVisible(cx, state->blink);
+    InputRenderBasics basics = InputRenderBegin(cx, state, projected, true);
+    const InputEditorStyle& style = basics.style;
+    float font = basics.font;
+    float lineH = basics.lineH;
+    float lineMult = basics.lineMult;
+    Str text = basics.text;
+    bool caret = basics.caret;
     int cursor = InputCursor(state);
-    bool showSel = state->HasSelectionFocus(cx->win);
+    bool showSel = basics.showSel;
     Selection sel = showSel ? state->selectedRange : Selection{};
 
     El* col = Div(a)->FlexCol()->W(kFill)->BindInput(state);
@@ -3269,15 +3301,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     int nRowSpans = 0;
                     for (int k = 0; k < count; k++) {
                         const TextSpan& sp = docSpans[first + k];
-                        int lo = sp.lo - start;
-                        int hi = sp.hi - start;
-                        if (lo < 0) {
-                            lo = 0;
-                        }
-                        if (hi > len(line)) {
-                            hi = len(line);
-                        }
-                        if (hi <= lo) {
+                        int lo = 0;
+                        int hi = 0;
+                        if (!ClipToLine(sp.lo, sp.hi, start, len(line), &lo,
+                                        &hi)) {
                             continue;
                         }
                         rowSpans[nRowSpans] = sp;
@@ -3309,15 +3336,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     int n = 0;
                     for (int d = 0; d < state->diagnostics.len && runs; d++) {
                         const Diagnostic& dg = state->diagnostics[d];
-                        int lo = dg.range.start - start;
-                        int hi = dg.range.end - start;
-                        if (lo < 0) {
-                            lo = 0;
-                        }
-                        if (hi > len(line)) {
-                            hi = len(line);
-                        }
-                        if (hi <= lo) {
+                        int lo = 0;
+                        int hi = 0;
+                        if (!ClipToLine(dg.range.start, dg.range.end, start,
+                                        len(line), &lo, &hi)) {
                             continue;
                         }
                         Rgba c = style.diagnostics.info;
@@ -9792,6 +9814,22 @@ static void PendingPasteResolved(void*, App* app, Window* win,
     }
 }
 
+// Moves every cursor (or, with `select`, extends every selection) to what
+// `target()` answers with that cursor made the active one: the shape of every
+// line and word motion.
+template <typename Target>
+static void AllCursorsWith(InputState* s, App* app, Window* win, bool select,
+                           Target target) {
+    auto each = [&](const CursorSelection& c, bool active) {
+        return WithCursor(s, c, active, target);
+    };
+    if (select) {
+        SelectAllCursorsTo(s, app, win, each);
+    } else {
+        MoveAllCursors(s, app, win, each);
+    }
+}
+
 // state.rs's ActivateToken listener: the token the selection is exactly,
 // handed to on_token_click as a keyboard click on the box it was drawn in
 // (token_activation). Nothing happens without one, or while the field is
@@ -9893,21 +9931,14 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             return true;
         case InputAction::MoveHome:
             PauseBlink(s, app, win);
-            MoveAllCursors(s, app, win,
-                           [&](const CursorSelection& c, bool active) {
-                               return WithCursor(s, c, active, [&] {
-                                   return TargetAt(InputStartOfLine(s, win));
-                               });
-                           });
+            AllCursorsWith(s, app, win, false,
+                           [&] { return TargetAt(InputStartOfLine(s, win)); });
             return true;
         case InputAction::MoveEnd:
             PauseBlink(s, app, win);
-            MoveAllCursors(
-                s, app, win, [&](const CursorSelection& c, bool active) {
-                    return WithCursor(s, c, active, [&] {
-                        return TargetAt(InputEndOfLine(s, win), true);
-                    });
-                });
+            AllCursorsWith(s, app, win, false, [&] {
+                return TargetAt(InputEndOfLine(s, win), true);
+            });
             return true;
         case InputAction::MoveToStart:
             InputMoveTo(s, app, win, 0);
@@ -9916,20 +9947,13 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             InputMoveTo(s, app, win, len(t));
             return true;
         case InputAction::MoveToPreviousWord:
-            MoveAllCursors(s, app, win,
-                           [&](const CursorSelection& c, bool active) {
-                               return WithCursor(s, c, active, [&] {
-                                   return TargetAt(InputPreviousStartOfWord(s));
-                               });
-                           });
+            AllCursorsWith(s, app, win, false, [&] {
+                return TargetAt(InputPreviousStartOfWord(s));
+            });
             return true;
         case InputAction::MoveToNextWord:
-            MoveAllCursors(s, app, win,
-                           [&](const CursorSelection& c, bool active) {
-                               return WithCursor(s, c, active, [&] {
-                                   return TargetAt(InputNextEndOfWord(s));
-                               });
-                           });
+            AllCursorsWith(s, app, win, false,
+                           [&] { return TargetAt(InputNextEndOfWord(s)); });
             return true;
 
         case InputAction::SelectLeft:
@@ -9964,36 +9988,22 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             });
             return true;
         case InputAction::SelectToStartOfLine:
-            SelectAllCursorsTo(
-                s, app, win, [&](const CursorSelection& c, bool active) {
-                    return WithCursor(s, c, active, [&] {
-                        return TargetAt(InputStartOfLine(s, win));
-                    });
-                });
+            AllCursorsWith(s, app, win, true,
+                           [&] { return TargetAt(InputStartOfLine(s, win)); });
             return true;
         case InputAction::SelectToEndOfLine:
-            SelectAllCursorsTo(
-                s, app, win, [&](const CursorSelection& c, bool active) {
-                    return WithCursor(s, c, active, [&] {
-                        return TargetAt(InputEndOfLine(s, win), true);
-                    });
-                });
+            AllCursorsWith(s, app, win, true, [&] {
+                return TargetAt(InputEndOfLine(s, win), true);
+            });
             return true;
         case InputAction::SelectToPreviousWordStart:
-            SelectAllCursorsTo(
-                s, app, win, [&](const CursorSelection& c, bool active) {
-                    return WithCursor(s, c, active, [&] {
-                        return TargetAt(InputPreviousStartOfWord(s));
-                    });
-                });
+            AllCursorsWith(s, app, win, true, [&] {
+                return TargetAt(InputPreviousStartOfWord(s));
+            });
             return true;
         case InputAction::SelectToNextWordEnd:
-            SelectAllCursorsTo(s, app, win,
-                               [&](const CursorSelection& c, bool active) {
-                                   return WithCursor(s, c, active, [&] {
-                                       return TargetAt(InputNextEndOfWord(s));
-                                   });
-                               });
+            AllCursorsWith(s, app, win, true,
+                           [&] { return TargetAt(InputNextEndOfWord(s)); });
             return true;
         case InputAction::AddCursorAbove:
             AddCursorVertical(s, app, win, -1);

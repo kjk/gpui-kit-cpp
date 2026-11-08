@@ -50,6 +50,7 @@ inline constexpr ArgumentDescriptor kDisabledArguments[] = {
     {"disabled", SchemaBoolean()}};
 inline constexpr ArgumentDescriptor kSelectedArguments[] = {
     {"selected", SchemaBoolean()}};
+inline constexpr ArgumentDescriptor kIdArguments[] = {{"id", SchemaString()}};
 
 // `on_click(callback)`, for a component whose materializer honours
 // MaterializeRequest::onClick.
@@ -70,6 +71,8 @@ inline constexpr MethodDescriptor kSelectedMethod = {
 
 inline constexpr const char* kSizeLiterals[] = {"xsmall", "small", "medium",
                                                 "large"};
+inline constexpr ArgumentDescriptor kSizeArguments[] = {
+    {"size", SchemaEnum(kSizeLiterals)}};
 
 // `xsmall`, `small`, `medium` or `large`. Medium for anything else, which the
 // schema has already refused.
@@ -83,6 +86,21 @@ bool RecordSizeOp(PayloadBuild* build, const ComponentArgument* args, int) {
     T* op = build->New<T>();
     op->kind = K;
     op->size = SizeOfLiteral(args[0].string);
+    return true;
+}
+
+// `name(value)` taking one boolean, for a component whose ops are a `T` with
+// a `kind` and a `flag`: records it as op `kind`, or fails with
+// "{component}.{name} expects one boolean".
+template <class T, typename K>
+bool RecordFlagOp(PayloadBuild* build, const ComponentArgument* args, int count,
+                  K kind, const char* component, const char* name) {
+    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Boolean)
+        return build
+            ->Fail(fmt("%s.%s expects one boolean", Str(component), Str(name)));
+    T* op = build->New<T>();
+    op->kind = kind;
+    op->flag = args[0].boolean;
     return true;
 }
 

@@ -2573,6 +2573,14 @@ static bool ShadowNumber(JSContext* ctx, JSValueConst object, const char* field,
     return true;
 }
 
+// A plain object's own enumerable string keys, the way every conversion of
+// one here walks it. False with an exception pending.
+static bool OwnEnumerableKeys(JSContext* ctx, JSValueConst object,
+                              JSPropertyEnum** properties, uint32_t* count) {
+    return JS_GetOwnPropertyNames(ctx, properties, count, object,
+                                  JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) >= 0;
+}
+
 static bool BridgeShadowList(JSContext* ctx, JSValueConst array, Arena* arena,
                              shell::Bridged* out) {
     int64_t length = 0;
@@ -2600,8 +2608,7 @@ static bool BridgeShadowList(JSContext* ctx, JSValueConst array, Arena* arena,
         }
         JSPropertyEnum* properties = nullptr;
         uint32_t count = 0;
-        if (JS_GetOwnPropertyNames(ctx, &properties, &count, entry,
-                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0) {
+        if (!OwnEnumerableKeys(ctx, entry, &properties, &count)) {
             JS_FreeValue(ctx, entry);
             return false;
         }
@@ -3673,6 +3680,36 @@ static JSValue NativeRegisteredConstructor(JSContext* ctx, JSValueConst,
     return JS_NewUint32(ctx, id);
 }
 
+// The scalars component data and a callback's result both accept: null (or
+// undefined), a boolean, a finite number or a string. 1 when `value` was
+// one and `*out` holds it; 0 when it is none of them, a non-finite number
+// included, which each caller words its own way; -1 when converting it threw.
+static int ScalarDataFromJs(JSContext* ctx, JSValueConst value, Arena* a,
+                            shell::ComponentDataValue* out) {
+    if (JS_IsUndefined(value) || JS_IsNull(value)) {
+        *out = shell::ComponentDataValue::Null();
+        return 1;
+    }
+    if (JS_IsBool(value)) {
+        *out = shell::ComponentDataValue::Boolean(JS_ToBool(ctx, value) != 0);
+        return 1;
+    }
+    if (JS_IsNumber(value)) {
+        double number = 0;
+        if (JS_ToFloat64(ctx, &number, value) < 0) return -1;
+        if (!isfinite(number)) return 0;
+        *out = shell::ComponentDataValue::Number(number);
+        return 1;
+    }
+    if (JS_IsString(value)) {
+        Str text;
+        if (!JsString(ctx, value, a, &text)) return -1;
+        *out = shell::ComponentDataValue::String(text);
+        return 1;
+    }
+    return 0;
+}
+
 static bool ComponentDataFromJs(JSContext* ctx, JSValueConst value, Arena* a,
                                 int depth, int* nodes,
                                 shell::ComponentDataValue* out) {
@@ -3685,26 +3722,11 @@ static bool ComponentDataFromJs(JSContext* ctx, JSValueConst value, Arena* a,
         return false;
     }
     *out = {};
-    if (JS_IsUndefined(value) || JS_IsNull(value)) return true;
-    if (JS_IsBool(value)) {
-        *out = shell::ComponentDataValue::Boolean(JS_ToBool(ctx, value) != 0);
-        return true;
-    }
+    int scalar = ScalarDataFromJs(ctx, value, a, out);
+    if (scalar != 0) return scalar > 0;
     if (JS_IsNumber(value)) {
-        double number = 0;
-        if (JS_ToFloat64(ctx, &number, value) < 0) return false;
-        if (!isfinite(number)) {
-            JS_ThrowTypeError(ctx, "component data numbers must be finite");
-            return false;
-        }
-        *out = shell::ComponentDataValue::Number(number);
-        return true;
-    }
-    if (JS_IsString(value)) {
-        Str text;
-        if (!JsString(ctx, value, a, &text)) return false;
-        *out = shell::ComponentDataValue::String(text);
-        return true;
+        JS_ThrowTypeError(ctx, "component data numbers must be finite");
+        return false;
     }
     if (JS_IsFunction(ctx, value)) {
         JS_ThrowTypeError(ctx,
@@ -3739,9 +3761,7 @@ static bool ComponentDataFromJs(JSContext* ctx, JSValueConst value, Arena* a,
     if (JS_IsObject(value)) {
         JSPropertyEnum* properties = nullptr;
         uint32_t count = 0;
-        if (JS_GetOwnPropertyNames(ctx, &properties, &count, value,
-                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
-            return false;
+        if (!OwnEnumerableKeys(ctx, value, &properties, &count)) return false;
         shell::ComponentDataValue* items =
             count > 0 ? (shell::ComponentDataValue*)Alloc(
                             a, (int)(sizeof(shell::ComponentDataValue) * count))
@@ -3883,6 +3903,23 @@ static bool RegisteredStateHandle(JSContext* ctx, ShellRuntimeImpl* impl,
            JS_ToFloat64(ctx, handle, argv[1]) >= 0;
 }
 
+// The state handle in argv[1], or a TypeError (and false) when the state is
+// another runtime's.
+static bool StateHandleArg(JSContext* ctx, ShellRuntimeImpl* impl,
+                           JSValueConst* argv, Arena* a, double* handle) {
+    if (RegisteredStateHandle(ctx, impl, argv, a, handle)) return true;
+    JS_ThrowTypeError(ctx, "state belongs to another runtime");
+    return false;
+}
+
+// Whether a host call runs inside a render or a layout, where state may be
+// read but not changed.
+static bool InRenderOrLayout() {
+    ScopePhase phase = shell::ScopeCurrentPhase();
+    return shell::ScopeHasCurrent() &&
+           (phase == ScopePhase::Render || phase == ScopePhase::Layout);
+}
+
 static JSValue NativeRegisteredStateRelease(JSContext* ctx, JSValueConst,
                                             int argc, JSValueConst* argv,
                                             int magic) {
@@ -3896,13 +3933,11 @@ static JSValue NativeRegisteredStateRelease(JSContext* ctx, JSValueConst,
         return JS_ThrowTypeError(ctx, "unknown registered state operation");
     Arena* a = ArenaNew();
     double handle = 0;
-    if (!RegisteredStateHandle(ctx, impl, argv, a, &handle)) {
+    if (!StateHandleArg(ctx, impl, argv, a, &handle)) {
         ArenaDelete(a);
-        return JS_ThrowTypeError(ctx, "state belongs to another runtime");
+        return JS_EXCEPTION;
     }
-    ScopePhase phase = shell::ScopeCurrentPhase();
-    if (shell::ScopeHasCurrent() &&
-        (phase == ScopePhase::Render || phase == ScopePhase::Layout)) {
+    if (InRenderOrLayout()) {
         ArenaDelete(a);
         return JS_ThrowTypeError(
             ctx, "state cannot be released during render or layout");
@@ -3927,13 +3962,11 @@ static JSValue NativeRegisteredStateMethod(JSContext* ctx, JSValueConst,
     const shell::StateMethodDescriptor& method = descriptor->methods[index];
     Arena* a = ArenaNew();
     double handle = 0;
-    if (!RegisteredStateHandle(ctx, impl, argv, a, &handle)) {
+    if (!StateHandleArg(ctx, impl, argv, a, &handle)) {
         ArenaDelete(a);
-        return JS_ThrowTypeError(ctx, "state belongs to another runtime");
+        return JS_EXCEPTION;
     }
-    ScopePhase phase = shell::ScopeCurrentPhase();
-    if (!method.readonly && shell::ScopeHasCurrent() &&
-        (phase == ScopePhase::Render || phase == ScopePhase::Layout)) {
+    if (!method.readonly && InRenderOrLayout()) {
         ArenaDelete(a);
         return JS_ThrowTypeError(ctx,
                                  "state cannot be changed during render "
@@ -4138,6 +4171,15 @@ static bool ApplyRegistered(JSContext* ctx, ShellRuntimeImpl* impl,
     return true;
 }
 
+// RegisterCallback for a handler the caller fetched: it is released whether
+// or not the registration took.
+static bool RegisterOwnedCallback(JSContext* ctx, ShellRuntimeImpl* impl,
+                                  JSValue handler, shell::CallbackId* out) {
+    bool registered = RegisterCallback(ctx, impl, handler, out);
+    JS_FreeValue(ctx, handler);
+    return registered;
+}
+
 static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                            JSValueConst* argv) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
@@ -4254,9 +4296,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
             return thrown;
         }
         shell::CallbackId callback = 0;
-        bool registered = RegisterCallback(ctx, impl, handler, &callback);
-        JS_FreeValue(ctx, handler);
-        if (!registered) {
+        if (!RegisterOwnedCallback(ctx, impl, handler, &callback)) {
             ArenaDelete(arena);
             return JS_EXCEPTION;
         }
@@ -4320,9 +4360,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                     ctx, "%.*s(handler) expects a function", len(name), name.s);
             }
             shell::CallbackId callback = 0;
-            bool registered = RegisterCallback(ctx, impl, handler, &callback);
-            JS_FreeValue(ctx, handler);
-            if (!registered) {
+            if (!RegisterOwnedCallback(ctx, impl, handler, &callback)) {
                 ArenaDelete(arena);
                 return JS_EXCEPTION;
             }
@@ -4555,9 +4593,7 @@ static ShellRuntimeImpl* RetainedRoom(JSContext* ctx) {
 }
 
 static bool RefuseRetainedCreation(JSContext* ctx, const char* what) {
-    if (shell::ScopeHasCurrent() &&
-        (shell::ScopeCurrentPhase() == ScopePhase::Render ||
-         shell::ScopeCurrentPhase() == ScopePhase::Layout)) {
+    if (InRenderOrLayout()) {
         JS_ThrowTypeError(ctx,
                           "%s cannot run during render; create retained state "
                           "in init() or an event handler",
@@ -4580,9 +4616,7 @@ static JSValue ThrowNoHost(JSContext* ctx, const char* what) {
 }
 
 static bool RefuseRetainedMutation(JSContext* ctx, const char* what) {
-    if (shell::ScopeHasCurrent() &&
-        (shell::ScopeCurrentPhase() == ScopePhase::Render ||
-         shell::ScopeCurrentPhase() == ScopePhase::Layout)) {
+    if (InRenderOrLayout()) {
         JS_ThrowTypeError(ctx,
                           "%s cannot run during render or layout; mutate "
                           "retained state from an event handler or task",
@@ -4882,9 +4916,7 @@ static bool KnownOptions(JSContext* ctx, JSValueConst object,
                          const char* api) {
     JSPropertyEnum* properties = nullptr;
     uint32_t count = 0;
-    if (JS_GetOwnPropertyNames(ctx, &properties, &count, object,
-                               JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
-        return false;
+    if (!OwnEnumerableKeys(ctx, object, &properties, &count)) return false;
     bool ok = true;
     for (uint32_t i = 0; i < count && ok; i++) {
         const char* name = JS_AtomToCString(ctx, properties[i].atom);
@@ -6852,9 +6884,7 @@ static void AppendThemeTypography(StrBuilder* out) {
 
 static JSValue NativeSetTheme(JSContext* ctx, JSValueConst, int argc,
                               JSValueConst* argv) {
-    if (shell::ScopeHasCurrent() &&
-        (shell::ScopeCurrentPhase() == ScopePhase::Render ||
-         shell::ScopeCurrentPhase() == ScopePhase::Layout)) {
+    if (InRenderOrLayout()) {
         return JS_ThrowTypeError(
             ctx,
             "set_theme(theme) cannot run during render or layout; switch "
@@ -7589,6 +7619,17 @@ static JSValue NativeStorageGet(JSContext* ctx, JSValueConst, int argc,
     return result;
 }
 
+// The end of a storage write: what StorageWritten makes of it, with the
+// error, the call's arena and the policy hold released.
+static JSValue StorageWriteFinish(JSContext* ctx, bool ok, bool session,
+                                  Policy* held, Str error, Arena* arena) {
+    JSValue result = StorageWritten(ctx, ok, session, held, error);
+    StrFree(error);
+    ArenaDelete(arena);
+    PolicyRelease(held);
+    return result;
+}
+
 static JSValue NativeStorageSet(JSContext* ctx, JSValueConst, int argc,
                                 JSValueConst* argv) {
     Policy* held = nullptr;
@@ -7600,11 +7641,7 @@ static JSValue NativeStorageSet(JSContext* ctx, JSValueConst, int argc,
     bool ok = argc >= 2 && JsString(ctx, argv[0], arena, &key) &&
               JsString(ctx, argv[1], arena, &value) &&
               storage->Set(key, value, &error);
-    JSValue result = StorageWritten(ctx, ok, session, held, error);
-    StrFree(error);
-    ArenaDelete(arena);
-    PolicyRelease(held);
-    return result;
+    return StorageWriteFinish(ctx, ok, session, held, error, arena);
 }
 
 static JSValue NativeStorageRemove(JSContext* ctx, JSValueConst, int argc,
@@ -7617,11 +7654,7 @@ static JSValue NativeStorageRemove(JSContext* ctx, JSValueConst, int argc,
     Str key, error;
     bool ok = argc >= 1 && JsString(ctx, argv[0], arena, &key) &&
               storage->Remove(key, &error);
-    JSValue result = StorageWritten(ctx, ok, session, held, error);
-    StrFree(error);
-    ArenaDelete(arena);
-    PolicyRelease(held);
-    return result;
+    return StorageWriteFinish(ctx, ok, session, held, error, arena);
 }
 
 static JSValue NativeStorageClear(JSContext* ctx, JSValueConst, int,
@@ -7874,9 +7907,7 @@ static bool HostFromJs(JSContext* ctx, JSValueConst value, int depth,
     if (JS_IsObject(value)) {
         JSPropertyEnum* properties = nullptr;
         uint32_t count = 0;
-        if (JS_GetOwnPropertyNames(ctx, &properties, &count, value,
-                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
-            return false;
+        if (!OwnEnumerableKeys(ctx, value, &properties, &count)) return false;
         if (count > kHostBridgeMaxItems) {
             JS_FreePropertyEnum(ctx, properties, count);
             JS_ThrowRangeError(ctx, "host objects accept at most 10000 fields");
@@ -8178,8 +8209,7 @@ static bool ObjectOnlyOption(JSContext* ctx, JSValueConst object, Str allowed,
                              const char* what) {
     JSPropertyEnum* properties = nullptr;
     uint32_t count = 0;
-    if (JS_GetOwnPropertyNames(ctx, &properties, &count, object,
-                               JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0) {
+    if (!OwnEnumerableKeys(ctx, object, &properties, &count)) {
         return false;
     }
     bool ok = true;
@@ -8836,9 +8866,7 @@ static JSValue NativeComponentInputOn(JSContext* ctx, JSValueConst, int argc,
         ArenaDelete(arena);
         return JS_ThrowTypeError(ctx, "state belongs to another runtime");
     }
-    if (shell::ScopeHasCurrent() &&
-        (shell::ScopeCurrentPhase() == ScopePhase::Render ||
-         shell::ScopeCurrentPhase() == ScopePhase::Layout)) {
+    if (InRenderOrLayout()) {
         ArenaDelete(arena);
         return JS_ThrowTypeError(
             ctx,
@@ -8905,6 +8933,37 @@ static JSValue NativeComponentInputOn(JSContext* ctx, JSValueConst, int argc,
     }
     entity->runtime = impl->owner;
     return JS_TRUE;
+}
+
+// The launch an fs or process call ends with, once its job is built: a
+// promise on a new host task, which owns the job, and the coroutine that
+// works it. The job is freed here if there is no host task to own it.
+template <typename Job>
+static JSValue StartJobTask(JSContext* ctx, Job* job, ShellTaskKind kind,
+                            Job* ShellTask::* slot,
+                            Task (*run)(TaskGuard guard, Job* job),
+                            const char* noHost, const char* noStart) {
+    shell::ScopeHostContext host = shell::ScopeCurrentHost();
+    if (!host.IsSet()) {
+        job->Free();
+        delete job;
+        return JS_ThrowTypeError(ctx, "%s", noHost);
+    }
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    JSValue promise;
+    uint32_t task = NewJobTask(ctx, impl, &job->head, kind, host, &promise);
+    if (!task) {
+        job->Free();
+        delete job;
+        return promise;
+    }
+    FindTask(impl, task)->*slot = job;
+    Task work = run(JobGuard(&job->head), job);
+    if (!work.IsRunning()) {
+        JS_FreeValue(ctx, promise);
+        return JS_ThrowInternalError(ctx, "%s", noStart);
+    }
+    return promise;
 }
 
 static JSValue NativeFs(JSContext* ctx, JSValueConst, int argc,
@@ -9009,30 +9068,10 @@ static JSValue NativeFs(JSContext* ctx, JSValueConst, int argc,
         return JS_EXCEPTION;
     }
 
-    shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet()) {
-        job->Free();
-        delete job;
-        return JS_ThrowTypeError(ctx,
-                                 "filesystem access needs a live host task");
-    }
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    JSValue promise;
-    uint32_t task = NewJobTask(ctx, impl, &job->head, ShellTaskKind::Filesystem,
-                               host, &promise);
-    if (!task) {
-        job->Free();
-        delete job;
-        return promise;
-    }
-    ShellTask* shellTask = FindTask(impl, task);
-    shellTask->fsJob = job;
-    Task work = ShellFsTask(JobGuard(&job->head), job);
-    if (!work.IsRunning()) {
-        JS_FreeValue(ctx, promise);
-        return JS_ThrowInternalError(ctx, "fs could not start background work");
-    }
-    return promise;
+    return StartJobTask(ctx, job, ShellTaskKind::Filesystem, &ShellTask::fsJob,
+                        &ShellFsTask,
+                        "filesystem access needs a live host task",
+                        "fs could not start background work");
 }
 
 // process.run and process.spawn's first argument: a string naming an
@@ -9129,31 +9168,10 @@ static JSValue NativeProcessRun(JSContext* ctx, JSValueConst, int argc,
     job->cwd = cwd;
     job->timeoutSeconds = timeoutSeconds;
 
-    shell::ScopeHostContext host = shell::ScopeCurrentHost();
-    if (!host.IsSet()) {
-        job->Free();
-        delete job;
-        return JS_ThrowTypeError(ctx, "process.run() needs a live host task");
-    }
-
-    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    JSValue promise;
-    uint32_t task = NewJobTask(ctx, impl, &job->head, ShellTaskKind::Process,
-                               host, &promise);
-    if (!task) {
-        job->Free();
-        delete job;
-        return promise;
-    }
-    ShellTask* shellTask = FindTask(impl, task);
-    shellTask->processJob = job;
-    Task work = ShellProcessTask(JobGuard(&job->head), job);
-    if (!work.IsRunning()) {
-        JS_FreeValue(ctx, promise);
-        return JS_ThrowInternalError(
-            ctx, "process.run could not start background work");
-    }
-    return promise;
+    return StartJobTask(ctx, job, ShellTaskKind::Process,
+                        &ShellTask::processJob, &ShellProcessTask,
+                        "process.run() needs a live host task",
+                        "process.run could not start background work");
 }
 
 static void FreeArgCopies(Vec<Str>* args) {
@@ -11776,9 +11794,7 @@ static shell::RetainedEntry* LiveDock(JSContext* ctx, JSValueConst value,
 // layout and draw another. Layout is refused too, because a chrome handler
 // runs inside the pass laying the frame out.
 static bool RefuseDockChange(JSContext* ctx, const char* api) {
-    if (shell::ScopeHasCurrent() &&
-        (shell::ScopeCurrentPhase() == ScopePhase::Render ||
-         shell::ScopeCurrentPhase() == ScopePhase::Layout)) {
+    if (InRenderOrLayout()) {
         JS_ThrowTypeError(ctx,
                           "%s changes the layout and cannot be called while "
                           "one is being described or laid out; call it from "
@@ -14578,27 +14594,11 @@ static CallbackEntry* LiveComponentCallback(ShellRuntimeImpl* impl,
 
 static bool CallbackValueFromJs(JSContext* ctx, JSValueConst value,
                                 shell::ComponentDataValue* out, Arena* a) {
-    if (JS_IsNull(value) || JS_IsUndefined(value)) {
-        *out = shell::ComponentDataValue::Null();
-        return true;
-    }
-    if (JS_IsBool(value)) {
-        *out = shell::ComponentDataValue::Boolean(JS_ToBool(ctx, value) != 0);
-        return true;
-    }
-    if (JS_IsNumber(value)) {
-        double number = 0;
-        if (JS_ToFloat64(ctx, &number, value) == 0 && isfinite(number)) {
-            *out = shell::ComponentDataValue::Number(number);
-            return true;
-        }
-    }
-    if (JS_IsString(value)) {
-        Str text;
-        if (!JsString(ctx, value, a, &text)) return false;
-        *out = shell::ComponentDataValue::String(text);
-        return true;
-    }
+    int scalar = ScalarDataFromJs(ctx, value, a, out);
+    if (scalar > 0) return true;
+    // A string that failed to convert left its exception; anything else,
+    // a number that would not convert included, is the wrong kind.
+    if (scalar < 0 && JS_IsString(value)) return false;
     JS_ThrowTypeError(ctx,
                       "component callbacks may only return null, boolean, "
                       "finite number, or string");

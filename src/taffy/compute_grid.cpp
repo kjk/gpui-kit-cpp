@@ -1561,6 +1561,30 @@ void CreateImplicitTracks(Vec<GridTrack>* tracks, uint16_t count,
     }
 }
 
+// `count` implicit tracks from the grid-auto-* list cycled from `start`
+// (Rust's `auto_tracks.iter().cycle()`), or auto tracks when the list is
+// empty. Rust writes that branch out at both of initialize_grid_tracks's
+// calls; one helper here.
+static void CreateCycledImplicitTracks(Vec<GridTrack>* tracks, uint16_t count,
+                                       Slice<TrackSizingFunction> autoTracks,
+                                       int start, LengthPercentage gap) {
+    int n = autoTracks.len;
+    if (n == 0) {
+        CreateImplicitTracks(
+            tracks, count, []() { return TrackSizingFunction::Auto(); }, gap);
+        return;
+    }
+    int cursor = start;
+    CreateImplicitTracks(
+        tracks, count,
+        [&]() {
+            TrackSizingFunction t = autoTracks[cursor % n];
+            cursor++;
+            return t;
+        },
+        gap);
+}
+
 template <typename TrackHasItems>
 void InitializeGridTracks(Vec<GridTrack>* tracks, TrackCounts counts,
                           const Style& style, AbsoluteAxis axis,
@@ -1596,23 +1620,12 @@ void InitializeGridTracks(Vec<GridTrack>* tracks, TrackCounts counts,
     // Negative implicit tracks. Rust cycles the grid-auto-* list backwards
     // from the explicit grid, which is what the offset below does.
     if (counts.negativeImplicit > 0) {
-        if (autoTrackCount == 0) {
-            CreateImplicitTracks(
-                tracks, counts.negativeImplicit,
-                []() { return TrackSizingFunction::Auto(); }, gap);
-        } else {
-            int offset = autoTrackCount -
-                         ((int)counts.negativeImplicit % autoTrackCount);
-            int cursor = offset;
-            CreateImplicitTracks(
-                tracks, counts.negativeImplicit,
-                [&]() {
-                    TrackSizingFunction t = autoTracks[cursor % autoTrackCount];
-                    cursor++;
-                    return t;
-                },
-                gap);
-        }
+        int offset = autoTrackCount == 0
+                         ? 0
+                         : autoTrackCount -
+                               ((int)counts.negativeImplicit % autoTrackCount);
+        CreateCycledImplicitTracks(tracks, counts.negativeImplicit, autoTracks,
+                                   offset, gap);
     }
 
     int currentTrackIndex = (int)counts.negativeImplicit;
@@ -1703,21 +1716,7 @@ void InitializeGridTracks(Vec<GridTrack>* tracks, TrackCounts counts,
     }
     uint16_t positive =
         (uint16_t)((int)counts.positiveImplicit + gridAreaTracks);
-    if (autoTrackCount == 0) {
-        CreateImplicitTracks(
-            tracks, positive, []() { return TrackSizingFunction::Auto(); },
-            gap);
-    } else {
-        int cursor = 0;
-        CreateImplicitTracks(
-            tracks, positive,
-            [&]() {
-                TrackSizingFunction t = autoTracks[cursor % autoTrackCount];
-                cursor++;
-                return t;
-            },
-            gap);
-    }
+    CreateCycledImplicitTracks(tracks, positive, autoTracks, 0, gap);
 
     // The first and last grid lines are collapsed.
     if (tracks->len > 0) {
@@ -2533,39 +2532,46 @@ struct IntrinsicSizeMeasurer {
         return ItemGridAreaSizeCached(item, axis, axisTracks, otherAxisTracks,
                                       innerNodeSize, estimate, tree->calc);
     }
+    // The three contributions below share their setup, which Rust writes out
+    // in each: the space available is the grid area with this axis unknown,
+    // and the item's margins in this axis (baseline shims included) are
+    // added to what it contributes.
+    SizeFOpt AvailableSpace(SizeFOpt gridAreaSize) const {
+        Set(&gridAreaSize, axis, None());
+        return gridAreaSize;
+    }
+    float MarginSum(GridItem* item, SizeFOpt availableSpace) const {
+        return Get(MarginsAxisSumsWithBaselineShims(*item, availableSpace.w,
+                                                    tree->calc),
+                   axis);
+    }
     float MinContentContribution(GridItem* item,
                                  const GridTrack* axisTracks) const {
         SizeFOpt gridAreaSize = GridAreaSize(item, axisTracks);
-        SizeFOpt availableSpace = gridAreaSize;
-        Set(&availableSpace, axis, None());
-        SizeF marginAxisSums = MarginsAxisSumsWithBaselineShims(
-            *item, availableSpace.w, tree->calc);
+        SizeFOpt availableSpace = AvailableSpace(gridAreaSize);
+        float margin = MarginSum(item, availableSpace);
         float contribution = ItemMinContentContributionCached(
             item, axis, tree, gridAreaSize, availableSpace);
-        return contribution + Get(marginAxisSums, axis);
+        return contribution + margin;
     }
     float MaxContentContribution(GridItem* item,
                                  const GridTrack* axisTracks) const {
         SizeFOpt gridAreaSize = GridAreaSize(item, axisTracks);
-        SizeFOpt availableSpace = gridAreaSize;
-        Set(&availableSpace, axis, None());
-        SizeF marginAxisSums = MarginsAxisSumsWithBaselineShims(
-            *item, availableSpace.w, tree->calc);
+        SizeFOpt availableSpace = AvailableSpace(gridAreaSize);
+        float margin = MarginSum(item, availableSpace);
         float contribution = ItemMaxContentContributionCached(
             item, axis, tree, gridAreaSize, availableSpace);
-        return contribution + Get(marginAxisSums, axis);
+        return contribution + margin;
     }
     float MinimumContribution(GridItem* item, const GridTrack* axisTracks,
                               int axisTrackCount) const {
         SizeFOpt gridAreaSize = GridAreaSize(item, axisTracks);
-        SizeFOpt availableSpace = gridAreaSize;
-        Set(&availableSpace, axis, None());
-        SizeF marginAxisSums = MarginsAxisSumsWithBaselineShims(
-            *item, availableSpace.w, tree->calc);
+        SizeFOpt availableSpace = AvailableSpace(gridAreaSize);
+        float margin = MarginSum(item, availableSpace);
         float contribution = ItemMinimumContributionCached(
             item, tree, axis, axisTracks, axisTrackCount, gridAreaSize,
             innerNodeSize);
-        return contribution + Get(marginAxisSums, axis);
+        return contribution + margin;
     }
 };
 
@@ -4476,6 +4482,16 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     // 5. Initialise the tracks and gutters, resolving their sizing functions.
     Vec<GridTrack> columns;
     Vec<GridTrack> rows;
+    // What Rust drops on every return from here: the items, the tracks, the
+    // placement children, the occupancy matrix and the named lines.
+    auto freeScratch = [&]() {
+        VecReset(items);
+        VecReset(columns);
+        VecReset(rows);
+        VecReset(children);
+        cellOccupancyMatrix.Free();
+        nameResolver.Free();
+    };
     InitializeGridTracks(&columns, finalColCounts, style,
                          AbsoluteAxis::Horizontal, [&](int columnIndex) {
                              return cellOccupancyMatrix
@@ -4523,12 +4539,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             MaybeClamp(initialColumnSum + contentBoxInset.HorizontalAxisSum(),
                        minSize.w, maxSize.w),
             paddingBorderSize.w);
-        VecReset(items);
-        VecReset(columns);
-        VecReset(rows);
-        VecReset(children);
-        cellOccupancyMatrix.Free();
-        nameResolver.Free();
+        freeScratch();
         return LayoutOutput::FromOuterSize({width, 0.0f});
     }
 
@@ -4567,12 +4578,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         F32Max(0.0f, containerBorderBox.h - contentBoxInset.VerticalAxisSum())};
 
     if (runMode == RunMode::ComputeSize) {
-        VecReset(items);
-        VecReset(columns);
-        VecReset(rows);
-        VecReset(children);
-        cellOccupancyMatrix.Free();
-        nameResolver.Free();
+        freeScratch();
         return LayoutOutput::FromOuterSize(containerBorderBox);
     }
 
@@ -5003,13 +5009,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     out.oofPositioningArea
         .offset = {absolutePositionInset.left, absolutePositionInset.top};
 
-    VecReset(items);
-    VecReset(columns);
-    VecReset(rows);
-    VecReset(children);
+    freeScratch();
     VecReset(oofPool);
-    cellOccupancyMatrix.Free();
-    nameResolver.Free();
     return out;
 }
 

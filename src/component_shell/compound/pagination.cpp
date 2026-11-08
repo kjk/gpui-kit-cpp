@@ -136,7 +136,6 @@ static El* Materialize(MaterializeRequest* request) {
     return request->ApplyStyle(wrapper);
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kCurrentArgs[] = {
     {"current_page", SchemaNumber()}};
 static constexpr ArgumentDescriptor kTotalArgs[] = {
@@ -145,11 +144,9 @@ static constexpr ArgumentDescriptor kVisibleArgs[] = {
     {"visible_pages", SchemaNumber()}};
 static constexpr ArgumentDescriptor kChangeArgs[] = {
     {"on_change", SchemaCallback("(page: number, cx: Context) => void")}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
-    {"Pagination", kIdArgs, &Construct}};
+    {"Pagination", kIdArguments, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     kDisabledMethod,
     {"current_page", kCurrentArgs, "Sets the current 1-based page.",
@@ -166,7 +163,7 @@ static constexpr MethodDescriptor kMethods[] = {
      {},
      "Shows only previous and next icon buttons.",
      &RecordCompact},
-    {"size", kSizeArgs, "Sets semantic size.",
+    {"size", kSizeArguments, "Sets semantic size.",
      &RecordSizeOp<PaginationOp, PaginationOp::Size>},
 };
 static constexpr ComponentDescriptor kPagination = {

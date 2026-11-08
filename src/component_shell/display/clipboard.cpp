@@ -61,13 +61,12 @@ static El* Materialize(MaterializeRequest* request) {
     return request->Finish(Div(request->cx->a)->Child(clipboard->IntoEl()));
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kValueArgs[] = {{"value", SchemaString()}};
 static constexpr ArgumentDescriptor kTooltipArgs[] = {
     {"tooltip", SchemaString()}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
-    {"Clipboard", kIdArgs, &Construct}};
+    {"Clipboard", kIdArguments, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     {"value", kValueArgs, "Sets the text copied when the button is pressed.",
      &RecordString<ClipboardOp::Value>},

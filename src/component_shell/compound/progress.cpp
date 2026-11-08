@@ -98,17 +98,14 @@ static El* Materialize(MaterializeRequest* request) {
     return request->ApplyStyle(wrapper);
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kValueArgs[] = {{"value", SchemaNumber()}};
 static constexpr ArgumentDescriptor kLoadingArgs[] = {
     {"loading", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kLabelArgs[] = {
     {"accessibility_label", SchemaString()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
-    {"Progress", kIdArgs, &Construct}};
+    {"Progress", kIdArguments, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     {"value", kValueArgs,
      "Sets percentage progress; the component clamps it to 0–100.",
@@ -117,7 +114,7 @@ static constexpr MethodDescriptor kMethods[] = {
      &RecordLoading},
     {"accessibility_label", kLabelArgs, "Sets the accessible name.",
      &RecordLabel},
-    {"size", kSizeArgs, "Sets the semantic size.",
+    {"size", kSizeArguments, "Sets the semantic size.",
      &RecordSizeOp<ProgressOp, ProgressOp::Size>},
 };
 static constexpr ComponentDescriptor kProgress = {

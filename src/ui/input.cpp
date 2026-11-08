@@ -607,30 +607,6 @@ Editor* Editor::AriaLabel(Str value) {
     return this;
 }
 
-Input* Input::ContextMenu(EditorContextMenuFn fn, void* data) {
-    contextMenu = fn;
-    contextMenuData = data;
-    return this;
-}
-
-Textarea* Textarea::ContextMenu(EditorContextMenuFn fn, void* data) {
-    contextMenu = fn;
-    contextMenuData = data;
-    return this;
-}
-
-Editor* Editor::ContextMenu(EditorContextMenuFn fn, void* data) {
-    contextMenu = fn;
-    contextMenuData = data;
-    return this;
-}
-
-Editor* Editor::OnPaste(InputPasteFn fn, void* data) {
-    onPaste = fn;
-    onPasteData = data;
-    return this;
-}
-
 Editor* Editor::Language(Str value) {
     language = value;
     return this;
@@ -769,30 +745,6 @@ Input* Input::OnFocus(Listener fn) {
     onFocus = fn;
     return this;
 }
-Input* Input::OnPaste(InputPasteFn fn, void* data) {
-    onPaste = fn;
-    onPasteData = data;
-    return this;
-}
-
-Input* Input::Token(InlineTokenRenderer fn, void* user) {
-    tokenRenderer = fn;
-    tokenRendererUser = user;
-    return this;
-}
-
-Input* Input::OnTokenClick(InlineTokenClickListener fn, void* user) {
-    tokenClick = fn;
-    tokenClickUser = user;
-    return this;
-}
-
-Input* Input::OnTokenHover(InlineTokenHoverListener fn, void* user) {
-    tokenHover = fn;
-    tokenHoverUser = user;
-    return this;
-}
-
 static El* DefaultInputTokenRender(Ctx* cx, const InlineTokenContext* ctx,
                                    void*) {
     return InputToken::New(cx, *ctx)->IntoEl();
@@ -1269,30 +1221,6 @@ Textarea* Textarea::OnFocus(Listener fn) {
     return this;
 }
 
-Textarea* Textarea::Token(InlineTokenRenderer fn, void* user) {
-    tokenRenderer = fn;
-    tokenRendererUser = user;
-    return this;
-}
-
-Textarea* Textarea::OnTokenClick(InlineTokenClickListener fn, void* user) {
-    tokenClick = fn;
-    tokenClickUser = user;
-    return this;
-}
-
-Textarea* Textarea::OnTokenHover(InlineTokenHoverListener fn, void* user) {
-    tokenHover = fn;
-    tokenHoverUser = user;
-    return this;
-}
-
-Textarea* Textarea::OnPaste(InputPasteFn fn, void* data) {
-    onPaste = fn;
-    onPasteData = data;
-    return this;
-}
-
 El* Textarea::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     bool focused = InputFrameFocused(cx, state, disabled);
@@ -1522,13 +1450,16 @@ El* NumberInput::IntoEl() {
         state->numberMax = max;
     }
     Str base = id.s ? id : StrL("number");
-    const NumberStep* policy = hasNumberStep ? &numberStep : nullptr;
+    NumberStepTarget target = {};
+    static_cast<NumberRange&>(target) = *this;
+    target.state = state;
+    target.step = numberStep;
+    target.hasStep = hasNumberStep;
+    target.disabled = disabled;
     Func0 decDirect =
-        NumberInputStepCallback(cx, state, StepAction::Decrement, policy,
-                                hasMin, min, hasMax, max, disabled, onStep);
+        NumberInputStepCallback(cx, target, StepAction::Decrement, onStep);
     Func0 incDirect =
-        NumberInputStepCallback(cx, state, StepAction::Increment, policy,
-                                hasMin, min, hasMax, max, disabled, onStep);
+        NumberInputStepCallback(cx, target, StepAction::Increment, onStep);
     // The visual frame is the UI layer; BaseNumberInput below owns the
     // spinbutton semantics and fixed three-part structure.
     El* frame = Div(a)->FlexRow()->W(width)->H(h);

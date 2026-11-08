@@ -237,13 +237,7 @@ static bool RecordSearchable(PayloadBuild* build, const ComponentArgument* args,
 
 static bool RecordMenuWidth(PayloadBuild* build, const ComponentArgument* args,
                             int count) {
-    float width = 0;
-    if (!MenuWidthArgument(build, "Combobox", args, count, &width))
-        return false;
-    Op* op = build->New<Op>();
-    op->kind = Op::MenuWidth;
-    op->number = width;
-    return true;
+    return RecordMenuWidthOp<Op>(build, "Combobox", args, count);
 }
 
 static constexpr ArgumentDescriptor kArguments[] = {
@@ -260,8 +254,6 @@ static constexpr ArgumentDescriptor kSearchPlaceholderArgs[] = {
     {"search_placeholder", SchemaString()}};
 static constexpr ArgumentDescriptor kSearchableArgs[] = {
     {"searchable", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kMenuWidthArgs[] = {
     {"menu_width", SchemaNumber()}};
 
@@ -276,7 +268,7 @@ static constexpr MethodDescriptor kMethods[] = {
      &RecordText<Op::SearchPlaceholder>},
     {"searchable", kSearchableArgs,
      "Shows the search field above the item list.", &RecordSearchable},
-    {"disabled", kDisabledArgs, "Disables the combobox.",
+    {"disabled", kDisabledArguments, "Disables the combobox.",
      &RecordCommonBehavior},
     {"menu_width", kMenuWidthArgs, "Sets the popup menu width in pixels.",
      &RecordMenuWidth},

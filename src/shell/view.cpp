@@ -437,11 +437,7 @@ void ScriptView::OnNumberKey(ScriptView* self, Ctx* cx, const KeyEvent* event,
     Listener onStep = value->onStep ? Listen(cx, &ScriptView::OnNumberStep,
                                              (int64_t)value->onStep)
                                     : Listener{};
-    const NumberStep* step =
-        value->onStep || !value->hasStep ? nullptr : &value->step;
-    if (NumberInputApplyStep(value->state, cx->app, cx->win, action, step,
-                             value->hasMin, value->min, value->hasMax,
-                             value->max, value->disabled, onStep)) {
+    if (NumberInputApplyStep(value->target, cx->app, cx->win, action, onStep)) {
         const_cast<KeyEvent*>(event)->propagate = false;
         Notify(cx);
     }

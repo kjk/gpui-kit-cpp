@@ -420,7 +420,6 @@ static constexpr const char* kDescriptionDoc =
     "Sets the supporting description shown under the title.";
 
 static constexpr ArgumentDescriptor kTitleArgs[] = {{"title", SchemaString()}};
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kTextArgs[] = {{"text", SchemaString()}};
 static constexpr const char* kAxisLiterals[] = {"horizontal", "vertical"};
 static constexpr ArgumentDescriptor kLayoutArgs[] = {
@@ -428,14 +427,10 @@ static constexpr ArgumentDescriptor kLayoutArgs[] = {
 static constexpr ArgumentSchema kKeyword = SchemaString();
 static constexpr ArgumentDescriptor kKeywordsArgs[] = {
     {"keywords", SchemaArray(&kKeyword)}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kDefaultOpenArgs[] = {
     {"default_open", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kResettableArgs[] = {
     {"resettable", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ArgumentDescriptor kPixelsArgs[] = {
     {"pixels", SchemaNumber()}};
 static constexpr ArgumentDescriptor kRangeArgs[] = {
@@ -453,7 +448,7 @@ static constexpr MethodDescriptor kItemMethods[] = {
      &RecordItemLayout},
     {"keywords", kKeywordsArgs, "Adds search keywords that match this item.",
      &RecordItemKeywords},
-    {"disabled", kDisabledArgs, "Disables the item's field.",
+    {"disabled", kDisabledArguments, "Disables the item's field.",
      &RecordItemDisabled},
 };
 static constexpr ComponentDescriptor kItem = {
@@ -496,9 +491,9 @@ static constexpr ComponentDescriptor kPage = {
 
 // Settings
 static constexpr ConstructorDescriptor kSettingsConstructors[] = {
-    {"Settings", kIdArgs, &ConstructText<2>}};
+    {"Settings", kIdArguments, &ConstructText<2>}};
 static constexpr MethodDescriptor kSettingsMethods[] = {
-    {"size", kSizeArgs, "Sets the settings surface's semantic size.",
+    {"size", kSizeArguments, "Sets the settings surface's semantic size.",
      &RecordSize},
     {"sidebar_width", kPixelsArgs, "Sets the sidebar's width in pixels.",
      &RecordSidebarWidth},

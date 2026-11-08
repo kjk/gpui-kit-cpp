@@ -91,6 +91,9 @@ bool ToggleIsEnabled(const Toggle* t);
 uint32_t Utf8Next(Str s, int* i);
 // Byte length of the UTF-8 sequence starting at s[i] (≥1).
 int Utf8Len(Str s, int i);
+// The rewrite passes' "no match here": copy the character at s[*i] to
+// `out` unchanged and step past it.
+void Utf8CopyNext(Str s, int* i, StrBuilder* out);
 // Decode without advancing.
 uint32_t Utf8At(Str s, int i);
 // How many codepoints s holds — Rust's chars().count().

@@ -295,41 +295,11 @@ Str MacDownloadFileNameTemp(Str suggested, int collision);
 
 // ─── attributes ──────────────────────────────────────────────────────────
 
-/** `wry::WebViewAttributes` and, below the line, the Windows half of
-    `WebViewBuilderExtWindows`. Every default here is the one
-    `WebViewAttributes::default()` sets.
-
-    Nothing in this struct is copied until `WebViewNew`, and only what a
-    backend keeps outlives it: the strings and vectors must stay alive for
-    that call, and the handler `ctx` for as long as the webview does. For a
-    Rust `Option<String>`, a null `Str::s` is `None`; a present empty `Str` is
-    `Some("")`. */
-struct WebViewAttributes {
+/** The handler half of `WebViewAttributes`. Every backend's `WebView`
+    derives from it too, so `WebViewNew` keeps the whole set with one
+    assignment: `WebViewHandlersSet(wv, attrs)`. */
+struct WebViewHandlers {
     static bool AllowDownload(void*, Str, Str*) { return true; }
-
-    /** Passed to a custom protocol handler; defaults to the container HWND
-        written out, the way Rust defaults it. */
-    Str id;
-    /** `WebContext::new(data_directory)`. On Windows a web context is its
-        data directory and nothing else, so the directory is the field. */
-    Str dataDirectory;
-    Str userAgent;
-    bool visible = true;
-    bool transparent = false;
-    bool hasBackgroundColor = false;
-    Rgba backgroundColor;
-    /** Loaded if set. Data URLs are not supported; use `html`. */
-    Str url;
-    /** Headers for `url`, if any. */
-    const Header* headers = nullptr;
-    int headerCount = 0;
-    /** Loaded if `url` is empty. */
-    Str html;
-    bool zoomHotkeysEnabled = false;
-    const InitializationScript* initializationScripts = nullptr;
-    int initializationScriptCount = 0;
-    const CustomProtocol* customProtocols = nullptr;
-    int customProtocolCount = 0;
 
     /** The `void*` every handler below is called with. */
     void* ctx = nullptr;
@@ -353,6 +323,48 @@ struct WebViewAttributes {
     NewWindowResponse (*newWindowReqHandler)(
         void* ctx, Str url, const NewWindowFeatures* features,
         WebView** createdWebView) = nullptr;
+};
+
+/** Copy the handlers of `attrs` into a backend webview (which derives from
+    `WebViewHandlers`). */
+inline void WebViewHandlersSet(WebViewHandlers* dst,
+                               const WebViewHandlers* attrs) {
+    *dst = *attrs;
+}
+
+/** `wry::WebViewAttributes` and, below the line, the Windows half of
+    `WebViewBuilderExtWindows`. Every default here is the one
+    `WebViewAttributes::default()` sets.
+
+    Nothing in this struct is copied until `WebViewNew`, and only what a
+    backend keeps outlives it: the strings and vectors must stay alive for
+    that call, and the handler `ctx` for as long as the webview does. For a
+    Rust `Option<String>`, a null `Str::s` is `None`; a present empty `Str` is
+    `Some("")`. */
+struct WebViewAttributes : WebViewHandlers {
+    /** Passed to a custom protocol handler; defaults to the container HWND
+        written out, the way Rust defaults it. */
+    Str id;
+    /** `WebContext::new(data_directory)`. On Windows a web context is its
+        data directory and nothing else, so the directory is the field. */
+    Str dataDirectory;
+    Str userAgent;
+    bool visible = true;
+    bool transparent = false;
+    bool hasBackgroundColor = false;
+    Rgba backgroundColor;
+    /** Loaded if set. Data URLs are not supported; use `html`. */
+    Str url;
+    /** Headers for `url`, if any. */
+    const Header* headers = nullptr;
+    int headerCount = 0;
+    /** Loaded if `url` is empty. */
+    Str html;
+    bool zoomHotkeysEnabled = false;
+    const InitializationScript* initializationScripts = nullptr;
+    int initializationScriptCount = 0;
+    const CustomProtocol* customProtocols = nullptr;
+    int customProtocolCount = 0;
 
     bool clipboard = false;
 #if defined(DEBUG) || defined(_DEBUG)

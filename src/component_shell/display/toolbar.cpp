@@ -31,10 +31,8 @@ static El* Materialize(MaterializeRequest* request) {
     return request->ApplyStyle(toolbar->IntoEl());
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
-
 static constexpr ConstructorDescriptor kConstructors[] = {
-    {"Toolbar", kIdArgs, &Construct}};
+    {"Toolbar", kIdArguments, &Construct}};
 static constexpr ComponentDescriptor kToolbar = {
     "Toolbar",
     kConstructors,

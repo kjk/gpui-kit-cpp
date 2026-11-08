@@ -132,10 +132,14 @@ bool ExecuteGrant::Allows(Str command) const {
     return false;
 }
 
-HttpRequestGrant::HttpRequestGrant() : scheme(StrDup(StrL("https"))) {}
+HttpRequestGrant::HttpRequestGrant() {
+    scheme = StrDup(StrL("https"));
+}
 
-HttpRequestGrant::HttpRequestGrant(Str value)
-    : scheme(StrDup(StrL("https"))), host(Lower(value)) {}
+HttpRequestGrant::HttpRequestGrant(Str value) {
+    scheme = StrDup(StrL("https"));
+    host = Lower(value);
+}
 
 // Starts empty, so the assignment's frees have nothing to free.
 HttpRequestGrant::HttpRequestGrant(const HttpRequestGrant& other) {

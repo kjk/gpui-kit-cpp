@@ -429,14 +429,7 @@ El* SearchableListItemElement::IntoEl() {
     for (int i = 0; i < children.len; i++) {
         left->Child(children[i]);
     }
-    El* inner = Div(a)
-                    ->FlexRow()
-                    ->W(kFill)
-                    ->MinW(0)
-                    ->Gap(Rems(cx, 0.25f))
-                    ->ItemsCenter()
-                    ->JustifyBetween()
-                    ->Child(left);
+    El* inner = SpreadRow(cx)->Child(left);
     // The check inherits the row's text color, so it stays legible on the
     // accent fill and dims with a disabled label.
     El* check = IconEl(a, checkIcon, UiIconPx(cx, UiSize::XSmall))->Shrink0();
@@ -743,20 +736,6 @@ SearchableList* SearchableList::New(Ctx* cx, Str id,
     s->query = query;
     return s;
 }
-SearchableList* SearchableList::Footer(El* e) {
-    footer = e;
-    return this;
-}
-SearchableList* SearchableList::Items(const SearchableItem* it, int n) {
-    items = it;
-    nItems = n;
-    return this;
-}
-SearchableList* SearchableList::Sections(const Str* titles, int n) {
-    sections = titles;
-    nSections = n;
-    return this;
-}
 SearchableList* SearchableList::OnQueryFocus(Listener fn) {
     onQueryFocus = fn;
     return this;
@@ -779,19 +758,6 @@ SearchableList* SearchableList::InSelect(bool v) {
 }
 SearchableList* SearchableList::ScrollBounce(bool v) {
     scrollBounce = v ? 1 : 0;
-    return this;
-}
-SearchableList* SearchableList::CheckIcon(IconName n) {
-    checkIcon = n;
-    return this;
-}
-SearchableList* SearchableList::WithSize(UiSize value) {
-    size = value;
-    return this;
-}
-SearchableList* SearchableList::Delegate(const SearchableListDelegate& value) {
-    delegate = value;
-    hasDelegate = true;
     return this;
 }
 

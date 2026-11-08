@@ -27,17 +27,8 @@ Str TimeFormat(Arena* a, Str pattern, LocalTime time) {
     int hour12 = (time.hour + 11) % 12 + 1;
     const char* period = time.hour < 12 ? "AM" : "PM";
     StrBuilder out(a);
-    for (int i = 0; i < len(pattern); i++) {
-        char ch = pattern.s[i];
-        if (ch != '%' || i + 1 >= len(pattern)) {
-            out.AppendChar(ch);
-            continue;
-        }
-        char directive = pattern.s[++i];
+    StrftimeWalk(pattern, out, false, [&](char directive, char) {
         switch (directive) {
-            case '%':
-                out.AppendChar('%');
-                break;
             case 'H':
                 out.Append(fmt("%02d", time.hour));
                 break;
@@ -71,11 +62,10 @@ Str TimeFormat(Arena* a, Str pattern, LocalTime time) {
                     fmt("%02d:%02d:%02d", time.hour, time.minute, time.second));
                 break;
             default:
-                out.AppendChar('%');
-                out.AppendChar(directive);
-                break;
+                return false;
         }
-    }
+        return true;
+    });
     return out.TakeStr();
 }
 

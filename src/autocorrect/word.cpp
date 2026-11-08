@@ -311,9 +311,7 @@ static bool PassAdd(Str in, SideFn one, SideFn other, StrBuilder* out) {
                 continue;
             }
         }
-        int step = Utf8Len(in, i);
-        out->Append(Str(in.s + i, step));
-        i += step;
+        Utf8CopyNext(in, &i, out);
     }
     return changed;
 }
@@ -340,9 +338,7 @@ static bool PassRemove(Str in, SideFn one, SideFn other, StrBuilder* out) {
                 }
             }
         }
-        int step = Utf8Len(in, i);
-        out->Append(Str(in.s + i, step));
-        i += step;
+        Utf8CopyNext(in, &i, out);
     }
     return changed;
 }
@@ -442,9 +438,7 @@ static bool PassBacktickThenCjk(Str in, StrBuilder* out) {
                 continue;
             }
         }
-        int step = Utf8Len(in, i);
-        out->Append(Str(in.s + i, step));
-        i += step;
+        Utf8CopyNext(in, &i, out);
     }
     return changed;
 }

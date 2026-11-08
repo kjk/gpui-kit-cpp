@@ -12,15 +12,7 @@ constexpr int kShellMaxManifestBytes = 1024 * 1024;
 // `default_dependency_entry` in crates/shell/src/plugin.rs.
 constexpr const char* kGitDependencyDefaultEntry = "index.js";
 
-struct PluginHttpGrant {
-    Str scheme;
-    Str host;
-    uint16_t port = 0;
-    bool hasPort = false;
-    Vec<Str> methods;
-    Vec<Str> paths;
-    Vec<Str> pathPrefixes;
-};
+struct PluginHttpGrant : HttpGrantFields {};
 
 // One JavaScript package fetched from Git before an application starts.
 struct GitDependency {

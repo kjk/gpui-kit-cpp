@@ -378,10 +378,52 @@ struct ToggleGroup {
 // joined to a caret-only button that opens a menu. Two buttons, not one with a
 // caret. The halves stay joined except for a ghost split that is not selected,
 // which reads better in a toolbar as two separate buttons.
+// The variant and size a DropdownButton and a ButtonGroup take for the
+// buttons they hold, set the way a Button's own are (ButtonVariants). Unset
+// means each inner Button keeps whatever it was given.
+template <typename Self>
+struct ButtonVariantProps {
+    bool outline = false;
+    bool hasVariant = false;
+    ButtonVariant variant = ButtonVariant::Default;
+    ButtonCustomVariant customVariant = {};
+    bool hasSize = false;
+    UiSize size = UiSize::Medium;
+
+    Self* Outline() {
+        outline = true;
+        return static_cast<Self*>(this);
+    }
+    Self* WithVariant(ButtonVariant v) {
+        hasVariant = true;
+        variant = v;
+        if (v != ButtonVariant::Custom) customVariant = {};
+        return static_cast<Self*>(this);
+    }
+    Self* Primary() { return WithVariant(ButtonVariant::Primary); }
+    Self* Secondary() { return WithVariant(ButtonVariant::Secondary); }
+    Self* Danger() { return WithVariant(ButtonVariant::Danger); }
+    Self* Warning() { return WithVariant(ButtonVariant::Warning); }
+    Self* Success() { return WithVariant(ButtonVariant::Success); }
+    Self* Info() { return WithVariant(ButtonVariant::Info); }
+    Self* Ghost() { return WithVariant(ButtonVariant::Ghost); }
+    Self* Link() { return WithVariant(ButtonVariant::Link); }
+    Self* Text() { return WithVariant(ButtonVariant::Text); }
+    Self* Custom(const ButtonCustomVariant& value) {
+        customVariant = value;
+        return WithVariant(ButtonVariant::Custom);
+    }
+    Self* WithSize(UiSize s) {
+        hasSize = true;
+        size = s;
+        return static_cast<Self*>(this);
+    }
+};
+
 struct DropdownMenu;
 struct PopupMenu;
 
-struct DropdownButton {
+struct DropdownButton : ButtonVariantProps<DropdownButton> {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
@@ -389,16 +431,6 @@ struct DropdownButton {
     PopupMenu* menu = nullptr;
     bool selected = false;
     bool disabled = false;
-    bool outline = false;
-    // The props applied to both halves. Unset means the inner Button keeps
-    // whatever it was given, and its value is what the caret takes too.
-    // Action-specific props -- compact, loading, tooltip, the click handler --
-    // belong to the inner Button and are not mirrored onto the caret.
-    bool hasVariant = false;
-    ButtonVariant variant = ButtonVariant::Default;
-    ButtonCustomVariant customVariant = {};
-    bool hasSize = false;
-    UiSize size = UiSize::Medium;
     // dropdown_menu_with_anchor: Anchor::TopRight by default, which hangs
     // the menu under the caret with the right edges lined up. A Bottom*
     // anchor sets anchorAbove, and the menu opens upward instead.
@@ -412,22 +444,9 @@ struct DropdownButton {
     DropdownButton* Menu(PopupMenu* m);
     DropdownButton* Selected(bool v);
     DropdownButton* Disabled(bool v);
-    DropdownButton* Outline();
     // The screen-reader name of the caret trigger. Empty keeps the
     // localized "More options".
     DropdownButton* MenuAccessibilityLabel(Str label);
-    DropdownButton* WithVariant(ButtonVariant v);
-    DropdownButton* Primary();
-    DropdownButton* Secondary();
-    DropdownButton* Danger();
-    DropdownButton* Warning();
-    DropdownButton* Success();
-    DropdownButton* Info();
-    DropdownButton* Ghost();
-    DropdownButton* Link();
-    DropdownButton* Text();
-    DropdownButton* Custom(const ButtonCustomVariant& value);
-    DropdownButton* WithSize(UiSize s);
     El* IntoEl();
 };
 
@@ -448,7 +467,7 @@ struct ButtonGroupEvent {
     }
 };
 
-struct ButtonGroup {
+struct ButtonGroup : ButtonVariantProps<ButtonGroup> {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
@@ -457,12 +476,6 @@ struct ButtonGroup {
     bool disabled = false;
     bool vertical = false;
     bool compact = false;
-    bool outline = false;
-    bool hasVariant = false;
-    ButtonVariant variant = ButtonVariant::Default;
-    ButtonCustomVariant customVariant = {};
-    bool hasSize = false;
-    UiSize size = UiSize::Medium;
     // Receives ButtonGroupEvent, the ordered indices selected after the click.
     Listener onClick;
 
@@ -474,19 +487,6 @@ struct ButtonGroup {
     ButtonGroup* Vertical(bool v = true);
     ButtonGroup* Layout(Axis value);
     ButtonGroup* Compact();
-    ButtonGroup* Outline();
-    ButtonGroup* WithVariant(ButtonVariant v);
-    ButtonGroup* Primary();
-    ButtonGroup* Secondary();
-    ButtonGroup* Danger();
-    ButtonGroup* Warning();
-    ButtonGroup* Success();
-    ButtonGroup* Info();
-    ButtonGroup* Ghost();
-    ButtonGroup* Link();
-    ButtonGroup* Text();
-    ButtonGroup* Custom(const ButtonCustomVariant& value);
-    ButtonGroup* WithSize(UiSize s);
     ButtonGroup* OnClick(Listener l);
     El* IntoEl();
 };

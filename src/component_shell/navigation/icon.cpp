@@ -163,15 +163,13 @@ static bool RecordRotate(PayloadBuild* build, const ComponentArgument* args,
 }
 
 static constexpr ArgumentDescriptor kPathArgs[] = {{"path", SchemaString()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ArgumentDescriptor kColorArgs[] = {{"color", SchemaString()}};
 static constexpr ArgumentDescriptor kRotateArgs[] = {
     {"radians", SchemaNumber()}};
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Icon", kPathArgs, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
-    {"size", kSizeArgs, "Sets the semantic icon size.", &RecordSize},
+    {"size", kSizeArguments, "Sets the semantic icon size.", &RecordSize},
     {"color", kColorArgs, "Sets the icon color from a supported color token.",
      &RecordColor},
     {"rotate", kRotateArgs, "Rotates the icon by a finite number of radians.",

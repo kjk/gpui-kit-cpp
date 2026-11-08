@@ -1,4 +1,5 @@
 #include "base/toggle.h"
+#include "base/button.h"
 
 namespace gpui {
 
@@ -15,14 +16,9 @@ ToggleStyles& ToggleStyles::Disabled(const StateStyle& style) {
 El* Toggle::New(Ctx* cx, Str id, bool pressed, bool disabled, Listener onChange,
                 const ToggleStyles* styles, const StateStyle* instance) {
     Arena* a = cx->a;
-    El* e = Div(a)
-                // Match Button's neutral control geometry: a fixed-size
-                // toggle centers ordinary content without themed padding.
-                ->Flex()
-                ->ItemsCenter()
-                ->JustifyCenter()
-                ->LineHeight(1.f)
-                ->PathClick(id)
+    // Button's neutral control geometry: a fixed-size toggle centers
+    // ordinary content without themed padding.
+    El* e = ControlBox(a, id)
                 ->Role(AccessibilityRole::Button)
                 ->AriaToggled(pressed ? AccessibilityToggled::True
                                       : AccessibilityToggled::False)

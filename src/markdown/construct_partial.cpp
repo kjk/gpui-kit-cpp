@@ -105,18 +105,33 @@ StateName SpaceOrTabEol(Tokenizer* t) {
     return SpaceOrTabEolWithOptions(t, options);
 }
 
+// The `space_or_tab_with_options(.., Options { kind: SpaceOrTab, min: 1,
+// max: usize::MAX, content, connect })` that Rust writes out in both
+// `eol_start` and `eol_after_eol`; one helper here.
+static StateName SpaceOrTabEolWhitespace(Tokenizer* t) {
+    SpaceOrTabOptions options;
+    options.kind = Name::SpaceOrTab;
+    options.min = 1;
+    options.max = kSizeMax;
+    options.content = t->tokenizeState.spaceOrTabEolContent;
+    options.contentSome = t->tokenizeState.spaceOrTabEolContentSome;
+    options.connect = t->tokenizeState.spaceOrTabEolConnect;
+    return SpaceOrTabWithOptions(t, options);
+}
+
+// The state `eol_at_eol` (on failure) and `eol_after_more` clear in Rust,
+// each with its own three assignments.
+static void SpaceOrTabEolReset(Tokenizer* t) {
+    t->tokenizeState.spaceOrTabEolContentSome = false;
+    t->tokenizeState.spaceOrTabEolConnect = false;
+    t->tokenizeState.spaceOrTabEolOk = false;
+}
+
 State SpaceOrTabEolStart(Tokenizer* t) {
     if (t->current == '\t' || t->current == ' ') {
         TokenizerAttempt(t, StateNext(StateName::SpaceOrTabEolAfterFirst),
                          StateNext(StateName::SpaceOrTabEolAtEol));
-        SpaceOrTabOptions options;
-        options.kind = Name::SpaceOrTab;
-        options.min = 1;
-        options.max = kSizeMax;
-        options.content = t->tokenizeState.spaceOrTabEolContent;
-        options.contentSome = t->tokenizeState.spaceOrTabEolContentSome;
-        options.connect = t->tokenizeState.spaceOrTabEolConnect;
-        return StateRetry(SpaceOrTabWithOptions(t, options));
+        return StateRetry(SpaceOrTabEolWhitespace(t));
     }
     return StateRetry(StateName::SpaceOrTabEolAtEol);
 }
@@ -145,9 +160,7 @@ State SpaceOrTabEolAtEol(Tokenizer* t) {
         return StateNext(StateName::SpaceOrTabEolAfterEol);
     }
     bool ok = t->tokenizeState.spaceOrTabEolOk;
-    t->tokenizeState.spaceOrTabEolContentSome = false;
-    t->tokenizeState.spaceOrTabEolConnect = false;
-    t->tokenizeState.spaceOrTabEolOk = false;
+    SpaceOrTabEolReset(t);
     return ok ? StateOk() : StateNok();
 }
 
@@ -155,22 +168,13 @@ State SpaceOrTabEolAfterEol(Tokenizer* t) {
     if (t->current == '\t' || t->current == ' ') {
         TokenizerAttempt(t, StateNext(StateName::SpaceOrTabEolAfterMore),
                          StateNok());
-        SpaceOrTabOptions options;
-        options.kind = Name::SpaceOrTab;
-        options.min = 1;
-        options.max = kSizeMax;
-        options.content = t->tokenizeState.spaceOrTabEolContent;
-        options.contentSome = t->tokenizeState.spaceOrTabEolContentSome;
-        options.connect = t->tokenizeState.spaceOrTabEolConnect;
-        return StateRetry(SpaceOrTabWithOptions(t, options));
+        return StateRetry(SpaceOrTabEolWhitespace(t));
     }
     return StateRetry(StateName::SpaceOrTabEolAfterMore);
 }
 
 State SpaceOrTabEolAfterMore(Tokenizer* t) {
-    t->tokenizeState.spaceOrTabEolContentSome = false;
-    t->tokenizeState.spaceOrTabEolConnect = false;
-    t->tokenizeState.spaceOrTabEolOk = false;
+    SpaceOrTabEolReset(t);
     return StateOk();
 }
 
@@ -354,6 +358,20 @@ State DestinationRawEscape(Tokenizer* t) {
 
 // ─── partial_label.rs ────────────────────────────────────────────────────
 
+// label.rs `at_break` and title.rs `at_break` both enter Data as a String
+// content link and connect it to the previous chunk, if any; Rust repeats
+// the block in each, here it is one helper.
+static void EnterConnectedStringData(Tokenizer* t) {
+    Link link;
+    link.content = ContentKind::String;
+    EnterLink(t, Name::Data, link);
+    if (t->tokenizeState.connect) {
+        SubtokenizeLink(t->events, t->events.len - 1);
+    } else {
+        t->tokenizeState.connect = true;
+    }
+}
+
 State LabelStart(Tokenizer* t) {
     Enter(t, t->tokenizeState.token1);
     Enter(t, t->tokenizeState.token2);
@@ -388,14 +406,7 @@ State LabelAtBreak(Tokenizer* t) {
         t->tokenizeState.size = 0;
         return StateOk();
     }
-    Link link;
-    link.content = ContentKind::String;
-    EnterLink(t, Name::Data, link);
-    if (t->tokenizeState.connect) {
-        SubtokenizeLink(t->events, t->events.len - 1);
-    } else {
-        t->tokenizeState.connect = true;
-    }
+    EnterConnectedStringData(t);
     return StateRetry(StateName::LabelInside);
 }
 
@@ -486,14 +497,7 @@ State TitleAtBreak(Tokenizer* t) {
         options.connect = t->tokenizeState.connect;
         return StateRetry(SpaceOrTabEolWithOptions(t, options));
     }
-    Link link;
-    link.content = ContentKind::String;
-    EnterLink(t, Name::Data, link);
-    if (t->tokenizeState.connect) {
-        SubtokenizeLink(t->events, t->events.len - 1);
-    } else {
-        t->tokenizeState.connect = true;
-    }
+    EnterConnectedStringData(t);
     return StateRetry(StateName::TitleInside);
 }
 

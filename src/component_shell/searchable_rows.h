@@ -36,6 +36,21 @@ bool IsIdAndThreeCallbacks(const ComponentArgument* args, int count);
 bool MenuWidthArgument(PayloadBuild* build, const char* component,
                        const ComponentArgument* args, int count, float* out);
 
+// The whole menu_width recorder of a delegate Select or Combobox: the
+// argument checked as above, then one `Op::MenuWidth` carrying it.
+template <typename Op>
+bool RecordMenuWidthOp(PayloadBuild* build, const char* component,
+                       const ComponentArgument* args, int count) {
+    float width = 0;
+    if (!MenuWidthArgument(build, component, args, count, &width)) {
+        return false;
+    }
+    Op* op = build->New<Op>();
+    op->kind = Op::MenuWidth;
+    op->number = width;
+    return true;
+}
+
 } // namespace gpui::component_shell
 
 #endif // GPUI_COMPONENT_SHELL_SEARCHABLE_ROWS_H_

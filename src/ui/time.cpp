@@ -75,38 +75,6 @@ Calendar* Calendar::Refine(const Style& value, uint32_t fields) {
     styleSet |= fields;
     return this;
 }
-Calendar* Calendar::OnDay(Listener fn) {
-    onDay = fn;
-    return this;
-}
-Calendar* Calendar::OnDate(Listener fn) {
-    onDate = fn;
-    return this;
-}
-Calendar* Calendar::OnPrev(Listener fn) {
-    onPrev = fn;
-    return this;
-}
-Calendar* Calendar::OnNext(Listener fn) {
-    onNext = fn;
-    return this;
-}
-Calendar* Calendar::OnMonthToggle(Listener fn) {
-    onMonthToggle = fn;
-    return this;
-}
-Calendar* Calendar::OnYearToggle(Listener fn) {
-    onYearToggle = fn;
-    return this;
-}
-Calendar* Calendar::OnMonth(Listener fn) {
-    onMonth = fn;
-    return this;
-}
-Calendar* Calendar::OnYear(Listener fn) {
-    onYear = fn;
-    return this;
-}
 
 // size_7 / size_10 / size_8.
 static float CalendarCellSize(const Ctx* cx, UiSize size) {
@@ -320,14 +288,7 @@ El* Calendar::IntoEl() {
     o.yearMin = yearMin;
     o.yearMax = yearMax;
     o.yearPageStart = yearPageStart;
-    o.onDay = onDay;
-    o.onDate = onDate;
-    o.onPrev = onPrev;
-    o.onNext = onNext;
-    o.onMonthToggle = onMonthToggle;
-    o.onYearToggle = onYearToggle;
-    o.onMonth = onMonth;
-    o.onYear = onYear;
+    static_cast<CalendarListeners&>(o) = *this;
     o.item = &ThemedCalendarItem;
     o.user = this;
     El* root = gpui::Calendar::New(cx, StrL("calendar"), o)->W(width);
@@ -675,23 +636,8 @@ Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date,
     int yearDay = DateYearDay(date);
     int isoYear = 0, isoWeek = 0;
     DateIsoWeek(date, &isoYear, &isoWeek);
-    for (int i = 0; i < len(pattern); i++) {
-        char ch = pattern.s[i];
-        if (ch != '%' || i + 1 >= len(pattern)) {
-            out.AppendChar(ch);
-            continue;
-        }
-        char directive = pattern.s[++i];
-        char modifier = 0;
-        if ((directive == '-' || directive == '_' || directive == '0') &&
-            i + 1 < len(pattern)) {
-            modifier = directive;
-            directive = pattern.s[++i];
-        }
+    StrftimeWalk(pattern, out, true, [&](char directive, char modifier) {
         switch (directive) {
-            case '%':
-                out.AppendChar('%');
-                break;
             case 'Y':
                 AppendDateNumeric(&out, date.year, 4, '0', modifier);
                 break;
@@ -795,11 +741,10 @@ Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date,
                 break;
             default:
                 // Keep an unsupported chrono directive visible and stable.
-                out.AppendChar('%');
-                out.AppendChar(directive);
-                break;
+                return false;
         }
-    }
+        return true;
+    });
     return out.TakeStr();
 }
 
@@ -1265,38 +1210,6 @@ DatePicker* DatePicker::OnToggle(Listener fn) {
     onToggle = fn;
     return this;
 }
-DatePicker* DatePicker::OnDay(Listener fn) {
-    onDay = fn;
-    return this;
-}
-DatePicker* DatePicker::OnDate(Listener fn) {
-    onDate = fn;
-    return this;
-}
-DatePicker* DatePicker::OnPrev(Listener fn) {
-    onPrev = fn;
-    return this;
-}
-DatePicker* DatePicker::OnNext(Listener fn) {
-    onNext = fn;
-    return this;
-}
-DatePicker* DatePicker::OnMonthToggle(Listener fn) {
-    onMonthToggle = fn;
-    return this;
-}
-DatePicker* DatePicker::OnYearToggle(Listener fn) {
-    onYearToggle = fn;
-    return this;
-}
-DatePicker* DatePicker::OnMonth(Listener fn) {
-    onMonth = fn;
-    return this;
-}
-DatePicker* DatePicker::OnYear(Listener fn) {
-    onYear = fn;
-    return this;
-}
 
 static Str FormatDate(Arena* a, DateFormat f, int y, int m, int d) {
     const char* sep = f == DateFormat::Dash ? "-" : "/";
@@ -1422,14 +1335,7 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
     if (editsTime) {
         text->FontFeatures(FontFeatures::TabularFigures);
     }
-    El* triggerRow = Div(a)
-                         ->FlexRow()
-                         ->W(kFill)
-                         ->MinW(0)
-                         ->Gap(Rems(cx, 0.25f))
-                         ->ItemsCenter()
-                         ->JustifyBetween()
-                         ->Child(text);
+    El* triggerRow = SpreadRow(cx)->Child(text);
     if (!self->disabled) {
         if (self->cleanable && hasDate) {
             triggerRow
@@ -1612,15 +1518,8 @@ El* DatePicker::IntoEl() {
                                  ->View(calendarView)
                                  ->YearRange(yearMin, yearMax, yearPageStart)
                                  ->DisabledMatcher(disabledMatcher)
-                                 ->Bare()
-                                 ->OnDay(onDay)
-                                 ->OnDate(onDate)
-                                 ->OnPrev(onPrev)
-                                 ->OnNext(onNext)
-                                 ->OnMonthToggle(onMonthToggle)
-                                 ->OnYearToggle(onYearToggle)
-                                 ->OnMonth(onMonth)
-                                 ->OnYear(onYear);
+                                 ->Bare();
+        static_cast<CalendarListeners&>(*calendar) = *this;
         El* content = Div(a)->FlexRow()->Gap(Rems(cx, 0.75f))->ItemsStart();
         if (presets && presetsCount > 0) {
             El* list = DatePresetColumn(cx);

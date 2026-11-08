@@ -25,6 +25,12 @@ int Utf8Len(Str s, int i) {
     return at - i;
 }
 
+void Utf8CopyNext(Str s, int* i, StrBuilder* out) {
+    int step = Utf8Len(s, *i);
+    out->Append(Str(s.s + *i, step));
+    *i += step;
+}
+
 uint32_t Utf8At(Str s, int i) {
     int at = i;
     return Utf8Next(s, &at);

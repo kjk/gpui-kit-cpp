@@ -54,19 +54,7 @@ static void VariantString(VARIANT* out, Str value) {
 
 // The roles UI Automation exposes as an Edit control with a Value pattern.
 static bool AccessibilityTextRole(AccessibilityRole role) {
-    switch (role) {
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::UrlInput:
-            return true;
-        default:
-            return false;
-    }
+    return AccessibilityRoleIsTextField(role);
 }
 
 static int AccessibilityControlType(AccessibilityRole role) {
@@ -136,6 +124,9 @@ static int AccessibilityControlType(AccessibilityRole role) {
 }
 
 static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
+    if (AccessibilityRoleIsTextField(role)) {
+        return L"textbox";
+    }
     switch (role) {
         case AccessibilityRole::Alert:
             return L"alert";
@@ -197,15 +188,6 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
             return L"table";
         case AccessibilityRole::TabList:
             return L"tablist";
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::UrlInput:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-            return L"textbox";
         case AccessibilityRole::Toolbar:
             return L"toolbar";
         case AccessibilityRole::Tooltip:
@@ -257,36 +239,37 @@ static float DipScale(const Window* win) {
     return win && win->paint.dpi > 0 ? win->paint.dpi / 96.f : 1.f;
 }
 
-struct WinAccessibility : IRawElementProviderSimple,
-                          IRawElementProviderFragment,
-                          IRawElementProviderFragmentRoot {
-    LONG refs = 1;
+// The IRawElementProviderSimple and IRawElementProviderFragment halves the
+// root and every node implement, each its own way.
+#define WIN_UIA_FRAGMENT_METHODS                                               \
+    HRESULT STDMETHODCALLTYPE get_ProviderOptions(ProviderOptions* out)        \
+        override;                                                              \
+    HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID id, IUnknown** out) \
+        override;                                                              \
+    HRESULT STDMETHODCALLTYPE GetPropertyValue(PROPERTYID id, VARIANT* out)    \
+        override;                                                              \
+    HRESULT STDMETHODCALLTYPE get_HostRawElementProvider(                      \
+        IRawElementProviderSimple** out) override;                             \
+    HRESULT STDMETHODCALLTYPE Navigate(NavigateDirection direction,            \
+                                       IRawElementProviderFragment** out)      \
+        override;                                                              \
+    HRESULT STDMETHODCALLTYPE GetRuntimeId(SAFEARRAY** out) override;          \
+    HRESULT STDMETHODCALLTYPE get_BoundingRectangle(UiaRect* out) override;    \
+    HRESULT STDMETHODCALLTYPE GetEmbeddedFragmentRoots(SAFEARRAY** out)        \
+        override;                                                              \
+    HRESULT STDMETHODCALLTYPE SetFocus() override;                             \
+    HRESULT STDMETHODCALLTYPE get_FragmentRoot(                                \
+        IRawElementProviderFragmentRoot** out) override;
+
+struct WinAccessibility
+    : ComObject<IRawElementProviderSimple, IRawElementProviderFragment,
+                IRawElementProviderFragmentRoot> {
     Window* win = nullptr;
     HWND hwnd = nullptr;
 
     WinAccessibility(Window* window, HWND handle) : win(window), hwnd(handle) {}
 
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override;
-    ULONG STDMETHODCALLTYPE AddRef() override;
-    ULONG STDMETHODCALLTYPE Release() override;
-    HRESULT STDMETHODCALLTYPE
-    get_ProviderOptions(ProviderOptions* out) override;
-    HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID id,
-                                                 IUnknown** out) override;
-    HRESULT STDMETHODCALLTYPE GetPropertyValue(PROPERTYID id,
-                                               VARIANT* out) override;
-    HRESULT STDMETHODCALLTYPE
-    get_HostRawElementProvider(IRawElementProviderSimple** out) override;
-    HRESULT STDMETHODCALLTYPE
-    Navigate(NavigateDirection direction,
-             IRawElementProviderFragment** out) override;
-    HRESULT STDMETHODCALLTYPE GetRuntimeId(SAFEARRAY** out) override;
-    HRESULT STDMETHODCALLTYPE get_BoundingRectangle(UiaRect* out) override;
-    HRESULT STDMETHODCALLTYPE
-    GetEmbeddedFragmentRoots(SAFEARRAY** out) override;
-    HRESULT STDMETHODCALLTYPE SetFocus() override;
-    HRESULT STDMETHODCALLTYPE
-    get_FragmentRoot(IRawElementProviderFragmentRoot** out) override;
+    WIN_UIA_FRAGMENT_METHODS
     HRESULT STDMETHODCALLTYPE ElementProviderFromPoint(
         double x, double y, IRawElementProviderFragment** out) override;
     HRESULT STDMETHODCALLTYPE
@@ -309,21 +292,13 @@ struct WinAccessibility : IRawElementProviderSimple,
     IRawElementProviderFragment* NewNode(int index);
 };
 
-struct WinAccessibilityNode : IRawElementProviderSimple,
-                              IRawElementProviderFragment,
-                              IInvokeProvider,
-                              IToggleProvider,
-                              IValueProvider,
-                              IRangeValueProvider,
-                              IExpandCollapseProvider,
-                              ISelectionProvider,
-                              ISelectionItemProvider,
-                              ITextProvider,
-                              IGridProvider,
-                              IGridItemProvider,
-                              ITableProvider,
-                              ITableItemProvider {
-    LONG refs = 1;
+struct WinAccessibilityNode
+    : ComObject<IRawElementProviderSimple, IRawElementProviderFragment,
+                IInvokeProvider, IToggleProvider, IValueProvider,
+                IRangeValueProvider, IExpandCollapseProvider,
+                ISelectionProvider, ISelectionItemProvider, ITextProvider,
+                IGridProvider, IGridItemProvider, ITableProvider,
+                ITableItemProvider> {
     WinAccessibility* root = nullptr;
     uint32_t id = 0;
 
@@ -331,7 +306,7 @@ struct WinAccessibilityNode : IRawElementProviderSimple,
         : root(owner), id(nodeId) {
         root->AddRef();
     }
-    ~WinAccessibilityNode() { root->Release(); }
+    ~WinAccessibilityNode() override { root->Release(); }
 
     const AccessibilityNode* Node() const { return root->Node(id); }
     HRESULT Missing() const {
@@ -347,28 +322,47 @@ struct WinAccessibilityNode : IRawElementProviderSimple,
         }
         return (*out)->info.role == role ? S_OK : UIA_E_INVALIDOPERATION;
     }
+    // The node, for a pattern only a text input supports.
+    HRESULT TextNode(const AccessibilityNode** out) const {
+        *out = Node();
+        if (!*out) {
+            return UIA_E_ELEMENTNOTAVAILABLE;
+        }
+        return AccessibilityTextPattern(**out) ? S_OK : UIA_E_INVALIDOPERATION;
+    }
+    // The preamble of a getter returning through `out`: a null `out` is
+    // INVALIDARG, otherwise it is cleared before the node is looked up.
+    template <typename T>
+    HRESULT ClearedNode(T** out, const AccessibilityNode** node) const {
+        if (!out) {
+            return E_INVALIDARG;
+        }
+        *out = nullptr;
+        *node = Node();
+        return *node ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
+    }
+    template <typename T>
+    HRESULT ClearedTextNode(T** out, const AccessibilityNode** node) const {
+        if (!out) {
+            return E_INVALIDARG;
+        }
+        *out = nullptr;
+        return TextNode(node);
+    }
+    // This node's index in the window's tree, after clearing `out`.
+    template <typename T>
+    HRESULT ClearedIndex(T** out, int* index) const {
+        if (!out) {
+            return E_INVALIDARG;
+        }
+        *out = nullptr;
+        *index = root->NodeIndex(id);
+        return root->win && *index >= 0 ? S_OK : UIA_E_ELEMENTNOTAVAILABLE;
+    }
+    // A cell's index and its table's.
+    HRESULT CellTable(int* index, int* table) const;
 
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override;
-    ULONG STDMETHODCALLTYPE AddRef() override;
-    ULONG STDMETHODCALLTYPE Release() override;
-    HRESULT STDMETHODCALLTYPE
-    get_ProviderOptions(ProviderOptions* out) override;
-    HRESULT STDMETHODCALLTYPE GetPatternProvider(PATTERNID pattern,
-                                                 IUnknown** out) override;
-    HRESULT STDMETHODCALLTYPE GetPropertyValue(PROPERTYID property,
-                                               VARIANT* out) override;
-    HRESULT STDMETHODCALLTYPE
-    get_HostRawElementProvider(IRawElementProviderSimple** out) override;
-    HRESULT STDMETHODCALLTYPE
-    Navigate(NavigateDirection direction,
-             IRawElementProviderFragment** out) override;
-    HRESULT STDMETHODCALLTYPE GetRuntimeId(SAFEARRAY** out) override;
-    HRESULT STDMETHODCALLTYPE get_BoundingRectangle(UiaRect* out) override;
-    HRESULT STDMETHODCALLTYPE
-    GetEmbeddedFragmentRoots(SAFEARRAY** out) override;
-    HRESULT STDMETHODCALLTYPE SetFocus() override;
-    HRESULT STDMETHODCALLTYPE
-    get_FragmentRoot(IRawElementProviderFragmentRoot** out) override;
+    WIN_UIA_FRAGMENT_METHODS
     HRESULT STDMETHODCALLTYPE Invoke() override;
     HRESULT STDMETHODCALLTYPE Toggle() override;
     HRESULT STDMETHODCALLTYPE get_ToggleState(ToggleState* out) override;
@@ -424,8 +418,7 @@ struct WinAccessibilityNode : IRawElementProviderSimple,
 // A text range stores UTF-16 offsets, which is what UI Automation speaks.
 // The owner and node id are stable; every operation resolves the current
 // InputState and clamps the offsets after an edit instead of retaining text.
-struct WinTextRange : ITextRangeProvider {
-    LONG refs = 1;
+struct WinTextRange : ComObject<ITextRangeProvider> {
     WinAccessibility* root = nullptr;
     uint32_t id = 0;
     int start = 0;
@@ -435,7 +428,7 @@ struct WinTextRange : ITextRangeProvider {
         : root(owner), id(nodeId), start(lo), end(hi) {
         root->AddRef();
     }
-    ~WinTextRange() { root->Release(); }
+    ~WinTextRange() override { root->Release(); }
 
     const AccessibilityNode* Node() const { return root->Node(id); }
     Str Text() const {
@@ -448,10 +441,18 @@ struct WinTextRange : ITextRangeProvider {
         start = std::max(0, std::min(start, n));
         end = std::max(start, std::min(end, n));
     }
+    // Clamps the range and copies the document it is in, which the caller
+    // frees; ELEMENTNOTAVAILABLE once the node is gone.
+    HRESULT ClampedText(BSTR* doc) {
+        *doc = nullptr;
+        if (!Node()) {
+            return UIA_E_ELEMENTNOTAVAILABLE;
+        }
+        Clamp();
+        *doc = AccessibilityBstr(Text());
+        return *doc ? S_OK : E_OUTOFMEMORY;
+    }
 
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override;
-    ULONG STDMETHODCALLTYPE AddRef() override;
-    ULONG STDMETHODCALLTYPE Release() override;
     HRESULT STDMETHODCALLTYPE Clone(ITextRangeProvider** out) override;
     HRESULT STDMETHODCALLTYPE Compare(ITextRangeProvider* range,
                                       BOOL* out) override;
@@ -531,6 +532,17 @@ static int AccessibilityGridColumn(const WinAccessibility* root, int index) {
     }
     const AccessibilityInfo& info = root->win->accessibility[index].info;
     return info.hasColumnIndex ? std::max(0, info.columnIndex - 1) : -1;
+}
+
+HRESULT WinAccessibilityNode::CellTable(int* index, int* table) const {
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
+        return hr;
+    }
+    *index = root->NodeIndex(id);
+    *table =
+        AccessibilityAncestor(root, *index, AccessibilityRole::Table, false);
+    return S_OK;
 }
 
 static HRESULT AccessibilitySimpleAt(WinAccessibility* root, int index,
@@ -632,38 +644,6 @@ static HRESULT AccessibilityRangeArray(WinTextRange* range, SAFEARRAY** out) {
         }
     }
     return S_OK;
-}
-
-HRESULT WinAccessibility::QueryInterface(REFIID iid, void** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    if (iid == __uuidof(IUnknown) ||
-        iid == __uuidof(IRawElementProviderSimple)) {
-        *out = static_cast<IRawElementProviderSimple*>(this);
-    } else if (iid == __uuidof(IRawElementProviderFragment)) {
-        *out = static_cast<IRawElementProviderFragment*>(this);
-    } else if (iid == __uuidof(IRawElementProviderFragmentRoot)) {
-        *out = static_cast<IRawElementProviderFragmentRoot*>(this);
-    }
-    if (!*out) {
-        return E_NOINTERFACE;
-    }
-    AddRef();
-    return S_OK;
-}
-
-ULONG WinAccessibility::AddRef() {
-    return (ULONG)InterlockedIncrement(&refs);
-}
-
-ULONG WinAccessibility::Release() {
-    ULONG left = (ULONG)InterlockedDecrement(&refs);
-    if (!left) {
-        delete this;
-    }
-    return left;
 }
 
 HRESULT WinAccessibility::get_ProviderOptions(ProviderOptions* out) {
@@ -849,60 +829,6 @@ HRESULT WinAccessibility::GetFocus(IRawElementProviderFragment** out) {
     return S_OK;
 }
 
-HRESULT WinAccessibilityNode::QueryInterface(REFIID iid, void** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    if (iid == __uuidof(IUnknown) ||
-        iid == __uuidof(IRawElementProviderSimple)) {
-        *out = static_cast<IRawElementProviderSimple*>(this);
-    } else if (iid == __uuidof(IRawElementProviderFragment)) {
-        *out = static_cast<IRawElementProviderFragment*>(this);
-    } else if (iid == __uuidof(IInvokeProvider)) {
-        *out = static_cast<IInvokeProvider*>(this);
-    } else if (iid == __uuidof(IToggleProvider)) {
-        *out = static_cast<IToggleProvider*>(this);
-    } else if (iid == __uuidof(IValueProvider)) {
-        *out = static_cast<IValueProvider*>(this);
-    } else if (iid == __uuidof(IRangeValueProvider)) {
-        *out = static_cast<IRangeValueProvider*>(this);
-    } else if (iid == __uuidof(IExpandCollapseProvider)) {
-        *out = static_cast<IExpandCollapseProvider*>(this);
-    } else if (iid == __uuidof(ISelectionProvider)) {
-        *out = static_cast<ISelectionProvider*>(this);
-    } else if (iid == __uuidof(ISelectionItemProvider)) {
-        *out = static_cast<ISelectionItemProvider*>(this);
-    } else if (iid == __uuidof(ITextProvider)) {
-        *out = static_cast<ITextProvider*>(this);
-    } else if (iid == __uuidof(IGridProvider)) {
-        *out = static_cast<IGridProvider*>(this);
-    } else if (iid == __uuidof(IGridItemProvider)) {
-        *out = static_cast<IGridItemProvider*>(this);
-    } else if (iid == __uuidof(ITableProvider)) {
-        *out = static_cast<ITableProvider*>(this);
-    } else if (iid == __uuidof(ITableItemProvider)) {
-        *out = static_cast<ITableItemProvider*>(this);
-    }
-    if (!*out) {
-        return E_NOINTERFACE;
-    }
-    AddRef();
-    return S_OK;
-}
-
-ULONG WinAccessibilityNode::AddRef() {
-    return (ULONG)InterlockedIncrement(&refs);
-}
-
-ULONG WinAccessibilityNode::Release() {
-    ULONG left = (ULONG)InterlockedDecrement(&refs);
-    if (!left) {
-        delete this;
-    }
-    return left;
-}
-
 HRESULT WinAccessibilityNode::get_ProviderOptions(ProviderOptions* out) {
     if (!out) {
         return E_INVALIDARG;
@@ -913,13 +839,9 @@ HRESULT WinAccessibilityNode::get_ProviderOptions(ProviderOptions* out) {
 
 HRESULT WinAccessibilityNode::GetPatternProvider(PATTERNID pattern,
                                                  IUnknown** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = ClearedNode(out, &node); FAILED(hr)) {
+        return hr;
     }
     if (pattern == UIA_InvokePatternId && AccessibilityInvokePattern(*node)) {
         return QueryInterface(__uuidof(IInvokeProvider), (void**)out);
@@ -1083,13 +1005,9 @@ HRESULT WinAccessibilityNode::get_HostRawElementProvider(
 
 HRESULT WinAccessibilityNode::Navigate(NavigateDirection direction,
                                        IRawElementProviderFragment** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    int index = root->NodeIndex(id);
-    if (!root->win || index < 0) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
+    int index = -1;
+    if (HRESULT hr = ClearedIndex(out, &index); FAILED(hr)) {
+        return hr;
     }
     const AccessibilityNode& node = root->win->accessibility[index];
     if (direction == NavigateDirection_Parent) {
@@ -1423,13 +1341,9 @@ static bool AccessibilityDescendsFrom(const Window* win, int index,
 }
 
 HRESULT WinAccessibilityNode::GetSelection(SAFEARRAY** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    const AccessibilityNode* node = Node();
-    if (!node) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = ClearedNode(out, &node); FAILED(hr)) {
+        return hr;
     }
     if (AccessibilityTextPattern(*node)) {
         Str text = InputValue(node->input);
@@ -1547,13 +1461,9 @@ HRESULT WinAccessibilityNode::get_IsSelected(BOOL* out) {
 
 HRESULT WinAccessibilityNode::get_SelectionContainer(
     IRawElementProviderSimple** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    int index = root->NodeIndex(id);
-    if (!root->win || index < 0) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
+    int index = -1;
+    if (HRESULT hr = ClearedIndex(out, &index); FAILED(hr)) {
+        return hr;
     }
     int parent = root->win->accessibility[index].parent;
     while (parent >= 0 && !AccessibilitySelectionContainerRole(
@@ -1564,20 +1474,13 @@ HRESULT WinAccessibilityNode::get_SelectionContainer(
         return root
             ->QueryInterface(__uuidof(IRawElementProviderSimple), (void**)out);
     }
-    IRawElementProviderFragment* fragment = root->NewNode(parent);
-    if (!fragment) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    HRESULT hr = fragment->QueryInterface(__uuidof(IRawElementProviderSimple),
-                                          (void**)out);
-    fragment->Release();
-    return hr;
+    return AccessibilitySimpleAt(root, parent, out);
 }
 
 HRESULT WinAccessibilityNode::GetVisibleRanges(SAFEARRAY** out) {
-    const AccessibilityNode* node = Node();
-    if (!node || !AccessibilityTextPattern(*node)) {
-        return node ? UIA_E_INVALIDOPERATION : UIA_E_ELEMENTNOTAVAILABLE;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = TextNode(&node); FAILED(hr)) {
+        return hr;
     }
     int n = RopeOffsetToOffsetUtf16(InputValue(node->input),
                                     len(InputValue(node->input)));
@@ -1586,13 +1489,9 @@ HRESULT WinAccessibilityNode::GetVisibleRanges(SAFEARRAY** out) {
 
 HRESULT WinAccessibilityNode::RangeFromChild(IRawElementProviderSimple* child,
                                              ITextRangeProvider** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    const AccessibilityNode* node = Node();
-    if (!node || !AccessibilityTextPattern(*node)) {
-        return node ? UIA_E_INVALIDOPERATION : UIA_E_ELEMENTNOTAVAILABLE;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = ClearedTextNode(out, &node); FAILED(hr)) {
+        return hr;
     }
     // Text inputs publish their document as their own value, without embedded
     // child providers, so no child can name a sub-range.
@@ -1602,13 +1501,9 @@ HRESULT WinAccessibilityNode::RangeFromChild(IRawElementProviderSimple* child,
 
 HRESULT WinAccessibilityNode::RangeFromPoint(UiaPoint point,
                                              ITextRangeProvider** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    const AccessibilityNode* node = Node();
-    if (!node || !AccessibilityTextPattern(*node)) {
-        return node ? UIA_E_INVALIDOPERATION : UIA_E_ELEMENTNOTAVAILABLE;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = ClearedTextNode(out, &node); FAILED(hr)) {
+        return hr;
     }
     Str text = InputValue(node->input);
     POINT client = {(LONG)point.x, (LONG)point.y};
@@ -1621,13 +1516,9 @@ HRESULT WinAccessibilityNode::RangeFromPoint(UiaPoint point,
 }
 
 HRESULT WinAccessibilityNode::get_DocumentRange(ITextRangeProvider** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    const AccessibilityNode* node = Node();
-    if (!node || !AccessibilityTextPattern(*node)) {
-        return node ? UIA_E_INVALIDOPERATION : UIA_E_ELEMENTNOTAVAILABLE;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = ClearedTextNode(out, &node); FAILED(hr)) {
+        return hr;
     }
     Str text = InputValue(node->input);
     *out =
@@ -1640,9 +1531,9 @@ HRESULT WinAccessibilityNode::get_SupportedTextSelection(
     if (!out) {
         return E_INVALIDARG;
     }
-    const AccessibilityNode* node = Node();
-    if (!node || !AccessibilityTextPattern(*node)) {
-        return node ? UIA_E_INVALIDOPERATION : UIA_E_ELEMENTNOTAVAILABLE;
+    const AccessibilityNode* node = nullptr;
+    if (HRESULT hr = TextNode(&node); FAILED(hr)) {
+        return hr;
     }
     *out = SupportedTextSelection_Single;
     return S_OK;
@@ -1730,15 +1621,7 @@ HRESULT WinAccessibilityNode::get_Column(int* out) {
 }
 
 HRESULT WinAccessibilityNode::get_RowSpan(int* out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    const AccessibilityNode* node = nullptr;
-    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
-        return hr;
-    }
-    *out = 1;
-    return S_OK;
+    return get_ColumnSpan(out);
 }
 
 HRESULT WinAccessibilityNode::get_ColumnSpan(int* out) {
@@ -1749,21 +1632,20 @@ HRESULT WinAccessibilityNode::get_ColumnSpan(int* out) {
     if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
         return hr;
     }
-    // The pinned semantic table API records one column index per cell and no
-    // span, so one is the only value the portable tree can promise.
+    // The pinned semantic table API records one row and column index per cell
+    // and no span, so one is the only value the portable tree can promise for
+    // either span.
     *out = 1;
     return S_OK;
 }
 
 HRESULT WinAccessibilityNode::get_ContainingGrid(
     IRawElementProviderSimple** out) {
-    int index = root->NodeIndex(id);
-    const AccessibilityNode* node = nullptr;
-    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
+    int index = -1;
+    int table = -1;
+    if (HRESULT hr = CellTable(&index, &table); FAILED(hr)) {
         return hr;
     }
-    int table =
-        AccessibilityAncestor(root, index, AccessibilityRole::Table, false);
     return AccessibilitySimpleAt(root, table, out);
 }
 
@@ -1808,43 +1690,14 @@ HRESULT WinAccessibilityNode::GetRowHeaderItems(SAFEARRAY** out) {
 }
 
 HRESULT WinAccessibilityNode::GetColumnHeaderItems(SAFEARRAY** out) {
-    int index = root->NodeIndex(id);
-    const AccessibilityNode* node = nullptr;
-    if (HRESULT hr = NodeOfRole(AccessibilityRole::Cell, &node); FAILED(hr)) {
+    int index = -1;
+    int table = -1;
+    if (HRESULT hr = CellTable(&index, &table); FAILED(hr)) {
         return hr;
     }
-    int table =
-        AccessibilityAncestor(root, index, AccessibilityRole::Table, false);
     int column = AccessibilityGridColumn(root, index);
     return AccessibilityProviderArray(
         root, table, AccessibilityRole::ColumnHeader, column, out);
-}
-
-HRESULT WinTextRange::QueryInterface(REFIID iid, void** out) {
-    if (!out) {
-        return E_INVALIDARG;
-    }
-    *out = nullptr;
-    if (iid == __uuidof(IUnknown) || iid == __uuidof(ITextRangeProvider)) {
-        *out = static_cast<ITextRangeProvider*>(this);
-    }
-    if (!*out) {
-        return E_NOINTERFACE;
-    }
-    AddRef();
-    return S_OK;
-}
-
-ULONG WinTextRange::AddRef() {
-    return (ULONG)InterlockedIncrement(&refs);
-}
-
-ULONG WinTextRange::Release() {
-    ULONG left = (ULONG)InterlockedDecrement(&refs);
-    if (!left) {
-        delete this;
-    }
-    return left;
 }
 
 HRESULT WinTextRange::Clone(ITextRangeProvider** out) {
@@ -1930,13 +1783,12 @@ static void AccessibilityUnitBounds(BSTR text, int length, int at,
 
 HRESULT WinTextRange::ExpandToEnclosingUnit(TextUnit unit) {
     const AccessibilityNode* node = Node();
-    if (!node || !AccessibilityTextPattern(*node)) {
+    if (node && !AccessibilityTextPattern(*node)) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
-    Clamp();
-    BSTR text = AccessibilityBstr(Text());
-    if (!text) {
-        return E_OUTOFMEMORY;
+    BSTR text = nullptr;
+    if (HRESULT hr = ClampedText(&text); FAILED(hr)) {
+        return hr;
     }
     AccessibilityUnitBounds(text, (int)SysStringLen(text), start, unit, &start,
                             &end);
@@ -1962,13 +1814,9 @@ HRESULT WinTextRange::FindText(BSTR needle, BOOL backward, BOOL ignoreCase,
         return E_INVALIDARG;
     }
     *out = nullptr;
-    if (!Node()) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    Clamp();
-    BSTR doc = AccessibilityBstr(Text());
-    if (!doc) {
-        return E_OUTOFMEMORY;
+    BSTR doc = nullptr;
+    if (HRESULT hr = ClampedText(&doc); FAILED(hr)) {
+        return hr;
     }
     int needleLen = (int)SysStringLen(needle);
     int found = -1;
@@ -2050,13 +1898,9 @@ HRESULT WinTextRange::GetText(int maxLength, BSTR* out) {
         return E_INVALIDARG;
     }
     *out = nullptr;
-    if (!Node()) {
-        return UIA_E_ELEMENTNOTAVAILABLE;
-    }
-    Clamp();
-    BSTR doc = AccessibilityBstr(Text());
-    if (!doc) {
-        return E_OUTOFMEMORY;
+    BSTR doc = nullptr;
+    if (HRESULT hr = ClampedText(&doc); FAILED(hr)) {
+        return hr;
     }
     int n = end - start;
     if (maxLength >= 0) {

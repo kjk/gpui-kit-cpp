@@ -205,9 +205,22 @@ using CalendarItemFn = El* (*)(void* user, Ctx* cx, El* item,
 using CalendarLabelFn = Str (*)(void* user, Ctx* cx, CalendarItemKind kind,
                                 int value);
 
+// What a calendar's cells and header report: the themed Calendar and the
+// DatePicker hold the same set and hand it down whole.
+struct CalendarListeners {
+    Listener onDay = {};  // day of month
+    Listener onDate = {}; // DatePickerDateKey(LocalDate)
+    Listener onPrev = {};
+    Listener onNext = {};
+    Listener onMonthToggle = {};
+    Listener onYearToggle = {};
+    Listener onMonth = {};
+    Listener onYear = {};
+};
+
 // What the calendar is looking at and what it may do — everything except how
 // it looks, which is the item function's.
-struct CalendarOpts {
+struct CalendarOpts : CalendarListeners {
     int year = 0;
     int month = 1;
     int numberOfMonths = 1;
@@ -228,14 +241,6 @@ struct CalendarOpts {
     int yearMin = 0;
     int yearMax = 0; // exclusive
     int yearPageStart = 0;
-    Listener onDay = {};  // day of month
-    Listener onDate = {}; // DatePickerDateKey(LocalDate)
-    Listener onPrev = {};
-    Listener onNext = {};
-    Listener onMonthToggle = {};
-    Listener onYearToggle = {};
-    Listener onMonth = {};
-    Listener onYear = {};
     CalendarItemFn item = nullptr;
     void* user = nullptr;
     CalendarLabelFn label = nullptr;

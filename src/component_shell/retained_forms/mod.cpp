@@ -518,8 +518,6 @@ static constexpr shell::StateDescriptor kStates[] = {
      {}},
 };
 
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kPlaceholderArgs[] = {
     {"placeholder", SchemaString()}};
 static constexpr ArgumentDescriptor kAriaLabelArgs[] = {
@@ -571,7 +569,7 @@ static constexpr MethodDescriptor kInputMethods[] = {
     {"aria_label", kAriaLabelArgs,
      "Sets the name announced by accessibility clients.",
      &RecordAriaLabel<kInput>},
-    {"disabled", kDisabledArgs, kDisabledDoc, &RecordDisabled<kInput>},
+    {"disabled", kDisabledArguments, kDisabledDoc, &RecordDisabled<kInput>},
     input_tokens::kTokenMethod,
     input_tokens::kTokenClickMethod,
     input_tokens::kTokenHoverMethod,
@@ -580,14 +578,15 @@ static constexpr MethodDescriptor kInputMethods[] = {
 static constexpr MethodDescriptor kNumberInputMethods[] = {
     {"placeholder", kPlaceholderArgs, kPlaceholderDoc,
      &RecordPlaceholder<kNumberInput>},
-    {"disabled", kDisabledArgs, kDisabledDoc, &RecordDisabled<kNumberInput>},
+    {"disabled", kDisabledArguments, kDisabledDoc,
+     &RecordDisabled<kNumberInput>},
 };
 static constexpr MethodDescriptor kOtpInputMethods[] = {
     {"groups", kGroupsArgs,
      "Splits the fixed-length code into the requested number of visual "
      "groups.",
      &RecordGroups},
-    {"disabled", kDisabledArgs, kDisabledDoc, &RecordDisabled<kOtpInput>},
+    {"disabled", kDisabledArguments, kDisabledDoc, &RecordDisabled<kOtpInput>},
 };
 static constexpr MethodDescriptor kSliderMethods[] = {
     {"vertical",
@@ -598,7 +597,7 @@ static constexpr MethodDescriptor kSliderMethods[] = {
      {},
      "Reverses the filled side for a single-value slider.",
      &RecordReverse},
-    {"disabled", kDisabledArgs, kDisabledDoc, &RecordDisabled<kSlider>},
+    {"disabled", kDisabledArguments, kDisabledDoc, &RecordDisabled<kSlider>},
 };
 static constexpr MethodDescriptor kColorPickerMethods[] = {
     {"label", kLabelArgs, "Sets the visible label above the picker.",
@@ -614,10 +613,11 @@ static constexpr MethodDescriptor kCalendarMethods[] = {
 static constexpr MethodDescriptor kDatePickerMethods[] = {
     {"placeholder", kPlaceholderArgs, kPlaceholderDoc,
      &RecordPlaceholder<kDatePicker>},
-    {"disabled", kDisabledArgs, kDisabledDoc, &RecordDisabled<kDatePicker>},
+    {"disabled", kDisabledArguments, kDisabledDoc,
+     &RecordDisabled<kDatePicker>},
 };
 static constexpr MethodDescriptor kTimeFieldMethods[] = {
-    {"disabled", kDisabledArgs, kDisabledDoc, &RecordDisabled<kTimeField>},
+    {"disabled", kDisabledArguments, kDisabledDoc, &RecordDisabled<kTimeField>},
 };
 
 static constexpr ComponentDescriptor kComponents[] = {

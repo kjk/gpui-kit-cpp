@@ -441,6 +441,53 @@ struct CondVar {
     ~CondVar() = default;
 };
 
+#if GPUI_OS_WINDOWS
+template <typename I, typename...>
+struct ComFirst {
+    using T = I;
+};
+
+// The IUnknown half of every COM object this tree writes out itself. It is
+// created with one reference and deleted on the last Release; QueryInterface
+// answers IUnknown with the first interface and each of `Is` with its own
+// base. A class implementing several interfaces lists them all here instead
+// of deriving from them.
+template <typename... Is>
+struct ComObject : Is... {
+    LONG refs = 1;
+
+    virtual ~ComObject() = default;
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (!ppv) {
+            return E_POINTER;
+        }
+        *ppv = nullptr;
+        if (riid == __uuidof(IUnknown)) {
+            *ppv = static_cast<typename ComFirst<Is...>::T*>(this);
+        }
+        ((!*ppv && riid == __uuidof(Is) ? (void)(*ppv = static_cast<Is*>(this))
+                                        : (void)0),
+         ...);
+        if (!*ppv) {
+            return E_NOINTERFACE;
+        }
+        AddRef();
+        return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return (ULONG)InterlockedIncrement(&refs);
+    }
+    ULONG STDMETHODCALLTYPE Release() override {
+        LONG left = InterlockedDecrement(&refs);
+        if (left == 0) {
+            delete this;
+        }
+        return (ULONG)left;
+    }
+};
+#endif
+
 bool PlatThreadRun(Func0 f);
 uint64_t PlatThreadId();
 void PlatSleepMs(int ms);
@@ -1283,6 +1330,23 @@ inline bool StrEqI(Str s1, const char* s2) {
     return StrEqI(s1, Str(s2));
 }
 bool StrStartsWith(Str s, Str prefix);
+
+// One step of a scan that skips '"' and '\'' quoted runs: true when `c`
+// opens, sits inside or closes one, so the caller looks no further at it.
+// `quote` is the open quote character, 0 outside.
+inline bool ScanSkipQuoted(char c, char* quote) {
+    if (*quote) {
+        if (c == *quote) {
+            *quote = 0;
+        }
+        return true;
+    }
+    if (c == '"' || c == '\'') {
+        *quote = c;
+        return true;
+    }
+    return false;
+}
 inline bool StrStartsWith(Str s, const char* prefix) {
     return StrStartsWith(s, Str(prefix));
 }

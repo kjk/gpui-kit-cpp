@@ -326,20 +326,6 @@ Select* Select::New(Ctx* cx, Str id, Entity<SelectState> state) {
     }
     return out;
 }
-Select* Select::Items(const SearchableItem* it, int n) {
-    items = it;
-    nItems = n;
-    return this;
-}
-Select* Select::Sections(const Str* titles, int n) {
-    sections = titles;
-    nSections = n;
-    return this;
-}
-Select* Select::Placeholder(Str s) {
-    placeholder = s;
-    return this;
-}
 Select* Select::AccessibilityLabel(Str s) {
     accessibilityLabel = s;
     return this;
@@ -348,52 +334,8 @@ Select* Select::TitlePrefix(Str s) {
     titlePrefix = s;
     return this;
 }
-Select* Select::Empty(Str s) {
-    empty = s;
-    return this;
-}
 Select* Select::Empty(El* element) {
     emptyEl = element;
-    return this;
-}
-Select* Select::W(float v) {
-    width = v;
-    return this;
-}
-Select* Select::MenuWidth(float v) {
-    menuWidth = v;
-    return this;
-}
-Select* Select::MenuMaxH(float v) {
-    menuMaxH = v;
-    return this;
-}
-Select* Select::WithSize(UiSize s) {
-    size = s;
-    return this;
-}
-Select* Select::Icon(IconName i) {
-    icon = i;
-    return this;
-}
-Select* Select::CheckIcon(IconName n) {
-    checkIcon = n;
-    return this;
-}
-Select* Select::Disabled(bool v) {
-    disabled = v;
-    return this;
-}
-Select* Select::Cleanable(bool v) {
-    cleanable = v;
-    return this;
-}
-Select* Select::Appearance(bool v) {
-    appearance = v;
-    return this;
-}
-Select* Select::FocusRing(bool v) {
-    focusRing = v;
     return this;
 }
 Select* Select::Searchable(InputState* q, Listener onFocus) {
@@ -409,14 +351,6 @@ Select* Select::Multiple(bool v) {
     if (SearchableListState* s = state.Get(cx)) {
         SearchableListSetMultiple(s, v);
     }
-    return this;
-}
-Select* Select::OnToggle(Listener fn) {
-    onToggle = fn;
-    return this;
-}
-Select* Select::OnClear(Listener fn) {
-    onClear = fn;
     return this;
 }
 Select* Select::OnMouseDownOut(Listener fn) {
@@ -521,20 +455,6 @@ void SelectClear(SelectState* s, Ctx* cx) {
     if (s) {
         s->Clean(cx);
     }
-}
-
-Select* Select::Trigger(El* e) {
-    trigger = e;
-    return this;
-}
-Select* Select::Footer(El* e) {
-    footer = e;
-    return this;
-}
-Select* Select::Delegate(const SearchableListDelegate& value) {
-    delegate = value;
-    hasDelegate = true;
-    return this;
 }
 
 El* Select::IntoEl() {
@@ -669,30 +589,15 @@ El* Select::IntoEl() {
         // The list is the whole dropdown: the query, the sections, the checks
         // and the empty state are all its own.
         SearchableList* list =
-            SearchableList::New(cx, StrL("list"), state, query)
-                ->InSelect(true)
-                ->Items(items, nItems)
-                // Length::Auto is the trigger's own laid-out width: the
-                // popover ring is drawn outside the surface, so the surface
-                // no longer widens by 2 to cover a border of its own.
-                ->W(menuWidth > 0 ? menuWidth : autoMenuW)
-                ->CheckIcon(checkIcon)
-                ->WithSize(size);
-        if (sections) {
-            list->Sections(sections, nSections);
-        }
-        if (query) {
-            list->OnQueryFocus(onQueryFocus);
-        }
+            SearchableList::New(cx, StrL("list"), state, query)->InSelect(true);
+        static_cast<SearchableListContent&>(*list) = *this;
+        // Length::Auto is the trigger's own laid-out width: the popover ring
+        // is drawn outside the surface, so the surface no longer widens by 2
+        // to cover a border of its own.
+        list->W(menuWidth > 0 ? menuWidth : autoMenuW);
         // menu_max_h: rems(20.) unless the caller set one.
         list->MaxH(menuMaxH > 0 ? menuMaxH : Rems(cx, 20.f));
         if (scrollBounce >= 0) list->ScrollBounce(scrollBounce == 1);
-        if (footer) {
-            list->Footer(footer);
-        }
-        if (hasDelegate) {
-            list->Delegate(delegate);
-        }
         if (emptyEl) {
             list->Empty(emptyEl);
         } else if (empty.s) {

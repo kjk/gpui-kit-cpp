@@ -336,6 +336,18 @@ static Str ManifestText(Str folder) {
     return out.TakeStr();
 }
 
+// The opening both new-app templates share: the view class, its counter and
+// the full-size column its render returns.
+#define kNewAppClassHead                        \
+    "export default class App extends View {\n" \
+    "  init() {\n"                              \
+    "    this.count = 0;\n"                     \
+    "  }\n"                                     \
+    "\n"                                        \
+    "  render(cx) {\n"                          \
+    "    return v_flex()\n"                     \
+    "      .size_full()\n"
+
 static Str EntryText(Str name, bool styled) {
     StrBuilder title;
     AppendJsonString(&title, name);
@@ -346,15 +358,7 @@ static Str EntryText(Str name, bool styled) {
             StrL("import { View, div } from \"gpui-kit\";\n"
                  "import { v_flex } from \"gpui-base\";\n"
                  "import { Button, TitleBar } from \"gpui-component\";\n"
-                 "\n"
-                 "export default class App extends View {\n"
-                 "  init() {\n"
-                 "    this.count = 0;\n"
-                 "  }\n"
-                 "\n"
-                 "  render(cx) {\n"
-                 "    return v_flex()\n"
-                 "      .size_full()\n"
+                 "\n" kNewAppClassHead
                  "      .bg(cx.theme().colors.background)\n"
                  "      .child(\n"
                  "        TitleBar.new().child(\n"
@@ -393,16 +397,7 @@ static Str EntryText(Str name, bool styled) {
                          "// "));
         out.Append(quoted);
         out.Append(
-            StrL("\n"
-                 "export default class App extends View {\n"
-                 "  init() {\n"
-                 "    this.count = 0;\n"
-                 "  }\n"
-                 "\n"
-                 "  render(cx) {\n"
-                 "    return v_flex()\n"
-                 "      .size_full()\n"
-                 "      .items_center()\n"
+            StrL("\n" kNewAppClassHead "      .items_center()\n"
                  "      .justify_center()\n"
                  "      .gap(12)\n"
                  "      .bg(cx.theme().colors.background)\n"
