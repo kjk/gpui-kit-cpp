@@ -147,7 +147,10 @@ El* WindowStateLayers(Ctx* cx) {
         wl->dialogs[i].visibility = mount.visibility;
         wl->dialogs[i].surfaceY = mount.surfaceY;
         wl->dialogs[i].trapFocus = mount.trapFocus;
-        if (mount.unmount) {
+        // A closing dialog whose render did not sample the exit clock (its
+        // view is gone, or no longer builds an open Dialog) would otherwise
+        // stay mounted forever and keep counting in WindowDialogCount.
+        if (mount.unmount || (mount.closing && !mount.sampled)) {
             VecAppend(dropIds, wl->dialogs[i].id);
             continue;
         }

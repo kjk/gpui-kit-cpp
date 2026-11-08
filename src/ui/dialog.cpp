@@ -702,6 +702,7 @@ El* Dialog::IntoEl(WinSize size) {
     }
     if (mounted) {
         mount->exitEnabled = exitMs > 0;
+        mount->sampled = true;
     }
     bool animated = !mounted && entrance != DialogEntrance::None && !reduce &&
                     (entrance == DialogEntrance::SlideDown ||

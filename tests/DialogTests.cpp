@@ -854,12 +854,16 @@ struct ExitDialog {
     bool hasMargin = true;
     bool overlayClosable = true;
     bool withButton = false;
+    bool renderNothing = false;
     int buttonClicks = 0;
 
     static void OnButton(ExitDialog* self, Ctx*, const ClickEvent*) {
         self->buttonClicks++;
     }
     static El* Render(ExitDialog* self, Ctx* cx) {
+        if (self->renderNothing) {
+            return Div(cx->a);
+        }
         component::Dialog* dialog =
             component::Dialog::New(cx)
                 ->Open(true)
@@ -1060,6 +1064,45 @@ static void ClosingPlaysTheEntranceBackOut() {
     utassert(form.Get(app)->buttonClicks == 1);
     WindowCloseAllDialogs(&cx);
     TestAdvanceClock(app, 260);
+
+    // Reopening the view that is still leaving restarts it instead of
+    // silently doing nothing.
+    Entity<ExitDialog> restarted = EntityNew<ExitDialog>(app);
+    restarted.Get(app)->hasMargin = false;
+    WindowOpenDialog(&cx, restarted);
+    TestDraw(win);
+    TestAdvanceClock(app, 250);
+    WindowCloseDialog(&cx);
+    TestDraw(win);
+    utassert(!WindowHasActiveDialog(&cx));
+    WindowOpenDialog(&cx, restarted);
+    layers = WindowLayersOf(win);
+    utassert(layers && WindowDialogCount(&cx) == 1);
+    utassert(!layers->dialogs[0].closing);
+    utassert(WindowHasActiveDialog(&cx));
+    TestDraw(win);
+    TestAdvanceClock(app, 260);
+    TestDraw(win);
+    utassert(WindowDialogCount(&cx) == 1);
+    utassert(restarted.Get(app));
+    WindowCloseAllDialogs(&cx);
+    TestAdvanceClock(app, 260);
+    TestDraw(win);
+    utassert(WindowDialogCount(&cx) == 0);
+
+    // A closing layer whose view no longer renders a Dialog has no exit to
+    // play, so the layer drops it rather than keeping it mounted forever.
+    Entity<ExitDialog> vanished = EntityNew<ExitDialog>(app);
+    vanished.Get(app)->hasMargin = false;
+    WindowOpenDialog(&cx, vanished);
+    TestDraw(win);
+    TestAdvanceClock(app, 250);
+    WindowCloseDialog(&cx);
+    utassert(WindowDialogCount(&cx) == 1);
+    vanished.Get(app)->renderNothing = true;
+    TestDraw(win);
+    utassert(WindowDialogCount(&cx) == 0);
+    utassert(!vanished.Get(app));
 
     MotionResetReduceForTest();
     TestAppFree(app);
