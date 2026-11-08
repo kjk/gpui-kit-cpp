@@ -241,9 +241,11 @@ bool Storage::Remove(Str key, Str* error) {
         StrFree(entry->key);
         StrFree(entry->value);
         delete entry;
+        // Only a removal that changed something is a revision: removing a
+        // key that was not there leaves nothing to write.
+        Touch();
         break;
     }
-    Touch();
     return true;
 }
 
@@ -321,8 +323,11 @@ void Storage::FinishWrite(uint64_t writeRevision, bool ok,
     ReadyThrough(writeRevision, ready);
 }
 
-void Storage::AbortWrite(uint64_t writeRevision) {
-    if (inFlight == writeRevision) inFlight = 0;
+void Storage::AbortWrite(uint64_t writeRevision, Vec<StorageWaiter*>* ready) {
+    // A write that could not start is a write that failed: the in-flight
+    // mark comes off and the waiters up to it are settled, as failed, instead
+    // of waiting for a completion that will never come.
+    FinishWrite(writeRevision, false, ready);
 }
 
 bool Storage::Wait(Func1<StorageOutcome> settle, StorageWaiter** waiter,

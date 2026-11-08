@@ -1312,7 +1312,13 @@ static void DriveStorage(Policy* policy) {
     pending = {};
     if (!ExecSpawn(MkFunc0(StorageWriteWork, job),
                    MkFunc0(StorageWriteDone, job))) {
-        storage->AbortWrite(job->write.revision);
+        // The pool is shutting down. The waiters are told, so a pending
+        // flush() rejects rather than hangs.
+        Vec<shell::StorageWaiter*> ready;
+        storage->AbortWrite(job->write.revision, &ready);
+        shell::StorageOutcome outcome = {
+            false, StrL("the localStorage write could not be scheduled")};
+        WakeStorageWaiters(&ready, outcome);
         job->Free();
         delete job;
     }
