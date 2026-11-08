@@ -50,6 +50,13 @@ struct FetchRequest {
     // following or answering it, so the walk as a whole ends there however
     // many hops it took, each also bounded by the transport's own limit.
     double deadline = 0;
+    // Asked by FetchSendAsync each time a hop lands, before the answer is
+    // taken or a redirect followed: true ends the walk as a failure, so a
+    // request whose asker is gone stops at the next hop instead of walking
+    // every redirect to the end. Null never cancels. Runs on the thread the
+    // completion lands on, the main one.
+    bool (*cancelled)(void* user) = nullptr;
+    void* cancelUser = nullptr;
 
     void Free();
 };

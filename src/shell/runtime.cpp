@@ -1204,6 +1204,13 @@ static void ShellFetchDone(ShellFetchJob* job, shell::FetchAsyncResult landed) {
     SettleShellTask(&lease, failed, job->result.error, FetchJobResolved, job);
 }
 
+// The asynchronous walk asks this before each hop: a task whose view or
+// window has gone, or that a script cancelled, is not worth another
+// redirect. Main thread, like the completion that asks.
+static bool ShellFetchCancelled(void* user) {
+    return !ShellTaskOwnerAlive(user);
+}
+
 // The hosted clients are blocking. Keep them behind the executor-backed Task
 // whose frame owns the job even when shutdown drops a late completion.
 static Task ShellFetchTask(TaskGuard guard, ShellFetchJob* job) {
@@ -8478,6 +8485,11 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
         return promise;
     }
     if (base::PlatAsyncIo()) {
+        // Only the asynchronous walk may ask: its completions land on the
+        // main thread, where the task table lives. The blocking walk below
+        // runs on a worker and is dropped by its coroutine's guard instead.
+        job->request.cancelled = ShellFetchCancelled;
+        job->request.cancelUser = &job->head;
         if (!shell::FetchSendAsync(job->request, job->capabilities,
                                    MkFunc1(ShellFetchDone, job))) {
             ForgetTask(impl, task, false);
