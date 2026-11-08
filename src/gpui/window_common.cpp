@@ -2019,8 +2019,10 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         win->scrollDragHorizontal = horizontal;
         win->scrollDragGrab = at - thumbStart;
         win->scrollDragInput = s->input;
-        win->scrollDragNotifyPending = false;
-        win->scrollDragNotifyDue = 0;
+        // A notify the previous drag still owed its listener goes out
+        // before this bar's state replaces it, or that bar's last offset
+        // never reaches its view.
+        ScrollbarFlush(win, TimeNow());
         win->scrollDragLastNotify = TimeNow();
         // Active styling can change the inset or minimum length. Re-invert
         // that geometry now so the painted grab point remains under the
