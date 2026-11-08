@@ -232,6 +232,10 @@ TaskId ExecSpawn(Func0 work, Func0 done) {
         return 0;
     }
     Job job;
+    // 0 is "no job" to every caller, so a wrapped counter skips it.
+    if (gNextTaskId <= 0) {
+        gNextTaskId = 1;
+    }
     job.id = gNextTaskId++;
     job.work = work;
     job.done = done;
@@ -346,6 +350,13 @@ void ExecShutdown() {
         PlatSleepMs(5);
         gPoolWake.WakeAll();
     }
+    // A worker that finished during that wait posted its `done`, which is
+    // the half that frees the job's state. The main thread is still here and
+    // the App is still whole, so it runs now rather than being dropped with
+    // the queue below: that drop was a leak of every job that took longer
+    // than the first wait. What is dropped from here on is only what a
+    // worker still running posts after the main thread has left.
+    ExecDrain();
 
     gMainLock.Lock();
     gStopping = true;
