@@ -22,6 +22,15 @@ El* ControlBox(Arena* a, Str id) {
         ->PathClick(id);
 }
 
+El* ControlFocus(El* e, FocusHandle focus, Str id, int tabIndex, bool tabStop) {
+    if (focus.IsValid()) {
+        e->TrackFocus(focus);
+    } else {
+        e->PathId(id);
+    }
+    return e->TabIndex(tabIndex)->TabStop(tabStop);
+}
+
 El* Button::New(Ctx* cx, Str id, bool disabled, Listener onClick,
                 bool focusable, const ButtonStyles* styles, bool selected) {
     Arena* a = cx->a;

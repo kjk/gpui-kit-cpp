@@ -29,6 +29,9 @@ namespace gpui {
 // caller's padding. relative(1): the inherited text leading must not make
 // the control taller than the geometry its caller requested.
 El* ControlBox(Arena* a, Str id);
+// The focus an enabled checkbox or switch takes: the caller's FocusHandle
+// when it gave one, its own path otherwise, then its place in the Tab order.
+El* ControlFocus(El* e, FocusHandle focus, Str id, int tabIndex, bool tabStop);
 
 struct ButtonStyles {
     StateStyle selected = {};

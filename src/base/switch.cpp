@@ -1,4 +1,5 @@
 #include "base/switch.h"
+#include "base/button.h"
 
 namespace gpui {
 
@@ -70,12 +71,7 @@ El* Switch::New(Ctx* cx, Str id, bool checked, bool disabled, Listener onChange,
         // row does not activate when its disabled switch is pressed.
         return e->StopMouseDown();
     }
-    if (focus.IsValid()) {
-        e->TrackFocus(focus);
-    } else {
-        e->PathId(id);
-    }
-    e->TabIndex(tabIndex)->TabStop(tabStop);
+    ControlFocus(e, focus, id, tabIndex, tabStop);
     if (onChange.IsValid()) {
         e->OnClick(ListenerFill(onChange, !checked));
     }

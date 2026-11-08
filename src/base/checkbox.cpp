@@ -1,4 +1,5 @@
 #include "base/checkbox.h"
+#include "base/button.h"
 
 namespace gpui {
 
@@ -99,12 +100,7 @@ El* Checkbox::New(Ctx* cx, Str id, CheckboxState state, bool disabled,
     if (disabled) {
         return e;
     }
-    if (focus.IsValid()) {
-        e->TrackFocus(focus);
-    } else {
-        e->PathId(id);
-    }
-    e->TabIndex(tabIndex)->TabStop(tabStop);
+    ControlFocus(e, focus, id, tabIndex, tabStop);
     if (onChange.IsValid()) {
         e->OnClick(ListenerFill(onChange, (int64_t)CheckboxActivated(state)));
     }
