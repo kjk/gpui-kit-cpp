@@ -249,6 +249,31 @@ static void AHostLongPressTimerSelectsAWord() {
     WindowSelectionFree(&win);
 }
 
+// The long-press deadline is one of the window's timer deadlines, so the
+// test platform's simulated clock reaches it: a finger held still becomes a
+// long press when the clock is advanced, with no poll by hand.
+struct TouchHostPage {
+    static El* Render(TouchHostPage*, Ctx* cx) {
+        return Div(cx->a)->W(200)->H(200);
+    }
+};
+
+static void AHostLongPressFiresOnTheSimulatedClock() {
+    App* app = TestAppNew();
+    Entity<TouchHostPage> page = EntityNew<TouchHostPage>(app);
+    Window* win = TestWindowOpen(app, page, 200, 200);
+    WindowTouchBegin(win, 50, 50);
+    utassert(win->touchHost == TouchHostKind::Pending);
+    utassert(WindowTimersDue(win) > 0);
+    TestAdvanceClock(app, 400);
+    utassert(win->touchHost == TouchHostKind::Pending);
+    TestAdvanceClock(app, 200);
+    utassert(win->touchHost == TouchHostKind::LongPress);
+    WindowTouchEnd(win, 50, 50);
+    utassert(win->touchHost == TouchHostKind::None);
+    TestAppFree(app);
+}
+
 static void AHostHandleDragStartsOnTheSelectionHandle() {
     Window win;
     AddRun(&win, 0, "quick select value", 0);
@@ -2424,6 +2449,7 @@ void TestTextSelection() {
     ALongPressTakesAWordAndKeepsDragging();
     AHostFingerSwipeEmitsPhasedScroll();
     AHostLongPressTimerSelectsAWord();
+    AHostLongPressFiresOnTheSimulatedClock();
     AHostHandleDragStartsOnTheSelectionHandle();
     ADoubleTapOnReadOnlyTextSelectsNothing();
     AMultiClickOffTextTakesNothing();

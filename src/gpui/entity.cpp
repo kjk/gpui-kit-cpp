@@ -445,6 +445,8 @@ void WindowSetActive(Window* win, bool active) {
         // back.
         KeymapClearPending();
         win->eatChar = false;
+        win->eatReturn = false;
+        win->eatSysChar = false;
         win->keyPressPending = false;
     }
     win->lastDrawTime = 0;
@@ -472,6 +474,9 @@ void WindowToggleInspector(Window* win) {
     win->inspector.picking = win->inspector.on;
     if (!win->inspector.on) {
         win->inspector.hasPick = false;
+        // A press that was still waiting for its frame to pick against
+        // would otherwise settle into hasPick with the inspector off.
+        win->inspector.pending = false;
     }
     AppInvalidate(win);
 }

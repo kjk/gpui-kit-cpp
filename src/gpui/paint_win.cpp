@@ -272,6 +272,18 @@ void PaintTargetFree(PaintCtx* ctx) {
     ctx->rt = nullptr;
 }
 
+// The device group goes as one: a removed D3D device takes its DXGI view and
+// the D2D device over it with it, and EnsureDevice makes the next ones.
+static void ReleaseDevice(PaintApp* pa) {
+    if (!pa) {
+        return;
+    }
+    Rel(&pa->d2dDevice);
+    Rel(&pa->dxgiFactory);
+    Rel(&pa->dxgi);
+    Rel(&pa->d3d);
+}
+
 // The shared D3D11 / D2D device, made once and kept for the process. BGRA
 // support is what lets D2D interop with the D3D device at all; the
 // single-threaded flag matches the single-threaded D2D factory above.
@@ -526,21 +538,28 @@ static OffscreenTarget gOffscreen;
 // what bracket it.
 static bool gOffscreenWasRecording = false;
 
+// A begin that fails has no end coming: the recorder it stepped aside for
+// resumes here, or the window's scene would stay suspended for the frame.
+static bool OffscreenBeginFailed() {
+    scene::SuspendEnd(gOffscreenWasRecording);
+    return false;
+}
+
 bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
     gOffscreenWasRecording = scene::SuspendBegin();
     if (!ctx || !ctx->pa || pxW <= 0 || pxH <= 0) {
-        return false;
+        return OffscreenBeginFailed();
     }
     void* bits = nullptr;
     HBITMAP bmp = WinDib32New(pxW, pxH, &bits);
     if (!bmp) {
-        return false;
+        return OffscreenBeginFailed();
     }
     memset(bits, 0, (size_t)pxW * (size_t)pxH * 4);
     HDC dc = CreateCompatibleDC(nullptr);
     if (!dc) {
         DeleteObject(bmp);
-        return false;
+        return OffscreenBeginFailed();
     }
     HGDIOBJ oldBmp = SelectObject(dc, bmp);
 
@@ -565,7 +584,7 @@ bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
         SelectObject(dc, oldBmp);
         DeleteDC(dc);
         DeleteObject(bmp);
-        return false;
+        return OffscreenBeginFailed();
     }
     ctx->rt = t;
     RECT rc = {0, 0, pxW, pxH};
@@ -575,7 +594,7 @@ bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
         SelectObject(dc, oldBmp);
         DeleteDC(dc);
         DeleteObject(bmp);
-        return false;
+        return OffscreenBeginFailed();
     }
     gOffscreen.bmp = bmp;
     gOffscreen.dc = dc;
@@ -618,7 +637,11 @@ bool PaintTargetEnd(PaintCtx* ctx) {
     }
     HRESULT hr = ctx->rt->rt->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {
+        // The device context sits on the shared device, so this is the
+        // device gone, not just the target: keeping `pa->d3d` would have
+        // the next frame rebuild the chain on the removed device.
         PaintTargetFree(ctx);
+        ReleaseDevice(ctx->pa);
         return false;
     }
     // A frame the scene found identical to the last one is not presented:
@@ -632,6 +655,7 @@ bool PaintTargetEnd(PaintCtx* ctx) {
         HRESULT ph = ctx->rt->swap->Present(0, 0);
         if (ph == DXGI_ERROR_DEVICE_REMOVED || ph == DXGI_ERROR_DEVICE_RESET) {
             PaintTargetFree(ctx);
+            ReleaseDevice(ctx->pa);
             return false;
         }
     }

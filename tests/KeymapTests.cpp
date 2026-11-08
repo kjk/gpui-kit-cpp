@@ -392,6 +392,55 @@ static void AnActionWalksOutFromWhatHasFocus() {
     KeymapClear();
 }
 
+// The window's own key dispatch drives the sequence end to end: the first
+// chord is held and typed nowhere, the second reaches the matcher — it is the
+// only thing that can finish or drop the sequence — and runs the binding, and
+// a second chord that continues nothing clears what was held and still does
+// not type, which is the matcher spending its pending keystrokes.
+static void AWindowFinishesOrDropsAHeldSequence() {
+    KeymapClear();
+    uint32_t open = ActionOf(StrL("s::Open4"));
+    KeyBinding b[] = {{"ctrl-k ctrl-o", open, nullptr}};
+    KeymapBind(b, 1);
+
+    Arena* a = ArenaNew();
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Entity<Recorder> rec = EntityNew<Recorder>(&app);
+    El* root =
+        Div(a)->FocusId(5)->OnAction(open, ListenTo(rec, &Recorder::Stop));
+    FocusCollect(win, root);
+    win->focusId = 5;
+
+    gCalls = 0;
+    utassert(WindowKeyDown(win, 'K', false, true, false, false));
+    utassert(KeymapPending());
+    utassert(win->eatChar);
+    utassert(gCalls == 0);
+    utassert(WindowKeyDown(win, 'O', false, true, false, false));
+    utassert(!KeymapPending());
+    utassert(win->eatChar);
+    utassert(gCalls == 1 && gSeen[0] == open);
+
+    // Half of it, then a plain letter: nothing fires, nothing stays held,
+    // and the letter does not type.
+    utassert(WindowKeyDown(win, 'K', false, true, false, false));
+    utassert(KeymapPending());
+    utassert(WindowKeyDown(win, 'X', false, false, false, false));
+    utassert(!KeymapPending());
+    utassert(win->eatChar);
+    utassert(gCalls == 1);
+    // The next keystroke is an ordinary one again.
+    utassert(!WindowKeyDown(win, 'X', false, false, false, false));
+    utassert(!win->eatChar);
+
+    EntityDropAll(&app);
+    delete win;
+    ArenaDelete(a);
+    KeymapClear();
+}
+
 // Windows delivers an Alt chord as WM_SYSKEYDOWN rather than WM_KEYDOWN.
 // WndProc asks this dispatcher whether GPUI handled it: a bound chord must be
 // consumed, while an unmatched system key must remain available to Windows.
@@ -870,6 +919,7 @@ void TestKeymap() {
     ASequenceIsHeldUntilItFinishes();
     AWholeBindingBeatsOneThatIsOnlyBegun();
     BlurDropsWhatTheKeyboardWasPartWayThrough();
+    AWindowFinishesOrDropsAHeldSequence();
     AnActionIsItsName();
     AnActionWalksOutFromWhatHasFocus();
     AnAltChordIsAHandledKeystroke();

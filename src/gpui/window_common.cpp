@@ -418,6 +418,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // measures against, and the frame that has just been asked for: whatever
     // still has somewhere to go asks again below.
     win->frameNow = drawStart;
+    bool animFrameAsked = win->animFrame;
     win->animFrame = false;
     // Before the target is opened, because opening it starts the scene's
     // frame and the scene culls and clips against this size. A window that
@@ -432,6 +433,11 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     win->paint.clientInset = 0;
     win->paint.headless = headless;
     if (!headless && !PaintTargetBegin(&win->paint, native, pxW, pxH)) {
+        // No frame was drawn, so the animation frame that asked for this
+        // one is still owed: put the request back rather than stall it.
+        if (animFrameAsked) {
+            WindowRequestAnimationFrame(win);
+        }
         return;
     }
 
@@ -527,6 +533,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // focus; an existing one only constrains Tab while focus remains in it.
     win->previousTrap = win->pendingTrap;
     win->pendingTrap = 0;
+    win->pendingTrapHost = 0;
 
     // Whatever the view pointed win->input at is the focused field. Start its
     // caret and stop the one that lost focus, so no app has to. Rust hangs
@@ -685,8 +692,9 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     win->paint.paintLayer = kPaintLayerTree;
 
     double tEnd0 = TimeNow();
+    bool targetEnded = true;
     if (!headless) {
-        PaintTargetEnd(&win->paint);
+        targetEnded = PaintTargetEnd(&win->paint);
     }
     // The present goes with the painting: on the GPU path it is where the
     // multisampled surface is resolved, which is part of what drawing cost.
@@ -740,8 +748,8 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // The present happened inside PaintTargetEnd above, so this is the closest
     // thing to GPUI's `present_end` the runtime has; a frame the scene did not
     // present carries no present time at all.
-    bool presented =
-        !headless && !(SceneOn() && scene::SkipPresent(&win->paint));
+    bool presented = targetEnded && !headless &&
+                     !(SceneOn() && scene::SkipPresent(&win->paint));
     timing.presentAt = presented ? drawEnd : -1;
     timing.buildSecs = (float)gFrameBuildSecs;
     timing.layoutSecs = (float)gFrameLayoutSecs;
@@ -751,6 +759,12 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     InteractionBenchRecord(win, timing);
     win->frameSeq++;
     FrameBenchTick(win, timing.drawSecs);
+    // The device was lost and the target dropped with it: what this frame
+    // drew never reached the screen, and nothing else is going to ask for
+    // the frame that recreates the target.
+    if (!targetEnded) {
+        AppInvalidate(win);
+    }
 }
 
 bool WindowIsTransparent(const Window* win) {
@@ -1008,9 +1022,17 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     // Unless a sequence is half-finished: the rest of a binding written as
     // "ctrl-k ctrl-o" belongs to the keymap and to nothing else, which is
     // what GPUI's matcher running ahead of the text input buys. Both the
-    // field and the page's own Copy stand aside for it.
+    // field and the page's own Copy stand aside for it. The matcher still
+    // has to see the keystroke — it is the only thing that can finish the
+    // sequence or drop it — so `held` gates everything but the resolve.
     bool held = KeymapPending();
     win->eatChar = false;
+    // GPUI's key-down listener clears `pending_keyboard_down` for every
+    // keystroke that is not the activating one, and the activating case is
+    // re-armed at the end. Cleared here so none of the returns on the way —
+    // a chord that ran an action, a key the field took — leave an Enter-down
+    // waiting to click on its release.
+    win->keyPressPending = false;
     bool eaten = false;
 
     // The chord, resolved once. The matcher holds a half-finished sequence on
@@ -1023,11 +1045,9 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     uint32_t actions[kMaxKeyMatches] = {};
     int nActions = 0;
     bool actionPending = false;
-    if (!held) {
-        nActions = WindowResolveKeyActions(win, key, shift, ctrl, alt, platform,
-                                           function, actions, actionArgs,
-                                           kMaxKeyMatches, &actionPending);
-    }
+    nActions = WindowResolveKeyActions(win, key, shift, ctrl, alt, platform,
+                                       function, actions, actionArgs,
+                                       kMaxKeyMatches, &actionPending);
     uint32_t action = nActions > 0 ? actions[0] : 0;
     int64_t actionArg = nActions > 0 ? actionArgs[0] : 0;
     if (actionPending) {
@@ -1149,6 +1169,16 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
             AppInvalidate(win);
             return true;
         }
+    }
+    // The second chord of a sequence is the matcher's whether it finished a
+    // binding nobody handled or finished nothing: Rust's matcher spends its
+    // pending keystrokes either way and the window dispatches nothing else
+    // for them, so the letter it also arrives as types nowhere.
+    if (held) {
+        win->eatChar = true;
+        win->eatReturn = false;
+        AppInvalidate(win);
+        return true;
     }
     // The focus ring, last of the three: `tab` is bound on the window in
     // GPUI, the outermost key context there is, so a field indenting with it
@@ -1287,6 +1317,13 @@ bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
         if (win->hoverId) {
             WindowHoverChanged(win, win->hoverId, 0);
             win->hoverId = 0;
+        }
+        // The trigger is no longer hovered, so its tooltip hears the leave
+        // the way Rust's hover listener does — a delayed one must not
+        // appear over a reader who has moved to the keyboard.
+        if (win->tooltipOwner) {
+            win->tooltipOwner = false;
+            TooltipRequestHide(win);
         }
         AppInvalidate(win);
     }
@@ -1983,8 +2020,10 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         win->scrollDragHorizontal = horizontal;
         win->scrollDragGrab = at - thumbStart;
         win->scrollDragInput = s->input;
-        win->scrollDragNotifyPending = false;
-        win->scrollDragNotifyDue = 0;
+        // A notify the previous drag still owed its listener goes out
+        // before this bar's state replaces it, or that bar's last offset
+        // never reaches its view.
+        ScrollbarFlush(win, TimeNow());
         win->scrollDragLastNotify = TimeNow();
         // Active styling can change the inset or minimum length. Re-invert
         // that geometry now so the painted grab point remains under the
@@ -2678,6 +2717,9 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     }
     if (bar) {
         SetMouseDown(win, true);
+        // The release that lets the bar go is this button's, the same as
+        // for an element press below.
+        win->pressedButton = in.button;
         ScrollbarPressKind kind = in.modifiers.shift
                                       ? ScrollbarPressKind::ShiftMouse
                                       : ScrollbarPressKind::Mouse;
@@ -2814,7 +2856,12 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
 }
 
 static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
-    SetMouseDown(win, false);
+    // The pointer is held for the button that took the press; a second
+    // button coming up while that one is still down — a right click during
+    // a left drag — is not the release the capture waits for.
+    if (!win->mouseDown || in.button == win->pressedButton) {
+        SetMouseDown(win, false);
+    }
     // with_unset_drag_pos: the release ends the scrollbar drag wherever it
     // landed. The release itself may carry a final displacement without an
     // intervening move, so invert it before dropping the capture.
@@ -2888,6 +2935,14 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
         s->hasPendingContextMenu = false;
         InputHandleRightClickMenu(s, win->app, win, s->pendingContextMenuAt,
                                   s->pendingContextMenuOffset);
+    } else if (in.button == MouseButton::Right) {
+        // The release landed somewhere else: the menu the press was waiting
+        // to open does not open, and the wait does not carry over to a later
+        // right release over the field. The press focused the field, so it
+        // is the window's input.
+        if (win->input && win->input->hasPendingContextMenu) {
+            win->input->hasPendingContextMenu = false;
+        }
     }
     if (win->input && win->input->selecting) {
         if (win->input->selectedRange.IsEmpty()) {
@@ -2980,6 +3035,13 @@ static void DispatchMouseExited(Window* win, const MouseExitEvent& in) {
         WindowHoverChanged(win, win->hoverId, 0);
     }
     win->hoverId = 0;
+    // The trigger's tooltip too: a pointer that left the window is off the
+    // trigger, and a tooltip still waiting on its delay must not show up
+    // over a window nothing is pointing at.
+    if (win->tooltipOwner) {
+        win->tooltipOwner = false;
+        TooltipRequestHide(win);
+    }
     if (win->onMouseExit.IsValid()) {
         ListenerCall(win->app, win, win->onMouseExit, &in);
     }
@@ -3271,6 +3333,11 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
             break;
         case PlatformInputKind::TouchDrag: {
             const TouchDragEvent& touch = input->touchDrag;
+            if (touch.phase == TouchPhase::Ended ||
+                touch.phase == TouchPhase::Cancelled) {
+                // The drag was the finger's whole gesture; no press follows.
+                win->touchPressPending = false;
+            }
             if (touch.phase == TouchPhase::Started) {
                 // GlobalState::note_touch: every touch is offered as a drag
                 // first, which is how a tap's mouse events are later told
@@ -3569,12 +3636,15 @@ static void FileDropStore(Window* win, Str paths) {
 static void FileDropClear(Window* win) {
     StrFree(win->fileDropPaths);
     win->fileDropPaths = {};
+    // Only a file drag that was installed takes the press state back with
+    // it. An Exited after a refused Entered (Windows sends DragLeave either
+    // way) must not turn an in-app drag's pressedMoved back into a click.
     if (win->fileDrop) {
         win->activeDrag = {};
         win->dragOverId = 0;
+        win->pressedMoved = false;
     }
     win->fileDrop = false;
-    win->pressedMoved = false;
 }
 
 // gpui's translation of PlatformInput::FileDrop into an ExternalPaths drag:
@@ -3855,6 +3925,17 @@ void WindowTouchMove(Window* win, float x, float y) {
     win->touchHostLast = now;
 }
 
+// A finger the host classified as a gesture was spent on it: no tap's mouse
+// press follows, so the "next press is a finger" note WindowTouchBegin left
+// must not outlive it and mark a real mouse press as touch. A tap (still
+// Pending at the end) keeps the note for the press the host sends next.
+static void TouchHostFinish(Window* win) {
+    if (win->touchHost != TouchHostKind::Pending) {
+        win->touchPressPending = false;
+    }
+    TouchHostReset(win);
+}
+
 void WindowTouchEnd(Window* win, float x, float y) {
     if (!win || win->touchHost == TouchHostKind::None) {
         return;
@@ -3870,7 +3951,7 @@ void WindowTouchEnd(Window* win, float x, float y) {
     } else if (TouchHostIsDrag(win->touchHost)) {
         TouchHostEmitDrag(win, TouchPhase::Ended, now);
     }
-    TouchHostReset(win);
+    TouchHostFinish(win);
 }
 
 void WindowTouchCancel(Window* win) {
@@ -3887,7 +3968,7 @@ void WindowTouchCancel(Window* win) {
     } else if (TouchHostIsDrag(win->touchHost)) {
         TouchHostEmitDrag(win, TouchPhase::Cancelled, now);
     }
-    TouchHostReset(win);
+    TouchHostFinish(win);
 }
 
 // blink_cursor.rs: PAUSE_DELAY. The phase length is the theme policy.
@@ -4003,6 +4084,16 @@ static void BlinkCancelTimer(BlinkCursor* b) {
         WindowCancelTimer(b->win, b->timer);
     }
     b->timer = 0;
+}
+
+// The caret follows its field to `win`. The timer it has armed belongs to
+// the window it was armed on, so it is cancelled there before the move —
+// cancelling after would ask the new window about a timer it never had.
+static void BlinkMoveTo(BlinkCursor* b, Window* win) {
+    if (b->win != win) {
+        BlinkCancelTimer(b);
+    }
+    b->win = win;
 }
 
 // blink_cursor.rs blink_delay. False is None: steady, not running, or idle.
@@ -4130,7 +4221,7 @@ void BlinkStart(App* app, Window* win, EntityId* handle) {
     // then on_focus) and window activation calls it too. Every start drops
     // the pending timer and begins again from a visible caret, so the second
     // call does not hide the one that just appeared.
-    b->win = win;
+    BlinkMoveTo(b, win);
     b->epoch++;
     b->lastActivityMs = BlinkNowMs();
     b->paused = false;
@@ -4146,7 +4237,7 @@ void BlinkStop(App* app, Window* win, EntityId* handle) {
     if (!b) {
         return;
     }
-    b->win = win;
+    BlinkMoveTo(b, win);
     b->epoch++;
     b->lastActivityMs = -1;
     b->paused = false;
@@ -4163,7 +4254,7 @@ void BlinkPause(App* app, Window* win, EntityId* handle) {
     if (!b || b->lastActivityMs < 0) {
         return;
     }
-    b->win = win;
+    BlinkMoveTo(b, win);
     b->epoch++;
     b->lastActivityMs = BlinkNowMs();
     b->paused = true;
@@ -4278,6 +4369,15 @@ double WindowTimersDue(const Window* win) {
         (soonest < 0 || win->scrollDragNotifyDue < soonest)) {
         soonest = win->scrollDragNotifyDue;
     }
+    // A finger still undecided: the long press it may become is due at
+    // the half second. Here rather than in WindowTimerMs alone, so the
+    // test platform's clock sees the same deadline.
+    if (win->touchHost == TouchHostKind::Pending) {
+        double due = win->touchHostStartAt + kTouchLongPressS;
+        if (soonest < 0 || due < soonest) {
+            soonest = due;
+        }
+    }
     return soonest;
 }
 
@@ -4317,12 +4417,6 @@ int WindowTimerMs(Window* win) {
     double timersDue = WindowTimersDue(win);
     if (timersDue > 0 && (soonest < 0 || timersDue < soonest)) {
         soonest = timersDue;
-    }
-    if (win->touchHost == TouchHostKind::Pending) {
-        double due = win->touchHostStartAt + kTouchLongPressS;
-        if (soonest < 0 || due < soonest) {
-            soonest = due;
-        }
     }
     if (soonest < 0) {
         return 0;
@@ -4426,6 +4520,9 @@ void WindowClosed(Window* win) {
     PaintTargetFree(&win->paint);
     win->plat = nullptr;
     win->running = false;
+    // No OS window is active any more; a menu choice looking for the active
+    // window must not land on this one.
+    win->active = false;
 }
 
 bool WindowShouldClose(Window* win) {

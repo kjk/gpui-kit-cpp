@@ -554,10 +554,25 @@ static void PreeditDone(XIC, XPointer client, XPointer) {
     }
 }
 
+// A composition with no focused field to land in is dropped rather than
+// kept: what the window accumulated would otherwise be pushed whole into
+// the next field that takes focus.
+static bool PreeditHasField(Window* win) {
+    if (win->input && win->input->focused) {
+        return true;
+    }
+    win->plat->preeditLen = 0;
+    win->plat->preeditCaret = 0;
+    return false;
+}
+
 static void PreeditDraw(XIC, XPointer client, XPointer call) {
     Window* win = (Window*)client;
     auto* d = (XIMPreeditDrawCallbackStruct*)call;
     if (!win || !win->plat || !d) {
+        return;
+    }
+    if (!PreeditHasField(win)) {
         return;
     }
     PlatWindow* pw = win->plat;
@@ -603,6 +618,9 @@ static void PreeditCaret(XIC, XPointer client, XPointer call) {
     Window* win = (Window*)client;
     auto* c = (XIMPreeditCaretCallbackStruct*)call;
     if (!win || !win->plat || !c) {
+        return;
+    }
+    if (!PreeditHasField(win)) {
         return;
     }
     win->plat->preeditCaret = c->position;

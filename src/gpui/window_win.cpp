@@ -729,8 +729,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             WindowSetActive(win, LOWORD(wParam) != WA_INACTIVE);
             break;
         case WM_MOUSEACTIVATE:
-            // The press that follows is the one that activated the window.
-            win->plat->firstMouse = true;
+            // The press that follows is the one that activated the window —
+            // when it is a client-area press. A caption or border click
+            // never reaches MouseDown, so arming for it would hand
+            // first_mouse to whatever client press came next.
+            if (LOWORD(lParam) == HTCLIENT) {
+                win->plat->firstMouse = true;
+            }
             break;
         case WM_RBUTTONDOWN:
             MouseDown(win, MouseButton::Right, lParam);
@@ -933,7 +938,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             break;
         }
         case WM_NCMOUSELEAVE:
-            MouseExited(win);
+            // The same hold as WM_MOUSELEAVE: a screenshot session's hover
+            // must survive the leave the non-client tracking sends too.
+            if (!HoverHoldForTests()) {
+                MouseExited(win);
+            }
             break;
         case WM_LBUTTONDOWN:
         case WM_LBUTTONDBLCLK:
