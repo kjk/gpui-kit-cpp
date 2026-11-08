@@ -272,6 +272,18 @@ void PaintTargetFree(PaintCtx* ctx) {
     ctx->rt = nullptr;
 }
 
+// The device group goes as one: a removed D3D device takes its DXGI view and
+// the D2D device over it with it, and EnsureDevice makes the next ones.
+static void ReleaseDevice(PaintApp* pa) {
+    if (!pa) {
+        return;
+    }
+    Rel(&pa->d2dDevice);
+    Rel(&pa->dxgiFactory);
+    Rel(&pa->dxgi);
+    Rel(&pa->d3d);
+}
+
 // The shared D3D11 / D2D device, made once and kept for the process. BGRA
 // support is what lets D2D interop with the D3D device at all; the
 // single-threaded flag matches the single-threaded D2D factory above.
@@ -625,7 +637,11 @@ bool PaintTargetEnd(PaintCtx* ctx) {
     }
     HRESULT hr = ctx->rt->rt->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET) {
+        // The device context sits on the shared device, so this is the
+        // device gone, not just the target: keeping `pa->d3d` would have
+        // the next frame rebuild the chain on the removed device.
         PaintTargetFree(ctx);
+        ReleaseDevice(ctx->pa);
         return false;
     }
     // A frame the scene found identical to the last one is not presented:
@@ -639,6 +655,7 @@ bool PaintTargetEnd(PaintCtx* ctx) {
         HRESULT ph = ctx->rt->swap->Present(0, 0);
         if (ph == DXGI_ERROR_DEVICE_REMOVED || ph == DXGI_ERROR_DEVICE_RESET) {
             PaintTargetFree(ctx);
+            ReleaseDevice(ctx->pa);
             return false;
         }
     }

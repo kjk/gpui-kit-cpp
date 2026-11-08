@@ -417,6 +417,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // measures against, and the frame that has just been asked for: whatever
     // still has somewhere to go asks again below.
     win->frameNow = drawStart;
+    bool animFrameAsked = win->animFrame;
     win->animFrame = false;
     // Before the target is opened, because opening it starts the scene's
     // frame and the scene culls and clips against this size. A window that
@@ -431,6 +432,11 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     win->paint.clientInset = 0;
     win->paint.headless = headless;
     if (!headless && !PaintTargetBegin(&win->paint, native, pxW, pxH)) {
+        // No frame was drawn, so the animation frame that asked for this
+        // one is still owed: put the request back rather than stall it.
+        if (animFrameAsked) {
+            WindowRequestAnimationFrame(win);
+        }
         return;
     }
 
@@ -684,8 +690,9 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     win->paint.paintLayer = kPaintLayerTree;
 
     double tEnd0 = TimeNow();
+    bool targetEnded = true;
     if (!headless) {
-        PaintTargetEnd(&win->paint);
+        targetEnded = PaintTargetEnd(&win->paint);
     }
     // The present goes with the painting: on the GPU path it is where the
     // multisampled surface is resolved, which is part of what drawing cost.
@@ -739,8 +746,8 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // The present happened inside PaintTargetEnd above, so this is the closest
     // thing to GPUI's `present_end` the runtime has; a frame the scene did not
     // present carries no present time at all.
-    bool presented =
-        !headless && !(SceneOn() && scene::SkipPresent(&win->paint));
+    bool presented = targetEnded && !headless &&
+                     !(SceneOn() && scene::SkipPresent(&win->paint));
     timing.presentAt = presented ? drawEnd : -1;
     timing.buildSecs = (float)gFrameBuildSecs;
     timing.layoutSecs = (float)gFrameLayoutSecs;
@@ -750,6 +757,12 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     InteractionBenchRecord(win, timing);
     win->frameSeq++;
     FrameBenchTick(win, timing.drawSecs);
+    // The device was lost and the target dropped with it: what this frame
+    // drew never reached the screen, and nothing else is going to ask for
+    // the frame that recreates the target.
+    if (!targetEnded) {
+        AppInvalidate(win);
+    }
 }
 
 bool WindowIsTransparent(const Window* win) {
