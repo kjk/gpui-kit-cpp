@@ -4052,6 +4052,16 @@ static void BlinkCancelTimer(BlinkCursor* b) {
     b->timer = 0;
 }
 
+// The caret follows its field to `win`. The timer it has armed belongs to
+// the window it was armed on, so it is cancelled there before the move —
+// cancelling after would ask the new window about a timer it never had.
+static void BlinkMoveTo(BlinkCursor* b, Window* win) {
+    if (b->win != win) {
+        BlinkCancelTimer(b);
+    }
+    b->win = win;
+}
+
 // blink_cursor.rs blink_delay. False is None: steady, not running, or idle.
 static bool BlinkDelay(const BlinkCursor* b, int* outMs) {
     if (!b || b->lastActivityMs < 0) {
@@ -4177,7 +4187,7 @@ void BlinkStart(App* app, Window* win, EntityId* handle) {
     // then on_focus) and window activation calls it too. Every start drops
     // the pending timer and begins again from a visible caret, so the second
     // call does not hide the one that just appeared.
-    b->win = win;
+    BlinkMoveTo(b, win);
     b->epoch++;
     b->lastActivityMs = BlinkNowMs();
     b->paused = false;
@@ -4193,7 +4203,7 @@ void BlinkStop(App* app, Window* win, EntityId* handle) {
     if (!b) {
         return;
     }
-    b->win = win;
+    BlinkMoveTo(b, win);
     b->epoch++;
     b->lastActivityMs = -1;
     b->paused = false;
@@ -4210,7 +4220,7 @@ void BlinkPause(App* app, Window* win, EntityId* handle) {
     if (!b || b->lastActivityMs < 0) {
         return;
     }
-    b->win = win;
+    BlinkMoveTo(b, win);
     b->epoch++;
     b->lastActivityMs = BlinkNowMs();
     b->paused = true;
