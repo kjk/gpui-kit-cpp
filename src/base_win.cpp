@@ -324,6 +324,10 @@ uint64_t PlatThreadId() {
     return (uint64_t)GetCurrentThreadId();
 }
 
+uint64_t PlatProcessId() {
+    return (uint64_t)GetCurrentProcessId();
+}
+
 void PlatSleepMs(int ms) {
     Sleep((DWORD)(ms < 0 ? 0 : ms));
 }

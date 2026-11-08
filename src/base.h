@@ -500,6 +500,7 @@ struct ComObject : Is... {
 
 bool PlatThreadRun(Func0 f);
 uint64_t PlatThreadId();
+uint64_t PlatProcessId();
 void PlatSleepMs(int ms);
 
 static const uint64_t kArenaHeaderSize = 256;

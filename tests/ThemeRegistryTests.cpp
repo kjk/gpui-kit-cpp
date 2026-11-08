@@ -514,9 +514,10 @@ static void ABurstOfChangesIsOneReload() {
     utassert(ExecQueued() == 0);
 }
 
-// A folder of its own under the system temp directory. It is made by the
-// watch (Rust's create_dir_all) and left there, empty, afterwards: base has
-// no portable rmdir.
+// A folder of its own under the system temp directory, named after the
+// process so two test runs sharing that directory never see each other's
+// files. It is made by the watch (Rust's create_dir_all) and removed by
+// WatchTempDirDrop afterwards.
 static const char kWatchSep = GPUI_OS_WINDOWS ? '\\' : '/';
 
 static Str WatchTempDir(const char* leaf) {
@@ -524,10 +525,17 @@ static Str WatchTempDir(const char* leaf) {
     for (int i = 0; i < 3; i++) {
         const char* value = getenv(names[i]);
         if (value && *value) {
-            return StrDup(fmt("%s%c%s", Str(value), kWatchSep, Str(leaf)));
+            return StrDup(fmt("%s%c%s-%llu", Str(value), kWatchSep, Str(leaf),
+                              (unsigned long long)PlatProcessId()));
         }
     }
-    return StrDup(fmt("/tmp/%s", Str(leaf)));
+    return StrDup(
+        fmt("/tmp/%s-%llu", Str(leaf), (unsigned long long)PlatProcessId()));
+}
+
+static void WatchTempDirDrop(Str dir) {
+    gpui::shell::DependencyRemoveTree(dir);
+    StrFree(dir);
 }
 
 static bool WriteTheme(Str dir, const char* file, const char* json) {
@@ -583,7 +591,7 @@ static void AReloadReappliesTheInstalledThemes() {
     utassert(watched ==
              (bool)(GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC));
     if (!watched) {
-        StrFree(dir);
+        WatchTempDirDrop(dir);
         AppGlobalClear(&app);
         return;
     }
@@ -627,7 +635,7 @@ static void AReloadReappliesTheInstalledThemes() {
     // Nothing the OS reported about those writes outlives the registry.
     AppGlobalClear(&app);
     ExecDrain();
-    StrFree(dir);
+    WatchTempDirDrop(dir);
 }
 
 // The real thing: a file written into the watched folder reaches the main
@@ -665,7 +673,7 @@ static void AFileWrittenIntoTheFolderReloadsIt() {
     RemoveTheme(dir, "light.json");
     AppGlobalClear(&app);
     ExecDrain();
-    StrFree(dir);
+    WatchTempDirDrop(dir);
 #endif
 }
 

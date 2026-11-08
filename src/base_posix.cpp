@@ -227,6 +227,10 @@ uint64_t PlatThreadId() {
     return id;
 }
 
+uint64_t PlatProcessId() {
+    return (uint64_t)getpid();
+}
+
 void PlatSleepMs(int ms) {
     if (ms <= 0) {
         return;
