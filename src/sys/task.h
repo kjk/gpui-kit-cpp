@@ -116,7 +116,10 @@ struct Task {
 // Marks the task cancelled. The continuation it is waiting for still arrives —
 // a worker that already started cannot be stopped, which is what ExecCancel
 // says too — and drops itself when it does, destroying the frame and its
-// locals. Answers false for a task that had already finished.
+// locals. A task whose body is executing right now (one cancelling itself, or
+// another task it resumed) is never destroyed from under its own code: it is
+// marked, and dropped at its next suspend. Answers false for a task that had
+// already finished.
 bool TaskCancel(TaskHandle id);
 
 // Whether `id` names a task that is still suspended. False once it has run to
@@ -155,6 +158,9 @@ struct TaskPromise {
     // Set while a continuation is outstanding, so the registry knows a resume
     // is still coming for this frame and must not destroy it from under one.
     bool awaiting = false;
+    // Set while the body is on the stack — the eager first run and every
+    // resume — so a cancel that reaches it marks instead of destroying.
+    bool running = false;
     bool cancelled = false;
 
     TaskPromise() = default;

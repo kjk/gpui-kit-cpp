@@ -12,6 +12,7 @@
 #include "gpui/scene.h"
 #include "sys/http.h"
 #include "sys/executor.h"
+#include "sys/task.h"
 #include "sys/sysinfo.h"
 #include "base/focus_trap.h"
 #include "base/global_state.h"
@@ -4510,6 +4511,7 @@ static void AppRelease(App* app, bool platform) {
     // a request still inside the OS client owns only its job and static slot.
     ImageCacheClear();
     ExecShutdown();
+    TaskCancelAll(); // the frames whose continuations ExecShutdown dropped
     // A fetch that lands from here on has no App to tell.
     HttpSetOnFetchDone(Func0{});
     EntityDropAll(app);
