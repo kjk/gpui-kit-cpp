@@ -1317,6 +1317,13 @@ bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
             WindowHoverChanged(win, win->hoverId, 0);
             win->hoverId = 0;
         }
+        // The trigger is no longer hovered, so its tooltip hears the leave
+        // the way Rust's hover listener does — a delayed one must not
+        // appear over a reader who has moved to the keyboard.
+        if (win->tooltipOwner) {
+            win->tooltipOwner = false;
+            TooltipRequestHide(win);
+        }
         AppInvalidate(win);
     }
     return handled;
@@ -3009,6 +3016,13 @@ static void DispatchMouseExited(Window* win, const MouseExitEvent& in) {
         WindowHoverChanged(win, win->hoverId, 0);
     }
     win->hoverId = 0;
+    // The trigger's tooltip too: a pointer that left the window is off the
+    // trigger, and a tooltip still waiting on its delay must not show up
+    // over a window nothing is pointing at.
+    if (win->tooltipOwner) {
+        win->tooltipOwner = false;
+        TooltipRequestHide(win);
+    }
     if (win->onMouseExit.IsValid()) {
         ListenerCall(win->app, win, win->onMouseExit, &in);
     }
