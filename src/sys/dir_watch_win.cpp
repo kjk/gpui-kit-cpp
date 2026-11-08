@@ -85,11 +85,13 @@ static void DirWatchThread(DirWatchPlat* w) {
                 // What was in it is gone too, which is worth one reload.
                 logf("dir watch: the watch ended (%d)", (int)e);
                 DirWatchSignal(w->id);
+                DirWatchEnded(w->id);
                 break;
             }
         }
         DirWatchSignal(w->id);
         if (!DirWatchIssue(w)) {
+            DirWatchEnded(w->id);
             break;
         }
     }

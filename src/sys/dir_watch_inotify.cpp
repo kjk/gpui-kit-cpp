@@ -78,6 +78,7 @@ static void DirWatchThread(DirWatchPlat* w) {
             // The descriptor itself failed. Nothing more will come from it,
             // so the thread only waits for the stop from here on.
             logf("dir watch: inotify stopped reporting");
+            DirWatchEnded(w->id);
             live = false;
         }
     }

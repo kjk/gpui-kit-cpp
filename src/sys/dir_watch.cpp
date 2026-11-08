@@ -16,6 +16,8 @@ struct DirWatchEntry {
     // posted, cleared when it starts. While it is set a signal is dropped,
     // the way `try_send` on a full channel is.
     bool queued = false;
+    // The OS half ended by itself (DirWatchEnded); nothing more will come.
+    bool dead = false;
 };
 
 // Signals arrive from OS threads, so the table is behind a lock. Nothing is
@@ -91,6 +93,15 @@ void DirWatchSignal(DirWatchId id) {
     ExecPost(f);
 }
 
+void DirWatchEnded(DirWatchId id) {
+    gDirWatchLock.Lock();
+    int i = DirWatchIndex(id);
+    if (i >= 0) {
+        gDirWatches[i].dead = true;
+    }
+    gDirWatchLock.Unlock();
+}
+
 DirWatchId DirWatchStart(Str dir, Func0 onChange, bool create,
                          DirWatchError* err) {
     if (err) {
@@ -114,6 +125,14 @@ DirWatchId DirWatchStart(Str dir, Func0 onChange, bool create,
         VecRemoveAt(gDirWatches, i);
     }
     gDirWatchLock.Unlock();
+    if (plat && i < 0) {
+        // Stopped while the OS half was opening. The entry is gone, so the
+        // OS half would never be closed through it: close it here, and the
+        // caller learns the watch is not running rather than getting an id
+        // that names nothing.
+        DirWatchPlatClose(plat);
+        plat = nullptr;
+    }
     if (!plat) {
         if (err) {
             *err = e == DirWatchError::None ? DirWatchError::Failed : e;
@@ -142,7 +161,12 @@ void DirWatchStop(DirWatchId id) {
 
 int DirWatchCount() {
     gDirWatchLock.Lock();
-    int n = len(gDirWatches);
+    int n = 0;
+    for (int i = 0; i < len(gDirWatches); i++) {
+        if (!gDirWatches[i].dead) {
+            n++;
+        }
+    }
     gDirWatchLock.Unlock();
     return n;
 }
