@@ -174,9 +174,11 @@ struct DropdownMenuPopover : DropdownMenu {
 
 struct ContextMenuState {
     Entity<PopupMenuState> menu = {};
+    // Mirrors of the PopupMenuState's open flag and pointer position, kept
+    // in step by ContextMenuOpenAt and ContextMenu::IntoEl. The menu state
+    // keeps the focus to give back (PopupMenuState::previousFocus).
     bool open = false;
     Point position = {};
-    FocusHandle previousFocus = {};
     FocusHandle triggerFocus = {};
 
     static void OnMouseDown(ContextMenuState* self, Ctx* cx,
