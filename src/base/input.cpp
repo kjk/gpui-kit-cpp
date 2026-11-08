@@ -10587,7 +10587,20 @@ void InputBlur(InputState* s, App* app, Window* win) {
         }
     }
     s->focused = false;
-    s->selecting = false;
+    // A drag that was still going ends here, the way the release ends it
+    // (the button comes back up somewhere this field no longer hears): the
+    // word a double click pinned, the alt-press column anchor and the edge
+    // auto-scroll go with `selecting`, or the next press would extend from
+    // them.
+    if (s->selecting) {
+        s->selecting = false;
+        if (s->selectedRange.IsEmpty()) {
+            s->selectionReversed = false;
+        }
+        s->hasSelectedWordRange = false;
+        s->columnSelectStart = {};
+        s->autoScroll.Stop();
+    }
     s->focusWin = nullptr;
     if (win) {
         BlinkStop(app, win, &s->blink);
@@ -12353,6 +12366,7 @@ void InputEndEdgeDrag(InputState* s, App* app, Window* win) {
         return;
     }
     s->touchDragging = false;
+    s->columnSelectStart = {};
     s->autoScroll.Stop();
     if (s->selectedRange.IsEmpty()) {
         s->selectionReversed = false;
