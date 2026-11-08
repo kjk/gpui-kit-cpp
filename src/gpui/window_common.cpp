@@ -2716,6 +2716,9 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     }
     if (bar) {
         SetMouseDown(win, true);
+        // The release that lets the bar go is this button's, the same as
+        // for an element press below.
+        win->pressedButton = in.button;
         ScrollbarPressKind kind = in.modifiers.shift
                                       ? ScrollbarPressKind::ShiftMouse
                                       : ScrollbarPressKind::Mouse;
@@ -2852,7 +2855,12 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
 }
 
 static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
-    SetMouseDown(win, false);
+    // The pointer is held for the button that took the press; a second
+    // button coming up while that one is still down — a right click during
+    // a left drag — is not the release the capture waits for.
+    if (!win->mouseDown || in.button == win->pressedButton) {
+        SetMouseDown(win, false);
+    }
     // with_unset_drag_pos: the release ends the scrollbar drag wherever it
     // landed. The release itself may carry a final displacement without an
     // intervening move, so invert it before dropping the capture.
