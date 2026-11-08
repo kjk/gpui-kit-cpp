@@ -74,6 +74,10 @@
 #define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
+// ComQueryInterface below spells __uuidof(IUnknown). windows.h brings
+// unknwn.h in only without WIN32_LEAN_AND_MEAN, and an application is free
+// to define that before this header, so it is named here.
+#include <unknwn.h>
 #else
 #include <pthread.h>
 #include <limits.h>
