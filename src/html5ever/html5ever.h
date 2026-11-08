@@ -242,10 +242,14 @@ inline void NodeAppend(Arena* a, Node* parent, Node* child) {
     parent->last = base::ArenaPtrOf(a, child);
 }
 
-// The digits of a numeric character reference, `at` just past "&#": an `x`
-// or `X` first makes it hex. Sets the radix and where the digits start and
-// returns where they end, which is the start when there are none.
-inline int NumericCharRefDigits(Str s, int at, int* radix, int* digits) {
+// A numeric character reference, `at` just past its "&": false unless a `#`
+// follows. Then an `x` or `X` makes it hex; sets the radix, where the
+// digits start and where they end (`*end`, the start when there are none).
+inline bool NumericCharRef(Str s, int at, int* radix, int* digits, int* end) {
+    if (at >= len(s) || s.s[at] != '#') {
+        return false;
+    }
+    at++;
     *radix = 10;
     if (at < len(s) && (s.s[at] == 'x' || s.s[at] == 'X')) {
         *radix = 16;
@@ -257,7 +261,8 @@ inline int NumericCharRefDigits(Str s, int at, int* radix, int* digits) {
         if (d < 0 || d >= *radix) break;
         at++;
     }
-    return at;
+    *end = at;
+    return true;
 }
 
 // `<name attr="value" ...>`, the attribute values escaped.

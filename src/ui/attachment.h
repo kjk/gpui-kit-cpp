@@ -134,9 +134,7 @@ struct AttachmentContentChild {
 };
 
 // The metadata slot for an attachment.
-struct AttachmentContent {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct AttachmentContent : StyledBuilder<AttachmentContent> {
     ArenaVec<AttachmentContentChild> children;
     bool verticalLayout = false;
     AttachmentStatus status = AttachmentStatus::Complete;
@@ -146,14 +144,10 @@ struct AttachmentContent {
     Str retryId = {};
     // The percentage a typed description gains while uploading; -1 is none.
     float progress = -1;
-    Style style = {};
-    uint32_t styleSet = 0;
 
-    static AttachmentContent* New(Ctx* cx);
     AttachmentContent* Title(AttachmentTitle* value);
     AttachmentContent* Description(AttachmentDescription* value);
     AttachmentContent* Child(El* e);
-    AttachmentContent* Refine(const Style& s, uint32_t fields);
     AttachmentContent* Layout(const AttachmentSlotLayout& layout);
     El* IntoEl();
 };
@@ -169,13 +163,7 @@ struct AttachmentActions : SlotBuilder<AttachmentActions> {
 };
 
 // A file or image attachment composed from media, content and action slots.
-struct Attachment {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    Str id = {};
-    bool hasId = false;
-    Style style = {};
-    uint32_t styleSet = 0;
+struct Attachment : StyledBuilder<Attachment>, IdBuilder<Attachment> {
     AttachmentStatus status = AttachmentStatus::Complete;
     UiSize size = UiSize::Medium;
     Axis axis = Axis::Horizontal;
@@ -190,10 +178,8 @@ struct Attachment {
     Str tooltip = {};
     bool hasTooltip = false;
 
-    static Attachment* New(Ctx* cx);
     // A stable identity for the built-in controls: the whole-card click
     // layer, the remove control and the retry control.
-    Attachment* Id(Str value);
     // Make the whole card clickable. The click layer is painted below the
     // actions slot, so action buttons stay independently clickable; click
     // state needs a stable identity, so this takes effect only with Id.
@@ -217,7 +203,6 @@ struct Attachment {
     Attachment* Content(AttachmentContent* value);
     Attachment* Actions(AttachmentActions* value);
     Attachment* WithSize(UiSize value);
-    Attachment* Refine(const Style& s, uint32_t fields);
     // retry_control: the retry control the slots may render — only while
     // failed, and only with an identity to key its state on. Invalid
     // otherwise.

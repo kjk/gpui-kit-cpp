@@ -52,9 +52,7 @@ struct MarkerContentChild {
 };
 
 // The independently styleable text or rich-content slot in a Marker.
-struct MarkerContent {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct MarkerContent : StyledBuilder<MarkerContent> {
     ArenaVec<MarkerContentChild> children;
     // Filled in by the Marker that owns this slot.
     bool shimmer = false;
@@ -64,14 +62,10 @@ struct MarkerContent {
     // The colour the shimmer composites over, which the row hands down.
     Rgba fg = {};
     bool hasFg = false;
-    Style style = {};
-    uint32_t styleSet = 0;
 
-    static MarkerContent* New(Ctx* cx);
     // Text that can receive a continuous loading shimmer.
     MarkerContent* Text(Str text);
     MarkerContent* Child(El* e);
-    MarkerContent* Refine(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 
@@ -88,13 +82,7 @@ struct MarkerChild {
 // Marker accepts arbitrary children rather than fixed icon and content slots.
 // Loading effects only affect configured content slots, so icons and
 // separators keep their appearance.
-struct Marker {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    Str id = {};
-    bool hasId = false;
-    Style style = {};
-    uint32_t styleSet = 0;
+struct Marker : StyledBuilder<Marker>, IdBuilder<Marker> {
     Style separatorStyle = {};
     uint32_t separatorStyleSet = 0;
     MarkerVariant variant = MarkerVariant::Plain;
@@ -107,9 +95,7 @@ struct Marker {
     RoleOverride role = {};
     ArenaVec<MarkerChild> children;
 
-    static Marker* New(Ctx* cx);
     // A stable identity, so the marker can appear in the accessibility tree.
-    Marker* Id(Str value);
     // The role announced for this marker. A marker is presentational by
     // default; an accessibility node needs a stable identity, so the role
     // takes effect only together with Id.
@@ -130,7 +116,6 @@ struct Marker {
     Marker* Icon(MarkerIcon* value);
     Marker* Content(MarkerContent* value);
     Marker* Child(El* e);
-    Marker* Refine(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 

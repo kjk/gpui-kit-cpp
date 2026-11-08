@@ -79,14 +79,6 @@ El* BubbleGroup::IntoEl() {
     return MessageGroupColumn(cx, children, style, styleSet);
 }
 
-BubbleReactions* BubbleReactions::New(Ctx* cx) {
-    Arena* a = cx->a;
-    BubbleReactions* s = ArenaNew<BubbleReactions>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
 BubbleReactions* BubbleReactions::Side(BubbleReactionSide value) {
     side = value;
     return this;
@@ -112,12 +104,6 @@ BubbleReactions* BubbleReactions::Child(El* e) {
         child.element = e;
         children.Append(a, child);
     }
-    return this;
-}
-
-BubbleReactions* BubbleReactions::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 

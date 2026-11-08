@@ -90,15 +90,9 @@ struct MessageFooter : MessageMetaSlot<MessageFooter> {};
 // A composable message row with named avatar, header, content and footer
 // slots. The named slots let the message apply its alignment consistently
 // while every part stays independently styleable.
-struct Message {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct Message : StyledBuilder<Message>, IdBuilder<Message> {
     // Option<ElementId>.
-    Str id = {};
-    bool hasId = false;
     RoleOverride role = {};
-    Style style = {};
-    uint32_t styleSet = 0;
     Style stackStyle = {};
     uint32_t stackStyleSet = 0;
     MessageAlignment alignment = MessageAlignment::Start;
@@ -107,10 +101,8 @@ struct Message {
     MessageContent* content = nullptr;
     MessageFooter* footer = nullptr;
 
-    static Message* New(Ctx* cx);
     // A stable identity, so the message can appear in the accessibility tree
     // and keep element state across frames.
-    Message* Id(Str value);
     // The role announced for this message, e.g. ListItem for the rows of a
     // transcript. A message is presentational by default; an accessibility
     // node needs a stable identity, so the role takes effect only with Id.
@@ -123,7 +115,6 @@ struct Message {
     Message* Header(MessageHeader* value);
     Message* Content(MessageContent* value);
     Message* Footer(MessageFooter* value);
-    Message* Refine(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 

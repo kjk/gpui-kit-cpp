@@ -345,14 +345,6 @@ El* AttachmentDescription::IntoEl() {
     return box;
 }
 
-AttachmentContent* AttachmentContent::New(Ctx* cx) {
-    Arena* a = cx->a;
-    AttachmentContent* s = ArenaNew<AttachmentContent>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
 AttachmentContent* AttachmentContent::Title(AttachmentTitle* value) {
     if (value) {
         AttachmentContentChild child;
@@ -378,12 +370,6 @@ AttachmentContent* AttachmentContent::Child(El* e) {
         child.element = e;
         children.Append(a, child);
     }
-    return this;
-}
-
-AttachmentContent* AttachmentContent::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 
@@ -497,20 +483,6 @@ El* AttachmentActions::IntoEl() {
     return row;
 }
 
-Attachment* Attachment::New(Ctx* cx) {
-    Arena* a = cx->a;
-    Attachment* s = ArenaNew<Attachment>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-Attachment* Attachment::Id(Str value) {
-    id = value;
-    hasId = true;
-    return this;
-}
-
 Attachment* Attachment::OnClick(Listener handler) {
     onClick = handler;
     return this;
@@ -564,12 +536,6 @@ Attachment* Attachment::Actions(AttachmentActions* value) {
 
 Attachment* Attachment::WithSize(UiSize value) {
     size = value;
-    return this;
-}
-
-Attachment* Attachment::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 

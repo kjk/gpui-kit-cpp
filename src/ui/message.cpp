@@ -99,20 +99,6 @@ El* MessageContent::IntoEl() {
     return column;
 }
 
-Message* Message::New(Ctx* cx) {
-    Arena* a = cx->a;
-    Message* s = ArenaNew<Message>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-Message* Message::Id(Str value) {
-    id = value;
-    hasId = true;
-    return this;
-}
-
 Message* Message::Role(RoleOverride value) {
     role = value;
     return this;
@@ -151,12 +137,6 @@ Message* Message::Content(MessageContent* value) {
 
 Message* Message::Footer(MessageFooter* value) {
     footer = value;
-    return this;
-}
-
-Message* Message::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 

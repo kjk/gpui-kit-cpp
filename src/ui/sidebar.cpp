@@ -289,25 +289,12 @@ SidebarMenuItem* SidebarMenuItem::ContextMenu(PopupMenu* menu) {
     return this;
 }
 
-SidebarMenu* SidebarMenu::New(Ctx* cx) {
-    Arena* a = cx->a;
-    SidebarMenu* m = ArenaNew<SidebarMenu>(a);
-    m->a = a;
-    m->cx = cx;
-    return m;
-}
 SidebarMenu* SidebarMenu::Child(SidebarMenuItem* item) {
     if (item) {
         items.Append(a, item);
     }
     return this;
 }
-SidebarMenu* SidebarMenu::Refine(const Style& v, uint32_t fields) {
-    StyleApplyFields(&style, v, fields);
-    styleSet |= fields;
-    return this;
-}
-
 El* SidebarMenu::IntoEl(Str id) {
     IdScope scope(cx, id);
     El* col = Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f)); // gap_2

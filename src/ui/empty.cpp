@@ -3,6 +3,18 @@
 namespace gpui {
 namespace component {
 
+// v_flex().w_full().max_w_sm().min_w_0().items_center(): the centered column
+// an empty state's header and content each are, `gap` rems apart.
+static El* EmptyColumn(Ctx* cx, float gap) {
+    return Div(cx->a)
+        ->FlexCol()
+        ->W(kFill)
+        ->MaxW(Rems(cx, 24))
+        ->MinW(0)
+        ->ItemsCenter()
+        ->Gap(Rems(cx, gap));
+}
+
 static void EmptyChildren(El* parent, const ArenaVec<El*>& children) {
     for (El* child : children) {
         parent->Child(child);
@@ -56,14 +68,7 @@ El* EmptyDescription::IntoEl() {
 }
 
 El* EmptyContent::IntoEl() {
-    El* root = Div(a)
-                   ->FlexCol()
-                   ->W(kFill)
-                   ->MaxW(Rems(cx, 24))
-                   ->MinW(0)
-                   ->ItemsCenter()
-                   ->Gap(Rems(cx, 0.625f))
-                   ->Font(14);
+    El* root = EmptyColumn(cx, 0.625f)->Font(14);
     root->Refine(style, styleSet);
     refiner.Apply(root);
     EmptyChildren(root, children);
@@ -94,14 +99,7 @@ EmptyHeader* EmptyHeader::Refine(const Style& value, uint32_t fields) {
     return this;
 }
 El* EmptyHeader::IntoEl() {
-    El* root = Div(a)
-                   ->FlexCol()
-                   ->W(kFill)
-                   ->MaxW(Rems(cx, 24))
-                   ->MinW(0)
-                   ->ItemsCenter()
-                   ->Gap(Rems(cx, 0.5f))
-                   ->Refine(style, styleSet);
+    El* root = EmptyColumn(cx, 0.5f)->Refine(style, styleSet);
     refiner.Apply(root);
     if (media) root->Child(media->IntoEl());
     if (title) root->Child(title->IntoEl());

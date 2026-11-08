@@ -25,14 +25,6 @@ El* MarkerIcon::IntoEl() {
     return row;
 }
 
-MarkerContent* MarkerContent::New(Ctx* cx) {
-    Arena* a = cx->a;
-    MarkerContent* s = ArenaNew<MarkerContent>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
 MarkerContent* MarkerContent::Text(Str text) {
     MarkerContentChild child;
     child.text = text;
@@ -47,12 +39,6 @@ MarkerContent* MarkerContent::Child(El* e) {
         child.element = e;
         children.Append(a, child);
     }
-    return this;
-}
-
-MarkerContent* MarkerContent::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 
@@ -117,20 +103,6 @@ El* MarkerContent::IntoEl() {
         content->Opacity(baseOpacity * (highlight * 0.4f + 0.6f));
     }
     return content;
-}
-
-Marker* Marker::New(Ctx* cx) {
-    Arena* a = cx->a;
-    Marker* s = ArenaNew<Marker>(a);
-    s->a = a;
-    s->cx = cx;
-    return s;
-}
-
-Marker* Marker::Id(Str value) {
-    id = value;
-    hasId = true;
-    return this;
 }
 
 Marker* Marker::Role(RoleOverride value) {
@@ -202,12 +174,6 @@ Marker* Marker::Child(El* e) {
         child.element = e;
         children.Append(a, child);
     }
-    return this;
-}
-
-Marker* Marker::Refine(const Style& s, uint32_t fields) {
-    StyleApplyFields(&style, s, fields);
-    styleSet |= fields;
     return this;
 }
 

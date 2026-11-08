@@ -135,20 +135,14 @@ struct SidebarMenuItem {
     El* IntoEl(Str id);
 };
 
-struct SidebarMenu {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct SidebarMenu : StyledBuilder<SidebarMenu> {
     ArenaVec<SidebarMenuItem*> items;
     bool collapsed = false;
-    Style style = {};
-    uint32_t styleSet = 0;
     // A whole StyleRefinement (what the shell's style hands over), applied
     // after the field-masked one above, where Rust's render refines.
     ElRefiner refiner = {};
 
-    static SidebarMenu* New(Ctx* cx);
     SidebarMenu* Child(SidebarMenuItem* item);
-    SidebarMenu* Refine(const Style& v, uint32_t fields);
     El* IntoEl(Str id);
 };
 

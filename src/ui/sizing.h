@@ -474,15 +474,14 @@ inline El* SpreadRow(Ctx* cx) {
         ->JustifyBetween();
 }
 
-// The slot builders' common half (crates/ui's `ParentElement + Styled` on a
-// struct holding `children` and a `StyleRefinement`): the frame arena and
-// context, the children, and the caller's style refinement, set the same
-// way on every one. `Self` is the builder each setter returns.
+// What most ui builders hold and set alike: the frame arena and context
+// they were made in and the caller's style refinement (crates/ui's `Styled`
+// on a struct holding a `StyleRefinement`). `Self` is the builder each
+// setter returns.
 template <typename Self>
-struct SlotBuilder {
+struct StyledBuilder {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
-    ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
 
@@ -492,15 +491,35 @@ struct SlotBuilder {
         self->cx = cx;
         return self;
     }
-    Self* Child(El* e) {
-        if (e) {
-            children.Append(a, e);
-        }
-        return static_cast<Self*>(this);
-    }
     Self* Refine(const Style& s, uint32_t fields) {
         StyleApplyFields(&style, s, fields);
         styleSet |= fields;
+        return static_cast<Self*>(this);
+    }
+};
+
+// ...and a slot builder's children (`ParentElement`).
+template <typename Self>
+struct SlotBuilder : StyledBuilder<Self> {
+    ArenaVec<El*> children;
+
+    Self* Child(El* e) {
+        if (e) {
+            children.Append(this->a, e);
+        }
+        return static_cast<Self*>(this);
+    }
+};
+
+// `id(..)`: the name a builder's element and its state key on, when given.
+template <typename Self>
+struct IdBuilder {
+    Str id = {};
+    bool hasId = false;
+
+    Self* Id(Str value) {
+        id = value;
+        hasId = true;
         return static_cast<Self*>(this);
     }
 };

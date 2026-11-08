@@ -64,23 +64,17 @@ struct BubbleReactionChild {
 
 // A styleable reaction region positioned on a bubble edge. Compose existing
 // Button values inside it to keep button semantics and keyboard behaviour.
-struct BubbleReactions {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
+struct BubbleReactions : StyledBuilder<BubbleReactions> {
     ArenaVec<BubbleReactionChild> children;
     BubbleReactionSide side = BubbleReactionSide::Bottom;
     MessageAlignment alignment = MessageAlignment::End;
-    Style style = {};
-    uint32_t styleSet = 0;
 
-    static BubbleReactions* New(Ctx* cx);
     BubbleReactions* Side(BubbleReactionSide value);
     BubbleReactions* Alignment(MessageAlignment value);
     // A typed action gives up the region's decorative content padding and
     // takes the theme's full radius, so it reads as part of one surface.
     BubbleReactions* Action(Button* action);
     BubbleReactions* Child(El* e);
-    BubbleReactions* Refine(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 

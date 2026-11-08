@@ -173,10 +173,9 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
             continue;
         }
         int start = i++;
-        if (i < len(value) && value.s[i] == '#') {
-            int radix = 10;
-            int digits = 0;
-            i = NumericCharRefDigits(value, i + 1, &radix, &digits);
+        int radix = 10;
+        int digits = 0;
+        if (NumericCharRef(value, i, &radix, &digits, &i)) {
             if (digits == i) {
                 out.AppendChar('&');
                 i = start + 1;
