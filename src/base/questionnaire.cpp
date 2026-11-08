@@ -361,6 +361,17 @@ static int ChoiceIxOpt(const QuestionnaireState* s, int itemIx, Str value) {
 
 // The item named `item` and its choice `value`, or the schema error that says
 // which of the two is unknown.
+// Whether choice `c` of an item is out of reach: the item or the choice
+// itself is disabled.
+static bool ChoiceDisabled(const QuestionnaireItemRuntime& r, int c) {
+    return r.disabled || r.choiceDisabled[c];
+}
+
+// Whether choice `c` is selected and its own disabled flag lets it count.
+static bool ChoiceSelectedEnabled(const QuestionnaireItemRuntime& r, int c) {
+    return r.selected[c] && !r.choiceDisabled[c];
+}
+
 static QuestionnaireSchemaError FindChoice(const QuestionnaireState* s,
                                            Str item, Str value, int* ix,
                                            int* c) {
@@ -562,7 +573,7 @@ static QuestionnaireAnswer EffectiveAnswer(const QuestionnaireState* s, int ix,
     Str* list = QAlloc<Str>(a, nc);
     int count = 0;
     for (int c = 0; c < nc; c++) {
-        if (r.selected[c] && !r.choiceDisabled[c]) {
+        if (ChoiceSelectedEnabled(r, c)) {
             list[count++] = s->items[ix].choices[c].value;
         }
     }
@@ -580,7 +591,7 @@ static bool EffectiveIsEmpty(const QuestionnaireState* s, int ix) {
         return true;
     }
     for (int c = 0; c < NChoices(s, ix); c++) {
-        if (r.selected[c] && !r.choiceDisabled[c]) {
+        if (ChoiceSelectedEnabled(r, c)) {
             return false;
         }
     }
@@ -649,7 +660,7 @@ bool QuestionnaireState::ChoiceState(Str item, Str value,
     if (out) {
         out->value = items[ix].choices[c].value;
         out->selected = r.selected[c];
-        out->disabled = r.disabled || r.choiceDisabled[c];
+        out->disabled = ChoiceDisabled(r, c);
         out->invalid = ErrorAt(this, ix) != nullptr;
         out->shortcut = ShortcutForChoice(item, value);
     }
@@ -666,7 +677,7 @@ bool QuestionnaireState::ChoicePosition(Str item, Str value, int* position,
     int enabled = 0;
     int found = -1;
     for (int c = 0; c < NChoices(this, ix); c++) {
-        if (r.disabled || r.choiceDisabled[c]) {
+        if (ChoiceDisabled(r, c)) {
             continue;
         }
         if (StrEq(items[ix].choices[c].value, value)) {
@@ -807,7 +818,7 @@ Str QuestionnaireState::ShortcutForChoice(Str item, Str value) const {
         return {};
     }
     const QuestionnaireItemRuntime& r = runtime[ix];
-    if (r.disabled || r.choiceDisabled[c]) {
+    if (ChoiceDisabled(r, c)) {
         return {};
     }
     int position = -1;
@@ -1210,7 +1221,7 @@ QuestionnaireSchemaError QuestionnaireState::ActivateChoice(Str item, Str value,
         return found;
     }
     QuestionnaireItemRuntime& r = runtime[ix];
-    if (r.disabled || r.choiceDisabled[c]) {
+    if (ChoiceDisabled(r, c)) {
         return SchemaOk();
     }
     AnswerSnapshot before = Snapshot(this, ix);
@@ -1275,7 +1286,7 @@ QuestionnaireSchemaError QuestionnaireState::Choose(Str item, Str value,
     if (found.IsError()) {
         return found;
     }
-    if (runtime[ix].disabled || runtime[ix].choiceDisabled[c]) {
+    if (ChoiceDisabled(runtime[ix], c)) {
         return SchemaOk();
     }
     Arena* tmp = GetTempArena();
@@ -1460,7 +1471,7 @@ bool QuestionnaireState::FocusInvalidItem(Str item, Ctx* cx) const {
         return true;
     }
     for (int c = 0; c < NChoices(this, ix); c++) {
-        if (r.selected[c] && !r.choiceDisabled[c]) {
+        if (ChoiceSelectedEnabled(r, c)) {
             FocusOn(cx, r.choiceFocus[c]);
             return true;
         }
