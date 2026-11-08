@@ -3299,6 +3299,11 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
             break;
         case PlatformInputKind::TouchDrag: {
             const TouchDragEvent& touch = input->touchDrag;
+            if (touch.phase == TouchPhase::Ended ||
+                touch.phase == TouchPhase::Cancelled) {
+                // The drag was the finger's whole gesture; no press follows.
+                win->touchPressPending = false;
+            }
             if (touch.phase == TouchPhase::Started) {
                 // GlobalState::note_touch: every touch is offered as a drag
                 // first, which is how a tap's mouse events are later told
@@ -3886,6 +3891,17 @@ void WindowTouchMove(Window* win, float x, float y) {
     win->touchHostLast = now;
 }
 
+// A finger the host classified as a gesture was spent on it: no tap's mouse
+// press follows, so the "next press is a finger" note WindowTouchBegin left
+// must not outlive it and mark a real mouse press as touch. A tap (still
+// Pending at the end) keeps the note for the press the host sends next.
+static void TouchHostFinish(Window* win) {
+    if (win->touchHost != TouchHostKind::Pending) {
+        win->touchPressPending = false;
+    }
+    TouchHostReset(win);
+}
+
 void WindowTouchEnd(Window* win, float x, float y) {
     if (!win || win->touchHost == TouchHostKind::None) {
         return;
@@ -3901,7 +3917,7 @@ void WindowTouchEnd(Window* win, float x, float y) {
     } else if (TouchHostIsDrag(win->touchHost)) {
         TouchHostEmitDrag(win, TouchPhase::Ended, now);
     }
-    TouchHostReset(win);
+    TouchHostFinish(win);
 }
 
 void WindowTouchCancel(Window* win) {
@@ -3918,7 +3934,7 @@ void WindowTouchCancel(Window* win) {
     } else if (TouchHostIsDrag(win->touchHost)) {
         TouchHostEmitDrag(win, TouchPhase::Cancelled, now);
     }
-    TouchHostReset(win);
+    TouchHostFinish(win);
 }
 
 // blink_cursor.rs: PAUSE_DELAY. The phase length is the theme policy.
