@@ -366,8 +366,17 @@ El* DockBindResizeStrip(const DockCtx* d, El* e) {
 
 void DockGroupOpenMenu(const DockTabGroup* g, bool open) {
     DockState* s = GroupState(g);
-    if (s && open) {
+    if (!s) {
+        return;
+    }
+    if (open) {
         s->menuNode = g->node;
+    } else if (s->menuNode == g->node) {
+        // The menu closed: a node slot freed and reused by another group
+        // would otherwise answer a stale row for the wrong panel. Only the
+        // group that owns the mark clears it, so a closed menu elsewhere
+        // does not take an open one's.
+        s->menuNode = -1;
     }
 }
 
