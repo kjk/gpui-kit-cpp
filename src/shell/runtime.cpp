@@ -1338,7 +1338,7 @@ static void BeginExecution(ShellRuntimeImpl* impl) {
 // QuickJS reports a cut-off as a bare "interrupted". The handler is the
 // only place that knows the phase and the budget, so it leaves them here
 // for the error report. One slot per thread, as the engine's own handler is.
-static ScriptInterruption gInterruption;
+static thread_local ScriptInterruption gInterruption;
 
 static int Interrupt(JSRuntime*, void* opaque) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)opaque;
