@@ -1308,11 +1308,13 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     wv->parentWindow = parent;
     wv->gtkWindow = plug;
     wv->isChild = asChild;
+    // Set before the hide below: WebViewSetVisible unmaps the X window and
+    // hides the plug only for a webview that knows it has them.
+    wv->hasX11 = true;
     PlaceMappedPlug(wv);
     if (!attrs->visible) {
         WebViewSetVisible(wv, false);
     }
-    wv->hasX11 = true;
     WebViewSetLastError(nullptr);
     if (!asChild) {
         XTrap trap(display);
