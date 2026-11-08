@@ -889,6 +889,15 @@ El* ResizablePanelGroup::IntoEl() {
             Str hid = StrDup(a, fmt("resizable-handle-%d", i));
             Entity<SharedHandleState> hs = ResizeHandleStateFor(cx, hid);
             SharedHandleState* h = hs.Get(cx);
+            // The two machines agree on one thing: a handle is held only
+            // while the group has a drag. A programmatic ResizePanel ends the
+            // group's drag (done_resizing) and a press the group refused —
+            // the wrong button — never started one, so a handle still held
+            // then is let go here rather than waiting for a release that
+            // the group will not act on.
+            if (h && s->dragging < 0 && ResizeHandleStateIsActive(h->Get())) {
+                h->Set(ResizeHandleState::Idle);
+            }
             ResizeHandleState now = h ? h->Get() : ResizeHandleState::Idle;
             bool active = ResizeHandleStateIsActive(now);
             if (h) {
