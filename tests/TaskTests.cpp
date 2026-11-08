@@ -83,8 +83,13 @@ Task CancelsItself(TaskGuard guard, Counters* c) {
 }
 
 // Runs the executor to quiescence the way the suite's other async tests do.
+// The wait is on the wall clock rather than a slice count: a worker thread on
+// a machine busy building can go unscheduled for longer than the suite's
+// usual allowance, and nothing here is timing-sensitive.
 void Settle() {
-    ExecWaitIdle(5000);
+    double deadline = TimeNow() + 30.0;
+    while (!ExecWaitIdle(1000) && TimeNow() < deadline) {
+    }
     ExecDrain();
 }
 
