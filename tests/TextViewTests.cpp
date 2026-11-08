@@ -941,7 +941,7 @@ static void TestSourceAcrossStyles() {
         base::StrEq(SrcCopyTemp(&linked, SelectionFormat::SourceAcrossStyles),
                     StrL("the docs")));
 
-    SelBlock head = {StrL("## "), {}, {}, false};
+    SelBlock head = {StrL("## "), {}, {}, false, {}};
     SelSource title = {{}, {}, &head};
     SrcDoc heading;
     heading.Run("Title", &title, false);
@@ -949,7 +949,7 @@ static void TestSourceAcrossStyles() {
         base::StrEq(SrcCopyTemp(&heading, SelectionFormat::SourceAcrossStyles),
                     StrL("Title")));
 
-    SelBlock fence = {StrL("```rust\n"), StrL("\n```"), {}, false};
+    SelBlock fence = {StrL("```rust\n"), StrL("\n```"), {}, false, {}};
     SelSource code = {{}, {}, &fence};
     SrcDoc fenced;
     fenced.Run("let a = 1;", &code, false);
@@ -957,14 +957,14 @@ static void TestSourceAcrossStyles() {
         base::StrEq(SrcCopyTemp(&fenced, SelectionFormat::SourceAcrossStyles),
                     StrL("let a = 1;")));
 
-    SelBlock item = {StrL("- "), {}, StrL("  "), false};
+    SelBlock item = {StrL("- "), {}, StrL("  "), false, {}};
     SelSource one = {{}, {}, &item};
     SrcDoc single;
     single.Run("one", &one, false);
     utassert(
         base::StrEq(SrcCopyTemp(&single, SelectionFormat::SourceAcrossStyles),
                     StrL("one")));
-    SelBlock item2 = {StrL("- "), {}, StrL("  "), false};
+    SelBlock item2 = {StrL("- "), {}, StrL("  "), false, {}};
     SelSource two = {{}, {}, &item2};
     SrcDoc both;
     both.Run("one", &one, false);
@@ -1032,7 +1032,7 @@ static void TestSourceCodeAndLink() {
 // A selected heading round-trips with its marker, and the paragraph under it
 // starts a line of its own.
 static void TestSourceHeading() {
-    SelBlock head = {StrL("## "), {}, {}, false};
+    SelBlock head = {StrL("## "), {}, {}, false, {}};
     SelBlock para = {};
     SelSource h = {{}, {}, &head};
     SelSource p = {{}, {}, &para};
@@ -1048,8 +1048,8 @@ static void TestSourceHeading() {
 // Every line of a blockquote carries its prefix, including the ones inside a
 // run that holds its own line breaks.
 static void TestSourceBlockquote() {
-    SelBlock q1 = {StrL("> "), {}, StrL("> "), false};
-    SelBlock q2 = {StrL("> "), {}, StrL("> "), false};
+    SelBlock q1 = {StrL("> "), {}, StrL("> "), false, {}};
+    SelBlock q2 = {StrL("> "), {}, StrL("> "), false, {}};
     SelSource a = {{}, {}, &q1};
     SelSource b = {{}, {}, &q2};
     SrcDoc d;
@@ -1062,7 +1062,7 @@ static void TestSourceBlockquote() {
 // code_block.selected_source: the code comes back fenced, with the block's
 // language on the opening fence.
 static void TestSourceCodeBlock() {
-    SelBlock fence = {StrL("```rust\n"), StrL("\n```"), {}, false};
+    SelBlock fence = {StrL("```rust\n"), StrL("\n```"), {}, false, {}};
     SelSource tok = {{}, {}, &fence};
     SrcDoc d;
     d.Run("let x", &tok, false);
@@ -1074,10 +1074,10 @@ static void TestSourceCodeBlock() {
 // table_selected_source: the row is piped and the alignment row follows the
 // header. In Plain the cells of a row are joined with a space.
 static void TestSourceTable() {
-    SelBlock h0 = {StrL("| "), StrL(" "), {}, false};
-    SelBlock h1 = {StrL("| "), StrL(" |\n| :-- | :-: |"), {}, true};
-    SelBlock b0 = {StrL("| "), StrL(" "), {}, false};
-    SelBlock b1 = {StrL("| "), StrL(" |"), {}, true};
+    SelBlock h0 = {StrL("| "), StrL(" "), {}, false, {}};
+    SelBlock h1 = {StrL("| "), StrL(" |\n| :-- | :-: |"), {}, true, {}};
+    SelBlock b0 = {StrL("| "), StrL(" "), {}, false, {}};
+    SelBlock b1 = {StrL("| "), StrL(" |"), {}, true, {}};
     SelSource s0 = {{}, {}, &h0};
     SelSource s1 = {{}, {}, &h1};
     SelSource s2 = {{}, {}, &b0};
@@ -1096,8 +1096,8 @@ static void TestSourceTable() {
 // A list item's marker is the markdown one, not the bullet glyph it draws
 // with, and the lines under it are indented by the marker's width.
 static void TestSourceList() {
-    SelBlock item = {StrL("- "), {}, StrL("  "), false};
-    SelBlock nested = {StrL("  - "), {}, StrL("    "), false};
+    SelBlock item = {StrL("- "), {}, StrL("  "), false, {}};
+    SelBlock nested = {StrL("  - "), {}, StrL("    "), false, {}};
     SelSource a = {{}, {}, &item};
     SelSource b = {{}, {}, &nested};
     SrcDoc d;
@@ -1111,8 +1111,8 @@ static void TestSourceList() {
 // and indents the lines under it by the marker alone, so the `[x] ` stays on
 // the first line.
 static void TestSourceTaskList() {
-    SelBlock done = {StrL("- [x] "), {}, StrL("  "), false};
-    SelBlock todo = {StrL("- [ ] "), {}, StrL("  "), false};
+    SelBlock done = {StrL("- [x] "), {}, StrL("  "), false, {}};
+    SelBlock todo = {StrL("- [ ] "), {}, StrL("  "), false, {}};
     SelSource a = {{}, {}, &done};
     SelSource b = {{}, {}, &todo};
     SrcDoc d;
