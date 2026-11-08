@@ -2492,13 +2492,6 @@ struct DownloadStateHandler : ComObject<ICoreWebView2StateChangedEventHandler> {
     }
 };
 
-static void FreeDropPaths(Vec<Str>* paths) {
-    for (int i = 0; i < paths->len; i++) {
-        StrFree(paths->els[i]);
-    }
-    VecReset(*paths);
-}
-
 // `DragDropTarget::iterate_filenames`. The HDROP is returned because the
 // pinned Drop arm calls DragFinish after delivering the event; DragEnter only
 // inspects it, exactly as the source does.
@@ -2566,7 +2559,7 @@ struct DragDropTarget : ComObject<IDropTarget> {
             return S_OK;
         }
         Emit(DragDropKind::Enter, &paths, point);
-        FreeDropPaths(&paths);
+        StrVecFree(&paths);
         cursorEffect = DROPEFFECT_COPY;
         if (effect) {
             *effect = cursorEffect;
@@ -2599,7 +2592,7 @@ struct DragDropTarget : ComObject<IDropTarget> {
             HDROP hdrop = nullptr;
             GetDropPaths(data, &paths, &hdrop);
             Emit(DragDropKind::Drop, &paths, point);
-            FreeDropPaths(&paths);
+            StrVecFree(&paths);
             if (hdrop) {
                 DragFinish(hdrop);
             }
@@ -2946,13 +2939,6 @@ struct EnvironmentOptions
 
 // ─── the webview ─────────────────────────────────────────────────────────
 
-struct ProtocolCopy {
-    Str name; // heap
-    void* ctx;
-    void (*handler)(void* ctx, Str id, const Request* request,
-                    RequestResponder* responder);
-};
-
 struct WebViewEventState;
 
 struct WebView : WebViewHandlers {
@@ -2972,7 +2958,7 @@ struct WebView : WebViewHandlers {
     DragDropController* dragDropController = nullptr;
     bool oleInitialized = false;
 
-    Vec<ProtocolCopy> protocols;
+    Vec<CustomProtocol> protocols; // names heap
     // "http" or "https", the scheme custom protocols are tunnelled over.
     const char* httpOrHttps = "http";
 };
@@ -3996,7 +3982,7 @@ static HRESULT OnWebResourceRequested(
     }
     Str uri = TakePwstrTemp(rawUri);
 
-    ProtocolCopy* found = nullptr;
+    CustomProtocol* found = nullptr;
     for (int i = 0; i < wv->protocols.len; i++) {
         if (IsWorkAroundUri(uri, Str(wv->httpOrHttps), wv->protocols[i].name)) {
             found = &wv->protocols[i];
@@ -4035,13 +4021,7 @@ static HRESULT OnWebResourceRequested(
     if (SUCCEEDED(args->GetDeferral(&deferral))) {
         responder->deferral = deferral;
     }
-    if (found->handler) {
-        found->handler(found->ctx, wv->id, &request, responder);
-    } else {
-        Response response;
-        response.status = 500;
-        Respond(responder, &response);
-    }
+    CustomProtocolDispatch(*found, wv->id, &request, responder);
 
     VecReset(headerStore);
     VecReset(bodyStore);
@@ -4695,11 +4675,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
                  ? StrDup(attrs->id)
                  : StrDup(base::FormatTemp("%lld", (int64_t)(intptr_t)hwnd));
     for (int i = 0; i < attrs->customProtocolCount; i++) {
-        ProtocolCopy p;
-        p.name = StrDup(attrs->customProtocols[i].name);
-        p.ctx = attrs->customProtocols[i].ctx;
-        p.handler = attrs->customProtocols[i].handler;
-        VecAppend(wv->protocols, p);
+        CustomProtocolsAppendCopy(&wv->protocols, attrs->customProtocols[i]);
     }
 
     if (attrs->hasTheme) {
@@ -4860,10 +4836,7 @@ void WebViewFree(WebView* wv) {
         wv->eventCallbacks->Release();
         wv->eventCallbacks = nullptr;
     }
-    for (int i = 0; i < wv->protocols.len; i++) {
-        StrFree(wv->protocols[i].name);
-    }
-    VecReset(wv->protocols);
+    CustomProtocolsFree(&wv->protocols);
     StrFree(wv->id);
     delete wv;
 }

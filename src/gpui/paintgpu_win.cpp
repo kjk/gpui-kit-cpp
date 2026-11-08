@@ -3448,14 +3448,8 @@ struct GlyphSink : public IDWriteTextRenderer {
     PaintCtx* ctx = nullptr;
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** obj) override {
-        if (iid == __uuidof(IUnknown) ||
-            iid == __uuidof(IDWritePixelSnapping) ||
-            iid == __uuidof(IDWriteTextRenderer)) {
-            *obj = this;
-            return S_OK;
-        }
-        *obj = nullptr;
-        return E_NOINTERFACE;
+        return ComQueryInterface<IDWriteTextRenderer, IDWritePixelSnapping>(
+            this, iid, obj);
     }
     ULONG STDMETHODCALLTYPE AddRef() override { return 1; }
     ULONG STDMETHODCALLTYPE Release() override { return 1; }

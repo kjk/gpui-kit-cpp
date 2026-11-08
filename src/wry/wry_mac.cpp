@@ -92,13 +92,6 @@ static NSString* const kIpcScript =
     @"{window.webkit.messageHandlers.ipc.postMessage(s);}})\n"
     @"});";
 
-struct ProtocolCopy {
-    Str name; // heap
-    void* ctx;
-    void (*handler)(void* ctx, Str id, const Request* request,
-                    RequestResponder* responder);
-};
-
 struct WebView : WebViewHandlers {
     Str id = {}; // heap
     WKWebView* webview = nil;
@@ -107,7 +100,7 @@ struct WebView : WebViewHandlers {
     bool isChild = false;
     bool visible = true;
 
-    Vec<ProtocolCopy> protocols;
+    Vec<CustomProtocol> protocols; // names heap
 
     // `pending_scripts`: an eval before the first navigation commits has
     // nothing to run in, so it is held and replayed by didCommitNavigation.
@@ -793,14 +786,7 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task) {
     responder->task = task;
     responder->url = url;
 
-    ProtocolCopy& p = wv->protocols[index];
-    if (p.handler) {
-        p.handler(p.ctx, wv->id, &req, responder);
-    } else {
-        Response response;
-        response.status = 500;
-        Respond(responder, &response);
-    }
+    CustomProtocolDispatch(wv->protocols[index], wv->id, &req, responder);
 
     VecReset(headerStore);
     VecReset(bodyStore);
@@ -1002,12 +988,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
             [config urlSchemeHandlerForURLScheme:scheme]) {
             continue;
         }
-        ProtocolCopy p;
-        p.name = StrDup(attrs->customProtocols[i].name);
-        p.ctx = attrs->customProtocols[i].ctx;
-        p.handler = attrs->customProtocols[i].handler;
-        int protocolIndex = wv->protocols.len;
-        VecAppend(wv->protocols, p);
+        int protocolIndex = CustomProtocolsAppendCopy(
+            &wv->protocols, attrs->customProtocols[i]);
 
         GpuiWrySchemeHandler* handler = [[GpuiWrySchemeHandler alloc] init];
         handler.wv = wv;
@@ -1019,7 +1001,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
             [config setURLSchemeHandler:handler forURLScheme:scheme];
         } @catch (NSException* e) {
             (void)e;
-            logf("wry: could not register the custom protocol '%s'\n", p.name);
+            logf("wry: could not register the custom protocol '%s'\n",
+                 wv->protocols[protocolIndex].name);
             WebViewFree(wv);
             return nullptr;
         }
@@ -1233,14 +1216,8 @@ void WebViewFree(WebView* wv) {
         handler.wv = nullptr;
     }
     [wv->liveTasks removeAllObjects];
-    for (int i = 0; i < wv->protocols.len; i++) {
-        StrFree(wv->protocols[i].name);
-    }
-    VecReset(wv->protocols);
-    for (int i = 0; i < wv->pendingScripts.len; i++) {
-        StrFree(wv->pendingScripts[i]);
-    }
-    VecReset(wv->pendingScripts);
+    CustomProtocolsFree(&wv->protocols);
+    StrVecFree(&wv->pendingScripts);
     StrFree(wv->id);
     // ARC releases the delegates, the webview and the collections as the
     // struct's members go out of scope.

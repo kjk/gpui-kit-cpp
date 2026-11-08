@@ -62,13 +62,6 @@ int StrCmpNI(const char* a, const char* b, int n) {
     return _strnicmp(a ? a : "", b ? b : "", (size_t)n);
 }
 
-void StrCopyZ(char* dst, int cap, const char* src) {
-    if (!dst || cap <= 0) {
-        return;
-    }
-    strncpy_s(dst, (size_t)cap, src ? src : "", _TRUNCATE);
-}
-
 WCHAR* ToCWstrTemp(Str s) {
     Arena* arena = GetTempArena();
     int n = 0;

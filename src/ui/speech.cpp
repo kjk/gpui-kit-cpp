@@ -20,15 +20,7 @@ namespace component {
 static SpeechError ErrorOf(SpeechErrorKind kind, Str message = {}) {
     SpeechError error;
     error.kind = kind;
-    int n = len(message);
-    int cap = (int)sizeof(error.message) - 1;
-    if (n > cap) {
-        n = cap;
-    }
-    if (n > 0) {
-        memcpy(error.message, message.s, (size_t)n);
-    }
-    error.message[n] = 0;
+    StrCopyCapped(error.message, (int)sizeof(error.message), message);
     return error;
 }
 
@@ -178,11 +170,7 @@ static void MicSamples(void* user, const float* mono, int frames) {
 static void MicError(void* user, Str message) {
     MicCapture* c = (MicCapture*)user;
     c->lock.Lock();
-    int n = len(message) < (int)sizeof(c->error) - 1
-                ? len(message)
-                : (int)sizeof(c->error) - 1;
-    memcpy(c->error, message.s, (size_t)n);
-    c->error[n] = 0;
+    StrCopyCapped(c->error, (int)sizeof(c->error), message);
     c->hasError = true;
     bool post = MicWantsPost(c);
     c->lock.Unlock();

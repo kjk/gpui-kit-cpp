@@ -1102,8 +1102,7 @@ PluginManager::~PluginManager() {
     for (int i = 0; i < loaded.len; i++) FreePlugin(loaded[i], loaded[i]->app);
     VecReset(loaded);
     ClearCatalog();
-    for (int i = 0; i < directories.len; i++) StrFree(directories[i]);
-    VecReset(directories);
+    StrVecFree(&directories);
     StrFree(dataHome);
 }
 

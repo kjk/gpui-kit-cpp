@@ -556,8 +556,7 @@ struct ProcessJob {
     Str error;
 
     void Free() {
-        for (int i = 0; i < len(args); i++) StrFree(args[i]);
-        VecReset(args);
+        StrVecFree(&args);
         StrFree(command);
         StrFree(cwd);
         output.Free();
@@ -7601,15 +7600,31 @@ static JSValue StorageWritten(JSContext* ctx, bool ok, bool session,
                    : JS_EXCEPTION;
 }
 
+// The front of storage.get / set / remove: the session flag at
+// argv[sessionArg], the storage the policy allows (null after a throw, with
+// nothing held), a call arena and the key at argv[0]. `*ok` says whether the
+// key was there and a string.
+static shell::Storage* StorageKeyCall(JSContext* ctx, int argc,
+                                      JSValueConst* argv, int sessionArg,
+                                      bool* session, Policy** held,
+                                      Arena** arena, Str* key, bool* ok) {
+    *session = argc > sessionArg && JS_ToBool(ctx, argv[sessionArg]) != 0;
+    shell::Storage* storage = AllowedStorage(ctx, *session, held);
+    if (!storage) return nullptr;
+    *arena = ArenaNew();
+    *ok = argc >= 1 && JsString(ctx, argv[0], *arena, key);
+    return storage;
+}
+
 static JSValue NativeStorageGet(JSContext* ctx, JSValueConst, int argc,
                                 JSValueConst* argv) {
     Policy* held = nullptr;
-    bool session = argc > 1 && JS_ToBool(ctx, argv[1]) != 0;
-    shell::Storage* storage = AllowedStorage(ctx, session, &held);
-    if (!storage) return JS_EXCEPTION;
-    Arena* arena = ArenaNew();
+    bool session = false, ok = false;
+    Arena* arena = nullptr;
     Str key;
-    bool ok = argc >= 1 && JsString(ctx, argv[0], arena, &key);
+    shell::Storage* storage =
+        StorageKeyCall(ctx, argc, argv, 1, &session, &held, &arena, &key, &ok);
+    if (!storage) return JS_EXCEPTION;
     Str value = ok ? storage->Get(key) : Str{};
     JSValue result = !ok     ? JS_EXCEPTION
                      : value ? JS_NewStringLen(ctx, value.s, (size_t)len(value))
@@ -7633,27 +7648,27 @@ static JSValue StorageWriteFinish(JSContext* ctx, bool ok, bool session,
 static JSValue NativeStorageSet(JSContext* ctx, JSValueConst, int argc,
                                 JSValueConst* argv) {
     Policy* held = nullptr;
-    bool session = argc > 2 && JS_ToBool(ctx, argv[2]) != 0;
-    shell::Storage* storage = AllowedStorage(ctx, session, &held);
-    if (!storage) return JS_EXCEPTION;
-    Arena* arena = ArenaNew();
+    bool session = false, ok = false;
+    Arena* arena = nullptr;
     Str key, value, error;
-    bool ok = argc >= 2 && JsString(ctx, argv[0], arena, &key) &&
-              JsString(ctx, argv[1], arena, &value) &&
-              storage->Set(key, value, &error);
+    shell::Storage* storage =
+        StorageKeyCall(ctx, argc, argv, 2, &session, &held, &arena, &key, &ok);
+    if (!storage) return JS_EXCEPTION;
+    ok = ok && argc >= 2 && JsString(ctx, argv[1], arena, &value) &&
+         storage->Set(key, value, &error);
     return StorageWriteFinish(ctx, ok, session, held, error, arena);
 }
 
 static JSValue NativeStorageRemove(JSContext* ctx, JSValueConst, int argc,
                                    JSValueConst* argv) {
     Policy* held = nullptr;
-    bool session = argc > 1 && JS_ToBool(ctx, argv[1]) != 0;
-    shell::Storage* storage = AllowedStorage(ctx, session, &held);
-    if (!storage) return JS_EXCEPTION;
-    Arena* arena = ArenaNew();
+    bool session = false, ok = false;
+    Arena* arena = nullptr;
     Str key, error;
-    bool ok = argc >= 1 && JsString(ctx, argv[0], arena, &key) &&
-              storage->Remove(key, &error);
+    shell::Storage* storage =
+        StorageKeyCall(ctx, argc, argv, 1, &session, &held, &arena, &key, &ok);
+    if (!storage) return JS_EXCEPTION;
+    ok = ok && storage->Remove(key, &error);
     return StorageWriteFinish(ctx, ok, session, held, error, arena);
 }
 
@@ -9174,12 +9189,6 @@ static JSValue NativeProcessRun(JSContext* ctx, JSValueConst, int argc,
                         "process.run could not start background work");
 }
 
-static void FreeArgCopies(Vec<Str>* args) {
-    if (!args) return;
-    for (int i = 0; i < len(*args); i++) StrFree((*args)[i]);
-    VecReset(*args);
-}
-
 static shell::ProcessStream* StreamById(ShellRuntimeImpl* impl, int id) {
     if (!impl || id <= 0 || id > impl->streams.len) return nullptr;
     return impl->streams[id - 1];
@@ -9273,7 +9282,7 @@ static JSValue NativeProcessSpawn(JSContext* ctx, JSValueConst, int argc,
     }
     if (!ok) {
         StrFree(cwd);
-        FreeArgCopies(&args);
+        StrVecFree(&args);
         ArenaDelete(arena);
         return JS_EXCEPTION;
     }
@@ -9281,7 +9290,7 @@ static JSValue NativeProcessSpawn(JSContext* ctx, JSValueConst, int argc,
     shell::ScopeHostContext host = shell::ScopeCurrentHost();
     if (!host.IsSet()) {
         StrFree(cwd);
-        FreeArgCopies(&args);
+        StrVecFree(&args);
         ArenaDelete(arena);
         return JS_ThrowTypeError(ctx, "process.spawn() needs a live host task");
     }
@@ -9296,7 +9305,7 @@ static JSValue NativeProcessSpawn(JSContext* ctx, JSValueConst, int argc,
     bool started = shell::ProcessStreamStart(command, args.els, len(args),
                                              &options, &stream, &startError);
     StrFree(cwd);
-    FreeArgCopies(&args);
+    StrVecFree(&args);
     ArenaDelete(arena);
     if (!started || !stream) {
         shell::ProcessStreamFree(stream);

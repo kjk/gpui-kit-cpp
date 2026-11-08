@@ -2469,6 +2469,10 @@ enum class AccessibilityRole : uint8_t {
 // URL, date and date-time), which every platform bridge and the tree's own
 // name and focus rules treat as one kind of control.
 bool AccessibilityRoleIsTextField(AccessibilityRole role);
+// Every role a user types into: the text fields above plus the search,
+// number, week, month and time inputs. The AT-SPI and AppKit bridges expose
+// all of them as editable text.
+bool AccessibilityRoleTakesText(AccessibilityRole role);
 
 enum class AccessibilityToggled : uint8_t {
     Unset,

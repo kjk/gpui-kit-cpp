@@ -79,16 +79,6 @@ bool SysAudioInputDeviceName(char* out, int cap) {
     return true;
 }
 
-static void SetMessage(char* message, int cap, const char* text) {
-    if (!message || cap <= 0) {
-        return;
-    }
-    int n = (int)strlen(text);
-    n = n < cap - 1 ? n : cap - 1;
-    memcpy(message, text, (size_t)n);
-    message[n] = 0;
-}
-
 AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
                                      uint32_t* sampleRate,
                                      AudioInputError* error, char* message,
@@ -99,7 +89,7 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
         // No card, no `default`, or no sound server to route it to.
         *error = rc == -EACCES ? AudioInputError::PermissionDenied
                                : AudioInputError::NoInputDevice;
-        SetMessage(message, messageCap, snd_strerror(rc));
+        StrCopyZ(message, messageCap, snd_strerror(rc));
         return nullptr;
     }
     // Mono first; a device that only records stereo is mixed down here.
@@ -137,7 +127,7 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
     }
     if (rc < 0 || rate == 0) {
         *error = AudioInputError::Failed;
-        SetMessage(message, messageCap, snd_strerror(rc));
+        StrCopyZ(message, messageCap, snd_strerror(rc));
         snd_pcm_close(pcm);
         return nullptr;
     }
@@ -148,7 +138,7 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
     s->channels = channels;
     if (pthread_create(&s->thread, nullptr, &CaptureThread, s) != 0) {
         *error = AudioInputError::Failed;
-        SetMessage(message, messageCap, "cannot start the capture thread");
+        StrCopyZ(message, messageCap, "cannot start the capture thread");
         snd_pcm_close(pcm);
         delete s;
         return nullptr;

@@ -57,13 +57,6 @@ bool IsOpenableUrl(Str url) {
     return true;
 }
 
-static void FreeStrings(Vec<Str>* values) {
-    for (int i = 0; i < values->len; i++) {
-        StrFree((*values)[i]);
-    }
-    VecReset(*values);
-}
-
 static void CopyStrings(Vec<Str>* into, const Vec<Str>& values) {
     for (int i = 0; i < len(values); i++) {
         VecAppend(*into, StrDup(values[i]));
@@ -94,7 +87,7 @@ ExecuteGrant::ExecuteGrant(const ExecuteGrant& other) {
 
 ExecuteGrant& ExecuteGrant::operator=(const ExecuteGrant& other) {
     if (this != &other) {
-        FreeStrings(&commands);
+        StrVecFree(&commands);
         kind = other.kind;
         CopyStrings(&commands, other.commands);
     }
@@ -102,7 +95,7 @@ ExecuteGrant& ExecuteGrant::operator=(const ExecuteGrant& other) {
 }
 
 ExecuteGrant::~ExecuteGrant() {
-    FreeStrings(&commands);
+    StrVecFree(&commands);
 }
 
 ExecuteGrant ExecuteGrant::Denied() {
@@ -150,9 +143,9 @@ HttpRequestGrant& HttpRequestGrant::operator=(const HttpRequestGrant& other) {
     if (this == &other) return *this;
     StrFree(scheme);
     StrFree(host);
-    FreeStrings(&methods);
-    FreeStrings(&paths);
-    FreeStrings(&pathPrefixes);
+    StrVecFree(&methods);
+    StrVecFree(&paths);
+    StrVecFree(&pathPrefixes);
     scheme = StrDup(other.scheme);
     host = StrDup(other.host);
     port = other.port;
@@ -166,9 +159,9 @@ HttpRequestGrant& HttpRequestGrant::operator=(const HttpRequestGrant& other) {
 HttpRequestGrant::~HttpRequestGrant() {
     StrFree(scheme);
     StrFree(host);
-    FreeStrings(&methods);
-    FreeStrings(&paths);
-    FreeStrings(&pathPrefixes);
+    StrVecFree(&methods);
+    StrVecFree(&paths);
+    StrVecFree(&pathPrefixes);
 }
 
 HttpRequestGrant& HttpRequestGrant::Scheme(Str value) {
@@ -292,10 +285,10 @@ Capabilities::~Capabilities() {
 }
 
 void Capabilities::Clear() {
-    FreeStrings(&readRoots);
-    FreeStrings(&writeRoots);
-    FreeStrings(&networkHosts);
-    FreeStrings(&envVariables);
+    StrVecFree(&readRoots);
+    StrVecFree(&writeRoots);
+    StrVecFree(&networkHosts);
+    StrVecFree(&envVariables);
     for (int i = 0; i < httpRequests.len; i++) delete httpRequests[i];
     VecReset(httpRequests);
     execute = ExecuteGrant::Denied();

@@ -964,6 +964,34 @@ void StrFree(Str s) {
     free(s.s);
 }
 
+int StrCopyCapped(char* dst, int cap, Str src) {
+    if (!dst || cap <= 0) {
+        return 0;
+    }
+    int n = std::min(len(src), cap - 1);
+    if (n > 0) {
+        memcpy(dst, src.s, (size_t)n);
+    } else {
+        n = 0;
+    }
+    dst[n] = 0;
+    return n;
+}
+
+void StrCopyZ(char* dst, int cap, const char* src) {
+    StrCopyCapped(dst, cap, src ? Str(src) : Str{});
+}
+
+void StrVecFree(Vec<Str>* v) {
+    if (!v) {
+        return;
+    }
+    for (int i = 0; i < len(*v); i++) {
+        StrFree((*v)[i]);
+    }
+    VecReset(*v);
+}
+
 // A page that draws "today" cannot be screenshot twice: the picture changes at
 // midnight. GPUI_TODAY=YYYY-MM-DD pins it, so a calendar or date picker can be
 // compared against a baseline taken on some other day. Read once; an

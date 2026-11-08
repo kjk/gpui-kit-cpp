@@ -197,6 +197,55 @@ void PaintTargetDestroy(PaintTarget* rt);
 bool PaintTargetReplace(PaintCtx* ctx, void* native);
 #endif
 
+// Each backend's half of the Paint.h drawing calls. paint_backend.cpp defines
+// the public ones, which hand a call to the scene while it records and to
+// these otherwise.
+void PaintBackendCanvasClear(PaintCtx* ctx, Rgba c);
+void PaintBackendCanvasFillRect(PaintCtx* ctx, float x, float y, float w,
+                                float h, Rgba c);
+void PaintBackendCanvasFillRound(PaintCtx* ctx, float x, float y, float w,
+                                 float h, float r, Rgba c);
+void PaintBackendCanvasStrokeRound(PaintCtx* ctx, float x, float y, float w,
+                                   float h, float r, float stroke, Rgba c,
+                                   const float* dash);
+void PaintBackendCanvasLine(PaintCtx* ctx, float x1, float y1, float x2,
+                            float y2, float stroke, Rgba c, const float* dash);
+void PaintBackendCanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx,
+                               float ry, float stroke, Rgba c);
+void PaintBackendCanvasPushClip(PaintCtx* ctx, float x, float y, float w,
+                                float h);
+void PaintBackendCanvasPopClip(PaintCtx* ctx);
+void PaintBackendPathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy);
+void PaintBackendPathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0,
+                                  float x1, float y1, Rgba from, Rgba to,
+                                  float dx, float dy);
+void PaintBackendPathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
+                            bool roundCaps, float dx, float dy);
+void PaintBackendPathStrokeGradient(PaintCtx* ctx, Path* p, float stroke,
+                                    float x0, float y0, float x1, float y1,
+                                    Rgba from, Rgba to, bool roundCaps,
+                                    float dx, float dy);
+void PaintBackendRenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
+                                 Bounds imageBounds, int frameIndex,
+                                 float radius, bool grayscale);
+void PaintBackendTextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y,
+                                Rgba c, bool clip, float clipW);
+Path* PaintBackendPathNew(PaintCtx* ctx, bool winding);
+void PaintBackendPathFree(Path* p);
+void PaintBackendPathMoveTo(Path* p, float x, float y);
+void PaintBackendPathLineTo(Path* p, float x, float y);
+void PaintBackendPathCubicTo(Path* p, float x1, float y1, float x2, float y2,
+                             float x, float y);
+void PaintBackendPathArcTo(Path* p, float cx, float cy, float r, float a0,
+                           float a1, bool clockwise);
+void PaintBackendPathClose(Path* p);
+// Whether this backend can colour `n` spans of `tl` at all, and its drawing
+// of them; false from either sends the caller to its fallback.
+bool PaintBackendTextLayoutSpansAccepted(const TextLayout* tl, int n);
+bool PaintBackendTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text,
+                                 float x, float y, Rgba base,
+                                 const TextSpan* spans, int n);
+
 #endif // GPUI_PAINT_IN_TREE
 
 } // namespace gpui

@@ -2893,9 +2893,7 @@ bool ThemeApplySemanticConfigStr(App* app, ThemeMode mode, Str json,
 // Where `dir` is: itself when it exists as given, else wherever an asset
 // root has one. `out` holds kMaxPath bytes.
 static bool ThemesDirResolve(Str dir, char* out) {
-    int n = len(dir) < kMaxPath - 1 ? len(dir) : kMaxPath - 1;
-    memcpy(out, dir.s ? dir.s : "", (size_t)n);
-    out[n] = 0;
+    StrCopyCapped(out, kMaxPath, dir);
     if (PlatDirExists(out)) {
         return true;
     }
@@ -3029,9 +3027,7 @@ bool ThemeRegistryWatchDir(App* app, Str dir, Func0 onLoad) {
     if (!ThemesDirResolve(dir, path)) {
         // Found nowhere: `dir` as given, which the watcher makes, as
         // `_watch_themes_dir` does with `create_dir_all`.
-        int n = len(dir) < kMaxPath - 1 ? len(dir) : kMaxPath - 1;
-        memcpy(path, dir.s, (size_t)n);
-        path[n] = 0;
+        StrCopyCapped(path, kMaxPath, dir);
     }
     DirWatchStop(state->watch);
     DirWatchError err = DirWatchError::None;

@@ -223,11 +223,7 @@ static CGPathRef RoundRectPath(float x, float y, float w, float h, float r) {
     return CGPathCreateWithRoundedRect(rect, r, r, nullptr);
 }
 
-void CanvasClear(PaintCtx* ctx, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecClear(ctx, c);
-        return;
-    }
+void PaintBackendCanvasClear(PaintCtx* ctx, Rgba c) {
     CGContextRef cg = Cg(ctx);
     if (!cg) {
         return;
@@ -236,11 +232,8 @@ void CanvasClear(PaintCtx* ctx, Rgba c) {
     CGContextFillRect(cg, CGContextGetClipBoundingBox(cg));
 }
 
-void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRect(ctx, x, y, w, h, c);
-        return;
-    }
+void PaintBackendCanvasFillRect(PaintCtx* ctx, float x, float y, float w,
+                                float h, Rgba c) {
     CGContextRef cg = Cg(ctx);
     if (!cg || w <= 0 || h <= 0 || c.a == 0) {
         return;
@@ -249,12 +242,8 @@ void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
     CGContextFillRect(cg, CGRectMake(x, y, w, h));
 }
 
-void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
-                     Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRound(ctx, x, y, w, h, r, c);
-        return;
-    }
+void PaintBackendCanvasFillRound(PaintCtx* ctx, float x, float y, float w,
+                                 float h, float r, Rgba c) {
     CGContextRef cg = Cg(ctx);
     if (!cg || w <= 0 || h <= 0 || c.a == 0) {
         return;
@@ -266,12 +255,9 @@ void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
     CGPathRelease(path);
 }
 
-void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
-                       float r, float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecStrokeRound(ctx, x, y, w, h, r, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasStrokeRound(PaintCtx* ctx, float x, float y, float w,
+                                   float h, float r, float stroke, Rgba c,
+                                   const float* dash) {
     CGContextRef cg = Cg(ctx);
     if (!cg || stroke <= 0 || w <= 0 || h <= 0) {
         return;
@@ -288,12 +274,8 @@ void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
     CGPathRelease(path);
 }
 
-void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
-                float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecLine(ctx, x1, y1, x2, y2, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasLine(PaintCtx* ctx, float x1, float y1, float x2,
+                            float y2, float stroke, Rgba c, const float* dash) {
     CGContextRef cg = Cg(ctx);
     if (!cg) {
         return;
@@ -308,12 +290,8 @@ void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
     CGContextSetLineDash(cg, 0, nullptr, 0);
 }
 
-void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
-                   float stroke, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecEllipse(ctx, cx, cy, rx, ry, stroke, c);
-        return;
-    }
+void PaintBackendCanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx,
+                               float ry, float stroke, Rgba c) {
     CGContextRef cg = Cg(ctx);
     if (!cg || rx <= 0 || ry <= 0) {
         return;
@@ -331,11 +309,8 @@ void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
     }
 }
 
-void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
-    if (scene::Recording()) {
-        scene::RecPushClip(ctx, x, y, w, h);
-        return;
-    }
+void PaintBackendCanvasPushClip(PaintCtx* ctx, float x, float y, float w,
+                                float h) {
     CGContextRef cg = Cg(ctx);
     if (!cg) {
         return;
@@ -344,11 +319,7 @@ void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
     CGContextClipToRect(cg, CGRectMake(x, y, w, h));
 }
 
-void CanvasPopClip(PaintCtx* ctx) {
-    if (scene::Recording()) {
-        scene::RecPopClip(ctx);
-        return;
-    }
+void PaintBackendCanvasPopClip(PaintCtx* ctx) {
     CGContextRef cg = Cg(ctx);
     if (cg) {
         CGContextRestoreGState(cg);
@@ -419,11 +390,7 @@ static CGContextRef PathCg(PaintCtx* ctx, Path* p) {
     return cg && p && !CGPathIsEmpty(p->path) ? cg : nullptr;
 }
 
-void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFill(ctx, p, c);
-        return;
-    }
+void PaintBackendPathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
     CGContextRef cg = PathCg(ctx, p);
     if (!cg) {
         return;
@@ -467,12 +434,9 @@ static CGGradientRef FadedGradient(PaintCtx* ctx, Rgba* from, Rgba* to) {
     return TwoStopGradient(*from, *to);
 }
 
-void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
-                      float y1, Rgba from, Rgba to, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
-        return;
-    }
+void PaintBackendPathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0,
+                                  float x1, float y1, Rgba from, Rgba to,
+                                  float dx, float dy) {
     CGContextRef cg = PathCg(ctx, p);
     if (!cg) {
         return;
@@ -497,12 +461,8 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
     CGGradientRelease(grad);
 }
 
-void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
-                float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStroke(ctx, p, stroke, c, roundCaps);
-        return;
-    }
+void PaintBackendPathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
+                            bool roundCaps, float dx, float dy) {
     CGContextRef cg = PathCg(ctx, p);
     if (!cg) {
         return;
@@ -520,14 +480,10 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
     CGContextRestoreGState(cg);
 }
 
-void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
-                        float y0, float x1, float y1, Rgba from, Rgba to,
-                        bool roundCaps, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
-                                     roundCaps);
-        return;
-    }
+void PaintBackendPathStrokeGradient(PaintCtx* ctx, Path* p, float stroke,
+                                    float x0, float y0, float x1, float y1,
+                                    Rgba from, Rgba to, bool roundCaps,
+                                    float dx, float dy) {
     CGContextRef cg = PathCg(ctx, p);
     if (!cg) {
         return;
@@ -710,14 +666,9 @@ static CGImageRef ImageForDraw(ImageFrame* frame, bool grayscale) {
     return frame->grayImage;
 }
 
-void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
-                     Bounds imageBounds, int frameIndex, float radius,
-                     bool grayscale) {
-    if (scene::Recording()) {
-        scene::RecImageDraw(ctx, img, bounds, imageBounds, frameIndex, radius,
-                            grayscale);
-        return;
-    }
+void PaintBackendRenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
+                                 Bounds imageBounds, int frameIndex,
+                                 float radius, bool grayscale) {
     CGContextRef cg = Cg(ctx);
     if (!cg || !img || img->frames.len <= 0 || bounds.w <= 0 || bounds.h <= 0 ||
         imageBounds.w <= 0 || imageBounds.h <= 0) {
@@ -1053,12 +1004,8 @@ void TextLayoutDestroy(TextLayout* tl) {
     delete tl;
 }
 
-void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
-                    bool clip, float clipW) {
-    if (scene::Recording()) {
-        scene::RecTextDraw(ctx, tl, x, y, c, clip, clipW);
-        return;
-    }
+void PaintBackendTextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y,
+                                Rgba c, bool clip, float clipW) {
     // No ellipsis here yet: Core Text truncates through
     // CTLineCreateTruncatedLine, which means re-typesetting the line rather
     // than setting a mode on the layout, so a truncated run is cut at the box

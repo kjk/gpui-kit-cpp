@@ -891,10 +891,7 @@ int TextViewState::SelectedText(Window* window, char* out, int cap) const {
     if (selectAll && format == TextViewFormat::Markdown &&
         selectionFormat != SelectionFormat::Plain) {
         Str selected = Source();
-        int n = std::min(len(selected), cap - 1);
-        if (n > 0) memcpy(out, selected.s, (size_t)n);
-        out[n] = 0;
-        return n;
+        return StrCopyCapped(out, cap, selected);
     }
     bool plain = format == TextViewFormat::Html;
     return WindowSelectionTextForEntity(

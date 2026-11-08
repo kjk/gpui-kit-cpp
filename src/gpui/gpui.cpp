@@ -10406,6 +10406,19 @@ bool AccessibilityRoleIsTextField(AccessibilityRole role) {
     }
 }
 
+bool AccessibilityRoleTakesText(AccessibilityRole role) {
+    switch (role) {
+        case AccessibilityRole::MonthInput:
+        case AccessibilityRole::NumberInput:
+        case AccessibilityRole::SearchInput:
+        case AccessibilityRole::TimeInput:
+        case AccessibilityRole::WeekInput:
+            return true;
+        default:
+            return AccessibilityRoleIsTextField(role);
+    }
+}
+
 static bool AccessibilityRoleCanFocus(AccessibilityRole role) {
     if (AccessibilityRoleIsTextField(role)) {
         return true;

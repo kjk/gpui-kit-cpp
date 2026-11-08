@@ -887,8 +887,7 @@ static bool AddApplication(BundleTree* tree, Str root, Str prefix, Str exclude,
         return BundleFail(error, StrL("the bundle is empty"));
     Vec<Str> visited;
     bool ok = AddDirectory(tree, root, prefix, exclude, true, &visited, error);
-    for (int i = 0; i < len(visited); i++) StrFree(visited.els[i]);
-    VecReset(visited);
+    StrVecFree(&visited);
     return ok;
 }
 

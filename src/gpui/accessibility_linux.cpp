@@ -493,27 +493,6 @@ static bool ChildAt(const LinuxAccessible& object, int wanted, int* windowIndex,
     return false;
 }
 
-static bool IsTextRole(AccessibilityRole role) {
-    switch (role) {
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::SearchInput:
-        case AccessibilityRole::MultilineTextInput:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::WeekInput:
-        case AccessibilityRole::MonthInput:
-        case AccessibilityRole::TimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::NumberInput:
-        case AccessibilityRole::PasswordInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::UrlInput:
-            return true;
-        default:
-            return false;
-    }
-}
-
 static bool IsSelectionRole(AccessibilityRole role) {
     return role == AccessibilityRole::ListBox ||
            role == AccessibilityRole::RadioGroup ||
@@ -837,7 +816,7 @@ static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object) {
         if (ActionCount(node)) PutString(body, kAction);
         if (node.info.hasNumericValue) PutString(body, kValue);
         if (IsSelectionRole(node.info.role)) PutString(body, kSelection);
-        if (IsTextRole(node.info.role) && node.input) {
+        if (AccessibilityRoleTakesText(node.info.role) && node.input) {
             PutString(body, kText);
             if (node.actions & AccessibilityActionSetValue) {
                 PutString(body, kEditableText);

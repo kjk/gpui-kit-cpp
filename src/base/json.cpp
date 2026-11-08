@@ -240,12 +240,7 @@ static JsonValue* ParseValue(JsonParser* jp) {
     // A number. strtod takes whatever JSON allows, but it reads to a NUL, so
     // it is given a copy of what could still be part of one.
     char buf[64];
-    int n = (int)(jp->end - jp->p);
-    if (n > 63) {
-        n = 63;
-    }
-    memcpy(buf, jp->p, (size_t)n);
-    buf[n] = 0;
+    StrCopyCapped(buf, (int)sizeof(buf), Str(jp->p, (int)(jp->end - jp->p)));
     char* stop = nullptr;
     double d = strtod(buf, &stop);
     if (!stop || stop == buf) {

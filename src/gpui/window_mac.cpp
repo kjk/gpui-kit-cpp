@@ -87,6 +87,11 @@ static NSString* GpuiAccessibilityString(gpui::Str value) {
 
 static NSString* GpuiAccessibilityRole(gpui::AccessibilityRole role) {
     using gpui::AccessibilityRole;
+    if (gpui::AccessibilityRoleTakesText(role)) {
+        return role == AccessibilityRole::MultilineTextInput
+                   ? NSAccessibilityTextAreaRole
+                   : NSAccessibilityTextFieldRole;
+    }
     switch (role) {
         case AccessibilityRole::Alert:
         case AccessibilityRole::Heading:
@@ -103,22 +108,6 @@ static NSString* GpuiAccessibilityRole(gpui::AccessibilityRole role) {
             return NSAccessibilityCheckBoxRole;
         case AccessibilityRole::RadioButton:
             return NSAccessibilityRadioButtonRole;
-        case AccessibilityRole::TextInput:
-        case AccessibilityRole::SearchInput:
-        case AccessibilityRole::DateInput:
-        case AccessibilityRole::DateTimeInput:
-        case AccessibilityRole::WeekInput:
-        case AccessibilityRole::MonthInput:
-        case AccessibilityRole::TimeInput:
-        case AccessibilityRole::EmailInput:
-        case AccessibilityRole::NumberInput:
-        case AccessibilityRole::PhoneNumberInput:
-        case AccessibilityRole::UrlInput:
-            return NSAccessibilityTextFieldRole;
-        case AccessibilityRole::PasswordInput:
-            return NSAccessibilityTextFieldRole;
-        case AccessibilityRole::MultilineTextInput:
-            return NSAccessibilityTextAreaRole;
         case AccessibilityRole::Link:
             return NSAccessibilityLinkRole;
         case AccessibilityRole::Image:

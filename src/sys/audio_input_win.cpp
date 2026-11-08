@@ -29,11 +29,7 @@ static void StreamFail(AudioInputStream* s, AudioInputError error, HRESULT hr,
                        const char* what) {
     s->error = error;
     Str text = fmt("%s (0x%08x)", Str(what), (uint32_t)hr);
-    int n = len(text) < (int)sizeof(s->message) - 1
-                ? len(text)
-                : (int)sizeof(s->message) - 1;
-    memcpy(s->message, text.s, (size_t)n);
-    s->message[n] = 0;
+    StrCopyCapped(s->message, (int)sizeof(s->message), text);
 }
 
 static AudioInputError ErrorOf(HRESULT hr) {
@@ -304,12 +300,7 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
         if (error) {
             *error = s->error;
         }
-        if (message && messageCap > 0) {
-            int n = (int)strlen(s->message);
-            n = n < messageCap - 1 ? n : messageCap - 1;
-            memcpy(message, s->message, (size_t)n);
-            message[n] = 0;
-        }
+        StrCopyZ(message, messageCap, s->message);
         StreamFree(s);
         return nullptr;
     }

@@ -528,34 +528,10 @@ static Str ClipboardReadPaths(Arena* a, HANDLE handle);
 
 // IDropTarget for a file drag onto the window. gpui-pre-windows does the
 // same: CF_HDROP on enter, then pending / leave / drop as FileDropEvent.
-struct FileDropTarget : IDropTarget {
-    LONG refs = 1;
+struct FileDropTarget : ComObject<IDropTarget> {
     Window* win = nullptr;
 
     explicit FileDropTarget(Window* w) : win(w) {}
-
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
-        if (!out) {
-            return E_POINTER;
-        }
-        if (iid == IID_IUnknown || iid == IID_IDropTarget) {
-            *out = static_cast<IDropTarget*>(this);
-            AddRef();
-            return S_OK;
-        }
-        *out = nullptr;
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override {
-        return (ULONG)InterlockedIncrement(&refs);
-    }
-    ULONG STDMETHODCALLTYPE Release() override {
-        ULONG n = (ULONG)InterlockedDecrement(&refs);
-        if (n == 0) {
-            delete this;
-        }
-        return n;
-    }
 
     void At(POINTL screen, float* x, float* y) {
         POINT pt = {screen.x, screen.y};

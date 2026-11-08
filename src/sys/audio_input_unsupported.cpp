@@ -33,9 +33,7 @@ AudioInputStream* SysAudioInputStart(const AudioInputCallbacks&, uint32_t*,
     if (error) {
         *error = AudioInputError::Unsupported;
     }
-    if (message && messageCap > 0) {
-        message[0] = 0;
-    }
+    StrCopyCapped(message, messageCap, Str{});
     return nullptr;
 }
 

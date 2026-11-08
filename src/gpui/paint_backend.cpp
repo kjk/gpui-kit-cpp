@@ -139,6 +139,204 @@ uint64_t RenderImageGeneration(const RenderImage* img) {
     return img ? img->generation : 0;
 }
 
+// The drawing entry points: while a scene records, the call is collected for
+// replay; otherwise the backend draws it now.
+void CanvasClear(PaintCtx* ctx, Rgba c) {
+    if (scene::Recording()) {
+        scene::RecClear(ctx, c);
+        return;
+    }
+    PaintBackendCanvasClear(ctx, c);
+}
+
+void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
+    if (scene::Recording()) {
+        scene::RecFillRect(ctx, x, y, w, h, c);
+        return;
+    }
+    PaintBackendCanvasFillRect(ctx, x, y, w, h, c);
+}
+
+void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
+                     Rgba c) {
+    if (scene::Recording()) {
+        scene::RecFillRound(ctx, x, y, w, h, r, c);
+        return;
+    }
+    PaintBackendCanvasFillRound(ctx, x, y, w, h, r, c);
+}
+
+void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
+                       float r, float stroke, Rgba c, const float* dash) {
+    if (scene::Recording()) {
+        scene::RecStrokeRound(ctx, x, y, w, h, r, stroke, c, dash);
+        return;
+    }
+    PaintBackendCanvasStrokeRound(ctx, x, y, w, h, r, stroke, c, dash);
+}
+
+void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
+                float stroke, Rgba c, const float* dash) {
+    if (scene::Recording()) {
+        scene::RecLine(ctx, x1, y1, x2, y2, stroke, c, dash);
+        return;
+    }
+    PaintBackendCanvasLine(ctx, x1, y1, x2, y2, stroke, c, dash);
+}
+
+void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
+                   float stroke, Rgba c) {
+    if (scene::Recording()) {
+        scene::RecEllipse(ctx, cx, cy, rx, ry, stroke, c);
+        return;
+    }
+    PaintBackendCanvasEllipse(ctx, cx, cy, rx, ry, stroke, c);
+}
+
+void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
+    if (scene::Recording()) {
+        scene::RecPushClip(ctx, x, y, w, h);
+        return;
+    }
+    PaintBackendCanvasPushClip(ctx, x, y, w, h);
+}
+
+void CanvasPopClip(PaintCtx* ctx) {
+    if (scene::Recording()) {
+        scene::RecPopClip(ctx);
+        return;
+    }
+    PaintBackendCanvasPopClip(ctx);
+}
+
+void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathFill(ctx, p, c);
+        return;
+    }
+    PaintBackendPathFill(ctx, p, c, dx, dy);
+}
+
+void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
+                      float y1, Rgba from, Rgba to, float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
+        return;
+    }
+    PaintBackendPathFillGradient(ctx, p, x0, y0, x1, y1, from, to, dx, dy);
+}
+
+void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
+                float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathStroke(ctx, p, stroke, c, roundCaps);
+        return;
+    }
+    PaintBackendPathStroke(ctx, p, stroke, c, roundCaps, dx, dy);
+}
+
+void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
+                        float y0, float x1, float y1, Rgba from, Rgba to,
+                        bool roundCaps, float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
+                                     roundCaps);
+        return;
+    }
+    PaintBackendPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
+                                   roundCaps, dx, dy);
+}
+
+void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
+                     Bounds imageBounds, int frameIndex, float radius,
+                     bool grayscale) {
+    if (scene::Recording()) {
+        scene::RecImageDraw(ctx, img, bounds, imageBounds, frameIndex, radius,
+                            grayscale);
+        return;
+    }
+    PaintBackendRenderImageDraw(ctx, img, bounds, imageBounds, frameIndex,
+                                radius, grayscale);
+}
+
+void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
+                    bool clip, float clipW) {
+    if (scene::Recording()) {
+        scene::RecTextDraw(ctx, tl, x, y, c, clip, clipW);
+        return;
+    }
+    PaintBackendTextLayoutDraw(ctx, tl, x, y, c, clip, clipW);
+}
+Path* PathNew(PaintCtx* ctx, bool winding) {
+    if (scene::Recording()) {
+        return scene::RecPathNew(ctx, winding);
+    }
+    return PaintBackendPathNew(ctx, winding);
+}
+
+void PathFree(Path* p) {
+    if (scene::Recording()) {
+        scene::RecPathFree(p);
+        return;
+    }
+    PaintBackendPathFree(p);
+}
+
+void PathMoveTo(Path* p, float x, float y) {
+    if (scene::Recording()) {
+        scene::RecPathMoveTo(p, x, y);
+        return;
+    }
+    PaintBackendPathMoveTo(p, x, y);
+}
+
+void PathLineTo(Path* p, float x, float y) {
+    if (scene::Recording()) {
+        scene::RecPathLineTo(p, x, y);
+        return;
+    }
+    PaintBackendPathLineTo(p, x, y);
+}
+
+void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
+                 float y) {
+    if (scene::Recording()) {
+        scene::RecPathCubicTo(p, x1, y1, x2, y2, x, y);
+        return;
+    }
+    PaintBackendPathCubicTo(p, x1, y1, x2, y2, x, y);
+}
+
+void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
+               bool clockwise) {
+    if (scene::Recording()) {
+        scene::RecPathArcTo(p, cx, cy, r, a0, a1, clockwise);
+        return;
+    }
+    PaintBackendPathArcTo(p, cx, cy, r, a0, a1, clockwise);
+}
+
+void PathClose(Path* p) {
+    if (scene::Recording()) {
+        scene::RecPathClose(p);
+        return;
+    }
+    PaintBackendPathClose(p);
+}
+
+// Coloured spans of one shaped run. A backend that refuses the call refuses
+// it before the scene sees it, so a recorded frame and a drawn one agree.
+bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
+                          float y, Rgba base, const TextSpan* spans, int n) {
+    if (!PaintBackendTextLayoutSpansAccepted(tl, n)) {
+        return false;
+    }
+    if (scene::Recording()) {
+        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
+    }
+    return PaintBackendTextLayoutSpans(ctx, tl, text, x, y, base, spans, n);
+}
+
 #endif // GPUI_PAINT_IN_TREE
 
 #if GPUI_PAINT_IMAGE_FRAMES
@@ -262,20 +460,18 @@ Size TextLayoutSize(TextLayout* tl) {
 }
 
 // cairo, Core Graphics and Canvas2D cannot colour spans of one shaped run:
-// the scene records the spans when it is recording (and replays them as
-// plain runs), and otherwise the caller is told to fall back.
-bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
-                          float y, Rgba base, const TextSpan* spans, int n) {
-    if (scene::Recording()) {
-        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
-    }
+// only the scene takes them (and replays them as plain runs), and otherwise
+// the caller is told to fall back.
+bool PaintBackendTextLayoutSpansAccepted(const TextLayout*, int) {
+    return true;
+}
+
+bool PaintBackendTextLayoutSpans(PaintCtx*, TextLayout*, Str, float, float,
+                                 Rgba, const TextSpan*, int) {
     return false;
 }
 
-Path* PathNew(PaintCtx* ctx, bool winding) {
-    if (scene::Recording()) {
-        return scene::RecPathNew(ctx, winding);
-    }
+Path* PaintBackendPathNew(PaintCtx* ctx, bool winding) {
     if (!ctx) {
         return nullptr;
     }
@@ -284,19 +480,11 @@ Path* PathNew(PaintCtx* ctx, bool winding) {
     return p;
 }
 
-void PathFree(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathFree(p);
-        return;
-    }
+void PaintBackendPathFree(Path* p) {
     PathDestroy(p);
 }
 
-void PathMoveTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathMoveTo(p, x, y);
-        return;
-    }
+void PaintBackendPathMoveTo(Path* p, float x, float y) {
     if (!p) {
         return;
     }
@@ -304,11 +492,7 @@ void PathMoveTo(Path* p, float x, float y) {
     PathHeadOf(p)->fig = true;
 }
 
-void PathLineTo(Path* p, float x, float y) {
-    if (scene::Recording()) {
-        scene::RecPathLineTo(p, x, y);
-        return;
-    }
+void PaintBackendPathLineTo(Path* p, float x, float y) {
     if (!p) {
         return;
     }
@@ -319,12 +503,8 @@ void PathLineTo(Path* p, float x, float y) {
     PathEmitLine(p, x, y);
 }
 
-void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
-                 float y) {
-    if (scene::Recording()) {
-        scene::RecPathCubicTo(p, x1, y1, x2, y2, x, y);
-        return;
-    }
+void PaintBackendPathCubicTo(Path* p, float x1, float y1, float x2, float y2,
+                             float x, float y) {
     if (!p) {
         return;
     }
@@ -337,12 +517,8 @@ void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
 
 // An arc opens a figure the way a move does: every backend draws a line from
 // the current point to the arc's start.
-void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
-               bool clockwise) {
-    if (scene::Recording()) {
-        scene::RecPathArcTo(p, cx, cy, r, a0, a1, clockwise);
-        return;
-    }
+void PaintBackendPathArcTo(Path* p, float cx, float cy, float r, float a0,
+                           float a1, bool clockwise) {
     if (!p) {
         return;
     }
@@ -350,11 +526,7 @@ void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
     PathHeadOf(p)->fig = true;
 }
 
-void PathClose(Path* p) {
-    if (scene::Recording()) {
-        scene::RecPathClose(p);
-        return;
-    }
+void PaintBackendPathClose(Path* p) {
     if (!p || !PathHeadOf(p)->fig) {
         return;
     }

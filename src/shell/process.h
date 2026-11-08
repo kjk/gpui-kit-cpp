@@ -2,6 +2,7 @@
 #define GPUI_SHELL_PROCESS_H_
 
 #include "base.h"
+#include "sys/clock.h"
 
 namespace gpui::shell {
 
@@ -211,6 +212,43 @@ double ProcessBoundedTimeoutSeconds(const ProcessOptions* options);
 // The reason a bounded run stopped before its child exited.
 void ProcessBoundedStopError(Str command, bool cancelled, double timeoutSeconds,
                              Str* error);
+
+// The bounded run's pump, the same on every host. Each pass drains stdout,
+// then stderr, until both close (`drain(stream, out, closed, name)`, stream 0
+// or 1, false on a read error that set `error`); a drain error, cancellation
+// or the deadline calls `stop()` to end the child and makes the run fail;
+// `poll()` answers 1 once the child has exited, 0 while it runs and -1 when
+// waiting failed (it set `error`). True when the child exited and both pipes
+// closed. `*exited` is whether `poll()` saw the exit.
+template <typename Drain, typename Stop, typename Poll>
+bool ProcessBoundedPump(Str command, const ProcessOptions* options,
+                        ProcessCancellation* cancellation, Str* error,
+                        StrBuilder* out, StrBuilder* err, bool closed[2],
+                        bool* exited, Drain drain, Stop stop, Poll poll) {
+    double started = ClockMonotonicSecondsSinceStart();
+    double timeoutSeconds = ProcessBoundedTimeoutSeconds(options);
+    while (!*exited || !closed[0] || !closed[1]) {
+        bool ok = true;
+        if (!closed[0]) ok = drain(0, out, &closed[0], "stdout");
+        if (ok && !closed[1]) ok = drain(1, err, &closed[1], "stderr");
+        bool cancelled = cancellation && cancellation->IsCancelled();
+        if (!ok || cancelled ||
+            ClockMonotonicSecondsSinceStart() - started >= timeoutSeconds) {
+            if (ok)
+                ProcessBoundedStopError(command, cancelled, timeoutSeconds,
+                                        error);
+            stop();
+            return false;
+        }
+        if (!*exited) {
+            int polled = poll();
+            if (polled < 0) return false;
+            *exited = polled > 0;
+        }
+        if (!*exited || !closed[0] || !closed[1]) PlatSleepMs(5);
+    }
+    return true;
+}
 
 } // namespace gpui::shell
 #endif // GPUI_SHELL_PROCESS_H_

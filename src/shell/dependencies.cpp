@@ -693,8 +693,7 @@ bool GitDependencyStore::LinkForEditor(
         if (replaced && linked) (*linked)++;
     }
     if (ok) Prune(modules, declared);
-    for (int i = 0; i < len(declared); i++) StrFree(declared[i]);
-    VecReset(declared);
+    StrVecFree(&declared);
     StrFree(modules);
     return ok;
 }

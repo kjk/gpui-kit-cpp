@@ -152,41 +152,31 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     fcntl(outPipe[0], F_SETFL, fcntl(outPipe[0], F_GETFL) | O_NONBLOCK);
     fcntl(errPipe[0], F_SETFL, fcntl(errPipe[0], F_GETFL) | O_NONBLOCK);
     StrBuilder stdoutText, stderrText;
-    bool stdoutClosed = false, stderrClosed = false, done = false, ok = true;
+    bool closed[2] = {false, false};
+    bool done = false;
     int status = 0;
-    double started = ClockMonotonicSecondsSinceStart();
-    double timeoutSeconds = ProcessBoundedTimeoutSeconds(options);
-    while (!done || !stdoutClosed || !stderrClosed) {
-        if (!stdoutClosed)
-            ok = DrainFd(outPipe[0], &stdoutText, &stdoutClosed, error,
-                         "stdout");
-        if (ok && !stderrClosed)
-            ok = DrainFd(errPipe[0], &stderrText, &stderrClosed, error,
-                         "stderr");
-        bool cancelled = cancellation && cancellation->IsCancelled();
-        if (!ok || cancelled ||
-            ClockMonotonicSecondsSinceStart() - started >= timeoutSeconds) {
-            if (ok)
-                ProcessBoundedStopError(command, cancelled, timeoutSeconds,
-                                        error);
+    int pipes[2] = {outPipe[0], errPipe[0]};
+    bool ok = ProcessBoundedPump(
+        command, options, cancellation, error, &stdoutText, &stderrText, closed,
+        &done,
+        [&](int stream, StrBuilder* text, bool* isClosed, const char* name) {
+            return DrainFd(pipes[stream], text, isClosed, error, name);
+        },
+        [&]() {
             kill(-pid, SIGKILL);
             waitpid(pid, &status, 0);
             done = true;
-            ok = false;
-            break;
-        }
-        if (!done) {
+        },
+        [&]() -> int {
             pid_t waited = waitpid(pid, &status, WNOHANG);
-            if (waited == pid)
-                done = true;
-            else if (waited < 0 && errno != EINTR) {
+            if (waited == pid) return 1;
+            if (waited < 0 && errno != EINTR) {
                 ErrorOutSet(error, fmt("waiting for `%s` failed", command));
-                ok = false;
-                break;
+                return -1;
             }
-        }
-        if (!done || !stdoutClosed || !stderrClosed) PlatSleepMs(5);
-    }
+            return 0;
+        });
+    bool stdoutClosed = closed[0], stderrClosed = closed[1];
     if (!stdoutClosed) close(outPipe[0]);
     if (!stderrClosed) close(errPipe[0]);
     if (!ok) {
@@ -389,8 +379,7 @@ static void ReleaseStream(ProcessStream* stream) {
     CloseFd(&stream->errFd);
     CloseFd(&stream->inFd);
     ProcessStreamCoreFree(stream);
-    for (int i = 0; i < len(stream->owned); i++) StrFree(stream->owned[i]);
-    VecReset(stream->owned);
+    StrVecFree(&stream->owned);
     Free(nullptr, stream->argv);
     delete stream;
 }

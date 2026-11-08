@@ -391,35 +391,27 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
 
     {
         StrBuilder stdoutText, stderrText;
-        bool stdoutClosed = false, stderrClosed = false, done = false;
+        bool closed[2] = {false, false};
+        bool done = false;
         DWORD exitCode = (DWORD)-1;
-        double started = ClockMonotonicSecondsSinceStart();
-        double timeoutSeconds = ProcessBoundedTimeoutSeconds(options);
-        while (!done || !stdoutClosed || !stderrClosed) {
-            if (!stdoutClosed)
-                ok = DrainPipe(&outRead, &stdoutText, &stdoutClosed, error,
-                               "stdout");
-            if (ok && !stderrClosed)
-                ok = DrainPipe(&errRead, &stderrText, &stderrClosed, error,
-                               "stderr");
-            bool cancelled = cancellation && cancellation->IsCancelled();
-            if (!ok || cancelled ||
-                ClockMonotonicSecondsSinceStart() - started >= timeoutSeconds) {
-                if (ok)
-                    ProcessBoundedStopError(command, cancelled, timeoutSeconds,
-                                            error);
-                ok = false;
+        HANDLE* pipes[2] = {&outRead, &errRead};
+        ok = ProcessBoundedPump(
+            command, options, cancellation, error, &stdoutText, &stderrText,
+            closed, &done,
+            [&](int stream, StrBuilder* text, bool* isClosed,
+                const char* name) {
+                return DrainPipe(pipes[stream], text, isClosed, error, name);
+            },
+            [&]() {
                 TerminateJobObject(job, 1);
                 WaitForSingleObject(process.hProcess, 5000);
-                break;
-            }
-            if (!done &&
-                WaitForSingleObject(process.hProcess, 0) == WAIT_OBJECT_0) {
-                done = true;
+            },
+            [&]() -> int {
+                if (WaitForSingleObject(process.hProcess, 0) != WAIT_OBJECT_0)
+                    return 0;
                 GetExitCodeProcess(process.hProcess, &exitCode);
-            }
-            if (!done || !stdoutClosed || !stderrClosed) PlatSleepMs(5);
-        }
+                return 1;
+            });
         if (ok && output) {
             output->code = exitCode == STILL_ACTIVE ? -1 : (int)exitCode;
             output->out = stdoutText.TakeStr();

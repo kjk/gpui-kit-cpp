@@ -377,9 +377,7 @@ SysSpeechSession* SysSpeechSessionStart(SysSpeechRecognizer* r,
                                         const SysSpeechEvents& events,
                                         SysSpeechError* error, char* message,
                                         int messageCap) {
-    if (message && messageCap > 0) {
-        message[0] = 0;
-    }
+    StrCopyCapped(message, messageCap, Str{});
     SFSpeechRecognizer* recognizer = OnDevice(r);
     if (!recognizer) {
         *error = SysSpeechError::Unsupported;

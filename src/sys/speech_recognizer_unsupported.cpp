@@ -31,9 +31,7 @@ SysSpeechSession* SysSpeechSessionStart(SysSpeechRecognizer*,
     if (error) {
         *error = SysSpeechError::Unsupported;
     }
-    if (message && messageCap > 0) {
-        message[0] = 0;
-    }
+    StrCopyCapped(message, messageCap, Str{});
     return nullptr;
 }
 

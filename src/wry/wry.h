@@ -204,6 +204,17 @@ struct CustomProtocol {
                     RequestResponder* responder) = nullptr;
 };
 
+/** A webview's own copy of its custom protocols, whose names it owns (heap):
+    appending returns the entry's index, freeing drops every name. */
+int CustomProtocolsAppendCopy(Vec<CustomProtocol>* protocols,
+                              const CustomProtocol& protocol);
+void CustomProtocolsFree(Vec<CustomProtocol>* protocols);
+/** Hand a request to `protocol`'s handler; one without a handler answers
+    500, which is what Rust's dispatch does for a missing closure. */
+void CustomProtocolDispatch(const CustomProtocol& protocol, Str id,
+                            const Request* request,
+                            RequestResponder* responder);
+
 struct WebView;
 
 /** `wry::NewWindowResponse`. For Create, the handler writes the target

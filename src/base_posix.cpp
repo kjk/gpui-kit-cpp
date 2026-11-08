@@ -60,22 +60,6 @@ int StrCmpNI(const char* a, const char* b, int n) {
     return strncasecmp(a ? a : "", b ? b : "", (size_t)n);
 }
 
-void StrCopyZ(char* dst, int cap, const char* src) {
-    if (!dst || cap <= 0) {
-        return;
-    }
-    if (!src) {
-        dst[0] = 0;
-        return;
-    }
-    int n = (int)strlen(src);
-    if (n > cap - 1) {
-        n = cap - 1;
-    }
-    memcpy(dst, src, (size_t)n);
-    dst[n] = 0;
-}
-
 bool PlatDirExists(const char* path) {
     if (!path || !path[0]) {
         return false;

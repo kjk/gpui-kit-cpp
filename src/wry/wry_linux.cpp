@@ -286,13 +286,6 @@ struct WebView : WebViewHandlers {
     Vec<DownloadState*> downloads;
 };
 
-static void FreeStrs(Vec<Str>* v) {
-    for (int i = 0; i < v->len; i++) {
-        StrFree(v->els[i]);
-    }
-    VecReset(*v);
-}
-
 static Str UriTemp(WebKitWebView* webview) {
     return FromCTemp(webkit_web_view_get_uri(webview));
 }
@@ -362,7 +355,7 @@ static void FlushPendingScripts(WebView* wv) {
     for (int i = 0; i < wv->pendingScripts.len; i++) {
         RunJavascript(wv, wv->pendingScripts[i], nullptr, nullptr);
     }
-    FreeStrs(&wv->pendingScripts);
+    StrVecFree(&wv->pendingScripts);
 }
 
 // `InnerWebView::init`.
@@ -575,7 +568,7 @@ static void OnDragDataReceived(GtkWidget*, GdkDragContext*, gint, gint,
     ev.x = wv->dragX;
     ev.y = wv->dragY;
     wv->dragDropHandler(wv->ctx, &ev);
-    FreeStrs(&wv->dragPaths);
+    StrVecFree(&wv->dragPaths);
     wv->dragPaths = paths;
     wv->hasDragPaths = true;
 }
@@ -614,7 +607,7 @@ static gboolean OnDragDrop(GtkWidget*, GdkDragContext* context, gint x, gint y,
     ev.x = x;
     ev.y = y;
     bool handled = wv->dragDropHandler(wv->ctx, &ev);
-    FreeStrs(&paths);
+    StrVecFree(&paths);
     return handled ? TRUE : FALSE;
 }
 
@@ -1371,8 +1364,8 @@ static void FreeInner(WebView* wv) {
     g_object_unref(wv->manager);
     g_object_unref(wv->context);
     g_object_unref(wv->cancellable);
-    FreeStrs(&wv->pendingScripts);
-    FreeStrs(&wv->dragPaths);
+    StrVecFree(&wv->pendingScripts);
+    StrVecFree(&wv->dragPaths);
     VecReset(wv->related);
     VecReset(wv->downloads);
     StrFree(wv->id);

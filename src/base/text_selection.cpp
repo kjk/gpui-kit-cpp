@@ -1430,10 +1430,7 @@ static int CopyParticipantItem(const ParticipantCopyItem& item, App* app,
         if (n < 0) return 0;
         return n < cap ? n : cap - 1;
     }
-    int n = len(item.text) < cap - 1 ? len(item.text) : cap - 1;
-    if (n > 0) memcpy(out, item.text.s, (size_t)n);
-    out[n] = 0;
-    return n;
+    return StrCopyCapped(out, cap, item.text);
 }
 
 int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {

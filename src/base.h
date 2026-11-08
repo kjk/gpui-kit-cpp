@@ -155,6 +155,11 @@ void PlatMemRelease(void* base, uint64_t size);
 
 int StrCmpI(const char* a, const char* b);
 int StrCmpNI(const char* a, const char* b, int n);
+// `src` into the `cap`-byte buffer `dst`, cut to cap - 1 bytes and
+// NUL-terminated; returns how many bytes it copied. A null `dst` or a cap
+// below 1 copies nothing.
+int StrCopyCapped(char* dst, int cap, Str src);
+// The same from a NUL-terminated string; null copies "".
 void StrCopyZ(char* dst, int cap, const char* src);
 
 bool PlatDirExists(const char* path);
@@ -442,10 +447,29 @@ struct CondVar {
 };
 
 #if GPUI_OS_WINDOWS
-template <typename I, typename...>
-struct ComFirst {
-    using T = I;
-};
+// QueryInterface over `self`: IUnknown answers with `First`, and each of
+// `First, Rest...` with its own base. A hit is AddRef'd through `self`.
+template <typename First, typename... Rest, typename Self>
+HRESULT ComQueryInterface(Self* self, REFIID riid, void** ppv) {
+    if (!ppv) {
+        return E_POINTER;
+    }
+    *ppv = nullptr;
+    if (riid == __uuidof(IUnknown)) {
+        *ppv = static_cast<First*>(self);
+    }
+    ((!*ppv && riid == __uuidof(Rest) ? (void)(*ppv = static_cast<Rest*>(self))
+                                      : (void)0),
+     ...);
+    if (!*ppv && riid == __uuidof(First)) {
+        *ppv = static_cast<First*>(self);
+    }
+    if (!*ppv) {
+        return E_NOINTERFACE;
+    }
+    self->AddRef();
+    return S_OK;
+}
 
 // The IUnknown half of every COM object this tree writes out itself. It is
 // created with one reference and deleted on the last Release; QueryInterface
@@ -459,21 +483,7 @@ struct ComObject : Is... {
     virtual ~ComObject() = default;
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
-        if (!ppv) {
-            return E_POINTER;
-        }
-        *ppv = nullptr;
-        if (riid == __uuidof(IUnknown)) {
-            *ppv = static_cast<typename ComFirst<Is...>::T*>(this);
-        }
-        ((!*ppv && riid == __uuidof(Is) ? (void)(*ppv = static_cast<Is*>(this))
-                                        : (void)0),
-         ...);
-        if (!*ppv) {
-            return E_NOINTERFACE;
-        }
-        AddRef();
-        return S_OK;
+        return ComQueryInterface<Is...>(this, riid, ppv);
     }
     ULONG STDMETHODCALLTYPE AddRef() override {
         return (ULONG)InterlockedIncrement(&refs);
@@ -1301,6 +1311,8 @@ LocalTime TimeOfDayNow();
 
 void StrFree(Str s);
 void StrFree(const char*) = delete;
+// Free every string `v` owns, then its array. Null is fine.
+void StrVecFree(Vec<Str>* v);
 
 Str StrDup(Arena*, Str str);
 Str StrDup(Str s);

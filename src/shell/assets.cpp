@@ -18,8 +18,7 @@ AppAssets::AppAssets(Str value) : root(StrDup(value)) {}
 
 AppAssets::~AppAssets() {
     Uninstall();
-    for (int i = 0; i < missing.len; i++) StrFree(missing[i]);
-    VecReset(missing);
+    StrVecFree(&missing);
     StrFree(root);
 }
 
@@ -132,8 +131,7 @@ bool AppAssets::Exists(Str path) {
 
 bool AppAssets::List(Str path, Vec<Str>* out, Str* error) {
     if (!out) return false;
-    for (int i = 0; i < out->len; i++) StrFree((*out)[i]);
-    VecReset(*out);
+    StrVecFree(out);
     Str relative;
     if (!Resolve(path, &relative, error)) return false;
     shell::FsResult result;

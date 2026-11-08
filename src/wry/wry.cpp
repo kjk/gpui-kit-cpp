@@ -215,4 +215,32 @@ void WebViewSetLastError(const char* message) {
     gWebViewLastError = message;
 }
 
+int CustomProtocolsAppendCopy(Vec<CustomProtocol>* protocols,
+                              const CustomProtocol& protocol) {
+    CustomProtocol copy = protocol;
+    copy.name = StrDup(protocol.name);
+    int index = len(*protocols);
+    VecAppend(*protocols, copy);
+    return index;
+}
+
+void CustomProtocolsFree(Vec<CustomProtocol>* protocols) {
+    for (int i = 0; i < len(*protocols); i++) {
+        StrFree((*protocols)[i].name);
+    }
+    VecReset(*protocols);
+}
+
+void CustomProtocolDispatch(const CustomProtocol& protocol, Str id,
+                            const Request* request,
+                            RequestResponder* responder) {
+    if (protocol.handler) {
+        protocol.handler(protocol.ctx, id, request, responder);
+        return;
+    }
+    Response response;
+    response.status = 500;
+    Respond(responder, &response);
+}
+
 } // namespace wry

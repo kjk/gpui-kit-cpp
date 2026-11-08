@@ -247,8 +247,7 @@ int ShellListApplications() {
         ArenaDelete(scratch);
         ShellErrorClear(&error);
     }
-    for (int i = 0; i < names.len; i++) StrFree(names[i]);
-    VecReset(names);
+    StrVecFree(&names);
     StrFree(directory);
     return 0;
 }

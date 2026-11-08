@@ -227,11 +227,7 @@ static void RoundRectPath(cairo_t* cr, float x, float y, float w, float h,
     cairo_close_path(cr);
 }
 
-void CanvasClear(PaintCtx* ctx, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecClear(ctx, c);
-        return;
-    }
+void PaintBackendCanvasClear(PaintCtx* ctx, Rgba c) {
     cairo_t* cr = Cr(ctx);
     if (!cr) {
         return;
@@ -243,11 +239,8 @@ void CanvasClear(PaintCtx* ctx, Rgba c) {
     cairo_restore(cr);
 }
 
-void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRect(ctx, x, y, w, h, c);
-        return;
-    }
+void PaintBackendCanvasFillRect(PaintCtx* ctx, float x, float y, float w,
+                                float h, Rgba c) {
     cairo_t* cr = Cr(ctx);
     if (!cr || w <= 0 || h <= 0 || c.a == 0) {
         return;
@@ -257,12 +250,8 @@ void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
     cairo_fill(cr);
 }
 
-void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
-                     Rgba c) {
-    if (scene::Recording()) {
-        scene::RecFillRound(ctx, x, y, w, h, r, c);
-        return;
-    }
+void PaintBackendCanvasFillRound(PaintCtx* ctx, float x, float y, float w,
+                                 float h, float r, Rgba c) {
     cairo_t* cr = Cr(ctx);
     if (!cr || w <= 0 || h <= 0 || c.a == 0) {
         return;
@@ -272,12 +261,9 @@ void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
     cairo_fill(cr);
 }
 
-void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
-                       float r, float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecStrokeRound(ctx, x, y, w, h, r, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasStrokeRound(PaintCtx* ctx, float x, float y, float w,
+                                   float h, float r, float stroke, Rgba c,
+                                   const float* dash) {
     cairo_t* cr = Cr(ctx);
     if (!cr || stroke <= 0 || w <= 0 || h <= 0) {
         return;
@@ -292,12 +278,8 @@ void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
     cairo_set_dash(cr, nullptr, 0, 0);
 }
 
-void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
-                float stroke, Rgba c, const float* dash) {
-    if (scene::Recording()) {
-        scene::RecLine(ctx, x1, y1, x2, y2, stroke, c, dash);
-        return;
-    }
+void PaintBackendCanvasLine(PaintCtx* ctx, float x1, float y1, float x2,
+                            float y2, float stroke, Rgba c, const float* dash) {
     cairo_t* cr = Cr(ctx);
     if (!cr) {
         return;
@@ -311,12 +293,8 @@ void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
     cairo_set_dash(cr, nullptr, 0, 0);
 }
 
-void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
-                   float stroke, Rgba c) {
-    if (scene::Recording()) {
-        scene::RecEllipse(ctx, cx, cy, rx, ry, stroke, c);
-        return;
-    }
+void PaintBackendCanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx,
+                               float ry, float stroke, Rgba c) {
     cairo_t* cr = Cr(ctx);
     if (!cr || rx <= 0 || ry <= 0) {
         return;
@@ -336,11 +314,8 @@ void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
     }
 }
 
-void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
-    if (scene::Recording()) {
-        scene::RecPushClip(ctx, x, y, w, h);
-        return;
-    }
+void PaintBackendCanvasPushClip(PaintCtx* ctx, float x, float y, float w,
+                                float h) {
     cairo_t* cr = Cr(ctx);
     if (!cr) {
         return;
@@ -350,11 +325,7 @@ void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
     cairo_clip(cr);
 }
 
-void CanvasPopClip(PaintCtx* ctx) {
-    if (scene::Recording()) {
-        scene::RecPopClip(ctx);
-        return;
-    }
+void PaintBackendCanvasPopClip(PaintCtx* ctx) {
     cairo_t* cr = Cr(ctx);
     if (cr) {
         cairo_restore(cr);
@@ -497,11 +468,7 @@ static bool BeginPathDraw(cairo_t* cr, Path* p, float dx, float dy) {
     return true;
 }
 
-void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFill(ctx, p, c);
-        return;
-    }
+void PaintBackendPathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
     cairo_t* cr = Cr(ctx);
     if (!cr || !BeginPathDraw(cr, p, dx, dy)) {
         return;
@@ -540,12 +507,9 @@ static void StrokeCurrentPath(cairo_t* cr, float stroke, bool roundCaps) {
     cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
 }
 
-void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
-                      float y1, Rgba from, Rgba to, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
-        return;
-    }
+void PaintBackendPathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0,
+                                  float x1, float y1, Rgba from, Rgba to,
+                                  float dx, float dy) {
     cairo_t* cr = Cr(ctx);
     if (!cr || !BeginPathDraw(cr, p, dx, dy)) {
         return;
@@ -564,12 +528,8 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
     cairo_restore(cr);
 }
 
-void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
-                float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStroke(ctx, p, stroke, c, roundCaps);
-        return;
-    }
+void PaintBackendPathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
+                            bool roundCaps, float dx, float dy) {
     cairo_t* cr = Cr(ctx);
     if (!cr || !BeginPathDraw(cr, p, dx, dy)) {
         return;
@@ -579,14 +539,10 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
     cairo_restore(cr);
 }
 
-void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
-                        float y0, float x1, float y1, Rgba from, Rgba to,
-                        bool roundCaps, float dx, float dy) {
-    if (scene::Recording()) {
-        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
-                                     roundCaps);
-        return;
-    }
+void PaintBackendPathStrokeGradient(PaintCtx* ctx, Path* p, float stroke,
+                                    float x0, float y0, float x1, float y1,
+                                    Rgba from, Rgba to, bool roundCaps,
+                                    float dx, float dy) {
     cairo_t* cr = Cr(ctx);
     if (!cr) {
         return;
@@ -820,14 +776,9 @@ static cairo_surface_t* ImageSurface(ImageFrame* frame, bool grayscale) {
     return gray;
 }
 
-void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
-                     Bounds imageBounds, int frameIndex, float radius,
-                     bool grayscale) {
-    if (scene::Recording()) {
-        scene::RecImageDraw(ctx, img, bounds, imageBounds, frameIndex, radius,
-                            grayscale);
-        return;
-    }
+void PaintBackendRenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
+                                 Bounds imageBounds, int frameIndex,
+                                 float radius, bool grayscale) {
     cairo_t* cr = Cr(ctx);
     if (!cr || !img || img->frames.len <= 0 || bounds.w <= 0 || bounds.h <= 0 ||
         imageBounds.w <= 0 || imageBounds.h <= 0) {
@@ -1035,12 +986,8 @@ static float BoxPad(TextLayout* tl) {
     return (tl->box - tl->natural) * 0.5f;
 }
 
-void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
-                    bool clip, float clipW) {
-    if (scene::Recording()) {
-        scene::RecTextDraw(ctx, tl, x, y, c, clip, clipW);
-        return;
-    }
+void PaintBackendTextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y,
+                                Rgba c, bool clip, float clipW) {
     cairo_t* cr = Cr(ctx);
     if (!cr || !tl || !tl->layout) {
         return;
