@@ -38,16 +38,25 @@ void HoverCardState::OnClose(HoverCardState* self, Ctx* cx, const TickEvent*) {
     HoverCardSetOpen(self, cx, false);
 }
 
+// A tap decides the card's state outright: whatever countdown was running
+// is dropped, and so is what the pointer was last said to be over, so a
+// hover flag left set by a trigger that was never left (the pointer became
+// a finger) cannot keep a later close countdown from landing.
+static void HoverCardSettle(HoverCardState* self, Ctx* cx, bool open) {
+    HoverCardCancel(self, cx);
+    self->hoveringTrigger = false;
+    self->hoveringContent = false;
+    HoverCardSetOpen(self, cx, open);
+}
+
 void HoverCardState::OnTap(HoverCardState* self, Ctx* cx, const ClickEvent*,
                            int64_t open) {
-    HoverCardCancel(self, cx);
-    HoverCardSetOpen(self, cx, open != 0);
+    HoverCardSettle(self, cx, open != 0);
 }
 
 void HoverCardState::OnDismiss(HoverCardState* self, Ctx* cx,
                                const MouseUpEvent*) {
-    HoverCardCancel(self, cx);
-    HoverCardSetOpen(self, cx, false);
+    HoverCardSettle(self, cx, false);
 }
 
 // Rust's zero delay is Timer::after(Duration::ZERO), which still fires;
