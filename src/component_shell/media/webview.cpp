@@ -132,8 +132,24 @@ struct ShellWebView {
     bool ApplyTheme(App* app);
 };
 
+// WindowPost drops a task whose window the app no longer lists, so a drain
+// posted against one never runs and `posted` would stick, filling the queue
+// to its cap. Such a window delivers nothing either way.
+static bool WindowLive(const Bridge* self) {
+    if (!self->app || !self->window) return false;
+    for (int i = 0; i < len(self->app->windows); i++) {
+        if (self->app->windows[i] == self->window) return true;
+    }
+    return false;
+}
+
 static void PostDrain(Bridge* self) {
-    if (!self || self->posted || self->dead || !self->window) return;
+    if (!self || self->dead) return;
+    if (!WindowLive(self)) {
+        self->posted = false;
+        return;
+    }
+    if (self->posted) return;
     self->posted = true;
     Listener listener;
     listener.SetFn(&Bridge::OnDrain);
@@ -143,6 +159,11 @@ static void PostDrain(Bridge* self) {
 
 static void Enqueue(Bridge* self, uint8_t kind, Str text) {
     if (!self || self->dead) return;
+    if (!WindowLive(self)) {
+        // Nothing can deliver it: the script runs against that window.
+        self->posted = false;
+        return;
+    }
     if (self->queue.len >= kEventQueue) {
         logf("dropped a WebView event; the script is not keeping up\n");
         return;
