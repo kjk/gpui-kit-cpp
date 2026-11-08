@@ -938,7 +938,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             break;
         }
         case WM_NCMOUSELEAVE:
-            MouseExited(win);
+            // The same hold as WM_MOUSELEAVE: a screenshot session's hover
+            // must survive the leave the non-client tracking sends too.
+            if (!HoverHoldForTests()) {
+                MouseExited(win);
+            }
             break;
         case WM_LBUTTONDOWN:
         case WM_LBUTTONDBLCLK:
