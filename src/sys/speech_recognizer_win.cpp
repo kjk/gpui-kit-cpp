@@ -522,11 +522,18 @@ static void ErrorOfStatus(int status, SysSpeechError* kind, Str* message) {
     }
 }
 
+// The session is over, one way or the other: nothing after this is reported,
+// and the recognizer is no longer running from our point of view.
+static void SessionEnd(SysSpeechSession* s) {
+    s->done = true;
+    s->started = false;
+}
+
 static void FailHresult(SysSpeechSession* s, HRESULT hr) {
     SysSpeechError kind = SysSpeechError::Recognizer;
     char message[600] = {};
     ErrorOfHresult(hr, &kind, message, (int)sizeof(message));
-    s->done = true;
+    SessionEnd(s);
     s->events.error(s->events.user, kind, Str(message));
 }
 
@@ -534,15 +541,16 @@ static void FailStatus(SysSpeechSession* s, int status) {
     SysSpeechError kind = SysSpeechError::Recognizer;
     Str message;
     ErrorOfStatus(status, &kind, &message);
-    s->done = true;
+    SessionEnd(s);
     s->events.error(s->events.user, kind, message);
 }
 
 // Stopping flushes the last phrase, then completes the session.
 //
 // The session may have ended by itself, e.g. after the silence timeout, with
-// its Completed still queued behind this; stopping it then fails, and that
-// queued event ends the session instead.
+// its Completed still queued behind this; stopping it then fails. The caller
+// asked for the end either way, so the session ends here, and the queued
+// Completed, if there is one, finds it already done.
 static void StopDictation(SysSpeechSession* s) {
     IAsyncAction* stop = nullptr;
     HRESULT hr = s->continuous->StopAsync(&stop);
@@ -551,6 +559,8 @@ static void StopDictation(SysSpeechSession* s) {
     }
     if (FAILED(hr)) {
         logf("speech: stopping dictation failed: 0x%08x\n", (uint32_t)hr);
+        SessionEnd(s);
+        s->events.finish(s->events.user);
     }
 }
 
@@ -610,7 +620,12 @@ static void OnMessage(SpeechMessage* m) {
                 break;
             }
             case SpeechMessageKind::Hypothesis:
-                s->events.hypothesis(s->events.user, JoinedTemp(s, m->text));
+                // Once a stop was asked for, only the flushed final phrase
+                // (a Result) is still worth reporting, not a guess at it.
+                if (!s->finishRequested) {
+                    s->events
+                        .hypothesis(s->events.user, JoinedTemp(s, m->text));
+                }
                 break;
             case SpeechMessageKind::Result: {
                 Str text = JoinedTemp(s, m->text);
@@ -623,7 +638,7 @@ static void OnMessage(SpeechMessage* m) {
                 if (m->status == kStatusSuccess ||
                     m->status == kStatusUserCanceled ||
                     m->status == kStatusTimeoutExceeded) {
-                    s->done = true;
+                    SessionEnd(s);
                     s->events.finish(s->events.user);
                 } else {
                     FailStatus(s, m->status);
