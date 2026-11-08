@@ -71,10 +71,17 @@ bool AppGlobalRemoveRaw(App* app, const void* key) {
     return true;
 }
 
+// Defined with WindowPost below.
+static void PostedDisown(App* app);
+
 void AppGlobalClear(App* app) {
     if (!app) {
         return;
     }
+    // The last thing every App runs, AppRelease included, so a post still
+    // queued against it is disowned here rather than run against freed
+    // memory.
+    PostedDisown(app);
     for (int i = app->globals.len - 1; i >= 0; i--) {
         AppGlobalFreeValue(app->globals[i]);
     }
@@ -532,6 +539,36 @@ struct PostedTask {
     const void* ev = nullptr;
 };
 
+// Every post not yet run. A post sits in the main queue until the loop gets
+// to it, and the App it was made against can be freed first — a test that
+// tears its App down, or a worker whose `done` lands after AppFree — so
+// finding the window in `t->app` would read freed memory. An App leaving
+// disowns its posts here instead, and a disowned post is dropped unread.
+static Mutex gPostedLock;
+static Vec<PostedTask*> gPosted;
+
+static void PostedForget(PostedTask* t) {
+    gPostedLock.Lock();
+    for (int i = 0; i < gPosted.len; i++) {
+        if (gPosted[i] == t) {
+            gPosted[i] = gPosted[gPosted.len - 1];
+            gPosted.len--;
+            break;
+        }
+    }
+    gPostedLock.Unlock();
+}
+
+static void PostedDisown(App* app) {
+    gPostedLock.Lock();
+    for (int i = 0; i < gPosted.len; i++) {
+        if (gPosted[i]->app == app) {
+            gPosted[i]->app = nullptr;
+        }
+    }
+    gPostedLock.Unlock();
+}
+
 // The window is looked up by pointer rather than trusted: a post made from a
 // worker can outlive the window it was made against, and there is no
 // generation on a Window the way there is on an entity.
@@ -548,6 +585,7 @@ static bool WindowIsLive(App* app, Window* win) {
 }
 
 static void RunPostedTask(PostedTask* t) {
+    PostedForget(t);
     if (WindowIsLive(t->app, t->win)) {
         // ListenerCall drops it again if the entity itself is gone.
         ListenerCall(t->app, t->win, t->l, t->ev);
@@ -567,6 +605,9 @@ void WindowPost(Window* win, Listener l, const void* ev) {
     t->win = win;
     t->l = l;
     t->ev = ev;
+    gPostedLock.Lock();
+    VecAppend(gPosted, t);
+    gPostedLock.Unlock();
     ExecPost(MkFunc0(RunPostedTask, t));
 }
 
