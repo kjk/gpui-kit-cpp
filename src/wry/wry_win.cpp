@@ -2366,9 +2366,21 @@ Str WebViewVersionTemp() {
     return WstrToUtf8Temp(rt.version);
 }
 
+// Answered from a short-lived cache: finding the runtime reads the loader
+// overrides and the registry, which costs a third of a millisecond, and an
+// application asks this while building every frame's menus and toolbars. A
+// runtime installed while the application runs is seen within the window.
 bool WebViewAvailable() {
-    RuntimeInfo rt;
-    return FindRuntime(&rt) || FindRuntime(&rt, nullptr, false);
+    constexpr ULONGLONG kCacheMs = 2000;
+    static ULONGLONG checkedAt = 0;
+    static bool available = false;
+    ULONGLONG now = GetTickCount64();
+    if (checkedAt == 0 || now - checkedAt >= kCacheMs) {
+        RuntimeInfo rt;
+        available = FindRuntime(&rt) || FindRuntime(&rt, nullptr, false);
+        checkedAt = now ? now : 1;
+    }
+    return available;
 }
 
 // ─── COM plumbing ────────────────────────────────────────────────────────
