@@ -120,6 +120,9 @@ Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
     self->app = cx->app;
     self->selfId = handle.id;
     self->visible = raw != nullptr;
+    // What wry made is what the OS shows now: created hidden, the native
+    // view is not shown, and the first paint has to show it.
+    self->nativeShown = raw != nullptr && copy.visible;
     return handle;
 }
 
