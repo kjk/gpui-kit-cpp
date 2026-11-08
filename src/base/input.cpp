@@ -10570,6 +10570,10 @@ void InputBlur(InputState* s, App* app, Window* win) {
         InputClearHoverDefinition(s);
         s->hoverText = Str{};
         s->hoverRange = Selection{};
+        // A question waiting for its 150 ms is withdrawn too, or the next
+        // frame would ask it over a field that is no longer focused.
+        s->hoverPending = Selection{};
+        s->hoverAsked = true;
         s->hoverDiagnostic = -1;
         InputClearInlineCompletion(s);
         InputDismissTouchSelection(s, app, win);
