@@ -12092,13 +12092,20 @@ static void RetainTouchSelection(InputState* s) {
     s->touchRange = ActiveTouchRange(s);
 }
 
+// The edge drag is over: which handle was held and where the finger sat on
+// it go together with the flag, so a snapshot taken later does not report
+// a drag off a stale edge.
+static void EndTouchDrag(InputState* s) {
+    s->touchDragging = false;
+    s->touchDragEdge = 0;
+    s->touchDragOffset = {};
+}
+
 static void ResetTouchSelection(InputState* s) {
     s->touchLive = false;
     s->touchRange = {};
     s->touchMenuOpen = false;
-    s->touchDragging = false;
-    s->touchDragEdge = 0;
-    s->touchDragOffset = {};
+    EndTouchDrag(s);
 }
 
 bool InputTouchSelection(const InputState* s, Window* win,
@@ -12150,7 +12157,7 @@ void InputKeepTouchSelection(InputState* s, App* app, Window* win) {
     }
     RetainTouchSelection(s);
     s->touchMenuOpen = true;
-    s->touchDragging = false;
+    EndTouchDrag(s);
     Notify(app, win);
 }
 
@@ -12371,7 +12378,7 @@ void InputEndEdgeDrag(InputState* s, App* app, Window* win) {
     if (!s || !s->touchDragging) {
         return;
     }
-    s->touchDragging = false;
+    EndTouchDrag(s);
     s->columnSelectStart = {};
     s->autoScroll.Stop();
     if (s->selectedRange.IsEmpty()) {
