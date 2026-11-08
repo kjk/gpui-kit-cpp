@@ -115,6 +115,10 @@ bool SysSpeechRecognizerAvailable(const SysSpeechRecognizer* r) {
 
 // ─── the recognition ──────────────────────────────────────────────────────
 
+// Thirty seconds at 16 kHz: the most audio kept back for a recognizer that
+// has not been authorised yet.
+constexpr int kMaxPendingSamples = 16000 * 30;
+
 struct SysSpeechSession {
     // Held by the caller and by each event on its way to the main thread.
     volatile int refs = 1;
@@ -127,7 +131,9 @@ struct SysSpeechSession {
     AVAudioFormat* format = nil;
     // nil until access is granted.
     SFSpeechRecognitionTask* task = nil;
-    // Audio pushed before the task started.
+    // Audio pushed before the task started. Bounded: while the permission
+    // prompt is up the microphone keeps running, and what the recognizer
+    // would do with minutes of it is nothing useful.
     Vec<int16_t> pending;
     bool finishing = false;
     bool done = false;
@@ -455,7 +461,7 @@ void SysSpeechSessionPushAudio(SysSpeechSession* s, const int16_t* samples,
     }
     if (s->task) {
         AppendAudio(s, samples, count);
-    } else {
+    } else if (len(s->pending) + count <= kMaxPendingSamples) {
         int16_t* dst = VecInsertSpace(s->pending, len(s->pending), count);
         if (dst) {
             memcpy(dst, samples, (size_t)count * sizeof(int16_t));
@@ -464,7 +470,7 @@ void SysSpeechSessionPushAudio(SysSpeechSession* s, const int16_t* samples,
 }
 
 void SysSpeechSessionFinish(SysSpeechSession* s) {
-    if (!s || s->finishing) {
+    if (!s || s->finishing || s->done || s->dropped) {
         return;
     }
     s->finishing = true;
