@@ -629,14 +629,20 @@ bool QuestionnaireState::ItemState(Str name,
     return true;
 }
 
+// The item and choice indexes of `value` under `item`; false when either is
+// not there.
+static bool ChoiceIxsOpt(const QuestionnaireState* s, Str item, Str value,
+                         int* ix, int* c) {
+    *ix = ItemIxOpt(s, item);
+    *c = *ix < 0 ? -1 : ChoiceIxOpt(s, *ix, value);
+    return *c >= 0;
+}
+
 bool QuestionnaireState::ChoiceState(Str item, Str value,
                                      QuestionnaireChoiceState* out) const {
-    int ix = ItemIxOpt(this, item);
-    if (ix < 0) {
-        return false;
-    }
-    int c = ChoiceIxOpt(this, ix, value);
-    if (c < 0) {
+    int ix = -1;
+    int c = -1;
+    if (!ChoiceIxsOpt(this, item, value, &ix, &c)) {
         return false;
     }
     const QuestionnaireItemRuntime& r = runtime[ix];
@@ -1474,12 +1480,9 @@ bool QuestionnaireState::FocusInvalidItem(Str item, Ctx* cx) const {
 }
 
 bool QuestionnaireState::FocusChoice(Str item, Str value, Ctx* cx) const {
-    int ix = ItemIxOpt(this, item);
-    if (ix < 0) {
-        return false;
-    }
-    int c = ChoiceIxOpt(this, ix, value);
-    if (c < 0) {
+    int ix = -1;
+    int c = -1;
+    if (!ChoiceIxsOpt(this, item, value, &ix, &c)) {
         return false;
     }
     FocusOn(cx, runtime[ix].choiceFocus[c]);

@@ -28,36 +28,35 @@ const char* InlineTokenErrorMessage(InlineTokenError e) {
     }
 }
 
-static bool HasControlOrLineSep(Str s) {
+// Walks the codepoints of `s` until `stop(c)` holds: 1 when one did, -1 at
+// a byte that is not UTF-8, 0 at the end.
+template <typename Stop>
+static int ScanCodepoints(Str s, Stop stop) {
     int i = 0;
     while (i < len(s)) {
         uint32_t c = 0;
         int n = Utf8At(s, i, &c);
         if (n <= 0) {
-            return true;
+            return -1;
         }
-        if (c < 0x20 || c == 0x7f || c == 0x2028 || c == 0x2029) {
-            return true;
+        if (stop(c)) {
+            return 1;
         }
         i += n;
     }
-    return false;
+    return 0;
+}
+
+static bool HasControlOrLineSep(Str s) {
+    return ScanCodepoints(s, [](uint32_t c) {
+               return c < 0x20 || c == 0x7f || c == 0x2028 || c == 0x2029;
+           }) != 0;
 }
 
 static bool IsBlank(Str s) {
-    int i = 0;
-    while (i < len(s)) {
-        uint32_t c = 0;
-        int n = Utf8At(s, i, &c);
-        if (n <= 0) {
-            return true;
-        }
-        if (c != ' ' && c != '\t' && c != '\n' && c != '\r') {
-            return false;
-        }
-        i += n;
-    }
-    return true;
+    return ScanCodepoints(s, [](uint32_t c) {
+               return c != ' ' && c != '\t' && c != '\n' && c != '\r';
+           }) != 1;
 }
 
 InlineToken InlineToken::New(Str id, Str text) {

@@ -8,6 +8,23 @@
 
 namespace gpui {
 
+// Deletes the entry with `id` from a list of owned entries, keeping the
+// order of the rest. False when there is none.
+template <typename T>
+static bool RemoveOwnedById(Vec<T*>* entries, uint64_t id) {
+    for (int i = 0; i < len(*entries); i++) {
+        if ((*entries)[i]->id == id) {
+            delete (*entries)[i];
+            for (int k = i; k + 1 < len(*entries); k++) {
+                (*entries)[k] = (*entries)[k + 1];
+            }
+            entries->len--;
+            return true;
+        }
+    }
+    return false;
+}
+
 static const SyntaxContext kDefaultNotIn[] = {SyntaxContext::String,
                                               SyntaxContext::Comment};
 static const BracketPair kDefaultBrackets[] = {
@@ -1118,17 +1135,7 @@ bool RangeDecorationCollections::Append(uint64_t id,
 }
 
 bool RangeDecorationCollections::Remove(uint64_t id) {
-    for (int i = 0; i < len(entries); i++) {
-        if (entries[i]->id == id) {
-            delete entries[i];
-            for (int k = i; k + 1 < len(entries); k++) {
-                entries[k] = entries[k + 1];
-            }
-            entries.len--;
-            return true;
-        }
-    }
-    return false;
+    return RemoveOwnedById(&entries, id);
 }
 
 void RangeDecorationCollections::AdjustForEdit(Selection editedRange,
@@ -1535,18 +1542,11 @@ struct MarkCollections {
     }
 
     bool Remove(uint64_t id) {
-        for (int i = 0; i < len(entries); i++) {
-            if (entries[i]->id == id) {
-                delete entries[i];
-                for (int k = i; k + 1 < len(entries); k++) {
-                    entries[k] = entries[k + 1];
-                }
-                entries.len--;
-                revision++;
-                return true;
-            }
+        if (!RemoveOwnedById(&entries, id)) {
+            return false;
         }
-        return false;
+        revision++;
+        return true;
     }
 
     void Clear() {

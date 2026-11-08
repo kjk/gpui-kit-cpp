@@ -42,32 +42,30 @@ Str SheetContext();
 // The Rust Sheet owns closures after its render value is consumed. This
 // builder is frame-arena data, so the handlers and dismissal settings wait in
 // keyed state between the build and input dispatch.
-struct SheetState {
+// How a sheet's overlay and close behave: what the builder is told and what
+// waits in SheetState for input dispatch, copied across whole.
+struct SheetDismissal {
     bool overlayInteractive = true;
     bool overlayClosable = true;
     bool hasDismissBefore = false;
     float dismissBeforeY = 0;
     Listener requestClose = {};
     Listener onClose = {};
+};
 
+struct SheetState : SheetDismissal {
     void Close(Ctx* cx);
     static void OnOverlay(SheetState* self, Ctx* cx, const MouseDownEvent* ev);
     static void OnAction(SheetState* self, Ctx* cx, const ActionEvent* ev);
 };
 
-struct Sheet {
+struct Sheet : SheetDismissal {
     Ctx* cx = nullptr;
     El* root = nullptr;
     // focus_trap("sheet"): the host holds Tab while the sheet is open.
     Str trap = {};
     El* overlay = nullptr;
     El* surface = nullptr;
-    bool overlayInteractive = true;
-    bool overlayClosable = true;
-    bool hasDismissBefore = false;
-    float dismissBeforeY = 0;
-    Listener requestClose = {};
-    Listener onClose = {};
 
     static Sheet* New(Ctx* cx);
     Sheet* Trap(Str name);
