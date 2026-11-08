@@ -3,9 +3,8 @@ name: build
 # Compiles every example on all three desktop platforms plus wasm, and runs
 # the test suite on each. It also cross-compiles the portable library for
 # Android and iOS with their vendor SDKs. The desktop jobs compile the source
-# tree as separate translation units. Dedicated Windows and Linux jobs repeat the build with
-# clang and the mini markdown parser; Windows compiles all three paint
-# backends. The wasm job runs the same suite under node, which is the only
+# tree as separate translation units. Dedicated Windows and Linux jobs repeat
+# the build with clang and the mini markdown parser. The wasm job runs the same suite under node, which is the only
 # place this tree is checked on a 32-bit word.
 
 on:
@@ -145,7 +144,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: windows-clang-mini-all-backends
+          - name: windows-clang-mini
             os: windows-latest
           - name: linux-clang-mini
             os: ubuntu-latest
@@ -170,7 +169,7 @@ jobs:
       # The official installer is the pin. 3010 is a successful install that
       # wants a reboot; the new clang-cl is already on disk.
       - name: Install clang-cl 22
-        if: matrix.name == 'windows-clang-mini-all-backends'
+        if: matrix.name == 'windows-clang-mini'
         shell: powershell
         run: |
           $ver = "22.1.7"
@@ -190,10 +189,8 @@ jobs:
             exit 1
           }
 
-      # Compile every Windows backend into the examples. The suite does not
-      # paint, so tests stay on the default backend — same as the MSVC job.
       - name: Build and test (clang-cl)
-        if: matrix.name == 'windows-clang-mini-all-backends'
+        if: matrix.name == 'windows-clang-mini'
         shell: cmd
         run: |
           set VSWHERE="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -201,7 +198,7 @@ jobs:
           if not defined VSPATH (echo could not find a VC toolset & exit /b 1)
           call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
           clang-cl --version 2>&1 | findstr /C:"22.1.7" >nul || (echo expected clang-cl 22.1.7, the runner image's 20.1.8 miscompiles shell coroutines & clang-cl --version & exit /b 1)
-          bun cmd/build.ts -clang -rel -markdown=mini -html=mini --win-backend=all -all || exit /b 1
+          bun cmd/build.ts -clang -rel -markdown=mini -html=mini -all || exit /b 1
           bun cmd/test.ts -clang -rel -markdown=full -html=full
 
       - name: Build and test (clang++)

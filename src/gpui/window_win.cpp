@@ -4,7 +4,6 @@
 
 #include "gpui/platform.h"
 #include "gpui/paint.h"
-#include "gpui/paintgpu.h"
 #include "gpui/accessibility_win.h"
 #include "sys/clock.h"
 #include "sys/executor.h"
@@ -191,12 +190,8 @@ static float DpiOverride() {
     return dpi;
 }
 
-// The dpi a window draws at. The Direct3D backends place their geometry in
-// device pixels, so they stay at 96 and draw a DIP as one pixel.
+// The dpi a window draws at.
 static float DrawDpi(UINT monitorDpi) {
-    if (PaintGpuOn()) {
-        return 96;
-    }
     float dpi = DpiOverride();
     if (dpi > 0) {
         return dpi;
@@ -2029,21 +2024,6 @@ int AppRun(App* app) {
         app->exitCode = (int)msg.wParam;
     }
     return (int)msg.wParam;
-}
-
-void FrameBenchLogGpu() {
-    if (PaintGpuOn()) {
-        const gpuw::FrameStats& st = gpuw::LastFrameStats();
-        logf(
-            "frame-bench %s instances=%d draws=%d pathTris=%d "
-            "glyphsRasterized=%d",
-            PaintD3d12On() ? StrL("d3d12") : StrL("d3d11"), st.instances,
-            st.draws, st.pathTriangles, st.glyphsRasterized);
-    }
-}
-
-bool WindowTakePaintArg(Str arg) {
-    return WinPaintOptionsTakeArg(arg);
 }
 
 // Every desktop clipboard is read synchronously, so ClipboardGetItem is the

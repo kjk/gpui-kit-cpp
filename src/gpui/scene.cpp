@@ -14,14 +14,11 @@
 
 namespace gpui {
 
-// The non-Windows default. Damage redraws on top of what the back buffer
-// already holds, and only the flip-model chain on Windows has been checked
-// to hold it (cmd/bench-scene.ts); Cairo, Core Graphics and Canvas2D stay at
-// skip until theirs are.
-static int gSceneLevel = kSceneSkip;
+// On unless `__scene=off` asked for the tree to draw straight to the backend.
+static bool gSceneOn = true;
 
-int SceneLevelFallback() {
-    return gSceneLevel;
+bool SceneOn() {
+    return gSceneOn;
 }
 
 bool SceneTakeArg(Str arg) {
@@ -30,54 +27,20 @@ bool SceneTakeArg(Str arg) {
         return false;
     }
     Str value(arg.s + len(prefix), len(arg) - len(prefix));
-    if (base::StrEqI(value, "off")) {
-        gSceneLevel = kSceneOff;
-    } else if (base::StrEqI(value, "replay")) {
-        gSceneLevel = kSceneReplay;
-    } else if (base::StrEqI(value, "cache")) {
-        gSceneLevel = kSceneCache;
-    } else if (base::StrEqI(value, "skip")) {
-        gSceneLevel = kSceneSkip;
-    } else if (base::StrEqI(value, "damage")) {
-        gSceneLevel = kSceneDamage;
+    if (base::StrEqI(value, "off") || base::StrEq(value, StrL("0"))) {
+        gSceneOn = false;
+    } else if (base::StrEqI(value, "on") || base::StrEq(value, StrL("1"))) {
+        gSceneOn = true;
     }
     return true;
 }
 
-// -1 until the first frame or an explicit argument. On unless asked off.
-static int gScrollLayers = -1;
-
-static bool ScrollEnvOff(const char* value) {
-    if (!value || !value[0]) {
-        return false;
-    }
-    if (value[0] == '0' && value[1] == 0) {
-        return true;
-    }
-    return (value[0] == 'o' || value[0] == 'O') &&
-           (value[1] == 'f' || value[1] == 'F') &&
-           (value[2] == 'f' || value[2] == 'F') && value[3] == 0;
-}
+// Cleared for the rest of the process when GPUI_SCROLL_VERIFY catches a blit
+// that does not match a from-scratch replay.
+static bool gScrollLayers = true;
 
 static bool ScrollLayersOn() {
-    if (gScrollLayers < 0) {
-        gScrollLayers = ScrollEnvOff(getenv("GPUI_SCROLL_LAYERS")) ? 0 : 1;
-    }
-    return gScrollLayers == 1 && SceneLevelOn() >= kSceneReplay;
-}
-
-bool ScrollLayersTakeArg(Str arg) {
-    const Str prefix = StrL("__scroll_layers=");
-    if (!base::StrStartsWith(arg, prefix)) {
-        return false;
-    }
-    Str value(arg.s + len(prefix), len(arg) - len(prefix));
-    if (base::StrEqI(value, "off") || base::StrEqI(value, "0")) {
-        gScrollLayers = 0;
-    } else if (base::StrEqI(value, "on") || base::StrEqI(value, "1")) {
-        gScrollLayers = 1;
-    }
-    return true;
+    return gScrollLayers && SceneOn();
 }
 
 namespace scene {
@@ -1172,20 +1135,6 @@ static void CacheSweep() {
     }
 }
 
-static bool TranslationIndependentPathCache() {
-    static int enabled = -1;
-    if (enabled < 0) {
-        const char* value = getenv("GPUI_PATH_CACHE_TRANSLATION");
-        bool off =
-            value && (value[0] == '0' ||
-                      ((value[0] == 'o' || value[0] == 'O') &&
-                       (value[1] == 'f' || value[1] == 'F') &&
-                       (value[2] == 'f' || value[2] == 'F') && value[3] == 0));
-        enabled = off ? 0 : 1;
-    }
-    return enabled != 0;
-}
-
 void Invalidate(PaintCtx* ctx) {
     State* s = StateFor(ctx, false);
     if (!s) {
@@ -1247,15 +1196,15 @@ void Free(PaintCtx* ctx) {
 
 // Build a backend path out of the recorded verbs. The caller is drawing, so
 // Recording() is already false and these are the real entry points.
-static Path* BuildPath(PaintCtx* ctx, const PathRec& pr, bool relative) {
+static Path* BuildPath(PaintCtx* ctx, const PathRec& pr) {
     Path* p = PathNew(ctx, pr.winding);
     if (!p) {
         return nullptr;
     }
     int vi = pr.verbFirst;
     int pi = pr.ptFirst;
-    float ox = relative ? pr.originX : 0;
-    float oy = relative ? pr.originY : 0;
+    float ox = pr.originX;
+    float oy = pr.originY;
     for (int i = 0; i < pr.verbCount; i++) {
         uint8_t v = gVerbs[vi++];
         switch (v & 0x7f) {
@@ -1299,20 +1248,10 @@ static Path* PathFor(PaintCtx* ctx, const Prim& prim, bool* owned, float* dx,
         return nullptr;
     }
     const PathRec& pr = gPaths[prim.path];
-    if (SceneLevelOn() < kSceneCache) {
-        gStats.pathCacheMisses++;
-        gStats.framePathCacheMisses++;
-        double started = TimeNow();
-        Path* p = BuildPath(ctx, pr, false);
-        gStats.framePathBuildMs += (float)((TimeNow() - started) * 1000.0);
-        return p;
-    }
-    bool relative = TranslationIndependentPathCache();
-    uint64_t rawHash = relative ? pr.cacheHash : pr.hash;
-    uint64_t cacheHash = rawHash ? rawHash : 1;
+    uint64_t cacheHash = pr.cacheHash ? pr.cacheHash : 1;
     CacheEntry* e = CacheFind(cacheHash);
-    *dx = relative ? pr.originX : 0;
-    *dy = relative ? pr.originY : 0;
+    *dx = pr.originX;
+    *dy = pr.originY;
     if (e && e->live && e->hash == cacheHash) {
         e->lastFrame = gFrameNo;
         gStats.pathCacheHits++;
@@ -1321,7 +1260,7 @@ static Path* PathFor(PaintCtx* ctx, const Prim& prim, bool* owned, float* dx,
         return e->path;
     }
     double started = TimeNow();
-    Path* p = BuildPath(ctx, pr, relative);
+    Path* p = BuildPath(ctx, pr);
     gStats.pathCacheMisses++;
     gStats.framePathCacheMisses++;
     if (!p) {
@@ -1477,8 +1416,7 @@ static void MaskDrop(int slot) {
 }
 
 static MaskEntry* MaskFor(PaintCtx* ctx, const Prim& prim) {
-    if (SceneLevelOn() < kSceneCache || !ctx || !ctx->pa || prim.path < 0 ||
-        prim.path >= gPaths.len ||
+    if (!ctx || !ctx->pa || prim.path < 0 || prim.path >= gPaths.len ||
         (prim.kind != kPPathFill &&
          !(prim.kind == kPPathStroke && (prim.flags & kFRoundCaps)))) {
         return nullptr;
@@ -2006,7 +1944,7 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
             changed = 0;
         }
     }
-    if (!identical && gHavePrev && SceneLevelOn() >= kSceneDamage) {
+    if (!identical && gHavePrev && SceneDamageSupported()) {
         changed = 0;
         Bounds d = {};
         BagBuild(gBagA, gPrev);
@@ -2032,7 +1970,7 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
 
     // The buffer this frame draws into holds what was presented three
     // presents ago, so the redraw has to cover that frame's damage too.
-    if (SceneLevelOn() >= kSceneDamage && !identical) {
+    if (SceneDamageSupported() && !identical) {
         Bounds acc = dmg;
         for (int i = 0; i < kBufferDepth; i++) {
             acc = Union(acc, gDamageRing[i]);
@@ -2042,7 +1980,7 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
         dmg = Intersect(acc, whole);
     }
 
-    bool skip = identical && SceneLevelOn() >= kSceneSkip;
+    bool skip = identical;
     gSkipPresent = skip;
     float wholeArea = whole.w * whole.h;
     gStats.damageFraction =
@@ -2329,7 +2267,7 @@ static void ScrollVerify(PaintCtx* ctx, Bounds clip) {
         }
         if (bad > n / 200) {
             logf("scroll-verify mismatch; layers off");
-            gScrollLayers = 0;
+            gScrollLayers = false;
             gStats.scrollRejects++;
         }
     }

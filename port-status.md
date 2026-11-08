@@ -40,8 +40,9 @@ The current update target is
 - **Scroll layers blit a pure scroll.** When the only change inside a scroll
   viewport is the offset, the frame copies the overlap already on the swap
   chain and redraws the strip that entered, plus a scrollbar thumb that
-  moved. It is on by default. `__scroll_layers=off` and `GPUI_SCROLL_LAYERS=0`
-  draw every primitive. Content that changes (a quote tick, a refresh)
+  moved. It is always on (`__scene=off` is the only way around it, and
+  `GPUI_SCROLL_VERIFY=1` checks each blit against a from-scratch replay).
+  Content that changes (a quote tick, a refresh)
   still draws whole (`src/gpui/scene.cpp`).
 - **The semantic tree is collected only for a listener.** Rust hands
   AccessKit a tree every frame. Here a frame walks the element tree for
@@ -113,16 +114,13 @@ The current update target is
   or per-piece hits. Decorations are not painted. The collection scope
   nests and restores; there are no exceptions, so a panic cannot be what
   restores it.
-- **High-DPI on Windows is Direct2D only.** A window draws at its monitor's
-  dpi and follows `WM_DPICHANGED` (`window_win.cpp`, `SetDpi` in
-  `paint_win.cpp`). The D3D11 / D3D12 renderers place geometry in device
-  pixels, so with them a window stays at 96 dpi and is small on a scaled
-  display. `GPUI_DPI=<dpi>` forces a dpi for checking layout on a 100% display.
-- **A transparent window is Windows with Direct2D only.** GPUI's
+- **High-DPI on Windows.** A window draws at its monitor's dpi and follows
+  `WM_DPICHANGED` (`window_win.cpp`, `SetDpi` in `paint_win.cpp`).
+  `GPUI_DPI=<dpi>` forces a dpi for checking layout on a 100% display.
+- **A transparent window is Windows only.** GPUI's
   `WindowBackgroundAppearance::Transparent` is `WinOpts::transparent`: a
   composition swap chain with premultiplied alpha and grayscale text
-  (`paint_win.cpp`). The D3D11 / D3D12 renderers blend onto an opaque target,
-  X11 would need a 32-bit visual and Cocoa a non-opaque layer; there the
+  (`paint_win.cpp`). X11 would need a 32-bit visual and Cocoa a non-opaque layer; there the
   option is ignored and `WindowIsTransparent` says so. `Blurred` and the
   other appearances are not ported.
 - **A focused slider takes keys.** `slider.rs` leaves them to the
@@ -429,7 +427,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   collects, orders and culls through per-element stacking contexts. It caches
   offscreen coverage bitmaps for solid fills and round-cap strokes up to 160
   device pixels per side; gradients, other strokes and larger paths keep the
-  retained geometry path. Every paint backend records.
+  retained geometry path. Every paint backend records; the renderer half of
+  GPUI's scene graph was ported as two more Windows backends and removed
+  (`obsolete-windows-backends.md`).
 - **A repaint rebuilds the whole element tree.** `Notify` picks the right
   windows (see AGENTS.md), but an `El` is arena-allocated per frame, so hover,
   focus and animation are resolved while the tree is built. Layout _is_ kept

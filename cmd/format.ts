@@ -24,13 +24,11 @@ const cppGlobs = ["src", "examples", "tests", "bench", "gpui_shell"].map((dir) =
 const tsGlobs = ["cmd/*.ts"];
 
 // Generated files: the generator lays them out itself. clang-format would
-// unpack the byte rows in the icon table into one byte a line, and wrap the
-// source-sha256 marker that cmd/build.ts uses to reject stale shader bytecode.
+// unpack the byte rows in the icon table into one byte a line.
 // The shell declarations are raw strings compared byte for byte by
 // `bun cmd/update-shell-types.ts -check`.
 const generated = new Set([
   "src/gpui/asset_icons.cpp",
-  "src/gpui/paintgpu_shaders_win.cpp",
   "src/shell/typings_data.cpp",
   "tests/ComponentShellTypesData.cpp",
 ]);

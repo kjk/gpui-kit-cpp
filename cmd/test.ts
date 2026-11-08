@@ -1,5 +1,5 @@
 // Build and run the test suite: bun cmd/test.ts [-dbg|-rel] [-asan] [-clang]
-//                                      [-clean] [--win-backend=<backend>]
+//                                      [-clean]
 //                                      [-markdown=mini|full] [-html=mini|full]
 //
 // The tests live in tests/ and are ports of the pure-logic ones in
@@ -32,7 +32,7 @@ function die(msg: string): never {
 const flags = defaultBuildFlags();
 for (const a of Bun.argv.slice(2)) {
   // --dbg and friends have always been accepted here too.
-  const buildArg = a.startsWith("--win-backend=") ? a : a.replace(/^--/, "-");
+  const buildArg = a.replace(/^--/, "-");
   if (takeBuildFlag(buildArg, flags)) {
     continue;
   }

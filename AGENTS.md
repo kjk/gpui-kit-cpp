@@ -126,8 +126,7 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    builds amalgamated `gpui.cpp`, and it refuses a `src/**/*.cpp` that still
    contains the switch. Headers may still `#if GPUI_OS_*` where a declaration
    or an SDK include differs (`windows.h` versus pthreads, `ToCWstrTemp`, the
-   Windows paint types). `WIN_BACKEND_*` stays inside `*_win.cpp`. **Never
-   call an OS API from a shared file.**
+   Windows paint types). **Never call an OS API from a shared file.**
 
    "Not supported here" is written once. Where several platforms (or a
    platform without a soft dependency) answer a module with the same stubs,
@@ -160,10 +159,10 @@ ported for a reason *other* than these belongs in `port-status.md`.
 - **Zed's scene graph as a whole.** Two halves are here. `src/gpui/scene.h` is
   the collection half and is on: a frame's drawing as a flat array of
   primitives, each with its content mask and layer, hashed against last frame.
-  `src/gpui/paintgpu.h` is the renderer half — one instance buffer a frame, SDF
-  rounded rects and borders, a glyph atlas, stencil-and-cover paths — compiled
-  only under `WIN_BACKEND_D3D11`/`_D3D12`/`_ALL`. What is missing is in
-  `port-status.md`; both headers say what they are worth.
+  The renderer half — one instance buffer a frame, SDF rounded rects and
+  borders, a glyph atlas, stencil-and-cover paths — was written as two
+  Windows backends and removed; `obsolete-windows-backends.md` records what
+  it measured and why. What is missing is in `port-status.md`.
 - **No refcounted entities and no `Task<T>` that cancels by being dropped.** We
   do have `App`/`Window`/`Entity`/`Ctx`, actions, a keymap, `EventEmitter`,
   window subscriptions and an executor.
@@ -255,46 +254,22 @@ An example never names an OS API. It implements `int GpuiMain(int argc, char**
 argv)`; the runtime provides `wWinMain`/`main`. Key codes are the `Key*`
 constants in `gpui.h` (Win32 `VK_*` values, which X11 maps keysyms onto).
 
-### Three Windows backends
+### The Windows backend
 
-Define exactly one of `WIN_BACKEND_DIRECT2D`, `WIN_BACKEND_D3D11`,
-`WIN_BACKEND_D3D12`; with none defined, Direct2D wins for its mature driver
-path, WARP fallback and ClearType. `WIN_BACKEND_ALL` compiles all three and
-keeps the process-start `__paint=d2d|d3d11|d3d12` selector; fixed builds ignore
-an unavailable choice. Build flag: `--win-backend=d2d|d3d11|d3d12|all`.
-
-`paint_win.cpp` is Direct2D on a D3D11 device over a flip-model swap chain —
-the default, and what screenshots use. `paintgpu_win.cpp` is GPUI's own shape:
-shape and content mask evaluated in the pixel shader, path fills through
-stencil-and-cover. CPU batching, shaders, atlas and path machinery are shared;
-only native resource and command submission differ. The D3D12 half owns its
-queue, triple-buffered allocators, persistent upload heaps and descriptor
-tables — no D3D11On12. `__msaa=1|2|4|8` sets the sample count.
-`WinPaintOptionsGet()` is the typed accessor for all of it; Windows fills it
-while stripping the reserved arguments before `GpuiMain`.
-
-All three share everything device-independent — the DirectWrite factory and
-formats, the `IDWriteTextLayout` behind `TextLayout*` (so shaping, measurement,
-hit-testing and range rects are one implementation), WIC decode — and Direct2D
-and the D3D11 half also share the device. Read `src/gpui/paintgpu.h` before
-touching either: it has the measured numbers, why it is not the default, and
-the remaining dash gap. `bun cmd/gpu-parity.ts` compares all three backends and
-stress-tests resize plus injected device recovery on both custom ones.
-
-The four SM5 entry points are `src/gpui/paintgpu_win.hlsl` and are **not**
-compiled at startup. `bun cmd/update-win-shaders.ts` runs FXC with `/O3 /WX`
-and rewrites the checked-in `paintgpu_shaders_win.cpp` (basE95 DXBC in raw
-strings, decoded once into BSS) only when the output changes. `cmd/build.ts`
-checks the recorded HLSL SHA-256 and rejects stale bytecode; ordinary builds
-need no FXC and never load D3DCompiler.
+`paint_win.cpp` is Direct2D on a D3D11 device over a flip-model swap chain,
+with WARP when there is no hardware device, DirectWrite's ClearType text, and
+WIC decode. It is the one Windows renderer. Two more — GPUI's own shape of
+renderer, one instance buffer a frame submitted through D3D11 or D3D12 — were
+written, measured against it and removed; `obsolete-windows-backends.md` has
+the numbers, the reasons and what it would take to bring one back.
 
 ### The scene
 
-`src/gpui/scene.h` sits between the element tree and `paint.h` on Windows: the
-tree's drawing is collected as a flat array and replayed through the same
-`paint.h` entry points, so all three backends draw it and none can tell. It is
-on at the `damage` level on Windows (`skip` elsewhere);
-`__scene=off|replay|cache|skip|damage` turns it down.
+`src/gpui/scene.h` sits between the element tree and `paint.h`: the tree's
+drawing is collected as a flat array and replayed through the same `paint.h`
+entry points, so a backend cannot tell. It is on; an unchanged frame is not
+drawn, and on Windows a frame that changed in part is drawn in part
+(`SceneDamageSupported`). `__scene=off` turns it off.
 **`__scene=off` is the first thing to try if a frame comes out stale** — it is
 the only thing here that can decide not to draw. Read the header before
 touching it.
@@ -590,7 +565,6 @@ bun cmd/mobile-build.ts -android -rel
 bun cmd/mobile-build.ts -ios -rel
 bun cmd/mac-build.ts -ios -rel          # run the iOS compile on the remote Mac
 bun cmd/build.ts -clang -rel showcase    # Windows: clang-cl, into out/rel_clang/
-bun cmd/build.ts -rel --win-backend=d3d12 story
 bun cmd/build-no-amalgam.ts -rel         # one object per source: header build check
 bun cmd/build-no-amalgam.ts -clang -rel
 bun cmd/clang-tidy.ts                    # over all src/**/*.cpp
@@ -599,7 +573,7 @@ bun cmd/bench.ts                         # release, 10 samples
 bun cmd/bench.ts -small -large -n=3 grid/deep
 bun cmd/run.ts -dbg hello_world
 bun cmd/run.ts -wasm story
-bun cmd/run.ts -rel --win-backend=all story -- __paint=d3d12 __msaa=4 __scene=damage
+bun cmd/run.ts -rel story -- __scene=off
 ```
 
 `cmd/build.ts` is the whole build for every platform: MSVC on Windows,
@@ -621,8 +595,7 @@ installed is an error carrying the install command, never a quiet fallback);
 `-no-build`; `-no-open` / `-port N` for wasm. It does not accept `-all`.
 
 Runtime flags every example understands, stripped from argv before the example
-parses it: `-gpui-window=X,Y,W,H`, `__layout_reuse`, and on Windows `__paint`,
-`__msaa`, `__scene`, plus the test-only `__gpu_reset_every=N` recovery seam.
+parses it: `-gpui-window=X,Y,W,H`, `__layout_reuse` and `__scene`.
 `GPUI_LAYOUT_DUMP=lay.txt` dumps every frame's laid-out tree;
 `GPUI_TODAY=YYYY-MM-DD` pins `DateToday()` so a calendar screenshot is
 reproducible.
@@ -641,7 +614,7 @@ tree without amalgamation on all three. The Windows lane installs the pinned
 NDK and cross-compiles Android arm64; the macOS lane cross-compiles iOS arm64.
 Separate Windows and Linux lanes use
 clang-cl/clang++, compile the mini markdown configuration, and run the full
-parser's tests; the Windows lane also compiles all paint backends. A wasm lane
+parser's tests. A wasm lane
 builds every supported example and runs the tests under node. CI sets
 `GPUI_NO_RUST_TREE=1`, so the Rust clone is skipped.
 
@@ -692,8 +665,8 @@ CRT/COM growth Task Manager shows while a window is open is often freed on
 `AppFree`, so `--export-xml-report-on-exit` is not the test for "grows while
 scrolling" — periodic snapshots are. DeleakerConsole is
 `C:\Program Files (x86)\Deleaker\DeleakerConsole.exe`, and **`--run` must be
-last**: everything after it belongs to the launched process, our `__paint` /
-`__layout_reuse` flags included.
+last**: everything after it belongs to the launched process, our
+`__layout_reuse` flag included.
 
 `bun cmd/deleaker-scroll.ts` does the whole thing for `editor.exe` and wheels
 the document down, up and down again (needs PDBs; `bun cmd/build.ts -rel
@@ -770,6 +743,8 @@ in either order. All of it is the same on every platform.
 ```
 AGENTS.md              this file
 port-status.md         known gaps and deliberate deviations
+obsolete-windows-backends.md  the removed D3D11/D3D12 renderers and scene levels:
+                       what they measured, why Direct2D stayed, how to revive them
 port-map.md            the Base/UI module ledger (cmd/audit-port.ts)
 readme-dist.md         the published snapshot's readme; edit here, never there
 .claude/skills/update-port/  /update-port: ingest upstream checkin by checkin,
@@ -785,7 +760,6 @@ cmd/clang-tidy.ts      clang-tidy over src/**/*.cpp
 cmd/audit-port.ts      the Base/UI declaration/export/test audit; CI runs it
 cmd/upstream-pending.ts  the upstream checkins after the pin, oldest first
 cmd/update-dist.ts     amalgamate src/** into gpui.h + gpui.cpp
-cmd/update-win-shaders.ts  FXC over paintgpu_win.hlsl -> checked-in DXBC
 cmd/update-quickjs.ts  regenerate src/quickjs/ from the pinned QuickJS-NG,
                        then git apply src/quickjs/js_make_error.patch
 cmd/update-shell-types.ts  regenerate the shell's TypeScript declarations

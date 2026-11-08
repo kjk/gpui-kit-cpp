@@ -1,20 +1,20 @@
-// Measure scene modes under actual window input and timer invalidations.
-// Windows only, because only paint_win.cpp currently records a scene and the
-// driver uses the same Win32 input seam as the screenshot tools.
+// Measure the scene under actual window input and timer invalidations, with
+// `__scene=off` (the tree draws straight to Direct2D) against the default.
+// Windows only: the driver uses the same Win32 input seam as the screenshot
+// tools, and damage redraw is on only there.
 //
 //   bun cmd/bench-scene.ts
 //   bun cmd/bench-scene.ts -n=20 -nobuild
 //   bun cmd/bench-scene.ts -only=introduction-scroll
-//   bun cmd/bench-scene.ts -only=icon-scroll -paint=d3d11
-//   bun cmd/bench-scene.ts -only=icon-scroll -absolute-paths
 //   bun cmd/bench-scene.ts -only=introduction-scroll -settle=2000
 //
 // -settle=ms waits that long after the interaction before the final
 // capture (150 by default), so a scrollbar fading out has finished and the
-// skip and damage captures can be compared pixel for pixel.
+// off and damage captures can be compared pixel for pixel.
 
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { comparePngFiles } from "./imgdiff.ts";
 import {
   captureWindowSurfaceToPng,
   clickClient,
@@ -39,15 +39,13 @@ const root = resolve(dirname(Bun.main), "..");
 process.chdir(root);
 
 if (process.platform !== "win32") {
-  console.error("cmd/bench-scene.ts currently requires Windows; only the Windows painter records a scene.");
+  console.error("cmd/bench-scene.ts requires Windows; it drives Win32 input and reads the surface back.");
   process.exit(1);
 }
 
 let cycles = 12;
 let build = true;
 let onlyName = "";
-let paintName = "";
-let absolutePaths = false;
 let settleMs = 150;
 for (const arg of Bun.argv.slice(2)) {
   if (arg === "-nobuild") {
@@ -56,20 +54,12 @@ for (const arg of Bun.argv.slice(2)) {
     cycles = Math.max(4, Number.parseInt(arg.slice(3), 10) || cycles);
   } else if (arg.startsWith("-only=")) {
     onlyName = arg.slice(6);
-  } else if (arg.startsWith("-paint=")) {
-    paintName = arg.slice(7);
   } else if (arg.startsWith("-settle=")) {
     settleMs = Math.max(0, Number.parseInt(arg.slice(8), 10) || 0);
-  } else if (arg === "-absolute-paths") {
-    absolutePaths = true;
   } else {
     console.error(`unknown argument: ${arg}`);
     process.exit(1);
   }
-}
-if (paintName && !["d2d", "d3d11", "d3d12"].includes(paintName)) {
-  console.error(`unknown paint backend: ${paintName}`);
-  process.exit(1);
 }
 
 type Scenario = {
@@ -202,7 +192,7 @@ const scenarios: Scenario[] = [
   },
 ];
 
-const modes = ["off", "skip", "damage"] as const;
+const modes = ["off", "damage"] as const;
 type Mode = (typeof modes)[number];
 type Frame = {
   draw: number;
@@ -228,12 +218,7 @@ type Result = {
 };
 
 function runBuild(target: string): void {
-  const args = ["bun", "cmd/build.ts", "-rel"];
-  if (paintName) {
-    args.push("--win-backend=all");
-  }
-  args.push(target);
-  const result = Bun.spawnSync(args, {
+  const result = Bun.spawnSync(["bun", "cmd/build.ts", "-rel", target], {
     cwd: root,
     stdout: "inherit",
     stderr: "inherit",
@@ -302,17 +287,12 @@ async function runOne(scenario: Scenario, mode: Mode): Promise<Result> {
     throw new Error(`missing ${exe}`);
   }
   rmSync(logPath, { force: true });
-  const args = [exe, ...scenario.args, `__scene=${mode}`];
-  if (paintName) {
-    args.push(`__paint=${paintName}`);
-  }
-  const proc = Bun.spawn(args, {
+  const proc = Bun.spawn([exe, ...scenario.args, `__scene=${mode}`], {
     cwd: root,
     env: {
       ...process.env,
       GPUI_HOVER_HOLD: "1",
       GPUI_INTERACTION_BENCH: "1",
-      ...(absolutePaths ? { GPUI_PATH_CACHE_TRANSLATION: "off" } : {}),
     },
     stdout: "ignore",
     stderr: "ignore",
@@ -386,7 +366,7 @@ try {
 const lines = [
   "# Scene interaction benchmark",
   "",
-  `Generated ${new Date().toISOString()} with \`bun cmd/bench-scene.ts -n=${cycles}${onlyName ? ` -only=${onlyName}` : ""}${paintName ? ` -paint=${paintName}` : ""}${absolutePaths ? " -absolute-paths" : ""}\`.`,
+  `Generated ${new Date().toISOString()} with \`bun cmd/bench-scene.ts -n=${cycles}${onlyName ? ` -only=${onlyName}` : ""}\`.`,
   "Times are milliseconds. Startup frames are excluded before each interaction begins.",
   "",
   "| scenario | scene | frames | draw median | draw p95 | paint median | paint p95 | build mean | layout mean | arena KiB | arena allocs | private MiB | mean damage | path hits | path misses | path build mean / p95 | presents |",
@@ -406,11 +386,19 @@ for (const result of results) {
   );
 }
 lines.push("");
+// A damage redraw must leave the surface the full redraw would have. The
+// scene's cached paths are filled from geometry realizations, which are
+// tessellated once, so a few pixels on icon curve edges legitimately differ
+// from an uncached fill (0.01% of the story's pixels); a stale damage
+// rectangle differs by thousands. The budget sits between the two.
+const kStalePixelFraction = 0.0005;
 for (const scenario of selectedScenarios.filter((item) => item.deterministic)) {
-  const skip = results.find((result) => result.scenario === scenario.name && result.mode === "skip")!;
+  const off = results.find((result) => result.scenario === scenario.name && result.mode === "off")!;
   const damage = results.find((result) => result.scenario === scenario.name && result.mode === "damage")!;
+  const diff = comparePngFiles(off.image, damage.image, 0, 90);
+  const stale = diff.big > diff.total * kStalePixelFraction;
   lines.push(
-    `- ${scenario.name}: ${skip.imageHash === damage.imageHash ? "identical" : "DIFFERENT"} skip/damage captures (${skip.imageHash.slice(0, 12)} / ${damage.imageHash.slice(0, 12)}).`,
+    `- ${scenario.name}: off/damage captures ${stale ? "DIFFERENT" : diff.any === 0 ? "identical" : "match"} (${diff.big} of ${diff.total} pixels over tolerance, ${diff.any} differ at all).`,
   );
 }
 lines.push("");

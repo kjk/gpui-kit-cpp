@@ -4,24 +4,18 @@
    stacking context; sibling contexts are sorted by z-index, then flattened
    into a frame's primitives. Every primitive carries its content mask.
 
-   It is on, at the `damage` level on Windows and `skip` elsewhere, and
-   __scene is how to turn it down or off. It earns that on the scenes this tree
-   draws — see the note at the end of this header for the numbers, and for the
-   one scene it costs rather than pays on.
+   It is on, and `__scene=off` is how to turn it off. It earns that on the
+   scenes this tree draws — see the note at the end of this header for what
+   was learned measuring it, and for the one kind of scene it costs rather
+   than pays on.
 
-   GPUI_PATH_CACHE_TRANSLATION=off restores absolute-coordinate path keys for
-   profiling the translated cache against its predecessor. It is otherwise
-   inert and is not a supported rendering mode.
+   What a scene is for: a tree walk draws *while* it paints, so nothing can
+   be known about the frame as a whole. Collect first and three things become
+   possible, and all three are the reason this exists:
 
-   What a scene is for, given that `paintgpu_win.cpp` already puts a frame in
-   one instance buffer: the instance buffer is built *while* the tree paints,
-   so nothing can be known about the frame as a whole. Collect first and three
-   things become possible, and all three are the reason this exists:
-
-   - **Either backend can consume it.** The primitives name no GPU type. The
+   - **Any backend can consume it.** The primitives name no GPU type. The
      replay walks them and calls the same Paint.h entry points the tree would
-     have called, so Direct2D draws a scene as readily as the GPU backend
-     does. That was the open question this answers.
+     have called, so every backend draws a scene as readily as a tree.
    - **A frame can be compared with the last one.** Every primitive hashes to
      64 bits and a frame hashes to the same; two frames that hash alike differ
      nowhere, and a frame that differs in ten primitives out of six thousand
@@ -31,20 +25,17 @@
      verbs and points, not as a backend object. Small solid paths can reuse an
      offscreen coverage bitmap; the rest reuse backend geometry by hash.
 
-   The levels, from __scene, each one including the ones before it:
+   On, the scene does all of it: collect and replay, keep path geometry and
+   small offscreen masks across frames, skip a frame identical to the last
+   one, and — where `SceneDamageSupported` says the back buffer holds the
+   last frame's pixels, which is Windows — draw a frame that differs in part
+   in part. The intermediate levels this once had, and what each was worth,
+   are recorded in obsolete-windows-backends.md.
 
-     off      the element tree draws straight to the backend, as it used to
-     replay   collect and replay; measures what the scene itself costs
-     cache    + path geometry and small offscreen masks kept across frames
-     skip     + a frame identical to the last one is not drawn at all
-     damage   + a frame that differs in part is drawn in part  (Windows default)
-
-   An absent `__scene=` argument means `damage` on Windows and `skip` on
-   every other target, whose back buffers have not been checked to hold the
-   last frame's pixels; an invalid value is consumed
-   and leaves the current/default selection unchanged. `off` is what a bisect
-   wants, and what to reach for if a frame ever comes out stale: this is the
-   only thing in the tree that can decide not to draw.
+   `__scene=off` draws the element tree straight to the backend, as it used
+   to; an invalid value is consumed and leaves the selection unchanged. It is
+   what a bisect wants, and what to reach for if a frame ever comes out
+   stale: this is the only thing in the tree that can decide not to draw.
 
    Each paint backend dispatches into the recorder with the same Rec* hook
    at the top of each Paint.h entry point. Nothing here names an OS. */
@@ -53,29 +44,16 @@
 
 namespace gpui {
 
-// The levels above, in order, so a comparison against one of them reads as
-// "at least this much".
-enum SceneLevel : uint8_t {
-    kSceneOff = 0,
-    kSceneReplay = 1,
-    kSceneCache = 2,
-    kSceneSkip = 3,
-    kSceneDamage = 4
-};
-
-// Read from the process-start options, which cannot change while a frame is
-// open.
-int SceneLevelOn();
-inline bool SceneOn() {
-    return SceneLevelOn() > kSceneOff;
-}
-// Consumes `__scene=off|replay|cache|skip|damage`. Invalid values are still
-// consumed and leave the current/default selection unchanged.
+// Set at process start, before any frame is open.
+bool SceneOn();
+// Consumes `__scene=off|on` (also 0|1). Invalid values are still consumed
+// and leave the selection unchanged.
 bool SceneTakeArg(Str arg);
-// Consumes `__scroll_layers=on|off`. Absent means on. `GPUI_SCROLL_LAYERS=0`
-// turns the same path off. A pure scroll then blits the previous pixels and
-// redraws the strip that entered, instead of redrawing every primitive.
-bool ScrollLayersTakeArg(Str arg);
+// Whether a frame that differs in part may be drawn in part, which needs the
+// back buffer to hold the last frame's pixels. True on Windows (scene_win.cpp,
+// checked on screen by cmd/bench-scene.ts), false elsewhere (scene_posix.cpp)
+// until those targets are checked the same way.
+bool SceneDamageSupported();
 
 namespace scene {
 
@@ -239,28 +217,12 @@ const SceneStats& Stats(PaintCtx* ctx);
 
 } // namespace scene
 
-// ─── original geometry-only baseline ─────────────────────────────────────
+// ─── what measuring it taught ────────────────────────────────────────────
 //
-// These numbers predate stacking contexts and the offscreen mask cache.
-// GPUI_FRAME_BENCH, release, 600 frames after 30 warm-up, one machine. The
-// paint phase only — build and layout are the same code at every level. Each
-// number is the median of three runs; the D2D ones repeat to within 3%, the
-// GPU ones to within a factor of three on the lightest scene, because the
-// present dominates there and the clock does what it likes.
-//
-//   story, 1071 primitives, 19 paths          off   replay  cache   skip
-//     Direct2D                               1.46    0.86   0.76    0.25
-//     the GPU backend                        0.59    0.44   0.41    0.16
-//
-//   showcase, 121 primitives, no paths
-//     Direct2D                               0.21    0.21   0.21    0.02
-//
-//   fps_monitor, 2443 primitives, all of      off   replay  cache  damage
-//   them different every frame
-//     Direct2D                               0.82    0.91   0.91    1.00
-//     the GPU backend                        0.37    0.25   0.25    0.33
-//
-// Four things those say, in the order they matter:
+// The scene once had five levels (off, replay, cache, skip, damage) and was
+// measured against two more Windows renderers; the numbers and the decision
+// to keep only on/off and Direct2D are in obsolete-windows-backends.md. Four
+// things those measurements say, in the order they matter:
 //
 // 1. **Collecting is not what pays; culling is.** `replay` alone takes 41% off
 //    the D2D paint of the story gallery, and it is not the ordering and not
@@ -305,12 +267,12 @@ const SceneStats& Stats(PaintCtx* ctx);
 //
 // - **Damage is checked on screen, on Windows only.** cmd/bench-scene.ts
 //   drives scrolls, hovers, a popup, a caret and a chart tick through real
-//   input and timers, reads the visible surface back and finds skip and
-//   damage identical on Direct2D, D3D11 and D3D12 (-settle=2500, the window
-//   topmost). Two things it caught: a damage clip on a fractional DIP left a
-//   blended seam (the rectangle is now snapped out to device pixels), and a
-//   text run's ink overhangs its layout box (its bbox is padded). The other
-//   platforms stay at skip until their back buffers are checked the same way.
+//   input and timers, reads the visible surface back and finds a full redraw
+//   and a damage redraw pixel-identical (-settle=2500, the window topmost). Two
+//   things it caught: a damage clip on a fractional DIP left a blended seam
+//   (the rectangle is now snapped out to device pixels), and a text run's ink
+//   overhangs its layout box (its bbox is padded). The other platforms redraw a
+//   changed frame whole until their back buffers are checked the same way.
 // - **Mask cache coverage is bounded.** A small solid fill or round-cap
 //   stroke is rasterized once into a colourized coverage image. Large paths,
 //   gradients and other strokes retain the geometry path; see port-status.md.

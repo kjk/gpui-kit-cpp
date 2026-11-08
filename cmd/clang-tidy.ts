@@ -180,7 +180,7 @@ function main(): void {
     "gpui/accessibility_win.h",
     "-include",
     "sys/executor.h",
-    ...(plat === "win" ? ["-DWIN_BACKEND_ALL=1", "-DUNICODE", "-D_UNICODE"] : []),
+    ...(plat === "win" ? ["-DUNICODE", "-D_UNICODE"] : []),
     ...extraArgs,
   ];
   const cCompileArgs = ["-std=c11", ...extraArgs];

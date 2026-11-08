@@ -79,20 +79,6 @@ visual budget, for deliberately investigating a known difference.
 `-nobuild` assumes both existing executables were built from the current pin;
 run the default command after moving an upstream pin.
 
-The Windows GPU suite compares the same showcase pages under Direct2D, D3D11
-and D3D12, requires the two custom backends to be pixel-identical, then repeats
-their captures after resize churn and deterministic device resets:
-
-```powershell
-bun cmd/gpu-parity.ts
-bun cmd/gpu-parity.ts -nobuild introduction text-view
-bun cmd/gpu-parity.ts -list
-```
-
-It builds `showcase` with `--win-backend=all` and writes PNGs plus JSON and
-Markdown results under `out/gpu-parity/`. The recovery run uses the reserved
-`__gpu_reset_every=N` diagnostic seam; zero, the default, is inert.
-
 To lint every source translation unit under `src/` with LLVM's clang-tidy (using
 the repository's `.clang-tidy` configuration):
 
@@ -102,34 +88,14 @@ bun cmd/clang-tidy.ts -checks=bugprone-*,performance-*
 bun cmd/clang-tidy.ts --host       # only this platform's source files
 ```
 
-On Windows, the renderer is selected at compile time. With no definition the
-build contains only Direct2D, the compatibility default. The repository build
-script accepts the same choice through `--win-backend`:
-
-```powershell
-bun cmd/build.ts -rel --win-backend=d3d11 story
-bun cmd/build.ts -rel --win-backend=d3d12 story
-bun cmd/run.ts -rel --win-backend=all story -- __paint=d3d12 __msaa=4 __scene=damage
-```
-
-Library users can instead define exactly one of `WIN_BACKEND_DIRECT2D`,
-`WIN_BACKEND_D3D11` or `WIN_BACKEND_D3D12`. Defining `WIN_BACKEND_ALL`
-compiles all three and retains the process-start
-`__paint=d2d|d3d11|d3d12` selector. A fixed build ignores unavailable backend
-choices. `__msaa=1|2|4|8` controls the custom renderers' sample count (4 by
-default). `__scene=off|replay|cache|skip|damage` selects how much scene work is
-enabled, with `skip` as the default. `__gpu_reset_every=N` is the custom-GPU
-recovery test seam used by `cmd/gpu-parity.ts`; normal runs leave it at zero.
-`__layout_reuse=off|on` rebuilds the taffy tree every frame when off (default
+On Windows the renderer is Direct2D on a D3D11 device; two more renderers
+were measured against it and removed, see `obsolete-windows-backends.md`.
+`__scene=off` makes the element tree draw straight to the backend instead of
+through the scene (the default, which skips unchanged frames and redraws only
+what changed). `__layout_reuse=off|on` rebuilds the taffy tree every frame when off (default
 on); `GPUI_LAYOUT_REUSE` is the same switch if argv did not set it. The runtime
 consumes those reserved arguments before calling `GpuiMain`, so application
-argument parsing never sees them. See `src/gpui/paint.h` for the quality, cost
-and caching tradeoffs.
-
-The custom renderers use checked-in FXC bytecode rather than compiling HLSL at
-application startup. After editing `src/gpui/paintgpu_win.hlsl`, regenerate it
-with `bun cmd/update-win-shaders.ts`; ordinary builds verify the source hash and
-otherwise need neither `fxc.exe` nor `D3DCompiler_47.dll`.
+argument parsing never sees them.
 
 Markdown defaults to the complete CommonMark + GFM parser. Applications that
 prefer a smaller executable can select the basic parser at build time:
@@ -226,8 +192,7 @@ bun cmd/mac-build.ts -rel -all
 CI compiles every example and runs the tests on all three desktop platforms
 and wasm on each push, and cross-compiles the library with the Android NDK and
 iPhoneOS SDK. It also checks separate translation units on every
-desktop, clang-cl/clang++ on Windows and Linux, the mini markdown parser, and
-all Windows paint backends
+desktop, clang-cl/clang++ on Windows and Linux, and the mini markdown parser
 ([`.github/workflows/build.yml`](.github/workflows/build.yml)).
 
 # Why port to C++?

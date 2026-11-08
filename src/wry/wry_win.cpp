@@ -48,8 +48,7 @@
 // in the amalgam: cmd/update-dist.ts lifts each chunk's top-level includes to
 // the top of gpui.cpp, which puts <shlwapi.h> above every Windows source
 // while the #undef stays down here with wry, so the renaming reached all of
-// them. src/gpui/paintgpu_win.cpp's backend selector is where the compiler
-// noticed.
+// them.
 //
 // This file already transcribes the whole WebView2 ABI on the principle that
 // one declaration beats a header; the same answer serves here, and

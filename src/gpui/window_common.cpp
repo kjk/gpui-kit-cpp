@@ -24,11 +24,6 @@
 
 namespace gpui {
 
-// window_win.cpp logs the GPU counters; every other target has nothing to say.
-void FrameBenchLogGpu();
-// window_win.cpp consumes __paint / __msaa / __scene / __gpu_reset_every.
-bool WindowTakePaintArg(Str arg);
-
 void OngoingScroll::Filter(Point* delta, TouchPhase phase) {
     if (!delta) {
         return;
@@ -211,7 +206,6 @@ static void FrameBenchTick(Window* win, float secs) {
         ls.nodes, LayoutCacheNodeCount(win->layout),
         LayoutCacheSlotCount(win->layout), ls.made, ls.dropped, ls.restyled,
         ls.remeasured, ls.remeasureHeld, ls.allocs);
-    FrameBenchLogGpu();
     if (SceneOn()) {
         const scene::SceneStats& sc = scene::Stats(&win->paint);
         logf(
@@ -4734,13 +4728,7 @@ int GpuiTakeRuntimeArgs(int argc, char** argv) {
     int keep = 0;
     for (int i = 0; i < argc; i++) {
         Str argument = Str(argv[i]);
-        if (i > 0 && argument && WindowTakePaintArg(argument)) {
-            continue;
-        }
         if (i > 0 && argument && SceneTakeArg(argument)) {
-            continue;
-        }
-        if (i > 0 && argument && ScrollLayersTakeArg(argument)) {
             continue;
         }
         if (i > 0 && argument && LayoutReuseTakeArg(argument)) {

@@ -54,28 +54,6 @@ export const isDist = existsSync(join(scriptDir, "gpui.h"));
 export const root = isDist ? scriptDir : resolve(scriptDir, "..");
 process.chdir(root);
 
-// Shader bytecode is checked in so an ordinary build needs neither fxc nor
-// D3DCompiler_47.dll. Refuse to silently amalgamate stale bytecode after the
-// HLSL changes; the explicit generator is the only writer.
-function ensureWinShadersCurrent(fail: (msg: string) => never): void {
-  if (isDist) {
-    return;
-  }
-  const sourcePath = join(root, "src/gpui/paintgpu_win.hlsl");
-  const generatedPath = join(root, "src/gpui/paintgpu_shaders_win.cpp");
-  if (!existsSync(sourcePath) || !existsSync(generatedPath)) {
-    fail("missing Windows shader source or bytecode; run bun cmd/update-win-shaders.ts");
-  }
-  const hash = new Bun.CryptoHasher("sha256").update(readFileSync(sourcePath)).digest("hex");
-  const generated = readFileSync(generatedPath, "utf8");
-  // Allow whitespace between the marker and the hash so a comment wrap does
-  // not look like a stale compile; the 64-hex digest is the actual check.
-  const recorded = generated.match(/source-sha256:\s*([0-9a-f]{64})/);
-  if (!recorded || recorded[1] !== hash) {
-    fail("Windows shader bytecode is stale; run bun cmd/update-win-shaders.ts");
-  }
-}
-
 /**
  * Repo-relative directory holding the gpui.h + gpui.cpp a build compiles:
  * the top level in gpui-kit-cpp-dist, gitignored .work/ here. GPUI_AMALGAM_DIR
@@ -261,12 +239,8 @@ export type BuildFlags = {
   markdown: ParserVariant;
   /** HTML parser implementation compiled into the library. */
   html: ParserVariant;
-  /** Windows renderer implementations compiled into the executable. */
-  winBackend: WindowsBackend;
-  sawWinBackend: boolean;
 };
 
-export type WindowsBackend = "d2d" | "d3d11" | "d3d12" | "all";
 export type ParserVariant = "full" | "mini";
 
 export function defaultBuildFlags(): BuildFlags {
@@ -281,8 +255,6 @@ export function defaultBuildFlags(): BuildFlags {
     nonAmalgam: false,
     markdown: "full",
     html: "full",
-    winBackend: "d2d",
-    sawWinBackend: false,
   };
 }
 
@@ -299,12 +271,6 @@ export function takeBuildFlag(arg: string, f: BuildFlags): boolean {
   const html = arg.match(/^-html=(mini|full)$/i);
   if (html) {
     f.html = html[1]!.toLowerCase() as ParserVariant;
-    return true;
-  }
-  const winBackend = arg.match(/^--win-backend=(d2d|d3d11|d3d12|all)$/i);
-  if (winBackend) {
-    f.winBackend = winBackend[1]!.toLowerCase() as WindowsBackend;
-    f.sawWinBackend = true;
     return true;
   }
   switch (arg) {
@@ -355,9 +321,6 @@ export function checkBuildFlags(f: BuildFlags, plat: Platform, fail: (msg: strin
   }
   if (f.clang && plat === "wasm") {
     fail("-clang means nothing with -wasm: emscripten is clang.");
-  }
-  if (f.sawWinBackend && plat !== "win") {
-    fail("--win-backend is only available for native Windows builds.");
   }
 }
 
@@ -1007,17 +970,10 @@ const winCommonLibs = [
   "pdh.lib",
 ];
 
-function winLibs(f: BuildFlags): string[] {
-  const backend = f.winBackend;
-  const renderer =
-    backend === "d2d"
-      ? ["d2d1.lib", "d3d11.lib", "dxgi.lib", "dcomp.lib"]
-      : backend === "d3d11"
-        ? ["d3d11.lib", "dxgi.lib"]
-        : backend === "d3d12"
-          ? ["d3d12.lib", "dxgi.lib"]
-          : ["d2d1.lib", "d3d11.lib", "d3d12.lib", "dxgi.lib", "dcomp.lib"];
-  return [...renderer, ...winCommonLibs];
+function winLibs(): string[] {
+  // gpui/paint_win.cpp: Direct2D on a D3D11 device, presented through DXGI,
+  // with DirectComposition for a transparent window.
+  return ["d2d1.lib", "d3d11.lib", "dxgi.lib", "dcomp.lib", ...winCommonLibs];
 }
 
 // Cocoa pulls in AppKit, Foundation and CoreGraphics; CoreText shapes the
@@ -1110,15 +1066,6 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
 
 function cflagsFor(tc: Toolchain, f: BuildFlags, fail: (msg: string) => never): string[] {
   if (tc.plat === "win") {
-    const backend = f.winBackend;
-    const backendDefine =
-      backend === "all"
-        ? "/DWIN_BACKEND_ALL=1"
-        : backend === "d3d11"
-          ? "/DWIN_BACKEND_D3D11=1"
-          : backend === "d3d12"
-            ? "/DWIN_BACKEND_D3D12=1"
-            : "/DWIN_BACKEND_DIRECT2D=1";
     const flags = [
       "/nologo",
       "/std:c++20",
@@ -1158,7 +1105,6 @@ function cflagsFor(tc: Toolchain, f: BuildFlags, fail: (msg: string) => never): 
           // `#include "autocorrect/autocorrect.h"` spells the same in the
           // amalgam and non-amalgam (-I src) builds.
           ["/I", amalgamDir(), "/I", amalgamPath("extras")]),
-      backendDefine,
       "/DUNICODE",
       "/D_UNICODE",
       "/W4",
@@ -1653,7 +1599,7 @@ function link(
       "/NODEFAULTLIB:ucrtd.lib",
       "/NODEFAULTLIB:vcruntime.lib",
       "/NODEFAULTLIB:vcruntimed.lib",
-      ...winLibs(f),
+      ...winLibs(),
     ];
     if (!f.debug) {
       // /DEBUG implies /OPT:NOREF unless we opt back in.
@@ -1732,7 +1678,6 @@ export type BuildRequest = {
  */
 export async function build(req: BuildRequest): Promise<void> {
   const { names, plat, flags, fail } = req;
-  ensureWinShadersCurrent(fail);
   const tc = findToolchain(plat, flags, fail);
   // Every compile and link below is echoed with a `> `, and what those lines
   // leave out is said once here rather than on every one of them: where they
@@ -1797,8 +1742,7 @@ const amalgamLine = isDist
 against that source set.`;
 
 const usage = `Usage: bun ${scriptPath("build.ts")} [-rel|-dbg] [-asan] [-clang] [-wasm] [-clean] [-all]
-                     [-markdown=mini|full] [-html=mini|full]
-                     [--win-backend=d2d|d3d11|d3d12|all] [<example>]
+                     [-markdown=mini|full] [-html=mini|full] [<example>]
 
   -rel    release (default)
   -dbg    debug
@@ -1810,10 +1754,6 @@ const usage = `Usage: bun ${scriptPath("build.ts")} [-rel|-dbg] [-asan] [-clang]
   -all    build every example (amalgamation + compile); print total elapsed
   -markdown=mini|full  Markdown parser implementation (default full)
   -html=mini|full      HTML parser implementation (default full)
-
-Windows renderer (compile-time, default d2d):
-  --win-backend=d2d|d3d11|d3d12|all
-  "all" retains the __paint process-start selector; fixed builds ignore it.
 
 ${amalgamLine}
 

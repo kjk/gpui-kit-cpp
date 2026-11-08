@@ -33,9 +33,7 @@ int GpuiMain(int argc, char** argv) {
     utassert(argc >= 1 && argv && argv[argc] == nullptr);
     for (int i = 0; i < argc; i++) {
         Str arg(argv[i]);
-        utassert(!base::StrStartsWith(arg, "__paint=") &&
-                 !base::StrStartsWith(arg, "__msaa=") &&
-                 !base::StrStartsWith(arg, "__scene=") &&
+        utassert(!base::StrStartsWith(arg, "__scene=") &&
                  !base::StrStartsWith(arg, "__layout_reuse="));
     }
 

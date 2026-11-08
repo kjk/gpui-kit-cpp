@@ -10,122 +10,12 @@
 
 #include <math.h>
 
-// Windows renderer selection is a compile-time choice. Defining
-// WIN_BACKEND_ALL preserves the runtime __paint=d2d|d3d11|d3d12 selector;
-// otherwise exactly one backend is compiled and __paint is ignored. With
-// no definition, Direct2D is the compatibility default: it is available back
-// to Windows 7 with the platform update, falls back through WARP, and keeps
-// DirectWrite's ClearType text and mature driver path.
-#if GPUI_OS_WINDOWS
-#ifndef WIN_BACKEND_ALL
-#define WIN_BACKEND_ALL 0
-#endif
-#if WIN_BACKEND_ALL
-#undef WIN_BACKEND_DIRECT2D
-#undef WIN_BACKEND_D3D11
-#undef WIN_BACKEND_D3D12
-#define WIN_BACKEND_DIRECT2D 1
-#define WIN_BACKEND_D3D11 1
-#define WIN_BACKEND_D3D12 1
-#else
-#if !defined(WIN_BACKEND_DIRECT2D) && !defined(WIN_BACKEND_D3D11) && \
-    !defined(WIN_BACKEND_D3D12)
-#define WIN_BACKEND_DIRECT2D 1
-#endif
-#ifndef WIN_BACKEND_DIRECT2D
-#define WIN_BACKEND_DIRECT2D 0
-#endif
-#ifndef WIN_BACKEND_D3D11
-#define WIN_BACKEND_D3D11 0
-#endif
-#ifndef WIN_BACKEND_D3D12
-#define WIN_BACKEND_D3D12 0
-#endif
-#if WIN_BACKEND_DIRECT2D + WIN_BACKEND_D3D11 + WIN_BACKEND_D3D12 != 1
-#error Define exactly one WIN_BACKEND_DIRECT2D, WIN_BACKEND_D3D11 or WIN_BACKEND_D3D12, or define WIN_BACKEND_ALL
-#endif
-#endif
-#else
-#undef WIN_BACKEND_ALL
-#undef WIN_BACKEND_DIRECT2D
-#undef WIN_BACKEND_D3D11
-#undef WIN_BACKEND_D3D12
-#define WIN_BACKEND_ALL 0
-#define WIN_BACKEND_DIRECT2D 0
-#define WIN_BACKEND_D3D11 0
-#define WIN_BACKEND_D3D12 0
-#endif
-
-#define WIN_BACKEND_GPU (WIN_BACKEND_D3D11 || WIN_BACKEND_D3D12)
-
 namespace gpui {
 
 #if GPUI_OS_WINDOWS
 // A top-down 32-bit BGRA DIB section, w x h, with its pixels in `bits`; null,
 // with nothing to free, when it could not be made. Defined in window_win.cpp.
 HBITMAP WinDib32New(int w, int h, void** bits);
-
-enum class WinPaintBackend : uint8_t {
-    Direct2D,
-    D3D11,
-    D3D12,
-};
-
-// __msaa=1|2|4|8 controls only the custom D3D11/D3D12 renderer; Direct2D
-// uses its own antialiasing and ignores it. Quads, rounded rectangles and
-// glyphs have analytic shader coverage, so changing this mostly affects
-// tessellated paths and expanded strokes. X1 is cheapest but leaves those
-// edges jagged. Each higher value smooths them with proportionally more
-// multisample storage, raster work and resolve bandwidth; X4 is the quality /
-// cost default, while X8 is primarily useful for comparison or path-heavy UI.
-enum class WinPaintMsaa : uint8_t {
-    X1 = 1,
-    X2 = 2,
-    X4 = 4,
-    X8 = 8,
-};
-
-// __scene=off|replay|cache|skip|damage controls the scene collected in front
-// of either Windows renderer. Levels are cumulative:
-//
-//   Off      draws immediately. It uses no scene recording and is the best
-//            diagnostic when scene replay might be producing a stale frame.
-//   Replay   records, sorts and replays every primitive, paying that overhead
-//            without caching or suppressing any drawing.
-//   Cache    also retains realized path geometry by hash, trading cache memory
-//            for avoiding repeated path construction/tessellation.
-//   Skip     also hashes whole frames and omits drawing and presenting an
-//            unchanged frame.
-//   Damage   also redraws only the union of changed primitive bounds, snapped
-//            out to device pixels, carrying prior damage across the
-//            triple-buffered chain. The default: on gpui_perf it halves the
-//            paint of a spinner or a refreshed table, and cmd/bench-scene.ts
-//            finds its captures identical to Skip's on all three backends.
-enum class WinSceneMode : uint8_t {
-    Off,
-    Replay,
-    Cache,
-    Skip,
-    Damage,
-};
-
-struct WinPaintOptions {
-    WinPaintBackend backend = WinPaintBackend::Direct2D;
-    WinPaintMsaa msaa = WinPaintMsaa::X4;
-    WinSceneMode scene = WinSceneMode::Damage;
-    // Test seam: after this many presented custom-GPU frames, tear down the
-    // same device-local state a DXGI device-removal result invalidates. Zero
-    // is inert. Kept in the typed options so the stress runner reaches the
-    // production recovery path without a second renderer control channel.
-    int gpuResetEvery = 0;
-};
-
-// Process-start renderer options. WinPaintOptionsTakeArg consumes the
-// reserved __paint=, __msaa=, __scene= and __gpu_reset_every= arguments
-// before GpuiMain sees argv; invalid values are still consumed and leave the
-// current/default choice unchanged.
-const WinPaintOptions& WinPaintOptionsGet();
-bool WinPaintOptionsTakeArg(Str arg);
 #endif
 
 // Text weight word: the weight in the low bits plus family / decoration

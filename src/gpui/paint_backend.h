@@ -143,9 +143,8 @@ struct RenderImage {
 };
 
 // What goes with an image besides its frames when the last reference does:
-// the GPU renderer's textures keyed by its generation on Windows, the
-// browser's picture on wasm.
-#if GPUI_OS_WINDOWS || GPUI_OS_WASM
+// the browser's picture on wasm.
+#if GPUI_OS_WASM
 void RenderImageDropNative(RenderImage* img);
 #else
 inline void RenderImageDropNative(RenderImage*) {}

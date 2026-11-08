@@ -61,7 +61,6 @@ const self = scriptPath("run.ts");
 
 const usage = `Usage: bun ${self} [-rel|-dbg] [-asan] [-clang] [-wasm] [-clean]
                      [-markdown=mini|full] [-html=mini|full]
-                     [--win-backend=d2d|d3d11|d3d12|all]
                      [-debugger|-windbg|-cdb|-gdb|-lldb] [-compare]
                      [-no-build] [-no-open] [-port N] <example> [-- <args...>]
        bun ${self} -versions
@@ -74,9 +73,6 @@ const usage = `Usage: bun ${self} [-rel|-dbg] [-asan] [-clang] [-wasm] [-clean]
   -markdown=mini|full  Markdown parser implementation (default full)
   -html=mini|full      HTML parser implementation (default full)
   -no-build   launch what is already in out/, without compiling
-  --win-backend=d2d|d3d11|d3d12|all
-              Windows renderer implementations compiled into the executable;
-              d2d is the default
 
   -debugger   run under whichever debugger this machine has
               Windows: windbg, then cdb.  Linux: gdb, then lldb.  macOS: lldb.
@@ -96,10 +92,8 @@ const usage = `Usage: bun ${self} [-rel|-dbg] [-asan] [-clang] [-wasm] [-clean]
   -no-open    -wasm: do not launch a browser
   -port N     -wasm: listen on N (default 8000; the next free port if taken)
   --          pass every remaining argument unchanged to the selected binary;
-              the runtime consumes __layout_reuse=off|on before GpuiMain;
-              Windows also consumes __paint=d2d|d3d11|d3d12, __msaa=1|2|4|8,
-              __scene=off|replay|cache|skip|damage and the test-only
-              __gpu_reset_every=N
+              the runtime consumes __layout_reuse=off|on and __scene=off|on
+              before GpuiMain
 
 The target name is the last argument before --. -all is not accepted — pick one binary.`;
 
