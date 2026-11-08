@@ -361,6 +361,7 @@ struct ShellRuntimeImpl;
 static void RetireComponentAppEffects(ShellRuntimeImpl* impl,
                                       void* application);
 static void ClearComponentAppEffects(ShellRuntimeImpl* impl);
+static void DiscardApplication(ShellRuntimeImpl* impl, AppModule* application);
 
 struct ShellRuntimeImpl {
     ShellRuntime* owner = nullptr;
@@ -13038,11 +13039,15 @@ ViewType* ShellRuntime::ReloadApp(Str directory, Str entry, Policy* policy,
     VecAppend(impl->modules, application);
 
     TempStr source = ReadModuleFileTemp(canonical, error);
-    if (!source.s) return nullptr;
+    if (!source.s) {
+        DiscardApplication(impl, application);
+        return nullptr;
+    }
     Str tagged = StrDup(fmt("%s?v=%u", canonical, application->generation));
     ViewType* result =
         LoadModule(this, tagged, source, application, policy, error);
     StrFree(tagged);
+    if (!result) DiscardApplication(impl, application);
     return result;
 }
 
@@ -13365,12 +13370,11 @@ void ShellRuntime::ReleaseOwnedEntities(EntityId view) {
     VecReset(callbacks);
 }
 
-void ShellRuntime::ReleaseApplicationState(ViewObject* object) {
-    if (!object || object->runtime != this) return;
-    RetireComponentAppEffects(
-        impl, object->application ? (void*)object->application : (void*)object);
-    if (!object->application) return;
-    AppModule* application = object->application;
+// Everything the runtime holds on behalf of `application` other than its
+// AppModule record: nested views, tasks, retained and arena callbacks,
+// component states and templates.
+static void RetireApplicationState(ShellRuntimeImpl* impl,
+                                   AppModule* application) {
     for (;;) {
         int nested = -1;
         for (int i = impl->nestedViews.len - 1; i >= 0; i--) {
@@ -13407,6 +13411,33 @@ void ShellRuntime::ReleaseApplicationState(ViewObject* object) {
             impl->templates[i] = nullptr;
         }
     }
+}
+
+void ShellRuntime::ReleaseApplicationState(ViewObject* object) {
+    if (!object || object->runtime != this) return;
+    RetireComponentAppEffects(
+        impl, object->application ? (void*)object->application : (void*)object);
+    if (!object->application) return;
+    RetireApplicationState(impl, object->application);
+}
+
+// An application whose entry module never loaded. Whatever its top-level
+// code registered before it failed is retired, and the record leaves
+// `modules`, so `?v=N` imports of that generation are refused rather than
+// resolved against a module that is not there, and a reload loop does not
+// grow the list by one dead record a time.
+static void DiscardApplication(ShellRuntimeImpl* impl, AppModule* application) {
+    if (!impl || !application) return;
+    RetireComponentAppEffects(impl, application);
+    RetireApplicationState(impl, application);
+    for (int i = 0; i < impl->modules.len; i++) {
+        if (impl->modules[i] != application) continue;
+        VecRemoveAt(impl->modules, i);
+        break;
+    }
+    StrFree(application->root);
+    application->dependencies.Free();
+    delete application;
 }
 
 static void DriveProcessStream(ShellRuntime* runtime, ShellRuntimeImpl* impl,
