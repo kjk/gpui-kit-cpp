@@ -24,11 +24,19 @@ struct CarouselStory {
 
 static El* Slide(Ctx* cx, int index, float height, int font) {
     const Theme& th = ThemeNow(cx->app);
-    return Div(cx->a)->W(kFill)->H(height)->FlexRow()->ItemsCenter()
-        ->JustifyCenter()->Pad(24)->Radius(th.radiusLg)
-        ->Border(1, th.border)->Bg(th.background)
+    return Div(cx->a)
+        ->W(kFill)
+        ->H(height)
+        ->FlexRow()
+        ->ItemsCenter()
+        ->JustifyCenter()
+        ->Pad(24)
+        ->Radius(th.radiusLg)
+        ->Border(1, th.border)
+        ->Bg(th.background)
         ->Child(TextEl(cx->a, StoryFmt(cx, "%d", index + 1))
-                    ->Font((float)font)->Semibold());
+                    ->Font((float)font)
+                    ->Semibold());
 }
 
 static El* CarouselExample(Ctx* cx, Entity<component::CarouselState> state,
@@ -39,7 +47,8 @@ static El* CarouselExample(Ctx* cx, Entity<component::CarouselState> state,
     CarouselContent* content = CarouselContent::New(cx, state);
     for (int i = 0; i < count; i++) {
         El* item = CarouselItem::New(cx, StoryFmt(cx, "%s-%d", id, i), i, state)
-                       ->Child(Slide(cx, i, height, font))->IntoEl();
+                       ->Child(Slide(cx, i, height, font))
+                       ->IntoEl();
         if (multiple) item->Basis(width / 3.f);
         content->Child(item);
     }
@@ -54,10 +63,12 @@ static El* CarouselExample(Ctx* cx, Entity<component::CarouselState> state,
         next->AccessibilityLabel(StrL("Next project"))
             ->Child(TextEl(cx->a, StrL("Forward")));
     }
-    carousel->Child(prev->IntoEl()->Absolute()
+    carousel->Child(prev->IntoEl()
+                        ->Absolute()
                         ->Left(customControls ? -54.f : -40.f)
                         ->Top(height * 0.5f - 14.f));
-    carousel->Child(next->IntoEl()->Absolute()
+    carousel->Child(next->IntoEl()
+                        ->Absolute()
                         ->Right(customControls ? -70.f : -40.f)
                         ->Top(height * 0.5f - 14.f));
     if (pagination) {
@@ -78,8 +89,9 @@ static El* ExampleSection(Ctx* cx, const char* title, const char* desc,
                           El* child) {
     El* section = StorySection(cx, title, desc);
     StorySectionBody(section)->FlexCol()->Gap(12);
-    StorySectionAdd(section, Div(cx->a)->W(kFill)->FlexRow()
-                                 ->JustifyCenter()->Child(child));
+    StorySectionAdd(
+        section,
+        Div(cx->a)->W(kFill)->FlexRow()->JustifyCenter()->Child(child));
     return section;
 }
 
@@ -100,43 +112,55 @@ El* CarouselStory::Render(CarouselStory* self, Ctx* cx) {
     El* page = Div(cx->a)->FlexCol()->W(kFill)->Gap(16);
     page->Child(StoryToolbar(cx, self));
     page->Child(ExampleSection(
-        cx, "Basic", "Browse one full-width item at a time with Left and Right.",
+        cx, "Basic",
+        "Browse one full-width item at a time with Left and Right.",
         CarouselExample(cx, self->horizontal, "carousel-horizontal", 3, 384,
                         384, 36, size, true)));
     page->Child(ExampleSection(
         cx, "Custom controls",
-        "Replace control content and accessibility labels while retaining navigation behavior.",
-        CarouselExample(cx, self->custom, "carousel-custom-controls", 3,
-                        384, 384, 36, size, false, true)));
+        "Replace control content and accessibility labels while retaining "
+        "navigation behavior.",
+        CarouselExample(cx, self->custom, "carousel-custom-controls", 3, 384,
+                        384, 36, size, false, true)));
     page->Child(ExampleSection(
         cx, "Multiple items",
-        "A fractional flex basis shows several items at once. Pair the content's negative margin with matching item padding to tune the gap between them.",
-        CarouselExample(cx, self->multiple, "carousel-multiple", 5, 384,
-                        128, 24, size, false, false, true)));
+        "A fractional flex basis shows several items at once. Pair the "
+        "content's negative margin with matching item padding to tune the gap "
+        "between them.",
+        CarouselExample(cx, self->multiple, "carousel-multiple", 5, 384, 128,
+                        24, size, false, false, true)));
     page->Child(ExampleSection(
         cx, "Vertical", "Use Up and Down to navigate a vertical carousel.",
-        CarouselExample(cx, self->vertical, "carousel-vertical", 3, 256,
-                        192, 30, size, false)));
+        CarouselExample(cx, self->vertical, "carousel-vertical", 3, 256, 192,
+                        30, size, false)));
     page->Child(ExampleSection(
-        cx, "Looping", "Looping navigation wraps from the last slide to the first.",
-        CarouselExample(cx, self->looped, "carousel-looped", 4, 384,
-                        384, 36, size, false)));
+        cx, "Looping",
+        "Looping navigation wraps from the last slide to the first.",
+        CarouselExample(cx, self->looped, "carousel-looped", 4, 384, 384, 36,
+                        size, false)));
     El* controlled = ExampleSection(
         cx, "Controlled",
-        "The selected index is owned by application state and can be changed programmatically.",
-        CarouselExample(cx, self->controlled, "carousel-controlled", 3,
-                        384, 384, 36, size, false));
+        "The selected index is owned by application state and can be changed "
+        "programmatically.",
+        CarouselExample(cx, self->controlled, "carousel-controlled", 3, 384,
+                        384, 36, size, false));
     auto* controlledState = self->controlled.Get(cx);
     int selected = controlledState ? controlledState->SelectedIndex() + 1 : 1;
-    StorySectionAdd(controlled,
-        Div(cx->a)->FlexRow()->Gap(8)->ItemsCenter()
+    StorySectionAdd(
+        controlled,
+        Div(cx->a)
+            ->FlexRow()
+            ->Gap(8)
+            ->ItemsCenter()
             ->Child(TextEl(cx->a, StoryFmt(cx, "Selected slide: %d", selected)))
             ->Child(component::Button::New(cx, StrL("controlled-first"))
                         ->Label(StrL("Go to first"))
-                        ->OnClick(Listen(cx, &GoFirst))->IntoEl())
+                        ->OnClick(Listen(cx, &GoFirst))
+                        ->IntoEl())
             ->Child(component::Button::New(cx, StrL("controlled-last"))
                         ->Label(StrL("Go to last"))
-                        ->OnClick(Listen(cx, &GoLast))->IntoEl()));
+                        ->OnClick(Listen(cx, &GoLast))
+                        ->IntoEl()));
     page->Child(controlled);
     return page;
 }

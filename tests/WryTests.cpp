@@ -15,8 +15,9 @@ static void AssignWebViewHandle(WebViewHandle* to, const WebViewHandle* from) {
 void TestWryUri() {
     TestSuite("wry_uri");
 
-    // gpui-webview's owned raw handle is copyable even when empty. A real handle
-    // follows the same operations while retaining the shared native view.
+    // gpui-webview's owned raw handle is copyable even when empty. A real
+    // handle follows the same operations while retaining the shared native
+    // view.
     WebView empty;
     WebViewHandle handle = WebViewGetHandle(&empty);
     utassert(!handle.IsValid());
