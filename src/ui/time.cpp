@@ -1071,11 +1071,7 @@ void DatePickerState::OnDismiss(DatePickerState* self, Ctx* cx,
     if (!self->open) {
         return;
     }
-    if (FocusHandleContainsFocused(cx->win, self->focus)) {
-        FocusHandleFocus(cx->win, self->focus);
-    }
-    self->open = false;
-    Notify(cx);
+    SetOpen(self, false, cx);
 }
 
 void DatePickerState::OnClear(DatePickerState* self, Ctx* cx,
