@@ -179,6 +179,33 @@ static void AFocusedFieldGoingTakesItsRegistrationWithIt() {
     utassert(win.input == nullptr);
 }
 
+// A blur given a window the field is not focused in still releases the
+// window that holds it: afterwards neither window points at the field, so
+// nothing is left for its destructor to miss once focusWin is gone.
+static void ABlurAgainstTheWrongWindowReleasesTheRightOne() {
+    Window owner = {};
+    Window other = {};
+    {
+        InputState s;
+        InputFocus(&s, nullptr, &owner);
+        utassert(owner.input == &s);
+        InputBlur(&s, nullptr, &other);
+        utassert(!s.focused);
+        utassert(s.focusWin == nullptr);
+        utassert(owner.input == nullptr);
+        utassert(owner.prevInput == nullptr);
+        utassert(other.input == nullptr);
+    }
+    utassert(owner.input == nullptr);
+
+    // With no window named at all, the owner is released just the same.
+    InputState t;
+    InputFocus(&t, nullptr, &owner);
+    InputBlur(&t, nullptr, nullptr);
+    utassert(owner.input == nullptr);
+    utassert(owner.prevInput == nullptr);
+}
+
 static void WordMovement() {
     InputState s;
     InputSetValue(&s, StrL("hello brave world"));
@@ -13497,6 +13524,7 @@ void TestInputState() {
     RevealingAPasswordKeepsTextAssistanceDisabled();
     TextInputConfigurationFollowsTheInput();
     AFocusedFieldGoingTakesItsRegistrationWithIt();
+    ABlurAgainstTheWrongWindowReleasesTheRightOne();
     WordMovement();
     SetSelectedTextRangeFollowsTheHandleThatMoved();
     DeleteToWordAndLineBoundaries();

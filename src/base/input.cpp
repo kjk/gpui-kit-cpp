@@ -10611,7 +10611,24 @@ void InputBlur(InputState* s, App* app, Window* win) {
         s->columnSelectStart = {};
         s->autoScroll.Stop();
     }
+    // The window the field is focused in lets go of it here too, whether or
+    // not it is the one the caller named: a blur against another window --
+    // the caller's, when the field was focused elsewhere -- would otherwise
+    // null focusWin and leave that window pointing at the field, which the
+    // field's destructor could then no longer find to clear.
+    Window* owner = s->focusWin;
     s->focusWin = nullptr;
+    if (owner && owner != win) {
+        BlinkStop(app, owner, &s->blink);
+        if (owner->input == s) {
+            owner->input = nullptr;
+            owner->prevInput = nullptr;
+        }
+        if (FocusHandleIsFocused(owner, s->focus)) {
+            WindowSetFocusId(owner, 0);
+        }
+        Notify(app, owner);
+    }
     if (win) {
         BlinkStop(app, win, &s->blink);
         if (win->input == s) {
