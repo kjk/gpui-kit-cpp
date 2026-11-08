@@ -2552,14 +2552,15 @@ struct DragDropTarget : ComObject<IDropTarget> {
 
     HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL point,
                                         DWORD* effect) override {
+        // Every entry decides both afresh, as wry does: an entry with no
+        // files must not keep the copy cursor the previous drag left.
         Vec<Str> paths;
         enterIsValid = GetDropPaths(data, &paths, nullptr);
-        if (!enterIsValid) {
-            return S_OK;
+        cursorEffect = enterIsValid ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        if (enterIsValid) {
+            Emit(DragDropKind::Enter, &paths, point);
+            StrVecFree(&paths);
         }
-        Emit(DragDropKind::Enter, &paths, point);
-        StrVecFree(&paths);
-        cursorEffect = DROPEFFECT_COPY;
         if (effect) {
             *effect = cursorEffect;
         }
@@ -2581,6 +2582,8 @@ struct DragDropTarget : ComObject<IDropTarget> {
         if (enterIsValid) {
             Emit(DragDropKind::Leave, nullptr, POINTL{});
         }
+        enterIsValid = false;
+        cursorEffect = DROPEFFECT_NONE;
         return S_OK;
     }
 
@@ -2596,6 +2599,8 @@ struct DragDropTarget : ComObject<IDropTarget> {
                 DragFinish(hdrop);
             }
         }
+        enterIsValid = false;
+        cursorEffect = DROPEFFECT_NONE;
         return S_OK;
     }
 };
@@ -2657,21 +2662,39 @@ static void Rel(T** p) {
 // `wait_with_pump`: the creation calls are asynchronous and wry's `new` is
 // not, so the thread runs the message loop until the completion handler has
 // fired. A WM_QUIT seen while waiting is put back for the loop that owns it.
+// Returns with `*done` still false when the loop is quitting or the queue
+// failed; every caller reads `done` afterwards and treats that as the call
+// having failed, and this says why.
 static void PumpUntil(const bool* done) {
     MSG msg;
     while (!*done) {
         BOOL got = GetMessageW(&msg, nullptr, 0, 0);
         if (got == 0) {
+            logf(
+                "wry: WM_QUIT arrived while waiting for WebView2; the "
+                "pending call is abandoned\n");
             PostQuitMessage((int)msg.wParam);
             return;
         }
         if (got == -1) {
+            logf("wry: GetMessage failed while waiting for WebView2\n");
             return;
         }
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
 }
+
+// PumpUntil dispatches whatever arrives while a creation call is pending,
+// which can be a message whose handler makes another webview. The nested
+// creation would pump inside the outer one's wait, so a thread makes one
+// webview at a time and a nested request fails rather than re-entering.
+static thread_local bool gCreatingWebView = false;
+
+struct CreatingWebViewGuard {
+    CreatingWebViewGuard() { gCreatingWebView = true; }
+    ~CreatingWebViewGuard() { gCreatingWebView = false; }
+};
 
 // `dispatch_handler`: run this on the thread that owns the container window.
 // Func0 is the task envelope, as it is for the main-thread executor and
@@ -4608,6 +4631,13 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
             }
         }
     }
+    if (gCreatingWebView) {
+        logf(
+            "wry: WebViewNew called while another webview is still being "
+            "created on this thread\n");
+        return nullptr;
+    }
+    CreatingWebViewGuard creating;
     HWND parent = (HWND)parentWindow;
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 

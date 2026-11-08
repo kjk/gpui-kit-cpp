@@ -711,6 +711,7 @@ static void Apply(SpeechState* s, Ctx* cx, const SpeechDeferredOp* op) {
 // here makes in turn is applied in the same pass.
 static void Drain(SpeechState* s, Ctx* cx) {
     s->drainPosted = false;
+    s->drainWin = nullptr;
     s->updateDepth++;
     for (int i = 0; i < len(s->deferred); i++) {
         SpeechDeferredOp* op = s->deferred[i];
@@ -725,6 +726,25 @@ void SpeechState::OnDrain(SpeechState* self, Ctx* cx, const void*) {
     Drain(self, cx);
 }
 
+// Whether the drain posted earlier can still run: WindowPost drops a task
+// whose window the app no longer lists. A post against a gone window is
+// forgotten so the next Defer can post again or drain in place.
+static bool DrainStillPosted(SpeechState* s, App* app) {
+    if (!s->drainPosted) {
+        return false;
+    }
+    if (app) {
+        for (int i = 0; i < len(app->windows); i++) {
+            if (app->windows[i] == s->drainWin) {
+                return true;
+            }
+        }
+    }
+    s->drainPosted = false;
+    s->drainWin = nullptr;
+    return false;
+}
+
 // A state's own update: sink calls made inside it wait for it to end.
 struct SpeechUpdate {
     SpeechState* s;
@@ -737,7 +757,8 @@ struct SpeechUpdate {
         s->updateDepth--;
         // With a window the calls were posted to it; without one this is
         // where the update ends.
-        if (s->updateDepth == 0 && !s->drainPosted && len(s->deferred) > 0) {
+        if (s->updateDepth == 0 && len(s->deferred) > 0 &&
+            !DrainStillPosted(s, cx ? cx->app : nullptr)) {
             Drain(s, cx);
         }
     }
@@ -752,12 +773,13 @@ static void Defer(Entity<SpeechState> state, App* app, SpeechDeferredOp* op) {
         return;
     }
     VecAppend(s->deferred, op);
-    if (s->drainPosted) {
+    if (DrainStillPosted(s, app)) {
         return;
     }
     Window* win = len(app->windows) > 0 ? app->windows[0] : nullptr;
     if (win) {
         s->drainPosted = true;
+        s->drainWin = win;
         WindowPost(win, ListenTo(state, &SpeechState::OnDrain));
         return;
     }

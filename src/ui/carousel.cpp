@@ -390,12 +390,22 @@ static void InvalidateScrollSettle(CarouselState* s) {
     s->scrollSettleEpoch++;
 }
 
-static void ScheduleTimeout(CarouselState* s, Ctx* cx, int* epoch,
+static bool ScheduleTimeout(CarouselState* s, Ctx* cx, int* epoch,
                             void (*fn)(CarouselState*, Ctx*, const TickEvent*,
                                        int64_t)) {
-    if (!cx || !cx->win) return;
+    if (!cx || !cx->win) return false;
     *epoch = *epoch + 1;
     WindowSetTimeout(cx->win, kScrollSettleMs, ListenTo(s->self, fn, *epoch));
+    return true;
+}
+
+// Swallow the rest of the gesture in flight until it has been quiet for the
+// settle delay. The flag is only set when the recovery timeout could be
+// armed: with no window there is no clock to clear it, and a flag nothing
+// clears would ignore every later scroll.
+static void IgnoreScrollUntilQuiet(CarouselState* s, Ctx* cx) {
+    s->ignoreScrollUntilQuiet = ScheduleTimeout(
+        s, cx, &s->scrollSettleEpoch, &CarouselState::OnIgnoredScrollRecovery);
 }
 
 void CarouselState::OnScrollSettle(CarouselState* self, Ctx* cx,
@@ -423,9 +433,7 @@ static void CancelInteractions(CarouselState* s, Ctx* cx) {
     s->scrollGesture = {};
     InvalidateScrollSettle(s);
     if (cancelledScroll) {
-        s->ignoreScrollUntilQuiet = true;
-        ScheduleTimeout(s, cx, &s->scrollSettleEpoch,
-                        &CarouselState::OnIgnoredScrollRecovery);
+        IgnoreScrollUntilQuiet(s, cx);
     }
 }
 
@@ -678,11 +686,10 @@ bool CarouselState::BeginDrag(Point position, Ctx* cx) {
     pointerGesture.totalDelta = 0;
     pointerGesture.axisLocked = false;
     pointerGesture.active = true;
-    if (scrollGesture.active) ignoreScrollUntilQuiet = true;
     scrollGesture = {};
     InvalidateScrollSettle(this);
     if (cancelledScroll) {
-        ScheduleTimeout(this, cx, &scrollSettleEpoch, &OnIgnoredScrollRecovery);
+        IgnoreScrollUntilQuiet(this, cx);
     }
     if (cx) Notify(cx);
     return true;
@@ -793,8 +800,7 @@ bool CarouselState::FinishScroll(bool cancelled, Ctx* cx) {
 void CarouselState::DeferScrollToAncestor(Ctx* cx) {
     scrollGesture = {};
     InvalidateScrollSettle(this);
-    ignoreScrollUntilQuiet = true;
-    ScheduleTimeout(this, cx, &scrollSettleEpoch, &OnIgnoredScrollRecovery);
+    IgnoreScrollUntilQuiet(this, cx);
 }
 
 bool CarouselState::HandleWheelStep(Axis value, float delta, Ctx* cx) {
@@ -812,8 +818,7 @@ bool CarouselState::HandleWheelStep(Axis value, float delta, Ctx* cx) {
         wheelBurstActive = true;
         ScheduleTimeout(this, cx, &wheelBurstEpoch, &OnWheelBurstEnd);
     } else {
-        ignoreScrollUntilQuiet = true;
-        ScheduleTimeout(this, cx, &scrollSettleEpoch, &OnIgnoredScrollRecovery);
+        IgnoreScrollUntilQuiet(this, cx);
     }
     return stepped;
 }

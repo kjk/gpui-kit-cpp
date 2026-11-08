@@ -71,9 +71,6 @@ struct WindowLayers {
     // Created the first time something pushes one, along with the timer that
     // advances it — Rust spawns a task for that when Root is built.
     Entity<component::NotificationListState> notifications = {};
-    // Retained for source compatibility; the list owns its own clock now and
-    // arms it only while something is mounted.
-    int notifyTimer = 0;
 
     ~WindowLayers();
 };

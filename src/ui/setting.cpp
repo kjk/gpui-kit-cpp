@@ -1222,8 +1222,11 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
     if (p.description.s) {
         head->Child(TextEl(a, p.description)->Font(14)->Fg(th.mutedFg)->Wrap());
     }
-    if (st && scroll->target) {
-        st->pendingScrollGroup = scrollGroup;
+    // A request whose group did not build a row this frame (filtered out by
+    // the query, or an index from another page) is dropped rather than left
+    // for a later frame's row to answer.
+    if (st) {
+        st->pendingScrollGroup = scroll->target ? scrollGroup : -1;
     }
     body->customPaint = &SettingsPageScrollPaint;
     body->customUser = scroll;

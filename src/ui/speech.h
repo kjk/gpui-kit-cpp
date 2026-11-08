@@ -482,7 +482,10 @@ struct SpeechState {
     // application with no window applies them when the state's own update
     // ends, or at once when the call came from outside one.
     Vec<SpeechDeferredOp*> deferred;
+    // A drain is posted to `drainWin`. A window the app no longer lists
+    // never runs its posts, so a post made against one no longer counts.
     bool drainPosted = false;
+    Window* drainWin = nullptr;
     int updateDepth = 0;
 
     // cx.weak_entity(); SpeechStateNew stamps it.

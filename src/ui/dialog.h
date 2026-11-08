@@ -34,6 +34,10 @@ struct DialogMount {
     bool topmost = true;
     bool showOverlay = true;
     bool exitEnabled = false;
+    // Set when a Dialog read this mount and sampled its presence clock. A
+    // closing layer whose render never did (the view is gone, or built no
+    // open Dialog) has no exit to finish, and the layer unmounts it.
+    bool sampled = false;
     bool unmount = false;
     float visibility = 1;
     float surfaceY = 0;

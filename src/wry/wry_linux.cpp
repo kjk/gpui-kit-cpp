@@ -213,7 +213,11 @@ void EventLoopDispatch() {
 }
 
 // Rust's cookie calls spin `gtk::main_iteration` until the answer is in.
+// A pump between EventLoopPrepare and EventLoopDispatch runs the context's
+// own prepare/check/dispatch, so the host's prepared state no longer
+// describes the context; the next EventLoopDispatch must not check with it.
 static void PumpUntil(const bool* done) {
+    gPrepared = false;
     while (!*done) {
         g_main_context_iteration(nullptr, TRUE);
     }
@@ -1308,11 +1312,13 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     wv->parentWindow = parent;
     wv->gtkWindow = plug;
     wv->isChild = asChild;
+    // Set before the hide below: WebViewSetVisible unmaps the X window and
+    // hides the plug only for a webview that knows it has them.
+    wv->hasX11 = true;
     PlaceMappedPlug(wv);
     if (!attrs->visible) {
         WebViewSetVisible(wv, false);
     }
-    wv->hasX11 = true;
     WebViewSetLastError(nullptr);
     if (!asChild) {
         XTrap trap(display);

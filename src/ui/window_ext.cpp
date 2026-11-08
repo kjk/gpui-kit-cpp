@@ -16,9 +16,6 @@ WindowLayers::~WindowLayers() {
         }
     }
     if (win) {
-        if (notifyTimer) {
-            WindowCancelTimer(win, notifyTimer);
-        }
         component::NotificationSystemDismissAll(win);
     }
     VecReset(dialogs);
@@ -52,11 +49,19 @@ void WindowOpenDialog(Ctx* cx, EntityId view, bool overlay) {
         return;
     }
     // Opening the same dialog twice raises the one already up rather than
-    // stacking a second copy of it.
+    // stacking a second copy of it. One still playing its exit is reopened:
+    // the presence clock keyed by its id plays the entrance again from
+    // wherever the exit had reached.
     for (int i = 0; i < l->dialogs.len; i++) {
-        if (l->dialogs[i].view == view) {
-            return;
+        if (l->dialogs[i].view != view) {
+            continue;
         }
+        if (l->dialogs[i].closing) {
+            l->dialogs[i].closing = false;
+            l->dialogs[i].previousFocus = WindowFocused(cx->win);
+            Notify(cx);
+        }
+        return;
     }
     WindowLayer layer;
     layer.view = view;

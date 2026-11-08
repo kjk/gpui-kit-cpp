@@ -775,6 +775,11 @@ El* NotificationList::IntoEl() {
         // cx.entity(): what a system notification's response is dispatched
         // back to.
         s->self = state.id;
+        // A push before the first render had no entity id to arm the clock
+        // with. Now that it does, anything waiting to time gets its clock.
+        if (!s->isAdvancing && NotificationNeedsClock(s)) {
+            NotificationStartAdvancing(s, cx);
+        }
     }
     if (!s || s->items.len == 0) {
         return Div(a);
@@ -824,7 +829,13 @@ El* NotificationList::IntoEl() {
     int groupCount = 0;
     bool present[8] = {};
     for (int i = 0; i < len(shown); i++) {
-        const Notification& item = s->items[shown[i]];
+        // `shown` holds stack indices; the card is found by its id rather
+        // than by position, so the two arrays need not stay parallel.
+        int itemIx = NotificationIndexOf(s, s->stack.entries[shown[i]].id);
+        if (itemIx < 0) {
+            continue;
+        }
+        const Notification& item = s->items[itemIx];
         Anchor anchor = item.hasPlacement ? item.placement : settings.placement;
         int aix = (int)anchor;
         if (aix < 0 || aix >= 8) {
@@ -872,7 +883,8 @@ El* NotificationList::IntoEl() {
         float* collapsedOff = (float*)Alloc(a, (int)sizeof(float) * len(group));
         float* expandedOff = (float*)Alloc(a, (int)sizeof(float) * len(group));
         for (int i = 0; i < len(group); i++) {
-            const Notification& item = s->items[group[i]];
+            int itemIx = NotificationIndexOf(s, s->stack.entries[group[i]].id);
+            const Notification& item = s->items[itemIx];
             heights[i] = item.measured.h > 0 ? item.measured.h : s->itemH;
         }
         float expandedH = 0;
@@ -913,9 +925,9 @@ El* NotificationList::IntoEl() {
         layer->Left(left)->Top(top);
 
         for (int i = 0; i < len(group); i++) {
-            int itemIx = group[i];
+            const ToastEntry& entry = s->stack.entries[group[i]];
+            int itemIx = NotificationIndexOf(s, entry.id);
             Notification& item = s->items[itemIx];
-            const ToastEntry& entry = s->stack.entries[itemIx];
             int rank = len(group) - 1 - i;
             // "visibility": collapsed_visible is how many of them show at
             // all when the stack is closed, and the ones past it fade rather

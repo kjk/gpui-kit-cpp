@@ -1872,6 +1872,11 @@ El* SearchPanel::IntoEl() {
     if (!st || !target) {
         return Div(a);
     }
+    // The bar is over a different field now: its session is that field's,
+    // so an open one is a fresh opening, not the last frame's continuing.
+    if (st->target != target) {
+        st->wasOpen = false;
+    }
     st->target = target;
     if (!st->seeded) {
         st->seeded = true;

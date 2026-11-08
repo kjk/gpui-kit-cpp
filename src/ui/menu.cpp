@@ -892,7 +892,6 @@ static void ContextMenuOpenAt(ContextMenuState* self, Ctx* cx, float x, float y,
     if (!menu) {
         return;
     }
-    self->previousFocus = WindowFocused(cx->win);
     self->position = {x - el.x, y - el.y};
     self->open = true;
     menu->x = self->position.x;
