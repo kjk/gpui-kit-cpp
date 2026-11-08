@@ -2926,6 +2926,14 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
         s->hasPendingContextMenu = false;
         InputHandleRightClickMenu(s, win->app, win, s->pendingContextMenuAt,
                                   s->pendingContextMenuOffset);
+    } else if (in.button == MouseButton::Right) {
+        // The release landed somewhere else: the menu the press was waiting
+        // to open does not open, and the wait does not carry over to a later
+        // right release over the field. The press focused the field, so it
+        // is the window's input.
+        if (win->input && win->input->hasPendingContextMenu) {
+            win->input->hasPendingContextMenu = false;
+        }
     }
     if (win->input && win->input->selecting) {
         if (win->input->selectedRange.IsEmpty()) {
