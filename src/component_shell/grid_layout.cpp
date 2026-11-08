@@ -620,13 +620,7 @@ static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
         component = "GridItem";
         name = "drag_handle_only";
     }
-    if (count != 1 || args[0].kind != ComponentArgumentKind::Boolean)
-        return build
-            ->Fail(fmt("%s.%s expects one boolean", Str(component), Str(name)));
-    Op* op = build->New<Op>();
-    op->kind = K;
-    op->flag = args[0].boolean;
-    return true;
+    return RecordFlagOp<Op>(build, args, count, K, component, name);
 }
 
 // positive or nonnegative integer, named "{component}.{name}(value)".
@@ -804,7 +798,6 @@ static constexpr shell::StateDescriptor kState = {
 static constexpr ArgumentDescriptor kIdStateArgs[] = {
     {"id", SchemaString()},
     {"state", SchemaEntity("GridLayoutState")}};
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kHandleArgs[] = {
     {"state", SchemaEntity("GridLayoutState")},
     {"item", SchemaString()}};
@@ -904,7 +897,7 @@ static constexpr MethodDescriptor kItemMethods[] = {
 static constexpr ConstructorDescriptor kGridCtors[] = {
     {"GridLayout", kIdStateArgs, &RootConstruct}};
 static constexpr ConstructorDescriptor kItemCtors[] = {
-    {"GridItem", kIdArgs, &ItemConstruct}};
+    {"GridItem", kIdArguments, &ItemConstruct}};
 static constexpr ConstructorDescriptor kHandleCtors[] = {
     {"GridDragHandle", kHandleArgs, &HandleConstruct}};
 

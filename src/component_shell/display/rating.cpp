@@ -152,17 +152,14 @@ static El* Materialize(MaterializeRequest* request) {
     return request->ApplyStyle(rating->IntoEl());
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kValueArgs[] = {{"value", SchemaNumber()}};
 static constexpr ArgumentDescriptor kMaxArgs[] = {{"max", SchemaNumber()}};
 static constexpr ArgumentDescriptor kChangeArgs[] = {
     {"on_change", SchemaCallback("(value: number, cx: Context) => void")}};
 static constexpr ArgumentDescriptor kColorArgs[] = {{"color", SchemaString()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
-    {"Rating", kIdArgs, &Construct}};
+    {"Rating", kIdArguments, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     kDisabledMethod,
     {"value", kValueArgs, "Sets the current number of active stars.",
@@ -173,7 +170,7 @@ static constexpr MethodDescriptor kMethods[] = {
      "Reports the star the reader clicked, so the script can drive `value`.",
      &RecordChange},
     {"color", kColorArgs, "Sets the active star color.", &RecordColor},
-    {"size", kSizeArgs, "Sets the rating's semantic size.",
+    {"size", kSizeArguments, "Sets the rating's semantic size.",
      &RecordSizeOp<RatingOp, RatingOp::Size>},
 };
 static constexpr ComponentDescriptor kRating = {

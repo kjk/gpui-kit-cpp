@@ -506,8 +506,6 @@ static constexpr ArgumentDescriptor kFocusRingArgs[] = {
 static constexpr ArgumentDescriptor kValueArgs[] = {{"value", SchemaNumber()}};
 static constexpr ArgumentDescriptor kOnChangeArgs[] = {
     {"callback", SchemaCallback("(index: number, cx: Context) => void")}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr const char* kLabelDoc =
     "Sets the name announced by accessibility clients.";
@@ -535,12 +533,12 @@ static constexpr MethodDescriptor kItemMethods[] = {
 static constexpr MethodDescriptor kPreviousMethods[] = {
     {"accessibility_label", kLabelArgs, kLabelDoc,
      &RecordAccessibilityLabel<Part::Previous>},
-    {"size", kSizeArgs, kSizeDoc, &RecordSize<Part::Previous>},
+    {"size", kSizeArguments, kSizeDoc, &RecordSize<Part::Previous>},
 };
 static constexpr MethodDescriptor kNextMethods[] = {
     {"accessibility_label", kLabelArgs, kLabelDoc,
      &RecordAccessibilityLabel<Part::Next>},
-    {"size", kSizeArgs, kSizeDoc, &RecordSize<Part::Next>},
+    {"size", kSizeArguments, kSizeDoc, &RecordSize<Part::Next>},
 };
 static constexpr MethodDescriptor kPaginationMethods[] = {
     {"accessibility_label", kLabelArgs, kLabelDoc,
@@ -549,7 +547,7 @@ static constexpr MethodDescriptor kPaginationMethods[] = {
 static constexpr MethodDescriptor kPaginationItemMethods[] = {
     {"accessibility_label", kLabelArgs, kLabelDoc,
      &RecordAccessibilityLabel<Part::PaginationItem>},
-    {"size", kSizeArgs, kSizeDoc, &RecordSize<Part::PaginationItem>},
+    {"size", kSizeArguments, kSizeDoc, &RecordSize<Part::PaginationItem>},
 };
 
 static constexpr ConstructorDescriptor kCarouselConstructors[] = {

@@ -90,8 +90,6 @@ static constexpr ArgumentDescriptor kConstructorArgs[] = {
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Textarea", kConstructorArgs, &Construct}};
 
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 using text_editing::kAppearanceArgs;
 using text_editing::kAriaLabelArgs;
 using text_editing::kBorderedArgs;
@@ -103,7 +101,7 @@ static constexpr const char* kPolicyDoc =
 static constexpr MethodDescriptor kMethods[] = {
     // Rust records `()`: `disabled` is a common behavior the materializer
     // reads from the request.
-    {"disabled", kDisabledArgs, "Sets the common disabled state.",
+    {"disabled", kDisabledArguments, "Sets the common disabled state.",
      &RecordCommonBehavior},
     {"appearance", kAppearanceArgs, kPolicyDoc,
      &text_editing::RecordBoolFor<kName, Op::Appearance>},

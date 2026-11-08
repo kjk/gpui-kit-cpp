@@ -178,8 +178,6 @@ static constexpr const char* kTagVariantLiterals[] = {
 static constexpr ArgumentDescriptor kCountArgs[] = {{"count", SchemaNumber()}};
 static constexpr ArgumentDescriptor kMaxArgs[] = {{"max", SchemaNumber()}};
 static constexpr ArgumentDescriptor kColorArgs[] = {{"color", SchemaString()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ArgumentDescriptor kVariantArgs[] = {
     {"variant", SchemaEnum(kTagVariantLiterals)}};
 
@@ -196,7 +194,8 @@ static constexpr MethodDescriptor kBadgeMethods[] = {
     {"color", kColorArgs,
      "Sets the badge background from a supported color token.",
      &RecordBadgeColor},
-    {"size", kSizeArgs, "Sets the semantic component size.", &RecordBadgeSize},
+    {"size", kSizeArguments, "Sets the semantic component size.",
+     &RecordBadgeSize},
 };
 static constexpr ComponentDescriptor kBadge = {
     "Badge", kBadgeConstructors, kBadgeMethods,
@@ -216,7 +215,8 @@ static constexpr MethodDescriptor kTagMethods[] = {
      {},
      "Uses pill-shaped corners.",
      &RecordTagFlag<TagOp::RoundedFull>},
-    {"size", kSizeArgs, "Sets the semantic component size.", &RecordTagSize},
+    {"size", kSizeArguments, "Sets the semantic component size.",
+     &RecordTagSize},
 };
 static constexpr ComponentDescriptor kTag = {
     "Tag", kTagConstructors, kTagMethods,

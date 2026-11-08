@@ -393,17 +393,12 @@ static constexpr const char* kSideDoc =
     "Sets the physical side occupied by the sidebar control.";
 
 static constexpr ArgumentDescriptor kLabelArgs[] = {{"label", SchemaString()}};
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
-static constexpr ArgumentDescriptor kSelectedArgs[] = {
-    {"selected", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kDefaultOpenArgs[] = {
     {"default_open", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kClickToOpenArgs[] = {
     {"click_to_open", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kClickToToggleArgs[] = {
     {"click_to_toggle", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr const char* kIconLiterals[] = {
     "home", "components", "settings", "archive", "account"};
 static constexpr ArgumentDescriptor kIconArgs[] = {
@@ -418,7 +413,7 @@ static constexpr ConstructorDescriptor kItemConstructors[] = {
     {"SidebarMenuItem", kLabelArgs, &ConstructId<0>}};
 static constexpr MethodDescriptor kItemMethods[] = {
     kOnClick,
-    {"selected", kSelectedArgs, "Sets the active destination state.",
+    {"selected", kSelectedArguments, "Sets the active destination state.",
      &RecordCommonBehavior},
     {"default_open", kDefaultOpenArgs,
      "Sets the initial submenu disclosure state.",
@@ -428,7 +423,7 @@ static constexpr MethodDescriptor kItemMethods[] = {
     {"click_to_toggle", kClickToToggleArgs,
      "Lets a row click toggle its submenu.",
      &RecordItemBool<ItemOp::ClickToToggle>},
-    {"disabled", kDisabledArgs, "Disables pointer activation.",
+    {"disabled", kDisabledArguments, "Disables pointer activation.",
      &RecordCommonBehavior},
     {"icon", kIconArgs,
      "Sets the navigation icon used in expanded and icon-collapse modes.",
@@ -451,7 +446,7 @@ static constexpr ComponentDescriptor kMenu = {
 
 // bool_method("Sidebar edge", "selected", ..): the common selected state.
 static constexpr MethodDescriptor kEdgeMethods[] = {
-    {"selected", kSelectedArgs, "Sets the selected presentation.",
+    {"selected", kSelectedArguments, "Sets the selected presentation.",
      &RecordCommonBehavior}};
 static constexpr ConstructorDescriptor kHeaderConstructors[] = {
     {"SidebarHeader", {}, &RecordEmpty}};
@@ -465,7 +460,7 @@ static constexpr ComponentDescriptor kFooter = {
     "A styled sidebar footer accepting ordinary children.", &MaterializeFooter};
 
 static constexpr ConstructorDescriptor kSidebarConstructors[] = {
-    {"Sidebar", kIdArgs, &ConstructId<1>}};
+    {"Sidebar", kIdArguments, &ConstructId<1>}};
 static constexpr MethodDescriptor kSidebarMethods[] = {
     {"side", kSideArgs, kSideDoc, &RecordSidebarSide},
     {"collapsible", kModeArgs, "Sets the sidebar collapse behavior.",

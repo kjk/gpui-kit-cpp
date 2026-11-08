@@ -60,15 +60,13 @@ static El* Materialize(MaterializeRequest* request) {
 }
 
 static constexpr ArgumentDescriptor kNameArgs[] = {{"name", SchemaString()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Avatar", {}, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     {"name", kNameArgs,
      "Sets the person's name and generated initials fallback.", &RecordName},
-    {"size", kSizeArgs, "Sets the avatar's semantic size.",
+    {"size", kSizeArguments, "Sets the avatar's semantic size.",
      &RecordSizeOp<AvatarOp, AvatarOp::Size>},
 };
 static constexpr ComponentDescriptor kAvatar = {

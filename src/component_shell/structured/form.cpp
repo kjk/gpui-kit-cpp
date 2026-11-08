@@ -271,8 +271,6 @@ static constexpr ComponentDescriptor kField = {
 static constexpr ArgumentDescriptor kColumnsArgs[] = {
     {"columns", SchemaNumber()}};
 static constexpr ArgumentDescriptor kWidthArgs[] = {{"width", SchemaNumber()}};
-static constexpr ArgumentDescriptor kSizeArgs[] = {
-    {"size", SchemaEnum(kSizeLiterals)}};
 static constexpr ConstructorDescriptor kFormConstructors[] = {
     {"Form", {}, &ConstructForm<false>},
     {"VForm", {}, &ConstructForm<false>},
@@ -283,7 +281,7 @@ static constexpr MethodDescriptor kFormMethods[] = {
      &RecordFormColumns},
     {"label_width", kWidthArgs,
      "Sets the horizontal form label width in pixels.", &RecordLabelWidth},
-    {"size", kSizeArgs, "Sets the form density.", &RecordSize},
+    {"size", kSizeArguments, "Sets the form density.", &RecordSize},
 };
 static constexpr ComponentDescriptor kForm = {
     "Form", kFormConstructors, kFormMethods,

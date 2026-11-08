@@ -205,7 +205,6 @@ static bool RecordOpenChange(PayloadBuild* build, const ComponentArgument* args,
     return true;
 }
 
-static constexpr ArgumentDescriptor kIdArgs[] = {{"id", SchemaString()}};
 static constexpr ArgumentDescriptor kTriggerArgs[] = {
     {"element", SchemaElement()}};
 static constexpr ArgumentDescriptor kDelayArgs[] = {
@@ -214,7 +213,7 @@ static constexpr ArgumentDescriptor kAppearanceArgs[] = {
     {"appearance", SchemaBoolean()}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
-    {"HoverCard", kIdArgs, &Construct}};
+    {"HoverCard", kIdArguments, &Construct}};
 static constexpr MethodDescriptor kMethods[] = {
     {"trigger_element", kTriggerArgs,
      "Sets the element that owns the hover interaction.", &RecordTrigger},

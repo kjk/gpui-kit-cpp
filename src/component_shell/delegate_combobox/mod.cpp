@@ -254,8 +254,6 @@ static constexpr ArgumentDescriptor kSearchPlaceholderArgs[] = {
     {"search_placeholder", SchemaString()}};
 static constexpr ArgumentDescriptor kSearchableArgs[] = {
     {"searchable", SchemaBoolean()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 static constexpr ArgumentDescriptor kMenuWidthArgs[] = {
     {"menu_width", SchemaNumber()}};
 
@@ -270,7 +268,7 @@ static constexpr MethodDescriptor kMethods[] = {
      &RecordText<Op::SearchPlaceholder>},
     {"searchable", kSearchableArgs,
      "Shows the search field above the item list.", &RecordSearchable},
-    {"disabled", kDisabledArgs, "Disables the combobox.",
+    {"disabled", kDisabledArguments, "Disables the combobox.",
      &RecordCommonBehavior},
     {"menu_width", kMenuWidthArgs, "Sets the popup menu width in pixels.",
      &RecordMenuWidth},

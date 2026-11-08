@@ -228,8 +228,6 @@ static constexpr ArgumentDescriptor kPlaceholderArgs[] = {
     {"placeholder", SchemaString()}};
 static constexpr ArgumentDescriptor kMenuWidthArgs[] = {
     {"menu_width", SchemaNumber()}};
-static constexpr ArgumentDescriptor kDisabledArgs[] = {
-    {"disabled", SchemaBoolean()}};
 
 static constexpr ConstructorDescriptor kConstructors[] = {
     {"Select", kArguments, &Construct}};
@@ -238,7 +236,8 @@ static constexpr MethodDescriptor kMethods[] = {
      "Sets the text shown while nothing is selected.", &RecordPlaceholder},
     {"menu_width", kMenuWidthArgs, "Sets the popup menu width in pixels.",
      &RecordMenuWidth},
-    {"disabled", kDisabledArgs, "Disables the select.", &RecordCommonBehavior},
+    {"disabled", kDisabledArguments, "Disables the select.",
+     &RecordCommonBehavior},
 };
 static constexpr ComponentDescriptor kSelect = {
     "Select", kConstructors, kMethods,
