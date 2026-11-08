@@ -9,13 +9,22 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 int gTestChecks = 0;
 int gTestFailures = 0;
 const char* gTestSuite = "";
 
+// GPUI_TEST_TRACE=1 names each suite as it starts, so a run that hangs or
+// dies without a FAIL line still says where it was. Read once, in GpuiMain.
+static bool gTestTrace = false;
+
 void TestSuite(const char* name) {
     gTestSuite = name;
+    if (gTestTrace) {
+        printf("suite: %s\n", name);
+        fflush(stdout);
+    }
 }
 
 void TestFailed(const char* cond, const char* file, int line) {
@@ -29,6 +38,8 @@ bool TestNear(float a, float b) {
 }
 
 int GpuiMain(int argc, char** argv) {
+    const char* trace = getenv("GPUI_TEST_TRACE");
+    gTestTrace = trace && *trace && *trace != '0';
     TestSuite("runtime argv");
     utassert(argc >= 1 && argv && argv[argc] == nullptr);
     for (int i = 0; i < argc; i++) {

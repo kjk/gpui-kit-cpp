@@ -163,7 +163,25 @@ Task HoldsALocalUntilReleased(TaskGuard guard, Counters* c) {
     c->finished++;
 }
 
+void NoWork() {}
+
+// Whether a spawned job runs on a worker here. On wasm the page is one
+// thread and ExecSpawn hands the job to the main queue instead; the
+// executor latches that the first time a thread is refused, so a probe job
+// is spawned and drained before the latch is read.
+bool HostHasWorkers() {
+    ExecSpawn(MkFunc0Void(NoWork), Func0{});
+    Settle();
+    return ExecHasThreads();
+}
+
 void CancelAllDropsTheFramesShutdownOrphaned() {
+    // Without a worker there is nothing for a shutdown to give up on: the
+    // held job would run on this very thread inside ExecShutdown's drain,
+    // and nothing could release it.
+    if (!HostHasWorkers()) {
+        return;
+    }
     gCounters = {};
     gTrackedDestroyed = 0;
     gHoldReleased = false;
