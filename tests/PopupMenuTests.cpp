@@ -1464,6 +1464,58 @@ static void SubmenusWithDifferentWidthsChooseTheSideThatFits() {
     utassert(sub.x + sub.w * 0.5f > item.Right());
 }
 
+// popup_menu.rs max_w: 31.25rem unless set; a label wider than that wraps
+// inside the menu instead of running past its border.
+struct LongLabelMenu {
+    Str label = {};
+    float maxW = 0;
+    Entity<PopupMenuState> menu;
+
+    static El* Render(LongLabelMenu* self, Ctx* cx) {
+        PopupMenu* menu = PopupMenu::New(cx, StrL("long-menu"))
+                              ->Menu(self->label);
+        if (self->maxW > 0) {
+            menu->MaxW(self->maxW);
+        }
+        self->menu = menu->state;
+        El* tab = Div(cx->a)->Id(StrL("window-menu"))->SizeFull();
+        return Div(cx->a)->SizeFull()->Child(ContextMenu::New(cx, StrL("wrap"))
+                                                 ->Child(tab)
+                                                 ->Menu(menu)
+                                                 ->IntoEl());
+    }
+};
+
+static Bounds OpenLongLabelMenu(Str label, float maxW) {
+    App* app = TestAppNew();
+    Entity<LongLabelMenu> view = EntityNew<LongLabelMenu>(app);
+    LongLabelMenu* self = view.Get(app);
+    self->label = label;
+    self->maxW = maxW;
+    Window* win = TestWindowOpen(app, view, 1200, 480);
+    TestSimulateMouseDown(win, {10, 40}, MouseButton::Right);
+    TestDraw(win);
+    TestDraw(win);
+    PopupMenuState* opened = view.Get(app)->menu.Get(app);
+    utassert(opened && opened->open && opened->bounds.w > 0);
+    Bounds b = opened->bounds;
+    TestAppFree(app);
+    return b;
+}
+
+static void ALongLabelWrapsAtTheMaxWidth() {
+    Str longLabel = StrL(
+        "Footprint Footprint Footprint Footprint Footprint Footprint "
+        "Footprint Footprint Footprint Footprint Footprint Footprint");
+    Bounds one = OpenLongLabelMenu(StrL("Footprint"), 0);
+    Bounds capped = OpenLongLabelMenu(longLabel, 0);
+    utassert(capped.w <= 500.5f);
+    utassert(capped.h > one.h + 8);
+    Bounds wide = OpenLongLabelMenu(longLabel, 1000);
+    utassert(wide.w > 500.5f);
+    utassert(wide.h < one.h + 1);
+}
+
 // menu.rs a_scrollable_menu_opens_on_its_checked_item.
 struct ScrollableOptionsMenu {
     int checked = -1;
@@ -1540,6 +1592,7 @@ void TestPopupMenu() {
     ASubmenuWithRoomOpensOnTheRight();
     ASubmenuByTheWindowEdgeOpensOnTheLeft();
     SubmenusWithDifferentWidthsChooseTheSideThatFits();
+    ALongLabelWrapsAtTheMaxWidth();
     TheWalkStepsOverWhatCannotBeClicked();
     NothingSelectedYet();
     AMenuWithNoRows();

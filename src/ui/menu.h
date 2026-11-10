@@ -87,6 +87,8 @@ struct PopupMenu {
     // 0 is Rust's default cap: 28.125rem (450px at a 16px rem). A caller
     // sets this in DIPs, the same way max_h takes pixels.
     float maxH = 0;
+    // 0 is Rust's default, max_w(rems(31.25)).
+    float maxW = 0;
     bool scrollable = false;
     bool externalLinkIcon = true;
     // check_side: which edge a checked row's tick sits on.
@@ -127,6 +129,7 @@ struct PopupMenu {
     PopupMenu* WithSize(UiSize s);
     PopupMenu* MinW(float v);
     PopupMenu* MaxH(float v);
+    PopupMenu* MaxW(float v);
     PopupMenu* Scrollable(bool v = true);
     PopupMenu* CheckSide(Side s);
     PopupMenu* ActionContext(const char* ctx);
