@@ -16,13 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ae5fcd62f47982abb34b5d9b05842b3d5697271a` (2026-11-11,
-text_selection: Start a drag's auto-scroll at an edge that hides text
-(#3928)).
-Drive a selection drag with the nearest viewport edge that hides selectable
-text. Keep direct AutoScroll events for self-scrolling participants and
-synthesize wheel input on the existing window animation clock for the
-surrounding scroll container.
+Processed through `b752a1b05f3b9f0913c5d596e914a39d039cacea` (2026-11-12,
+plot: Draw a label at the font weight it asks for (#3917)).
+The C++ plot label already shapes, aligns and draws with the label font
+weight. Exercise a weight change in the scene regression test.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

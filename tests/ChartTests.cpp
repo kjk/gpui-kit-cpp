@@ -150,15 +150,18 @@ static void UnchangedPlotLabelsKeepTheScene() {
         StrL("axis label"), Point{100, 20}, Rgba8(0, 0, 0, 255));
     label.Align(component::plot::PlotTextAlign::Center);
     labels.Add(label);
-    for (int frame = 0; frame < 4; frame++) {
+    for (int frame = 0; frame < 5; frame++) {
         TextMeasBeginFrame(&paint);
         scene::FrameBegin(&paint);
-        // Colour and alignment are draw inputs, independent of the cached
-        // shape. Both must still invalidate the scene when they change.
+        // Colour and alignment change drawing. The label's own font weight
+        // also changes the shape (plot/label.rs
+        // a_label_is_shaped_at_its_own_weight).
         if (frame == 2) {
             labels.items[0].color = Rgba8(255, 0, 0, 255);
         } else if (frame == 3) {
             labels.items[0].align = component::plot::PlotTextAlign::Right;
+        } else if (frame == 4) {
+            labels.items[0].fontWeight = FontWeight::Bold;
         }
         labels.Paint(&paint, Bounds{0, 0, 320, 200});
         Bounds damage = {};
