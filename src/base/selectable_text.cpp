@@ -70,6 +70,22 @@ SelectableText* SelectableText::Semibold() {
     return this;
 }
 
+SelectableText* SelectableText::Highlights(const TextHighlight* runs,
+                                           int count) {
+    highlights = nullptr;
+    highlightCount = 0;
+    if (!runs || count <= 0 || count > INT32_MAX / (int)sizeof(TextHighlight)) {
+        return this;
+    }
+    int bytes = count * (int)sizeof(TextHighlight);
+    if (auto* saved = (TextHighlight*)Alloc(a, bytes)) {
+        memcpy(saved, runs, (size_t)bytes);
+        highlights = saved;
+        highlightCount = count;
+    }
+    return this;
+}
+
 SelectableText* SelectableText::SelectionColor(Rgba value) {
     selectionColor = value;
     hasSelectionColor = true;
@@ -87,6 +103,7 @@ El* SelectableText::IntoEl() {
     if (weight >= 2) {
         e->Semibold();
     }
+    if (highlightCount > 0) e->Highlights(highlights, highlightCount);
     if (id.s) {
         e->Click(HashClickId(id));
     }

@@ -1762,6 +1762,30 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     if (weight & kFontItalic) {
         layout->SetFontStyle(DWRITE_FONT_STYLE_ITALIC, range);
     }
+    const TextFontRanges& fonts = ctx->textFontRanges;
+    for (int i = 0; i < fonts.count; i++) {
+        const TextFontRange& span = fonts.ranges[i];
+        int lo = Utf8OffToWide(s, span.lo);
+        int hi = Utf8OffToWide(s, span.hi);
+        if (hi <= lo) continue;
+        DWRITE_TEXT_RANGE bytes = {(UINT32)lo, (UINT32)(hi - lo)};
+        if (span.weight &&
+            FAILED(layout->SetFontWeight(DwriteWeight(span.weight), bytes))) {
+            layout->Release();
+            return nullptr;
+        }
+        if (span.style != HighlightFontStyle::Inherit) {
+            DWRITE_FONT_STYLE style = DWRITE_FONT_STYLE_NORMAL;
+            if (span.style == HighlightFontStyle::Italic)
+                style = DWRITE_FONT_STYLE_ITALIC;
+            if (span.style == HighlightFontStyle::Oblique)
+                style = DWRITE_FONT_STYLE_OBLIQUE;
+            if (FAILED(layout->SetFontStyle(style, bytes))) {
+                layout->Release();
+                return nullptr;
+            }
+        }
+    }
     // font_features: gpui_windows hands a run's features to DirectWrite as
     // an IDWriteTypography over the whole run.
     if (weight & kFontTabularNums) {

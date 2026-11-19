@@ -161,6 +161,23 @@ EM_JS(void, GpJsInit, (), {
         }
         return s.length;
     };
+    G.textWidthAt = function(c, layout, lineIndex, offset) {
+        const line = layout.lines[lineIndex];
+        if (!layout.parts) {
+            c.font = layout.font;
+            return c.measureText(line.slice(0, offset)).width;
+        }
+        let width = 0;
+        for (const part of layout.parts[lineIndex]) {
+            if (offset >= part.end) {
+                width = part.x + part.width;
+                continue;
+            }
+            c.font = part.font;
+            return part.x + c.measureText(line.slice(part.start, offset)).width;
+        }
+        return width;
+    };
     // A paragraph as the units a greedy wrap may break between: each is one
     // run of non-space plus the spaces that follow it, so concatenating them
     // gives the paragraph back and a break never loses a space.
@@ -752,7 +769,7 @@ EM_JS(void, GpJsImageFree, (int id), {
 EM_JS(int, GpJsTextNew,
       (const uint8_t* ptr, int len, float fontSize, float maxW, int wrap,
        int weightBits, float lineH, int align, float* outSize,
-       const uint8_t* famPtr, int famLen), {
+       const uint8_t* famPtr, int famLen, const TextFontRange* spanPtr, int spanCount), {
     const G = globalThis.__gpui;
     const text = G.str(ptr, len);
     if (text.length === 0) {
@@ -787,11 +804,59 @@ EM_JS(int, GpJsTextNew,
         ? JSON.stringify(named) + ", " + fallback
         : fallback;
     const font = (italic ? "italic " : "") + w + " " + fontSize + "px " + family;
+    const spans = [];
+    for (let i = 0; i < spanCount; i++) {
+        const p = spanPtr + 12 * i;
+        const lo = HEAP32[p >> 2];
+        const hi = HEAP32[(p + 4) >> 2];
+        const weight = HEAPU16[(p + 8) >> 1];
+        const slant = HEAPU8[p + 10];
+        const prefix = slant === 3 ? "oblique "
+            : slant === 2 || (slant === 0 && italic) ? "italic " : "";
+        spans.push({lo: lo, hi: hi,
+                    font: prefix + (weight || w / 100) * 100 + " " + fontSize + "px " + family});
+    }
 
     const c = G.measurer();
     const prevFont = c.font;
     c.font = font;
-    const width = function(s) { return c.measureText(s).width; };
+    const partsOf = function(s, start) {
+        const parts = [];
+        const end = start + G.u8len(s);
+        let at = 0;
+        let min = 0;
+        let max = spans.length;
+        while (min < max) {
+            const mid = (min + max) >> 1;
+            if (spans[mid].hi <= start) min = mid + 1;
+            else max = mid;
+        }
+        const add = function(lo, hi, face) {
+            if (lo < hi) {
+                const x = parts.length ? parts[parts.length - 1].x + parts[parts.length - 1].width : 0;
+                c.font = face;
+                parts.push({start: lo, end: hi, font: face, x: x,
+                            width: c.measureText(s.slice(lo, hi)).width});
+            }
+        };
+        for (let i = min; i < spans.length && spans[i].lo < end; i++) {
+            const span = spans[i];
+            const lo = G.u16at(s, Math.max(span.lo - start, 0));
+            const hi = G.u16at(s, Math.min(span.hi, end) - start);
+            add(at, lo, font);
+            add(lo, hi, span.font);
+            at = hi;
+        }
+        add(at, s.length, font);
+        return parts;
+    };
+    const width = function(s, start) {
+        if (!spanCount) return c.measureText(s).width;
+        const parts = partsOf(s, start);
+        if (parts.length === 0) return 0;
+        const last = parts[parts.length - 1];
+        return last.x + last.width;
+    };
 
     // Greedy word wrap, falling back to breaking inside a word that will not
     // fit on a line of its own. Hard newlines break first, always.
@@ -818,7 +883,7 @@ EM_JS(int, GpJsTextNew,
     };
     for (let pi = 0; pi < paras.length; pi++) {
         const para = paras[pi];
-        if (!wrap || maxW <= 0 || width(para) <= maxW) {
+        if (!wrap || maxW <= 0 || width(para, at) <= maxW) {
             emit(para, false);
         } else {
             let line = "";
@@ -827,16 +892,20 @@ EM_JS(int, GpJsTextNew,
             const words = G.words(para);
             for (let i = 0; i < words.length; i++) {
                 let word = words[i];
-                if (line !== "" && width(line + word) > maxW) {
+                if (line !== "" && width(line + word, at) > maxW) {
                     emit(line, true);
                     line = "";
                 }
-                while (width(word) > maxW && word.length > 1) {
-                    let cut = 1;
-                    while (cut < word.length &&
-                           width(word.slice(0, cut + 1)) <= maxW) {
-                        cut++;
+                while (word.length > 1) {
+                    const wordStart = at + (spanCount ? G.u8len(line) : 0);
+                    if (width(word, wordStart) <= maxW) break;
+                    let cut = 0;
+                    for (const ch of word) {
+                        const next = cut + ch.length;
+                        if (cut && width(word.slice(0, next), wordStart) > maxW) break;
+                        cut = next;
                     }
+                    if (cut >= word.length) break;
                     emit(line + word.slice(0, cut), true);
                     line = "";
                     word = word.slice(cut);
@@ -852,8 +921,10 @@ EM_JS(int, GpJsTextNew,
 
     let maxLine = 0;
     const widths = [];
+    const parts = spanCount ? [] : null;
     for (let i = 0; i < lines.length; i++) {
-        const lw = width(wrapped[i] ? lines[i].trimEnd() : lines[i]);
+        const lw = width(wrapped[i] ? lines[i].trimEnd() : lines[i], starts[i]);
+        if (parts) parts.push(partsOf(lines[i], starts[i]));
         widths.push(lw);
         if (lw > maxLine) {
             maxLine = lw;
@@ -879,6 +950,7 @@ EM_JS(int, GpJsTextNew,
     const box = fontSize * (lineH > 0 ? lineH : 1.618034);
     const rec = {
         lines: lines, starts: starts, wrapped: wrapped, dx: dx, cover: cover,
+        parts: parts, widths: widths,
         font: font,
         px: fontSize, box: box, natural: natural, asc: fm.asc,
         underline: underline, strike: strike,
@@ -923,11 +995,17 @@ EM_JS(void, GpJsTextDraw, (int id, float x, float y, int color, int clip), {
     for (let i = 0; i < e.lines.length; i++) {
         const base = y + pad + i * e.box + e.asc;
         const lx = x + e.dx[i];
-        c.fillText(e.lines[i], lx, base);
+        if (e.parts) {
+            for (const part of e.parts[i]) {
+                c.font = part.font;
+                c.fillText(e.lines[i].slice(part.start, part.end), lx + part.x, base);
+            }
+        } else {
+            c.fillText(e.lines[i], lx, base);
+        }
         if (e.underline || e.strike) {
             const lw = Math.max(1, Math.round(e.px / 14));
-            const w = c.measureText(
-                e.wrapped[i] ? e.lines[i].trimEnd() : e.lines[i]).width;
+            const w = e.widths[i];
             if (e.underline) {
                 c.fillRect(lx, Math.round(base + lw * 2), w, lw);
             }
@@ -965,13 +1043,14 @@ EM_JS(int, GpJsTextHit, (int id, float relX, float relY), {
     // The nearest gap between characters, which is where a caret goes.
     let best = 0;
     let bestD = Infinity;
-    for (let i = 0; i <= line.length; i++) {
-        const w = c.measureText(line.slice(0, i)).width;
+    for (let i = 0; i <= line.length;) {
+        const w = G.textWidthAt(c, e, li, i);
         const d = Math.abs(w - relX);
         if (d < bestD) {
             bestD = d;
             best = i;
         }
+        i += G.u8w(line.charCodeAt(i)) === 4 ? 2 : 1;
     }
     c.font = prev;
     return e.starts[li] + G.u8len(line.slice(0, best));
@@ -998,8 +1077,8 @@ EM_JS(int, GpJsTextRangeRects,
         if (lo >= hi) {
             continue;
         }
-        const x0 = c.measureText(line.slice(0, G.u16at(line, lo - start))).width;
-        const x1 = c.measureText(line.slice(0, G.u16at(line, hi - start))).width;
+        const x0 = G.textWidthAt(c, e, i, G.u16at(line, lo - start));
+        const x1 = G.textWidthAt(c, e, i, G.u16at(line, hi - start));
         const o = (out >> 2) + n * 4;
         // The line box, from its top. The half-leading pad is where the
         // glyphs sit inside that box; a rect from the glyphs reached into
@@ -1461,12 +1540,15 @@ struct TextLayout {
 TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
                             bool wrap, uint16_t weight, float lineH,
                             Size* outSize, TextAlign align) {
-    (void)ctx;
+    static_assert(sizeof(TextFontRange) == 12);
+    static_assert(offsetof(TextFontRange, weight) == 8 &&
+                  offsetof(TextFontRange, style) == 10);
     float size[3] = {0, 0, 0};
     Str family = FontFamilyName(FontFamilyOf(weight));
     int id = GpJsTextNew((const uint8_t*)s.s, len(s), fontSize, maxW,
                          wrap ? 1 : 0, weight, lineH, (int)align, size,
-                         (const uint8_t*)family.s, len(family));
+                         (const uint8_t*)family.s, len(family),
+                         ctx->textFontRanges.ranges, ctx->textFontRanges.count);
     if (!id) {
         return nullptr;
     }

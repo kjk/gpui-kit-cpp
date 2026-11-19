@@ -2178,6 +2178,46 @@ El* El::Spans(const TextSpan* runs, int n) {
     nSpans = n;
     return this;
 }
+
+El* El::Highlights(const TextHighlight* runs, int n) {
+    if (!runs || n <= 0 || len(text) <= 0) {
+        if (lifecycle) {
+            lifecycle->highlights = nullptr;
+            lifecycle->highlightCount = 0;
+            lifecycle->fontRanges = {};
+        }
+        return this;
+    }
+    int cap = std::min(n, len(text));
+    if (cap > INT32_MAX / (int)sizeof(TextHighlight)) return this;
+    auto* valid =
+        (TextHighlight*)Alloc(arena, cap * (int)sizeof(TextHighlight));
+    auto* fonts =
+        (TextFontRange*)Alloc(arena, cap * (int)sizeof(TextFontRange));
+    if (!valid || !fonts) return this;
+    int count = 0;
+    int fontCount = 0;
+    int end = 0;
+    for (int i = 0; i < n; i++) {
+        const TextHighlight& run = runs[i];
+        if (run.lo < end || run.hi <= run.lo || run.hi > len(text) ||
+            !Utf8IsCharBoundary(text, run.lo) ||
+            !Utf8IsCharBoundary(text, run.hi)) {
+            continue;
+        }
+        valid[count++] = run;
+        end = run.hi;
+        uint16_t weight = FontWeightBits(run.style.weight, 0);
+        if (weight || run.style.fontStyle != HighlightFontStyle::Inherit) {
+            fonts[fontCount++] = {run.lo, run.hi, weight, run.style.fontStyle};
+        }
+    }
+    if (!lifecycle) lifecycle = ArenaNew<ElLifecycle>(arena);
+    lifecycle->highlights = valid;
+    lifecycle->highlightCount = count;
+    lifecycle->fontRanges = {fonts, fontCount};
+    return this;
+}
 int Utf8OffsetToUtf16(Str s, int u8) {
     if (u8 > len(s)) {
         u8 = len(s);
@@ -2721,10 +2761,16 @@ struct TextMeasSlot {
     uint8_t wrap = 0;
     uint16_t bold = 0;
     uint8_t occupied = 0;
+    TextFontRanges fonts;
 };
 
+static int FontRangeBytes(TextFontRanges fonts) {
+    return fonts.count * (int)sizeof(TextFontRange);
+}
+
 static uint32_t TextMeasHash(Str s, float fontSize, float maxW, bool wrap,
-                             uint16_t weight, float lineH, uint8_t align) {
+                             uint16_t weight, float lineH, uint8_t align,
+                             TextFontRanges fonts) {
     uint32_t h = MurmurHash2(s);
     uint32_t fs = 0;
     uint32_t mw = 0;
@@ -2744,6 +2790,9 @@ static uint32_t TextMeasHash(Str s, float fontSize, float maxW, bool wrap,
     if (align) {
         h ^= 0x3c6ef372u * (uint32_t)align;
     }
+    if (fonts.count) {
+        h ^= MurmurHash2(fonts.ranges, FontRangeBytes(fonts));
+    }
     return h;
 }
 
@@ -2754,12 +2803,18 @@ static uint8_t MeasKeyFlags(bool wrap, uint8_t align) {
 
 static bool TextMeasKeyEq(const TextMeasSlot* sl, uint32_t hash, Str s,
                           float fontSize, float maxW, bool wrap,
-                          uint16_t weight, float lineH, uint8_t align) {
+                          uint16_t weight, float lineH, uint8_t align,
+                          TextFontRanges fonts) {
     if (!sl->occupied || sl->hash != hash || sl->len != len(s)) {
         return false;
     }
     if (sl->fontSize != fontSize || sl->maxW != maxW || sl->lineH != lineH ||
         sl->wrap != MeasKeyFlags(wrap, align) || sl->bold != weight) {
+        return false;
+    }
+    if (sl->fonts.count != fonts.count ||
+        (fonts.count && memcmp(sl->fonts.ranges, fonts.ranges,
+                               (size_t)FontRangeBytes(fonts)))) {
         return false;
     }
     return StrEq(Str(sl->text, len(s)), s);
@@ -2866,6 +2921,10 @@ static TextAlign ElTextAlign(const El* e) {
                               : TextAlign::Left;
 }
 
+static TextFontRanges ElTextFontRanges(const El* e) {
+    return e->lifecycle ? e->lifecycle->fontRanges : TextFontRanges{};
+}
+
 static void TextMeasFreeSlot(TextMeasSlot* sl) {
     if (!sl) {
         return;
@@ -2878,6 +2937,8 @@ static void TextMeasFreeSlot(TextMeasSlot* sl) {
         TextLayoutRelease(sl->layout);
         sl->layout = nullptr;
     }
+    Free(nullptr, (void*)sl->fonts.ranges);
+    sl->fonts = {};
     sl->occupied = 0;
     sl->len = 0;
 }
@@ -2886,8 +2947,8 @@ static void TextMeasFreeSlot(TextMeasSlot* sl) {
 // one where it would go, or null when the table is full or not yet made.
 static TextMeasSlot* TextMeasProbe(TextMeasCache* c, uint32_t hash, Str s,
                                    float keyFont, float keyMaxW, bool wrap,
-                                   uint16_t weight, float lineH,
-                                   uint8_t align) {
+                                   uint16_t weight, float lineH, uint8_t align,
+                                   TextFontRanges fonts) {
     if (!c->slots || c->cap <= 0) {
         return nullptr;
     }
@@ -2896,7 +2957,7 @@ static TextMeasSlot* TextMeasProbe(TextMeasCache* c, uint32_t hash, Str s,
     for (int n = 0; n < c->cap; n++) {
         TextMeasSlot* sl = &((TextMeasSlot*)c->slots)[i];
         if (!sl->occupied || TextMeasKeyEq(sl, hash, s, keyFont, keyMaxW, wrap,
-                                           weight, lineH, align)) {
+                                           weight, lineH, align, fonts)) {
             return sl;
         }
         i = (i + 1) & mask;
@@ -2907,16 +2968,17 @@ static TextMeasSlot* TextMeasProbe(TextMeasCache* c, uint32_t hash, Str s,
 static TextMeasSlot* TextMeasFind(TextMeasCache* c, Str s, float fontSize,
                                   float maxW, bool wrap, uint16_t weight,
                                   float lineH, uint32_t* outHash,
-                                  uint8_t align = 0) {
+                                  uint8_t align = 0,
+                                  TextFontRanges fonts = {}) {
     float keyFont = MeasKeyFont(fontSize);
     float keyMaxW = MeasKeyMaxW(maxW, wrap, align);
     uint32_t hash =
-        TextMeasHash(s, keyFont, keyMaxW, wrap, weight, lineH, align);
+        TextMeasHash(s, keyFont, keyMaxW, wrap, weight, lineH, align, fonts);
     if (outHash) {
         *outHash = hash;
     }
-    TextMeasSlot* sl =
-        TextMeasProbe(c, hash, s, keyFont, keyMaxW, wrap, weight, lineH, align);
+    TextMeasSlot* sl = TextMeasProbe(c, hash, s, keyFont, keyMaxW, wrap, weight,
+                                     lineH, align, fonts);
     return sl && sl->occupied ? sl : nullptr;
 }
 
@@ -2960,6 +3022,7 @@ static void TextMeasInsertMove(TextMeasCache* c, TextMeasSlot* src) {
             c->used++;
             src->text = nullptr;
             src->layout = nullptr;
+            src->fonts = {};
             src->occupied = 0;
             return;
         }
@@ -2971,17 +3034,18 @@ static void TextMeasInsertMove(TextMeasCache* c, TextMeasSlot* src) {
 static TextMeasSlot* TextMeasInsert(PaintCtx* ctx, Str s, float fontSize,
                                     float maxW, bool wrap, uint16_t weight,
                                     float lineH, float w, float h,
-                                    TextLayout* layout, uint8_t align) {
+                                    TextLayout* layout, uint8_t align,
+                                    TextFontRanges fonts) {
     TextMeasCache* c = &ctx->textCache;
     float keyFont = MeasKeyFont(fontSize);
     float keyMaxW = MeasKeyMaxW(maxW, wrap, align);
     uint32_t hash =
-        TextMeasHash(s, keyFont, keyMaxW, wrap, weight, lineH, align);
+        TextMeasHash(s, keyFont, keyMaxW, wrap, weight, lineH, align, fonts);
     if (c->cap == 0 || (c->used + 1) * 10 > c->cap * 6) {
         TextMeasGrow(c, c->cap > 0 ? c->cap * 2 : 256);
     }
-    TextMeasSlot* sl =
-        TextMeasProbe(c, hash, s, keyFont, keyMaxW, wrap, weight, lineH, align);
+    TextMeasSlot* sl = TextMeasProbe(c, hash, s, keyFont, keyMaxW, wrap, weight,
+                                     lineH, align, fonts);
     if (!sl) {
         return nullptr;
     }
@@ -2989,6 +3053,16 @@ static TextMeasSlot* TextMeasInsert(PaintCtx* ctx, Str s, float fontSize,
         Str copy = StrDup(s);
         if (!copy.s) {
             return nullptr;
+        }
+        if (fonts.count) {
+            int bytes = FontRangeBytes(fonts);
+            auto* ranges = (TextFontRange*)Alloc(nullptr, bytes);
+            if (!ranges) {
+                StrFree(copy);
+                return nullptr;
+            }
+            memcpy(ranges, fonts.ranges, (size_t)bytes);
+            sl->fonts = {ranges, fonts.count};
         }
         sl->text = copy.s;
         sl->len = len(copy);
@@ -3160,7 +3234,8 @@ static TextLayout* TextMeasLayout(PaintCtx* ctx, Str s, float fontSize,
                                   float maxW, bool wrap, uint16_t weight,
                                   float lineH, Size* outSize,
                                   bool* outCached = nullptr,
-                                  TextAlign align = TextAlign::Left) {
+                                  TextAlign align = TextAlign::Left,
+                                  TextFontRanges fonts = {}) {
     if (outCached) {
         *outCached = false;
     }
@@ -3186,7 +3261,7 @@ static TextLayout* TextMeasLayout(PaintCtx* ctx, Str s, float fontSize,
     }
     TextMeasCache* c = &ctx->textCache;
     TextMeasSlot* hit = TextMeasFind(c, s, fontSize, maxW, wrap, weight, lineH,
-                                     nullptr, alignKey);
+                                     nullptr, alignKey, fonts);
     if (hit && hit->layout) {
         hit->lastUsed = c->frame;
         if (outCached) {
@@ -3200,16 +3275,20 @@ static TextLayout* TextMeasLayout(PaintCtx* ctx, Str s, float fontSize,
         return hit->layout;
     }
     Size size = {};
+    TextFontRanges previousFonts = ctx->textFontRanges;
+    ctx->textFontRanges = fonts;
     TextLayout* layout = TextLayoutNew(ctx, s, fontSize, maxW, wrap, weight,
                                        lineH, &size, align);
+    ctx->textFontRanges = previousFonts;
     if (!layout) {
         return nullptr;
     }
     if (outSize) {
         *outSize = size;
     }
-    TextMeasSlot* sl = TextMeasInsert(ctx, s, fontSize, maxW, wrap, weight,
-                                      lineH, size.w, size.h, layout, alignKey);
+    TextMeasSlot* sl =
+        TextMeasInsert(ctx, s, fontSize, maxW, wrap, weight, lineH, size.w,
+                       size.h, layout, alignKey, fonts);
     if (outCached) {
         *outCached = sl != nullptr;
     }
@@ -4372,9 +4451,17 @@ static taffy::SizeF LayoutMeasureSizeOf(taffy::SizeFOpt known,
             }
             if (slot >= 0) {
                 text = e->measSize[slot];
+            } else if (ElTextFontRanges(e).count) {
+                TextLayout* layout = TextMeasLayout(
+                    ctx, e->text, font, measW, e->style.wrap, ElTextWeight(e),
+                    e->style.lineHeight, &text, nullptr, TextAlign::Left,
+                    ElTextFontRanges(e));
+                TextLayoutRelease(layout);
             } else {
                 text = MeasureText(ctx, e->text, font, measW, e->style.wrap,
                                    ElTextWeight(e), e->style.lineHeight);
+            }
+            if (slot < 0) {
                 // Four widths, oldest out. A leaf asked about more than four
                 // in one pass simply measures again.
                 int at = e->measCount < 4 ? e->measCount++ : e->measNext;
@@ -4833,6 +4920,10 @@ static uint64_t LayoutMeasureKey(PaintCtx* ctx, El* e) {
     h = Fnv1a64(h, &e->laidFont, sizeof(e->laidFont));
     uint16_t weight = ElTextWeight(e);
     h = Fnv1a64(h, &weight, sizeof(weight));
+    TextFontRanges fonts = ElTextFontRanges(e);
+    if (fonts.count) {
+        h = Fnv1a64(h, fonts.ranges, (size_t)FontRangeBytes(fonts));
+    }
     h = Fnv1a64(h, &e->style.lineHeight, sizeof(e->style.lineHeight));
     uint8_t flags =
         (uint8_t)((e->style.wrap ? 1 : 0) | (e->style.truncate ? 2 : 0));
@@ -5306,9 +5397,10 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
         float measW = constrain ? e->w : 0.0f;
         e->laidMaxW = measW;
         bool cached = false;
-        TextLayout* tl = TextMeasLayout(
-            ctx, e->text, e->laidFont, measW, e->style.wrap, ElTextWeight(e),
-            e->style.lineHeight, nullptr, &cached, ElTextAlign(e));
+        TextLayout* tl =
+            TextMeasLayout(ctx, e->text, e->laidFont, measW, e->style.wrap,
+                           ElTextWeight(e), e->style.lineHeight, nullptr,
+                           &cached, ElTextAlign(e), ElTextFontRanges(e));
         e->laidLayout = cached ? tl : nullptr;
         if (tl) {
             TextLayoutRelease(tl);
@@ -6516,16 +6608,37 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
     }
 }
 
+static Bounds* TextRangeRectsFull(TextLayout* layout, Str text, int lo, int hi,
+                                  Bounds (&stack)[32], int* count) {
+    Bounds* rects = stack;
+    int capacity = (int)dimof(stack);
+    // A returned rect covers at least one byte in the requested range.
+    int bytes = std::min(hi, len(text)) - std::max(lo, 0);
+    int maxRects = std::min(bytes, INT32_MAX / (int)sizeof(Bounds));
+    *count = TextLayoutRangeRects(layout, text, lo, hi, rects, capacity);
+    while (*count == capacity && capacity < maxRects) {
+        capacity = std::min(capacity * 2, maxRects);
+        auto* larger =
+            (Bounds*)Alloc(GetTempArena(), capacity * (int)sizeof(Bounds));
+        if (!larger) break;
+        rects = larger;
+        *count = TextLayoutRangeRects(layout, text, lo, hi, rects, capacity);
+    }
+    return rects;
+}
+
 void TextLayoutDrawSpans(PaintCtx* ctx, TextLayout* layout, Str text, float x,
                          float y, Rgba base, const TextSpan* spans, int n) {
     if (PaintTextLayoutSpans(ctx, layout, text, x, y, base, spans, n)) return;
-    Bounds rects[32] = {};
+    Bounds stack[32];
     int at = 0;
     for (int i = 0; i <= n; i++) {
         int lo = i < n ? spans[i].lo : len(text);
         int hi = i < n ? spans[i].hi : len(text);
         if (lo > at) {
-            int count = TextLayoutRangeRects(layout, text, at, lo, rects, 32);
+            int count = 0;
+            Bounds* rects =
+                TextRangeRectsFull(layout, text, at, lo, stack, &count);
             for (int r = 0; r < count; r++) {
                 CanvasPushClip(ctx, x + rects[r].x, y + rects[r].y, rects[r].w,
                                rects[r].h);
@@ -6537,7 +6650,8 @@ void TextLayoutDrawSpans(PaintCtx* ctx, TextLayout* layout, Str text, float x,
             at = lo > at ? lo : at;
             continue;
         }
-        int count = TextLayoutRangeRects(layout, text, lo, hi, rects, 32);
+        int count = 0;
+        Bounds* rects = TextRangeRectsFull(layout, text, lo, hi, stack, &count);
         for (int r = 0; r < count; r++) {
             CanvasPushClip(ctx, x + rects[r].x, y + rects[r].y, rects[r].w,
                            rects[r].h);
@@ -7713,9 +7827,89 @@ static TextLayout* ElTextLayout(PaintCtx* ctx, const El* e) {
     float font = e->laidFont > 0
                      ? e->laidFont
                      : (e->style.fontSize > 0 ? e->style.fontSize : 14.f);
-    return TextMeasLayout(
-        ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
-        ElTextWeight(e), e->style.lineHeight, nullptr, nullptr, ElTextAlign(e));
+    return TextMeasLayout(ctx, e->text, font,
+                          e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
+                          ElTextWeight(e), e->style.lineHeight, nullptr,
+                          nullptr, ElTextAlign(e), ElTextFontRanges(e));
+}
+
+static void PaintHighlightWash(PaintCtx* ctx, const El* e, TextLayout* layout,
+                               int lo, int hi, Rgba color) {
+    if (color.a == 0 || hi <= lo) return;
+    Bounds stack[32];
+    int count = 0;
+    Bounds* rects = TextRangeRectsFull(layout, e->text, lo, hi, stack, &count);
+    for (int i = 0; i < count; i++) {
+        const Bounds& r = rects[i];
+        CanvasFillRect(ctx, e->x + r.x, e->y + r.y, r.w, r.h, color);
+    }
+}
+
+static void PaintHighlightStrokes(PaintCtx* ctx, const El* e,
+                                  TextLayout* layout, const TextHighlight& run,
+                                  Rgba color) {
+    const HighlightStyle& style = run.style;
+    if (!(style.underline.thickness > 0 || style.strike.thickness > 0)) return;
+    Bounds stack[32];
+    int count = 0;
+    Bounds* rects =
+        TextRangeRectsFull(layout, e->text, run.lo, run.hi, stack, &count);
+    float baseline = TextLayoutBaseline(layout);
+    for (int i = 0; i < count; i++) {
+        const Bounds& r = rects[i];
+        float x = e->x + r.x;
+        float y = e->y + r.y;
+        if (style.underline.thickness > 0) {
+            float thickness = style.underline.thickness;
+            Rgba ink = style.underline.hasColor ? style.underline.color : color;
+            ink = TextFadeColor(ink, style.fade);
+            if (style.wavy) {
+                PaintWavyRun(ctx, x, y + baseline + 1.f + 1.5f * thickness, r.w,
+                             ink, thickness);
+            } else {
+                CanvasFillRect(ctx, x, y + baseline + 1.f, r.w, thickness, ink);
+            }
+        }
+        if (style.strike.thickness > 0) {
+            Rgba ink = style.strike.hasColor ? style.strike.color : color;
+            CanvasFillRect(ctx, x, y + baseline * 0.65f, r.w,
+                           style.strike.thickness,
+                           TextFadeColor(ink, style.fade));
+        }
+    }
+}
+
+static void PaintHighlightedText(PaintCtx* ctx, const El* e, TextLayout* layout,
+                                 Rgba foreground) {
+    const ElLifecycle* state = e->lifecycle;
+    auto* colors = (TextSpan*)Alloc(
+        e->arena, state->highlightCount * (int)sizeof(TextSpan));
+    int colorCount = 0;
+    for (int i = 0; i < state->highlightCount; i++) {
+        const TextHighlight& run = state->highlights[i];
+        const HighlightStyle& style = run.style;
+        // StyledText draws a highlight background over the selection wash.
+        PaintHighlightWash(ctx, e, layout, run.lo, run.hi,
+                           TextFadeColor(style.background, style.fade));
+        if (colors && (style.hasColor || style.fade > 0)) {
+            Rgba color = style.hasColor ? style.color : foreground;
+            colors[colorCount++] = {run.lo, run.hi,
+                                    TextFadeColor(color, style.fade)};
+        }
+    }
+    if (colorCount > 0) {
+        TextLayoutDrawSpans(ctx, layout, e->text, e->x, e->y, foreground,
+                            colors, colorCount);
+    } else {
+        TextLayoutDraw(ctx, layout, e->x, e->y, foreground, e->style.truncate,
+                       e->laidMaxW);
+    }
+    for (int i = 0; i < state->highlightCount; i++) {
+        const TextHighlight& run = state->highlights[i];
+        PaintHighlightStrokes(
+            ctx, e, layout, run,
+            run.style.hasColor ? run.style.color : foreground);
+    }
 }
 
 int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
@@ -8086,6 +8280,7 @@ static TextHit ElTextHit(PaintCtx* ctx, const El* e, int docOff) {
     th.bounds = e->Bounds();
     th.contentMask =
         ctx->hasHitMask ? ctx->hitMask : Bounds{0, 0, ctx->viewW, ctx->viewH};
+    if (ElTextFontRanges(e).count) th.highlightedElement = e;
     th.docOff = docOff;
     th.owner = e->selectionOwner;
     th.src = e->selSrc;
@@ -8592,6 +8787,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         }
         Rgba c = e->style.hasColor ? e->style.color
                                    : RuntimeStyleNow(ctx->app).foreground;
+        TextLayout* highlightLayout = nullptr;
+        if (e->lifecycle && e->lifecycle->highlightCount > 0) {
+            highlightLayout = ElTextLayout(ctx, e);
+        }
         int lo = e->selLo;
         int hi = e->selHi;
         if (e->selectable && e->text.s) {
@@ -8648,10 +8847,15 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // text_bg: the run's background_color, behind everything the run
         // paints, one rect per line as GPUI paints a run's background.
         if (e->style.hasTextBg && e->style.textBg.a != 0 && len(e->text) > 0) {
-            PaintTextRange(ctx, e->text, font,
-                           e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
-                           ElTextWeight(e), e->style.lineHeight, e->x, e->y, 0,
-                           len(e->text), e->style.textBg, ElTextAlign(e));
+            if (highlightLayout) {
+                PaintHighlightWash(ctx, e, highlightLayout, 0, len(e->text),
+                                   e->style.textBg);
+            } else {
+                PaintTextRange(
+                    ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
+                    e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
+                    e->y, 0, len(e->text), e->style.textBg, ElTextAlign(e));
+            }
         }
         // Under the selection quad as well as under the glyphs: a match the
         // caret happens to be inside still reads as selected.
@@ -8687,11 +8891,17 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         if (lo >= 0 && hi > lo) {
             // selection_paint::visit on a TextView inline. An editor row
             // still covers the rest of a line the selection continues past.
-            auto paintSel =
-                e->glyphSelection ? &PaintTextRangeBoxes : &PaintTextRange;
-            paintSel(ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
-                     e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
-                     e->y, lo, hi, e->selColor, ElTextAlign(e));
+            if (highlightLayout) {
+                PaintHighlightWash(ctx, e, highlightLayout, lo, hi,
+                                   e->selColor);
+            } else {
+                auto paintSel =
+                    e->glyphSelection ? &PaintTextRangeBoxes : &PaintTextRange;
+                paintSel(ctx, e->text, font,
+                         e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
+                         ElTextWeight(e), e->style.lineHeight, e->x, e->y, lo,
+                         hi, e->selColor, ElTextAlign(e));
+            }
         }
         // The other cursors' selections, in the same wash.
         for (int i = 0; i < e->nExtraSels; i++) {
@@ -8709,7 +8919,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
                 e->markLo, e->markHi, c, false, ElTextAlign(e));
         }
-        if ((e->nSpans > 0 || nFades > 0) && e->text.s) {
+        if (highlightLayout) {
+            PaintHighlightedText(ctx, e, highlightLayout, c);
+            TextLayoutRelease(highlightLayout);
+        } else if ((e->nSpans > 0 || nFades > 0) && e->text.s) {
             PaintTextSpans(ctx, e, font, c);
         } else if (e->laidLayout) {
             TextLayoutDraw(ctx, e->laidLayout, e->x, e->y, c, e->style.truncate,
@@ -8738,10 +8951,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // caller that hit-tests against it on a later frame.
         if (e->rangeOut && e->rangeOutHi > e->rangeOutLo) {
             *e->rangeOut = Bounds{};
-            TextLayout* tl = TextMeasLayout(
-                ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
-                e->style.wrap, ElTextWeight(e), e->style.lineHeight, nullptr,
-                nullptr, ElTextAlign(e));
+            TextLayout* tl = ElTextLayout(ctx, e);
             if (tl) {
                 Bounds r[8] = {};
                 int n = TextLayoutRangeRects(tl, e->text, e->rangeOutLo,
@@ -9368,6 +9578,13 @@ static const TextHit* TextHitFind(PaintCtx* ctx, float x, float y, bool nearest,
 
 // The byte offset inside `h` that `rel` points at, clamped into it.
 static int TextHitLocal(PaintCtx* ctx, const TextHit* h, Point rel) {
+    if (h->highlightedElement) {
+        if (TextLayout* layout = ElTextLayout(ctx, h->highlightedElement)) {
+            int local = TextLayoutHitPoint(layout, h->text, rel.x, rel.y);
+            TextLayoutRelease(layout);
+            return ClampI(local, 0, len(h->text));
+        }
+    }
     int local =
         TextIndexAt(ctx, h->text, h->font, h->maxW > 0 ? h->maxW : h->bounds.w,
                     h->wrap, rel.x, rel.y, false, 0, h->align);

@@ -2446,6 +2446,67 @@ struct CopyCount {
     int n = 0;
 };
 
+struct HighlightedSelectableView {
+    FontWeight weight = FontWeight::Bold;
+
+    static El* Render(HighlightedSelectableView* self, Ctx* cx) {
+        TextHighlight highlights[] = {{1, 2, {}}, {9, 13, {}}};
+        highlights[1].style.background = Rgb(255, 0, 0);
+        highlights[1].style.weight = self->weight;
+        return Div(cx->a)
+            ->W(240)
+            ->H(32)
+            ->Child(SelectableText::New(cx, StrL("local"), StrL("π alpha beta"))
+                        ->Font(16)
+                        ->Highlights(highlights, (int)dimof(highlights))
+                        ->IntoEl())
+            ->Child(TextSelectionLayer::New(cx));
+    }
+};
+
+// selectable_text.rs highlighted_text_selects_and_copies_as_plain_text.
+static void HighlightedTextSelectsAndCopiesAsPlainText() {
+    App* app = TestAppNew();
+    auto view = EntityNew<HighlightedSelectableView>(app);
+    Window* win = TestWindowOpen(app, view, 300, 200, 1);
+    auto range = [&] {
+        Bounds r = {};
+        utassert(len(win->paint.texts) == 1);
+        if (len(win->paint.texts) != 1) return r;
+        const TextHit& hit = win->paint.texts[0];
+        const El* text = hit.highlightedElement;
+        utassert(text && text->lifecycle->highlightCount == 1);
+        if (text) {
+            utassert(ElTextRangeRects(&win->paint, text, 9, 13, &r, 1) == 1);
+        }
+        return r;
+    };
+    Bounds bold = range();
+    float boldWidth =
+        MeasureText(&win->paint, StrL("beta"), 16, 0, false, kFontWeightBold, 0)
+            .w;
+    utassert(bold.w > 0 && fabsf(bold.w - boldWidth) <= 1.f);
+
+    auto* self = view.Get(app);
+    self->weight = FontWeight::Normal;
+    TestDraw(win);
+    Bounds normal = range();
+    float normalWidth = MeasureText(&win->paint, StrL("beta"), 16, 0, false,
+                                    kFontWeightExplicitNormal, 0)
+                            .w;
+    utassert(normal.w > 0 && fabsf(normal.w - normalWidth) <= 1.f);
+    self->weight = FontWeight::Bold;
+    TestDraw(win);
+    TestSimulateMouseDown(win, {1, 12});
+    TestSimulateMouseMove(win, {220, 12}, true);
+    TestSimulateMouseUp(win, {220, 12});
+    utassert(WindowSelectedIs(win, app, "π alpha beta"));
+    TestSimulateKeystrokes(win, "secondary-c");
+    utassert(
+        StrEq(TestReadFromClipboard(GetTempArena()), StrL("π alpha beta")));
+    TestAppFree(app);
+}
+
 static int CountGammaCopy(void* user, App*, char* out, int cap) {
     ((CopyCount*)user)->n++;
     const char* value = "gamma";
@@ -2561,6 +2622,7 @@ static void CopyWithOnlyACaretUsesTheWindowSelection() {
 void TestTextSelection() {
     TestSuite("text_selection");
     PaintDoesNotResolveWindowSelectedText();
+    HighlightedTextSelectsAndCopiesAsPlainText();
     CopyWithOnlyACaretUsesTheWindowSelection();
     WrappedSelectionPaintsFullWidthMiddleLines();
     SelectionBandDecidesWholeRuns();

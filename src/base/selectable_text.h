@@ -41,6 +41,8 @@ struct SelectableText {
     // reported, not painted differently. Said again in the log.
     Rgba selectionColor = {};
     bool hasSelectionColor = false;
+    const TextHighlight* highlights = nullptr;
+    int highlightCount = 0;
 
     static SelectableText* New(Ctx* cx, Str id, Str text);
     static SelectableText* WithHandle(Ctx* cx, Str id,
@@ -51,6 +53,7 @@ struct SelectableText {
     SelectableText* TextStyle(float fontSize, Rgba textColor);
     SelectableText* Font(float fontSize);
     SelectableText* Semibold();
+    SelectableText* Highlights(const TextHighlight* runs, int count);
     SelectableText* SelectionColor(Rgba value);
     El* IntoEl();
 };

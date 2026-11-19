@@ -905,7 +905,9 @@ TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
     pango_layout_set_font_description(l, fd);
     pango_font_description_free(fd);
 
-    if (weight & (kFontUnderline | kFontStrike | kFontTabularNums)) {
+    const TextFontRanges& fonts = ctx->textFontRanges;
+    if ((weight & (kFontUnderline | kFontStrike | kFontTabularNums)) ||
+        fonts.count) {
         PangoAttrList* attrs = pango_attr_list_new();
         if (weight & kFontUnderline) {
             pango_attr_list_insert(
@@ -919,6 +921,27 @@ TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
         if (weight & kFontTabularNums) {
             pango_attr_list_insert(attrs,
                                    pango_attr_font_features_new("tnum=1"));
+        }
+        for (int i = 0; i < fonts.count; i++) {
+            const TextFontRange& span = fonts.ranges[i];
+            if (span.weight) {
+                PangoAttribute* attr = pango_attr_weight_new(
+                    PangoWeightFor(span.weight, fontSize));
+                attr->start_index = (guint)span.lo;
+                attr->end_index = (guint)span.hi;
+                pango_attr_list_insert(attrs, attr);
+            }
+            if (span.style != HighlightFontStyle::Inherit) {
+                PangoStyle style = PANGO_STYLE_NORMAL;
+                if (span.style == HighlightFontStyle::Italic)
+                    style = PANGO_STYLE_ITALIC;
+                if (span.style == HighlightFontStyle::Oblique)
+                    style = PANGO_STYLE_OBLIQUE;
+                PangoAttribute* attr = pango_attr_style_new(style);
+                attr->start_index = (guint)span.lo;
+                attr->end_index = (guint)span.hi;
+                pango_attr_list_insert(attrs, attr);
+            }
         }
         pango_layout_set_attributes(l, attrs);
         pango_attr_list_unref(attrs);

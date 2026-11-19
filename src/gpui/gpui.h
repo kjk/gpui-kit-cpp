@@ -1736,6 +1736,54 @@ enum class FontWeight : uint16_t {
     Black = 900
 };
 
+// Optional styling for a range of text. An omitted color inherits the text
+// foreground. A zero stroke thickness leaves the corresponding rule off.
+enum class HighlightFontStyle : uint8_t {
+    Inherit,
+    Normal,
+    Italic,
+    Oblique
+};
+
+struct HighlightStroke {
+    float thickness = 0;
+    Rgba color = {};
+    bool hasColor = false;
+};
+
+struct HighlightStyle {
+    Rgba color = {};
+    Rgba background = {0, 0, 0, 0};
+    HighlightStroke underline;
+    HighlightStroke strike;
+    FontWeight weight = {};
+    HighlightFontStyle fontStyle = HighlightFontStyle::Inherit;
+    float fade = 0;
+    bool hasColor = false;
+    bool wavy = false;
+};
+
+struct TextHighlight {
+    int lo = 0;
+    int hi = 0;
+    HighlightStyle style;
+};
+
+// The subset of a highlight that affects text shaping. Byte indices are
+// UTF-8 for all backends. Weight is the packed GPUI font weight, 0 to inherit.
+struct TextFontRange {
+    int lo = 0;
+    int hi = 0;
+    uint16_t weight = 0;
+    HighlightFontStyle style = HighlightFontStyle::Inherit;
+    uint8_t padding = 0;
+};
+
+struct TextFontRanges {
+    const TextFontRange* ranges = nullptr;
+    int count = 0;
+};
+
 // gpui::TextAlign: where each line of a text run sits in the box it was laid
 // out in. GPUI applies it per wrapped line when it paints
 // (`aligned_origin_x`); here the paint backend shapes it in (TextLayoutNew),
@@ -2615,6 +2663,9 @@ struct ElLifecycle {
     void (*afterPaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* user = nullptr;
     const LinkTooltipTarget* linkTooltip = nullptr;
+    const TextHighlight* highlights = nullptr;
+    int highlightCount = 0;
+    TextFontRanges fontRanges;
 };
 
 using LinkTooltipFn = El* (*)(Ctx * cx, Str url, void* data);
@@ -3293,6 +3344,8 @@ struct El {
     // IndentGuideXs). Painted under the run's washes and glyphs.
     El* IndentGuides(Rgba color, int indentCount, int tabSize);
     El* Spans(const TextSpan* runs, int n);
+    // Ranges are ordered, nonoverlapping UTF-8 byte offsets.
+    El* Highlights(const TextHighlight* runs, int n);
     // The marked range, which is drawn underlined in the text's own colour.
     El* MarkRange(int lo, int hi);
     El* Caret(int off, Rgba color, float width = 1,
@@ -3753,6 +3806,8 @@ struct TextHit {
     // cell selects only there; runs outside it are not part of that gesture.
     bool inCell = false;
     Bounds cell = {};
+    // A highlighted run's text geometry is shaped with its font ranges.
+    const El* highlightedElement = nullptr;
 };
 
 // Shaped-text cache (see TextMeas* in Gpui.cpp). Opaque slots. Entries stay
@@ -4058,6 +4113,9 @@ struct PaintCtx {
     // hit is the selection, so those children do not register runs.
     int blockPluginDepth = 0;
     TextMeasCache textCache;
+    // Optional ranges supplied only for the duration of TextLayoutNew. A
+    // host paint adapter can shape them with its existing text API.
+    TextFontRanges textFontRanges;
 
     PaintCtx() = default;
 };

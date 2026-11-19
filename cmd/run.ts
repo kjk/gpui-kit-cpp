@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1b0a3756419a0a092ad74181289f1648e627f16a",
-  date: "2026-11-12",
-  subject: "slider: Add the keyboard shortcuts the guide lists (#3919)",
+  sha: "1ca6555da049e90352501b1dd10f76b0bddabaa9",
+  date: "2026-11-11",
+  subject: "selectable_text: Add highlights (#3929)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

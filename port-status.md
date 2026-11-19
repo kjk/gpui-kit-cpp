@@ -16,16 +16,22 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1b0a3756419a0a092ad74181289f1648e627f16a` (2026-11-12,
-slider: Add the keyboard shortcuts the guide lists (#3919)).
-Use the slider step grid for arrow, Page Up, Page Down, Home and End keys.
-Report Change and Release for keyboard and accessibility adjustments, expose
-themed Tab order configuration, and draw focus on the end thumb.
+Processed through `1ca6555da049e90352501b1dd10f76b0bddabaa9` (2026-11-11,
+selectable_text: Add highlights (#3929)).
+Add UTF-8 range highlights to SelectableText. Use the same mixed-font layout
+for measuring, hit testing, selection and painting so copying still returns
+the original text.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
 ## Known gaps vs Rust
 
+- **Selectable text highlight font ranges cross the mobile paint adapter.**
+  iOS and Android hosts can read `PaintCtx::textFontRanges` when shaping
+  `TextLayoutNew`. On wasm the Canvas2D backend positions styled font runs
+  in logical order and relies on Canvas2D for shaping within each run. Core
+  Text uses the italic face for an oblique highlight. Highlight strokes use
+  the portable text decoration geometry (`src/gpui/gpui.cpp`).
 - **The legacy C++ reduced-motion setter treats same-value writes as explicit.**
   Calls without an app set a process default. Applications can set their own
   preference and resume the shared platform reading

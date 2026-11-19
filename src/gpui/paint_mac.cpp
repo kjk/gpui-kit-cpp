@@ -887,6 +887,30 @@ TextLayout* TextLayoutShape(PaintCtx* ctx, Str s, float fontSize, float maxW,
     if (!attr) {
         return nullptr;
     }
+    const TextFontRanges& fonts = ctx->textFontRanges;
+    if (fonts.count) {
+        auto shaped = CFAttributedStringCreateMutableCopy(nullptr, 0, attr);
+        CFRelease(attr);
+        if (!shaped) return nullptr;
+        attr = shaped;
+        for (int i = 0; i < fonts.count; i++) {
+            const TextFontRange& span = fonts.ranges[i];
+            int lo = Utf8OffsetToUtf16(s, span.lo);
+            int hi = Utf8OffsetToUtf16(s, span.hi);
+            if (hi <= lo) continue;
+            uint16_t bits = weight;
+            if (span.weight) bits = (bits & ~kFontWeightMask) | span.weight;
+            if (span.style != HighlightFontStyle::Inherit) {
+                bits &= ~kFontItalic;
+                if (span.style != HighlightFontStyle::Normal)
+                    bits |= kFontItalic;
+            }
+            if (CTFontRef run = FontFor(ctx->pa, fontSize, bits)) {
+                CFAttributedStringSetAttribute(shaped, CFRangeMake(lo, hi - lo),
+                                               kCTFontAttributeName, run);
+            }
+        }
+    }
 
     CTTypesetterRef ts = CTTypesetterCreateWithAttributedString(attr);
     if (!ts) {
