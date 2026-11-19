@@ -181,6 +181,54 @@ static void LongTextWrapsWithinTheTooltipWidth() {
     utassert(longTip.h > shortTip.h * 2.f);
 }
 
+struct NestedTooltipTriggers {
+    static El* Render(NestedTooltipTriggers*, Ctx* cx) {
+        El* inner = component::Button::New(cx, StrL("inner"))
+                        ->Label(StrL("Inner"))
+                        ->Tooltip(StrL("inner tooltip"))
+                        ->IntoEl()
+                        ->Absolute()
+                        ->Left(100)
+                        ->Top(20)
+                        ->W(100)
+                        ->H(30);
+        inner->rootTooltip = true;
+        return Div(cx->a)->SizeFull()->Child(Div(cx->a)
+                                                 ->PathClick(StrL("outer"))
+                                                 ->W(300)
+                                                 ->H(100)
+                                                 ->Tip(StrL("outer tooltip"))
+                                                 ->Child(inner));
+    }
+};
+
+// tooltip.rs: a_managed_tooltip_hides_the_native_tooltip_around_it.
+static void AManagedTooltipHidesTheNativeTooltipAroundIt() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<NestedTooltipTriggers>(app);
+    auto root = ShellRoot::New(app, view.id);
+    Window* win = TestWindowOpen(app, root, 400, 220);
+    TestDraw(win);
+    TestSimulateMouseMove(win, {20, 20});
+    TestAdvanceClock(app, kTooltipShowDelayMs + 50);
+    auto* outer = (TooltipOverlay*)EntityGet(app, win->tooltip);
+    utassert(outer && outer->hasContent &&
+             StrEq(outer->content.text, "outer tooltip"));
+    TestSimulateMouseMove(win, {120, 30});
+    TestAdvanceClock(app, kTooltipShowDelayMs + 50);
+    auto* inner = (TooltipOverlay*)EntityGet(app, win->rootTooltip);
+    utassert(inner && inner->hasContent &&
+             StrEq(inner->content.text, "inner tooltip"));
+    utassert(outer && !outer->hasContent && !outer->hasPending);
+    utassert(TooltipShowing(win) == inner);
+    TestSimulateMouseMove(win, {20, 20});
+    TestAdvanceClock(app, kTooltipShowDelayMs + 50);
+    utassert(outer && outer->hasContent);
+    utassert(inner && !inner->hasContent && !inner->hasPending);
+    TestAppFree(app);
+}
+
 void TestTooltip() {
     TestSuite("tooltip");
     RemovingButtonHidesVisibleTooltip();
@@ -188,4 +236,5 @@ void TestTooltip() {
     PendingButtonShowsAfterTheDelay();
     RemovingOldButtonPreservesNewTooltip();
     LongTextWrapsWithinTheTooltipWidth();
+    AManagedTooltipHidesTheNativeTooltipAroundIt();
 }

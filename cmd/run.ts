@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3c5320b7c0508c288a6be0ddddd9fb38e906f196",
+  sha: "8358c37a662edc7c7a7935801d1585e470049a86",
   date: "2026-11-11",
-  subject: "website: Document that a custom Button variant fills with its color at 20% (#3911)",
+  subject: "tooltip: Show one tooltip when a component tooltip sits inside a native `.tooltip()` (#3914)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",
