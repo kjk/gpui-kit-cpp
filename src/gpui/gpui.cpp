@@ -5430,7 +5430,10 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
         TruncateTextStartOrMiddle(ctx, e);
         bool constrain = e->style.wrap || e->style.truncate ||
                          ElTextAlign(e) != TextAlign::Left;
-        float measW = constrain ? e->w : 0.0f;
+        // Wrapped leaves shape at their inner width, matching the
+        // constraint taffy passed to the measure callback.
+        float measW =
+            e->style.wrap ? l.ContentBoxWidth() : (constrain ? e->w : 0.0f);
         e->laidMaxW = measW;
         bool cached = false;
         TextLayout* tl =

@@ -3085,6 +3085,56 @@ static void InlineCodeLineIsAsTallAsAPlainLine() {
     AppGlobalClear(&app);
 }
 
+struct OversizedCodeSpanView {
+    bool customInsets = false;
+    static El* Render(OversizedCodeSpanView* self, Ctx* cx) {
+        auto* view = TextView::New(
+            cx, StrL("`0123456789abcdefghijklmnopqrstuvwxyz0123`"));
+        if (self->customInsets) {
+            Style style = {};
+            style.pad.left = style.pad.right = 12;
+            view->InlineCodeStyle(style, StyleFieldPad);
+        }
+        return view->Selectable()->IntoEl()->W(102);
+    }
+};
+
+// text/inline_flow.rs long_inline_code_word_fills_each_line.
+static void OversizedInlineCodeWrapsWithOneInsetPerSide() {
+    App* app = TestAppNew();
+    auto view = EntityNew<OversizedCodeSpanView>(app);
+    Window* win = TestWindowOpen(app, view, 300, 220, 1);
+    for (bool customInsets : {false, true}) {
+        view.Get(app)->customInsets = customInsets;
+        TestDraw(win);
+        bool found = false;
+        for (const TextHit& text : win->paint.texts) {
+            if (len(text.text) != 40) continue;
+            found = true;
+            utassert(text.wrap && text.bounds.w <= 102);
+            utassert(text.bounds.h > 2 * text.font);
+            // Compare the first caret on the next line to the available
+            // width with a single pair of insets.
+            float x = 0, y = 0, h = 0;
+            int lineStart = 1;
+            for (; lineStart < len(text.text); lineStart++) {
+                if (TextPointAt(&win->paint, text.text, text.font, text.maxW,
+                                true, lineStart, &x, &y, &h, kFontMono, 0,
+                                false) &&
+                    y > 0)
+                    break;
+            }
+            float glyph = MeasureText(&win->paint, StrL("0"), text.font, 0,
+                                      false, kFontMono)
+                              .w;
+            int capacity = (int)((102.f - (customInsets ? 24 : 8)) / glyph);
+            utassert(lineStart >= capacity - 1 && lineStart <= capacity + 1);
+        }
+        utassert(found);
+    }
+    TestAppFree(app);
+}
+
 static void TestMarkdownExtensionsParserConfiguration(Arena* a) {
     MarkdownExtensions first;
     first.BlockParser(a, &NeverClaims);
@@ -10522,6 +10572,7 @@ void TestTextView() {
     FlowPositionReportsThePreviousHeadingOrRule();
     AnUnchangedFlowIsNotLaidOutAgain();
     InlineCodeLineIsAsTallAsAPlainLine();
+    OversizedInlineCodeWrapsWithOneInsetPerSide();
     FittedListsKeepTheirBodyWidth();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();

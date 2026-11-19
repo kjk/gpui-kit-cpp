@@ -4705,6 +4705,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         }
         El* w = Word(StrDup(a, Str(word, wordLen)), font, color, marks, weight,
                      href, highlight, hasHighlight);
+        if (marks & MdCode) {
+            // The text shaper wraps the span inside a single inset budget.
+            w->Wrap()->MaxWFrac(1.f)->MinW(0);
+        }
         if (wordRun) {
             SrcMark(w, wordRun->marks, wordRun->href);
             SrcMap(w, wordRun->segments, wordRun->segmentCount, wordStart);
@@ -4859,7 +4863,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 wordLeaf = leafAt + i;
             }
             word[wordLen++] = c;
-            if (c == ' ') {
+            if (c == ' ' && !(marks & MdCode)) {
                 flush();
             }
         }

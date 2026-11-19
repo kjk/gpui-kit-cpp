@@ -16,14 +16,19 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cc09fe4cfa049be60d2db064390dbc9ee8b2b694` (2026-11-14,
-tooltip: Animate the width when switching between tooltips (#3957)).
-Animate themed and Shell tooltip dimensions from the last painted size during
-switches on one row. Verify the initial, intermediate and final widths.
+Processed through `cf3e84bd367ef96678294153bece8cd7c52f0add` (2026-11-14,
+text: Count an oversized code span's insets once per line when wrapping
+(#3972)).
+Wrap a code span with one inset pair per line. Use the text shaper at the
+measured content width for default and custom insets.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
 ## Known gaps vs Rust
+
+- **Oversized inline code uses one wrapped box.** Each line shapes inside
+  one pair of insets. The span shares its background and border across the
+  lines, and the flex row can move the entire box below preceding prose.
 
 - **Textarea decoration styling uses `TextSpan`.** The layer follows edits
   and supports text color, background and underline. Rust's highlight
