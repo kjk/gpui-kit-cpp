@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a5bda4aa82318e5f4e67111face6886da3d477c9",
-  date: "2026-11-07",
-  subject: "motion: Let a value transition keep its timing under reduced motion (#3839)",
+  sha: "e36451269751415a5cd23bd1b982b3c96b9aa19d",
+  date: "2026-11-08",
+  subject: "editor_host: Keep the caret's visual line at soft wraps (#3842)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

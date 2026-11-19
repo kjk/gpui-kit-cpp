@@ -8673,6 +8673,90 @@ static void WrappedLeafMapsIndicesAndPositions() {
     TestAppFree(app);
 }
 
+// crates/base/src/text/editor_host.rs, wrapped whole and mixed leaves.
+static void AssertCaretsKeepTheirLine(const LeafGeometry& leaf) {
+    int rows = (int)(leaf.bounds.h / leaf.lineHeight + 0.5f);
+    utassert(rows >= 3);
+    int wraps = 0;
+    for (int row = 0; row < rows; row++) {
+        float top = leaf.bounds.y + row * leaf.lineHeight;
+        for (float x : {leaf.bounds.x + 1, leaf.bounds.Right() - 1}) {
+            Point hit = {x, top + leaf.lineHeight * 0.5f};
+            auto caret = leaf.CaretForPosition(hit);
+            utassert(caret.index == leaf.IndexForPosition(hit));
+            Point pos = leaf.PositionForCaret(caret);
+            utassert(fabsf(pos.y - top) <= leaf.lineHeight * 0.5f);
+            wraps += leaf.PositionForIndex(caret.index).y != pos.y;
+        }
+    }
+    utassert(wraps > 0);
+}
+
+static void WrappedWholeLeafCaretsKeepTheirLine() {
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    HostAdd(doc, HostPara(a,
+                          "the quick brown fox jumps over the lazy dog and "
+                          "keeps running far away",
+                          true, 1));
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 120, &win);
+    const LeafGeometry* leaf = EditorHostLeaf(1);
+    utassert(leaf && !leaf->mixed);
+    if (leaf) {
+        AssertCaretsKeepTheirLine(*leaf);
+        for (int index : {0, 1, leaf->len()}) {
+            Point old = leaf->PositionForIndex(index);
+            for (auto caret : {editor_host::Caret::New(index),
+                               editor_host::Caret::Upstream(index)}) {
+                Point at = leaf->PositionForCaret(caret);
+                utassert(at.x == old.x && at.y == old.y);
+            }
+        }
+    }
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
+static void WrappedMixedLeafCaretsKeepTheirLine() {
+    const char* words = "the quick brown fox jumps over the lazy dog and ";
+    App* app = TestAppNew();
+    Arena* a = ArenaNew();
+    MdNode* doc = HostNode(a, MdKind::Doc);
+    MdNode* paragraph = HostPara(a, words, true, 1);
+    MdRun* atom = HostRun(a, "");
+    atom->hasCustom = true;
+    atom->custom.text = StrL("atom");
+    paragraph->runLast->next = atom;
+    atom->next = HostRun(a, words);
+    paragraph->runLast = atom->next;
+    HostAdd(doc, paragraph);
+    Window* win = nullptr;
+    OpenEditorHost(app, doc, 120, &win);
+    const LeafGeometry* leaf = EditorHostLeaf(1);
+    utassert(leaf && leaf->mixed);
+    if (leaf) {
+        AssertCaretsKeepTheirLine(*leaf);
+        int atoms = 0;
+        for (int i = 0; i < leaf->pieceCount; i++) {
+            const auto& piece = leaf->pieces[i];
+            if (piece.atom) {
+                atoms++;
+                Point at = {piece.bounds.CenterX(), piece.bounds.CenterY()};
+                utassert(leaf->AtomAt(at) == &piece);
+                utassert(piece.start == (int)strlen(words));
+                utassert(piece.end == piece.start + 3);
+            }
+        }
+        utassert(atoms == 1);
+    }
+    EditorHostEnd();
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
 static void RekeyingClonedLeavesPreservesEachIdentity() {
     App* app = TestAppNew();
     Arena* a = ArenaNew();
@@ -9778,6 +9862,8 @@ void TestTextView() {
     Arena* a = ArenaNew();
     KeyedLeavesReportGeometryAndUnkeyedLeavesDoNot();
     WrappedLeafMapsIndicesAndPositions();
+    WrappedWholeLeafCaretsKeepTheirLine();
+    WrappedMixedLeafCaretsKeepTheirLine();
     RekeyingClonedLeavesPreservesEachIdentity();
     GeometryIsAnImmutableSnapshot();
     EmptyKeyedLeafHasALineBox();

@@ -1296,6 +1296,36 @@ struct FlowPosition {
     bool isLast = true;
 };
 
+namespace editor_host {
+
+enum class CaretAffinity : uint8_t {
+    Downstream,
+    Upstream,
+};
+
+// At the wrap a byte offset has a position on each of the two visual lines.
+struct Caret {
+    int index = 0;
+    CaretAffinity affinity = CaretAffinity::Downstream;
+
+    static Caret New(int index) { return {index, CaretAffinity::Downstream}; }
+    static Caret Upstream(int index) {
+        return {index, CaretAffinity::Upstream};
+    }
+};
+
+struct LeafPiece {
+    Bounds bounds;
+    int start;
+    int end;
+    float font;
+    float lineH;
+    uint16_t weight;
+    bool atom;
+};
+
+} // namespace editor_host
+
 struct LeafGeometry {
     uint64_t key = 0;
     Bounds bounds = {};
@@ -1311,11 +1341,17 @@ struct LeafGeometry {
     PaintCtx* paint = nullptr;
     float originX = 0;
     float originY = 0;
+    editor_host::LeafPiece* pieces = nullptr;
+    int pieceCount = 0;
+    bool mixed = false;
 
     int len() const { return textLen; }
     bool isEmpty() const { return textLen == 0; }
     Point PositionForIndex(int index) const;
     int IndexForPosition(Point at) const;
+    Point PositionForCaret(editor_host::Caret caret) const;
+    editor_host::Caret CaretForPosition(Point at) const;
+    const editor_host::LeafPiece* AtomAt(Point at) const;
 };
 
 // parse_markdown. The same parse TextView uses.

@@ -3265,7 +3265,13 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
     } else if (off > 0 && (lineEndAffinity || off == len(s))) {
         // The trailing edge of everything before it, the way the caret is
         // placed.
-        int n = TextLayoutRangeRects(tl, s, 0, off, r, 32);
+        // Limit a wrapped run's query to its final character so the caret
+        // can reach rows beyond the rectangle buffer.
+        int start = wrap ? Utf8Prev(s, off) : 0;
+        int n = TextLayoutRangeRects(tl, s, start, off, r, 32);
+        if (n == 0 && start > 0) {
+            n = TextLayoutRangeRects(tl, s, 0, off, r, 32);
+        }
         if (n > 0) {
             *outX = r[n - 1].x + r[n - 1].w;
             *outY = r[n - 1].y;

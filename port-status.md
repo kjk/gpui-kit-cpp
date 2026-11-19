@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a5bda4aa82318e5f4e67111face6886da3d477c9` (2026-11-07,
-motion: Let a value transition keep its timing under reduced motion (#3839)).
-A value transition can keep its timing for non-spatial effects under reduced
-motion. The default finishes immediately, as does a zero-duration transition.
+Processed through `e36451269751415a5cd23bd1b982b3c96b9aa19d` (2026-11-08,
+editor_host: Keep the caret's visual line at soft wraps (#3842)).
+An editor host can preserve the caret side at a soft wrap from hit testing
+through placement. Keyed mixed paragraphs now report their text fragments and
+inline objects.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
@@ -104,14 +105,9 @@ The current update target is
   one-code-point lowercase `LabelLower` uses (`input_lsp.cpp`). Rust's
   `char::to_lowercase` covers the rest of Unicode. Folds that expand a
   character are not a single-code-point match there either.
-- **An external editor's leaf is one shaped run.** `editor_host` reports a
-  keyed plain paragraph, heading, table cell, list item or unhighlighted
-  code block as one `LeafGeometry` (`text.cpp`). A mixed paragraph — words
-  beside an image or a custom inline, including an image-only keyed leaf —
-  is still a flow of elements and does not report atom boxes, empty lines
-  or per-piece hits. Decorations are not painted. The collection scope
-  nests and restores; there are no exceptions, so a panic cannot be what
-  restores it.
+- **Mixed editor leaves report visible fragments.** Mixed paragraphs expose
+  their laid-out word and atom boxes through `LeafGeometry` (`text.cpp`).
+  Empty lines within a mixed leaf and editor decorations still need coverage.
 - **High-DPI on Windows.** A window draws at its monitor's dpi and follows
   `WM_DPICHANGED` (`window_win.cpp`, `SetDpi` in `paint_win.cpp`).
   `GPUI_DPI=<dpi>` forces a dpi for checking layout on a 100% display.

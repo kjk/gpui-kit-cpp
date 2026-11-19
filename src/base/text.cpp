@@ -3991,6 +3991,8 @@ static void EditorHostFreeRange(int begin, int end) {
     for (int i = begin; i < end; i++) {
         StrFree(gEditorLeaves[i].text);
         gEditorLeaves[i].text = {};
+        Free(nullptr, gEditorLeaves[i].pieces);
+        gEditorLeaves[i].pieces = nullptr;
     }
 }
 
@@ -4052,7 +4054,88 @@ MdNode* ParseMarkdown(Arena* a, Str source) {
     return MdParse(a, source);
 }
 
+using editor_host::Caret;
+using editor_host::CaretAffinity;
+using editor_host::LeafPiece;
+
+static Str LeafPieceText(const LeafGeometry& leaf, const LeafPiece& piece) {
+    return Str(leaf.text.s + piece.start, piece.end - piece.start);
+}
+
+static Point LeafPositionInPiece(const LeafGeometry& leaf,
+                                 const LeafPiece& piece, int index) {
+    Bounds bounds = piece.bounds;
+    if (piece.atom) {
+        float x = index >= piece.end ? bounds.Right() : bounds.x;
+        return {x, std::max(bounds.y, bounds.Bottom() - leaf.lineHeight)};
+    }
+    float x = 0;
+    float y = 0;
+    float h = 0;
+    TextPointAt(leaf.paint, LeafPieceText(leaf, piece), piece.font, 0, false,
+                index - piece.start, &x, &y, &h, piece.weight, piece.lineH);
+    return {bounds.x + x, bounds.y + y};
+}
+
+static const LeafPiece* LeafHitPiece(const LeafGeometry& leaf, Point at) {
+    const LeafPiece* best = nullptr;
+    float nearestY = 0;
+    float nearestX = 0;
+    for (int i = 0; i < leaf.pieceCount; i++) {
+        const LeafPiece& piece = leaf.pieces[i];
+        Bounds b = piece.bounds;
+        float dy = std::max(0.f, std::max(b.y - at.y, at.y - b.Bottom()));
+        float dx = std::max(0.f, std::max(b.x - at.x, at.x - b.Right()));
+        if (!best || dy < nearestY || (dy == nearestY && dx < nearestX)) {
+            best = &piece;
+            nearestY = dy;
+            nearestX = dx;
+        }
+    }
+    return best;
+}
+
+static int LeafIndexInPiece(const LeafGeometry& leaf, const LeafPiece& piece,
+                            Point at) {
+    if (piece.atom) {
+        return at.x < piece.bounds.CenterX() ? piece.start : piece.end;
+    }
+    int off = TextIndexAt(leaf.paint, LeafPieceText(leaf, piece), piece.font, 0,
+                          false, at.x - piece.bounds.x, piece.bounds.h * 0.5f,
+                          piece.weight, piece.lineH);
+    return ClampI(piece.start + off, piece.start, piece.end);
+}
+
+static Point LeafWholePosition(const LeafGeometry& leaf, int index,
+                               bool lineEndAffinity) {
+    Point origin = {leaf.originX, leaf.originY};
+    float x = 0;
+    float y = 0;
+    float h = 0;
+    if (!TextPointAt(leaf.paint, leaf.text, leaf.font, leaf.maxW, leaf.wrap,
+                     index, &x, &y, &h, leaf.weight, leaf.lineH,
+                     lineEndAffinity)) {
+        return origin;
+    }
+    return {origin.x + x, origin.y + y};
+}
+
 Point LeafGeometry::PositionForIndex(int index) const {
+    if (mixed) {
+        index = ClampI(index, 0, textLen);
+        const LeafPiece* trailing = nullptr;
+        for (int i = 0; i < pieceCount; i++) {
+            const LeafPiece& piece = pieces[i];
+            if (piece.start <= index && index < piece.end) {
+                return LeafPositionInPiece(*this, piece, index);
+            }
+            if (piece.end <= index) {
+                trailing = &piece;
+            }
+        }
+        return trailing ? LeafPositionInPiece(*this, *trailing, trailing->end)
+                        : Point{originX, originY};
+    }
     if (!paint || !text.s) {
         return {originX, originY};
     }
@@ -4062,17 +4145,14 @@ Point LeafGeometry::PositionForIndex(int index) const {
     if (index > textLen) {
         index = textLen;
     }
-    float x = 0;
-    float y = 0;
-    float h = 0;
-    if (!TextPointAt(paint, text, font, maxW, wrap, index, &x, &y, &h, weight,
-                     lineH)) {
-        return {originX, originY};
-    }
-    return {originX + x, originY + y};
+    return LeafWholePosition(*this, index, true);
 }
 
 int LeafGeometry::IndexForPosition(Point at) const {
+    if (mixed) {
+        const LeafPiece* piece = LeafHitPiece(*this, at);
+        return piece ? LeafIndexInPiece(*this, *piece, at) : 0;
+    }
     if (!paint || textLen <= 0) {
         return 0;
     }
@@ -4099,6 +4179,58 @@ int LeafGeometry::IndexForPosition(Point at) const {
         return textLen;
     }
     return hit;
+}
+
+Point LeafGeometry::PositionForCaret(Caret caret) const {
+    int index = ClampI(caret.index, 0, textLen);
+    if (mixed) {
+        for (int i = 0; i < pieceCount; i++) {
+            const LeafPiece& piece = pieces[i];
+            bool upstream = caret.affinity == CaretAffinity::Upstream;
+            if (piece.start < piece.end &&
+                (upstream ? piece.end == index : piece.start == index)) {
+                return LeafPositionInPiece(*this, piece, index);
+            }
+        }
+        return PositionForIndex(index);
+    }
+    bool lineEnd = caret.affinity == CaretAffinity::Upstream;
+    if (index > 0 && text.s[index - 1] == '\n') {
+        lineEnd = false;
+    }
+    return LeafWholePosition(*this, index, lineEnd);
+}
+
+Caret LeafGeometry::CaretForPosition(Point at) const {
+    if (mixed) {
+        const LeafPiece* piece = LeafHitPiece(*this, at);
+        if (!piece) {
+            return Caret::New(0);
+        }
+        int index = LeafIndexInPiece(*this, *piece, at);
+        return index == piece->end && piece->start < piece->end
+                   ? Caret::Upstream(index)
+                   : Caret::New(index);
+    }
+    int index = IndexForPosition(at);
+    Caret downstream = Caret::New(index);
+    if (!wrap || index == 0 || index == textLen) {
+        return downstream;
+    }
+    Caret upstream = Caret::Upstream(index);
+    Point before = PositionForCaret(upstream);
+    Point after = PositionForCaret(downstream);
+    return before.y < after.y && at.y < after.y ? upstream : downstream;
+}
+
+const LeafPiece* LeafGeometry::AtomAt(Point at) const {
+    for (int i = 0; i < pieceCount; i++) {
+        const LeafPiece& piece = pieces[i];
+        if (piece.atom && piece.bounds.Contains(at)) {
+            return &piece;
+        }
+    }
+    return nullptr;
 }
 
 static void EditorHostFill(LeafGeometry* g, PaintCtx* ctx, El* e,
@@ -4137,28 +4269,28 @@ static void EditorHostFill(LeafGeometry* g, PaintCtx* ctx, El* e,
     }
 }
 
+static void EditorHostStore(const LeafGeometry& leaf) {
+    int begin = gEditorHostScopes[len(gEditorHostScopes) - 1].leafBegin;
+    for (int i = begin; i < len(gEditorLeaves); i++) {
+        if (gEditorLeaves[i].key == leaf.key) {
+            EditorHostFreeRange(i, i + 1);
+            gEditorLeaves[i] = leaf;
+            return;
+        }
+    }
+    VecAppend(gEditorLeaves, leaf);
+}
+
 static void EditorHostOnPrepaint(PaintCtx* ctx, El* e, void* user) {
     if (!EditorHostOn() || !e || !user) {
         return;
     }
-    uint64_t key = *(uint64_t*)user;
-    int begin = gEditorHostScopes[len(gEditorHostScopes) - 1].leafBegin;
-    for (int i = begin; i < len(gEditorLeaves); i++) {
-        if (gEditorLeaves[i].key == key) {
-            StrFree(gEditorLeaves[i].text);
-            gEditorLeaves[i] = {};
-            EditorHostFill(&gEditorLeaves[i], ctx, e, key);
-            return;
-        }
-    }
     LeafGeometry g = {};
-    EditorHostFill(&g, ctx, e, key);
-    VecAppend(gEditorLeaves, g);
+    EditorHostFill(&g, ctx, e, *(uint64_t*)user);
+    EditorHostStore(g);
 }
 
-// A plain run or an unhighlighted code block is one TextEl, so the leaf is
-// one piece. A mixed paragraph (words beside an image or a custom inline)
-// is a flow of elements; those pieces are not reported. See port-status.md.
+// A plain run or an unhighlighted code block is one shaped leaf.
 static void EditorHostWatch(Arena* a, El* el, MdNode* n) {
     if (!EditorHostOn() || !a || !el || !n || !n->hasEditorKey) {
         return;
@@ -4173,6 +4305,61 @@ static void EditorHostWatch(Arena* a, El* el, MdNode* n) {
     *key = n->editorKey;
     el->prePaint = EditorHostOnPrepaint;
     el->customUser = key;
+}
+
+struct HostFlowPiece {
+    El* element;
+    int start;
+    int end;
+    bool atom;
+};
+
+struct HostFlow {
+    MdNode* node;
+    float lineHeight;
+    ArenaVec<HostFlowPiece> pieces;
+};
+
+static void EditorHostFlowPrepaint(PaintCtx* ctx, El* e, void* user) {
+    if (!EditorHostOn()) {
+        return;
+    }
+    auto* flow = (HostFlow*)user;
+    LeafGeometry leaf = {};
+    leaf.key = flow->node->editorKey;
+    leaf.bounds = e->Bounds();
+    leaf.originX = e->x;
+    leaf.originY = e->y;
+    leaf.paint = ctx;
+    leaf.mixed = true;
+    leaf.lineHeight = flow->lineHeight;
+    leaf.caretHeight = flow->lineHeight * 0.85f;
+    StrBuilder text;
+    for (const MdRun* run = flow->node->runFirst; run; run = run->next) {
+        text.Append(run->hasCustom || len(run->imgSrc) > 0
+                        ? StrL("\xEF\xBF\xBC")
+                        : run->text);
+    }
+    leaf.text = text.TakeStr();
+    leaf.textLen = len(leaf.text);
+    int count = len(flow->pieces);
+    if (count > 0) {
+        leaf.pieces = (LeafPiece*)Alloc(nullptr, sizeof(LeafPiece) * count);
+    }
+    for (int i = 0; leaf.pieces && i < count; i++) {
+        const HostFlowPiece& entry = flow->pieces[i];
+        El* piece = entry.element;
+        if (entry.end <= leaf.textLen) {
+            leaf.pieces[leaf.pieceCount++] = {piece->Bounds(),
+                                              entry.start,
+                                              entry.end,
+                                              piece->laidFont,
+                                              piece->style.lineHeight,
+                                              ElTextWeight(piece),
+                                              entry.atom};
+        }
+    }
+    EditorHostStore(leaf);
 }
 
 struct ClippedFg {
@@ -4408,6 +4595,20 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     }
     El* col = Div(a)->FlexCol()->W(kFill);
     El* row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
+    HostFlow* hostFlow = nullptr;
+    if (n->hasEditorKey && EditorHostOn()) {
+        hostFlow = ArenaNew<HostFlow>(a);
+        hostFlow->node = n;
+        hostFlow->lineHeight = FontLen(cx, font * kLineHeight);
+        col->prePaint = EditorHostFlowPrepaint;
+        col->customUser = hostFlow;
+    }
+    auto reportPiece = [&](El* element, int start, int end, bool atom) {
+        if (hostFlow && element) {
+            hostFlow->pieces
+                .Append(a, HostFlowPiece{element, start, end, atom});
+        }
+    };
     int wordCap = 1;
     for (MdRun* r = n->runFirst; r; r = r->next) {
         if (len(r->text) > 0) {
@@ -4462,6 +4663,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             lastWordLo = runOffset + wordStart;
         }
         ApplyTextForeground(a, w, w->text, wordLeaf, ranges, nRanges);
+        reportPiece(w, wordLeaf, wordLeaf + wordLen, false);
         row->Child(w);
         wordLen = 0;
     };
@@ -4517,6 +4719,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                     rendered.element->MarginT(std::max(
                         0.f, context.lineHeight * 0.75f - rendered.baseline));
                 }
+                reportPiece(rendered.element, leafAt, leafAt + 3, true);
                 row->Child(rendered.element);
             } else if (r->custom.text) {
                 El* w = Word(r->custom.text, font, color, marks, weight, href,
@@ -4535,13 +4738,16 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                         whole->sourceEnd = r->custom.span.end;
                     }
                 }
+                reportPiece(w, leafAt, leafAt + 3, true);
                 row->Child(SrcMap(w, whole, whole ? 1 : 0, 0, true));
             }
             leafAt += 3;
             continue;
         }
         if (len(r->imgSrc) > 0) {
-            row->Child(SrcImage(ImageRun(r, font, color, inFlow), r));
+            El* image = SrcImage(ImageRun(r, font, color, inFlow), r);
+            reportPiece(image, leafAt, leafAt + 3, true);
+            row->Child(image);
             leafAt += 3;
             continue;
         }
