@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `50b472007a0dd0f682419b7f1a5dcbb7ff60f37e` (2026-11-07,
-shell: Honor the manifest entry when bundling (#3682)).
-The bundler validates the manifest and the entry it declares before producing
-output. A default main.js cannot stand in for a missing custom entry.
+Processed through `a5bda4aa82318e5f4e67111face6886da3d477c9` (2026-11-07,
+motion: Let a value transition keep its timing under reduced motion (#3839)).
+A value transition can keep its timing for non-spatial effects under reduced
+motion. The default finishes immediately, as does a zero-duration transition.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

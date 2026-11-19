@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "50b472007a0dd0f682419b7f1a5dcbb7ff60f37e",
+  sha: "a5bda4aa82318e5f4e67111face6886da3d477c9",
   date: "2026-11-07",
-  subject: "shell: Honor the manifest entry when bundling (#3682)",
+  subject: "motion: Let a value transition keep its timing under reduced motion (#3839)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

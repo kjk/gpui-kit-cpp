@@ -343,6 +343,11 @@ struct Interpolate<MotionTransform> {
     }
 };
 
+enum class ReducedMotion : uint8_t {
+    Finish,   // Adopt the target immediately for spatial motion.
+    Continue, // Keep timing for effects such as fades.
+};
+
 // CSS-like timing policy: how long, how late, and along which curve. Rust
 // builds it with a consuming chain; this POD returns a copy from the same
 // operations so named policies can be composed without retained ownership.
@@ -352,10 +357,18 @@ struct Transition {
     float durationMs = 0;
     float delayMs = 0;
     Easing easing = Easing::Custom(EaseOutCubic);
+    ReducedMotion reducedMotion = ReducedMotion::Finish;
 
     static Transition New(float durationMs) {
         Transition policy;
         policy.durationMs = durationMs;
+        return policy;
+    }
+
+    // Keep timing under reduced motion for non-spatial effects such as fades.
+    Transition WithReducedMotion(ReducedMotion behavior) const {
+        Transition policy = *this;
+        policy.reducedMotion = behavior;
         return policy;
     }
 
@@ -413,6 +426,7 @@ struct TransitionId {
 // Compatibility spelling used by the port before the Rust module namespace
 // was restored. It is the same policy, not an adapter state.
 using Motion = motion::Transition;
+using ReducedMotion = motion::ReducedMotion;
 
 inline Motion MotionNew(float durationMs) {
     return motion::Transition::New(durationMs);
@@ -700,7 +714,8 @@ MotionStep<T> MotionAdvance(MotionState<T>* st, T target, const Motion& m,
         st->init = true;
         MotionStart(st, target, target, m, target, now, 1.f, m.durationMs);
     }
-    if (reduced || m.durationMs <= 0) {
+    if ((reduced && m.reducedMotion == motion::ReducedMotion::Finish) ||
+        m.durationMs <= 0) {
         if (!MotionEq(st->from, target) || !MotionEq(st->target, target)) {
             MotionStart(st, target, target, m, target, now, 1.f, m.durationMs);
         }

@@ -433,6 +433,37 @@ static void TheSameRuleCarriesAPointAndAColor() {
     utassert(mid.running);
 }
 
+static void EffectsOptInKeepsTimingUnderReducedMotion() {
+    MotionState<float> state;
+    Motion policy = MotionNew(1000)
+                        .Ease(EaseLinear)
+                        .WithReducedMotion(motion::ReducedMotion::Continue);
+    MotionAdvance(&state, 0.f, policy, 0, false);
+    MotionAdvance(&state, 1.f, policy, 0, false);
+    utassertnear(MotionAdvance(&state, 1.f, policy, 0.2, true).value, 0.2f);
+    utassert(MotionAdvance(&state, 1.f, policy, 1, true)
+                 .status == MotionStatus::Finished);
+    MotionAdvance(&state, 0.f, policy, 1, true);
+    utassertnear(MotionAdvance(&state, 0.f, policy, 1.5, true).value, 0.5f);
+    utassertnear(MotionAdvance(&state, 0.f, policy, 1.5, false).value, 0.5f);
+}
+
+static void CurrentReducedMotionPolicyAndZeroDurationTakeEffect() {
+    MotionState<float> state;
+    Motion policy = MotionNew(1000)
+                        .Ease(EaseLinear)
+                        .WithReducedMotion(motion::ReducedMotion::Continue);
+    MotionAdvance(&state, 0.f, policy, 0, true);
+    MotionAdvance(&state, 1.f, policy, 0, true);
+    Motion finish = policy.WithReducedMotion(motion::ReducedMotion::Finish);
+    utassertnear(MotionAdvance(&state, 1.f, finish, 0.2, true).value, 1.f);
+    utassertnear(MotionAdvance(&state, 0.f, policy, 0.2, true).value, 1.f);
+    utassertnear(MotionAdvance(&state, 0.f, policy, 0.4, true).value, 0.8f);
+    Motion instant = MotionNew(0)
+                         .WithReducedMotion(motion::ReducedMotion::Continue);
+    utassertnear(MotionAdvance(&state, 0.f, instant, 0.4, true).value, 0.f);
+}
+
 // The id is the element and the channel together, so one element can move two
 // values at once without them sharing a slot.
 static void AChannelKeepsTwoValuesOfOneElementApart() {
@@ -1400,6 +1431,8 @@ void TestMotion() {
     ADelayHoldsThePreviousValue();
     AFinishedTransitionStopsAskingForFrames();
     ReducedMotionTakesTheTargetOutright();
+    EffectsOptInKeepsTimingUnderReducedMotion();
+    CurrentReducedMotionPolicyAndZeroDurationTakeEffect();
     TheSameRuleCarriesAPointAndAColor();
     AChannelKeepsTwoValuesOfOneElementApart();
     SourceNamedValueTransitionContractIsAvailable();
