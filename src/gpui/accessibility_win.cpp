@@ -4,6 +4,7 @@
    the latest Window::accessibility rather than retaining arena strings. */
 
 #include "gpui/accessibility_win.h"
+#include "base/text_boundary.h"
 
 #include <uiautomation.h>
 
@@ -213,8 +214,7 @@ static bool AccessibilitySelectionContainerRole(AccessibilityRole role) {
 }
 
 static bool AccessibilityTextPattern(const AccessibilityNode& node) {
-    return AccessibilityTextRole(node.info.role) && node.input &&
-           node.info.role != AccessibilityRole::PasswordInput;
+    return WindowAccessibilityTextValue(node).s != nullptr;
 }
 
 static bool AccessibilityInvokePattern(const AccessibilityNode& node) {
@@ -433,7 +433,7 @@ struct WinTextRange : ComObject<ITextRangeProvider> {
     const AccessibilityNode* Node() const { return root->Node(id); }
     Str Text() const {
         const AccessibilityNode* node = Node();
-        return node && node->input ? InputValue(node->input) : Str{};
+        return node ? WindowAccessibilityTextValue(*node) : Str{};
     }
     int Length() const { return RopeOffsetToOffsetUtf16(Text(), len(Text())); }
     void Clamp() {
@@ -445,7 +445,7 @@ struct WinTextRange : ComObject<ITextRangeProvider> {
     // frees; ELEMENTNOTAVAILABLE once the node is gone.
     HRESULT ClampedText(BSTR* doc) {
         *doc = nullptr;
-        if (!Node()) {
+        if (!Text().s) {
             return UIA_E_ELEMENTNOTAVAILABLE;
         }
         Clamp();
@@ -1507,9 +1507,13 @@ HRESULT WinAccessibilityNode::RangeFromPoint(UiaPoint point,
     }
     Str text = InputValue(node->input);
     POINT client = {(LONG)point.x, (LONG)point.y};
-    ScreenToClient(root->hwnd, &client);
-    int offset = InputIndexForPosition(node->input, &root->win->paint,
-                                       (float)client.x, (float)client.y);
+    if (!ScreenToClient(root->hwnd, &client)) {
+        return UIA_E_ELEMENTNOTAVAILABLE;
+    }
+    float scale = DipScale(root->win);
+    int offset =
+        InputIndexForPosition(node->input, &root->win->paint,
+                              (float)client.x / scale, (float)client.y / scale);
     int offsetUtf16 = RopeOffsetToOffsetUtf16(text, offset);
     *out = new WinTextRange(root, id, offsetUtf16, offsetUtf16);
     return S_OK;
@@ -1756,9 +1760,7 @@ static void AccessibilityUnitBounds(BSTR text, int length, int at,
     at = std::max(0, std::min(at, length));
     *lo = at;
     *hi = at;
-    if (unit == TextUnit_Character) {
-        *hi = std::min(length, at + 1);
-    } else if (unit == TextUnit_Word) {
+    if (unit == TextUnit_Word) {
         while (*lo > 0 && !AccessibilityWideSpace(text[*lo - 1])) {
             (*lo)--;
         }
@@ -1782,9 +1784,22 @@ static void AccessibilityUnitBounds(BSTR text, int length, int at,
 }
 
 HRESULT WinTextRange::ExpandToEnclosingUnit(TextUnit unit) {
-    const AccessibilityNode* node = Node();
-    if (node && !AccessibilityTextPattern(*node)) {
+    Str value = Text();
+    if (!value.s) {
         return UIA_E_ELEMENTNOTAVAILABLE;
+    }
+    if (unit == TextUnit_Character) {
+        Clamp();
+        int at = RopeOffsetUtf16ToOffset(value, start);
+        if (at == len(value)) {
+            end = start;
+            return S_OK;
+        }
+        int after = TextNextGraphemeBoundary(value, at);
+        int before = TextPreviousGraphemeBoundary(value, after);
+        start = RopeOffsetToOffsetUtf16(value, before);
+        end = RopeOffsetToOffsetUtf16(value, after);
+        return S_OK;
     }
     BSTR text = nullptr;
     if (HRESULT hr = ClampedText(&text); FAILED(hr)) {
@@ -1862,21 +1877,31 @@ HRESULT WinTextRange::GetBoundingRectangles(SAFEARRAY** out) {
     }
     *out = nullptr;
     const AccessibilityNode* node = Node();
-    if (!node || !root->hwnd) {
+    if (!node || !root->hwnd || !AccessibilityTextPattern(*node)) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
     Clamp();
-    *out = SafeArrayCreateVector(VT_R8, 0, start == end ? 0 : 4);
+    bool visible = start != end;
+    Bounds bounds = node->bounds;
+    if (visible && InputIsSingleLine(node->input)) {
+        Str text = Text();
+        Selection range = {RopeOffsetUtf16ToOffset(text, start),
+                           RopeOffsetUtf16ToOffset(text, end)};
+        visible = WindowAccessibilityTextRangeBounds(root->win, *node, range,
+                                                     &bounds) &&
+                  bounds.w > 0;
+    }
+    *out = SafeArrayCreateVector(VT_R8, 0, visible ? 4 : 0);
     if (!*out) {
         return E_OUTOFMEMORY;
     }
-    if (start != end) {
+    if (visible) {
         POINT origin = {};
         ClientToScreen(root->hwnd, &origin);
         double scale = DipScale(root->win);
-        double values[4] = {(double)origin.x + node->bounds.x * scale,
-                            (double)origin.y + node->bounds.y * scale,
-                            node->bounds.w * scale, node->bounds.h * scale};
+        double values[4] = {(double)origin.x + bounds.x * scale,
+                            (double)origin.y + bounds.y * scale,
+                            bounds.w * scale, bounds.h * scale};
         for (LONG i = 0; i < 4; i++) {
             HRESULT hr = SafeArrayPutElement(*out, &i, &values[i]);
             if (FAILED(hr)) {
@@ -1934,24 +1959,32 @@ HRESULT WinTextRange::MoveEndpointByUnit(TextPatternRangeEndpoint endpoint,
     if (!out) {
         return E_INVALIDARG;
     }
-    if (!Node()) {
+    Str valueText = Text();
+    if (!valueText.s) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
     Clamp();
     int* value = endpoint == TextPatternRangeEndpoint_Start ? &start : &end;
-    int old = *value;
-    int length = Length();
+    int direction = count < 0 ? -1 : 1;
+    int64_t wanted = (int64_t)direction * count;
+    int moved = 0;
     if (unit == TextUnit_Character) {
-        *value = std::max(0, std::min(length, *value + count));
-        *out = *value - old;
+        int offset = RopeOffsetUtf16ToOffset(valueText, *value);
+        while (moved < wanted) {
+            int next = direction < 0
+                           ? TextPreviousGraphemeBoundary(valueText, offset)
+                           : TextNextGraphemeBoundary(valueText, offset);
+            if (next == offset) break;
+            offset = next;
+            moved++;
+        }
+        if (moved) *value = RopeOffsetToOffsetUtf16(valueText, offset);
     } else {
-        BSTR text = AccessibilityBstr(Text());
+        BSTR text = AccessibilityBstr(valueText);
         if (!text) {
             return E_OUTOFMEMORY;
         }
-        int direction = count < 0 ? -1 : 1;
-        int wanted = count < 0 ? -count : count;
-        int moved = 0;
+        int length = (int)SysStringLen(text);
         while (moved < wanted) {
             int lo = 0;
             int hi = 0;
@@ -1965,8 +1998,8 @@ HRESULT WinTextRange::MoveEndpointByUnit(TextPatternRangeEndpoint endpoint,
             moved++;
         }
         SysFreeString(text);
-        *out = direction * moved;
     }
+    *out = direction * moved;
     if (start > end) {
         if (endpoint == TextPatternRangeEndpoint_Start) {
             end = start;
@@ -2207,6 +2240,20 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
         ok = ok && wanted && value && wcscmp(wanted, value) == 0;
         SysFreeString(wanted);
         SysFreeString(value);
+        if (ok) {
+            Str source = WindowAccessibilityTextValue(*expected);
+            int first = TextNextGraphemeBoundary(source, 0);
+            BSTR firstText = AccessibilityBstr(Str(source.s, first));
+            BSTR fromRange = nullptr;
+            ok = firstText &&
+                 SUCCEEDED(document
+                               ->ExpandToEnclosingUnit(TextUnit_Character)) &&
+                 SUCCEEDED(document->GetText(-1, &fromRange)) && fromRange &&
+                 SysStringLen(firstText) == SysStringLen(fromRange) &&
+                 wcscmp(firstText, fromRange) == 0;
+            SysFreeString(firstText);
+            SysFreeString(fromRange);
+        }
         if (document) {
             document->Release();
         }

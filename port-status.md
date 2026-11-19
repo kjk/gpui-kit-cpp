@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7cd921d493f32ffefc8ddade4c84d781b2a58c23` (2026-11-11,
-docs: Add FAQ on GPUI, gpui-pre and GPUI Fast (#3892)).
-Linked the upstream FAQ on Zed GPUI, gpui-pre and GPUI Fast from the C++
-README. The FAQ describes the Rust distribution and backend choices.
+Processed through `8650093ccee70317fe96d48d53ead459620d38f0` (2026-11-11,
+input: Expose a single-line input's text to screen readers (#3818)).
+Extended the existing native text providers with single-line range geometry
+and a shared check for exposed values. The C++ port uses UI Automation, AppKit
+and AT-SPI range queries in place of AccessKit synthetic text nodes. Geometry
+comes from the frame that collected the accessible value.
 The current update target is
 `f8243df95b9158d9b6d842348dcfcd0481a85c2c`.
 

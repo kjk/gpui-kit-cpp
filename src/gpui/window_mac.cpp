@@ -377,15 +377,16 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
 - (NSInteger)accessibilityNumberOfCharacters {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
     gpui::Str text =
-        node && node->input ? gpui::InputValue(node->input) : gpui::Str{};
+        node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
     return gpui::RopeOffsetToOffsetUtf16(text, len(text));
 }
 - (NSRange)accessibilitySelectedTextRange {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
-    if (!node || !node->input) {
+    gpui::Str text =
+        node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
+    if (!text.s) {
         return NSMakeRange(NSNotFound, 0);
     }
-    gpui::Str text = gpui::InputValue(node->input);
     int lo =
         gpui::RopeOffsetToOffsetUtf16(text, node->input->selectedRange.start);
     int hi =
@@ -395,10 +396,11 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
 }
 - (void)setAccessibilitySelectedTextRange:(NSRange)range {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
-    if (!node || !node->input || range.location == NSNotFound) {
+    gpui::Str text =
+        node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
+    if (!text.s || range.location == NSNotFound) {
         return;
     }
-    gpui::Str text = gpui::InputValue(node->input);
     int lo = gpui::RopeOffsetUtf16ToOffset(text, (int)range.location);
     int hi = gpui::RopeOffsetUtf16ToOffset(
         text, (int)(range.location + range.length));
@@ -412,10 +414,11 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
 }
 - (NSString*)accessibilityStringForRange:(NSRange)range {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
-    if (!node || !node->input || range.location == NSNotFound) {
+    gpui::Str text =
+        node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
+    if (!text.s || range.location == NSNotFound) {
         return nil;
     }
-    gpui::Str text = gpui::InputValue(node->input);
     int lo = gpui::RopeOffsetUtf16ToOffset(text, (int)range.location);
     int hi = gpui::RopeOffsetUtf16ToOffset(
         text, (int)(range.location + range.length));
@@ -423,7 +426,9 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
 }
 - (NSRange)accessibilityRangeForPosition:(NSPoint)point {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
-    if (!node || !node->input || !gpuiWindow->plat || !gpuiWindow->plat->view) {
+    gpui::Str text =
+        node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
+    if (!text.s || !gpuiWindow->plat || !gpuiWindow->plat->view) {
         return NSMakeRange(NSNotFound, 0);
     }
     NSView* view = (NSView*)gpuiWindow->plat->view;
@@ -431,13 +436,32 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     NSPoint local = [view convertPoint:inWindow fromView:nil];
     int offset = gpui::InputIndexForPosition(node->input, &gpuiWindow->paint,
                                              (float)local.x, (float)local.y);
-    gpui::Str text = gpui::InputValue(node->input);
     return NSMakeRange((NSUInteger)gpui::RopeOffsetToOffsetUtf16(text, offset),
                        0);
 }
 - (NSRect)accessibilityFrameForRange:(NSRange)range {
-    (void)range;
-    return [self accessibilityFrame];
+    const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
+    gpui::Str text =
+        node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
+    if (!text.s || range.location == NSNotFound || !gpuiWindow->plat ||
+        !gpuiWindow->plat->view) {
+        return NSZeroRect;
+    }
+    if (!gpui::InputIsSingleLine(node->input)) {
+        return [self accessibilityFrame];
+    }
+    int lo = gpui::RopeOffsetUtf16ToOffset(text, (int)range.location);
+    int hi = gpui::RopeOffsetUtf16ToOffset(
+        text, (int)(range.location + range.length));
+    gpui::Bounds bounds;
+    if (!gpui::WindowAccessibilityTextRangeBounds(gpuiWindow, *node, {lo, hi},
+                                                  &bounds)) {
+        return NSZeroRect;
+    }
+    NSView* view = (NSView*)gpuiWindow->plat->view;
+    NSRect local = NSMakeRect(bounds.x, bounds.y, bounds.w, bounds.h);
+    return
+        [[view window] convertRectToScreen:[view convertRect:local toView:nil]];
 }
 
 @end

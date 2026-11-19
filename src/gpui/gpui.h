@@ -8312,6 +8312,12 @@ const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId);
 // Where node `nodeId` sits in `win->accessibility`; -1 when it is not there.
 int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId);
+// A null string means the input does not expose its text. An exposed empty
+// field still has a caret and supports text queries.
+Str WindowAccessibilityTextValue(const AccessibilityNode& node);
+bool WindowAccessibilityTextRangeBounds(Window* win,
+                                        const AccessibilityNode& node,
+                                        Selection range, Bounds* out);
 bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
                                 AccessibilityAction action, Str value = {});
 // RangeValue::SetValue needs an absolute numeric setter rather than a run of

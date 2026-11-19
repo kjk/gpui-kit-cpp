@@ -10606,6 +10606,11 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         if (!node.input) {
             node.input = AccessibilityInput(e);
         }
+        if (node.input && node.info.value.s) {
+            // The input can change before this accessibility snapshot is
+            // replaced. Keep the value from the same frame as the bounds.
+            node.info.value = StrDup(e->arena, node.info.value);
+        }
         if (!node.focusId && AccessibilityRoleCanFocus(node.info.role)) {
             node.focusId =
                 node.info.role == AccessibilityRole::SpinButton && node.input

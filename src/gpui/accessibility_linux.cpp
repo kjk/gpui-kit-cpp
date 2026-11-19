@@ -817,7 +817,7 @@ static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object) {
         if (node.info.hasNumericValue) PutString(body, kValue);
         if (IsSelectionRole(node.info.role)) PutString(body, kSelection);
         if (AccessibilityRoleTakesText(node.info.role) && node.input) {
-            PutString(body, kText);
+            if (WindowAccessibilityTextValue(node).s) PutString(body, kText);
             if (node.actions & AccessibilityActionSetValue) {
                 PutString(body, kEditableText);
             }
@@ -1037,9 +1037,8 @@ static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
             return false;
         }
     } else if (StrIs(interfaceName, kText) && node && node->input) {
-        Str text = node->info.role == AccessibilityRole::PasswordInput
-                       ? Str{}
-                       : InputValue(node->input);
+        Str text = WindowAccessibilityTextValue(*node);
+        if (!text.s) return false;
         if (StrIs(property, "version"))
             PutVariantU32(body, 1);
         else if (StrIs(property, "CharacterCount"))
@@ -1124,7 +1123,9 @@ static bool PutAllProperties(DbusWriter* body, const LinuxAccessible& object,
         GPUI_ATSPI_PROPERTY("version");
         GPUI_ATSPI_PROPERTY("NSelectedChildren");
     } else if (StrIs(interfaceName, kText) && object.nodeIndex >= 0 &&
-               object.win->accessibility[object.nodeIndex].input) {
+               WindowAccessibilityTextValue(
+                   object.win->accessibility[object.nodeIndex])
+                   .s) {
         GPUI_ATSPI_PROPERTY("version");
         GPUI_ATSPI_PROPERTY("CharacterCount");
         GPUI_ATSPI_PROPERTY("CaretOffset");
@@ -1325,11 +1326,8 @@ static Point ComponentCoordOrigin(const LinuxAccessible& object,
     return origin;
 }
 
-static Bounds ComponentBounds(const LinuxAccessible& object,
-                              uint32_t coordType) {
-    Bounds bounds = {};
-    if (!object.win || object.nodeIndex < 0) return bounds;
-    bounds = object.win->accessibility[object.nodeIndex].bounds;
+static Bounds BoundsInComponentCoordinates(const LinuxAccessible& object,
+                                           Bounds bounds, uint32_t coordType) {
     Point origin = ComponentCoordOrigin(object, coordType);
     if (coordType == 2) {
         bounds.x -= origin.x;
@@ -1339,6 +1337,13 @@ static Bounds ComponentBounds(const LinuxAccessible& object,
         bounds.y += origin.y;
     }
     return bounds;
+}
+
+static Bounds ComponentBounds(const LinuxAccessible& object,
+                              uint32_t coordType) {
+    if (!object.win || object.nodeIndex < 0) return {};
+    return BoundsInComponentCoordinates(
+        object, object.win->accessibility[object.nodeIndex].bounds, coordType);
 }
 
 static Point ComponentPointInWindow(const LinuxAccessible& object, int x, int y,
@@ -1640,6 +1645,18 @@ static Str TextSlice(Str text, int lo, int hi) {
     return text.s ? Str(text.s + lo, hi - lo) : Str{};
 }
 
+static Bounds TextBounds(const LinuxAccessible& object,
+                         const AccessibilityNode& node, Selection bytes,
+                         uint32_t coordType) {
+    if (!InputIsSingleLine(node.input)) {
+        return ComponentBounds(object, coordType);
+    }
+    Bounds bounds;
+    return WindowAccessibilityTextRangeBounds(object.win, node, bytes, &bounds)
+               ? BoundsInComponentCoordinates(object, bounds, coordType)
+               : Bounds{};
+}
+
 static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
     bool textInterface = StrIs(in.interfaceName, kText);
     bool editableInterface = StrIs(in.interfaceName, kEditableText);
@@ -1649,9 +1666,8 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
     }
     const AccessibilityNode& node = object.win->accessibility[object.nodeIndex];
     if (!node.input) return false;
-    Str text = node.info.role == AccessibilityRole::PasswordInput
-                   ? Str{}
-                   : InputValue(node.input);
+    Str text = WindowAccessibilityTextValue(node);
+    if (textInterface && !text.s) return false;
     int at = 0;
     DbusWriter body;
     const char* signature = "";
@@ -1728,15 +1744,22 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         PutI32(&body, Utf8CharacterForByte(text, offset));
         signature = "i";
     } else if (textInterface && StrIs(in.member, "GetCharacterExtents")) {
-        (void)ReadI32(in.body, in.bodyLen, &at);
+        int offset = ReadI32(in.body, in.bodyLen, &at);
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
-        Bounds bounds = ComponentBounds(object, coordType);
+        int count = Utf8CharCount(text);
+        Bounds bounds =
+            offset < 0 || offset >= count
+                ? Bounds{}
+                : TextBounds(object, node,
+                             TextSelection(text, offset, offset + 1),
+                             coordType);
         signature = PutExtents(&body, bounds);
     } else if (textInterface && StrIs(in.member, "GetRangeExtents")) {
-        (void)ReadI32(in.body, in.bodyLen, &at);
-        (void)ReadI32(in.body, in.bodyLen, &at);
+        int lo = ReadI32(in.body, in.bodyLen, &at);
+        int hi = ReadI32(in.body, in.bodyLen, &at);
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
-        Bounds bounds = ComponentBounds(object, coordType);
+        Bounds bounds =
+            TextBounds(object, node, TextSelection(text, lo, hi), coordType);
         signature = PutExtents(&body, bounds);
     } else if (textInterface && (StrIs(in.member, "GetDefaultAttributes") ||
                                  StrIs(in.member, "GetDefaultAttributeSet"))) {

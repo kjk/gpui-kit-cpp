@@ -1466,6 +1466,40 @@ int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId) {
     return -1;
 }
 
+Str WindowAccessibilityTextValue(const AccessibilityNode& node) {
+    if (!node.input || !node.info.value.s ||
+        !AccessibilityRoleTakesText(node.info.role) ||
+        node.info.role == AccessibilityRole::PasswordInput ||
+        node.input->masked || !node.input->accessibilityValueExposed) {
+        return {};
+    }
+    Str text = InputValue(node.input);
+    return text.s ? text : StrL("");
+}
+
+bool WindowAccessibilityTextRangeBounds(Window* win,
+                                        const AccessibilityNode& node,
+                                        Selection range, Bounds* out) {
+    Str text = WindowAccessibilityTextValue(node);
+    if (!text.s || !out || !InputIsSingleLine(node.input) ||
+        !StrEq(text, node.info.value)) {
+        return false;
+    }
+    Point start = {}, end = {};
+    if (!InputLastCaretPoint(node.input, win, range.start, &start) ||
+        !InputLastCaretPoint(node.input, win, range.end, &end)) {
+        return false;
+    }
+    float left = std::max(node.bounds.x, std::min(start.x, end.x));
+    float right = std::min(node.bounds.Right(), std::max(start.x, end.x));
+    float top = std::max(node.bounds.y, start.y);
+    float bottom =
+        std::min(node.bounds.Bottom(), start.y + node.input->lastLineH);
+    if (right < left || bottom <= top) return false;
+    *out = {left, top, right - left, bottom - top};
+    return true;
+}
+
 bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
                                 AccessibilityAction action, Str value) {
     const AccessibilityNode* found = WindowAccessibilityNode(win, nodeId);

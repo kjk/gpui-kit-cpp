@@ -497,6 +497,8 @@ static void InputContentTypesAndSecretsProjectSafely() {
              base::StrEq(node->info.label, StrL("Email address")) &&
              base::StrEq(node->info.value, StrL("ada@example.test")) &&
              (node->actions & AccessibilityActionSetValue));
+    utassert(node &&
+             StrEq(WindowAccessibilityTextValue(*node), "ada@example.test"));
 
     InputState passwordState;
     InputSetValue(&passwordState, StrL("never expose this"));
@@ -509,7 +511,60 @@ static void InputContentTypesAndSecretsProjectSafely() {
     node = RoleNode(f.win->accessibility, AccessibilityRole::PasswordInput);
     utassert(node && !node->info.value.s &&
              !(node->actions & AccessibilityActionSetValue));
+    utassert(node && !WindowAccessibilityTextValue(*node).s);
     FreeAccessibilityFrame(&f);
+}
+
+struct AccessibleSingleLine {
+    InputState input;
+    bool masked = false;
+
+    static El* Render(AccessibleSingleLine* self, Ctx* cx) {
+        return component::Input::New(cx, StrL("single-line"), &self->input)
+            ->Role(AccessibilityRole::TextInput)
+            ->Masked(self->masked)
+            ->W(360)
+            ->IntoEl();
+    }
+};
+
+static void SingleLineRangesUseTheCurrentFrameGeometry() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<AccessibleSingleLine>(app);
+    auto* state = view.Get(app);
+    Window* win = TestWindowOpen(app, view, 400, 80);
+    TestDraw(win);
+    const AccessibilityNode* node =
+        RoleNode(win->accessibility, AccessibilityRole::TextInput);
+    utassert(node && WindowAccessibilityTextValue(*node).s &&
+             len(WindowAccessibilityTextValue(*node)) == 0);
+
+    InputSetValue(&state->input, StrL("Áé CD"));
+    TestDraw(win);
+    node = RoleNode(win->accessibility, AccessibilityRole::TextInput);
+    utassert(node != nullptr);
+    if (node) {
+        Bounds first = {}, last = {};
+        utassert(
+            WindowAccessibilityTextRangeBounds(win, *node, {0, 3}, &first));
+        utassert(WindowAccessibilityTextRangeBounds(win, *node, {6, 8}, &last));
+        utassert(first.w > 0 && first.h > 0 && last.x > first.Right());
+#if GPUI_OS_WIN
+        utassert(AccessibilityWinSmokeTest(win, node->id));
+#endif
+        InputSetValue(&state->input, StrL("Éé AB"));
+        utassert(StrEq(WindowAccessibilityTextValue(*node), "Éé AB"));
+        utassert(StrEq(node->info.value, "Áé CD"));
+        utassert(
+            !WindowAccessibilityTextRangeBounds(win, *node, {0, 1}, &first));
+    }
+
+    state->masked = true;
+    TestDraw(win);
+    node = RoleNode(win->accessibility, AccessibilityRole::TextInput);
+    utassert(node && !WindowAccessibilityTextValue(*node).s);
+    TestAppFree(app);
 }
 
 // crates/base/src/a11y_disabled.rs
@@ -1017,4 +1072,5 @@ void TestAccessibility() {
     MaskedInputIsAPasswordField();
     ClearButtonIsNamed();
     InputContentTypesAndSecretsProjectSafely();
+    SingleLineRangesUseTheCurrentFrameGeometry();
 }
