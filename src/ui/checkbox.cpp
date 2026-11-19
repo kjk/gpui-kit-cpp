@@ -11,6 +11,11 @@ namespace component {
 // shares. Critically damped, because an opacity that overshoots would clip
 // at 1 and come back — a flicker rather than a flourish.
 
+Checkbox* Checkbox::Indeterminate(bool value) {
+    indeterminate = value;
+    return this;
+}
+
 Checkbox* Checkbox::Child(El* e) {
     child = e;
     return this;
@@ -71,6 +76,30 @@ El* ChoiceLabelColumn(Ctx* cx, El* indicator, float box, Str label, Str hint,
     return col;
 }
 
+struct ChoiceMarkState {
+    IconName last = IconName::Check;
+};
+
+El* ChoiceMark(Ctx* cx, Str id, IconName mark, bool disabled, float size) {
+    const Theme& theme = ThemeNow(cx->app);
+    float opacity = mark == IconName::None ? 0.f : 1.f;
+    IconName drawn = mark;
+    if (cx->win) {
+        auto* state = FrameKeyedState<ChoiceMarkState>(
+            cx, KeyedName(cx, fmt("choice-last-mark-%s", id)));
+        if (mark != IconName::None) state->last = mark;
+        drawn = state->last;
+        if (!disabled) {
+            opacity = SpringValue(cx, MotionId(id, StrL("checkbox-tick")),
+                                  opacity, theme.motion.springControl);
+        }
+    }
+    if (opacity <= 0.01f) return nullptr;
+    Rgba color =
+        disabled ? RgbaOpacity(theme.primaryFg, 0.5f) : theme.primaryFg;
+    return IconEl(cx->a, drawn, size)->Fg(color)->Opacity(opacity);
+}
+
 El* Checkbox::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // indicator_size: rems(0.75 / 0.875 / 1.125 / 1).
@@ -80,13 +109,15 @@ El* Checkbox::IntoEl() {
                                                  : 1.f);
     // An unchecked box carries the input border, a checked one the primary
     // color, and a disabled one either at half strength.
-    Rgba mark = checked ? th.primary : th.inputBorder;
+    CheckboxState state = indeterminate ? CheckboxState::Indeterminate
+                          : checked     ? CheckboxState::Checked
+                                        : CheckboxState::Unchecked;
+    bool filled = state != CheckboxState::Unchecked;
+    Rgba mark = filled ? th.primary : th.inputBorder;
     if (disabled) {
         mark = RgbaOpacity(mark, 0.5f);
     }
     float radius = th.radius < 4.f ? th.radius : 4.f;
-    CheckboxState state =
-        checked ? CheckboxState::Checked : CheckboxState::Unchecked;
     El* ind = CheckboxIndicator::New(cx, state, disabled)
                   ->W(box)
                   ->H(box)
@@ -95,31 +126,15 @@ El* Checkbox::IntoEl() {
                   ->JustifyCenter()
                   ->Border(1, mark)
                   ->Radius(radius);
-    if (checked) {
-        ind->Bg(mark);
+    if (filled) ind->Bg(mark);
+    IconName glyph = indeterminate ? IconName::Minus
+                     : checked     ? IconName::Check
+                                   : IconName::None;
+    if (El* icon = ChoiceMark(cx, id, glyph, disabled, box - Rems(cx, 0.25f))) {
+        ind->Child(icon);
     }
-    // checkbox.rs fades the tick in over 0.25 s, and back out again when the
-    // box is cleared: `this.opacity(if checked { delta } else { 1 - delta })`,
-    // which one value going the other way says as well.
-    float on = checked ? 1.f : 0.f;
-    if (!disabled) {
-        // spring_control: a box clicked twice reverses the fade mid-flight,
-        // which is where a spring beats a curve restarted from the value it
-        // happened to be at.
-        on = SpringValue(cx, MotionId(id, StrL("checkbox-tick")), on,
-                         th.motion.springControl);
-    }
-    if (on > 0.01f) {
-        Rgba tick = disabled ? RgbaOpacity(th.primaryFg, 0.5f) : th.primaryFg;
-        // size_2 / size_2p5 / size_3 / size_3p5: a quarter rem under the box.
-        ind->Child(IconEl(a, IconName::Check, box - Rems(cx, 0.25f))
-                       ->Fg(tick)
-                       ->Opacity(on));
-    }
-    // gpui_base::Checkbox owns identity, focus and activation. It hands the
-    // handler the state the activation produces; the themed checkbox is
-    // boolean, and CheckboxState::Unchecked / Checked are 0 and 1, so what
-    // the caller reads is the `!checked` Rust passes on.
+    // Base returns Checked for a mixed activation and the opposite value
+    // for a regular one. Both map directly to the boolean listener payload.
     // h_flex().gap_2().items_start(): the box lines up with the *first* line
     // of the label, not with the middle of the block. Centring looks the same
     // on a one-line label and drops the box half a description lower on a

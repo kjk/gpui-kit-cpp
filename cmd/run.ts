@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8e612899af9bbda0a56ce8fe62579ea03eae9d5d",
+  sha: "05da4d38476cf4431a628625086639ff63f8b859",
   date: "2026-11-15",
-  subject: "webview: Redraw after releasing the composition surface (#3986)",
+  subject: "checkbox: Add `indeterminate` to show a mixed state (#3980)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

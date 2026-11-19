@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8e612899af9bbda0a56ce8fe62579ea03eae9d5d` (2026-11-15,
-webview: Redraw after releasing the composition surface (#3986)).
-Invalidate the GPUI frame after hiding or dropping a webview, so the old
-native-child hit blocker no longer intercepts pointer events.
+Processed through `05da4d38476cf4431a628625086639ff63f8b859` (2026-11-15,
+checkbox: Add `indeterminate` to show a mixed state (#3980)).
+Project Base mixed state onto the themed checkbox dash, accessibility and
+activation. Retain the glyph during fade-out and add the Story group example.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

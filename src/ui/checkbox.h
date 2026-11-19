@@ -111,12 +111,16 @@ struct Checkbox : ChoiceBuilder<Checkbox> {
     El* child = nullptr;
     AccessibilityRole accessibilityRole = AccessibilityRole::CheckBox;
     float w = 0;
+    bool indeterminate = false;
 
+    Checkbox* Indeterminate(bool value = true);
     Checkbox* Child(El* e);
     Checkbox* W(float v);
     Checkbox* Role(AccessibilityRole role);
     El* IntoEl();
 };
+
+El* ChoiceMark(Ctx* cx, Str id, IconName mark, bool disabled, float size);
 
 // v_flex().line_height(relative(1.25)).gap_1(): the label over the muted
 // hint, with the indicator nudged down to the label's first line. The caller

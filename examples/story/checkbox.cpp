@@ -3,9 +3,22 @@
 struct CheckboxStory {
     // check1..check6; only check2 starts on.
     bool checks[6] = {false, true};
+    bool files[3] = {true, false, false};
     StoryToolbarState toolbar;
 
     static El* Render(CheckboxStory* self, Ctx* cx);
+
+    static void SetAllFiles(CheckboxStory* self, Ctx* cx, const ClickEvent*,
+                            int64_t value) {
+        for (bool& file : self->files) file = value != 0;
+        Notify(cx);
+    }
+
+    static void ToggleFile(CheckboxStory* self, Ctx* cx, const ClickEvent*,
+                           int64_t index) {
+        self->files[index] = !self->files[index];
+        Notify(cx);
+    }
 };
 
 // The checkbox fills the listener's value with the state it lands on, so
@@ -66,6 +79,33 @@ El* CheckboxStory::Render(CheckboxStory* self, Ctx* cx) {
                               ->OnClick(Listen(cx, &SetCheck2))
                               ->IntoEl());
     page->Child(bare);
+
+    El* mixed = StorySection(
+        cx, "Indeterminate",
+        "A group checkbox shows a dash while only some items are checked.");
+    El* files = Div(a)->FlexCol()->Gap(8);
+    bool all = self->files[0] && self->files[1] && self->files[2];
+    bool any = self->files[0] || self->files[1] || self->files[2];
+    files->Child(component::Checkbox::New(cx, StrL("all-files"))
+                     ->WithSize(size)
+                     ->Label(StrL("All files"))
+                     ->Checked(all)
+                     ->Indeterminate(any && !all)
+                     ->OnChange(Listen(cx, &SetAllFiles))
+                     ->IntoEl());
+    const Str names[] = {StrL("README.md"), StrL("Cargo.toml"),
+                         StrL("main.rs")};
+    for (int i = 0; i < 3; i++) {
+        files->Child(component::Checkbox::New(cx, names[i])
+                         ->WithSize(size)
+                         ->Label(names[i])
+                         ->Checked(self->files[i])
+                         ->OnChange(Listen(cx, &ToggleFile, i))
+                         ->IntoEl()
+                         ->MarginL(Rems(cx, 1.5f)));
+    }
+    StorySectionAdd(mixed, files);
+    page->Child(mixed);
 
     El* dis = StorySection(cx, "Disabled",
                            "Both checked and unchecked values remain visible.");

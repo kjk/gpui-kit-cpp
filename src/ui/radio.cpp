@@ -37,10 +37,10 @@ El* Radio::IntoEl() {
                   ->ItemsCenter()
                   ->JustifyCenter()
                   ->Shrink0();
-    if (checked) {
-        Rgba tick = disabled ? RgbaOpacity(th.primaryFg, 0.5f) : th.primaryFg;
-        dot->Child(IconEl(a, IconName::Check, box - Rems(cx, 0.3125f))
-                       ->Fg(tick));
+    IconName glyph = checked ? IconName::Check : IconName::None;
+    if (El* icon =
+            ChoiceMark(cx, id, glyph, disabled, box - Rems(cx, 0.3125f))) {
+        dot->Child(icon);
     }
     // gpui_base::Radio owns identity, focus and activation, and refuses the
     // click to the option that is already picked.

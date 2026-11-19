@@ -1161,7 +1161,47 @@ static void ASettledClosedPanelUnmountsItsContent() {
     FreeAccessibilityFrame(&f);
 }
 
+struct MixedCheckboxView {
+    IconName icon = IconName::None;
+    int64_t requested = -1;
+
+    static void OnChange(MixedCheckboxView* self, Ctx*, const ClickEvent*,
+                         int64_t value) {
+        self->requested = value;
+    }
+
+    static El* Render(MixedCheckboxView* self, Ctx* cx) {
+        El* box = component::Checkbox::New(cx, StrL("mixed"))
+                      ->Label(StrL("All files"))
+                      ->Checked(true)
+                      ->Indeterminate(true)
+                      ->OnChange(Listen(cx, &OnChange))
+                      ->IntoEl();
+        self->icon = box->first && box->first->first ? box->first->first->icon
+                                                     : IconName::None;
+        return box;
+    }
+};
+
+static void AMixedCheckboxUsesTheDashAndRequestsChecked() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<MixedCheckboxView>(app);
+    Window* win = TestWindowOpen(app, view, 240, 120, 1);
+    const auto* node =
+        RoleNode(win->accessibility, AccessibilityRole::CheckBox);
+    utassert(node && node->info.toggled == AccessibilityToggled::Mixed);
+    utassert(view.Get(app)->icon == IconName::Minus);
+    if (node) {
+        Bounds b = node->bounds;
+        TestSimulateClick(win, {b.CenterX(), b.CenterY()});
+        utassert(view.Get(app)->requested == 1);
+    }
+    TestAppFree(app);
+}
+
 void TestAccessibility() {
+    AMixedCheckboxUsesTheDashAndRequestsChecked();
     TestSuite("accessibility");
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
     StyledButtonsCanReplaceTheirVisibleAccessibleName();
