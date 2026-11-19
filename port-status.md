@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c92653e2f0b6499221dee11672b510b07aaf043c` (2026-11-07,
-table: Let Tab and Shift+Tab leave a focused DataTable (#3800)).
-Tab and Shift+Tab move focus through a DataTable as one stop. Arrow keys still
-navigate rows and cells within the table.
+Processed through `95e92c7dc8c934cc09ebbebff8e47f3feaf629cd` (2026-11-07, ci:
+Propagate Shell integration test failures on Windows (#3693)).
+Rust CI now runs its Shell integration commands in Bash so an earlier failure
+fails the Windows job. The C++ suite runs as a single command.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
