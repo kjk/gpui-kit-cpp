@@ -7,7 +7,7 @@ struct LinkTooltipExample {
     bool showPreview = true;
 
     static El* Preview(Ctx* cx, Str url, void*) {
-        return component::Tooltip::New(cx, url)->IntoEl()->MaxW(Rems(cx, 32.f));
+        return component::Tooltip::New(cx, url)->MaxW(Rems(cx, 32.f))->IntoEl();
     }
 
     static El* Render(LinkTooltipExample* self, Ctx* cx) {

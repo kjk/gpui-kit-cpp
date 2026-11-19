@@ -132,10 +132,60 @@ static void RemovingOldButtonPreservesNewTooltip() {
     TestAppFree(app);
 }
 
+struct WrappingTooltip {
+    Str text;
+    Bounds surface;
+
+    static El* Build(Ctx* cx, void* data) {
+        auto* self = (WrappingTooltip*)data;
+        El* tooltip =
+            component::Tooltip::New(cx, self->text)->MaxW(200)->IntoEl();
+        tooltip->first->BoundsOut(&self->surface);
+        return tooltip;
+    }
+
+    static El* Render(WrappingTooltip*, Ctx* cx) {
+        return Div(cx->a)->SizeFull();
+    }
+};
+
+static Bounds WrappingTooltipBounds(Str text) {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<WrappingTooltip>(app);
+    auto* self = view.Get(app);
+    self->text = text;
+    Window* win = TestWindowOpen(app, view, 500, 400);
+    auto entity = EntityNew<TooltipOverlay>(app);
+    win->tooltip = entity.id;
+    Ctx cx = {app, win, win->frameArena, entity.id};
+    auto request =
+        TooltipRequest::New({10, 10, 100, 30}, &WrappingTooltip::Build, self);
+    request.WithShowDelay(0);
+    auto* overlay = entity.Get(app);
+    overlay->enabled = true;
+    overlay->RequestShow(request, win, &cx);
+    TestDraw(win);
+    Bounds surface = self->surface;
+    TestAppFree(app);
+    return surface;
+}
+
+static void LongTextWrapsWithinTheTooltipWidth() {
+    Bounds shortTip = WrappingTooltipBounds(StrL("tip"));
+    Bounds longTip =
+        WrappingTooltipBounds(StrL("Band AD_WBGT_20240621T00-20240621T23 - "
+                                   "WBGT [time=477499] with a few more words"));
+    utassert(shortTip.h > 0.f && shortTip.w < 200.f);
+    utassertnear(longTip.w, 200.f);
+    utassert(longTip.h > shortTip.h * 2.f);
+}
+
 void TestTooltip() {
     TestSuite("tooltip");
     RemovingButtonHidesVisibleTooltip();
     RemovingButtonCancelsPendingTooltip();
     PendingButtonShowsAfterTheDelay();
     RemovingOldButtonPreservesNewTooltip();
+    LongTextWrapsWithinTheTooltipWidth();
 }

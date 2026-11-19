@@ -15,8 +15,10 @@ struct Tooltip {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str text = {};
+    float maxWidth = kAuto;
 
     static Tooltip* New(Ctx* cx, Str text);
+    Tooltip* MaxW(float value);
     El* IntoEl();
 };
 

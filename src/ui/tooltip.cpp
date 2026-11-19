@@ -13,6 +13,11 @@ Tooltip* Tooltip::New(Ctx* cx, Str text) {
     return t;
 }
 
+Tooltip* Tooltip::MaxW(float value) {
+    maxWidth = value;
+    return this;
+}
+
 // tooltip.rs Render: base's tooltip as a popover-coloured h_flex with
 // m_3, a border, shadow_md and the theme's radius, py_0p5 px_2 gap_3 at
 // text_sm, inside a div that lets the margin show; as tall as its text.
@@ -37,7 +42,8 @@ El* Tooltip::IntoEl() {
                     ->PadX(Rems(cx, 0.5f))
                     ->Font(14)
                     ->Gap(Rems(cx, 0.75f))
-                    ->Child(Div(a)->Child(TextEl(a, text)));
+                    ->MaxW(maxWidth)
+                    ->Child(Div(a)->MinW(0)->Child(TextEl(a, text)->Wrap()));
     return Div(a)->Child(popup);
 }
 

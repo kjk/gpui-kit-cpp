@@ -16,14 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b7fe6ab3657069b2fc58e6093974aeaf0274e7f0` (2026-11-11,
-theme: Follow Windows' scrollbar convention when syncing with the system
-(#3895)).
-The theme follows UISettings on Windows and NSScroller on macOS at
-initialization. Windows maps auto-hide to Hover and the always-show preference
-to Always. Hover reveals the edge-strip scrollbar, as in the Rust change.
-Linux uses the pinned GPUI default, and wasm and mobile retain their auto-hide
-defaults.
+Processed through `502df2b9c179784117fddb5144c4468dac5f37fc` (2026-11-11,
+tooltip: Wrap long text within `max_w` instead of overflowing the background
+(#3896)).
+The themed tooltip applies its max width to the surface and lets its text
+shrink and wrap within the available width. The link tooltip example now
+applies its cap to the themed tooltip builder.
 The current update target is
 `f8243df95b9158d9b6d842348dcfcd0481a85c2c`.
 
