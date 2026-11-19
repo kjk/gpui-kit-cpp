@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b45e70e5815ab2f6a010618291e45ec53a8ed870",
+  sha: "957ae8b55f1d02ea0f322951a9fa3b3f0cbbb282",
   date: "2026-11-09",
-  subject: "base: Preserve Tab exit when focused selection controls become disabled (#3872)",
+  subject: "number_input: Add stepper option (#3748)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

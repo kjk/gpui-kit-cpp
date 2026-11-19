@@ -588,6 +588,7 @@ struct NumberInput : NumberRange {
     bool disabled = false;
     bool appearance = true;
     bool focusRing = true;
+    bool showStepper = true;
     // NumberInput::accessibility_label. A number input has no visible text
     // of its own, so the name is set by the caller.
     Str accessibilityLabel = {};
@@ -614,6 +615,8 @@ struct NumberInput : NumberRange {
     NumberInput* FocusRing(bool v);
     // The name a screen reader announces. It does not change what is shown.
     NumberInput* AccessibilityLabel(Str label);
+    // Show the step buttons. Up and Down keep stepping when they are hidden.
+    NumberInput* Stepper(bool v);
     NumberInput* Suffix(El* el);
     NumberInput* Bg(Background c);
     NumberInput* TextColor(Rgba c);

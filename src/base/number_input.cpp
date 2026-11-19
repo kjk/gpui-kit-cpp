@@ -231,7 +231,7 @@ El* NumberInput::New(Ctx* cx, Str id, InputState* state) {
 
 El* NumberInput::Compose(Ctx* cx, Str id, InputState* state, bool disabled,
                          El* decrement, El* input, El* increment,
-                         bool controlsRight, El* children) {
+                         bool controlsRight, El* children, bool stepper) {
     Arena* a = cx->a;
     El* root = New(cx, id, state)
                    ->AriaDisabled(disabled)
@@ -242,6 +242,9 @@ El* NumberInput::Compose(Ctx* cx, Str id, InputState* state, bool disabled,
     NumberInputText* text = NumberInputText::New(cx)->Child(input);
     if (children) {
         text->Child(children);
+    }
+    if (!stepper) {
+        return root->Child(text->IntoEl());
     }
     if (controlsRight) {
         decrement->Flex1()->MinH(0);

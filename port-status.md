@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b45e70e5815ab2f6a010618291e45ec53a8ed870` (2026-11-09,
-base: Preserve Tab exit when focused selection controls become disabled
-(#3872)).
-A focused checkbox, radio, switch, or toggle keeps its location in the focus
-order if activation disables it. Tab leaves in either direction and skips the
-disabled control on return.
+Processed through `957ae8b55f1d02ea0f322951a9fa3b3f0cbbb282` (2026-11-09,
+number_input: Add stepper option (#3748)).
+Base composition and themed NumberInput can omit both step buttons. The editor
+still steps with Up and Down and retains its accessible increment and
+decrement actions.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

@@ -274,6 +274,46 @@ static void TwoSpinbuttonsHaveTwoIncrements() {
     EntityDropAll(&app);
 }
 
+// crates/component/src/input/number_input.rs::interaction_tests
+struct NumberInputStepperProbe {
+    InputState input;
+    bool showStepper = true;
+    bool hasDecrement = false;
+    bool hasIncrement = false;
+
+    static El* Render(NumberInputStepperProbe* self, Ctx* cx) {
+        auto* input = component::NumberInput::New(cx, &self->input);
+        if (!self->showStepper) {
+            input->Stepper(false);
+        }
+        El* el = input->IntoEl();
+        self->hasDecrement = FindNamed(el, "decrement") != nullptr;
+        self->hasIncrement = FindNamed(el, "increment") != nullptr;
+        return el;
+    }
+};
+
+static void HiddenStepperKeepsKeyboardStepping() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<NumberInputStepperProbe>(app);
+    auto* probe = view.Get(app);
+    InputSetValue(&probe->input, StrL("3"));
+    Window* win = TestWindowOpen(app, view);
+    utassert(probe->hasDecrement && probe->hasIncrement);
+
+    probe->showStepper = false;
+    TestDraw(win);
+    utassert(!probe->hasDecrement && !probe->hasIncrement);
+    InputFocus(&probe->input, app, win);
+    TestDraw(win);
+    TestSimulateKeystrokes(win, "up");
+    utassert(StrEqI(InputValue(&probe->input), "4"));
+    TestSimulateKeystrokes(win, "down");
+    utassert(StrEqI(InputValue(&probe->input), "3"));
+    TestAppFree(app);
+}
+
 void TestNumberInput() {
     TestSuite("number_input");
     TwoSpinbuttonsHaveTwoIncrements();
@@ -284,4 +324,5 @@ void TestNumberInput() {
     FixedAndValueDependentStrategiesMatchRustsEnum();
     ApplyStepValidatesAndFallsBackToTheStepEvent();
     ThemedDefaultUsesOneSharedSemanticStep();
+    HiddenStepperKeepsKeyboardStepping();
 }

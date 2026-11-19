@@ -124,10 +124,12 @@ struct NumberInput {
     static El* New(Ctx* cx, Str id, InputState* state);
     // NumberInput::render: the semantic root owns the fixed composition while
     // callers decorate the three supplied parts. With controlsRight both
-    // buttons stack increment-over-decrement beside the text region.
+    // buttons stack increment-over-decrement beside the text region. Turn
+    // off stepper to compose only the text region.
     static El* Compose(Ctx* cx, Str id, InputState* state, bool disabled,
                        El* decrement, El* input, El* increment,
-                       bool controlsRight = false, El* children = nullptr);
+                       bool controlsRight = false, El* children = nullptr,
+                       bool stepper = true);
 };
 } // namespace gpui
 #endif // GPUI_BASE_NUMBER_INPUT_H_

@@ -1361,6 +1361,10 @@ NumberInput* NumberInput::AccessibilityLabel(Str label) {
     accessibilityLabel = label;
     return this;
 }
+NumberInput* NumberInput::Stepper(bool v) {
+    showStepper = v;
+    return this;
+}
 NumberInput* NumberInput::Suffix(El* el) {
     suffix = el;
     return this;
@@ -1477,21 +1481,25 @@ El* NumberInput::IntoEl() {
     if (disabled) {
         frame->Opacity(0.5f);
     }
-    // The step buttons are transparent until hovered, and fill the frame.
-    // `rounded_tl`/`rounded_bl` on the one and `rounded_tr`/`rounded_br` on
-    // the other: only the outer corners are rounded, to follow the frame. The
-    // border is a hairline inside the frame's own, so the button's radius is
-    // the frame's less that.
-    float stepR = appearance ? th.radius - 1.f : th.radius;
-    if (stepR < 0) {
-        stepR = 0;
-    }
-    Rgba stepFg = disabled ? RgbaOpacity(th.secondaryFg, 0.5f) : th.secondaryFg;
-    // Both are gpui_base::Buttons that decline focus: pressing one must leave
-    // the editor focused, or the frame's ring flickers on every click. That is
-    // what number_input.rs pins with
-    // `pressing_a_step_button_never_takes_focus_off_the_editor`.
-    El* dec = gpui::Button::New(cx, StrL("decrement"), disabled, onDec, false)
+    El* dec = nullptr;
+    El* inc = nullptr;
+    if (showStepper) {
+        // The step buttons are transparent until hovered, and fill the frame.
+        // `rounded_tl`/`rounded_bl` on the one and `rounded_tr`/`rounded_br` on
+        // the other: only the outer corners are rounded, to follow the frame.
+        // The border is a hairline inside the frame's own, so the button's
+        // radius is the frame's less that.
+        float stepR = appearance ? th.radius - 1.f : th.radius;
+        if (stepR < 0) {
+            stepR = 0;
+        }
+        Rgba stepFg =
+            disabled ? RgbaOpacity(th.secondaryFg, 0.5f) : th.secondaryFg;
+        // Both are gpui_base::Buttons that decline focus: pressing one must
+        // leave the editor focused, or the frame's ring flickers on every
+        // click. That is what number_input.rs pins with
+        // `pressing_a_step_button_never_takes_focus_off_the_editor`.
+        dec = gpui::Button::New(cx, StrL("decrement"), disabled, onDec, false)
                   ->AriaLabel(Tr("Input.Decrement"))
                   ->W(btn)
                   ->H(kFill)
@@ -1499,7 +1507,7 @@ El* NumberInput::IntoEl() {
                   ->ItemsCenter()
                   ->JustifyCenter()
                   ->Child(IconEl(a, IconName::Minus, font)->Fg(stepFg));
-    El* inc = gpui::Button::New(cx, StrL("increment"), disabled, onInc, false)
+        inc = gpui::Button::New(cx, StrL("increment"), disabled, onInc, false)
                   ->AriaLabel(Tr("Input.Increment"))
                   ->W(btn)
                   ->H(kFill)
@@ -1507,15 +1515,16 @@ El* NumberInput::IntoEl() {
                   ->ItemsCenter()
                   ->JustifyCenter()
                   ->Child(IconEl(a, IconName::Plus, font)->Fg(stepFg));
-    if (!disabled && !onDec.IsValid()) {
-        dec->OnClick(decDirect);
-    }
-    if (!disabled && !onInc.IsValid()) {
-        inc->OnClick(incDirect);
-    }
-    if (!disabled) {
-        dec->HoverBg(RgbaOpacity(th.inputBorder, 0.4f));
-        inc->HoverBg(RgbaOpacity(th.inputBorder, 0.4f));
+        if (!disabled && !onDec.IsValid()) {
+            dec->OnClick(decDirect);
+        }
+        if (!disabled && !onInc.IsValid()) {
+            inc->OnClick(incDirect);
+        }
+        if (!disabled) {
+            dec->HoverBg(RgbaOpacity(th.inputBorder, 0.4f));
+            inc->HoverBg(RgbaOpacity(th.inputBorder, 0.4f));
+        }
     }
     // The editor sits between them, centered and without its own frame.
     Input* editor = Input::New(cx, StrL("input"), state)
@@ -1530,9 +1539,10 @@ El* NumberInput::IntoEl() {
     if (suffix) {
         editor->Suffix(suffix);
     }
-    El* content = gpui::NumberInput::Compose(
-        cx, base, state, disabled, dec,
-        Div(a)->H(kFill)->Child(editor->IntoEl()), inc);
+    El* content =
+        gpui::NumberInput::Compose(cx, base, state, disabled, dec,
+                                   Div(a)->H(kFill)->Child(editor->IntoEl()),
+                                   inc, false, nullptr, showStepper);
     // Base NumberInput::accessibility_label, on the spin button. The
     // element Compose returns is that button.
     if (accessibilityLabel.s) {
