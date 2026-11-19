@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `67c329149eeeee52d79587e76ae80e9400df9fea` (2026-11-18,
-popover: Move focus after the frame when a controlled popover syncs open
-(#4023)).
-Controlled popovers defer focus until after the frame, restore the previous
-control on close and ignore queued transitions that have since reversed. User-
-triggered toggles move focus immediately.
+Processed through `60577183573a2e9545b60689f20e1099b94d3b9a` (2026-11-18,
+docs: Use ListState in the zh-CN List guide's delegate examples (#4030)).
+The localized List guide now shows the retained ListState delegate API. The
+C++ List already hands its retained state to native delegates.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

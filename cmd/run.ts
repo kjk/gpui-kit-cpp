@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "67c329149eeeee52d79587e76ae80e9400df9fea",
+  sha: "60577183573a2e9545b60689f20e1099b94d3b9a",
   date: "2026-11-18",
-  subject: "popover: Move focus after the frame when a controlled popover syncs open (#4023)",
+  subject: "docs: Use ListState in the zh-CN List guide's delegate examples (#4030)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",
