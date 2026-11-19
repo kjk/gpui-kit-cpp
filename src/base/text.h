@@ -1408,6 +1408,8 @@ struct TextView {
     // text_view.rs image_source.
     ImageSourceFn imageSource = nullptr;
     void* imageSourceData = nullptr;
+    LinkTooltipFn linkTooltip = nullptr;
+    void* linkTooltipData = nullptr;
     // Rust stores plugins in a Vec and offers them in registration order.
     ArenaVec<MdPlugin> plugins{};
     // node.rs min_w_16: the floor a table column shrinks to. Above the floor
@@ -1552,6 +1554,9 @@ struct TextView {
     // a link opens in the desktop's browser, which is what Rust's
     // handle_link_click falls back to (cx.open_url).
     TextView* OnLink(Listener fn);
+    // Builds the pointer-following preview for the hovered URL. Data belongs
+    // to the caller and must stay live while the TextView renders it.
+    TextView* LinkTooltip(LinkTooltipFn build, void* data = nullptr);
     // text_view.rs on_task_toggle. With a handler, a task checkbox click
     // reports a TaskToggleEvent and does not change the source. Without
     // one, the checkbox is not a click target.
@@ -1674,6 +1679,7 @@ struct TextView {
     El* SrcMap(El* t, const SourceSegment* segments, int count, int offset,
                bool atomic = false);
     Listener LinkListener(Str href);
+    void BindLinkTooltip(El* element, Str href);
     // The text a plugin's parser sees, and the block a plugin claimed.
     Str BlockText(MdNode* n);
     El* PluginBlock(MdNode* n);

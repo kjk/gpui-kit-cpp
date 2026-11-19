@@ -263,9 +263,46 @@ static El* TooltipTextView(Ctx* cx, Str text) {
         ->Child(TextEl(cx->a, text));
 }
 
+static El* TooltipRenderLink(const TooltipRequest& request, Ctx* cx) {
+    Ctx owner = *cx;
+    owner.self = request.linkOwner;
+    if (owner.self.IsValid() && !EntityGet(owner.app, owner.self)) {
+        return nullptr;
+    }
+    // Rust retains a tooltip view entity. The C++ builder supplies the
+    // frame-local elements and can keep its application state in the owner.
+    El* view = request.buildLink(&owner, request.text, request.buildData);
+    if (!view) {
+        return nullptr;
+    }
+    // GPUI's native tooltip starts one DIP below and to the right of the
+    // pointer. Each axis can flip independently to stay in the viewport.
+    Size size = MeasureEl(&cx->win->paint, view);
+    WinSize viewport = WindowSize(cx->win);
+    float x = request.triggerBounds.x + 1;
+    float y = request.triggerBounds.y + 1;
+    if (x + size.w > viewport.dipW) {
+        x = std::max(0.f, x - size.w - 2);
+    }
+    if (y + size.h > viewport.dipH) {
+        y = std::max(0.f, y - size.h - 2);
+    }
+    return Div(cx->a)
+        ->Fixed()
+        ->Left(x)
+        ->Top(y)
+        ->W(size.w)
+        ->H(size.h)
+        ->DeferredLayer(kPaintLayerTooltip)
+        ->Child(view);
+}
+
 El* TooltipOverlay::Render(TooltipOverlay* self, Ctx* cx) {
     if (!self->hasContent) {
         return nullptr;
+    }
+    if (self->content.buildLink) {
+        return TooltipRenderLink(self->content, cx);
     }
     El* view = self->content.build
                    ? self->content.build(cx, self->content.buildData)
@@ -347,6 +384,54 @@ static TooltipOverlay* TooltipWindowOverlay(Window* win) {
         return nullptr;
     }
     return (TooltipOverlay*)EntityGet(win->app, win->tooltip);
+}
+
+void TooltipUpdateLinkAtPointer(Window* win) {
+    TooltipOverlay* overlay = TooltipWindowOverlay(win);
+    const HitRect* hit = nullptr;
+    if (win->pointerInWindow && !win->lastInputKeyboard &&
+        win->paint.hasLinkTooltipHits) {
+        hit = HitTestRect(&win->paint, win->mouseX, win->mouseY);
+    }
+    const LinkTooltipTarget* target = hit ? hit->linkTooltip : nullptr;
+    if (!target) {
+        if (overlay && overlay->hasContent && overlay->content.buildLink) {
+            Ctx cx = TooltipContext(win, win->tooltip);
+            overlay->Hide(&cx);
+            WindowRequestAnimationFrame(win);
+        }
+        return;
+    }
+    if (!overlay) {
+        overlay = TooltipGet(win);
+    }
+    if (!overlay || !overlay->enabled) {
+        return;
+    }
+    if (TooltipOverlay* root = TooltipRootOverlay(win)) {
+        Ctx cx = TooltipContext(win, win->rootTooltip);
+        root->Hide(&cx);
+    }
+    Ctx cx = TooltipContext(win, win->tooltip);
+    Bounds anchor = {win->mouseX, win->mouseY, 0, 0};
+    TooltipRequest& current = overlay->content;
+    if (overlay->hasContent && current.buildLink == target->build &&
+        current.linkOwner == target->owner &&
+        current.buildData == target->data && StrEq(current.text, target->url)) {
+        TooltipCancelHide(win, overlay);
+        if (current.triggerBounds.x != anchor.x || current.triggerBounds
+                                                           .y != anchor.y) {
+            current.triggerBounds = anchor;
+            Notify(&cx);
+        }
+        return;
+    }
+    TooltipRequest request = TooltipRequest::Text(anchor, target->url);
+    request.buildLink = target->build;
+    request.linkOwner = target->owner;
+    request.buildData = target->data;
+    overlay->RequestShow(request.WithShowDelay(0), win, &cx);
+    WindowRequestAnimationFrame(win);
 }
 
 void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,

@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ca479f3bb40f1917fd1a7b8211336920c6993e49",
+  sha: "7cace79d91dfb71c42822355d73dfbf32f85be7c",
   date: "2026-11-09",
-  subject: "table: Add border to selected cell to distinguish it from hover (#3866)",
+  subject: "text: Add pointer-following link tooltips (#3793)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
@@ -833,6 +833,9 @@ function rustTwin(target: string): RustTwin | null {
   }
   if (target === "story") {
     return { pkg: "gpui-component-story" };
+  }
+  if (target === "link_tooltip") {
+    return { pkg: "example-link-tooltip" };
   }
   if (rustExamplePkgs.has(target)) {
     return { pkg: target };

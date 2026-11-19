@@ -9926,6 +9926,91 @@ static void TaskCheckboxesWithoutAHandlerAreNotInteractive() {
     }
 }
 
+struct LinkTooltipTestView {
+    Entity<TextViewState> text;
+    bool covered = true;
+    Bounds preview = {};
+
+    static El* BuildPreview(Ctx* cx, Str url, void* data) {
+        auto* self = (LinkTooltipTestView*)data;
+        utassert(StrEq(url, StrL("file:///tmp/report.json")));
+        return Div(cx->a)
+            ->W(180)
+            ->H(24)
+            ->BoundsOut(&self->preview)
+            ->Child(TextEl(cx->a, StrL("/tmp/report.json")));
+    }
+
+    static El* Render(LinkTooltipTestView* self, Ctx* cx) {
+        self->preview = {};
+        El* root = Div(cx->a)->W(160);
+        root->Child(TextView::New(cx, self->text)
+                        ->LinkTooltip(BuildPreview, self)
+                        ->IntoEl()
+                        ->W(160));
+        if (self->covered) {
+            root->Child(Div(cx->a)->Absolute()->Inset0()->StopMouseDown());
+        }
+        return root;
+    }
+};
+
+// text/text_view.rs link_tooltip_follows_the_pointer_and_clears_on_exit.
+static void LinkTooltipFollowsThePointerAndClearsOnExit() {
+    App* app = TestAppNew();
+    auto view = EntityNew<LinkTooltipTestView>(app);
+    auto* self = view.Get(app);
+    self->text = TextViewState::Markdown(
+        app, StrL("[preview destination with a label that wraps over several "
+                  "lines](file:///tmp/report.json)"));
+    Window* win = TestWindowOpen(app, view, 640, 320, 1);
+    Bounds firstRow = {};
+    Bounds secondRow = {};
+    for (int i = 0; i < len(win->paint.hits); i++) {
+        const HitRect& hit = win->paint.hits[i];
+        if (!hit.linkTooltip) {
+            continue;
+        }
+        if (firstRow.w == 0) {
+            firstRow = hit.bounds;
+        } else if (hit.bounds.y > firstRow.y) {
+            secondRow = hit.bounds;
+            break;
+        }
+    }
+    utassert(firstRow.w > 22 && secondRow.w > 0);
+    Point start = {firstRow.x + 2, firstRow.CenterY()};
+    TestSimulateMouseMove(win, start);
+    TestDraw(win);
+    utassert(self->preview.w == 0);
+
+    self->covered = false;
+    TestDraw(win);
+    utassert(win->animFrame);
+    TestDraw(win);
+    Bounds first = self->preview;
+    utassert(first.w == 180 && !win->animFrame);
+    TestSimulateMouseMove(win, {start.x + 20, start.y});
+    TestDraw(win);
+    utassertnear(self->preview.x - first.x, 20);
+    utassertnear(self->preview.y, first.y);
+
+    TestSimulateMouseMove(win, {secondRow.CenterX(), secondRow.CenterY()});
+    TestDraw(win);
+    utassert(self->preview.w == 180);
+    self->covered = true;
+    TestDraw(win);
+    TestDraw(win);
+    utassert(self->preview.w == 0);
+
+    self->covered = false;
+    TestDraw(win);
+    TestSimulateMouseMove(win, {200, start.y});
+    TestDraw(win);
+    utassert(self->preview.w == 0);
+    TestAppFree(app);
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -9933,6 +10018,7 @@ void TestTextView() {
     WrappedLeafMapsIndicesAndPositions();
     WrappedWholeLeafCaretsKeepTheirLine();
     WrappedMixedLeafCaretsKeepTheirLine();
+    LinkTooltipFollowsThePointerAndClearsOnExit();
     RekeyingClonedLeavesPreservesEachIdentity();
     GeometryIsAnImmutableSnapshot();
     EmptyKeyedLeafHasALineBox();

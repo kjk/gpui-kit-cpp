@@ -16,15 +16,19 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ca479f3bb40f1917fd1a7b8211336920c6993e49` (2026-11-09,
-table: Add border to selected cell to distinguish it from hover (#3866)).
-Selected table cells draw the table active fill and a one-pixel table active
-border. The overlay preserves the content layout.
+Processed through `7cace79d91dfb71c42822355d73dfbf32f85be7c` (2026-11-09,
+text: Add pointer-following link tooltips (#3793)).
+TextView can render a custom tooltip at a hovered link, update it as the
+pointer moves across the link, and dismiss it when the link is covered or
+left. The standalone example has a no-preview mode.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
 ## Known gaps vs Rust
 
+- **Link tooltips build frame-local elements.** Rust retains its tooltip
+  view entity. C++ invokes the builder on each visible frame and passes it
+  the owning view context and URL (`src/base/tooltip.cpp`).
 - **Client corner radii shape the painted window.** The frame, root and
   title bar use `window.radius`. Rust also supplies the corner radii to
   its Wayland compositor integration. This port uses X11 on Linux

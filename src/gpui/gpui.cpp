@@ -8283,6 +8283,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.tooltipPlacement = e->style.tooltipPlacement;
         hr.tooltipShowDelayMs = e->style.tooltipShowDelayMs;
         hr.rootTooltip = e->rootTooltip;
+        hr.linkTooltip = e->lifecycle ? e->lifecycle->linkTooltip : nullptr;
+        ctx->hasLinkTooltipHits |= hr.linkTooltip != nullptr;
         hr.onMouseDown = e->onMouseDown;
         hr.onMouseUp = e->onMouseUp;
         hr.onLongPress = e->onLongPress;

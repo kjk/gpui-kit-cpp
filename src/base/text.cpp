@@ -3816,6 +3816,7 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
     El* e = InlineImageElement(this, r, font, color, inFlow);
     if ((r->marks & MdLink) && len(r->href) > 0) {
         e->Cursor(CursorKind::Pointer);
+        BindLinkTooltip(e, r->href);
         if (onLink.IsValid()) {
             e->OnClick(LinkListener(r->href));
         } else {
@@ -4675,6 +4676,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             lastWordLo = runOffset + wordStart;
         }
         ApplyTextForeground(a, w, w->text, wordLeaf, ranges, nRanges);
+        if ((marks & MdLink) && len(href) > 0) {
+            BindLinkTooltip(w, href);
+        }
         reportPiece(w, wordLeaf, wordLeaf + wordLen, false);
         row->Child(w);
         wordLen = 0;
@@ -4738,6 +4742,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                              highlight, hasHighlight);
                 if (objFg) {
                     w->Fg(objColor);
+                }
+                if ((marks & MdLink) && len(href) > 0) {
+                    BindLinkTooltip(w, href);
                 }
                 // An inline plugin node is selected as a unit, and maps to
                 // `MarkdownNode::source_range`.
@@ -8464,6 +8471,23 @@ TextView* TextView::Plugin(Str name, MdPluginParseFn parse,
         return this;
     }
     plugins.Append(a, MdPlugin{name, parse, render, data});
+    return this;
+}
+
+void TextView::BindLinkTooltip(El* element, Str href) {
+    if (linkTooltip) {
+        auto* target = ArenaNew<LinkTooltipTarget>(a);
+        *target = {href, linkTooltip, linkTooltipData, cx->self};
+        if (!element->lifecycle) {
+            element->lifecycle = ArenaNew<ElLifecycle>(a);
+        }
+        element->lifecycle->linkTooltip = target;
+    }
+}
+
+TextView* TextView::LinkTooltip(LinkTooltipFn build, void* data) {
+    linkTooltip = build;
+    linkTooltipData = data;
     return this;
 }
 

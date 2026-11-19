@@ -476,6 +476,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // exists. Last frame's hits still say whether the pointer is on one.
     NoteScrollbarOcclusion(win);
     VecClear(win->paint.hits);
+    win->paint.hasLinkTooltipHits = false;
     // Last frame's scroll boxes are kept one frame more, for a lazy list to
     // read the viewport it was given before it decides how many rows to
     // build; see Window::prevScrolls. The two storages trade places rather
@@ -728,6 +729,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // A trigger that was not painted has no hover-leave to send. The
     // overlay it opened is cancelled here, once this frame's hits exist.
     TooltipDismissRemoved(win);
+    TooltipUpdateLinkAtPointer(win);
 
     // A picture is still on its way: this frame asked image.h for it and got
     // nothing. Nothing else need be keeping the window awake, so arm the
@@ -2210,6 +2212,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
     float y = in.y;
     win->mouseX = x;
     win->mouseY = y;
+    win->pointerInWindow = true;
     // The press ends on the first move outside the trigger. A removed
     // trigger never reports a hover-leave, so this is the window's, and a
     // move that is still inside — hover also drops while the button is
@@ -2311,6 +2314,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         }
         AppInvalidate(win);
     }
+    TooltipUpdateLinkAtPointer(win);
     // The drag half of the window's selection, before the view's own handler
     // so a page that watches moves sees the selection already extended. A
     // drag and drop in flight owns the pointer: text_selection.rs
@@ -3031,12 +3035,14 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
 }
 
 static void DispatchMouseExited(Window* win, const MouseExitEvent& in) {
+    win->pointerInWindow = false;
     // leaving the window is leaving whatever was hovered, so its OnHover hears
     // it
     if (win->hoverId) {
         WindowHoverChanged(win, win->hoverId, 0);
     }
     win->hoverId = 0;
+    TooltipUpdateLinkAtPointer(win);
     // The trigger's tooltip too: a pointer that left the window is off the
     // trigger, and a tooltip still waiting on its delay must not show up
     // over a window nothing is pointing at.

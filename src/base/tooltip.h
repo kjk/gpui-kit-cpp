@@ -64,6 +64,8 @@ using TooltipRenderer = El* (*)(Ctx * cx, El* view,
 // overlay deep-copies text used by the convenience El::Tip path.
 struct TooltipRequest {
     TooltipBuilder build = nullptr;
+    LinkTooltipFn buildLink = nullptr;
+    EntityId linkOwner = {};
     void* buildData = nullptr;
     Bounds triggerBounds = {};
     gpui::Placement preferredPlacement = gpui::Placement::Top;
@@ -139,6 +141,7 @@ void TooltipRequestHide(Window* win);
 void TooltipHide(Window* win);
 // The hovered trigger left the tree without a pointer event. Hide at once.
 void TooltipDismissRemoved(Window* win);
+void TooltipUpdateLinkAtPointer(Window* win);
 const TooltipOverlay* TooltipShowing(Window* win);
 
 } // namespace gpui

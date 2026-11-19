@@ -2604,11 +2604,23 @@ struct ElRefiner {
     }
 };
 
+struct LinkTooltipTarget;
+
 struct ElLifecycle {
     void (*prepareStyle)(PaintCtx* ctx, El* e, Rgba inherited,
                          void* user) = nullptr;
     void (*afterPaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* user = nullptr;
+    const LinkTooltipTarget* linkTooltip = nullptr;
+};
+
+using LinkTooltipFn = El* (*)(Ctx * cx, Str url, void* data);
+
+struct LinkTooltipTarget {
+    Str url;
+    LinkTooltipFn build;
+    void* data;
+    EntityId owner;
 };
 
 struct El {
@@ -2979,7 +2991,6 @@ struct El {
     // The tooltip (El::Tip) shows in the overlay the window's root view
     // owns, Window::rootTooltip, rather than the window's own.
     unsigned int rootTooltip : 1 = false;
-
     // Byte-sized state stays last so none of it creates alignment holes.
     IconName icon = IconName::None;
     ElKind kind = ElKind::Div;
@@ -3548,6 +3559,7 @@ struct HitRect {
     int tooltipShowDelayMs = -1;
     // El::rootTooltip: the root view's own overlay shows it.
     bool rootTooltip = false;
+    const LinkTooltipTarget* linkTooltip = nullptr;
     SliderState* slider = nullptr;
     Axis sliderAxis = Axis::Horizontal;
     InputState* input = nullptr;
@@ -3979,6 +3991,7 @@ struct PaintCtx {
     int pickTier = 0;
     InspectorPick pick = {};
     Vec<HitRect> hits;
+    bool hasLinkTooltipHits = false;
     // Deferred/fixed roots gathered during the normal paint walk.
     Vec<El*> deferredPaint;
     Vec<ScrollRect> scrolls;
@@ -7217,6 +7230,7 @@ struct Window {
     int nextBlurSubId = 1;
     float mouseX = 0;
     float mouseY = 0;
+    bool pointerInWindow = false;
     // The modifiers the pointer last moved or pressed under. Rust reads them
     // off the MouseMoveEvent inside its handler; a hover here is worked out
     // by the frame builder, which has no event to read, so the window keeps

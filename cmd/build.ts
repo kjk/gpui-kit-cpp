@@ -171,6 +171,7 @@ export const simpleExamples = [
   "input",
   "sidebar",
   "tooltip_top_edge",
+  "link_tooltip",
   "table_in_scrollable",
   "text_selection",
   "touch_selection",
