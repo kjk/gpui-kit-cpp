@@ -532,35 +532,35 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7cace79d91dfb71c42822355d73dfbf32f85be7c",
+  sha: "39ab849a93b5f15507b969164d49891db8d5b470",
   date: "2026-11-09",
-  subject: "text: Add pointer-following link tooltips (#3793)",
+  subject: "chore: Bump v0.9.1 (#3867)",
   crates: {
-    "gpui-kit": "0.9.0",
-    "gpui-base": "0.9.0",
-    "gpui-component": "0.9.0",
-    "gpui-component-story": "0.9.0",
-    "gpui-webview": "0.9.0",
-    "gpui-shell": "0.9.0",
+    "gpui-kit": "0.9.1",
+    "gpui-base": "0.9.1",
+    "gpui-component": "0.9.1",
+    "gpui-component-story": "0.9.1",
+    "gpui-webview": "0.9.1",
+    "gpui-shell": "0.9.1",
   },
   dir: ".work/gpui-component",
 } as const;
 
 /**
- * Zed reference snapshot recorded in gpui-pre 0.3.11's package metadata.
+ * Zed reference snapshot recorded in gpui-pre 0.3.12's package metadata.
  * Cargo.lock now resolves registry packages rather than a Zed git source.
  */
 export const zedGpui = {
   repo: "https://github.com/zed-industries/zed",
-  sha: "f816e1f9263e3a8ef63c4baaa02e1441ce1c6038",
-  date: "2026-11-01",
-  subject: "gpui: Render macOS window screenshots offscreen (#66344)",
+  sha: "d2a4fb6ded7c470be25d1541281da3882495b65b",
+  date: "2026-11-08",
+  subject: "tabular_data_preview: Range selection, edge jumps, and page navigation (#65161)",
   crates: {
-    "gpui-pre": "0.3.11",
-    "gpui-pre-platform": "0.3.11",
-    "gpui-pre-macros": "0.3.11",
+    "gpui-pre": "0.3.12",
+    "gpui-pre-platform": "0.3.12",
+    "gpui-pre-macros": "0.3.12",
   },
-  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.11",
+  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.12",
 } as const;
 
 /**

@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7cace79d91dfb71c42822355d73dfbf32f85be7c` (2026-11-09,
-text: Add pointer-following link tooltips (#3793)).
-TextView can render a custom tooltip at a hovered link, update it as the
-pointer moves across the link, and dismiss it when the link is covered or
-left. The standalone example has a no-preview mode.
+Processed through `39ab849a93b5f15507b969164d49891db8d5b470` (2026-11-09,
+chore: Bump v0.9.1 (#3867)).
+The workspace package versions advance to 0.9.1 and the Zed GPUI reference
+advances to gpui-pre 0.3.12. The ported crates keep their resolved versions.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
@@ -91,6 +90,8 @@ The current update target is
   when a partial redraw cannot place a retained sibling
   (`text_selection.rs`). This runtime has no cached-view replay, so a
   participant that misses a frame is gone (`text_selection.cpp`).
+  This also means the Shell command host builds again on an unchanged draw
+  where GPUI Fast reuses the previous frame.
   Callers pass `WithDocumentOrder`. `begin_selection_frame` is a no-op
   and does not assign that order.
 - **Data table cell labels are built whenever a hook is set.** Rust
@@ -154,7 +155,7 @@ The current update target is
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
-  The GPUI reference is `gpui-pre` 0.3.11 (Zed `f816e1f9263e`). Layout is
+  The GPUI reference is `gpui-pre` 0.3.12 (Zed `d2a4fb6ded7c`). Layout is
   taffy 0.15.0. The other ported dependency versions are unchanged.
 - **Base Root's Tab and copy actions are the runtime's.** Base Root's Tab /
   shift-Tab / copy actions are the runtime's for every window (`FocusNext`,
