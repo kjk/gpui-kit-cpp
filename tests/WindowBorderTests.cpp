@@ -189,6 +189,8 @@ static void BuilderPublishesPlatformResizeSettings() {
 static void BuilderCarriesTheExactTwoSourceShadows() {
     App app;
     ThemeSet(&app, ThemeMode::Dark);
+    Rgba border = Rgba8(20, 88, 90, 190);
+    ThemeUpdate(&app, [&](Theme* theme) { theme->windowBorder = border; });
     Window* window = new Window();
     window->app = &app;
     window->opts.clientTitleBar = true;
@@ -204,6 +206,7 @@ static void BuilderCarriesTheExactTwoSourceShadows() {
 #else
     El* frame = backdrop->first;
     utassert(frame != nullptr);
+    utassert(RgbaEq(frame->style.borderColor, border));
     utassert(frame->style.shadowCount == 2);
     const BoxShadow& ambient = frame->style.shadows[0];
     const BoxShadow& contact = frame->style.shadows[1];
@@ -215,6 +218,9 @@ static void BuilderCarriesTheExactTwoSourceShadows() {
     utassertnear(contact.y, 1.f);
     utassertnear(contact.blur, 3.f);
     utassertnear(contact.spread, 0.f);
+    window->active = false;
+    El* inactive = WindowBorder::New(&cx)->ShadowSize(20)->IntoEl()->first;
+    utassert(inactive && RgbaEq(inactive->style.borderColor, border));
 #endif
 
     ArenaDelete(arena);

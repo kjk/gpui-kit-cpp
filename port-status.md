@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b87b4fbed480ab74c85ba0b09577f50502752a06` (2026-11-08,
-text: Avoid quadratic paragraph highlight merging (#3846)).
-Rust combines marks within each node before appending its spans. The C++
-projectors already append resolved runs through a tail pointer. The regression
-verifies overlapping marks and UTF-8 offsets over many runs.
+Processed through `da7a3675d22a104cdf9626661f20f9faa5a4893a` (2026-11-08,
+window_border: Take the frame colour from the window.border theme token
+(#3849)).
+The client frame uses the window.border theme color. Window activation changes
+the shadow opacity.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

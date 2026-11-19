@@ -195,7 +195,7 @@ El* WindowBorder::IntoEl() {
     }
 
     // The frame itself: a one-pixel border on every side the window is not
-    // tiled against, dimmed while the window is not the active one.
+    // tiled against. Only the shadow dims while the window is inactive.
     El* frame = Div(a)
                     ->FlexCol()
                     ->Flex1()
@@ -205,15 +205,8 @@ El* WindowBorder::IntoEl() {
                     ->ClipX()
                     ->ClipY()
                     ->Bg(Rgba8(0, 0, 0, 0));
-    // The source deliberately uses neutral 20%/80%, independent of the
-    // theme's semantic border token.
-    Rgba border =
-        th.mode == ThemeMode::Dark ? Rgb(51, 51, 51) : Rgb(204, 204, 204);
-    float activeOpacity = 1.f;
-    if (!WindowIsActive(cx)) {
-        border = RgbaOpacity(border, 0.7f);
-        activeOpacity = 0.7f;
-    }
+    Rgba border = th.windowBorder;
+    float activeOpacity = WindowIsActive(cx) ? 1.f : 0.7f;
     if (!effectiveTiling.top) {
         frame->BorderT(kWindowBorderSize, border);
     }

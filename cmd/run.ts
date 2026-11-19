@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b87b4fbed480ab74c85ba0b09577f50502752a06",
+  sha: "da7a3675d22a104cdf9626661f20f9faa5a4893a",
   date: "2026-11-08",
-  subject: "text: Avoid quadratic paragraph highlight merging (#3846)",
+  subject: "window_border: Take the frame colour from the window.border theme token (#3849)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",
