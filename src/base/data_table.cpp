@@ -280,7 +280,7 @@ void TablePerformSort(TableState* s, Ctx* cx, int col) {
     TableEmit(s, cx, TableEventKind::Sort, -1, col, next);
 }
 
-void TableSetSelectedRow(TableState* s, Ctx* cx, int row) {
+static void TableSelectRow(TableState* s, Ctx* cx, int row, bool reveal) {
     if (!s->rowSelectable || row < 0 || row >= s->rowCount) {
         return;
     }
@@ -291,11 +291,10 @@ void TableSetSelectedRow(TableState* s, Ctx* cx, int row) {
     s->selectedRow = row;
     s->selectedCellRow = -1;
     s->selectedCellCol = -1;
-    // set_selected_row scrolls the row into view. Rust picks Bottom going
-    // down and Top coming back up, and both fall into the same branch — the
-    // one that scrolls as little as it can — so a walk with the arrow keys
-    // moves a row at a time and a row already in view does not move at all.
-    TableScrollToRow(s, row, ScrollStrategy::Top);
+    if (reveal) {
+        // Both of Rust's directional strategies reveal with minimal scrolling.
+        TableScrollToRow(s, row, ScrollStrategy::Top);
+    }
     Notify(cx);
     TableEmit(s, cx, TableEventKind::SelectRow, row, -1, ColumnSort::Default);
     // set_selected_row emits RightClickedRow(None) beside it: whatever was
@@ -306,18 +305,19 @@ void TableSetSelectedRow(TableState* s, Ctx* cx, int row) {
               ColumnSort::Default);
 }
 
-void TableSetSelectedCol(TableState* s, Ctx* cx, int col) {
+static void TableSelectCol(TableState* s, Ctx* cx, int col, bool reveal) {
     if (!s->colSelectable || col < 0 || col >= s->colCount) {
         return;
     }
     s->mode = TableSelectionMode::Column;
     s->selectedCol = col;
-    TableScrollToCol(s, col, ScrollStrategy::Top);
+    if (reveal) TableScrollToCol(s, col, ScrollStrategy::Top);
     Notify(cx);
     TableEmit(s, cx, TableEventKind::SelectCol, -1, col, ColumnSort::Default);
 }
 
-void TableSetSelectedCell(TableState* s, Ctx* cx, int row, int col) {
+static void TableSelectCell(TableState* s, Ctx* cx, int row, int col,
+                            bool reveal) {
     if (!s->cellSelectable || row < 0 || row >= s->rowCount || col < 0 ||
         col >= s->colCount) {
         return;
@@ -329,12 +329,24 @@ void TableSetSelectedCell(TableState* s, Ctx* cx, int row, int col) {
     // different gesture and stays until its own clear.
     s->rightClickedCellRow = -1;
     s->rightClickedCellCol = -1;
-    // Rust centres the row and brings the column in from whichever side it
-    // is off, which is the pair of strategies here too.
-    TableScrollToRow(s, row, ScrollStrategy::Center);
-    TableScrollToCol(s, col, ScrollStrategy::Top);
+    if (reveal) {
+        TableScrollToRow(s, row, ScrollStrategy::Center);
+        TableScrollToCol(s, col, ScrollStrategy::Top);
+    }
     Notify(cx);
     TableEmit(s, cx, TableEventKind::SelectCell, row, col, ColumnSort::Default);
+}
+
+void TableSetSelectedRow(TableState* s, Ctx* cx, int row) {
+    TableSelectRow(s, cx, row, false);
+}
+
+void TableSetSelectedCol(TableState* s, Ctx* cx, int col) {
+    TableSelectCol(s, cx, col, false);
+}
+
+void TableSetSelectedCell(TableState* s, Ctx* cx, int row, int col) {
+    TableSelectCell(s, cx, row, col, false);
 }
 
 int TableSelectedRow(const TableState* s) {
@@ -523,78 +535,82 @@ void TablePerform(TableState* s, Ctx* cx, TableAction act) {
     bool noCell = cellMode && s->selectedCellRow < 0;
     if (noCell) {
         int col = act == TableAction::SelectLast ? s->colCount - 1 : 0;
-        TableSetSelectedCell(s, cx, 0, col);
+        TableSelectCell(s, cx, 0, col, true);
         return;
     }
     int last = s->rowCount - 1;
     switch (act) {
         case TableAction::SelectPrev:
             if (cellMode) {
-                TableSetSelectedCell(s, cx, CellRowPrev(s), s->selectedCellCol);
+                TableSelectCell(s, cx, CellRowPrev(s), s->selectedCellCol,
+                                true);
             } else {
-                TableSetSelectedRow(s, cx, RowPrev(s));
+                TableSelectRow(s, cx, RowPrev(s), true);
             }
             break;
         case TableAction::SelectNext:
             if (cellMode) {
-                TableSetSelectedCell(s, cx, CellRowNext(s), s->selectedCellCol);
+                TableSelectCell(s, cx, CellRowNext(s), s->selectedCellCol,
+                                true);
             } else {
-                TableSetSelectedRow(s, cx, RowNext(s));
+                TableSelectRow(s, cx, RowNext(s), true);
             }
             break;
         case TableAction::SelectPrevColumn:
             if (cellMode) {
-                TableSetSelectedCell(s, cx, s->selectedCellRow, CellColPrev(s));
+                TableSelectCell(s, cx, s->selectedCellRow, CellColPrev(s),
+                                true);
             } else {
-                TableSetSelectedCol(s, cx, ColPrev(s));
+                TableSelectCol(s, cx, ColPrev(s), true);
             }
             break;
         case TableAction::SelectNextColumn:
             if (cellMode) {
-                TableSetSelectedCell(s, cx, s->selectedCellRow, CellColNext(s));
+                TableSelectCell(s, cx, s->selectedCellRow, CellColNext(s),
+                                true);
             } else {
-                TableSetSelectedCol(s, cx, ColNext(s));
+                TableSelectCol(s, cx, ColNext(s), true);
             }
             break;
         case TableAction::SelectFirst:
             // Cell mode stays on the current row. A selected row goes to the
             // first row, as in a list. Anything else is the first column.
             if (cellMode) {
-                TableSetSelectedCell(s, cx, s->selectedCellRow, 0);
+                TableSelectCell(s, cx, s->selectedCellRow, 0, true);
             } else if (s->mode == TableSelectionMode::Row && s->rowSelectable) {
-                TableSetSelectedRow(s, cx, 0);
+                TableSelectRow(s, cx, 0, true);
             } else {
-                TableSetSelectedCol(s, cx, 0);
+                TableSelectCol(s, cx, 0, true);
             }
             break;
         case TableAction::SelectLast:
             if (cellMode) {
-                TableSetSelectedCell(s, cx, s->selectedCellRow,
-                                     s->colCount - 1);
+                TableSelectCell(s, cx, s->selectedCellRow, s->colCount - 1,
+                                true);
             } else if (s->mode == TableSelectionMode::Row && s->rowSelectable) {
-                TableSetSelectedRow(s, cx, last);
+                TableSelectRow(s, cx, last, true);
             } else {
-                TableSetSelectedCol(s, cx, s->colCount - 1);
+                TableSelectCol(s, cx, s->colCount - 1, true);
             }
             break;
         case TableAction::SelectPageUp:
             if (cellMode) {
-                TableSetSelectedCell(
+                TableSelectCell(
                     s, cx, ClampI(s->selectedCellRow - s->pageRows, 0, last),
-                    s->selectedCellCol);
+                    s->selectedCellCol, true);
             } else {
                 int cur = s->selectedRow < 0 ? 0 : s->selectedRow;
-                TableSetSelectedRow(s, cx, ClampI(cur - s->pageRows, 0, last));
+                TableSelectRow(s, cx, ClampI(cur - s->pageRows, 0, last), true);
             }
             break;
         case TableAction::SelectPageDown:
             if (cellMode) {
-                TableSetSelectedCell(
+                TableSelectCell(
                     s, cx, ClampI(s->selectedCellRow + s->pageRows, 0, last),
-                    s->selectedCellCol);
+                    s->selectedCellCol, true);
             } else {
                 int cur = s->selectedRow < 0 ? 0 : s->selectedRow;
-                TableSetSelectedRow(s, cx, ClampI(cur + s->pageRows, 0, last));
+                TableSelectRow(s, cx, ClampI(cur + s->pageRows, 0, last), true);
             }
             break;
         default:
@@ -611,7 +627,7 @@ void TableState::OnRowClick(TableState* self, Ctx* cx, const ClickEvent* ev,
     WindowStopPropagation(cx);
     Modifiers modifiers = ev ? ev->modifiers : Modifiers{};
     if (TableSelectsRowOnClick(self, modifiers)) {
-        TableSetSelectedRow(self, cx, (int)row);
+        TableSelectRow(self, cx, (int)row, true);
     }
     if (ev->clickCount == 2) {
         TableEmit(self, cx, TableEventKind::DoubleClickedRow, (int)row, -1,
@@ -629,13 +645,13 @@ void TableState::OnCellClick(TableState* self, Ctx* cx, const ClickEvent* ev,
     bool isDouble = ev->clickCount == 2;
     if (TableEscalatesToRow(self, row, col, isDouble,
                             ev ? ev->modifiers : Modifiers{})) {
-        TableSetSelectedRow(self, cx, row);
+        TableSelectRow(self, cx, row, true);
         return;
     }
     // A second click on the cell that is already selected: set_selected_cell
     // sees no change and says nothing, so the double click is emitted here
     // whether or not the selection moved.
-    TableSetSelectedCell(self, cx, row, col);
+    TableSelectCell(self, cx, row, col, true);
     if (isDouble) {
         TableEmit(self, cx, TableEventKind::DoubleClickedCell, row, col,
                   ColumnSort::Default);
@@ -689,7 +705,7 @@ void TableState::OnHeadClick(TableState* self, Ctx* cx, const ClickEvent*,
                              int64_t col) {
     // on_col_head_click selects the column; the sort icon beside it is what
     // sorts, and it is its own hit box.
-    TableSetSelectedCol(self, cx, (int)col);
+    TableSelectCol(self, cx, (int)col, true);
 }
 
 void TableState::OnSortClick(TableState* self, Ctx* cx, const ClickEvent*,

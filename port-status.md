@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c42fa127344bacfe4fd78f3071651223eeb6a7c2` (2026-11-19,
-docs: Translate the missing sections of the zh-CN List guide (#4045)).
-Upstream documentation translates the zh-CN List guide. This repository does
-not carry the Rust documentation site.
+Processed through `a3f473e855ae8041351ed962bc5186a885c3d612` (2026-11-19,
+table: Stop set_selected_* from scrolling the selection into view (#4046)).
+Programmatic table selection keeps both scroll offsets. Pointer and keyboard
+selections retain reveal behavior, and the Story Go to cell actions reveal
+explicitly.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

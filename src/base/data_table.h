@@ -468,8 +468,8 @@ inline bool operator!=(const TableSelection& a, const TableSelection& b) {
 
 // selection(): match on it instead of combining the three getters below.
 TableSelection TableSelectionOf(const TableState* s);
-// set_selection: the matching TableSetSelected* or TableClearSelection, so
-// scrolling and events are theirs.
+// set_selection: forwards to the matching setter or TableClearSelection.
+// Call TableScrollToRow or TableScrollToCol to reveal programmatic selections.
 void TableSetSelection(TableState* s, Ctx* cx, TableSelection selection);
 // selected_row / selected_col / selected_cell: each answers only when its own
 // kind of thing is selected — a selected cell is not a selected row. The

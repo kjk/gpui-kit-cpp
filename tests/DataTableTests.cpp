@@ -2374,7 +2374,35 @@ static void AThemedTableRowKeepsItsIdentityWhenRowsMove() {
     AppGlobalClear(&app);
 }
 
+// table/state.rs
+// programmatic_selection_keeps_the_viewport_but_keyboard_reveals.
+static void ProgrammaticSelectionKeepsTheViewportButKeyboardReveals() {
+    TableState s;
+    s.rowCount = 100;
+    s.colCount = 10;
+    s.cellSelectable = true;
+    s.viewportH = 80;
+    s.bodyBounds.w = 160;
+    TableEnsureCols(&s, s.colCount);
+    for (int c = 0; c < s.colCount; c++) s.colWidth[c] = 100;
+    s.scrollY = 128;
+    s.scrollX = 100;
+    Ctx cx = {};
+
+    TableSetSelectedRow(&s, &cx, 60);
+    utassert(s.scrollY == 128 && TableSelectedRow(&s) == 60);
+    TableSetSelectedCol(&s, &cx, 8);
+    utassert(s.scrollX == 100 && TableSelectedCol(&s) == 8);
+    TableSetSelectedCell(&s, &cx, 40, 6);
+    utassert(s.scrollY == 128 && s.scrollX == 100);
+    TableSetSelection(&s, &cx, {TableSelectionKind::Row, 50, -1});
+    utassert(s.scrollY == 128 && s.scrollX == 100);
+    TablePerform(&s, &cx, TableAction::SelectNext);
+    utassert(s.scrollY > 128 && TableSelectedRow(&s) == 51);
+}
+
 void TestDataTable() {
+    ProgrammaticSelectionKeepsTheViewportButKeyboardReveals();
     AThemedTableRowKeepsItsOptionalHoverStyle();
     AThemedTableRowKeepsItsIdentityWhenRowsMove();
     ResizingAColumnFollowsThePointer();

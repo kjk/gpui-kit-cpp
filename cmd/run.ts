@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c42fa127344bacfe4fd78f3071651223eeb6a7c2",
+  sha: "a3f473e855ae8041351ed962bc5186a885c3d612",
   date: "2026-11-19",
-  subject: "docs: Translate the missing sections of the zh-CN List guide (#4045)",
+  subject: "table: Stop set_selected_* from scrolling the selection into view (#4046)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",
