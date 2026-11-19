@@ -1141,6 +1141,8 @@ static void SwitchingTooltipsAnimatesTheWidth() {
     auto view = EntityNew<ResizingTipProbe>(app);
     Window* win = TestWindowOpen(app, view, 480, 300);
     auto width = [&]() {
+        // Sample a newly drawn frame at the current animation time.
+        AppInvalidate(win);
         TestDraw(win);
         auto* probe = AppGlobalGet<ResizingTipProbe>(app);
         return probe && probe->drawn ? probe->drawn->w : 0.f;

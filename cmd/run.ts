@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cf3e84bd367ef96678294153bece8cd7c52f0add",
+  sha: "1820f15730e4205f313364e4297068218d0caeff",
   date: "2026-11-14",
-  subject: "text: Count an oversized code span's insets once per line when wrapping (#3972)",
+  subject: "tooltip: Fix switching_tooltips_animates_the_width under GPUI Fast (#3975)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

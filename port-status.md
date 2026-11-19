@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cf3e84bd367ef96678294153bece8cd7c52f0add` (2026-11-14,
-text: Count an oversized code span's insets once per line when wrapping
-(#3972)).
-Wrap a code span with one inset pair per line. Use the text shaper at the
-measured content width for default and custom insets.
+Processed through `1820f15730e4205f313364e4297068218d0caeff` (2026-11-14,
+tooltip: Fix switching_tooltips_animates_the_width under GPUI Fast (#3975)).
+Explicitly invalidate the headless tooltip test window before drawing each
+animation sample, matching the upstream refresh.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
