@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `553b6a22099db37adac7d7f37583975d40407c20` (2026-11-14,
-input: add text decorations to `TextareaState` (#3970)).
-Give textareas one owner-supplied decoration layer using the existing UTF-8
-normalization, range tracking and native TextSpan drawing path.
+Processed through `5db731f3de721dc682fe168bb545869f74274cf7` (2026-11-14,
+input: add `set_tokens` to swap a textarea's tokens in place (#3971)).
+Swap derived inline tokens without changing the text, selections or history.
+Replay recorded text edits exactly, dropping a derived token when replay cuts
+through it.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

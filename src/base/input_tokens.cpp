@@ -21,6 +21,8 @@ const char* InlineTokenErrorMessage(InlineTokenError e) {
             return "tokens are not supported by this input mode";
         case InlineTokenError::ValidationRejected:
             return "input validation rejected the content";
+        case InlineTokenError::SplitsSelection:
+            return "token range splits a selection";
         case InlineTokenError::CompositionActive:
             return "finish the active IME composition before editing tokens";
         default:
@@ -292,7 +294,12 @@ TokenDelta* TokenStoreReplace(Vec<InlineTokenSpan>* spans, int start, int end,
     for (int i = 0; i < spans->len; i++) {
         InlineTokenSpan span = (*spans)[i];
         if (span.start < end && start < span.end) {
-            VecAppend(delta->removed, ShiftedSpan(span, -start));
+            if (start <= span.start && span.end <= end) {
+                VecAppend(delta->removed, ShiftedSpan(span, -start));
+            } else {
+                // History may cut through a token installed after the edit.
+                InlineTokenSpanFree(&span);
+            }
         } else {
             if (span.start >= end) {
                 span.start += shift;

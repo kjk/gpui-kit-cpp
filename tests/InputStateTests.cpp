@@ -6259,6 +6259,91 @@ static void InlineTokenTextareaImeAndModes() {
     InputViewFree(&single);
 }
 
+// state.rs test_set_tokens_keeps_text_selection_and_history, and the
+// selection and history replay cases next to it.
+static void SettingTokensPreservesTextSelectionAndHistory() {
+    InputView view = InputViewBuildTextarea(
+        [](InputState* s, App*) { InputSetValue(s, StrL("a **** c")); });
+    InputState* s = view.input;
+    InputSetSelectedRange(s, view.app, view.win, 4, 4);
+    ViewTypeText(view, "b");
+    InputSetSelectedRange(s, view.app, view.win, 9, 9);
+    InputContent content = InputContent::New(StrL("a **b** c"));
+    utassert(content.WithToken(2, 7,
+                               InlineToken::New(StrL("bold"), StrL("**b**"))) ==
+             InlineTokenError::Ok);
+    utassert(
+        InputSetTokens(s, view.app, view.win, InputContent::New(StrL("old"))) ==
+        InlineTokenError::TextMismatch);
+    CursorSelection extra;
+    extra.range = {4, 4};
+    VecAppend(s->extraCursors, extra);
+    utassert(InputSetTokens(s, view.app, view.win, content) ==
+             InlineTokenError::SplitsSelection);
+    VecClear(s->extraCursors);
+    utassert(InputSetTokens(s, view.app, view.win, content) ==
+             InlineTokenError::Ok);
+    utassert(ViewValueIs(view, "a **b** c"));
+    utassert(ViewRangeIs(view, 9, 9) && TokenCountA(view) == 1);
+    uint64_t version = s->docVersion;
+    utassert(InputSetTokens(s, view.app, view.win, content) ==
+             InlineTokenError::Ok);
+    utassert(s->docVersion == version);
+
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewValueIs(view, "a **** c"));
+    utassert(TokenCountA(view) == 0);
+    ViewAct(view, InputAction::Redo);
+    utassert(ViewValueIs(view, "a **b** c"));
+    utassert(TokenCountA(view) == 0);
+    utassert(ViewRangeIs(view, 5, 5));
+
+    InputSetSelectedRange(s, view.app, view.win, 0, 0);
+    ViewTypeText(view, "z");
+    InputSetSelectedRange(s, view.app, view.win, 10, 10);
+    InputContent shifted = InputContent::New(StrL("za **b** c"));
+    utassert(shifted.WithToken(3, 8, content.tokens[0].token) ==
+             InlineTokenError::Ok);
+    utassert(InputSetTokens(s, view.app, view.win, shifted) ==
+             InlineTokenError::Ok);
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewValueIs(view, "a **b** c"));
+    const auto* spans = InputTokens(s);
+    utassert(spans && len(*spans) == 1 && (*spans)[0].start == 2 &&
+             (*spans)[0].end == 7);
+    ViewAct(view, InputAction::Redo);
+    utassert(ViewValueIs(view, "za **b** c"));
+    spans = InputTokens(s);
+    utassert(spans && len(*spans) == 1 && (*spans)[0].start == 3 &&
+             (*spans)[0].end == 8);
+    InputViewFree(&view);
+}
+
+// state.rs test_set_tokens_refreshes_the_token_layout.
+static void SettingTokensRefreshesTheirLaidOutBounds() {
+    InputView view = InputViewBuildTextarea(
+        [](InputState* s, App*) { InputSetValue(s, StrL("@a x @a y")); });
+    InputContent both = InputContent::New(StrL("@a x @a y"));
+    InlineToken mention = InlineToken::New(StrL("a"), StrL("@a"));
+    utassert(both.WithToken(0, 2, mention) == InlineTokenError::Ok);
+    utassert(both.WithToken(5, 7, mention) == InlineTokenError::Ok);
+    utassert(InputSetTokens(view.input, view.app, view.win, both) ==
+             InlineTokenError::Ok);
+    TestDraw(view.win);
+    Bounds bounds = {};
+    utassert(InputTokenBoundsGet(view.input, 0, &bounds) && bounds.w > 0);
+    utassert(InputTokenBoundsGet(view.input, 5, &bounds) && bounds.w > 0);
+
+    InputContent second = InputContent::New(both.text);
+    utassert(second.WithToken(5, 7, mention) == InlineTokenError::Ok);
+    utassert(InputSetTokens(view.input, view.app, view.win, second) ==
+             InlineTokenError::Ok);
+    TestDraw(view.win);
+    utassert(!InputTokenBoundsGet(view.input, 0, &bounds));
+    utassert(InputTokenBoundsGet(view.input, 5, &bounds) && bounds.w > 0);
+    InputViewFree(&view);
+}
+
 // state.rs test_inline_token_geometry_and_reentrant_activation: not ported —
 // the port has no ActivateToken action, and no range_to_bounds to measure a
 // token's laid-out box or a press inside it against.
@@ -8875,6 +8960,8 @@ static void RunWindowTestsB() {
     UndoManagerCompositionIsolatedFromLongTyping();
     UnmarkReportsTheKeptPreeditAsOneChange();
     TextareaDecorationsFollowEditsAndRender();
+    SettingTokensPreservesTextSelectionAndHistory();
+    SettingTokensRefreshesTheirLaidOutBounds();
     UndoManagerSelectedReplacementIsAtomic();
     NumberInputLeadingDotEditable();
     NumberInputEscapeInvalidText();

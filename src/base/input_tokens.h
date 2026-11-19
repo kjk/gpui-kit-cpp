@@ -20,7 +20,8 @@ enum class InlineTokenError : uint8_t {
     TextMismatch,
     UnsupportedMode,
     ValidationRejected,
-    CompositionActive
+    CompositionActive,
+    SplitsSelection
 };
 
 const char* InlineTokenErrorMessage(InlineTokenError e);
@@ -82,6 +83,9 @@ struct InputContent {
 InputContent InputContentDup(const InputContent& content);
 void InputContentFree(InputContent* content);
 InputContent InputGetContent(const InputState* s);
+// Replace tokens on unchanged text without adding a history entry.
+InlineTokenError InputSetTokens(InputState* s, App* app, Window* win,
+                                const InputContent& content);
 
 struct InlineTokenContext {
     InlineTokenSpan span = {};

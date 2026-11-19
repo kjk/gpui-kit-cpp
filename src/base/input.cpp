@@ -7375,6 +7375,39 @@ static InlineTokenError CheckTokenMode(const InputState* s) {
     return InlineTokenError::Ok;
 }
 
+InlineTokenError InputSetTokens(InputState* s, App* app, Window* win,
+                                const InputContent& content) {
+    if (!s) return InlineTokenError::UnsupportedMode;
+    InlineTokenError mode = CheckTokenMode(s);
+    if (mode != InlineTokenError::Ok) return mode;
+    if (!StrEq(InputValue(s), content.text))
+        return InlineTokenError::TextMismatch;
+    auto splits = [&](Selection range) {
+        return TokenBoundary(content.tokens, range.start, Bias::Left) !=
+                   range.start ||
+               TokenBoundary(content.tokens, range.end, Bias::Left) != range
+                                                                           .end;
+    };
+    if (splits(s->selectedRange)) return InlineTokenError::SplitsSelection;
+    for (const CursorSelection& cursor : s->extraCursors) {
+        if (splits(cursor.range)) return InlineTokenError::SplitsSelection;
+    }
+    const Vec<InlineTokenSpan>* old = InputTokens(s);
+    bool same = (old ? len(*old) : 0) == len(content.tokens);
+    for (int i = 0; same && i < len(content.tokens); i++) {
+        const auto& before = (*old)[i];
+        const auto& after = content.tokens[i];
+        same = before.start == after.start && before.end == after.end &&
+               InlineTokenEq(before.token, after.token);
+    }
+    if (!same) {
+        InstallTokens(s, content);
+        s->docVersion++;
+        Notify(app, win);
+    }
+    return InlineTokenError::Ok;
+}
+
 InlineTokenError InputReplaceRangeWithToken(InputState* s, App* app,
                                             Window* win, int start, int end,
                                             InlineToken token) {
@@ -9390,6 +9423,10 @@ static void RestoreCursors(InputState* s, const CursorSelection* sels, int n) {
         if (out[i].range.end > textLen) {
             out[i].range.end = textLen;
         }
+        if (s->tokens) {
+            NormalizeTokenRange(s->tokens->spans, &out[i].range.start,
+                                &out[i].range.end);
+        }
     }
     SetAllCursors(s, out, n);
     InputMergeOverlappingCursors(s);
@@ -9438,6 +9475,12 @@ static void UndoRestoreState(InputState* s, const CursorSelection* sels,
         RestoreCursors(s, sels, nSels);
     } else {
         s->cursorLineEndAffinity = false;
+        int textLen = len(InputValue(s));
+        sel.start = std::min(sel.start, textLen);
+        sel.end = std::min(sel.end, textLen);
+        if (s->tokens) {
+            NormalizeTokenRange(s->tokens->spans, &sel.start, &sel.end);
+        }
         s->selectedRange = sel;
         s->selectionReversed = false;
     }
@@ -9452,7 +9495,8 @@ static void DoUndo(InputState* s, App* app, Window* win) {
     UndoSetIgnoring(&s->undo, true);
     const UndoTransaction* t = UndoPopUndo(&s->undo);
     if (t && t->len > 0) {
-        bool tokenAware = TransactionHasTokenDelta(t);
+        bool tokenAware = (s->tokens && len(s->tokens->spans) > 0) ||
+                          TransactionHasTokenDelta(t);
         if (s->tokens) {
             s->tokens->replaying = tokenAware;
         }
@@ -9478,7 +9522,8 @@ static void DoRedo(InputState* s, App* app, Window* win) {
     UndoSetIgnoring(&s->undo, true);
     const UndoTransaction* t = UndoPopRedo(&s->undo);
     if (t && t->len > 0) {
-        bool tokenAware = TransactionHasTokenDelta(t);
+        bool tokenAware = (s->tokens && len(s->tokens->spans) > 0) ||
+                          TransactionHasTokenDelta(t);
         if (s->tokens) {
             s->tokens->replaying = tokenAware;
         }
