@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "502df2b9c179784117fddb5144c4468dac5f37fc",
+  sha: "8d564832e2fd630a2d57f548fa70e18dbe677722",
   date: "2026-11-11",
-  subject: "tooltip: Wrap long text within `max_w` instead of overflowing the background (#3896)",
+  subject: "dialog: Offset a stacked dialog by open dialogs only (#3897)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

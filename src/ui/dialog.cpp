@@ -615,8 +615,10 @@ El* Dialog::IntoEl(WinSize size) {
     }
     const Theme& th = ThemeNow(cx->app);
     DialogMount* mountEarly = gDialogMount;
+    int stackDepth = layerIx;
     if (mountEarly && mountEarly->bound) {
         layerIx = mountEarly->layerIx;
+        stackDepth = mountEarly->stackDepth;
     }
     Edges windowPadding = WindowPaddings(cx->win);
     float viewW = size.dipW - windowPadding.left - windowPadding.right;
@@ -627,7 +629,7 @@ El* Dialog::IntoEl(WinSize size) {
     // does not is moved up to this margin by the positioner, so the offset
     // does not waste height its content could use.
     const float viewportMargin = 16.f;
-    float layerOffset = (float)layerIx * 16.f;
+    float layerOffset = (float)stackDepth * 16.f;
     // centered() anchors the left-center of the surface at the vertical
     // middle. Otherwise the top-left sits at margin_top, or a tenth of
     // the viewport.

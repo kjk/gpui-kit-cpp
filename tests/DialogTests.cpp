@@ -856,6 +856,8 @@ struct ExitDialog {
     bool withButton = false;
     bool renderNothing = false;
     int buttonClicks = 0;
+    float bodyHeight = 0;
+    Bounds surface = {};
 
     static void OnButton(ExitDialog* self, Ctx*, const ClickEvent*) {
         self->buttonClicks++;
@@ -877,7 +879,14 @@ struct ExitDialog {
             dialog->Footer(Div(cx->a)->W(120)->H(32)->Click(4242)->OnClick(
                 Listen(cx, &ExitDialog::OnButton)));
         }
-        return dialog->IntoEl(WindowSize(cx->win));
+        if (self->bodyHeight > 0) {
+            dialog->Body(Div(cx->a)->H(self->bodyHeight));
+        }
+        El* host = dialog->IntoEl(WindowSize(cx->win));
+        if (self->bodyHeight > 0) {
+            if (El* panel = DialogPanel(host)) panel->BoundsOut(&self->surface);
+        }
+        return host;
     }
 };
 
@@ -1110,6 +1119,43 @@ static void ClosingPlaysTheEntranceBackOut() {
 
 // dialog.rs closing_fades_the_dialog_surface. The base host paints the popup
 // in a deferred pass, so the fade has to be on the surface itself.
+static void AClosingDialogDoesNotDisplaceItsReplacement() {
+    for (float bodyHeight : {40.f, 1000.f}) {
+        App* app = TestAppNew();
+        component::Init(app);
+        MotionSetReduced(false, app);
+        Window* win = OpenExitWindow(app, EntityNew<ExitPage>(app));
+        Ctx cx = {app, win, nullptr, {}};
+        auto first = EntityNew<ExitDialog>(app);
+        WindowOpenDialog(&cx, first);
+        TestDraw(win);
+        TestAdvanceClock(app, 250);
+        WindowCloseDialog(&cx);
+        TestDraw(win);
+
+        auto next = EntityNew<ExitDialog>(app);
+        auto* second = next.Get(app);
+        second->bodyHeight = bodyHeight;
+        second->hasMargin = false;
+        second->entrance = component::DialogEntrance::None;
+        WindowOpenDialog(&cx, next);
+        TestDraw(win);
+        utassert(WindowDialogCount(&cx) == 2);
+        Bounds duringExit = second->surface;
+        utassert(duringExit.w > 0 && duringExit.h > 0);
+        TestAdvanceClock(app, 260);
+        TestDraw(win);
+        TestDraw(win);
+        utassert(WindowDialogCount(&cx) == 1);
+        utassert(!first.Get(app));
+        utassertnear(second->surface.x, duringExit.x);
+        utassertnear(second->surface.y, duringExit.y);
+        utassertnear(second->surface.w, duringExit.w);
+        utassertnear(second->surface.h, duringExit.h);
+        TestAppFree(app);
+    }
+}
+
 static void ClosingFadesTheDialogSurface() {
     App app;
     component::Init(&app);
@@ -1239,5 +1285,6 @@ void TestDialog() {
     centered_seats_the_alert_surface_in_the_middle();
     DialogEntrancesFollowTheResolvedSurface();
     ClosingPlaysTheEntranceBackOut();
+    AClosingDialogDoesNotDisplaceItsReplacement();
     ClosingFadesTheDialogSurface();
 }

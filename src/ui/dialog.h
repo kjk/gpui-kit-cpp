@@ -30,6 +30,8 @@ struct DialogMount {
     bool bound = false;
     uint32_t id = 0;
     int layerIx = 0;
+    // Number of open dialogs beneath this layer.
+    int stackDepth = 0;
     bool closing = false;
     bool topmost = true;
     bool showOverlay = true;
@@ -194,8 +196,8 @@ struct Dialog {
     // modal host keeps its alert-dialog accessibility role and dismissal
     // semantics.
     bool alertHost = false;
-    // Root assigns one layer index per active dialog. Each successive layer
-    // sits 16px lower and owns a distinct focus trap.
+    // Root assigns layer indices for identity and focus traps. Standalone
+    // dialogs use this value for their position too.
     int layerIx = 0;
     float radius = 0;
     Background background = {};

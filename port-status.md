@@ -16,14 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `502df2b9c179784117fddb5144c4468dac5f37fc` (2026-11-11,
-tooltip: Wrap long text within `max_w` instead of overflowing the background
-(#3896)).
-The themed tooltip applies its max width to the surface and lets its text
-shrink and wrap within the available width. The link tooltip example now
-applies its cap to the themed tooltip builder.
+Processed through `8d564832e2fd630a2d57f548fa70e18dbe677722` (2026-11-11,
+dialog: Offset a stacked dialog by open dialogs only (#3897)).
+The dialog layer keeps its slot for identity and computes its visual stack
+offset from open dialogs beneath it. A replacement keeps the same rendered
+bounds while its predecessor exits and after it unmounts.
 The current update target is
-`f8243df95b9158d9b6d842348dcfcd0481a85c2c`.
+`85156303ae309925bdefa63250ca9f38b17c270b`.
 
 ## Known gaps vs Rust
 

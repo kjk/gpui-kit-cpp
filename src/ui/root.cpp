@@ -134,12 +134,15 @@ El* WindowStateLayers(Ctx* cx) {
     int overlaySlot =
         RootDialogOverlayIndex(wantsOverlay.els, closing.els, wl->dialogs.len);
     Vec<uint32_t> dropIds;
+    int stackDepth = 0;
     for (int i = 0; i < wl->dialogs.len; i++) {
         DialogMount mount;
         mount.bound = true;
         mount.id = wl->dialogs[i].id;
         mount.layerIx = i;
+        mount.stackDepth = stackDepth;
         mount.closing = wl->dialogs[i].closing;
+        if (!mount.closing) stackDepth++;
         mount.topmost = i == topOpen;
         mount.showOverlay = i == overlaySlot;
         DialogBindMount(&mount);
