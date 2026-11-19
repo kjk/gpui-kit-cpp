@@ -840,6 +840,52 @@ ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
 }
 #endif
 
+bool WindowButtonSupport::Has(WindowButton button) const {
+    switch (button) {
+        case WindowButton::Minimize:
+            return minimize;
+        case WindowButton::Maximize:
+            return maximize;
+        case WindowButton::Close:
+            return true;
+        case WindowButton::Unset:
+            return false;
+    }
+    return false;
+}
+
+static void ParseWindowButtonSide(Str text, WindowButton* out) {
+    int count = 0;
+    for (int start = 0; start < len(text) && count < kWindowButtonsPerSide;) {
+        int end = start;
+        while (end < len(text) && text.s[end] != ',') end++;
+        Str token = StrTrimAscii(Str(text.s + start, end - start));
+        start = end + 1;
+        if (StrEq(token, StrL("minimize")))
+            out[count++] = WindowButton::Minimize;
+        else if (StrEq(token, StrL("maximize")))
+            out[count++] = WindowButton::Maximize;
+        else if (StrEq(token, StrL("close")))
+            out[count++] = WindowButton::Close;
+    }
+}
+
+bool WindowButtonLayoutParse(Str specification, WindowButtonLayout* out) {
+    if (!out) return false;
+    int split = 0;
+    while (split < len(specification) && specification.s[split] != ':') split++;
+    if (split == len(specification)) return false;
+    WindowButtonLayout layout;
+    layout.physicalSides = true;
+    for (auto& button : layout.right) button = WindowButton::Unset;
+    ParseWindowButtonSide(Str(specification.s, split), layout.left);
+    ParseWindowButtonSide(
+        Str(specification.s + split + 1, len(specification) - split - 1),
+        layout.right);
+    *out = layout;
+    return true;
+}
+
 void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
                      float dipH) {
     DrawFrameOnce(win, native, pxW, pxH, dipW, dipH, false);

@@ -83,7 +83,31 @@ static void TitleBarSeparatesControlClicksFromWindowMoves() {
     TestAppFree(app);
 }
 
+// title_bar.rs linux_window_controls_follow_layout_order_and_capabilities.
+static void DesktopButtonLayoutKeepsBothSidesAndOrder() {
+    WindowButtonLayout layout;
+    utassert(WindowButtonLayoutParse(
+        StrL("close, menu,minimize:maximize,close"), &layout));
+    utassert(layout.physicalSides);
+    utassert(layout.left[0] == WindowButton::Close);
+    utassert(layout.left[1] == WindowButton::Minimize);
+    utassert(layout.left[2] == WindowButton::Unset);
+    utassert(layout.right[0] == WindowButton::Maximize);
+    utassert(layout.right[1] == WindowButton::Close);
+    utassert(layout.right[2] == WindowButton::Unset);
+    WindowButtonSupport support = {true, false};
+    for (WindowButton button : layout.left)
+        utassert(support.Has(button) == (button != WindowButton::Unset));
+    utassert(!support.Has(layout.right[0]));
+    utassert(support.Has(layout.right[1]));
+    utassert(!WindowButtonLayoutParse(StrL("invalid"), &layout));
+    utassert(WindowButtonLayoutParse(StrL(":close"), &layout));
+    utassert(layout.left[0] == WindowButton::Unset &&
+             layout.right[0] == WindowButton::Close);
+}
+
 void TestTitleBar() {
+    DesktopButtonLayoutKeepsBothSidesAndOrder();
     TestSuite("title_bar");
     DefaultTitleBarBackground();
     TitleBarSeparatesControlClicksFromWindowMoves();

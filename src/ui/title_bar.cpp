@@ -39,7 +39,8 @@ static El* ControlIcon(Ctx* cx, IconName icon, int clickId, Listener onClose) {
 
 // WindowControls: nothing on macOS, where the native traffic lights sit over
 // the bar instead.
-static El* WindowControls(Ctx* cx, Listener onClose) {
+static El* WindowControls(Ctx* cx, const WindowButton* buttons, Str id,
+                          Listener onClose) {
     Arena* a = cx->a;
     Window* win = cx->win;
     // Under server-side decorations the window manager already draws a title
@@ -48,19 +49,35 @@ static El* WindowControls(Ctx* cx, Listener onClose) {
     // `Decorations::Client`; the same question here is whether the frame ever
     // came off — on X11 a manager may keep it whatever the window asked for.
     if (!WindowClientDecorated(win)) {
-        return Div(a);
+        return Div(a)->Id(id);
     }
-    bool maximized = win && win->maximized;
-    return Div(a)
-        ->FlexRowDir(cx->app)
-        ->H(kFill)
-        ->ItemsCenter()
-        ->Shrink0()
-        ->Child(ControlIcon(cx, IconName::WindowMinimize, ClickWinMin, {}))
-        ->Child(ControlIcon(
-            cx, maximized ? IconName::WindowRestore : IconName::WindowMaximize,
-            ClickWinMax, {}))
-        ->Child(ControlIcon(cx, IconName::WindowClose, ClickWinClose, onClose));
+    WindowButtonSupport support = WindowGetButtonSupport(win);
+    El* row =
+        Div(a)->Id(id)->FlexRowDir(cx->app)->H(kFill)->ItemsCenter()->Shrink0();
+    for (int i = 0; i < kWindowButtonsPerSide; i++) {
+        WindowButton button = buttons[i];
+        if (!support.Has(button)) continue;
+        switch (button) {
+            case WindowButton::Minimize:
+                row->Child(
+                    ControlIcon(cx, IconName::WindowMinimize, ClickWinMin, {}));
+                break;
+            case WindowButton::Maximize:
+                row->Child(ControlIcon(cx,
+                                       win && win->maximized
+                                           ? IconName::WindowRestore
+                                           : IconName::WindowMaximize,
+                                       ClickWinMax, {}));
+                break;
+            case WindowButton::Close:
+                row->Child(ControlIcon(cx, IconName::WindowClose, ClickWinClose,
+                                       onClose));
+                break;
+            case WindowButton::Unset:
+                break;
+        }
+    }
+    return row;
 }
 
 TitleBar* TitleBar::New(Ctx* cx) {
@@ -91,13 +108,7 @@ TitleBar* TitleBar::New(Ctx* cx) {
                  ->Corners(corners.tl, corners.tr, 0, 0)
                  ->BorderB(1, th.titleBarBorder)
                  ->Click(ClickWinCaption)
-                 ->SuppressTextSelection()
-                 ->Child(t->content);
-    if (PlatSecondaryIsCommand()) {
-        t->bar->PadL(TitleBarLeftPad());
-    } else {
-        t->bar->PadS(TitleBarLeftPad(), cx->app);
-    }
+                 ->SuppressTextSelection();
     return t;
 }
 
@@ -112,8 +123,22 @@ TitleBar* TitleBar::OnCloseWindow(Listener listener) {
 }
 
 El* TitleBar::IntoEl() {
-    if (base::PlatShowsWindowControls()) {
-        bar->Child(WindowControls(cx, onCloseWindow));
+    WindowButtonLayout layout = WindowGetButtonLayout();
+    bool showsControls = base::PlatShowsWindowControls();
+    if (layout.physicalSides) bar->FlexRow();
+    if (PlatSecondaryIsCommand() || layout.physicalSides) {
+        bar->PadL(TitleBarLeftPad());
+    } else {
+        bar->PadS(TitleBarLeftPad(), cx->app);
+    }
+    if (showsControls && layout.physicalSides) {
+        bar->Child(WindowControls(
+            cx, layout.left, StrL("window-controls-start"), onCloseWindow));
+    }
+    bar->Child(content);
+    if (showsControls) {
+        bar->Child(WindowControls(cx, layout.right, StrL("window-controls"),
+                                  onCloseWindow));
     }
     return bar;
 }

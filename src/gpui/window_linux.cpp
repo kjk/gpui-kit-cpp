@@ -61,6 +61,7 @@ struct PlatWindow {
     // it.
     int edge = -1;
     CursorKind edgeUnder = CursorKind::Arrow;
+    WindowButtonSupport buttonSupport;
     // Xdnd. The source window, whether it offered text/uri-list, and whether
     // the paths have been read yet. A drop can arrive before that read.
     XWindow xdndSource = 0;
@@ -75,6 +76,8 @@ struct PlatWindow {
 // One display per process. GPUI's App is a singleton in practice, and an X
 // connection is the one piece of state every window here shares.
 static XDisplay* gDpy = nullptr;
+static App* gX11App = nullptr;
+static WindowButtonLayout gButtonLayout = {true};
 static int gScreen = 0;
 static XWindow gRoot = 0;
 static XIM gXim = nullptr;
@@ -84,6 +87,8 @@ static Atom aWmDeleteWindow, aWmProtocols, aNetWmName, aUtf8String;
 static Atom aNetWmState, aNetWmStateMaxVert, aNetWmStateMaxHorz;
 static Atom aNetWmStateFullscreen, aNetWmStateHidden, aWmState;
 static Atom aNetFrameExtents;
+static Atom aNetAllowedActions, aNetActionMinimize, aNetActionMaxHorz,
+    aNetActionMaxVert;
 static Atom aNetWmMoveResize, aMotifWmHints, aGtkShowWindowMenu;
 static Atom aGtkEdgeConstraints;
 static Atom aClipboard, aTargets, aClipTarget, aIncr;
@@ -165,8 +170,38 @@ static void Redraw(Window* win) {
 
 // ─── window state ─────────────────────────────────────────────────────────
 
+// EWMH capability changes arrive as property notifications. Older window
+// managers leave the property absent, so the default controls remain available.
+static void ReadWindowButtonSupport(PlatWindow* pw) {
+    Atom type = 0;
+    int format = 0;
+    unsigned long count = 0, after = 0;
+    unsigned char* data = nullptr;
+    WindowButtonSupport support;
+    if (XGetWindowProperty(gDpy, pw->xwin, aNetAllowedActions, 0, 64, False,
+                           XA_ATOM, &type, &format, &count, &after,
+                           &data) == Success &&
+        type == XA_ATOM && format == 32) {
+        support.minimize = false;
+        bool maxH = false, maxV = false;
+        const auto* actions = (const Atom*)data;
+        for (unsigned long i = 0; i < count; i++) {
+            support.minimize |= actions[i] == aNetActionMinimize;
+            maxH |= actions[i] == aNetActionMaxHorz;
+            maxV |= actions[i] == aNetActionMaxVert;
+        }
+        support.maximize = maxH && maxV;
+    }
+    if (data) XFree(data);
+    pw->buttonSupport = support;
+}
+
+WindowButtonSupport WindowGetButtonSupport(Window* win) {
+    return win && win->plat ? win->plat->buttonSupport : WindowButtonSupport{};
+}
+
 // ICCCM WM_STATE: the window manager sets IconicState on an iconified window,
-// for one that doesn't set _NET_WM_STATE_HIDDEN
+// for one that doesn't set _NET_WM_STATE_HIDDEN.
 static bool ReadIconic(PlatWindow* pw) {
     Atom type = 0;
     int format = 0;
@@ -961,45 +996,76 @@ bool PlatReduceMotionKnown(bool* out) {
 
 using ReduceMotionFn = void (*)(bool);
 static ReduceMotionFn gReduceMotionOnChange = nullptr;
+static bool gHaveReduceMotion = false;
+static bool gReduceMotion = false;
+static bool gPortalSettingsStarted = false;
+static const char kPortalWmPreferences[] = "org.gnome.desktop.wm.preferences";
+static const char kPortalAppearance[] = "org.freedesktop.appearance";
 
-struct ReduceMotionMsg {
+struct PortalPreferences {
+    bool motionChanged = false;
+    bool buttonsChanged = false;
     bool reduce = false;
-    void (*onChange)(bool) = nullptr;
+    WindowButtonLayout layout;
 };
 
-static void ReduceMotionApplyPosted(ReduceMotionMsg* msg) {
-    if (msg && msg->onChange) {
-        msg->onChange(msg->reduce);
+static Mutex gPortalPendingLock;
+static PortalPreferences gPortalPending;
+
+static void ApplyPortalPreferences() {
+    gPortalPendingLock.Lock();
+    PortalPreferences preference = gPortalPending;
+    gPortalPending = {};
+    gPortalPendingLock.Unlock();
+    if (preference.motionChanged) {
+        gHaveReduceMotion = true;
+        gReduceMotion = preference.reduce;
+        if (gReduceMotionOnChange) gReduceMotionOnChange(gReduceMotion);
     }
-    free(msg);
+    if (preference.buttonsChanged) {
+        gButtonLayout = preference.layout;
+        if (gX11App) {
+            for (Window* win : gX11App->windows) AppInvalidate(win);
+        }
+    }
 }
 
-static bool ReduceMotionFromVariant(GVariant* value, bool* out) {
-    if (!value || !out) {
-        return false;
-    }
-    GVariant* inner = value;
+static void PostPortalPreference(const char* ns, const char* key,
+                                 GVariant* value) {
+    if (!ns || !key || !value) return;
+    GVariant* inner = g_variant_ref(value);
     while (g_variant_is_of_type(inner, G_VARIANT_TYPE_VARIANT)) {
-        inner = g_variant_get_variant(inner);
+        GVariant* next = g_variant_get_variant(inner);
+        g_variant_unref(inner);
+        inner = next;
     }
-    if (g_variant_is_of_type(inner, G_VARIANT_TYPE_UINT32)) {
-        *out = g_variant_get_uint32(inner) == 1;
-        return true;
+    PortalPreferences preference;
+    if (strcmp(ns, kPortalAppearance) == 0 &&
+        strcmp(key, "reduced-motion") == 0 &&
+        g_variant_is_of_type(inner, G_VARIANT_TYPE_UINT32)) {
+        preference.motionChanged = true;
+        preference.reduce = g_variant_get_uint32(inner) == 1;
+    } else if (strcmp(ns, kPortalWmPreferences) == 0 &&
+               strcmp(key, "button-layout") == 0 &&
+               g_variant_is_of_type(inner, G_VARIANT_TYPE_STRING)) {
+        preference.layout.physicalSides = true;
+        WindowButtonLayoutParse(Str(g_variant_get_string(inner, nullptr)),
+                                &preference.layout);
+        preference.buttonsChanged = true;
     }
-    return false;
-}
-
-static void ReduceMotionPost(bool reduce) {
-    if (!gReduceMotionOnChange) {
-        return;
+    g_variant_unref(inner);
+    if (!preference.motionChanged && !preference.buttonsChanged) return;
+    gPortalPendingLock.Lock();
+    if (preference.motionChanged) {
+        gPortalPending.motionChanged = true;
+        gPortalPending.reduce = preference.reduce;
     }
-    auto* msg = (ReduceMotionMsg*)malloc(sizeof(ReduceMotionMsg));
-    if (!msg) {
-        return;
+    if (preference.buttonsChanged) {
+        gPortalPending.buttonsChanged = true;
+        gPortalPending.layout = preference.layout;
     }
-    msg->reduce = reduce;
-    msg->onChange = gReduceMotionOnChange;
-    ExecPost(MkFunc0(&ReduceMotionApplyPosted, msg));
+    gPortalPendingLock.Unlock();
+    ExecPost(MkFunc0Void(&ApplyPortalPreferences));
 }
 
 static void OnPortalSettingChanged(GDBusConnection*, const gchar*, const gchar*,
@@ -1009,84 +1075,74 @@ static void OnPortalSettingChanged(GDBusConnection*, const gchar*, const gchar*,
     const gchar* key = nullptr;
     GVariant* value = nullptr;
     g_variant_get(params, "(&s&sv)", &ns, &key, &value);
-    if (ns && key && strcmp(ns, "org.freedesktop.appearance") == 0 &&
-        strcmp(key, "reduced-motion") == 0) {
-        bool reduce = false;
-        if (ReduceMotionFromVariant(value, &reduce)) {
-            ReduceMotionPost(reduce);
-        }
-    }
-    if (value) {
-        g_variant_unref(value);
-    }
+    PostPortalPreference(ns, key, value);
+    if (value) g_variant_unref(value);
 }
 
-static void* ReduceMotionFollowThread(void*) {
-    GError* err = nullptr;
+static void ReadPortalSetting(GDBusProxy* proxy, const char* ns,
+                              const char* key) {
+    GVariant* result =
+        g_dbus_proxy_call_sync(proxy, "ReadOne", g_variant_new("(ss)", ns, key),
+                               G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, nullptr);
+    if (!result) {
+        result = g_dbus_proxy_call_sync(
+            proxy, "Read", g_variant_new("(ss)", ns, key),
+            G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, nullptr);
+    }
+    if (!result) return;
+    GVariant* value = nullptr;
+    g_variant_get(result, "(v)", &value);
+    PostPortalPreference(ns, key, value);
+    if (value) g_variant_unref(value);
+    g_variant_unref(result);
+}
+
+static void* FollowPortalSettings(void*) {
+    GMainContext* context = g_main_context_new();
+    g_main_context_push_thread_default(context);
     GDBusProxy* proxy = g_dbus_proxy_new_for_bus_sync(
         G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_NONE, nullptr,
         "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
-        "org.freedesktop.portal.Settings", nullptr, &err);
-    if (!proxy) {
-        if (err) {
-            g_error_free(err);
-        }
-        return nullptr;
+        "org.freedesktop.portal.Settings", nullptr, nullptr);
+    if (proxy) {
+        GDBusConnection* conn = g_dbus_proxy_get_connection(proxy);
+        unsigned int watch = g_dbus_connection_signal_subscribe(
+            conn, "org.freedesktop.portal.Desktop",
+            "org.freedesktop.portal.Settings", "SettingChanged",
+            "/org/freedesktop/portal/desktop", nullptr,
+            G_DBUS_SIGNAL_FLAGS_NONE, OnPortalSettingChanged, nullptr, nullptr);
+        ReadPortalSetting(proxy, kPortalWmPreferences, "button-layout");
+        ReadPortalSetting(proxy, kPortalAppearance, "reduced-motion");
+        GMainLoop* loop = g_main_loop_new(context, FALSE);
+        g_main_loop_run(loop);
+        g_main_loop_unref(loop);
+        g_dbus_connection_signal_unsubscribe(conn, watch);
+        g_object_unref(proxy);
     }
-    GVariant* result = g_dbus_proxy_call_sync(
-        proxy, "ReadOne",
-        g_variant_new("(ss)", "org.freedesktop.appearance", "reduced-motion"),
-        G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &err);
-    if (!result) {
-        if (err) {
-            g_error_free(err);
-            err = nullptr;
-        }
-        result = g_dbus_proxy_call_sync(
-            proxy, "Read",
-            g_variant_new("(ss)", "org.freedesktop.appearance",
-                          "reduced-motion"),
-            G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &err);
-        if (err) {
-            g_error_free(err);
-            err = nullptr;
-        }
-    }
-    if (result) {
-        GVariant* value = nullptr;
-        g_variant_get(result, "(v)", &value);
-        bool reduce = false;
-        if (ReduceMotionFromVariant(value, &reduce)) {
-            ReduceMotionPost(reduce);
-        }
-        if (value) {
-            g_variant_unref(value);
-        }
-        g_variant_unref(result);
-    }
-    GDBusConnection* conn = g_dbus_proxy_get_connection(proxy);
-    g_dbus_connection_signal_subscribe(
-        conn, "org.freedesktop.portal.Desktop",
-        "org.freedesktop.portal.Settings", "SettingChanged",
-        "/org/freedesktop/portal/desktop", nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
-        OnPortalSettingChanged, nullptr, nullptr);
-    GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
-    g_main_loop_run(loop);
-    g_main_loop_unref(loop);
-    g_object_unref(proxy);
+    g_main_context_pop_thread_default(context);
+    g_main_context_unref(context);
     return nullptr;
 }
 
-void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
-    if (!onChange || gReduceMotionOnChange) {
-        return;
-    }
-    gReduceMotionOnChange = onChange;
+static void EnsurePortalSettings() {
+    if (gPortalSettingsStarted) return;
     pthread_t thread = {};
-    if (pthread_create(&thread, nullptr, ReduceMotionFollowThread, nullptr) ==
-        0) {
+    if (pthread_create(&thread, nullptr, FollowPortalSettings, nullptr) == 0) {
+        gPortalSettingsStarted = true;
         pthread_detach(thread);
     }
+}
+
+WindowButtonLayout WindowGetButtonLayout() {
+    if (gX11App) EnsurePortalSettings();
+    return gButtonLayout;
+}
+
+void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
+    if (!onChange || gReduceMotionOnChange) return;
+    gReduceMotionOnChange = onChange;
+    if (gHaveReduceMotion) onChange(gReduceMotion);
+    EnsurePortalSettings();
 }
 
 // Hand `target` to xdg-open and wait only for the intermediate child: the
@@ -1768,6 +1824,10 @@ static void HandleEvent(App* app, XEvent* ev) {
             }
             break;
         case PropertyNotify:
+            if (ev->xproperty.atom == aNetAllowedActions) {
+                ReadWindowButtonSupport(pw);
+                win->dirty = true;
+            }
             if (ev->xproperty.atom == aNetWmState ||
                 ev->xproperty.atom == aWmState ||
                 ev->xproperty.atom == aGtkEdgeConstraints) {
@@ -2204,6 +2264,7 @@ bool PlatInit(App* app) {
         logf("XOpenDisplay failed: no DISPLAY?");
         return false;
     }
+    gX11App = app;
     gScreen = DefaultScreen(gDpy);
     gRoot = RootWindow(gDpy, gScreen);
     gXim = XOpenIM(gDpy, nullptr, nullptr, nullptr);
@@ -2214,6 +2275,12 @@ bool PlatInit(App* app) {
     aUtf8String = XInternAtom(gDpy, "UTF8_STRING", False);
     aNetWmState = XInternAtom(gDpy, "_NET_WM_STATE", False);
     aNetFrameExtents = XInternAtom(gDpy, "_NET_FRAME_EXTENTS", False);
+    aNetAllowedActions = XInternAtom(gDpy, "_NET_WM_ALLOWED_ACTIONS", False);
+    aNetActionMinimize = XInternAtom(gDpy, "_NET_WM_ACTION_MINIMIZE", False);
+    aNetActionMaxHorz =
+        XInternAtom(gDpy, "_NET_WM_ACTION_MAXIMIZE_HORZ", False);
+    aNetActionMaxVert =
+        XInternAtom(gDpy, "_NET_WM_ACTION_MAXIMIZE_VERT", False);
     aNetWmStateMaxVert =
         XInternAtom(gDpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
     aNetWmStateMaxHorz =
@@ -2271,7 +2338,7 @@ bool PlatInit(App* app) {
 }
 
 void PlatShutdown(App* app) {
-    (void)app;
+    if (gX11App == app) gX11App = nullptr;
     AccessibilityLinuxShutdown();
     WakeShutdown();
     if (gClipboard.s) {
@@ -2437,6 +2504,7 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     }
 
     XMapWindow(gDpy, pw->xwin);
+    ReadWindowButtonSupport(pw);
     XFlush(gDpy);
     PlatSetTimer(win, WindowTimerMs(win));
     return win;

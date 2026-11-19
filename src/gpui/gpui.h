@@ -8597,6 +8597,40 @@ void AppOnShutdown(void (*fn)());
 // would stack a second close button on top of the manager's.
 bool WindowClientDecorated(Window* win);
 
+enum class WindowButton : uint8_t {
+    Unset,
+    Minimize,
+    Maximize,
+    Close
+};
+inline constexpr int kWindowButtonsPerSide = 3;
+
+struct WindowButtonLayout {
+    bool physicalSides = false;
+    WindowButton left[kWindowButtonsPerSide] = {};
+    WindowButton right[kWindowButtonsPerSide] = {
+        WindowButton::Minimize, WindowButton::Maximize, WindowButton::Close};
+};
+
+struct WindowButtonSupport {
+    bool minimize = true;
+    bool maximize = true;
+    bool Has(WindowButton button) const;
+};
+
+bool WindowButtonLayoutParse(Str specification, WindowButtonLayout* out);
+#if GPUI_OS_LINUX
+WindowButtonLayout WindowGetButtonLayout();
+WindowButtonSupport WindowGetButtonSupport(Window* win);
+#else
+inline WindowButtonLayout WindowGetButtonLayout() {
+    return {};
+}
+inline WindowButtonSupport WindowGetButtonSupport(Window*) {
+    return {};
+}
+#endif
+
 // ─── the application menu bar ────────────────────────────────────────────
 //
 // cx.set_menus(app_menus()). The menus of the application itself, as opposed
