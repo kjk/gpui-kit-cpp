@@ -60,6 +60,9 @@ static void BridgedValuesMatchJavaScriptConversions() {
     utassert(!BridgedAsColor(Bridged::String(StrL("#12")), &color, &error));
     utassert(error.IsSet());
     ShellErrorClear(&error);
+    // value.rs: signed strings are invalid even at a valid hex length.
+    utassert(!BridgedAsColor(Bridged::String(StrL("#+abcde")), &color));
+    utassert(!BridgedAsColor(Bridged::String(StrL("#+abcdef0")), &color));
     utassert(!BridgedAsF32(Bridged::Bool(true), nullptr, &error));
     utassert(StrStartsWith(error.message, StrL("expected a number")));
     ShellErrorClear(&error);

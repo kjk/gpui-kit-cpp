@@ -42,6 +42,15 @@ static void AColourIsAHexOrAName() {
     Rgba c = {};
     utassert(!ThemeParseColor(StrL("nosuchcolour-500"), &c));
     utassert(!ThemeParseColor(StrL("#12345"), &c));
+    // color.rs test_parse_hex_rejects_non_hex_digits.
+    utassert(!ThemeParseColor(StrL("#+f+f+f"), &c));
+    utassert(!ThemeParseColor(StrL("#ff00+f"), &c));
+    utassert(!ThemeParseColor(StrL("#a\xc3\xa9"
+                                   "aaa"),
+                              &c));
+    utassert(!ThemeParseColor(StrL("#a\xc3\xa9"
+                                   "aaaaa"),
+                              &c));
     utassert(!ThemeParseColor(StrL(""), &c));
     // An opacity over a hundred is an error, not a clamp.
     utassert(!ThemeParseColor(StrL("red-500/140"), &c));

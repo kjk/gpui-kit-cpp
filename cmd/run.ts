@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d1781b02932b74eca2c66c0368eb1b3487484bc2",
+  sha: "61081a4e05e75b61517da3b86f5749afc0a5dee1",
   date: "2026-11-12",
-  subject: "dock: Let the skin decide a closed dock's extent (#3931)",
+  subject: "theme: Reject non-hex digits in parse_hex instead of panicking (#3936)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",
