@@ -1,7 +1,7 @@
 /* Ported from crates/ui/src/table/state.rs.
  *
- * data_table.rs binds escape, the four arrows, home, end, pageup, pagedown
- * and tab in the table's key context. Only the four arrows consult
+ * data_table.rs binds escape, the four arrows, home, end, pageup and pagedown
+ * in the table's key context. Only the four arrows consult
  * loop_selection; the page moves and Home/End clamp, and Home and End are the
  * first and last column rather than the first and last row. perform_sort
  * cycles one column at a time and resets whichever one was sorted before. */
@@ -22,11 +22,8 @@ static void TheKeyTable() {
     utassert(ForChord("down") == TableAction::SelectNext);
     utassert(ForChord("left") == TableAction::SelectPrevColumn);
     utassert(ForChord("right") == TableAction::SelectNextColumn);
-    // Tab is bound to the same action as Right, and shift-tab to Left — in
-    // the table's own context, so the window's focus ring only ever sees a
-    // tab the table did not want.
-    utassert(ForChord("tab") == TableAction::SelectNextColumn);
-    utassert(ForChord("shift-tab") == TableAction::SelectPrevColumn);
+    utassert(ForChord("tab") == TableAction::None);
+    utassert(ForChord("shift-tab") == TableAction::None);
     utassert(ForChord("home") == TableAction::SelectFirst);
     utassert(ForChord("end") == TableAction::SelectLast);
     utassert(ForChord("pageup") == TableAction::SelectPageUp);
@@ -1237,6 +1234,77 @@ struct PressRecords {
     }
 };
 
+struct TableBetweenButtons {
+    Entity<TableState> table;
+    FocusHandle before;
+    FocusHandle after;
+
+    static El* Render(TableBetweenButtons* self, Ctx* cx) {
+        component::TableDelegate delegate = {};
+        delegate.columnsCount = PressRecords::Columns;
+        delegate.rowsCount = PressRecords::Rows;
+        delegate.column = PressRecords::Column;
+        return Div(cx->a)
+            ->W(kFill)
+            ->H(kFill)
+            ->FlexCol()
+            ->Child(component::Button::New(cx, StrL("before"))
+                        ->Label(StrL("Before"))
+                        ->TrackFocus(self->before)
+                        ->IntoEl())
+            ->Child(component::DataTable::New(cx, StrL("table"), self->table)
+                        ->Delegate(delegate)
+                        ->H(200)
+                        ->IntoEl())
+            ->Child(component::Button::New(cx, StrL("after"))
+                        ->Label(StrL("After"))
+                        ->TrackFocus(self->after)
+                        ->IntoEl());
+    }
+};
+
+// crates/kit/tests/integration/collections.rs
+static void TabMovesFocusThroughATableAsOneStop() {
+    for (bool cellSelectable : {false, true}) {
+        App* app = TestAppNew();
+        component::Init(app);
+        auto view = EntityNew<TableBetweenButtons>(app);
+        auto* self = view.Get(app);
+        self->table = EntityNewState<TableState>(app);
+        TableState* table = self->table.Get(app);
+        table->cellSelectable = cellSelectable;
+        Ctx cx = {app, nullptr, nullptr, self->table.id};
+        self->before = FocusHandleNew(app);
+        self->after = FocusHandleNew(app);
+        Window* win = TestWindowOpen(app, view, 640, 320, 1);
+        cx.win = win;
+        if (cellSelectable) {
+            TableSetSelectedCell(table, &cx, 0, 0);
+        } else {
+            TableSetSelectedCol(table, &cx, 0);
+        }
+        FocusHandleFocus(win, table->focus);
+        TestDraw(win);
+
+        auto press = [&](const char* key, FocusHandle expected) {
+            TestSimulateKeystrokes(win, key);
+            utassert(FocusHandleIsFocused(win, expected));
+        };
+        press("shift-tab", self->before);
+        press("tab", table->focus);
+        press("right", table->focus);
+        if (cellSelectable) {
+            utassert(table->selectedCellRow == 0 &&
+                     table->selectedCellCol == 1);
+        } else {
+            utassert(TableSelectedCol(table) == 1);
+        }
+        press("tab", self->after);
+        press("shift-tab", table->focus);
+        TestAppFree(app);
+    }
+}
+
 static const Bounds* ClickBounds(const Window* win, uintptr_t fn, int64_t arg,
                                  float maxW) {
     const Bounds* found = nullptr;
@@ -2212,6 +2280,7 @@ void TestDataTable() {
     LoadMoreAsksNearTheEnd();
     TheKeyTable();
     TableKeepsFocusWhenACellSelectsItsRowOnMouseDown();
+    TabMovesFocusThroughATableAsOneStop();
     TableModifierClicksSelectRowsUnlessTurnedOff();
     TableRowHeaderClickSelectsItsRowOnce();
     TheSortCycle();

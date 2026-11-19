@@ -28,8 +28,6 @@ void TableInitKeys() {
         {"end", action::SelectLast(), ctx},
         {"pageup", action::SelectPageUp(), ctx},
         {"pagedown", action::SelectPageDown(), ctx},
-        {"tab", action::SelectNextColumn(), ctx},
-        {"shift-tab", action::SelectPrevColumn(), ctx},
     };
     KeymapBind(bindings, (int)(sizeof(bindings) / sizeof(bindings[0])));
 }

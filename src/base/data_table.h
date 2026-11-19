@@ -25,7 +25,7 @@ enum class ColumnSort : uint8_t {
 };
 
 // What a keystroke asks a table to do. data_table.rs binds escape, the four
-// arrows, home, end, pageup, pagedown and tab in the table's key context.
+// arrows, home, end, pageup and pagedown in the table's key context.
 enum class TableAction : uint8_t {
     None,
     SelectPrev,
@@ -39,10 +39,7 @@ enum class TableAction : uint8_t {
     Cancel
 };
 
-// data_table.rs::init: escape, the four arrows, home, end, the page keys and
-// tab / shift-tab in the "DataTable" key context. Tab is the table's there,
-// and it is the table's here too — the window's focus ring only takes a tab
-// nothing else wanted.
+// data_table.rs::init leaves Tab and Shift+Tab to the window's focus order.
 void TableInitKeys();
 Str TableContext();
 TableAction TableActionOf(uint32_t id);

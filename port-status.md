@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c7cc85cdd37cc674179eb5817f0a9a2dcde58711` (2026-11-07,
-slider: Step one thumb from assistive technology and report the change
-(#3840)).
-Assistive technology steps one thumb on the slider grid and reports a change
-only when it moves. Continuous sliders report and move by a hundredth of their
-range.
+Processed through `c92653e2f0b6499221dee11672b510b07aaf043c` (2026-11-07,
+table: Let Tab and Shift+Tab leave a focused DataTable (#3800)).
+Tab and Shift+Tab move focus through a DataTable as one stop. Arrow keys still
+navigate rows and cells within the table.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
