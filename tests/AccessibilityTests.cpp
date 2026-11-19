@@ -554,6 +554,8 @@ static void ADisabledControlMarksItsNodeDisabled() {
              TimeField::New(&f.cx, StrL("time-field"), time)
                  ->Disabled(disabled)
                  ->IntoEl()},
+            {AccessibilityRole::TextInput, false,
+             InputBase::New(&f.cx, StrL("input"), !disabled)},
             {AccessibilityRole::Slider, true,
              component::Slider::New(&f.cx, StrL("slider"), &slider)
                  ->Disabled(disabled)

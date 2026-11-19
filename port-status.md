@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `fe2e4bcf1c5e94038bdc1253397ffcc6291fb8d9` (2026-11-10,
-text: Number a list item once when a paragraph follows its sub-list (#3876)).
-The C++ list item already renders all of its blocks in one body beside one
-marker. A layout regression checks that a paragraph following a nested list
-shares the continuation column and no second ordinal is drawn.
+Processed through `2e170f195f4e71ab75e4fb1b676710d4f2a8147f` (2026-11-10,
+input: Report a disabled input as disabled to assistive technology (#3877)).
+InputBase already uses its interactive flag to mark disabled text inputs in
+the accessibility tree. The Base control regression now checks both input
+states.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

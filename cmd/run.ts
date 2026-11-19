@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "fe2e4bcf1c5e94038bdc1253397ffcc6291fb8d9",
+  sha: "2e170f195f4e71ab75e4fb1b676710d4f2a8147f",
   date: "2026-11-10",
-  subject: "text: Number a list item once when a paragraph follows its sub-list (#3876)",
+  subject: "input: Report a disabled input as disabled to assistive technology (#3877)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",
