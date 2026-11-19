@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3fe533adb93b0751d92ae4c7098d364a57772826",
+  sha: "d758da0fc195fe9d70e372a9fb44052de3329dcb",
   date: "2026-11-19",
-  subject: "dialog: Keep the backdrop inside the client frame (#4049)",
+  subject: "editor: Add GutterStyle for line-number gap, color and font (#3737)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

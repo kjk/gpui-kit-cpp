@@ -1917,8 +1917,9 @@ static ScrollRect* ScrollbarAt(PaintCtx* ctx, float x, float y,
             *horizontal = false;
             return &ctx->scrolls[i];
         }
-        if (s.barX && ScrollsX(s) && x >= s.bounds.x && x <= s.bounds.Right() &&
-            y >= s.bounds.Bottom() - s.trackWidth && y <= s.bounds.Bottom()) {
+        if (s.barX && ScrollsX(s) && x >= s.bounds.x + s.horizontalBarInset &&
+            x <= s.bounds.Right() && y >= s.bounds.Bottom() - s.trackWidth &&
+            y <= s.bounds.Bottom()) {
             *horizontal = true;
             return &ctx->scrolls[i];
         }
@@ -1952,7 +1953,8 @@ static void NoteScrollbarOcclusion(Window* win) {
                    win->mouseY <= s.bounds.Bottom() &&
                    win->mouseX >= s.bounds.Right() - s.trackWidth &&
                    win->mouseX <= s.bounds.Right();
-        bool onX = s.barX && ScrollsX(s) && win->mouseX >= s.bounds.x &&
+        bool onX = s.barX && ScrollsX(s) &&
+                   win->mouseX >= s.bounds.x + s.horizontalBarInset &&
                    win->mouseX <= s.bounds.Right() &&
                    win->mouseY >= s.bounds.Bottom() - s.trackWidth &&
                    win->mouseY <= s.bounds.Bottom();
@@ -2078,6 +2080,12 @@ static ScrollbarTrackAxis ScrollbarTrackAxisOf(const ScrollRect* s,
     a.viewport = horizontal ? ScrollViewportW(*s) : ScrollViewportH(*s);
     a.content = horizontal ? s->contentW : s->contentH;
     a.origin = horizontal ? s->bounds.x : s->bounds.y;
+    if (horizontal) {
+        a.origin += s->horizontalBarInset;
+        a.track -= s->horizontalBarInset;
+        a.viewport -= s->horizontalBarInset;
+        a.content -= s->horizontalBarInset;
+    }
     a.marginEnd = horizontal && s->barY && ScrollsY(*s) ? s->trackWidth : 0;
     a.current = horizontal ? s->scrollX : s->scrollY;
     return a;

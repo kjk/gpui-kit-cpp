@@ -83,6 +83,32 @@ void InputAccessibilityFocus(InputState* state, Window* win);
 bool InputAccessibilitySetValue(InputState* state, App* app, Window* win,
                                 const Str* value);
 
+// editor/mod.rs EditorLineNumberRenderer. Hooks live with the element for
+// this frame. The number lane is measured once before the editor wraps.
+struct EditorLineNumberLayout {
+    float width = 0;
+    float gap = 6;
+    float font = 0;
+    uint16_t fontWord = 0;
+    float baselineOffset = 0;
+};
+
+struct EditorLineNumberRenderer {
+    const void* user = nullptr;
+    EditorLineNumberLayout (*measure)(Ctx*, const void*, int digits,
+                                      float bodyFont, uint16_t bodyWord,
+                                      float lineH) = nullptr;
+    El* (*render)(Ctx*, const void*, int number, bool active,
+                  const EditorLineNumberLayout&, float lineH) = nullptr;
+};
+
+float InputMeasureLineNumberLane(Ctx* cx, int digits, float font,
+                                 uint16_t fontWord);
+float InputLineNumberBaseline(Ctx* cx, float font, uint16_t fontWord,
+                              float lineH);
+El* InputRenderLineNumber(Ctx* cx, int number, Rgba color,
+                          const EditorLineNumberLayout& layout, float lineH);
+
 // gpui_base::input::InputEditorStyle. The base draws the text, the selection
 // and the caret; what they look like is pushed in by the themed layer above
 // it, the way Rust calls state.set_editor_style(...) before rendering.
@@ -156,6 +182,7 @@ struct InputEditorStyle {
     // How many columns an indent guide stands every, which is the language's
     // tab size.
     int indentWidth = 4;
+    EditorLineNumberRenderer lineNumbers = {};
 };
 
 // Fill only colours the caller left unset. Keeping the projected style as

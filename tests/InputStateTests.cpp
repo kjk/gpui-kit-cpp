@@ -14199,7 +14199,72 @@ static void ForwardWordDeletionStopsAtWhitespaceAndLineBreaks() {
     utassert(StrEq(InputValue(&s), want));
 }
 
+// input/editor.rs gutter_overrides_and_removal_reach_the_rendered_editor.
+static void EditorGutterOverridesApplyOnlyToTheNumberLane() {
+    struct View {
+        InputState input;
+        bool customized = false;
+
+        static El* Render(View* self, Ctx* cx) {
+            auto* editor =
+                component::Editor::New(cx, StrL("gutter"), &self->input)
+                    ->H(180)
+                    ->Font(15)
+                    ->Searchable(false)
+                    ->Folding(false);
+            if (self->customized) {
+                editor
+                    ->GutterStyle(component::GutterStyle{}
+                                      .WithGap(12)
+                                      .WithLineNumberFontSize(24))
+                    ->GutterStyle(component::GutterStyle{}.WithGap(0));
+            }
+            return editor->IntoEl();
+        }
+    };
+    using component::GutterStyle;
+    GutterStyle style = GutterStyle{}.WithGap(1, true).WithLineNumberColor({});
+    style.ApplyOverrides(GutterStyle{}.WithGap(0).WithLineNumberFontSize(24));
+    utassert(style.hasGap && style.gap == 0 && !style.gapInRems);
+    utassert(style.hasLineNumberColor && style.hasFontSize &&
+             style.fontSize == 24);
+
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<View>(app);
+    View* self = view.Get(app);
+    InputState* s = &self->input;
+    s->kind = InputKind::Editor;
+    s->mode.kind = LayoutModeKind::CodeEditor;
+    s->softWrap = true;
+    InputSetLineNumber(s, true, app, nullptr);
+    InputSetValue(s, StrL("first words fill a row and wrap into the next one\n"
+                          "second\nthird"));
+    Window* win = TestWindowOpen(app, view, 240, 220, 1);
+    TestDraw(win);
+    float defaultWidth = s->gutterBox.w;
+    float defaultOrigin = s->textOriginOffset;
+    float bodyHeight = s->lastLineH;
+    utassert(defaultWidth > 0);
+    utassertnear(defaultOrigin - defaultWidth, 6.f);
+    self->customized = true;
+    TestDraw(win);
+    utassert(s->gutterBox.w > defaultWidth);
+    utassertnear(s->textOriginOffset, s->gutterBox.w);
+    utassertnear(s->lastLineH, bodyHeight);
+    InputPaintedVisualRow rows[8] = {};
+    utassert(InputLastVisualRows(s, win, rows, 8) > 0);
+    utassert(InputIndexForPosition(s, &win->paint, rows[0].text.x + 0.1f,
+                                   rows[0].text.y + 1) == 0);
+    self->customized = false;
+    TestDraw(win);
+    utassertnear(s->gutterBox.w, defaultWidth);
+    utassertnear(s->textOriginOffset, defaultOrigin);
+    TestAppFree(app);
+}
+
 void TestInputState() {
+    EditorGutterOverridesApplyOnlyToTheNumberLane();
     LaterHighlightLayerWinsOverEarlierOne();
     DecorationColorIsStableAcrossCompositions();
     TextareaPrewrapPreparesContentRowsBeforeLayout();

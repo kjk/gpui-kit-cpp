@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3fe533adb93b0751d92ae4c7098d364a57772826` (2026-11-19,
-dialog: Keep the backdrop inside the client frame (#4049)).
-Bound the dialog and alert-dialog hosts to the visible client frame, matching
-the existing fixed backdrop and popup bounds.
+Processed through `d758da0fc195fe9d70e372a9fb44052de3329dcb` (2026-11-19,
+editor: Add GutterStyle for line-number gap, color and font (#3737)).
+Add per-editor gutter gap, ink, family, and size overrides with a frame-owned
+Base number renderer. Measure the widest digit, align the number baseline with
+the body, and use the resolved lane for wrap, text hit testing, folding and
+horizontal scrollbars.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

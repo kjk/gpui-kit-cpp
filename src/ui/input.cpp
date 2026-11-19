@@ -659,6 +659,62 @@ Editor* Editor::Refine(const gpui::Style& value, uint32_t fields) {
 static void InputSizeMetrics(const Ctx* cx, UiSize size, float* h, float* padX,
                              float* padY, float* font);
 
+GutterStyle GutterStyle::WithGap(float value, bool rems) const {
+    GutterStyle out = *this;
+    out.hasGap = true;
+    out.gap = value;
+    out.gapInRems = rems;
+    return out;
+}
+
+GutterStyle GutterStyle::WithLineNumberColor(Rgba value) const {
+    GutterStyle out = *this;
+    out.hasLineNumberColor = true;
+    out.lineNumberColor = value;
+    return out;
+}
+
+GutterStyle GutterStyle::WithActiveLineNumberColor(Rgba value) const {
+    GutterStyle out = *this;
+    out.hasActiveLineNumberColor = true;
+    out.activeLineNumberColor = value;
+    return out;
+}
+
+GutterStyle GutterStyle::WithLineNumberFontFamily(Str value) const {
+    GutterStyle out = *this;
+    out.hasFontFamily = true;
+    out.fontFamily = value;
+    return out;
+}
+
+GutterStyle GutterStyle::WithLineNumberFontSize(float value, bool rems) const {
+    GutterStyle out = *this;
+    out.hasFontSize = true;
+    out.fontSize = value;
+    out.fontSizeInRems = rems;
+    return out;
+}
+
+void GutterStyle::ApplyOverrides(const GutterStyle& value) {
+    if (value.hasGap) *this = WithGap(value.gap, value.gapInRems);
+    if (value.hasLineNumberColor) {
+        *this = WithLineNumberColor(value.lineNumberColor);
+    }
+    if (value.hasActiveLineNumberColor) {
+        *this = WithActiveLineNumberColor(value.activeLineNumberColor);
+    }
+    if (value.hasFontFamily) *this = WithLineNumberFontFamily(value.fontFamily);
+    if (value.hasFontSize) {
+        *this = WithLineNumberFontSize(value.fontSize, value.fontSizeInRems);
+    }
+}
+
+Editor* Editor::GutterStyle(const component::GutterStyle& value) {
+    gutterStyle.ApplyOverrides(value);
+    return this;
+}
+
 El* Editor::IntoEl() {
     if (!state) return Div(a);
     state->kind = InputKind::Editor;
@@ -679,6 +735,7 @@ El* Editor::IntoEl() {
     if (height > 0 || height == kFill) highlighter->H(height);
     if (fontSize > 0) highlighter->Font(fontSize);
     highlighter->FontFamily(fontFamily);
+    highlighter->gutterStyle = &gutterStyle;
     // set_editor_paddings: input_py above and below, input_px on the right,
     // and on the left input_px held to 6, where the gutter is. The size
     // changes those insets. It does not change the code font or the line

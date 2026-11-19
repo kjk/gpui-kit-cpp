@@ -8622,6 +8622,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         sr.scrollY = e->scrollY;
         sr.contentW = e->contentW;
         sr.scrollX = e->scrollX;
+        if (e->input && e->input->gutterLaneW > 0) {
+            sr.horizontalBarInset =
+                std::min(e->w, e->style.pad.left + e->input->gutterLaneW);
+        }
         // EditorScrollbarLayout::scroll_viewport_size. The field's document
         // and its unpadded viewport are the range; the bar is painted on the
         // padded element. Ordinary boxes leave both at the track.
@@ -9295,14 +9299,19 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     bool canVertical = !e->noScrollbarY &&
                        e->style.overflowY == Overflow::Scroll &&
                        scrollContentH > scrollViewportH + 1.f && e->h > 0;
+    float horizontalInset =
+        e->input && e->input->gutterLaneW > 0
+            ? std::min(e->w, e->style.pad.left + e->input->gutterLaneW)
+            : 0.f;
     bool canHorizontal = !e->noScrollbarX &&
                          e->style.overflowX == Overflow::Scroll &&
-                         e->contentW > e->w + 1.f && e->w > 0;
+                         e->contentW > e->w + 1.f && e->w > horizontalInset;
     // An occluder above the bar is not a hover on the bar. The drag still
     // holds it up: that press started on the bar itself.
     bool onBand = overBox && !covered &&
                   ((canVertical && ctx->mouseX >= e->x + e->w - trackW) ||
-                   (canHorizontal && ctx->mouseY >= e->y + e->h - trackW));
+                   (canHorizontal && ctx->mouseX >= e->x + horizontalInset &&
+                    ctx->mouseY >= e->y + e->h - trackW));
     bool barVisible = !e->noScrollbar;
     float barAlpha = 1.f;
     float barSlide = 0.f;
@@ -9418,15 +9427,19 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // The horizontal bar is the same arithmetic along the other axis,
         // which is how Rust writes it: one path, `is_vertical` picking the
         // pair of numbers it reads.
-        bool onBar = overBox && !covered && ctx->mouseY >= e->y + e->h - trackW;
+        float barX = e->x + horizontalInset;
+        float barW = e->w - horizontalInset;
+        float contentW = e->contentW - horizontalInset;
+        bool onBar = overBox && !covered && ctx->mouseX >= barX &&
+                     ctx->mouseY >= e->y + e->h - trackW;
         float marginEnd = hasVertical ? trackW : 0;
         ScrollbarPaintState state = ScrollbarAxisPaintState(
-            e, e->x, e->w, e->w, e->contentW, marginEnd, e->scrollX, onBar,
+            e, barX, barW, barW, contentW, marginEnd, e->scrollX, onBar,
             ctx->mouseY, e->y + e->h, ctx->mouseX,
             dragging && ctx->scrollDragHorizontal);
         float inset = ScrollbarThumbInset(e, state);
         ScrollbarThumbGeometry geometry =
-            ScrollbarGeometry(e->x, e->w, e->w, e->contentW, marginEnd, inset,
+            ScrollbarGeometry(barX, barW, barW, contentW, marginEnd, inset,
                               ScrollbarThumbMinLength(e, state));
         float thumbW = geometry.length;
         float wantH = ScrollbarThumbWidth(e, state);
@@ -9439,7 +9452,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         float thumbY = e->y + e->h - thumbH - inset;
         float thumbX = geometry.Start(e->scrollX);
         // A horizontal bar slides up from the bottom, so its slide is along y.
-        FillBackground(ctx, e->x, e->y + e->h - trackW + barSlide, e->w, trackW,
+        FillBackground(ctx, barX, e->y + e->h - trackW + barSlide, barW, trackW,
                        0, nullptr,
                        ScrollbarBarBg(e, barTheme, state, barAlpha));
         FillBackground(ctx, thumbX, thumbY + barSlide, thumbW, thumbH,

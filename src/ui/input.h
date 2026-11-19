@@ -288,6 +288,30 @@ struct SearchPanel {
 // editor.rs Editor. Highlighter remains the compatibility spelling for the
 // earlier façade; Editor is the source-shaped styled control over the same
 // retained InputState engine.
+// gutter_style.rs. Each set flag preserves explicit zero and transparent
+// values. Lengths are DIPs unless their corresponding rem flag is set.
+struct GutterStyle {
+    float gap = 0;
+    float fontSize = 0;
+    Str fontFamily = {};
+    Rgba lineNumberColor = {};
+    Rgba activeLineNumberColor = {};
+    bool hasGap = false;
+    bool gapInRems = false;
+    bool hasFontSize = false;
+    bool fontSizeInRems = false;
+    bool hasFontFamily = false;
+    bool hasLineNumberColor = false;
+    bool hasActiveLineNumberColor = false;
+
+    GutterStyle WithGap(float value, bool rems = false) const;
+    GutterStyle WithLineNumberColor(Rgba value) const;
+    GutterStyle WithActiveLineNumberColor(Rgba value) const;
+    GutterStyle WithLineNumberFontFamily(Str value) const;
+    GutterStyle WithLineNumberFontSize(float value, bool rems = false) const;
+    void ApplyOverrides(const GutterStyle& value);
+};
+
 struct Editor : EditorHooks<Editor> {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
@@ -307,6 +331,7 @@ struct Editor : EditorHooks<Editor> {
     int tabIndex = 0;
     AccessibilityRole accessibilityRole = AccessibilityRole::MultilineTextInput;
     Str ariaLabel = {};
+    component::GutterStyle gutterStyle = {};
     // The port keeps EditorState's source-language/decorations settings on
     // the frame value which binds that state. These are forwarded to the
     // compatibility Highlighter implementation; callers can stay on the
@@ -332,6 +357,7 @@ struct Editor : EditorHooks<Editor> {
     Editor* Font(float value);
     // Styled::font_family. Empty keeps theme.mono_font_family.
     Editor* FontFamily(Str family);
+    Editor* GutterStyle(const component::GutterStyle& value);
     Editor* Appearance(bool value);
     Editor* Bordered(bool value);
     Editor* Disabled(bool value);

@@ -10,6 +10,8 @@ namespace gpui {
 
 namespace component {
 
+struct GutterStyle;
+
 struct Highlighter {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
@@ -29,6 +31,7 @@ struct Highlighter {
     // `.font_family(..)` on the editor: theme.mono_font_family until a
     // caller names another.
     Str fontFamily = {};
+    const GutterStyle* gutterStyle = nullptr;
     // EditorState::language: what the rows are scanned as. None leaves them
     // in the editor's own colour.
     SyntaxLang lang = SyntaxLangNone;

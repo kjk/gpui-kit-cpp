@@ -403,6 +403,12 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
         // upstream: a chevron in the gutter beside every brace block.
         ed->Language(StrL("rust"))->Folding();
     } else if (self->tab == 1) {
+        ed->GutterStyle(component::GutterStyle{}
+                            .WithGap(0.5f, true)
+                            .WithLineNumberFontFamily(th.fontFamily)
+                            .WithLineNumberFontSize(0.75f, true)
+                            .WithLineNumberColor(th.mutedFg)
+                            .WithActiveLineNumberColor(th.foreground));
         // create_decorations_collection: the four runs, found in the text by
         // the words they cover, as Rust finds them.
         Str text = Str(kDecorationText);

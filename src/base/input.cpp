@@ -3174,6 +3174,48 @@ void InputScrollByYF64(InputState* s, App* app, Window* win, double deltaY) {
     }
 }
 
+float InputMeasureLineNumberLane(Ctx* cx, int digits, float font,
+                                 uint16_t fontWord) {
+    if (digits <= 0) return 0;
+    PaintCtx* paint = cx->win ? &cx->win->paint : nullptr;
+    float laidFont = Rems(cx, font / 16.f);
+    float widest = 0;
+    for (char digit = '0'; digit <= '9'; ++digit) {
+        widest = std::max(
+            widest,
+            MeasureText(paint, Str(&digit, 1), laidFont, 0, false, fontWord).w);
+    }
+    return (widest > 0 ? widest : 7.f) * (float)digits;
+}
+
+float InputLineNumberBaseline(Ctx* cx, float font, uint16_t fontWord,
+                              float lineH) {
+    PaintCtx* paint = cx->win ? &cx->win->paint : nullptr;
+    if (!paint || !paint->pa) return 0;
+    TextLayout* text = TextLayoutNew(paint, StrL("0"), Rems(cx, font / 16.f), 0,
+                                     false, fontWord, lineH, nullptr);
+    if (!text) return 0;
+    float baseline = TextLayoutBaseline(text);
+    TextLayoutRelease(text);
+    return baseline;
+}
+
+El* InputRenderLineNumber(Ctx* cx, int number, Rgba color,
+                          const EditorLineNumberLayout& layout, float lineH) {
+    El* label = TextEl(cx->a, StrDup(cx->a, fmt("%d", number)))
+                    ->Font(layout.font)
+                    ->LineHeight(InputLineMult(cx, lineH, layout.font))
+                    ->Fg(color);
+    if (layout.fontWord & kFontMono) label->Mono();
+    if (uint8_t family = FontFamilyOf(layout.fontWord)) {
+        label->FontFamilyId(family);
+    }
+    if (layout.baselineOffset != 0) {
+        label->PaintOffset(0, layout.baselineOffset);
+    }
+    return label;
+}
+
 // The multi-line editor. Rust lays every visible row out through the display
 // map; without one, each logical line is its own run and the selection is
 // clipped to it — which is the same picture as long as nothing soft-wraps.
@@ -3200,6 +3242,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (len(text) == 0) {
         state->scrollY = 0;
         state->layoutOriginY = 0;
+        state->gutterLaneW = 0;
         state->contentH = lineH;
         state->hasDeferredScrollY = false;
         col->customPaint = [](PaintCtx*, El* element, void*) {
@@ -3216,6 +3259,35 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         return col->Child(ph);
     }
 
+    int rows = InputLinesLen(state);
+    int digits = lineNumbers ? InputLineNumberLen(rows) : 0;
+    uint16_t bodyWord = InputFontWordCascaded(style, state->cascadeFontWord);
+    const EditorLineNumberRenderer& renderer = style.lineNumbers;
+    EditorLineNumberLayout numberLayout;
+    if (renderer.measure) {
+        numberLayout =
+            renderer.measure(cx, renderer.user, digits, font, bodyWord, lineH);
+    } else {
+        numberLayout.font = font;
+        numberLayout.fontWord = bodyWord;
+        numberLayout
+            .width = InputMeasureLineNumberLane(cx, digits, font, bodyWord);
+        numberLayout.gap = kLineNumberRightMargin;
+    }
+    float numW = numberLayout.width;
+    // The fold gutter. Rust widens the line-number column by the hitbox and
+    // lays the icons into the space it made; the column here is a flex row,
+    // so the icons get a cell of their own that is the same width.
+    bool folding = LayoutModeIsFolding(state->mode);
+    float foldW = folding ? kFoldIconHitbox : 0.f;
+    float numberGap =
+        (lineNumbers || state->mode.kind == LayoutModeKind::CodeEditor)
+            ? numberLayout.gap
+            : 0.f;
+    // An empty decoration collection still reserves its lane.
+    float gutterStrip = InputGutterStripWidth(state);
+    state->gutterLaneW = gutterStrip + numW + foldW;
+    float textOriginOffset = state->gutterLaneW + numberGap;
     // Build visual rows once, when layout has supplied this frame's width.
     if (state->softWrap && !state->wrap.buildingRows) {
         auto* underlay = ArenaNew<EditorUnderlay>(a);
@@ -3238,7 +3310,6 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         return col->Child(Div(a)->H((float)height));
     }
 
-    int rows = InputLinesLen(state);
     // The scrolled height, which is what scroll_to clamps against: one line
     // height per display row.
     state->contentH = (double)rows * lineH;
@@ -3246,41 +3317,6 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         FoldMapRebuild(&state->folds, rows);
         state->contentH = (double)FoldMapDisplayRowCount(&state->folds) * lineH;
     }
-    float numW = 0;
-    // The numbers are shaped at the editor's own text size and family, as
-    // layout_line_numbers shapes them with the text style.
-    uint16_t numWeight = InputFontWord(style);
-    if (lineNumbers) {
-        // layout_line_numbers: the width of line_number_len "+" shaped in
-        // that font -- three for a small document, then the line count's
-        // own digits up to nine.
-        char plus[10] = {};
-        int digits = InputLineNumberLen(rows);
-        for (int i = 0; i < digits; i++) {
-            plus[i] = '+';
-        }
-        numW = MeasureText(cx->win ? &cx->win->paint : nullptr,
-                           Str(plus, digits), font, 0, false, numWeight)
-                   .w;
-        if (numW <= 0) {
-            numW = 7.f * (float)digits;
-        }
-    }
-    // The fold gutter. Rust widens the line-number column by the hitbox and
-    // lays the icons into the space it made; the column here is a flex row,
-    // so the icons get a cell of their own that is the same width.
-    bool folding = LayoutModeIsFolding(state->mode);
-    float foldW = folding ? kFoldIconHitbox : 0.f;
-    if (folding) {
-        FoldMapRebuild(&state->folds, rows);
-    }
-    float numberGap =
-        (lineNumbers || state->mode.kind == LayoutModeKind::CodeEditor)
-            ? kLineNumberRightMargin
-            : 0.f;
-    // An empty decoration collection still reserves its lane.
-    float gutterStrip = InputGutterStripWidth(state);
-    float textOriginOffset = gutterStrip + numW + foldW + numberGap;
     // soft_wrap: current column bounds less the gutter and RIGHT_MARGIN.
     // Wrapped visual rows enter here at prepaint, after layout supplies bounds.
     bool wrap = false;
@@ -4152,18 +4188,17 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             underlay->foldBands[underlay->nFoldBands++] = band;
             underlay->foldColor = state->foldBackground;
         }
-        // The caret's line is numbered in the foreground, the rest muted.
         El* numCell = nullptr;
         if (lineNumbers) {
-            El* num =
-                TextEl(a,
-                       StrDup(a, fmt("%d", InputDisplayedLineNumber(row + 1))))
-                    ->Font(font)
-                    ->LineHeight(lineMult)
-                    ->Fg(row == caretRow ? style.foreground
-                                         : style.mutedForeground);
-            InputFace(num, style);
-            numCell = Div(a)->W(numW)->JustifyEnd()->Child(num);
+            int number = InputDisplayedLineNumber(row + 1);
+            El* num = renderer.render
+                          ? renderer
+                                .render(cx, renderer.user, number,
+                                        row == caretRow, numberLayout, lineH)
+                          : InputRenderLineNumber(cx, number, style.foreground,
+                                                  numberLayout, lineH);
+            numCell =
+                Div(a)->W(numW)->H(lineH)->Shrink0()->JustifyEnd()->Child(num);
         }
         if (folding) {
             // The line-number column and the fold icons are one hit strip,
@@ -4183,7 +4218,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             band->Child(gutter);
         } else {
-            if (row == 0) {
+            if (row == firstRow) {
                 numCell->BoundsOut(&state->gutterBox);
             }
             band->Child(numCell);
@@ -6162,11 +6197,12 @@ void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void*) {
     if (inputBounds.h < 0) inputBounds.h = 0;
     EditorScrollbarContext presented;
     presented.state = s;
-    presented.viewport = {inputBounds.x, inputBounds.y - pad.top,
-                          inputBounds.w + pad.right,
+    float lane = std::min(s->gutterLaneW, inputBounds.w);
+    presented.viewport = {inputBounds.x + lane, inputBounds.y - pad.top,
+                          inputBounds.w + pad.right - lane,
                           inputBounds.h + pad.top + pad.bottom};
     presented.scrollViewport = {presented.viewport.w, inputBounds.h};
-    presented.content = {s->contentW, (float)s->contentH};
+    presented.content = {std::max(0.f, s->contentW - lane), (float)s->contentH};
     presented
         .axis = s->softWrap ? ScrollbarAxis::Vertical : ScrollbarAxis::Both;
     if (!ctx || !ctx->window || !ctx->window->frameArena) return;

@@ -1269,6 +1269,53 @@ Highlighter* Highlighter::Searchable(bool v) {
     return this;
 }
 
+static EditorLineNumberLayout MeasureEditorGutterStyle(
+    Ctx* cx, const void* data, int digits, float bodyFont, uint16_t bodyWord,
+    float lineH) {
+    const auto* style = (const GutterStyle*)data;
+    EditorLineNumberLayout layout;
+    layout.gap = style && style->hasGap
+                     ? std::max(0.f, style->gapInRems ? Rems(cx, style->gap)
+                                                      : style->gap)
+                     : 6.f;
+    if (digits == 0) return layout;
+    layout.font = bodyFont;
+    layout.fontWord = bodyWord;
+    if (style && style->hasFontFamily) {
+        uint8_t family = FontFamilyIntern(style->fontFamily);
+        layout.fontWord =
+            (uint16_t)((bodyWord & ~kFontFamilyMask) | FontFamilyBits(family));
+    }
+    if (style && style->hasFontSize && style->fontSize > 0) {
+        layout.font = style->fontSizeInRems
+                          ? FontPx(cx, Rems(cx, style->fontSize))
+                          : FontPx(cx, style->fontSize);
+    }
+    layout.width =
+        InputMeasureLineNumberLane(cx, digits, layout.font, layout.fontWord);
+    if (layout.font != bodyFont || layout.fontWord != bodyWord) {
+        layout.baselineOffset =
+            InputLineNumberBaseline(cx, bodyFont, bodyWord, lineH) -
+            InputLineNumberBaseline(cx, layout.font, layout.fontWord, lineH);
+    }
+    return layout;
+}
+
+static El* RenderEditorGutterNumber(Ctx* cx, const void* data, int number,
+                                    bool active,
+                                    const EditorLineNumberLayout& layout,
+                                    float lineH) {
+    const auto* style = (const GutterStyle*)data;
+    const Theme& theme = ThemeNow(cx->app);
+    Rgba color = active ? theme.foreground : theme.mutedFg;
+    if (style && active && style->hasActiveLineNumberColor) {
+        color = style->activeLineNumberColor;
+    } else if (style && !active && style->hasLineNumberColor) {
+        color = style->lineNumberColor;
+    }
+    return InputRenderLineNumber(cx, number, color, layout, lineH);
+}
+
 El* Highlighter::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     if (state) {
@@ -1277,6 +1324,8 @@ El* Highlighter::IntoEl() {
     InputEditorStyle style;
     style.foreground = th.foreground;
     style.mutedForeground = th.mutedFg;
+    style.lineNumbers = {gutterStyle, MeasureEditorGutterStyle,
+                         RenderEditorGutterNumber};
     style.caret = th.caret;
     style.selection = RgbaOpacity(th.selection, 0.4f);
     // theme.mono_font_size, which is 13 rather than the 12 this drew at: a

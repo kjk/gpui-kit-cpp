@@ -3733,6 +3733,7 @@ struct ScrollRect {
     // scroll_viewport_size.
     float viewportW = 0;
     float viewportH = 0;
+    float horizontalBarInset = 0;
     ScrollbarMode mode = ScrollbarMode::Always;
     // Which of the two bars this box shows, from El::HideScrollbar and its
     // per-axis pair: a bar that is not painted is not there to grab either.
@@ -5708,6 +5709,7 @@ struct InputState {
     // visible row's cell locates it. y/h of this box are one row; the
     // hover test uses the editor's clip for the vertical extent.
     Bounds gutterBox = {};
+    float gutterLaneW = 0;
     bool softWrap = true;
     // show_whitespaces: paint a mid-dot on every space and an arrow on
     // every tab. Off until the editor's status bar turns it on.
