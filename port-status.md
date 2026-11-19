@@ -16,13 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `85156303ae309925bdefa63250ca9f38b17c270b` (2026-11-19,
-text_view: Share linked image click handling (#4053)).
-Use one linked-image activation path for paragraph and inline-flow images.
-Keep the original button for custom handlers and open the URL by default on
-primary and middle clicks.
+Processed through `012cfa034885a4eee2820d3517487fd2f420504f` (2026-11-20,
+text_view: Expose the rendered body to the accessibility tree (#4056)).
+Expose the rendered TextView body as a read-only accessible document with
+cached per-line runs and whole-document selection. UIA, AT-SPI and AppKit read
+the same snapshot. Partial selections and per-character bounds follow the
+upstream limits.
 The current update target is
-`85156303ae309925bdefa63250ca9f38b17c270b`.
+`012cfa034885a4eee2820d3517487fd2f420504f`.
 
 ## Known gaps vs Rust
 

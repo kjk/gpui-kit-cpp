@@ -10954,6 +10954,7 @@ static bool AccessibilityNameFromContents(AccessibilityRole role) {
         return false;
     }
     switch (role) {
+        case AccessibilityRole::Document:
         case AccessibilityRole::ComboBox:
         case AccessibilityRole::ProgressIndicator:
         case AccessibilityRole::Slider:
@@ -10976,6 +10977,18 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         node.parent = semanticParent;
         node.bounds = e->Bounds();
         node.info = e->accessibility;
+        AccessibilityDocumentText document;
+        if (e->lifecycle && e->lifecycle->accessibilityDocument) {
+            document = e->lifecycle->accessibilityDocument(
+                e->lifecycle->accessibilityDocumentData);
+            if (document.text.s) {
+                node.info.value = StrDup(e->arena, document.text);
+                if (document.selectAll) {
+                    node.textSelectionStart = 0;
+                    node.textSelectionEnd = len(document.text);
+                }
+            }
+        }
         if (!node.info.label.s &&
             AccessibilityNameFromContents(node.info.role)) {
             node.info.label = AccessibilityText(e);
@@ -11005,7 +11018,7 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
             // the wrapper, so find that same state below it.
             node.slider = AccessibilitySlider(e);
         }
-        if (!node.input) {
+        if (!node.input && node.info.role != AccessibilityRole::Document) {
             node.input = AccessibilityInput(e);
         }
         if (node.input && node.info.value.s) {
@@ -11042,7 +11055,20 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
             node.actions |= AccessibilityActionSetValue;
         }
         VecAppend(*out, node);
-        childParent = out->len - 1;
+        childParent = len(*out) - 1;
+        if (node.info.value.s) {
+            for (int i = 0; i < document.lineCount; i++) {
+                Str line = document.lines[i];
+                AccessibilityNode run;
+                run.id = (*nextId)++;
+                run.parent = childParent;
+                run.info.role = AccessibilityRole::TextRun;
+                run.info.value = Str(
+                    node.info.value.s + (line.s - document.text.s), len(line));
+                run.info.label = run.info.value;
+                VecAppend(*out, run);
+            }
+        }
     }
     for (El* child = e->first; child; child = child->next) {
         AccessibilityCollectNode(child, out, childParent, nextId);

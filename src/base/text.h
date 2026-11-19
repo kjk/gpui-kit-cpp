@@ -1053,6 +1053,9 @@ struct TextViewState {
     // window's selection is still that one. -1 when there is none.
     int selectAllAnchor = -1;
     int selectAllCursor = -1;
+    // Borrowed slices of renderedIndex, rebuilt lazily for accessibility.
+    Vec<Str> accessibilityLines;
+    uint64_t accessibilityLineRevision = UINT64_MAX;
     bool streamFadePending = false;
     bool streamFadeReplace = false;
     // state.rs fade_tick: the pending repaint of a streamed fade, a
@@ -1147,6 +1150,7 @@ struct TextViewState {
     // ranges index — the string plain copy produces, as of the last parse
     // that landed. Text set since then is not in it until the view renders.
     gpui::RenderedText RenderedText() const;
+    AccessibilityDocumentText AccessibilityText(Window* window);
     // state.rs set_range_highlights: replace the range highlights, whose
     // ranges index the current rendered text. Compute them from the current
     // RenderedText() and set them in the same update. A range crossing blocks

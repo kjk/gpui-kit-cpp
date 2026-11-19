@@ -520,6 +520,8 @@ static uint32_t AtspiRole(AccessibilityRole role) {
         case AccessibilityRole::Dialog:
         case AccessibilityRole::AlertDialog:
             return 16;
+        case AccessibilityRole::Document:
+            return 94; // ATSPI_ROLE_DOCUMENT_TEXT
         case AccessibilityRole::Image:
             return 27;
         case AccessibilityRole::Label:
@@ -816,11 +818,9 @@ static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object) {
         if (ActionCount(node)) PutString(body, kAction);
         if (node.info.hasNumericValue) PutString(body, kValue);
         if (IsSelectionRole(node.info.role)) PutString(body, kSelection);
-        if (AccessibilityRoleTakesText(node.info.role) && node.input) {
-            if (WindowAccessibilityTextValue(node).s) PutString(body, kText);
-            if (node.actions & AccessibilityActionSetValue) {
-                PutString(body, kEditableText);
-            }
+        if (WindowAccessibilityTextValue(node).s) PutString(body, kText);
+        if (node.input && (node.actions & AccessibilityActionSetValue)) {
+            PutString(body, kEditableText);
         }
     }
     ArrayEnd(body, lengthAt, contentsAt);
@@ -1036,7 +1036,7 @@ static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
         } else {
             return false;
         }
-    } else if (StrIs(interfaceName, kText) && node && node->input) {
+    } else if (StrIs(interfaceName, kText) && node) {
         Str text = WindowAccessibilityTextValue(*node);
         if (!text.s) return false;
         if (StrIs(property, "version"))
@@ -1044,8 +1044,8 @@ static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
         else if (StrIs(property, "CharacterCount"))
             PutVariantI32(body, Utf8CharCount(text));
         else if (StrIs(property, "CaretOffset"))
-            PutVariantI32(body,
-                          Utf8CharacterForByte(text, InputCursor(node->input)));
+            PutVariantI32(body, Utf8CharacterForByte(
+                                    text, WindowAccessibilityTextCaret(*node)));
         else
             return false;
     } else if (StrIs(interfaceName, kEditableText) && node && node->input) {
@@ -1643,6 +1643,7 @@ static Str TextSlice(Str text, int lo, int hi) {
 static Bounds TextBounds(const LinuxAccessible& object,
                          const AccessibilityNode& node, Selection bytes,
                          uint32_t coordType) {
+    if (!node.input) return {};
     if (!InputIsSingleLine(node.input)) {
         return ComponentBounds(object, coordType);
     }
@@ -1660,9 +1661,10 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         return false;
     }
     const AccessibilityNode& node = object.win->accessibility[object.nodeIndex];
-    if (!node.input) return false;
     Str text = WindowAccessibilityTextValue(node);
-    if (textInterface && !text.s) return false;
+    if ((textInterface && !text.s) || (editableInterface && !node.input)) {
+        return false;
+    }
     int at = 0;
     DbusWriter body;
     const char* signature = "";
@@ -1694,17 +1696,18 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         PutI32(&body, (int32_t)Utf8CodepointForCharacter(text, offset));
         signature = "i";
     } else if (textInterface && StrIs(in.member, "GetNSelections")) {
-        PutI32(&body, node.input->selectedRange.start != node.input
-                                                             ->selectedRange.end
-                          ? 1
-                          : 0);
+        Selection range;
+        bool selected = WindowAccessibilityTextSelection(node, &range);
+        PutI32(&body, selected && !range.IsEmpty() ? 1 : 0);
         signature = "i";
     } else if (textInterface && StrIs(in.member, "GetSelection")) {
         int selection = ReadI32(in.body, in.bodyLen, &at);
         PutAlign(&body, 8);
-        int lo = Utf8CharacterForByte(text, node.input->selectedRange.start);
-        int hi = Utf8CharacterForByte(text, node.input->selectedRange.end);
-        bool exists = selection == 0 && lo != hi;
+        Selection range;
+        bool selected = WindowAccessibilityTextSelection(node, &range);
+        int lo = Utf8CharacterForByte(text, range.start);
+        int hi = Utf8CharacterForByte(text, range.end);
+        bool exists = selection == 0 && selected && lo != hi;
         PutI32(&body, exists ? std::min(lo, hi) : -1);
         PutI32(&body, exists ? std::max(lo, hi) : -1);
         signature = "(ii)";
@@ -1715,28 +1718,35 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         }
         int lo = (int)ReadU32(in.body, in.bodyLen, &at);
         int hi = (int)ReadU32(in.body, in.bodyLen, &at);
-        InputSetSelectedRange(node.input, object.win->app, object.win,
-                              Utf8ByteForCharacter(text, lo),
-                              Utf8ByteForCharacter(text, hi));
-        AppInvalidate(object.win);
-        PutBool(&body, true);
+        if (node.input) {
+            InputSetSelectedRange(node.input, object.win->app, object.win,
+                                  Utf8ByteForCharacter(text, lo),
+                                  Utf8ByteForCharacter(text, hi));
+            AppInvalidate(object.win);
+        }
+        PutBool(&body, node.input != nullptr);
         signature = "b";
     } else if (textInterface && StrIs(in.member, "RemoveSelection")) {
-        InputUnselect(node.input, object.win->app, object.win);
-        AppInvalidate(object.win);
-        PutBool(&body, true);
+        if (node.input) {
+            InputUnselect(node.input, object.win->app, object.win);
+            AppInvalidate(object.win);
+        }
+        PutBool(&body, node.input != nullptr);
         signature = "b";
     } else if (textInterface && StrIs(in.member, "GetCaretOffset")) {
-        PutI32(&body, Utf8CharacterForByte(text, InputCursor(node.input)));
+        PutI32(&body,
+               Utf8CharacterForByte(text, WindowAccessibilityTextCaret(node)));
         signature = "i";
     } else if (textInterface && StrIs(in.member, "GetOffsetAtPoint")) {
         int x = ReadI32(in.body, in.bodyLen, &at);
         int y = ReadI32(in.body, in.bodyLen, &at);
         uint32_t coordType = ReadU32(in.body, in.bodyLen, &at);
         Point point = ComponentPointInWindow(object, x, y, coordType);
-        int offset = InputIndexForPosition(node.input, &object.win->paint,
-                                           point.x, point.y);
-        PutI32(&body, Utf8CharacterForByte(text, offset));
+        int offset = node.input
+                         ? InputIndexForPosition(node.input, &object.win->paint,
+                                                 point.x, point.y)
+                         : -1;
+        PutI32(&body, offset >= 0 ? Utf8CharacterForByte(text, offset) : -1);
         signature = "i";
     } else if (textInterface && StrIs(in.member, "GetCharacterExtents")) {
         int offset = ReadI32(in.body, in.bodyLen, &at);
@@ -1776,10 +1786,12 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         signature = "a{ss}ii";
     } else if (textInterface && StrIs(in.member, "SetCaretOffset")) {
         int offset = (int)ReadU32(in.body, in.bodyLen, &at);
-        InputMoveTo(node.input, object.win->app, object.win,
-                    Utf8ByteForCharacter(text, offset));
-        AppInvalidate(object.win);
-        PutBool(&body, true);
+        if (node.input) {
+            InputMoveTo(node.input, object.win->app, object.win,
+                        Utf8ByteForCharacter(text, offset));
+            AppInvalidate(object.win);
+        }
+        PutBool(&body, node.input != nullptr);
         signature = "b";
     } else if (editableInterface && StrIs(in.member, "SetTextContents")) {
         Str value = ReadString(in.body, in.bodyLen, &at);

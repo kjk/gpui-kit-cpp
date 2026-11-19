@@ -2667,6 +2667,13 @@ struct ElRefiner {
 
 struct LinkTooltipTarget;
 
+struct AccessibilityDocumentText {
+    Str text = {};
+    const Str* lines = nullptr;
+    int lineCount = 0;
+    bool selectAll = false;
+};
+
 struct ElLifecycle {
     void (*prepareStyle)(PaintCtx* ctx, El* e, Rgba inherited,
                          void* user) = nullptr;
@@ -2676,6 +2683,8 @@ struct ElLifecycle {
     const TextHighlight* highlights = nullptr;
     int highlightCount = 0;
     TextFontRanges fontRanges;
+    AccessibilityDocumentText (*accessibilityDocument)(void*) = nullptr;
+    void* accessibilityDocumentData = nullptr;
     bool auxiliaryClick = false;
     bool auxiliaryRightClick = false;
 };
@@ -3721,6 +3730,9 @@ struct AccessibilityNode {
     int clickActionFocusId = 0;
     SliderState* slider = nullptr;
     InputState* input = nullptr;
+    // UTF-8 offsets for a read-only document's whole-text selection.
+    int textSelectionStart = -1;
+    int textSelectionEnd = -1;
 };
 
 // A scrolled box the frame painted, and the scrollbar drawn down its right
@@ -8478,6 +8490,9 @@ int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId);
 // A null string means the input does not expose its text. An exposed empty
 // field still has a caret and supports text queries.
 Str WindowAccessibilityTextValue(const AccessibilityNode& node);
+bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
+                                      Selection* out);
+int WindowAccessibilityTextCaret(const AccessibilityNode& node);
 // Logical lines retain their newline, including CRLF. A final newline leaves
 // an empty last line for a caret at the end of the document.
 Selection AccessibilityTextLineAt(Str text, int offset);

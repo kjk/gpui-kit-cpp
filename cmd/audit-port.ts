@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "85156303ae309925bdefa63250ca9f38b17c270b";
+const pinnedGpuiComponent = "012cfa034885a4eee2820d3517487fd2f420504f";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
@@ -266,7 +266,12 @@ const testTargets: Record<string, string[]> = {
   "base/tabs": ["tests/TabTests.cpp", "tests/AccessibilityTests.cpp"],
   "base/scrollable_mask": ["tests/ScrollbarTests.cpp"],
   "base/selectable_text": ["tests/TextSelectionTests.cpp"],
-  "base/text": ["tests/TextViewTests.cpp", "tests/MarkdownTests.cpp", "tests/TextSelectionTests.cpp"],
+  "base/text": [
+    "tests/TextViewTests.cpp",
+    "tests/MarkdownTests.cpp",
+    "tests/TextSelectionTests.cpp",
+    "tests/AccessibilityTests.cpp",
+  ],
   "base/text_selection": ["tests/TextSelectionTests.cpp"],
   "base/reduce_motion": ["tests/MotionTests.cpp"],
   "base/touch_selection": ["tests/TextSelectionTests.cpp"],
@@ -667,7 +672,7 @@ const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256
   base: {
     declaration: { count: 619, sha256: "f3a337cc383ba3e015ea6d314c2032ed95b174a58479539d5cf064cbff12b24e" },
     "pub-use": { count: 177, sha256: "309daafc726da48231d749f18a505aa3b14f0236e8bf46bfaaede354004ee7da" },
-    test: { count: 1788, sha256: "c86b897dab264a0e9018145f28919742bf12159874b3aa45a9dbf23da5b1961f" },
+    test: { count: 1790, sha256: "599d6de4206c29635a390ac938c325ad33cca3942f5a0a545d413e0cbf59e11e" },
   },
   ui: {
     declaration: { count: 480, sha256: "e238aea121151f473de81301372aca6ad86ff126a2571d8f8108c9b9445ce103" },

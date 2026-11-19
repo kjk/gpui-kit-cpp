@@ -66,7 +66,10 @@ static int AccessibilityControlType(AccessibilityRole role) {
         case AccessibilityRole::Alert:
         case AccessibilityRole::Heading:
         case AccessibilityRole::Label:
+        case AccessibilityRole::TextRun:
             return UIA_TextControlTypeId;
+        case AccessibilityRole::Document:
+            return UIA_DocumentControlTypeId;
         case AccessibilityRole::AlertDialog:
         case AccessibilityRole::Dialog:
             return UIA_WindowControlTypeId;
@@ -146,6 +149,8 @@ static const wchar_t* AccessibilityRoleName(AccessibilityRole role) {
             return L"combobox";
         case AccessibilityRole::Dialog:
             return L"dialog";
+        case AccessibilityRole::Document:
+            return L"document";
         case AccessibilityRole::Heading:
             return L"heading";
         case AccessibilityRole::Link:
@@ -1347,8 +1352,12 @@ HRESULT WinAccessibilityNode::GetSelection(SAFEARRAY** out) {
         return hr;
     }
     if (AccessibilityTextPattern(*node)) {
-        Str text = InputValue(node->input);
-        Selection selection = node->input->selectedRange;
+        Str text = WindowAccessibilityTextValue(*node);
+        Selection selection;
+        if (!WindowAccessibilityTextSelection(*node, &selection)) {
+            *out = SafeArrayCreateVector(VT_UNKNOWN, 0, 0);
+            return *out ? S_OK : E_OUTOFMEMORY;
+        }
         int lo = RopeOffsetToOffsetUtf16(text, selection.start);
         int hi = RopeOffsetToOffsetUtf16(text, selection.end);
         return AccessibilityRangeArray(
@@ -1483,8 +1492,8 @@ HRESULT WinAccessibilityNode::GetVisibleRanges(SAFEARRAY** out) {
     if (HRESULT hr = TextNode(&node); FAILED(hr)) {
         return hr;
     }
-    int n = RopeOffsetToOffsetUtf16(InputValue(node->input),
-                                    len(InputValue(node->input)));
+    Str text = WindowAccessibilityTextValue(*node);
+    int n = RopeOffsetToOffsetUtf16(text, len(text));
     return AccessibilityRangeArray(new WinTextRange(root, id, 0, n), out);
 }
 
@@ -1506,7 +1515,11 @@ HRESULT WinAccessibilityNode::RangeFromPoint(UiaPoint point,
     if (HRESULT hr = ClearedTextNode(out, &node); FAILED(hr)) {
         return hr;
     }
-    Str text = InputValue(node->input);
+    Str text = WindowAccessibilityTextValue(*node);
+    if (!node->input) {
+        *out = new WinTextRange(root, id, 0, 0);
+        return S_OK;
+    }
     POINT client = {(LONG)point.x, (LONG)point.y};
     if (!ScreenToClient(root->hwnd, &client)) {
         return UIA_E_ELEMENTNOTAVAILABLE;
@@ -1525,7 +1538,7 @@ HRESULT WinAccessibilityNode::get_DocumentRange(ITextRangeProvider** out) {
     if (HRESULT hr = ClearedTextNode(out, &node); FAILED(hr)) {
         return hr;
     }
-    Str text = InputValue(node->input);
+    Str text = WindowAccessibilityTextValue(*node);
     *out =
         new WinTextRange(root, id, 0, RopeOffsetToOffsetUtf16(text, len(text)));
     return S_OK;
@@ -1877,7 +1890,7 @@ HRESULT WinTextRange::GetBoundingRectangles(SAFEARRAY** out) {
         return UIA_E_ELEMENTNOTAVAILABLE;
     }
     Clamp();
-    bool visible = start != end;
+    bool visible = start != end && node->input;
     Bounds bounds = node->bounds;
     if (visible && InputIsSingleLine(node->input)) {
         Str text = Text();

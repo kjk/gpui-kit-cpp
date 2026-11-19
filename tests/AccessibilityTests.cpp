@@ -1219,7 +1219,69 @@ static void ButtonExposesOptionalDisclosureState() {
     FreeAccessibilityFrame(&f);
 }
 
+// text/state.rs accessibility_text_follows_the_rendered_text and the
+// a11y_text integration test for the TextView document.
+static void TextViewPublishesItsRenderedBodyToAccessibility() {
+    struct View {
+        Entity<TextViewState> text;
+        static El* Render(View* self, Ctx* cx) {
+            return Div(cx->a)
+                ->FlexCol()
+                ->W(300)
+                ->Child(TextEl(cx->a, StrL("Outside label"))
+                            ->Role(AccessibilityRole::Label))
+                ->Child(TextView::New(cx, self->text)->Selectable()->IntoEl());
+        }
+    };
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<View>(app);
+    View* self = view.Get(app);
+    self->text = TextViewState::Markdown(app, StrL("Hello **world**"));
+    TextViewState* state = self->text.Get(app);
+    Window* win = TestWindowOpen(app, view, 420, 240, 1);
+    auto document = [&]() {
+        return RoleNode(win->accessibility, AccessibilityRole::Document);
+    };
+    auto checkText = [&](Str expected) {
+        const AccessibilityNode* node = document();
+        utassert(node &&
+                 StrEq(StrTrim(WindowAccessibilityTextValue(*node)), expected));
+    };
+    checkText(StrL("Hello world"));
+    const AccessibilityNode* run =
+        RoleNode(win->accessibility, AccessibilityRole::TextRun);
+    utassert(run && StrEq(run->info.value, StrL("Hello world")));
+    utassert(run && run->parent >= 0 &&
+             &win->accessibility[run->parent] == document());
+    utassert(RoleNode(win->accessibility, AccessibilityRole::Label));
+    Selection selected;
+    const AccessibilityNode* first = document();
+    utassert(first && !WindowAccessibilityTextSelection(*first, &selected));
+    const Str* cached = state->AccessibilityText(win).lines;
+    TestDraw(win);
+    utassert(state->AccessibilityText(win).lines == cached);
+
+    state->PushStr(StrL("\n\n- item"), app, win);
+    TestRunUntilParked(app);
+    TestDraw(win);
+    checkText(StrL("Hello world\nitem"));
+    state->SetText(StrL("Other"), app, win);
+    TestRunUntilParked(app);
+    TestDraw(win);
+    checkText(StrL("Other"));
+
+    state->SelectAll(win, app);
+    TestDraw(win);
+    const AccessibilityNode* last = document();
+    utassert(last && WindowAccessibilityTextSelection(*last, &selected));
+    utassert(selected.start == 0 && selected.end == 5);
+    utassert(last && !(last->actions & AccessibilityActionSetValue));
+    TestAppFree(app);
+}
+
 void TestAccessibility() {
+    TextViewPublishesItsRenderedBodyToAccessibility();
     ButtonExposesOptionalDisclosureState();
     AMixedCheckboxUsesTheDashAndRequestsChecked();
     TestSuite("accessibility");

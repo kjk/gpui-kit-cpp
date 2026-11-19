@@ -6868,6 +6868,31 @@ gpui::RenderedText TextViewState::RenderedText() const {
     return out;
 }
 
+AccessibilityDocumentText TextViewState::AccessibilityText(Window* window) {
+    Str value = RenderedText().text;
+    if (!value.s) return {};
+    if (accessibilityLineRevision != renderedRevision) {
+        VecClear(accessibilityLines);
+        int first = 0;
+        const int count = len(value);
+        for (int i = 0; i < count; i++) {
+            if (value.s[i] != '\n') continue;
+            VecAppend(accessibilityLines, Str(value.s + first, i - first));
+            first = i + 1;
+        }
+        if (first < count) {
+            VecAppend(accessibilityLines, Str(value.s + first, count - first));
+        }
+        accessibilityLineRevision = renderedRevision;
+    }
+    const WindowSelection* selected = window ? window->sel : nullptr;
+    bool all = selected && selectAllAnchor >= 0 &&
+               selected->anchor == selectAllAnchor &&
+               selected->cursor == selectAllCursor &&
+               WindowSelectionHasEntity(window, self);
+    return {value, accessibilityLines.els, len(accessibilityLines), all};
+}
+
 RangeHighlightError TextViewState::SetRangeHighlights(
     const RangeHighlight* highlights, int count, App* app, Window* window) {
     if (format != TextViewFormat::Markdown) {
@@ -8223,6 +8248,16 @@ El* TextView::RenderDocument(MdNode* doc) {
     return col;
 }
 
+struct TextViewAccessibilitySource {
+    TextViewState* state = nullptr;
+    Window* window = nullptr;
+};
+
+static AccessibilityDocumentText TextViewAccessibility(void* data) {
+    auto* source = (TextViewAccessibilitySource*)data;
+    return source->state->AccessibilityText(source->window);
+}
+
 El* TextView::IntoEl() {
     TextView* inheritedBuilder = nullptr;
     if (!inheritedColorResolved && !textViewStyleSet &&
@@ -8484,6 +8519,14 @@ El* TextView::IntoEl() {
         inheritedBuilder->textViewStyle = textViewStyle;
         revealed->lifecycle->prepareStyle = &TextView::PrepareInheritedColor;
         revealed->lifecycle->user = inheritedBuilder;
+    }
+    element->Role(AccessibilityRole::Document);
+    if (managed) {
+        if (!element->lifecycle) element->lifecycle = ArenaNew<ElLifecycle>(a);
+        auto* access = ArenaNew<TextViewAccessibilitySource>(a);
+        *access = {managed, cx->win};
+        element->lifecycle->accessibilityDocument = &TextViewAccessibility;
+        element->lifecycle->accessibilityDocumentData = access;
     }
     return element;
 }

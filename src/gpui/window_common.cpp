@@ -332,6 +332,8 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(node.parent);
         GPUI_A11Y_HASH(node.actions);
         GPUI_A11Y_HASH(node.focusId);
+        GPUI_A11Y_HASH(node.textSelectionStart);
+        GPUI_A11Y_HASH(node.textSelectionEnd);
         GPUI_A11Y_HASH(info.role);
         hash = AccessibilityHashStr(hash, info.authorId);
         hash = AccessibilityHashStr(hash, info.label);
@@ -1532,6 +1534,7 @@ int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId) {
 }
 
 Str WindowAccessibilityTextValue(const AccessibilityNode& node) {
+    if (node.info.role == AccessibilityRole::Document) return node.info.value;
     if (!node.input || !node.info.value.s ||
         !AccessibilityRoleTakesText(node.info.role) ||
         node.info.role == AccessibilityRole::PasswordInput ||
@@ -1540,6 +1543,23 @@ Str WindowAccessibilityTextValue(const AccessibilityNode& node) {
     }
     Str text = InputValue(node.input);
     return text.s ? text : StrL("");
+}
+
+bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
+                                      Selection* out) {
+    if (!out || !WindowAccessibilityTextValue(node).s) return false;
+    if (node.input) {
+        *out = node.input->selectedRange;
+        return true;
+    }
+    if (node.textSelectionStart < 0) return false;
+    *out = {node.textSelectionStart, node.textSelectionEnd};
+    return true;
+}
+
+int WindowAccessibilityTextCaret(const AccessibilityNode& node) {
+    if (node.input) return InputCursor(node.input);
+    return std::max(0, node.textSelectionEnd);
 }
 
 Selection AccessibilityTextLineAt(Str text, int offset) {
@@ -1565,7 +1585,7 @@ bool WindowAccessibilityTextRangeBounds(Window* win,
                                         const AccessibilityNode& node,
                                         Selection range, Bounds* out) {
     Str text = WindowAccessibilityTextValue(node);
-    if (!text.s || !out || !InputIsSingleLine(node.input) ||
+    if (!text.s || !out || !node.input || !InputIsSingleLine(node.input) ||
         !StrEq(text, node.info.value)) {
         return false;
     }
