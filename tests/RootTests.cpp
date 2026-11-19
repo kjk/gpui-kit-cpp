@@ -190,8 +190,57 @@ static void SizeFullViewFillsWindowHeight(bool themed) {
     TestAppFree(app);
 }
 
+struct RootTraversalView {
+    bool showMiddle = true;
+    FocusHandle stops[3];
+
+    static El* Render(RootTraversalView* self, Ctx* cx) {
+        El* row = Div(cx->a)->FlexRow();
+        const char* names[] = {"First", "Middle", "Last"};
+        for (int i = 0; i < 3; i++) {
+            if (i == 1 && !self->showMiddle) continue;
+            row->Child(component::Button::New(cx, Str(names[i]))
+                           ->Label(Str(names[i]))
+                           ->TrackFocus(self->stops[i])
+                           ->IntoEl());
+        }
+        return row;
+    }
+};
+
+// kit/tests/integration/root_focus.rs: a blank window accepts either Tab
+// direction, including after a focused control is removed.
+static void UnfocusedRootTabsStartAtTheWindowEdge() {
+    for (bool backward : {false, true}) {
+        App* app = TestAppNew();
+        component::Init(app);
+        auto content = EntityNew<RootTraversalView>(app);
+        auto* view = content.Get(app);
+        for (auto& stop : view->stops) stop = FocusHandleNew(app);
+        Window* win = TestWindowOpen(app, content, 400, 200, 1);
+        win->root = gpui::Root::New(app, win, content.id).id;
+        TestDraw(win);
+        utassert(win->focusId == 0);
+        TestSimulateKeystrokes(win, "ctrl-tab");
+        utassert(win->focusId == 0);
+        TestSimulateKeystrokes(win, backward ? "shift-tab" : "tab");
+        utassert(FocusHandleIsFocused(win, view->stops[backward ? 2 : 0]));
+        TestSimulateKeystrokes(win, backward ? "shift-tab" : "tab");
+        utassert(FocusHandleIsFocused(win, view->stops[1]));
+        view->showMiddle = false;
+        Ctx cx = {app, win, win->frameArena, content.id};
+        Notify(&cx);
+        TestDraw(win);
+        utassert(win->focusId == 0);
+        TestSimulateKeystrokes(win, "tab");
+        utassert(FocusHandleIsFocused(win, view->stops[0]));
+        TestAppFree(app);
+    }
+}
+
 void TestRoot() {
     TestSuite("root");
+    UnfocusedRootTabsStartAtTheWindowEdge();
     PluginRegistrationIsIdempotentAndStateIsPerWindow();
     TheLastDialogThatWantsAnOverlayShowsIt();
     AnOpenSheetPushesTheNotificationsIn();

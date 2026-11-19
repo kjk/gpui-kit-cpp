@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b63a46f85225c73d33cee8c374e692bc3c9b74b3",
+  sha: "3fbbaec1cd13fa558d996f02721850093898e95e",
   date: "2026-11-18",
-  subject: "input: Start each paragraph of a text area at the edge it reads from (#4016)",
+  subject: "root: Make Tab work before anything is focused (#4017)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

@@ -11030,6 +11030,16 @@ void AccessibilityCollect(El* root, Vec<AccessibilityNode>* out) {
 }
 
 void FocusCollect(Window* win, El* root) {
+    int focused = win->focusId;
+    bool wasTracked = false;
+    if (focused) {
+        for (const FocusRect& stop : win->focusEls) {
+            if (stop.id == focused) {
+                wasTracked = true;
+                break;
+            }
+        }
+    }
     VecClear(win->focusEls);
     VecClear(win->dispatch);
     CollectFocus(root, win, 0, {}, {}, {}, {}, 0);
@@ -11045,6 +11055,14 @@ void FocusCollect(Window* win, El* root) {
             j--;
         }
         win->focusEls[j + 1] = fr;
+    }
+    // When the focused control disappears, the next Tab starts at the
+    // window edge. A fresh handle can still be focused before its first draw.
+    if (wasTracked && win->focusId == focused) {
+        for (const FocusRect& stop : win->focusEls) {
+            if (stop.id == focused) return;
+        }
+        WindowSetFocusId(win, 0);
     }
 }
 
@@ -11253,7 +11271,7 @@ static bool FocusNextStop(const Window* win, int fromId, int trapId,
         }
     }
     int step = backward ? -1 : 1;
-    int i = cur;
+    int i = cur < 0 && backward ? 0 : cur;
     for (int k = 0; k < n; k++) {
         i = (i + step + n) % n;
         if (!win->focusEls[i].tabStop) {

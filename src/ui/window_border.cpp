@@ -183,7 +183,7 @@ El* WindowBorder::IntoEl() {
             cx->win->paint.clientInset = 0;
             cx->win->clientInset = 0;
         }
-        El* backdrop = Div(a)->PathId(StrL("window-backdrop"))->SizeFull();
+        El* backdrop = Div(a)->PathClick(StrL("window-backdrop"))->SizeFull();
         if (child) backdrop->Child(child);
         return backdrop;
     }
@@ -196,7 +196,7 @@ El* WindowBorder::IntoEl() {
     Corners corners = WindowCornerRadii(th.windowRadius, true, effectiveTiling);
 
     El* backdrop = Div(a)
-                       ->PathId(StrL("window-backdrop"))
+                       ->PathClick(StrL("window-backdrop"))
                        ->FlexCol()
                        ->SizeFull()
                        ->ClipX()

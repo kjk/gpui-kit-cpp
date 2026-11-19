@@ -1245,7 +1245,7 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     // GPUI, the outermost key context there is, so a field indenting with it
     // and a binding over it both come first. Only a tab nobody wanted walks
     // the focus.
-    if (!eaten && key == KeyTab) {
+    if (!eaten && key == KeyTab && !ctrl && !alt && !platform && !function) {
         FocusTrapTab(win, shift);
         AppInvalidate(win);
         return true;

@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b63a46f85225c73d33cee8c374e692bc3c9b74b3` (2026-11-18,
-input: Start each paragraph of a text area at the edge it reads from (#4016)).
-Textarea paragraphs align each visual row using the first strong Unicode
-direction of the paragraph. Painting, selection, caret movement and hit
-testing use the aligned row coordinates.
+Processed through `3fbbaec1cd13fa558d996f02721850093898e95e` (2026-11-18,
+root: Make Tab work before anything is focused (#4017)).
+Tab and Shift-Tab enter an unfocused window at its first or last control.
+Window backdrop identity leaves the tab order, removing a tracked focused
+element clears its handle, and app bindings retain priority.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
