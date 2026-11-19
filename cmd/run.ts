@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4594350df33ea1496d412dd665d0a2b90c5954bb",
+  sha: "553b6a22099db37adac7d7f37583975d40407c20",
   date: "2026-11-14",
-  subject: "input: Reveal the caret after a long single-line paste (#3967)",
+  subject: "input: add text decorations to `TextareaState` (#3970)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

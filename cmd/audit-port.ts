@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "4594350df33ea1496d412dd665d0a2b90c5954bb";
+const pinnedGpuiComponent = "553b6a22099db37adac7d7f37583975d40407c20";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
@@ -401,6 +401,10 @@ const declarationMappings: Record<string, DeclarationMapping> = {
   "base/input/editor/language.rs::fn set_language_provider": {
     spellings: ["InputSetLanguageProvider"],
   },
+  "base/input/base/kind.rs::struct TextareaExtras": {
+    collapse:
+      "InputState owns the textarea's single layer in its existing decoration store, exposed by InputTextareaSetDecorations and InputTextareaDecorations",
+  },
   "base/input/base/state.rs::struct PrepaintCaretGeometry": {
     collapse:
       "the stash is InputState caretWinX/Y, lastLineH, inputBounds and scroll, written at write-back so a menu prepaint in the same frame can read it; there is no separate geometry struct",
@@ -660,9 +664,9 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 616, sha256: "ed35e4fb17e6b9cf0c72ec56b7c76e7512f9f9fde1646be63360dea105b0ff06" },
-    "pub-use": { count: 177, sha256: "da15e3c583ea178e6ea06079359c8bde0ce210b18e8cb795e02c32a6778a950d" },
-    test: { count: 1721, sha256: "cae4baae9fc963865956787d20baf91ccd4cdce87e2bc78e710907ffdd2a438d" },
+    declaration: { count: 617, sha256: "32bc8a174e57fc03047ee74351c5f617bb9be270f673c9c8de693a29d08112f0" },
+    "pub-use": { count: 177, sha256: "4047279015bbdad234a2780a09009847bebb27d6d685394e33eef80740361a0c" },
+    test: { count: 1722, sha256: "17f75fd9f677d5bfebc1c532642566198c2978eacb68e1ae34690069ebc1d84f" },
   },
   ui: {
     declaration: { count: 478, sha256: "3534c842a12b080cba2b62c17bbac5c222159098d08d963baa1e59f46ab7d3ef" },

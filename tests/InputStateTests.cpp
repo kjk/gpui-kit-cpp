@@ -7990,6 +7990,45 @@ static void MarkB(const InputView& v, const char* text,
     InputReplaceAndMarkText(v.input, v.app, v.win, nullptr, Str(text), sel);
 }
 
+// editor/decorations.rs textarea_decorations_follow_edits_and_render.
+static void TextareaDecorationsFollowEditsAndRender() {
+    InputView view = InputViewBuildTextarea();
+    InputState* s = view.input;
+    InputSetValue(s, StrL("héllo world"));
+    TextSpan style;
+    style.color = Rgb(0x10, 0x40, 0x80);
+    TextDecoration marks[] = {TextDecoration::New({2, 4}, style),
+                              TextDecoration::New({7, 12}, style),
+                              TextDecoration::New({100, 200}, style)};
+    InputTextareaSetDecorations(s, marks, 3, nullptr);
+    int count = 0;
+    const TextDecoration* current = InputTextareaDecorations(s, &count);
+    utassert(count == 2);
+    utassert(current && current[0].range.start == 1 &&
+             current[0].range.end == 4);
+    Selection at = {0, 0};
+    InputReplaceTextInRange(s, view.app, view.win, &at, StrL("ab"));
+    at = {5, 5};
+    InputReplaceTextInRange(s, view.app, view.win, &at, StrL("x"));
+    at = {9, 14};
+    InputReplaceTextInRange(s, view.app, view.win, &at, Str{});
+    utassert(ViewValueIs(view, "abhéxllod"));
+    current = InputTextareaDecorations(s, &count);
+    utassert(count == 2);
+    utassert(current && current[0].range.start == 3 &&
+             current[0].range.end == 7);
+    utassert(current && current[1].range.start == 9 &&
+             current[1].range.end == 10);
+    TextSpan spans[2] = {};
+    utassert(InputDecorationSpans(s, spans, 2) == 2);
+    utassert(spans[0].lo == 3 && spans[1].hi == 10);
+    TestDraw(view.win);
+    InputSetValue(s, StrL(""));
+    InputTextareaDecorations(s, &count);
+    utassert(count == 0);
+    InputViewFree(&view);
+}
+
 struct KeptPreeditEvents {
     int changes = 0;
     int edits = 0;
@@ -8835,6 +8874,7 @@ static void RunWindowTestsB() {
     UndoManagerMultilineReplacementIsOneAtomicTransaction();
     UndoManagerCompositionIsolatedFromLongTyping();
     UnmarkReportsTheKeptPreeditAsOneChange();
+    TextareaDecorationsFollowEditsAndRender();
     UndoManagerSelectedReplacementIsAtomic();
     NumberInputLeadingDotEditable();
     NumberInputEscapeInvalidText();

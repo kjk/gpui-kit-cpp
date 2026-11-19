@@ -16,14 +16,18 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4594350df33ea1496d412dd665d0a2b90c5954bb` (2026-11-14,
-input: Reveal the caret after a long single-line paste (#3967)).
-Reveal the single-line caret from freshly shaped text on the first frame
-after paste. Programmatic value replacement keeps the beginning in view.
+Processed through `553b6a22099db37adac7d7f37583975d40407c20` (2026-11-14,
+input: add text decorations to `TextareaState` (#3970)).
+Give textareas one owner-supplied decoration layer using the existing UTF-8
+normalization, range tracking and native TextSpan drawing path.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
 ## Known gaps vs Rust
+
+- **Textarea decoration styling uses `TextSpan`.** The layer follows edits
+  and supports text color, background and underline. Rust's highlight
+  style can also change the glyph weight within the run.
 
 - **The Markdown example renders MathJax on a background worker.** Native
   builds use Node and the optional website installation. The browser and a

@@ -929,6 +929,46 @@ TextDecorationCollection InputCreateDecorationsCollection(
     return DecorationsCreate(s->textDecorations, decorations, n);
 }
 
+void InputTextareaSetDecorations(InputState* s, const TextDecoration* items,
+                                 int n, Ctx* cx) {
+    if (!s || s->kind != InputKind::Textarea) return;
+    Vec<TextDecoration> next;
+    Str text = InputValue(s);
+    for (int i = 0; items && i < n; i++) {
+        TextDecoration item;
+        if (NormalizeDecoration(text, items[i], &item)) VecAppend(next, item);
+    }
+    if (!s->textDecorations) {
+        if (len(next) == 0) return;
+        s->textDecorations = new DecorationCollectionsState();
+        s->textDecorations->input = s;
+        DecorationsCreate(s->textDecorations, nullptr, 0);
+    }
+    Vec<TextDecoration>& old = s->textDecorations->entries[0]->decorations;
+    bool same = len(old) == len(next);
+    for (int i = 0; same && i < len(next); i++) {
+        const TextSpan& a = old[i].style;
+        const TextSpan& b = next[i].style;
+        same = a.lo == b.lo && a.hi == b.hi && RgbaEq(a.color, b.color) &&
+               RgbaEq(a.bg, b.bg) && a.underline == b.underline &&
+               a.wavy == b.wavy;
+    }
+    if (!same) {
+        old = next;
+        if (cx) Notify(cx);
+    }
+}
+
+const TextDecoration* InputTextareaDecorations(const InputState* s,
+                                               int* count) {
+    if (count) *count = 0;
+    if (!s || s->kind != InputKind::Textarea || !s->textDecorations)
+        return nullptr;
+    const auto& items = s->textDecorations->entries[0]->decorations;
+    if (count) *count = len(items);
+    return items.els;
+}
+
 int InputDecorationSpans(const InputState* s, TextSpan* out, int cap) {
     return s ? DecorationsBuildSpans(s->textDecorations, out, cap) : 0;
 }

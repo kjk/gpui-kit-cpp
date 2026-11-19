@@ -269,6 +269,13 @@ RangeDecorationCollection InputCreateRangeDecorationsCollection(
 // collection of text decorations, moved by every edit as the range
 // decorations are and drawn over the highlighter's runs. A textarea has
 // no extras, so the call is a no-op there.
+// The textarea owns one layer. The getter's array lives until the next
+// edit or replacement. Both APIs operate on UTF-8 byte ranges.
+void InputTextareaSetDecorations(InputState* s,
+                                 const TextDecoration* decorations, int n,
+                                 Ctx* cx);
+const TextDecoration* InputTextareaDecorations(const InputState* s, int* count);
+
 TextDecorationCollection InputCreateDecorationsCollection(
     InputState* s, const TextDecoration* decorations, int n);
 // EditorExtras::decoration_layers, flattened: the collections' runs, ordered
