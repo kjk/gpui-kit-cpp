@@ -608,7 +608,56 @@ static void SystemRegistryBroadRemovalIncludesEveryKey() {
     NotificationSystemDismissAll(kWinA);
 }
 
+struct NotificationOverModal {
+    Bounds body = {};
+    int clicks = 0;
+
+    static void Click(NotificationOverModal* self, Ctx*, const ClickEvent*) {
+        self->clicks++;
+    }
+    static El* Render(NotificationOverModal* self, Ctx* cx) {
+        return Div(cx->a)->W(80)->H(32)->BoundsOut(&self->body);
+    }
+};
+
+struct NotificationTestModal {
+    static El* Render(NotificationTestModal*, Ctx* cx) {
+        return gpui::Dialog::New(cx)
+            ->Backdrop(Div(cx->a)->Absolute()->Inset0()->StopMouseDown())
+            ->Popup(Div(cx->a)->W(180)->H(120))
+            ->IntoEl();
+    }
+};
+
+static void ANotificationStaysAboveTheModalBackdrop() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Window* win = WindowAlloc(app, WinOpts{});
+    win->paint.dpi = 96;
+    win->paint.viewW = 720;
+    win->paint.viewH = 480;
+    win->root = gpui::Root::New(app, win, {}).id;
+    TestDraw(win);
+
+    auto body = EntityNew<NotificationOverModal>(app);
+    Ctx cx = {app, win, win->frameArena, body.id};
+    WindowOpenDialog(&cx, EntityNew<NotificationTestModal>(app));
+    Notification item = Notification::Info(StrL("Ready"));
+    item.Content(body.id)
+        .Autohide(false)
+        .OnClick(Listen(&cx, &NotificationOverModal::Click));
+    WindowPushNotification(&cx, item);
+    TestAdvanceClock(app, 400);
+    TestDraw(win);
+    auto* probe = body.Get(app);
+    utassert(probe->body.w > 0 && probe->body.h > 0);
+    TestSimulateClick(win, {probe->body.CenterX(), probe->body.CenterY()});
+    utassert(probe->clicks == 1);
+    TestAppFree(app);
+}
+
 void TestNotification() {
+    ANotificationStaysAboveTheModalBackdrop();
     TestSuite("notification");
     gNotificationWinA.app = &gNotificationApp;
     gNotificationWinB.app = &gNotificationApp;

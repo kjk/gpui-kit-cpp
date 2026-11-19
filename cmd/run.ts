@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f697c3133d55c64fa8a5b67926147fb3dadd276d",
+  sha: "f1d1f5a6f709340fd02db8a78a7bc5d018b487be",
   date: "2026-11-16",
-  subject: "chore: Bump v0.10.0 (#3992)",
+  subject: "notification: Keep notifications above modal layers (#3577)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f697c3133d55c64fa8a5b67926147fb3dadd276d` (2026-11-16,
-chore: Bump v0.10.0 (#3992)).
-Update tracked gpui-kit crate versions to 0.10.0. Rust optional backend
-compatibility is handled by the existing C++ runtime adapters.
+Processed through `f1d1f5a6f709340fd02db8a78a7bc5d018b487be` (2026-11-16,
+notification: Keep notifications above modal layers (#3577)).
+Paint and hit-test the notification stack above modal layers, including Base
+dialogs. Verify a toast can still be clicked over a backdrop.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

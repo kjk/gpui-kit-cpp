@@ -94,7 +94,9 @@ El* WindowStateLayers(Ctx* cx) {
                         ->Right(safe.right)
                         ->Bottom(safe.bottom)
                         ->Child(inner);
-        add(layer->Deferred());
+        // Sheets and dialog backdrops share the deferred popup layer.
+        // The notification stack sits above their modal surfaces.
+        add(layer->Deferred()->ZIndex(1));
     }
     if (wl->hasSheet) {
         if (El* s = EntityRender(cx->app, cx->win, a, wl->sheet.view)) {
