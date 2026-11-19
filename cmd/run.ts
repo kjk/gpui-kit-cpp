@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f1d1f5a6f709340fd02db8a78a7bc5d018b487be",
+  sha: "60556a78a369e13a4c08232f579535aeb288f063",
   date: "2026-11-16",
-  subject: "notification: Keep notifications above modal layers (#3577)",
+  subject: "text: Stop sweeping retained layouts that are all alive (#4000)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

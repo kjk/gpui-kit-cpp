@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f1d1f5a6f709340fd02db8a78a7bc5d018b487be` (2026-11-16,
-notification: Keep notifications above modal layers (#3577)).
-Paint and hit-test the notification stack above modal layers, including Base
-dialogs. Verify a toast can still be clicked over a backdrop.
+Processed through `60556a78a369e13a4c08232f579535aeb288f063` (2026-11-16,
+text: Stop sweeping retained layouts that are all alive (#4000)).
+Review the retained InlineState cleanup change. C++ builds from cached MdRun
+data and has no size-triggered sweep of live inline layouts.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
