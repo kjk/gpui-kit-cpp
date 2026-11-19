@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8da4e005258ac0aac9a6a332cce746eeaafa08a8` (2026-11-08,
-motion: Add `TransitionState` for transitions that outlive their element
-(#3841)).
-A caller can keep a value transition across unmounts and sample it with the
-same timing and reversal rules as a keyed transition.
+Processed through `b87b4fbed480ab74c85ba0b09577f50502752a06` (2026-11-08,
+text: Avoid quadratic paragraph highlight merging (#3846)).
+Rust combines marks within each node before appending its spans. The C++
+projectors already append resolved runs through a tail pointer. The regression
+verifies overlapping marks and UTF-8 offsets over many runs.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

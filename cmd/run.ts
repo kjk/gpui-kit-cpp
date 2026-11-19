@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8da4e005258ac0aac9a6a332cce746eeaafa08a8",
+  sha: "b87b4fbed480ab74c85ba0b09577f50502752a06",
   date: "2026-11-08",
-  subject: "motion: Add `TransitionState` for transitions that outlive their element (#3841)",
+  subject: "text: Avoid quadratic paragraph highlight merging (#3846)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

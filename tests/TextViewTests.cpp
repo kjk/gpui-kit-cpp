@@ -277,6 +277,50 @@ static void TestHtmlNestedMarks(Arena* a) {
 
 // Whitespace between block elements is layout, not content; inside a
 // paragraph a run of it collapses to one space.
+static void TestParagraphHighlightRuns(Arena* a) {
+    // text/node.rs, paragraph_highlights_preserve_overlaps_and_utf8_boundaries
+    // and paragraph_highlight_builders_merge_each_mark_once. The HTML and
+    // Markdown projectors emit disjoint MdRuns with the marks already combined.
+    Str segment = StrL(
+        "<b>a<i>\xE4\xBD\xA0<code>\xF0\x9F\x99\x82</code></i></b>"
+        "<a href='https://example.com'><b>\xE5\x85\x83</b>b</a>");
+    const Str texts[] = {StrL("a"), StrL("\xE4\xBD\xA0"),
+                         StrL("\xF0\x9F\x99\x82"), StrL("\xE5\x85\x83"),
+                         StrL("b")};
+    const int marks[] = {MdBold, MdBold | MdItalic, MdBold | MdItalic | MdCode,
+                         MdLink | MdBold, MdLink};
+    const int ends[] = {1, 4, 8, 11, 12};
+    for (int count : {1, 64, 128}) {
+        StrBuilder source(a);
+        source.Append(StrL("<p>"));
+        for (int i = 0; i < count; i++) {
+            source.Append(segment);
+        }
+        source.Append(StrL("</p>"));
+        const MdNode* paragraph = Child(HtmlParse(a, source.TakeStr()), 0);
+        utassert(paragraph && paragraph->kind == MdKind::Paragraph);
+        const MdRun* run = paragraph ? paragraph->runFirst : nullptr;
+        const MdRun* last = nullptr;
+        for (int i = 0; i < count; i++) {
+            int offset = 0;
+            for (int j = 0; j < 5; j++) {
+                utassert(run && StrEq(run->text, texts[j]));
+                if (!run) {
+                    break;
+                }
+                offset += len(run->text);
+                utassert(offset == ends[j] && run->marks == marks[j]);
+                if (marks[j] & MdLink) {
+                    utassert(StrEq(run->href, StrL("https://example.com")));
+                }
+                last = run;
+                run = run->next;
+            }
+        }
+        utassert(!run && paragraph && paragraph->runLast == last);
+    }
+}
+
 static void TestHtmlWhitespace(Arena* a) {
     MdNode* doc = HtmlParse(a, StrL("<div>\n   <p>one\n   two</p>\n</div>"));
     MdNode* div = Child(doc, 0);
@@ -9894,6 +9938,7 @@ void TestTextView() {
     TestHtmlBlocks(a);
     TestHtmlInlineMarks(a);
     TestHtmlNestedMarks(a);
+    TestParagraphHighlightRuns(a);
     TestHtmlWhitespace(a);
     TestHtmlEntities(a);
     TestHtmlNestingHasNoPortLimit(a);
