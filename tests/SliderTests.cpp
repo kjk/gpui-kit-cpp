@@ -654,6 +654,40 @@ static void LeftAndRightFollowTheHorizontalLayoutDirection() {
     utassertnear(slider.value.End(), 60.f);
 }
 
+// slider.rs accessibility_set_value_moves_the_reported_thumb.
+static void AccessibilitySetsTheReportedThumbAndEmitsBothEvents() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<KeyboardSliderView>(app);
+    auto* self = view.Get(app);
+    self->slider = SliderStateNew(1, 101, SliderRange(21, 61), 5);
+    Window* win = TestWindowOpen(app, view, 300, 200, 1);
+    uint32_t nodeId = 0;
+    for (const AccessibilityNode& node : win->accessibility) {
+        if (node.info.role == AccessibilityRole::Slider) nodeId = node.id;
+    }
+    utassert(nodeId != 0);
+    auto set = [&](float request, float expected, int events) {
+        self->count = 0;
+        (void)WindowAccessibilitySetNumericValue(win, nodeId, request);
+        utassertnear(self->slider.value.Start(), 21.f);
+        utassertnear(self->slider.value.End(), expected);
+        utassert(self->count == events);
+        if (events) {
+            utassert(self->events[0].kind == SliderEventKind::Change);
+            utassert(self->events[1].kind == SliderEventKind::Release);
+            utassertnear(self->events[1].value.End(), expected);
+        }
+    };
+    set(73, 71, 2);
+    set(71, 71, 0);
+    set(NAN, 71, 0);
+    set(INFINITY, 71, 0);
+    set(-100, 21, 2);
+    set(200, 101, 2);
+    TestAppFree(app);
+}
+
 void TestSlider() {
     TestSuite("slider");
     ValueConversionsAndClampingArePreserved();
@@ -681,6 +715,7 @@ void TestSlider() {
     AContinuousSliderStepsByAHundredthOfItsRange();
     SteppingLeavesAnInvalidValueOrRangeAlone();
     AccessibilityStepsReportMovesAndKeepRanges();
+    AccessibilitySetsTheReportedThumbAndEmitsBothEvents();
     AFocusedSliderStepsOnKeysAndReportsEachStep();
     LeftAndRightFollowTheHorizontalLayoutDirection();
 }

@@ -166,7 +166,7 @@ float SliderAccessibilityStep(const SliderState* s) {
     return SliderIsStep(s->step) ? s->step : (s->max - s->min) / 100.f;
 }
 
-bool SliderStepThumb(SliderState* s, bool isStart, float delta) {
+bool SliderSetThumbValue(SliderState* s, bool isStart, float target) {
     if (!s || !(s->min <= s->max)) {
         return false;
     }
@@ -176,8 +176,7 @@ bool SliderStepThumb(SliderState* s, bool isStart, float delta) {
         return false;
     }
     bool movesStart = isStart && value.range;
-    float current = movesStart ? value.Start() : value.End();
-    float next = SliderSnapToStep(current + delta, s->min, s->max, s->step);
+    float next = SliderSnapToStep(target, s->min, s->max, s->step);
     next = fmaxf(fminf(next, s->max), s->min);
     if (movesStart) {
         SliderValueSetStart(&value, next);
@@ -189,6 +188,13 @@ bool SliderStepThumb(SliderState* s, bool isStart, float delta) {
     }
     SliderSetValue(s, value);
     return true;
+}
+
+bool SliderStepThumb(SliderState* s, bool isStart, float delta) {
+    if (!s) return false;
+    float current =
+        isStart && s->value.range ? s->value.Start() : s->value.End();
+    return SliderSetThumbValue(s, isStart, current + delta);
 }
 
 bool SliderUpdateByPosition(SliderState* s, Axis axis, Point pos, bool isStart,

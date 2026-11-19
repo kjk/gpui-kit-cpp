@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `12945cca14f1172164f75f6b282097b94898713d` (2026-11-14,
-text: Keep a code span's leading white space when a fold starts beside it
-(#3962)).
-Keep leading whitespace in Markdown code runs, even when surrounding prose
-folds at the same boundary.
+Processed through `29815946162a745a513c8c9e4ffbf51592751890` (2026-11-14,
+slider: Handle numeric accessibility SetValue requests (#3963)).
+Route accessibility SetValue through the same thumb snapping and
+change/release path as keyboard steps. Headless coverage checks offset step
+grids, range bounds and nonfinite values.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

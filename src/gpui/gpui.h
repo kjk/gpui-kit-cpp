@@ -6727,6 +6727,7 @@ bool SliderHandleRelease(SliderState* s);
 // moves. Continuous sliders report and move by a hundredth of their range.
 float SliderAccessibilityStep(const SliderState* s);
 bool SliderStepThumb(SliderState* s, bool isStart, float delta);
+bool SliderSetThumbValue(SliderState* s, bool isStart, float target);
 // Step a focused slider from the keyboard. dir is +1 or -1.
 bool SliderStepBy(SliderState* s, int dir, bool isStart);
 // Moves one end of the value to `want`, clamped the way a drag is: inside the

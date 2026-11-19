@@ -1643,21 +1643,11 @@ bool WindowAccessibilitySetNumericValue(Window* win, uint32_t nodeId,
         return false;
     }
     AccessibilityNode node = *found;
-    SliderState* slider = node.slider;
-    float lo = slider->value.range ? slider->value.lo : slider->min;
-    value = ClampF(value, lo, slider->max);
-    if (slider->step > 0) {
-        value = roundf(value / slider->step) * slider->step;
-        value = ClampF(value, lo, slider->max);
+    if (!isfinite(value)) return false;
+    if (SliderSetThumbValue(node.slider, false, value)) {
+        SliderEmitStep(win, node.slider);
+        AppInvalidate(win);
     }
-    if (value == slider->value.End()) {
-        return true;
-    }
-    SliderValue next = slider->value;
-    SliderValueSetEnd(&next, value);
-    SliderSetValue(slider, next);
-    SliderEmit(win, slider, SliderEventKind::Change);
-    AppInvalidate(win);
     return true;
 }
 
