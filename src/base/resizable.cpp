@@ -360,6 +360,7 @@ ResizablePanelGroup* ResizablePanelGroup::H(float v) {
 }
 void SharedHandleState::OnDown(SharedHandleState* self, Ctx* cx,
                                const MouseDownEvent* ev) {
+    if (!ev || ev->button != MouseButton::Left) return;
     // `if bounds.contains(&ev.position)`: the listener is the element's, so
     // being called is already the answer to that.
     bool changed = self->Set(ResizeHandleState::Pressed);

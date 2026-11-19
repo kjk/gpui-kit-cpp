@@ -9411,6 +9411,26 @@ static void AltDragOverAShortRowKeepsTheBlockWidth() {
     InputViewFree(&view);
 }
 
+// state.rs test_lost_mouse_release_ends_selection_on_plain_motion.
+static void LostMouseReleaseEndsEditorSelectionOnPlainMotion() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "|alpha bravo charlie delta");
+    Bounds a = {}, b = {}, c = {};
+    utassert(InputRangeToBounds(view.input, view.win, {0, 1}, &a));
+    utassert(InputRangeToBounds(view.input, view.win, {6, 7}, &b));
+    utassert(InputRangeToBounds(view.input, view.win, {18, 19}, &c));
+    TestSimulateMouseDown(view.win, {a.CenterX(), a.CenterY()});
+    TestSimulateMouseMove(view.win, {b.CenterX(), b.CenterY()}, true);
+    Selection held = view.input->selectedRange;
+    utassert(!held.IsEmpty() && view.input->selecting);
+    TestSimulateMouseMove(view.win, {c.CenterX(), c.CenterY()});
+    utassert(!view.input->selecting && !view.win->mouseDown);
+    utassert(ViewRangeIs(view, held.start, held.end));
+    TestSimulateMouseMove(view.win, {a.CenterX(), a.CenterY()});
+    utassert(ViewRangeIs(view, held.start, held.end));
+    InputViewFree(&view);
+}
+
 // state.rs test_alt_mouse_release_outside_editor_ends_column_selection.
 static void AltMouseReleaseOutsideEditorEndsColumnSelection() {
     InputView view = InputViewNew();
@@ -9974,6 +9994,7 @@ static void RunWindowTestsC() {
     AltDragExtendsUpwardFromAnExistingCursor();
     AltDragOverAShortRowKeepsTheBlockWidth();
     AltMouseReleaseOutsideEditorEndsColumnSelection();
+    LostMouseReleaseEndsEditorSelectionOnPlainMotion();
     ConsumedKeystrokesKeepCursorVisible();
     MouseDownShowsCursorLikeACursorMove();
     MultiCursorActionsRevealHiddenCarets();

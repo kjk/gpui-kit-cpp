@@ -32,7 +32,8 @@ struct TitleBarClickView {
 
     static El* Render(TitleBarClickView*, Ctx* cx) {
         return component::TitleBar::New(cx)
-            ->Child(Div(cx->a)->W(200)->Child(TextEl(cx->a, StrL("App"))))
+            ->Child(Div(cx->a)->W(200)->Child(TextEl(cx->a, StrL("App"))
+                                                  ->Selectable()))
             ->Child(component::Button::New(cx, StrL("open"))
                         ->Label(StrL("Open"))
                         ->OnClick(Listen(cx, &TitleBarClickView::OnOpen))
@@ -67,6 +68,18 @@ static void TitleBarSeparatesControlClicksFromWindowMoves() {
     TestSimulateMouseMove(win, drift, true);
     TestSimulateMouseUp(win, drift);
     utassert(view.Get(app)->clicks == 1);
+    // title_bar.rs a_press_on_the_bar_does_not_start_a_text_selection.
+    Bounds title = {};
+    for (const TextHit& hit : win->paint.texts) {
+        if (StrEq(hit.text, StrL("App"))) title = hit.bounds;
+    }
+    utassert(title.w > 0);
+    Point titleCenter = {title.CenterX(), title.CenterY()};
+    utassert(WindowChromeHit(win, titleCenter.x, titleCenter.y) ==
+             ClickWinCaption);
+    TestSimulateMouseDown(win, titleCenter);
+    utassert(!win->sel || !win->sel->gesture.selecting);
+    TestSimulateMouseUp(win, titleCenter);
     TestAppFree(app);
 }
 

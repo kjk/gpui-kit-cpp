@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `05da4d38476cf4431a628625086639ff63f8b859` (2026-11-15,
-checkbox: Add `indeterminate` to show a mixed state (#3980)).
-Project Base mixed state onto the themed checkbox dash, accessibility and
-activation. Retain the glyph during fade-out and add the Story group example.
+Processed through `5bece8fc054c92c60a083fbf6df25bd11c6025d1` (2026-11-15,
+window: End mouse gestures when the compositor consumes MouseUp (#3643)).
+Cancel existing window gestures when a left release is missing, capture
+transfers, or the window deactivates. Retire text selection and resizer state
+without dispatching a click or drop.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

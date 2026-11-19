@@ -443,6 +443,7 @@ void WindowSetActive(Window* win, bool active) {
     }
     win->active = active;
     if (!active) {
+        WindowCancelPointerGesture(win);
         // Window::deactivate. Everything the keyboard was part-way through is
         // dropped, because its other half is going somewhere else: the rest
         // of a multi-stroke binding will be typed into whatever took the

@@ -6568,6 +6568,7 @@ void InputUpdateSearch(InputState* s);
 // emits the event; blurring commits the typing session, which is what makes a
 // later undo stop at the right place.
 void InputFocus(InputState* s, App* app, Window* win);
+void InputCancelMouseGesture(InputState* s);
 void InputBlur(InputState* s, App* app, Window* win);
 
 // index_for_mouse_position: the offset a press at (x, y) lands on, against the

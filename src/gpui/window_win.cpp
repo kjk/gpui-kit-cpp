@@ -875,16 +875,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             return 0;
         }
         case WM_CAPTURECHANGED: {
-            // The capture went somewhere else — a title-bar drag handing off
-            // to DefWindowProc, or the system taking it — so the button
-            // coming back up will never reach this window. End the press
-            // where it was rather than leaving it down for good.
-            if (win->mouseDown) {
-                PlatformInput in =
-                    InputMouseUp(win->pressedButton, win->mouseX, win->mouseY,
-                                 ModsNow(), WindowCurrentClickCount(win));
-                WindowDispatchInput(win, &in);
-            }
+            // The compositor now owns the pointer. A native release
+            // cannot click through to the current GPUI hit targets.
+            WindowCancelPointerGesture(win);
             return 0;
         }
         case WM_POINTERDOWN:

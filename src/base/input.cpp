@@ -10728,10 +10728,22 @@ void InputFocus(InputState* s, App* app, Window* win) {
     Notify(app, win);
 }
 
+void InputCancelMouseGesture(InputState* s) {
+    if (!s) return;
+    if (s->selecting && s->selectedRange.IsEmpty()) {
+        s->selectionReversed = false;
+    }
+    s->selecting = false;
+    s->hasSelectedWordRange = false;
+    s->columnSelectStart = {};
+    s->autoScroll.Stop();
+}
+
 void InputBlur(InputState* s, App* app, Window* win) {
     if (!s) {
         return;
     }
+    InputCancelMouseGesture(s);
     // on_blur clears the reveal cache before any early return, so a field
     // that is unmounted while it loses focus does not keep the old viewport.
     s->hasRevealedViewport = false;
@@ -10780,20 +10792,6 @@ void InputBlur(InputState* s, App* app, Window* win) {
         }
     }
     s->focused = false;
-    // A drag that was still going ends here, the way the release ends it
-    // (the button comes back up somewhere this field no longer hears): the
-    // word a double click pinned, the alt-press column anchor and the edge
-    // auto-scroll go with `selecting`, or the next press would extend from
-    // them.
-    if (s->selecting) {
-        s->selecting = false;
-        if (s->selectedRange.IsEmpty()) {
-            s->selectionReversed = false;
-        }
-        s->hasSelectedWordRange = false;
-        s->columnSelectStart = {};
-        s->autoScroll.Stop();
-    }
     // The window the field is focused in lets go of it here too, whether or
     // not it is the one the caller named: a blur against another window --
     // the caller's, when the field was focused elsewhere -- would otherwise

@@ -428,6 +428,10 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // had before — everything outside the old view thrown away — and since
     // nothing asks for another frame after a resize, that frame is what
     // stays on screen until the next click or keystroke.
+    if (win->frameSeq && win->mouseDown &&
+        (win->paint.viewW != dipW || win->paint.viewH != dipH)) {
+        WindowCancelPointerGesture(win);
+    }
     win->paint.viewW = dipW;
     win->paint.viewH = dipH;
     // Root/WindowBorder writes the client-decorated inset while rendering.
@@ -2273,6 +2277,10 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
     win->mouseX = x;
     win->mouseY = y;
     win->pointerInWindow = true;
+    if (win->mouseDown && win->pressedButton == MouseButton::Left &&
+        !in.Dragging()) {
+        WindowCancelPointerGesture(win);
+    }
     // The press ends on the first move outside the trigger. A removed
     // trigger never reports a hover-leave, so this is the window's, and a
     // move that is still inside — hover also drops while the button is
@@ -2947,7 +2955,8 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     AppInvalidate(win);
 }
 
-static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
+static void DispatchMouseUp(Window* win, const MouseUpEvent& in,
+                            bool canceled = false) {
     // The pointer is held for the button that took the press; a second
     // button coming up while that one is still down — a right click during
     // a left drag — is not the release the capture waits for.
@@ -2957,21 +2966,22 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
     // with_unset_drag_pos: the release ends the scrollbar drag wherever it
     // landed. The release itself may carry a final displacement without an
     // intervening move, so invert it before dropping the capture.
-    if (win->scrollDragId || win->scrollDragInput) {
+    if (!canceled && (win->scrollDragId || win->scrollDragInput)) {
         (void)ScrollbarDrag(win, in.x, in.y, true);
     }
     win->scrollDragId = 0;
     win->scrollDragGrab = 0;
     win->scrollDragInput = nullptr;
     WindowSelectionRelease(win);
-    if (win->onMouseUp.IsValid()) {
+    if (!canceled && win->onMouseUp.IsValid()) {
         ListenerCall(win->app, win, win->onMouseUp, &in);
     }
     // The element under the pointer hears the release, then the one that took
     // the press stops being held. A drag that ended somewhere else leaves the
     // first of those empty, which is what on_mouse_up_out is for.
-    const HitRect* hit = HitTestRect(&win->paint, in.x, in.y);
-    {
+    const HitRect* hit =
+        canceled ? nullptr : HitTestRect(&win->paint, in.x, in.y);
+    if (!canceled) {
         Vec<int> chain;
         HitChain(win, in.x, in.y, &chain);
         MouseUpEvent ev = in;
@@ -2987,7 +2997,8 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
     // off the edge is the case it exists for.
     for (int i = 0; i < win->paint.hits.len; i++) {
         const HitRect& hr = win->paint.hits[i];
-        if (hr.onMouseUpOut.IsValid() && !hr.bounds.Contains({in.x, in.y})) {
+        if (hr.onMouseUpOut.IsValid() &&
+            (canceled || !hr.bounds.Contains({in.x, in.y}))) {
             ListenerCall(win->app, win, hr.onMouseUpOut, &in);
         }
     }
@@ -2997,7 +3008,7 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
     // A drag that actually happened takes the release: GPUI hands the up to
     // the drop and the click never runs. A press that picked a payload up and
     // never went anywhere is still a click.
-    bool dragged = win->activeDrag.IsValid() && win->pressedMoved;
+    bool dragged = !canceled && win->activeDrag.IsValid() && win->pressedMoved;
     if (dragged) {
         const HitRect* target =
             HitTestDrop(&win->paint, in.x, in.y, win->activeDrag.kind);
@@ -3019,7 +3030,7 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
     // InputState::on_mouse_up: a right press that is waiting opens the
     // field's menu; the drag is over, and the word a double click pinned
     // stops holding the selection open.
-    InputState* released = in.button == MouseButton::Right
+    InputState* released = !canceled && in.button == MouseButton::Right
                                ? InputAtPosition(&win->paint, in.x, in.y)
                                : nullptr;
     if (released && released->hasPendingContextMenu) {
@@ -3036,22 +3047,15 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
             win->input->hasPendingContextMenu = false;
         }
     }
-    if (win->input && win->input->selecting) {
-        if (win->input->selectedRange.IsEmpty()) {
-            win->input->selectionReversed = false;
-        }
-        win->input->selecting = false;
-        win->input->hasSelectedWordRange = false;
-        win->input->columnSelectStart = {};
-        win->input->autoScroll.Stop();
-    }
+    InputCancelMouseGesture(win->input);
     // The click, last: GPUI's on_click fires from the release, and only when
     // the same button that went down comes up over the element that took it.
     // A press that slid off somewhere else is no click at all — which is what
     // lets a reader change their mind by moving off the button before
     // letting go.
     int upId = hit ? hit->id : 0;
-    if (ClickFromRelease(win->pressPending, win->pressedId, win->pressedButton,
+    if (!canceled &&
+        ClickFromRelease(win->pressPending, win->pressedId, win->pressedButton,
                          dragged, upId, in.button)) {
         ClickEvent ev = {in.x, in.y, in.button, win->pressedId};
         ev.clickCount = win->pressedCount;
@@ -3120,7 +3124,24 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
     AppInvalidate(win);
 }
 
+void WindowCancelPointerGesture(Window* win) {
+    if (!win || !win->mouseDown) return;
+    MouseUpEvent canceled;
+    canceled.button = win->pressedButton;
+    canceled.x = win->mouseX;
+    canceled.y = win->mouseY;
+    canceled.modifiers = win->mouseModifiers;
+    DispatchMouseUp(win, canceled, true);
+}
+
 static void DispatchMouseExited(Window* win, const MouseExitEvent& in) {
+    const HitRect* pressed = HitRectById(win, win->pressedId);
+    bool resizing = pressed && (pressed->cursor == CursorKind::ColResize ||
+                                pressed->cursor == CursorKind::RowResize);
+    if (!in.pressed || resizing || (win->sel && win->sel->gesture.selecting) ||
+        (win->input && win->input->selecting)) {
+        WindowCancelPointerGesture(win);
+    }
     win->pointerInWindow = false;
     // leaving the window is leaving whatever was hovered, so its OnHover hears
     // it

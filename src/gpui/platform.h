@@ -151,6 +151,9 @@ void WindowTimerTick(Window* win);
 // 0 for ordinary content. Windows answers WM_NCHITTEST with it; X11 uses it
 // to route a press on the custom title bar.
 int WindowChromeHit(Window* win, float x, float y);
+// The compositor took the press. Release its state without clicking or
+// dropping.
+void WindowCancelPointerGesture(Window* win);
 
 // Milliseconds until the window next wants waking, or 0 if nothing does.
 int WindowTimerMs(Window* win);

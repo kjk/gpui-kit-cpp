@@ -91,6 +91,7 @@ TitleBar* TitleBar::New(Ctx* cx) {
                  ->Corners(corners.tl, corners.tr, 0, 0)
                  ->BorderB(1, th.titleBarBorder)
                  ->Click(ClickWinCaption)
+                 ->SuppressTextSelection()
                  ->Child(t->content);
     if (PlatSecondaryIsCommand()) {
         t->bar->PadL(TitleBarLeftPad());

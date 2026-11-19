@@ -729,6 +729,7 @@ static void StartMoveResize(Window* win, int rootX, int rootY, int dir) {
     if (!win->plat) {
         return;
     }
+    WindowCancelPointerGesture(win);
     XUngrabPointer(gDpy, CurrentTime);
     SendWmMessage(win, aNetWmMoveResize, rootX, rootY, dir, Button1, 1);
 }
