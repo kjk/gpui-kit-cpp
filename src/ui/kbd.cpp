@@ -291,14 +291,14 @@ El* Kbd::IntoEl() {
 }
 
 static bool KeystrokeFromChord(const KeyChord& c, Keystroke* out) {
-    Str key = KeyName(c.vk);
+    Str key = c.boundSymbol ? Str(c.boundSymbol) : KeyName(c.vk);
     if (!out || !key.s) {
         return false;
     }
     Keystroke k;
     k.ctrl = c.ctrl;
     k.alt = c.alt;
-    k.shift = c.shift;
+    k.shift = c.boundSymbol ? c.explicitShift : c.shift;
     k.platform = c.platform;
     k.key = key;
     *out = k;

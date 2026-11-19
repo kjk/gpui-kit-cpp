@@ -144,6 +144,24 @@ static void AShortcutComesFromTheBinding() {
         !KeystrokeForAction(ActionOf(StrL("t::NoSuchThing")), "Input", &k));
 }
 
+// kbd.rs test_from_keybinding_keystroke.
+static void AShortcutKeepsItsBoundSymbolAndModifiers() {
+    uint32_t shifted = ActionOf(StrL("kbd_test::ShiftEqual"));
+    uint32_t plus = ActionOf(StrL("kbd_test::Plus"));
+    KeyBinding bindings[] = {{"alt-shift-=", shifted, "KbdEqual"},
+                             {"alt-+", plus, "KbdPlus"}};
+    KeymapBind(bindings, 2);
+    Keystroke stroke;
+    utassert(KeystrokeForAction(shifted, "KbdEqual", &stroke));
+    utassert(stroke.alt && stroke.shift && StrEq(stroke.key, StrL("=")));
+    utassert(KeystrokeForAction(plus, "KbdPlus", &stroke));
+    utassert(stroke.alt && !stroke.shift && StrEq(stroke.key, StrL("+")));
+    KeyChord lhs, rhs;
+    utassert(KeyChordParse(StrL("alt-shift-="), &lhs));
+    utassert(KeyChordParse(StrL("alt-+"), &rhs));
+    utassert(KeyChordEq(lhs, rhs));
+}
+
 static void AnUnfocusedTriggerResolvesItsContextBinding() {
     KeymapClear();
     uint32_t copy = ActionOf(StrL("kbd_test::Copy"));
@@ -179,6 +197,7 @@ static void AnUnfocusedTriggerResolvesItsContextBinding() {
 void TestKbd() {
     TestSuite("kbd");
     AShortcutComesFromTheBinding();
+    AShortcutKeepsItsBoundSymbolAndModifiers();
     AnUnfocusedTriggerResolvesItsContextBinding();
     TheModifiersComeFirstInPlatformOrder();
     ANamedKeyKeepsItsName();

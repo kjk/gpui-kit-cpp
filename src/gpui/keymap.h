@@ -35,6 +35,9 @@ struct KeyChord {
     bool platform = false;
     // GPUI's `fn-` modifier. Native input only supplies it on macOS.
     bool function = false;
+    // Original shifted symbol for display, pointing into the key name table.
+    const char* boundSymbol = nullptr;
+    bool explicitShift = false;
 };
 
 // Keystroke::parse. The modifiers Rust spells are `ctrl-`, `alt-`, `shift-`,

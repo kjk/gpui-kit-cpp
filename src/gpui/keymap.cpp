@@ -131,15 +131,16 @@ static const NamedKey kNamedKeys[] = {
     {")", '0', true},
 };
 
-static int VkForName(Str name, bool* shift) {
+static int VkForName(Str name, bool* shift, const char** boundSymbol) {
     if (len(name) == 0) {
         return 0;
     }
     for (int i = 0; i < (int)(sizeof(kNamedKeys) / sizeof(kNamedKeys[0]));
          i++) {
         if (base::StrEqI(name, kNamedKeys[i].name)) {
-            if (shift && kNamedKeys[i].shift) {
+            if (kNamedKeys[i].shift) {
                 *shift = true;
+                *boundSymbol = kNamedKeys[i].name;
             }
             return kNamedKeys[i].vk;
         }
@@ -224,7 +225,8 @@ bool KeyChordParse(Str spec, KeyChord* out) {
         }
         i = dash + 1;
     }
-    c.vk = VkForName(Str(spec.s + i, len(spec) - i), &c.shift);
+    c.explicitShift = c.shift;
+    c.vk = VkForName(Str(spec.s + i, len(spec) - i), &c.shift, &c.boundSymbol);
     if (!c.vk) {
         return false;
     }

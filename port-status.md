@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7eb9f997c32e337618a9bf86dfec56a7117b9ee3` (2026-11-16,
-diff: Keep file headers inside the viewport under horizontal scrolling
-(#3996)).
-Keep file headers in a pinned viewport in both diff modes while code scrolls
-through its own clip. Verify the header bounds before and after wheel input.
+Processed through `70a70565b6d037e41fecfe1a65645ff29cfa368d` (2026-11-16, kbd:
+Show a shifted-symbol shortcut as bound on Windows (#3993)).
+Keyboard shortcut labels retain the symbol and modifiers written in the
+binding while matching the normalized physical chord.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
