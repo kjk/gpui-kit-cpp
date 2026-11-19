@@ -73,12 +73,18 @@ struct ListDelegate {
     int (*loadMoreThreshold)(void* data) = nullptr;
 
     Listener performSearch = {};
+    Listener cancelSearch = {};
     Listener setSelectedIndex = {};
     Listener setRightClickedIndex = {};
     Listener confirm = {};
     Listener cancel = {};
     Listener loadMore = {};
 };
+
+// Synchronizes delegate facts both in a standalone list and when an
+// input owns the search and the list has yet to be shown.
+void ListSyncDelegate(Ctx* cx, ListState* s, const ListDelegate& delegate,
+                      bool delegateSet);
 
 // The list, bound to the ListState that answers its keys and clicks the way
 // an Input is bound to an InputState. The rows come from the caller one at a
@@ -109,6 +115,7 @@ struct List {
     Str searchPlaceholder = {};
     UiSize size = UiSize::Medium;
     bool scrollbarVisible = true;
+    bool keepInputFocus = false;
     // Styled padding is extracted from the outer List and passed to the
     // virtual rows upstream, so it does not inset the search field.
     float padding = 0;
@@ -140,6 +147,7 @@ struct List {
     List* Initial(El* e);
     List* Empty(El* e);
     List* H(float px);
+    float ContentHeight(float maxH) const;
     El* IntoEl();
 };
 

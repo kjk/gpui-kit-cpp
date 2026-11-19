@@ -190,6 +190,9 @@ struct InputFieldHooks : EditorHooks<Self> {
     }
 };
 
+struct List;
+struct ListDelegate;
+
 struct Input : InputFieldHooks<Input> {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
@@ -219,6 +222,7 @@ struct Input : InputFieldHooks<Input> {
     bool hasTextColor = false;
     Listener onChange;
     Listener onFocus;
+    component::List* suggestionList = nullptr;
     Listener onClear;
     Listener onToggleMask;
     // Styled::style: the caller's refinement, applied to the root last.
@@ -226,6 +230,9 @@ struct Input : InputFieldHooks<Input> {
 
     static Input* New(Ctx* cx, Str id, InputState* state);
     Input* Label(Str s);
+    // Offer a normal List without taking focus or restricting the input value.
+    Input* List(component::List* suggestions);
+    Input* List(Entity<ListState> list, const ListDelegate& delegate);
     Input* WithSize(UiSize s);
     Input* Align(InputAlign v);
     Input* Disabled(bool v);

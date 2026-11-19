@@ -329,7 +329,8 @@ static Str TrimQuery(Str query) {
     return query;
 }
 
-static void StartSearch(ListState* s, Ctx* cx, Str query, bool dedupe) {
+static void StartSearch(ListState* s, Ctx* cx, Str query, bool dedupe,
+                        bool highlightFirst = true) {
     query = TrimQuery(query);
     if (dedupe && base::StrEq(query, s->lastQuery)) {
         return;
@@ -341,7 +342,7 @@ static void StartSearch(ListState* s, Ctx* cx, Str query, bool dedupe) {
     // The Rust task may complete later; this port's standing async exclusion
     // makes perform_search synchronous. Selection and scroll are nevertheless
     // advanced at the same semantic point.
-    ListSetSelectedIndex(s, cx, s->count > 0 ? 0 : -1, false);
+    ListSetSelectedIndex(s, cx, highlightFirst && s->count > 0 ? 0 : -1, false);
     s->scrollY = 0;
     StrFree(s->lastQuery);
     s->lastQuery = len(query) > 0 ? StrDup(query) : Str{};
@@ -356,6 +357,16 @@ void ListSetQuery(ListState* s, Ctx* cx, Str query) {
         InputSetValue(s->queryInput, query);
     }
     StartSearch(s, cx, query, false);
+}
+
+void ListSearchFromInput(ListState* s, Ctx* cx, Str query) {
+    StartSearch(s, cx, query, false, false);
+}
+
+void ListCancelSearch(ListState* s, Ctx* cx) {
+    if (s->onCancelSearch.IsValid()) {
+        ListenerCall(cx->app, cx->win, s->onCancelSearch, nullptr);
+    }
 }
 
 void ListState::OnQueryInput(ListState* self, Ctx* cx, const InputEvent* ev) {

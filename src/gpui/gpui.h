@@ -5361,6 +5361,13 @@ struct DiagnosticColors {
 // holds the hook comes before the action table.
 enum class InputAction : uint8_t;
 
+struct InputActionCapture {
+    InputAction action;
+    bool shift;
+    bool secondary;
+    bool& consumed;
+};
+
 enum class InputOverlayKind : uint8_t {
     Completion,
     CodeAction
@@ -5730,6 +5737,9 @@ struct InputState {
     // use, so an InputState stays a plain value.
     EntityId blink = {};
     Listener onChange = {};
+    // The themed input binds its frame-owned suggestion popup here.
+    Listener onSuggestionEvent = {};
+    Listener captureSuggestionAction = {};
     // Subscribe to InputEditsEvent. Runs before onChange for the same edit.
     Listener onEdits = {};
     // validate: `Fn(&str, &mut App) -> bool`. A plain function pointer plus

@@ -111,6 +111,20 @@ struct InputStory {
     bool seeded = false;
     EntityId tokens;
     EntityId completion;
+    InputState metric;
+    Entity<ListState> metricList;
+    Str metricQuery = {};
+    Vec<Str> metricMatches;
+    int metricTimer = 0;
+
+    ~InputStory() { StrFree(metricQuery); }
+
+    static void SearchMetrics(InputStory* self, Ctx* cx,
+                              const ListSearchRequest* request);
+    static void ApplyMetricSearch(InputStory* self, Ctx* cx, const void*);
+    static void CancelMetricSearch(InputStory* self, Ctx* cx, const void*);
+    static void ConfirmMetric(InputStory* self, Ctx* cx,
+                              const ListConfirmRequest*);
     // The custom context menu's rows report here; bound each render, since
     // the menu is built later, under the input's own menu state.
     Listener customMenuSelect = {};
@@ -168,6 +182,52 @@ static component::NativeMenu* CustomInputMenu(Ctx*, component::NativeMenu* menu,
 
 // section() is a justify_center wrapping row, so a readout that wraps under
 // its field is centered rather than pinned to the field's left edge.
+static const Str kInputStoryMetrics[] = {
+    StrL("cpu.load"),
+    StrL("cpu.temperature"),
+    StrL("disk.cpu_wait"),
+    StrL("disk.read_bytes"),
+    StrL("memory.available"),
+    StrL("memory.used"),
+    StrL("network.received_bytes"),
+};
+
+void InputStory::CancelMetricSearch(InputStory* self, Ctx* cx, const void*) {
+    if (self->metricTimer) WindowCancelTimer(cx->win, self->metricTimer);
+    self->metricTimer = 0;
+}
+
+void InputStory::SearchMetrics(InputStory* self, Ctx* cx,
+                               const ListSearchRequest* request) {
+    CancelMetricSearch(self, cx, nullptr);
+    StrFree(self->metricQuery);
+    self->metricQuery = StrDup(request->query);
+    self->metricTimer =
+        WindowSetTimeout(cx->win, 150, Listen(cx, &ApplyMetricSearch));
+}
+
+void InputStory::ApplyMetricSearch(InputStory* self, Ctx* cx, const void*) {
+    self->metricTimer = 0;
+    VecClear(self->metricMatches);
+    for (Str metric : kInputStoryMetrics) {
+        if (!StrEq(metric, self->metricQuery) &&
+            (!len(self->metricQuery) ||
+             StrFindI(metric, self->metricQuery) >= 0)) {
+            VecAppend(self->metricMatches, metric);
+        }
+    }
+    Notify(cx);
+}
+
+void InputStory::ConfirmMetric(InputStory* self, Ctx* cx,
+                               const ListConfirmRequest*) {
+    ListState* state = self->metricList.Get(cx);
+    if (!state || state->selected < 0 ||
+        state->selected >= len(self->metricMatches))
+        return;
+    InputReplaceAll(&self->metric, cx, self->metricMatches[state->selected]);
+}
+
 El* InputStory::Render(InputStory* self, Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
@@ -441,6 +501,37 @@ El* InputStory::Render(InputStory* self, Ctx* cx) {
     StorySectionAdd(tokens,
                     EntityRender(cx->app, cx->win, cx->a, self->tokens));
     page->Child(tokens);
+
+    if (!self->metricList.IsValid()) {
+        self->metricList = EntityNewState<ListState>(cx->app);
+        InputSetPlaceholder(&self->metric, StrL("Metric, such as cpu.load"));
+    }
+    component::ListDelegate metrics = {};
+    metrics.data = self;
+    metrics.itemsCount = [](Ctx*, void* user, int) {
+        return len(((InputStory*)user)->metricMatches);
+    };
+    metrics.renderItem = [](Ctx* rowCx, void* user, int, int row, int) {
+        return component::ListItem::New(
+            rowCx, TextEl(rowCx->a, ((InputStory*)user)->metricMatches[row]));
+    };
+    metrics.performSearch = Listen(cx, &SearchMetrics);
+    metrics.cancelSearch = Listen(cx, &CancelMetricSearch);
+    metrics.confirm = Listen(cx, &ConfirmMetric);
+    El* listSection = StorySection(
+        cx, "List",
+        "A list under the field helps type a value without limiting it: any "
+        "text is accepted. The list searches as you type, here with a "
+        "simulated "
+        "remote search. Down and Up highlight a row, Enter accepts it, and "
+        "Enter with none highlighted submits the text.");
+    StorySectionBody(listSection)->W(512);
+    StorySectionAdd(listSection,
+                    component::Input::New(cx, StrL("metric"), &self->metric)
+                        ->WithSize(self->toolbar.size)
+                        ->List(self->metricList, metrics)
+                        ->IntoEl());
+    page->Child(listSection);
 
     if (!self->completion.IsValid()) {
         self->completion = CompletionExampleNew(cx->app);

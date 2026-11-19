@@ -5521,10 +5521,11 @@ static void Notify(App* app, Window* win) {
 }
 
 static void Emit(InputState* s, App* app, Window* win, InputEvent ev) {
-    if (!s->onChange.IsValid() || !s->emitEvents) {
-        return;
+    if (!s->emitEvents) return;
+    if (s->onSuggestionEvent.IsValid()) {
+        ListenerCall(app, win, s->onSuggestionEvent, &ev);
     }
-    ListenerCall(app, win, s->onChange, &ev);
+    if (s->onChange.IsValid()) ListenerCall(app, win, s->onChange, &ev);
 }
 
 static void EditBatchClear(InputState* s) {
@@ -10719,6 +10720,12 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
     // handle_action_for_context_menu: while a menu is up it takes the four
     // keys that drive it before the field does — the host's own popover
     // first, if it drew one, and then the editor's.
+    if (s->captureSuggestionAction.IsValid()) {
+        bool consumed = false;
+        InputActionCapture capture = {action, shift, secondary, consumed};
+        ListenerCall(app, win, s->captureSuggestionAction, &capture);
+        if (consumed) return true;
+    }
     if (InputRouteOverlayAction(s, app, win, action)) {
         return true;
     }

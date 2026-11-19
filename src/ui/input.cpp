@@ -3,6 +3,9 @@
 #include "base/layout_direction.h"
 #include "ui/button.h"
 #include "ui/highlighter.h"
+#include "ui/list.h"
+#include "ui/popover.h"
+#include "base/global_state.h"
 #include "ui/native_menu.h"
 #include "ui/touch_selection.h"
 #include "base/input.h"
@@ -1075,6 +1078,250 @@ static Str InputNativeContentType(bool present, InputContentType value) {
     return {};
 }
 
+Input* Input::List(component::List* suggestions) {
+    suggestionList = suggestions;
+    return this;
+}
+
+Input* Input::List(Entity<ListState> list, const ListDelegate& delegate) {
+    return List(component::List::New(cx, StrL("suggestions"), list)
+                    ->WithDelegate(delegate));
+}
+
+// input/list_popup.rs: queued typing and acceptance share a generation so
+// closing or accepting can invalidate a query that has not started.
+struct InputListPopup {
+    App* app = nullptr;
+    Entity<InputListPopup> self = {};
+    Entity<ListState> list = {};
+    ListDelegate delegate = {};
+    bool delegateSet = false;
+    InputState* input = nullptr;
+    Bounds field = {};
+    Str text = {};
+    Str searched = {};
+    int64_t generation = 0;
+    bool hasText = false;
+    bool hasSearched = false;
+    bool open = false;
+    bool accepting = false;
+
+    ~InputListPopup() {
+        BaseDeferredPopoverSet(app, self.id, false);
+        StrFree(text);
+        StrFree(searched);
+    }
+
+    bool Showing(Ctx* cx) const {
+        ListState* s = list.Get(cx);
+        return open && input->focused && s && (s->loading || s->count > 0);
+    }
+
+    void Sync(Ctx* cx) {
+        BaseDeferredPopoverSet(cx->app, self.id, Showing(cx));
+    }
+
+    void Close(Ctx* cx) {
+        generation++;
+        open = false;
+        Sync(cx);
+        Notify(cx);
+    }
+
+    void Search(Ctx* cx, Str query) {
+        ListState* s = list.Get(cx);
+        if (!s) return;
+        Str next = StrDup(query);
+        StrFree(searched);
+        searched = next;
+        hasSearched = true;
+        ListSearchFromInput(s, cx, searched);
+        ListSyncDelegate(cx, s, delegate, delegateSet);
+        Sync(cx);
+        Notify(cx);
+    }
+
+    static void AfterTyping(InputListPopup* m, Ctx* cx, const void*,
+                            int64_t generation) {
+        if (m->generation != generation || !m->input->focused) return;
+        m->open = true;
+        m->Search(cx, m->text);
+    }
+
+    static void OnInputEvent(InputListPopup* m, Ctx* cx, const InputEvent* ev) {
+        if (ev->kind == InputEventKind::Blur) {
+            m->Close(cx);
+        } else if (ev->kind == InputEventKind::Change && m->input->focused) {
+            Str query = StrTrim(InputValue(m->input));
+            if (m->hasText && StrEq(m->text, query)) return;
+            Str next = StrDup(query);
+            StrFree(m->text);
+            m->text = next;
+            m->hasText = true;
+            if (!m->accepting && cx->win) {
+                WindowPost(cx->win,
+                           ListenTo(m->self, &AfterTyping, ++m->generation));
+            }
+        }
+    }
+
+    static void EndAccepting(InputListPopup* m, Ctx*, const void*) {
+        m->accepting = false;
+    }
+
+    static void OnListEvent(InputListPopup* m, Ctx* cx, const ListEvent* ev) {
+        if (ev->kind == ListEventKind::Confirm && m->open) {
+            if (ListState* s = m->list.Get(cx)) ListCancelSearch(s, cx);
+            m->hasSearched = false;
+            m->accepting = cx->win != nullptr;
+            if (m->accepting) {
+                WindowPost(cx->win, ListenTo(m->self, &EndAccepting));
+            }
+            m->Close(cx);
+        } else if (ev->kind == ListEventKind::Cancel && m->open) {
+            m->Close(cx);
+        }
+    }
+
+    static void OnListChanged(InputListPopup* m, Ctx* cx, const EntityId*) {
+        m->Sync(cx);
+        Notify(cx);
+    }
+
+    static void OnPopupPress(InputListPopup*, Ctx* cx, const MouseDownEvent*) {
+        WindowPreventDefault(cx);
+    }
+
+    static void OnOutsidePress(InputListPopup* m, Ctx* cx,
+                               const MouseDownEvent* ev) {
+        if (!m->field.Contains({ev->x, ev->y})) m->Close(cx);
+    }
+
+    static void OnAction(InputListPopup* m, Ctx* cx,
+                         const InputActionCapture* capture) {
+        ListState* s = m->list.Get(cx);
+        if (!s || !m->input->focused) return;
+        bool showing = m->Showing(cx);
+        Ctx listCx = *cx;
+        listCx.self = m->list.id;
+        switch (capture->action) {
+            case InputAction::MoveDown:
+                if (showing) {
+                    ListPerform(s, &listCx, ListAction::SelectNext, false);
+                } else {
+                    Str query = StrTrim(InputValue(m->input));
+                    m->open = true;
+                    m->generation++;
+                    if (m->hasSearched && StrEq(m->searched, query)) {
+                        if (s->count > 0) {
+                            ListPerform(s, &listCx, ListAction::SelectNext,
+                                        false);
+                        }
+                        m->Sync(cx);
+                        Notify(cx);
+                    } else {
+                        m->Search(cx, query);
+                    }
+                }
+                capture->consumed = m->Showing(cx);
+                break;
+            case InputAction::MoveUp:
+                if (!showing) break;
+                if (s->selected == 0) {
+                    ListSetSelectedIndex(s, &listCx, -1);
+                    Notify(&listCx);
+                } else if (s->selected > 0) {
+                    ListPerform(s, &listCx, ListAction::SelectPrev, false);
+                }
+                capture->consumed = true;
+                break;
+            case InputAction::Escape:
+                if (showing) {
+                    ListPerform(s, &listCx, ListAction::Cancel, false);
+                    capture->consumed = true;
+                }
+                break;
+            case InputAction::Enter:
+                if (showing && s->selected >= 0 && s->selected < s->count) {
+                    ListPerform(s, &listCx, ListAction::Confirm, false);
+                    capture->consumed = true;
+                } else {
+                    m->Close(cx);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+};
+
+struct InputListPopupSlot {
+    App* app = nullptr;
+    Entity<InputListPopup> menu = {};
+
+    ~InputListPopupSlot() {
+        if (menu.IsValid()) EntityDrop(app, menu.id);
+    }
+};
+
+static El* AttachInputList(Ctx* cx, Str fieldId, El* field, InputState* input,
+                           component::List* list, UiSize size, bool editable) {
+    if (!input) return field;
+    input->onSuggestionEvent = {};
+    input->captureSuggestionAction = {};
+    if (!editable || !cx->win || !list || !list->state.Get(cx)) return field;
+
+    Entity<ListState> state = list->state;
+    uint32_t key =
+        KeyedKey(KeyedName(cx, fieldId), HashClickId(StrL("InputListPopup")));
+    key = KeyedKey(key, (uint32_t)state.id.index);
+    key = KeyedKey(key, state.id.gen);
+    auto* slot = FrameKeyedState<InputListPopupSlot>(cx, key);
+    if (!slot->menu.IsValid()) {
+        slot->app = cx->app;
+        slot->menu = EntityNewState<InputListPopup>(cx->app);
+        ObserveTo(cx->app, state, slot->menu, &InputListPopup::OnListChanged);
+        SubscribeTo(cx->app, state, slot->menu, &InputListPopup::OnListEvent);
+    }
+    InputListPopup* menu = slot->menu.Get(cx);
+    if (!menu) return field;
+    menu->app = cx->app;
+    menu->self = slot->menu;
+    menu->input = input;
+    menu->list = state;
+    menu->delegate = list->delegate;
+    menu->delegateSet = list->delegateSet;
+    ListState* listState = state.Get(cx);
+    listState->self = state;
+    ListSyncDelegate(cx, listState, list->delegate, list->delegateSet);
+    field->BoundsOut(&menu->field);
+    input->onSuggestionEvent =
+        ListenTo(slot->menu, &InputListPopup::OnInputEvent);
+    input->captureSuggestionAction =
+        ListenTo(slot->menu, &InputListPopup::OnAction);
+
+    menu->Sync(cx);
+    auto* popup = Popup::New(cx, StrDup(cx->a, fmt("%s-list", fieldId)), field);
+    if (menu->Showing(cx) && menu->field.w > 0) {
+        list->search = nullptr;
+        list->keepInputFocus = true;
+        list->WithSize(size)->Padding(kDropdownListPadding);
+        list->H(list->ContentHeight(Rems(cx, 20)));
+        El* surface = PopoverSurface(cx, list->IntoEl()->W(menu->field.w))
+                          ->StopMouseDown()
+                          ->OnMouseDown(ListenTo(slot->menu,
+                                                 &InputListPopup::OnPopupPress),
+                                        DispatchPhase::Capture)
+                          ->OnMouseDownOut(ListenTo(
+                              slot->menu, &InputListPopup::OnOutsidePress));
+        surface = DropdownOpen(
+            cx, surface,
+            MotionName(cx, StrDup(cx->a, fmt("%s-list-open", fieldId))));
+        popup->Content(DropdownPlaceContent(surface));
+    }
+    return popup->IntoEl()->W(field->style.width);
+}
+
 El* Input::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // Rust's Input is the field and nothing else — `.flex().size_full()` — and
@@ -1208,6 +1455,22 @@ El* Input::IntoEl() {
     InputTouchSelectionLayer(cx, field, id, state);
     BindInputContextMenu(cx, field, id, state, disabled, contextMenu,
                          contextMenuData);
+    if (suggestionList) {
+        // Keep the caller's refinement on the visible field. Its wrapper
+        // only gives the deferred list an anchor alongside it.
+        if (!col) refiner.Apply(field);
+        El* host = AttachInputList(
+            cx, id, field, state, suggestionList, size,
+            !disabled && !readonly && state && !state->readonly);
+        if (!col) return host;
+        col->Child(host);
+        refiner.Apply(col);
+        return col;
+    }
+    if (state) {
+        state->onSuggestionEvent = {};
+        state->captureSuggestionAction = {};
+    }
     if (!col) {
         refiner.Apply(field);
         return field;

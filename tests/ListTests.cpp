@@ -647,7 +647,149 @@ static void ListItemAccentSelectionUsesAccentForeground() {
     AppGlobalClear(&app);
 }
 
+// input/list_popup.rs. Drive the bound field and ordinary List delegate
+// through the real window, including deferred typing and a delayed search.
+struct InputListTestView {
+    InputState input;
+    Entity<ListState> list;
+    Vec<Str> results;
+    Bounds field = {};
+    Str pending = {};
+    int timer = 0;
+    int searches = 0;
+    int submits = 0;
+    int accepts = 0;
+    bool delayed = false;
+    bool readonly = false;
+
+    ~InputListTestView() { StrFree(pending); }
+
+    static void InputEventReceived(InputListTestView* self, Ctx*,
+                                   const InputEvent* ev) {
+        if (ev->kind == InputEventKind::PressEnter) self->submits++;
+    }
+
+    static void Cancel(InputListTestView* self, Ctx* cx, const void*) {
+        if (self->timer) WindowCancelTimer(cx->win, self->timer);
+        self->timer = 0;
+    }
+
+    static void Apply(InputListTestView* self, Ctx* cx, const void*) {
+        self->timer = 0;
+        self->searches++;
+        VecClear(self->results);
+        const Str options[] = {
+            StrL("cpu.load"),
+            StrL("cpu.temperature"),
+            StrL("memory.used"),
+        };
+        for (Str option : options) {
+            if (!StrEq(option, self->pending) &&
+                (!len(self->pending) || StrFind(option, self->pending) >= 0)) {
+                VecAppend(self->results, option);
+            }
+        }
+        Notify(cx);
+    }
+
+    static void Search(InputListTestView* self, Ctx* cx,
+                       const ListSearchRequest* ev) {
+        Cancel(self, cx, nullptr);
+        StrFree(self->pending);
+        self->pending = StrDup(ev->query);
+        if (self->delayed) {
+            self->timer = WindowSetTimeout(cx->win, 50, Listen(cx, &Apply));
+        } else {
+            Apply(self, cx, nullptr);
+        }
+    }
+
+    static void Confirm(InputListTestView* self, Ctx* cx,
+                        const ListConfirmRequest*) {
+        ListState* s = self->list.Get(cx);
+        if (!s || s->selected < 0 || s->selected >= len(self->results)) return;
+        self->accepts++;
+        InputReplaceAll(&self->input, cx, self->results[s->selected]);
+    }
+
+    static El* Render(InputListTestView* self, Ctx* cx) {
+        component::ListDelegate delegate = {};
+        delegate.data = self;
+        delegate.itemsCount = [](Ctx*, void* data, int) {
+            return len(((InputListTestView*)data)->results);
+        };
+        delegate.renderItem = [](Ctx* cx, void* data, int, int row, int) {
+            return component::ListItem::New(
+                cx, TextEl(cx->a, ((InputListTestView*)data)->results[row]));
+        };
+        delegate.performSearch = Listen(cx, &Search);
+        delegate.cancelSearch = Listen(cx, &Cancel);
+        delegate.confirm = Listen(cx, &Confirm);
+        self->input.onChange = Listen(cx, &InputEventReceived);
+        return Div(cx->a)->FlexCol()->W(220)->Child(
+            component::Input::New(cx, StrL("metric"), &self->input)
+                ->Readonly(self->readonly)
+                ->List(self->list, delegate)
+                ->IntoEl()
+                ->BoundsOut(&self->field));
+    }
+};
+
+static void TheInputOffersAListAndStillAcceptsFreeText() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto root = EntityNew<InputListTestView>(app);
+    auto* self = root.Get(app);
+    self->list = EntityNewState<ListState>(app);
+    ListState* list = self->list.Get(app);
+    Window* win = TestWindowOpen(app, root, 400, 320, 1);
+
+    InputReplaceAll(&self->input, app, win, StrL("programmatic"));
+    TestRunUntilParked(app);
+    utassert(self->searches == 0);
+    InputSetValue(&self->input, {});
+    TestSimulateClick(win, {20, self->field.CenterY()});
+    TestSimulateInput(win, StrL("cpu"));
+    TestRunUntilParked(app);
+    utassert(self->searches == 1 && list->count == 2 && list->selected == -1);
+    TestSimulateKeystrokes(win, "down up enter");
+    TestRunUntilParked(app);
+    utassert(self->accepts == 0 && self->submits == 1);
+    utassert(StrEq(InputValue(&self->input), StrL("cpu")));
+    TestSimulateKeystrokes(win, "down");
+    utassert(list->selected == 0);
+    TestSimulateKeystrokes(win, "escape down enter");
+    TestRunUntilParked(app);
+    utassert(self->searches == 1 && self->accepts == 1);
+    utassert(StrEq(InputValue(&self->input), StrL("cpu.load")));
+    utassert(self->input.focused);
+    InputPerform(&self->input, app, win, InputAction::Undo, false);
+    utassert(StrEq(InputValue(&self->input), StrL("cpu")));
+    TestRunUntilParked(app);
+
+    TestAdvanceClock(app, 200);
+    TestDraw(win);
+    TestSimulateClick(win, {20, self->field.Bottom() + 18});
+    TestRunUntilParked(app);
+    utassert(self->accepts == 2 && self->input.focused);
+
+    self->delayed = true;
+    InputReplaceAll(&self->input, app, win, StrL("cpu"));
+    TestRunUntilParked(app);
+    InputReplaceAll(&self->input, app, win, StrL("memory"));
+    TestRunUntilParked(app);
+    int before = self->searches;
+    TestSimulateKeystrokes(win, "enter");
+    TestAdvanceClock(app, 100);
+    utassert(self->searches == before + 1 && list->count == 1);
+    utassert(self->submits == 2);
+    TestSimulateClick(win, {380, 280});
+    utassert(!self->input.focused);
+    TestAppFree(app);
+}
+
 void TestList() {
+    TheInputOffersAListAndStillAcceptsFreeText();
     TheKeyTable();
     NextAndPrevWrap();
     AnEmptyListHasNowhereToGo();

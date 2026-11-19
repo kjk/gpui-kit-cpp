@@ -322,54 +322,71 @@ static bool ListViewportAt(void* data, Ctx* cx, El*, float height) {
     return false;
 }
 
+void ListSyncDelegate(Ctx* cx, ListState* s, const ListDelegate& delegate,
+                      bool delegateSet) {
+    if (!s) return;
+    s->onPerformSearch = delegate.performSearch;
+    s->onCancelSearch = delegate.cancelSearch;
+    s->onSetSelectedIndex = delegate.setSelectedIndex;
+    s->onSetRightClickedIndex = delegate.setRightClickedIndex;
+    s->onConfirm = delegate.confirm;
+    s->onCancel = delegate.cancel;
+    if (delegateSet) {
+        s->onLoadMore = delegate.loadMore;
+        int sections = delegate.sectionsCount
+                           ? delegate.sectionsCount(cx, delegate.data)
+                           : 1;
+        if (sections < 1) {
+            sections = 1;
+        }
+        if (delegate.itemsCount) {
+            VecClear(s->sectionCounts);
+            s->count = 0;
+            for (int section = 0; section < sections; section++) {
+                int n = delegate.itemsCount(cx, delegate.data, section);
+                if (n < 0) {
+                    n = 0;
+                }
+                VecAppend(s->sectionCounts, n);
+                s->count += n;
+            }
+            s->sectionHeaders = delegate.renderSectionHeader != nullptr;
+            s->sectionFooters = delegate.renderSectionFooter != nullptr;
+        }
+        s->loading =
+            delegate.isLoading ? delegate.isLoading(cx, delegate.data) : false;
+        s->hasMore =
+            delegate.hasMore ? delegate.hasMore(cx, delegate.data) : false;
+        s->loadMoreThreshold = delegate.loadMoreThreshold
+                                   ? delegate.loadMoreThreshold(delegate.data)
+                                   : 20;
+        if (s->loadMoreThreshold < 0) {
+            s->loadMoreThreshold = 0;
+        }
+    }
+}
+
+float List::ContentHeight(float maxH) const {
+    const ListState* s = state.Get(cx);
+    if (!s || s->loading) return maxH;
+    float height = (float)s->count * s->rowH;
+    if (s->sectionHeaders || s->sectionFooters) {
+        for (int i = 0; i < len(s->sectionCounts); i++) {
+            if (s->sectionCounts[i] > 0) {
+                height += s->headerH + s->footerH;
+            }
+        }
+    }
+    return std::min(maxH, height + padding * 2);
+}
+
 El* List::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     ListState* s = state.Get(cx);
     if (s) {
         s->self = state;
         s->queryInput = search;
-        s->onPerformSearch = delegate.performSearch;
-        s->onSetSelectedIndex = delegate.setSelectedIndex;
-        s->onSetRightClickedIndex = delegate.setRightClickedIndex;
-        s->onConfirm = delegate.confirm;
-        s->onCancel = delegate.cancel;
-        if (delegateSet) {
-            s->onLoadMore = delegate.loadMore;
-        }
-        if (delegateSet) {
-            int sections = delegate.sectionsCount
-                               ? delegate.sectionsCount(cx, delegate.data)
-                               : 1;
-            if (sections < 1) {
-                sections = 1;
-            }
-            if (delegate.itemsCount) {
-                VecClear(s->sectionCounts);
-                s->count = 0;
-                for (int section = 0; section < sections; section++) {
-                    int n = delegate.itemsCount(cx, delegate.data, section);
-                    if (n < 0) {
-                        n = 0;
-                    }
-                    VecAppend(s->sectionCounts, n);
-                    s->count += n;
-                }
-                s->sectionHeaders = delegate.renderSectionHeader != nullptr;
-                s->sectionFooters = delegate.renderSectionFooter != nullptr;
-            }
-            s->loading = delegate.isLoading
-                             ? delegate.isLoading(cx, delegate.data)
-                             : false;
-            s->hasMore =
-                delegate.hasMore ? delegate.hasMore(cx, delegate.data) : false;
-            s->loadMoreThreshold = delegate.loadMoreThreshold
-                                       ? delegate
-                                             .loadMoreThreshold(delegate.data)
-                                       : 20;
-            if (s->loadMoreThreshold < 0) {
-                s->loadMoreThreshold = 0;
-            }
-        }
+        ListSyncDelegate(cx, s, delegate, delegateSet);
     }
 
     // Two elements, because Rust has two views. `List::render` is
@@ -638,15 +655,14 @@ El* List::IntoEl() {
     // Role::List goes on the element that takes the focus: a focused node
     // without a role is not painted into the accessibility tree, so focus
     // would vanish from assistive technology.
-    inner->PathClick(StrL("list-state"))
-        ->Role(AccessibilityRole::List)
-        ->TrackFocus(s->focus)
-        ->FocusRing(false)
-        ->FocusOnPress();
+    inner->PathClick(StrL("list-state"))->Role(AccessibilityRole::List);
+    if (!keepInputFocus) {
+        inner->TrackFocus(s->focus)->FocusRing(false)->FocusOnPress();
+        ListBindKeys(cx, inner, state);
+    }
     if (s->rightClicked >= 0) {
         inner->OnMouseDownOut(ListenTo(state, &ListState::OnMouseDownOut));
     }
-    ListBindKeys(cx, inner, state);
     return root;
 }
 

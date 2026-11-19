@@ -161,6 +161,7 @@ struct ListState {
     // also retains the selection itself; the other five have empty defaults
     // upstream too.
     Listener onPerformSearch = {};
+    Listener onCancelSearch = {};
     Listener onSetSelectedIndex = {};
     Listener onSetRightClickedIndex = {};
     Listener onConfirm = {};
@@ -249,6 +250,8 @@ void ListSetItemToMeasureIndex(ListState* s, Ctx* cx, IndexPath path);
 // set_query writes the query input silently and explicitly starts the search,
 // as Rust does because InputState::set_value does not emit Change.
 void ListSetQuery(ListState* s, Ctx* cx, Str query);
+void ListSearchFromInput(ListState* s, Ctx* cx, Str query);
+void ListCancelSearch(ListState* s, Ctx* cx);
 void ListRequestLoadMore(ListState* s, Ctx* cx);
 
 // rows_cache.next / .prev. Both wrap: past the last row is the first, and

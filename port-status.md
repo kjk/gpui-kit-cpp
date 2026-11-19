@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d758da0fc195fe9d70e372a9fb44052de3329dcb` (2026-11-19,
-editor: Add GutterStyle for line-number gap, color and font (#3737)).
-Add per-editor gutter gap, ink, family, and size overrides with a frame-owned
-Base number renderer. Measure the widest digit, align the number baseline with
-the body, and use the resolved lane for wrap, text hit testing, folding and
-horizontal scrollbars.
+Processed through `f1d90722e95ffd0bbf504f77166083b4e0af8fd4` (2026-11-19,
+input: Offer a List under the field, like <input list> (#3785)).
+Bind an optional ordinary List and delegate to Input. Preserve free text,
+focus, and undo through navigation and acceptance. Defer queued searches until
+edits settle and let the delegate cancel asynchronous work through its
+existing timer or executor ownership.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
