@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "5db731f3de721dc682fe168bb545869f74274cf7",
+  sha: "cc09fe4cfa049be60d2db064390dbc9ee8b2b694",
   date: "2026-11-14",
-  subject: "input: add `set_tokens` to swap a textarea's tokens in place (#3971)",
+  subject: "tooltip: Animate the width when switching between tooltips (#3957)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

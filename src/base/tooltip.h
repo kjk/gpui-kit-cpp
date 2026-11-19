@@ -60,6 +60,12 @@ using TooltipRenderer = El* (*)(Ctx * cx, El* view,
                                 const TooltipTransition& transition,
                                 void* data);
 
+// A skin may choose a renderer for the window overlay. Explicit overlay
+// renderers still take precedence.
+void TooltipInstallRenderer(App* app, TooltipRenderer renderer);
+El* TooltipRenderAnimated(Ctx* cx, El* view,
+                          const TooltipTransition& transition, void* data);
+
 // Content requested by a trigger. Callback data is application-owned; the
 // overlay deep-copies text used by the convenience El::Tip path.
 struct TooltipRequest {

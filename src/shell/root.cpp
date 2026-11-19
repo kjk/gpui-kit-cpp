@@ -1,6 +1,5 @@
 #include "shell/root.h"
 
-#include "base/animation.h"
 #include "base/dialog.h"
 #include "base/root.h"
 #include "base/sheet.h"
@@ -8,8 +7,6 @@
 #include "base/theme.h"
 #include "base/tooltip.h"
 #include "shell/scope.h"
-
-#include <math.h>
 
 namespace gpui {
 
@@ -33,15 +30,6 @@ static const int kToastPriority = kPopupPriority + 1;
 // unlike every other overlay here they cannot take their measure from their
 // content or from the viewport.
 static const float kToastWidth = 320.f;
-
-// How long a tooltip takes to slide and fade in.
-static const float kTooltipEnterMs = 150.f;
-// How long the box takes to travel when the pointer moves straight from one
-// trigger to the next one beside it.
-static const float kTooltipSlideMs = 200.f;
-// How far apart two triggers may sit vertically and still count as the same
-// row.
-static const float kTooltipSameRow = 10.f;
 
 static uint32_t ShellRootWindowKey() {
     return (uint32_t)HashClickId(StrL("gpui-shell-root"));
@@ -713,37 +701,6 @@ static El* ToastLayer(ShellRoot* self, Ctx* cx, const SemanticThemeTokens& t) {
         ->ZIndex(kToastPriority);
 }
 
-// ─── the tooltip ───────────────────────────────────────────────────────────
-
-// What an appearing tooltip does on its way in: the whole of the root's
-// presentation for the layer. Enter slides up and fades; a switch between two
-// triggers on one row slides across, because the box that was already up is
-// the same box.
-static El* RenderTooltip(Ctx* cx, El* view, const TooltipTransition& transition,
-                         void*) {
-    El* element = Div(cx->a)->Child(view);
-    if (transition.kind == TooltipTransitionKind::Switch) {
-        if (fabsf(transition.current.y - transition.previous.y) >=
-            kTooltipSameRow)
-            return element;
-        float travelled = (transition.current.x + transition.current.w / 2.f) -
-                          (transition.previous.x + transition.previous.w / 2.f);
-        return EffectTransition::New(cx, kTooltipSlideMs)
-            ->Ease(&EaseInOutCubic)
-            ->SlideX(-travelled, 0.f)
-            ->Apply(element,
-                    StrDup(cx->a, fmt("shell-tooltip-slide-%llu",
-                                      (unsigned long long)transition.epoch)));
-    }
-    return EffectTransition::New(cx, kTooltipEnterMs)
-        ->Ease(&EaseOutCubic)
-        ->SlideY(4.f, 0.f)
-        ->Fade(0.f, 1.f)
-        ->Apply(element,
-                StrDup(cx->a, fmt("shell-tooltip-enter-%llu",
-                                  (unsigned long long)transition.epoch)));
-}
-
 // ─── the root ──────────────────────────────────────────────────────────────
 
 ShellRoot::~ShellRoot() {
@@ -790,7 +747,7 @@ Entity<ShellRoot> ShellRoot::New(App* app, EntityId content) {
         // script's tooltip has on its way in.
         Entity<TooltipOverlay> tooltip = EntityNew<TooltipOverlay>(app);
         if (TooltipOverlay* overlay = tooltip.Get(app))
-            overlay->RenderWith(&RenderTooltip);
+            overlay->RenderWith(&TooltipRenderAnimated);
         state->tooltipOverlay = tooltip.id;
     }
     return root;

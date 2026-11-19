@@ -1,5 +1,8 @@
 #include "base/tooltip.h"
+#include "base/animation.h"
 #include "base/element_ext.h"
+
+#include <math.h>
 
 namespace gpui {
 
@@ -100,6 +103,16 @@ static void TooltipRequestMove(TooltipRequest* into, TooltipRequest* from) {
     TooltipRequestClear(into);
     *into = *from;
     *from = {};
+}
+
+struct TooltipRendererDefault {
+    TooltipRenderer renderer = nullptr;
+};
+
+void TooltipInstallRenderer(App* app, TooltipRenderer renderer) {
+    if (auto* slot = AppGlobalEnsure<TooltipRendererDefault>(app)) {
+        slot->renderer = renderer;
+    }
 }
 
 TooltipOverlay::~TooltipOverlay() {
@@ -302,6 +315,59 @@ static El* TooltipRenderLink(const TooltipRequest& request, Ctx* cx) {
         ->Child(view);
 }
 
+struct TooltipSizeMotion {
+    uint64_t switchEpoch = 0;
+    Bounds drawn = {};
+    Size start = {};
+};
+
+static constexpr float kTooltipEnterMs = 150.f;
+static constexpr float kTooltipSlideMs = 200.f;
+static constexpr float kTooltipSameRow = 10.f;
+
+El* TooltipRenderAnimated(Ctx* cx, El* view,
+                          const TooltipTransition& transition, void*) {
+    TempStr scope = fmt("tooltip-motion-%d-%u", cx->self.index, cx->self.gen);
+    auto* motion =
+        KeyedState<TooltipSizeMotion>(cx, (uint32_t)HashClickId(scope));
+    El* element = Div(cx->a)->Child(view)->BoundsOut(&motion->drawn);
+    if (transition.kind != TooltipTransitionKind::Switch) {
+        EffectTransition::New(cx, kTooltipEnterMs)
+            ->Ease(&EaseOutCubic)
+            ->SlideY(4.f, 0.f)
+            ->Fade(0.f, 1.f)
+            ->Apply(element, fmt("%s-enter-%llu", scope,
+                                 (unsigned long long)transition.epoch));
+        return element->PaintOffset(0.f, element->style.absTop);
+    }
+    if (fabsf(transition.current.y - transition.previous.y) >=
+        kTooltipSameRow) {
+        return element;
+    }
+    if (motion->switchEpoch != transition.epoch) {
+        motion->switchEpoch = transition.epoch;
+        motion->start = {motion->drawn.w, motion->drawn.h};
+    }
+    float dx = transition.current.CenterX() - transition.previous.CenterX();
+    auto* effect = EffectTransition::New(cx, kTooltipSlideMs)
+                       ->Ease(&EaseInOutCubic)
+                       ->SlideX(-dx, 0.f);
+    if (motion->start.w > 0.f && motion->start.h > 0.f) {
+        Size to = MeasureEl(&cx->win->paint, element);
+        if (motion->start.w != to.w || motion->start.h != to.h) {
+            element->ClipX()->ClipY();
+            if (motion->start.h == to.h) {
+                // Keep the content's natural line breaks as its width clips.
+                view->MinW(to.w)->Shrink(0);
+            }
+            effect->Width(motion->start.w, to.w)->Height(motion->start.h, to.h);
+        }
+    }
+    effect->Apply(element, fmt("%s-slide-%llu", scope,
+                               (unsigned long long)transition.epoch));
+    return element->PaintOffset(element->style.absLeft, 0.f);
+}
+
 El* TooltipOverlay::Render(TooltipOverlay* self, Ctx* cx) {
     if (!self->hasContent) {
         return nullptr;
@@ -321,9 +387,13 @@ El* TooltipOverlay::Render(TooltipOverlay* self, Ctx* cx) {
                                         self->previousBounds,
                                         self->content.triggerBounds)
             : TooltipTransition::Enter(self->animationEpoch);
-    El* rendered = self->renderer ? self->renderer(cx, view, transition,
-                                                   self->rendererData)
-                                  : Div(cx->a)->Child(view);
+    TooltipRenderer renderer = self->renderer;
+    if (!renderer) {
+        auto* installed = AppGlobalGet<TooltipRendererDefault>(cx->app);
+        if (installed) renderer = installed->renderer;
+    }
+    El* rendered = renderer ? renderer(cx, view, transition, self->rendererData)
+                            : Div(cx->a)->Child(view);
     TooltipPositioner* positioner =
         TooltipPositioner::New(cx, self->content.triggerBounds)
             ->Offset(self->content.offset);

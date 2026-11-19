@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5db731f3de721dc682fe168bb545869f74274cf7` (2026-11-14,
-input: add `set_tokens` to swap a textarea's tokens in place (#3971)).
-Swap derived inline tokens without changing the text, selections or history.
-Replay recorded text edits exactly, dropping a derived token when replay cuts
-through it.
+Processed through `cc09fe4cfa049be60d2db064390dbc9ee8b2b694` (2026-11-14,
+tooltip: Animate the width when switching between tooltips (#3957)).
+Animate themed and Shell tooltip dimensions from the last painted size during
+switches on one row. Verify the initial, intermediate and final widths.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

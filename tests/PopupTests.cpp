@@ -1107,6 +1107,60 @@ static void TooltipsSwitchInBothDirections() {
     TestAppFree(w.app);
 }
 
+struct ResizingTipProbe {
+    const Bounds* drawn = nullptr;
+
+    static El* Capture(Ctx* cx, El* view, const TooltipTransition& transition,
+                       void* data) {
+        El* el = TooltipRenderAnimated(cx, view, transition, data);
+        AppGlobalEnsure<ResizingTipProbe>(cx->app)->drawn = el->boundsOut;
+        return el;
+    }
+
+    static El* Render(ResizingTipProbe*, Ctx* cx) {
+        El* root = Div(cx->a)->SizeFull();
+        const Str labels[] = {StrL("Cancel"), StrL("Do something awesome")};
+        for (int i = 0; i < 2; i++) {
+            root->Child(Div(cx->a)
+                            ->PathClick(fmt("resizing-tooltip-%d", i))
+                            ->Absolute()
+                            ->Left(80.f + i * 100.f)
+                            ->Top(10)
+                            ->W(100)
+                            ->H(30)
+                            ->Tip(labels[i]));
+        }
+        return root;
+    }
+};
+
+static void SwitchingTooltipsAnimatesTheWidth() {
+    App* app = TestAppNew();
+    component::Init(app);
+    TooltipInstallRenderer(app, &ResizingTipProbe::Capture);
+    auto view = EntityNew<ResizingTipProbe>(app);
+    Window* win = TestWindowOpen(app, view, 480, 300);
+    auto width = [&]() {
+        TestDraw(win);
+        auto* probe = AppGlobalGet<ResizingTipProbe>(app);
+        return probe && probe->drawn ? probe->drawn->w : 0.f;
+    };
+    TestSimulateMouseMove(win, {110, 24});
+    TestAdvanceClock(app, kTooltipShowDelayMs + 160);
+    float shortWidth = width();
+    utassert(shortWidth > 0);
+
+    TestSimulateMouseMove(win, {230, 24});
+    float start = width();
+    TestAdvanceClock(app, 100);
+    float middle = width();
+    TestAdvanceClock(app, 120);
+    float longWidth = width();
+    utassertnear(start, shortWidth);
+    utassert(shortWidth < middle && middle < longWidth);
+    TestAppFree(app);
+}
+
 static void LeavingATriggerDoesNotCancelTheNextTooltipDelay() {
     const int pairs[][2] = {{0, 1}, {1, 0}};
     for (auto& pair : pairs) {
@@ -1277,6 +1331,7 @@ void TestPopup() {
     ClickingATriggerAwayDoesNotLeaveItsTooltip();
     APressOnARemovedTriggerEndsWhenThePointerMovesAway();
     TooltipsSwitchInBothDirections();
+    SwitchingTooltipsAnimatesTheWidth();
     LeavingATriggerDoesNotCancelTheNextTooltipDelay();
     ThePopupSurfaceBlocksThePanelItCovers();
     TheTopAnchorsTakeTheTopEdge();

@@ -43,7 +43,8 @@ El* Tooltip::IntoEl() {
                     ->Font(14)
                     ->Gap(Rems(cx, 0.75f))
                     ->MaxW(maxWidth)
-                    ->Child(Div(a)->MinW(0)->Child(TextEl(a, text)->Wrap()));
+                    ->Child(Div(a)->MinW(0)->ClipX()->ClipY()->Child(
+                        TextEl(a, text)->Wrap()));
     return Div(a)->Child(popup);
 }
 

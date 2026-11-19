@@ -1,4 +1,5 @@
 #include "ui/root.h"
+#include "base/tooltip.h"
 #include "base/layout_direction.h"
 #include "ui/dialog.h"
 #include "ui/window_border.h"
@@ -244,6 +245,7 @@ const RootPlugin kWindowStatePlugin = {
 
 void RootInit(App* app) {
     Root::RegisterPlugin(app, &kWindowStatePlugin);
+    TooltipInstallRenderer(app, &TooltipRenderAnimated);
 }
 
 } // namespace component
