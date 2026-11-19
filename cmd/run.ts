@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "fa68322721579a04b3d7c96fe1c67958e19b157f",
+  sha: "6f7f4d96982c476fc0cb3491c6c4d775371554f1",
   date: "2026-11-13",
-  subject: "table: Add `scrollbar_mode` to `DataTable` (#3945)",
+  subject: "clipboard: Add a visible label to the copy button (#3910)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

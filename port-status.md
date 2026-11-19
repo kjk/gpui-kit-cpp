@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `fa68322721579a04b3d7c96fe1c67958e19b157f` (2026-11-13,
-table: Add `scrollbar_mode` to `DataTable` (#3945)).
-Let DataTable override the theme scrollbar mode for both visible axes, while
-retaining the independent visibility controls.
+Processed through `6f7f4d96982c476fc0cb3491c6c4d775371554f1` (2026-11-13,
+clipboard: Add a visible label to the copy button (#3910)).
+Add visible Clipboard labels and use them as the accessible name unless the
+caller supplies a separate name. Update the default Story scenario.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

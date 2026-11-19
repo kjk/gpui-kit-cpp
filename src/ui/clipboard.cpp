@@ -45,6 +45,10 @@ Clipboard* Clipboard::Value(Str v) {
     value = v;
     return this;
 }
+Clipboard* Clipboard::Label(Str text) {
+    label = text;
+    return this;
+}
 Clipboard* Clipboard::Tooltip(Str t) {
     tooltipText = t;
     return this;
@@ -53,8 +57,8 @@ Clipboard* Clipboard::TooltipShowDelay(int ms) {
     tooltipShowDelayMs = ms;
     return this;
 }
-Clipboard* Clipboard::AccessibilityLabel(Str label) {
-    accessibilityLabel = label;
+Clipboard* Clipboard::AccessibilityLabel(Str name) {
+    accessibilityLabel = name;
     return this;
 }
 Clipboard* Clipboard::OnCopied(Listener fn) {
@@ -81,21 +85,24 @@ El* Clipboard::IntoEl() {
     }
     bool copied = s && s->copied;
 
-    // A Clipboard is the ghost icon button and nothing else; `value` is what
-    // it copies, not something it shows. The caller renders any label next to
-    // it.
     Button* btn = Button::New(cx, id)
                       ->Icon(copied ? IconName::Check : IconName::Copy)
                       ->Ghost()
                       ->WithSize(size);
+    if (label.s) {
+        btn->Label(label);
+    }
     if (tooltipText.s) {
         btn->Tooltip(tooltipText);
     }
     if (tooltipShowDelayMs >= 0) {
         btn->TooltipShowDelay(tooltipShowDelayMs);
     }
-    btn->AccessibilityLabel(accessibilityLabel.s ? accessibilityLabel
-                                                 : Tr("Copy"));
+    if (accessibilityLabel.s) {
+        btn->AccessibilityLabel(accessibilityLabel);
+    } else if (!label.s) {
+        btn->AccessibilityLabel(Tr("Copy"));
+    }
     if (!copied) {
         btn->OnClick(ListenTo(st, &ClipboardState::OnCopy));
     }

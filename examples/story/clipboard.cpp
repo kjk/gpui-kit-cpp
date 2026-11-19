@@ -32,13 +32,12 @@ El* ClipboardStory::Render(ClipboardStory* self, Ctx* cx) {
     El* def = StorySection(cx, "Default",
                            "Copies a value supplied by the application.");
     StorySectionBody(def)->W(480);
-    El* defRow = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
-    defRow->Child(component::Label::New(cx, StrL("A clipboard button"))
-                      ->IntoEl());
+    El* defRow = Div(a)->FlexRow()->ItemsCenter();
     // value_fn: the value is the page's own state, read at the frame the
     // click lands in.
     defRow->Child(
         component::Clipboard::New(cx, StrL("clipboard1"))
+            ->Label(StrL("Copy value"))
             ->Value(StoryFmt(cx, "masked :%s", self->masked ? "true" : "false"))
             ->OnCopied(copied)
             ->IntoEl());

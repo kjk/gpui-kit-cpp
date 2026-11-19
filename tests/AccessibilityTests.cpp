@@ -185,6 +185,29 @@ static void ClipboardReportsDefaultAndExplicitAccessibilityNames() {
 // checkbox.rs / color_picker.rs / radio.rs / switch.rs, mod tests:
 // an_explicit_accessibility_label_replaces_the_visible_one. The explicit name
 // wins over the visible label, and what is drawn does not change with it.
+// clipboard.rs test_clipboard_builder: Button derives the name from its
+// visible label until an explicit accessible name is supplied.
+static void ClipboardUsesItsVisibleLabelAsTheAccessibleName() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    Str label = StrL("Copy value"), name = StrL("Copy current value");
+    auto* clipboard = component::Clipboard::New(&f.cx, StrL("copy"))
+                          ->Value(StrL("Example"))
+                          ->Label(label);
+    utassert(StrEq(clipboard->label, label));
+    utassert(!clipboard->accessibilityLabel.s);
+    AccessibilityCollect(clipboard->IntoEl(), &f.win->accessibility);
+    auto* button = RoleNode(f.win->accessibility, AccessibilityRole::Button);
+    utassert(button && StrEq(button->info.label, label));
+    clipboard->AccessibilityLabel(name);
+    utassert(StrEq(clipboard->label, label));
+    VecClear(f.win->accessibility);
+    AccessibilityCollect(clipboard->IntoEl(), &f.win->accessibility);
+    button = RoleNode(f.win->accessibility, AccessibilityRole::Button);
+    utassert(button && StrEq(button->info.label, name));
+    FreeAccessibilityFrame(&f);
+}
+
 static void AnExplicitAccessibilityLabelReplacesTheVisibleOne() {
     AccessibilityFrame f = NewAccessibilityFrame();
     component::Init(&f.app);
@@ -1145,6 +1168,7 @@ void TestAccessibility() {
     LabelsExposeTheirTextToAssistiveTechnology();
     AnExplicitAccessibilityLabelReplacesTheVisibleOne();
     ClipboardReportsDefaultAndExplicitAccessibilityNames();
+    ClipboardUsesItsVisibleLabelAsTheAccessibleName();
     ExplicitOnlyNamesReachTheAnnouncedControl();
     ExplicitAriaFieldsSurviveCollection();
     ADisabledControlMarksItsNodeDisabled();
