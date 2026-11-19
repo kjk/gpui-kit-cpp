@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `95e92c7dc8c934cc09ebbebff8e47f3feaf629cd` (2026-11-07, ci:
-Propagate Shell integration test failures on Windows (#3693)).
-Rust CI now runs its Shell integration commands in Bash so an earlier failure
-fails the Windows job. The C++ suite runs as a single command.
+Processed through `50b472007a0dd0f682419b7f1a5dcbb7ff60f37e` (2026-11-07,
+shell: Honor the manifest entry when bundling (#3682)).
+The bundler validates the manifest and the entry it declares before producing
+output. A default main.js cannot stand in for a missing custom entry.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

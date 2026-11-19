@@ -225,6 +225,67 @@ static bool Touch(const char* path) {
     return true;
 }
 
+// crates/shell/src/host/bundle.rs, mod tests.
+void BundlesTheManifestEntry() {
+    Str root = StrL("shell_bundle_entry");
+    Str app = StrL("shell_bundle_entry/app");
+    Str manifestPath = StrL("shell_bundle_entry/app/gpui-shell.json");
+    Str mainPath = StrL("shell_bundle_entry/app/main.js");
+    Str body = StrL("export {};");
+    Str error = {};
+    shell::DependencyRemoveTree(root);
+    utassert(shell::DependencyMakeDirectories(
+        StrL("shell_bundle_entry/app/src"), &error));
+    shell::Invocation invocation;
+    invocation.platformSet = true;
+    invocation.platform = shell::BundlePlatform::MacOS;
+    invocation.out = StrL("shell_bundle_entry/out");
+    for (Str entry : {StrL("src/main.js"), StrL("main.js")}) {
+        Str path = StrDup(fmt("%s/%s", app, entry));
+        Str manifest = StrDup(
+            fmt("{\"id\":\"com.example.bundle\",\"name\":\"Bundle Test\","
+                "\"version\":\"1.0.0\",\"entry\":\"%s\"}",
+                entry));
+        utassert(shell::WriteWholeFile(path, body, &error));
+        utassert(shell::WriteWholeFile(manifestPath, manifest, &error));
+        utassert(shell::ShellBundle(app, invocation, nullptr, &error));
+
+        Str packaged = StrL(
+            "shell_bundle_entry/out/Bundle Test.app/Contents/Resources/app");
+        Str bundledPath = StrDup(fmt("%s/%s", packaged, entry));
+        Str bytes = {};
+        utassert(shell::ReadWholeFile(bundledPath, 1024, &bytes, &error));
+        utassert(StrEq(bytes, body));
+        StrFree(bytes);
+        StrFree(bundledPath);
+        bundledPath = StrDup(fmt("%s/gpui-shell.json", packaged));
+        utassert(shell::ReadWholeFile(bundledPath, 1024, &bytes, &error));
+        utassert(StrEq(bytes, manifest));
+        StrFree(bytes);
+        StrFree(bundledPath);
+
+        utassert(remove(path.s) == 0);
+        if (!StrEq(entry, StrL("main.js"))) {
+            utassert(shell::WriteWholeFile(mainPath, body, &error));
+        }
+        utassert(!shell::ShellBundle(app, invocation, nullptr, &error));
+        utassert(StrContains(error, fmt("no `%s`", entry)));
+        StrFree(manifest);
+        StrFree(path);
+    }
+    utassert(shell::WriteWholeFile(mainPath, body, &error));
+    utassert(remove(manifestPath.s) == 0);
+    invocation.out = StrL("shell_bundle_entry/invalid");
+    utassert(!shell::ShellBundle(app, invocation, nullptr, &error));
+    utassert(StrContains(error, StrL("has no gpui-shell.json")));
+    utassert(shell::WriteWholeFile(manifestPath, StrL("{}"), &error));
+    utassert(!shell::ShellBundle(app, invocation, nullptr, &error));
+    utassert(StrContains(error, StrL("id")));
+    utassert(!PlatDirExists(invocation.out.s));
+    StrFree(error);
+    shell::DependencyRemoveTree(root);
+}
+
 void TheApplicationLeavesOutDevelopmentFilesAndTheOutput() {
     Str root = StrL("shell_bundle_tree");
     shell::DependencyRemoveTree(root);
@@ -373,6 +434,7 @@ void TestShellBundle() {
     ANameThatBreaksALineIsRefused();
     AnIcnsFileHoldsEverySizeUpToTheSource();
 #if !GPUI_OS_WASM
+    BundlesTheManifestEntry();
     TheApplicationLeavesOutDevelopmentFilesAndTheOutput();
     ArchivesRoundTripWithTheirModes();
 #endif

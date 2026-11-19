@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "95e92c7dc8c934cc09ebbebff8e47f3feaf629cd",
+  sha: "50b472007a0dd0f682419b7f1a5dcbb7ff60f37e",
   date: "2026-11-07",
-  subject: "ci: Propagate Shell integration test failures on Windows (#3693)",
+  subject: "shell: Honor the manifest entry when bundling (#3682)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

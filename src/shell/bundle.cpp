@@ -1680,8 +1680,24 @@ bool ShellBundle(Str directory, const Invocation& invocation, Str* report,
     if (report) *report = {};
     ErrorOutClear(error);
     Str manifestOwned = JoinDisk(directory, Str(kShellManifestFile));
-    if (!PlatFileExists(manifestOwned.s)) {
-        StrFree(manifestOwned);
+    bool hasManifest = PlatFileExists(manifestOwned.s);
+    StrFree(manifestOwned);
+    PluginManifest manifest;
+    ShellError manifestError = {};
+    if (hasManifest &&
+        !PluginManifestRead(directory, &manifest, &manifestError)) {
+        BundleFail(error, manifestError.message);
+        ShellErrorClear(&manifestError);
+        return false;
+    }
+    Str entry = hasManifest ? manifest.entry : StrL("main.js");
+    Str entryPath = JoinDisk(directory, entry);
+    bool hasEntry = entryPath && PlatFileExists(entryPath.s);
+    StrFree(entryPath);
+    if (!hasEntry) {
+        return BundleFail(error, fmt("no `%s` in %s", entry, directory));
+    }
+    if (!hasManifest) {
         return BundleFail(
             error,
             fmt("%s has no %s. A bundle needs one: its `id` keeps the user's "
@@ -1689,11 +1705,6 @@ bool ShellBundle(Str directory, const Invocation& invocation, Str* report,
                 "and `version` name the bundle.",
                 directory, Str(kShellManifestFile)));
     }
-    StrFree(manifestOwned);
-    PluginManifest manifest;
-    if (!PluginManifestRead(directory, &manifest, nullptr))
-        return BundleFail(
-            error, fmt("invalid %s/%s", directory, Str(kShellManifestFile)));
     BundlePlatform platform =
         invocation.platformSet ? invocation.platform : BundleHostPlatform();
     if (invocation.downloadUrl && platform != BundlePlatform::Linux)

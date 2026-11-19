@@ -615,12 +615,12 @@ int GpuiMain(int argc, char** argv) {
         ShellErrorClear(&error);
         return 1;
     }
-    // Resolve hands back the directory. The entry name still comes from the
-    // manifest, which ResolveRoot reads.
+    // Bundling reads and validates the entry with its required manifest.
     Str root;
     Str entry;
-    if (!ResolveRoot(resolved, invocation.kind != InvocationKind::Types, &root,
-                     &entry, &error)) {
+    bool requireEntry = invocation.kind != InvocationKind::Types &&
+                        invocation.kind != InvocationKind::Bundle;
+    if (!ResolveRoot(resolved, requireEntry, &root, &entry, &error)) {
         ReportSetupFailure(invocation, error.message);
         StrFree(resolved);
         ShellErrorClear(&error);
