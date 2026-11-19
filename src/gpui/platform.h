@@ -26,6 +26,14 @@ void WindowDrawFrameHeadless(Window* win, float dipW, float dipH);
 // Primary locale preferred by the platform or browser.
 TempStr PlatPreferredLocaleTemp();
 
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC
+bool PlatAutoHideScrollbars();
+#else
+inline bool PlatAutoHideScrollbars() {
+    return base::kPlatFacts.autoHideScrollbars;
+}
+#endif
+
 // cx.reduce_motion(): whether the desktop has asked for less animation.
 // Windows and macOS each have a switch to read; Linux answers through the
 // XDG desktop portal asynchronously (PlatReduceMotionKnown is then false).

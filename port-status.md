@@ -16,12 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b9e15969c5e14b435b631228d26ad20780c292ea` (2026-11-11,
-input: Expose a multi-line input's text to screen readers (#3894)).
-Added shared logical text-line ranges to the native multiline accessibility
-providers. Line queries retain LF and CRLF and address the empty line after a
-final break. The C++ providers expose the original text and selection directly
-without AccessKit node chunks.
+Processed through `b7fe6ab3657069b2fc58e6093974aeaf0274e7f0` (2026-11-11,
+theme: Follow Windows' scrollbar convention when syncing with the system
+(#3895)).
+The theme follows UISettings on Windows and NSScroller on macOS at
+initialization. Windows maps auto-hide to Hover and the always-show preference
+to Always. Hover reveals the edge-strip scrollbar, as in the Rust change.
+Linux uses the pinned GPUI default, and wasm and mobile retain their auto-hide
+defaults.
 The current update target is
 `f8243df95b9158d9b6d842348dcfcd0481a85c2c`.
 

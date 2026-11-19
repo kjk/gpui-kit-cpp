@@ -557,6 +557,8 @@ ThemeMode ThemeGet(const App* app);
 // Theme::scrollbar_mode. An element that names its own mode wins.
 ScrollbarMode ScrollbarModeNow(const App* app);
 void ScrollbarModeSet(App* app, ScrollbarMode mode);
+ScrollbarMode ScrollbarModeForSystem(bool autoHide, bool windows);
+void ThemeSyncScrollbarAppearance(App* app);
 
 // Theme::semantic_tokens and ::apply_semantic_tokens: the projection between
 // the component palette and gpui-base's role-based vocabulary. These belong

@@ -11,6 +11,7 @@ void Init(App* app) {
     UiGlobalStateInit(app);
     BaseInit(app);
     ThemeSyncBase(app);
+    ThemeSyncScrollbarAppearance(app);
     InputLanguageInit(app);
     RootInit(app);
 

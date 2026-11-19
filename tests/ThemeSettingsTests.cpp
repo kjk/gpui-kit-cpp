@@ -89,6 +89,7 @@ static void StyledThemeChangesProjectIntoBase() {
     App second;
     component::Init(&first);
     component::Init(&second);
+    ScrollbarMode secondMode = ScrollbarModeNow(&second);
 
     ThemeSet(&first, ThemeMode::Dark);
     ThemeSetRadius(&first, 0);
@@ -97,7 +98,7 @@ static void StyledThemeChangesProjectIntoBase() {
     const BaseTheme* b = BaseThemeGlobal(&second);
     utassert(a && b);
     utassert(a->scrollbar.mode == ScrollbarMode::Hover);
-    utassert(b->scrollbar.mode == ScrollbarMode::Scrolling);
+    utassert(b->scrollbar.mode == secondMode);
     utassert(a->scrollbar.motion
                  .thumbHoverEntrance == ScrollbarEntrance::SlideAndFade);
     utassert(a->scrollbar.styles.thumb.hasBackground);
@@ -389,6 +390,13 @@ static void CursorBlinkSurvivesThemeUpdatesAndModeChanges() {
     AppGlobalClear(&app);
 }
 
+static void SystemScrollbarModesFollowTheirPlatformConvention() {
+    utassert(ScrollbarModeForSystem(true, true) == ScrollbarMode::Hover);
+    utassert(ScrollbarModeForSystem(false, true) == ScrollbarMode::Always);
+    utassert(ScrollbarModeForSystem(true, false) == ScrollbarMode::Scrolling);
+    utassert(ScrollbarModeForSystem(false, false) == ScrollbarMode::Hover);
+}
+
 void TestThemeSettings() {
     TestSuite("theme settings");
     TheFocusRingIsOnUntilAnApplicationTurnsItOff();
@@ -396,6 +404,7 @@ void TestThemeSettings() {
     TheLargeRadiusFollowsTheSmallOne();
     TheFontSizeIsTheOneEverythingIsMeasuredAgainst();
     TheScrollbarModeIsTheThemesUntilAnElementSaysOtherwise();
+    SystemScrollbarModesFollowTheirPlatformConvention();
     ThemeSettingsAreIsolatedPerApplication();
     StyledThemeChangesProjectIntoBase();
     UnprojectedBaseVisualsResolveFromSemanticTokens();

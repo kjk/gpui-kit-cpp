@@ -3,6 +3,7 @@
 #include "base/lib.h"
 #include "gpui/assets.h"
 #include "gpui/paint.h"
+#include "gpui/platform.h"
 #include "sys/dir_watch.h"
 #include "ui/text.h"
 
@@ -1175,6 +1176,19 @@ void ThemeSetFocusRing(App* app, bool on) {
 
 ScrollbarMode ScrollbarModeNow(const App* app) {
     return app ? ThemeNow(app).scrollbarMode : ScrollbarMode::Scrolling;
+}
+
+ScrollbarMode ScrollbarModeForSystem(bool autoHide, bool windows) {
+    if (windows) {
+        return autoHide ? ScrollbarMode::Hover : ScrollbarMode::Always;
+    }
+    return autoHide ? ScrollbarMode::Scrolling : ScrollbarMode::Hover;
+}
+
+void ThemeSyncScrollbarAppearance(App* app) {
+    if (!app || TestPlatformNow(nullptr)) return;
+    ScrollbarModeSet(
+        app, ScrollbarModeForSystem(PlatAutoHideScrollbars(), PlatIsWindows()));
 }
 
 void ScrollbarModeSet(App* app, ScrollbarMode m) {

@@ -47,6 +47,7 @@ bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
 const PlatFacts kPlatFacts = {
     // The title bar is ours, close button included.
     .titleBarCloseIsElement = true,
+    .autoHideScrollbars = false,
     .blockSelectUsesControl = true,
     // A client-decorated X11 window draws its own shadow.
     .windowShadowSize = 20.f,

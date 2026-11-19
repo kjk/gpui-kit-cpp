@@ -242,6 +242,8 @@ struct PlatFacts {
     // NSScrollView does not bounce those. Other platforms still throw the
     // edge.
     bool overscrollPhaselessStops = false;
+    // Platforms without a native scrollbar preference use their default.
+    bool autoHideScrollbars = true;
     const char* monoFontName = "DejaVu Sans Mono";
     // Appended to the home directory for the shell's data directory.
     const char* shellDataDir = "/.local/share";
