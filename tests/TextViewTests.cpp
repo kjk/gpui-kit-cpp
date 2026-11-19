@@ -1594,6 +1594,31 @@ static El* FindMarkdownTableFrame(El* element, Rgba border) {
     return nullptr;
 }
 
+// text/node.rs table_column_of_an_image_cell_fits_the_image_width.
+static El* FindTableCell(El* e);
+static void TableColumnOfAnImageCellFitsTheImageWidth() {
+    App* app = TestAppNew();
+    Window* win = new Window();
+    win->app = app;
+    Arena* a = ArenaNew();
+    Ctx cx = {app, win, a, {}};
+    const Str source = StrL(
+        "<table><tr><td><img src='photo.png' width='100' height='50' "
+        "alt='A picture'></td></tr></table>");
+    MdNode* doc = HtmlParse(a, source);
+    for (bool scroll : {false, true}) {
+        El* root = TextView::New(&cx, StrL(""))
+                       ->TableScroll(scroll)
+                       ->RenderDocument(doc);
+        El* cell = FindTableCell(root);
+        utassert(cell && cell->style.maxW == 100.f + 24.f);
+    }
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
 static void TestMarkdownTableThemeTokens() {
     App app;
     ThemeSet(&app, ThemeMode::Dark);
@@ -10022,6 +10047,7 @@ void TestTextView() {
     TestStreamFadeStaggerStep();
     TestManagedTextViewAndParseTimePlugins(a);
     TestMarkdownTableThemeTokens();
+    TableColumnOfAnImageCellFitsTheImageWidth();
     TableBodyRowUnderThePointerTakesTheHoverBackground();
     TestTextViewMaxLines();
 #if GPUI_MARKDOWN_FULL

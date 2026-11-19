@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `da7a3675d22a104cdf9626661f20f9faa5a4893a` (2026-11-08,
-window_border: Take the frame colour from the window.border theme token
-(#3849)).
-The client frame uses the window.border theme color. Window activation changes
-the shadow opacity.
+Processed through `137070d7c4e5c7525fb3af5ac260b9c3fe700919` (2026-11-08,
+text: Size a table column to the images in its cells (#3787)).
+TextView sizes table columns from the images in their cells as well as the
+text. Intrinsic image widths are read at measurement time.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

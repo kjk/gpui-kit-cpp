@@ -3762,13 +3762,14 @@ static float FontLen(const Ctx* cx, float v) {
 // node.rs puts an img() element in the flow beside the words: its own size
 // unless the document gave one, never wider than the space it has, and — for
 // an image inside a link — the hand and the click the link's words get.
-El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
+static El* InlineImageElement(TextView* view, const MdRun* r, float font,
+                              Rgba color, bool inFlow) {
     // node.rs NodeContext::image_source: the view's override when it has
     // one, the document's own URL otherwise.
     gpui::ImageSource imgSource =
-        imageSource ? imageSource(r->imgSrc, imageSourceData)
-                    : gpui::ImageSource::FromResource(r->imgSrc);
-    El* e = ImageEl(a, imgSource, r->text)->Font(font)->Fg(color);
+        view->imageSource ? view->imageSource(r->imgSrc, view->imageSourceData)
+                          : gpui::ImageSource::FromResource(r->imgSrc);
+    El* e = ImageEl(view->a, imgSource, r->text)->Font(font)->Fg(color);
     float w = r->imgW;
     float h = r->imgH;
     // inline_flow.rs image_size: a picture in a run of words that names
@@ -3808,6 +3809,11 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
     // even when HTML supplied a width. The README's showcase image says
     // width=1763, for example, but Rust scales it to the text column.
     e->MaxW(kFill);
+    return e;
+}
+
+El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
+    El* e = InlineImageElement(this, r, font, color, inFlow);
     if ((r->marks & MdLink) && len(r->href) > 0) {
         e->Cursor(CursorKind::Pointer);
         if (onLink.IsValid()) {
@@ -3955,6 +3961,15 @@ static bool IsPlainRun(MdRun* r) {
         }
     }
     return true;
+}
+
+static bool InlineHasText(const MdNode* node) {
+    for (const MdRun* r = node->runFirst; r; r = r->next) {
+        if (r->hasCustom || (len(r->imgSrc) == 0 && len(r->text) > 0)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // A cell's text-align. Rust gives the flow itself the alignment (node.rs
@@ -4589,10 +4604,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // should_render_inline_flow: a paragraph that mixes words with a picture
     // lays the picture out as part of the line. One that is a picture and
     // nothing else is a block, and keeps the picture's own size.
-    bool inFlow = false;
-    for (MdRun* r = n->runFirst; r && !inFlow; r = r->next) {
-        inFlow = r->hasCustom || (len(r->imgSrc) <= 0 && len(r->text) > 0);
-    }
+    bool inFlow = InlineHasText(n);
     El* col = Div(a)->FlexCol()->W(kFill);
     El* row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
     HostFlow* hostFlow = nullptr;
@@ -5361,9 +5373,9 @@ static float CellPadX(const TextViewStyle& st) {
     return kTableCellPad;
 }
 
-// The widest line of a cell, shaped with the row's font. A newline starts
-// a new line; runs on one line add.
-static float CellTextWidth(TextView* tv, MdNode* cell, bool head) {
+// The widest line of a cell. Text uses the row's font and images use the
+// same dimensions as the inline renderer.
+static float CellContentWidth(TextView* tv, MdNode* cell, bool head) {
     if (!cell) {
         return 0;
     }
@@ -5373,7 +5385,17 @@ static float CellTextWidth(TextView* tv, MdNode* cell, bool head) {
     PaintCtx* paint = tv->cx && tv->cx->win ? &tv->cx->win->paint : nullptr;
     float line = 0;
     float widest = 0;
+    bool inFlow = InlineHasText(cell);
     for (MdRun* run = cell->runFirst; run; run = run->next) {
+        if (len(run->imgSrc) > 0) {
+            if (run->imgW > 0) {
+                line += run->imgW;
+            } else {
+                El* image = InlineImageElement(tv, run, size, Rgba{}, inFlow);
+                line += MeasureEl(paint, image, size).w;
+            }
+            continue;
+        }
         Str text = run->text;
         int i = 0;
         int n = len(text);
@@ -5456,9 +5478,9 @@ static void MeasureTableColumns(TextView* tv, MdNode* n, int nCols, bool scroll,
             if (colAlign[ix] == MdAlignDefault) {
                 colAlign[ix] = c->align;
             }
-            float text = CellTextWidth(tv, c, r->head);
+            float content = CellContentWidth(tv, c, r->head);
             float border = ix + 1 < nCols ? kTableCellBorder : 0;
-            float w = text + kTableCellPad + border;
+            float w = content + kTableCellPad + border;
             if (w < kTableCellMin) {
                 w = kTableCellMin;
             }
