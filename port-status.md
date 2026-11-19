@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8650093ccee70317fe96d48d53ead459620d38f0` (2026-11-11,
-input: Expose a single-line input's text to screen readers (#3818)).
-Extended the existing native text providers with single-line range geometry
-and a shared check for exposed values. The C++ port uses UI Automation, AppKit
-and AT-SPI range queries in place of AccessKit synthetic text nodes. Geometry
-comes from the frame that collected the accessible value.
+Processed through `b28405e5d9487d495fc383db3461c53ea650fd18` (2026-11-11, tag:
+Remove hover style that never shows (#3893)).
+Reviewed the Tag hover removal. The C++ Tag already renders a display-only
+element with no hover opacity, so the Rust change needs no widget patch.
 The current update target is
 `f8243df95b9158d9b6d842348dcfcd0481a85c2c`.
 
