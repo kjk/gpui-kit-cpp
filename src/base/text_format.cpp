@@ -265,18 +265,18 @@ HtmlInlineTag HtmlParseInlineTag(Arena* a, Str tag) {
 }
 
 static const char kBlockNames[] =
-    "p\0dt\0dd\0summary\0figcaption\0blockquote\0ul\0ol\0li\0pre\0table\0"
+    "p\0dt\0dd\0summary\0figcaption\0blockquote\0ul\0ol\0li\0table\0"
     "tr\0td\0th\0div\0section\0article\0main\0header\0footer\0aside\0nav\0"
     "figure\0details\0form\0fieldset\0address\0dl\0body\0html\0center\0";
 static const MdKind kBlockKinds[] = {
     MdKind::Paragraph, MdKind::Paragraph, MdKind::Paragraph, MdKind::Paragraph,
     MdKind::Paragraph, MdKind::Quote,     MdKind::List,      MdKind::List,
-    MdKind::Item,      MdKind::Code,      MdKind::Table,     MdKind::Row,
-    MdKind::Cell,      MdKind::Cell,      MdKind::Group,     MdKind::Group,
+    MdKind::Item,      MdKind::Table,     MdKind::Row,       MdKind::Cell,
+    MdKind::Cell,      MdKind::Group,     MdKind::Group,     MdKind::Group,
     MdKind::Group,     MdKind::Group,     MdKind::Group,     MdKind::Group,
     MdKind::Group,     MdKind::Group,     MdKind::Group,     MdKind::Group,
     MdKind::Group,     MdKind::Group,     MdKind::Group,     MdKind::Group,
-    MdKind::Group,     MdKind::Group,     MdKind::Group,
+    MdKind::Group,     MdKind::Group,
 };
 
 static bool BlockKind(Arena* a, const html5ever::Node* node, MdKind* kind,
@@ -307,7 +307,7 @@ struct Project {
     Str href = {};
     Str linkTitle = {};
     bool raw = false;
-    // HTML drops one line feed that is the first token after <pre>. A
+    // HTML drops one line feed that is the first token after <textarea>. A
     // comment or element before that text means the line feed stays.
     bool rawDropLf = false;
     bool tableHead = false;
@@ -512,9 +512,84 @@ static void ProjectChildren(Project* p, const html5ever::Node* source) {
     }
 }
 
+static Str CodeClassLanguage(Arena* a, const html5ever::Node* node) {
+    Str classes = StrTrim(html5ever::AttrValue(a, node, StrL("class")));
+    while (len(classes) > 0) {
+        int end = 0;
+        while (end < len(classes)) {
+            uint32_t cp = 0;
+            int bytes = Utf8At(classes, end, &cp);
+            if (IsUnicodeWhitespace(cp)) break;
+            end += bytes;
+        }
+        Str token(classes.s, end);
+        int prefix = StrStartsWith(token, "language-") ? 9
+                     : StrStartsWith(token, "lang-")   ? 5
+                                                       : 0;
+        if (prefix > 0 && len(token) > prefix) {
+            return Str(token.s + prefix, len(token) - prefix);
+        }
+        classes = StrTrim(Str(classes.s + end, len(classes) - end));
+    }
+    return {};
+}
+
+static Str PreLanguage(Arena* a, const html5ever::Node* pre) {
+    for (const html5ever::Node* child = html5ever::NodeFirst(a, pre); child;
+         child = html5ever::NodeNext(a, child)) {
+        if (child->kind == html5ever::NodeKind::Element &&
+            StrEqI(html5ever::NodeName(a, child), "code")) {
+            Str lang = CodeClassLanguage(a, child);
+            if (lang.s) return lang;
+        }
+    }
+    return CodeClassLanguage(a, pre);
+}
+
+static void AppendPreText(Arena* a, StrBuilder* code,
+                          const html5ever::Node* node, bool dropLeadingLf) {
+    if (node->kind == html5ever::NodeKind::Text) {
+        Str text = html5ever::NodeData(a, node);
+        if (dropLeadingLf && len(text) > 0 && text.s[0] == '\n') {
+            text = Str(text.s + 1, len(text) - 1);
+        }
+        code->Append(text);
+        return;
+    }
+    if (node->kind != html5ever::NodeKind::Element) return;
+    if (StrEqI(html5ever::NodeName(a, node), "br")) {
+        code->AppendChar('\n');
+        return;
+    }
+    for (const html5ever::Node* child = html5ever::NodeFirst(a, node); child;
+         child = html5ever::NodeNext(a, child)) {
+        AppendPreText(a, code, child, false);
+    }
+}
+
+static void ProjectPre(Project* p, const html5ever::Node* node) {
+    StrBuilder code(p->a);
+    bool first = true;
+    for (const html5ever::Node* child = html5ever::NodeFirst(p->a, node); child;
+         child = html5ever::NodeNext(p->a, child)) {
+        AppendPreText(p->a, &code, child, first);
+        first = false;
+    }
+    // Code fences add their own closing newline. Keep all earlier whitespace.
+    if (code.LastChar() == '\n') code.RemoveLast();
+    if (!len(code)) return;
+    FlushBreak(p);
+    p->para = nullptr;
+    MdNode* block = NewMd(p, MdKind::Code);
+    block->lang = PreLanguage(p->a, node);
+    MdRun* run = ArenaNew<MdRun>(p->a);
+    run->text = code.TakeStr();
+    block->runFirst = run;
+    block->runLast = run;
+}
+
 static void ProjectElement(Project* p, const html5ever::Node* source) {
-    // Anything other than text before the first run of a <pre> is not the
-    // line feed the parser drops right after the tag.
+    // A nested element consumes the position just after a raw text tag.
     if (p->rawDropLf) p->rawDropLf = false;
     Str name = html5ever::NodeName(p->a, source);
     if (StrEqI(name, "head") || StrEqI(name, "title") ||
@@ -524,6 +599,10 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
     if (source->implicit && (StrEqI(name, "html") || StrEqI(name, "body") ||
                              StrEqI(name, "head") || StrEqI(name, "tbody"))) {
         ProjectChildren(p, source);
+        return;
+    }
+    if (StrEqI(name, "pre")) {
+        ProjectPre(p, source);
         return;
     }
     if (StrEqI(name, "br")) {
@@ -586,18 +665,9 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
         }
         bool oldRaw = p->raw;
         bool oldDropLf = p->rawDropLf;
-        p->raw = kind == MdKind::Code;
-        p->rawDropLf = p->raw;
+        p->raw = false;
+        p->rawDropLf = false;
         p->cur = node;
-        const html5ever::Node* first = html5ever::NodeFirst(p->a, source);
-        if (kind == MdKind::Code && first &&
-            first->kind == html5ever::NodeKind::Element &&
-            StrEqI(html5ever::NodeName(p->a, first), "code")) {
-            Str cls = html5ever::AttrValue(p->a, first, StrL("class"));
-            if (StrStartsWith(cls, "language-")) {
-                node->lang = Str(cls.s + 9, len(cls) - 9);
-            }
-        }
         ProjectChildren(p, source);
         FlushBreak(p);
         p->cur = parent;

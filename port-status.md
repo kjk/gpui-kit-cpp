@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5880706c54f0378f03e1364c2291b2887f46f589` (2026-11-11,
-text: Lay out a paragraph of several images inline (#3898)).
-Paragraphs consisting of multiple images now use inline image sizing. Unloaded
-images reserve compact squares and adjacent images and linked images can share
-a line.
+Processed through `821f7d56d32d6383fae7ed35a5b60ad629d92a5e` (2026-11-11,
+text: Parse an HTML `<pre>` as a code block (#3899)).
+HTML pre blocks use the code-block path with one final newline trimmed. Plain
+code text retains indentation, and language classes on a nested code element
+take precedence over the pre element. Empty pre blocks are omitted.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
@@ -249,7 +249,8 @@ The current update target is
   renderer names are copied out of frame storage into state and parse-job
   arenas; callback payloads must outlive outstanding jobs and be safe to read
   on the executor. The legacy `MdPlugin` hook takes a `Ctx` and remains a
-  render-time block replacement; Markdown parser plugins run on the background
+  render-time block replacement and can read the original HTML around its
+  projected nodes. Markdown parser plugins run on the background
   executor for appends and large replacements. Updates arriving during a parse
   are taken up when it lands rather than bounded by
   `MAX_COALESCED_UPDATES_PER_PARSE`; a parse cannot fail, so there is no

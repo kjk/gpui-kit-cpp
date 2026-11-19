@@ -484,7 +484,49 @@ static void TestHtmlPre(Arena* a) {
     MdNode* code = Child(doc, 0);
     utassert(code->kind == MdKind::Code);
     utassert(base::StrEq(code->lang, StrL("cpp")));
-    utassert(TextIs(a, code, "int a;\n  int b;\n"));
+    utassert(TextIs(a, code, "int a;\n  int b;"));
+}
+
+// html.rs test_pre_is_a_code_block and test_pre_lang.
+static void HtmlPreIsAStandaloneCodeBlock(Arena* a) {
+    MdNode* doc = HtmlParse(a, StrL("one<pre>\na  1\nbb 2\n</pre>three"));
+    utassert(Children(doc) == 3);
+    utassert(TextIs(a, Child(doc, 0), "one"));
+    MdNode* block = Child(doc, 1);
+    utassert(block && block->kind == MdKind::Code &&
+             TextIs(a, block, "a  1\nbb 2") && !block->lang.s);
+    utassert(TextIs(a, Child(doc, 2), "three"));
+    MdNode* raw = Child(MdParse(a, StrL("<pre>\na  1\nbb 2\n</pre>\n")), 0);
+    utassert(raw && raw->kind == MdKind::Html);
+    block = Child(raw, 0);
+    utassert(block && block->kind == MdKind::Code &&
+             TextIs(a, block, "a  1\nbb 2"));
+    utassert(Children(HtmlParse(a, StrL("<pre>\n</pre>"))) == 0);
+    utassert(TextIs(a, Child(HtmlParse(a, StrL("one<pre></pre>three")), 0),
+                    "onethree"));
+
+    struct Example {
+        const char* html;
+        const char* lang;
+    };
+    const Example cases[] = {
+        {"<pre><code class='language-rust'>x</code></pre>", "rust"},
+        {"<pre><code class='hljs lang-js'>x</code></pre>", "js"},
+        {"<pre><code class='hljs lang-js'>x</code></pre>", "js"},
+        {"<pre class='language-py'><code>x</code></pre>", "py"},
+        {"<pre class='language-py'>\n<code "
+         "class='language-rust'>x</code></pre>",
+         "rust"},
+        {"<pre><code class='language- hljs lang-js'>x</code></pre>", "js"},
+        {"<pre><code class='language-'>x</code></pre>", nullptr},
+        {"<pre><code class='rust'>x</code></pre>", nullptr},
+    };
+    for (const Example& test : cases) {
+        MdNode* pre = Child(HtmlParse(a, Str(test.html)), 0);
+        utassert(pre && pre->kind == MdKind::Code);
+        utassert(pre &&
+                 (test.lang ? StrEq(pre->lang, test.lang) : !pre->lang.s));
+    }
 }
 
 // html.rs test_pre_text_stays_text. Escaped markup inside pre is text, and
@@ -625,15 +667,15 @@ static void TestHtmlBreakEndsInlineMarkup(Arena* a) {
     utassert(MarksOf(marked, "one") == MdBold);
 }
 
-// html.rs test_literal_trailing_line_feeds_are_preserved. A typed line feed
-// stays. Only an HTML break that ends the block is dropped.
+// A code block drops one final line break. Textarea preserves its final line
+// feed as ordinary text.
 static void TestHtmlLiteralTrailingLineFeeds(Arena* a) {
     const char* html[] = {
         "<pre>one\n</pre>",           "<pre>one\n\n</pre>",
         "<pre>one\n<br></pre>",       "<pre>one<br>\n</pre>",
         "<textarea>one\n</textarea>",
     };
-    const char* want[] = {"one\n", "one\n\n", "one\n", "one\n\n", "one\n"};
+    const char* want[] = {"one", "one\n", "one\n", "one\n", "one\n"};
     for (int i = 0; i < 5; i++) {
         utassert(TextIs(a, Child(HtmlParse(a, Str(html[i])), 0), want[i]));
     }
@@ -10221,6 +10263,7 @@ void TestTextView() {
     TestAlphabeticListItemPrefix(a);
     TestOrderedListStarts(a);
     TestHtmlPre(a);
+    HtmlPreIsAStandaloneCodeBlock(a);
     TestPreTextStaysText(a);
     TestPreKeepsWhitespaceInNestedElements(a);
     TestHtmlTable(a);
