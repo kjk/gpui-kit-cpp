@@ -79,38 +79,56 @@ void PopoverSetOpenFocused(PopoverState* s, Ctx* cx, bool open) {
     PopoverTransition(s, cx, open, true);
 }
 
+// Nonnegative values restore a former focus handle. Zero blurs the window.
+static constexpr int kFocusOpeningPopover = -1;
+
+static void PopoverMoveFocus(PopoverState* state, Ctx* cx, const void*,
+                             int64_t destination) {
+    bool opening = destination == kFocusOpeningPopover;
+    if (!cx->win || state->open != opening) return;
+    if (opening) {
+        FocusHandle target =
+            state->trackedFocus.IsValid() ? state->trackedFocus : state->focus;
+        FocusHandleFocus(cx->win, target);
+    } else if (destination != 0) {
+        FocusHandleRestore(cx->win, FocusHandle{(int)destination});
+    } else {
+        WindowSetFocusId(cx->win, 0);
+    }
+}
+
 static void PopoverTransition(PopoverState* s, Ctx* cx, bool open,
                               bool announce) {
-    if (!s || s->open == open) {
-        return;
-    }
+    if (!s || s->open == open) return;
+    bool move = open;
+    int destination = kFocusOpeningPopover;
     if (open) {
         s->previousFocus = WindowFocused(cx->win);
-        FocusHandle take =
-            s->trackedFocus.IsValid() ? s->trackedFocus : s->focus;
-        FocusHandleFocus(cx->win, take);
     } else {
-        // Restore only while the popover still holds focus. A click that
-        // already moved it is left where it is. Nothing focused at open
-        // means nothing focused now: leaving the closed handle focused
-        // keeps window.focused on an element that is no longer in the tree.
-        bool inside = FocusHandleContainsFocused(cx->win, s->focus) ||
-                      FocusHandleContainsFocused(cx->win, s->trackedFocus);
-        if (inside) {
-            if (s->previousFocus.IsValid()) {
-                FocusHandleRestore(cx->win, s->previousFocus);
-            } else {
-                WindowSetFocusId(cx->win, 0);
-            }
-        }
+        // Read containment while the old layout still has popover content.
+        move = FocusHandleContainsFocused(cx->win, s->focus) ||
+               FocusHandleContainsFocused(cx->win, s->trackedFocus);
+        destination = s->previousFocus.id;
         s->previousFocus = {};
     }
     s->open = open;
-    BaseDeferredPopoverSet(cx->app, s->self.IsValid() ? s->self : cx->self,
-                           open);
-    if (announce) {
-        PopoverReportOpenChange(s, cx);
+    EntityId owner = s->self.IsValid() ? s->self : cx->self;
+    BaseDeferredPopoverSet(cx->app, owner, open);
+    if (move) {
+        if (announce) {
+            PopoverMoveFocus(s, cx, nullptr, destination);
+        } else if (cx->app && cx->win) {
+            // A controlled flag may be synchronized from a lazy child during
+            // prepaint. The frame completes with a single focused element.
+            for (Window* live : cx->app->windows) {
+                if (live != cx->win) continue;
+                WindowPost(live, ListenTo(Entity<PopoverState>{owner},
+                                          &PopoverMoveFocus, destination));
+                break;
+            }
+        }
     }
+    if (announce) PopoverReportOpenChange(s, cx);
 }
 
 // toggle_open, off the trigger's press. Rust stops propagation here so the

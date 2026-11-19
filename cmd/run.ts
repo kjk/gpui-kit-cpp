@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3fbbaec1cd13fa558d996f02721850093898e95e",
+  sha: "67c329149eeeee52d79587e76ae80e9400df9fea",
   date: "2026-11-18",
-  subject: "root: Make Tab work before anything is focused (#4017)",
+  subject: "popover: Move focus after the frame when a controlled popover syncs open (#4023)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

@@ -1248,6 +1248,7 @@ static void EnterInPopoverContentActivatesTheChild() {
     Ctx cx = {app, win, win->frameArena, view.id};
     PopoverSetOpen(&cx, self->pop, true);
     TestDraw(win);
+    TestRunUntilParked(app);
     TestFocus(win, self->applyFocus);
     utassert(win->focusId == self->applyFocus.id);
     TestSimulateKeystrokes(win, "enter");
@@ -1327,8 +1328,69 @@ static void APressInANestedPopupKeepsThePopoverOpen() {
     TestAppFree(app);
 }
 
+struct ControlledPopoverFocusView {
+    Entity<PopoverState> state;
+    FocusHandle outside;
+    FocusHandle inside;
+    bool open = false;
+
+    static El* Render(ControlledPopoverFocusView* self, Ctx* cx) {
+        PopoverSetOpen(cx, self->state, self->open);
+        El* trigger = Div(cx->a)->Id(StrL("trigger"))->W(100)->H(28);
+        El* content = Div(cx->a)->W(160)->H(40)->TrackFocus(self->inside);
+        El* popup = gpui::Popover::New(cx, StrL("controlled"), self->state)
+                        ->TrackedFocus(self->inside)
+                        ->Trigger(trigger)
+                        ->Content(content)
+                        ->IntoEl();
+        return Div(cx->a)
+            ->FlexCol()
+            ->Child(Div(cx->a)->W(100)->H(28)->TrackFocus(self->outside))
+            ->Child(popup);
+    }
+};
+
+// kit/tests/integration/popover_a11y.rs: synchronize the controlled flag
+// during render, then publish the focus transition through the window queue.
+static void ControlledPopoverMovesFocusAfterDrawing() {
+    App* app = TestAppNew();
+    BaseGlobalStateInit(app);
+    auto entity = EntityNew<ControlledPopoverFocusView>(app);
+    auto* view = entity.Get(app);
+    view->state = EntityNewState<PopoverState>(app);
+    view->outside = FocusHandleNew(app);
+    view->inside = FocusHandleNew(app);
+    Window* win = TestWindowOpen(app, entity, 420, 250);
+    Ctx cx = {app, win, win->frameArena, entity.id};
+    TestFocus(win, view->outside);
+    view->open = true;
+    Notify(&cx);
+    TestDraw(win);
+    utassert(FocusHandleIsFocused(win, view->outside));
+    TestRunUntilParked(app);
+    utassert(FocusHandleIsFocused(win, view->inside));
+
+    view->open = false;
+    Notify(&cx);
+    TestDraw(win);
+    utassert(!FocusHandleIsFocused(win, view->outside));
+    TestRunUntilParked(app);
+    utassert(FocusHandleIsFocused(win, view->outside));
+
+    view->open = true;
+    Notify(&cx);
+    TestDraw(win);
+    view->open = false;
+    Notify(&cx);
+    TestDraw(win);
+    TestRunUntilParked(app);
+    utassert(FocusHandleIsFocused(win, view->outside));
+    TestAppFree(app);
+}
+
 void TestPopup() {
     TestSuite("popup");
+    ControlledPopoverMovesFocusAfterDrawing();
     APressDismissesTheTooltipUntilThePointerLeaves();
     ClickingATriggerAwayDoesNotLeaveItsTooltip();
     APressOnARemovedTriggerEndsWhenThePointerMovesAway();

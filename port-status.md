@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3fbbaec1cd13fa558d996f02721850093898e95e` (2026-11-18,
-root: Make Tab work before anything is focused (#4017)).
-Tab and Shift-Tab enter an unfocused window at its first or last control.
-Window backdrop identity leaves the tab order, removing a tracked focused
-element clears its handle, and app bindings retain priority.
+Processed through `67c329149eeeee52d79587e76ae80e9400df9fea` (2026-11-18,
+popover: Move focus after the frame when a controlled popover syncs open
+(#4023)).
+Controlled popovers defer focus until after the frame, restore the previous
+control on close and ignore queued transitions that have since reversed. User-
+triggered toggles move focus immediately.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
