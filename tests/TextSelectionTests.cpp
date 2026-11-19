@@ -1322,6 +1322,61 @@ static void PlainProjectionPreservesForwardReversedAndUnicodeRanges() {
     PlainRunFree(&laid);
 }
 
+// text/inline.rs dragging_across_a_row_selects_its_first_character.
+static void DraggingAcrossOneWrappedRowSelectsItsFirstCharacter() {
+    SelectionFixture fixture;
+    PaintCtx* paint = &fixture.win->paint;
+    float advance =
+        MeasureText(paint, StrL("aaaa"), 16, 0, false, kFontMono).w / 4;
+    struct Case {
+        Str text;
+        float columns;
+        int count;
+        ByteRange rows[3];
+    };
+    Case cases[] = {
+        {StrL("aaaa bbbb cccc"), 5.5f, 3, {{0, 5}, {5, 10}, {10, 14}}},
+        {StrL("aaaa bbbb cccc"), 10.5f, 2, {{0, 10}, {10, 14}}},
+        {StrL("aaaa\nbbbb cccc"), 5.5f, 3, {{0, 4}, {5, 10}, {10, 14}}},
+    };
+    for (const Case& test : cases) {
+        Size extent;
+        float width = test.columns * advance;
+        TextLayout* layout = TextLayoutNew(paint, test.text, 16, width, true,
+                                           kFontMono, 0, &extent);
+        utassert(layout != nullptr);
+        if (!layout) continue;
+        TextSelectionRun run;
+        run.text = test.text;
+        run.layout = layout;
+        run.bounds = {7, 11, width, extent.h};
+        for (int row = 0; row < test.count; row++) {
+            ByteRange expected = test.rows[row];
+            Bounds glyph;
+            int middle = expected.start + 1;
+            utassert(TextLayoutRangeRects(layout, test.text, middle, middle + 1,
+                                          &glyph, 1) == 1);
+            float y = run.bounds.y + glyph.CenterY();
+            Point before = {run.bounds.x - 4, y};
+            Point after = {run.bounds.Right() + 40, y};
+            for (bool reverse : {false, true}) {
+                TextSelectionSnapshot snapshot =
+                    reverse ? PlainSnapshot(after, before)
+                            : PlainSnapshot(before, after);
+                TextSelectionProjection selection =
+                    TextSelectionProjectRanges(&snapshot, &run, 1);
+                TextSelectionRange result = selection.Ranges()[0];
+                int end = result.end;
+                if (end > result.start && test.text.s[end - 1] == '\n') end--;
+                utassert(result.selected && result.start == expected.start &&
+                         end == expected.end);
+                selection.Reset();
+            }
+        }
+        TextLayoutRelease(layout);
+    }
+}
+
 // text_selection.rs double_click_expands_a_plain_run_to_the_input_word_
 // boundary.
 static void DoubleClickExpandsAPlainRunToTheInputWordBoundary() {
@@ -2334,6 +2389,7 @@ static void TestTextSelectionWindow() {
     SelectionHandleIsThePublicAdapterSeam();
     SelectionHandleCanSubscribeItsWindowToRefresh();
     PlainProjectionPreservesForwardReversedAndUnicodeRanges();
+    DraggingAcrossOneWrappedRowSelectsItsFirstCharacter();
     DoubleClickExpandsAPlainRunToTheInputWordBoundary();
     MultiClickUsesTextLayoutWindowCoordinatesAtANonzeroOrigin();
     TripleClickExpandsToTheInputLogicalLineNotTheVisualRow();

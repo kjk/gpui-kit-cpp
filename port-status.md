@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `453f6d2c3540845de6d7ad5ba731fbd19ef8f435` (2026-11-17,
-tabs: Focus the roving handle on pointer down (#4002)).
-An enabled roving tab claims focus as primary mouse-down bubbles. Nested
-controls can preserve their own focus by preventing the default, and
-controlled selection still changes on activation.
+Processed through `5e79668b70e6f2c201ef899794517e61ae7b1d08` (2026-11-17,
+text: Select a wrapped row's first character (#4012)).
+Selection projection uses each character range on its painted row. A
+regression checks that dragging across one wrapped row includes its first
+character in either direction, including after a hard break.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
