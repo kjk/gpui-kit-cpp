@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `92431cddeba443172904f032bd499f95bae8d8d5` (2026-11-14,
-text: Key the link tooltip target by rendering (#3964)).
-Include the rendered TextView bounds in link tooltip identity so two copies of
-a document do not share an active target. Per-word hit rectangles in one
-rendering retain one target.
+Processed through `f6a56119c27da0ec79cb67e292f224eb5186eb82` (2026-11-14,
+theme: Add a `list.highlight.foreground` color for search match highlights
+(#3960)).
+Read list.highlight.foreground for search spans, defaulting to the theme blue.
+Generate both default palettes and expose the token in Story theme colors.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

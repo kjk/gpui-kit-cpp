@@ -318,6 +318,8 @@ El* ThemeColorsStory::Render(ThemeColorsStory* self, Ctx* cx) {
         {"List", "Head Background", "list.head.background", th.tokens.listHead},
         {"List", "Hover Background", "list.hover.background",
          th.tokens.listHover},
+        {"List", "Highlight Foreground", "list.highlight.foreground",
+         th.listHighlightFg},
         {"Muted", "Background", "muted.background", th.tokens.muted},
         {"Muted", "Foreground", "muted.foreground", th.mutedFg},
         {"Popover", "Foreground", "", th.popoverFg},

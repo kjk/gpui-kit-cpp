@@ -468,6 +468,7 @@ const Theme& ThemeDefaultDark() {
         t.red = Rgb(0xf8, 0x71, 0x71);
         t.green = Rgb(0x4a, 0xde, 0x80);
         t.blue = Rgb(0x60, 0xa5, 0xfa);
+        t.listHighlightFg = t.blue;
         t.yellow = Rgb(0xfa, 0xcc, 0x15);
         t.cyan = Rgb(0x22, 0xd3, 0xee);
         t.magenta = Rgb(0xc0, 0x84, 0xfc);
@@ -570,6 +571,7 @@ const Theme& ThemeDefaultLight() {
         t.red = Rgb(0xdc, 0x26, 0x26);
         t.green = Rgb(0x16, 0xa3, 0x4a);
         t.blue = Rgb(0x25, 0x63, 0xeb);
+        t.listHighlightFg = t.blue;
         t.yellow = Rgb(0xca, 0x8a, 0x04);
         t.cyan = Rgb(0x08, 0x91, 0xb2);
         t.magenta = Rgb(0x93, 0x33, 0xea);
@@ -2136,6 +2138,7 @@ void ThemeConfigResolve(Theme* out, const ThemeConfig* cfg, const Theme& base) {
     SetToken(
         &out->listHover, &out->tokens.listHover,
         PickBg(c, "list.hover.background", RgbaOpacity(out->accent, 0.6f)));
+    out->listHighlightFg = Pick(c, "list.highlight.foreground", out->blue);
 
     SetToken(&out->popover, &out->tokens.popover,
              PickBg(c, "popover.background", out->tokens.background));

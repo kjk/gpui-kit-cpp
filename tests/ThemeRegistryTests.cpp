@@ -689,7 +689,32 @@ static void AFileWrittenIntoTheFolderReloadsIt() {
 #endif
 }
 
+// theme/schema.rs test_apply_config_reads_the_list_highlight_foreground_color.
+static void ApplyConfigReadsTheListHighlightForegroundColor() {
+    App app;
+    const char* themes =
+        "{\"themes\":["
+        "{\"name\":\"Highlight\",\"mode\":\"light\","
+        "\"colors\":{\"list.highlight.foreground\":\"#ff8800\"}},"
+        "{\"name\":\"Blue Fallback\",\"mode\":\"light\","
+        "\"colors\":{\"base.blue\":\"#0088cc\"}}]}";
+    utassert(ThemeRegistryLoadStr(&app, Str(themes)) == 2);
+    utassert(ThemeRegistryApply(&app, StrL("Highlight")));
+    ThemeSet(&app, ThemeMode::Light);
+    utassert(Is(ThemeLight(&app).listHighlightFg, 0xff8800));
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, nullptr, arena, {}};
+    El* title = component::HighlightedLabel(&cx, StrL("Rust"), StrL("ru"));
+    utassert(title->nSpans == 1 && Is(title->spans[0].color, 0xff8800));
+    utassert(ThemeRegistryApply(&app, StrL("Blue Fallback")));
+    utassert(Is(ThemeLight(&app).blue, 0x0088cc));
+    utassert(Is(ThemeLight(&app).listHighlightFg, 0x0088cc));
+    ArenaDelete(arena);
+    AppGlobalClear(&app);
+}
+
 void TestThemeRegistry() {
+    ApplyConfigReadsTheListHighlightForegroundColor();
     TestSuite("theme_registry");
     AColourIsAHexOrAName();
     TheDefaultsAreInTheTable();

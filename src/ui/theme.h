@@ -383,6 +383,7 @@ struct Theme {
     Rgba listEven;
     Rgba listHead;
     Rgba listHover;
+    Rgba listHighlightFg;
     Rgba tableHover;
     // slider.background: the bar behind a slider's thumb.
     Rgba sliderBar;

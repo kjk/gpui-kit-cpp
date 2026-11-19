@@ -107,7 +107,7 @@ static void RenderUsesOneStyledRunAndRealBullets() {
     utassert(styled && styled->nSpans == 2);
     if (styled && styled->nSpans == 2) {
         utassert(styled->spans[0].lo == 4 && styled->spans[0].hi == 7);
-        utassert(LabelColorEq(styled->spans[0].color, th.primary));
+        utassert(LabelColorEq(styled->spans[0].color, th.blue));
         utassert(styled->spans[1].lo == 7 && styled->spans[1].hi == 11);
         utassert(LabelColorEq(styled->spans[1].color, th.mutedFg));
     }

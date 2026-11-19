@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "92431cddeba443172904f032bd499f95bae8d8d5",
+  sha: "f6a56119c27da0ec79cb67e292f224eb5186eb82",
   date: "2026-11-14",
-  subject: "text: Key the link tooltip target by rendering (#3964)",
+  subject: "theme: Add a `list.highlight.foreground` color for search match highlights (#3960)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

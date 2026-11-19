@@ -274,7 +274,7 @@ static int LabelSpans(Label* label, Str full, Str shown, const Theme& th,
         if (!matched && !muted) {
             continue;
         }
-        Rgba color = matched ? th.primary : th.mutedFg;
+        Rgba color = matched ? th.blue : th.mutedFg;
         if (nSpans > 0 && spans[nSpans - 1].hi == lo &&
             RgbaEq(spans[nSpans - 1].color, color)) {
             spans[nSpans - 1].hi = hi;
@@ -390,7 +390,7 @@ El* HighlightedLabel(Ctx* cx, Str text, Str query) {
         TextSpan* spans =
             (TextSpan*)Alloc(cx->a, len(ranges) * (int)sizeof(TextSpan));
         if (spans) {
-            Rgba color = ThemeNow(cx->app).blue;
+            Rgba color = ThemeNow(cx->app).listHighlightFg;
             for (int i = 0; i < len(ranges); i++) {
                 spans[i] = {ranges[i].start, ranges[i].end, color};
             }
