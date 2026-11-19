@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `39540772b1d9fb962cb0335fe471bd81f345a8e0` (2026-11-18,
-fix(input): end IME composition on blur (#4032)).
-Native input blur already unmarks the focused field. The regression moves
-window focus away during composition and verifies that the following edit
-starts a separate undo group.
+Processed through `6898b31cc96570b590ce5d6d6b5cf3adee9b1f25` (2026-11-18,
+input: public fold_all, unfold_all, fold_at_level and set_folded (#4028)).
+Editor state now exposes its fold candidates and can set a candidate, fold or
+unfold all candidates, or fold only one nesting level. Bulk updates rebuild
+the display projection once and retain the candidate ranges.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

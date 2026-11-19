@@ -4784,6 +4784,50 @@ void InputSetFoldCandidates(InputState* s, const FoldRange* ranges, int n) {
 
 // ─── fold map (display_map/fold_map.rs) ───────────────────────────────────
 //
+const FoldRange* InputFoldCandidates(const InputState* s, int* count) {
+    if (count) *count = s ? len(s->folds.candidates) : 0;
+    return s ? s->folds.candidates.els : nullptr;
+}
+
+bool InputSetFolded(InputState* s, App* app, Window* win, int startLine,
+                    bool folded) {
+    if (!s || !LayoutModeIsFolding(s->mode) ||
+        !FoldMapIsCandidate(&s->folds, startLine))
+        return false;
+    FoldMapSetFolded(&s->folds, startLine, folded);
+    Notify(app, win);
+    return true;
+}
+
+void InputFoldAll(InputState* s, App* app, Window* win) {
+    if (!s || !LayoutModeIsFolding(s->mode)) return;
+    Vec<int> lines;
+    for (const FoldRange& range : s->folds.candidates)
+        VecAppend(lines, range.startLine);
+    FoldMapSetFoldedLines(&s->folds, lines.els, len(lines));
+    Notify(app, win);
+}
+
+void InputUnfoldAll(InputState* s, App* app, Window* win) {
+    if (!s || !LayoutModeIsFolding(s->mode)) return;
+    FoldMapClearFolds(&s->folds);
+    Notify(app, win);
+}
+
+void InputFoldAtLevel(InputState* s, App* app, Window* win, int level) {
+    if (!s || !LayoutModeIsFolding(s->mode)) return;
+    Vec<int> ends;
+    Vec<int> lines;
+    for (const FoldRange& range : s->folds.candidates) {
+        while (len(ends) > 0 && ends[len(ends) - 1] < range.endLine)
+            VecRemoveAt(ends, len(ends) - 1);
+        if (len(ends) + 1 == level) VecAppend(lines, range.startLine);
+        VecAppend(ends, range.endLine);
+    }
+    FoldMapSetFoldedLines(&s->folds, lines.els, len(lines));
+    Notify(app, win);
+}
+
 // The projection that hides folded lines. Rust folds wrap rows; the rows here
 // are logical lines, so this maps line <-> display row. See the header for
 // why the two differ.
@@ -4872,6 +4916,35 @@ void FoldMapSetFolded(FoldMap* m, int startLine, bool folded) {
         FoldRemoveAt(&m->folded, ix);
         m->needsRebuild = true;
     }
+}
+
+void FoldMapSetFoldedLines(FoldMap* m, const int* starts, int count) {
+    if (!m) return;
+    if (!starts || count <= 0) {
+        FoldMapClearFolds(m);
+        return;
+    }
+    Vec<int> sorted;
+    for (int i = 1; i < count; i++) {
+        if (starts[i] >= starts[i - 1]) continue;
+        for (int j = 0; j < count; j++) VecAppend(sorted, starts[j]);
+        qsort(sorted.els, (size_t)count, sizeof(int),
+              [](const void* a, const void* b) {
+                  int lhs = *(const int*)a;
+                  int rhs = *(const int*)b;
+                  return (lhs > rhs) - (lhs < rhs);
+              });
+        starts = sorted.els;
+        break;
+    }
+    VecClear(m->folded);
+    int at = 0;
+    for (const FoldRange& candidate : m->candidates) {
+        while (at < count && starts[at] < candidate.startLine) at++;
+        if (at == count) break;
+        if (starts[at] == candidate.startLine) VecAppend(m->folded, candidate);
+    }
+    m->needsRebuild = true;
 }
 
 void FoldMapToggle(FoldMap* m, int startLine) {

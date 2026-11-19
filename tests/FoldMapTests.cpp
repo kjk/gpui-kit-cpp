@@ -311,7 +311,50 @@ static void HiddenRunsMatchTheDenseProjection() {
     }
 }
 
+// state.rs test_fold_all_and_fold_at_level.
+static void FoldingWholeLevelsPreservesTheCandidates() {
+    InputState editor;
+    editor.kind = InputKind::Editor;
+    editor.mode.kind = LayoutModeKind::CodeEditor;
+    editor.mode.folding = true;
+    FoldRange candidates[] = {R(0, 9), R(1, 4), R(2, 3), R(5, 8)};
+    InputSetValue(&editor, StrL("a\nb\nc\nd\ne\nf\ng\nh\ni\nj"));
+    InputSetFoldCandidates(&editor, candidates, 4);
+    InputFoldAll(&editor, nullptr, nullptr);
+    utassert(len(editor.folds.folded) == 4);
+    InputFoldAtLevel(&editor, nullptr, nullptr, 2);
+    utassert(len(editor.folds.folded) == 2);
+    utassert(FoldMapIsFolded(&editor.folds, 1));
+    utassert(FoldMapIsFolded(&editor.folds, 5));
+    InputFoldAtLevel(&editor, nullptr, nullptr, 1);
+    utassert(len(editor.folds.folded) == 1 &&
+             FoldMapIsFolded(&editor.folds, 0));
+    InputFoldAtLevel(&editor, nullptr, nullptr, 3);
+    utassert(len(editor.folds.folded) == 1 &&
+             FoldMapIsFolded(&editor.folds, 2));
+    InputUnfoldAll(&editor, nullptr, nullptr);
+    utassert(len(editor.folds.folded) == 0);
+    int count = 0;
+    utassert(InputFoldCandidates(&editor, &count) && count == 4);
+    utassert(InputSetFolded(&editor, nullptr, nullptr, 5, true));
+    utassert(!InputSetFolded(&editor, nullptr, nullptr, 6, true));
+    utassert(FoldMapIsFolded(&editor.folds, 5));
+    editor.mode.folding = false;
+    InputUnfoldAll(&editor, nullptr, nullptr);
+    utassert(FoldMapIsFolded(&editor.folds, 5));
+
+    DisplayMap map;
+    map.SetText(InputValue(&editor));
+    map.SetFoldCandidates(candidates, 4);
+    int unordered[] = {5, 7, 1, 1};
+    map.SetFoldedLines(unordered, 4);
+    utassert(len(map.FoldCandidates()) == 4);
+    utassert(map.IsFoldedAt(1) && map.IsFoldedAt(5) && !map.IsFoldedAt(7));
+    utassert(map.IsBufferLineHidden(2) && map.IsBufferLineHidden(6));
+}
+
 void TestFoldMap() {
+    FoldingWholeLevelsPreservesTheCandidates();
     CandidatesAreSortedAndOnePerStartLine();
     OnlyACandidateFolds();
     NoFoldsIsTheIdentity();

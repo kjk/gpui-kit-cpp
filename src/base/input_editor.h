@@ -565,6 +565,8 @@ struct DisplayMap {
     int BufferLineToDisplayRow(int line) const;
     void SetFoldCandidates(const FoldRange* ranges, int n);
     void SetFolded(int startLine, bool folded);
+    void SetFoldedLines(const int* starts, int count);
+    const Vec<FoldRange>& FoldCandidates() const { return foldMap.candidates; }
     void ToggleFold(int startLine);
     bool IsFoldedAt(int startLine) const;
     bool IsFoldCandidate(int startLine) const;

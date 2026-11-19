@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "39540772b1d9fb962cb0335fe471bd81f345a8e0",
+  sha: "6898b31cc96570b590ce5d6d6b5cf3adee9b1f25",
   date: "2026-11-18",
-  subject: "fix(input): end IME composition on blur (#4032)",
+  subject: "input: public fold_all, unfold_all, fold_at_level and set_folded (#4028)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

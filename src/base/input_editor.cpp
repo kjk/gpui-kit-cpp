@@ -2927,6 +2927,11 @@ void DisplayMap::SetFoldCandidates(const FoldRange* ranges, int n) {
     Rebuild();
 }
 
+void DisplayMap::SetFoldedLines(const int* starts, int count) {
+    FoldMapSetFoldedLines(&foldMap, starts, count);
+    Rebuild();
+}
+
 void DisplayMap::SetFolded(int startLine, bool folded) {
     FoldMapSetFolded(&foldMap, startLine, folded);
     Rebuild();

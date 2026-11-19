@@ -4860,6 +4860,8 @@ struct FoldMap {
 void FoldMapSetCandidates(FoldMap* m, const FoldRange* ranges, int n);
 // set_folded / toggle_fold. A start line that is not a candidate is ignored.
 void FoldMapSetFolded(FoldMap* m, int startLine, bool folded);
+// Replaces the folded set with the candidates at these start lines.
+void FoldMapSetFoldedLines(FoldMap* m, const int* starts, int count);
 void FoldMapToggle(FoldMap* m, int startLine);
 bool FoldMapIsFolded(const FoldMap* m, int startLine);
 bool FoldMapIsCandidate(const FoldMap* m, int startLine);
@@ -6598,6 +6600,13 @@ bool InputUnfoldAt(InputState* s, App* app, Window* win, RopePoint position);
 // apply_highlighter_fold_candidates: what the highlighter found, taken only
 // when this field is a code editor with folding on.
 void InputSetFoldCandidates(InputState* s, const FoldRange* ranges, int n);
+const FoldRange* InputFoldCandidates(const InputState* s, int* count);
+bool InputSetFolded(InputState* s, App* app, Window* win, int startLine,
+                    bool folded);
+void InputFoldAll(InputState* s, App* app, Window* win);
+void InputUnfoldAll(InputState* s, App* app, Window* win);
+// Level 1 is an outermost candidate. Folding one level opens the others.
+void InputFoldAtLevel(InputState* s, App* app, Window* win, int level);
 // set_fold_placeholder_renderer. Null `render` clears it. Clicking the
 // element the renderer returns unfolds that line.
 void InputSetFoldPlaceholderRenderer(InputState* s,
