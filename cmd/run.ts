@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cbe84bc0727813255dfc993b6f0bde95275b1b05",
+  sha: "ae5fcd62f47982abb34b5d9b05842b3d5697271a",
   date: "2026-11-11",
-  subject: "table: Add `TableRow::id` so a row keeps its identity when rows reorder (#3907)",
+  subject: "text_selection: Start a drag's auto-scroll at an edge that hides text (#3928)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

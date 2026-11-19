@@ -485,6 +485,7 @@ static void SourceParticipantContractsProjectAcrossAWindow() {
     TextSelectionRegistration firstRegistration =
         TextSelectionRegistration::New({20, 0, 100, 20}, {20, 0, 100, 20})
             .WithDocumentOrder(10)
+            .WithSelfScroll()
             .WithTextBounds(firstText, 1);
     TextSelectionRegistration secondRegistration =
         TextSelectionRegistration::New({20, 40, 100, 20}, {20, 40, 100, 20})
@@ -794,8 +795,9 @@ static void DragAutoScrollStopsWhenTheContentMaskCollapses() {
 
     AddRun(&win, 0, "alpha beta", 0);
     Bounds visible = {0, 0, 100, 40};
-    handle
-        .Register(TextSelectionRegistration::New(visible, visible), &win, &app);
+    handle.Register(TextSelectionRegistration::New(visible, visible)
+                        .WithSelfScroll(),
+                    &win, &app);
     WindowSelectionPress(&win, 1, 1, 1, false);
     WindowSelectionDrag(&win, 1, 60);
     utassert(observed->running > 0);
@@ -812,8 +814,9 @@ static void DragAutoScrollStopsWhenTheContentMaskCollapses() {
     // content mask, and the next drag stops the auto scroll.
     int before = observed->stopped;
     Bounds collapsed = {0, 0, 100, 0};
-    handle.Register(TextSelectionRegistration::New(collapsed, collapsed), &win,
-                    &app);
+    handle.Register(TextSelectionRegistration::New(collapsed, collapsed)
+                        .WithSelfScroll(),
+                    &win, &app);
     WindowSelectionDrag(&win, 1, 60);
     utassert(observed->stopped > before);
 
@@ -910,6 +913,7 @@ struct ParticipantView {
             p.selection.Register(TextSelectionRegistration::New(box, box)
                                      .WithScope(p.scope)
                                      .WithDocumentOrder(p.order)
+                                     .WithSelfScroll()
                                      .WithTextBounds(&box, 1),
                                  cx->win, cx->app);
         }
@@ -1876,6 +1880,7 @@ static void DragAutoScrollStopsWhenTheContentMaskCollapsesInAWindow() {
     Bounds collapsed = {0, 0, 100, 0};
     participant->selection
         .Register(TextSelectionRegistration::New(collapsed, collapsed)
+                      .WithSelfScroll()
                       .WithTextBounds(&collapsed, 1),
                   f.win, f.app);
     f.Update(1, 50);
@@ -2372,6 +2377,71 @@ static void TestTextSelectionWindow() {
     SelectionLayerHandlesRealDoubleAndTripleClickEvents();
 }
 
+struct SelectionScrollViewportView {
+    float scroll = 0;
+    bool showBelow = false;
+
+    static void OnScroll(SelectionScrollViewportView* self, Ctx*,
+                         const ScrollEvent* ev) {
+        self->scroll = ev->offsetY;
+    }
+
+    static El* Render(SelectionScrollViewportView* self, Ctx* cx) {
+        Arena* a = cx->a;
+        El* content = Div(a)
+                          ->FlexCol()
+                          ->W(100)
+                          ->Shrink0()
+                          ->Child(Div(a)->H(40)->Shrink0())
+                          ->Child(Div(a)->H(20)->Shrink0()->ClipY()->Child(
+                              TextEl(a, StrL("card"))
+                                  ->H(16)
+                                  ->Font(12)
+                                  ->Selectable()
+                                  ->Shrink0()))
+                          ->Child(Div(a)->H(130)->Shrink0());
+        if (self->showBelow) {
+            content->Child(
+                TextEl(a, StrL("below"))->H(20)->Shrink0()->Selectable());
+        }
+        return Div(a)
+            ->W(100)
+            ->H(200)
+            ->ScrollY(self->scroll)
+            ->ScrollId(1)
+            ->OnScroll(Listen(cx, &SelectionScrollViewportView::OnScroll))
+            ->Child(content);
+    }
+};
+
+// text_selection.rs drag_auto_scroll_starts_at_the_edge_that_hides_text.
+static void DragAutoScrollStartsAtTheEdgeThatHidesText() {
+    App* app = TestAppNew();
+    auto view = EntityNew<SelectionScrollViewportView>(app);
+    Window* win = TestWindowOpen(app, view, 300, 300, 1);
+    auto* self = view.Get(app);
+    TestSimulateMouseDown(win, {1, 45});
+    TestSimulateMouseMove(win, {1, 195}, true);
+    utassert(win->sel && !win->sel->autoScroll.IsActive());
+
+    self->showBelow = true;
+    TestDraw(win);
+    TestSimulateMouseMove(win, {1, 70}, true);
+    utassert(!win->sel->autoScroll.IsActive());
+    TestSimulateMouseMove(win, {1, 195}, true);
+    utassert(win->sel->autoScroll.IsActive());
+    utassertnear(win->sel->autoScroll.lastDrag.y, 195.f);
+    TestAdvanceClock(app, 17);
+    utassert(self->scroll > 0);
+    TestSimulateMouseMove(win, {1, 70}, true);
+    utassert(!win->sel->autoScroll.IsActive());
+    float stopped = self->scroll;
+    TestAdvanceClock(app, 40);
+    utassert(self->scroll == stopped);
+    TestSimulateMouseUp(win, {1, 70});
+    TestAppFree(app);
+}
+
 struct CopyCount {
     int n = 0;
 };
@@ -2496,6 +2566,7 @@ void TestTextSelection() {
     SelectionBandDecidesWholeRuns();
     SelectableTextJoinsTheDocumentItsHandleOwns();
     DragAutoScrollStopsWhenTheContentMaskCollapses();
+    DragAutoScrollStartsAtTheEdgeThatHidesText();
     ADragThatNeverTouchesTextPublishesNothing();
     StartingInTheMarginAndDraggingOntoTextSelects();
     OnceItHasTouchedTextItStays();

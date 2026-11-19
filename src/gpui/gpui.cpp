@@ -8084,6 +8084,8 @@ static int ElSelectionScope(PaintCtx* ctx, const El* e) {
 static TextHit ElTextHit(PaintCtx* ctx, const El* e, int docOff) {
     TextHit th;
     th.bounds = e->Bounds();
+    th.contentMask =
+        ctx->hasHitMask ? ctx->hitMask : Bounds{0, 0, ctx->viewW, ctx->viewH};
     th.docOff = docOff;
     th.owner = e->selectionOwner;
     th.src = e->selSrc;

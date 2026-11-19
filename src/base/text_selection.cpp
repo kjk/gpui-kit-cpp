@@ -4,6 +4,7 @@
 #include "base/global_state.h"
 #include "base/text.h"
 #include "gpui/paint.h"
+#include "gpui/platform.h"
 
 namespace gpui {
 
@@ -435,25 +436,16 @@ static void ParticipantAutoScroll(Window* window, Point point, bool stopping) {
     EntityId id = {};
     TextSelectionParticipantState* state =
         ParticipantAt(window, window->sel->anchorPoint, &id);
-    if (!state) return;
-    // The visible region a drag scrolls is the nearest clipping viewport, not
-    // the participant's own box: it stays put while the anchor text itself
-    // scrolls out of view. Rust reads it off the registration's content mask;
-    // the registration's hitbox is that here, since the runtime intersects
-    // every hit rectangle with the content mask on the way down the tree.
-    Bounds visible = state->registration.hitbox;
-    if (visible.w <= 0 || visible.h <= 0) {
-        visible = state->registration.bounds;
-    }
-    // A collapsed mask — a scrollable ancestor clipped away mid-drag — leaves
-    // an empty clamp range, so the drag stops scrolling rather than running
-    // at whatever the last delta was. `HIT_TEST_INSET` is Rust's, the margin
-    // its synthesized wheel event has to stay inside.
-    const float kHitTestInset = 1.f;
-    bool collapsed =
-        visible.w < kHitTestInset * 2.f || visible.h < kHitTestInset * 2.f;
+    if (!state || !state->registration.selfScroll) return;
+    Bounds box = state->registration.bounds;
+    Bounds mask = state->registration.hitbox;
+    float x = box.x > mask.x ? box.x : mask.x;
+    float y = box.y > mask.y ? box.y : mask.y;
+    float right = box.Right() < mask.Right() ? box.Right() : mask.Right();
+    float bottom = box.Bottom() < mask.Bottom() ? box.Bottom() : mask.Bottom();
+    Bounds visible = {x, y, right - x, bottom - y};
     float delta = 0;
-    bool has = !stopping && !collapsed &&
+    bool has = !stopping && visible.w > 0 && visible.h > 0 &&
                AutoScrollComputeDelta(point.y, visible, &delta);
     TextSelectionEvent event;
     event.kind = TextSelectionEventKind::AutoScroll;
@@ -461,6 +453,136 @@ static void ParticipantAutoScroll(Window* window, Point point, bool stopping) {
     event.hasAutoScroll = has;
     EntityEmit(window->app, window, Entity<TextSelectionParticipantState>{id},
                &event);
+}
+
+TextSelectionRegistration TextSelectionRegistration::WithSelfScroll(
+    bool value) const {
+    TextSelectionRegistration out = *this;
+    out.selfScroll = value;
+    return out;
+}
+
+struct SelectionScrollAnchor {
+    Bounds bounds = {};
+    Bounds mask = {};
+    Point offset = {};
+    bool selfScroll = false;
+};
+
+static bool SelectionScrollAnchorOf(Window* win, SelectionScrollAnchor* out) {
+    WindowSelection* selection = win->sel;
+    auto* participant = (TextSelectionParticipantState*)EntityGet(
+        win->app, selection->anchorParticipant);
+    if (participant && participant->window == win && participant->registered) {
+        const auto& registration = participant->registration;
+        *out = {registration.bounds, registration.hitbox,
+                registration.scrollOffset, registration.selfScroll};
+        return true;
+    }
+    for (const TextHit& hit : win->paint.texts) {
+        if (hit.scope == selection->scope && hit.docOff <= selection->anchor &&
+            hit.docOff + len(hit.text) >= selection->anchor && !hit.atom) {
+            *out = {hit.bounds, hit.contentMask};
+            return true;
+        }
+    }
+    return false;
+}
+
+static void SelectionScrollEdges(Bounds bounds, Bounds mask, Bounds anchorMask,
+                                 float* top, float* bottom) {
+    if (mask.w <= 0 || mask.h <= 0) return;
+    if (bounds.y < mask.y && mask.y <= anchorMask.y && mask.y > *top) {
+        *top = mask.y;
+    }
+    float edge = mask.Bottom();
+    if (bounds.Bottom() > edge && edge >= anchorMask.Bottom() &&
+        edge < *bottom) {
+        *bottom = edge;
+    }
+}
+
+static void WindowSelectionUpdateAutoScroll(Window* win, Point at) {
+    WindowSelection* selection = win->sel;
+    selection->autoScroll.Stop();
+    selection->autoScrollStalled = 0;
+    if (win->activeDrag.IsValid()) return;
+    SelectionScrollAnchor anchor;
+    if (!SelectionScrollAnchorOf(win, &anchor)) return;
+    if (anchor.selfScroll) {
+        ParticipantAutoScroll(win, at, false);
+        return;
+    }
+    // Find the closest cuts above/below the anchor; the anchor's own
+    // clip can be a rounded card that hides no text at all.
+    constexpr float kNoEdge = 1e7f;
+    float top = -kNoEdge;
+    float bottom = kNoEdge;
+    for (const TextHit& hit : win->paint.texts) {
+        if (hit.scope == selection->scope && !hit.atom) {
+            SelectionScrollEdges(hit.bounds, hit.contentMask, anchor.mask, &top,
+                                 &bottom);
+        }
+    }
+    for (EntityId id : selection->participants) {
+        auto* p = (TextSelectionParticipantState*)EntityGet(win->app, id);
+        if (p && p->window == win && p->registered &&
+            p->registration.scope == selection->activeScope) {
+            SelectionScrollEdges(p->registration.bounds, p->registration.hitbox,
+                                 anchor.mask, &top, &bottom);
+        }
+    }
+    const float kInset = 1.f;
+    if ((top == -kNoEdge && bottom == kNoEdge) || anchor.mask.w < 2 * kInset ||
+        anchor.mask.h < 2 * kInset || bottom - top < 2 * kInset) {
+        return;
+    }
+    Bounds viewport = {anchor.mask.x, top, anchor.mask.w, bottom - top};
+    float delta = 0;
+    if (!AutoScrollComputeDelta(at.y, viewport, &delta)) return;
+    selection->autoScrollPointer = at;
+    selection->autoScroll.lastDrag = {
+        ClampF(at.x, viewport.x + kInset, viewport.Right() - kInset),
+        ClampF(at.y, top + kInset, bottom - kInset),
+    };
+    selection->autoScroll.hasLastDrag = true;
+    selection->autoScroll.Set(delta);
+    selection->autoScrollLastBounds = anchor.bounds;
+    selection->autoScrollLastOffset = anchor.offset;
+    WindowRequestAnimationFrame(win);
+}
+
+void WindowSelectionAutoScrollTick(Window* win) {
+    WindowSelection* selection = win->sel;
+    if (!selection || !selection->gesture.selecting ||
+        !selection->autoScroll.IsActive()) {
+        return;
+    }
+    SelectionScrollAnchor anchor;
+    if (!SelectionScrollAnchorOf(win, &anchor) || win->activeDrag.IsValid()) {
+        selection->autoScroll.Stop();
+        return;
+    }
+    const Bounds& last = selection->autoScrollLastBounds;
+    if (anchor.bounds.x == last.x && anchor.bounds.y == last.y &&
+        anchor.bounds.w == last.w && anchor.bounds.h == last.h &&
+        SamePoint(anchor.offset, selection->autoScrollLastOffset)) {
+        constexpr int kStalledTicks = 3;
+        if (++selection->autoScrollStalled >= kStalledTicks) {
+            selection->autoScroll.Stop();
+            return;
+        }
+    } else {
+        selection->autoScrollStalled = 0;
+        selection->autoScrollLastBounds = anchor.bounds;
+        selection->autoScrollLastOffset = anchor.offset;
+    }
+    selection->autoScrollRelayout = true;
+    Point at = selection->autoScroll.lastDrag;
+    PlatformInput wheel =
+        InputScrollWheel(at.x, at.y, 0, -selection->autoScroll.delta, true, {},
+                         TouchPhase::Moved);
+    WindowDispatchInput(win, &wheel);
 }
 
 TextSelectionHandle TextSelectionHandle::New(Str fallbackCopyText, App* app) {
@@ -907,6 +1029,8 @@ void WindowSelectionClear(Window* win) {
         return;
     }
     s->clearing = true;
+    s->autoScroll.Stop();
+    s->autoScrollRelayout = false;
     ParticipantAutoScroll(win, s->cursorPoint, true);
     TextSelectionClear(&s->gesture);
     s->anchor = -1;
@@ -1238,7 +1362,7 @@ bool WindowSelectionTouchUiContains(const Window* win, Point at) {
     return s && s->hasTouchUi && s->touchUi.Contains(at);
 }
 
-void WindowSelectionDrag(Window* win, float x, float y) {
+static void WindowSelectionDragAt(Window* win, float x, float y) {
     WindowSelection* s = win ? win->sel : nullptr;
     if (!s || !s->gesture.selecting) {
         return;
@@ -1265,7 +1389,12 @@ void WindowSelectionDrag(Window* win, float x, float y) {
             s->hasWindowPoints = true;
         }
     }
-    ParticipantAutoScroll(win, {x, y}, false);
+}
+
+void WindowSelectionDrag(Window* win, float x, float y) {
+    if (!win || !win->sel || !win->sel->gesture.selecting) return;
+    WindowSelectionDragAt(win, x, y);
+    WindowSelectionUpdateAutoScroll(win, {x, y});
     WindowSelectionPublish(win);
     // Copy reads this frame's runs. The points have to match the gesture
     // before the next paint, or a block still answers for the previous one.
@@ -1275,6 +1404,8 @@ void WindowSelectionDrag(Window* win, float x, float y) {
 void WindowSelectionRelease(Window* win) {
     WindowSelection* s = win ? win->sel : nullptr;
     if (s) {
+        s->autoScroll.Stop();
+        s->autoScrollRelayout = false;
         ParticipantAutoScroll(win, s->cursorPoint, true);
         TextSelectionEnd(&s->gesture);
         WindowSelectionPublish(win);
@@ -1634,6 +1765,12 @@ void WindowSelectionFinishFrame(Window* win) {
         selection->touchUiThisFrame = false;
     }
     if (!selection || !win->app) return;
+    if (selection->autoScrollRelayout) {
+        selection->autoScrollRelayout = false;
+        Point at = selection->autoScrollPointer;
+        WindowSelectionDragAt(win, at.x, at.y);
+    }
+    if (selection->autoScroll.IsActive()) WindowRequestAnimationFrame(win);
     // Rust collects stale ids before clearing their entities. Event and
     // cleanup callbacks can re-enter selection code, so do not walk the live
     // participant vector while invoking them.

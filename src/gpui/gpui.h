@@ -3712,6 +3712,7 @@ struct ScrollEvent {
 
 struct TextHit {
     Bounds bounds = {};
+    Bounds contentMask = {};
     Str text;
     float font = 14;
     float maxW = 0;

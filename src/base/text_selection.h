@@ -106,6 +106,7 @@ struct TextSelectionRegistration {
     uint64_t documentOrder = 0;
     const Bounds* textBounds = nullptr;
     int textBoundsCount = 0;
+    bool selfScroll = false;
 
     static TextSelectionRegistration New(Bounds hitbox, Bounds bounds);
     TextSelectionRegistration WithScrollOffset(Point value) const;
@@ -113,6 +114,9 @@ struct TextSelectionRegistration {
     TextSelectionRegistration WithDocumentOrder(uint64_t value) const;
     TextSelectionRegistration WithTextBounds(const Bounds* values,
                                              int count) const;
+    // A participant with its own scroll offset receives AutoScroll events.
+    // Otherwise the window scrolls the viewport that obscures its text.
+    TextSelectionRegistration WithSelfScroll(bool value = true) const;
 };
 
 // TextLayout is reference-counted by the paint backend. A run borrows it for
@@ -336,6 +340,12 @@ struct WindowSelection {
     // anchor whose participant has since been swept starts afresh instead.
     bool anchorInsideText = false;
     EntityId anchorParticipant = {};
+    AutoScroll autoScroll;
+    Point autoScrollPointer = {};
+    Bounds autoScrollLastBounds = {};
+    Point autoScrollLastOffset = {};
+    int autoScrollStalled = 0;
+    bool autoScrollRelayout = false;
     // The table cell the anchor landed in. A later move stays inside it.
     bool hasAnchorCell = false;
     Bounds anchorCell = {};
@@ -381,6 +391,8 @@ bool WindowSelectionTouchUiContains(const Window* win, Point at);
 // The window's selection, made on first use.
 WindowSelection* WindowSelectionOf(Window* win);
 void WindowSelectionFree(Window* win);
+// Drives one synthetic wheel event on the window's animation clock.
+void WindowSelectionAutoScrollTick(Window* win);
 
 // The press. `clickCount` is GPUI's — 2 takes the word, 3 the line — and
 // `extend` is a shift-click, which moves the cursor and keeps the anchor.

@@ -4412,6 +4412,7 @@ void WindowTimerTick(Window* win) {
     // also be sooner than the next animation frame. Neither is permission to
     // draw early; the remaining deadline is re-armed below.
     if (WindowAnimationDue(win, now)) {
+        WindowSelectionAutoScrollTick(win);
         AppInvalidate(win);
     }
     PlatSetTimer(win, WindowTimerMs(win));

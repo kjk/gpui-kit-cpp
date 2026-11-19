@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cbe84bc0727813255dfc993b6f0bde95275b1b05` (2026-11-11,
-table: Add `TableRow::id` so a row keeps its identity when rows reorder
-(#3907)).
-Add TableRow::Id to keep an explicit row and its descendants at the same
-element path across reordering while preserving positional row indices.
+Processed through `ae5fcd62f47982abb34b5d9b05842b3d5697271a` (2026-11-11,
+text_selection: Start a drag's auto-scroll at an edge that hides text
+(#3928)).
+Drive a selection drag with the nearest viewport edge that hides selectable
+text. Keep direct AutoScroll events for self-scrolling participants and
+synthesize wheel input on the existing window animation clock for the
+surrounding scroll container.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
