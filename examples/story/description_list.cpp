@@ -72,7 +72,7 @@ El* DescriptionListStory::Render(DescriptionListStory* self, Ctx* cx) {
             ->ItemEl(StrL("This is a long label for Platform"),
                      Md(cx, StrL("macOS, Windows, Linux")))
             ->IntoEl();
-    page->Child(Div(a)->W(720)->Child(list));
+    page->Child(Div(a)->W(kFill)->MaxW(720)->Child(list));
     return page;
 }
 

@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "5e3c7d949178d4fae29b346dc864c50fd40cddc0",
+  sha: "e605e22499959728c5e076fbe876fc8523e2a3cf",
   date: "2026-11-12",
-  subject: "input: Open the completion and code action menus above the caret when they do not fit below (#3925)",
+  subject: "story: Let the `DescriptionList`, `Menu` and `Tag` demos shrink to fit the docs embed (#3926)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

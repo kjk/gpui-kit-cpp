@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5e3c7d949178d4fae29b346dc864c50fd40cddc0` (2026-11-12,
-input: Open the completion and code action menus above the caret when they do
-not fit below (#3925)).
-Place completion and code-action menus above the fresh caret geometry when
-their measured height does not fit below and there is more space above.
+Processed through `e605e22499959728c5e076fbe876fc8523e2a3cf` (2026-11-12,
+story: Let the `DescriptionList`, `Menu` and `Tag` demos shrink to fit the
+docs embed (#3926)).
+Let the DescriptionList, Menu and Tag story content fill narrow panes while
+keeping the upstream maximum widths of 720 or 640 DIP.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

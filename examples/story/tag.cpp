@@ -123,7 +123,7 @@ El* TagStory::Render(TagStory* self, Ctx* cx) {
 
     // ColorName::all() minus Gray, as Tag::color paints each of them.
     El* colors = StorySection(cx, "Colors", nullptr);
-    StorySectionBody(colors)->W(640);
+    StorySectionBody(colors)->MaxW(640);
     // v_flex().w_full().gap_4() around one h_flex().w_full().gap_2()
     // .flex_wrap() of every colour.
     El* ccol = Div(a)->FlexCol()->W(kFill)->Gap(16);
