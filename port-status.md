@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `29815946162a745a513c8c9e4ffbf51592751890` (2026-11-14,
-slider: Handle numeric accessibility SetValue requests (#3963)).
-Route accessibility SetValue through the same thumb snapping and
-change/release path as keyboard steps. Headless coverage checks offset step
-grids, range bounds and nonfinite values.
+Processed through `000b0a06f662960147b83ce1f5b292766c527ef7` (2026-11-14,
+input: Report a preedit kept by unmark_text as a change (#3965)).
+Report one change and edit notification when unmark retains a changed preedit.
+An unchanged or cancelled preedit produces no notification.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

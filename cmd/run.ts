@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "29815946162a745a513c8c9e4ffbf51592751890",
+  sha: "000b0a06f662960147b83ce1f5b292766c527ef7",
   date: "2026-11-14",
-  subject: "slider: Handle numeric accessibility SetValue requests (#3963)",
+  subject: "input: Report a preedit kept by unmark_text as a change (#3965)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

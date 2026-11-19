@@ -7990,6 +7990,45 @@ static void MarkB(const InputView& v, const char* text,
     InputReplaceAndMarkText(v.input, v.app, v.win, nullptr, Str(text), sel);
 }
 
+struct KeptPreeditEvents {
+    int changes = 0;
+    int edits = 0;
+
+    static void OnChange(KeptPreeditEvents* self, Ctx*, const InputEvent* ev) {
+        if (ev->kind == InputEventKind::Change) self->changes++;
+    }
+    static void OnEdits(KeptPreeditEvents* self, Ctx*,
+                        const InputEditsEvent* ev) {
+        self->edits += ev->count;
+    }
+};
+
+// crates/kit/tests/integration/input/composition.rs:
+// unmark_reports_the_kept_preedit_as_one_change.
+static void UnmarkReportsTheKeptPreeditAsOneChange() {
+    for (InputKind kind :
+         {InputKind::Input, InputKind::Textarea, InputKind::Editor}) {
+        InputView view = InputViewBuildWith(kind, nullptr);
+        auto events = EntityNewState<KeptPreeditEvents>(view.app);
+        auto* seen = events.Get(view.app);
+        view.input->onChange = ListenTo(events, &KeptPreeditEvents::OnChange);
+        view.input->onEdits = ListenTo(events, &KeptPreeditEvents::OnEdits);
+        MarkB(view, "s");
+        MarkB(view, "slider");
+        utassert(seen->changes == 0 && seen->edits == 0);
+        InputUnmarkText(view.input, view.app, view.win);
+        utassert(seen->changes == 1 && seen->edits == 1);
+        utassert(ViewValueIs(view, "slider"));
+        InputUnmarkText(view.input, view.app, view.win);
+        MarkB(view, "x");
+        MarkB(view, "");
+        InputUnmarkText(view.input, view.app, view.win);
+        utassert(ViewValueIs(view, "slider"));
+        utassert(seen->changes == 1 && seen->edits == 1);
+        InputViewFree(&view);
+    }
+}
+
 // state.rs test_undo_manager_composition_isolated_from_long_typing.
 static void UndoManagerCompositionIsolatedFromLongTyping() {
     InputView view = InputViewBuild();
@@ -8795,6 +8834,7 @@ static void RunWindowTestsB() {
     UndoManagerWordAndLineDeletesDoNotCoalesce();
     UndoManagerMultilineReplacementIsOneAtomicTransaction();
     UndoManagerCompositionIsolatedFromLongTyping();
+    UnmarkReportsTheKeptPreeditAsOneChange();
     UndoManagerSelectedReplacementIsAtomic();
     NumberInputLeadingDotEditable();
     NumberInputEscapeInvalidText();

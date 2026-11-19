@@ -7079,14 +7079,23 @@ bool InputMarkedRange(const InputState* s, Selection* out) {
 }
 
 void InputUnmarkText(InputState* s, App* app, Window* win) {
-    if (!s || !s->imeMarking) {
+    if (!s || (!s->imeMarking && !s->imeHaveOriginal)) {
         return;
     }
     s->imeMarking = false;
     s->imeMarked = {};
-    // The whole composition was one transaction, so it undoes as one thing
-    // rather than one candidate at a time.
+    // Keep all the candidates in one undo transaction.
     UndoCommitTransaction(&s->undo);
+    if (s->imeHaveOriginal) {
+        if (StrEq(s->imeOriginal, InputValue(s))) {
+            StrFree(s->imeOriginal);
+            s->imeOriginal = {};
+            s->imeHaveOriginal = false;
+        } else if (s->emitEvents) {
+            // Some keyboards finish a committed word with only unmark.
+            EmitEditsAndChange(s, app, win);
+        }
+    }
     Notify(app, win);
 }
 
