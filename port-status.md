@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5bece8fc054c92c60a083fbf6df25bd11c6025d1` (2026-11-15,
-window: End mouse gestures when the compositor consumes MouseUp (#3643)).
-Cancel existing window gestures when a left release is missing, capture
-transfers, or the window deactivates. Retire text selection and resizer state
-without dispatching a click or drop.
+Processed through `f697c3133d55c64fa8a5b67926147fb3dadd276d` (2026-11-16,
+chore: Bump v0.10.0 (#3992)).
+Update tracked gpui-kit crate versions to 0.10.0. Rust optional backend
+compatibility is handled by the existing C++ runtime adapters.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

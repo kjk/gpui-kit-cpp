@@ -532,16 +532,16 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "5bece8fc054c92c60a083fbf6df25bd11c6025d1",
-  date: "2026-11-15",
-  subject: "window: End mouse gestures when the compositor consumes MouseUp (#3643)",
+  sha: "f697c3133d55c64fa8a5b67926147fb3dadd276d",
+  date: "2026-11-16",
+  subject: "chore: Bump v0.10.0 (#3992)",
   crates: {
-    "gpui-kit": "0.9.1",
-    "gpui-base": "0.9.1",
-    "gpui-component": "0.9.1",
-    "gpui-component-story": "0.9.1",
-    "gpui-webview": "0.9.1",
-    "gpui-shell": "0.9.1",
+    "gpui-kit": "0.10.0",
+    "gpui-base": "0.10.0",
+    "gpui-component": "0.10.0",
+    "gpui-component-story": "0.10.0",
+    "gpui-webview": "0.10.0",
+    "gpui-shell": "0.10.0",
   },
   dir: ".work/gpui-component",
 } as const;
