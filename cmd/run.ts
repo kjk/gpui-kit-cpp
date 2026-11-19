@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "e07f5bf3d36ffd1f0625d981beb59f6fb06b39ec",
+  sha: "de9d2235fa3dac0e99e685823752bb300b23e74a",
   date: "2026-11-10",
-  subject: "motion: Add an explicit reduced-motion preference (#3881)",
+  subject: "diff: Keep the file header in view when switching modes at the top (#3884)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e07f5bf3d36ffd1f0625d981beb59f6fb06b39ec` (2026-11-10,
-motion: Add an explicit reduced-motion preference (#3881)).
-Applications can explicitly reduce or allow motion and later resume the cached
-system preference. System readings continue during an override, and headless
-tests skip platform queries.
+Processed through `de9d2235fa3dac0e99e685823752bb300b23e74a` (2026-11-10,
+diff: Keep the file header in view when switching modes at the top (#3884)).
+The Diff list already retains a zero scroll offset across mode changes. A
+regression covers the first header with the long-line fixture. The renderer
+still uses uniform rows, as recorded below.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

@@ -840,6 +840,7 @@ static void TestDiffListFillsItsHeight() {
 struct LongDiffView {
     Entity<DiffState> state;
     bool loaded = false;
+    bool softWrap = false;
 
     static El* Render(LongDiffView* self, Ctx* cx) {
         if (!self->loaded) {
@@ -849,8 +850,15 @@ struct LongDiffView {
             StrBuilder patch;
             patch.Append(StrL("--- a/long.txt\n+++ b/long.txt\n"));
             patch.Append(StrL("@@ -1,300 +1,300 @@\n"));
+            Str tail = self->softWrap
+                           ? StrL(
+                                 " a long line that wraps in the column"
+                                 " a long line that wraps in the column"
+                                 " a long line that wraps in the column")
+                           : StrL("");
             for (int line = 0; line < 300; line++) {
-                patch.Append(fmt("-old %d\n+new %d\n", line, line));
+                patch.Append(
+                    fmt("-old %d%s\n+new %d%s\n", line, tail, line, tail));
             }
             Vec<DiffFile*> files;
             DiffParseError error = {};
@@ -859,14 +867,19 @@ struct LongDiffView {
             }
             self->loaded = true;
         }
-        return Diff::New(cx, self->state)->IntoEl()->SizeFull();
+        return Diff::New(cx, self->state)
+            ->SoftWrap(self->softWrap)
+            ->IntoEl()
+            ->SizeFull();
     }
 };
 
-static void OpenLongDiff(App** appOut, Window** winOut, DiffState** stateOut) {
+static void OpenLongDiff(App** appOut, Window** winOut, DiffState** stateOut,
+                         bool softWrap = false) {
     App* app = TestAppNew();
     Init(app);
     Entity<LongDiffView> view = EntityNew<LongDiffView>(app);
+    view.Get(app)->softWrap = softWrap;
     Window* win = TestWindowOpen(app, view, 400, 200);
     for (int i = 0; i < 3; i++) TestDraw(win);
     LongDiffView* self = view.Get(app);
@@ -902,6 +915,27 @@ static void TheWheelScrollsPastTheRowsRenderedSoFar() {
                                                      .itemsCount;
         int top = row > 0 ? (int)(st->listScroll.offset / row) : 0;
         utassert(top > 40);
+    }
+    TestAppFree(app);
+}
+
+// diff/scroll_tests.rs: switching at the top keeps the first header visible.
+static void ModeSwitchAtTheTopKeepsTheFileHeaderInView() {
+    App* app = nullptr;
+    Window* win = nullptr;
+    DiffState* state = nullptr;
+    OpenLongDiff(&app, &win, &state, true);
+    utassert(state);
+    if (state) {
+        utassert(len(state->rows) > 0 && state->rows[0]
+                                                 .kind == DiffRowKind::File);
+        utassert(state->listScroll.offset == 0);
+        Ctx cx = {app, win, win->frameArena, state->self.id};
+        state->SetMode(DiffMode::Split, &cx);
+        for (int i = 0; i < 3; i++) TestDraw(win);
+        utassert(state->Mode() == DiffMode::Split);
+        utassert(state->listScroll.offset == 0);
+        utassert(len(state->headerRows) > 0 && state->headerRows[0] == 0);
     }
     TestAppFree(app);
 }
@@ -1204,6 +1238,7 @@ void TestDiff() {
     WordRunsOfALargeFileAreOnTheirLines();
     TestDiffListFillsItsHeight();
     TheWholePatchKeepsItsHeightAfterTheFirstLayout();
+    ModeSwitchAtTheTopKeepsTheFileHeaderInView();
     TheWheelScrollsPastTheRowsRenderedSoFar();
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();
     GutterMarkersActivateWithoutSelectingLines();
