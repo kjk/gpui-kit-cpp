@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `249a963ce9823f0b06ea261543df2ad61db89ae4` (2026-11-17,
-text: Show Markdown as plain text when the parser panics (#4013)).
-The Markdown compiler detects mismatched opening and closing events. TextView
-preserves the original bytes and line breaks in a selectable paragraph when
-that happens, and speculative prose reparsing keeps the original inline token.
+Processed through `69dab1accf3570bf3c0974bc32241bb031cc0b1b` (2026-11-17,
+calendar: Replace chrono with jiff (#4015)).
+The C++ calendar, date picker, time field, shell ISO dates and bundle
+timestamps continue to use native civil values and local time. The Rust
+dependency replacement preserves their formats and calendar arithmetic.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
