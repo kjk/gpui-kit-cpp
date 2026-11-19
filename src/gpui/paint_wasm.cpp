@@ -1027,8 +1027,9 @@ EM_JS(int, GpJsTextHit, (int id, float relX, float relY), {
     if (!e) {
         return 0;
     }
-    const pad = (e.box - e.natural) * 0.5;
-    let li = Math.floor((relY - pad) / e.box);
+    // Leading belongs to the row's line box. Shifting by the glyph padding
+    // would send a click in the top of the next row to the row above it.
+    let li = Math.floor(relY / e.box);
     if (li < 0) {
         li = 0;
     }
