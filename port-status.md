@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `78c4dad37c1645ea4d3a732eab90c911a7c36565` (2026-11-11,
-popover: Keep a popover open on a press in a popup opened from inside it
-(#3909)).
-Keep popovers open for presses in a descendant popup using the rendered
-element ancestry, including deferred menus.
+Processed through `bb28525aced561f6f72e64df8e2cffa070c00b94` (2026-11-11,
+input: Let Copy with nothing selected pass on to the window selection
+(#3915)).
+Send the Copy shortcut on to the window selection when the focused input
+contains only carets. A selected masked value still consumes Copy without
+writing text.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

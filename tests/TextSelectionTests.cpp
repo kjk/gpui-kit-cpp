@@ -2426,9 +2426,72 @@ static void PaintDoesNotResolveWindowSelectedText() {
     TestAppFree(app);
 }
 
+struct TextBesideInput {
+    InputState input;
+
+    static void KeepComposerFocus(TextBesideInput*, Ctx* cx,
+                                  const MouseDownEvent*) {
+        WindowPreventDefault(cx);
+    }
+
+    static El* Render(TextBesideInput* self, Ctx* cx) {
+        return Div(cx->a)
+            ->FlexCol()
+            ->SizeFull()
+            ->Gap(16)
+            ->Child(
+                Div(cx->a)
+                    ->H(40)
+                    ->OnMouseDown(
+                        Listen(cx, &TextBesideInput::KeepComposerFocus))
+                    ->Child(SelectableText::New(cx, StrL("message"),
+                                                StrL("Selected beside the box"))
+                                ->IntoEl()))
+            ->Child(component::Input::New(cx, StrL("composer"), &self->input)
+                        ->W(240)
+                        ->IntoEl())
+            ->Child(TextSelectionLayer::New(cx));
+    }
+};
+
+// kit/tests/integration/text_selection.rs
+// copy_in_an_input_with_nothing_selected_copies_the_window_selection.
+static void CopyWithOnlyACaretUsesTheWindowSelection() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<TextBesideInput>(app);
+    auto* self = view.Get(app);
+    Window* win = TestWindowOpen(app, view, 500, 200, 1);
+    InputSetValue(&self->input, StrL("input text"));
+    InputFocus(&self->input, app, win);
+    TestDraw(win);
+    TestSimulateMouseDown(win, {1, 10});
+    TestSimulateMouseMove(win, {400, 10}, true);
+    TestSimulateMouseUp(win, {400, 10});
+    utassert(win->input == &self->input && self->input.focused);
+    utassert(WindowSelectedIs(win, app, "Selected beside the box"));
+    utassert(self->input.selectedRange.IsEmpty());
+    TestWriteToClipboard(StrL("original"));
+    TestSimulateKeystrokes(win, "secondary-c");
+    utassert(StrEq(TestReadFromClipboard(GetTempArena()),
+                   StrL("Selected beside the box")));
+
+    InputSetSelectedRange(&self->input, app, win, 0, 5);
+    TestSimulateKeystrokes(win, "secondary-c");
+    utassert(StrEq(TestReadFromClipboard(GetTempArena()), StrL("input")));
+
+    self->input.masked = true;
+    TestDraw(win);
+    TestWriteToClipboard(StrL("untouched"));
+    TestSimulateKeystrokes(win, "secondary-c");
+    utassert(StrEq(TestReadFromClipboard(GetTempArena()), StrL("untouched")));
+    TestAppFree(app);
+}
+
 void TestTextSelection() {
     TestSuite("text_selection");
     PaintDoesNotResolveWindowSelectedText();
+    CopyWithOnlyACaretUsesTheWindowSelection();
     WrappedSelectionPaintsFullWidthMiddleLines();
     SelectionBandDecidesWholeRuns();
     SelectableTextJoinsTheDocumentItsHandleOwns();

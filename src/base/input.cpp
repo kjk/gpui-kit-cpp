@@ -4649,13 +4649,7 @@ bool InputIsSingleLine(const InputState* s) {
     return !InputIsMultiLine(s);
 }
 
-// is_copyable: any non-empty cursor may leave the field. A caret plus a
-// range still copies the range. A masked field may not — what it shows is
-// not what it holds, and the clipboard would get what it holds.
-bool InputIsCopyable(const InputState* s) {
-    if (!s || s->masked) {
-        return false;
-    }
+static bool InputHasSelection(const InputState* s) {
     if (!s->selectedRange.IsEmpty()) {
         return true;
     }
@@ -4665,6 +4659,11 @@ bool InputIsCopyable(const InputState* s) {
         }
     }
     return false;
+}
+
+// Any non-empty cursor may leave the field unless its value is masked.
+bool InputIsCopyable(const InputState* s) {
+    return s && !s->masked && InputHasSelection(s);
 }
 
 bool InputIsEditable(const InputState* s) {
@@ -10237,6 +10236,9 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             return false;
 
         case InputAction::Copy:
+            // The window selection gets the shortcut when the field has only
+            // carets. A masked range still claims it without writing text.
+            if (!InputHasSelection(s)) return false;
             DoCopy(s, win);
             return true;
         case InputAction::Cut:

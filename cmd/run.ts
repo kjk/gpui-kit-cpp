@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "78c4dad37c1645ea4d3a732eab90c911a7c36565",
+  sha: "bb28525aced561f6f72e64df8e2cffa070c00b94",
   date: "2026-11-11",
-  subject: "popover: Keep a popover open on a press in a popup opened from inside it (#3909)",
+  subject: "input: Let Copy with nothing selected pass on to the window selection (#3915)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",
