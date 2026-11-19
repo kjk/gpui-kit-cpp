@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `60577183573a2e9545b60689f20e1099b94d3b9a` (2026-11-18,
-docs: Use ListState in the zh-CN List guide's delegate examples (#4030)).
-The localized List guide now shows the retained ListState delegate API. The
-C++ List already hands its retained state to native delegates.
+Processed through `c391c89849fa4402ba4c5ee8d8267a354eadd838` (2026-11-18,
+gpui: Upgrade to gpui-fast 0.1.17 (#4027)).
+The Rust workspace updates its optional GPUI Fast dependencies to 0.1.17.
+Native C++ and the GPUI Pre comparison pins are independent of those Cargo
+dependencies.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "60577183573a2e9545b60689f20e1099b94d3b9a",
+  sha: "c391c89849fa4402ba4c5ee8d8267a354eadd838",
   date: "2026-11-18",
-  subject: "docs: Use ListState in the zh-CN List guide's delegate examples (#4030)",
+  subject: "gpui: Upgrade to gpui-fast 0.1.17 (#4027)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",
