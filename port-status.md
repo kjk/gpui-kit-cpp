@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `39ab849a93b5f15507b969164d49891db8d5b470` (2026-11-09,
-chore: Bump v0.9.1 (#3867)).
-The workspace package versions advance to 0.9.1 and the Zed GPUI reference
-advances to gpui-pre 0.3.12. The ported crates keep their resolved versions.
+Processed through `3184c9e56781cd3cf39cacddb8a7d857d9b4e327` (2026-11-09,
+base: Turn on `test-support` for gpui-base's own tests (#3869)).
+The Cargo test configuration enables test-support for gpui-base tests. The C++
+headless test support is already linked into its test runner.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
