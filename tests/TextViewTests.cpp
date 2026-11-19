@@ -10503,6 +10503,62 @@ static void TextViewRewritesLinksOnEachFrame() {
     TestAppFree(app);
 }
 
+struct TextFlowBubbleView {
+    Entity<TextViewState> text;
+    float widths[2] = {300, 220};
+    Bounds bubbles[2];
+    int copies = 1;
+
+    static El* Render(TextFlowBubbleView* self, Ctx* cx) {
+        El* row = Div(cx->a)->FlexRow()->SizeFull()->ItemsStart();
+        for (int i = 0; i < self->copies; i++) {
+            row->Child(
+                Div(cx->a)
+                    ->FlexCol()
+                    ->ItemsStart()
+                    ->MaxW(self->widths[i])
+                    ->BoundsOut(&self->bubbles[i])
+                    ->Child(gpui::TextView::New(cx, self->text)->IntoEl()));
+        }
+        return row;
+    }
+};
+
+// inline_flow.rs: a shrink-to-fit bubble can trigger several width probes.
+// C++ reuses the measured leaves and the taffy nodes at both positions.
+static void ShrinkToFitTextFlowKeepsItsMeasurements() {
+    constexpr auto answer = StrL(
+        "Call `foo` now, then **bold** the result and pass it to `bar` before "
+        "the next frame lays the answer out once more.");
+    for (int copies : {1, 2}) {
+        App* app = TestAppNew();
+        auto entity = EntityNew<TextFlowBubbleView>(app);
+        auto* view = entity.Get(app);
+        view->copies = copies;
+        view->text = TextViewState::Markdown(app, answer);
+        Window* win = TestWindowOpen(app, entity, 800, 400);
+        TestRunUntilParked(app);
+        for (int widthPass = 0; widthPass < 2; widthPass++) {
+            TestDraw(win);
+            for (int i = 0; i < copies; i++) {
+                utassert(view->bubbles[i].w > 20 &&
+                         view->bubbles[i].w <= view->widths[i] + 0.1f);
+            }
+            int shaped = win->paint.textCache.used;
+            utassert(shaped > 0);
+            for (int frame = 0; frame < 3; frame++) {
+                TestDraw(win);
+                LayoutCacheStats stats = LayoutCacheLastStats(win->layout);
+                utassert(stats.nodes > 0 && stats.made == 0 &&
+                         stats.remeasured == 0 && stats.restyled == 0);
+                utassert(win->paint.textCache.used == shaped);
+            }
+            view->widths[0] -= 27;
+        }
+        TestAppFree(app);
+    }
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -10536,6 +10592,7 @@ void TestTextView() {
     InlineImageWithoutExplicitSizeIsDrawnAtItsIntrinsicSize();
     InlineImageBeforeItLoadsKeepsACompactSquare();
     SeveralImagesShareAnInlineFlow();
+    ShrinkToFitTextFlowKeepsItsMeasurements();
     InlineImageWiderThanTheWrapIsNarrowedToIt();
 #if GPUI_MARKDOWN_FULL
     TestMarkdownReferenceImages(a);

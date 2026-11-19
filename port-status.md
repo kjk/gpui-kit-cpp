@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c391c89849fa4402ba4c5ee8d8267a354eadd838` (2026-11-18,
-gpui: Upgrade to gpui-fast 0.1.17 (#4027)).
-The Rust workspace updates its optional GPUI Fast dependencies to 0.1.17.
-Native C++ and the GPUI Pre comparison pins are independent of those Cargo
-dependencies.
+Processed through `7e41e5f5d4df7bead77ab85989a49792616482e1` (2026-11-18,
+text: Lay an inline flow out once in a bubble that shrinks to its text
+(#4029)).
+TextView uses retained Taffy nodes and cached shaping for shrink-to-fit
+bubbles. The native regression checks repeated frames and resizing with one or
+two presentations of the same document.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
