@@ -3016,6 +3016,7 @@ struct El {
     // The press belongs to a control with selection behavior of its own.
     unsigned int suppressTextSelection : 1 = false;
     unsigned int keepTextSelection : 1 = false;
+    unsigned int textHoverCursor : 1 = false;
     // A descendant Inline reports its laid-out vertical extent to the nearest
     // line-clamped ancestor.
     unsigned int lineSpan : 1 = false;
@@ -3676,6 +3677,7 @@ struct HitRect {
     bool stopMouseDown = false;
     bool suppressTextSelection = false;
     bool keepTextSelection = false;
+    bool textHoverCursor = false;
     // PaintCtx::paintLayer when this box was recorded. A popup painted over
     // the page must not pick up the I-beam of selectable text behind it.
     int paintLayer = 0;

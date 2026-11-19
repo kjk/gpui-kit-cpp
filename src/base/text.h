@@ -1410,6 +1410,8 @@ struct TextView {
     // constructor turns it on — `.selectable(true)` was the common case and
     // is now the default.
     bool selectable = true;
+    CursorKind hoverCursor = CursorKind::Arrow;
+    bool hasHoverCursor = false;
     // Whether `source` is HTML rather than markdown — TextView::html().
     bool html = false;
     // text_view.rs link_click_handler.
@@ -1548,6 +1550,8 @@ struct TextView {
     TextView* BlockquoteStyle(const gpui::Style& style, uint32_t fields);
     TextView* Refine(const gpui::Style& style, uint32_t fields);
     TextView* Selectable(bool on = true);
+    // Set the hover cursor. Links keep the hand and dragging text uses I-beam.
+    TextView* Cursor(CursorKind kind);
     // `.selection_format(..)`: whether a copy of the selection is the text as
     // rendered or the Markdown it was rendered from. Only meaningful on a
     // Selectable() view.

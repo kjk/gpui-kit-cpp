@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "e06090d15d1f185a9a9f07b5edfee502c8f24a4b",
+  sha: "3e5aedb5d08bbc974ea30dc1edf1d286f46ca6b5",
   date: "2026-11-13",
-  subject: "select, combobox, command: Add opt-in highlight_matches for query matches (#3959)",
+  subject: "text: Let a cursor set on `TextView` replace the hover I-beam (#3966)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

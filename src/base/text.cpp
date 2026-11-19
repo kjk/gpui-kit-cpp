@@ -8420,6 +8420,10 @@ El* TextView::IntoEl() {
     if (outerStyleFields) {
         element->Refine(outerStyle, outerStyleFields);
     }
+    if (hasHoverCursor) {
+        element->Cursor(hoverCursor);
+        element->textHoverCursor = true;
+    }
     if (selectable && state.IsValid()) {
         TextViewInitKeys();
         int focus = HashClickId(
@@ -8668,6 +8672,11 @@ TextView* TextView::Refine(const gpui::Style& value, uint32_t fields) {
 
 TextView* TextView::Selectable(bool on) {
     selectable = on;
+    return this;
+}
+TextView* TextView::Cursor(CursorKind kind) {
+    hoverCursor = kind;
+    hasHoverCursor = true;
     return this;
 }
 

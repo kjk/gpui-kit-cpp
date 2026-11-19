@@ -8548,7 +8548,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->onScrollWheel.IsValid() || e->drag.IsValid() ||
         e->onDrop.IsValid() || e->cursor != CursorKind::Arrow || e->slider ||
         e->stopMouseDown || e->suppressTextSelection || e->keepTextSelection ||
-        e->scrollMaskAxes;
+        e->textHoverCursor || e->scrollMaskAxes;
     if (hasHitbox) {
         HitRect hr;
         hr.popupDismissScope = ctx->popupDismissScope;
@@ -8592,6 +8592,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.stopMouseDown = e->stopMouseDown;
         hr.suppressTextSelection = e->suppressTextSelection;
         hr.keepTextSelection = e->keepTextSelection;
+        hr.textHoverCursor = e->textHoverCursor;
         hr.paintLayer = ctx->paintLayer;
         hr.sceneContext = scene::CurrentContext(ctx);
         VecAppend(ctx->hits, hr);

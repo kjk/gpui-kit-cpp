@@ -2331,10 +2331,26 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
     // the arrow rather than inheriting the I-beam of text behind it. Anything
     // that named nothing leaves the selectable text on this stacking layer
     // to say — not the page under a popup.
-    if (under && under->cursor != CursorKind::Arrow) {
-        want = under->cursor;
-    } else if (under && under->suppressTextSelection) {
-        want = CursorKind::Arrow;
+    const HitRect* cursorHit = under;
+    if (under && under->cursor == CursorKind::Arrow &&
+        !under->textHoverCursor && !under->suppressTextSelection) {
+        for (int i = under->parent; i >= 0; i = win->paint.hits[i].parent) {
+            const HitRect& parent = win->paint.hits[i];
+            if (parent.textHoverCursor) {
+                cursorHit = &parent;
+                break;
+            }
+        }
+    }
+    bool selecting = win->mouseDown && win->sel &&
+                     win->sel->gesture.selecting &&
+                     win->sel->gesture.didHitText;
+    if (selecting) {
+        want = CursorKind::IBeam;
+    } else if (cursorHit && (cursorHit->cursor != CursorKind::Arrow ||
+                             cursorHit->textHoverCursor ||
+                             cursorHit->suppressTextSelection)) {
+        want = cursorHit->cursor;
     } else if (TextHitOffsetIn(&win->paint, x, y, false, -1, nullptr,
                                under ? under->paintLayer : 0) >= 0) {
         want = CursorKind::IBeam;

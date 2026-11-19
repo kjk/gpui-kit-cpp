@@ -8507,6 +8507,46 @@ static void TripleClickSelectsTheWholeWrappedParagraph() {
     ArenaDelete(extensionsArena);
 }
 
+struct TextViewCursorProbe {
+    bool useArrow = false;
+
+    static El* Render(TextViewCursorProbe* self, Ctx* cx) {
+        auto* text = gpui::TextView::New(
+            cx, StrL("Alpha [link](https://example.org) beta"));
+        if (self->useArrow) text->Cursor(CursorKind::Arrow);
+        return Div(cx->a)->SizeFull()->Child(text->IntoEl());
+    }
+};
+
+// text_view.rs cursor_on_text_view_replaces_hover_ibeam.
+static void ATextViewMayReplaceTheHoverCursor() {
+    App* app = TestAppNew();
+    auto view = EntityNew<TextViewCursorProbe>(app);
+    Window* win = TestWindowOpen(app, view, 300, 160, 1);
+    Point alpha = {}, link = {};
+    for (const TextHit& hit : win->paint.texts) {
+        if (StrEq(StrTrim(hit.text), StrL("Alpha"))) {
+            alpha = {hit.bounds.CenterX(), hit.bounds.CenterY()};
+        } else if (StrEq(StrTrim(hit.text), StrL("link"))) {
+            link = {hit.bounds.CenterX(), hit.bounds.CenterY()};
+        }
+    }
+    utassert(alpha.x > 0 && link.x > alpha.x);
+    TestSimulateMouseMove(win, alpha);
+    utassert(win->cursor == CursorKind::IBeam);
+    view.Get(app)->useArrow = true;
+    TestDraw(win);
+    TestSimulateMouseMove(win, alpha);
+    utassert(win->cursor == CursorKind::Arrow);
+    TestSimulateMouseMove(win, link);
+    utassert(win->cursor == CursorKind::Pointer);
+    TestSimulateMouseDown(win, alpha);
+    TestSimulateMouseMove(win, link, true);
+    utassert(win->cursor == CursorKind::IBeam);
+    TestSimulateMouseUp(win, alpha);
+    TestAppFree(app);
+}
+
 static void TestTextStateWindow() {
     ANewRangeCopiesBeforeItsFirstSelectionPaint();
     AnEstablishedRangeExtendsAndRetractsWithoutPaint();
@@ -8516,6 +8556,7 @@ static void TestTextStateWindow() {
     ScrollingBeforePaintKeepsTheCompletedFrame();
     UnicodeParagraphCopyExtendsBeforePaint();
     TripleClickSelectsTheWholeWrappedParagraph();
+    ATextViewMayReplaceTheHoverCursor();
     PushStrFadesOnlyTheAppendedText();
     OvertakenParsePreservesTheRemainingChunksFade();
     OvertakenParsePreservesARemainingBlocksFade();

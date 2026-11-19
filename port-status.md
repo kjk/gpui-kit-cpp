@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e06090d15d1f185a9a9f07b5edfee502c8f24a4b` (2026-11-13,
-select, combobox, command: Add opt-in highlight_matches for query matches
-(#3959)).
-Add opt-in matching spans to Select, Combobox and Command. The spans use
-Unicode lowercase mappings and retain the original UTF-8 byte ranges. Custom
-searchable rows can receive the active query.
+Processed through `3e5aedb5d08bbc974ea30dc1edf1d286f46ca6b5` (2026-11-13,
+text: Let a cursor set on `TextView` replace the hover I-beam (#3966)).
+Allow a TextView to set its hover cursor, including an explicit Arrow. Links
+still supply the hand on hover and an active drag supplies the I-beam.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
