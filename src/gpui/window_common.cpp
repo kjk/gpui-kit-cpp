@@ -1089,10 +1089,12 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     // `Input` is the innermost context on the way out from the field.
     if (!held && action && win->input && win->input->focused) {
         InputAction act = InputActionOf(action, actionArg);
-        // `Enter { shift }` carries the modifier the caret needs.
+        // Enter's modifiers are part of the resolved action's payload.
         bool sh =
             act == InputAction::Enter ? InputEnterShift(actionArg) : shift;
-        eaten = InputPerform(win->input, win->app, win, act, sh);
+        bool secondary =
+            act == InputAction::Enter && InputEnterSecondary(actionArg);
+        eaten = InputPerform(win->input, win->app, win, act, sh, secondary);
         if (eaten) {
             // Taken; nothing further looks at it, including a binding
             // further out that the field's own context shadowed.

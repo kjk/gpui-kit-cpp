@@ -7527,6 +7527,46 @@ static void UndoManagerSingleLineReturnCommitsTheTypingSession() {
     InputViewFree(&view);
 }
 
+// state.rs test_textarea_secondary_enter_does_not_insert_newline.
+static void TextareaSecondaryEnterSubmitsWithoutInsertingNewline() {
+    struct SecondaryEnterProbe {
+        InputState input;
+        InputEvent enter = {};
+        int submits = 0;
+
+        static void OnInput(SecondaryEnterProbe* self, Ctx*,
+                            const InputEvent* ev) {
+            if (ev->kind == InputEventKind::PressEnter) {
+                self->enter = *ev;
+                self->submits++;
+            }
+        }
+
+        static El* Render(SecondaryEnterProbe* self, Ctx* cx) {
+            self->input.onChange = Listen(cx, &SecondaryEnterProbe::OnInput);
+            return InputStateFrame(cx, &self->input);
+        }
+    };
+    App* app = TestAppNew();
+    auto view = EntityNew<SecondaryEnterProbe>(app);
+    auto* probe = view.Get(app);
+    probe->input.kind = InputKind::Textarea;
+    InputSetValue(&probe->input, StrL("hello"));
+    Window* win = TestWindowOpen(app, view);
+    InputFocus(&probe->input, app, win);
+    probe->input.selectedRange = SelectionAt(0);
+    TestDraw(win);
+
+    TestSimulateKeystrokes(win, "secondary-enter");
+    utassert(StrEq(InputValue(&probe->input), "hello"));
+    utassert(probe->submits == 1 && probe->enter.secondary &&
+             !probe->enter.shift);
+    TestSimulateKeystrokes(win, "enter");
+    utassert(StrEq(InputValue(&probe->input), "\nhello"));
+    utassert(probe->submits == 2 && !probe->enter.secondary);
+    TestAppFree(app);
+}
+
 // state.rs test_undo_manager_submit_on_enter_commits_the_textarea_session.
 static void UndoManagerSubmitOnEnterCommitsTheTextareaSession() {
     InputView view = InputViewBuildTextarea(
@@ -8592,6 +8632,7 @@ static void RunWindowTestsB() {
     UndoManagerEnterIsAtomic();
     UndoManagerSingleLineReturnCommitsTheTypingSession();
     UndoManagerSubmitOnEnterCommitsTheTextareaSession();
+    TextareaSecondaryEnterSubmitsWithoutInsertingNewline();
     UndoManagerBlurCommitsTheTypingSession();
     UndoManagerKeepsRapidLinesInDistinctTransactions();
     UndoManagerCoalescesLongUnicodeTypingWithoutATimer();

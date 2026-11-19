@@ -435,7 +435,10 @@ bool TestDispatchAction(Window* win, uint32_t action, int64_t arg) {
         InputAction act = InputActionOf(action, arg);
         if (act != InputAction::None) {
             bool shift = act == InputAction::Enter && InputEnterShift(arg);
-            taken = InputPerform(win->input, win->app, win, act, shift);
+            bool secondary =
+                act == InputAction::Enter && InputEnterSecondary(arg);
+            taken =
+                InputPerform(win->input, win->app, win, act, shift, secondary);
         }
     }
     if (!taken) {

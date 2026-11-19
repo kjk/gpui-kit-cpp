@@ -6216,10 +6216,10 @@ enum class InputAction : uint8_t {
 InputAction InputActionForKey(const InputState* s, int vk, bool shift,
                               bool ctrl, bool alt, bool platform = false);
 // True when the input consumed it, so the window does not also treat Enter as
-// a click on the focused element. `shift` is Enter's modifier, which decides
-// whether a submit-on-enter textarea inserts a newline.
+// a click on the focused element. Enter carries the shift and secondary
+// modifiers that control newline insertion and submission.
 bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
-                  bool shift);
+                  bool shift, bool secondary = false);
 
 // ─── completion ───────────────────────────────────────────────────────────
 
@@ -8125,8 +8125,8 @@ inline void InputInsert(InputState* s, Ctx* cx, Str value) {
     InputInsert(s, cx->app, cx->win, value);
 }
 inline bool InputPerform(InputState* s, Ctx* cx, InputAction action,
-                         bool shift = false) {
-    return InputPerform(s, cx->app, cx->win, action, shift);
+                         bool shift = false, bool secondary = false) {
+    return InputPerform(s, cx->app, cx->win, action, shift, secondary);
 }
 
 // Open a window whose root is a view entity, the WindowOpen + cx.new pair.

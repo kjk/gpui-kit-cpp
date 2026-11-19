@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7641538edce301f88637db6723a538bda27f651d` (2026-11-10,
-number_input: Stop the frame from claiming the editor's focus (#3875)).
-The number input frame forwards a primary press to its editor. The editor owns
-the focus handle and keeps it during step-button clicks. The shell
-materializer no longer registers that handle a second time.
+Processed through `1029e2c5d34d75fa82ab5f0f067771951a88d993` (2026-11-10,
+input: Don't insert newline on secondary Enter in Textarea (#3879)).
+Textarea treats the secondary Enter chord as submission. Both native and
+headless action dispatch preserve the modifier in PressEnter without inserting
+a newline.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

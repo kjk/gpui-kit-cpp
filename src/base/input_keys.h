@@ -87,5 +87,9 @@ constexpr bool InputEnterShift(int64_t arg) {
     return (arg & 2) != 0;
 }
 
+constexpr bool InputEnterSecondary(int64_t arg) {
+    return (arg & 1) != 0;
+}
+
 } // namespace gpui
 #endif // GPUI_BASE_INPUT_KEYS_H_

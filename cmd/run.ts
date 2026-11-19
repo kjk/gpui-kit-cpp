@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7641538edce301f88637db6723a538bda27f651d",
+  sha: "1029e2c5d34d75fa82ab5f0f067771951a88d993",
   date: "2026-11-10",
-  subject: "number_input: Stop the frame from claiming the editor's focus (#3875)",
+  subject: "input: Don't insert newline on secondary Enter in Textarea (#3879)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

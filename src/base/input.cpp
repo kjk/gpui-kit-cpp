@@ -9874,7 +9874,7 @@ static void ActivateSelectedToken(InputState* s, App* app, Window* win) {
 }
 
 bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
-                  bool shift) {
+                  bool shift, bool secondary) {
     if (!s) {
         return false;
     }
@@ -10107,9 +10107,9 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
 
         case InputAction::Enter: {
             // A multi-line input takes a newline, unless it submits on Enter —
-            // then only Shift+Enter does, and a plain Enter is the submit.
-            bool insertNewline =
-                InputIsMultiLine(s) && (!s->submitOnEnter || shift);
+            // then only Shift+Enter does. Secondary Enter always submits.
+            bool insertNewline = InputIsMultiLine(s) && !secondary &&
+                                 (!s->submitOnEnter || shift);
             bool handled = false;
             if (insertNewline) {
                 int oldCursor = InputCursor(s);
@@ -10138,6 +10138,7 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             }
             InputEvent ev = {};
             ev.kind = InputEventKind::PressEnter;
+            ev.secondary = secondary;
             ev.shift = shift;
             Emit(s, app, win, ev);
             return handled;
