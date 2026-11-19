@@ -43,6 +43,8 @@ struct SelectableText {
     bool hasSelectionColor = false;
     const TextHighlight* highlights = nullptr;
     int highlightCount = 0;
+    Selection revealRange = {-1, -1};
+    Listener onReveal = {};
 
     static SelectableText* New(Ctx* cx, Str id, Str text);
     static SelectableText* WithHandle(Ctx* cx, Str id,
@@ -55,6 +57,12 @@ struct SelectableText {
     SelectableText* Semibold();
     SelectableText* Highlights(const TextHighlight* runs, int count);
     SelectableText* SelectionColor(Rgba value);
+    // Reveal the visual line containing the range's starting UTF-8 byte.
+    // An unchanged request runs once per element lifetime.
+    SelectableText* RevealRange(Selection range);
+    // Receives the line bounds in window coordinates during prepaint.
+    // Without a listener the element asks the enclosing scroller to reveal it.
+    SelectableText* OnReveal(Listener listener);
     El* IntoEl();
 };
 

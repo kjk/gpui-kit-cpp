@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `edf2a576e659d32b5137892523f2801765ff6617` (2026-11-19,
-resizable: Expose whether a handle is being dragged (#4039)).
-Expose ResizableState::IsResizing and settle a drag whose payload disappears
-without a release. Clear and ordinary release also end the resize.
+Processed through `f8243df95b9158d9b6d842348dcfcd0481a85c2c` (2026-11-19,
+text_selection: Reveal the line of a SelectableText range (#4052)).
+Reveal the visual line containing a valid UTF-8 range on SelectableText.
+Report the exact window-space line to a listener or request ancestor
+autoscroll once per changed range.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

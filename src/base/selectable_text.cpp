@@ -92,6 +92,54 @@ SelectableText* SelectableText::SelectionColor(Rgba value) {
     return this;
 }
 
+SelectableText* SelectableText::RevealRange(Selection range) {
+    revealRange = range;
+    return this;
+}
+
+SelectableText* SelectableText::OnReveal(Listener listener) {
+    onReveal = listener;
+    return this;
+}
+
+struct SelectableRevealState {
+    Selection range = {-1, -1};
+};
+
+struct SelectableRevealRequest {
+    SelectableRevealState* state = nullptr;
+    Selection range = {};
+    Listener listener = {};
+};
+
+static bool SelectableUtf8Boundary(Str text, int at) {
+    return at >= 0 && at <= len(text) &&
+           (at == len(text) || ((uint8_t)text.s[at] & 0xc0) != 0x80);
+}
+
+static void SelectableRevealLine(PaintCtx* ctx, El* el, void* user) {
+    auto* request = (SelectableRevealRequest*)user;
+    const Selection& range = request->range;
+    auto& last = request->state->range;
+    if (!ctx->window || (range.start == last.start && range.end == last.end)) {
+        return;
+    }
+    float x = 0, y = 0, h = 0;
+    float maxW = el->laidMaxW > 0 ? el->laidMaxW : el->w;
+    if (!TextPointAt(ctx, el->text, el->laidFont, maxW, el->style.wrap,
+                     range.start, &x, &y, &h, ElTextWeight(el),
+                     el->style.lineHeight, false)) {
+        return;
+    }
+    last = range;
+    Bounds line = {el->x, el->y + y, el->w, h};
+    if (request->listener.IsValid()) {
+        ListenerCall(ctx->app, ctx->window, request->listener, &line);
+    } else {
+        WindowRequestAutoscroll(ctx->window, line);
+    }
+}
+
 El* SelectableText::IntoEl() {
     El* e = TextEl(a, text)->Wrap()->W(kFill);
     if (font > 0) {
@@ -113,6 +161,18 @@ El* SelectableText::IntoEl() {
     e->Selectable();
     if (hasHandle) {
         e->SelectionOwner(handle.Entity());
+    }
+    if (cx->win && id.s && revealRange.end >= revealRange.start &&
+        SelectableUtf8Boundary(text, revealRange.start) &&
+        SelectableUtf8Boundary(text, revealRange.end)) {
+        uint32_t key = KeyedKey(KeyedName(cx, id),
+                                HashClickId(StrL("SelectableRevealState")));
+        auto* request = ArenaNew<SelectableRevealRequest>(a);
+        request->state = FrameKeyedState<SelectableRevealState>(cx, key);
+        request->range = revealRange;
+        request->listener = onReveal;
+        e->customUser = request;
+        e->prePaint = &SelectableRevealLine;
     }
     return e;
 }

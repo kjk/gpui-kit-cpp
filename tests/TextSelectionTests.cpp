@@ -2806,7 +2806,50 @@ static void AControlCanKeepTheSelectionForItsClick() {
     TestAppFree(app);
 }
 
+// selectable_text.rs reveal_reports_the_wrapped_line_and_ignores_invalid_utf8
+// and reveal_runs_once_per_range.
+static void SelectableTextRevealsOnlyWhenItsValidRangeChanges() {
+    struct View {
+        Bounds lines[3] = {};
+        int calls[3] = {};
+        Selection last = {26, 33};
+        static void Revealed(View* self, Ctx*, const Bounds* line, int64_t ix) {
+            self->lines[ix] = *line;
+            self->calls[ix]++;
+        }
+        static El* Render(View* self, Ctx* cx) {
+            Str text = StrL("\xc3\xa9 alpha beta gamma delta epsilon");
+            El* root = Div(cx->a)->FlexRow()->ItemsStart();
+            const Selection ranges[] = {{0, 2}, self->last, {1, 2}};
+            for (int i = 0; i < 3; i++) {
+                root->Child(Div(cx->a)->W(80)->Child(
+                    SelectableText::New(cx, StrDup(cx->a, fmt("reveal-%d", i)),
+                                        text)
+                        ->RevealRange(ranges[i])
+                        ->OnReveal(Listen(cx, &Revealed, i))
+                        ->IntoEl()));
+            }
+            return root;
+        }
+    };
+    App* app = TestAppNew();
+    auto view = EntityNew<View>(app);
+    View* self = view.Get(app);
+    Window* win = TestWindowOpen(app, view, 300, 260, 1);
+    utassert(self->calls[0] == 1 && self->calls[1] == 1 && self->calls[2] == 0);
+    utassert(self->lines[1].y >= self->lines[0].Bottom());
+    utassertnear(self->lines[0].h, self->lines[1].h);
+    utassertnear(self->lines[1].w, 80.f);
+    TestDraw(win);
+    utassert(self->calls[0] == 1 && self->calls[1] == 1);
+    self->last = {3, 8};
+    TestDraw(win);
+    utassert(self->calls[1] == 2 && self->calls[2] == 0);
+    TestAppFree(app);
+}
+
 void TestTextSelection() {
+    SelectableTextRevealsOnlyWhenItsValidRangeChanges();
     TestSuite("text_selection");
     PaintDoesNotResolveWindowSelectedText();
     HighlightedTextSelectsAndCopiesAsPlainText();
