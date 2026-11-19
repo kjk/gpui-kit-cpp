@@ -14,19 +14,18 @@ struct TabStyles {
     TabStyles& Disabled(const StateStyle& style);
 };
 
-// A collection root for tabs. Selection and activation live on the children,
-// so the root is identity and nothing else.
+// A tab list is a single keyboard stop. Its enabled children rove focus
+// along the requested axis and keep selection and activation controlled.
 struct Tabs {
-    static El* New(Ctx* cx, Str id);
+    static El* New(Ctx* cx, Str id, Axis axis = Axis::Horizontal);
 };
 
-// Rust's `Tab::new(id).disabled(..).on_click(..)`. A tab does not take
-// keyboard focus of its own — Rust says so outright, leaving that to a
-// compound tab list that does not exist yet — so it gets identity and the
-// click and no FocusId. `onClick` is passed through untouched: a tab produces
-// no value of its own, so whichever index the caller bound is what its handler
-// reads. Selection, naming and set position are the semantic builder fields
-// Rust projects while rendering.
+// Resolve which tabs belong to each list after assigning stable element
+// paths. Runs before layout so the focused tab can also draw its ring.
+void TabsPrepareFocus(Window* win, El* root);
+
+// A tab joins its enclosing list when present. Selection, naming and set
+// position are provided by the caller, and activation runs its own listener.
 struct Tab {
     static El* New(Ctx* cx, Str id, bool disabled = false,
                    Listener onClick = {}, bool selected = false,

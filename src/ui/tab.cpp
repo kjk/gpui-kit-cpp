@@ -903,6 +903,7 @@ El* TabBar::IntoEl() {
                   ->W(width)
                   ->H(h)
                   ->Radius(barRadius);
+    bar->reverseTabOrder = rtl;
     if (variant == TabVariant::Tab || folder) {
         bar->Bg(th.tokens.tabBar);
     } else if (variant == TabVariant::Segmented) {
@@ -1062,6 +1063,13 @@ El* TabBar::IntoEl() {
             folderHovered = hover->ix;
         }
     }
+    StateStyle keyboardFocus;
+    if (cx->win && cx->win->lastInputKeyboard) {
+        // Keep the keyboard ring inside the tab and its clipped strip.
+        BoxShadow* ring = ArenaNew<BoxShadow>(a);
+        *ring = {0, 0, 0, 2, th.ring, true};
+        keyboardFocus.Shadows(ring, 1);
+    }
     // Keep the physical strip left-to-right so ScrollX uses the same origin.
     // The paint callbacks already record bounds by logical tab index.
     if (rtl && hasEnd && lastEmptySpace) {
@@ -1101,7 +1109,8 @@ El* TabBar::IntoEl() {
                       ->Shrink0()
                       ->H(kFill)
                       ->Gap(Rems(cx, 0.25f)) // gap_1
-                      ->Radius(radius);
+                      ->Radius(radius)
+                      ->Focus(keyboardFocus);
         // The instance refinement is applied before selected/disabled state,
         // the same order gpui-base::Tab resolves its StateStyle.
         StyleApplyFields(&tab->style, item.style, item.styleSet);

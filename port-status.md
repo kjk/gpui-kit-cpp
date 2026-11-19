@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7f0a3505592cd1f500b129ebb9b6cbae174cc355` (2026-11-11,
-table: Add `TableRow::hover` so a row can take a style under the pointer
-(#3912)).
-Table rows accept an optional hover refinement. Both body examples in the
-Table story use the theme hover background.
+Processed through `e42b4023f4471f986eab5fd053bd00166b1beae5` (2026-11-11,
+tabs: Add roving keyboard navigation to Tabs (#3900)).
+Tabs now provide one keyboard stop with manual activation, disabled-tab
+skipping, Home and End, vertical navigation and right-to-left movement. Stable
+element paths carry focus through controlled selection updates, including
+styled tab strips.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

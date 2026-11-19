@@ -2994,6 +2994,8 @@ struct El {
     // The tooltip (El::Tip) shows in the overlay the window's root view
     // owns, Window::rootTooltip, rather than the window's own.
     unsigned int rootTooltip : 1 = false;
+    unsigned int managesTabFocus : 1 = false;
+    unsigned int reverseTabOrder : 1 = false;
     // Byte-sized state stays last so none of it creates alignment holes.
     IconName icon = IconName::None;
     ElKind kind = ElKind::Div;
@@ -7238,6 +7240,7 @@ struct Window {
     // a pointer move or press. A modifier on its own is not a key press, as
     // GPUI reads it as ModifiersChanged.
     bool lastInputKeyboard = false;
+    bool hasRovingTabs = false;
     // Window::rem_size: what one rem is, in DIPs -- GPUI's default 16 until
     // something (Component's WindowState, every frame) sets it. It is the
     // font size the window's text starts at, and what an explicit font size,

@@ -770,6 +770,187 @@ static void IconOnlyTabsKeepTheirWidth() {
     }
 }
 
+// Keyboard tests from crates/base/src/tabs.rs.
+struct TabKeyboardView {
+    Axis axis = Axis::Horizontal;
+    int selected = 0;
+    int activated = -1;
+    int activationCount = 0;
+    FocusHandle before;
+    FocusHandle after;
+    bool styled = false;
+
+    static void Activate(TabKeyboardView* self, Ctx* cx, const ClickEvent*,
+                         int64_t index) {
+        self->activated = (int)index;
+        self->activationCount++;
+        self->selected = (int)index;
+        Notify(cx);
+    }
+
+    static El* Render(TabKeyboardView* self, Ctx* cx) {
+        Listener activate = Listen(cx, &TabKeyboardView::Activate);
+        El* list = nullptr;
+        if (self->styled) {
+            list = TabBar::New(cx, StrL("tabs"))
+                       ->W(200)
+                       ->Selected(self->selected)
+                       ->OnChange(activate)
+                       ->Tab(StrL("A"))
+                       ->Tab(StrL("B"))
+                       ->Tab(StrL("C"))
+                       ->Tab(StrL("D"))
+                       ->Disabled(2)
+                       ->IntoEl();
+        } else {
+            list = gpui::Tabs::New(cx, StrL("tabs"), self->axis);
+            if (self->axis == Axis::Vertical) {
+                list->FlexCol();
+            } else {
+                list->FlexRowDir(cx->app);
+            }
+            for (int i = 0; i < 4; i++) {
+                El* tab = gpui::Tab::New(cx, StrDup(cx->a, fmt("tab-%d", i)),
+                                         i == 2, ListenerArg(activate, i),
+                                         i == self->selected, {}, i + 1, 4)
+                              ->W(20)
+                              ->H(20);
+                // Tabs inside ordinary wrapper elements join the same list.
+                list->Child(Div(cx->a)->Child(tab));
+            }
+        }
+        return Div(cx->a)
+            ->FlexCol()
+            ->Child(Div(cx->a)
+                        ->W(10)
+                        ->H(10)
+                        ->TrackFocus(self->before)
+                        ->TabStop(true))
+            ->Child(list)
+            ->Child(Div(cx->a)
+                        ->W(10)
+                        ->H(10)
+                        ->TrackFocus(self->after)
+                        ->TabStop(true));
+    }
+};
+
+struct TabKeyboardFixture {
+    App* app = nullptr;
+    Window* win = nullptr;
+    TabKeyboardView* view = nullptr;
+
+    ~TabKeyboardFixture() { TestAppFree(app); }
+
+    void Open(int selected, Axis axis = Axis::Horizontal, bool rtl = false,
+              bool styled = false) {
+        app = TestAppNew();
+        component::Init(app);
+        if (rtl) LayoutDirectionSetGlobal(app, LayoutDirection::Rtl);
+        auto root = EntityNew<TabKeyboardView>(app);
+        view = root.Get(app);
+        view->selected = selected;
+        view->axis = axis;
+        view->styled = styled;
+        view->before = FocusHandleNew(app);
+        view->after = FocusHandleNew(app);
+        win = TestWindowOpen(app, root, 400, 200);
+        TestFocus(win, view->before);
+        TestDraw(win);
+        Press("tab");
+    }
+
+    void Press(const char* keys) { TestSimulateKeystrokes(win, keys); }
+
+    int FocusedTab() const {
+        for (const AccessibilityNode& node : win->accessibility) {
+            if (node.info.role == AccessibilityRole::Tab && node.focusId &&
+                node.focusId == win->focusId) {
+                return node.info.positionInSet - 1;
+            }
+        }
+        return -1;
+    }
+};
+
+static void TabEntersOnTheSelectedTabAndLeavesInOnePress() {
+    TabKeyboardFixture f;
+    f.Open(1);
+    utassert(f.FocusedTab() == 1);
+    f.Press("right");
+    utassert(f.FocusedTab() == 3);
+    f.Press("tab");
+    utassert(FocusHandleIsFocused(f.win, f.view->after));
+    f.Press("shift-tab");
+    utassert(f.FocusedTab() == 1);
+}
+
+static void ArrowsSkipDisabledTabsAndWrapWithoutActivating() {
+    TabKeyboardFixture f;
+    f.Open(-1);
+    utassert(f.FocusedTab() == 0);
+    f.Press("right");
+    utassert(f.FocusedTab() == 1);
+    f.Press("right");
+    utassert(f.FocusedTab() == 3);
+    f.Press("right");
+    utassert(f.FocusedTab() == 0);
+    f.Press("left");
+    utassert(f.FocusedTab() == 3);
+    f.Press("left");
+    utassert(f.FocusedTab() == 1);
+    f.Press("down ctrl-right");
+    utassert(f.FocusedTab() == 1);
+    utassert(f.view->activationCount == 0 && f.view->selected == -1);
+    f.Press("end");
+    utassert(f.FocusedTab() == 3);
+    f.Press("home");
+    utassert(f.FocusedTab() == 0);
+}
+
+static void ActivatingATabKeepsItsFocusThroughTheSelectionUpdate() {
+    TabKeyboardFixture f;
+    f.Open(0);
+    f.Press("right space");
+    WindowKeyUp(f.win, KeySpace, false, false, false);
+    TestDraw(f.win);
+    utassert(f.view->activated == 1 && f.view->activationCount == 1);
+    utassert(f.FocusedTab() == 1);
+    f.Press("right enter");
+    WindowKeyUp(f.win, KeyReturn, false, false, false);
+    TestDraw(f.win);
+    utassert(f.view->activated == 3 && f.view->activationCount == 2);
+    utassert(f.FocusedTab() == 3);
+}
+
+static void TabsRoveAlongTheirAxisAndRightToLeftDirection() {
+    TabKeyboardFixture column;
+    column.Open(0, Axis::Vertical);
+    column.Press("right");
+    utassert(column.FocusedTab() == 0);
+    column.Press("down");
+    utassert(column.FocusedTab() == 1);
+    column.Press("up up");
+    utassert(column.FocusedTab() == 3);
+    const AccessibilityNode* list = nullptr;
+    for (const AccessibilityNode& node : column.win->accessibility) {
+        if (node.info.role == AccessibilityRole::TabList) list = &node;
+    }
+    utassert(list &&
+             list->info.orientation == AccessibilityOrientation::Vertical);
+}
+
+static void RightToLeftTabsMoveLeftToTheNextLogicalTab() {
+    for (bool styled : {false, true}) {
+        TabKeyboardFixture f;
+        f.Open(0, Axis::Horizontal, true, styled);
+        f.Press("left");
+        utassert(f.FocusedTab() == 1);
+        f.Press("right");
+        utassert(f.FocusedTab() == 0);
+    }
+}
+
 void TestTab() {
     TestSuite("tab");
     UnderlineIsTallerThanEveryOtherVariant();
@@ -791,4 +972,9 @@ void TestTab() {
     ABarWithNoWidthAsksForNoFrames();
     OverflowMenuRunsTheTabCallbackWithoutABarCallback();
     OverflowMenuPrefersTheBarCallback();
+    TabEntersOnTheSelectedTabAndLeavesInOnePress();
+    ArrowsSkipDisabledTabsAndWrapWithoutActivating();
+    ActivatingATabKeepsItsFocusThroughTheSelectionUpdate();
+    TabsRoveAlongTheirAxisAndRightToLeftDirection();
+    RightToLeftTabsMoveLeftToTheNextLogicalTab();
 }

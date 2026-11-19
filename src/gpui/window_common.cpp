@@ -22,6 +22,7 @@
 #include "base/theme.h"
 #include "base/scrollable_mask.h"
 #include "base/text_selection.h"
+#include "base/tabs.h"
 #include "base/tooltip.h"
 
 namespace gpui {
@@ -607,6 +608,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // notify aims at. GPUI's Window::dirty_views is filled the same way.
     win->rendered.len = 0;
     VecClear(win->debugViewRoots);
+    win->hasRovingTabs = false;
     El* root = EntityRender(win->app, win, win->frameArena, win->root);
     if (win->tooltip.IsValid()) {
         El* tooltip =
@@ -625,6 +627,9 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // because the hit rects paint reads and the focus rects FocusCollect
     // gathers are both keyed by what this fills in.
     IdsCollect(root);
+    if (win->hasRovingTabs) {
+        TabsPrepareFocus(win, root);
+    }
 
     win->paint.app = win->app;
     win->paint.window = win;
