@@ -737,6 +737,23 @@ static void TestMarkdownWhitespaceFoldsLikeHtml(Arena* a) {
     utassert(TextIs(a, Child(code, 0), "Keep two  spaces here"));
 }
 
+// markdown.rs white_space_folds_do_not_reach_into_a_code_span.
+static void TestMarkdownWhitespaceKeepsLeadingCodeSpaces(Arena* a) {
+    struct Case {
+        const char* source;
+        const char* want;
+    };
+    Case cases[] = {
+        {"x `  y`", "x   y"},
+        {"`  y` x", "  y x"},
+        {"x *`  y`*", "x   y"},
+    };
+    for (const Case& test : cases) {
+        MdNode* doc = MdParse(a, Str(test.source));
+        utassert(TextIs(a, Child(doc, 0), test.want));
+    }
+}
+
 static void TestMarkdownHardBreak(Arena* a) {
     const char* sources[] = {"Owner: Jane  \nPersona: assistant",
                              "Owner: Jane\\\nPersona: assistant"};
@@ -10416,6 +10433,7 @@ void TestTextView() {
     TestMarkdownHardBreak(a);
     TestMarkdownSoftBreak(a);
     TestMarkdownWhitespaceFoldsLikeHtml(a);
+    TestMarkdownWhitespaceKeepsLeadingCodeSpaces(a);
     TestHtmlImage(a);
     TestImageSrc();
     TestSourceMarks();

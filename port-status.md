@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3e5aedb5d08bbc974ea30dc1edf1d286f46ca6b5` (2026-11-13,
-text: Let a cursor set on `TextView` replace the hover I-beam (#3966)).
-Allow a TextView to set its hover cursor, including an explicit Arrow. Links
-still supply the hand on hover and an active drag supplies the I-beam.
+Processed through `12945cca14f1172164f75f6b282097b94898713d` (2026-11-14,
+text: Keep a code span's leading white space when a fold starts beside it
+(#3962)).
+Keep leading whitespace in Markdown code runs, even when surrounding prose
+folds at the same boundary.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

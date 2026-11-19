@@ -2469,7 +2469,9 @@ static void NormalizeMarkdownInlineRuns(Arena* a, MdNode* block) {
             dropLeading = true;
         } else {
             int count = 0;
-            if (dropLeading) {
+            // This port stores each mark group in its own run, so a
+            // code mark starts at byte zero of its run.
+            if (dropLeading && !(run->marks & MdCode)) {
                 while (count < len(run->text) && (run->text.s[count] == ' ' ||
                                                   run->text.s[count] == '\t')) {
                     count++;
