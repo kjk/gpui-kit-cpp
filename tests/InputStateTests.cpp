@@ -13735,6 +13735,34 @@ static void AFocusedInputReportsAMovedCaretToThePlatform() {
     InputViewFree(&view);
 }
 
+// input/base/state.rs: test_ime_candidate_bounds_multiline_line_end.
+static void ImeCandidateBoundsStayOnTheMatchingRow() {
+    InputView view = InputViewBuildTextarea([](InputState* s, App*) {
+        InputSetValue(s, StrL("First line\nSecond line"));
+    });
+    InputFocus(view.input, view.app, view.win);
+    InputSetSelectedRange(view.input, view.app, view.win, 10, 10);
+    TestDraw(view.win);
+    Point first, second;
+    utassert(InputLastCaretPoint(view.input, view.win, 0, &first));
+    utassert(InputLastCaretPoint(view.input, view.win, 11, &second));
+    Bounds candidate;
+    utassert(
+        InputImeCandidateBounds(view.input, view.win, {10, 10}, &candidate));
+    utassert(candidate.x > first.x);
+    utassertnear(candidate.y, first.y);
+    utassertnear(candidate.w, 1.f);
+    utassert(
+        InputImeCandidateBounds(view.input, view.win, {10, 14}, &candidate));
+    utassertnear(candidate.y, first.y);
+    utassert(
+        InputImeCandidateBounds(view.input, view.win, {11, 14}, &candidate));
+    utassertnear(candidate.y, second.y);
+    utassertnear(candidate.x, second.x);
+    utassert(candidate.w > 1.f);
+    InputViewFree(&view);
+}
+
 void TestInputState() {
     LaterHighlightLayerWinsOverEarlierOne();
     DecorationColorIsStableAcrossCompositions();
@@ -13753,6 +13781,7 @@ void TestInputState() {
     ScrollbarRendererReceivesTheEditorsScrollRange();
     FocusedInputAsksItsScrollContainerToRevealIt();
     AFocusedInputReportsAMovedCaretToThePlatform();
+    ImeCandidateBoundsStayOnTheMatchingRow();
     TapAsksForTheVirtualKeyboard();
     AccessibilityActionsRecheckLiveEditability();
     AccessibilitySetValuePreservesExactEditorText();

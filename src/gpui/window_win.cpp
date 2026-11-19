@@ -3,6 +3,7 @@
    WindowCommon.cpp. */
 
 #include "gpui/platform.h"
+#include "base/input.h"
 #include "gpui/paint.h"
 #include "gpui/accessibility_win.h"
 #include "sys/clock.h"
@@ -97,10 +98,13 @@ static void ImeMoveCandidateWindow(Window* win, HIMC imc) {
     if (!in) {
         return;
     }
-    float x = in->lastBounds.x + in->caretX - in->scrollX;
-    float y = in->lastBounds.y - in->scrollY;
-    POINT pt = {DipToPx(&win->paint, x),
-                DipToPx(&win->paint, y + in->lastLineH)};
+    int cursor = InputCursor(in);
+    Bounds caret;
+    if (!InputImeCandidateBounds(in, win, {cursor, cursor}, &caret)) {
+        return;
+    }
+    POINT pt = {DipToPx(&win->paint, caret.x),
+                DipToPx(&win->paint, caret.Bottom())};
     COMPOSITIONFORM cf = {};
     cf.dwStyle = CFS_POINT;
     cf.ptCurrentPos = pt;

@@ -8,6 +8,7 @@
    drawing comes out crisp for free. */
 
 #include "gpui/platform.h"
+#include "base/input.h"
 #include "gpui/paint.h"
 #include "gpui/window_loop.h"
 #include "sys/clock.h"
@@ -1016,18 +1017,33 @@ static gpui::Str TextInputString(id string) {
 
 - (NSRect)firstRectForCharacterRange:(NSRange)range
                          actualRange:(NSRangePointer)actual {
-    (void)range;
-    if (actual) {
-        *actual = range;
-    }
     gpui::InputState* in = [self gpuiInput];
     if (!in) {
         return NSZeroRect;
     }
-    // Where the candidate list hangs from: the caret, in screen space.
-    float x = in->lastBounds.x + in->caretX - in->scrollX;
-    float y = in->lastBounds.y - in->scrollY;
-    NSRect local = NSMakeRect(x, y, 1, in->lastLineH);
+    gpui::Str text = gpui::InputValue(in);
+    int cursor = gpui::InputCursor(in);
+    gpui::Selection bytes = {cursor, cursor};
+    if (range.location != NSNotFound) {
+        NSUInteger length =
+            (NSUInteger)gpui::Utf8OffsetToUtf16(text, len(text));
+        NSUInteger start = std::min(range.location, length);
+        NSUInteger count = std::min(range.length, length - start);
+        bytes = {gpui::Utf16OffsetToUtf8(text, (int)start),
+                 gpui::Utf16OffsetToUtf8(text, (int)(start + count))};
+        if (actual) {
+            *actual = NSMakeRange(start, count);
+        }
+    } else if (actual) {
+        *actual =
+            NSMakeRange((NSUInteger)gpui::Utf8OffsetToUtf16(text, cursor), 0);
+    }
+    gpui::Bounds candidate;
+    if (!gpui::InputImeCandidateBounds(in, win, bytes, &candidate)) {
+        return NSZeroRect;
+    }
+    NSRect local =
+        NSMakeRect(candidate.x, candidate.y, candidate.w, candidate.h);
     NSRect inWindow = [self convertRect:local toView:nil];
     return [[self window] convertRectToScreen:inWindow];
 }

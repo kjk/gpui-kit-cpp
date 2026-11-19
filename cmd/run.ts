@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b003decbf7ab0067f0ab7b4931ca5995d11f4282",
+  sha: "c6e3c8c25c27370af5e3942271674a3cc8f57f4b",
   date: "2026-11-12",
-  subject: "diff: Collapse or expand many files in one rebuild (#3935)",
+  subject: "input: restrict multiline IME candidate bounds to the matching row (#3939)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

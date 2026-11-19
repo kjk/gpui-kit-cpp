@@ -2270,6 +2270,7 @@ static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
 // element built, whether or not a decoration lies over it, and the
 // decorations' own paint when there was one.
 struct InputPaintedRows {
+    uint64_t docVersion = 0;
     RangeDecorationPaint geometry;
     RangeDecorationPaint* decorations = nullptr;
     // What the column painted the active line from.
@@ -3186,6 +3187,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     state->paintedRows = painted;
     state->paintedRowsFrame = cx->win ? cx->win->frameSeq : 0;
     if (painted) {
+        painted->docVersion = state->docVersion;
         painted->decorations = rangePaint;
         painted->geometry.lineH = lineH;
         painted->geometry.arena = a;
@@ -12097,7 +12099,7 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
     // A multi-line field: the row the offset is on, if the last frame built
     // it, measured from where its run landed.
     const InputPaintedRows* pr = LastPaintedRows(s, win);
-    if (!pr) {
+    if (!pr || pr->docVersion != s->docVersion) {
         return false;
     }
     for (int i = 0; i < pr->geometry.nRows; i++) {
@@ -12149,6 +12151,37 @@ bool InputRangeToBounds(const InputState* s, Window* win, Selection range,
         return false;
     }
     *out = {start.x, start.y, end.x - start.x, end.y + s->lastLineH - start.y};
+    return true;
+}
+
+bool InputImeCandidateBounds(const InputState* s, Window* win, Selection range,
+                             Bounds* out) {
+    if (!s || !win || !out || s->lastLineH <= 0) {
+        return false;
+    }
+    Point start = {}, end = {};
+    if (!InputLastCaretPoint(s, win, range.start, &start)) {
+        const InputPaintedRows* painted = LastPaintedRows(s, win);
+        if (range.start != InputCursor(s) ||
+            (painted && painted->docVersion == s->docVersion)) {
+            return false;
+        }
+        // An edit may ask for the live caret before the next layout. Reuse
+        // the frame's text origin and the current caret's document row.
+        start = {s->lastBounds.x + s->caretX - s->scrollX,
+                 s->lastBounds.y - s->scrollY};
+        if (!InputIsSingleLine(s)) {
+            start.y = s->inputBounds.y - s->scrollY +
+                      InputOffsetDisplayY(s, range.start, s->lastLineH);
+        }
+        *out = {start.x, start.y, 1.f, s->lastLineH};
+        return true;
+    }
+    float width = 1.f;
+    if (InputLastCaretPoint(s, win, range.end, &end) && end.y == start.y) {
+        width = std::max(width, end.x - start.x);
+    }
+    *out = {start.x, start.y, width, s->lastLineH};
     return true;
 }
 

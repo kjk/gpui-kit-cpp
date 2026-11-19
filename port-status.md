@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b003decbf7ab0067f0ab7b4931ca5995d11f4282` (2026-11-12,
-diff: Collapse or expand many files in one rebuild (#3935)).
-Add batch collapse and expand operations to DiffState. A bulk request rebuilds
-the row projection once and preserves the existing programmatic event
-behavior.
+Processed through `c6e3c8c25c27370af5e3942271674a3cc8f57f4b` (2026-11-12,
+input: restrict multiline IME candidate bounds to the matching row (#3939)).
+Use the requested text row for native IME candidate bounds on Windows and
+macOS. A collapsed range keeps a one-pixel anchor on that row.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

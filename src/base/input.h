@@ -205,6 +205,10 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
 // laid out.
 bool InputRangeToBounds(const InputState* s, Window* win, Selection range,
                         Bounds* out);
+// IME candidate geometry is anchored to the start's visual row and has
+// at least one pixel of width, including at a collapsed line-end caret.
+bool InputImeCandidateBounds(const InputState* s, Window* win, Selection range,
+                             Bounds* out);
 // Horizontal distance from the content area's left edge to unscrolled,
 // left-aligned source text in the last multiline layout. Includes the
 // gutter and its gaps. False before the first layout.
