@@ -414,6 +414,106 @@ static void ReducedMotionTakesTheTargetOutright() {
 
 // The other two types go the same way round; a color is what a fill fades
 // through, and a point what something slides along.
+struct PersistentTransitionView {
+    TransitionState<float> transition;
+    Motion policy = MotionNew(100).Ease(EaseLinear);
+    MotionStep<float> sample;
+    MotionStep<float> keyed;
+    float target = 0;
+    bool mounted = true;
+    bool compareKeyed = false;
+    bool sampled = false;
+
+    static El* Render(PersistentTransitionView* self, Ctx* cx) {
+        self->sampled = self->mounted;
+        if (self->mounted) {
+            if (self->compareKeyed) {
+                motion::TransitionId key(StrL("pair-test"), StrL("value"));
+                self->keyed = motion::transition_with_status(
+                    cx, key, self->target, self->policy);
+            }
+            self->sample = self->transition
+                               .Sample(cx, self->target, self->policy);
+        }
+        return Div(cx->a);
+    }
+};
+
+static void TransitionStateMatchesKeyedTransitionRetargetReverseAndDelay() {
+    MotionSetReduced(false);
+    for (Motion policy : {MotionNew(100).Ease(EaseLinear),
+                          MotionNew(100).Ease(Easing::Ease()).Delay(-10)}) {
+        App* app = TestAppNew();
+        auto view = EntityNew<PersistentTransitionView>(app);
+        auto* self = view.Get(app);
+        self->policy = policy;
+        self->compareKeyed = true;
+        Window* win = TestWindowOpen(app, view);
+        const int delays[] = {0, 40, 0, 20, 0, 100};
+        const float targets[] = {1, 1, 0, 0, 1, 1};
+        for (int i = 0; i < 6; i++) {
+            TestAdvanceClock(app, delays[i]);
+            self->target = targets[i];
+            TestDraw(win);
+            utassert(self->sample.status == self->keyed.status);
+            utassertnear(self->sample.value, self->keyed.value);
+        }
+        TestAppFree(app);
+    }
+}
+
+static void TransitionStateRequestsFramesOnlyWhileDelayedOrRunning() {
+    MotionSetReduced(false);
+    App* app = TestAppNew();
+    auto view = EntityNew<PersistentTransitionView>(app);
+    auto* self = view.Get(app);
+    self->policy = MotionNew(100).Delay(20);
+    Window* win = TestWindowOpen(app, view);
+    utassert(self->sample.status == MotionStatus::Idle && !win->animFrame);
+    self->target = 1;
+    TestDraw(win);
+    utassert(self->sample.status == MotionStatus::Delayed && win->animFrame);
+    TestAdvanceClock(app, 70);
+    TestDraw(win);
+    utassert(self->sample.status == MotionStatus::Running && win->animFrame);
+    TestAdvanceClock(app, 50);
+    TestDraw(win);
+    utassert(self->sample.status == MotionStatus::Finished && !win->animFrame);
+    TestAppFree(app);
+}
+
+static void TransitionStateSurvivesUnmountAndReversesOnRemount() {
+    MotionSetReduced(false);
+    App* app = TestAppNew();
+    auto view = EntityNew<PersistentTransitionView>(app);
+    auto* self = view.Get(app);
+    Window* win = TestWindowOpen(app, view);
+    self->target = 1;
+    TestDraw(win);
+    TestAdvanceClock(app, 40);
+    TestDraw(win);
+    utassertnear(self->sample.value, 0.4f);
+
+    self->mounted = false;
+    TestDraw(win);
+    utassert(!self->sampled && !win->animFrame);
+    TestAdvanceClock(app, 30);
+    self->target = 0;
+    TestDraw(win);
+    self->mounted = true;
+    TestDraw(win);
+    utassert(self->sample.status == MotionStatus::Running && win->animFrame);
+    utassertnear(self->sample.value, 0.7f);
+    TestAdvanceClock(app, 35);
+    TestDraw(win);
+    utassertnear(self->sample.value, 0.35f);
+    TestAdvanceClock(app, 35);
+    TestDraw(win);
+    utassert(self->sample.status == MotionStatus::Finished && !win->animFrame);
+    utassertnear(self->sample.value, 0.f);
+    TestAppFree(app);
+}
+
 static void TheSameRuleCarriesAPointAndAColor() {
     MotionState<Point> pt;
     Motion m = MotionNew(100);
@@ -1433,6 +1533,9 @@ void TestMotion() {
     ReducedMotionTakesTheTargetOutright();
     EffectsOptInKeepsTimingUnderReducedMotion();
     CurrentReducedMotionPolicyAndZeroDurationTakeEffect();
+    TransitionStateMatchesKeyedTransitionRetargetReverseAndDelay();
+    TransitionStateRequestsFramesOnlyWhileDelayedOrRunning();
+    TransitionStateSurvivesUnmountAndReversesOnRemount();
     TheSameRuleCarriesAPointAndAColor();
     AChannelKeepsTwoValuesOfOneElementApart();
     SourceNamedValueTransitionContractIsAvailable();

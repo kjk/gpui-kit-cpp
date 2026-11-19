@@ -16,15 +16,19 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2fffa1ad3089d2ddc1861fca6dfccde73885bb8e` (2026-11-08,
-table: Centre a header's default name in its height (#3731)).
-A custom header height removes the default vertical padding so the column name
-centers in its band. Explicit column padding still applies.
+Processed through `8da4e005258ac0aac9a6a332cce746eeaafa08a8` (2026-11-08,
+motion: Add `TransitionState` for transitions that outlive their element
+(#3841)).
+A caller can keep a value transition across unmounts and sample it with the
+same timing and reversal rules as a keyed transition.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
 ## Known gaps vs Rust
 
+- **Transition history is caller-owned.** C++ `TransitionState` copies
+  carry independent history. Callers that share history pass the same
+  state by address (`src/base/motion.h`).
 - **`examples/gpui_perf` is the windowed showcase, not the headless suite.**
   `--auto` runs the nine gpui-fast scenarios (spinner, sidebar, components
   page, 5000-row table, 33 ms refresh, 5000-message list, workspace

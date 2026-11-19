@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "2fffa1ad3089d2ddc1861fca6dfccde73885bb8e",
+  sha: "8da4e005258ac0aac9a6a332cce746eeaafa08a8",
   date: "2026-11-08",
-  subject: "table: Centre a header's default name in its height (#3731)",
+  subject: "motion: Add `TransitionState` for transitions that outlive their element (#3841)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

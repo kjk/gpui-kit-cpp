@@ -917,6 +917,17 @@ inline void SpringSeed(Ctx* cx, uint32_t key, float from) {
     st->updatedAt = MotionNow(cx);
 }
 
+template <typename T>
+MotionStep<T> SampleMotionState(Ctx* cx, MotionState<T>* st, T target,
+                                const Motion& m) {
+    MotionStep<T> step =
+        MotionAdvance(st, target, m, MotionNow(cx), MotionReduced());
+    if (step.running) {
+        MotionWantsFrame(cx);
+    }
+    return step;
+}
+
 // motion::transition_with_status: the value to draw now, on its way to
 // `target`, and where the transition is.
 template <typename T>
@@ -930,12 +941,7 @@ MotionStep<T> MotionValueWithStatus(Ctx* cx, uint32_t key, T target,
         out.status = MotionStatus::Finished;
         return out;
     }
-    MotionStep<T> step =
-        MotionAdvance(st, target, m, MotionNow(cx), MotionReduced());
-    if (step.running) {
-        MotionWantsFrame(cx);
-    }
-    return step;
+    return SampleMotionState(cx, st, target, m);
 }
 
 // motion::transition: the value to draw now, on its way to `target`.
@@ -1209,6 +1215,18 @@ namespace motion {
 template <typename T>
 using MotionValue = gpui::MotionStep<T>;
 
+// Keep this state with the data that outlives the element, such as a
+// virtual row. Sample from a render to request frames as needed. For shared
+// history pass the same state by address. A C++ value copy has its own history.
+template <typename T>
+struct TransitionState {
+    MotionState<T> history;
+
+    MotionValue<T> Sample(Ctx* cx, T target, const Transition& policy) {
+        return SampleMotionState(cx, &history, target, policy);
+    }
+};
+
 // Source-named entry point. Fetching Window separately is unnecessary here:
 // Ctx carries the render window and app together, and MotionValue performs the
 // same keyed-state lookup and animation-frame request as Rust's transition.
@@ -1242,6 +1260,8 @@ inline float spring(Ctx* cx, TransitionId id, float target,
 }
 
 } // namespace motion
+
+using motion::TransitionState;
 
 } // namespace gpui
 #endif // GPUI_BASE_MOTION_H_
