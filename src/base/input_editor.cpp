@@ -502,7 +502,9 @@ Str TextNoLineBreaks(Arena* a, Str text) {
 }
 
 double TabNextStop(double x, float stop) {
-    double q = x / (double)stop;
+    // Glyph positions just short of a stop due to rounding count as on it.
+    double snap = std::min(0.5, std::max(0.01, x * 1e-4));
+    double q = (x + snap) / (double)stop;
     double whole = q <= 0 ? 0 : (double)(int64_t)q;
     return (double)stop * (whole + 1.0);
 }
@@ -3258,7 +3260,9 @@ static int FittingCount(const int* candidates, int nCandidates, Str text,
 // every grapheme, and the line-break opportunities that fall on a grapheme
 // boundary.
 static int WrapLineScan(Str text, WrappingIndent indentMode, Vec<int>* ends,
-                        Vec<int>* opportunities) {
+                        Vec<int>* opportunities, bool scalarBoundaries) {
+    VecClear(*ends);
+    VecClear(*opportunities);
     int n = len(text);
     int indent = 0;
     if (indentMode == WrappingIndent::Same) {
@@ -3271,26 +3275,29 @@ static int WrapLineScan(Str text, WrappingIndent indentMode, Vec<int>* ends,
         uint32_t c = 0;
         int bytes = Utf8At(text, at, &c);
         at += bytes > 0 ? bytes : 1;
-        if (TextIsGraphemeBoundary(text, at)) {
+        if (scalarBoundaries || TextIsGraphemeBoundary(text, at)) {
             VecAppend(*ends, at);
         }
     }
     if (len(*ends) == 0 || (*ends)[len(*ends) - 1] != n) {
         VecAppend(*ends, n);
     }
-    Vec<int> all;
-    LineBreakOpportunities(text, &all);
-    for (int i = 0; i < len(all); i++) {
-        if (TextIsGraphemeBoundary(text, all[i])) {
-            VecAppend(*opportunities, all[i]);
+    LineBreakOpportunities(text, opportunities);
+    if (!scalarBoundaries) {
+        int count = 0;
+        for (int offset : *opportunities) {
+            if (TextIsGraphemeBoundary(text, offset))
+                (*opportunities)[count++] = offset;
         }
+        VecResize(*opportunities, count);
     }
     return indent;
 }
 
 void MeasuredWrap(Str text, float width, WrappingIndent indentMode,
                   WrapMeasureFn measure, void* user, Vec<WrapBoundary>* out,
-                  WidthRange* valid) {
+                  WidthRange* valid, MeasuredWrapScratch* scratch,
+                  bool scalarBoundaries) {
     WidthRange local = WidthRange::All();
     if (!valid) {
         valid = &local;
@@ -3301,14 +3308,18 @@ void MeasuredWrap(Str text, float width, WrappingIndent indentMode,
     if (n <= 0 || !measure) {
         return;
     }
-    Vec<int> ends;
-    Vec<int> opportunities;
-    int indent = WrapLineScan(text, indentMode, &ends, &opportunities);
+    MeasuredWrapScratch localScratch;
+    if (!scratch) scratch = &localScratch;
+    Vec<int>& ends = scratch->ends;
+    Vec<int>& opportunities = scratch->opportunities;
+    int indent =
+        WrapLineScan(text, indentMode, &ends, &opportunities, scalarBoundaries);
     float indentWidth = measure(user, Str(text.s, indent));
     // A single word can span the rest of the line. Past this window the
     // original grapheme search decides, and that probe is not a word break.
     const int kMaxWordProbeGraphemes = 256;
     int first = 0;
+    int firstWord = 0;
     int start = 0;
     while (first < len(ends)) {
         float available = start == 0 ? width : width - indentWidth;
@@ -3317,7 +3328,6 @@ void MeasuredWrap(Str text, float width, WrappingIndent indentMode,
         if (len(ends) - first >= kMaxWordProbeGraphemes) {
             wordProbeEnd = ends[first + kMaxWordProbeGraphemes - 1];
         }
-        int firstWord = 0;
         while (firstWord < len(opportunities)) {
             int ix = opportunities[firstWord];
             bool skip = ix <= start || (start == 0 && ix <= indent);
@@ -3369,7 +3379,7 @@ void MeasuredWrapBoundaries(Str text, float width, WrappingIndent indentMode,
     }
     Vec<int> ends;
     Vec<int> opportunities;
-    int indent = WrapLineScan(text, indentMode, &ends, &opportunities);
+    int indent = WrapLineScan(text, indentMode, &ends, &opportunities, false);
     float indentWidth = measure(user, Str(text.s, indent));
     auto widthOf = [&](int start, int end) {
         return measure(user, Str(text.s + start, end - start));
@@ -3468,12 +3478,14 @@ void MeasuredWrapBoundaries(Str text, float width, WrappingIndent indentMode,
 
 void TextWrapperWrapItem(Str line, bool wrap, WrappingIndent indent,
                          WrapLineFn wrapLine, void* user, Vec<int>* rows,
-                         int* indentChars) {
+                         int* indentChars, Vec<WrapBoundary>* scratch) {
     VecClear(*rows);
     int prev = 0;
     int indentOut = 0;
     if (wrap) {
-        Vec<WrapBoundary> boundaries;
+        Vec<WrapBoundary> local;
+        Vec<WrapBoundary>& boundaries = scratch ? *scratch : local;
+        VecClear(boundaries);
         wrapLine(user, line, 0, &boundaries);
         if (indent == WrappingIndent::Same) {
             // Only a line that wraps has boundaries at all.
@@ -3488,12 +3500,12 @@ void TextWrapperWrapItem(Str line, bool wrap, WrappingIndent indent,
             int first = boundaries[0].ix;
             VecAppend(*rows, prev);
             prev = first;
-            Vec<WrapBoundary> rest;
+            VecClear(boundaries);
             wrapLine(user, Str(line.s + first, len(line) - first), first,
-                     &rest);
-            for (int i = 0; i < len(rest); i++) {
+                     &boundaries);
+            for (const WrapBoundary& boundary : boundaries) {
                 VecAppend(*rows, prev);
-                prev = first + rest[i].ix;
+                prev = first + boundary.ix;
             }
         }
     }

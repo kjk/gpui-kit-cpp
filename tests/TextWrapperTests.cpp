@@ -586,9 +586,9 @@ static void WidthDragReusesMeasuredLines() {
     utassert(WrapMatchesFreshWrap(warm, 40));
 }
 
-// A large document wraps by character widths: every row fits, tabs count as a
-// whole stop, and another width gives what a cold wrap gives.
-static void LargeDocumentWrapsByCharacterWidths() {
+// A headless large document uses the available advances, respects tab stops,
+// and produces the same breaks when resized or wrapped from scratch.
+static void LargeDocumentWrapKeepsRowsInsideTheViewport() {
     Str repeated =
         StrL("some words that wrap and aVeryLongWordThatDoesNotFitOnARow\n");
     Vec<char> text;
@@ -665,11 +665,91 @@ static void CharacterWidthsGrowPastTheFirstTable() {
     utassert(s.wrap.totalRows > 1);
 }
 
+// tab_stops.rs: fractional positions can land just short of an exact stop.
+static void StopsKeepTheirWidthAtFractionalGlyphPositions() {
+    char line[202];
+    memset(line, 'a', sizeof(line));
+    float xs[202];
+    for (float advance : {6.6f, 7.2f, 7.8f, 8.4f}) {
+        for (int columns : {2, 6, 12, 22, 44, 88, 199, 200}) {
+            line[columns] = '\t';
+            int count = 0;
+            float width = 0;
+            utassert(TabExpandGlyphXs(Str(line, columns + 2), 2 * advance,
+                                      advance, 0, xs, 202, &count, &width));
+            utassert(count == columns + 2);
+            int nextColumn = (columns / 2 + 1) * 2;
+            utassert(fabsf(xs[columns + 1] - advance * nextColumn) < 0.05f);
+            line[columns] = 'a';
+        }
+    }
+}
+
+struct ShapedWrapReference {
+    PaintCtx paint;
+    float tabStop = 0;
+
+    static float Advance(void* user, Str text) {
+        auto* self = (ShapedWrapReference*)user;
+        float x = 0, y = 0, h = 0;
+        TextPointAt(&self->paint, text, 14, 0, false, len(text), &x, &y, &h,
+                    kFontMono);
+        return x;
+    }
+
+    static float Width(void* user, Str text) {
+        auto* self = (ShapedWrapReference*)user;
+        return TabExpandedWidth(text, self->tabStop, &Advance, self);
+    }
+};
+
+// wrap_width/tests.rs: the fast paths keep the same breaks as shaping every
+// probe. Include contextual text so a fallback line is checked as well.
+static void FastWrapMatchesShapingAcrossTabAndUnicodeLines() {
+    App* app = TestAppNew();
+    ShapedWrapReference reference;
+    reference.paint.app = app;
+    reference.paint.pa = app->paint;
+    reference.tabStop = 4 * ShapedWrapReference::Advance(&reference, StrL(" "));
+    if (reference.tabStop <= 0) {
+        TestAppFree(app);
+        return;
+    }
+    Str lines[] = {StrL("    multi word line with a long_identifier"),
+                   StrL("\tfirst word\tsecond word three"),
+                   StrL("\t\xe4\xb8\xad\xe6\x96\x87\tword after"),
+                   StrL("\xc3\xa9\xc3\xaf\tlatin with accents"),
+                   StrL("a\xcc\x81 and \xf0\x9f\x98\x80 after a space")};
+    for (Str text : lines) {
+        InputState state;
+        state.kind = InputKind::Editor;
+        state.softWrap = true;
+        state.mode.tabSize = 4;
+        InputSetValue(&state, text);
+        for (float width : {67.3f, 124.7f, 254.2f}) {
+            InputUpdateWrapMap(&state, &reference.paint, width, 14, kFontMono);
+            Vec<WrapBoundary> expected;
+            WidthRange valid;
+            MeasuredWrap(text, width, WrappingIndent::Same,
+                         &ShapedWrapReference::Width, &reference, &expected,
+                         &valid);
+            const InputWrapLine* line = state.wrap.tree.Line(0);
+            utassert(line && line->nRows == len(expected) + 1);
+            if (!line || line->nRows != len(expected) + 1) continue;
+            for (int r = 0; r < len(expected); r++)
+                utassert(line->starts[r + 1] == expected[r].ix);
+        }
+    }
+    TestAppFree(app);
+}
+
 void TestTextWrapper() {
     TestSuite("text_wrapper");
+    StopsKeepTheirWidthAtFractionalGlyphPositions();
+    FastWrapMatchesShapingAcrossTabAndUnicodeLines();
     RowsKeepTheirLengthWithoutLineBreaks();
     CharacterWidthsGrowPastTheFirstTable();
-    LargeDocumentWrapsByCharacterWidths();
+    LargeDocumentWrapKeepsRowsInsideTheViewport();
     WrapTreeKeepsSuffixStorageAndSummaries();
     MeasuredWrapKeepsCjkLatinBoundaryStableDuringEdits();
     MeasuredWrapPreservesWordsGraphemesAndIndentation();

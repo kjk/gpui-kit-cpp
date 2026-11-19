@@ -14,6 +14,7 @@
 #include "base/scroll_bounce.h"
 #include "base/text_boundary.h"
 #include "base/theme.h"
+#include "gpui/paint.h"
 
 #include <math.h>
 
@@ -455,9 +456,22 @@ void InputWrapTree::Remove(int index, int count) {
     while (count-- > 0) root = WrapRemove(root, index);
 }
 
+struct WrapMonoFont;
+
 struct WrapMeasure {
     InputWrapMap* map = nullptr;
     PaintCtx* ctx = nullptr;
+    MeasuredWrapScratch scratch;
+    Vec<double> prefix;
+    Vec<int> tabs;
+    Vec<int> rows;
+    Vec<WrapBoundary> boundaries;
+    WrapMonoFont* mono = nullptr;
+    bool checkedMono = false;
+    uint8_t asciiTabsCheck = 0;
+    Str numericPrefix;
+    float numericPrefixWidth = 0;
+    int numericDigits = 0;
 };
 
 // The advance of `bytes` on their own, in the map's font: where a caret after
@@ -559,22 +573,7 @@ struct WrapLineUser {
     int nSpans = 0;
     // Intersected by every slice this line wraps. Inline chips force Empty.
     WidthRange* valid = nullptr;
-    bool byChars = false;
 };
-
-// Past this many bytes a document wraps by character widths, not by shaping.
-static const int kWrapShapedMaxBytes = 128 * 1024;
-
-// A tab counts as a whole stop, so a row with one wraps early and doesn't
-// overflow.
-static float WrapCharOrTabWidth(void* user, uint32_t c) {
-    WrapMeasure* wm = (WrapMeasure*)user;
-    const InputWrapMap* m = wm->map;
-    if (c == '\t' && m->tabSize > 0 && m->spaceWidth > 0) {
-        return m->spaceWidth * (float)m->tabSize;
-    }
-    return WrapCharWidthOf(user, c);
-}
 
 static float WrapTokenWidth(WrapLineUser* u, int i) {
     if (u->widths) {
@@ -817,6 +816,329 @@ static float WrapShapedWidth(void* user, Str text) {
     return width;
 }
 
+// Printable ASCII in a tested monospace face can use shaped widths by
+// character count. Keep them in the app so sibling editors share the checks.
+static constexpr int kWrapMonoMax = 4096;
+struct WrapMonoFont {
+    float size = 0;
+    float dpi = 0;
+    uint16_t word = 0;
+    bool usable = false;
+    float widths[kWrapMonoMax + 1] = {};
+};
+
+struct WrapMonoCache {
+    Vec<WrapMonoFont*> fonts;
+    ~WrapMonoCache() {
+        for (WrapMonoFont* font : fonts) delete font;
+    }
+};
+
+static float WrapMonoCount(WrapMeasure* wm, WrapMonoFont* font, int count) {
+    if (count == 0) return 0;
+    float& entry = font->widths[count];
+    if (entry == 0) {
+        char zeros[kWrapMonoMax];
+        memset(zeros, '0', count);
+        float width;
+        entry = WrapAdvance(wm, Str(zeros, count), &width) && width > 0 ? width
+                                                                        : -1;
+    }
+    return entry;
+}
+
+static bool WrapMonoSample(WrapMeasure* wm, WrapMonoFont* font, Str text) {
+    float width;
+    return WrapAdvance(wm, text, &width) &&
+           width == WrapMonoCount(wm, font, len(text)) && width > 0;
+}
+
+static bool DetectWrapMonospace(WrapMeasure* wm, WrapMonoFont* font) {
+    if (!WrapMonoSample(wm, font, StrL(" W"))) return false;
+    constexpr int count = '~' - ' ' + 1;
+    char sample[kWrapMonoMax];
+    for (int i = 0; i < kWrapMonoMax; i++) sample[i] = (char)(' ' + i % count);
+    for (int length : {16, 31, 64, 100, 255, 256, 1000, 1023, kWrapMonoMax}) {
+        if (!WrapMonoSample(wm, font, Str(sample, length))) return false;
+    }
+    for (int first = ' '; first <= '~'; first++) {
+        char one = (char)first;
+        if (!WrapMonoSample(wm, font, Str(&one, 1))) return false;
+        char pairs[count * 2];
+        for (int i = 0; i < count; i++) {
+            pairs[i * 2] = one;
+            pairs[i * 2 + 1] = (char)(' ' + i);
+        }
+        if (!WrapMonoSample(wm, font, Str(pairs, sizeof(pairs)))) return false;
+    }
+    return WrapMonoSample(
+               wm, font,
+               StrL("-> => <- <= >= != == === !== <> :: ::: ... "
+                    ".. // /* */ /// <!-- --> && || ++ -- ** |> <|")) &&
+           WrapMonoSample(
+               wm, font,
+               StrL("fi fl ffi ffl www 0x 0o 0b 1x #{ ${ #[ ]# ;; "
+                    "?? ?. .= := =: =~ !~ ~> <~ ~~ ## ### __ <<= >>="));
+}
+
+static WrapMonoFont* WrapMonospaceFont(WrapMeasure* wm) {
+    if (wm->checkedMono) return wm->mono;
+    wm->checkedMono = true;
+    if (!wm->ctx || !wm->ctx->app) return nullptr;
+    auto* cache = AppGlobalEnsure<WrapMonoCache>(wm->ctx->app);
+    float size = wm->map->fontSize;
+    float dpi = wm->ctx->dpi;
+    uint16_t word = wm->map->fontWord;
+    for (WrapMonoFont* f : cache->fonts) {
+        if (f->size == size && f->word == word && f->dpi == dpi) {
+            wm->mono = f->usable ? f : nullptr;
+            return wm->mono;
+        }
+    }
+    auto* font = new WrapMonoFont;
+    font->size = size;
+    font->dpi = dpi;
+    font->word = word;
+    font->usable = DetectWrapMonospace(wm, font);
+    if (len(cache->fonts) >= 16) {
+        delete cache->fonts[0];
+        VecRemoveAt(cache->fonts, 0);
+    }
+    VecAppend(cache->fonts, font);
+    wm->mono = font->usable ? font : nullptr;
+    return wm->mono;
+}
+
+static bool WrapPrintableAscii(Str text) {
+    for (int i = 0; i < len(text); i++) {
+        if (text.s[i] < ' ' || text.s[i] > '~') return false;
+    }
+    return true;
+}
+
+static float WrapAsciiWidth(void* user, Str text) {
+    auto* wm = (WrapMeasure*)user;
+    if (len(text) <= kWrapMonoMax) {
+        float width = WrapMonoCount(wm, wm->mono, len(text));
+        if (width >= 0) return width;
+    }
+    return WrapShapedWidth(wm, text);
+}
+
+// The scalar ranges in char_widths.rs exclude contextual shaping and control
+// characters. Emoji, combining text, and scripts with ligatures use shaping.
+static bool WrapPrefixChar(uint32_t c) {
+    return (c >= 0x20 && c <= 0x7e) || c == '\t' || (c >= 0xa1 && c <= 0xac) ||
+           (c >= 0xae && c <= 0x17f) || (c >= 0x391 && c <= 0x3a1) ||
+           (c >= 0x3a3 && c <= 0x3c9) || c == 0x401 ||
+           (c >= 0x410 && c <= 0x44f) || c == 0x451 ||
+           (c >= 0x2010 && c <= 0x2027) || (c >= 0x2030 && c <= 0x203a) ||
+           (c >= 0x3000 && c <= 0x3029) || (c >= 0x3030 && c <= 0x303f) ||
+           (c >= 0x3041 && c <= 0x3096) || (c >= 0x30a1 && c <= 0x30fa) ||
+           c == 0x30fc || (c >= 0x3400 && c <= 0x4dbf) ||
+           (c >= 0x4e00 && c <= 0x9fff) || (c >= 0xac00 && c <= 0xd7a3) ||
+           (c >= 0xff01 && c <= 0xff60) || (c >= 0xffe0 && c <= 0xffe6);
+}
+
+static bool WrapWidthsAgree(double a, double b) {
+    return fabs(a - b) <= std::max(0.01, fabs(b) * 1e-5);
+}
+
+static bool WrapAdditiveWidth(WrapMeasure* wm, Str bytes, uint32_t c,
+                              float* width) {
+    if (c < 128 && wm->mono) {
+        *width = WrapMonoCount(wm, wm->mono, 1);
+        return *width > 0;
+    }
+    *width = WrapCharWidthOf(wm, c);
+    if (!wm->ctx) return true;
+    auto* slot = WrapOtherWidthFind(wm->map, c);
+    if (!slot || slot->c != c) return false;
+    if (slot->additive == 0) {
+        char repeat[32];
+        for (int i = 0; i < 8; i++)
+            memcpy(repeat + i * len(bytes), bytes.s, len(bytes));
+        float repeated;
+        slot->additive =
+            *width > 0 &&
+                    WrapAdvance(wm, Str(repeat, len(bytes) * 8), &repeated) &&
+                    WrapWidthsAgree(repeated, 8.0 * *width)
+                ? 1
+                : 2;
+    }
+    return slot->additive == 1;
+}
+
+// char_widths.rs: shape up to 16 groups of eight copies, separated by spaces.
+// A group whose advance depends on its neighbours falls back to shaping.
+static constexpr int kWrapWidthBatch = 16;
+static bool MeasureWrapWidthBatch(WrapMeasure* wm, const uint32_t* codes,
+                                  int count) {
+    constexpr int copies = 8;
+    constexpr int stride = copies + 1;
+    char sample[kWrapWidthBatch * (copies * 4 + 1)];
+    int bytes = 0;
+    for (int i = 0; i < count; i++) {
+        if (i > 0) sample[bytes++] = ' ';
+        for (int j = 0; j < copies; j++)
+            bytes += Utf8Encode(sample + bytes, codes[i]);
+    }
+    Str text(sample, bytes);
+    Size extent;
+    TextLayout* layout = TextLayoutNew(wm->ctx, text, wm->map->fontSize, 0,
+                                       false, wm->map->fontWord, 0, &extent);
+    Vec<TextGlyphBox> boxes;
+    int n = TextGlyphBoxes(layout, text, &boxes);
+    if (layout) TextLayoutRelease(layout);
+    bool valid = n == count * stride - 1;
+    for (int i = 0; i < n; i++) {
+        valid = valid && boxes[i].row == 0 &&
+                (i == 0 || boxes[i].left >= boxes[i - 1].left);
+    }
+    for (int i = 0; i < count; i++) {
+        int first = i * stride;
+        int after = first + copies;
+        if (valid) {
+            double end = after == n ? boxes[n - 1].right : boxes[after].left;
+            double one = end - boxes[after - 1].left;
+            double run = end - boxes[first].left;
+            if (one > 0 && WrapWidthsAgree(run, copies * one)) {
+                WrapOtherWidthAdd(wm->map, codes[i], (float)(run / copies));
+                WrapOtherWidthFind(wm->map, codes[i])->additive = 1;
+                continue;
+            }
+        }
+        char scalar[4];
+        int size = Utf8Encode(scalar, codes[i]);
+        float width;
+        if (!WrapAdditiveWidth(wm, Str(scalar, size), codes[i], &width))
+            return false;
+    }
+    return true;
+}
+
+static bool PrepareWrapWidthBatches(WrapMeasure* wm, Str text) {
+    uint32_t codes[kWrapWidthBatch];
+    int count = 0;
+    for (int at = 0; at < len(text);) {
+        uint32_t c;
+        int size = Utf8At(text, at, &c);
+        if (size <= 0 || !WrapPrefixChar(c)) return false;
+        at += size;
+        if (c < 128) continue;
+        const auto* found = WrapOtherWidthFind(wm->map, c);
+        if (found && found->c == c) continue;
+        int i = 0;
+        while (i < count && codes[i] != c) i++;
+        if (i != count) continue;
+        codes[count++] = c;
+        if (count == kWrapWidthBatch) {
+            if (!MeasureWrapWidthBatch(wm, codes, count)) return false;
+            count = 0;
+        }
+    }
+    return count == 0 || MeasureWrapWidthBatch(wm, codes, count);
+}
+
+// A space separates a trailing ASCII integer from the Unicode shaping run.
+// The tested monospace advances for those digits vary only with their count,
+// so lines with different record numbers can share the shaped prefix.
+static float WrapWholeLineWidth(WrapMeasure* wm, Str text, bool hasTabs) {
+    if (!hasTabs) {
+        int end = len(text);
+        int digits = end;
+        while (digits > 0 && text.s[digits - 1] >= '0' &&
+               text.s[digits - 1] <= '9') {
+            digits--;
+        }
+        if (digits > 1 && digits < end && text.s[digits - 1] == ' ' &&
+            end - digits <= kWrapMonoMax) {
+            float width = WrapMonoCount(wm, wm->mono, end - digits);
+            if (width > 0) {
+                Str prefix(text.s, digits);
+                if (wm->numericDigits == end - digits &&
+                    StrEq(prefix, wm->numericPrefix))
+                    return wm->numericPrefixWidth + width;
+                float shaped = WrapShapedWidth(wm, text);
+                float leading = WrapShapedWidth(wm, prefix);
+                if (WrapWidthsAgree(shaped, leading + width)) {
+                    wm->numericPrefix = prefix;
+                    wm->numericPrefixWidth = leading;
+                    wm->numericDigits = end - digits;
+                }
+                return shaped;
+            }
+        }
+    }
+    return WrapShapedWidth(wm, text);
+}
+
+struct WrapPrefixLine {
+    WrapMeasure* measure;
+    Str line;
+    float stop;
+};
+
+static float WrapPrefixWidth(void* user, Str text) {
+    const auto& line = *(const WrapPrefixLine*)user;
+    const Vec<double>& prefix = line.measure->prefix;
+    const Vec<int>& tabs = line.measure->tabs;
+    int start = (int)(text.s - line.line.s);
+    int end = start + len(text);
+    if (len(tabs) == 0) return (float)(prefix[end] - prefix[start]);
+    int lo = 0, hi = len(tabs);
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (tabs[mid] < start)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    double x = 0;
+    for (int i = lo; i < len(tabs) && tabs[i] < end; i++) {
+        int at = tabs[i];
+        x = TabNextStop(x + prefix[at] - prefix[start], line.stop);
+        start = at + 1;
+    }
+    return (float)(x + prefix[end] - prefix[start]);
+}
+
+static bool BuildWrapPrefix(WrapPrefixLine* line) {
+    WrapMeasure* wm = line->measure;
+    if (wm->ctx && !PrepareWrapWidthBatches(wm, line->line)) return false;
+    VecResize(wm->prefix, len(line->line) + 1);
+    VecClear(wm->tabs);
+    wm->prefix[0] = 0;
+    double total = 0;
+    bool asciiAndTabs = true;
+    for (int at = 0; at < len(line->line);) {
+        uint32_t c;
+        int size = Utf8At(line->line, at, &c);
+        if (size <= 0 || !WrapPrefixChar(c)) return false;
+        if (c == '\t') {
+            if (line->stop <= 0) return false;
+            VecAppend(wm->tabs, at);
+        } else {
+            float width;
+            if (!WrapAdditiveWidth(wm, Str(line->line.s + at, size), c, &width))
+                return false;
+            total += width;
+            asciiAndTabs = asciiAndTabs && c < 128;
+        }
+        at += size;
+        wm->prefix[at] = total;
+    }
+    // The sum can differ in a kerning pair even when each scalar tested alone
+    // is additive. That line falls back to the same shaper used for painting.
+    if (!wm->ctx) return true;
+    if (asciiAndTabs && wm->asciiTabsCheck > 0) return wm->asciiTabsCheck == 1;
+    bool valid =
+        WrapWidthsAgree(WrapPrefixWidth(line, line->line),
+                        WrapWholeLineWidth(wm, line->line, len(wm->tabs) > 0));
+    if (asciiAndTabs) wm->asciiTabsCheck = valid ? 1 : 2;
+    return valid;
+}
+
 // A line with its tabs widened to spaces, plus the source-byte to display-byte
 // map. No map means the line was left alone. The spaces are the stop, so a
 // code font draws the indent the shaper would not.
@@ -992,25 +1314,26 @@ static int TabSourceAtX(PaintCtx* ctx, const InputState* s, Str text, float x) {
 static void WrapLineFragments(void* user, Str slice, int base,
                               Vec<WrapBoundary>* out) {
     WrapLineUser* u = (WrapLineUser*)user;
-    if (u->nSpans == 0 && u->byChars) {
-        // Shaping every row of a large document takes seconds. One pass over
-        // its characters' cached widths doesn't, at the cost of ignoring
-        // kerning and ligatures.
-        LineFragment frag = LineFragment::Text(slice);
-        LineWrapperWrapLine(&frag, 1, u->width, &WrapCharOrTabWidth, u->measure,
-                            out);
-        if (u->valid) {
-            u->valid->Intersect(WidthRange::Empty());
-        }
-        return;
-    }
     if (u->nSpans == 0) {
-        // Ordinary text breaks at Unicode line-break opportunities, measured
-        // with the widths it is painted at. Word breaks are probed first so
-        // a later width still inside this range keeps the same rows.
+        if (len(slice) == 0) return;
+        WrapMeasure* wm = u->measure;
+        WrapPrefixLine prefix = {wm, slice,
+                                 wm->map->spaceWidth * wm->map->tabSize};
+        WrapMeasureFn measure = &WrapShapedWidth;
+        void* data = wm;
+        WrapMonoFont* mono = WrapMonospaceFont(wm);
+        if (mono && WrapPrintableAscii(slice)) {
+            measure = &WrapAsciiWidth;
+        } else if ((mono || !wm->ctx) && BuildWrapPrefix(&prefix)) {
+            measure = &WrapPrefixWidth;
+            data = &prefix;
+        }
         WidthRange range;
-        MeasuredWrap(slice, u->width, u->wrappingIndent, &WrapShapedWidth,
-                     u->measure, out, &range);
+        bool fast = measure != &WrapShapedWidth;
+        if (!fast || !range.Fits(measure(data, slice), u->width, 0)) {
+            MeasuredWrap(slice, u->width, u->wrappingIndent, measure, data, out,
+                         &range, &wm->scratch, fast);
+        }
         if (u->valid) {
             u->valid->Intersect(range);
         }
@@ -1062,7 +1385,6 @@ static WidthRange WrapOneLine(InputState* s, WrapMeasure* wm, int line,
     u.measure = wm;
     u.width = m->width;
     u.lineStart = start;
-    u.byChars = len(text) > kWrapShapedMaxBytes;
     const Vec<InlineTokenSpan>* spans =
         InputTokensVisible(s) ? InputTokens(s) : nullptr;
     int nSpans = spans ? len(*spans) : 0;
@@ -1098,7 +1420,7 @@ static WidthRange WrapOneLine(InputState* s, WrapMeasure* wm, int line,
     int indentChars = 0;
     VecClear(*rows);
     TextWrapperWrapItem(str, m->width > 0, indent, &WrapLineFragments, &u, rows,
-                        &indentChars);
+                        &indentChars, &wm->boundaries);
     *indentOut = 0;
     // Use the first visual row's indentation width for the rows after it:
     // x_for_index of the indent's byte length in that row.
@@ -1136,8 +1458,9 @@ static void WrapMapRebuild(InputState* s, PaintCtx* ctx) {
     wm.map = m;
     wm.ctx = ctx;
     m->spaceWidth = WrapCharWidthOf(&wm, ' ');
-    Vec<int> rows;
-    for (int line = 0; line < len(InputLineStarts(s)); line++) {
+    Vec<int>& rows = wm.rows;
+    int lines = len(InputLineStarts(s));
+    for (int line = 0; line < lines; line++) {
         float indent = 0;
         WidthRange valid = WrapOneLine(s, &wm, line, &rows, &indent);
         m->tree.Insert(line, rows.els, len(rows), indent, valid);
@@ -1150,7 +1473,7 @@ static void WrapMapReplaceLines(InputState* s, WrapMeasure* wm, int first,
                                 int oldCount, int newCount) {
     InputWrapMap* m = &s->wrap;
     m->tree.Remove(first, oldCount);
-    Vec<int> rows;
+    Vec<int>& rows = wm->rows;
     for (int i = 0; i < newCount; i++) {
         float indent = 0;
         WidthRange valid = WrapOneLine(s, wm, first + i, &rows, &indent);
@@ -1178,6 +1501,19 @@ static int WrapLineOfOffset(const Vec<int>& lineStarts, int offset) {
 // another width. A map that cannot say what changed is wrapped whole.
 // A width whose measured breaks are still valid keeps its rows. Lines that
 // fell out of range are wrapped again; the substring cache stays.
+static int NextStaleWrapLine(InputWrapNode* node, float width, int start,
+                             int base) {
+    if (!node || base + node->lines <= start || node->valid.Contains(width))
+        return -1;
+    int index = base + WrapLines(node->left);
+    if (start < index) {
+        int left = NextStaleWrapLine(node->left, width, start, base);
+        if (left >= 0) return left;
+    }
+    if (start <= index && !node->line.validWidths.Contains(width)) return index;
+    return NextStaleWrapLine(node->right, width, start, index + 1);
+}
+
 static void WrapMapReflowWidth(InputState* s, PaintCtx* ctx) {
     InputWrapMap* m = &s->wrap;
     if (m->tree.ContainsWidth(m->width)) {
@@ -1189,13 +1525,10 @@ static void WrapMapReflowWidth(InputState* s, PaintCtx* ctx) {
     if (m->spaceWidth <= 0) {
         m->spaceWidth = WrapCharWidthOf(&wm, ' ');
     }
-    int n = m->tree.LineCount();
-    for (int i = 0; i < n; i++) {
-        const InputWrapLine* line = m->tree.Line(i);
-        if (line && line->validWidths.Contains(m->width)) {
-            continue;
-        }
-        WrapMapReplaceLines(s, &wm, i, 1, 1);
+    int line = NextStaleWrapLine(m->tree.root, m->width, 0, 0);
+    while (line >= 0) {
+        WrapMapReplaceLines(s, &wm, line, 1, 1);
+        line = NextStaleWrapLine(m->tree.root, m->width, line + 1, 0);
     }
 }
 
@@ -1309,7 +1642,9 @@ void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
     // set_wrap_width: both the old and the new width wrap. Edits are applied
     // at the width the rows were built for, then lines whose range misses
     // the new width are measured again.
-    if (fontSame && m->width > 0 && width > 0) {
+    // A whole replacement and the new gutter width arrive together when
+    // laying out the editor. Build that document once at the new width.
+    if (fontSame && m->width > 0 && width > 0 && !m->editWhole) {
         bool edited = m->docVersion != s->docVersion || len(m->dirtyLines) > 0;
         if (edited) {
             WrapMapCatchUp(s, ctx);

@@ -4755,6 +4755,8 @@ struct WidthCache;
 struct WrapCharWidthSlot {
     uint32_t c = 0;
     float width = 0;
+    // 0 unknown, 1 additive, 2 contextual.
+    uint8_t additive = 0;
 };
 
 struct InputWrapMap {

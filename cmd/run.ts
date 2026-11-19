@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "fa6c72d3384b707792ac1daa37a509845c87214c",
+  sha: "514f243d29b51ec79560e2bb308dea1ece986eea",
   date: "2026-11-17",
-  subject: "diff: Add `span_highlights` to emphasize character spans such as search matches (#4011)",
+  subject: "editor: Speed up soft wrap for large and non-ASCII documents (#3974)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

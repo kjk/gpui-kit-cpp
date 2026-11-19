@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `fa6c72d3384b707792ac1daa37a509845c87214c` (2026-11-17,
-diff: Add `span_highlights` to emphasize character spans such as search
-matches (#4011)).
-Diff span highlights overlay the line and syntax styles with a background and
-optional foreground. Byte ranges are projected through tab expansion and
-grouped by source line in supplied order.
+Processed through `514f243d29b51ec79560e2bb308dea1ece986eea` (2026-11-17,
+editor: Speed up soft wrap for large and non-ASCII documents (#3974)).
+Soft wrap uses validated monospace and Unicode widths, shares scratch buffers
+across lines, preserves shaped fallback for contextual runs, and skips valid
+subtrees on resize. Tab measurement and paint agree near stop boundaries.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
@@ -177,12 +176,13 @@ The current update target is
   an `IDropTarget`, macOS an AppKit dragging destination, and Linux X11
   Xdnd for `text/uri-list`. The page can read only each file's name
   (`window_wasm.cpp`).
-- **Soft wrap of a large document.** Over 128 KB the editor wraps with one pass
-  over cached character widths, not `MeasuredWrap`'s shaped probes, so opening
-  a large file doesn't shape every row (`WrapLineFragments`). Kerning and
-  ligatures don't move those breaks. Editor rows also shape VT, FF, CR, NEL, LS
-  and PS as spaces of the same byte length (`TextNoLineBreaks`), because the
-  shaper would break a row at them.
+- **Soft wrap of a large document.** The native editor caches ASCII widths by
+  character count as it needs them and reuses the bounded exact-width cache
+  to validate Unicode prefix sums. Rows that share a Unicode prefix and a
+  space-separated fixed-width integer suffix reuse the prefix's shaped width
+  after comparing it with a complete line. The wrap tree skips valid subtrees
+  on resize. Editor rows shape VT, FF, CR, NEL, LS and PS as spaces of the same
+  byte length (`TextNoLineBreaks`) so the shaper keeps them in one row.
 - **Media and volume keys have names.** Rust's gpui names none of them. This tree
   binds `medianext`, `mediaprev`, `mediastop`, `mediaplaypause`, `volumemute`,
   `volumedown` and `volumeup`, with the Win32 codes. X11 maps the XF86 audio

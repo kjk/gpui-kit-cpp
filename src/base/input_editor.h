@@ -765,9 +765,14 @@ void MeasuredWrapBoundaries(Str text, float width, WrappingIndent indent,
 // before graphemes so a character-fit change inside a word does not
 // invalidate a cached line. `valid` receives the viewport widths those
 // comparisons stay true for.
+struct MeasuredWrapScratch {
+    Vec<int> ends;
+    Vec<int> opportunities;
+};
 void MeasuredWrap(Str text, float width, WrappingIndent indent,
                   WrapMeasureFn measure, void* user, Vec<WrapBoundary>* out,
-                  WidthRange* valid);
+                  WidthRange* valid, MeasuredWrapScratch* scratch = nullptr,
+                  bool scalarBoundaries = false);
 
 // text_wrapper.rs LineItem, built the way TextWrapper::_update builds one: the
 // visual rows of one logical line as [rows[k], rows[k + 1]) with the last
@@ -779,7 +784,8 @@ using WrapLineFn = void (*)(void* user, Str line, int base,
                             Vec<WrapBoundary>* out);
 void TextWrapperWrapItem(Str line, bool wrap, WrappingIndent indent,
                          WrapLineFn wrapLine, void* user, Vec<int>* rows,
-                         int* indentChars);
+                         int* indentChars,
+                         Vec<WrapBoundary>* scratch = nullptr);
 
 } // namespace gpui
 #endif // GPUI_BASE_INPUT_EDITOR_H_
