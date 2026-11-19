@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b752a1b05f3b9f0913c5d596e914a39d039cacea` (2026-11-12,
-plot: Draw a label at the font weight it asks for (#3917)).
-The C++ plot label already shapes, aligns and draws with the label font
-weight. Exercise a weight change in the scene regression test.
+Processed through `d0ca04a6c6ea4f02b26967e565f3e88c7df35c8d` (2026-11-12,
+docs: Correct the Tabs guide where it names methods that do not exist
+(#3905)).
+The changes correct the method and icon names in the English and Chinese
+website guides. The C++ tabs API is already recorded in the port ledger.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

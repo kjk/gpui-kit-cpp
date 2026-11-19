@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b752a1b05f3b9f0913c5d596e914a39d039cacea",
+  sha: "d0ca04a6c6ea4f02b26967e565f3e88c7df35c8d",
   date: "2026-11-12",
-  subject: "plot: Draw a label at the font weight it asks for (#3917)",
+  subject: "docs: Correct the Tabs guide where it names methods that do not exist (#3905)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",
