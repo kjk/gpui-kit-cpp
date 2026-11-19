@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ba7e37c7932a2b2e42418249eaac8a74b7ae4887",
+  sha: "fa68322721579a04b3d7c96fe1c67958e19b157f",
   date: "2026-11-13",
-  subject: "text_view: Select the whole wrapped paragraph on a triple click over inline code (#3942)",
+  subject: "table: Add `scrollbar_mode` to `DataTable` (#3945)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

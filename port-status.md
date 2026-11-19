@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ba7e37c7932a2b2e42418249eaac8a74b7ae4887` (2026-11-13,
-text_view: Select the whole wrapped paragraph on a triple click over inline
-code (#3942)).
-Give split inline text runs a shared paragraph range and use it for triple
-clicks, including the endpoints on the first and last painted rows.
+Processed through `fa68322721579a04b3d7c96fe1c67958e19b157f` (2026-11-13,
+table: Add `scrollbar_mode` to `DataTable` (#3945)).
+Let DataTable override the theme scrollbar mode for both visible axes, while
+retaining the independent visibility controls.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

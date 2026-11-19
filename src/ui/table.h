@@ -173,6 +173,8 @@ struct DataTable {
     // (horizontal) scrollbars of the scrolling body, both on by default.
     bool scrollbarV = true;
     bool scrollbarH = true;
+    bool hasScrollbarMode = false;
+    gpui::ScrollbarMode scrollbarMode = gpui::ScrollbarMode::Always;
     // None defers to the platform. 0 off, 1 on. Headers stay fixed.
     int scrollBounce = -1;
     // group_headers: the extra head rows a caller stacks over the columns,
@@ -242,6 +244,8 @@ struct DataTable {
     DataTable* AccessibilityLabel(Str s);
     DataTable* FixedColsBorder(bool v);
     DataTable* ScrollbarVisible(bool vertical, bool horizontal);
+    // Override the theme's mode for both visible scrollbars.
+    DataTable* ScrollbarMode(gpui::ScrollbarMode mode);
     // Bounce the rows at the vertical boundaries. Headers and scrollbars
     // stay fixed. On by default on iOS, Android and macOS, off elsewhere.
     DataTable* ScrollBounce(bool v);

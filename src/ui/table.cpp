@@ -491,6 +491,12 @@ DataTable* DataTable::ScrollbarVisible(bool vertical, bool horizontal) {
     scrollbarH = horizontal;
     return this;
 }
+
+DataTable* DataTable::ScrollbarMode(gpui::ScrollbarMode mode) {
+    scrollbarMode = mode;
+    hasScrollbarMode = true;
+    return this;
+}
 DataTable* DataTable::WithSize(UiSize sz) {
     size = sz;
     rowHeight = UiTableRowHeight(sz);
@@ -1499,6 +1505,7 @@ El* DataTable::BuildEl() {
         bodyScroll->OnScrollWheel(bounceWheel);
         bodyScroll->noScrollbarY = !scrollbarV;
         bodyScroll->noScrollbarX = !scrollbarH;
+        if (hasScrollbarMode) bodyScroll->ScrollMode(scrollbarMode);
         if (range.first > 0) {
             float pad = (float)range.first * s->rowH;
             bodyFixed->Child(Div(a)->H(pad));

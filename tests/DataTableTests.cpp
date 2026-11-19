@@ -1724,6 +1724,7 @@ static void TestDataTableBuilder() {
     component::DataTable* plain =
         component::DataTable::New(&cx, StrL("builder"), state);
     utassert(plain->focusRingEnabled);
+    utassert(!plain->hasScrollbarMode);
 
     component::DataTable* table =
         component::DataTable::New(&cx, StrL("builder"), state)
@@ -1733,6 +1734,7 @@ static void TestDataTableBuilder() {
             ->HeaderRowHeight(32)
             ->FixedColsBorder(false)
             ->ScrollbarVisible(false, true)
+            ->ScrollbarMode(ScrollbarMode::Always)
             ->WithSize(UiSize::Small)
             ->FocusRing(false);
     utassert(table->stripe);
@@ -1742,6 +1744,8 @@ static void TestDataTableBuilder() {
     utassert(!table->fixedColsBorder);
     utassert(!table->scrollbarV);
     utassert(table->scrollbarH);
+    utassert(table->hasScrollbarMode);
+    utassert(table->scrollbarMode == ScrollbarMode::Always);
     utassert(table->size == UiSize::Small);
     utassert(!table->focusRingEnabled);
     utassert(table->FocusRing(true)->focusRingEnabled);
