@@ -227,6 +227,14 @@ struct SearchableListState {
     // multi-select one can have all of it picked.
     Vec<int> selected;
     bool open = false;
+    // The menu prefers its opening side. Above the trigger, the first items
+    // height also holds so filtering does not move the search box.
+    int8_t menuPlacement = -1;
+    float heldItemsHeight = 0;
+    void ResetMenuGeometry() {
+        menuPlacement = -1;
+        heldItemsHeight = 0;
+    }
     // Where a Select's trigger was laid out last, which its menu takes its
     // width from when the caller names none (menu_width's Length::Auto).
     Bounds triggerBounds = {};
@@ -397,6 +405,8 @@ struct SearchableContentBuilder : Base {
         return This();
     }
 };
+
+El* SearchableListPlaceMenu(Ctx* cx, El* menu, SearchableListState* state);
 
 struct SearchableList
     : SearchableContentBuilder<SearchableList, SearchableListContent> {

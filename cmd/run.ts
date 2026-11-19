@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7ab77b5a10162068dca484e57b940f7a2e005706",
+  sha: "ffaa5c180af4287c5d26719d67c207e743f4aa6e",
   date: "2026-11-13",
-  subject: "text_selection: Keep the selection on a press on a control that acts on it (#3951)",
+  subject: "select: Keep the menu height while searching (#3944)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

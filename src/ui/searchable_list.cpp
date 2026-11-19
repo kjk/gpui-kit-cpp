@@ -5,6 +5,7 @@
 #include "base/select.h"
 #include "ui/select.h"
 #include "ui/input.h"
+#include "ui/popover.h"
 
 namespace gpui {
 
@@ -705,6 +706,7 @@ void SearchableListState::OnRowClick(SearchableListState* self, Ctx* cx,
     if (SearchableListClick(self, index)) {
         self->closedByConfirm = wasOpen;
         self->open = false;
+        self->ResetMenuGeometry();
         if (self->previousFocus.IsValid() &&
             FocusHandleContainsFocused(cx->win, self->contentFocus)) {
             if (!FocusHandleRestore(cx->win, self->previousFocus)) {
@@ -722,6 +724,27 @@ void SearchableListState::OnRowClick(SearchableListState* self, Ctx* cx,
         self->delegate.OnConfirm(self, SearchableListPath(self, index), false);
     }
     Notify(cx);
+}
+
+El* SearchableListPlaceMenu(Ctx* cx, El* menu, SearchableListState* state) {
+    menu = DropdownPlaceContent(menu);
+    if (!menu || !state) return menu;
+    if (state->menuPlacement != -1) {
+        bool above = state->menuPlacement == (int8_t)Placement::Top;
+        menu->style.anchorAbove = above;
+        menu->style.anchorBelow = !above;
+        return menu;
+    }
+    auto* hook = ArenaNew<AnchoredPlacedHook>(cx->a);
+    hook->user = state;
+    hook->fn = [](void* data, AnchoredPosition placed, Bounds) {
+        auto* list = (SearchableListState*)data;
+        if (list->open && list->menuPlacement == -1) {
+            list->menuPlacement = placed.placement;
+        }
+    };
+    menu->onPlaced = hook;
+    return menu;
 }
 
 SearchableList* SearchableList::New(Ctx* cx, Str id,
@@ -836,21 +859,19 @@ El* SearchableList::IntoEl() {
         box->Child(row);
     }
 
-    if (s->matches.len == 0) {
-        box->Child(empty
-                       ? empty
-                       : Div(a)
-                             ->FlexCol()
-                             ->W(kFill)
-                             ->PadY(24)
-                             ->ItemsCenter()
-                             ->JustifyCenter()
-                             ->Child(IconEl(a, IconName::Inbox, 32)
-                                         ->Fg(RgbaOpacity(th.mutedFg, 0.6f))));
-        return box;
-    }
-
     El* rows = Div(a)->FlexCol()->W(kFill)->Shrink0();
+    if (!len(s->matches)) {
+        rows->Child(empty
+                        ? empty
+                        : Div(a)
+                              ->FlexCol()
+                              ->W(kFill)
+                              ->PadY(24)
+                              ->ItemsCenter()
+                              ->JustifyCenter()
+                              ->Child(IconEl(a, IconName::Inbox, 32)
+                                          ->Fg(RgbaOpacity(th.mutedFg, 0.6f))));
+    }
     Listener click = ListenTo(state, &SearchableListState::OnRowClick, 0);
     int lastSection = -1;
     for (int m = 0; m < s->matches.len; m++) {
@@ -964,6 +985,19 @@ El* SearchableList::IntoEl() {
                    ->ScrollFromPath()
                    ->OnScroll(ListenTo(met, &ScrollBounceMetrics::OnScroll))
                    ->Child(rows);
+    if (inSelect && s->open) {
+        if (s->menuPlacement == (int8_t)Placement::Top &&
+            s->heldItemsHeight > 0) {
+            pane->MinH(std::min(maxH, s->heldItemsHeight));
+        }
+        pane->customUser = s;
+        pane->prePaint = [](PaintCtx*, El* body, void* data) {
+            auto* list = (SearchableListState*)data;
+            if (list->open && list->heldItemsHeight <= 0 && body->h > 0) {
+                list->heldItemsHeight = body->h;
+            }
+        };
+    }
     if (m) {
         gpui::ScrollBounce* bounce =
             gpui::ScrollBounce::New(cx, StrL("searchable-list-bounce"),

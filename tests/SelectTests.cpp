@@ -804,7 +804,70 @@ static void DisabledItemsCannotBeConfirmed() {
     EntityDropAll(&app);
 }
 
+struct SelectMenuSideView {
+    Entity<component::SelectState> select;
+    InputState query;
+    component::SearchableItem items[30];
+    bool bottom = false;
+
+    static El* Render(SelectMenuSideView* self, Ctx* cx) {
+        return Div(cx->a)
+            ->SizeFull()
+            ->PadT(self->bottom ? 330.f : 8.f)
+            ->Child(component::Select::New(cx, StrL("picker"), self->select)
+                        ->Items(self->items, dimof(self->items))
+                        ->Searchable(&self->query, {})
+                        ->W(200)
+                        ->IntoEl());
+    }
+};
+
+// select.rs the_menu_side_is_recorded_on_open_and_reset_on_close and
+// list/list.rs hold_items_height_keeps_the_list_height_when_items_shrink.
+static void SelectMenuKeepsItsOpeningSideAndHoldsHeightAbove() {
+    for (bool bottom : {false, true}) {
+        App* app = TestAppNew();
+        component::Init(app);
+        auto host = EntityNew<SelectMenuSideView>(app);
+        auto* view = host.Get(app);
+        view->select = component::SelectState::New(app);
+        view->bottom = bottom;
+        for (int i = 0; i < (int)dimof(view->items); i++) {
+            view->items[i].title = i == 0 ? StrL("Unique") : StrL("Option");
+        }
+        Window* win = TestWindowOpen(app, host, 400, 420, 1);
+        auto* state = view->select.Get(app);
+        Ctx cx = {app, win, win->frameArena, view->select.id};
+        auto listHeight = [&] {
+            for (const auto& node : win->accessibility) {
+                if (node.info.role == AccessibilityRole::ListBox)
+                    return node.bounds.h;
+            }
+            return 0.f;
+        };
+        state->SetOpen(true, &cx);
+        TestDraw(win);
+        int8_t side = (int8_t)(bottom ? Placement::Top : Placement::Bottom);
+        utassert(state->state.menuPlacement == side);
+        float height = listHeight();
+        utassert(height > 100);
+        InputSetValue(&view->query, StrL("Unique"));
+        TestDraw(win);
+        utassert(state->state.menuPlacement == side);
+        if (bottom) {
+            utassertnear(listHeight(), height);
+        } else {
+            utassert(listHeight() > 0 && listHeight() < height);
+        }
+        state->SetOpen(false, &cx);
+        utassert(state->state.menuPlacement == -1);
+        utassertnear(state->state.heldItemsHeight, 0.f);
+        TestAppFree(app);
+    }
+}
+
 void TestSelect() {
+    SelectMenuKeepsItsOpeningSideAndHoldsHeightAbove();
     TestSuite("select");
     TheRootProjectsApplicationOwnedAccessibleState();
     SelectAccessibilityValueTracksPlaceholderAndSelection();

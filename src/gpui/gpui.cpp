@@ -5709,6 +5709,9 @@ static void PlaceAnchored(El* e, float viewW, float viewH, Edges frame) {
             frame.left + s.anchorMargin, frame.right + s.anchorMargin,
             frame.top + s.anchorMargin, frame.bottom + s.anchorMargin);
         int8_t placedSide = -1;
+        if (s.anchorBelow || s.anchorAbove) {
+            placedSide = (int8_t)(below ? Placement::Bottom : Placement::Top);
+        }
         if (s.explicitPositioner) {
             AnchoredPosition resolved =
                 s.positionerCorner

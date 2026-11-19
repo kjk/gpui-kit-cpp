@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7ab77b5a10162068dca484e57b940f7a2e005706` (2026-11-13,
-text_selection: Keep the selection on a press on a control that acts on it
-(#3951)).
-Let a marked control preserve the selection through a press and its click.
-This build checks the current painted hit chain, so the region follows
-clipping, occlusion and element removal without a retained registry.
+Processed through `ffaa5c180af4287c5d26719d67c207e743f4aa6e` (2026-11-13,
+select: Keep the menu height while searching (#3944)).
+Remember the opening side for Select and Combobox menus. Keep the initial
+items height when the menu opens above, and reset the side and height when the
+menu closes.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
