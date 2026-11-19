@@ -16,15 +16,19 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3184c9e56781cd3cf39cacddb8a7d857d9b4e327` (2026-11-09,
-base: Turn on `test-support` for gpui-base's own tests (#3869)).
-The Cargo test configuration enables test-support for gpui-base tests. The C++
-headless test support is already linked into its test runner.
+Processed through `f45cfeede9aac977cd8896fd63448f86e6a655c0` (2026-11-09,
+table: Skip per-row cross-axis measure and add a frame benchmark (#3868)).
+DataTable already builds its visible rows without measuring a sample item
+across each row. The headless frame benchmark now covers DataTable and the
+uniform-list baseline at 20 and 2000 rows.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
 ## Known gaps vs Rust
 
+- **The table frame benchmark measures arena use.** Its memory column
+  reports bytes used to build the frame in C++ (`bench/TableFrameBench.cpp`).
+  The Rust benchmark reports total allocation calls and bytes.
 - **Link tooltips build frame-local elements.** Rust retains its tooltip
   view entity. C++ invokes the builder on each visible frame and passes it
   the owning view context and URL (`src/base/tooltip.cpp`).

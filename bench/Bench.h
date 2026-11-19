@@ -161,5 +161,7 @@ void BenchMarkdown();
 void BenchHtml5ever();
 // bench/MotionBench.cpp — the motion core's steady sampling paths.
 void BenchMotion();
+// bench/TableFrameBench.cpp - the DataTable and uniform-list frame cases.
+void BenchTableFrames();
 
 #endif // GPUI_BENCH_H_
