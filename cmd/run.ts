@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1d5323752ab8bf568cc1bdf0fcca50ffec656cea",
+  sha: "ca479f3bb40f1917fd1a7b8211336920c6993e49",
   date: "2026-11-09",
-  subject: "input: Wait for the first layout before shaping a value set early (#3864)",
+  subject: "table: Add border to selected cell to distinguish it from hover (#3866)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

@@ -1609,20 +1609,20 @@ El* DataTable::BuildEl() {
             if (s && TableSelectedCol(s) == c) {
                 td->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
             }
-            // The selected cell, painted the way the selected row is: the
-            // table's own active pair rather than a plain accent block.
-            if (s && s->rightClickedCellRow == r &&
-                s->rightClickedCellCol == c) {
-                td->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
-            }
             int cellRow = -1;
             int cellCol = -1;
             if (s && TableSelectedCell(s, &cellRow, &cellCol) && cellRow == r &&
                 cellCol == c) {
-                ListActiveStyle sel = ListActiveStyleOf(
-                    ListSettingsNow(cx->app), th.tokens.tableActive,
-                    th.tableActiveBorder, th.tokens.accent, true);
-                td->Bg(sel.bg);
+                // The border overlays the cell and leaves its content box
+                // the same size when selection moves.
+                td->Child(Div(a)
+                              ->Absolute()
+                              ->Inset0()
+                              ->Bg(th.tokens.tableActive)
+                              ->Border(1, th.tableActiveBorder));
+            } else if (s && s->rightClickedCellRow == r &&
+                       s->rightClickedCellCol == c) {
+                td->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
             }
             // a11y_cell: a selectable cell is a grid cell that reports its
             // selection. Otherwise it is a plain cell. There is no

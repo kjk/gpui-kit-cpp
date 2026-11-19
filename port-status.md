@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1d5323752ab8bf568cc1bdf0fcca50ffec656cea` (2026-11-09,
-input: Wait for the first layout before shaping a value set early (#3864)).
-Input values written before the first layout already leave the display map
-unprepared in C++. The regression verifies that the first frame shapes the
-value.
+Processed through `ca479f3bb40f1917fd1a7b8211336920c6993e49` (2026-11-09,
+table: Add border to selected cell to distinguish it from hover (#3866)).
+Selected table cells draw the table active fill and a one-pixel table active
+border. The overlay preserves the content layout.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

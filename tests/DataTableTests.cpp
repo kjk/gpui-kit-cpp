@@ -1999,6 +1999,11 @@ static void TableExposesItsHeaderAndCellsToAssistiveTechnology() {
                                  .role == AccessibilityRole::GridCell);
     utassert(selected && selected->accessibility.hasSelected &&
              selected->accessibility.selected);
+    const El* selection = selected ? selected->first : nullptr;
+    const Theme& theme = ThemeNow(&app);
+    utassert(selection && selection->style.absolute &&
+             selection->style.border == 1 &&
+             RgbaEq(selection->style.borderColor, theme.tableActiveBorder));
     utassert(other && other->accessibility.hasSelected &&
              !other->accessibility.selected);
     // Unfocused: the selection is reported, and it is not the active
