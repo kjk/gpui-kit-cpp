@@ -258,6 +258,7 @@ struct WebView : WebViewHandlers {
     ::Window parentWindow = 0;
     GtkWidget* gtkWindow = nullptr;
     bool followsParent = false;
+    WebView* nextX11 = nullptr;
 
     bool inspectorOpen = false;
     // The page zoom the application asked for. `match_scale_factor` multiplies
@@ -1261,6 +1262,8 @@ static void ResizeContainer(WebView* wv, int x, int y, int w, int h) {
 }
 
 // A webview that is not a child follows its parent's size.
+static WebView* gX11Views = nullptr;
+
 static GdkFilterReturn ParentFilter(GdkXEvent* xevent, GdkEvent*,
                                     gpointer data) {
     WebView* wv = (WebView*)data;
@@ -1315,6 +1318,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     // Set before the hide below: WebViewSetVisible unmaps the X window and
     // hides the plug only for a webview that knows it has them.
     wv->hasX11 = true;
+    wv->nextX11 = gX11Views;
+    gX11Views = wv;
     PlaceMappedPlug(wv);
     if (!attrs->visible) {
         WebViewSetVisible(wv, false);
@@ -1329,9 +1334,39 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     return wv;
 }
 
+void WebViewDetachX11Children(void* parentWindow) {
+    ::Window parent = (::Window)(uintptr_t)parentWindow;
+    for (WebView* view = gX11Views; view; view = view->nextX11) {
+        if (view->parentWindow != parent) {
+            continue;
+        }
+        if (view->followsParent) {
+            gdk_window_remove_filter(nullptr, ParentFilter, view);
+            view->followsParent = false;
+        }
+        XTrap trap(view->display);
+        ::Window root = XDefaultRootWindow(view->xdisplay);
+        XUnmapWindow(view->xdisplay, view->x11Window);
+        XReparentWindow(view->xdisplay, view->x11Window, root, 0, 0);
+        // Wait for GDK's X11 connection before the host destroys the parent
+        // on its own connection.
+        gdk_display_sync(view->display);
+        view->parentWindow = root;
+    }
+}
+
 static void FreeInner(WebView* wv) {
     if (!wv) {
         return;
+    }
+    if (wv->hasX11) {
+        WebView** entry = &gX11Views;
+        while (*entry && *entry != wv) {
+            entry = &(*entry)->nextX11;
+        }
+        if (*entry) {
+            *entry = wv->nextX11;
+        }
     }
     g_cancellable_cancel(wv->cancellable);
     if (wv->followsParent) {

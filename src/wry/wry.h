@@ -512,6 +512,16 @@ bool WebViewSetTheme(WebView* webview, Theme theme);
 bool WebViewSetMemoryUsageLevel(WebView* webview, MemoryUsageLevel level);
 /** `WebViewExtWindows::reparent`. */
 bool WebViewReparent(WebView* webview, void* parentWindow);
+
+#if GPUI_OS_LINUX
+// A host that owns an X11 parent calls this before destroying it. Live GTK
+// controls are moved to the root unmapped and stay valid for their owners.
+#if GPUI_WRY_UNSUPPORTED
+inline void WebViewDetachX11Children(void*) {}
+#else
+void WebViewDetachX11Children(void* parentWindow);
+#endif
+#endif
 /** `WebViewExtMacOS::set_traffic_light_inset`. Other platforms answer false;
     a child webview answers true without changing the window, as wry does. */
 bool WebViewSetTrafficLightInset(WebView* webview, Position position);

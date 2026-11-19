@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d361ff332b580343c83fd411b97aec517af6a701",
+  sha: "dbb0b9a4895c4b45753ed8647cb0dbb58178bd96",
   date: "2026-11-09",
-  subject: "window_border: Round the window corners on request (#3848)",
+  subject: "webview: Fix X11 abort when a WebView is dropped on Linux (#3862)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

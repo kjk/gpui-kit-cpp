@@ -11,6 +11,7 @@
 #include "gpui/window_loop.h"
 #include "sys/clock.h"
 #include "sys/executor.h"
+#include "wry/wry.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -1455,6 +1456,9 @@ static void DestroyPlatWindow(Window* win) {
         XDestroyIC(pw->xic);
     }
     XWindow xwin = pw->xwin;
+    if (xwin) {
+        wry::WebViewDetachX11Children((void*)(uintptr_t)xwin);
+    }
     delete pw;
     WindowClosed(win);
     if (xwin) {
