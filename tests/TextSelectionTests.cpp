@@ -2649,10 +2649,51 @@ static void TripleClickBesideAShortLineSelectsThatLine() {
     TestAppFree(app);
 }
 
+struct OwnedSelectableDragView {
+    int renders = 0;
+
+    static El* Render(OwnedSelectableDragView* self, Ctx* cx) {
+        self->renders++;
+        return Div(cx->a)
+            ->SizeFull()
+            ->Child(TextSelectionLayer::New(cx))
+            ->Child(SelectableText::New(cx, StrL("local"), StrL("alpha beta"))
+                        ->Font(16)
+                        ->IntoEl());
+    }
+};
+
+// selectable_text.rs: a_drag_redraws_the_text_before_the_button_is_released.
+// C++ renders every visible view on a dirty frame, so use the view's normal
+// render callback to observe the redraw while the pointer remains pressed.
+static void ADragRedrawsOwnedTextBeforeRelease() {
+    App* app = TestAppNew();
+    auto view = EntityNew<OwnedSelectableDragView>(app);
+    Window* win = TestWindowOpen(app, view, 240, 48, 1);
+    auto* self = view.Get(app);
+    utassert(len(win->paint.texts) == 1);
+    if (len(win->paint.texts) == 1) {
+        Bounds bounds = win->paint.texts[0].bounds;
+        Point anchor = {bounds.x + 1, bounds.CenterY()};
+        Point end = {bounds.Right() - 1, bounds.CenterY()};
+        TestSimulateMouseDown(win, anchor);
+        TestRunUntilParked(app);
+        int before = self->renders;
+        TestSimulateMouseMove(win, end, true);
+        TestRunUntilParked(app);
+        utassert(win->mouseDown);
+        utassert(self->renders > before);
+        utassert(WindowSelectedIs(win, app, "alpha beta"));
+        TestSimulateMouseUp(win, end);
+    }
+    TestAppFree(app);
+}
+
 void TestTextSelection() {
     TestSuite("text_selection");
     PaintDoesNotResolveWindowSelectedText();
     HighlightedTextSelectsAndCopiesAsPlainText();
+    ADragRedrawsOwnedTextBeforeRelease();
     CopyWithOnlyACaretUsesTheWindowSelection();
     WrappedSelectionPaintsFullWidthMiddleLines();
     SelectionBandDecidesWholeRuns();

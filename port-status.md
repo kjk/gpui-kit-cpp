@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `dba44862300191b470276157a7d87173d9b49b05` (2026-11-12,
-button: Ignore hover and active styles while a base Button is disabled
-(#3943)).
-Suppress pointer style refinements for disabled Base buttons. Named groups
-track the press origin alongside hover so enabled buttons can still refine
-group-active styling.
+Processed through `b3ba789c058b6afb78c24b47bc1f557074c17eb3` (2026-11-12,
+selectable_text: Redraw when a run's own selection changes (#3927)).
+C++ already invalidates the window during a held pointer move and renders all
+visible views for that frame. Cover the owned selectable text path with a
+headless drag that redraws before release.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

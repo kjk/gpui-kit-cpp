@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "dba44862300191b470276157a7d87173d9b49b05",
+  sha: "b3ba789c058b6afb78c24b47bc1f557074c17eb3",
   date: "2026-11-12",
-  subject: "button: Ignore hover and active styles while a base Button is disabled (#3943)",
+  subject: "selectable_text: Redraw when a run's own selection changes (#3927)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",
