@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8dfdd49de27c0726dd052fb2cfd2b0807d17980b",
+  sha: "9c9912ddc7c625eaaed1eaeb4dc6984c2f1a9822",
   date: "2026-11-08",
-  subject: "overscroll: Keep the stream alive through sideways packets (#3790)",
+  subject: "website: Recommend Native Shell under the home hero (#3844)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

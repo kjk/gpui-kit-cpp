@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8dfdd49de27c0726dd052fb2cfd2b0807d17980b` (2026-11-08,
-overscroll: Keep the stream alive through sideways packets (#3790)).
-Sideways packets refresh an overscroll gesture so a turn into vertical motion
-still stretches at the edge.
+Processed through `9c9912ddc7c625eaaed1eaeb4dc6984c2f1a9822` (2026-11-08,
+website: Recommend Native Shell under the home hero (#3844)).
+The upstream website now links to Native Shell from the home hero. The change
+touches only the website.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
