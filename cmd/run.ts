@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "70a70565b6d037e41fecfe1a65645ff29cfa368d",
-  date: "2026-11-16",
-  subject: "kbd: Show a shifted-symbol shortcut as bound on Windows (#3993)",
+  sha: "cfab7b210b0683944a3941de2dad8c5e9a27aed6",
+  date: "2026-11-17",
+  subject: "diff: Keep line annotation cards inside the viewport under horizontal scrolling (#4009)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

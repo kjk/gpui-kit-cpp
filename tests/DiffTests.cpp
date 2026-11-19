@@ -842,6 +842,13 @@ struct WideSplitView {
     DiffGutterMarker markers[2];
     Bounds gutters[2];
     Bounds header;
+    DiffAnnotation annotation;
+    Bounds card;
+
+    static El* Annotation(Ctx* cx, const DiffAnnotation*, void* data) {
+        auto* self = (WideSplitView*)data;
+        return Div(cx->a)->W(80)->H(20)->BoundsOut(&self->card);
+    }
 
     static El* Header(Ctx* cx, const DiffFile*, void* data) {
         auto* self = (WideSplitView*)data;
@@ -864,6 +871,9 @@ struct WideSplitView {
             ->GutterMarkers(self->markers, 2)
             ->RenderGutterMarker(&Marker, self)
             ->RenderHeader(&Header, self)
+            ->Annotations(&self->annotation,
+                          self->annotation.hasPosition ? 1 : 0)
+            ->RenderAnnotation(&Annotation, self)
             ->IntoEl();
     }
 };
@@ -936,6 +946,26 @@ static void TheFileHeaderStaysInsideTheScrollingViewport() {
         utassertnear(self->header.w, before.w);
         TestAppFree(app);
     }
+}
+
+static void UnifiedAnnotationsStayInTheViewportWhileCodeScrolls() {
+    App* app = TestAppNew();
+    Init(app);
+    auto view = LongLineDiff(app, DiffMode::Unified);
+    auto* self = view.Get(app);
+    self->annotation = DiffAnnotation::Line(
+        StrL("comment"),
+        DiffLinePosition::New(StrL("long.txt"), DiffSide::Original, 1));
+    Window* win = TestWindowOpen(app, view, 400, 200, 1);
+    TestDraw(win);
+    Bounds before = self->card;
+    utassert(before.w > 0.f && before.x >= 0.f && before.Right() <= 400.f);
+    TestSimulateScrollWheel(win, {100, 48}, {-200, 0});
+    TestDraw(win);
+    utassert(self->state.Get(app)->horizontalScrollX > 0);
+    utassertnear(self->card.x, before.x);
+    utassertnear(self->card.w, before.w);
+    TestAppFree(app);
 }
 
 // diff/scroll_tests.rs. A 300-line patch, every line changed, in a 400×200
@@ -1426,6 +1456,7 @@ void TestDiff() {
     TheWheelScrollsPastTheRowsRenderedSoFar();
     SplitColumnsKeepTheirGuttersWhileCodeScrolls();
     TheFileHeaderStaysInsideTheScrollingViewport();
+    UnifiedAnnotationsStayInTheViewportWhileCodeScrolls();
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();
     GutterMarkersActivateWithoutSelectingLines();
 }

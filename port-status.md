@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `70a70565b6d037e41fecfe1a65645ff29cfa368d` (2026-11-16, kbd:
-Show a shifted-symbol shortcut as bound on Windows (#3993)).
-Keyboard shortcut labels retain the symbol and modifiers written in the
-binding while matching the normalized physical chord.
+Processed through `cfab7b210b0683944a3941de2dad8c5e9a27aed6` (2026-11-17,
+diff: Keep line annotation cards inside the viewport under horizontal
+scrolling (#4009)).
+Line annotations stay beside the clipped code viewport during horizontal
+scrolling. The regression exercises an annotation attached to a long removed
+line.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
