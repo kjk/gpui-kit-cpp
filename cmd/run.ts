@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "369b5e42793107ec9318b2566b31bfff86925e6c",
+  sha: "6653d1c024b5461461143c90b005d80089cc085f",
   date: "2026-11-12",
-  subject: "settings: Fold and unfold the shown page from its title (#3947)",
+  subject: "text: Fold white space in Markdown the way HTML draws it (#3949)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

@@ -726,6 +726,17 @@ static void TestMarkdownSoftBreak(Arena* a) {
     utassert(TextIs(a, Child(doc, 0), "a b\nc"));
 }
 
+// markdown.rs white_space_folds_like_html.
+static void TestMarkdownWhitespaceFoldsLikeHtml(Arena* a) {
+    MdNode* doc = MdParse(a, StrL("two  spaces\n\nText <!-- note --> "
+                                  "after.\n\nline one<br>\nline two"));
+    utassert(TextIs(a, Child(doc, 0), "two spaces"));
+    utassert(TextIs(a, Child(doc, 1), "Text after."));
+    utassert(TextIs(a, Child(doc, 2), "line one\nline two"));
+    MdNode* code = MdParse(a, StrL("Keep `two  spaces` here"));
+    utassert(TextIs(a, Child(code, 0), "Keep two  spaces here"));
+}
+
 static void TestMarkdownHardBreak(Arena* a) {
     const char* sources[] = {"Owner: Jane  \nPersona: assistant",
                              "Owner: Jane\\\nPersona: assistant"};
@@ -2606,7 +2617,7 @@ static void InlineHtmlFormattingTagsPairAcrossSiblings() {
     Str bold[4];
     int nBold = 0;
     Str text = ParagraphText(doc, MdBold, bold, 4, &nBold);
-    utassert(StrEq(text, StrL("a b c d e f g h \n unclosed")));
+    utassert(StrEq(text, StrL("a b c d e f g h \nunclosed")));
     utassert(nBold == 2 && StrEq(bold[0], StrL("b c d")) &&
              StrEq(bold[1], StrL("f")));
     Str italic[4];
@@ -3562,7 +3573,8 @@ static void StreamedWordsFadeInOneAfterAnother() {
         utassertnear(fades[0].fadeOut, 0.75f);
         utassertnear(fades[1].fadeOut, 1.f - 50.f / 600.f);
         utassertnear(fades[2].fadeOut, 1.f);
-        utassert(fades[0].lo == 5 && fades[2].hi == 20);
+        utassert(StrEq(run->text, StrL("hello one two three")));
+        utassert(fades[0].lo == 5 && fades[2].hi == len(run->text));
     }
 
     // Once the first word is lit it stops fading; the others carry on.
@@ -4124,6 +4136,19 @@ static void TestSourceRangeEntities() {
 
 // selected_source_range_maps_soft_breaks_with_source_prefixes,
 // selected_source_range_maps_soft_breaks_with_trailing_spaces_and_crlf.
+// markdown.rs uses these ranges to pin folded spaces, comment boundaries
+// and the line start after an HTML break to their original bytes.
+static void TestSourceRangesAcrossFoldedWhitespace() {
+    utassert(RangeIs("two  spaces", 0, 4, "0..4"));
+    utassert(RangeIs("two  spaces", 3, 4, "3..4"));
+    utassert(RangeIs("two  spaces", 4, 5, "5..6"));
+    utassert(RangeIs("two  spaces", 4, 10, "5..11"));
+    utassert(RangeIs("Text <!-- note --> after.", 0, 4, "0..4"));
+    utassert(RangeIs("Text <!-- note --> after.", 5, 11, "19..25"));
+    utassert(RangeIs("line one<br>\nline two", 9, 17, "13..21"));
+    utassert(RangeIs("line one<br>\nline two", 10, 17, "14..21"));
+}
+
 static void TestSourceRangeSoftBreaks() {
     utassert(RangeIs("a\n   b", 0, 1, "0..1"));
     utassert(RangeIs("a\n   b", 2, 3, "5..6"));
@@ -10276,6 +10301,7 @@ void TestTextView() {
     TestHtmlTrailingBreaksAtTextBlocks(a);
     TestMarkdownHardBreak(a);
     TestMarkdownSoftBreak(a);
+    TestMarkdownWhitespaceFoldsLikeHtml(a);
     TestHtmlImage(a);
     TestImageSrc();
     TestSourceMarks();
@@ -10359,6 +10385,7 @@ void TestTextView() {
     TestSourceRangeImages();
     TestSourceRangeEntities();
     TestSourceRangeSoftBreaks();
+    TestSourceRangesAcrossFoldedWhitespace();
     TestSourceRangeAfterAppend();
     TestSourceRangeOverPaintedRuns();
     PaintedImageMappingIncludesSelectedRunBoundaries();

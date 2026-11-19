@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `369b5e42793107ec9318b2566b31bfff86925e6c` (2026-11-12,
-settings: Fold and unfold the shown page from its title (#3947)).
-Toggle the groups of the Settings page already on display from its title.
-Selecting a different page opens its groups.
+Processed through `6653d1c024b5461461143c90b005d80089cc085f` (2026-11-12,
+text: Fold white space in Markdown the way HTML draws it (#3949)).
+Fold prose whitespace within Markdown text runs and across rendered inline
+boundaries. Keep source ranges mapped through folded spaces, dropped comments
+and explicit breaks.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

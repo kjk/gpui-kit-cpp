@@ -2272,6 +2272,33 @@ static bool MdClaimedInline(MdBuild* b, const md::Node* n, MarkdownNode* out) {
     return false;
 }
 
+// Fold prose white space after mdast has already distinguished soft breaks
+// from explicit break and code nodes. Keep the parser's slice when unchanged.
+static Str CollapseMarkdownSpace(Arena* a, Str value) {
+    bool spaced = false;
+    int changed = 0;
+    for (; changed < len(value); changed++) {
+        char c = value.s[changed];
+        if ((c == ' ' && spaced) || c == '\t' || c == '\n' || c == '\r') {
+            break;
+        }
+        spaced = c == ' ';
+    }
+    if (changed == len(value)) return value;
+    StrBuilder text(a);
+    text.Reserve(len(value));
+    text.Append(Str(value.s, changed));
+    for (int i = changed; i < len(value); i++) {
+        char c = value.s[i];
+        bool space = c == ' ' || c == '\t' || c == '\n' || c == '\r';
+        if (!space || !spaced) {
+            text.AppendChar(space ? ' ' : c);
+        }
+        spaced = space;
+    }
+    return text.TakeStr();
+}
+
 static void MdInlineNode(MdBuild* b, const md::Node* n) {
     MarkdownNode custom;
     if (MdClaimedInline(b, n, &custom)) {
@@ -2280,34 +2307,8 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
     }
     switch (n->kind) {
         case md::NodeKind::Text: {
-            // Only text-node line endings are soft breaks. Explicit Break
-            // nodes and code keep their own line-ending semantics.
-            Str value = V(b, n, md::NodeStrKind::Value);
-            int firstBreak = 0;
-            while (firstBreak < len(value) && value.s[firstBreak] != '\r' &&
-                   value.s[firstBreak] != '\n') {
-                firstBreak++;
-            }
-            if (firstBreak == len(value)) {
-                Vec<SourceSegment> segments;
-                MdSourceSegments(b, n, value, true, segments);
-                AddText(b, value, &segments);
-                break;
-            }
-            StrBuilder text(b->a);
-            text.Reserve(len(value));
-            for (int i = 0; i < len(value); i++) {
-                char c = value.s[i];
-                if (c == '\r' || c == '\n') {
-                    if (c == '\r' && i + 1 < len(value) &&
-                        value.s[i + 1] == '\n') {
-                        i++;
-                    }
-                    c = ' ';
-                }
-                text.AppendChar(c);
-            }
-            Str rendered = text.TakeStr();
+            Str rendered =
+                CollapseMarkdownSpace(b->a, V(b, n, md::NodeStrKind::Value));
             Vec<SourceSegment> segments;
             MdSourceSegments(b, n, rendered, true, segments);
             AddText(b, rendered, &segments);
@@ -2432,9 +2433,65 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
     }
 }
 
-// The inline children of `n` as the runs of the current block.
+static void TrimMarkdownRunStart(Arena* a, MdRun* run, int count) {
+    run->text = Str(run->text.s + count, len(run->text) - count);
+    if (!run->segmentCount) return;
+    auto* kept = TextArenaArray<SourceSegment>(a, run->segmentCount);
+    int keptCount = 0;
+    for (int i = 0; kept && i < run->segmentCount; i++) {
+        SourceSegment segment = run->segments[i];
+        if (segment.renderedEnd <= count) continue;
+        if (segment.renderedStart < count) {
+            if (!segment.linear) continue;
+            segment.sourceStart += count - segment.renderedStart;
+            segment.renderedStart = count;
+        }
+        segment.renderedStart -= count;
+        segment.renderedEnd -= count;
+        if (segment.sourceStart < segment.sourceEnd) {
+            kept[keptCount++] = segment;
+        }
+    }
+    run->segments = kept;
+    run->segmentCount = keptCount;
+}
+
+// Fold boundaries between runs, for example around a dropped HTML comment
+// or after a hard break. Images and custom nodes keep the space around them.
+static void NormalizeMarkdownInlineRuns(Arena* a, MdNode* block) {
+    bool dropLeading = true;
+    MdRun** next = &block->runFirst;
+    block->runLast = nullptr;
+    while (MdRun* run = *next) {
+        if (run->imgSrc.s || run->hasCustom) {
+            dropLeading = false;
+        } else if (!run->marks && StrEq(run->text, StrL("\n"))) {
+            dropLeading = true;
+        } else {
+            int count = 0;
+            if (dropLeading) {
+                while (count < len(run->text) && (run->text.s[count] == ' ' ||
+                                                  run->text.s[count] == '\t')) {
+                    count++;
+                }
+            }
+            if (count == len(run->text)) {
+                *next = run->next;
+                continue;
+            }
+            if (count > 0) TrimMarkdownRunStart(a, run, count);
+            char last = run->text.s[len(run->text) - 1];
+            dropLeading = last == ' ' || last == '\t';
+        }
+        block->runLast = run;
+        next = &run->next;
+    }
+}
+
+// The inline children of n as the runs of the current block.
 static void MdInline(MdBuild* b, const md::Node* n) {
     MdInlineChildren(b, n);
+    NormalizeMarkdownInlineRuns(b->a, b->cur);
 }
 
 static void MdBlockNode(MdBuild* b, const md::Node* n);
