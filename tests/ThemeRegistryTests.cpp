@@ -372,11 +372,13 @@ static void AReloadKeepsNothingItReplaced() {
 
 static void SourceRegistryAndConfigSettingsAreRetained() {
     App app;
+    utassert(ThemeLight(&app).windowRadius == 0);
     const char* doc =
         "{\"themes\":[{\"name\":\"Metrics\",\"mode\":\"light\","
         "\"font.size\":18,\"font.family\":\"Inter\","
         "\"mono_font.family\":\"Cascadia Mono\","
-        "\"mono_font.size\":14,\"radius\":9,\"shadow\":false,"
+        "\"mono_font.size\":14,\"radius\":9,\"window.radius\":10,"
+        "\"shadow\":false,"
         "\"colors\":{\"primary.background\":\"#123456\"}}]}";
     Arena* arena = ArenaNew();
     JsonValue* parsed = JsonParse(arena, Str(doc));
@@ -391,15 +393,16 @@ static void SourceRegistryAndConfigSettingsAreRetained() {
     utassert(config && config->colors && config->fontSize == 18.f &&
              StrEqI(config->fontFamily, "Inter") &&
              StrEqI(config->monoFontFamily, "Cascadia Mono") &&
-             config->monoFontSize == 14.f && config->hasShadow &&
-             !config->shadow);
+             config->monoFontSize == 14.f && config->windowRadius == 10.f &&
+             config->hasShadow && !config->shadow);
     utassert(ThemeRegistryApply(&app, config));
     const Theme& theme = ThemeLight(&app);
     utassert(theme.mode == ThemeMode::Light && theme.fontSize == 18.f &&
              StrEqI(theme.fontFamily, "Inter") &&
              StrEqI(theme.monoFontFamily, "Cascadia Mono") &&
              theme.monoFontSize == 14.f && theme.radius == 9.f &&
-             theme.radiusLg == 11.f && !theme.shadow);
+             theme.radiusLg == 11.f && theme.windowRadius == 10.f &&
+             !theme.shadow);
     SemanticThemeTokens tokens = ThemeSemanticTokens(theme);
     utassert(tokens.shadow.sm.len == 0 && tokens.shadow.md.len == 0 &&
              tokens.shadow.lg.len == 0);

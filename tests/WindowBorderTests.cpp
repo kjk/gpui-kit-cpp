@@ -262,6 +262,20 @@ static void AFixedWindowDoesNotOfferResize() {
     utassert(!WindowBorderOffersResize(true, true, all));
 }
 
+// window_border.rs corners_round_only_next_to_untiled_edges.
+static void CornersRoundOnlyNextToUntiledEdges() {
+    constexpr float radius = 10.f;
+    Corners all = WindowCornerRadii(radius, true, {});
+    utassert(all.IsUniform() && all.tl == radius);
+    WindowTiling top;
+    top.top = true;
+    Corners lower = WindowCornerRadii(radius, true, top);
+    utassert(lower.tl == 0 && lower.tr == 0 && lower.bl == radius &&
+             lower.br == radius);
+    Corners server = WindowCornerRadii(radius, false, {});
+    utassert(server.IsUniform() && server.tl == 0);
+}
+
 void TestWindowBorder() {
     TestSuite("window_border");
     TilingTakesTheShadowOffThatSide();
@@ -274,4 +288,5 @@ void TestWindowBorder() {
     BuilderCarriesTheExactTwoSourceShadows();
     OnlyClientDecoratedWindowsUseTheClientBorder();
     AFixedWindowDoesNotOfferResize();
+    CornersRoundOnlyNextToUntiledEdges();
 }

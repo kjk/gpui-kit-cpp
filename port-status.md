@@ -16,15 +16,20 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `137070d7c4e5c7525fb3af5ac260b9c3fe700919` (2026-11-08,
-text: Size a table column to the images in its cells (#3787)).
-TextView sizes table columns from the images in their cells as well as the
-text. Intrinsic image widths are read at measurement time.
+Processed through `d361ff332b580343c83fd411b97aec517af6a701` (2026-11-09,
+window_border: Round the window corners on request (#3848)).
+The window.radius theme setting rounds untiled corners on the client frame,
+root surface, and title bar. Server-decorated windows use square client
+surfaces.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
 ## Known gaps vs Rust
 
+- **Client corner radii shape the painted window.** The frame, root and
+  title bar use `window.radius`. Rust also supplies the corner radii to
+  its Wayland compositor integration. This port uses X11 on Linux
+  (`src/ui/window_border.cpp`).
 - **Transition history is caller-owned.** C++ `TransitionState` copies
   carry independent history. Callers that share history pass the same
   state by address (`src/base/motion.h`).

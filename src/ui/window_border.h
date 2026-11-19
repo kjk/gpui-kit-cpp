@@ -22,14 +22,15 @@ const float kWindowBorderSize = 1;
 // Half the width of the band a press counts as a resize, either side of the
 // visible frame.
 const float kWindowResizeHitSize = 4;
-// GPUI clips children to a rectangular mask, so a rounded frame would leave
-// the corners of a child's background showing. Square until that changes,
-// which is what Rust says here too.
-const float kWindowBorderRadius = 0;
-
 // Compatibility spelling retained for callers of the earlier port. The
 // state itself belongs to the platform window, as gpui::Tiling does in Rust.
 using WindowTiling = gpui::Tiling;
+
+// Child clipping is rectangular. A background that touches the frame
+// should use the same rounding on its adjoining corners.
+Corners WindowCornerRadii(float radius, bool clientDecorated,
+                          WindowTiling tiling);
+Corners WindowCornerRadii(Window* window, const App* app);
 
 // client_frame_insets: how far the visible frame sits inside the window, per
 // side.

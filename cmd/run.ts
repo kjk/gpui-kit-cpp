@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "137070d7c4e5c7525fb3af5ac260b9c3fe700919",
-  date: "2026-11-08",
-  subject: "text: Size a table column to the images in its cells (#3787)",
+  sha: "d361ff332b580343c83fd411b97aec517af6a701",
+  date: "2026-11-09",
+  subject: "window_border: Round the window corners on request (#3848)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

@@ -1,4 +1,5 @@
 #include "ui/title_bar.h"
+#include "ui/window_border.h"
 
 namespace gpui {
 
@@ -71,6 +72,7 @@ TitleBar* TitleBar::New(Ctx* cx) {
     // background; Rust runs that mix down a 180° gradient to the plain title
     // bar color, which this fills flat.
     Rgba mixed = RgbaMix(th.titleBar, th.background, 0.55f);
+    Corners corners = WindowCornerRadii(cx->win, cx->app);
     t->content = Div(a)
                      ->FlexRow()
                      ->H(kFill)
@@ -86,6 +88,7 @@ TitleBar* TitleBar::New(Ctx* cx) {
                  ->PadL(TitleBarLeftPad())
                  ->ItemsCenter()
                  ->Bg(mixed)
+                 ->Corners(corners.tl, corners.tr, 0, 0)
                  ->BorderB(1, th.titleBarBorder)
                  ->Click(ClickWinCaption)
                  ->Child(t->content);

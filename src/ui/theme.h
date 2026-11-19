@@ -399,6 +399,8 @@ struct Theme {
     // crates/ui/src/theme/mod.rs: radius 6, radius_lg 8 (Dialog, Notification).
     float radius;
     float radiusLg;
+    // window.radius: corner radius for client-decorated windows.
+    float windowRadius = 0;
     // `Theme::radius_full`: the radius that rounds a shape as far as its own
     // size allows — a circle if it is square, a pill if it is not — and zero
     // when the theme squares its corners. Anything past half the shorter side
@@ -790,6 +792,7 @@ struct ThemeConfig {
     float monoFontSize = 0;
     float radius = -1;
     float radiusLg = -1;
+    float windowRadius = -1;
     bool shadow = true;
     bool hasShadow = false;
     // Retained for the dependency-free highlighter adapter to inspect. The

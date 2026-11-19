@@ -4,6 +4,24 @@ namespace gpui {
 
 namespace component {
 
+Corners WindowCornerRadii(float radius, bool clientDecorated,
+                          WindowTiling tiling) {
+    if (!clientDecorated) {
+        return {};
+    }
+    return {tiling.top || tiling.left ? 0.f : radius,
+            tiling.top || tiling.right ? 0.f : radius,
+            tiling.bottom || tiling.right ? 0.f : radius,
+            tiling.bottom || tiling.left ? 0.f : radius};
+}
+
+Corners WindowCornerRadii(Window* window, const App* app) {
+    if (!WindowClientDecorated(window) || window->maximized) {
+        return {};
+    }
+    return WindowCornerRadii(ThemeNow(app).windowRadius, true, window->tiling);
+}
+
 Edges WindowBorderInsets(float shadowSize, WindowTiling tiling) {
     Edges e = {shadowSize, shadowSize, shadowSize, shadowSize};
     if (tiling.top) {
@@ -173,6 +191,9 @@ El* WindowBorder::IntoEl() {
     // shadow: there is nothing for one to fall on.
     float visualShadow = effectiveTiling.AllTiled() ? 0.f : shadowSize;
     Edges insets = WindowBorderInsets(visualShadow, effectiveTiling);
+    // GPUI reports these to the compositor on Wayland. The Linux port
+    // uses X11, so the radii are applied to the drawn surfaces here.
+    Corners corners = WindowCornerRadii(th.windowRadius, true, effectiveTiling);
 
     El* backdrop = Div(a)
                        ->PathId(StrL("window-backdrop"))
@@ -180,6 +201,7 @@ El* WindowBorder::IntoEl() {
                        ->SizeFull()
                        ->ClipX()
                        ->ClipY()
+                       ->Corners(corners.tl, corners.tr, corners.br, corners.bl)
                        ->Bg(Rgba8(0, 0, 0, 0));
     if (insets.top > 0) {
         backdrop->PadT(insets.top);
@@ -204,6 +226,7 @@ El* WindowBorder::IntoEl() {
                     ->W(kFill)
                     ->ClipX()
                     ->ClipY()
+                    ->Corners(corners.tl, corners.tr, corners.br, corners.bl)
                     ->Bg(Rgba8(0, 0, 0, 0));
     Rgba border = th.windowBorder;
     float activeOpacity = WindowIsActive(cx) ? 1.f : 0.7f;

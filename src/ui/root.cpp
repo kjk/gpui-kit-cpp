@@ -196,7 +196,10 @@ static void WindowStatePrepare(void*, Ctx* cx) {
 
 static void WindowStateStyle(void*, El* surface, Ctx* cx) {
     const Theme& th = ThemeNow(cx->app);
-    surface->Bg(th.tokens.background)->Fg(th.foreground);
+    Corners corners = WindowCornerRadii(cx->win, cx->app);
+    surface->Bg(th.tokens.background)
+        ->Fg(th.foreground)
+        ->Corners(corners.tl, corners.tr, corners.br, corners.bl);
 }
 
 static El* WindowStateDecorate(void*, El* surface, const Root*, Ctx* cx) {

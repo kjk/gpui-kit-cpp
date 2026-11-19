@@ -2345,6 +2345,9 @@ void ThemeConfigResolve(Theme* out, const ThemeConfig* cfg, const Theme& base) {
     if (cfg->radiusLg >= 0) {
         out->radiusLg = cfg->radiusLg;
     }
+    if (cfg->windowRadius >= 0) {
+        out->windowRadius = cfg->windowRadius;
+    }
     out->radiusFull = out->radius > 0 ? kRadiusFull : 0;
     if (cfg->fontSize > 0) out->fontSize = cfg->fontSize;
     if (cfg->fontFamily.s) out->fontFamily = cfg->fontFamily;
@@ -2503,6 +2506,7 @@ int ThemeRegistryLoadStr(App* app, Str json) {
         cfg.monoFontSize = JsonFloatOr(t, "mono_font.size", 0);
         cfg.radius = JsonFloatOr(t, "radius", -1);
         cfg.radiusLg = JsonFloatOr(t, "radius.lg", -1);
+        cfg.windowRadius = JsonFloatOr(t, "window.radius", -1);
         const JsonValue* shadow = JsonGet(t, "shadow");
         if (shadow && shadow->kind == JsonKind::Bool) {
             cfg.shadow = shadow->b;
