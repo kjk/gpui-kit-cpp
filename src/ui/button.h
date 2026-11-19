@@ -29,6 +29,8 @@ struct ButtonCustomVariant {
     Rgba active = {};
 
     static ButtonCustomVariant New(const App* app);
+    // The resting background uses this tint at 20% opacity. Outlined
+    // buttons derive their border from it. Hover and Active are used as given.
     ButtonCustomVariant Color(Rgba value) const;
     ButtonCustomVariant Foreground(Rgba value) const;
     ButtonCustomVariant Hover(Rgba value) const;

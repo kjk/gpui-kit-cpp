@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6d18eece30091f9164f17129a092e94daf21a80b",
+  sha: "3c5320b7c0508c288a6be0ddddd9fb38e906f196",
   date: "2026-11-11",
-  subject: "docs: Use an explicit modifier in the Action guide's `KeyBinding::new` examples (#3913)",
+  subject: "website: Document that a custom Button variant fills with its color at 20% (#3911)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6d18eece30091f9164f17129a092e94daf21a80b` (2026-11-11,
-docs: Use an explicit modifier in the Action guide's `KeyBinding::new`
-examples (#3913)).
-Reviewed the Action guide examples. The upstream website now illustrates
-explicit modifiers in its Rust KeyBinding calls; this repository has no
-mirrored Action guide.
+Processed through `3c5320b7c0508c288a6be0ddddd9fb38e906f196` (2026-11-11,
+website: Document that a custom Button variant fills with its color at 20%
+(#3911)).
+Documented the custom Button base color on the C++ builder. The existing
+painter already uses a 20 percent resting tint and honors the hover and active
+colors supplied by the caller.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
