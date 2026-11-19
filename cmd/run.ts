@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "821f7d56d32d6383fae7ed35a5b60ad629d92a5e",
+  sha: "a4bda582624bea8dd5e60c8a0cdb9887776f9f4c",
   date: "2026-11-11",
-  subject: "text: Parse an HTML `<pre>` as a code block (#3899)",
+  subject: "attachment: Animate a GIF preview instead of freezing on its first frame (#3903)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

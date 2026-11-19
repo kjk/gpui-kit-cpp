@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `821f7d56d32d6383fae7ed35a5b60ad629d92a5e` (2026-11-11,
-text: Parse an HTML `<pre>` as a code block (#3899)).
-HTML pre blocks use the code-block path with one final newline trimmed. Plain
-code text retains indentation, and language classes on a nested code element
-take precedence over the pre element. Empty pre blocks are omitted.
+Processed through `a4bda582624bea8dd5e60c8a0cdb9887776f9f4c` (2026-11-11,
+attachment: Animate a GIF preview instead of freezing on its first frame
+(#3903)).
+Attachment previews now have the named or default image identity used by the
+Rust component. C++ animation already advances on the decoded image clock,
+which survives a rebuilt preview element.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

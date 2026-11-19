@@ -207,8 +207,16 @@ El* AttachmentMedia::IntoEl() {
     if (hasSource) {
         // GPUI clips rectangularly, so the slot's overflow_hidden cannot
         // round the image: it carries the slot's radius itself.
-        box->Child(ImageEl(a, source)->Absolute()->Inset0()->SizeFull()->Radius(
-            radius));
+        // Rust stores the animation on this element's identity. C++ keeps
+        // the clock on the decoded image and uses the same preview identity.
+        Str imageId =
+            hasId ? ControlId(a, id, "image") : StrL("attachment-image");
+        box->Child(ImageEl(a, source)
+                       ->Id(imageId)
+                       ->Absolute()
+                       ->Inset0()
+                       ->SizeFull()
+                       ->Radius(radius));
     }
     // An icon slot shows the status itself; children come back with
     // Complete.

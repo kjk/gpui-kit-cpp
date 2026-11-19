@@ -247,6 +247,16 @@ static void AMediaPreviewKeepsItsChildrenAndOverlays() {
     utassert(media->children.len == 1);
     utassert(media->overlays.len == 1);
 
+    El* preview = media->IntoEl()->first;
+    utassert(preview && preview->kind == ElKind::Image &&
+             StrEq(preview->id, "attachment-image"));
+    AttachmentSlotLayout layout;
+    layout.id = StrL("avatar");
+    layout.hasId = true;
+    preview = media->Layout(layout)->IntoEl()->first;
+    utassert(preview && preview->kind == ElKind::Image &&
+             StrEq(preview->id, "avatar/image"));
+
     AppGlobalClear(&app);
     ArenaDelete(a);
 }
