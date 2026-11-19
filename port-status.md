@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8746b8cb22270abdec5b29d95e69e189a66fb321` (2026-11-14,
-locales: Add Japanese (ja) (#3976)).
-Generate the Japanese component translations from the upstream catalog and
-verify lookup for translated attachment commands.
+Processed through `4379eebf26149a8ddea85d2fd3ec11ff82208437` (2026-11-15,
+table: Don't redraw a striped table every frame when its rows don't fill it
+(#3978)).
+Keep the existing real-row virtual range separate from stripe filler rows.
+Verify a short striped table settles without repeated window invalidation.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

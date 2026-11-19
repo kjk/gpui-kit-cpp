@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8746b8cb22270abdec5b29d95e69e189a66fb321",
-  date: "2026-11-14",
-  subject: "locales: Add Japanese (ja) (#3976)",
+  sha: "4379eebf26149a8ddea85d2fd3ec11ff82208437",
+  date: "2026-11-15",
+  subject: "table: Don't redraw a striped table every frame when its rows don't fill it (#3978)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

@@ -977,6 +977,43 @@ static void TwoTablesOnOnePageAreTwoTables() {
     EntityDropAll(&app);
 }
 
+struct ShortStripedTable {
+    Entity<TableState> table;
+    int renders = 0;
+
+    static El* Render(ShortStripedTable* self, Ctx* cx) {
+        self->renders++;
+        if (!self->table.IsValid()) {
+            self->table = EntityNewState<TableState>(cx->app);
+        }
+        return component::DataTable::New(cx, StrL("short-striped"), self->table)
+            ->Columns(kDumpColumns, 2)
+            ->Rows(3, nullptr, nullptr)
+            ->CellText(DumpCellText)
+            ->Stripe(true)
+            ->H(360)
+            ->IntoEl();
+    }
+};
+
+// table/state.rs striped_table_with_few_rows_lets_a_cached_view_be_reused.
+static void ShortStripedTableSettlesWithFillerRows() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<ShortStripedTable>(app);
+    Window* win = TestWindowOpen(app, view, 300, 400, 1);
+    auto* self = view.Get(app);
+    TestRunUntilParked(app);
+    int renders = self->renders;
+    utassert(renders > 0 && win->invalidations == 0);
+    const TableState* table = self->table.Get(app);
+    utassert(table && table->contentH < table->viewportH);
+    utassert(table && table->visibleRange.rowEnd == 3 && table->scrollY == 0.f);
+    TestRunUntilParked(app);
+    utassert(self->renders == renders);
+    TestAppFree(app);
+}
+
 // calculate_extra_rows_needed: the whole rows that fit under the data, and
 // none once the data overflows the body.
 static void AStripedTableFillsTheBodyWithEmptyRows() {
@@ -2345,6 +2382,7 @@ void TestDataTable() {
     AFitStaysWithinTheColumnAndEmitsOnlyOnAChange();
     AResizeDragAfterAFitWaitsForTheNextPress();
     AStripedTableFillsTheBodyWithEmptyRows();
+    ShortStripedTableSettlesWithFillerRows();
     FixedColsBorderFollowsTheFixedColumns();
     SortIconIsALabelledButtonThatCyclesTheSort();
     SourceColumnBuildersKeepEveryField();
