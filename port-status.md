@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0400b342e096086ae6412f0f8ee755152b44431f` (2026-11-10,
-chore: Enforce workspace redundant_clone lint (#3838)).
-The Rust workspace enables the redundant-clone lint and transfers values where
-it previously cloned them. Its focus-handle refresh exceptions are Rust-
-specific. C++ uses generational handles and explicit ownership for these
-paths.
+Processed through `ab7bd640021e062094cb4fd1e15fc6b465ec6a47` (2026-11-10,
+text: Add TextView::link to replace or drop links (#3743)).
+TextView can rewrite or remove links during rendering. The callback receives
+resolved Markdown destinations and titles, and click and tooltip handlers use
+the rendered destination. The Base showcase includes the upstream record-link
+example.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

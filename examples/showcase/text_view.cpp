@@ -69,6 +69,15 @@ static TextViewStyle ShowcaseTextViewStyle(ExamplePalette palette) {
     return style;
 }
 
+static bool RewriteShowcaseLink(TextViewLink* link, const App*, void*) {
+    Str prefix = StrL("record://");
+    if (!StrStartsWith(link->url, prefix)) return true;
+    Str id(link->url.s + len(prefix), len(link->url) - len(prefix));
+    if (StrEq(id, "7")) return false;
+    link->Url(fmt("https://example.com/records/%s", id));
+    return true;
+}
+
 El* ShowcaseTextView(ShowcaseApp* app, Ctx* cx) {
     Arena* a = cx->a;
     if (!app->textView.IsValid()) {
@@ -79,6 +88,14 @@ El* ShowcaseTextView(ShowcaseApp* app, Ctx* cx) {
     }
     ExamplePalette palette = PaletteActive();
     TextViewStyle style = ShowcaseTextViewStyle(palette);
+    El* links = TextView::New(
+                    cx, StrL("Open [record 42](record://42), "
+                             "[record 7](record://7) (deleted) or the "
+                             "[docs][docs].\n\n"
+                             "[docs]: https://github.com/longbridge/gpui-kit"))
+                    ->Style(style)
+                    ->Link(&RewriteShowcaseLink)
+                    ->IntoEl();
 
     // `div().w_full().h(px(560.)).max_h_full()` around a document that
     // scrolls inside it, so the viewport itself never moves.
@@ -87,12 +104,17 @@ El* ShowcaseTextView(ShowcaseApp* app, Ctx* cx) {
     return Div(a)
         ->FlexCol()
         ->W(kFill)
-        ->H(560)
-        ->MaxH(kFill)
+        ->Gap(Rems(cx, 1.f))
         ->Fg(RgbaHex(palette.foreground))
-        ->Child(
-            Div(a)->FlexCol()->SizeFull()->MinH(0)->ClipY()->PadX(16)->Child(
-                document));
+        ->Child(links)
+        ->Child(Div(a)
+                    ->FlexCol()
+                    ->W(kFill)
+                    ->H(560)
+                    ->MinH(0)
+                    ->ClipY()
+                    ->PadX(16)
+                    ->Child(document));
 }
 
 SHOWCASE_PAGE(CompTextView, ShowcaseTextView);

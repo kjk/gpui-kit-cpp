@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0400b342e096086ae6412f0f8ee755152b44431f",
+  sha: "ab7bd640021e062094cb4fd1e15fc6b465ec6a47",
   date: "2026-11-10",
-  subject: "chore: Enforce workspace redundant_clone lint (#3838)",
+  subject: "text: Add TextView::link to replace or drop links (#3743)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

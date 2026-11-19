@@ -1292,6 +1292,7 @@ struct MdBuild {
     Rgba highlight = {};
     bool hasHighlight = false;
     Str href = {};
+    Str linkTitle = {};
     ArenaVec<MdDef> defs{};
 };
 
@@ -1747,6 +1748,7 @@ static MdRun* NewRun(MdBuild* b) {
     r->highlight = b->highlight;
     r->hasHighlight = b->hasHighlight;
     r->href = b->href;
+    r->linkTitle = b->linkTitle;
     if (n->runLast) {
         n->runLast->next = r;
     } else {
@@ -2032,12 +2034,14 @@ static void MdInlineHtml(MdBuild* b, Str tag) {
         b->marks = (uint8_t)(b->marks & ~t.mark);
         if (t.mark & MdLink) {
             b->href = {};
+            b->linkTitle = {};
         }
         return;
     }
     b->marks = (uint8_t)(b->marks | t.mark);
     if (t.mark & MdLink) {
         b->href = t.href;
+        b->linkTitle = t.linkTitle;
     }
 }
 
@@ -2249,11 +2253,6 @@ static const MdDef* MdDefFind(MdBuild* b, Str identifier) {
     return nullptr;
 }
 
-static Str MdDefUrl(MdBuild* b, Str identifier) {
-    const MdDef* def = MdDefFind(b, identifier);
-    return def ? def->url : Str{};
-}
-
 // Whether an inline plugin claims `n`, and what it made of it.
 static bool MdClaimedInline(MdBuild* b, const md::Node* n, MarkdownNode* out) {
     if (!b->extensions) {
@@ -2366,11 +2365,19 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
         case md::NodeKind::Link:
         case md::NodeKind::LinkReference: {
             Str saved = b->href;
-            b->href = n->kind == md::NodeKind::Link
-                          ? V(b, n, md::NodeStrKind::Url)
-                          : MdDefUrl(b, V(b, n, md::NodeStrKind::Identifier));
+            Str savedTitle = b->linkTitle;
+            if (n->kind == md::NodeKind::Link) {
+                b->href = V(b, n, md::NodeStrKind::Url);
+                b->linkTitle = V(b, n, md::NodeStrKind::Title);
+            } else {
+                const MdDef* definition =
+                    MdDefFind(b, V(b, n, md::NodeStrKind::Identifier));
+                b->href = definition ? definition->url : Str{};
+                b->linkTitle = definition ? definition->title : Str{};
+            }
             MdMarked(b, n, MdLink);
             b->href = saved;
+            b->linkTitle = savedTitle;
             break;
         }
         case md::NodeKind::Image:
@@ -3812,20 +3819,6 @@ static El* InlineImageElement(TextView* view, const MdRun* r, float font,
     return e;
 }
 
-El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
-    El* e = InlineImageElement(this, r, font, color, inFlow);
-    if ((r->marks & MdLink) && len(r->href) > 0) {
-        e->Cursor(CursorKind::Pointer);
-        BindLinkTooltip(e, r->href);
-        if (onLink.IsValid()) {
-            e->OnClick(LinkListener(r->href));
-        } else {
-            e->OnClick(MkFunc0(MdOpenHref, r->href.s));
-        }
-    }
-    return e;
-}
-
 // One styled word. Everything a TextMark can say about a run, applied to the
 // element that carries it — node.rs builds the same HighlightStyle.
 El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
@@ -3935,20 +3928,7 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
     if (selectable) {
         t->Selectable()->GlyphSelection();
     }
-    SrcMark(t, marks, href);
-    if ((marks & MdLink) && len(href) > 0) {
-        // handle_link_click: the handler if one was given, the desktop's
-        // browser otherwise. The href is NUL-terminated in the arena the
-        // parse lives in, so the handler gets a `const char*` it can read for
-        // the length of the call — the same rule every hit-test payload
-        // follows.
-        t->Cursor(CursorKind::Pointer);
-        if (onLink.IsValid()) {
-            t->OnClick(LinkListener(href));
-        } else {
-            t->OnClick(MkFunc0(MdOpenHref, href.s));
-        }
-    }
+    BindViewLink(t, href);
     return t;
 }
 
@@ -4662,6 +4642,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         El* w = Word(StrDup(a, Str(word, wordLen)), font, color, marks, weight,
                      href, highlight, hasHighlight);
         if (wordRun) {
+            SrcMark(w, wordRun->marks, wordRun->href);
             SrcMap(w, wordRun->segments, wordRun->segmentCount, wordStart);
             RangeWashes(w, n, runOffset + wordStart,
                         runOffset + wordStart + wordLen,
@@ -4676,9 +4657,6 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             lastWordLo = runOffset + wordStart;
         }
         ApplyTextForeground(a, w, w->text, wordLeaf, ranges, nRanges);
-        if ((marks & MdLink) && len(href) > 0) {
-            BindLinkTooltip(w, href);
-        }
         reportPiece(w, wordLeaf, wordLeaf + wordLen, false);
         row->Child(w);
         wordLen = 0;
@@ -4686,7 +4664,16 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     for (MdRun* r = n->runFirst; r; r = r->next) {
         flush();
         marks = r->marks;
-        href = r->href;
+        href = (marks & MdLink) ? r->href : Str{};
+        if ((marks & MdLink) && linkHook) {
+            TextViewLink link = {href, r->linkTitle};
+            if (linkHook(&link, cx->app, linkHookData)) {
+                href = StrDup(a, link.url);
+            } else {
+                marks = (uint8_t)(marks & ~MdLink);
+                href = {};
+            }
+        }
         highlight = r->highlight;
         hasHighlight = r->hasHighlight;
         runOffset = nextRunOffset;
@@ -4735,16 +4722,19 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                     rendered.element->MarginT(std::max(
                         0.f, context.lineHeight * 0.75f - rendered.baseline));
                 }
-                reportPiece(rendered.element, leafAt, leafAt + 3, true);
-                row->Child(rendered.element);
+                El* object = rendered.element;
+                if (len(href) > 0) {
+                    object = Div(a)->Child(object);
+                    BindViewLink(object, href);
+                }
+                reportPiece(object, leafAt, leafAt + 3, true);
+                row->Child(object);
             } else if (r->custom.text) {
                 El* w = Word(r->custom.text, font, color, marks, weight, href,
                              highlight, hasHighlight);
+                SrcMark(w, r->marks, r->href);
                 if (objFg) {
                     w->Fg(objColor);
-                }
-                if ((marks & MdLink) && len(href) > 0) {
-                    BindLinkTooltip(w, href);
                 }
                 // An inline plugin node is selected as a unit, and maps to
                 // `MarkdownNode::source_range`.
@@ -4764,7 +4754,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             continue;
         }
         if (len(r->imgSrc) > 0) {
-            El* image = SrcImage(ImageRun(r, font, color, inFlow), r);
+            El* image =
+                SrcImage(InlineImageElement(this, r, font, color, inFlow), r);
+            BindViewLink(image, href);
             reportPiece(image, leafAt, leafAt + 3, true);
             row->Child(image);
             leafAt += 3;
@@ -8474,7 +8466,14 @@ TextView* TextView::Plugin(Str name, MdPluginParseFn parse,
     return this;
 }
 
-void TextView::BindLinkTooltip(El* element, Str href) {
+void TextView::BindViewLink(El* element, Str href) {
+    if (len(href) == 0) return;
+    element->Cursor(CursorKind::Pointer);
+    if (onLink.IsValid()) {
+        element->OnClick(LinkListener(href));
+    } else {
+        element->OnClick(MkFunc0(MdOpenHref, href.s));
+    }
     if (linkTooltip) {
         auto* target = ArenaNew<LinkTooltipTarget>(a);
         *target = {href, linkTooltip, linkTooltipData, cx->self};
@@ -8488,6 +8487,12 @@ void TextView::BindLinkTooltip(El* element, Str href) {
 TextView* TextView::LinkTooltip(LinkTooltipFn build, void* data) {
     linkTooltip = build;
     linkTooltipData = data;
+    return this;
+}
+
+TextView* TextView::Link(TextViewLinkFn hook, void* data) {
+    linkHook = hook;
+    linkHookData = data;
     return this;
 }
 

@@ -56,6 +56,7 @@ struct HtmlInlineTag {
     bool isBreak = false;
     // <a href>, and an <img>'s source, alt text and given size.
     Str href = {};
+    Str linkTitle = {};
     Str alt = {};
     Str src = {};
     float width = 0;

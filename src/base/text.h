@@ -299,6 +299,7 @@ struct MdRun {
     bool hasImgSpan = false;
     // LinkMark::url, when marks has MdLink.
     Str href = {};
+    Str linkTitle = {};
     // ImageNode::url. An image run carries no other text.
     Str imgSrc = {};
     // ImageNode::title. Empty is none: a reference image takes the
@@ -1246,6 +1247,25 @@ uint32_t OrderedListOrdinal(uint32_t start, uint32_t ix);
 Str ListItemPrefix(Arena* a, uint32_t ix, uint32_t start, bool ordered,
                    int depth);
 
+struct TextViewLink {
+    Str url = {};
+    Str title = {};
+
+    static TextViewLink New(Str url) { return {url, {}}; }
+    TextViewLink& Url(Str value) {
+        url = value;
+        return *this;
+    }
+    TextViewLink& Title(Str value) {
+        title = value;
+        return *this;
+    }
+};
+
+// The callback may replace the resolved destination and title. False draws
+// the original content without the link.
+using TextViewLinkFn = bool (*)(TextViewLink* link, const App* app, void* data);
+
 // The payload OnLinkWithContext supplies to its listener. It is owned by the
 // current frame arena and valid only for that call.
 struct TextViewLinkBinding {
@@ -1409,6 +1429,8 @@ struct TextView {
     // text_view.rs image_source.
     ImageSourceFn imageSource = nullptr;
     void* imageSourceData = nullptr;
+    TextViewLinkFn linkHook = nullptr;
+    void* linkHookData = nullptr;
     LinkTooltipFn linkTooltip = nullptr;
     void* linkTooltipData = nullptr;
     // Rust stores plugins in a Vec and offers them in registration order.
@@ -1549,12 +1571,11 @@ struct TextView {
     // a 10 ms word stagger.
     TextView* StreamFade(bool value = true);
     // text_view::LinkClickHandlerFn. The handler's int64_t is the link's
-    // href as a NUL-terminated `const char*`; it points into the parse the
-    // frame was built from and is good for the length of the call, which is
-    // the same rule every other hit-test payload follows. Without a handler
-    // a link opens in the desktop's browser, which is what Rust's
-    // handle_link_click falls back to (cx.open_url).
+    // href as a NUL-terminated `const char*`, valid for the duration of the
+    // call. Without a handler a link opens in the desktop browser.
     TextView* OnLink(Listener fn);
+    // Apply the callback at render time, after resolving Markdown references.
+    TextView* Link(TextViewLinkFn hook, void* data = nullptr);
     // Builds the pointer-following preview for the hovered URL. Data belongs
     // to the caller and must stay live while the TextView renders it.
     TextView* LinkTooltip(LinkTooltipFn build, void* data = nullptr);
@@ -1680,7 +1701,7 @@ struct TextView {
     El* SrcMap(El* t, const SourceSegment* segments, int count, int offset,
                bool atomic = false);
     Listener LinkListener(Str href);
-    void BindLinkTooltip(El* element, Str href);
+    void BindViewLink(El* element, Str href);
     // The text a plugin's parser sees, and the block a plugin claimed.
     Str BlockText(MdNode* n);
     El* PluginBlock(MdNode* n);
@@ -1724,7 +1745,6 @@ struct TextView {
                   const MdNode* leaf = nullptr);
     // An image run: node.rs putting an img() element in the middle of the
     // inline flow.
-    El* ImageRun(MdRun* r, float font, Rgba color, bool inFlow);
     // One styled word of a flow, with its marks applied and — for a link —
     // the click that opens it.
     El* Word(Str w, float font, Rgba color, uint8_t marks, int weight, Str href,

@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "0400b342e096086ae6412f0f8ee755152b44431f";
+const pinnedGpuiComponent = "ab7bd640021e062094cb4fd1e15fc6b465ec6a47";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
@@ -395,6 +395,10 @@ const declarationMappings: Record<string, DeclarationMapping> = {
   "base/number_input.rs::fn step_value": {
     spellings: ["NumberStepValueTemp"],
   },
+  "base/text/text_view.rs::struct Link": {
+    spellings: ["TextViewLink"],
+    targets: ["src/base/text.h"],
+  },
   "base/macos_accessibility.rs::fn install_window_hit_test_forwarder": {
     spellings: ["PlatInstallAccessibilityHitTest"],
     targets: ["src/gpui/platform.h", "src/gpui/window_mac.cpp"],
@@ -642,9 +646,9 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 613, sha256: "f0f0254139664dce362799a3c21acb51047fbb777e037d5642ef4e5707fb87b0" },
+    declaration: { count: 614, sha256: "f953d47e1716b2de56924e2568e4b1b0d91b29b64ff35b3522feeaaa104759c3" },
     "pub-use": { count: 176, sha256: "7bfc3e1f707f7fb7bbf0b5c016cbaed3f8e04544a9628ccae801e27fe99655f6" },
-    test: { count: 1665, sha256: "da599505dbd98976afd6d44e422d0e6a57be88124474663b4e5eaf08ea2052ff" },
+    test: { count: 1666, sha256: "3029fd252d03ac7ec78e1801c7bb1ff89952e57b2d095f87b0b613970f72c1f2" },
   },
   ui: {
     declaration: { count: 478, sha256: "3534c842a12b080cba2b62c17bbac5c222159098d08d963baa1e59f46ab7d3ef" },

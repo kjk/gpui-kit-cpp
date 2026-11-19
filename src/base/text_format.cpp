@@ -259,6 +259,7 @@ HtmlInlineTag HtmlParseInlineTag(Arena* a, Str tag) {
         result.height = ElementLength(a, element, "height");
     } else if (result.mark == MdLink) {
         result.href = html5ever::AttrValue(a, element, StrL("href"));
+        result.linkTitle = html5ever::AttrValue(a, element, StrL("title"));
     }
     return result;
 }
@@ -304,6 +305,7 @@ struct Project {
     Rgba highlight = {};
     bool hasHighlight = false;
     Str href = {};
+    Str linkTitle = {};
     bool raw = false;
     // HTML drops one line feed that is the first token after <pre>. A
     // comment or element before that text means the line feed stays.
@@ -416,6 +418,7 @@ static MdRun* NewRun(Project* p) {
     MdRun* run = ArenaNew<MdRun>(p->a);
     run->marks = p->marks;
     run->href = p->href;
+    run->linkTitle = p->linkTitle;
     run->highlight = p->highlight;
     run->hasHighlight = p->hasHighlight;
     if (target->runLast)
@@ -605,12 +608,14 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
     }
     uint8_t oldMarks = p->marks;
     Str oldHref = p->href;
+    Str oldLinkTitle = p->linkTitle;
     Rgba oldHighlight = p->highlight;
     bool oldHasHighlight = p->hasHighlight;
     uint8_t mark = InlineMark(name);
     if (StrEqI(name, "a")) {
         p->marks = (uint8_t)(p->marks | MdLink);
         p->href = html5ever::AttrValue(p->a, source, StrL("href"));
+        p->linkTitle = html5ever::AttrValue(p->a, source, StrL("title"));
     } else {
         p->marks = (uint8_t)(p->marks | mark);
         if (mark & MdHighlight) {
@@ -624,6 +629,7 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
     ProjectChildren(p, source);
     p->marks = oldMarks;
     p->href = oldHref;
+    p->linkTitle = oldLinkTitle;
     p->highlight = oldHighlight;
     p->hasHighlight = oldHasHighlight;
 }

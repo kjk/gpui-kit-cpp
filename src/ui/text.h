@@ -89,6 +89,7 @@ using TextViewMotion = gpui::TextViewMotion;
 using TextViewState = gpui::TextViewState;
 using TextViewLayoutState = gpui::TextViewLayoutState;
 using TextView = gpui::TextView;
+using TextViewLink = gpui::TextViewLink;
 using TaskToggleEvent = gpui::TaskToggleEvent;
 // TextView::InlineCodeStyle, ListStyle and BlockquoteStyle: the component
 // façade is Base's TextView, so those builders are the same methods.

@@ -10047,6 +10047,98 @@ static void LinkTooltipFollowsThePointerAndClearsOnExit() {
     TestAppFree(app);
 }
 
+struct TextViewLinkRewriteProbe {
+    Entity<TextViewState> state;
+    bool rewrite = false;
+    bool keepRemoved = false;
+    bool sawReferenceTitle = false;
+    char activated[64] = {};
+
+    static bool Rewrite(TextViewLink* link, const App*, void* data) {
+        auto* self = (TextViewLinkRewriteProbe*)data;
+        if (StrEq(link->url, "app://deleted")) return self->keepRemoved;
+        if (StrEq(link->url, "https://reference.example")) {
+            self->sawReferenceTitle |= StrEq(link->title, "Reference title");
+            Str decorated = fmt("https://%s.example/unused", StrL("moved"));
+            link->Url(Str(decorated.s, len(StrL("https://moved.example"))));
+        } else if (StrEq(link->url, "https://image.example")) {
+            link->Url(StrL("https://moved-image.example"));
+        }
+        return true;
+    }
+
+    static void Activate(TextViewLinkRewriteProbe* self, Ctx*,
+                         const ClickEvent*, int64_t url) {
+        snprintf(self->activated, sizeof(self->activated), "%s",
+                 (const char*)(intptr_t)url);
+    }
+
+    static El* Preview(Ctx*, Str, void*) { return nullptr; }
+
+    static El* Render(TextViewLinkRewriteProbe* self, Ctx* cx) {
+        auto* text =
+            TextView::New(cx, self->state)
+                ->OnLink(Listen(cx, &TextViewLinkRewriteProbe::Activate))
+                ->LinkTooltip(&TextViewLinkRewriteProbe::Preview);
+        if (self->rewrite) text->Link(&TextViewLinkRewriteProbe::Rewrite, self);
+        return text->IntoEl();
+    }
+};
+
+static const HitRect* FindRewrittenLink(const Window* win, Str url) {
+    for (const HitRect& hit : win->paint.hits) {
+        if (hit.linkTooltip && StrEq(hit.linkTooltip->url, url)) return &hit;
+    }
+    return nullptr;
+}
+
+// text/node.rs link_hook_replaces_or_drops_links_and_the_cache_follows_it.
+static void TextViewRewritesLinksOnEachFrame() {
+    Str source = StrL(
+        "[live](https://live.example) [dead](app://deleted) [cited][ref]\n\n"
+        "[\x60inline\x60][ref] "
+        "[![alt](assets/icons/heart.svg)](https://image.example)\n\n"
+        "[ref]: https://reference.example \"Reference title\"");
+    App* app = TestAppNew();
+    auto view = EntityNew<TextViewLinkRewriteProbe>(app);
+    auto* probe = view.Get(app);
+    probe->state = TextViewState::Markdown(app, source);
+    Window* win = TestWindowOpen(app, view, 500, 240);
+    TestRunUntilParked(app);
+    TestDraw(win);
+    utassert(FindRewrittenLink(win, StrL("app://deleted")));
+    utassert(FindRewrittenLink(win, StrL("https://reference.example")));
+    utassert(FindRewrittenLink(win, StrL("https://image.example")));
+
+    probe->rewrite = true;
+    TestDraw(win);
+    utassert(!FindRewrittenLink(win, StrL("app://deleted")));
+    utassert(!FindRewrittenLink(win, StrL("https://reference.example")));
+    utassert(FindRewrittenLink(win, StrL("https://live.example")));
+    utassert(FindRewrittenLink(win, StrL("https://moved-image.example")));
+    utassert(probe->sawReferenceTitle);
+    const HitRect* rewritten =
+        FindRewrittenLink(win, StrL("https://moved.example"));
+    utassert(rewritten);
+    if (rewritten) {
+        Point point = {rewritten->bounds.CenterX(), rewritten->bounds
+                                                        .CenterY()};
+        TestSimulateClick(win, point);
+        utassert(StrEq(Str(probe->activated), "https://moved.example"));
+    }
+    El* root = EntityRender(app, win, win->frameArena, view.id);
+    El* dead = FindTextEl(root, "dead");
+    utassert(dead && dead->nUnderlines == 0);
+    El* cited = FindTextEl(root, "cited");
+    utassert(cited && cited->nUnderlines > 0);
+    utassert(StrEq(probe->state.Get(app)->Source(), source));
+
+    probe->keepRemoved = true;
+    TestDraw(win);
+    utassert(FindRewrittenLink(win, StrL("app://deleted")));
+    TestAppFree(app);
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -10055,6 +10147,7 @@ void TestTextView() {
     WrappedWholeLeafCaretsKeepTheirLine();
     WrappedMixedLeafCaretsKeepTheirLine();
     LinkTooltipFollowsThePointerAndClearsOnExit();
+    TextViewRewritesLinksOnEachFrame();
     RekeyingClonedLeavesPreservesEachIdentity();
     GeometryIsAnImmutableSnapshot();
     EmptyKeyedLeafHasALineBox();
