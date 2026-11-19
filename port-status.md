@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f8243df95b9158d9b6d842348dcfcd0481a85c2c` (2026-11-19,
-text_selection: Reveal the line of a SelectableText range (#4052)).
-Reveal the visual line containing a valid UTF-8 range on SelectableText.
-Report the exact window-space line to a listener or request ancestor
-autoscroll once per changed range.
+Processed through `85156303ae309925bdefa63250ca9f38b17c270b` (2026-11-19,
+text_view: Share linked image click handling (#4053)).
+Use one linked-image activation path for paragraph and inline-flow images.
+Keep the original button for custom handlers and open the URL by default on
+primary and middle clicks.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

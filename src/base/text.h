@@ -1712,6 +1712,8 @@ struct TextView {
                bool atomic = false);
     Listener LinkListener(Str href);
     void BindViewLink(El* element, Str href);
+    void BindLinkedImage(El* image, Str href);
+    int nextLinkedImage = 0;
     // The text a plugin's parser sees, and the block a plugin claimed.
     Str BlockText(MdNode* n);
     El* PluginBlock(MdNode* n);

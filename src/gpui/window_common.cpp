@@ -2835,12 +2835,16 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     if (win->onMouseDown.IsValid()) {
         ListenerCall(win->app, win, win->onMouseDown, &in);
     }
-    // Only the left button clicks an element. GPUI routes a press of any
-    // button to whatever asked for that button, and never turns a right one
-    // into a click; so a non-left press reaches the element's own
-    // on_mouse_down — which is how a popover opens on the right button — and
-    // stops before the click path, the focus move and the caret below.
+    // Secondary buttons reach mouse-down handlers and an opt-in auxiliary
+    // click target. Only the primary button takes focus or places a caret.
     if (!in.IsFocusing()) {
+        const HitRect* hit = HitTestRect(&win->paint, x, y);
+        bool auxiliary =
+            hit && hit->auxiliaryClick &&
+            (in.button == MouseButton::Middle ||
+             (in.button == MouseButton::Right && hit->auxiliaryRightClick));
+        win->auxiliaryPressedId = auxiliary ? hit->id : 0;
+        win->auxiliaryPressedButton = in.button;
         // Over the whole chain, not just the element the press landed on: a
         // table row marks itself as right-clicked and the context menu that
         // wraps the table opens, both from the one press. That is why
@@ -3115,6 +3119,20 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in,
     // lets a reader change their mind by moving off the button before
     // letting go.
     int upId = hit ? hit->id : 0;
+    if (canceled || in.button == win->auxiliaryPressedButton) {
+        int pressed = win->auxiliaryPressedId;
+        win->auxiliaryPressedId = 0;
+        if (!canceled && pressed && pressed == upId && hit &&
+            hit->auxiliaryClick &&
+            (in.button == MouseButton::Middle || hit->auxiliaryRightClick)) {
+            ClickEvent event = {in.x, in.y, in.button, upId};
+            event.el = hit->bounds;
+            event.clickCount = in.clickCount;
+            event.modifiers = in.modifiers;
+            ListenerCall(win->app, win, hit->listener, &event);
+            if (hit->onClick.IsValid()) hit->onClick.Call();
+        }
+    }
     if (!canceled &&
         ClickFromRelease(win->pressPending, win->pressedId, win->pressedButton,
                          dragged, upId, in.button)) {
@@ -3141,6 +3159,10 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in,
             for (int k = 0; k < len(chain) && !win->stopPropagation; k++) {
                 const HitRect& hr = win->paint.hits[chain[k]];
                 if (!hr.listener.IsValid()) {
+                    if (hr.stopClick && hr.onClick.IsValid()) {
+                        handled = true;
+                        break;
+                    }
                     continue;
                 }
                 handled = true;
@@ -3186,7 +3208,9 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in,
 }
 
 void WindowCancelPointerGesture(Window* win) {
-    if (!win || !win->mouseDown) return;
+    if (!win) return;
+    win->auxiliaryPressedId = 0;
+    if (!win->mouseDown) return;
     MouseUpEvent canceled;
     canceled.button = win->pressedButton;
     canceled.x = win->mouseX;

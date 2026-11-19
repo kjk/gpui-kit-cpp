@@ -4870,7 +4870,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (len(r->imgSrc) > 0) {
             El* image =
                 SrcImage(InlineImageElement(this, r, font, color, inFlow), r);
-            BindViewLink(image, href);
+            BindLinkedImage(image, href);
             reportPiece(image, leafAt, leafAt + 3, true);
             row->Child(image);
             leafAt += 3;
@@ -8605,6 +8605,19 @@ void TextView::BindViewLink(El* element, Str href) {
         }
         element->lifecycle->linkTooltip = target;
     }
+}
+
+void TextView::BindLinkedImage(El* image, Str href) {
+    if (len(href) == 0) return;
+    BindViewLink(image, href);
+    // Paragraphs and inline flows use the same image element. The default
+    // opens on primary and middle clicks, while a custom callback also
+    // receives a right click with its original button.
+    image
+        ->PathClick(StrDup(a, fmt("linked-image-%d-%u-%d", state.id.index,
+                                  state.id.gen, nextLinkedImage++)))
+        ->StopClick()
+        ->AuxiliaryClick(onLink.IsValid());
 }
 
 TextView* TextView::LinkTooltip(LinkTooltipFn build, void* data) {

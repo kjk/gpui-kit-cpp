@@ -1893,6 +1893,13 @@ El* El::OnClick(Listener l) {
     listener = l;
     return this;
 }
+El* El::AuxiliaryClick(bool right) {
+    if (!lifecycle) lifecycle = ArenaNew<ElLifecycle>(arena);
+    lifecycle->auxiliaryClick = true;
+    lifecycle->auxiliaryRightClick = right;
+    return this;
+}
+
 El* El::OnScroll(Listener l) {
     onScroll = l;
     return this;
@@ -8600,6 +8607,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.sliderAxis = e->sliderAxis;
         hr.input = e->input;
         hr.stopClick = e->stopClick;
+        if (e->lifecycle) {
+            hr.auxiliaryClick = e->lifecycle->auxiliaryClick;
+            hr.auxiliaryRightClick = e->lifecycle->auxiliaryRightClick;
+        }
         hr.stopMouseDown = e->stopMouseDown;
         hr.focusOnMouseDownBubble = e->focusOnMouseDownBubble;
         hr.suppressTextSelection = e->suppressTextSelection;

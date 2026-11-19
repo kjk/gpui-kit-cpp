@@ -2676,6 +2676,8 @@ struct ElLifecycle {
     const TextHighlight* highlights = nullptr;
     int highlightCount = 0;
     TextFontRanges fontRanges;
+    bool auxiliaryClick = false;
+    bool auxiliaryRightClick = false;
 };
 
 using LinkTooltipFn = El* (*)(Ctx * cx, Str url, void* data);
@@ -3303,6 +3305,9 @@ struct El {
     El* StopMouseDown();
     // cx.stop_propagation() for the click this element takes.
     El* StopClick();
+    // Invoke this element's click handler on a matched middle press/release,
+    // and optionally on a matched right press/release.
+    El* AuxiliaryClick(bool right);
     El* SuppressTextSelection();
     // Pointer presses on this element keep the selection for its click.
     El* KeepTextSelection();
@@ -3678,6 +3683,8 @@ struct HitRect {
     // it. A field's clear button is the case: pressing the × must not also be
     // a press on the trigger it sits in.
     bool stopClick = false;
+    bool auxiliaryClick = false;
+    bool auxiliaryRightClick = false;
     bool stopMouseDown = false;
     bool focusOnMouseDownBubble = false;
     bool suppressTextSelection = false;
@@ -7497,6 +7504,8 @@ struct Window {
     // The drag in flight: what the press picked up, and which drop target the
     // pointer is over right now. GPUI keeps the same pair — `active_drag` and
     // the hitbox its drop handlers consult — on its Window.
+    int auxiliaryPressedId = 0;
+    MouseButton auxiliaryPressedButton = MouseButton::Left;
     DragPayload activeDrag = {};
     int dragOverId = 0;
     // The OS file drag in flight, and the paths it entered with. Owned.

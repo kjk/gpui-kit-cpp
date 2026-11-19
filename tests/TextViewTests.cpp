@@ -10594,7 +10594,81 @@ static void FirstFrameShapesTextAroundTheDecodedInlineImage() {
     }
 }
 
+static void LinkedImagesSharePrimaryAndAuxiliaryActivation() {
+    struct View {
+        Entity<TextViewState> text;
+        RenderImage* image = nullptr;
+        Vec<MouseButton> buttons;
+        int parentClicks = 0;
+
+        static void Activate(View* self, Ctx*, const ClickEvent* event,
+                             int64_t href) {
+            utassert(
+                StrEq(Str((const char*)href), StrL("https://example.test")));
+            VecAppend(self->buttons, event->button);
+        }
+
+        static void ParentClick(View* self, Ctx*, const ClickEvent*) {
+            self->parentClicks++;
+        }
+
+        static El* Render(View* self, Ctx* cx) {
+            return Div(cx->a)
+                ->W(420)
+                ->OnClick(Listen(cx, &ParentClick))
+                ->Child(TextView::New(cx, self->text)
+                            ->Selectable()
+                            ->OnLink(Listen(cx, &Activate, 0))
+                            ->ImageSource(TestSizedImageSource, self->image)
+                            ->IntoEl());
+        }
+    };
+    const Str docs[] = {
+        StrL("[![dot](test://dot)](https://example.test)"),
+        StrL("Before [![dot](test://dot)](https://example.test) after"),
+    };
+    for (Str doc : docs) {
+        App* app = TestAppNew();
+        component::Init(app);
+        auto root = EntityNew<View>(app);
+        View* view = root.Get(app);
+        view->text = TextViewState::Markdown(app, doc);
+        RenderImage* image = TestMakeSizedImage(app->paint, 100, 40);
+        view->image = image;
+        Window* win = TestWindowOpen(app, root, 480, 240, 1);
+        Bounds target = {};
+        for (const HitRect& hit : win->paint.hits) {
+            if (hit.auxiliaryClick) {
+                target = hit.bounds;
+                break;
+            }
+        }
+        utassert(target.w > 0 && target.h > 0);
+        Point at = {target.CenterX(), target.CenterY()};
+        const MouseButton buttons[] = {
+            MouseButton::Left,
+            MouseButton::Middle,
+            MouseButton::Right,
+        };
+        for (MouseButton button : buttons) {
+            TestSimulateMouseDown(win, at, button);
+            TestSimulateMouseUp(win, at, button);
+        }
+        utassert(len(view->buttons) == 3);
+        if (len(view->buttons) == 3) {
+            for (int i = 0; i < 3; i++)
+                utassert(view->buttons[i] == buttons[i]);
+        }
+        TestSimulateMouseDown(win, at, MouseButton::Middle);
+        TestSimulateMouseUp(win, {470, 230}, MouseButton::Middle);
+        utassert(len(view->buttons) == 3 && view->parentClicks == 0);
+        TestAppFree(app);
+        RenderImageRelease(image);
+    }
+}
+
 void TestTextView() {
+    LinkedImagesSharePrimaryAndAuxiliaryActivation();
     TestSuite("TextView");
     Arena* a = ArenaNew();
     KeyedLeavesReportGeometryAndUnkeyedLeavesDoNot();
