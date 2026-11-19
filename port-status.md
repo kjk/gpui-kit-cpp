@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a4bda582624bea8dd5e60c8a0cdb9887776f9f4c` (2026-11-11,
-attachment: Animate a GIF preview instead of freezing on its first frame
-(#3903)).
-Attachment previews now have the named or default image identity used by the
-Rust component. C++ animation already advances on the decoded image clock,
-which survives a rebuilt preview element.
+Processed through `6d18eece30091f9164f17129a092e94daf21a80b` (2026-11-11,
+docs: Use an explicit modifier in the Action guide's `KeyBinding::new`
+examples (#3913)).
+Reviewed the Action guide examples. The upstream website now illustrates
+explicit modifiers in its Rust KeyBinding calls; this repository has no
+mirrored Action guide.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
