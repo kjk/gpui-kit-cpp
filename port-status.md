@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b285d1cbec212c585ee6bd461e7d387f75dc9b1e` (2026-11-12,
-message_scroller: Add `scroll_to_offset` to restore a saved reading position
-(#3922)).
-Restore a saved MessageScroller row and its offset through the virtual list
-layout. Retain the logical anchor while row heights are provisional or
-preceding messages are inserted.
+Processed through `f5796528113e5018c9085a3e60f5a35073eb5b3e` (2026-11-12,
+skills: Use an icon the component `IconName` has in the usage reference
+(#3932)).
+The Rust usage reference now uses IconName::Close for the input suffix. The
+C++ tree has no corresponding usage reference.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
