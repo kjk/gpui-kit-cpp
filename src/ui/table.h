@@ -346,6 +346,7 @@ struct TableCell {
 struct TableRow {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
+    Str id = {};
     int ix = 0;
     UiSize size = UiSize::Medium;
     bool hasBg = false;
@@ -355,6 +356,9 @@ struct TableRow {
     ElRefiner refiner = {};
 
     static TableRow* New(Ctx* cx);
+    // Give the row and its children a stable element path across reordering.
+    // By default the table identifies the row by its position in the group.
+    TableRow* Id(Str name);
     TableRow* Bg(Background c);
     TableRow* Hover(const StateStyle& style);
     TableRow* Child(TableCellEl* c);

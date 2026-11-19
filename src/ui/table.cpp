@@ -216,6 +216,10 @@ TableRow* TableRow::New(Ctx* cx) {
     r->cx = cx;
     return r;
 }
+TableRow* TableRow::Id(Str name) {
+    id = name;
+    return this;
+}
 TableRow* TableRow::Bg(Background c) {
     bg = c;
     hasBg = true;
@@ -233,7 +237,7 @@ TableRow* TableRow::Child(TableCellEl* c) {
 
 El* TableRow::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    Str rowId = ElementIdNamed(a, StrL("row"), (uint64_t)ix);
+    Str rowId = id.s ? id : ElementIdNamed(a, StrL("row"), (uint64_t)ix);
     El* row =
         gpui::TableRow::New(cx, rowId, ix + 1)->W(kFill)->FlexRowDir(cx->app);
     if (hasBg) {

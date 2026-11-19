@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "38a54f0220024f7394dd07d7e6685688168d64e6",
+  sha: "cbe84bc0727813255dfc993b6f0bde95275b1b05",
   date: "2026-11-11",
-  subject: "docs: Stop the close click in the Tabs guide's closeable tabs example (#3916)",
+  subject: "table: Add `TableRow::id` so a row keeps its identity when rows reorder (#3907)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

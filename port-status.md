@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `38a54f0220024f7394dd07d7e6685688168d64e6` (2026-11-11,
-docs: Stop the close click in the Tabs guide's closeable tabs example
-(#3916)).
-The change only updates the upstream website example for closeable tabs. The
-C++ dock close handler already stops event propagation.
+Processed through `cbe84bc0727813255dfc993b6f0bde95275b1b05` (2026-11-11,
+table: Add `TableRow::id` so a row keeps its identity when rows reorder
+(#3907)).
+Add TableRow::Id to keep an explicit row and its descendants at the same
+element path across reordering while preserving positional row indices.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

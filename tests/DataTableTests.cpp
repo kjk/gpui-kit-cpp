@@ -2299,8 +2299,43 @@ static void AThemedTableRowKeepsItsOptionalHoverStyle() {
     AppGlobalClear(&app);
 }
 
+// component/table/table.rs stores_an_explicit_row_id.
+static void AThemedTableRowKeepsItsIdentityWhenRowsMove() {
+    App app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, nullptr, a};
+    auto build = [&](bool reversed, bool named) {
+        auto* alice = component::TableRow::New(&cx)->Child(
+            component::TableCell::New(&cx)->Child(Div(a)->Id(StrL("child"))));
+        auto* bob = component::TableRow::New(&cx)->Child(
+            component::TableCell::New(&cx)->Child(Div(a)->Id(StrL("child"))));
+        utassert(!alice->id.s);
+        if (named) {
+            alice->Id(StrL("alice"));
+            bob->Id(StrL("bob"));
+        }
+        El* group = component::TableBody::New(&cx)
+                        ->Child(reversed ? bob : alice)
+                        ->Child(reversed ? alice : bob)
+                        ->IntoEl();
+        IdsCollect(group);
+        El* renderedAlice = reversed ? group->last : group->first;
+        utassert(renderedAlice->accessibility.rowIndex == (reversed ? 2 : 1));
+        return renderedAlice;
+    };
+    El* named = build(false, true);
+    El* moved = build(true, true);
+    utassert(StrEq(named->id, StrL("alice")));
+    utassert(named->pathId == moved->pathId);
+    utassert(named->first->first->pathId == moved->first->first->pathId);
+    utassert(build(false, false)->pathId != build(true, false)->pathId);
+    ArenaDelete(a);
+    AppGlobalClear(&app);
+}
+
 void TestDataTable() {
     AThemedTableRowKeepsItsOptionalHoverStyle();
+    AThemedTableRowKeepsItsIdentityWhenRowsMove();
     ResizingAColumnFollowsThePointer();
     AFittedColumnHoldsItsContentOnWholeDevicePixels();
     AFitStaysWithinTheColumnAndEmitsOnlyOnAChange();
