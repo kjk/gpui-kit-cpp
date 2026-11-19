@@ -65,6 +65,27 @@ double TestClockNow() {
     return gTestPlatform.now;
 }
 
+RenderImage* TestMakeSizedImage(PaintApp* paint, int width, int height) {
+    if (width <= 0 || height <= 0 || height > INT32_MAX / 4 / width) {
+        return nullptr;
+    }
+    const int pixelCount = width * height;
+    Vec<uint8_t> pixels;
+    VecResize(pixels, 4 * pixelCount);
+    for (int i = 0; i < pixelCount; i++) {
+        uint8_t* bgra = pixels.els + i * 4;
+        bgra[0] = 40;
+        bgra[1] = 40;
+        bgra[2] = 190;
+        bgra[3] = 255;
+    }
+    return RenderImageFromBgra(paint, pixels.els, width, height);
+}
+
+ImageSource TestSizedImageSource(Str, void* bitmap) {
+    return ImageSource::FromRender((RenderImage*)bitmap);
+}
+
 App* TestAppNew() {
     gTestExecWasRunning = ExecOnMainThread();
     App* app = AppNewHeadless();

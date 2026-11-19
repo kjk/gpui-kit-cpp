@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "e028806a836c81b412281f8cdabf1d334386c877",
+  sha: "11805c76ac55bcc2ece3ac377a113f70108f6a25",
   date: "2026-11-18",
-  subject: "editor: Preserve f64 vertical coordinates past 2^24 px and allow 9-digit line numbers (#4022)",
+  subject: "test: Resolve test images synchronously for deterministic layout (#3952)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

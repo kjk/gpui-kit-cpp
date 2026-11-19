@@ -16,13 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e028806a836c81b412281f8cdabf1d334386c877` (2026-11-18,
-editor: Preserve f64 vertical coordinates past 2^24 px and allow 9-digit line
-numbers (#4022)).
-Keep editor document Y and height in double precision, lay out tall visible
-bands relative to their first row, and size the gutter for nine digits. Native
-offsets are positive-down; the scrollbar context retains its negative-down
-convention. The built-in thumb retains float precision as upstream does.
+Processed through `11805c76ac55bcc2ece3ac377a113f70108f6a25` (2026-11-18,
+test: Resolve test images synchronously for deterministic layout (#3952)).
+Add a synchronous solid bitmap source to TestApp and verify inline image
+layout and wrapping on the first frame through the existing image source
+override.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

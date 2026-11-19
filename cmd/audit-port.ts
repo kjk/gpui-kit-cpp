@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "e028806a836c81b412281f8cdabf1d334386c877";
+const pinnedGpuiComponent = "11805c76ac55bcc2ece3ac377a113f70108f6a25";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
@@ -117,7 +117,7 @@ const baseOverrides: Record<string, string[]> = {
   scroll_bounce: ["src/base/scroll_bounce.h", "src/base/scroll_bounce.cpp"],
   // Private next to scroll_bounce. The displacement engine lives in that pair.
   overscroll: ["src/base/scroll_bounce.h", "src/base/scroll_bounce.cpp"],
-  test_support: ["src/gpui/gpui.h", "tests/AccessibilityTests.cpp"],
+  test_support: ["src/gpui/gpui.h", "src/gpui/test_app.h", "tests/AccessibilityTests.cpp"],
   touch_selection: ["src/base/touch_selection.h", "src/base/touch_selection.cpp", "src/base/text_selection.h"],
   macos_accessibility: ["src/gpui/window_mac.cpp"],
   // crates/base/src/text/ is one C++ file per Rust module directory, and the
@@ -664,9 +664,9 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 617, sha256: "32bc8a174e57fc03047ee74351c5f617bb9be270f673c9c8de693a29d08112f0" },
+    declaration: { count: 618, sha256: "8a581848a6887c17e43801495d66cc4b8710f3619e1f0240bead852d6bf7ffa2" },
     "pub-use": { count: 177, sha256: "4047279015bbdad234a2780a09009847bebb27d6d685394e33eef80740361a0c" },
-    test: { count: 1779, sha256: "ca74566c191ed3b412454d09097f5e5a6b85ec3dd0d8a69be9dd208d01042366" },
+    test: { count: 1781, sha256: "d934c5bb04647be98fc37588dcba92d3e7ecffab25ffcef26ea8dcf061e72355" },
   },
   ui: {
     declaration: { count: 479, sha256: "3533a23f781befc826ba40f74f73514b105230203bfe419457eb1517edca2aa1" },

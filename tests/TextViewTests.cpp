@@ -4649,18 +4649,6 @@ static El* FindImageEl(El* e) {
     return nullptr;
 }
 
-// A decoded picture the document's image callback hands back. The bytes are
-// only there so the size is a real bitmap's.
-static RenderImage* InlinePhotoBitmap(PaintApp* pa, int w, int h) {
-    Vec<uint8_t> px;
-    VecResize(px, w * h * 4);
-    return RenderImageFromBgra(pa, px.els, w, h);
-}
-
-static ImageSource InlinePhotoSource(Str, void* data) {
-    return ImageSource::FromRender((RenderImage*)data);
-}
-
 struct InlineImageHost {
     App app;
     Window* win = nullptr;
@@ -4710,12 +4698,12 @@ static void InlineImageWithoutExplicitSizeIsDrawnAtItsIntrinsicSize() {
         utassert(false);
         return;
     }
-    host.photo = InlinePhotoBitmap(host.app.paint, 160, 40);
+    host.photo = TestMakeSizedImage(host.app.paint, 160, 40);
     utassert(host.photo != nullptr);
     Entity<TextViewState> state =
         TextViewState::Markdown(&host.app, StrL("see ![cat](cat.png) here"));
     El* view = TextView::New(&host.cx, state)
-                   ->ImageSource(InlinePhotoSource, host.photo)
+                   ->ImageSource(TestSizedImageSource, host.photo)
                    ->IntoEl();
     LayoutEl(&host.win->paint, view, 0, 0, 400, 400, 16, Rgba{});
     El* image = FindImageEl(view);
@@ -4802,12 +4790,12 @@ static void InlineImageWiderThanTheWrapIsNarrowedToIt() {
         utassert(false);
         return;
     }
-    host.photo = InlinePhotoBitmap(host.app.paint, 200, 60);
+    host.photo = TestMakeSizedImage(host.app.paint, 200, 60);
     utassert(host.photo != nullptr);
     Entity<TextViewState> state = TextViewState::Markdown(
         &host.app, StrL("see ![photo](photo.png) here"));
     El* view = TextView::New(&host.cx, state)
-                   ->ImageSource(InlinePhotoSource, host.photo)
+                   ->ImageSource(TestSizedImageSource, host.photo)
                    ->IntoEl();
     LayoutEl(&host.win->paint, view, 0, 0, 100, 400, 16, Rgba{});
     El* image = FindImageEl(view);
@@ -10559,6 +10547,53 @@ static void ShrinkToFitTextFlowKeepsItsMeasurements() {
     }
 }
 
+// text_view.rs inline_image_without_size_is_drawn_at_its_intrinsic_size
+// and inline_image_wider_than_the_view_wraps_the_text_after_it.
+static void FirstFrameShapesTextAroundTheDecodedInlineImage() {
+    struct ImageSourceRoot {
+        Entity<TextViewState> text;
+        RenderImage* image = nullptr;
+
+        static El* Render(ImageSourceRoot* self, Ctx* cx) {
+            return Div(cx->a)
+                ->W(420)
+                ->Child(TextView::New(cx, self->text)
+                            ->Selectable()
+                            ->ImageSource(TestSizedImageSource, self->image)
+                            ->IntoEl());
+        }
+    };
+
+    for (int width : {200, 600}) {
+        App* app = TestAppNew();
+        component::Init(app);
+        auto root = EntityNew<ImageSourceRoot>(app);
+        ImageSourceRoot* self = root.Get(app);
+        self->text = TextViewState::Markdown(
+            app, StrL("Before ![dot](test://dot) after"));
+        RenderImage* image = TestMakeSizedImage(app->paint, width, 60);
+        self->image = image;
+        utassert(image != nullptr);
+
+        Window* win = TestWindowOpen(app, root, 520, 240, 1);
+        const TextHit* before = ExactLabel(win, "Before ");
+        const TextHit* after = ExactLabel(win, " after");
+        if (!before) before = ExactLabel(win, "Before");
+        if (!after) after = ExactLabel(win, "after");
+        utassert(before && after);
+        if (before && after) {
+            if (width == 200) {
+                utassertnear(before->bounds.y, after->bounds.y);
+                utassert(after->bounds.x - before->bounds.Right() > 180);
+            } else {
+                utassert(after->bounds.y > before->bounds.y);
+            }
+        }
+        TestAppFree(app);
+        RenderImageRelease(image);
+    }
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -10590,6 +10625,7 @@ void TestTextView() {
 #endif
     TestMarkdownImage(a);
     InlineImageWithoutExplicitSizeIsDrawnAtItsIntrinsicSize();
+    FirstFrameShapesTextAroundTheDecodedInlineImage();
     InlineImageBeforeItLoadsKeepsACompactSquare();
     SeveralImagesShareAnInlineFlow();
     ShrinkToFitTextFlowKeepsItsMeasurements();

@@ -32,6 +32,11 @@ namespace gpui {
 App* TestAppNew();
 void TestAppFree(App* app);
 
+// A synchronous, solid bitmap source for TextView::ImageSource. Keep the
+// bitmap alive while the window uses the callback and release it afterward.
+RenderImage* TestMakeSizedImage(PaintApp* paint, int width, int height);
+ImageSource TestSizedImageSource(Str uri, void* bitmap);
+
 // cx.open_window(size, |window, cx| root): a window rendering `root`, drawn
 // once before this returns. `scale` is the window's scale factor, the 2.0 a
 // Rust TestWindow reports.
