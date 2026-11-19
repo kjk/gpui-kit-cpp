@@ -8154,11 +8154,13 @@ void PaintEl(PaintCtx* ctx, El* e) {
                               : kPaintLayerPopup;
         int parent = scene::ContextPush(ctx, ctx->paintLayer);
         ctx->dismissScope = entry.dismissScope;
+        ctx->selectionParagraph = entry.paragraph;
         PaintElNode(ctx, overlay, false);
         scene::ContextPop(ctx, parent);
     }
     VecClear(overlays);
     ctx->dismissScope = nullptr;
+    ctx->selectionParagraph = nullptr;
     ctx->paintLayer = kPaintLayerTree;
 }
 
@@ -8315,6 +8317,7 @@ static TextHit ElTextHit(PaintCtx* ctx, const El* e, int docOff) {
     if (ElTextFontRanges(e).count) th.highlightedElement = e;
     th.docOff = docOff;
     th.owner = e->selectionOwner;
+    th.paragraph = ctx->selectionParagraph;
     th.src = e->selSrc;
     th.map = e->selMap;
     th.scope = ElSelectionScope(ctx, e);
@@ -8335,9 +8338,12 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     }
     if (skipOverlay && IsOverlay(e)) {
         VecAppend(ctx->deferredPaint,
-                  PaintCtx::DeferredPaint{e, ctx->dismissScope});
+                  PaintCtx::DeferredPaint{e, ctx->dismissScope,
+                                          ctx->selectionParagraph});
         return;
     }
+    const El* outerParagraph = ctx->selectionParagraph;
+    if (e->selectionParagraph) ctx->selectionParagraph = e;
     const PaintDismissScope* outerDismissScope = ctx->dismissScope;
     const PaintDismissScope* outerPopupDismissScope = ctx->popupDismissScope;
     if (e->style.deferred) {
@@ -8424,6 +8430,7 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     ctx->groupHovered = prevGroup;
     ctx->dismissScope = outerDismissScope;
     ctx->popupDismissScope = outerPopupDismissScope;
+    ctx->selectionParagraph = outerParagraph;
     scene::ContextPop(ctx, parentContext);
 }
 
@@ -8796,9 +8803,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (e->selBlockPlugin && e->selectable) {
         TextHit th = ElTextHit(ctx, e, ctx->textDocLen);
         th.text = e->text;
-        th.blockPlugin = true;
+        th.blockPlugin = !e->selInlinePlugin;
+        th.inlinePlugin = e->selInlinePlugin;
+        th.join = e->selJoin;
         VecAppend(ctx->texts, th);
-        ctx->textDocLen += 1;
+        ctx->textDocLen += th.inlinePlugin ? len(th.text) + 1 : 1;
     }
     if (e->kind == ElKind::Image && e->selectable && e->selSrc &&
         !e->selBlockPlugin && ctx->blockPluginDepth == 0) {
@@ -9610,6 +9619,9 @@ static const TextHit* TextHitFind(PaintCtx* ctx, float x, float y, bool nearest,
 
 // The byte offset inside `h` that `rel` points at, clamped into it.
 static int TextHitLocal(PaintCtx* ctx, const TextHit* h, Point rel) {
+    if (h->inlinePlugin) {
+        return rel.x < h->bounds.w * 0.5f ? 0 : len(h->text);
+    }
     if (h->highlightedElement) {
         if (TextLayout* layout = ElTextLayout(ctx, h->highlightedElement)) {
             int local = TextLayoutHitPoint(layout, h->text, rel.x, rel.y);
@@ -9662,14 +9674,50 @@ bool TextMultiClickRange(PaintCtx* ctx, float x, float y, int clickCount,
 }
 
 bool TextMultiClickRangeIn(PaintCtx* ctx, float x, float y, int clickCount,
-                           int scope, int* outA, int* outB, int* outScope) {
+                           int scope, int* outA, int* outB, int* outScope,
+                           Point* paragraphEnds) {
     if (clickCount < 2) {
         return false;
     }
     Point rel = {};
     const TextHit* h = TextHitFind(ctx, x, y, false, &rel, scope);
+    if (!h && clickCount >= 3) {
+        // Inter-word space in an inline flow belongs to the paragraph's
+        // selection box.
+        const TextHit* nearest = TextHitFind(ctx, x, y, true, &rel, scope);
+        Point point = {x, y};
+        if (nearest && nearest->paragraph &&
+            nearest->paragraph->Bounds().Contains(point) &&
+            nearest->contentMask.Contains(point)) {
+            h = nearest;
+        }
+    }
     if (!h) {
         return false;
+    }
+    if (clickCount >= 3 && h->paragraph) {
+        const TextHit* first = h;
+        const TextHit* last = h;
+        for (const TextHit& run : ctx->texts) {
+            if (run.paragraph != h->paragraph || run.scope != h->scope)
+                continue;
+            if (run.docOff < first->docOff) first = &run;
+            if (run.docOff >= last->docOff) last = &run;
+        }
+        if (outScope) *outScope = h->scope;
+        *outA = first->docOff;
+        *outB = last->docOff + (last->atom ? 1 : len(last->text));
+        if (paragraphEnds) {
+            paragraphEnds[0] = {first->bounds.x, first->bounds.CenterY()};
+            paragraphEnds[1] = {last->bounds.Right(), last->bounds.CenterY()};
+        }
+        return *outB > *outA;
+    }
+    if (h->inlinePlugin) {
+        if (outScope) *outScope = h->scope;
+        *outA = h->docOff;
+        *outB = h->docOff + len(h->text);
+        return *outB > *outA;
     }
     int local = 0;
     TextLayout* layout =
@@ -9914,7 +9962,7 @@ static bool AcrossStylesUsesSource(PaintCtx* ctx, int a, int b, int scope,
             int hi = b < pos + plen ? b : pos + plen;
             bool atom = t.atom && t.src && AtomReached(ctx, i, a, b, owner);
             take = (lo < hi && t.text.s) || atom;
-            object = atom;
+            object = atom || (take && t.inlinePlugin);
         }
         if (!take) {
             continue;
@@ -10022,6 +10070,9 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
         // however it is copied. Only the affixes are Markdown, and only
         // Source emits them.
         const SelSource* s = t.src;
+        if (t.inlinePlugin) {
+            piece = src && s && s->inlineSource.s ? s->inlineSource : t.text;
+        }
         // A selection confined to one table cell is that cell's source, not
         // a one-cell table. The pipes and the delimiter row stay on the block.
         const SelBlock* want = (cell || !s) ? nullptr : s->block;

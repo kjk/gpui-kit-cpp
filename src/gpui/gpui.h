@@ -2291,6 +2291,8 @@ struct SelSource {
     // The block above. Null for a selectable run that is not Markdown, which
     // is every run outside a TextView.
     const SelBlock* block = nullptr;
+    // A rendered inline object supplies its own source spelling.
+    Str inlineSource = {};
 };
 
 // text/node.rs SourceSegment: a stretch of rendered UTF-8 bytes paired with
@@ -3030,6 +3032,7 @@ struct El {
     // A block MarkdownPlugin: the drag selects the whole block or none of
     // it, and the copy is its plain text or its markdown, not a slice.
     unsigned int selBlockPlugin : 1 = false;
+    unsigned int selInlinePlugin : 1 = false;
     // A markdown table cell. Its bounds confine a drag that starts inside it.
     unsigned int selTableCell : 1 = false;
     unsigned int caretLineEndAffinity : 1 = false;
@@ -3051,6 +3054,8 @@ struct El {
     // advances of the selected glyphs, not the unused width of the line.
     // An editor row keeps the full-line wash.
     unsigned int glyphSelection : 1 = false;
+    // A split inline flow whose complete text is one triple-click unit.
+    unsigned int selectionParagraph : 1 = false;
     // The tooltip (El::Tip) shows in the overlay the window's root view
     // owns, Window::rootTooltip, rather than the window's own.
     unsigned int rootTooltip : 1 = false;
@@ -3819,6 +3824,8 @@ struct TextHit {
     Bounds cell = {};
     // A highlighted run's text geometry is shaped with its font ranges.
     const El* highlightedElement = nullptr;
+    const El* paragraph = nullptr;
+    bool inlinePlugin = false;
 };
 
 // Shaped-text cache (see TextMeas* in Gpui.cpp). Opaque slots. Entries stay
@@ -4092,12 +4099,14 @@ struct PaintCtx {
     struct DeferredPaint {
         El* element;
         const PaintDismissScope* dismissScope;
+        const El* paragraph;
     };
     Vec<DeferredPaint> deferredPaint;
     const PaintDismissScope* dismissScope = nullptr;
     const PaintDismissScope* popupDismissScope = nullptr;
     Vec<ScrollRect> scrolls;
     Vec<TextHit> texts;
+    const El* selectionParagraph = nullptr;
     // Markdown table cells painted this frame, innermost last while painting.
     Vec<Bounds> tableCells;
     Bounds tableCell = {};
@@ -6978,7 +6987,8 @@ int CopyTextHitsInEntity(PaintCtx* ctx, int selA, int selB, int scope,
 bool TextMultiClickRange(PaintCtx* ctx, float x, float y, int clickCount,
                          int* outA, int* outB);
 bool TextMultiClickRangeIn(PaintCtx* ctx, float x, float y, int clickCount,
-                           int scope, int* outA, int* outB, int* outScope);
+                           int scope, int* outA, int* outB, int* outScope,
+                           Point* paragraphEnds = nullptr);
 int HashClickId(Str s);
 // FNV-1a, the hash element ids, action names and content keys are taken with.
 // Each continues from h over n bytes at p; a fresh hash starts from the offset

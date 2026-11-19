@@ -4648,6 +4648,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // standalone picture outside the editor keeps the block image sizing.
     bool inFlow = InlineImageFlow(n);
     El* col = Div(a)->FlexCol()->W(kFill);
+    col->selectionParagraph = selectable;
     El* row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
     HostFlow* hostFlow = nullptr;
     if (n->hasEditorKey && EditorHostOn()) {
@@ -4784,9 +4785,27 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                         0.f, context.lineHeight * 0.75f - rendered.baseline));
                 }
                 El* object = rendered.element;
-                if (len(href) > 0) {
+                if ((selectable && len(r->custom.text) > 0) || len(href) > 0) {
                     object = Div(a)->Child(object);
-                    BindViewLink(object, href);
+                }
+                BindViewLink(object, href);
+                if (selectable && len(r->custom.text) > 0) {
+                    object->BlockPluginSelection(r->custom.text);
+                    object->selInlinePlugin = true;
+                    SrcMark(object, marks, href);
+                    if (object->selSrc && r->custom.markdown.s) {
+                        auto* selectionSource = ArenaNew<SelSource>(a);
+                        *selectionSource = *object->selSrc;
+                        selectionSource->inlineSource = r->custom.markdown;
+                        object->SelSrc(selectionSource, object->selJoin);
+                    }
+                    if (r->custom.hasSpan) {
+                        auto* whole = ArenaNew<SourceSegment>(a);
+                        whole->renderedEnd = len(r->custom.text);
+                        whole->sourceStart = r->custom.span.start;
+                        whole->sourceEnd = r->custom.span.end;
+                        SrcMap(object, whole, 1, 0, true);
+                    }
                 }
                 reportPiece(object, leafAt, leafAt + 3, true);
                 row->Child(object);

@@ -1237,16 +1237,17 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
     int b = 0;
     int activeScope =
         s->activeScope.raw != 0 ? s->activeScope.RuntimeScope() : -1;
+    Point ends[] = {{x - 0.5f, y}, {x + 0.5f, y}};
     if (TextMultiClickRangeIn(ctx, x, y, clickCount, activeScope, &a, &b,
-                              &scope)) {
+                              &scope, ends)) {
         s->scope = scope;
         s->anchor = a;
         s->cursor = b;
         if (s->activeScope.raw == 0) {
             s->activeScope = TextSelectionScopeId::FromRaw((uint64_t)scope);
         }
-        s->anchorPoint = {x - 0.5f, y};
-        s->cursorPoint = {x + 0.5f, y};
+        s->anchorPoint = ends[0];
+        s->cursorPoint = ends[1];
         s->hasWindowPoints = true;
         s->anchorInsideText = true;
         s->anchorParticipant = {};

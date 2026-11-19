@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6653d1c024b5461461143c90b005d80089cc085f` (2026-11-12,
-text: Fold white space in Markdown the way HTML draws it (#3949)).
-Fold prose whitespace within Markdown text runs and across rendered inline
-boundaries. Keep source ranges mapped through folded spaces, dropped comments
-and explicit breaks.
+Processed through `ba7e37c7932a2b2e42418249eaac8a74b7ae4887` (2026-11-13,
+text_view: Select the whole wrapped paragraph on a triple click over inline
+code (#3942)).
+Give split inline text runs a shared paragraph range and use it for triple
+clicks, including the endpoints on the first and last painted rows.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

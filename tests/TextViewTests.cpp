@@ -8435,6 +8435,78 @@ static void UnicodeParagraphCopyExtendsBeforePaint() {
     TswClose(&v);
 }
 
+// text_view.rs: triple_click_selects_a_wrapped_paragraph_*.
+static void TripleClickSelectsTheWholeWrappedParagraph() {
+    struct Case {
+        const char* markdown;
+        Str expected;
+    };
+    Case cases[] = {
+        {"Call `foo` now, then keep typing until this paragraph wraps onto a "
+         "few rows.\n\nNext paragraph.",
+         StrL("Call foo now, then keep typing until this paragraph wraps onto "
+              "a few rows.")},
+        {"Call `foo` and **bold** then `bar` with $x2$ until this paragraph "
+         "wraps onto rows.\n\nNext paragraph.",
+         StrL("Call foo and bold then bar with x2 until this paragraph wraps "
+              "onto rows.")},
+        {"Plain words keep going until this paragraph wraps onto a few "
+         "rows.\n\nNext paragraph.",
+         StrL("Plain words keep going until this paragraph wraps onto a few "
+              "rows.")},
+    };
+    Arena* extensionsArena = ArenaNew();
+    MarkdownPlugin plugin;
+    plugin.name = StrL("test");
+    plugin.parse = &ParseFormulaText;
+    plugin.renderInline = &RenderInlineMath;
+    MarkdownExtensions extensions;
+    extensions.Plugin(extensionsArena, plugin);
+    for (const Case& test : cases) {
+        TswView view = TswOpen(test.markdown, TswContainer::Narrow);
+        view.Root()->extensions = &extensions;
+        TswFlush(view);
+        view.State()
+            ->SetSelectionFormat(SelectionFormat::Plain, view.app, view.win);
+        TestDraw(view.win);
+        const auto& hits = view.win->paint.texts;
+        utassert(len(hits) > 0);
+        if (len(hits) > 0) {
+            const TextHit& first = hits[0];
+            Point at = {};
+            if (first.paragraph) {
+                for (const TextHit& run : hits) {
+                    if (run.paragraph == first.paragraph &&
+                        run.bounds.y > first.bounds.y + 4) {
+                        at = {run.bounds.CenterX(), run.bounds.CenterY()};
+                        break;
+                    }
+                }
+            } else {
+                float x = 0, y = 0, line = 0;
+                for (int offset = 1; offset < len(first.text) && y <= 0;
+                     offset++) {
+                    if (!TextPointAt(&view.win->paint, first.text, first.font,
+                                     first.maxW, true, offset, &x, &y, &line)) {
+                        break;
+                    }
+                }
+                utassert(y > 0);
+                at = {first.bounds.x + x, first.bounds.y + y + line * 0.5f};
+            }
+            utassert(at.y > first.bounds.y + 4);
+            TestSimulateMouseDown(view.win, at, MouseButton::Left, {}, 3);
+            TestSimulateMouseUp(view.win, at, MouseButton::Left, {}, 3);
+            TestDraw(view.win);
+            Arena* a = ArenaNew();
+            utassert(StrEq(StrTrimAscii(TswCopy(a, view)), test.expected));
+            ArenaDelete(a);
+        }
+        TswClose(&view);
+    }
+    ArenaDelete(extensionsArena);
+}
+
 static void TestTextStateWindow() {
     ANewRangeCopiesBeforeItsFirstSelectionPaint();
     AnEstablishedRangeExtendsAndRetractsWithoutPaint();
@@ -8443,6 +8515,7 @@ static void TestTextStateWindow() {
     ReplacingSourceCannotReprojectOldContent();
     ScrollingBeforePaintKeepsTheCompletedFrame();
     UnicodeParagraphCopyExtendsBeforePaint();
+    TripleClickSelectsTheWholeWrappedParagraph();
     PushStrFadesOnlyTheAppendedText();
     OvertakenParsePreservesTheRemainingChunksFade();
     OvertakenParsePreservesARemainingBlocksFade();
