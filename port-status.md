@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1ca6555da049e90352501b1dd10f76b0bddabaa9` (2026-11-11,
-selectable_text: Add highlights (#3929)).
-Add UTF-8 range highlights to SelectableText. Use the same mixed-font layout
-for measuring, hit testing, selection and painting so copying still returns
-the original text.
+Processed through `1269039ab402c2801623696407f9ce033b672f42` (2026-11-12,
+button: Show a spinner on a loading button that has no icon (#3908)).
+Show the standard button-sized spinner for a loading button even when the
+caller supplied no icon.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

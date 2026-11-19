@@ -880,13 +880,13 @@ El* Button::IntoEl() {
     if (loading && !disabled) {
         e->Opacity(0.8f);
     }
-    // button_icon.rs only substitutes a spinner when an icon exists. Loading
-    // a text-only button dims and gates it without inventing new content.
+    // An otherwise text-only loading button reserves the same leading slot
+    // for the spinner as a button with an icon.
     if (buttonIcon) {
         buttonIcon->Loading(loading)->Size(iconPx);
         if (loadingIcon != IconName::None) buttonIcon->LoadingIcon(loadingIcon);
         if (El* ic = buttonIcon->IntoEl()) e->Child(ic);
-    } else if (icon != IconName::None) {
+    } else if (loading || icon != IconName::None) {
         El* ic = nullptr;
         if (loading) {
             Spinner* wait = Spinner::New(cx)->Size(iconPx);

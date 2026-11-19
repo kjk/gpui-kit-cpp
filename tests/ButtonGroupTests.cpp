@@ -235,7 +235,17 @@ static void SourceButtonVariantsRoundingAndIconsRemainConcrete() {
                           ->Label(StrL("Waiting"))
                           ->Loading(true)
                           ->IntoEl();
-    utassert(ButtonChildCount(textLoading) == 1);
+    utassert(ButtonChildCount(textLoading) == 2);
+    utassert(textLoading->first && textLoading->first->first &&
+             textLoading->first->first->icon == IconName::Loader);
+    utassert(textLoading->last &&
+             StrEq(textLoading->last->text, StrL("Waiting")));
+    El* customLoading = component::Button::New(&cx, StrL("custom-loading"))
+                            ->Loading(true)
+                            ->LoadingIcon(IconName::RefreshCw)
+                            ->IntoEl();
+    utassert(customLoading->first && customLoading->first->first &&
+             customLoading->first->first->icon == IconName::RefreshCw);
     component::ButtonIcon* spinner =
         component::ButtonIcon::New(&cx, component::Spinner::New(&cx));
     component::ButtonIcon* progress = component::ButtonIcon::New(
