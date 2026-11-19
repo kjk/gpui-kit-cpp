@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `70dc27d817997b9f935ad7640ad89ccadc4e0513` (2026-11-12,
-button: Keep a right or middle press from focusing a `Button` (#3924)).
-The C++ dispatcher already leaves button focus unchanged on right and middle
-presses. Verify both presses still reach a parent mouse-down listener.
+Processed through `5e3c7d949178d4fae29b346dc864c50fd40cddc0` (2026-11-12,
+input: Open the completion and code action menus above the caret when they do
+not fit below (#3925)).
+Place completion and code-action menus above the fresh caret geometry when
+their measured height does not fit below and there is more space above.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

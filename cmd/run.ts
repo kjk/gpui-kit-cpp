@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "70dc27d817997b9f935ad7640ad89ccadc4e0513",
+  sha: "5e3c7d949178d4fae29b346dc864c50fd40cddc0",
   date: "2026-11-12",
-  subject: "button: Keep a right or middle press from focusing a `Button` (#3924)",
+  subject: "input: Open the completion and code action menus above the caret when they do not fit below (#3925)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

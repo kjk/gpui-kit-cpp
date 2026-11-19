@@ -181,16 +181,33 @@ bool CompletionMenu::HandleAction(InputAction action) {
 // already the bottom of the glyph (PublishCaretGeometry). Rust's cursor
 // origin is the top in scroll space, so it adds scroll_offset.y and the
 // line height; adding them again here would lift the menu by a screen.
+static constexpr float kCaretMenuGap = 4.f;
+
 static float CaretPopupX(const InputState* s) {
     if (!s) return 0;
-    return s->caretWinX > 0 ? s->caretWinX - 4.f : s->inputBounds.x;
+    return s->caretWinX > 0 ? s->caretWinX - kCaretMenuGap : s->inputBounds.x;
+}
+
+static float CaretPopupLineHeight(const InputState* s) {
+    return s->lastLineH > 0 ? s->lastLineH : 20.f;
 }
 
 static float CaretPopupY(const InputState* s) {
     if (!s) return 0;
-    float lineH = s->lastLineH > 0 ? s->lastLineH : 20.f;
-    return s->caretWinY > 0 ? s->caretWinY + 4.f
-                            : s->inputBounds.y + lineH + 4.f;
+    float bottom = s->caretWinY > 0
+                       ? s->caretWinY
+                       : s->inputBounds.y + CaretPopupLineHeight(s);
+    return bottom + kCaretMenuGap;
+}
+
+static float FitCaretPopupY(const InputState* s, float below, float popupH,
+                            float windowH) {
+    if (windowH <= 0) return below;
+    float spaceBelow = windowH - below;
+    float spaceAbove = below - CaretPopupLineHeight(s) - 2.f * kCaretMenuGap;
+    if (popupH <= spaceBelow || spaceAbove <= spaceBelow) return below;
+    float top = spaceAbove - popupH;
+    return top > 0 ? top : 0;
 }
 
 static float PopupWindowW(Ctx* cx, PaintCtx* ctx) {
@@ -276,6 +293,9 @@ static void PlaceCaretMenu(PaintCtx* ctx, El* e, void* user) {
     frame.path = anchor->path;
     Ctx* cx = &frame;
     float windowW = PopupWindowW(cx, ctx);
+    float windowH = ctx && ctx->viewH > 0 ? ctx->viewH
+                    : cx->win             ? WindowSize(cx->win).dipH
+                                          : 0.f;
     bool rebuild = false;
     float maxW = anchor->maxW;
     bool vertical = anchor->vertical;
@@ -290,7 +310,7 @@ static void PlaceCaretMenu(PaintCtx* ctx, El* e, void* user) {
         maxW = now;
     }
     if (!rebuild) {
-        ShiftMenu(e, x - e->x, y - e->y);
+        ShiftMenu(e, x - e->x, FitCaretPopupY(state, y, e->h, windowH) - e->y);
         return;
     }
     // The width the list was given no longer matches this caret. Build the
@@ -309,6 +329,7 @@ static void PlaceCaretMenu(PaintCtx* ctx, El* e, void* user) {
     e->y = y;
     e->w = content->w;
     e->h = content->h;
+    ShiftMenu(e, 0, FitCaretPopupY(state, y, e->h, windowH) - e->y);
     IdsCollectChildren(e);
 }
 

@@ -7212,14 +7212,16 @@ static bool NearPx(float a, float b) {
 struct CompletionAnchorPanel {
     InputState input;
     float editorH = 280;
+    bool dockedToBottom = false;
     float renderCaretX = 0;
     float renderCaretY = 0;
 
     static El* Render(CompletionAnchorPanel* self, Ctx* cx) {
         self->renderCaretX = self->input.caretWinX;
         self->renderCaretY = self->input.caretWinY;
-        return Div(cx->a)
-            ->SizeFull()
+        El* root = Div(cx->a)->SizeFull();
+        if (self->dockedToBottom) root->FlexCol()->JustifyEnd();
+        return root
             ->Child(component::Editor::New(cx, StrL("editor"), &self->input)
                         ->Searchable(false)
                         ->H(self->editorH)
@@ -7234,7 +7236,8 @@ struct AnchorSession {
     CompletionAnchorPanel* p = nullptr;
 };
 
-static AnchorSession OpenAnchorEditor(float w, float h, float editorH) {
+static AnchorSession OpenAnchorEditor(float w, float h, float editorH,
+                                      bool dockedToBottom = false) {
     AnchorSession s;
     s.app = TestAppNew();
     if (!s.app) return s;
@@ -7242,6 +7245,7 @@ static AnchorSession OpenAnchorEditor(float w, float h, float editorH) {
     s.p = s.panel.Get(s.app);
     MakeCodeEditor(&s.p->input);
     s.p->editorH = editorH;
+    s.p->dockedToBottom = dockedToBottom;
     s.win = TestWindowOpen(s.app, s.panel, w, h);
     return s;
 }
@@ -7343,6 +7347,36 @@ static void CompletionPopupAnchorsToWrappedAndScrolledCaret() {
     }
 }
 
+// completions.rs: completion and code action menus flip above a low caret.
+static void CaretMenusFlipWhenTheyDoNotFitBelow() {
+    const bool menuKinds[] = {true, false};
+    for (bool completion : menuKinds) {
+        AnchorSession s = OpenAnchorEditor(640, 360, 60, true);
+        InputSetValue(&s.p->input, StrL("hello"));
+        InputFocus(&s.p->input, s.app, s.win);
+        if (completion) {
+            CompletionItem items[4];
+            for (auto& item : items) item.label = StrL("Completion item");
+            InputPresentCompletionItems(&s.p->input, 0, StrL(""), items,
+                                        (int)dimof(items));
+        } else {
+            CodeActionItem items[4];
+            for (auto& item : items) item.title = StrL("Code action");
+            InputPresentCodeActions(&s.p->input, items, (int)dimof(items));
+        }
+        TestDraw(s.win);
+        Bounds popup = MenuHitBounds(
+            s.win, completion ? "completion-menu" : "code-action-menu");
+        float caretBottom = s.p->input.caretWinY;
+        float caretTop = caretBottom - s.p->input.lastLineH;
+        utassert(popup.w > 0 && popup.h > 0);
+        utassert(caretBottom + 4.f + popup.h > 360.f);
+        utassert(popup.y >= 0 && NearPx(popup.Bottom(), caretTop - 4.f));
+        utassert(NearPx(popup.x, s.p->input.caretWinX - 4.f));
+        TestAppFree(s.app);
+    }
+}
+
 // completions.rs clicking_beside_code_action_menu_dismisses_it.
 static void ClickingBesideCodeActionMenuDismissesIt() {
     AnchorSession s = OpenAnchorEditor(640, 360, 280);
@@ -7378,6 +7412,7 @@ static void RunWindowTestsA() {
     NumberInputUndoWithMask();
     CursorLayoutConsumerUpdatesAfterSelection();
     CompletionPopupFollowsCaretOnFirstFrame();
+    CaretMenusFlipWhenTheyDoNotFitBelow();
     OrdinaryInputSchedulesNoFollowupFrame();
     CompletionPopupAnchorsToWrappedAndScrolledCaret();
     ClickingBesideCodeActionMenuDismissesIt();
