@@ -8627,7 +8627,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // padded element. Ordinary boxes leave both at the track.
         if (e->input && e->style.overflowY == Overflow::Scroll &&
             e->input->contentH > 0 && e->input->viewH > 0) {
-            sr.contentH = e->input->contentH;
+            sr.contentH = (float)e->input->contentH;
+            sr.scrollY = (float)e->input->scrollY;
             sr.viewportH = e->input->viewH;
         }
         sr.mode = ElScrollMode(e, ctx->app);
@@ -8782,8 +8783,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             // layout_cursors: a focused caret that was on screen stays on
             // screen when this box changes size. Vertical only.
             if (viewH > 0 && e->input->contentH > viewH) {
-                e->input->contentH =
-                    InputFitContentHeight(e->input->contentH, viewH, ctx->dpi);
+                e->input->contentH = InputFitContentHeightF64(
+                    e->input->contentH, viewH, ctx->dpi);
                 if (e->input->contentH == viewH) {
                     e->input->scrollY = 0;
                 }
@@ -8801,7 +8802,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             // the bar stays on the padded track.
             if (scrollSlot >= 0 && e->style.overflowY == Overflow::Scroll &&
                 e->input->contentH > 0 && e->input->viewH > 0) {
-                ctx->scrolls[scrollSlot].contentH = e->input->contentH;
+                ctx->scrolls[scrollSlot].contentH = (float)e->input->contentH;
+                ctx->scrolls[scrollSlot].scrollY = (float)e->input->scrollY;
                 ctx->scrolls[scrollSlot].viewportH = e->input->viewH;
             }
             // scroll_size.width: how wide the longest row came out, which is
@@ -9282,10 +9284,12 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // Same split as the ScrollRect above: a textarea's range is the field's
     // document inside the unpadded viewport, not the padded track.
     float scrollContentH = e->contentH;
+    float logicalScrollY = e->scrollY;
     float scrollViewportH = e->h;
     if (e->input && e->style.overflowY == Overflow::Scroll &&
         e->input->contentH > 0 && e->input->viewH > 0) {
-        scrollContentH = e->input->contentH;
+        scrollContentH = (float)e->input->contentH;
+        logicalScrollY = (float)e->input->scrollY;
         scrollViewportH = e->input->viewH;
     }
     bool canVertical = !e->noScrollbarY &&
@@ -9312,11 +9316,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // runs down. It holds the bar up in hover mode, and in scrolling mode
         // only while the bar is already up — `hover_keeps_visible`.
         double now = TimeNow();
-        ScrollFade* f = ScrollFadeFor(e->scrollId, e->scrollY, e->scrollX);
+        ScrollFade* f = ScrollFadeFor(e->scrollId, logicalScrollY, e->scrollX);
         bool wasVisible = f->opacity.target > 0.f;
-        if (f->y != e->scrollY || f->x != e->scrollX || dragging ||
+        if (f->y != logicalScrollY || f->x != e->scrollX || dragging ||
             ScrollbarHoverKeepsVisible(barMode, onBand, wasVisible)) {
-            f->y = e->scrollY;
+            f->y = logicalScrollY;
             f->x = e->scrollX;
             f->at = now;
             f->hasLast = true;
@@ -9359,8 +9363,9 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // style_for_active. Hovering the track keeps the normal thumb style;
     // hovering the thumb or dragging selects its own full style tuple.
     ScrollFade* barState =
-        e->scrollId != 0 ? ScrollFadeFor(e->scrollId, e->scrollY, e->scrollX)
-                         : nullptr;
+        e->scrollId != 0
+            ? ScrollFadeFor(e->scrollId, logicalScrollY, e->scrollX)
+            : nullptr;
     // The thumb's radius is `theme.radius`, clamped to half the thumb — a
     // wider thumb rounds more, which is what `clamp_thumb_radius` says.
     const RuntimeStyle& barTheme = RuntimeStyleNow(ctx->app);
@@ -9369,7 +9374,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (hasVertical) {
         bool onBar = overBox && !covered && ctx->mouseX >= e->x + e->w - trackW;
         ScrollbarPaintState state = ScrollbarAxisPaintState(
-            e, e->y, e->h, scrollViewportH, scrollContentH, 0, e->scrollY,
+            e, e->y, e->h, scrollViewportH, scrollContentH, 0, logicalScrollY,
             onBar, ctx->mouseX, e->x + e->w, ctx->mouseY,
             dragging && !ctx->scrollDragHorizontal);
         float inset = ScrollbarThumbInset(e, state);
@@ -9385,7 +9390,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                             barMotion.expand, TimeNow(), &ctx->wantsAnimFrame);
         }
         float thumbX = e->x + e->w - thumbW - inset;
-        float thumbY = geometry.Start(e->scrollY);
+        float thumbY = geometry.Start(logicalScrollY);
         // Overview ruler marks sit under the scrollbar, so they stay visible
         // while the thumb fades. The track is the theme's scrollbar width.
         if (e->input && e->input->overviewDecorations) {
@@ -9393,7 +9398,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                                ? e->input->editorPaddings.top
                                : e->style.pad.top;
             float viewport = e->input->viewH > 0.f ? e->input->viewH : e->h;
-            float contentHeight = e->input->contentH + e->h - viewport;
+            double contentHeight = e->input->contentH + e->h - viewport;
             float lineH =
                 e->input->lastLineH > 0.f ? e->input->lastLineH : 20.f;
             InputPaintOverviewRuler(e->input, ctx, e->x + e->w - trackW, e->y,

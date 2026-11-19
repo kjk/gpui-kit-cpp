@@ -567,12 +567,12 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     if (win->input && win->input->autoScroll.IsActive() &&
         (win->mouseDown || win->input->touchDragging)) {
         InputState* s = win->input;
-        float was = s->scrollY;
+        double was = s->scrollY;
         s->scrollY += s->autoScroll.delta;
         if (s->scrollY < 0) {
             s->scrollY = 0;
         }
-        float most = s->contentH - s->viewH;
+        double most = s->contentH - s->viewH;
         if (most < 0) {
             most = 0;
         }

@@ -922,7 +922,7 @@ static void ThumbDragReachesContentEndWhenTrackIncludesPadding() {
     TestSimulateMouseUp(win, Point{95, 99});
     // content 160 minus the unpadded viewport 80. The track is the 100-tall
     // element, which used to stop the drag short of this.
-    utassertnear(view.Get(app)->field.scrollY, 80.f);
+    utassert(fabs(view.Get(app)->field.scrollY - 80.) < 0.001);
     TestAppFree(app);
 }
 

@@ -1369,7 +1369,7 @@ struct PaintCtx;
 // element.rs layout_overview_ruler. No-op when the editor has no collection.
 void InputPaintOverviewRuler(InputState* s, PaintCtx* ctx, float trackX,
                              float trackY, float trackW, float trackH,
-                             float contentHeight, float paddingTop,
+                             double contentHeight, float paddingTop,
                              float lineHeight);
 
 // A run of a text element painted differently from the rest of it: GPUI's
@@ -5913,7 +5913,12 @@ struct InputState {
     // the box it scrolls inside. Positive-down, as El::ScrollY takes it; Rust
     // keeps the same pair, negative, on a ScrollHandle.
     float scrollX = 0;
-    float scrollY = 0;
+    double scrollY = 0;
+    // A virtualized band is laid out relative to its first row in a tall
+    // document, so a physical float never carries the full document Y.
+    double layoutOriginY = 0;
+    double deferredScrollY = 0;
+    bool hasDeferredScrollY = false;
     float viewW = 0;
     float viewH = 0;
     // Where the caret last landed, in window coordinates: the bottom of the
@@ -5926,7 +5931,7 @@ struct InputState {
     // the whole scrolled height. `last_layout` is what Rust reads them off.
     float caretX = 0;
     float contentW = 0;
-    float contentH = 0;
+    double contentH = 0;
     // longest_line_width: the widest unwrapped line for this document and
     // font. The byte-longest line is only a candidate; a shorter visible
     // line can render wider, and the stored width does not shrink when
@@ -5981,11 +5986,11 @@ struct InputState {
     bool caretGeomValid = false;
     bool resizeRevealOwned = false;
     float caretGeomX = 0;
-    float caretGeomY = 0;
+    double caretGeomY = 0;
     float caretGeomW = 0;
     float caretGeomH = 0;
     float caretGeomScrollX = 0;
-    float caretGeomScrollY = 0;
+    double caretGeomScrollY = 0;
     float caretGeomViewW = 0;
     float caretGeomViewH = 0;
     float caretGeomLineH = 0;
@@ -6063,9 +6068,15 @@ float InputClampVerticalScrollOffset(float scroll, float scrollHeight,
                                      float viewportH);
 // line_number_len: the gutter reserves three digits for a small document,
 // then follows the line count up to seven. displayed_line_number: a number
-// past seven digits shows as 9,999,999 rather than widening the gutter.
+// past nine digits shows as 999,999,999 rather than widening the gutter.
 int InputLineNumberLen(int totalLines);
 int InputDisplayedLineNumber(int number);
+// Vertical input state uses positive-down DIPs. Setting an absolute
+// offset defers clamping until the next layout measures the document.
+double InputScrollYF64(const InputState* s);
+double InputContentHeightF64(const InputState* s);
+void InputSetScrollYF64(InputState* s, App* app, Window* win, double y);
+void InputScrollByYF64(InputState* s, App* app, Window* win, double deltaY);
 float InputCursorSurroundingPadding(bool isAutoGrow, int overrideLines,
                                     int visibleLines, float lineH);
 // A negative `caretX` leaves the sideways offset alone, which is what

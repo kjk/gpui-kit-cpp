@@ -32,6 +32,8 @@ struct EditorScrollbarContext {
     // ScrollHandle's offset is negative-down. The state stores positive-down.
     Point Offset() const;
     void SetOffset(Point value) const;
+    double ScrollYF64() const;
+    double ContentHeightF64() const;
     // content plus the padding the track adds around the scroll viewport.
     Size ContentSize() const;
 };
@@ -43,6 +45,8 @@ void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void* user);
 // Textarea heights are in DIPs. dpi selects the device pixel grid.
 float InputCeilToDevicePixel(float height, float dpi);
 float InputFitContentHeight(float content, float viewport, float dpi);
+double InputFitContentHeightF64(double content, float viewport, float dpi);
+float InputLayoutScrollY(const InputState* s);
 
 // `InputBase::new(id)`: the frame is a stateful element, so its click and
 // focus ids are the fold of the name down from the root rather than a hash of

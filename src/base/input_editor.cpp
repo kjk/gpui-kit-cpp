@@ -2290,8 +2290,8 @@ static Rgba MarkColor(const InputState* s, bool has, Rgba color) {
     return has ? color : (s ? s->editorForeground : Rgba{});
 }
 
-int InputLayoutGutterMarks(const InputState* s, float originX, float originY,
-                           float lineH, float viewTop, float viewBottom,
+int InputLayoutGutterMarks(const InputState* s, float originX, double originY,
+                           float lineH, double viewTop, double viewBottom,
                            GutterMark* out, int cap) {
     if (!s || !s->gutterDecorations || !s->gutterDecorations->ownerAlive ||
         !s->gutterDecorations->collections.HasAny() || lineH <= 0) {
@@ -2330,12 +2330,12 @@ int InputLayoutGutterMarks(const InputState* s, float originX, float originY,
         s->gutterDecorations->collections.Intersecting(query, found.els, n);
     }
     int count = 0;
-    auto push = [&](float y, float h, Rgba color, bool pill) {
+    auto push = [&](double y, double h, Rgba color, bool pill) {
         if (clip && (y + h < viewTop || y > viewBottom)) {
             return;
         }
         if (out && count < cap) {
-            out[count] = {originX, y, width, h, color, pill};
+            out[count] = {originX, (float)y, width, (float)h, color, pill};
         }
         count++;
     };
@@ -2343,7 +2343,7 @@ int InputLayoutGutterMarks(const InputState* s, float originX, float originY,
         const GutterDecoration* d = found[i];
         Rgba color = MarkColor(s, d->hasColor, d->color);
         DecorationRows rows = InputDecorationRows(s, d->range);
-        auto top = [&](int row) { return originY + lineH * (float)row; };
+        auto top = [&](int row) { return originY + lineH * (double)row; };
         if (rows.boundary) {
             push(top(rows.start) - kGutterBoundaryMarkHeight * 0.5f,
                  kGutterBoundaryMarkHeight, color, true);
@@ -2354,8 +2354,8 @@ int InputLayoutGutterMarks(const InputState* s, float originX, float originY,
             if (last < from) {
                 last = from;
             }
-            float y = top(from);
-            float bottom = top(last) + lineH;
+            double y = top(from);
+            double bottom = top(last) + lineH;
             push(y, bottom - y, c, false);
         };
         if (!rows.foldedStart) {
@@ -2390,7 +2390,7 @@ static int LaneIndex(OverviewRulerLane lane) {
 }
 
 int InputLayoutOverviewRuler(InputState* s, float trackX, float trackY,
-                             float trackW, float trackH, float contentHeight,
+                             float trackW, float trackH, double contentHeight,
                              float paddingTop, float lineH,
                              OverviewRulerMark* out, int cap) {
     if (!s || !s->overviewDecorations || !s->overviewDecorations->ownerAlive ||
@@ -2449,7 +2449,7 @@ int InputLayoutOverviewRuler(InputState* s, float trackX, float trackY,
     if (len(store->cacheRows) == 0) {
         return 0;
     }
-    float scale = trackH / contentHeight;
+    double scale = trackH / contentHeight;
     struct Merged {
         OverviewRulerLane lane;
         Rgba color;
@@ -2459,8 +2459,10 @@ int InputLayoutOverviewRuler(InputState* s, float trackX, float trackY,
     Vec<Merged> merged;
     for (int i = 0; i < len(store->cacheRows); i++) {
         const OverviewCachedRow& row = store->cacheRows[i];
-        float y0 = trackY + (paddingTop + lineH * (float)row.start) * scale;
-        float y1 = trackY + (paddingTop + lineH * (float)row.end) * scale;
+        float y0 =
+            trackY + (float)((paddingTop + lineH * (double)row.start) * scale);
+        float y1 =
+            trackY + (float)((paddingTop + lineH * (double)row.end) * scale);
         float height = y1 - y0;
         if (height < kMinOverviewRulerMarkHeight) {
             height = kMinOverviewRulerMarkHeight;

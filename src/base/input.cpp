@@ -314,8 +314,13 @@ static float InputLineMult(const Ctx* cx, float lineH, float font) {
 // soft-wrapping editor wraps short of and an inline token is measured within.
 static const float kEditorRightMargin = 10.f;
 
-static float DisplayLineH(const InputState* s, int row, float lineH);
-static float DisplayRowDocY(const InputState* s, int row, float lineH);
+static double DisplayLineH(const InputState* s, int row, float lineH);
+static double DisplayRowDocY(const InputState* s, int row, float lineH);
+static double InputClampVerticalScrollOffsetF64(double scroll,
+                                                double scrollHeight,
+                                                float viewportH);
+static bool InputApplyScrollOffset(InputState* s, App* app, Window* win,
+                                   float wantX, double wantY);
 static void Notify(App* app, Window* win);
 
 // ─── soft wrap (display_map/text_wrapper.rs) ──────────────────────────────
@@ -2085,13 +2090,13 @@ static void MeasureTokenWidths(Ctx* cx, InputState* state,
     Selection visible = {0, 0};
     if (!all) {
         float viewH = state->viewH > 0 ? state->viewH : 600.f;
-        float top = state->scrollY - viewH;
-        float bottom = state->scrollY + 2 * viewH;
+        double top = state->scrollY - viewH;
+        double bottom = state->scrollY + 2 * viewH;
         int lines = InputLinesLen(state);
-        float at = 0;
+        double at = 0;
         visible = {-1, len(InputValue(state))};
         for (int i = 0; i < lines; i++) {
-            float h = DisplayLineH(state, i, lineH);
+            double h = DisplayLineH(state, i, lineH);
             if (visible.start < 0 && at + h > top) {
                 visible.start = InputLineStartOffset(state, i);
             }
@@ -2911,6 +2916,7 @@ static void RewrapEditorColumn(PaintCtx* ctx, El* e, void* user) {
         return;
     }
     s->contentBox = e->Bounds();
+    float oldScroll = InputLayoutScrollY(s);
     Ctx cx = u->cx;
     s->wrap.buildingRows = true;
     El* fresh = Textarea::New(&cx, s, u->projected, u->lineNumbers);
@@ -2925,6 +2931,7 @@ static void RewrapEditorColumn(PaintCtx* ctx, El* e, void* user) {
     e->customPaint = fresh->customPaint;
     e->customUser = fresh->customUser;
     IdsCollectChildren(e);
+    e->y += oldScroll - InputLayoutScrollY(s);
     LayoutEl(ctx, e, e->x, e->y, e->w, 0, e->laidFont, e->style.color);
     if (e->h != was && ctx->window) {
         AppInvalidate(ctx->window);
@@ -3127,10 +3134,44 @@ float InputCeilToDevicePixel(float height, float dpi) {
     return ceilf(height * scale) / scale;
 }
 
+double InputFitContentHeightF64(double content, float viewport, float dpi) {
+    double scale = dpi > 0 ? (double)dpi / 96. : 1.;
+    return round(content * scale) <= round(viewport * scale) ? viewport
+                                                             : content;
+}
+
 float InputFitContentHeight(float content, float viewport, float dpi) {
-    float scale = dpi > 0 ? dpi / 96.f : 1.f;
-    return roundf(content * scale) <= roundf(viewport * scale) ? viewport
-                                                               : content;
+    return (float)InputFitContentHeightF64(content, viewport, dpi);
+}
+
+float InputLayoutScrollY(const InputState* s) {
+    return s ? (float)std::max(0., s->scrollY - s->layoutOriginY) : 0.f;
+}
+
+double InputScrollYF64(const InputState* s) {
+    return s ? s->scrollY : 0;
+}
+
+double InputContentHeightF64(const InputState* s) {
+    return s ? s->contentH : 0;
+}
+
+void InputSetScrollYF64(InputState* s, App* app, Window* win, double y) {
+    if (!s || !InputIsMultiLine(s) || !isfinite(y)) return;
+    s->deferredScrollY = std::max(0., y);
+    s->hasDeferredScrollY = true;
+    Notify(app, win);
+}
+
+void InputScrollByYF64(InputState* s, App* app, Window* win, double deltaY) {
+    if (!s || !InputIsMultiLine(s) || !isfinite(deltaY)) return;
+    if (s->hasDeferredScrollY || s->viewH <= 0 || s->contentH <= 0) {
+        double current =
+            s->hasDeferredScrollY ? s->deferredScrollY : s->scrollY;
+        InputSetScrollYF64(s, app, win, current + deltaY);
+    } else {
+        InputApplyScrollOffset(s, app, win, s->scrollX, s->scrollY + deltaY);
+    }
 }
 
 // The multi-line editor. Rust lays every visible row out through the display
@@ -3157,6 +3198,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     col->BoundsOut(&state->contentBox);
     ApplyEditorAccessibility(col, state, style.mask || state->masked, text);
     if (len(text) == 0) {
+        state->scrollY = 0;
+        state->layoutOriginY = 0;
+        state->contentH = lineH;
+        state->hasDeferredScrollY = false;
         col->customPaint = [](PaintCtx*, El* element, void*) {
             element->input->textOriginOffset = 0;
         };
@@ -3180,26 +3225,26 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         underlay->lineNumbers = lineNumbers;
         col->customUser = underlay;
         col->prePaint = &RewrapEditorColumn;
-        float height = state->contentH > 0
-                           ? state->contentH
-                           : (float)InputLinesLen(state) * lineH;
+        double height = state->contentH > 0
+                            ? state->contentH
+                            : (double)InputLinesLen(state) * lineH;
         // The placeholder frame scrolls too. An offset past the end would
         // slide this spacer out of the box for the frame before the rows
         // exist.
         float vh = InputViewportHeight(cx, state);
         float dpi = cx->win ? cx->win->paint.dpi : 0.f;
-        state->scrollY = InputClampVerticalScrollOffset(
-            state->scrollY, InputFitContentHeight(height, vh, dpi), vh);
-        return col->Child(Div(a)->H(height));
+        state->scrollY = InputClampVerticalScrollOffsetF64(
+            state->scrollY, InputFitContentHeightF64(height, vh, dpi), vh);
+        return col->Child(Div(a)->H((float)height));
     }
 
     int rows = InputLinesLen(state);
     // The scrolled height, which is what scroll_to clamps against: one line
     // height per display row.
-    state->contentH = (float)rows * lineH;
+    state->contentH = (double)rows * lineH;
     if (LayoutModeIsFolding(state->mode)) {
         FoldMapRebuild(&state->folds, rows);
-        state->contentH = (float)FoldMapDisplayRowCount(&state->folds) * lineH;
+        state->contentH = (double)FoldMapDisplayRowCount(&state->folds) * lineH;
     }
     float numW = 0;
     // The numbers are shaped at the editor's own text size and family, as
@@ -3208,10 +3253,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (lineNumbers) {
         // layout_line_numbers: the width of line_number_len "+" shaped in
         // that font -- three for a small document, then the line count's
-        // own digits up to seven.
-        char plus[8] = {};
+        // own digits up to nine.
+        char plus[10] = {};
         int digits = InputLineNumberLen(rows);
-        for (int i = 0; i < digits && i < 7; i++) {
+        for (int i = 0; i < digits; i++) {
             plus[i] = '+';
         }
         numW = MeasureText(cx->win ? &cx->win->paint : nullptr,
@@ -3322,28 +3367,31 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         InputEmptyBottomHeight(state->mode.kind == LayoutModeKind::CodeEditor,
                                state->scrollBeyondLastLine, vh, lineH);
     float dpi = cx->win ? cx->win->paint.dpi : 0.f;
-    float scrollHeight =
-        InputFitContentHeight(state->contentH + emptyBottom, vh, dpi);
-    state->scrollY =
-        InputClampVerticalScrollOffset(state->scrollY, scrollHeight, vh);
     state->contentH += emptyBottom;
+    double scrollHeight = InputFitContentHeightF64(state->contentH, vh, dpi);
+    double requested =
+        state->hasDeferredScrollY ? state->deferredScrollY : state->scrollY;
+    state->scrollY =
+        InputClampVerticalScrollOffsetF64(requested, scrollHeight, vh);
+    state->hasDeferredScrollY = false;
     int firstRow = 0;
     int endRow = rows;
-    float padTop = 0;
-    float padBottom = 0;
+    double padTop = 0;
+    double padBottom = 0;
     if (rows > 1) {
         // Two rows of slack at each end, so a scroll of a few pixels does not
         // uncover an empty band before the next frame fills it.
         const int kSlack = 2;
-        float top = state->scrollY;
-        float bottom = top + vh;
-        if (!wrap) {
-            int first = (int)(top / lineH) - kSlack;
-            int end = (int)(bottom / lineH) + 1 + kSlack;
+        double top = state->scrollY;
+        double bottom = top + vh;
+        bool folded = len(state->folds.folded) != 0;
+        if (!wrap && !folded) {
+            int first = (int)std::min(top / lineH, (double)rows) - kSlack;
+            int end = (int)std::min(bottom / lineH + 1 + kSlack, (double)rows);
             firstRow = first < 0 ? 0 : (first > rows ? rows : first);
             endRow = end < firstRow ? firstRow : (end > rows ? rows : end);
-            padTop = (float)firstRow * lineH;
-            padBottom = (float)(rows - endRow) * lineH;
+            padTop = (double)firstRow * lineH;
+            padBottom = (double)(rows - endRow) * lineH;
         } else {
             // Heights only: a box's window y is last-painted and goes stale
             // the moment that row leaves the viewport. Subtracting it from
@@ -3352,14 +3400,17 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             // a click's scroll_to jumped back there.
             if (len(state->folds.folded) == 0) {
                 const InputWrapTree& tree = state->wrap.tree;
-                firstRow = tree.LineAtRow((int)(top / lineH));
-                endRow = tree.LineAtRow((int)(bottom / lineH)) + 1;
+                firstRow = tree.LineAtRow(
+                    (int)std::min(top / lineH, (double)state->wrap.totalRows));
+                endRow = tree.LineAtRow((int)std::min(
+                             bottom / lineH, (double)state->wrap.totalRows)) +
+                         1;
             } else {
-                float at = 0;
+                double at = 0;
                 int first = -1;
                 int end = rows;
                 for (int i = 0; i < rows; i++) {
-                    float h = DisplayLineH(state, i, lineH);
+                    double h = DisplayLineH(state, i, lineH);
                     if (first < 0 && at + h > top) {
                         first = i;
                     }
@@ -3387,7 +3438,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (maxRows < 8) {
             maxRows = 8;
         }
-        if (endRow - firstRow > maxRows) {
+        if (endRow - firstRow > maxRows && !folded) {
             endRow = firstRow + maxRows;
             if (endRow > rows) {
                 endRow = rows;
@@ -3403,8 +3454,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // rows were chosen. Ghost lines are overlaid here rather than stacked,
     // so they do not share the row walk; the spacer still holds their room.
     padBottom += emptyBottom;
+    // Keep large document coordinates out of the float layout tree. The
+    // viewport scrolls within the overscanned band by the remaining offset.
+    state->layoutOriginY = padTop >= 65536. ? padTop : 0.;
+    padTop -= state->layoutOriginY;
     if (padTop > 0) {
-        col->Child(Div(a)->W(kFill)->Shrink0()->H(padTop));
+        col->Child(Div(a)->W(kFill)->Shrink0()->H((float)padTop));
     }
 
     // Which diagnostic the pointer is over, for the popover the component
@@ -4145,7 +4200,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         rangePaint->nRows = painted->geometry.nRows;
     }
     if (padBottom > 0) {
-        col->Child(Div(a)->W(kFill)->Shrink0()->H(padBottom));
+        col->Child(Div(a)->W(kFill)->Shrink0()->H((float)padBottom));
     }
     // element.rs: the unwrapped scroll extent is the wider of the
     // byte-longest line and the widest line laid out this frame. The
@@ -4212,7 +4267,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // lines are not shifted: an inline completion that inserts rows under
     // the caret leaves these marks on the document rows.
     if (InputGutterStripWidth(state) > 0.f && lineH > 0.f) {
-        float viewTop = state->scrollY;
+        double viewTop = state->scrollY - state->layoutOriginY;
         // The component says how tall the rows are before the first paint.
         // A base frame that has not measured yet uses the window, the same
         // cap the row virtualizer uses, so a long document does not build a
@@ -4221,15 +4276,17 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (viewH <= 0.f && cx->win && cx->win->paint.viewH > 0.f) {
             viewH = cx->win->paint.viewH;
         }
-        float viewBottom = viewH > 0.f ? viewTop + viewH : viewTop - 1.f;
-        int nMarks = InputLayoutGutterMarks(state, 0, 0, lineH, viewTop,
-                                            viewBottom, nullptr, 0);
+        double viewBottom = viewH > 0.f ? viewTop + viewH : viewTop - 1.f;
+        int nMarks =
+            InputLayoutGutterMarks(state, 0, -state->layoutOriginY, lineH,
+                                   viewTop, viewBottom, nullptr, 0);
         if (nMarks > 0) {
             GutterMark* marks =
                 (GutterMark*)Alloc(a, (int)sizeof(GutterMark) * nMarks);
             if (marks) {
-                nMarks = InputLayoutGutterMarks(state, 0, 0, lineH, viewTop,
-                                                viewBottom, marks, nMarks);
+                nMarks = InputLayoutGutterMarks(state, 0, -state->layoutOriginY,
+                                                lineH, viewTop, viewBottom,
+                                                marks, nMarks);
                 float markW = state->gutterDecorationsWidth;
                 for (int i = 0; i < nMarks; i++) {
                     El* mark = Div(a)
@@ -5500,8 +5557,8 @@ static const int kBottomMarginRows = 3;
 // element.rs MIN_LINE_NUMBER_DIGITS / MAX_LINE_NUMBER_DIGITS /
 // MAX_DISPLAYED_LINE_NUMBER.
 const int kMinLineNumberDigits = 3;
-const int kMaxLineNumberDigits = 7;
-const int kMaxDisplayedLineNumber = 9999999;
+const int kMaxLineNumberDigits = 9;
+const int kMaxDisplayedLineNumber = 999999999;
 
 int InputLineNumberLen(int totalLines) {
     int digits = 1;
@@ -5517,9 +5574,10 @@ int InputDisplayedLineNumber(int number) {
     return number > kMaxDisplayedLineNumber ? kMaxDisplayedLineNumber : number;
 }
 
-float InputClampVerticalScrollOffset(float scroll, float scrollHeight,
-                                     float viewportH) {
-    float most = scrollHeight - viewportH;
+static double InputClampVerticalScrollOffsetF64(double scroll,
+                                                double scrollHeight,
+                                                float viewportH) {
+    double most = scrollHeight - viewportH;
     if (most < 0) {
         most = 0;
     }
@@ -5530,6 +5588,12 @@ float InputClampVerticalScrollOffset(float scroll, float scrollHeight,
         return most;
     }
     return scroll;
+}
+
+float InputClampVerticalScrollOffset(float scroll, float scrollHeight,
+                                     float viewportH) {
+    return (float)InputClampVerticalScrollOffsetF64(scroll, scrollHeight,
+                                                    viewportH);
 }
 
 float InputEmptyBottomHeight(bool isCodeEditor, int overrideRows,
@@ -5564,8 +5628,8 @@ float InputCursorSurroundingPadding(bool isAutoGrow, int overrideLines,
 
 // reveal_row, positive-down. Rust clamps a negative-down offset into
 // [top - rowTop, viewH - bottom - rowTop] and then to <= 0.
-float InputRevealRow(float scrollY, float rowTop, float lineH, float viewH,
-                     float edge) {
+static double InputRevealRowF64(double scrollY, double rowTop, float lineH,
+                                float viewH, float edge) {
     if (!(viewH > 0)) {
         return scrollY < 0 ? 0 : scrollY;
     }
@@ -5582,8 +5646,8 @@ float InputRevealRow(float scrollY, float rowTop, float lineH, float viewH,
         room = 0;
     }
     float top = edge < room ? edge : room;
-    float lo = rowTop - (viewH - bottom);
-    float hi = rowTop - top;
+    double lo = rowTop - (viewH - bottom);
+    double hi = rowTop - top;
     if (scrollY < lo) {
         scrollY = lo;
     }
@@ -5596,11 +5660,17 @@ float InputRevealRow(float scrollY, float rowTop, float lineH, float viewH,
     return scrollY;
 }
 
+float InputRevealRow(float scrollY, float rowTop, float lineH, float viewH,
+                     float edge) {
+    return (float)InputRevealRowF64(scrollY, rowTop, lineH, viewH, edge);
+}
+
 // Document y of `offset`: the visible line's start, plus the soft-wrap row
 // the caret is on. A folded line is the fold header (this fold map is
 // line-level, so it has no wrap-row hidden runs to project through).
 // line_end_affinity_at: only the live caret carries the affinity.
-static float InputOffsetDisplayY(const InputState* s, int offset, float lineH) {
+static double InputOffsetDisplayY(const InputState* s, int offset,
+                                  float lineH) {
     if (!s || lineH <= 0) {
         return 0;
     }
@@ -5609,7 +5679,7 @@ static float InputOffsetDisplayY(const InputState* s, int offset, float lineH) {
         row = FoldMapNearestVisibleLine(&s->folds, row);
         return DisplayRowDocY(s, row, lineH);
     }
-    float y = DisplayRowDocY(s, row, lineH);
+    double y = DisplayRowDocY(s, row, lineH);
     // Read the rows the last layout stored. Catching the map up here would
     // rewrap during the edit, before the frame that owns the new width.
     const InputWrapMap* m = &s->wrap;
@@ -5625,7 +5695,7 @@ static float InputOffsetDisplayY(const InputState* s, int offset, float lineH) {
         if (local < 0) {
             local = 0;
         }
-        y += (float)WrapRowOfOffset(item.starts, item.nRows, local, affinity) *
+        y += (double)WrapRowOfOffset(item.starts, item.nRows, local, affinity) *
              lineH;
     }
     return y;
@@ -5645,7 +5715,7 @@ static bool InputRangeIsWholeText(const InputState* s) {
 }
 
 static void InputClampScrollY(InputState* s, float viewH) {
-    float mostY = s->contentH - viewH;
+    double mostY = s->contentH - viewH;
     if (mostY < 0) {
         mostY = 0;
     }
@@ -5678,16 +5748,17 @@ bool InputRevealCaretOnResize(InputState* s, float newViewW, float newViewH,
                     s->scrollY == s->caretGeomScrollY;
         bool visible = false;
         if (!s->resizeRevealOwned) {
-            float top = s->caretGeomY - s->scrollY;
+            double top = s->caretGeomY - s->scrollY;
             float left = s->caretGeomX - s->scrollX;
             visible = top >= 0 && top + s->caretGeomH <= s->caretGeomViewH &&
                       left >= 0 && left + s->caretGeomW <= s->caretGeomViewW;
         }
         if (s->resizeRevealOwned ? same : visible) {
-            float y = InputOffsetDisplayY(s, InputCursor(s), lineH);
+            double y = InputOffsetDisplayY(s, InputCursor(s), lineH);
             float edge = InputLayoutCursorEdge(s, lineH, newViewH);
             float wasX = s->scrollX;
-            s->scrollY = InputRevealRow(s->scrollY, y, lineH, newViewH, edge);
+            s->scrollY =
+                InputRevealRowF64(s->scrollY, y, lineH, newViewH, edge);
             InputClampScrollY(s, newViewH);
             s->scrollX = wasX;
             s->caretGeomScrollX = s->scrollX;
@@ -5708,7 +5779,7 @@ void InputRememberCaretGeometry(InputState* s) {
     }
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
     float caretH = 0.85f * lineH;
-    float docY = InputOffsetDisplayY(s, InputCursor(s), lineH);
+    double docY = InputOffsetDisplayY(s, InputCursor(s), lineH);
     s->caretGeomX = s->caretX;
     s->caretGeomY = docY + (lineH - caretH) * 0.5f;
     s->caretGeomW = base::PlatCaretWidth();
@@ -5776,24 +5847,13 @@ void InputRequestReveal(InputState* s, Window* win) {
     WindowRequestAutoscroll(win, request);
 }
 
-void InputScrollToCaret(InputState* s, float caretX, float caretY,
-                        InputMoveDir dir) {
-    // scroll_to: a directed move asks for surrounding lines (a code editor
-    // takes them; anything else reveals the row with no extra edge). A plain
-    // reveal is minimal.
-    InputScrollToCaretWithPadding(s, caretX, caretY, dir,
-                                  dir != InputMoveDir::None
-                                      ? InputScrollPadding::SurroundingLines
-                                      : InputScrollPadding::Minimal);
-}
-
-void InputScrollToCaretWithPadding(InputState* s, float caretX, float caretY,
-                                   InputMoveDir dir,
-                                   InputScrollPadding padding) {
+static void InputScrollToCaretWithPaddingF64(InputState* s, float caretX,
+                                             double caretY, InputMoveDir dir,
+                                             InputScrollPadding padding) {
     if (!s) {
         return;
     }
-    float wasY = s->scrollY;
+    double wasY = s->scrollY;
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
 
     // Sideways: the caret keeps a margin from either edge of the box. A
@@ -5826,7 +5886,8 @@ void InputScrollToCaretWithPadding(InputState* s, float caretX, float caretY,
             s->mode.kind == LayoutModeKind::CodeEditor) {
             edge = InputLayoutCursorEdge(s, lineH, s->viewH);
         }
-        s->scrollY = InputRevealRow(s->scrollY, caretY, lineH, s->viewH, edge);
+        s->scrollY =
+            InputRevealRowF64(s->scrollY, caretY, lineH, s->viewH, edge);
         // A move that went up is never answered by scrolling down.
         if ((dir == InputMoveDir::Up && s->scrollY > wasY) ||
             (dir == InputMoveDir::Down && s->scrollY < wasY)) {
@@ -5834,6 +5895,28 @@ void InputScrollToCaretWithPadding(InputState* s, float caretX, float caretY,
         }
         InputClampScrollY(s, s->viewH);
     }
+}
+
+void InputScrollToCaretWithPadding(InputState* s, float caretX, float caretY,
+                                   InputMoveDir dir,
+                                   InputScrollPadding padding) {
+    InputScrollToCaretWithPaddingF64(s, caretX, caretY, dir, padding);
+}
+
+static void InputScrollToCaretF64(InputState* s, float caretX, double caretY,
+                                  InputMoveDir dir) {
+    // scroll_to: a directed move asks for surrounding lines (a code editor
+    // takes them; anything else reveals the row with no extra edge). A plain
+    // reveal is minimal.
+    InputScrollToCaretWithPaddingF64(s, caretX, caretY, dir,
+                                     dir != InputMoveDir::None
+                                         ? InputScrollPadding::SurroundingLines
+                                         : InputScrollPadding::Minimal);
+}
+
+void InputScrollToCaret(InputState* s, float caretX, float caretY,
+                        InputMoveDir dir) {
+    InputScrollToCaretF64(s, caretX, caretY, dir);
 }
 
 void InputScrollToCursor(InputState* s, InputMoveDir dir) {
@@ -5847,37 +5930,27 @@ void InputScrollToCursor(InputState* s, InputMoveDir dir) {
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
     // offset_to_display_row: the soft-wrap row, with the caret's line-end
     // affinity, projected through a closed fold.
-    float caretY = InputOffsetDisplayY(s, InputCursor(s), lineH);
-    InputScrollToCaret(s, s->caretX, caretY, dir);
+    double caretY = InputOffsetDisplayY(s, InputCursor(s), lineH);
+    InputScrollToCaretF64(s, s->caretX, caretY, dir);
 }
 
-bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
-                             const Point* offset) {
-    (void)app;
-    if (!s) {
-        return false;
-    }
+static bool InputApplyScrollOffset(InputState* s, App* app, Window* win,
+                                   float wantX, double wantY) {
     // Rust keeps the offset negative-down on its ScrollHandle; the state here
     // keeps it positive, so each range is Rust's negated.
-    Point want = offset ? *offset : Point{s->scrollX, s->scrollY};
     // A right- or centre-aligned run keeps a caret's width spare on the
     // right, which the left edge does not need.
     // blink_cursor.rs CURSOR_WIDTH: one logical pixel on every platform.
     // Paint snaps that width onto the device pixel grid.
     float safeX = s->align == 0 ? 0.f : base::PlatCaretWidth();
-    float mostY = s->contentH - s->viewH;
     float mostX = s->contentW - s->viewW + safeX;
-    if (mostY < 0) {
-        mostY = 0;
-    }
     if (mostX < safeX) {
         mostX = safeX;
     }
-    float y = 0;
-    if (!InputIsSingleLine(s)) {
-        y = want.y < 0 ? 0 : (want.y > mostY ? mostY : want.y);
-    }
-    float x = want.x < 0 ? 0 : (want.x > mostX ? mostX : want.x);
+    double y = InputIsSingleLine(s) ? 0.
+                                    : InputClampVerticalScrollOffsetF64(
+                                          wantY, s->contentH, s->viewH);
+    float x = std::max(0.f, std::min(wantX, mostX));
     if (x == s->scrollX && y == s->scrollY) {
         return false;
     }
@@ -5885,6 +5958,13 @@ bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
     s->scrollY = y;
     Notify(app, win);
     return true;
+}
+
+bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
+                             const Point* offset) {
+    if (!s) return false;
+    return InputApplyScrollOffset(s, app, win, offset ? offset->x : s->scrollX,
+                                  offset ? (double)offset->y : s->scrollY);
 }
 
 static ScrollOverscroll* InputOverscrollGet(InputState* s) {
@@ -5906,10 +5986,10 @@ struct InputScrollUser {
 // positive-down offset this state stores.
 static float InputScrollRust(void* user, float dy) {
     InputScrollUser* u = (InputScrollUser*)user;
-    float before = u->state->scrollY;
-    Point want = {u->state->scrollX - u->dx, u->state->scrollY - dy};
-    InputUpdateScrollOffset(u->state, u->app, u->win, &want);
-    return before - u->state->scrollY;
+    double before = u->state->scrollY;
+    InputApplyScrollOffset(u->state, u->app, u->win, u->state->scrollX - u->dx,
+                           before - dy);
+    return (float)(before - u->state->scrollY);
 }
 
 static bool InputOverflowsVertically(const InputState* s) {
@@ -5925,7 +6005,7 @@ bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
         dx = 0;
     }
     float oldX = s->scrollX;
-    float oldY = s->scrollY;
+    double oldY = s->scrollY;
     bool overflowsV = InputOverflowsVertically(s);
     bool reduced = MotionReduced(app);
     if (!precise || !s->scrollBounce || reduced || !overflowsV) {
@@ -5960,8 +6040,7 @@ bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
                 ->Packet(0, phase, extent, now, InputScrollRust, &user);
             Notify(app, win);
         }
-        Point want = {oldX - dx, oldY - dy};
-        InputUpdateScrollOffset(s, app, win, &want);
+        InputApplyScrollOffset(s, app, win, oldX - dx, oldY - dy);
     }
     bool moved = s->scrollX != oldX || s->scrollY != oldY;
     if (s->hoverDiagnostic >= 0) {
@@ -5993,13 +6072,21 @@ float InputBouncePaint(InputState* s, Window* win) {
 
 Point EditorScrollbarContext::Offset() const {
     if (!state) return {};
-    return {-state->scrollX, -state->scrollY};
+    return {-state->scrollX, (float)-state->scrollY};
 }
 
 void EditorScrollbarContext::SetOffset(Point value) const {
     if (!state) return;
     state->scrollX = -value.x;
     state->scrollY = -value.y;
+}
+
+double EditorScrollbarContext::ScrollYF64() const {
+    return -InputScrollYF64(state);
+}
+
+double EditorScrollbarContext::ContentHeightF64() const {
+    return state ? state->contentH + (viewport.h - scrollViewport.h) : 0.;
 }
 
 Size EditorScrollbarContext::ContentSize() const {
@@ -6048,7 +6135,7 @@ void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void*) {
                           inputBounds.w + pad.right,
                           inputBounds.h + pad.top + pad.bottom};
     presented.scrollViewport = {presented.viewport.w, inputBounds.h};
-    presented.content = {s->contentW, s->contentH};
+    presented.content = {s->contentW, (float)s->contentH};
     presented
         .axis = s->softWrap ? ScrollbarAxis::Vertical : ScrollbarAxis::Both;
     if (!ctx || !ctx->window || !ctx->window->frameArena) return;
@@ -6060,7 +6147,7 @@ void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void*) {
 
 void InputPaintOverviewRuler(InputState* s, PaintCtx* ctx, float trackX,
                              float trackY, float trackW, float trackH,
-                             float contentHeight, float paddingTop,
+                             double contentHeight, float paddingTop,
                              float lineHeight) {
     if (!s || !ctx || trackW <= 0.f || trackH <= 0.f) {
         return;
@@ -6105,8 +6192,8 @@ void InputScrollToOffsetWithPadding(InputState* s, int offset, InputMoveDir dir,
         return;
     }
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    float y = InputOffsetDisplayY(s, offset, lineH);
-    InputScrollToCaretWithPadding(s, -1, y, dir, padding);
+    double y = InputOffsetDisplayY(s, offset, lineH);
+    InputScrollToCaretWithPaddingF64(s, -1, y, dir, padding);
 }
 
 static void InputScrollToSearchOffset(InputState* s, Window* win, int offset) {
@@ -6118,9 +6205,9 @@ static void InputScrollToSearchOffset(InputState* s, Window* win, int offset) {
         WrapMapOf(s, &win->paint);
     }
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    float y = InputOffsetDisplayY(s, offset, lineH);
-    InputScrollToCaretWithPadding(s, -1, y, InputMoveDir::None,
-                                  InputScrollPadding::SurroundingLines);
+    double y = InputOffsetDisplayY(s, offset, lineH);
+    InputScrollToCaretWithPaddingF64(s, -1, y, InputMoveDir::None,
+                                     InputScrollPadding::SurroundingLines);
 }
 
 void InputMoveToWithAffinity(InputState* s, App* app, Window* win, int offset,
@@ -7402,11 +7489,12 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     // available after shaping in prepaint.
     if (InputIsMultiLine(s)) {
         float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-        float y = InputOffsetDisplayY(s, InputCursor(s), lineH);
+        double y = InputOffsetDisplayY(s, InputCursor(s), lineH);
         float edge = InputLayoutCursorEdge(s, lineH, s->viewH);
         float wasX = s->scrollX;
         if (s->viewH > 0) {
-            s->scrollY = InputRevealRow(s->scrollY, y, lineH, s->viewH, edge);
+            s->scrollY =
+                InputRevealRowF64(s->scrollY, y, lineH, s->viewH, edge);
             InputClampScrollY(s, s->viewH);
         }
         s->scrollX = wasX;
@@ -9244,7 +9332,7 @@ void InputTypeChar(InputState* s, App* app, Window* win, uint32_t ch) {
 
 // How tall a logical line is: one line height per visual row the wrap map
 // gives it.
-static float DisplayLineH(const InputState* s, int row, float lineH) {
+static double DisplayLineH(const InputState* s, int row, float lineH) {
     // A folded-away line is worth no height at all, which is what makes the
     // walk below step straight over it: the row moves on and the y it is
     // carrying does not, so a closed fold costs one press to cross rather
@@ -9252,11 +9340,11 @@ static float DisplayLineH(const InputState* s, int row, float lineH) {
     if (FoldMapLineHidden(&s->folds, row)) {
         return 0;
     }
-    return (float)InputWrapRows(s, row, nullptr, nullptr) * lineH;
+    return (double)InputWrapRows(s, row, nullptr, nullptr) * lineH;
 }
 
 // Document y of `row`: the visual rows above it, less the ones a fold hides.
-static float DisplayRowDocY(const InputState* s, int row, float lineH) {
+static double DisplayRowDocY(const InputState* s, int row, float lineH) {
     if (!s || row <= 0) {
         return 0;
     }
@@ -9264,14 +9352,14 @@ static float DisplayRowDocY(const InputState* s, int row, float lineH) {
     bool folded = len(s->folds.folded) > 0;
     if (!folded) {
         if (!m) {
-            return (float)row * lineH;
+            return (double)row * lineH;
         }
         if (row < m->tree.LineCount()) {
-            return (float)m->tree.RowsAbove(row) * lineH;
+            return (double)m->tree.RowsAbove(row) * lineH;
         }
-        return (float)m->totalRows * lineH;
+        return (double)m->totalRows * lineH;
     }
-    float y = 0;
+    double y = 0;
     for (int i = 0; i < row; i++) {
         y += DisplayLineH(s, i, lineH);
     }
@@ -11020,12 +11108,14 @@ static int FirstVisibleOffset(const InputState* s) {
     int rows = InputLinesLen(s);
     int row = rows - 1;
     const InputWrapMap* map = WrapMapOf(s, nullptr);
-    if (map && len(s->folds.folded) == 0) {
-        row = map->tree.LineAtRow((int)(s->scrollY / lineH));
+    if (len(s->folds.folded) == 0) {
+        row = map ? map->tree.LineAtRow((int)std::min(s->scrollY / lineH,
+                                                      (double)map->totalRows))
+                  : (int)std::min(s->scrollY / lineH, (double)(rows - 1));
     } else {
-        float at = 0;
+        double at = 0;
         for (int i = 0; i < rows; i++) {
-            float h = DisplayLineH(s, i, lineH);
+            double h = DisplayLineH(s, i, lineH);
             if (at + h > s->scrollY) {
                 row = i;
                 break;
@@ -11390,23 +11480,27 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     // from line 700 to 900 would still map as if the top were 700, and
     // scroll_to would jump the view back. The clip box does not move; adding
     // the live scrollY is the document.
-    float originY = b.y;
+    double originY = b.y;
     if (s->inputBounds.h > 0) {
         originY = s->inputBounds.y - s->scrollY;
     }
-    float docY = y - originY;
+    double docY = y - originY;
     int row = FoldMapNearestVisibleLine(&s->folds, rows - 1);
     // How far down its own line the press landed, which is which of a
     // wrapped line's visual rows it wanted.
-    float relY = 0;
+    double relY = 0;
     const InputWrapMap* map = WrapMapOf(s, ctx);
-    if (map && len(s->folds.folded) == 0 && lineH > 0) {
-        row = map->tree.LineAtRow((int)(std::max(0.f, docY) / lineH));
-        relY = std::max(0.f, docY - (float)map->tree.RowsAbove(row) * lineH);
+    if (len(s->folds.folded) == 0 && lineH > 0) {
+        double displayRow = std::max(0., docY) / lineH;
+        row = map ? map->tree.LineAtRow(
+                        (int)std::min(displayRow, (double)map->totalRows))
+                  : (int)std::min(displayRow, (double)(rows - 1));
+        int above = map ? map->tree.RowsAbove(row) : row;
+        relY = std::max(0., docY - (double)above * lineH);
     } else {
-        float at = 0;
+        double at = 0;
         for (int i = 0; i < rows; i++) {
-            float h = DisplayLineH(s, i, lineH);
+            double h = DisplayLineH(s, i, lineH);
             if (h <= 0) {
                 continue;
             }
@@ -11429,10 +11523,7 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     const int* starts = nullptr;
     float indent = 0;
     int nRows = InputWrapRows(s, row, &starts, &indent);
-    int k = lineH > 0 ? (int)(relY / lineH) : 0;
-    if (k > nRows - 1) {
-        k = nRows - 1;
-    }
+    int k = lineH > 0 ? (int)std::min(relY / lineH, (double)(nRows - 1)) : 0;
     WrapRowSpan r = WrapRowSpanOf(starts, nRows, indent, len(line), k, start);
     float localX = x - b.x;
     if (s->kind == InputKind::Textarea || s->align != 0) {
@@ -12804,10 +12895,11 @@ bool InputImeCandidateBounds(const InputState* s, Window* win, Selection range,
         // An edit may ask for the live caret before the next layout. Reuse
         // the frame's text origin and the current caret's document row.
         start = {s->lastBounds.x + s->caretX - s->scrollX,
-                 s->lastBounds.y - s->scrollY};
+                 (float)(s->lastBounds.y - s->scrollY)};
         if (!InputIsSingleLine(s)) {
-            start.y = s->inputBounds.y - s->scrollY +
-                      InputOffsetDisplayY(s, range.start, s->lastLineH);
+            double local =
+                InputOffsetDisplayY(s, range.start, s->lastLineH) - s->scrollY;
+            start.y = s->inputBounds.y + (float)local;
         }
         *out = {start.x, start.y, 1.f, s->lastLineH};
         return true;

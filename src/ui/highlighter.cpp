@@ -1476,7 +1476,7 @@ El* Highlighter::IntoEl() {
                        ->W(kFill)
                        ->H(h)
                        ->ClipY()
-                       ->ScrollY(state ? state->scrollY : 0)
+                       ->ScrollY(InputLayoutScrollY(state))
                        ->ScrollFromPath();
         if (state && !state->softWrap) {
             scroller->ScrollX(state->scrollX);

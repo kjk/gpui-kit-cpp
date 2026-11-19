@@ -1297,14 +1297,13 @@ El* Textarea::IntoEl() {
                   // The bar drag finds the box again by this id in the
                   // frame that is on screen; the box is already named, so
                   // its place in the tree is what it is found by.
-                  ->ScrollFromPath()
-                  // The rows clamp the offset, including a target past the
-                  // end, so the box has to read it after they are built.
-                  ->ScrollY(state ? state->scrollY : 0);
+                  ->ScrollFromPath();
     if (state && state->scrollbarRenderer) {
         box->prePaint = &EditorScrollbarPrePaint;
     }
     El* text = gpui::Textarea::New(cx, state, editor);
+    // The rows clamp the document offset and establish the layout origin.
+    box->ScrollY(InputLayoutScrollY(state));
     // The stretch moves the text inside the frame. The bar stays put.
     float stretch = InputBouncePaint(state, cx->win);
     if (stretch != 0) text->PaintOffset(0, stretch);

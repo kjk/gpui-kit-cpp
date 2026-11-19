@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6898b31cc96570b590ce5d6d6b5cf3adee9b1f25` (2026-11-18,
-input: public fold_all, unfold_all, fold_at_level and set_folded (#4028)).
-Editor state now exposes its fold candidates and can set a candidate, fold or
-unfold all candidates, or fold only one nesting level. Bulk updates rebuild
-the display projection once and retain the candidate ranges.
+Processed through `e028806a836c81b412281f8cdabf1d334386c877` (2026-11-18,
+editor: Preserve f64 vertical coordinates past 2^24 px and allow 9-digit line
+numbers (#4022)).
+Keep editor document Y and height in double precision, lay out tall visible
+bands relative to their first row, and size the gutter for nine digits. Native
+offsets are positive-down; the scrollbar context retains its negative-down
+convention. The built-in thumb retains float precision as upstream does.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

@@ -373,8 +373,8 @@ struct GutterMark {
 
 // layout_gutter_decorations, in document coordinates. Marks outside
 // [viewTop, viewBottom] are dropped. viewBottom < viewTop keeps every mark.
-int InputLayoutGutterMarks(const InputState* s, float originX, float originY,
-                           float lineH, float viewTop, float viewBottom,
+int InputLayoutGutterMarks(const InputState* s, float originX, double originY,
+                           float lineH, double viewTop, double viewBottom,
                            GutterMark* out, int cap);
 
 struct OverviewRulerMark {
@@ -389,7 +389,7 @@ struct OverviewRulerMark {
 // layout_overview_ruler. `contentHeight` is the height the thumb maps onto
 // the track. Returns how many marks there are.
 int InputLayoutOverviewRuler(InputState* s, float trackX, float trackY,
-                             float trackW, float trackH, float contentHeight,
+                             float trackW, float trackH, double contentHeight,
                              float paddingTop, float lineH,
                              OverviewRulerMark* out, int cap);
 

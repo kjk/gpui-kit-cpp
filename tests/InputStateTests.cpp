@@ -1845,15 +1845,15 @@ static void ScrollToBringsTheCaretIntoView() {
     // A caret inside the box moves nothing. Minimal padding reserves the
     // row and nothing above it.
     InputScrollToCaret(&s, 0, 40, InputMoveDir::None);
-    utassertnear(s.scrollY, 0.f);
+    utassert(fabs(s.scrollY - (0.f)) < 0.001);
 
     // Past the bottom: the row's top sits at viewH - rowH (120), flush.
     InputScrollToCaret(&s, 0, 200, InputMoveDir::None);
-    utassertnear(s.scrollY, 120.f);
+    utassert(fabs(s.scrollY - (120.f)) < 0.001);
 
     // Back above the top: the row's start aligns with the viewport.
     InputScrollToCaret(&s, 0, 100, InputMoveDir::None);
-    utassertnear(s.scrollY, 100.f);
+    utassert(fabs(s.scrollY - (100.f)) < 0.001);
 }
 
 static void AVerticalWalkDoesNotFightItself() {
@@ -1863,10 +1863,10 @@ static void AVerticalWalkDoesNotFightItself() {
     // Rust clamps the answer by the direction the caret went: a move up is
     // never answered by scrolling down...
     InputScrollToCaret(&s, 0, 300, InputMoveDir::Up);
-    utassertnear(s.scrollY, 140.f);
+    utassert(fabs(s.scrollY - (140.f)) < 0.001);
     // ...and a move down is never answered by scrolling up.
     InputScrollToCaret(&s, 0, 40, InputMoveDir::Down);
-    utassertnear(s.scrollY, 140.f);
+    utassert(fabs(s.scrollY - (140.f)) < 0.001);
 }
 
 static void TheOffsetStaysInsideTheContent() {
@@ -1874,10 +1874,10 @@ static void TheOffsetStaysInsideTheContent() {
     SeedScroll(&s);
     // The last line cannot pull the view past the end of the text.
     InputScrollToCaret(&s, 0, 10000, InputMoveDir::None);
-    utassertnear(s.scrollY, 300.f);
+    utassert(fabs(s.scrollY - (300.f)) < 0.001);
     // Nor can the first pull it above the start.
     InputScrollToCaret(&s, 0, 0, InputMoveDir::None);
-    utassertnear(s.scrollY, 0.f);
+    utassert(fabs(s.scrollY - (0.f)) < 0.001);
 }
 
 static void EmptyBottomHeightMatchesRust() {
@@ -1959,9 +1959,9 @@ static void OneRowViewportKeepsTheEditedRowInside() {
     s.viewH = 20;
     s.contentH = 400;
     InputScrollToCaret(&s, -1, 80, InputMoveDir::None);
-    utassertnear(s.scrollY, 80.f);
+    utassert(fabs(s.scrollY - (80.f)) < 0.001);
     InputScrollToCaret(&s, -1, 80, InputMoveDir::None);
-    utassertnear(s.scrollY, 80.f);
+    utassert(fabs(s.scrollY - (80.f)) < 0.001);
 }
 
 // layout_cursors: shrinking keeps a visible caret, and does not touch x.
@@ -2008,7 +2008,7 @@ static void ResizeKeepsAVisibleCaretUntilTheScrollChanges() {
     utassert(row - s.scrollY + 20.f <= 20.f + 0.01f);
     // The next size still owns the reveal while the scroll is the one the
     // resize stored.
-    float ownedY = s.scrollY;
+    double ownedY = s.scrollY;
     utassert(InputRevealCaretOnResize(&s, 200, 40, 20));
     utassertnear(s.scrollX, x);
     utassert(s.resizeRevealOwned);
@@ -2016,7 +2016,7 @@ static void ResizeKeepsAVisibleCaretUntilTheScrollChanges() {
     s.scrollY = 0;
     s.scrollX = 0;
     utassert(!InputRevealCaretOnResize(&s, 200, 20, 20));
-    utassertnear(s.scrollY, 0.f);
+    utassert(fabs(s.scrollY - (0.f)) < 0.001);
     utassertnear(s.scrollX, 0.f);
     utassert(!s.resizeRevealOwned);
     (void)ownedY;
@@ -2030,7 +2030,7 @@ static void CodeEditorSurroundingUsesTheOverride() {
     s.viewH = 200;
     s.contentH = 800;
     InputScrollToCaret(&s, 0, 180, InputMoveDir::Down);
-    utassertnear(s.scrollY, 40.f);
+    utassert(fabs(s.scrollY - (40.f)) < 0.001);
 }
 
 static void ASidewaysCaretPullsTheRunAcross() {
@@ -3172,10 +3172,12 @@ static void LineNumberColumnStaysAtThreeDigitsThenGrowsUpToSeven() {
     utassert(InputLineNumberLen(1000) == 4);
     utassert(InputLineNumberLen(999999) == 6);
     utassert(InputLineNumberLen(9999999) == 7);
-    utassert(InputLineNumberLen(10000000) == 7);
+    utassert(InputLineNumberLen(10000000) == 8);
     utassert(InputDisplayedLineNumber(42) == 42);
     utassert(InputDisplayedLineNumber(9999999) == 9999999);
-    utassert(InputDisplayedLineNumber(10000000) == 9999999);
+    utassert(InputDisplayedLineNumber(10000000) == 10000000);
+    utassert(InputLineNumberLen(1000000000) == 9);
+    utassert(InputDisplayedLineNumber(1000000000) == 999999999);
 }
 
 static void DiagnosticSetOwnsMetadataAndAnswersRanges() {
@@ -5239,7 +5241,7 @@ static El* InputStateFrame(Ctx* cx, InputState* s) {
         text = gpui::Input::New(cx, s);
     }
     if (InputIsMultiLine(s)) {
-        frame->ClipY()->ScrollY(s->scrollY)->ScrollFromPath();
+        frame->ClipY()->ScrollY(InputLayoutScrollY(s))->ScrollFromPath();
         if (!s->softWrap) {
             frame->ScrollX(s->scrollX);
         }
@@ -6456,14 +6458,14 @@ static void ScrollingPastTheEndOfATextareaDoesNotScrollThePage() {
     // A swipe that runs far past the end of the text, then its momentum.
     ScrollOverField(win, &page->text, 0, -40);
     ScrollOverField(win, &page->text, 0, -2000);
-    float end = page->text.scrollY;
+    double end = page->text.scrollY;
     utassert(end > 0);
     ScrollOverField(win, &page->text, 0, 0);
     ScrollOverField(win, &page->text, 0, -300);
     // A wheel flick, or a new swipe, that starts at the end.
     ScrollOverField(win, &page->text, 0, -40);
     ScrollOverField(win, &page->text, 0, -40);
-    utassertnear(page->text.scrollY, end);
+    utassert(fabs(page->text.scrollY - (end)) < 0.001);
     utassertnear(page->pageY, 0);
     TestAppFree(app);
 }
@@ -6513,7 +6515,7 @@ static void NoopScrollNotifiesDiagnosticDismissal() {
 
         InputOnScrollWheel(s, u.app, u.win, 0, -40);
         utassertnear(s->scrollX, 0.f);
-        utassertnear(s->scrollY, 0.f);
+        utassert(fabs(s->scrollY - (0.f)) < 0.001);
         utassert(s->hoverDiagnostic < 0);
         // "clearing a diagnostic must notify even when scrolling is clamped"
         utassert(NotificationsA(u) - before == 1);
@@ -6548,13 +6550,13 @@ static void InputScrollOffsetNotifiesOnlyOnChange() {
         Point p = {40, 0};
         InputUpdateScrollOffset(s, u.app, u.win, &p);
         utassertnear(s->scrollX, 40.f);
-        utassertnear(s->scrollY, 0.f);
+        utassert(fabs(s->scrollY - (0.f)) < 0.001);
         // "a scroll must notify"
         utassert(NotificationsA(u) - before == 1);
         p = {400, -50};
         InputUpdateScrollOffset(s, u.app, u.win, &p);
         utassertnear(s->scrollX, 200.f);
-        utassertnear(s->scrollY, 0.f);
+        utassert(fabs(s->scrollY - (0.f)) < 0.001);
         utassert(NotificationsA(u) - before == 2);
         p = {500, 0};
         InputUpdateScrollOffset(s, u.app, u.win, &p);
@@ -6563,7 +6565,7 @@ static void InputScrollOffsetNotifiesOnlyOnChange() {
         s->contentW = 110;
         InputUpdateScrollOffset(s, u.app, u.win, nullptr);
         utassertnear(s->scrollX, 10.f);
-        utassertnear(s->scrollY, 0.f);
+        utassert(fabs(s->scrollY - (0.f)) < 0.001);
         // "a smaller scroll range must clamp and notify"
         utassert(NotificationsA(u) - before == 3);
     }
@@ -6631,7 +6633,7 @@ static void SetScrollOffsetPastTheEndIsClamped() {
     TestDraw(win);
     utassert(s->viewH > 0);
     utassert(s->contentH > s->viewH);
-    utassertnear(s->scrollY, s->contentH - s->viewH);
+    utassert(fabs(s->scrollY - (s->contentH - s->viewH)) < 0.001);
     TestAppFree(app);
 }
 
@@ -6649,9 +6651,9 @@ static void SetScrollOffsetPastTheEndIsClampedInACodeEditor() {
     s->scrollY = 10000.f;
     TestDraw(win);
     utassert(s->viewH > 0);
-    float furthest = s->contentH - s->viewH;
+    float furthest = (float)(s->contentH - s->viewH);
     utassert(furthest > s->viewH);
-    utassertnear(s->scrollY, furthest);
+    utassert(fabs(s->scrollY - (furthest)) < 0.001);
     TestAppFree(app);
 }
 
@@ -6926,7 +6928,7 @@ static float VisibleRowTopA(const InputView& v, int offset) {
         k--;
     }
     y += (float)k * lh;
-    return y - s->scrollY;
+    return (float)(y - s->scrollY);
 }
 
 // state.rs test_edit_reveals_far_offscreen_caret: editing at a caret that sits
@@ -7005,7 +7007,7 @@ static void ScrollToEobDoesNotOvershootSafeRange() {
     int end = len(InputValue(view.input));
     InputMoveTo(view.input, view.app, view.win, end);
     InputScrollToOffset(view.input, end, InputMoveDir::Down);
-    float safeMax = view.input->contentH - view.input->inputBounds.h;
+    float safeMax = (float)(view.input->contentH - view.input->inputBounds.h);
     if (safeMax < 0) {
         safeMax = 0;
     }
@@ -7019,7 +7021,7 @@ static void ScrollToEobDoesNotOvershootSafeRange() {
 static void VisibleRowsA(const InputState* s, int* start, int* end) {
     float lh = s->lastLineH > 0 ? s->lastLineH : 1;
     *start = (int)(s->scrollY / lh);
-    *end = (int)ceilf((s->scrollY + s->inputBounds.h) / lh);
+    *end = (int)ceil((s->scrollY + s->inputBounds.h) / lh);
 }
 
 // state.rs assert_search_reveals_with_padding_after_manual_scroll.
@@ -7080,7 +7082,7 @@ static void AssertSearchRevealsWithPaddingAfterManualScrollA(bool previous) {
     VisibleRowsA(view.input, &first, &last);
     utassert(first <= 60 && 60 < last);
     lh = view.input->lastLineH;
-    float targetY = lh * 60 - view.input->scrollY;
+    float targetY = (float)(lh * 60 - view.input->scrollY);
     // Three lines of edge clearance include the matched line itself.
     utassert(targetY >= lh * 2 - 0.1f);
     // "search must preserve the configured surrounding-line padding"
@@ -9373,7 +9375,7 @@ struct MonoEditorRootC {
                         ->W(kFill)
                         ->H(kFill)
                         ->ClipY()
-                        ->ScrollY(s->scrollY)
+                        ->ScrollY(InputLayoutScrollY(s))
                         ->ScrollFromPath();
         return Div(cx->a)
             ->SizeFull()
@@ -11610,7 +11612,8 @@ static void EditorTextOriginOffsetFollowsTheLaidOutGutter() {
         for (int gutter = 0; gutter < 3; gutter++) {
             InputSetLineNumber(editor, gutter > 0, app, win);
             editor->mode.folding = gutter == 2;
-            editor->scrollX = editor->scrollY = 0;
+            editor->scrollX = 0;
+            editor->scrollY = 0;
             TestDraw(win);
             TestDraw(win);
             utassert(InputTextOriginOffset(editor, &offset));
@@ -13650,7 +13653,7 @@ static void ScrollbarRendererReceivesTheEditorsScrollRange() {
     TestSimulateMouseDown(win, grab);
     TestSimulateMouseMove(win, end, true);
     TestSimulateMouseUp(win, end);
-    utassert(fabsf(v->editor.scrollY + wheelEnd.y) < 0.01f);
+    utassert(fabs(v->editor.scrollY + wheelEnd.y) < 0.01f);
     utassert(fabsf(v->editor.scrollX + wheelEnd.x) < 0.01f);
     TestAppFree(app);
 }
@@ -14068,6 +14071,75 @@ static void TextareaStartsEachParagraphAtItsReadingEdge() {
     TestAppFree(app);
 }
 
+// element.rs large_line_count_coordinates_stay_aligned_past_f32_cliff.
+static void LargeEditorKeepsViewportLocalRowGeometry() {
+    struct View {
+        InputState input;
+        static El* Render(View* self, Ctx* cx) {
+            return component::Editor::New(cx, StrL("large"), &self->input)
+                ->H(180)
+                ->Font(15)
+                ->Searchable(false)
+                ->Folding(false)
+                ->IndentGuides(false)
+                ->IntoEl();
+        }
+    };
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<View>(app);
+    InputState* s = &view.Get(app)->input;
+    s->kind = InputKind::Editor;
+    s->mode.kind = LayoutModeKind::CodeEditor;
+    s->softWrap = false;
+    InputSetLineNumber(s, true, app, nullptr);
+    constexpr int lineCount = 850000;
+    char* bytes = (char*)malloc(2 * lineCount);
+    for (int i = 0; i < lineCount; i++) {
+        bytes[2 * i] = 'x';
+        bytes[2 * i + 1] = '\n';
+    }
+    InputSetValue(s, Str(bytes, 2 * lineCount - 1));
+    free(bytes);
+    Window* win = TestWindowOpen(app, view, 320, 220);
+    TestDraw(win);
+    const int target = 800000;
+    float lineH = s->lastLineH;
+    double top = (double)target * lineH + 0.25;
+    utassert(top > 16777216.);
+    utassert(InputContentHeightF64(s) > top + 180);
+    InputSetScrollYF64(s, app, win, top);
+    TestDraw(win);
+    utassert(InputScrollYF64(s) == top);
+    auto rowAt = [&](int line, Bounds* text) {
+        InputPaintedVisualRow rows[24] = {};
+        int count = InputLastVisualRows(s, win, rows, 24);
+        for (int i = 0; i < std::min(count, 24); i++) {
+            if (rows[i].lineStart == line * 2) {
+                *text = rows[i].text;
+                return true;
+            }
+        }
+        return false;
+    };
+    Bounds first = {}, next = {};
+    utassert(rowAt(target + 1, &first));
+    utassert(rowAt(target + 2, &next));
+    utassertnear(next.y - first.y, lineH);
+    utassert(InputIndexForPosition(s, &win->paint, first.x + 1, first.y + 2) ==
+             (target + 1) * 2);
+    InputScrollByYF64(s, app, win, 0.5);
+    TestDraw(win);
+    utassert(InputScrollYF64(s) == top + 0.5);
+    Bounds moved = {};
+    utassert(rowAt(target + 1, &moved));
+    utassertnear(first.y - moved.y, 0.5f);
+    utassert(
+        InputOnScrollWheel(s, app, win, 0, -0.25f, TouchPhase::Moved, false));
+    utassert(InputScrollYF64(s) == top + 0.75);
+    TestAppFree(app);
+}
+
 // state.rs accepts_text_input: losing focus commits the pending IME text
 // and ends its undo group before the field takes another edit.
 static void LosingFocusEndsImeComposition() {
@@ -14108,6 +14180,7 @@ void TestInputState() {
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
     LosingFocusEndsImeComposition();
+    LargeEditorKeepsViewportLocalRowGeometry();
     TextareaStartsEachParagraphAtItsReadingEdge();
     LastInputEditsFollowTheChange();
     InputEditsEventsReplayEachChange();
