@@ -14167,6 +14167,38 @@ static void LosingFocusEndsImeComposition() {
     InputViewFree(&view);
 }
 
+// state.rs test_ctrl_delete_stops_at_whitespace.
+static void ForwardWordDeletionStopsAtWhitespaceAndLineBreaks() {
+    InputState s;
+    s.kind = InputKind::Textarea;
+    InputSetValue(&s, StrL("    four leading spaces"));
+    utassert(InputNextWordDeleteEndAt(&s, 0, true) == 4);
+    utassert(InputNextWordDeleteEndAt(&s, 4, true) == 8);
+    utassert(InputNextWordDeleteEndAt(&s, 8, true) == 9);
+    utassert(InputNextWordDeleteEndAt(&s, 0, false) == 8);
+
+    InputSetValue(&s, StrL("one\n    two"));
+    utassert(InputNextWordDeleteEndAt(&s, 3, true) == 4);
+    InputSetValue(&s, StrL("one\r\n  two"));
+    utassert(InputNextWordDeleteEndAt(&s, 3, true) == 5);
+    InputSetValue(&s, StrL("one  \ntwo"));
+    utassert(InputNextWordDeleteEndAt(&s, 3, true) == 5);
+    InputSetValue(&s, StrL("\xc2\xa0\xe2\x80\x83"
+                           "word"));
+    utassert(InputNextWordDeleteEndAt(&s, 0, true) == 5);
+    s.masked = true;
+    utassert(InputNextWordDeleteEndAt(&s, 0, true) == len(InputValue(&s)));
+    s.masked = false;
+
+    InputSetValue(&s, StrL("    four leading spaces"));
+    s.selectedRange = SelectionAt(0);
+    utassert(InputPerform(&s, nullptr, nullptr,
+                          InputAction::DeleteToNextWordEnd, false));
+    Str want = PlatWordDeleteStopsAtWhitespace() ? StrL("four leading spaces")
+                                                 : StrL(" leading spaces");
+    utassert(StrEq(InputValue(&s), want));
+}
+
 void TestInputState() {
     LaterHighlightLayerWinsOverEarlierOne();
     DecorationColorIsStableAcrossCompositions();
@@ -14180,6 +14212,7 @@ void TestInputState() {
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
     LosingFocusEndsImeComposition();
+    ForwardWordDeletionStopsAtWhitespaceAndLineBreaks();
     LargeEditorKeepsViewportLocalRowGeometry();
     TextareaStartsEachParagraphAtItsReadingEdge();
     LastInputEditsFollowTheChange();

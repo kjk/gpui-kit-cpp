@@ -2293,6 +2293,9 @@ bool PlatIsWindows() {
 bool PlatSecondaryIsCommand() {
     return kPlatFacts.secondaryIsCommand;
 }
+bool PlatWordDeleteStopsAtWhitespace() {
+    return kPlatFacts.wordDeleteStopsAtWhitespace;
+}
 bool PlatShowsWindowControls() {
     return kPlatFacts.showsWindowControls;
 }

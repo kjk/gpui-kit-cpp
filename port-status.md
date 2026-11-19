@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `11805c76ac55bcc2ece3ac377a113f70108f6a25` (2026-11-18,
-test: Resolve test images synchronously for deterministic layout (#3952)).
-Add a synchronous solid bitmap source to TestApp and verify inline image
-layout and wrapping on the first frame through the existing image source
-override.
+Processed through `c0992262c9fd13591b64862543d8d427ec68cefe` (2026-11-18,
+input: Stop Ctrl+Delete at whitespace and line breaks (#4034)).
+Stop forward word deletion at a whitespace run or a CR, LF, or CRLF. Preserve
+macOS Option+Delete and masked-field word behavior.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

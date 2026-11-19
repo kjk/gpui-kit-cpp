@@ -6214,6 +6214,8 @@ int InputPreviousStartOfWord(const InputState* s);
 int InputNextEndOfWord(const InputState* s);
 int InputPreviousStartOfWordAt(const InputState* s, int offset);
 int InputNextEndOfWordAt(const InputState* s, int offset);
+int InputNextWordDeleteEndAt(const InputState* s, int offset,
+                             bool stopAtWhitespace);
 
 // move_to(): drops the selection and puts the caret at `offset`.
 void InputMoveTo(InputState* s, App* app, Window* win, int offset);

@@ -5443,6 +5443,37 @@ int InputNextEndOfWordAt(const InputState* s, int offset) {
     return InputTokenBoundary(s, off, Bias::Right);
 }
 
+// state.rs next_word_delete_end_at. Keep a CRLF together and stop a
+// run of horizontal whitespace at the next line break.
+int InputNextWordDeleteEndAt(const InputState* s, int offset,
+                             bool stopAtWhitespace) {
+    if (stopAtWhitespace && !s->masked) {
+        Str text = InputValue(s);
+        int start = RopeClipOffset(text, offset, Bias::Left);
+        if (start < len(text)) {
+            uint32_t cp = 0;
+            int end = start + Utf8At(text, start, &cp);
+            if (cp == '\r' || cp == '\n') {
+                if (cp == '\r' && end < len(text) && text.s[end] == '\n') {
+                    end++;
+                }
+                return end;
+            }
+            if (IsUnicodeWhitespace(cp)) {
+                while (end < len(text)) {
+                    int n = Utf8At(text, end, &cp);
+                    if (cp == '\r' || cp == '\n' || !IsUnicodeWhitespace(cp)) {
+                        break;
+                    }
+                    end += n;
+                }
+                return InputTokenBoundary(s, end, Bias::Right);
+            }
+        }
+    }
+    return InputNextEndOfWordAt(s, offset);
+}
+
 int InputNextEndOfWord(const InputState* s) {
     return InputNextEndOfWordAt(s, InputCursor(s));
 }
@@ -10875,7 +10906,10 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                 PauseBlink(s, app, win);
                 return true;
             }
-            DeleteRange(s, app, win, InputCursor(s), InputNextEndOfWord(s));
+            int start = InputCursor(s);
+            int end = InputNextWordDeleteEndAt(
+                s, start, PlatWordDeleteStopsAtWhitespace());
+            DeleteRange(s, app, win, start, end);
             return true;
         }
 

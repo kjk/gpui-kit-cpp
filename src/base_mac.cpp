@@ -146,6 +146,7 @@ bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
 
 const PlatFacts kPlatFacts = {
     .secondaryIsCommand = true,
+    .wordDeleteStopsAtWhitespace = false,
     // The traffic lights are the window's, not the title bar's.
     .showsWindowControls = false,
     .scrollBounce = true,

@@ -221,6 +221,9 @@ struct PlatFacts {
     bool isWindows = false;
     // The shortcut modifier, Rust's `secondary-`, is Command (macOS).
     bool secondaryIsCommand = false;
+    // Ctrl+Delete stops after blanks or a line break. macOS Option+Delete
+    // continues to the next word end.
+    bool wordDeleteStopsAtWhitespace = true;
     // The title bar draws its own minimize/maximize/close buttons.
     bool showsWindowControls = true;
     // Linux draws the title-bar close button as an element click. Elsewhere
@@ -275,6 +278,7 @@ char PlatPathSep();
 bool PlatPathsCaseFold();
 bool PlatIsWindows();
 bool PlatSecondaryIsCommand();
+bool PlatWordDeleteStopsAtWhitespace();
 bool PlatShowsWindowControls();
 bool PlatTitleBarCloseIsElement();
 float PlatCaretWidth();
