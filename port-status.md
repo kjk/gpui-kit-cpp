@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ffaa5c180af4287c5d26719d67c207e743f4aa6e` (2026-11-13,
-select: Keep the menu height while searching (#3944)).
-Remember the opening side for Select and Combobox menus. Keep the initial
-items height when the menu opens above, and reset the side and height when the
-menu closes.
+Processed through `e06090d15d1f185a9a9f07b5edfee502c8f24a4b` (2026-11-13,
+select, combobox, command: Add opt-in highlight_matches for query matches
+(#3959)).
+Add opt-in matching spans to Select, Combobox and Command. The spans use
+Unicode lowercase mappings and retain the original UTF-8 byte ranges. Custom
+searchable rows can receive the active query.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
@@ -142,11 +143,10 @@ The current update target is
   window dialog layer, so a trigger dialog there appears at rest and
   closes by unmounting. The window stack keeps a closing dialog mounted
   and plays the entrance back out.
-- **Completion case-folding is the simple 1:1 map.** `highlight_contains`
-  and `highlight_characters` compare with ASCII case and the same
-  one-code-point lowercase `LabelLower` uses (`input_lsp.cpp`). Rust's
-  `char::to_lowercase` covers the rest of Unicode. Folds that expand a
-  character are not a single-code-point match there either.
+- **Search uses per-character Unicode lowercasing.** Result highlights
+  retain UTF-8 byte offsets and support expansions. The default item filter
+  also searches across expansions, with the per-character lowercase
+  mapping for Greek sigma (`src/ui/label.cpp`).
 - **Mixed editor leaves report visible fragments.** Mixed paragraphs expose
   their laid-out word and atom boxes through `LeafGeometry` (`text.cpp`).
   Empty lines within a mixed leaf and editor decorations still need coverage.

@@ -2,6 +2,7 @@
 #include "base/layout_direction.h"
 #include "ui/lib.h"
 #include "ui/command.h"
+#include "ui/label.h"
 #include "ui/input.h"
 #include "ui/icon.h"
 #include "ui/spinner.h"
@@ -75,11 +76,11 @@ bool CommandItemMatches(const CommandItem* item, Str query) {
     if (len(query) == 0) {
         return true;
     }
-    if (StrContainsI(item->label, query)) {
+    if (LabelQueryMatches(item->label, query)) {
         return true;
     }
     for (int i = 0; i < item->nKeywords; i++) {
-        if (StrContainsI(item->keywords[i], query)) {
+        if (LabelQueryMatches(item->keywords[i], query)) {
             return true;
         }
     }
@@ -89,20 +90,17 @@ bool CommandItemMatches(const CommandItem* item, Str query) {
 // `query.trim()`: the whitespace a caller typed either side of the term is
 // not part of it.
 static Str TrimQuery(Str s) {
-    int lo = 0;
-    int hi = len(s);
-    while (lo < hi && (unsigned char)s.s[lo] <= ' ') {
-        lo++;
-    }
-    while (hi > lo && (unsigned char)s.s[hi - 1] <= ' ') {
-        hi--;
-    }
-    return Str(s.s + lo, hi - lo);
+    return StrTrim(s);
 }
 
 static Str AppliedQuery(const CommandState* s) {
     return Str(s->applied.els, s->applied.len);
 }
+Str CommandState::HighlightedQuery() const {
+    return highlightMatches && searchable && filterable ? AppliedQuery(this)
+                                                        : Str{};
+}
+
 static bool SameQuery(Str a, Str b) {
     if (len(a) != len(b)) {
         return false;
@@ -704,6 +702,10 @@ Command* Command::Filterable(bool v) {
     filterable = v;
     return this;
 }
+Command* Command::HighlightMatches(bool v) {
+    highlightMatches = v;
+    return this;
+}
 Command* Command::Placeholder(Str s) {
     placeholder = s;
     return this;
@@ -854,7 +856,7 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
         }
         if (len(item->label) > 0) {
             content->Child(
-                TextEl(a, item->label)
+                HighlightedLabel(cx, item->label, s->HighlightedQuery())
                     ->Font(14)
                     ->Fg(disabled ? th.mutedFg
                                   : (selected ? th.accentFg : th.foreground)));
@@ -957,6 +959,7 @@ El* Command::IntoEl() {
     InputSetPlaceholder(&s->query, len(placeholder) > 0
                                        ? placeholder
                                        : Tr("Command.placeholder"));
+    s->highlightMatches = highlightMatches;
     CommandInstall(s, cx, entries, nEntries, searchable, filterable);
 
     if (headerFn) {

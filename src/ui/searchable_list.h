@@ -82,6 +82,11 @@ struct SearchableListDelegate {
                          const SearchableListChange* changes, int n) = nullptr;
     void (*onConfirm)(void* user, const SearchableListState* state,
                       IndexPath path, bool secondary) = nullptr;
+    // The optional highlighted variant of renderItemContent receives the
+    // query actually used to filter the rows.
+    El* (*renderHighlightedItem)(void* user, Ctx* cx, IndexPath path,
+                                 const SearchableListItem* item,
+                                 Str query) = nullptr;
 
     static SearchableListDelegate Items(const SearchableListItem* items,
                                         int nItems);
@@ -368,6 +373,7 @@ struct SearchableListContent {
     // Combobox::check_icon: what marks a selected row.
     IconName checkIcon = IconName::Check;
     UiSize size = UiSize::Medium;
+    bool highlightMatches = false;
     SearchableListDelegate delegate = {};
     bool hasDelegate = false;
 };
@@ -397,6 +403,10 @@ struct SearchableContentBuilder : Base {
     }
     Self* WithSize(UiSize s) {
         this->size = s;
+        return This();
+    }
+    Self* HighlightMatches(bool on = true) {
+        this->highlightMatches = on;
         return This();
     }
     Self* Delegate(const SearchableListDelegate& value) {

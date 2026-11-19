@@ -401,7 +401,56 @@ static void SearchableListCursorAndHoverRowsUseAccentForeground() {
     AppGlobalClear(&app);
 }
 
+// adapter.rs rows_highlight_the_query_only_when_enabled.
+static void RowsReceiveTheMatchQueryOnlyWhenEnabled() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Entity<SearchableListState> state =
+        EntityNewState<SearchableListState>(&app);
+    const SearchableItem items[] = {{StrL("Rust"), StrL("rust")}};
+    InputState query;
+    InputSetValue(&query, StrL(" Rust "));
+    struct Probe {
+        int normal = 0;
+        int highlighted = 0;
+        bool trimmed = false;
+    };
+    Probe probe;
+    SearchableListDelegate delegate = SearchableListDelegate::Items(items, 1);
+    delegate.user = &probe;
+    delegate.renderItemContent = [](void* user, Ctx* rowCx, IndexPath,
+                                    const SearchableListItem* item) {
+        ((Probe*)user)->normal++;
+        return TextEl(rowCx->a, item->title);
+    };
+    delegate
+        .renderHighlightedItem = [](void* user, Ctx* rowCx, IndexPath,
+                                    const SearchableListItem* item, Str value) {
+        auto* seen = (Probe*)user;
+        seen->highlighted++;
+        seen->trimmed = StrEq(value, StrL("Rust"));
+        return HighlightedLabel(rowCx, item->title, value);
+    };
+    for (bool enabled : {false, true}) {
+        SearchableList::New(&cx, StrL("search"), state, &query)
+            ->Delegate(delegate)
+            ->HighlightMatches(enabled)
+            ->IntoEl();
+    }
+    utassert(probe.normal == 1 && probe.highlighted == 1 && probe.trimmed);
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+    delete win;
+}
+
 void TestSearchableList() {
+    RowsReceiveTheMatchQueryOnlyWhenEnabled();
     TestSuite("searchable_list");
     TheQueryIsACaseInsensitiveSubstringOfTheTitle();
     SearchLeavesTheMatchesInOrder();

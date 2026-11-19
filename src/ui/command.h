@@ -147,6 +147,8 @@ struct CommandState {
     // a palette whose source already answered the query — an async search —
     // where a local substring pass only drops matches the source understood.
     bool filterable = true;
+    bool highlightMatches = false;
+    Str HighlightedQuery() const;
     Vec<CommandRow> rows;
     Vec<CommandMatch> matched;
     // Each row's height, measured: Rust's `row_sizes`. Every row is built and
@@ -242,6 +244,7 @@ struct Command {
     int nEntries = 0;
     bool searchable = true;
     bool filterable = true;
+    bool highlightMatches = false;
     Str placeholder = {};
     // Command::empty / header / footer: Rust builds them from a closure it
     // hands the state; they are elements here, built by the caller for this
@@ -280,6 +283,7 @@ struct Command {
     // whoever answers `OnQuery`. A query change then hands the highlight back
     // to the first item rather than to a local textual match.
     Command* Filterable(bool v);
+    Command* HighlightMatches(bool v = true);
     Command* Placeholder(Str s);
     Command* Empty(El* e);
     Command* Header(El* e);

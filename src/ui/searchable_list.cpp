@@ -5,6 +5,7 @@
 #include "base/select.h"
 #include "ui/select.h"
 #include "ui/input.h"
+#include "ui/label.h"
 #include "ui/popover.h"
 
 namespace gpui {
@@ -172,11 +173,11 @@ bool SearchableGroup::MatchedRows(Str query, Vec<int>* rows) const {
             found++;
         }
     }
-    return found > 0 || StrContainsI(title, query);
+    return found > 0 || LabelQueryMatches(title, query);
 }
 
 bool SearchableGroup::Matches(Str query) const {
-    if (StrContainsI(title, query)) {
+    if (LabelQueryMatches(title, query)) {
         return true;
     }
     for (int i = 0; i < items.len; i++) {
@@ -531,11 +532,12 @@ bool SearchableItemMatches(const SearchableItem* it, Str query) {
     if (len(query) <= 0) {
         return true;
     }
-    return StrContainsI(it->title, query);
+    return LabelQueryMatches(it->title, query);
 }
 
 void SearchableListSearch(SearchableListState* s, const SearchableItem* items,
                           int nItems, Str query) {
+    query = StrTrim(query);
     // The list keeps what it was given, so a click later on knows what it is
     // changing.
     s->items = items;
@@ -840,7 +842,8 @@ El* SearchableList::IntoEl() {
         s->hasDelegate = false;
     }
     // perform_search: the query decides which items there are to show at all.
-    SearchableListSearch(s, items, nItems, query ? InputValue(query) : Str{});
+    Str filter = query ? StrTrim(InputValue(query)) : Str{};
+    SearchableListSearch(s, items, nItems, filter);
 
     if (query) {
         El* row = Div(a)
@@ -918,10 +921,10 @@ El* SearchableList::IntoEl() {
         }
         // adapter.rs `div().min_w_0().truncate()` around the item: an
         // overflowing title ends in an ellipsis rather than overrunning.
-        label->Child(TextEl(a, it.title)
-                         ->MinW(0)
-                         ->Truncate()
-                         ->Fg(enabled || checked ? th.foreground : th.mutedFg));
+        El* title = highlightMatches ? HighlightedLabel(cx, it.title, filter)
+                                     : TextEl(a, it.title);
+        label->Child(title->MinW(0)->Truncate()->Fg(
+            enabled || checked ? th.foreground : th.mutedFg));
         El* content = Div(a)
                           ->FlexRow()
                           ->W(kFill)
@@ -942,11 +945,16 @@ El* SearchableList::IntoEl() {
                                            ->Fg(th.primaryFg)
                                            ->LineHeight(1.4f)));
         }
-        if (hasDelegate && delegate.renderItemContent) {
-            if (El* custom =
-                    delegate.renderItemContent(delegate.user, cx, path, &it)) {
-                content = custom;
+        if (hasDelegate) {
+            El* custom = nullptr;
+            if (highlightMatches && delegate.renderHighlightedItem) {
+                custom = delegate.renderHighlightedItem(delegate.user, cx, path,
+                                                        &it, filter);
+            } else if (delegate.renderItemContent) {
+                custom = delegate
+                             .renderItemContent(delegate.user, cx, path, &it);
             }
+            if (custom) content = custom;
         }
         El* row =
             hasDelegate ? delegate.RenderItem(cx, path, &it, checked) : nullptr;

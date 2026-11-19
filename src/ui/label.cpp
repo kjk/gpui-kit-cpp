@@ -112,14 +112,9 @@ Str Label::FullText() const {
     return Str(out, n);
 }
 
-// Compare equally-sized UTF-8 slices under CharLowerSimple: common
-// simple-case mappings keep the comparison portable without pulling a Unicode
-// database into the UI layer. Equal CJK and other uncased codepoints compare
-// directly. Rust's to_lowercase also has a small set of expanding mappings;
-// those remain an explicit dependency-free limitation because their lowered
-// offsets do not map one-to-one to original StyledText byte ranges either.
-// Every mapping retained here has the same encoded width as its source, so
-// the byte offsets handed to TextSpan remain offsets in the original string.
+// The Label builder uses its original, equal-width UTF-8 slices. Match
+// spans are byte offsets into the displayed string, including when one
+// lowercase scalar would need more bytes.
 static bool LabelEqI(Str left, Str right) {
     if (len(left) != len(right)) {
         return false;
@@ -279,7 +274,7 @@ static int LabelSpans(Label* label, Str full, Str shown, const Theme& th,
         if (!matched && !muted) {
             continue;
         }
-        Rgba color = matched ? th.blue : th.mutedFg;
+        Rgba color = matched ? th.primary : th.mutedFg;
         if (nSpans > 0 && spans[nSpans - 1].hi == lo &&
             RgbaEq(spans[nSpans - 1].color, color)) {
             spans[nSpans - 1].hi = hi;
@@ -295,6 +290,114 @@ static int LabelSpans(Label* label, Str full, Str shown, const Theme& th,
         nSpans++;
     }
     return nSpans;
+}
+
+static int LowerLabelCharacter(uint32_t cp, uint32_t out[2]) {
+    // The full lowercase mapping for capital I with dot uses two scalars.
+    if (cp == 0x0130) {
+        out[0] = 'i';
+        out[1] = 0x0307;
+        return 2;
+    }
+    out[0] = CharLowerSimple(cp);
+    return 1;
+}
+
+static int LabelMatchEnd(Str text, int start, const Vec<uint32_t>& query) {
+    int matched = 0;
+    for (int at = start; at < len(text);) {
+        uint32_t cp = 0;
+        int bytes = Utf8At(text, at, &cp);
+        if (bytes <= 0) return -1;
+        uint32_t lower[2];
+        int count = LowerLabelCharacter(cp, lower);
+        if (count > len(query) - matched) return -1;
+        for (int i = 0; i < count; i++) {
+            if (query[matched++] != lower[i]) return -1;
+        }
+        at += bytes;
+        if (matched == len(query)) return at;
+    }
+    return -1;
+}
+
+static bool LowerLabelText(Str text, Vec<uint32_t>& lowered) {
+    for (int at = 0; at < len(text);) {
+        uint32_t cp = 0;
+        int bytes = Utf8At(text, at, &cp);
+        if (bytes <= 0) return false;
+        uint32_t lower[2];
+        int count = LowerLabelCharacter(cp, lower);
+        for (int i = 0; i < count; i++) {
+            VecAppend(lowered, lower[i]);
+        }
+        at += bytes;
+    }
+    return true;
+}
+
+void LabelMatchRanges(Str text, Str query, Vec<Selection>* out) {
+    if (!out) return;
+    VecClear(*out);
+    if (!len(query) || !len(text)) return;
+    Vec<uint32_t> pattern;
+    if (!LowerLabelText(query, pattern)) return;
+    for (int at = 0; at < len(text);) {
+        int end = LabelMatchEnd(text, at, pattern);
+        if (end > at) {
+            VecAppend(*out, Selection{at, end});
+            at = end;
+        } else {
+            uint32_t cp = 0;
+            int bytes = Utf8At(text, at, &cp);
+            at += bytes > 0 ? bytes : 1;
+        }
+    }
+}
+
+static bool AsciiLabel(Str text) {
+    for (int i = 0; i < len(text); i++) {
+        if ((uint8_t)text.s[i] > 0x7f) return false;
+    }
+    return true;
+}
+
+bool LabelQueryMatches(Str text, Str query) {
+    if (!len(query)) return true;
+    if (AsciiLabel(text) && AsciiLabel(query)) return StrContainsI(text, query);
+    // Search over the lowered string, where a query can match part of a
+    // character expansion. Highlighting requires whole source characters.
+    Vec<uint32_t> haystack;
+    Vec<uint32_t> needle;
+    if (!LowerLabelText(text, haystack) || !LowerLabelText(query, needle)) {
+        return false;
+    }
+    int count = len(needle);
+    for (int i = 0; i <= len(haystack) - count; i++) {
+        if (memcmp(&haystack[i], needle.els,
+                   (size_t)count * sizeof(uint32_t)) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+El* HighlightedLabel(Ctx* cx, Str text, Str query) {
+    El* label = TextEl(cx->a, text);
+    Vec<Selection> ranges;
+    LabelMatchRanges(text, query, &ranges);
+    if (len(ranges) > 0) {
+        TextSpan* spans =
+            (TextSpan*)Alloc(cx->a, len(ranges) * (int)sizeof(TextSpan));
+        if (spans) {
+            Rgba color = ThemeNow(cx->app).blue;
+            for (int i = 0; i < len(ranges); i++) {
+                spans[i] = {ranges[i].start, ranges[i].end, color};
+            }
+            label->Spans(spans, len(ranges));
+        }
+    }
+    return label;
 }
 
 El* Label::IntoEl() {

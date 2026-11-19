@@ -107,7 +107,7 @@ static void RenderUsesOneStyledRunAndRealBullets() {
     utassert(styled && styled->nSpans == 2);
     if (styled && styled->nSpans == 2) {
         utassert(styled->spans[0].lo == 4 && styled->spans[0].hi == 7);
-        utassert(LabelColorEq(styled->spans[0].color, th.blue));
+        utassert(LabelColorEq(styled->spans[0].color, th.primary));
         utassert(styled->spans[1].lo == 7 && styled->spans[1].hi == 11);
         utassert(LabelColorEq(styled->spans[1].color, th.mutedFg));
     }
@@ -162,7 +162,41 @@ static void MaskedSecondaryTextAndHighlightsRender() {
     ArenaDelete(a);
 }
 
+// label.rs match_ranges_find_every_case_insensitive_occurrence.
+static void MatchRangesFindEveryCaseInsensitiveOccurrence() {
+    Vec<Selection> ranges;
+    auto one = [&](Str text, Str query, int start, int end) {
+        LabelMatchRanges(text, query, &ranges);
+        utassert(len(ranges) == 1);
+        if (len(ranges) == 1) {
+            utassert(ranges[0].start == start && ranges[0].end == end);
+        }
+    };
+    auto twice = [&](Str text, Str query, int first, int second) {
+        LabelMatchRanges(text, query, &ranges);
+        utassert(len(ranges) == 2);
+        if (len(ranges) == 2) {
+            utassert(ranges[0].start == first && ranges[0].end == second);
+            utassert(ranges[1].start == second && ranges[1].end == second + 2);
+        }
+    };
+    one(StrL("Rust"), StrL("ru"), 0, 2);
+    twice(StrL("Banana"), StrL("AN"), 1, 3);
+    twice(StrL("aaaa"), StrL("aa"), 0, 2);
+    one(StrL("Caf\xc3\xa9 Cr\xc3\xa8me"), StrL("CR\xc3\x88"), 6, 10);
+    one(StrL("\xc4\xb0stanbul"), StrL("i\xcc\x87s"), 0, 3);
+    LabelMatchRanges(StrL("\xc4\xb0stanbul"), StrL("i"), &ranges);
+    utassert(len(ranges) == 0);
+    utassert(LabelQueryMatches(StrL("\xc4\xb0stanbul"), StrL("i")));
+    LabelMatchRanges(StrL("Rust"), StrL("go"), &ranges);
+    utassert(len(ranges) == 0);
+    LabelMatchRanges(StrL("Rust"), StrL(""), &ranges);
+    utassert(len(ranges) == 0);
+    utassert(LabelQueryMatches(StrL("Caf\xc3\xa9"), StrL("CAF\xc3\x89")));
+}
+
 void TestLabel() {
+    MatchRangesFindEveryCaseInsensitiveOccurrence();
     TestSuite("label");
     FullMatchesAreCaseInsensitiveAndOverlap();
     PrefixAndSecondaryRangesMatchRust();

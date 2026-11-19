@@ -518,7 +518,26 @@ static void ACommandIsStyled() {
     ArenaDelete(a);
 }
 
+// command/state.rs rows_highlight_the_query_the_palette_filtered_by.
+static void CommandHighlightsOnlyItsAppliedFilterQuery() {
+    CommandEntry entries[] = {CommandEntryOf(kSuggestions[0])};
+    CommandState state;
+    CommandInstall(&state, nullptr, entries, 1, true);
+    utassert(len(state.HighlightedQuery()) == 0);
+    CommandSetQuery(&state, nullptr, StrL(" cal "));
+    CommandInstall(&state, nullptr, entries, 1, true);
+    utassert(len(state.HighlightedQuery()) == 0);
+    state.highlightMatches = true;
+    CommandInstall(&state, nullptr, entries, 1, true);
+    utassert(StrEq(state.HighlightedQuery(), StrL("cal")));
+    CommandInstall(&state, nullptr, entries, 1, true, false);
+    utassert(len(state.HighlightedQuery()) == 0);
+    CommandInstall(&state, nullptr, entries, 1, false);
+    utassert(len(state.HighlightedQuery()) == 0);
+}
+
 void TestCommand() {
+    CommandHighlightsOnlyItsAppliedFilterQuery();
     TestSuite("command");
     CommandRowsAreNamedAfterTheirItems();
     LoadingEmptyListIsNotPadded();

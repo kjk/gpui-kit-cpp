@@ -26,6 +26,11 @@ struct HighlightsMatch {
     bool IsPrefix() const;
 };
 
+// Non-overlapping byte ranges of the case-insensitive query in the label.
+void LabelMatchRanges(Str text, Str query, Vec<Selection>* out);
+bool LabelQueryMatches(Str text, Str query);
+El* HighlightedLabel(Ctx* cx, Str text, Str query);
+
 struct Label {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
