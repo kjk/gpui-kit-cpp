@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f1d90722e95ffd0bbf504f77166083b4e0af8fd4` (2026-11-19,
-input: Offer a List under the field, like <input list> (#3785)).
-Bind an optional ordinary List and delegate to Input. Preserve free text,
-focus, and undo through navigation and acceptance. Defer queued searches until
-edits settle and let the delegate cancel asynchronous work through its
-existing timer or executor ownership.
+Processed through `edf2a576e659d32b5137892523f2801765ff6617` (2026-11-19,
+resizable: Expose whether a handle is being dragged (#4039)).
+Expose ResizableState::IsResizing and settle a drag whose payload disappears
+without a release. Clear and ordinary release also end the resize.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

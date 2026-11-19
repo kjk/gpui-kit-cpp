@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f1d90722e95ffd0bbf504f77166083b4e0af8fd4",
+  sha: "edf2a576e659d32b5137892523f2801765ff6617",
   date: "2026-11-19",
-  subject: "input: Offer a List under the field, like <input list> (#3785)",
+  subject: "resizable: Expose whether a handle is being dragged (#4039)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

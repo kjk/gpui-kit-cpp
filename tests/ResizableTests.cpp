@@ -820,7 +820,40 @@ static void CancelledDragDoesNotReuseThePaintedIndex() {
     CloseDragHarness(harness);
 }
 
+static void StoppingOrClearingTheDragEndsResizing() {
+    for (bool clear : {false, true}) {
+        DragHarness harness = OpenDragHarness();
+        ResizableState* state = DragState(harness);
+        DragGesturePage* page = harness.page.Get(harness.app);
+        utassert(!state->IsResizing());
+        float boundary = state->bounds.x + state->sizes[0];
+        float y = state->bounds.y + 50.f;
+        TestSimulateMouseDown(harness.win, {boundary - 2, y});
+        TestSimulateMouseMove(harness.win, {boundary + 10, y}, true);
+        utassert(state->IsResizing());
+        if (clear) {
+            state->Clear();
+            utassert(!state->IsResizing());
+        } else {
+            float size = state->sizes[0];
+            int before = page->resizes;
+            harness.win->activeDrag = {};
+            TestDraw(harness.win);
+            TestRunUntilParked(harness.app);
+            utassert(!state->IsResizing());
+            utassert(page->resizes == before + 1);
+            RawMove(harness.win, boundary + 40, y, true);
+            TestDraw(harness.win);
+            TestRunUntilParked(harness.app);
+            utassertnear(state->sizes[0], size);
+            utassert(page->resizes == before + 1);
+        }
+        CloseDragHarness(harness);
+    }
+}
+
 void TestResizable() {
+    StoppingOrClearingTheDragEndsResizing();
     TestSuite("resizable");
     DraggingBeforeTheNextPaintResizesAndEmitsOnce();
     CancelledDragDoesNotReuseThePaintedIndex();

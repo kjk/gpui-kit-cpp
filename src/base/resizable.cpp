@@ -153,13 +153,14 @@ void ResizableState::OnHandleDown(ResizableState* self, Ctx* cx,
         return;
     }
     self->dragging = (int)ix;
-    Notify(cx);
+    (void)cx;
 }
 
 void ResizableState::OnHandleDrag(ResizableState* self, Ctx* cx,
                                   const DragMoveEvent* ev) {
     int ix = self->dragging;
-    if (ix < 0 || ix + 1 >= self->sizes.len) {
+    if (ix < 0 || ix + 1 >= self->sizes.len ||
+        !StrEq(ev->drag.kind, kResizeDrag)) {
         return;
     }
     // A hidden panel is not on the boundary being dragged and must not be
@@ -710,10 +711,24 @@ void ResizableState::OnSettled(ResizableState*, Ctx* cx, const void*) {
     Notify(cx);
 }
 
+void ResizableState::OnHandleCanceled(ResizableState* self, Ctx* cx,
+                                      const void*) {
+    if (cx->win && !cx->win->activeDrag.IsValid()) {
+        OnHandleUp(self, cx, nullptr);
+    }
+}
+
 static void MeasureResizableGroup(PaintCtx* paint, El* root, void* data) {
     Entity<ResizableState> entity = *(Entity<ResizableState>*)data;
     ResizableState* state = entity.Get(paint->app);
     if (!state) return;
+    // Canceling an active drag can clear its payload without a mouse release.
+    // Defer settlement until the frame finishes, and recheck before emitting.
+    if (state->IsResizing() && paint->window &&
+        !paint->window->activeDrag.IsValid()) {
+        WindowPost(paint->window,
+                   ListenTo(entity, &ResizableState::OnHandleCanceled));
+    }
     bool horizontal = AxisIsHorizontal(state->axis);
     float container = horizontal ? root->w : root->h;
     state->bounds = {root->x, root->y, root->w, root->h};

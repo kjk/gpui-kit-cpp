@@ -274,8 +274,10 @@ struct ResizableState {
     static void OnHandleUp(ResizableState* self, Ctx* cx,
                            const MouseUpEvent* ev);
     static void OnSettled(ResizableState* self, Ctx* cx, const void*);
+    static void OnHandleCanceled(ResizableState* self, Ctx* cx, const void*);
 
     const Vec<float>& Sizes() const { return sizes; }
+    bool IsResizing() const { return dragging >= 0; }
     float ContainerSize() const {
         return AxisIsHorizontal(axis) ? bounds.w : bounds.h;
     }
