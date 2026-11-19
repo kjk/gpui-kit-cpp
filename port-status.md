@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7e41e5f5d4df7bead77ab85989a49792616482e1` (2026-11-18,
-text: Lay an inline flow out once in a bubble that shrinks to its text
-(#4029)).
-TextView uses retained Taffy nodes and cached shaping for shrink-to-fit
-bubbles. The native regression checks repeated frames and resizing with one or
-two presentations of the same document.
+Processed through `39540772b1d9fb962cb0335fe471bd81f345a8e0` (2026-11-18,
+fix(input): end IME composition on blur (#4032)).
+Native input blur already unmarks the focused field. The regression moves
+window focus away during composition and verifies that the following edit
+starts a separate undo group.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

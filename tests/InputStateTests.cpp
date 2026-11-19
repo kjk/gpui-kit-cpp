@@ -14068,6 +14068,33 @@ static void TextareaStartsEachParagraphAtItsReadingEdge() {
     TestAppFree(app);
 }
 
+// state.rs accepts_text_input: losing focus commits the pending IME text
+// and ends its undo group before the field takes another edit.
+static void LosingFocusEndsImeComposition() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, Str{});
+    InputFocus(view.input, view.app, view.win);
+    InputReplaceAndMarkText(view.input, view.app, view.win, nullptr, StrL("n"),
+                            nullptr);
+    InputReplaceAndMarkText(view.input, view.app, view.win, nullptr, StrL("ni"),
+                            nullptr);
+    Selection marked;
+    utassert(InputMarkedRange(view.input, &marked));
+    WindowSetFocusId(view.win, 0);
+    utassert(!InputMarkedRange(view.input, &marked));
+    utassert(view.win->input == nullptr && !view.input->focused);
+    utassert(ViewValueIs(view, "ni"));
+
+    InputFocus(view.input, view.app, view.win);
+    ViewTypeText(view, "!");
+    utassert(ViewValueIs(view, "ni!"));
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewValueIs(view, "ni"));
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewValueIs(view, ""));
+    InputViewFree(&view);
+}
+
 void TestInputState() {
     LaterHighlightLayerWinsOverEarlierOne();
     DecorationColorIsStableAcrossCompositions();
@@ -14080,6 +14107,7 @@ void TestInputState() {
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
+    LosingFocusEndsImeComposition();
     TextareaStartsEachParagraphAtItsReadingEdge();
     LastInputEditsFollowTheChange();
     InputEditsEventsReplayEachChange();
