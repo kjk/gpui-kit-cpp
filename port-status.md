@@ -16,14 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `46bf6d498fa101a3b11cc64e6d8c20d28d17b720` (2026-11-07,
-input: Let the completions test run the IME caret reports before counting
-frames (#3837)).
-Typing into an ordinary input reports the caret to the IME on the next
-frame. The completions test runs those reports, then draws a frame in
-which nothing moves, and that frame schedules nothing.
+Processed through `c7cc85cdd37cc674179eb5817f0a9a2dcde58711` (2026-11-07,
+slider: Step one thumb from assistive technology and report the change
+(#3840)).
+Assistive technology steps one thumb on the slider grid and reports a change
+only when it moves. Continuous sliders report and move by a hundredth of their
+range.
 The current update target is
-`46bf6d498fa101a3b11cc64e6d8c20d28d17b720`.
+`390a485aba2e8ab92754a23b84eecedf4155b562`.
 
 ## Known gaps vs Rust
 

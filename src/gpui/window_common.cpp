@@ -1521,7 +1521,9 @@ bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
             direct.Call();
         } else {
             int dir = action == AccessibilityAction::Increment ? 1 : -1;
-            if (!SliderStepBy(node.slider, dir, false)) {
+            if (!node.slider ||
+                !SliderStepThumb(node.slider, false,
+                                 dir * SliderAccessibilityStep(node.slider))) {
                 return false;
             }
             SliderEmit(win, node.slider, SliderEventKind::Change);

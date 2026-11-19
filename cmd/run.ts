@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "46bf6d498fa101a3b11cc64e6d8c20d28d17b720",
+  sha: "c7cc85cdd37cc674179eb5817f0a9a2dcde58711",
   date: "2026-11-07",
-  subject: "input: Let the completions test run the IME caret reports before counting frames (#3837)",
+  subject: "slider: Step one thumb from assistive technology and report the change (#3840)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

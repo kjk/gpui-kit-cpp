@@ -149,12 +149,45 @@ bool SliderIsStartAt(const SliderState* s, Axis axis, Point pos) {
     return PctAt(s, axis, pos) < center;
 }
 
+static bool SliderIsStep(float step) {
+    return step > 0.f && isfinite(step);
+}
+
 float SliderSnapToStep(float value, float min, float max, float step) {
-    if (!(step > 0.f && isfinite(step))) {
+    if (!SliderIsStep(step)) {
         return value;
     }
     float snapped = min + roundf((value - min) / step) * step;
-    return BoundThumb(snapped, min, max);
+    return fmaxf(fminf(snapped, max), min);
+}
+
+float SliderAccessibilityStep(const SliderState* s) {
+    return SliderIsStep(s->step) ? s->step : (s->max - s->min) / 100.f;
+}
+
+bool SliderStepThumb(SliderState* s, bool isStart, float delta) {
+    if (!s || !(s->min <= s->max)) {
+        return false;
+    }
+    SliderValue value = s->value;
+    if (isnan(value.Start()) || isnan(value.End()) ||
+        (value.range && value.Start() > value.End())) {
+        return false;
+    }
+    bool movesStart = isStart && value.range;
+    float current = movesStart ? value.Start() : value.End();
+    float next = SliderSnapToStep(current + delta, s->min, s->max, s->step);
+    next = fmaxf(fminf(next, s->max), s->min);
+    if (movesStart) {
+        SliderValueSetStart(&value, next);
+    } else {
+        SliderValueSetEnd(&value, next);
+    }
+    if (value.Start() == s->value.Start() && value.End() == s->value.End()) {
+        return false;
+    }
+    SliderSetValue(s, value);
+    return true;
 }
 
 bool SliderUpdateByPosition(SliderState* s, Axis axis, Point pos,
@@ -272,7 +305,7 @@ El* Slider::New(Ctx* cx, SliderState* state, Axis axis, int clickId,
         e->AriaNumericValue(state->value.End())
             ->AriaMinNumericValue(state->min)
             ->AriaMaxNumericValue(state->max)
-            ->AriaNumericValueStep(state->step);
+            ->AriaNumericValueStep(SliderAccessibilityStep(state));
     }
     return e;
 }

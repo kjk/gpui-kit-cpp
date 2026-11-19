@@ -423,6 +423,118 @@ static void ASliderTakesFocusOnItsOwnNode() {
     AppGlobalClear(&app);
 }
 
+static void AccessibilityStepsMoveOnlyTheSteppedThumb() {
+    SliderState s = SliderStateNew(0, 100, SliderRange(20, 60));
+    utassert(SliderStepThumb(&s, false, 1));
+    utassert(s.value.range && s.value.Start() == 20 && s.value.End() == 61);
+    SliderSetValue(&s, SliderRange(20, 20));
+    utassert(!SliderStepThumb(&s, false, -1));
+    SliderSetValue(&s, SliderSingle(99.5f));
+    utassert(SliderStepThumb(&s, false, 1) && s.value.End() == 100);
+    SliderSetValue(&s, SliderRange(20, 60));
+    utassert(SliderStepThumb(&s, true, -1));
+    utassert(s.value.range && s.value.Start() == 19 && s.value.End() == 60);
+    SliderSetValue(&s, SliderRange(60, 60));
+    utassert(!SliderStepThumb(&s, true, 1));
+    utassert(s.value.range && s.value.Start() == 60 && s.value.End() == 60);
+}
+
+static void AccessibilityStepsLandOnTheStepGrid() {
+    SliderState s = SliderStateNew(0, 100, SliderSingle(33), 10);
+    utassert(SliderStepThumb(&s, false, 10) && s.value.End() == 40);
+    SliderSetValue(&s, SliderSingle(33));
+    utassert(SliderStepThumb(&s, false, -10) && s.value.End() == 20);
+    SliderSetValue(&s, SliderSingle(33));
+    SliderSetStep(&s, 0);
+    utassert(SliderStepThumb(&s, false, 0.5f) && s.value.End() == 33.5f);
+}
+
+static void AContinuousSliderStepsByAHundredthOfItsRange() {
+    SliderState s = SliderStateNew(0, 200, SliderSingle(0));
+    const float steps[] = {0, -1, NAN, INFINITY};
+    for (float step : steps) {
+        SliderSetStep(&s, step);
+        utassert(SliderAccessibilityStep(&s) == 2);
+    }
+    SliderSetStep(&s, 5);
+    utassert(SliderAccessibilityStep(&s) == 5);
+}
+
+static void SteppingLeavesAnInvalidValueOrRangeAlone() {
+    SliderState s = SliderStateNew(0, 100, SliderSingle(NAN));
+    utassert(!SliderStepThumb(&s, false, 1) && isnan(s.value.End()));
+    SliderSetValue(&s, SliderRange(60, 20));
+    utassert(!SliderStepThumb(&s, true, 1));
+    utassert(s.value.Start() == 60 && s.value.End() == 20);
+    SliderSetValue(&s, SliderSingle(50));
+    SliderSetLimits(&s, 100, 0);
+    utassert(!SliderStepThumb(&s, false, 1) && s.value.End() == 50);
+}
+
+struct AccessibilitySliderView {
+    SliderState slider = SliderStateNew(0, 100, SliderSingle(99));
+    int changes = 0;
+    SliderEvent last = {};
+
+    static void Changed(AccessibilitySliderView* self, Ctx*,
+                        const SliderEvent* ev) {
+        self->changes++;
+        self->last = *ev;
+    }
+
+    static El* Render(AccessibilitySliderView* self, Ctx* cx) {
+        self->slider.onChange = Listen(cx, &AccessibilitySliderView::Changed);
+        return Slider::New(cx, &self->slider)->W(100)->H(20);
+    }
+};
+
+static void AccessibilityStepsReportMovesAndKeepRanges() {
+    App* app = TestAppNew();
+    auto view = EntityNew<AccessibilitySliderView>(app);
+    Window* win = TestWindowOpen(app, view);
+    auto* self = view.Get(app);
+    uint32_t id = 0;
+    for (int i = 0; i < len(win->accessibility); i++) {
+        if (win->accessibility[i].info.role == AccessibilityRole::Slider) {
+            id = win->accessibility[i].id;
+            break;
+        }
+    }
+    utassert(id != 0);
+    auto increment = [&] {
+        return WindowAccessibilityPerform(win, id,
+                                          AccessibilityAction::Increment);
+    };
+    utassert(increment());
+    utassert(self->changes == 1 && self->slider.value.End() == 100);
+    utassert(self->last.kind == SliderEventKind::Change);
+    utassert(!increment() && self->changes == 1);
+    utassert(
+        WindowAccessibilityPerform(win, id, AccessibilityAction::Decrement));
+    utassert(self->changes == 2 && self->slider.value.End() == 99);
+
+    SliderSetValue(&self->slider, SliderRange(20, 60));
+    utassert(increment());
+    utassert(self->changes == 3 && self->last.value.range);
+    utassert(self->last.value.Start() == 20 && self->last.value.End() == 61);
+
+    SliderSetValue(&self->slider, SliderSingle(NAN));
+    utassert(!increment() && isnan(self->slider.value.End()));
+    SliderSetValue(&self->slider, SliderRange(60, 20));
+    utassert(!increment() && self->slider.value.Start() == 60 &&
+             self->slider.value.End() == 20);
+    utassert(self->changes == 3);
+
+    SliderSetValue(&self->slider, SliderSingle(33));
+    SliderSetStep(&self->slider, 0);
+    TestDraw(win);
+    const AccessibilityNode* node = WindowAccessibilityNode(win, id);
+    utassert(node && node->info.hasNumericValueStep &&
+             node->info.numericValueStep == 1);
+    utassert(increment() && self->slider.value.End() == 34);
+    TestAppFree(app);
+}
+
 void TestSlider() {
     TestSuite("slider");
     ValueConversionsAndClampingArePreserved();
@@ -445,4 +557,9 @@ void TestSlider() {
     ATouchDragOnTheTrackMovesTheThumb();
     ADisabledThumbMarksItsNodeDisabled();
     ASliderTakesFocusOnItsOwnNode();
+    AccessibilityStepsMoveOnlyTheSteppedThumb();
+    AccessibilityStepsLandOnTheStepGrid();
+    AContinuousSliderStepsByAHundredthOfItsRange();
+    SteppingLeavesAnInvalidValueOrRangeAlone();
+    AccessibilityStepsReportMovesAndKeepRanges();
 }

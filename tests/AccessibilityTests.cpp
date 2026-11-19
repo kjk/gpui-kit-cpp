@@ -689,10 +689,10 @@ static void SliderActionsUseTheSlidersOwnStep() {
 #endif
         utassert(WindowAccessibilityPerform(f.win, id,
                                             AccessibilityAction::Increment));
-        utassertnear(state.value.End(), 7);
+        utassertnear(state.value.End(), 8);
         utassert(WindowAccessibilityPerform(f.win, id,
                                             AccessibilityAction::Decrement));
-        utassertnear(state.value.End(), 5);
+        utassertnear(state.value.End(), 6);
         utassert(WindowAccessibilitySetNumericValue(f.win, id, 8.6f));
         utassertnear(state.value.End(), 8);
         utassert(WindowAccessibilitySetNumericValue(f.win, id, 100));

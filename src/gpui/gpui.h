@@ -6582,12 +6582,11 @@ bool SliderUpdateByPosition(SliderState* s, Axis axis, Point pos, bool isStart);
 bool SliderIsStartAt(const SliderState* s, Axis axis, Point pos);
 // handle_release: true when a Release event is due.
 bool SliderHandleRelease(SliderState* s);
-// The a11y half of slider.rs that is reachable here: `on_a11y_action` binds
-// Increment and Decrement, and this is what the two of them do to the value.
-// There is no accessibility layer in this tree, so the arrows are what carries
-// them — and the arrows are what a keyboard user needs either way. `dir` is +1
-// or -1, and `isStart` picks which end of a range moves. Answers whether the
-// value moved.
+// accessibility_step and step_thumb. The window emits Change when the thumb
+// moves. Continuous sliders report and move by a hundredth of their range.
+float SliderAccessibilityStep(const SliderState* s);
+bool SliderStepThumb(SliderState* s, bool isStart, float delta);
+// Step a focused slider from the keyboard. dir is +1 or -1.
 bool SliderStepBy(SliderState* s, int dir, bool isStart);
 // Moves one end of the value to `want`, clamped the way a drag is: inside the
 // range, and short of the other end of a range. Answers whether it moved.
