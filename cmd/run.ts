@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f641b0c0d952d89f877f946590636741fdb3d198",
+  sha: "69fd60956555ce95e962f04251bc9f5767b25f83",
   date: "2026-11-15",
-  subject: "text: Add an option to keep raw HTML in Markdown as text (#3979)",
+  subject: "docs: Use Label so Quick Start text reaches screen readers (#3973)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

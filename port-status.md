@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f641b0c0d952d89f877f946590636741fdb3d198` (2026-11-15,
-text: Add an option to keep raw HTML in Markdown as text (#3979)).
-Expose Markdown raw HTML controls, preserving literal tags and ordinary
-autolinks through the existing parser flags and cache keys.
+Processed through `69fd60956555ce95e962f04251bc9f5767b25f83` (2026-11-15,
+docs: Use Label so Quick Start text reaches screen readers (#3973)).
+Use the accessible Label in the Quick Start and the two matching C++ examples,
+keeping their font and appearance.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

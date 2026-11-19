@@ -17,8 +17,9 @@ struct Example {
             ->ItemsCenter()
             ->JustifyCenter()
             ->Bg(th.tokens.background)
-            ->Child(TextEl(cx->a, StrL("Hello, World!"))
+            ->Child(component::Label::New(cx, StrL("Hello, World!"))
                         ->Font(16)
+                        ->IntoEl()
                         ->Fg(th.foreground))
             ->Child(ButtonEl(cx->a, 0, StrL("Let's Go!"), BtnKind::Primary)
                         ->OnClick(Listen(cx, &Example::OnGo)));

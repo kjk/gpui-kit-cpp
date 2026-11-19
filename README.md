@@ -18,7 +18,7 @@ struct Example {
 
     static El* Render(Example*, Ctx* cx) {
         return Div(cx->a)->FlexCol()->SizeFull()->ItemsCenter()->JustifyCenter()
-            ->Child(TextEl(cx->a, StrL("Hello, World!")))
+            ->Child(component::Label::New(cx, StrL("Hello, World!"))->IntoEl())
             ->Child(ButtonEl(cx->a, 0, StrL("Let's Go!"), BtnKind::Primary)
                         ->OnClick(Listen(cx, &Example::OnGo)));
     }

@@ -37,8 +37,9 @@ struct Example {
                 ->ItemsCenter()
                 ->JustifyCenter()
                 ->Gap(8)
-                ->Child(TextEl(a, StrL("Hello, World!"))
+                ->Child(component::Label::New(cx, StrL("Hello, World!"))
                             ->Font(16)
+                            ->IntoEl()
                             ->Fg(th.foreground))
                 ->Child(ButtonEl(a, 0, StrL("Let's Go!"), BtnKind::Primary)
                             ->OnClick(Listen(cx, &Example::OnGo)));
