@@ -9639,7 +9639,37 @@ bool TextMultiClickRangeIn(PaintCtx* ctx, float x, float y, int clickCount,
     if (!h) {
         return false;
     }
-    int local = TextHitLocal(ctx, h, rel);
+    int local = 0;
+    TextLayout* layout =
+        h->highlightedElement
+            ? ElTextLayout(ctx, h->highlightedElement)
+            : TextMeasLayout(ctx, h->text, h->font,
+                             h->maxW > 0 ? h->maxW : h->bounds.w, h->wrap, 0, 0,
+                             nullptr, nullptr, h->align);
+    if (layout) {
+        // Triple click uses the nearest caret within the run's line, even
+        // in the whitespace beside a shorter line. A double click still
+        // needs to land on the laid-out text.
+        if (clickCount == 2) {
+            Bounds stack[32];
+            int count = 0;
+            Bounds* rects = TextRangeRectsFull(layout, h->text, 0, len(h->text),
+                                               stack, &count);
+            bool onText = false;
+            for (int i = 0; i < count && !onText; i++) {
+                onText = rects[i].Contains(rel);
+            }
+            if (!onText) {
+                TextLayoutRelease(layout);
+                return false;
+            }
+        }
+        local = ClampI(TextLayoutHitPoint(layout, h->text, rel.x, rel.y), 0,
+                       len(h->text));
+        TextLayoutRelease(layout);
+    } else {
+        local = TextHitLocal(ctx, h, rel);
+    }
     int a = 0;
     int b = 0;
     if (clickCount == 2) {

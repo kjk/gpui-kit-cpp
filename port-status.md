@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1269039ab402c2801623696407f9ce033b672f42` (2026-11-12,
-button: Show a spinner on a loading button that has no icon (#3908)).
-Show the standard button-sized spinner for a loading button even when the
-caller supplied no icon.
+Processed through `1d91015a9ed7600c03d05421b1b982d313ab0a76` (2026-11-12,
+text_selection: Select the line on a triple click beside it (#3930)).
+Use the nearest shaped caret for a triple click beside a short line within its
+text run. A double click selects a word only within the laid-out line.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

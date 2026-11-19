@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1269039ab402c2801623696407f9ce033b672f42",
+  sha: "1d91015a9ed7600c03d05421b1b982d313ab0a76",
   date: "2026-11-12",
-  subject: "button: Show a spinner on a loading button that has no icon (#3908)",
+  subject: "text_selection: Select the line on a triple click beside it (#3930)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

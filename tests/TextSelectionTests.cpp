@@ -2619,6 +2619,36 @@ static void CopyWithOnlyACaretUsesTheWindowSelection() {
     TestAppFree(app);
 }
 
+struct TripleClickShortLineView {
+    static El* Render(TripleClickShortLineView*, Ctx* cx) {
+        return Div(cx->a)
+            ->SizeFull()
+            ->Child(TextSelectionLayer::New(cx))
+            ->Child(SelectableText::New(cx, StrL("short-line"),
+                                        StrL("a long first line\nend"))
+                        ->Font(16)
+                        ->IntoEl());
+    }
+};
+
+// text_selection.rs triple_click_beside_a_short_line_selects_that_line.
+static void TripleClickBesideAShortLineSelectsThatLine() {
+    App* app = TestAppNew();
+    auto view = EntityNew<TripleClickShortLineView>(app);
+    Window* win = TestWindowOpen(app, view, 300, 200, 1);
+    Point beside = {90, 16 * kLineHeight + 4};
+    int start = 0, end = 0;
+    utassert(
+        !TextMultiClickRange(&win->paint, beside.x, beside.y, 2, &start, &end));
+    utassert(
+        TextMultiClickRange(&win->paint, beside.x, beside.y, 3, &start, &end));
+    utassert(start == 18 && end == 21);
+    TestSimulateMouseDown(win, beside, MouseButton::Left, {}, 3);
+    TestSimulateMouseUp(win, beside, MouseButton::Left, {}, 3);
+    utassert(WindowSelectedIs(win, app, "end"));
+    TestAppFree(app);
+}
+
 void TestTextSelection() {
     TestSuite("text_selection");
     PaintDoesNotResolveWindowSelectedText();
@@ -2642,6 +2672,7 @@ void TestTextSelection() {
     AMarginOnlyDragPublishesNothing();
     ShiftClickExtendsFromTheAnchor();
     TwoClicksTakeTheWordAndThreeTheLine();
+    TripleClickBesideAShortLineSelectsThatLine();
     ALongPressTakesAWordAndKeepsDragging();
     AHostFingerSwipeEmitsPhasedScroll();
     AHostLongPressTimerSelectsAWord();
