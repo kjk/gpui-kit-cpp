@@ -202,6 +202,10 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
 // laid out.
 bool InputRangeToBounds(const InputState* s, Window* win, Selection range,
                         Bounds* out);
+// Horizontal distance from the content area's left edge to unscrolled,
+// left-aligned source text in the last multiline layout. Includes the
+// gutter and its gaps. False before the first layout.
+bool InputTextOriginOffset(const InputState* s, float* out);
 // last_layout.lines[..].wrapped_lines: every visual row the last frame
 // painted, in order. `text` is where the row's run landed and `width` its
 // shaped width; a continuation row's run starts its line's wrap_indent to

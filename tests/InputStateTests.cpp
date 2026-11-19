@@ -11164,6 +11164,80 @@ static Str RepeatedText(Arena* a, const char* unit, int times) {
     return sb.TakeStr();
 }
 
+// element.rs text_origin_offset_tracks_rendered_gutter_and_scrolling.
+static void EditorTextOriginOffsetFollowsTheLaidOutGutter() {
+    struct Host {
+        InputState editor;
+
+        static El* Render(Host* self, Ctx* cx) {
+            return Div(cx->a)->SizeFull()->FlexCol()->PadL(11)->Child(
+                InputStateFrame(cx, &self->editor));
+        }
+    };
+    App* app = TestAppNew();
+    auto view = EntityNew<Host>(app);
+    InputState* editor = &view.Get(app)->editor;
+    MakeCodeEditor(editor);
+    editor->softWrap = false;
+    InputSetScrollBounce(editor, false);
+    Str line = StrL(
+        "source text source text source text source text "
+        "source text source text source text source text\n");
+    Arena* a = ArenaNew();
+    InputSetValue(editor, RepeatedText(a, line.s, 80));
+    ArenaDelete(a);
+    float offset = 0;
+    utassert(!InputTextOriginOffset(editor, &offset));
+    Window* win = TestWindowOpen(app, view, 240, 140);
+
+    auto checkOrigin = [&](int offsetInSource, float expectedX) {
+        Bounds range = {};
+        utassert(InputRangeToBounds(
+            editor, win, {offsetInSource, offsetInSource + 3}, &range));
+        utassert(fabsf(range.x - expectedX) < 0.001f);
+        utassert(range.w > 0);
+    };
+    for (float rem : {14.f, 18.f, 24.f}) {
+        WindowSetRemSize(win, rem);
+        float previous = 0;
+        for (int gutter = 0; gutter < 3; gutter++) {
+            InputSetLineNumber(editor, gutter > 0, app, win);
+            editor->mode.folding = gutter == 2;
+            editor->scrollX = editor->scrollY = 0;
+            TestDraw(win);
+            TestDraw(win);
+            utassert(InputTextOriginOffset(editor, &offset));
+            utassert(gutter == 0 ? offset == 6.f : offset > previous);
+            previous = offset;
+            checkOrigin(0, 11 + offset);
+
+            editor->scrollX = 25;
+            editor->scrollY = editor->lastLineH * 10;
+            TestDraw(win);
+            TestDraw(win);
+            utassert(editor->scrollX > 0 && editor->scrollY > 0);
+            utassert(InputTextOriginOffset(editor, &offset));
+            utassertnear(offset, previous);
+            Selection visible = {};
+            utassert(InputLastPaintedRows(editor, win, &visible, 1) > 0);
+            utassert(visible.start > 0);
+            checkOrigin(visible.start, 11 + offset - editor->scrollX);
+        }
+    }
+
+    float withoutLane = offset;
+    GutterDecorationCollection collection =
+        InputCreateGutterDecorationsCollection(editor, nullptr, 0);
+    TestDraw(win);
+    utassert(InputTextOriginOffset(editor, &offset));
+    utassert(offset > withoutLane);
+    collection.Dispose();
+    TestDraw(win);
+    utassert(InputTextOriginOffset(editor, &offset));
+    utassertnear(offset, withoutLane);
+    TestAppFree(app);
+}
+
 static bool CornersEqual(const Vec<RangeCorners>& a,
                          const Vec<RangeCorners>& b) {
     if (len(a) != len(b)) {
@@ -12047,6 +12121,7 @@ static void RunElementWindowTests() {
     GutterQueryKeepsIndexOrderAfterInsertingAtMixedRanges();
     DefaultDecorationCollectionsAddressNoEditor();
     GutterDecorationsReserveAStripAndMarkLinesAndBoundaries();
+    EditorTextOriginOffsetFollowsTheLaidOutGutter();
     GutterDecorationsStartingInAFoldMarkItsRowAndTheRest();
     GutterDecorationsOnlyLayOutTheVisibleRows();
     OverviewRulerMarksFollowTheContentHeightAndMerge();

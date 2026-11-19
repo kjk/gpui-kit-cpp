@@ -16,15 +16,20 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7ad1ad981a59417dc24e5d9dc6d1d27b2c7e31be` (2026-11-10,
-base: Allow tooltip requests to set the anchor offset (#3874)).
-Tooltip requests can set a gap from their trigger. The side positioner uses
-that gap when measuring, flipping and clamping the popup.
+Processed through `0a2a64339c1821e9914e4c19603c0e543f618f7d` (2026-11-10,
+input: expose the editor text origin offset (#3765)).
+The editor exposes the horizontal text origin from its most recent layout. The
+reader describes the actual gutter, independent of frame padding, scrolling
+and alignment.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
 ## Known gaps vs Rust
 
+- **Empty editor placeholders use the unindented layout.** The C++ text
+  origin reader reports zero there. A populated code editor reports its
+  laid-out gutter, including the 6 DIP gap with line numbers hidden
+  (`src/base/input.cpp`).
 - **Disabled selection controls retain path-based focus positions.** Their
   derived IDs resolve during layout, so C++ keeps their place in the focus
   order with Tab stops off. Explicit handles on disabled controls are kept

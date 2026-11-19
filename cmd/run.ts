@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7ad1ad981a59417dc24e5d9dc6d1d27b2c7e31be",
+  sha: "0a2a64339c1821e9914e4c19603c0e543f618f7d",
   date: "2026-11-10",
-  subject: "base: Allow tooltip requests to set the anchor offset (#3874)",
+  subject: "input: expose the editor text origin offset (#3765)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

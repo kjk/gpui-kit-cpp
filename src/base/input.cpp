@@ -2440,6 +2440,7 @@ struct EditorUnderlay {
     Ctx cx = {};
     InputEditorStyle projected = {};
     bool lineNumbers = false;
+    float textOriginOffset = 0;
     // layout_folded_lines: one quad per folded line, painted under the text
     // and under the active-line wash. The bands are the lines themselves.
     El* foldBands[64] = {};
@@ -2488,6 +2489,9 @@ static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
     // the column was laid out inside a measure, which it leaves alone; the
     // frame after wraps to it then.
     InputState* s = u->state;
+    if (s) {
+        s->textOriginOffset = u->textOriginOffset;
+    }
     if (s && s->softWrap && e->w > 0 && e->w != s->wrap.measuredWidth &&
         ctx->window) {
         AppInvalidate(ctx->window);
@@ -2691,6 +2695,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     col->BoundsOut(&state->contentBox);
     ApplyEditorAccessibility(col, state, style.mask || state->masked, text);
     if (len(text) == 0) {
+        col->customPaint = [](PaintCtx*, El* element, void*) {
+            element->input->textOriginOffset = 0;
+        };
         if (caret) {
             col->Caret(0, style.caret);
         }
@@ -2754,24 +2761,26 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // The fold gutter. Rust widens the line-number column by the hitbox and
     // lays the icons into the space it made; the column here is a flex row,
     // so the icons get a cell of their own that is the same width.
-    bool folding = lineNumbers && LayoutModeIsFolding(state->mode);
+    bool folding = LayoutModeIsFolding(state->mode);
     float foldW = folding ? kFoldIconHitbox : 0.f;
     if (folding) {
         FoldMapRebuild(&state->folds, rows);
     }
+    float numberGap =
+        (lineNumbers || state->mode.kind == LayoutModeKind::CodeEditor)
+            ? kLineNumberRightMargin
+            : 0.f;
+    // An empty decoration collection still reserves its lane.
+    float gutterStrip = InputGutterStripWidth(state);
+    float textOriginOffset = gutterStrip + numW + foldW + numberGap;
     // soft_wrap: current column bounds less the gutter and RIGHT_MARGIN.
     // Wrapped visual rows enter here at prepaint, after layout supplies bounds.
     bool wrap = false;
     {
         float colW = state->contentBox.w;
-        // An empty gutter collection still reserves the strip, so the text
-        // does not shift when marks appear.
-        float strip = InputGutterStripWidth(state);
-        float gutterW =
-            (lineNumbers ? numW + kLineNumberRightMargin + foldW : 0.f) + strip;
         float textW = 0;
         if (colW > 0) {
-            textW = colW - gutterW - kEditorRightMargin;
+            textW = colW - textOriginOffset - kEditorRightMargin;
             if (textW < 1) {
                 textW = 1;
             }
@@ -3183,6 +3192,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         underlay->cx = *cx;
         underlay->projected = projected;
         underlay->lineNumbers = lineNumbers;
+        underlay->textOriginOffset = textOriginOffset;
         col->customPaint = &PaintEditorUnderlay;
         col->customUser = underlay;
         if (state->softWrap && !state->wrap.buildingRows) {
@@ -3539,12 +3549,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     .w;
             float indent = nVis > 1 ? wrapIndent : 0;
             if (state->align != 0 && state->contentBox.w > 0) {
-                float gutterW = 0;
-                if (lineNumbers) {
-                    gutterW = numW + kLineNumberRightMargin + foldW;
-                }
-                gutterW += InputGutterStripWidth(state);
-                float slack = state->contentBox.w - gutterW - end;
+                float slack = state->contentBox.w - textOriginOffset - end;
                 if (slack > 0) {
                     indent += state->align == 1 ? slack * 0.5f : slack;
                 }
@@ -3576,9 +3581,15 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 }
             }
         }
-        if (!lineNumbers) {
-            if (InputGutterStripWidth(state) > 0) {
-                el->PadL(InputGutterStripWidth(state));
+        if (!lineNumbers && !folding) {
+            if (textOriginOffset > 0) {
+                // Offset the run itself so range geometry and hit testing
+                // use the same origin as the painted text.
+                el = Div(a)
+                         ->W(kFill)
+                         ->FlexCol()
+                         ->PadL(textOriginOffset)
+                         ->Child(el);
             }
             if (underlay && foldedLine && state->hasFoldBackground &&
                 underlay->nFoldBands < (int)(sizeof(underlay->foldBands) /
@@ -3595,12 +3606,11 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         El* band = Div(a)
                        ->FlexRow()
                        ->W(kFill)
-                       ->Gap(kLineNumberRightMargin)
+                       ->Gap(numberGap)
                        ->H((float)nVis * lineH)
                        ->ItemsStart();
-        float strip = InputGutterStripWidth(state);
-        if (strip > 0) {
-            band->PadL(strip);
+        if (gutterStrip > 0) {
+            band->PadL(gutterStrip);
         }
         // active_line: the wash under the line the caret is on, gutter and
         // all, and the editor's padding left of the gutter. The column
@@ -3615,14 +3625,18 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             underlay->foldColor = state->foldBackground;
         }
         // The caret's line is numbered in the foreground, the rest muted.
-        El* num =
-            TextEl(a, StrDup(a, fmt("%d", InputDisplayedLineNumber(row + 1))))
-                ->Font(font)
-                ->LineHeight(lineMult)
-                ->Fg(row == caretRow ? style.foreground
-                                     : style.mutedForeground);
-        InputFace(num, style);
-        El* numCell = Div(a)->W(numW)->JustifyEnd()->Child(num);
+        El* numCell = nullptr;
+        if (lineNumbers) {
+            El* num =
+                TextEl(a,
+                       StrDup(a, fmt("%d", InputDisplayedLineNumber(row + 1))))
+                    ->Font(font)
+                    ->LineHeight(lineMult)
+                    ->Fg(row == caretRow ? style.foreground
+                                         : style.mutedForeground);
+            InputFace(num, style);
+            numCell = Div(a)->W(numW)->JustifyEnd()->Child(num);
+        }
         if (folding) {
             // The line-number column and the fold icons are one hit strip,
             // the way Rust's line_number_hitbox covers both. PathClick on
@@ -3670,15 +3684,11 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         NoteUnwrappedExtent(state, cx->win ? &cx->win->paint : nullptr,
                             laidFont, InputFontWord(style), firstRow, endRow);
         if (state->longestLineW > 0) {
-            float gutter = 0;
-            if (lineNumbers) {
-                gutter = numW + kLineNumberRightMargin + foldW;
-            }
-            gutter += InputGutterStripWidth(state);
             // RIGHT_MARGIN rides along once the line overflows, which is
             // the scroll width element.rs publishes. A minimum on the
             // column keeps that width when the wide line is not built.
-            col->MinW(state->longestLineW + gutter + kEditorRightMargin);
+            col->MinW(state->longestLineW + textOriginOffset +
+                      kEditorRightMargin);
         }
     }
 
@@ -3694,11 +3704,6 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         Rgba ghostFg = RgbaOpacity(style.mutedForeground, 0.5f);
         // Where the text column starts, for the lines after the first: the
         // gutter and the fold strip are not part of it.
-        float textLeft = 0;
-        if (lineNumbers) {
-            textLeft = numW + kLineNumberRightMargin + (folding ? foldW : 0.f);
-        }
-        textLeft += InputGutterStripWidth(state);
         // Where the caret was last painted, in the column's own coordinates.
         float gx = state->caretWinX - state->contentBox.x;
         float gy = state->caretWinY - state->contentBox.y - lineH;
@@ -3716,7 +3721,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             if (len(one) > 0) {
                 El* ghost = Div(a)
                                 ->Absolute()
-                                ->Left(line == 0 ? gx : textLeft)
+                                ->Left(line == 0 ? gx : textOriginOffset)
                                 ->Top(gy + (float)line * lineH)
                                 ->H(lineH)
                                 ->Bg(style.background);
@@ -3777,9 +3782,7 @@ El* Editor::New(Ctx* cx, InputState* state) {
 }
 
 El* Editor::New(Ctx* cx, InputState* state, const InputEditorStyle& style) {
-    // EditorMode is TextareaMode plus the language features this tree does not
-    // have; what is left of it that we do render is the line number gutter.
-    return Textarea::New(cx, state, style, true);
+    return Textarea::New(cx, state, style, state && state->mode.lineNumber);
 }
 
 /* Port of crates/base/src/input/base — state.rs, movement.rs, selection.rs and
@@ -12093,6 +12096,14 @@ bool InputRangeToBounds(const InputState* s, Window* win, Selection range,
         return false;
     }
     *out = {start.x, start.y, end.x - start.x, end.y + s->lastLineH - start.y};
+    return true;
+}
+
+bool InputTextOriginOffset(const InputState* s, float* out) {
+    if (!s || !out || s->textOriginOffset < 0.f) {
+        return false;
+    }
+    *out = s->textOriginOffset;
     return true;
 }
 

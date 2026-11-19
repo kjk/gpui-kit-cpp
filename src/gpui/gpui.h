@@ -4410,7 +4410,7 @@ struct LayoutMode {
     int maxRows = 0; // 0 = usize::MAX
     // TabSize::default(): two spaces, in every mode that indents.
     int tabSize = 2;
-    bool lineNumber = false;
+    bool lineNumber = true;
     // LayoutMode::CodeEditor { folding }. Rust defaults it on and the story
     // turns it off; it is off here until something asks, because a plain
     // textarea has no gutter to hang the chevrons in.
@@ -5683,6 +5683,8 @@ struct InputState {
     // and read only once it is over; `paintedRowsFrame` says which frame.
     struct InputPaintedRows* paintedRows = nullptr;
     uint64_t paintedRowsFrame = 0;
+    // Width of the most recently laid-out left gutter, or -1 before layout.
+    float textOriginOffset = -1.f;
     // EditorLanguage::syntax: the SyntaxContextProvider this editor's
     // language answered, kept while neither the language nor the
     // LanguageProvider changes — the provider owns a parse of this document.
