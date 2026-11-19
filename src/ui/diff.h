@@ -145,7 +145,6 @@ struct DiffAnnotation {
 
 // A background on the lines of a range. It does not change the selection,
 // copying or layout. No background means the translucent warning fill.
-// Character-range decorations are not part of this surface.
 struct DiffDecoration {
     DiffLineRange range = {};
     bool hasBackground = false;
@@ -155,6 +154,28 @@ struct DiffDecoration {
     const DiffLineRange& Range() const { return range; }
     const Rgba* Background() const {
         return hasBackground ? &background : nullptr;
+    }
+};
+
+// Highlights a half-open byte range in the source line, before tab
+// expansion. The default background is the theme warning color at 50%.
+struct DiffSpanHighlight {
+    DiffLinePosition position = {};
+    ByteRange span = {};
+    bool hasBackground = false;
+    bool hasForeground = false;
+    Rgba background = {};
+    Rgba foreground = {};
+    static DiffSpanHighlight New(DiffLinePosition position, ByteRange span);
+    DiffSpanHighlight WithBackground(Rgba fill) const;
+    DiffSpanHighlight WithForeground(Rgba color) const;
+    const DiffLinePosition& Position() const { return position; }
+    ByteRange Span() const { return span; }
+    const Rgba* Background() const {
+        return hasBackground ? &background : nullptr;
+    }
+    const Rgba* Foreground() const {
+        return hasForeground ? &foreground : nullptr;
     }
 };
 
@@ -578,6 +599,8 @@ struct Diff {
     // shown only when there is at least one marker and a renderer.
     const DiffDecoration* decorations = nullptr;
     int decorationCount = 0;
+    const DiffSpanHighlight** spanHighlights = nullptr;
+    int spanHighlightCount = 0;
     const DiffGutterMarker* gutterMarkers = nullptr;
     int gutterMarkerCount = 0;
     El* (*gutterMarkerContent)(Ctx*, const DiffGutterMarker*, void*) = nullptr;
@@ -609,6 +632,7 @@ struct Diff {
     Diff* RenderAnnotation(El* (*fn)(Ctx*, const DiffAnnotation*, void*),
                            void* user);
     Diff* Decorations(const DiffDecoration* items, int count);
+    Diff* SpanHighlights(const DiffSpanHighlight* items, int count);
     Diff* GutterMarkers(const DiffGutterMarker* items, int count);
     Diff* RenderGutterMarker(El* (*fn)(Ctx*, const DiffGutterMarker*, void*),
                              void* user);

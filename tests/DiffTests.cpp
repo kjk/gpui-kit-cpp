@@ -1306,6 +1306,82 @@ static void DecorationsCoverTheirRangeAndTheLastSuppliedWins() {
     utassert(At(items, "other.txt", DiffSide::Modified, 2) == nullptr);
 }
 
+struct DiffHighlightView {
+    Entity<DiffState> state;
+    DiffSpanHighlight spans[4];
+
+    static El* Render(DiffHighlightView* self, Ctx* cx) {
+        return Diff::New(cx, self->state)
+            ->SyntaxHighlight(false)
+            ->SpanHighlights(self->spans, 4)
+            ->IntoEl();
+    }
+};
+
+static El* FindDiffCodeRun(El* root, Str text) {
+    if (StrEq(root->text, text)) return root;
+    for (El* child = root->first; child; child = child->next) {
+        if (El* match = FindDiffCodeRun(child, text)) return match;
+    }
+    return nullptr;
+}
+
+// decoration_tests.rs span_highlights_group_by_line_in_supplied_order.
+static void SpanHighlightsKeepLineAndOrderThroughTabExpansion() {
+    App* app = TestAppNew();
+    Init(app);
+    auto view = EntityNew<DiffHighlightView>(app);
+    auto* self = view.Get(app);
+    self->state = EntityNew<DiffState>(app);
+    auto* state = self->state.Get(app);
+    state->Bind(app, self->state);
+    state->WithMode(DiffMode::Unified);
+    Vec<DiffFile*> files;
+    DiffParseError error;
+    Str original = StrL(
+        "\t\xc3\xa9"
+        "abc");
+    utassert(DiffFile::Parse(fmt("--- a/hi.txt\n+++ b/hi.txt\n"
+                                 "@@ -1 +1 @@\n-%s\n+other\n",
+                                 original),
+                             &files, &error));
+    state->SetFiles(files.els, len(files), nullptr);
+    VecReset(files);
+
+    Rgba red = Rgb(255, 0, 0);
+    Rgba blue = Rgb(0, 0, 255);
+    auto originalLine =
+        DiffLinePosition::New(StrL("hi.txt"), DiffSide::Original, 1);
+    auto modifiedLine =
+        DiffLinePosition::New(StrL("hi.txt"), DiffSide::Modified, 1);
+    self->spans[0] = DiffSpanHighlight::New(originalLine, {0, 3})
+                         .WithBackground(red)
+                         .WithForeground(blue);
+    self->spans[1] = DiffSpanHighlight::New(modifiedLine, {1, 3});
+    self->spans[2] = DiffSpanHighlight::New(originalLine, {1, 4});
+    self->spans[3] = DiffSpanHighlight::New(originalLine, {100, 200});
+    Window* win = TestWindowOpen(app, view, 400, 200, 1);
+    El* root = EntityRender(app, win, win->frameArena, view.id);
+    LayoutEl(&win->paint, root, 0, 0, 400, 200, 14, Rgba{});
+    El* oldRun = FindDiffCodeRun(root, StrL("    \xc3\xa9"
+                                            "abc"));
+    El* newRun = FindDiffCodeRun(root, StrL("other"));
+    utassert(oldRun && oldRun->nWashes == 2 && oldRun->nSpans == 1);
+    if (oldRun && oldRun->nWashes == 2 && oldRun->nSpans == 1) {
+        utassert(oldRun->washes[0].lo == 0 && oldRun->washes[0].hi == 4);
+        utassert(RgbaEq(oldRun->washes[0].bg, red));
+        utassert(oldRun->washes[1].lo == 4 && oldRun->washes[1].hi == 7);
+        utassert(RgbaEq(oldRun->washes[1].bg,
+                        RgbaOpacity(ActiveTheme(app).warning, 0.5f)));
+        utassert(oldRun->spans[0].lo == 0 && oldRun->spans[0].hi == 6);
+        utassert(RgbaEq(oldRun->spans[0].color, blue));
+    }
+    utassert(newRun && newRun->nWashes == 1 && newRun->nSpans == 0);
+    if (newRun && newRun->nWashes == 1)
+        utassert(newRun->washes[0].lo == 1 && newRun->washes[0].hi == 3);
+    TestAppFree(app);
+}
+
 struct MarkerHost {
     Entity<DiffState> state;
     bool loaded = false;
@@ -1458,5 +1534,6 @@ void TestDiff() {
     TheFileHeaderStaysInsideTheScrollingViewport();
     UnifiedAnnotationsStayInTheViewportWhileCodeScrolls();
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();
+    SpanHighlightsKeepLineAndOrderThroughTabExpansion();
     GutterMarkersActivateWithoutSelectingLines();
 }

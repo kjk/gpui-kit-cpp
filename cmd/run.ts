@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b52a45bf3d86008b9514851c02e1b02edefc8ecc",
+  sha: "fa6c72d3384b707792ac1daa37a509845c87214c",
   date: "2026-11-17",
-  subject: "shell: Fix command_host second-draw test (#4003)",
+  subject: "diff: Add `span_highlights` to emphasize character spans such as search matches (#4011)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b52a45bf3d86008b9514851c02e1b02edefc8ecc` (2026-11-17,
-shell: Fix command_host second-draw test (#4003)).
-The Shell command test draws a second clean frame and verifies it reuses the
-retained JavaScript description while rendering the command entries.
+Processed through `fa6c72d3384b707792ac1daa37a509845c87214c` (2026-11-17,
+diff: Add `span_highlights` to emphasize character spans such as search
+matches (#4011)).
+Diff span highlights overlay the line and syntax styles with a background and
+optional foreground. Byte ranges are projected through tab expansion and
+grouped by source line in supplied order.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

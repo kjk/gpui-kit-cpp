@@ -12,6 +12,7 @@
 #include "base/scroll_bounce.h"
 
 #include <math.h>
+#include <stdlib.h>
 
 namespace gpui {
 namespace component {
@@ -104,6 +105,28 @@ DiffDecoration DiffDecoration::WithBackground(Rgba fill) const {
     d.hasBackground = true;
     d.background = fill;
     return d;
+}
+
+DiffSpanHighlight DiffSpanHighlight::New(DiffLinePosition position,
+                                         ByteRange span) {
+    DiffSpanHighlight highlight;
+    highlight.position = position;
+    highlight.span = span;
+    return highlight;
+}
+
+DiffSpanHighlight DiffSpanHighlight::WithBackground(Rgba fill) const {
+    DiffSpanHighlight highlight = *this;
+    highlight.hasBackground = true;
+    highlight.background = fill;
+    return highlight;
+}
+
+DiffSpanHighlight DiffSpanHighlight::WithForeground(Rgba color) const {
+    DiffSpanHighlight highlight = *this;
+    highlight.hasForeground = true;
+    highlight.foreground = color;
+    return highlight;
 }
 
 DiffGutterMarker DiffGutterMarker::New(Str id, DiffLinePosition position) {
@@ -2222,17 +2245,17 @@ static int DisplayOff(const DiffFileSide* side, const DiffSourceLine& line,
                       int sourceOff) {
     if (sourceOff < 0) sourceOff = 0;
     if (sourceOff > line.text.len) sourceOff = line.text.len;
-    int prev = -1;
-    for (int i = 0; i < line.tabCount; i++) {
-        const DiffDisplayTab& tab = side->tabs[line.tabBegin + i];
-        if (tab.sourceOffset < sourceOff)
-            prev = i;
+    int lo = 0, hi = line.tabCount;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (side->tabs[line.tabBegin + mid].sourceOffset < sourceOff)
+            lo = mid + 1;
         else
-            break;
+            hi = mid;
     }
     int expansion = 0;
-    if (prev >= 0) {
-        const DiffDisplayTab& tab = side->tabs[line.tabBegin + prev];
+    if (lo > 0) {
+        const DiffDisplayTab& tab = side->tabs[line.tabBegin + lo - 1];
         expansion = tab.displayOffset + tab.width - tab.sourceOffset - 1;
     }
     return sourceOff + expansion;
@@ -3088,9 +3111,109 @@ static void OnChoose(DiffState* self, Ctx* cx, const ClickEvent*,
         self->ChooseConflict(file, ix, true, DiffConflictResolution::Both, cx);
 }
 
-static void PaintSyntaxRun(Ctx* cx, El* row, Str text,
-                           const DiffSyntaxSpan* span) {
-    El* bit = TextEl(cx->a, text)->Mono();
+static int CompareDiffPositions(const DiffLinePosition& a,
+                                const DiffLinePosition& b) {
+    int path = StrCmp(a.path, b.path);
+    if (path != 0) return path;
+    if (a.side != b.side) return (int)a.side - (int)b.side;
+    return (a.line > b.line) - (a.line < b.line);
+}
+
+struct DiffHighlightRuns {
+    TextSpan* washes = nullptr;
+    TextSpan* colors = nullptr;
+    int washCount = 0;
+    int colorCount = 0;
+};
+
+static int InsertDiffHighlight(TextSpan* runs, int count, const TextSpan& span,
+                               int cap, TextSpan* scratch) {
+    // Search matches usually arrive in display order without overlapping.
+    if (count == 0 || runs[count - 1].hi <= span.lo) {
+        runs[count++] = span;
+        return count;
+    }
+    return InputComposeSpans(runs, count, &span, 1, cap, scratch);
+}
+
+static DiffHighlightRuns BuildDiffHighlightRuns(Ctx* cx, const Diff* diff,
+                                                Str path, DiffSide side,
+                                                const DiffFileSide* source,
+                                                const DiffSourceLine& line) {
+    DiffHighlightRuns runs;
+    if (!diff->spanHighlightCount) return runs;
+    DiffLinePosition position =
+        DiffLinePosition::New(path, side, line.lineNumber);
+    int lo = 0, hi = diff->spanHighlightCount;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (CompareDiffPositions(diff->spanHighlights[mid]->position,
+                                 position) < 0)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    int end = lo;
+    while (end < diff->spanHighlightCount &&
+           SamePosition(diff->spanHighlights[end]->position, position))
+        end++;
+    if (end == lo) return runs;
+
+    // Later fills and foregrounds override earlier values independently.
+    // A new range can introduce at most two boundaries in either run list.
+    int cap = 2 * (end - lo);
+    runs.washes = (TextSpan*)Alloc(cx->a, cap * (int)sizeof(TextSpan));
+    runs.colors = (TextSpan*)Alloc(cx->a, cap * (int)sizeof(TextSpan));
+    auto* scratch = (TextSpan*)Alloc(cx->a, cap * (int)sizeof(TextSpan));
+    Rgba fill = RgbaOpacity(ActiveTheme(cx->app).warning, 0.5f);
+    for (int i = lo; i < end; i++) {
+        const DiffSpanHighlight& item = *diff->spanHighlights[i];
+        int start = IMax(0, item.span.start);
+        int stop = IMin(len(line.text), item.span.end);
+        if (start >= stop) continue;
+        while (!Utf8IsCharBoundary(line.text, start)) start--;
+        while (!Utf8IsCharBoundary(line.text, stop)) stop++;
+        TextSpan span;
+        span.lo = DisplayOff(source, line, start);
+        span.hi = DisplayOff(source, line, stop);
+        span.bg = item.hasBackground ? item.background : fill;
+        runs.washCount = InsertDiffHighlight(runs.washes, runs.washCount, span,
+                                             cap, scratch);
+        if (item.hasForeground) {
+            span.bg = {0, 0, 0, 0};
+            span.color = item.foreground;
+            runs.colorCount = InsertDiffHighlight(runs.colors, runs.colorCount,
+                                                  span, cap, scratch);
+        }
+    }
+    return runs;
+}
+
+static TextSpan* DiffHighlightSlice(Ctx* cx, const TextSpan* spans, int count,
+                                    int lo, int hi, int* outCount) {
+    int start = 0, end = count;
+    while (start < end) {
+        int mid = start + (end - start) / 2;
+        if (spans[mid].hi <= lo)
+            start = mid + 1;
+        else
+            end = mid;
+    }
+    end = start;
+    while (end < count && spans[end].lo < hi) end++;
+    *outCount = end - start;
+    if (start == end) return nullptr;
+    auto* slice = (TextSpan*)Alloc(cx->a, *outCount * (int)sizeof(TextSpan));
+    for (int i = start; i < end; i++) {
+        TextSpan span = spans[i];
+        span.lo = IMax(lo, span.lo) - lo;
+        span.hi = IMin(hi, span.hi) - lo;
+        slice[i - start] = span;
+    }
+    return slice;
+}
+
+static void StyleDiffRun(El* bit, const DiffSyntaxSpan* span) {
     if (span) {
         if (span->weight) bit->Weight((FontWeight)span->weight);
         if (span->italic) bit->Italic();
@@ -3098,13 +3221,33 @@ static void PaintSyntaxRun(Ctx* cx, El* row, Str text,
         if (span->hasBackground) bit->Bg(span->background);
         if (span->underline) bit->Underline();
     }
-    row->Child(bit);
 }
 
-static El* CodeText(Ctx* cx, const DiffState* state, int fileIx,
-                    const DiffFile* file, DiffSide side, int ix, bool syntax) {
-    const DiffSourceLine& line = SideOf(file, side)->lines[ix];
+static El* CodeText(Ctx* cx, const Diff* diff, const DiffState* state,
+                    int fileIx, const DiffFile* file, DiffSide side, int ix,
+                    bool syntax) {
+    const DiffFileSide* source = SideOf(file, side);
+    const DiffSourceLine& line = source->lines[ix];
+    const auto runs =
+        BuildDiffHighlightRuns(cx, diff, file->path, side, source, line);
     El* row = Div(cx->a)->FlexRow();
+    auto textRun = [&](Str text, int lo) {
+        El* bit = TextEl(cx->a, text)->Mono();
+        int hi = lo + len(text);
+        int count;
+        if (runs.washCount) {
+            const TextSpan* spans = DiffHighlightSlice(
+                cx, runs.washes, runs.washCount, lo, hi, &count);
+            if (count) bit->Washes(spans, count);
+        }
+        if (runs.colorCount) {
+            const TextSpan* spans = DiffHighlightSlice(
+                cx, runs.colors, runs.colorCount, lo, hi, &count);
+            if (count) bit->Spans(spans, count);
+        }
+        row->Child(bit);
+        return bit;
+    };
     if (syntax && state && state->syntaxFn) {
         int at = 0;
         for (int i = 0; i < len(state->syntaxSpans); i++) {
@@ -3115,35 +3258,32 @@ static El* CodeText(Ctx* cx, const DiffState* state, int fileIx,
             int lo = span.start;
             int hi = span.end;
             if (lo < at) lo = at;
-            if (hi > line.display.len) hi = line.display.len;
-            if (lo > at)
-                PaintSyntaxRun(cx, row, Slice(line.display, at, lo), nullptr);
+            if (hi > len(line.display)) hi = len(line.display);
+            if (lo > at) textRun(Slice(line.display, at, lo), at);
             if (lo < hi)
-                PaintSyntaxRun(cx, row, Slice(line.display, lo, hi), &span);
+                StyleDiffRun(textRun(Slice(line.display, lo, hi), lo), &span);
             if (hi > at) at = hi;
         }
-        if (at < line.display.len)
-            PaintSyntaxRun(cx, row, Slice(line.display, at, line.display.len),
-                           nullptr);
+        if (at < len(line.display))
+            textRun(Slice(line.display, at, len(line.display)), at);
         return row;
     }
     if (!syntax) {
-        row->Child(TextEl(cx->a, line.display)->Mono());
+        textRun(line.display, 0);
         return row;
     }
     SyntaxLang lang = SyntaxLangFor(file->Language());
     if (lang == SyntaxLangNone) {
-        row->Child(TextEl(cx->a, line.display)->Mono());
+        textRun(line.display, 0);
         return row;
     }
     SyntaxLexer lx;
     SyntaxLexStart(&lx, lang, line.display);
     Rgba fg = ActiveTheme(cx->app).foreground;
     while (SyntaxLexNext(&lx)) {
-        El* bit = TextEl(cx->a, lx.text)->Mono();
+        El* bit = textRun(lx.text, (int)(lx.text.s - line.display.s));
         if (lx.tok != SyntaxTok::Text)
             bit->Fg(SyntaxTokColor(lx.tok, ActiveTheme(cx->app).mode, fg));
-        row->Child(bit);
     }
     return row;
 }
@@ -3419,7 +3559,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
             box->Child(Div(cx->a)->W(3)->H(24)->Shrink(0)->Bg(
                 side == DiffSide::Original ? theme.danger : theme.success));
         }
-        El* source = CodeText(cx, state, row.file, file, side, line,
+        El* source = CodeText(cx, diff, state, row.file, file, side, line,
                               diff->syntaxHighlight &&
                                   len(SideOf(file, side)->lines[line].text) <=
                                       state->syntaxMaxLineLength);
@@ -3579,6 +3719,25 @@ Diff* Diff::Decorations(const DiffDecoration* items, int count) {
     decorationCount = count;
     return this;
 }
+Diff* Diff::SpanHighlights(const DiffSpanHighlight* items, int count) {
+    spanHighlightCount = items ? IMax(0, count) : 0;
+    spanHighlights = nullptr;
+    if (!spanHighlightCount) return this;
+    spanHighlights = (const DiffSpanHighlight**)Alloc(
+        a, count * (int)sizeof(*spanHighlights));
+    for (int i = 0; i < count; i++) spanHighlights[i] = &items[i];
+    qsort(spanHighlights, count, sizeof(*spanHighlights),
+          [](const void* lhs, const void* rhs) {
+              const auto* first = *(const DiffSpanHighlight* const*)lhs;
+              const auto* second = *(const DiffSpanHighlight* const*)rhs;
+              int position =
+                  CompareDiffPositions(first->position, second->position);
+              if (position != 0) return position;
+              return (first > second) - (first < second);
+          });
+    return this;
+}
+
 Diff* Diff::GutterMarkers(const DiffGutterMarker* items, int count) {
     gutterMarkers = items;
     gutterMarkerCount = count;
