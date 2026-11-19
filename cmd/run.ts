@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "9bcad2367f095d85b4e1f64ca4b47eec1d13e1f5",
+  sha: "390a485aba2e8ab92754a23b84eecedf4155b562",
   date: "2026-11-19",
-  subject: "website: Correct Firefox canvas size in web examples (#4047)",
+  subject: "docs: Say the List search input needs searchable(true) (#4048)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9bcad2367f095d85b4e1f64ca4b47eec1d13e1f5` (2026-11-19,
-website: Correct Firefox canvas size in web examples (#4047)).
-The C++ browser host already sizes the backing canvas from CSS bounds times
-devicePixelRatio, independent of ResizeObserver device-pixel reports, with
-pointer coordinates in CSS pixels.
+Processed through `390a485aba2e8ab92754a23b84eecedf4155b562` (2026-11-19,
+docs: Say the List search input needs searchable(true) (#4048)).
+Upstream List documentation clarifies that the search field is opt-in. Native
+List::Searchable already defaults to false and StockSearch remains available
+for a custom search control.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
