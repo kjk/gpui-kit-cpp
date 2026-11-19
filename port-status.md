@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cd2fe14a9e4a5ee42f84d67263c684b25bfb3e76` (2026-11-18,
-titlebar: Follow Linux window button layouts (#4018)).
-Linux title bars follow desktop portal button placement and order and update
-when settings change. X11 window-manager capabilities filter minimize and
-maximize controls.
+Processed through `b63a46f85225c73d33cee8c374e692bc3c9b74b3` (2026-11-18,
+input: Start each paragraph of a text area at the edge it reads from (#4016)).
+Textarea paragraphs align each visual row using the first strong Unicode
+direction of the paragraph. Painting, selection, caret movement and hit
+testing use the aligned row coordinates.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

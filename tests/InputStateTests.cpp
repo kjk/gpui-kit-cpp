@@ -14005,6 +14005,69 @@ static void CharacterIndexForPointFindsEachDrawnLetter() {
     InputViewFree(&view);
 }
 
+// text_wrapper.rs: textarea paragraphs choose an edge independently and
+// keep that edge for every visual row. Range geometry and pointer hit
+// testing both use the shifted text.
+static void TextareaStartsEachParagraphAtItsReadingEdge() {
+    struct View {
+        InputState input;
+        static El* Render(View* self, Ctx* cx) {
+            return Div(cx->a)->FlexCol()->W(240)->Child(
+                component::Textarea::New(cx, StrL("bidi"), &self->input)
+                    ->IntoEl());
+        }
+    };
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<View>(app);
+    InputState* state = &view.Get(app)->input;
+    state->kind = InputKind::Textarea;
+    state->softWrap = true;
+    TextareaSetAutoGrow(state, 1, 12);
+    Str para = StrL(
+        "left\n12 "
+        "\xd7\x90\xd7\x91\xd7\x92\xd7\x93 "
+        "\xd7\x90\xd7\x91\xd7\x92\xd7\x93 "
+        "\xd7\x90\xd7\x91\xd7\x92\xd7\x93 "
+        "\xd7\x90\xd7\x91\xd7\x92\xd7\x93 "
+        "\xd7\x90\xd7\x91\xd7\x92\xd7\x93 "
+        "\xd7\x90\xd7\x91\xd7\x92\xd7\x93 "
+        "\xd7\x90\xd7\x91\xd7\x92\xd7\x93 "
+        "\xd7\x90\xd7\x91\xd7\x92\xd7\x93\n12345");
+    InputSetValue(state, para);
+    Window* win = TestWindowOpen(app, view, 300, 300);
+    TestDraw(win);
+    const Vec<int>& starts = InputLineStarts(state);
+    utassert(len(starts) == 3);
+    InputPaintedVisualRow rows[12] = {};
+    int count = InputLastVisualRows(state, win, rows, 12);
+    int rightRows = 0;
+    for (int r = 0; r < count; r++) {
+        const auto& row = rows[r];
+        bool right = row.lineStart == starts[1];
+        if (right) {
+            rightRows++;
+            utassert(row.text.Right() > state->contentBox.Right() - 14);
+        } else {
+            utassert(row.text.x < state->contentBox.x + 12);
+        }
+    }
+    utassert(rightRows >= 2);
+
+    Vec<RangeCorners> one;
+    int letter = starts[1] + 5;
+    if (InputLastRangeCorners(state, win, {letter, letter + 2}, &one) == 1) {
+        Point at = {(one[0].topLeft.x + one[0].topRight.x) * 0.5f,
+                    (one[0].topLeft.y + one[0].bottomLeft.y) * 0.5f};
+        int hit = InputIndexForPosition(state, &win->paint, at.x, at.y, nullptr,
+                                        nullptr);
+        utassert(hit >= letter && hit <= letter + 2);
+    } else {
+        utassert(false);
+    }
+    TestAppFree(app);
+}
+
 void TestInputState() {
     LaterHighlightLayerWinsOverEarlierOne();
     DecorationColorIsStableAcrossCompositions();
@@ -14017,6 +14080,7 @@ void TestInputState() {
     PrewrapWrapsWithTheWrappingIndent();
     PrewrapDoesNothingOnceLaidOut();
     TestSuite("input_state");
+    TextareaStartsEachParagraphAtItsReadingEdge();
     LastInputEditsFollowTheChange();
     InputEditsEventsReplayEachChange();
     SelectedRangeRestoresUnicodeDirection();

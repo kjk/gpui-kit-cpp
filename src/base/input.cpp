@@ -14,11 +14,73 @@
 #include "base/scroll_bounce.h"
 #include "base/text_boundary.h"
 #include "base/theme.h"
+#include "base/unicode_bidi_data.h"
 #include "gpui/paint.h"
 
 #include <math.h>
 
 namespace gpui {
+
+static ParagraphBidi ParagraphBidiClass(uint32_t scalar) {
+    int lo = 0, hi = (int)dimof(kParagraphBidiRanges);
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        const auto& range = kParagraphBidiRanges[mid];
+        if (scalar < range.first)
+            hi = mid;
+        else if (scalar > range.last)
+            lo = mid + 1;
+        else
+            return range.kind;
+    }
+    return ParagraphBidi::Left;
+}
+
+// UAX #9 P2/P3: content inside an isolate cannot choose the direction of
+// its surrounding paragraph. Stop at a paragraph separator.
+static ParagraphBidi FirstStrongBidi(Str text) {
+    int isolates = 0;
+    for (int at = 0; at < len(text);) {
+        uint32_t scalar;
+        int bytes = Utf8At(text, at, &scalar);
+        if (bytes <= 0) break;
+        at += bytes;
+        ParagraphBidi kind = ParagraphBidiClass(scalar);
+        switch (kind) {
+            case ParagraphBidi::Isolate:
+                isolates++;
+                break;
+            case ParagraphBidi::EndIsolate:
+                if (isolates > 0) isolates--;
+                break;
+            case ParagraphBidi::Break:
+                return ParagraphBidi::Neutral;
+            case ParagraphBidi::Left:
+            case ParagraphBidi::Right:
+                if (isolates == 0) return kind;
+                break;
+            case ParagraphBidi::Neutral:
+                break;
+        }
+    }
+    return ParagraphBidi::Neutral;
+}
+
+static TextAlign InputRowAlignment(const InputState* state, Str line,
+                                   const int* starts, int rows) {
+    if (state->kind != InputKind::Textarea ||
+        state->mode.kind == LayoutModeKind::CodeEditor) {
+        return (TextAlign)state->align;
+    }
+    for (int row = 0; row < rows; row++) {
+        int lo = starts[row];
+        int hi = row + 1 < rows ? starts[row + 1] : len(line);
+        ParagraphBidi direction = FirstStrongBidi(Str(line.s + lo, hi - lo));
+        if (direction == ParagraphBidi::Right) return TextAlign::Right;
+        if (direction == ParagraphBidi::Left) break;
+    }
+    return TextAlign::Left;
+}
 
 InputEditorStyle InputEditorStyleResolve(const InputEditorStyle& projected,
                                          const SemanticThemeTokens& tokens) {
@@ -3641,6 +3703,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         const int* wrapStarts = nullptr;
         float wrapIndent = 0;
         int nVis = InputWrapRows(state, row, &wrapStarts, &wrapIndent);
+        TextAlign rowAlign =
+            InputRowAlignment(state, lineText, wrapStarts, nVis);
         // A wrapped line's rows stack in a column of their own, each a whole
         // line height, the ones after the first shifted by the wrap indent.
         El* lineEl = nVis > 1 ? Div(a)->FlexCol()->W(kFill) : nullptr;
@@ -3923,14 +3987,22 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             if (!tokenLine && state->showWhitespaces) {
                 el->Whitespaces(style.mutedForeground);
             }
-            if (!lineEl) {
-                single = el;
-            } else if (vis > 0 && wrapIndent > 0) {
-                lineEl->Child(
-                    Div(a)->FlexRow()->H(lineH)->PadL(wrapIndent)->Child(el));
-            } else {
-                lineEl->Child(el);
+            float indent = vis > 0 ? wrapIndent : 0;
+            if (rowAlign != TextAlign::Left) {
+                // Flexible spacers give short rows their own alignment and
+                // keep overflowing rows at their logical start.
+                El* band = Div(a)->FlexRow()->W(kFill)->H(lineH);
+                band->Child(Div(a)->Flex1());
+                band->Child(el->Shrink0()->Left(indent));
+                if (rowAlign == TextAlign::Center) band->Child(Div(a)->Flex1());
+                el = band;
+            } else if (indent > 0) {
+                el = Div(a)->FlexRow()->H(lineH)->PadL(indent)->Child(el);
             }
+            if (lineEl)
+                lineEl->Child(el);
+            else
+                single = el;
         }
         El* el = lineEl ? lineEl : single;
         if (!el) {
@@ -3953,12 +4025,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                             font, 0, false, InputFontWord(style))
                     .w;
             float indent = nVis > 1 ? wrapIndent : 0;
-            if (state->align != 0 && state->contentBox.w > 0) {
-                float slack = state->contentBox.w - textOriginOffset - end;
-                if (slack > 0) {
-                    indent += state->align == 1 ? slack * 0.5f : slack;
-                }
-            }
+            indent += TextAlignedRowLeft(
+                rowAlign, state->contentBox.w - textOriginOffset, end);
             El* mark = state->foldPlaceholder
                            .render(state->foldPlaceholder.data, cx, row);
             if (mark) {
@@ -4065,7 +4133,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             band->Child(numCell);
         }
-        if (wrap) {
+        if (wrap || rowAlign != TextAlign::Left) {
             // flex_1: the text column is what the gutter leaves, the width
             // the rows were wrapped to.
             el->Flex1();
@@ -9272,6 +9340,33 @@ static float WrapRowX(PaintCtx* ctx, const InputState* s, Str line,
     return x;
 }
 
+static float InputTextColumnX(const InputState* state) {
+    if (state->contentBox.w > 0 && state->textOriginOffset >= 0) {
+        return state->contentBox.x + state->textOriginOffset;
+    }
+    return state->lastBounds.x;
+}
+
+static void AlignWrapRow(PaintCtx* ctx, const InputState* state, Str line,
+                         const int* starts, int count, WrapRowSpan* row) {
+    TextAlign align = InputRowAlignment(state, line, starts, count);
+    if (align == TextAlign::Left) return;
+    const InputPaintedRows* painted = LastPaintedRows(state, ctx->window);
+    if (painted && painted->docVersion == state->docVersion) {
+        for (int i = 0; i < painted->geometry.nRows; i++) {
+            const RangeDecorationRow& visible = painted->geometry.rows[i];
+            if (visible.text && visible.start == row->lineStart + row->lo &&
+                visible.len == row->hi - row->lo) {
+                row->x = visible.text->x - InputTextColumnX(state);
+                return;
+            }
+        }
+    }
+    float width = WrapRowX(ctx, state, line, *row, row->hi) - row->x;
+    float column = state->contentBox.w - std::max(0.f, state->textOriginOffset);
+    row->x += TextAlignedRowLeft(align, column, width);
+}
+
 static float SingleLineTokenCaretX(PaintCtx* ctx, const InputState* s,
                                    int cursor) {
     Str text = InputValue(s);
@@ -9284,7 +9379,7 @@ static float SingleLineTokenCaretX(PaintCtx* ctx, const InputState* s,
 // a chip lands before it on its left half and after it on its right half.
 static int WrapRowIndexAt(PaintCtx* ctx, const InputState* s, Str line,
                           WrapRowSpan r, float x) {
-    if (x <= r.x || r.hi <= r.lo || !ctx) {
+    if (r.hi <= r.lo || !ctx || (x <= r.x && s->kind != InputKind::Textarea)) {
         return r.lo;
     }
     WrapFragment frags[64];
@@ -9345,9 +9440,15 @@ static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
     int nRows = InputWrapRows(s, p.row, &starts, &indent);
     int k =
         WrapRowOfOffset(starts, nRows, from - start, s->cursorLineEndAffinity);
-    float cx = WrapRowX(
-        ctx, s, text, WrapRowSpanOf(starts, nRows, indent, len(text), k, start),
-        from - start);
+    WrapRowSpan source =
+        WrapRowSpanOf(starts, nRows, indent, len(text), k, start);
+    AlignWrapRow(ctx, s, text, starts, nRows, &source);
+    float cx = WrapRowX(ctx, s, text, source, from - start);
+    Point caret;
+    if ((s->kind == InputKind::Textarea || s->align != 0) &&
+        InputLastCaretPoint(s, win, from, &caret)) {
+        cx = caret.x - InputTextColumnX(s);
+    }
     // The x the whole walk aims at, so crossing a short row and coming back
     // lands where it started.
     float wantX = s->preferredX >= 0 ? s->preferredX : cx;
@@ -9389,6 +9490,7 @@ static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
     nRows = InputWrapRows(s, line, &starts, &indent);
     WrapRowSpan r = WrapRowSpanOf(starts, nRows, indent, len(target), row,
                                   RopeLineStartOffset(t, line));
+    AlignWrapRow(ctx, s, target, starts, nRows, &r);
     int local = WrapRowIndexAt(ctx, s, target, r, wantX);
     out->offset = RopeLineStartOffset(t, line) + local;
     // The end of a row that is not its line's last is the start of the next
@@ -11260,6 +11362,10 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     }
     WrapRowSpan r = WrapRowSpanOf(starts, nRows, indent, len(line), k, start);
     float localX = x - b.x;
+    if (s->kind == InputKind::Textarea || s->align != 0) {
+        AlignWrapRow(ctx, s, line, starts, nRows, &r);
+        localX = x - InputTextColumnX(s);
+    }
     int local = WrapRowIndexAt(ctx, s, line, r, localX);
     // The end of a row that is not the line's last is where the next row
     // starts; a press past it wants the caret at the end of this one.
