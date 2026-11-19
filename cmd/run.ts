@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "bb28525aced561f6f72e64df8e2cffa070c00b94",
+  sha: "38a54f0220024f7394dd07d7e6685688168d64e6",
   date: "2026-11-11",
-  subject: "input: Let Copy with nothing selected pass on to the window selection (#3915)",
+  subject: "docs: Stop the close click in the Tabs guide's closeable tabs example (#3916)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

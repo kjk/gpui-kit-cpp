@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bb28525aced561f6f72e64df8e2cffa070c00b94` (2026-11-11,
-input: Let Copy with nothing selected pass on to the window selection
-(#3915)).
-Send the Copy shortcut on to the window selection when the focused input
-contains only carets. A selected masked value still consumes Copy without
-writing text.
+Processed through `38a54f0220024f7394dd07d7e6685688168d64e6` (2026-11-11,
+docs: Stop the close click in the Tabs guide's closeable tabs example
+(#3916)).
+The change only updates the upstream website example for closeable tabs. The
+C++ dock close handler already stops event propagation.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
