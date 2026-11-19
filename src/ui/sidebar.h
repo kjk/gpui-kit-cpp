@@ -156,7 +156,10 @@ struct SidebarGroup {
     ArenaVec<SidebarItem> children;
     bool collapsed = false;
 
+    El* suffix = nullptr;
+
     static SidebarGroup* New(Ctx* cx, Str label);
+    SidebarGroup* Suffix(El* child);
     SidebarGroup* Child(SidebarMenu* menu);
     SidebarGroup* Child(SidebarMenuItem* item);
     SidebarGroup* Child(SidebarItem item);

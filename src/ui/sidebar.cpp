@@ -327,6 +327,11 @@ SidebarGroup* SidebarGroup::New(Ctx* cx, Str label) {
     g->label = label;
     return g;
 }
+SidebarGroup* SidebarGroup::Suffix(El* child) {
+    suffix = child;
+    return this;
+}
+
 SidebarGroup* SidebarGroup::Child(SidebarMenu* menu) {
     if (menu) {
         menus.Append(a, menu);
@@ -348,17 +353,27 @@ El* SidebarGroup::IntoEl(Str id) {
     const Theme& th = ThemeNow(cx->app);
     IdScope scope(cx, id);
     El* col = Div(a)->FlexCol()->W(kFill);
-    if (!collapsed && label.s) {
-        col->Child(Div(a)
-                       ->FlexRowDir(cx->app)
-                       ->Shrink0()
-                       // h_8 / px_2
-                       ->H(Rems(cx, 2.f))
-                       ->PadX(Rems(cx, 0.5f))
-                       ->ItemsCenter()
-                       ->Radius(th.radius)
-                       ->Child(TextEl(a, label)->Font(12)->Fg(
-                           RgbaOpacity(th.sidebarFg, 0.7f))));
+    if (!collapsed && (label.s || suffix)) {
+        El* header = Div(a)
+                         ->FlexRowDir(cx->app)
+                         ->Shrink0()
+                         // h_8 / px_2
+                         ->H(Rems(cx, 2.f))
+                         ->PadX(Rems(cx, 0.5f))
+                         ->ItemsCenter()
+                         ->Radius(th.radius);
+        El* title =
+            TextEl(a, label)->Font(12)->Fg(RgbaOpacity(th.sidebarFg, 0.7f));
+        if (suffix) {
+            header->Gap(Rems(cx, 0.5f))
+                ->JustifyBetween()
+                ->Child(title->Flex1()->MinW(0)->Truncate())
+                ->Child(
+                    Div(a)->FlexRow()->Shrink0()->ItemsCenter()->Child(suffix));
+        } else {
+            header->Child(title);
+        }
+        col->Child(header);
     }
     El* inner = Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f)); // gap_2
     for (int i = 0; i < children.len; i++) {

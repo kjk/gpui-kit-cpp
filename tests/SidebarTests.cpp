@@ -154,6 +154,42 @@ static int ChildCount(El* e) {
     return count;
 }
 
+struct GroupSuffixView {
+    bool collapsed = false;
+    Bounds suffix = {};
+    Bounds name = {};
+
+    static El* Render(GroupSuffixView* self, Ctx* cx) {
+        auto* group =
+            SidebarGroup::New(cx, StrL("A project name long enough to shorten"))
+                ->Suffix(Div(cx->a)->W(16)->H(16)->BoundsOut(&self->suffix));
+        group->collapsed = self->collapsed;
+        El* el = group->IntoEl(StrL("group"))->W(240);
+        if (!self->collapsed && el->first && el->first->first) {
+            el->first->first->BoundsOut(&self->name);
+        }
+        return el;
+    }
+};
+
+// sidebar/group.rs the_suffix_sits_at_the_end_of_the_header and its
+// collapsed counterpart.
+static void SidebarGroupShowsTheSuffixBesideAnEllipsizedLabel() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<GroupSuffixView>(app);
+    Window* win = TestWindowOpen(app, view, 400, 300, 1);
+    auto* self = view.Get(app);
+    utassertnear(self->suffix.w, 16.f);
+    utassertnear(self->suffix.Right(), 240.f - 8);
+    utassert(self->name.Right() < self->suffix.x);
+    self->collapsed = true;
+    self->suffix = {};
+    TestDraw(win);
+    utassert(self->suffix.w == 0.f);
+    TestAppFree(app);
+}
+
 static void HeaderFooterAndMenuRetainTheirBuilderSurface() {
     App app = {};
     component::Init(&app);
@@ -358,6 +394,7 @@ void TestSidebar() {
     OffcanvasCollapsesToNothing();
     SidebarItemAllowsGenericNestedContent();
     HeaderFooterAndMenuRetainTheirBuilderSurface();
+    SidebarGroupShowsTheSuffixBesideAnEllipsizedLabel();
     CollapsedTooltipRequiresAnIconAndContentScrolls();
     ItemsCarryTheirAccessibleNames();
     SubmenuCaretIsNamedAfterTheItem();

@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "69fd60956555ce95e962f04251bc9f5767b25f83",
+  sha: "604655e142a56968191b725ed40562c733be4aa1",
   date: "2026-11-15",
-  subject: "docs: Use Label so Quick Start text reaches screen readers (#3973)",
+  subject: "sidebar: Add `suffix` to SidebarGroup for header actions (#3982)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

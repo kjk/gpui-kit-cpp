@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `69fd60956555ce95e962f04251bc9f5767b25f83` (2026-11-15,
-docs: Use Label so Quick Start text reaches screen readers (#3973)).
-Use the accessible Label in the Quick Start and the two matching C++ examples,
-keeping their font and appearance.
+Processed through `604655e142a56968191b725ed40562c733be4aa1` (2026-11-15,
+sidebar: Add `suffix` to SidebarGroup for header actions (#3982)).
+Add a fixed suffix slot at the logical end of the expanded sidebar group
+header. Keep it visible while the label ellipsizes.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
