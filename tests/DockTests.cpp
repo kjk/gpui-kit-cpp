@@ -1309,6 +1309,48 @@ static void DraggingTheBottomHandleBelowTheMinimumSnapsToTheNearerEnd() {
     EntityDropAll(&app);
 }
 
+struct CollapsedDockView {
+    Entity<DockState> state;
+
+    static El* Render(CollapsedDockView* self, Ctx* cx) {
+        return component::DockArea::New(cx, StrL("area"), self->state)
+            ->IntoEl();
+    }
+};
+
+// dock.rs: a_closed_bottom_dock_takes_no_space_without_its_tab_bar.
+static void AClosedBottomDockTakesNoSpaceWithoutItsTabBar() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<CollapsedDockView>(app);
+    auto state = EntityNewState<DockState>(app);
+    view.Get(app)->state = state;
+    DockState* dock = state.Get(app);
+    int a = 0, b = 0;
+    Seed(dock, &a, &b);
+    dock->bottom.node = DockNewTabs(dock);
+    DockTabsAdd(dock, dock->bottom.node, 0);
+    dock->bottom.open = false;
+    Window* win = TestWindowOpen(app, view, 800, 600, 1);
+    float withStrip = dock->nodes[a].bounds.h;
+    component::DockSkin skin = component::DockSkin::New(state);
+    utassert(skin.IsCollapsedTabBarVisible(app));
+    skin.SetCollapsedTabBarVisible(app, win, false);
+    utassert(!skin.IsCollapsedTabBarVisible(app));
+    TestDraw(win);
+    utassertnear(dock->nodes[a].bounds.h - withStrip, kClosedBottomStrip);
+
+    // A release at 60px now snaps open instead of closed.
+    Arena* arena = ArenaNew();
+    Ctx cx = {app, win, arena, {}};
+    DockResizeSide(dock, &cx, DockPlacement::Bottom, 400, 540);
+    DockEndSideResize(dock, &cx, DockPlacement::Bottom);
+    utassert(dock->bottom.IsOpen());
+    utassertnear(dock->bottom.GetSize(), kDockPanelMinSize);
+    ArenaDelete(arena);
+    TestAppFree(app);
+}
+
 // dock.rs dragging_the_left_handle_resizes_only_the_left_dock, and the edge
 // every dock resizes from: resize_handle(..).inside(edge) with the
 // indicator appearance. Every dock's handle once shared one element id, so
@@ -1595,6 +1637,7 @@ void TestDock() {
     DraggingTheBottomDockClosedAndOpenReportsEachToggle();
     SetSplitSizesRestoresAShareAndReportsIt();
     DraggingTheBottomHandleBelowTheMinimumSnapsToTheNearerEnd();
+    AClosedBottomDockTakesNoSpaceWithoutItsTabBar();
     DraggingTheLeftHandleResizesOnlyTheLeftDock();
     SelectingAPanelByIdentityDoesNotMoveIt();
     TheFiveDropZones();

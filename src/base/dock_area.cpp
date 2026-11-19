@@ -697,11 +697,20 @@ El* RenderDock(const AreaCtx& ac, DockPlacement p, const DockSide& side) {
     d.open = side.open;
     d.collapsible = side.collapsible;
 
-    // A closed left or right dock takes no space at all; a closed bottom
-    // dock keeps a strip so its tab bar stays clickable. Nothing is drawn
-    // for a dock with no extent, and the renderer is not asked for chrome
-    // nobody can see.
-    float size = DockExtent(&d);
+    float size = d.size;
+    if (p == DockPlacement::Bottom || !d.open) {
+        float extent = p == DockPlacement::Bottom ? kClosedBottomStrip : 0;
+        if (ac.r->closedDockExtent) {
+            extent = ac.r->closedDockExtent(ac.r->data, &d);
+            extent = extent > 0 ? extent : 0;
+        }
+        if (p == DockPlacement::Bottom) {
+            ac.s->closedBottomExtent = extent;
+        }
+        if (!d.open) {
+            size = extent;
+        }
+    }
     if (size <= 0) {
         return Div(cx->a);
     }
@@ -723,16 +732,6 @@ El* RenderDock(const AreaCtx& ac, DockPlacement p, const DockSide& side) {
 }
 
 } // namespace
-
-float DockExtent(const DockCtx* dock) {
-    if (!dock) {
-        return 0;
-    }
-    if (dock->open) {
-        return dock->size;
-    }
-    return dock->placement == DockPlacement::Bottom ? kClosedBottomStrip : 0;
-}
 
 El* DockFrame(Ctx* cx, const DockCtx* dock, float size) {
     El* frame = Div(cx->a)->FlexNone()->ClipX()->ClipY();

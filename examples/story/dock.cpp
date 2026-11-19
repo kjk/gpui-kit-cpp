@@ -26,6 +26,7 @@ const int kNPanels = (int)(sizeof(kPanels) / sizeof(kPanels[0]));
 
 enum {
     DockActCloseButtons = 3400,
+    DockActCollapsedTabBar,
 };
 
 struct DockStory {
@@ -48,10 +49,13 @@ static El* RenderPanel(Ctx* cx, void* data) {
 
 // DockSkin::set_close_button_visible.
 static void DockAct(DockStory* self, Ctx* cx, const ClickEvent*, int64_t act) {
+    component::DockSkin skin = component::DockSkin::New(self->dock);
     if (act == DockActCloseButtons) {
         self->closeButtonVisible = !self->closeButtonVisible;
-        component::DockSkin::New(self->dock)
-            .SetCloseButtonVisible(cx->app, cx->win, self->closeButtonVisible);
+        skin.SetCloseButtonVisible(cx->app, cx->win, self->closeButtonVisible);
+    } else if (act == DockActCollapsedTabBar) {
+        skin.SetCollapsedTabBarVisible(cx->app, cx->win,
+                                       !skin.IsCollapsedTabBarVisible(cx->app));
     } else {
         StoryToolbarApply(&self->toolbar, nullptr, (int)act);
     }
@@ -118,11 +122,14 @@ El* DockStory::Render(DockStory* self, Ctx* cx) {
     }
     El* page = Div(a)->FlexCol()->SizeFull();
     // story_toolbar_group().p_2().dropdown_child(Options, ..)
-    StoryToolbarOpt opts[1] = {
+    component::DockSkin skin = component::DockSkin::New(self->dock);
+    StoryToolbarOpt opts[] = {
         {"Tab close buttons", self->closeButtonVisible, DockActCloseButtons},
+        {"Collapsed bottom tab bar", skin.IsCollapsedTabBarVisible(cx->app),
+         DockActCollapsedTabBar},
     };
-    page->Child(Div(a)->Pad(8)->W(kFill)->Child(
-        StoryToolbarOptions(cx, self, opts, 1, Listen(cx, &DockAct), false)));
+    page->Child(Div(a)->Pad(8)->W(kFill)->Child(StoryToolbarOptions(
+        cx, self, opts, dimof(opts), Listen(cx, &DockAct), false)));
     page->Child(
         Div(a)
             ->FlexCol()

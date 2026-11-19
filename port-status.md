@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f5796528113e5018c9085a3e60f5a35073eb5b3e` (2026-11-12,
-skills: Use an icon the component `IconName` has in the usage reference
-(#3932)).
-The Rust usage reference now uses IconName::Close for the input suffix. The
-C++ tree has no corresponding usage reference.
+Processed through `d1781b02932b74eca2c66c0368eb1b3487484bc2` (2026-11-12,
+dock: Let the skin decide a closed dock's extent (#3931)).
+Let the Dock renderer choose the closed extent and reuse it for bottom-dock
+resizing. Add the collapsed tab bar option in Story and verify that a full-
+height Base and Component root keeps its bar at the bottom.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

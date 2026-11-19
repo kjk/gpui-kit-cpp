@@ -12,6 +12,8 @@ namespace gpui {
 
 namespace component {
 
+using gpui::kClosedBottomStrip;
+
 // panel.rs. Base's POD panel definition is already the object-safe function
 // table Rust obtains from its Panel and PanelView traits. These source-named
 // aliases keep the public split visible without adding a second allocation or
@@ -70,6 +72,8 @@ struct DockSkin {
     // button appears.
     bool IsCloseButtonVisible(App* app) const;
     void SetCloseButtonVisible(App* app, Window* win, bool visible);
+    bool IsCollapsedTabBarVisible(App* app) const;
+    void SetCollapsedTabBarVisible(App* app, Window* win, bool visible);
     const DockRenderer* Renderer() const;
 };
 

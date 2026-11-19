@@ -79,6 +79,18 @@ void DockSkin::SetCloseButtonVisible(App* app, Window* win, bool visible) {
     }
 }
 
+bool DockSkin::IsCollapsedTabBarVisible(App* app) const {
+    DockState* value = state.Get(app);
+    return value ? value->collapsedTabBarVisible : true;
+}
+
+void DockSkin::SetCollapsedTabBarVisible(App* app, Window* win, bool visible) {
+    if (DockState* value = state.Get(app)) {
+        value->collapsedTabBarVisible = visible;
+        NotifyEntity(app, state.id, win);
+    }
+}
+
 El* DockInvalidPanelRender(Ctx* cx, void* data) {
     (void)data;
     Arena* a = cx->a;
@@ -594,13 +606,21 @@ static El* SkinDragPreview(Ctx* cx, void*, const DockPanelDef* def) {
     return DragPanelPreview::New(cx, def)->IntoEl();
 }
 
+static float SkinClosedDockExtent(void*, const DockCtx* dock) {
+    DockSkin skin = DockSkin::New(dock->state);
+    return dock->placement == DockPlacement::Bottom &&
+                   skin.IsCollapsedTabBarVisible(dock->cx->app)
+               ? kClosedBottomStrip
+               : 0;
+}
+
 static const DockRenderer& ThemedRenderer() {
     static const DockRenderer r = {
         nullptr, SkinFrame, nullptr, nullptr, SkinSplitHandle, SkinDock,
         nullptr, SkinTabContent, SkinTabBar,
         // render_empty: the themed skin draws nothing for a group with
         // nothing to show, which is what base's own default did.
-        nullptr, SkinDropIndicator, SkinDragPreview};
+        nullptr, SkinDropIndicator, SkinDragPreview, SkinClosedDockExtent};
     return r;
 }
 

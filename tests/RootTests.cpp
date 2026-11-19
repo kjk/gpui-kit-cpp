@@ -161,10 +161,41 @@ static void AnOpenSheetPushesTheNotificationsIn() {
     utassertnear(e.VerticalAxisSum(), 0.f);
 }
 
+struct RootBottomBarView {
+    Bounds bar;
+
+    static El* Render(RootBottomBarView* self, Ctx* cx) {
+        return Div(cx->a)
+            ->FlexCol()
+            ->SizeFull()
+            ->Child(Div(cx->a)->Flex1())
+            ->Child(
+                Div(cx->a)->H(40)->W(kFill)->FlexNone()->BoundsOut(&self->bar));
+    }
+};
+
+// Base and Component root.rs: size_full_view_fills_window_height.
+static void SizeFullViewFillsWindowHeight(bool themed) {
+    App* app = TestAppNew();
+    if (themed) {
+        component::Init(app);
+    }
+    auto view = EntityNew<RootBottomBarView>(app);
+    Window* win = TestWindowOpen(app, view, 800, 600, 1);
+    win->root = gpui::Root::New(app, win, view.id).id;
+    TestDraw(win);
+    Bounds bar = view.Get(app)->bar;
+    utassertnear(bar.h, 40.f);
+    utassertnear(bar.Bottom(), 600.f);
+    TestAppFree(app);
+}
+
 void TestRoot() {
     TestSuite("root");
     PluginRegistrationIsIdempotentAndStateIsPerWindow();
     TheLastDialogThatWantsAnOverlayShowsIt();
     AnOpenSheetPushesTheNotificationsIn();
     TheSurfaceIsRootAndTheRemSizeIsTheThemes();
+    SizeFullViewFillsWindowHeight(false);
+    SizeFullViewFillsWindowHeight(true);
 }

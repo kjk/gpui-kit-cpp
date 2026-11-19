@@ -446,6 +446,9 @@ struct DockState {
     // button on closable tabs. Off by default. Rust keeps it on the skin; the
     // skin's shared state is this entity here, as for the toggle above.
     bool closeButtonVisible = false;
+    bool collapsedTabBarVisible = true;
+    // Latest rendered closed extent, used by the bottom resize gesture.
+    float closedBottomExtent = kClosedBottomStrip;
     // DockArea::version, kept so a layout that was loaded writes back the
     // version it came with.
     bool hasVersion = false;
@@ -687,10 +690,6 @@ struct DockCtx {
 
 using DockContext = DockCtx;
 
-// dock_extent: how much room a dock asks for along its own axis — its size
-// while open, CLOSED_BOTTOM_STRIP for a shut bottom dock, nothing for a shut
-// side dock.
-float DockExtent(const DockCtx* dock);
 // dock_frame: the box a dock occupies — its extent along its own axis, full
 // across, and held at that size rather than stretched by the row it sits in.
 // Structural, not decorative, which is why base builds it around whatever
@@ -858,6 +857,9 @@ struct DockRenderer {
     // because a preview is appearance; base places it under the pointer and
     // defers it, and this draws it.
     El* (*dragPreview)(Ctx* cx, void* data, const DockPanelDef* def) = nullptr;
+    // Space a closed dock retains along its axis. The default reserves
+    // kClosedBottomStrip for the bottom dock and zero for the side docks.
+    float (*closedDockExtent)(void* data, const DockCtx* d) = nullptr;
 };
 
 // Rust uses three object-safe renderer traits; one C++ table carries their

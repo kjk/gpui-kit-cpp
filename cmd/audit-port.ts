@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "f5796528113e5018c9085a3e60f5a35073eb5b3e";
+const pinnedGpuiComponent = "d1781b02932b74eca2c66c0368eb1b3487484bc2";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
@@ -335,6 +335,7 @@ const testTargets: Record<string, string[]> = {
   "ui/progress": ["tests/AccessibilityTests.cpp"],
   "ui/questionnaire": ["tests/QuestionnaireTests.cpp"],
   "ui/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp", "tests/RadioTests.cpp"],
+  "ui/root": ["tests/RootTests.cpp"],
   "ui/window_border": ["tests/WindowBorderTests.cpp"],
   "ui/toolbar": ["tests/ToolbarTests.cpp"],
   "ui/scroll": ["tests/ScrollbarTests.cpp", "tests/AutoScrollTests.cpp"],
@@ -658,14 +659,14 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 617, sha256: "910201185b17939237f34f8c1847139671df801b97107f51f443b2f7dcb29d50" },
-    "pub-use": { count: 177, sha256: "7b436bed08c738858e019ba1b09ebd62c68f5594d5e5e4757d5063ebfecf2a6f" },
-    test: { count: 1702, sha256: "f8b210ee1bc6112d7b330f25042ddd9eb9825fe175964597e11c75b31820267f" },
+    declaration: { count: 616, sha256: "ed35e4fb17e6b9cf0c72ec56b7c76e7512f9f9fde1646be63360dea105b0ff06" },
+    "pub-use": { count: 177, sha256: "da15e3c583ea178e6ea06079359c8bde0ce210b18e8cb795e02c32a6778a950d" },
+    test: { count: 1703, sha256: "5028ec7840e10bcec8855540e5615c7f9ef61ba88ecfa9cc4b12317ac3f2bf48" },
   },
   ui: {
     declaration: { count: 478, sha256: "3534c842a12b080cba2b62c17bbac5c222159098d08d963baa1e59f46ab7d3ef" },
-    "pub-use": { count: 172, sha256: "a0d73ef7b2afa88bbb0c2edbdb0305f7fed92aae28ac30e01769c39932adab5f" },
-    test: { count: 853, sha256: "af2fd94a8f9d3a542af5a245dedcc6a772f3dd489489057a4d268edfd573bfa2" },
+    "pub-use": { count: 172, sha256: "630d912c5bc0c3f53ad69a2f40d17ba273c95940cf4a993eaeea1f4fb62e740e" },
+    test: { count: 855, sha256: "2c182fd8129d1a4004dad516bbf4ffb58d84ffba17fcce64aae18b71c9735961" },
   },
 };
 

@@ -1292,8 +1292,8 @@ void DockResizeSide(DockState* s, Ctx* cx, DockPlacement p, float x, float y) {
         std::min(sizing.SizeFromPointer({x, y}), sizing.Clamp(3.402823e38f));
     if (p == DockPlacement::Bottom && side->collapsible &&
         size < kDockPanelMinSize) {
-        side->open = size > kClosedBottomStrip;
-        side->liveSize = std::max(size, kClosedBottomStrip);
+        side->open = size > s->closedBottomExtent;
+        side->liveSize = std::max(size, s->closedBottomExtent);
     } else {
         side->open = true;
         side->liveSize = -1;
@@ -1311,7 +1311,7 @@ void DockEndSideResize(DockState* s, Ctx* cx, DockPlacement p) {
     side->liveSize = -1;
     // Nearer the closed strip it closes, nearer the minimum it opens at the
     // minimum.
-    bool open = size >= (kClosedBottomStrip + kDockPanelMinSize) / 2.f;
+    bool open = size >= (s->closedBottomExtent + kDockPanelMinSize) / 2.f;
     if (open) {
         side->SetSize(kDockPanelMinSize);
     }
