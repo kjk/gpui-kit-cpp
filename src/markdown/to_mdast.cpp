@@ -3,9 +3,8 @@
    Part of the C++ port of markdown-rs 1.0.0 (see src/markdown/readme.md).
 
    Deviations from the Rust:
-     - `Result` is gone. Every error the crate can raise here is about MDX
-       tags, and MDX is not ported, so a compile always succeeds. That takes
-       `on_mismatch_error` and the event-name check in `tail_pop` with it.
+     - A mismatched event returns null. The port does not build MDX-specific
+       error messages.
      - `on_exit_media` rewrites the node it finds in place instead of popping
        it and pushing a new one: a `Node` is one struct here, so a link and a
        link reference differ by a field. */
@@ -53,6 +52,7 @@ struct CompileContext {
     bool headingSetextTextAfter = false;
     Vec<Reference> mediaReferenceStack;
     bool rawFlowFenceSeen = false;
+    bool eventMismatch = false;
     Vec<TreeFrame> trees;
     int32_t index = 0;
     NodePositions* positions = nullptr;
@@ -197,6 +197,12 @@ static void TailPushAgain(CompileContext* c, Node* child) {
 
 static void TailPop(CompileContext* c) {
     TreeFrame& frame = TreeTail(c);
+    int opened = len(frame.eventStack);
+    if (opened == 0 || (*c->events)[frame.eventStack[opened - 1]]
+                               .name != (*c->events)[c->index].name) {
+        c->eventMismatch = true;
+        return;
+    }
     frame.stack.Pop();
     frame.eventStack.Pop();
     if (c->positions && frame.spanStack.len > 0) {
@@ -911,9 +917,12 @@ Node* ToMdastCompile(const Vec<Event>& events, ParseState* parseState,
         } else {
             Exit(&context);
         }
+        if (context.eventMismatch) return nullptr;
         index += 1;
     }
 
+    if (len(context.trees) != 1 || len(context.trees[0].eventStack) != 0)
+        return nullptr;
     return context.trees[0].tree;
 }
 

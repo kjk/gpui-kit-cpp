@@ -83,10 +83,8 @@ Not ported, and not planned:
   `enable_mdx` half of `markdown_ext.rs` is a gpui-kit extension for
   callers that bring their own plugins, and nothing in the story, the showcase
   or the examples does.
-  Two consequences worth knowing, both kept faithful:
-  - MDX is the only thing in the crate that can *fail*, so `to_mdast` here
-    returns the tree rather than a `Result`. `State::Error` and
-    `message::Message` are gone with it.
+  - `ToMdast` returns null for mismatched parser events. TextView then
+    renders the source as literal text with its line breaks.
   - A flow line starting with `e`, `i` or `{` still jumps straight to content
     the way it does in the crate, because that is where MDX's failure sends
     it — so a GFM table whose header row starts with one of those three bytes

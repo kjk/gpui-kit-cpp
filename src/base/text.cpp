@@ -2192,6 +2192,10 @@ static md::NodePositions* MdReparseAsProse(MdBuild* b, const md::Node* n,
     }
     md::NodePositions* positions = new md::NodePositions();
     md::Node* root = md::ToMdast(b->a, literal, options, positions);
+    if (!root) {
+        delete positions;
+        return nullptr;
+    }
     const md::Node* paragraph = nullptr;
     int blocks = 0;
     for (const md::Node* child : md::NodeKids(b->a, root)) {
@@ -3064,6 +3068,16 @@ static MdNode* MdParseWithExtensions(Arena* a, Str source,
     b.extensions = extensions;
     b.positions = &positions;
     b.cur = doc;
+    if (!root) {
+        // A parser failure still leaves a selectable literal paragraph. Its
+        // newlines and byte offsets are the ones in the original source.
+        Push(&b, MdKind::Paragraph);
+        Vec<SourceSegment> segments;
+        VecAppend(segments,
+                  SourceSegment{0, len(parsed), from, len(source), true});
+        AddText(&b, parsed, &segments);
+        return doc;
+    }
     MdCollectDefs(&b, root);
     MdBlockChildren(&b, root);
     MdExpandHtml(a, doc);

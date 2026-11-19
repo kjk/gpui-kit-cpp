@@ -24,6 +24,10 @@ Node* ToMdast(Arena* a, Str source, const ParseOptions& options,
     Node* tree = ToMdastCompile(events, &parseState, positions);
 
     base::ArenaDelete(parseState.scratch);
+    if (!tree) {
+        if (positions) VecClear(positions->spans);
+        return nullptr;
+    }
     if (positions && positions->spans.len > 1) {
         // Recorded in the order the nodes were pushed; sorted by node so
         // NodePosition is a binary search rather than a walk per lookup.

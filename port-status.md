@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c9767b228c95f7189f4e110c6086e684e8c97ba1` (2026-11-17,
-menu: Stop a scrollable menu that fits from showing a scrollbar (#4014)).
-Popup menus measure their outer box directly. A short scrollable menu has zero
-vertical scroll range, retains its row positions after wheel input and keeps
-all items visible.
+Processed through `249a963ce9823f0b06ea261543df2ad61db89ae4` (2026-11-17,
+text: Show Markdown as plain text when the parser panics (#4013)).
+The Markdown compiler detects mismatched opening and closing events. TextView
+preserves the original bytes and line breaks in a selectable paragraph when
+that happens, and speculative prose reparsing keeps the original inline token.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
@@ -271,8 +271,8 @@ The current update target is
   projected nodes. Markdown parser plugins run on the background
   executor for appends and large replacements. Updates arriving during a parse
   are taken up when it lands rather than bounded by
-  `MAX_COALESCED_UPDATES_PER_PARSE`; a parse cannot fail, so there is no
-  `parsed_error`, and streamed fades start on the first frame that shows them.
+  `MAX_COALESCED_UPDATES_PER_PARSE`. Invalid Markdown events produce a
+  literal paragraph. Streamed fades start on the first frame that shows them.
   `RenderedText` reads the view's index rather than retaining the parsed
   document: read and convert through a fresh snapshot, only compare old ones
   (`src/base/text.cpp`).

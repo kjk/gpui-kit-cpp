@@ -9,9 +9,8 @@
        markdown::Node* tree =
            markdown::ToMdast(a, source, markdown::ParseOptions::Gfm());
 
-   Rust's `to_mdast` returns a `Result`, because MDX has syntax errors and
-   markdown does not. The MDX constructs are not ported, so this cannot fail
-   and returns the tree. */
+   `ToMdast` returns null when the token stream cannot be compiled into a
+   tree. */
 
 #ifndef GPUI_MARKDOWN_MARKDOWN_H_
 #define GPUI_MARKDOWN_MARKDOWN_H_
@@ -87,7 +86,7 @@ inline ParseOptions ParseOptions::Gfm() {
 }
 
 // lib.rs to_mdast. Every node of the tree, and every string in it, is
-// allocated from `a`; `source` is only read.
+// allocated from `a`. Returns null for mismatched parser events.
 Node* ToMdast(Arena* a, Str source, const ParseOptions& options);
 
 // unist Position, as its two byte offsets, for a caller that wants them. A

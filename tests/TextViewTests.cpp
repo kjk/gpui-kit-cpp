@@ -109,6 +109,16 @@ static void TestMarkdownBlocks(Arena* a) {
 
 #if GPUI_MARKDOWN_FULL
 
+// format/markdown.rs parser_panic_falls_back_to_plain_text.
+static void InvalidParserEventsKeepAllSourceText(Arena* a) {
+    const char* source = "a\n===\n---\nb\n===";
+    MdNode* doc = MdParse(a, Str(source));
+    utassert(Children(doc) == 1);
+    MdNode* paragraph = Child(doc, 0);
+    utassert(paragraph && paragraph->kind == MdKind::Paragraph);
+    utassert(TextIs(a, paragraph, source));
+}
+
 // GFM task list items: mdast reports the `[x]` as the item's `checked` and
 // takes the marker off the text, which is what markdown.rs carries onto the
 // BlockNode.
@@ -10629,6 +10639,7 @@ void TestTextView() {
     TableBodyRowUnderThePointerTakesTheHoverBackground();
     TestTextViewMaxLines();
 #if GPUI_MARKDOWN_FULL
+    InvalidParserEventsKeepAllSourceText(a);
     TestMarkdownTaskList(a);
     TestSourceRangeStyled();
     TestSourceSegmentsCompact();
