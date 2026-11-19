@@ -23,7 +23,55 @@ static void DefaultTitleBarBackground() {
     utassert(none.r == 0xfa && none.g == 0xfa && none.b == 0xfa);
 }
 
+struct TitleBarClickView {
+    int clicks = 0;
+
+    static void OnOpen(TitleBarClickView* self, Ctx*, const ClickEvent*) {
+        self->clicks++;
+    }
+
+    static El* Render(TitleBarClickView*, Ctx* cx) {
+        return component::TitleBar::New(cx)
+            ->Child(Div(cx->a)->W(200)->Child(TextEl(cx->a, StrL("App"))))
+            ->Child(component::Button::New(cx, StrL("open"))
+                        ->Label(StrL("Open"))
+                        ->OnClick(Listen(cx, &TitleBarClickView::OnOpen))
+                        ->IntoEl())
+            ->IntoEl();
+    }
+};
+
+// title_bar.rs a_press_on_a_control_keeps_its_click and
+// a_press_on_the_bar_itself_still_moves_the_window. C++ native backends use
+// WindowChromeHit to decide which presses start a window move.
+static void TitleBarSeparatesControlClicksFromWindowMoves() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<TitleBarClickView>(app);
+    Window* win = TestWindowOpen(app, view, 600, 200, 1);
+    Bounds button = {};
+    for (const AccessibilityNode& node : win->accessibility) {
+        if (node.info.role == AccessibilityRole::Button &&
+            StrEq(node.info.label, StrL("Open"))) {
+            button = node.bounds;
+            break;
+        }
+    }
+    utassert(button.w > 1);
+    Point at = {button.CenterX(), button.CenterY()};
+    Point drift = {at.x + 1, at.y};
+    utassert(WindowChromeHit(win, 150, at.y) == ClickWinCaption);
+    utassert(WindowChromeHit(win, at.x, at.y) == 0);
+    utassert(WindowChromeHit(win, drift.x, drift.y) == 0);
+    TestSimulateMouseDown(win, at);
+    TestSimulateMouseMove(win, drift, true);
+    TestSimulateMouseUp(win, drift);
+    utassert(view.Get(app)->clicks == 1);
+    TestAppFree(app);
+}
+
 void TestTitleBar() {
     TestSuite("title_bar");
     DefaultTitleBarBackground();
+    TitleBarSeparatesControlClicksFromWindowMoves();
 }

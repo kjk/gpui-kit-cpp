@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d0ca04a6c6ea4f02b26967e565f3e88c7df35c8d",
+  sha: "afb8a613b219c5e15aa2d3dc07a1537b623356f9",
   date: "2026-11-12",
-  subject: "docs: Correct the Tabs guide where it names methods that do not exist (#3905)",
+  subject: "title_bar: Keep a control's click when the press moves a pixel (#3918)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

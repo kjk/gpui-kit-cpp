@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d0ca04a6c6ea4f02b26967e565f3e88c7df35c8d` (2026-11-12,
-docs: Correct the Tabs guide where it names methods that do not exist
-(#3905)).
-The changes correct the method and icon names in the English and Chinese
-website guides. The C++ tabs API is already recorded in the port ledger.
+Processed through `afb8a613b219c5e15aa2d3dc07a1537b623356f9` (2026-11-12,
+title_bar: Keep a control's click when the press moves a pixel (#3918)).
+C++ native window movement already starts from a caption hit and leaves
+controls on the client input path. Exercise the two hit paths and a one-pixel
+button press and release in the headless window.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
