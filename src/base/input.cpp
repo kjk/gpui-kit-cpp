@@ -4676,6 +4676,10 @@ int InputCursor(const InputState* s) {
     return s->selectionReversed ? s->selectedRange.start : s->selectedRange.end;
 }
 
+int InputContextMenuOffset(const InputState* s) {
+    return s ? s->contextMenuOffset : -1;
+}
+
 // RopeExt::offset_to_position: the row, and the column counted in
 // characters rather than bytes.
 RopePoint InputCursorPosition(const InputState* s) {
@@ -8299,6 +8303,7 @@ void InputHandleRightClickMenu(InputState* s, App* app, Window* win,
     if (!s || s->disabled || BaseIsInDeferredContext(app)) {
         return;
     }
+    s->contextMenuOffset = offset;
     if (!s->selectedRange.Contains(offset)) {
         InputMoveTo(s, app, win, offset);
     }

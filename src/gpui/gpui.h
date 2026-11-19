@@ -5604,6 +5604,7 @@ struct InputState {
     bool hasPendingContextMenu = false;
     Point pendingContextMenuAt = {};
     int pendingContextMenuOffset = 0;
+    int contextMenuOffset = -1;
     bool loading = false;
     // NumberInput's current directional bounds. The themed facade refreshes
     // these every frame; blur uses them to clamp a completed numeric value
@@ -6109,6 +6110,9 @@ bool InputIsCopyable(const InputState* s);
 // cursor(): the caret offset, which end of the selection depends on which way
 // it was dragged.
 int InputCursor(const InputState* s);
+// UTF-8 byte offset of the last right-click context menu. Returns -1
+// before a context menu has opened, including during a pending press.
+int InputContextMenuOffset(const InputState* s);
 // cursor_position(): the row the caret is on, and its column counted in
 // characters (Position::character), not bytes; InputOffsetToPoint has bytes.
 RopePoint InputCursorPosition(const InputState* s);

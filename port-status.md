@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e605e22499959728c5e076fbe876fc8523e2a3cf` (2026-11-12,
-story: Let the `DescriptionList`, `Menu` and `Tag` demos shrink to fit the
-docs embed (#3926)).
-Let the DescriptionList, Menu and Tag story content fill narrow panes while
-keeping the upstream maximum widths of 720 or 640 DIP.
+Processed through `a8fe64c9a48ea97963cc8029ccb3efa2482dd051` (2026-11-12,
+input: Add `context_menu_offset` so a custom menu knows the text under the
+pointer (#3920)).
+Expose the UTF-8 offset at the last right-click menu so a custom builder can
+read the clicked word even when the existing selection keeps the caret
+elsewhere.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

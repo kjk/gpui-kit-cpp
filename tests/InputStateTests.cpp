@@ -6689,23 +6689,45 @@ static void ContextMenuHandlerIsDeferredAndRespectsDisabled() {
 // caret. Rust used to run it inside the input's update, which panicked on
 // the entity lease. The handler here is already posted, so the read works.
 // The flush is the end of that update.
-static int gContextMenuCursor = -1;
+struct InputContextMenuObservation {
+    InputState* input = nullptr;
+    int cursor = -1;
+    int offset = -1;
+};
 
 static void ReadContextMenuCursor(void* data, NativeMenu*,
                                   const InputContextMenuCapabilities&, Point,
                                   App*, Window*) {
-    gContextMenuCursor = InputCursor((InputState*)data);
+    auto* seen = (InputContextMenuObservation*)data;
+    seen->cursor = InputCursor(seen->input);
+    seen->offset = InputContextMenuOffset(seen->input);
 }
 
 static void ContextMenuHandlerCanReadItsInput() {
-    gContextMenuCursor = -1;
     InputView view = InputViewNew();
     InputSetValue(view.input, StrL("hello"));
-    InputOnContextMenu(view.input, &ReadContextMenuCursor, view.input);
+    InputContextMenuObservation seen = {view.input};
+    InputOnContextMenu(view.input, &ReadContextMenuCursor, &seen);
     InputHandleRightClickMenu(view.input, view.app, view.win, {0, 0}, 2);
-    utassert(gContextMenuCursor == -1);
+    utassert(seen.cursor == -1);
     TestRunUntilParked(view.app);
-    utassert(gContextMenuCursor == 2);
+    utassert(seen.cursor == 2);
+    InputViewFree(&view);
+}
+
+// state.rs context_menu_handler_can_read_the_offset_under_the_pointer.
+static void ContextMenuReadsThePointerOffsetInsideASelection() {
+    InputView view = InputViewNew();
+    InputSetValue(view.input, StrL("hello world"));
+    utassert(InputContextMenuOffset(view.input) == -1);
+    InputSelectAll(view.input, view.app, view.win);
+    InputContextMenuObservation seen = {view.input};
+    InputOnContextMenu(view.input, &ReadContextMenuCursor, &seen);
+    InputHandleRightClickMenu(view.input, view.app, view.win, {0, 0}, 2);
+    TestRunUntilParked(view.app);
+    utassert(seen.cursor == 11 && seen.offset == 2);
+    utassert(view.input->selectedRange.start == 0 && view.input->selectedRange
+                                                             .end == 11);
     InputViewFree(&view);
 }
 
@@ -9770,6 +9792,7 @@ static void RunWindowTestsC() {
     TextareaHasNoDecorationExtras();
     ContextMenuHandlerIsDeferredAndRespectsDisabled();
     ContextMenuHandlerCanReadItsInput();
+    ContextMenuReadsThePointerOffsetInsideASelection();
     SetAutoGrowKeepsRowsFitted();
     TextareaDevicePixelHeights();
     AutoGrowTextareaScrollsOnlyPastItsCapAtFractionalScale();
