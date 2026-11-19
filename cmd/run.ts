@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cfab7b210b0683944a3941de2dad8c5e9a27aed6",
+  sha: "b52a45bf3d86008b9514851c02e1b02edefc8ecc",
   date: "2026-11-17",
-  subject: "diff: Keep line annotation cards inside the viewport under horizontal scrolling (#4009)",
+  subject: "shell: Fix command_host second-draw test (#4003)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

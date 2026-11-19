@@ -4193,8 +4193,8 @@ El* Rerender(Host& host) {
 
 // Renders and lays the frame out, which is when a virtual list builds the
 // rows it shows.
-El* RenderLaidOut(Host& host) {
-    El* root = Rerender(host);
+El* RenderLaidOut(Host& host, bool refresh = true) {
+    El* root = refresh ? Rerender(host) : host.Render();
     host.window.paint.app = &host.app;
     host.window.paint.window = &host.window;
     if (root) LayoutEl(&host.window.paint, root, 0, 0, 400, 600, 14, Rgba{});
@@ -4219,8 +4219,9 @@ void RetainedCommandTypedEntriesQueryAndConfirmCallbacksAreNative() {
              "CommandSeparator } from 'gpui-component';\n"
              "export default class App extends View {\n"
              " init(){this.state=CommandState();this.query='';"
-             "this.confirm='none';this.actions=0;}\n"
-             " render(){return div().on_action('open',(_event,cx)=>"
+             "this.confirm='none';this.actions=0;this.renders=0;}\n"
+             " render(){this.renders++;return "
+             "div().on_action('open',(_event,cx)=>"
              "{this.actions++;cx.notify();})\n"
              "  .child(new Command(this.state).placeholder('Find command')"
              ".max_height(240).p(2).header(div().child('Header factory'))"
@@ -4235,6 +4236,7 @@ void RetainedCommandTypedEntriesQueryAndConfirmCallbacksAreNative() {
              ".checked(true).action('open').content(div().child('Beta custom "
              "row')))))\n"
              "  .child(`State: ${this.query}|${this.confirm}|${this.actions}`)"
+             "  .child(`Renders: ${this.renders}`)"
              ";}\n"
              "}\n"),
         &catalog.frozen);
@@ -4246,6 +4248,12 @@ void RetainedCommandTypedEntriesQueryAndConfirmCallbacksAreNative() {
     utassert(FindText(root, StrL("Alpha custom row")) != nullptr);
     utassert(FindText(root, StrL("Beta custom row")) != nullptr);
     utassert(FindText(root, StrL("State: |none|0")) != nullptr);
+    utassert(FindText(root, StrL("Renders: 1")) != nullptr);
+
+    // A clean draw reuses the command's retained view description.
+    root = RenderLaidOut(host, false);
+    utassert(FindText(root, StrL("Renders: 1")) != nullptr);
+    utassert(FindText(root, StrL("Beta custom row")) != nullptr);
 
     InputState* inputs[4] = {};
     int count = 0;

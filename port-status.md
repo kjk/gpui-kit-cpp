@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cfab7b210b0683944a3941de2dad8c5e9a27aed6` (2026-11-17,
-diff: Keep line annotation cards inside the viewport under horizontal
-scrolling (#4009)).
-Line annotations stay beside the clipped code viewport during horizontal
-scrolling. The regression exercises an annotation attached to a long removed
-line.
+Processed through `b52a45bf3d86008b9514851c02e1b02edefc8ecc` (2026-11-17,
+shell: Fix command_host second-draw test (#4003)).
+The Shell command test draws a second clean frame and verifies it reuses the
+retained JavaScript description while rendering the command entries.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
