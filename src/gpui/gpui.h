@@ -2600,6 +2600,11 @@ struct AccessibilityInfo {
     unsigned int hasExpanded : 1 = false;
     unsigned int activeDescendant : 1 = false;
     unsigned int disabled : 1 = false;
+
+    // Windows and Linux expose static text through their Name property.
+    Str PlatformName() const {
+        return role == AccessibilityRole::Label && !label.s ? value : label;
+    }
 };
 
 // 128 held until the description joined the four strings; the role's

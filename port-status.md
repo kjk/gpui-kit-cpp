@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `61081a4e05e75b61517da3b86f5749afc0a5dee1` (2026-11-12,
-theme: Reject non-hex digits in parse_hex instead of panicking (#3936)).
-The C++ theme and Shell already validate each hex digit through the shared
-byte parser. Pin the signed and UTF-8 cases in their existing tests.
+Processed through `6e508b5e58994de79a9bf88e29565984d8a530de` (2026-11-12,
+label: Expose a label's text to assistive technology (#3937)).
+Expose each nonempty, unmasked Label as static text with its full value. Shell
+labels take the element key and the Windows and Linux bridges surface the
+value as the name.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

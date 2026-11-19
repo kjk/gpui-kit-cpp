@@ -945,7 +945,7 @@ static int IndexInParent(const LinuxAccessible& object) {
 
 static Str ObjectName(const LinuxAccessible& object) {
     if (object.root) return Str("gpui application");
-    return object.win->accessibility[object.nodeIndex].info.label;
+    return object.win->accessibility[object.nodeIndex].info.PlatformName();
 }
 
 static int Utf8CharacterForByte(Str text, int byte);

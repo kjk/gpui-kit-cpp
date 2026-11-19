@@ -31,13 +31,19 @@ bool HighlightsMatch::IsPrefix() const {
     return kind == HighlightsMatchKind::Prefix;
 }
 
-Label* Label::New(Ctx* cx, Str text) {
+Label* Label::New(Ctx* cx, Str text, const char* file, int line, int column) {
     Arena* a = cx->a;
     Label* l = ArenaNew<Label>(a);
     l->a = a;
     l->cx = cx;
+    l->id = StrDup(a, fmt("label:%s:%d:%d", Str(file), line, column));
     l->text = text;
     return l;
+}
+
+Label* Label::Id(Str value) {
+    id = value;
+    return this;
 }
 
 Label* Label::Secondary(Str s) {
@@ -305,11 +311,15 @@ El* Label::IntoEl() {
     }
 
     El* root = Div(a)
+                   ->Id(id)
                    ->FlexRow()
                    ->ItemsCenter()
                    ->W(kFill)
                    ->LineHeight(lineHeight)
                    ->Fg(th.foreground);
+    if (!masked && len(full)) {
+        root->Role(AccessibilityRole::Label)->AriaValue(full);
+    }
     if (font > 0) {
         root->Font(font);
     }

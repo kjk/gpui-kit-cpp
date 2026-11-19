@@ -65,6 +65,7 @@ static int AccessibilityControlType(AccessibilityRole role) {
     switch (role) {
         case AccessibilityRole::Alert:
         case AccessibilityRole::Heading:
+        case AccessibilityRole::Label:
             return UIA_TextControlTypeId;
         case AccessibilityRole::AlertDialog:
         case AccessibilityRole::Dialog:
@@ -911,7 +912,7 @@ HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
     if (property == UIA_ControlTypePropertyId) {
         VariantInt(out, AccessibilityControlType(info.role));
     } else if (property == UIA_NamePropertyId) {
-        VariantString(out, info.label);
+        VariantString(out, info.PlatformName());
     } else if (property == UIA_AutomationIdPropertyId) {
         VariantString(out, info.authorId);
     } else if (property == UIA_FullDescriptionPropertyId) {
@@ -2165,7 +2166,7 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
         ok = SUCCEEDED(simple
                            ->GetPropertyValue(UIA_NamePropertyId, &property)) &&
              property.vt == VT_BSTR;
-        BSTR wanted = AccessibilityBstr(expected->info.label);
+        BSTR wanted = AccessibilityBstr(expected->info.PlatformName());
         ok = ok && wanted && property.bstrVal &&
              wcscmp(wanted, property.bstrVal) == 0;
         SysFreeString(wanted);

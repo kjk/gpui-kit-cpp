@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "61081a4e05e75b61517da3b86f5749afc0a5dee1",
+  sha: "6e508b5e58994de79a9bf88e29565984d8a530de",
   date: "2026-11-12",
-  subject: "theme: Reject non-hex digits in parse_hex instead of panicking (#3936)",
+  subject: "label: Expose a label's text to assistive technology (#3937)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

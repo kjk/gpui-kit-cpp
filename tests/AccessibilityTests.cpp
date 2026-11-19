@@ -92,6 +92,53 @@ static void TheTreeSkipsVisualBoxesButKeepsSemanticParents() {
     FreeAccessibilityFrame(&f);
 }
 
+// crates/kit/tests/integration/painted_text.rs:
+// labels_expose_their_text_to_assistive_technology.
+static void LabelsExposeTheirTextToAssistiveTechnology() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    using component::Label;
+    El* labels = Div(f.arena)->Id(StrL("labels"));
+    auto add = [&](Label* label) {
+        El* el = label->IntoEl();
+        labels->Child(el);
+        return el;
+    };
+    El* automatic = add(Label::New(&f.cx, StrL("Account details")));
+    El* cpu = add(Label::New(&f.cx, StrL("CPU"))
+                      ->Secondary(StrL("12%"))
+                      ->Id(StrL("cpu")));
+    El* secret = add(
+        Label::New(&f.cx, StrL("hunter2"))->Masked(true)->Id(StrL("password")));
+    El* empty = add(Label::New(&f.cx, StrL(""))->Id(StrL("empty")));
+    Str rowNames[] = {StrL("Row 0"), StrL("Row 1")};
+    for (int i = 0; i < 2; i++) {
+        add(Label::New(&f.cx, rowNames[i])
+                ->Id(ElementIdNamed(f.arena, StrL("row"), i)));
+    }
+    IdsCollect(labels);
+    AccessibilityCollect(labels, &f.win->accessibility);
+    const auto& nodes = f.win->accessibility;
+    utassert(len(nodes) == 4);
+    utassert(len(automatic->id) > 0 && StrEq(cpu->id, StrL("cpu")));
+    if (len(nodes) == 4) {
+        utassert(nodes[0].info.role == AccessibilityRole::Label);
+        utassert(StrEq(nodes[0].info.value, StrL("Account details")));
+        utassert(nodes[1].info.role == AccessibilityRole::Label);
+        utassert(StrEq(nodes[1].info.value, StrL("CPU 12%")));
+        utassert(StrEq(nodes[1].info.PlatformName(), StrL("CPU 12%")));
+        utassert(nodes[2].id != nodes[3].id);
+        utassert(StrEq(nodes[2].info.value, rowNames[0]));
+        utassert(StrEq(nodes[3].info.value, rowNames[1]));
+#if GPUI_OS_WINDOWS
+        utassert(AccessibilityWinSmokeTest(f.win, nodes[1].id));
+#endif
+    }
+    utassert(secret->accessibility.role == AccessibilityRole::None);
+    utassert(empty->accessibility.role == AccessibilityRole::None);
+    FreeAccessibilityFrame(&f);
+}
+
 static void StyledButtonsCanReplaceTheirVisibleAccessibleName() {
     AccessibilityFrame f = NewAccessibilityFrame();
     component::Init(&f.app);
@@ -1095,6 +1142,7 @@ void TestAccessibility() {
     TestSuite("accessibility");
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
     StyledButtonsCanReplaceTheirVisibleAccessibleName();
+    LabelsExposeTheirTextToAssistiveTechnology();
     AnExplicitAccessibilityLabelReplacesTheVisibleOne();
     ClipboardReportsDefaultAndExplicitAccessibilityNames();
     ExplicitOnlyNamesReachTheAnnouncedControl();

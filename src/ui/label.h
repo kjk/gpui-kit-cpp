@@ -29,6 +29,7 @@ struct HighlightsMatch {
 struct Label {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
+    Str id = {};
     Str text = {};
     Str secondary = {};
     bool hasSecondary = false;
@@ -41,7 +42,11 @@ struct Label {
     int align = 0; // 0 start, 1 center, 2 end
     float lineHeight = 1.25f;
 
-    static Label* New(Ctx* cx, Str text);
+    static Label* New(Ctx* cx, Str text, const char* file = __builtin_FILE(),
+                      int line = __builtin_LINE(),
+                      int column = GPUI_CALLER_COLUMN());
+    // Labels built at one call site need distinct ids when they are siblings.
+    Label* Id(Str value);
     Label* Secondary(Str s);
     Label* Masked(bool v);
     Label* Semibold();

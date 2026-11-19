@@ -115,7 +115,8 @@ static El* MaterializeLabel(MaterializeRequest* request) {
     if (!text)
         return request->Fail(StrL("Label received an incompatible payload"));
     Ctx* cx = request->cx;
-    component::Label* label = component::Label::New(cx, text->value);
+    component::Label* label = component::Label::New(cx, text->value)
+                                  ->Id(request->elementId);
     EachMethod<LabelOp>(request, [&](const LabelOp& op) {
         switch (op.kind) {
             case LabelOp::Secondary:
