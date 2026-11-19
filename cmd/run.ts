@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "90418cad1a6d95c2931abc2ddbcb7938b4cea977",
+  sha: "f641b0c0d952d89f877f946590636741fdb3d198",
   date: "2026-11-15",
-  subject: "input: Keep the tab indicator inside its tab (#3983)",
+  subject: "text: Add an option to keep raw HTML in Markdown as text (#3979)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

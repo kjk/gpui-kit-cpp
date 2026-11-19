@@ -3135,6 +3135,38 @@ static void OversizedInlineCodeWrapsWithOneInsetPerSide() {
     TestAppFree(app);
 }
 
+#if !GPUI_MARKDOWN_MINI
+// text/format/markdown.rs raw_html_off_keeps_html_as_text.
+static void RawHtmlOffKeepsHtmlAsText(Arena* a) {
+    Str source = StrL(
+        "a <b>bold</b> <img src=\"https://example.com/x.png\"> "
+        "<https://example.com>\n\n<div>block</div>");
+    MdNode* doc = MdParse(a, source);
+    const MdNode* first = doc->first;
+    const MdRun* bold = RunText(first->runFirst, "bold");
+    utassert(bold && (bold->marks & MdBold));
+
+    MarkdownExtensions ext;
+    ext.RawHtml(false);
+    MdNode* literal = MdParseCachedForTest(nullptr, a, source, &ext);
+    StrBuilder prose;
+    bool link = false;
+    for (MdRun* run = literal->first->runFirst; run; run = run->next) {
+        utassert((run->marks & MdBold) == 0 && len(run->imgSrc) == 0);
+        prose.Append(run->text);
+        link |= (run->marks & MdLink) &&
+                StrEq(run->href, StrL("https://example.com"));
+    }
+    utassert(StrStartsWith(
+        Str(prose.els, len(prose)),
+        StrL("a <b>bold</b> <img src=\"https://example.com/x.png\"> ")));
+    utassert(link);
+    const MdNode* block = literal->first->next;
+    utassert(block && block->kind == MdKind::Paragraph && block->runFirst &&
+             StrEq(block->runFirst->text, StrL("<div>block</div>")));
+}
+#endif
+
 static void TestMarkdownExtensionsParserConfiguration(Arena* a) {
     MarkdownExtensions first;
     first.BlockParser(a, &NeverClaims);
@@ -10558,6 +10590,9 @@ void TestTextView() {
     InheritedInvertedColorSuppressesTheDefaultHighlighter();
     TestTextViewRootNamesItsForeground();
     TestMarkdownExtensionsParserConfiguration(a);
+#if !GPUI_MARKDOWN_MINI
+    RawHtmlOffKeepsHtmlAsText(a);
+#endif
     TestBlockSurfaces(a);
     ANewSurfaceContainerNeedsNoNewParse();
     TestMarkdownFrontmatter();

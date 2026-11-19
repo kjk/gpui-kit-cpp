@@ -220,10 +220,14 @@ struct MarkdownExtensions {
     uint64_t parserRevision = 0;
     bool enableMdx = false;
     bool enableFrontmatter = false;
+    bool disableRawHtml = false;
 
     MarkdownExtensions& ParserRevision(uint64_t value);
     MarkdownExtensions& Mdx();
     MarkdownExtensions& Frontmatter();
+    // With raw HTML disabled, Markdown shows tags literally. Autolinks
+    // still parse using the separate CommonMark construct.
+    MarkdownExtensions& RawHtml(bool enabled);
     MarkdownExtensions& BlockParser(Arena* a, MarkdownBlockParserFn fn,
                                     void* data = nullptr);
     MarkdownExtensions& BlockRenderer(Arena* a, Str name,
@@ -1620,6 +1624,7 @@ struct TextView {
     TextView* Plugin(Str name, MdPluginParseFn parse, MdPluginRenderFn render,
                      void* data = nullptr);
     TextView* MarkdownExtensionsSet(const MarkdownExtensions& extensions);
+    TextView* MarkdownRawHtml(bool enabled);
     TextView* MarkdownBlockParser(MarkdownBlockParserFn parser,
                                   void* data = nullptr);
     TextView* MarkdownBlockRenderer(Str name, MarkdownBlockRenderFn renderer,

@@ -157,6 +157,12 @@ MarkdownExtensions& MarkdownExtensions::Frontmatter() {
     return *this;
 }
 
+MarkdownExtensions& MarkdownExtensions::RawHtml(bool enabled) {
+    disableRawHtml = !enabled;
+    revision = NextMarkdownExtensionsRevision();
+    return *this;
+}
+
 MarkdownExtensions& MarkdownExtensions::BlockParser(Arena* a,
                                                     MarkdownBlockParserFn fn,
                                                     void* data) {
@@ -205,6 +211,7 @@ bool MarkdownExtensions::HasSameParserConfiguration(
     if (parserRevision != other.parserRevision ||
         enableMdx != other.enableMdx ||
         enableFrontmatter != other.enableFrontmatter ||
+        disableRawHtml != other.disableRawHtml ||
         blockParsers.len != other.blockParsers.len ||
         blockRenderers.len != other.blockRenderers.len ||
         inlineParsers.len != other.inlineParsers.len ||
@@ -237,6 +244,7 @@ bool MarkdownExtensions::HasSameParserConfiguration(
 uint64_t MarkdownExtensions::ParserFingerprint() const {
     uint64_t h = enableMdx ? 0x9e3779b97f4a7c15ull : 0xcbf29ce484222325ull;
     h = h * 1099511628211ull + (enableFrontmatter ? 1ull : 0ull);
+    h = h * 1099511628211ull + (disableRawHtml ? 1ull : 0ull);
     h = h * 1099511628211ull + parserRevision;
     h = h * 1099511628211ull + (uint64_t)blockParsers.len;
     h = h * 1099511628211ull + (uint64_t)blockRenderers.len;
@@ -2179,6 +2187,9 @@ static md::NodePositions* MdReparseAsProse(MdBuild* b, const md::Node* n,
     md::ParseOptions options = md::ParseOptions::Gfm();
     options.constructs.mathText = false;
     options.constructs.mathFlow = false;
+    if (b->extensions && b->extensions->disableRawHtml) {
+        options.constructs.htmlFlow = options.constructs.htmlText = false;
+    }
     md::NodePositions* positions = new md::NodePositions();
     md::Node* root = md::ToMdast(b->a, literal, options, positions);
     const md::Node* paragraph = nullptr;
@@ -3035,6 +3046,9 @@ static MdNode* MdParseWithExtensions(Arena* a, Str source,
     // literal/code-block fallbacks above and below.
     options.constructs.mathText = true;
     options.constructs.mathFlow = true;
+    if (extensions && extensions->disableRawHtml) {
+        options.constructs.htmlFlow = options.constructs.htmlText = false;
+    }
     options.constructs.frontmatter = extensions && extensions
                                                        ->enableFrontmatter;
     // The positions are what the runs' source segments are measured from;
@@ -6942,6 +6956,7 @@ static MarkdownExtensions CopyParserExtensions(Arena* a,
     MarkdownExtensions copy;
     copy.enableFrontmatter = src.enableFrontmatter;
     copy.enableMdx = src.enableMdx;
+    copy.disableRawHtml = src.disableRawHtml;
     copy.parserRevision = src.parserRevision;
     for (const auto& parser : src.blockParsers)
         copy.blockParsers.Append(a, parser);
@@ -8728,6 +8743,7 @@ TextView* TextView::ParagraphGap(float px) {
 TextView* TextView::MarkdownExtensionsSet(
     const MarkdownExtensions& extensions) {
     markdownExtensions.enableMdx = extensions.enableMdx;
+    markdownExtensions.disableRawHtml = extensions.disableRawHtml;
     markdownExtensions.revision = extensions.revision;
     for (int i = 0; i < extensions.blockParsers.len; i++) {
         markdownExtensions.blockParsers.Append(a, extensions.blockParsers[i]);
@@ -8746,6 +8762,11 @@ TextView* TextView::MarkdownExtensionsSet(
     for (int i = 0; i < extensions.blockSurfaces.len; i++) {
         markdownExtensions.blockSurfaces.Append(a, extensions.blockSurfaces[i]);
     }
+    return this;
+}
+
+TextView* TextView::MarkdownRawHtml(bool enabled) {
+    markdownExtensions.RawHtml(enabled);
     return this;
 }
 

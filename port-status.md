@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `90418cad1a6d95c2931abc2ddbcb7938b4cea977` (2026-11-15,
-input: Keep the tab indicator inside its tab (#3983)).
-Clip each tab indicator to its shaped advance. Verify the whitespace-mark
-geometry retains that exact tab width.
+Processed through `f641b0c0d952d89f877f946590636741fdb3d198` (2026-11-15,
+text: Add an option to keep raw HTML in Markdown as text (#3979)).
+Expose Markdown raw HTML controls, preserving literal tags and ordinary
+autolinks through the existing parser flags and cache keys.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
