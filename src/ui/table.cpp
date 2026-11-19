@@ -1296,6 +1296,10 @@ El* DataTable::BuildEl() {
         El* content =
             Div(a)->FlexRow()->Flex1()->ItemsCenter()->JustifyBetween();
         TableColumnPadding(content, col);
+        // An explicitly sized header can be shorter than a body row.
+        if (headerRowHeight > 0 && !col.hasPaddings) {
+            content->PadY(0);
+        }
         // render_cell's text alignment. It is inherited, so the header name
         // lines up with the column. A head that lays itself out, such as a
         // flex row, still aligns that layout itself. The sort icon stays the
@@ -1314,8 +1318,7 @@ El* DataTable::BuildEl() {
                                                 ? UiTableCellFontPx(size)
                                                 : 14.f)
                                      ->LineHeight(1.f);
-        // Default render_th is size_full, so the name's box is the cell and
-        // the alignment above has a width to sit in.
+        // The default name fills the available width at its natural height.
         content->Child(label->Flex1());
         if (col.selectable) {
             BindPathClick(content,

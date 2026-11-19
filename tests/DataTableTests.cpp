@@ -1893,6 +1893,47 @@ static El* FindA11y(El* e, AccessibilityRole role, const char* label) {
     return nullptr;
 }
 
+static void ShortHeadersRemoveOnlyDefaultVerticalPadding() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    Ctx cx = {&app, win, a, state.id};
+    component::TableColumn columns[] = {
+        component::TableColumn::New(StrL("name"), StrL("Name")).Width(100),
+        component::TableColumn::New(StrL("status"), StrL("Status"))
+            .Width(100)
+            .Paddings(Edges::New(2, 3, 2, 3)),
+    };
+    El* table = component::DataTable::New(&cx, StrL("short-header"), state)
+                    ->Columns(columns, 2)
+                    ->Rows(2, nullptr, nullptr)
+                    ->HeaderRowHeight(18)
+                    ->H(100)
+                    ->BuildEl();
+    LayoutEl(nullptr, table, 0, 0, 220, 100, 14, Rgba{});
+    El* name = FindA11y(table, AccessibilityRole::ColumnHeader, "Name");
+    El* status = FindA11y(table, AccessibilityRole::ColumnHeader, "Status");
+    utassert(name && name->first && name->first->first);
+    utassert(status && status->first);
+    if (name && name->first && name->first->first) {
+        const El* label = name->first->first;
+        utassert(name->first->style.pad.top == 0);
+        utassert(name->first->style.pad.bottom == 0);
+        utassert(name->first->style.pad.left == 8);
+        utassertnear(label->Bounds().CenterY(), name->Bounds().CenterY());
+    }
+    if (status && status->first) {
+        utassert(status->first->style.pad.top == columns[1].paddings.top);
+        utassert(status->first->style.pad.bottom == columns[1].paddings.bottom);
+    }
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 // collections.rs table_exposes_its_header_and_cells_to_assistive_technology,
 // a_focused_table_is_its_named_grid and
 // selectable_cells_report_their_selection. The focused-element check is the
@@ -2266,6 +2307,7 @@ void TestDataTable() {
     ARightClickMarksARowOrACellButNeverBoth();
     ARightClickedCellClearsOnTheNextClick();
     TestDataTableBuilder();
+    ShortHeadersRemoveOnlyDefaultVerticalPadding();
     DataTableFocusRingFollowsTheBuilder();
     ACellIsOneNumber();
     AColumnKeepsItsWidthOnceItHasOne();

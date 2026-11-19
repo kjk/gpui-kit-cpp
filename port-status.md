@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9c9912ddc7c625eaaed1eaeb4dc6984c2f1a9822` (2026-11-08,
-website: Recommend Native Shell under the home hero (#3844)).
-The upstream website now links to Native Shell from the home hero. The change
-touches only the website.
+Processed through `2fffa1ad3089d2ddc1861fca6dfccde73885bb8e` (2026-11-08,
+table: Centre a header's default name in its height (#3731)).
+A custom header height removes the default vertical padding so the column name
+centers in its band. Explicit column padding still applies.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
