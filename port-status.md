@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d739ad29e80da18e60f30a8c32b02296db61d361` (2026-11-10,
-input: Move the caret and delete by grapheme cluster (#3887)).
-Caret movement, selection and character deletion use the Unicode 17 extended
-grapheme boundaries that the pinned unicode-segmentation crate uses. Inline
-token and CRLF boundary handling remain part of editor movement.
+Processed through `0400b342e096086ae6412f0f8ee755152b44431f` (2026-11-10,
+chore: Enforce workspace redundant_clone lint (#3838)).
+The Rust workspace enables the redundant-clone lint and transfers values where
+it previously cloned them. Its focus-handle refresh exceptions are Rust-
+specific. C++ uses generational handles and explicit ownership for these
+paths.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

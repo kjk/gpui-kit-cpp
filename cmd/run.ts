@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d739ad29e80da18e60f30a8c32b02296db61d361",
+  sha: "0400b342e096086ae6412f0f8ee755152b44431f",
   date: "2026-11-10",
-  subject: "input: Move the caret and delete by grapheme cluster (#3887)",
+  subject: "chore: Enforce workspace redundant_clone lint (#3838)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",
