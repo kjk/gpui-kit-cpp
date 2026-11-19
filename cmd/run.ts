@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1029e2c5d34d75fa82ab5f0f067771951a88d993",
+  sha: "1f3dcb4a0c86879a135666bfd49ca25d51e20d0d",
   date: "2026-11-10",
-  subject: "input: Don't insert newline on secondary Enter in Textarea (#3879)",
+  subject: "input: Keep auto-grow Textarea from scrolling at fractional scales (#3882)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

@@ -40,6 +40,9 @@ void InputSetEditorPaddings(InputState* s, Edges paddings);
 void SetScrollbarRenderer(InputState* s, EditorScrollbarRenderer renderer,
                           void* user = nullptr, void (*drop)(void*) = nullptr);
 void EditorScrollbarPrePaint(PaintCtx* ctx, El* e, void* user);
+// Textarea heights are in DIPs. dpi selects the device pixel grid.
+float InputCeilToDevicePixel(float height, float dpi);
+float InputFitContentHeight(float content, float viewport, float dpi);
 
 // `InputBase::new(id)`: the frame is a stateful element, so its click and
 // focus ids are the fold of the name down from the root rather than a hash of

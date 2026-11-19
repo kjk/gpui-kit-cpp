@@ -1,5 +1,6 @@
 #include "gpui/gpui.h"
 #include "gpui/keymap.h"
+#include "base/input.h"
 #include "base/motion.h"
 #include "base/scrollbar.h"
 #include "gpui/image.h"
@@ -8483,6 +8484,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             }
             // layout_cursors: a focused caret that was on screen stays on
             // screen when this box changes size. Vertical only.
+            if (viewH > 0 && e->input->contentH > viewH) {
+                e->input->contentH =
+                    InputFitContentHeight(e->input->contentH, viewH, ctx->dpi);
+                if (e->input->contentH == viewH) {
+                    e->input->scrollY = 0;
+                }
+            }
             float lineH = e->input->lastLineH;
             InputRevealCaretOnResize(e->input, viewW, viewH, lineH);
             e->input->viewW = viewW;

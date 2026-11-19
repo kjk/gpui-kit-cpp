@@ -1262,9 +1262,13 @@ El* Textarea::IntoEl() {
     // `.h(px(..))` or `.h(relative(1.))`: a caller that gives the editor a
     // height means it, and kFill is the relative one — the inspector's pane
     // is what asks for it. Everything else is `rows` line boxes.
-    float h = (height > 0 || height == kFill)
-                  ? height
-                  : (float)shownRows * Rems(cx, 1.25f) + 2 * padY + 2;
+    float h = height;
+    if (height <= 0 && height != kFill) {
+        float dpi = cx->win ? cx->win->paint.dpi : 0.f;
+        float textHeight =
+            InputCeilToDevicePixel((float)shownRows * Rems(cx, 1.25f), dpi);
+        h = textHeight + 2 * padY + 2;
+    }
     // The rows are virtualized against this, and paint only learns it after
     // the frame it measured — so the first frame of a long document would
     // build every row of it. The builder knows the box it is about to make,

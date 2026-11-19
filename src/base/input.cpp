@@ -2671,6 +2671,17 @@ static float InputViewportHeight(Ctx* cx, const InputState* state) {
     return vh;
 }
 
+float InputCeilToDevicePixel(float height, float dpi) {
+    float scale = dpi > 0 ? dpi / 96.f : 1.f;
+    return ceilf(height * scale) / scale;
+}
+
+float InputFitContentHeight(float content, float viewport, float dpi) {
+    float scale = dpi > 0 ? dpi / 96.f : 1.f;
+    return roundf(content * scale) <= roundf(viewport * scale) ? viewport
+                                                               : content;
+}
+
 // The multi-line editor. Rust lays every visible row out through the display
 // map; without one, each logical line is its own run and the selection is
 // clipped to it — which is the same picture as long as nothing soft-wraps.
@@ -2725,8 +2736,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // slide this spacer out of the box for the frame before the rows
         // exist.
         float vh = InputViewportHeight(cx, state);
-        state->scrollY =
-            InputClampVerticalScrollOffset(state->scrollY, height, vh);
+        float dpi = cx->win ? cx->win->paint.dpi : 0.f;
+        state->scrollY = InputClampVerticalScrollOffset(
+            state->scrollY, InputFitContentHeight(height, vh, dpi), vh);
         return col->Child(Div(a)->H(height));
     }
 
@@ -2858,8 +2870,11 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     float emptyBottom =
         InputEmptyBottomHeight(state->mode.kind == LayoutModeKind::CodeEditor,
                                state->scrollBeyondLastLine, vh, lineH);
-    state->scrollY = InputClampVerticalScrollOffset(
-        state->scrollY, state->contentH + emptyBottom, vh);
+    float dpi = cx->win ? cx->win->paint.dpi : 0.f;
+    float scrollHeight =
+        InputFitContentHeight(state->contentH + emptyBottom, vh, dpi);
+    state->scrollY =
+        InputClampVerticalScrollOffset(state->scrollY, scrollHeight, vh);
     state->contentH += emptyBottom;
     int firstRow = 0;
     int endRow = rows;

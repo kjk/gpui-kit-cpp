@@ -6739,6 +6739,59 @@ static void SetAutoGrowKeepsRowsFitted() {
     InputViewFree(&view);
 }
 
+// element.rs ceil_to_device_pixel and fit_content_height.
+static void TextareaDevicePixelHeights() {
+    utassertnear(InputCeilToDevicePixel(20, 96), 20);
+    float rounded = InputCeilToDevicePixel(20, 160);
+    utassert(rounded >= 20);
+    utassertnear(roundf(rounded * 160.f / 96.f), 34);
+    utassertnear(InputFitContentHeight(20, 19.8f, 160), 19.8f);
+    utassert(InputFitContentHeight(60, 59.999996f, 115.2f) == 59.999996f);
+    utassertnear(InputFitContentHeight(21, 19.8f, 160), 21);
+    utassertnear(InputFitContentHeight(80, 60, 115.2f), 80);
+    utassertnear(InputFitContentHeight(10, 60, 96), 60);
+}
+
+static void AutoGrowTextareaScrollsOnlyPastItsCapAtFractionalScale() {
+    struct Host {
+        InputState input;
+        static El* Render(Host* self, Ctx* cx) {
+            return Div(cx->a)->W(240)->FlexCol()->Child(
+                component::Textarea::New(cx, StrL("textarea"), &self->input)
+                    ->IntoEl());
+        }
+    };
+    struct Case {
+        const char* text;
+        int cap;
+        int visibleRows;
+        float scale;
+        bool overflows;
+    };
+    const Case cases[] = {
+        {"", 8, 1, 5.f / 3.f, false},
+        {"a\nb\nc", 8, 3, 1.2f, false},
+        {"1\n2\n3", 3, 3, 5.f / 3.f, false},
+        {"1\n2\n3\n4", 3, 3, 5.f / 3.f, true},
+    };
+    for (const Case& test : cases) {
+        App* app = TestAppNew();
+        component::Init(app);
+        auto view = EntityNew<Host>(app);
+        InputState* input = &view.Get(app)->input;
+        input->kind = InputKind::Textarea;
+        TextareaSetAutoGrow(input, 1, test.cap);
+        InputSetValue(input, Str(test.text));
+        Window* win = TestWindowOpen(app, view, 320, 240, test.scale);
+        TestDraw(win);
+        float rowsHeight = input->lastLineH * (float)test.visibleRows;
+        utassert(input->viewH >= rowsHeight - 0.01f);
+        utassert(input->viewH < rowsHeight + input->lastLineH);
+        utassert((input->contentH > input->viewH) == test.overflows);
+        TestAppFree(app);
+    }
+}
+
 // line_and_position_for_offset's y plus the scroll offset: where the visual
 // row holding `offset` starts inside the field — the visual rows of the
 // lines above it, then the row of its own line the wrap map puts it on.
@@ -9642,6 +9695,8 @@ static void RunWindowTestsC() {
     ContextMenuHandlerIsDeferredAndRespectsDisabled();
     ContextMenuHandlerCanReadItsInput();
     SetAutoGrowKeepsRowsFitted();
+    TextareaDevicePixelHeights();
+    AutoGrowTextareaScrollsOnlyPastItsCapAtFractionalScale();
     EditorDecorationsFollowTyping();
     KindDoesNotFollowTheRowCount();
     SoftWrapIsEnabledByDefault();

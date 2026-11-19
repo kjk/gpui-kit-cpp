@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1029e2c5d34d75fa82ab5f0f067771951a88d993` (2026-11-10,
-input: Don't insert newline on secondary Enter in Textarea (#3879)).
-Textarea treats the secondary Enter chord as submission. Both native and
-headless action dispatch preserve the modifier in PressEnter without inserting
-a newline.
+Processed through `1f3dcb4a0c86879a135666bfd49ca25d51e20d0d` (2026-11-10,
+input: Keep auto-grow Textarea from scrolling at fractional scales (#3882)).
+Textarea rounds its row height requirement up to the device pixel grid and
+ignores overflow that rounds to the viewport height. Overflow past the row cap
+remains scrollable.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
