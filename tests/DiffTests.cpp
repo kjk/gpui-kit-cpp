@@ -841,6 +841,12 @@ struct WideSplitView {
     Entity<DiffState> state;
     DiffGutterMarker markers[2];
     Bounds gutters[2];
+    Bounds header;
+
+    static El* Header(Ctx* cx, const DiffFile*, void* data) {
+        auto* self = (WideSplitView*)data;
+        return Div(cx->a)->W(50)->H(12)->BoundsOut(&self->header);
+    }
 
     static El* Marker(Ctx* cx, const DiffGutterMarker* marker, void* data) {
         auto* self = (WideSplitView*)data;
@@ -857,14 +863,12 @@ struct WideSplitView {
         return Diff::New(cx, self->state)
             ->GutterMarkers(self->markers, 2)
             ->RenderGutterMarker(&Marker, self)
+            ->RenderHeader(&Header, self)
             ->IntoEl();
     }
 };
 
-// diff/scroll_tests.rs split_columns_keep_half_the_viewport_beside_a_long_line.
-static void SplitColumnsKeepTheirGuttersWhileCodeScrolls() {
-    App* app = TestAppNew();
-    Init(app);
+static Entity<WideSplitView> LongLineDiff(App* app, DiffMode mode) {
     auto view = EntityNew<WideSplitView>(app);
     auto* self = view.Get(app);
     self->state = EntityNew<DiffState>(app);
@@ -881,7 +885,7 @@ static void SplitColumnsKeepTheirGuttersWhileCodeScrolls() {
     utassert(DiffFile::Parse(patch, &files, &error));
     state->SetFiles(files.els, len(files), nullptr);
     VecReset(files);
-    state->WithMode(DiffMode::Split);
+    state->WithMode(mode);
     self->markers[0] = DiffGutterMarker::New(
         StrL("original"),
         DiffLinePosition::New(StrL("long.txt"), DiffSide::Original, 1));
@@ -889,6 +893,16 @@ static void SplitColumnsKeepTheirGuttersWhileCodeScrolls() {
         StrL("modified"),
         DiffLinePosition::New(StrL("long.txt"), DiffSide::Modified, 1));
 
+    return view;
+}
+
+// diff/scroll_tests.rs split_columns_keep_half_the_viewport_beside_a_long_line.
+static void SplitColumnsKeepTheirGuttersWhileCodeScrolls() {
+    App* app = TestAppNew();
+    Init(app);
+    auto view = LongLineDiff(app, DiffMode::Split);
+    auto* self = view.Get(app);
+    auto* state = self->state.Get(app);
     Window* win = TestWindowOpen(app, view, 400, 200, 1);
     TestDraw(win);
     Bounds a = self->gutters[0], b = self->gutters[1];
@@ -897,10 +911,31 @@ static void SplitColumnsKeepTheirGuttersWhileCodeScrolls() {
     utassert(b.x >= 200 && b.x < 400);
     TestSimulateScrollWheel(win, Point{100, 48}, Point{-200, 0});
     TestDraw(win);
-    utassert(state->splitScrollX > 0);
+    utassert(state->horizontalScrollX > 0);
     utassertnear(self->gutters[0].x, a.x);
     utassertnear(self->gutters[1].x, b.x);
     TestAppFree(app);
+}
+
+// diff/scroll_tests.rs
+// file_headers_stay_in_the_viewport_under_horizontal_scrolling.
+static void TheFileHeaderStaysInsideTheScrollingViewport() {
+    for (DiffMode mode : {DiffMode::Unified, DiffMode::Split}) {
+        App* app = TestAppNew();
+        Init(app);
+        auto view = LongLineDiff(app, mode);
+        auto* self = view.Get(app);
+        Window* win = TestWindowOpen(app, view, 400, 200, 1);
+        TestDraw(win);
+        Bounds before = self->header;
+        utassert(before.w > 0.f && before.x >= 0 && before.Right() <= 400.f);
+        TestSimulateScrollWheel(win, {100, 48}, {-200, 0});
+        TestDraw(win);
+        utassert(self->state.Get(app)->horizontalScrollX > 0.f);
+        utassertnear(self->header.x, before.x);
+        utassertnear(self->header.w, before.w);
+        TestAppFree(app);
+    }
 }
 
 // diff/scroll_tests.rs. A 300-line patch, every line changed, in a 400×200
@@ -1390,6 +1425,7 @@ void TestDiff() {
     SplitRatioSizesTheRenderedColumns();
     TheWheelScrollsPastTheRowsRenderedSoFar();
     SplitColumnsKeepTheirGuttersWhileCodeScrolls();
+    TheFileHeaderStaysInsideTheScrollingViewport();
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();
     GutterMarkersActivateWithoutSelectingLines();
 }

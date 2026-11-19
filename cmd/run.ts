@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "60556a78a369e13a4c08232f579535aeb288f063",
+  sha: "7eb9f997c32e337618a9bf86dfec56a7117b9ee3",
   date: "2026-11-16",
-  subject: "text: Stop sweeping retained layouts that are all alive (#4000)",
+  subject: "diff: Keep file headers inside the viewport under horizontal scrolling (#3996)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

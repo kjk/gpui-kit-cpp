@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `60556a78a369e13a4c08232f579535aeb288f063` (2026-11-16,
-text: Stop sweeping retained layouts that are all alive (#4000)).
-Review the retained InlineState cleanup change. C++ builds from cached MdRun
-data and has no size-triggered sweep of live inline layouts.
+Processed through `7eb9f997c32e337618a9bf86dfec56a7117b9ee3` (2026-11-16,
+diff: Keep file headers inside the viewport under horizontal scrolling
+(#3996)).
+Keep file headers in a pinned viewport in both diff modes while code scrolls
+through its own clip. Verify the header bounds before and after wheel input.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
@@ -441,10 +442,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   highlighter is prepared there too, once per hunk side, rather than on
   the background executor. A rebuild keeps the
   scroll index rather than the source line that was at the top. Soft wrap
-  is stored and not applied. The split columns use the runtime's horizontal
-  scrollbar around the vertical list. Their source clips inside fixed
-  gutters, and the scroll range is estimated from the widest lines ranked
-  by UTF-8 scalar count. Unified rows keep their existing vertical list.
+  is stored and not applied. Both modes use the runtime's horizontal
+  scrollbar around the vertical list. The source scrolls inside fixed
+  gutters and headers, and the scroll range is estimated from the widest
+  lines ranked by UTF-8 scalar count.
   The gutter marker lane is one row square inside the fill-width row.
   The add-annotation
   button inset is not
