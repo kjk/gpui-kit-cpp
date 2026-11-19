@@ -24,12 +24,9 @@
    `text_by_kind`) — and so does this, with each painted run carrying the
    marks and the block fences around it (gpui::SelSource).
 
-   What this does not have, and why:
-
-   - **KaTeX**: upstream's math plugin renders a formula by handing it to
-     KaTeX in node and reading the SVG back. The plugin is here and takes the
-     example's own fallback path instead — the formula set italic with the
-     Greek names spelled out and the scripts folded into Unicode. */
+   The math plugin renders through the optional MathJax installation used
+   by the website. Its Unicode formula remains available while a rendering
+   is pending or whenever MathJax is unavailable. */
 
 #include "gpui.h"
 
@@ -396,12 +393,279 @@ static El* UserCardRender(Ctx* cx, const component::MdPluginNode* node, void*) {
 
 // ─── the math plugin ──────────────────────────────────────────────────────
 //
-// Upstream renders a formula by handing it to KaTeX in node and reading the
-// SVG back; there is no node here and no SVG text engine to lay one out, so
-// this is the example's own fallback path — italic text with Greek names
-// spelled out and scripts folded into Unicode super- and subscripts. The
-// parse-time plugins are otherwise the same shape: InlineMath is an atomic
-// object in a paragraph and Math is a block of its own.
+// MathJax emits path outlines in an SVG. Keep the worker and cache inside
+// the example, so the markdown library has no dependency on Node or MathJax.
+static const char kMathJaxScript[] = R"JS(
+const path = require("node:path");
+const [root, source, displayFlag, size, ink, opacity, paper, paperOpacity] = process.argv.slice(1);
+const load = name => require(path.resolve(root, name));
+const {mathjax} = load("js/mathjax.js");
+const {TeX} = load("js/input/tex.js");
+const {SVG} = load("js/output/svg.js");
+const {liteAdaptor} = load("js/adaptors/liteAdaptor.js");
+const {RegisterHTMLHandler} = load("js/handlers/html.js");
+const adaptor = liteAdaptor();
+RegisterHTMLHandler(adaptor);
+const html = mathjax.document("", {
+    InputJax: new TeX({packages: ["base", "ams"]}),
+    OutputJax: new SVG({fontCache: "none"})
+});
+const display = displayFlag === "1";
+const result = adaptor.outerHTML(html.convert(source, {display}));
+const match = result.match(/<svg\b[\s\S]*<\/svg>/);
+if (!match) process.exit(2);
+let svg = match[0];
+const close = svg.indexOf(">");
+let header = svg.slice(0, close + 1);
+const attr = (text, name) => text.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1];
+const measure = name => {
+    const value = attr(header, name);
+    return value?.endsWith("ex") ? Number(value.slice(0, -2)) : NaN;
+};
+const font = display ? Math.max(Number(size) * 1.18, 12) : Math.max(Number(size), 10);
+const width = Math.max(1, Math.ceil(measure("width") * font / 2));
+const height = Math.max(1, Math.ceil(measure("height") * font / 2));
+const [x, y, w, h] = (attr(header, "viewBox") || "").trim().split(/\s+/).map(Number);
+if (![width, height, x, y, w, h].every(Number.isFinite) || h <= 0 || w <= 0) process.exit(2);
+const baseline = Math.max(0, Math.min(height, -y * height / h));
+header = header.replace(/\swidth="[^"]*"/, ` width="${width}"`)
+               .replace(/\sheight="[^"]*"/, ` height="${height}"`)
+               .replace(/\sstyle="[^"]*"/, "");
+const rectanglePath = (left, top, width, height) =>
+    `M ${left} ${top} H ${left + width} V ${top + height} H ${left} Z`;
+let glyphs = svg.slice(close + 1).replace(/currentColor/g, ink);
+glyphs = glyphs.replace(/<rect\b([^>]*)>(?:<\/rect>)?/g, (whole, fields) => {
+    const width = Number(attr(fields, "width"));
+    const height = Number(attr(fields, "height"));
+    const x = Number(attr(fields, "x") || 0);
+    const y = Number(attr(fields, "y") || 0);
+    if (![width, height, x, y].every(Number.isFinite)) return whole;
+    return `<path d="${rectanglePath(x, y, width, height)}"></path>`;
+});
+if (Number(opacity) < 0.999) glyphs = glyphs.replace("<g ", `<g opacity="${opacity}" `);
+const background = display ? `<path d="${rectanglePath(x, y, w, h)}" fill="${paper}" opacity="${paperOpacity}"/>` : "";
+process.stdout.write(`${width} ${height} ${baseline}\n${header}${background}${glyphs}`);
+)JS";
+
+struct MathJaxCache;
+
+struct MathJaxJob {
+    App* app = nullptr;
+    Entity<MathJaxCache> cache;
+    int slot = 0;
+    TaskId task = 0;
+    shell::ProcessCancellation cancel;
+    Str root = {};
+    Str source = {};
+    bool inlineMath = false;
+    float font = 0;
+    Rgba ink = {};
+    Rgba paper = {};
+    Str svg = {};
+    float width = 0;
+    float height = 0;
+    float baseline = 0;
+
+    ~MathJaxJob() {
+        StrFree(root);
+        StrFree(source);
+        StrFree(svg);
+    }
+};
+
+struct MathJaxEntry {
+    Str source = {};
+    bool inlineMath = false;
+    float font = 0;
+    Rgba ink = {};
+    Rgba paper = {};
+    MathJaxJob* pending = nullptr;
+    uint64_t usedFrame = 0;
+    Str svg = {};
+    float width = 0;
+    float height = 0;
+    float baseline = 0;
+};
+
+struct MathJaxCache {
+    Str root = {};
+    Vec<MathJaxEntry> entries;
+
+    ~MathJaxCache() {
+        StrFree(root);
+        for (const MathJaxEntry& entry : entries) {
+            StrFree(entry.source);
+            StrFree(entry.svg);
+        }
+        VecReset(entries);
+    }
+};
+
+struct MathJaxService {
+    Entity<MathJaxCache> cache;
+};
+
+static Str MathJaxRoot() {
+    auto hasMathJax = [](Str path) {
+        return PlatFileExists(fmt("%s/js/mathjax.js", path).s);
+    };
+    if (const char* env = getenv("GPUI_MATHJAX_ROOT")) {
+        Str path(env);
+        return len(path) > 0 && hasMathJax(path) ? path : Str{};
+    }
+    Str roots[] = {
+        StrL("website/node_modules/mathjax-full"),
+        StrL(".work/gpui-component/website/node_modules/mathjax-full")};
+    for (Str path : roots) {
+        if (hasMathJax(path)) return path;
+    }
+    return {};
+}
+
+static TempStr MathJaxColorTemp(Rgba rgba) {
+    return fmt("#%02x%02x%02x", (unsigned)rgba.r, (unsigned)rgba.g,
+               (unsigned)rgba.b);
+}
+
+static void BuildMathSvg(MathJaxJob* job) {
+    Str args[] = {StrL("-e"),
+                  StrL(kMathJaxScript),
+                  StrL("--"),
+                  job->root,
+                  job->source,
+                  job->inlineMath ? StrL("0") : StrL("1"),
+                  fmt("%.2f", job->font),
+                  MathJaxColorTemp(job->ink),
+                  fmt("%.3f", job->ink.a / 255.f),
+                  MathJaxColorTemp(job->paper),
+                  fmt("%.3f", job->paper.a / 255.f)};
+    shell::ProcessOptions options = {};
+    options.inheritEnvironment = true;
+    shell::ProcessOutput output;
+    Str error = {};
+    if (shell::ProcessRunBounded(StrL("node"), args, (int)dimof(args),
+                                 &job->cancel, &output, &error, &options) &&
+        output.code == 0 && output.out.s) {
+        char* end = nullptr;
+        job->width = strtof(output.out.s, &end);
+        job->height = strtof(end, &end);
+        job->baseline = strtof(end, &end);
+        if (*end == '\n' && job->width > 0 && job->height > 0 &&
+            end + 1 < output.out.s + len(output.out)) {
+            job->svg = StrDup(
+                Str(end + 1, (int)(output.out.s + len(output.out) - end - 1)));
+        }
+    }
+    output.Free();
+    StrFree(error);
+}
+
+static void FinishMathSvg(MathJaxJob* job) {
+    if (MathJaxCache* cache = job->cache.Get(job->app)) {
+        MathJaxEntry& entry = cache->entries[job->slot];
+        entry.pending = nullptr;
+        entry.svg = job->svg;
+        job->svg = {};
+        entry.width = job->width;
+        entry.height = job->height;
+        entry.baseline = job->baseline;
+        if (entry.svg.s) AppRefreshWindows(job->app);
+    }
+    delete job;
+}
+
+static El* MathJaxImage(Ctx* cx, Str source, bool inlineMath, float font,
+                        float* baseline) {
+    auto* service = AppGlobalGet<MathJaxService>(cx->app);
+    if (!service || !cx->win) return nullptr;
+    MathJaxCache* cache = service->cache.Get(cx);
+    if (!cache) return nullptr;
+    const Theme& th = ThemeNow(cx->app);
+    Rgba ink = th.foreground;
+    Rgba paper = inlineMath ? Rgba{} : th.background;
+    font = roundf(font * 100.f) / 100.f;
+    uint64_t frame = cx->win->frameSeq;
+    int reusable = -1;
+    for (int i = 0; i < len(cache->entries); i++) {
+        MathJaxEntry& entry = cache->entries[i];
+        if (entry.inlineMath == inlineMath && entry.font == font &&
+            memcmp(&entry.ink, &ink, sizeof(Rgba)) == 0 &&
+            memcmp(&entry.paper, &paper, sizeof(Rgba)) == 0 &&
+            StrEq(entry.source, source)) {
+            entry.usedFrame = frame;
+            if (!entry.svg.s) return nullptr;
+            if (baseline) *baseline = entry.baseline;
+            return ImageEl(cx->a,
+                           ImageSource::FromImage((const uint8_t*)entry.svg.s,
+                                                  len(entry.svg)),
+                           source)
+                ->W(entry.width)
+                ->H(entry.height)
+                ->Shrink0();
+        }
+        if (!entry.pending && entry.usedFrame != frame &&
+            (reusable < 0 || entry.usedFrame < cache->entries[reusable]
+                                                   .usedFrame)) {
+            reusable = i;
+        }
+    }
+    int slot = len(cache->entries);
+    MathJaxEntry entry;
+    entry.source = StrDup(source);
+    entry.inlineMath = inlineMath;
+    entry.font = font;
+    entry.ink = ink;
+    entry.paper = paper;
+    entry.usedFrame = frame;
+    // Keep old formulas long enough for edits to hit the cache. Entries that
+    // the current frame borrows and jobs awaiting completion own their slots.
+    const int kCachedFormulas = 128;
+    if (slot >= kCachedFormulas && reusable >= 0) {
+        slot = reusable;
+        StrFree(cache->entries[slot].source);
+        StrFree(cache->entries[slot].svg);
+        cache->entries[slot] = entry;
+    } else if (!VecAppend(cache->entries, entry)) {
+        StrFree(entry.source);
+        return nullptr;
+    }
+    auto* job = new MathJaxJob();
+    job->app = cx->app;
+    job->cache = service->cache;
+    job->slot = slot;
+    job->root = StrDup(cache->root);
+    job->source = StrDup(source);
+    job->inlineMath = inlineMath;
+    job->font = font;
+    job->ink = ink;
+    job->paper = paper;
+    job->task =
+        ExecSpawn(MkFunc0(BuildMathSvg, job), MkFunc0(FinishMathSvg, job));
+    if (!job->task) {
+        delete job;
+        return nullptr;
+    }
+    cache->entries[slot].pending = job;
+    return nullptr;
+}
+
+static void StopMathJax(App* app) {
+    auto* service = AppGlobalGet<MathJaxService>(app);
+    if (!service) return;
+    if (MathJaxCache* cache = service->cache.Get(app)) {
+        for (MathJaxEntry& entry : cache->entries) {
+            MathJaxJob* job = entry.pending;
+            if (!job) continue;
+            if (ExecCancel(job->task)) {
+                entry.pending = nullptr;
+                delete job;
+            } else {
+                job->cancel.Cancel();
+            }
+        }
+        ExecWaitIdle(10000);
+    }
+}
 
 static bool MathIsSpace(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r';
@@ -669,6 +933,11 @@ static bool MathInlineParse(const markdown::Node* source,
 static InlineElement MathInlineRender(Ctx* cx, const MarkdownNode* node,
                                       const InlineRenderContext* context,
                                       void*) {
+    float baseline = 0;
+    if (El* image =
+            MathJaxImage(cx, node->text, true, context->fontSize, &baseline)) {
+        return InlineElement::New(image).WithBaseline(baseline);
+    }
     return InlineElement::New(
                MathFormula(cx, node->text, true, context->fontSize))
         .WithBaseline(context->lineHeight * 0.75f);
@@ -687,8 +956,9 @@ static bool MathBlockParse(const markdown::Node* source,
 }
 
 static El* MathBlockRender(Ctx* cx, const MarkdownNode* node, void*) {
+    El* image = MathJaxImage(cx, node->text, false, 16.f, nullptr);
     return Div(cx->a)->FlexRow()->W(kFill)->JustifyCenter()->PadY(4)->Child(
-        MathFormula(cx, node->text, false, 16.f));
+        image ? image : MathFormula(cx, node->text, false, 16.f));
 }
 
 static void OnLink(MarkdownApp* self, Ctx* cx, const ClickEvent*,
@@ -1224,6 +1494,11 @@ int GpuiMain(int argc, char** argv) {
     (void)argv;
     App* app = AppNew();
     component::Init(app);
+    if (Str root = MathJaxRoot()) {
+        auto* service = AppGlobalEnsure<MathJaxService>(app);
+        service->cache = EntityNewState<MathJaxCache>(app);
+        service->cache.Get(app)->root = StrDup(root);
+    }
     AssetsClear();
     AssetsAddDefaultRoots(StrL("markdown"));
     AssetsAddRoot(StrL("assets/markdown"));
@@ -1248,6 +1523,7 @@ int GpuiMain(int argc, char** argv) {
     // The Open chord, which upstream binds in the story app's own keymap.
     WindowOnKey(win, ListenTo(view, &OnKey));
     int rc = AppRun(app);
+    StopMathJax(app);
     AppFree(app);
     return rc;
 }

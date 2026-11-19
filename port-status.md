@@ -16,15 +16,22 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1d91015a9ed7600c03d05421b1b982d313ab0a76` (2026-11-12,
-text_selection: Select the line on a triple click beside it (#3930)).
-Use the nearest shaped caret for a triple click beside a short line within its
-text run. A double click selects a word only within the laid-out line.
+Processed through `d699f8609352322bc3d0919d4f68830a88eead22` (2026-11-12,
+markdown: Look up MathJax in `website/node_modules` instead of the removed
+`docs/` directory (#3923)).
+Use the optional MathJax installation under website/node_modules or the
+configured GPUI_MATHJAX_ROOT. Cache path-based formula images on desktop and
+preserve the existing text fallback while rendering or when MathJax is
+unavailable.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
 ## Known gaps vs Rust
 
+- **The Markdown example renders MathJax on a background worker.** Native
+  builds use Node and the optional website installation. The browser and a
+  native build without that package render the same Unicode fallback as a
+  formula awaiting its image (`examples/markdown.cpp`).
 - **Selectable text highlight font ranges cross the mobile paint adapter.**
   iOS and Android hosts can read `PaintCtx::textFontRanges` when shaping
   `TextLayoutNew`. On wasm the Canvas2D backend positions styled font runs
