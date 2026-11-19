@@ -1059,6 +1059,72 @@ static void BoolSettingsAreNamedAfterTheirTitles() {
     TestAppFree(app);
 }
 
+struct SettingsFoldHost {
+    Entity<SettingsState> state;
+
+    static El* Render(SettingsFoldHost* self, Ctx* cx) {
+        return Settings::New(cx, StrL("fold-test"), self->state)
+            ->Page(StrL("Appearance"))
+            ->PageDefaultOpen(true)
+            ->Group(StrL("Colors"))
+            ->Item(StrL("Dark mode"), {})
+            ->Group(StrL("Fonts"))
+            ->Item(StrL("Font size"), {})
+            ->Page(StrL("Editor"))
+            ->Group({})
+            ->Item(StrL("Tab size"), {})
+            ->IntoEl();
+    }
+};
+
+// setting/tests.rs: the_shown_pages_title_folds_and_unfolds_its_groups.
+static void TheShownPagesTitleFoldsAndUnfoldsItsGroups() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto host = EntityNew<SettingsFoldHost>(app);
+    auto state = EntityNewState<SettingsState>(app);
+    host.Get(app)->state = state;
+    Window* win = TestWindowOpen(app, host, 1000, 700, 1);
+    auto find = [&](Str name) -> const AccessibilityNode* {
+        for (int i = 0; i < len(win->accessibility); i++) {
+            const auto& node = win->accessibility[i];
+            if (node.info.role == AccessibilityRole::TreeItem &&
+                StrEq(node.info.label, name)) {
+                return &node;
+            }
+        }
+        return nullptr;
+    };
+    auto click = [&](Str name) {
+        const auto* node = find(name);
+        utassert(node);
+        if (node) {
+            Bounds bounds = node->bounds;
+            TestSimulateClick(win, {bounds.x + 25, bounds.CenterY()});
+            TestDraw(win);
+        }
+    };
+    SettingsState* settings = state.Get(app);
+    Str appearance = StrL("Appearance"), fonts = StrL("Fonts");
+    utassert(settings->page == 0 && find(fonts));
+    click(appearance);
+    utassert(settings->page == 0 && !find(fonts));
+    click(StrL("Editor"));
+    utassert(settings->page == 1);
+    click(appearance);
+    utassert(settings->page == 0 && find(fonts));
+    click(StrL("Editor"));
+    click(appearance);
+    utassert(find(fonts));
+    click(fonts);
+    utassert(settings->group == 1);
+    click(appearance);
+    utassert(settings->page == 0 && !find(fonts));
+    click(appearance);
+    utassert(find(fonts));
+    TestAppFree(app);
+}
+
 void TestSetting() {
     TestSuite("setting");
     BoolSettingsAreNamedAfterTheirTitles();
@@ -1070,6 +1136,7 @@ void TestSetting() {
     RenderOptionsNarrowCopiesAndReachCustomFields();
     NumberSettingsDelegateStepAndRangeToTheInputEngine();
     SearchPreservesPageIdentityAndFallsBackToTheFirstMatch();
+    TheShownPagesTitleFoldsAndUnfoldsItsGroups();
     SearchPreservesGroupIdentityUntilTheGroupDisappears();
     ResettingSearchResultsLeavesHiddenSettingsUnchanged();
     SearchRenderKeepsOriginalItemIndexes();

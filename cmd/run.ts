@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b3ba789c058b6afb78c24b47bc1f557074c17eb3",
+  sha: "369b5e42793107ec9318b2566b31bfff86925e6c",
   date: "2026-11-12",
-  subject: "selectable_text: Redraw when a run's own selection changes (#3927)",
+  subject: "settings: Fold and unfold the shown page from its title (#3947)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

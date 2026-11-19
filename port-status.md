@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b3ba789c058b6afb78c24b47bc1f557074c17eb3` (2026-11-12,
-selectable_text: Redraw when a run's own selection changes (#3927)).
-C++ already invalidates the window during a held pointer move and renders all
-visible views for that frame. Cover the owned selectable text path with a
-headless drag that redraws before release.
+Processed through `369b5e42793107ec9318b2566b31bfff86925e6c` (2026-11-12,
+settings: Fold and unfold the shown page from its title (#3947)).
+Toggle the groups of the Settings page already on display from its title.
+Selecting a different page opens its groups.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

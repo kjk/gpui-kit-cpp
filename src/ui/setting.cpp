@@ -1355,12 +1355,13 @@ El* Settings::IntoEl() {
         }
         // The page row is active when no group is selected, or when the page
         // has only one visible group — the group cannot be a separate row.
-        bool pageActive =
-            i == selected &&
-            (st == nullptr || selectedGroup < 0 || visibleGroups == 1);
+        bool pageShown = i == selected;
+        bool pageActive = pageShown && (st == nullptr || selectedGroup < 0 ||
+                                        visibleGroups == 1);
         SidebarMenuItem* item =
             SidebarMenuItem::New(cx, p.title)
-                ->ClickToOpen(true)
+                ->ClickToOpen(!pageShown)
+                ->ClickToToggle(pageShown)
                 ->DefaultOpen(p.defaultOpen)
                 ->Active(pageActive)
                 ->OnClick(
