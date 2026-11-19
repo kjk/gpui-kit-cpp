@@ -12460,6 +12460,17 @@ static void RunTouchWindowTests() {
     ScrollingClosesTheMenuAndKeepsTheHandles();
 }
 
+// state.rs test_set_value_waits_for_the_first_layout.
+static void SetValueWaitsForTheFirstLayout() {
+    InputView view = InputViewBuild([](InputState* state, App*) {
+        InputSetValue(state, StrL("hello"));
+        utassert(InputWrapRowCount(InputDisplayMap(state)) == 0);
+    });
+    utassert(ValueIs(*view.input, "hello"));
+    utassert(InputWrapRowCount(InputDisplayMap(view.input)) == 1);
+    InputViewFree(&view);
+}
+
 // state.rs test_textarea_prewrap_prepares_content_rows_before_layout.
 static void TextareaPrewrapPreparesContentRowsBeforeLayout() {
     const char* values[] = {"", "one\ntwo"};
@@ -13458,6 +13469,7 @@ void TestInputState() {
     LaterHighlightLayerWinsOverEarlierOne();
     DecorationColorIsStableAcrossCompositions();
     TextareaPrewrapPreparesContentRowsBeforeLayout();
+    SetValueWaitsForTheFirstLayout();
     TextareaPrewrapRespectsSoftWrapBeforeLayout();
     PrewrapCountsWrappedRowsBeforeTheFirstPaint();
     TabStopsWidenToTheNextStop();

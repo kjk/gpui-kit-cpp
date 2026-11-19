@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `dbb0b9a4895c4b45753ed8647cb0dbb58178bd96` (2026-11-09,
-webview: Fix X11 abort when a WebView is dropped on Linux (#3862)).
-The X11 host unmaps and reparents live WebViews before destroying their parent
-window. It waits for the GTK connection so retained handles can release their
-native controls safely.
+Processed through `1d5323752ab8bf568cc1bdf0fcca50ffec656cea` (2026-11-09,
+input: Wait for the first layout before shaping a value set early (#3864)).
+Input values written before the first layout already leave the display map
+unprepared in C++. The regression verifies that the first frame shapes the
+value.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
