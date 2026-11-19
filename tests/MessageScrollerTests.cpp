@@ -191,13 +191,15 @@ static void AScrollerWithoutAHeightFillsItsBox() {
 // 400px box. Each row is 40px plus the 32px gap after every row but the last.
 struct LogicalTopView {
     Entity<MessageScrollerState> state;
+    float rowHeight = 40;
 
-    static El* Row(void*, Ctx* cx, int) { return Div(cx->a)->H(40); }
+    static El* Row(void* user, Ctx* cx, int) {
+        return Div(cx->a)->H(((LogicalTopView*)user)->rowHeight);
+    }
 
     static El* Render(LogicalTopView* self, Ctx* cx) {
         return Div(cx->a)->W(400)->H(400)->Child(
-            MessageScroller::New(cx, StrL("messages"), self->state, &Row,
-                                 nullptr)
+            MessageScroller::New(cx, StrL("messages"), self->state, &Row, self)
                 ->Scrollbar(false)
                 ->JumpButton(false)
                 ->IntoEl());
@@ -229,6 +231,43 @@ static void TheLogicalScrollTopReportsTheRowAtTheTop() {
     utassert(after.itemIx == 11);
     utassertnear(after.offsetInItem, 0.f);
 
+    TestAppFree(app);
+}
+
+// message_scroller.rs test_scroll_to_offset_restores_a_saved_position.
+static void ScrollToOffsetRestoresASavedPosition() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<LogicalTopView>(app);
+    auto* self = view.Get(app);
+    self->state = EntityNewState<MessageScrollerState>(app);
+    self->rowHeight = 120;
+    MessageScrollerState* state = self->state.Get(app);
+    MessageScrollerState::Init(state, 30);
+    Window* win = TestWindowOpen(app, view, 400, 400, 1);
+    TestDraw(win);
+    utassert(!state->ScrollToOffset(nullptr, {30, 0}));
+    utassert(state->IsFollowingTail());
+    const float savedPositions[] = {17.f, 100.f};
+    for (float into : savedPositions) {
+        state->Reset(nullptr, 30);
+        utassert(state->ScrollToOffset(nullptr, {10, into}));
+        utassert(!state->IsFollowingTail());
+        ListOffset before = state->LogicalScrollTop();
+        utassert(before.itemIx == 10);
+        utassertnear(before.offsetInItem, into);
+        TestDraw(win);
+        ListOffset restored = state->LogicalScrollTop();
+        utassert(restored.itemIx == 10);
+        utassertnear(restored.offsetInItem, into);
+    }
+    state->Reset(nullptr, 30);
+    utassert(state->ScrollToOffset(nullptr, {10, 17}));
+    utassert(state->Prepend(nullptr, 2));
+    utassert(state->LogicalScrollTop().itemIx == 12);
+    TestDraw(win);
+    utassert(state->LogicalScrollTop().itemIx == 12);
+    utassertnear(state->LogicalScrollTop().offsetInItem, 17.f);
     TestAppFree(app);
 }
 
@@ -337,6 +376,7 @@ void TestMessageScroller() {
     TheBuilderCarriesEveryOption();
     AScrollerWithoutAHeightFillsItsBox();
     TheLogicalScrollTopReportsTheRowAtTheTop();
+    ScrollToOffsetRestoresASavedPosition();
     TheScrollbarDragRangeReachesTheEndOfTheContent();
     ACustomListPaddingRidesOnTheFirstAndTheLastRow();
 }

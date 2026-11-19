@@ -54,7 +54,7 @@ struct MessageScrollerState {
     // Whether the list is actively following its tail.
     bool IsFollowingTail() const;
     // The row at the top of the viewport and how far into it the list is
-    // scrolled. A wheel, the scrollbar and ScrollToItem set it at once.
+    // scrolled. A wheel, the scrollbar and ScrollToOffset set it at once.
     // ScrollToEnd and tail following settle it when the list next lays out;
     // until then itemIx is ItemCount().
     ListOffset LogicalScrollTop() const;
@@ -74,6 +74,8 @@ struct MessageScrollerState {
     bool RemeasureItems(Ctx* cx, int start, int end);
     // Scroll to the row at `index`, if it exists.
     bool ScrollToItem(Ctx* cx, int index);
+    // Restore a top row and its pixel offset, as returned by LogicalScrollTop.
+    bool ScrollToOffset(Ctx* cx, ListOffset offset);
     // Resume tail following and scroll to the latest row.
     void ScrollToEnd(Ctx* cx);
 

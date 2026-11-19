@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a8fe64c9a48ea97963cc8029ccb3efa2482dd051` (2026-11-12,
-input: Add `context_menu_offset` so a custom menu knows the text under the
-pointer (#3920)).
-Expose the UTF-8 offset at the last right-click menu so a custom builder can
-read the clicked word even when the existing selection keeps the caret
-elsewhere.
+Processed through `b285d1cbec212c585ee6bd461e7d387f75dc9b1e` (2026-11-12,
+message_scroller: Add `scroll_to_offset` to restore a saved reading position
+(#3922)).
+Restore a saved MessageScroller row and its offset through the virtual list
+layout. Retain the logical anchor while row heights are provisional or
+preceding messages are inserted.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

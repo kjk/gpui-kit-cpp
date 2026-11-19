@@ -231,6 +231,7 @@ void VirtualListScrollToItemDeferredWithOffset(VirtualListScrollHandle* h,
     h->pendingIx = ix;
     h->pendingStrategy = strategy;
     h->pendingOffset = offset;
+    h->pendingInItem = 0;
 }
 
 void VirtualListScrollToBottomDeferred(VirtualListScrollHandle* h) {
@@ -263,6 +264,14 @@ bool VirtualListHandleLayout(VirtualListScrollHandle* h, const float* sizes,
                                                 viewport, h->pendingStrategy)
                       : VirtualListScrollToRow(count, itemSize, ix, h->offset,
                                                viewport, h->pendingStrategy);
+            // The provisional row extent may be shorter than the saved
+            // position. Keep the row in the measurement range and reapply
+            // the same request when the row receives its measured extent.
+            if (h->pendingInItem > 0) {
+                float extent = sizes ? sizes[ix] : itemSize;
+                h->offset +=
+                    h->pendingInItem < extent ? h->pendingInItem : extent;
+            }
         }
     }
     // The clamp: there is nothing to see past either end, however the offset
@@ -552,6 +561,7 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
     bool hadPending = o.handle && o.handle->pending;
     int pendingIx = hadPending ? o.handle->pendingIx : 0;
     int pendingOffset = hadPending ? o.handle->pendingOffset : 0;
+    float pendingInItem = hadPending ? o.handle->pendingInItem : 0;
     ScrollStrategy pendingStrategy =
         hadPending ? o.handle->pendingStrategy : ScrollStrategy::Top;
     if (o.handle) {
@@ -608,6 +618,7 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
                     o.handle->pending = true;
                     o.handle->pendingIx = pendingIx;
                     o.handle->pendingOffset = pendingOffset;
+                    o.handle->pendingInItem = pendingInItem;
                     o.handle->pendingStrategy = pendingStrategy;
                 }
                 VirtualListHandleLayout(o.handle, layout.sizes.els, o.count, 0,

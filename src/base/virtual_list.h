@@ -117,6 +117,8 @@ struct VirtualListScrollHandle {
     // into view instead.
     int pendingOffset = 0;
     ScrollStrategy pendingStrategy = ScrollStrategy::Top;
+    // Logical position within the requested top row, in DIPs.
+    float pendingInItem = 0;
 };
 
 // scroll_to_item / scroll_to_item_with_offset: the request is recorded and

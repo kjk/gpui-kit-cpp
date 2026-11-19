@@ -4,6 +4,8 @@
 #include "base/scroll_bounce.h"
 #include "base/virtual_list.h"
 
+#include <math.h>
+
 namespace gpui {
 
 namespace component {
@@ -43,7 +45,8 @@ ListOffset MessageScrollerState::LogicalScrollTop() const {
     ListOffset top;
     // A deferred tail scroll has not been applied yet: GPUI reports
     // item_count until layout replaces that anchor with a real row.
-    // ScrollToItem's request is the row itself, before the pixel offset moves.
+    // ScrollToOffset reports the requested row and its inner offset before
+    // layout.
     if (handle.pending) {
         if (followTail) {
             top.itemIx = heights.len;
@@ -57,6 +60,7 @@ ListOffset MessageScrollerState::LogicalScrollTop() const {
             ix = heights.len;
         }
         top.itemIx = ix;
+        top.offsetInItem = handle.pendingInItem;
         return top;
     }
     VirtualListLogicalFromPixel(heights.els, heights.len, 0, handle.offset,
@@ -112,6 +116,17 @@ bool MessageScrollerState::Splice(Ctx* cx, int start, int end, int count) {
         }
     }
     handle.itemsCount = heights.len;
+    if (handle.pending && !followTail && handle.pendingIx >= start) {
+        // Keep a pending logical restoration on the same message across
+        // insertions. When its row is removed, start at the next survivor.
+        if (handle.pendingIx >= end) {
+            handle.pendingIx += count - (end - start);
+        } else {
+            handle.pendingIx = start < len(heights) ? start : len(heights) - 1;
+            handle.pendingInItem = 0;
+        }
+        if (handle.pendingIx < 0) handle.pending = false;
+    }
 
     // The default row wrapper pads every row except the last, so a row whose
     // "last" status may have flipped carries a stale measured height.
@@ -179,17 +194,23 @@ bool MessageScrollerState::RemeasureItems(Ctx* cx, int start, int end) {
 }
 
 bool MessageScrollerState::ScrollToItem(Ctx* cx, int index) {
-    if (index < 0 || index >= heights.len) {
+    return ScrollToOffset(cx, {index, 0});
+}
+
+bool MessageScrollerState::ScrollToOffset(Ctx* cx, ListOffset offset) {
+    if (offset.itemIx < 0 || offset.itemIx >= len(heights)) {
         return false;
     }
-    // ListState::scroll_to pins the row to the top. The virtual list's
-    // deferred request only reveals it, and a remeasure then leaves the
-    // offset on the estimate. The pixel anchor is the row's origin now;
-    // layout's anchor adjustment keeps that row at the top once its
-    // neighbors are measured. Pending stays clear so that adjustment runs.
+    float inItem = isfinite(offset.offsetInItem) && offset.offsetInItem > 0
+                       ? offset.offsetInItem
+                       : 0.f;
     followTail = false;
-    handle.pending = false;
-    float origin = VirtualListItemOrigin(heights.els, heights.len, index);
+    VirtualListScrollToItemDeferred(&handle, offset.itemIx,
+                                    ScrollStrategy::Start);
+    handle.pendingInItem = inItem;
+    float origin =
+        VirtualListItemOrigin(heights.els, len(heights), offset.itemIx) +
+        fminf(inItem, heights[offset.itemIx]);
     float most = handle.contentSize - handle.viewport;
     if (handle.contentSize > 0 && handle.viewport > 0 && origin > most) {
         origin = most > 0.f ? most : 0.f;
