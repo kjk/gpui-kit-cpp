@@ -2692,8 +2692,13 @@ static void DispatchChain(Window* win, const Vec<int>& chain, Ev* ev, Pick pick,
             ev->el = hr.bounds;
             ListenerCall(win->app, win, l, ev);
         }
-        if (stopMouseDown && hr.stopMouseDown && ev->IsFocusing()) {
-            win->stopPropagation = true;
+        if (stopMouseDown && ev->IsFocusing()) {
+            if (hr.focusOnMouseDownBubble && hr.focusId &&
+                !win->stopPropagation && !WindowDefaultPrevented(win)) {
+                WindowSetFocusId(win, hr.focusId);
+                win->pressTookFocus = true;
+            }
+            if (hr.stopMouseDown) win->stopPropagation = true;
         }
     }
     win->stopPropagation = false;

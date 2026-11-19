@@ -8601,6 +8601,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.input = e->input;
         hr.stopClick = e->stopClick;
         hr.stopMouseDown = e->stopMouseDown;
+        hr.focusOnMouseDownBubble = e->focusOnMouseDownBubble;
         hr.suppressTextSelection = e->suppressTextSelection;
         hr.keepTextSelection = e->keepTextSelection;
         hr.textHoverCursor = e->textHoverCursor;

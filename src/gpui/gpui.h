@@ -3015,6 +3015,8 @@ struct El {
     unsigned int stopClick : 1 = false;
     // cx.stop_propagation() on the left-button mouse-down bubble.
     unsigned int stopMouseDown : 1 = false;
+    // Roving tabs take pointer focus after nested controls see the press.
+    unsigned int focusOnMouseDownBubble : 1 = false;
     // The press belongs to a control with selection behavior of its own.
     unsigned int suppressTextSelection : 1 = false;
     unsigned int keepTextSelection : 1 = false;
@@ -3677,6 +3679,7 @@ struct HitRect {
     // a press on the trigger it sits in.
     bool stopClick = false;
     bool stopMouseDown = false;
+    bool focusOnMouseDownBubble = false;
     bool suppressTextSelection = false;
     bool keepTextSelection = false;
     bool textHoverCursor = false;

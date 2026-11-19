@@ -788,6 +788,17 @@ struct TabKeyboardView {
         Notify(cx);
     }
 
+    FocusHandle nested;
+    bool nestedReceivedDefault = false;
+
+    static void FocusNested(TabKeyboardView* self, Ctx* cx,
+                            const MouseDownEvent*) {
+        self->nestedReceivedDefault = !WindowDefaultPrevented(cx->win);
+        if (!self->nestedReceivedDefault) return;
+        FocusHandleFocus(cx->win, self->nested);
+        WindowPreventDefault(cx);
+    }
+
     static El* Render(TabKeyboardView* self, Ctx* cx) {
         Listener activate = Listen(cx, &TabKeyboardView::Activate);
         El* list = nullptr;
@@ -815,6 +826,13 @@ struct TabKeyboardView {
                                          i == self->selected, {}, i + 1, 4)
                               ->W(20)
                               ->H(20);
+                if (i == 1 && self->nested.id) {
+                    tab->Child(Div(cx->a)
+                                   ->W(12)
+                                   ->H(12)
+                                   ->TrackFocus(self->nested)
+                                   ->OnMouseDown(Listen(cx, &FocusNested)));
+                }
                 // Tabs inside ordinary wrapper elements join the same list.
                 list->Child(Div(cx->a)->Child(tab));
             }
@@ -843,7 +861,7 @@ struct TabKeyboardFixture {
     ~TabKeyboardFixture() { TestAppFree(app); }
 
     void Open(int selected, Axis axis = Axis::Horizontal, bool rtl = false,
-              bool styled = false) {
+              bool styled = false, bool nested = false) {
         app = TestAppNew();
         component::Init(app);
         if (rtl) LayoutDirectionSetGlobal(app, LayoutDirection::Rtl);
@@ -854,6 +872,7 @@ struct TabKeyboardFixture {
         view->styled = styled;
         view->before = FocusHandleNew(app);
         view->after = FocusHandleNew(app);
+        if (nested) view->nested = FocusHandleNew(app);
         win = TestWindowOpen(app, root, 400, 200);
         TestFocus(win, view->before);
         TestDraw(win);
@@ -861,6 +880,17 @@ struct TabKeyboardFixture {
     }
 
     void Press(const char* keys) { TestSimulateKeystrokes(win, keys); }
+
+    Point TabCenter(int index) const {
+        for (const AccessibilityNode& node : win->accessibility) {
+            if (node.info.role == AccessibilityRole::Tab &&
+                node.info.positionInSet == index + 1) {
+                return {node.bounds.x + node.bounds.w / 2,
+                        node.bounds.y + node.bounds.h / 2};
+            }
+        }
+        return {};
+    }
 
     int FocusedTab() const {
         for (const AccessibilityNode& node : win->accessibility) {
@@ -951,6 +981,41 @@ static void RightToLeftTabsMoveLeftToTheNextLogicalTab() {
     }
 }
 
+// kit/tests/integration/tab_focus.rs: pointer focus, disabled tabs and
+// nested controls, on the same window input path as a native press.
+static void PointerDownFocusesTheRovingTab() {
+    for (bool styled : {false, true}) {
+        TabKeyboardFixture f;
+        f.Open(0, Axis::Horizontal, false, styled);
+        TestFocus(f.win, f.view->before);
+        TestSimulateClick(f.win, f.TabCenter(2));
+        utassert(FocusHandleIsFocused(f.win, f.view->before));
+        utassert(f.view->activationCount == 0);
+
+        Point second = f.TabCenter(1);
+        TestSimulateMouseDown(f.win, second);
+        utassert(f.FocusedTab() == 1);
+        utassert(f.view->selected == 0);
+        TestSimulateMouseUp(f.win, second);
+        utassert(f.view->selected == 1);
+        f.Press("left");
+        utassert(f.FocusedTab() == 0 && f.view->selected == 1);
+        f.Press("space");
+        WindowKeyUp(f.win, KeySpace, false, false, false);
+        utassert(f.view->selected == 0);
+        f.Press("right enter");
+        WindowKeyUp(f.win, KeyReturn, false, false, false);
+        utassert(f.view->selected == 1);
+    }
+    TabKeyboardFixture f;
+    f.Open(0, Axis::Horizontal, false, false, true);
+    TestFocus(f.win, f.view->before);
+    TestSimulateMouseDown(f.win, f.TabCenter(1));
+    utassert(f.view->nestedReceivedDefault);
+    utassert(FocusHandleIsFocused(f.win, f.view->nested));
+    TestSimulateMouseUp(f.win, {390, 180});
+}
+
 void TestTab() {
     TestSuite("tab");
     UnderlineIsTallerThanEveryOtherVariant();
@@ -976,5 +1041,6 @@ void TestTab() {
     ArrowsSkipDisabledTabsAndWrapWithoutActivating();
     ActivatingATabKeepsItsFocusThroughTheSelectionUpdate();
     TabsRoveAlongTheirAxisAndRightToLeftDirection();
+    PointerDownFocusesTheRovingTab();
     RightToLeftTabsMoveLeftToTheNextLogicalTab();
 }

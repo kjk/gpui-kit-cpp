@@ -99,7 +99,8 @@ static void CollectTabCandidates(Window* win, El* list,
             bool disabled = child->accessibility.disabled;
             child->TrackFocus(FocusHandle{id})
                 ->TabStop(false)
-                ->FocusOnPress(!disabled);
+                ->FocusOnPress(false);
+            child->focusOnMouseDownBubble = !disabled;
             VecAppend(state->tabs, TabFocusEntry{id, disabled});
             if (!disabled) {
                 if (win->focusId == id) stops->focused = child;

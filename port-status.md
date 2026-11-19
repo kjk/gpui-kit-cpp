@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `514f243d29b51ec79560e2bb308dea1ece986eea` (2026-11-17,
-editor: Speed up soft wrap for large and non-ASCII documents (#3974)).
-Soft wrap uses validated monospace and Unicode widths, shares scratch buffers
-across lines, preserves shaped fallback for contextual runs, and skips valid
-subtrees on resize. Tab measurement and paint agree near stop boundaries.
+Processed through `453f6d2c3540845de6d7ad5ba731fbd19ef8f435` (2026-11-17,
+tabs: Focus the roving handle on pointer down (#4002)).
+An enabled roving tab claims focus as primary mouse-down bubbles. Nested
+controls can preserve their own focus by preventing the default, and
+controlled selection still changes on activation.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
