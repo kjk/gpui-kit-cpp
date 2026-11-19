@@ -1155,6 +1155,7 @@ static void SelectionUnitExtend(Window* win, float x, float y) {
 
 void WindowSelectionPress(Window* win, float x, float y, int clickCount,
                           bool extend) {
+    if (WindowKeepsTextSelectionAt(win, {x, y})) return;
     if (win && BaseIsTextSelectionSuppressed(win->app)) {
         WindowSelectionClear(win);
         return;
@@ -1298,7 +1299,7 @@ bool TextSelectionIsSelectableAt(Window* win, float x, float y) {
     // A touch handle is not text. The selection object itself may not exist
     // yet: painted runs are the live geometry, and the state is created on
     // the first press.
-    if (!win || WindowSelectionTouchUiContains(win, {x, y})) {
+    if (!win || WindowKeepsTextSelectionAt(win, {x, y})) {
         return false;
     }
     // The default scope is raw 0. -1 would match every scope, including a

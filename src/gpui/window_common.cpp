@@ -2643,6 +2643,17 @@ static void HitChain(Window* win, float x, float y, Vec<int>* out) {
     }
 }
 
+bool WindowKeepsTextSelectionAt(Window* win, Point at) {
+    if (!win) return false;
+    if (WindowSelectionTouchUiContains(win, at)) return true;
+    for (int i = HitLeafAt(win->paint, at.x, at.y); i >= 0;
+         i = win->paint.hits[i].parent) {
+        const HitRect& hit = win->paint.hits[i];
+        if (hit.keepTextSelection && hit.bounds.Contains(at)) return true;
+    }
+    return false;
+}
+
 // Window::dispatch_event: the chain outside-in for the Capture phase, then
 // inside-out for the Bubble phase, stopping wherever a handler said to.
 // `pick` answers the handler an element registered, or an invalid Listener.
@@ -2902,9 +2913,7 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     // Bubble handlers and built-in controls have now had the same chance to
     // suppress that Rust gives them. A press anywhere else starts or clears
     // the window-owned selection.
-    if (!WindowSelectionTouchUiContains(win, {x, y})) {
-        WindowSelectionPress(win, x, y, in.clickCount, in.modifiers.shift);
-    }
+    WindowSelectionPress(win, x, y, in.clickCount, in.modifiers.shift);
     // The click itself is not here: GPUI holds the press and fires on_click
     // from the release, on the element that took both. DispatchMouseUp does
     // that; what the press leaves behind is pressedId and the count.

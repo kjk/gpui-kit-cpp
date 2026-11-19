@@ -3015,6 +3015,7 @@ struct El {
     unsigned int stopMouseDown : 1 = false;
     // The press belongs to a control with selection behavior of its own.
     unsigned int suppressTextSelection : 1 = false;
+    unsigned int keepTextSelection : 1 = false;
     // A descendant Inline reports its laid-out vertical extent to the nearest
     // line-clamped ancestor.
     unsigned int lineSpan : 1 = false;
@@ -3298,6 +3299,8 @@ struct El {
     // cx.stop_propagation() for the click this element takes.
     El* StopClick();
     El* SuppressTextSelection();
+    // Pointer presses on this element keep the selection for its click.
+    El* KeepTextSelection();
     El* OnDrop(Str acceptKind, Listener l);
     // StyleRefinement, applied at layout time rather than as the caller
     // chains: a semantic state — selected, disabled — is meant to win over the
@@ -3672,6 +3675,7 @@ struct HitRect {
     bool stopClick = false;
     bool stopMouseDown = false;
     bool suppressTextSelection = false;
+    bool keepTextSelection = false;
     // PaintCtx::paintLayer when this box was recorded. A popup painted over
     // the page must not pick up the I-beam of selectable text behind it.
     int paintLayer = 0;

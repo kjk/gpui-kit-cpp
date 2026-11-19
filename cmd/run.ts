@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "856f8ebd275b4cb6dfaa21e76047d07c0f58438e",
+  sha: "7ab77b5a10162068dca484e57b940f7a2e005706",
   date: "2026-11-13",
-  subject: "chore: Fix `redundant_clone` lints reported by Rust 1.100 (#3954)",
+  subject: "text_selection: Keep the selection on a press on a control that acts on it (#3951)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

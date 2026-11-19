@@ -2689,6 +2689,67 @@ static void ADragRedrawsOwnedTextBeforeRelease() {
     TestAppFree(app);
 }
 
+struct SelectionControlView {
+    bool keep = true;
+    bool copiedSelection = false;
+    Bounds buttonBounds;
+
+    static void OnClick(SelectionControlView* self, Ctx* cx,
+                        const ClickEvent*) {
+        self->copiedSelection =
+            WindowSelectedIs(cx->win, cx->app, "alpha beta");
+    }
+
+    static El* Render(SelectionControlView* self, Ctx* cx) {
+        El* actions = Div(cx->a)->H(32)->W(140)->Child(
+            Button::New(cx, StrL("selection-action"), false,
+                        Listen(cx, &SelectionControlView::OnClick))
+                ->W(80)
+                ->H(28)
+                ->BoundsOut(&self->buttonBounds));
+        if (self->keep) actions->KeepTextSelection();
+        return Div(cx->a)
+            ->SizeFull()
+            ->FlexCol()
+            ->Child(TextSelectionLayer::New(cx))
+            ->Child(SelectableText::New(cx, StrL("text"), StrL("alpha beta"))
+                        ->Font(16)
+                        ->IntoEl())
+            ->Child(actions);
+    }
+};
+
+// selectable_text.rs a_press_on_an_element_marked_keep_text_selection_keeps_it.
+static void AControlCanKeepTheSelectionForItsClick() {
+    App* app = TestAppNew();
+    auto view = EntityNew<SelectionControlView>(app);
+    Window* win = TestWindowOpen(app, view, 240, 150, 1);
+    auto* state = view.Get(app);
+    auto select = [&] {
+        TestSimulateMouseDown(win, {5, 10}, MouseButton::Left, {}, 3);
+        TestSimulateMouseUp(win, {5, 10}, MouseButton::Left, {}, 3);
+        utassert(WindowSelectedIs(win, app, "alpha beta"));
+    };
+    select();
+    Bounds b = state->buttonBounds;
+    TestSimulateMouseDown(win, {b.CenterX(), b.CenterY()});
+    utassert(WindowSelectedIs(win, app, "alpha beta"));
+    TestSimulateMouseUp(win, {b.CenterX(), b.CenterY()});
+    utassert(state->copiedSelection);
+    TestSimulateClick(win, {110, b.CenterY()});
+    utassert(WindowSelectedIs(win, app, "alpha beta"));
+    TestSimulateClick(win, {200, 100});
+    utassert(WindowSelectedIs(win, app, ""));
+
+    select();
+    state->keep = false;
+    TestDraw(win);
+    TestSimulateClick(win, {b.CenterX(), b.CenterY()});
+    utassert(WindowSelectedIs(win, app, ""));
+    utassert(!state->copiedSelection);
+    TestAppFree(app);
+}
+
 void TestTextSelection() {
     TestSuite("text_selection");
     PaintDoesNotResolveWindowSelectedText();
@@ -2722,6 +2783,7 @@ void TestTextSelection() {
     ADoubleTapOnReadOnlyTextSelectsNothing();
     AMultiClickOffTextTakesNothing();
     AControlPressSuppressesWindowSelection();
+    AControlCanKeepTheSelectionForItsClick();
     SourceParticipantContractsProjectAcrossAWindow();
     FrameSweepDropsOnlyRegistrationsNotRenewed();
     RegistrationPublishesOneParticipantUntilTheFrameEnds();

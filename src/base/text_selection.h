@@ -387,6 +387,7 @@ bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out);
 void WindowSelectionCloseEditMenu(Window* win);
 void WindowSelectionRegisterTouchUi(Window* win, Bounds bounds);
 bool WindowSelectionTouchUiContains(const Window* win, Point at);
+bool WindowKeepsTextSelectionAt(Window* win, Point at);
 
 // The window's selection, made on first use.
 WindowSelection* WindowSelectionOf(Window* win);

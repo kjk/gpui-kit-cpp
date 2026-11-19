@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `856f8ebd275b4cb6dfaa21e76047d07c0f58438e` (2026-11-13,
-chore: Fix `redundant_clone` lints reported by Rust 1.100 (#3954)).
-The Rust changes remove redundant cloning and make one clone test drop the
-original before its assertions. The equivalent C++ paths already use their
-local views or values.
+Processed through `7ab77b5a10162068dca484e57b940f7a2e005706` (2026-11-13,
+text_selection: Keep the selection on a press on a control that acts on it
+(#3951)).
+Let a marked control preserve the selection through a press and its click.
+This build checks the current painted hit chain, so the region follows
+clipping, occlusion and element removal without a retained registry.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

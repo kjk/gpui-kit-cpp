@@ -1945,6 +1945,10 @@ El* El::SuppressTextSelection() {
     suppressTextSelection = true;
     return this;
 }
+El* El::KeepTextSelection() {
+    keepTextSelection = true;
+    return this;
+}
 El* El::OnMouseUpOut(Listener l) {
     onMouseUpOut = l;
     return this;
@@ -8540,7 +8544,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->onMouseDownOut.IsValid() || e->onMouseUpOut.IsValid() ||
         e->onScrollWheel.IsValid() || e->drag.IsValid() ||
         e->onDrop.IsValid() || e->cursor != CursorKind::Arrow || e->slider ||
-        e->stopMouseDown || e->suppressTextSelection || e->scrollMaskAxes;
+        e->stopMouseDown || e->suppressTextSelection || e->keepTextSelection ||
+        e->scrollMaskAxes;
     if (hasHitbox) {
         HitRect hr;
         hr.popupDismissScope = ctx->popupDismissScope;
@@ -8583,6 +8588,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.stopClick = e->stopClick;
         hr.stopMouseDown = e->stopMouseDown;
         hr.suppressTextSelection = e->suppressTextSelection;
+        hr.keepTextSelection = e->keepTextSelection;
         hr.paintLayer = ctx->paintLayer;
         hr.sceneContext = scene::CurrentContext(ctx);
         VecAppend(ctx->hits, hr);
