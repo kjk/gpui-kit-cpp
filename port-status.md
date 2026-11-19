@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1650d9ed0e7b48db7a91ff0bb99e3f759fba8ec0` (2026-11-19,
-button: expose expanded accessibility state (#4035)).
-Add Button::AriaExpanded to expose an optional disclosure state through the
-accessibility tree, independently of the visual Open state.
+Processed through `837ae570e5465c0e9b46e1999e1dc0e2fb232737` (2026-11-19,
+scrollbar: Only drag or jump the track on the primary button (#4038)).
+Preserve scrollbar capture during secondary button releases. The existing non-
+primary press path already dispatches through to content.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

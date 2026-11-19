@@ -1053,7 +1053,38 @@ horizontal_scroll_area_that_fits_bubbles_horizontal_dominant_wheel() {
     EntityDropAll(&app);
 }
 
+// scrollbar.rs only_the_primary_button_drags_or_jumps.
+static void OnlyThePrimaryButtonDragsOrJumps() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<CoveredBar>(app);
+    CoveredBar* self = view.Get(app);
+    self->coverH = 0;
+    Window* win = TestWindowOpen(app, view, 200, 200, 1);
+    const MouseButton otherButtons[] = {MouseButton::Right,
+                                        MouseButton::Middle};
+    const Point thumb = {94, 10};
+    const Point track = {98, 70};
+    for (MouseButton button : otherButtons) {
+        TestSimulateMouseDown(win, thumb, button);
+        utassert(win->scrollDragId == 0);
+        TestSimulateMouseUp(win, thumb, button);
+        TestSimulateMouseDown(win, track, button);
+        TestSimulateMouseUp(win, track, button);
+        utassert(self->y == 0);
+    }
+    TestSimulateMouseDown(win, thumb);
+    utassert(win->scrollDragId == 7);
+    float before = self->y;
+    TestSimulateMouseUp(win, track, MouseButton::Right);
+    utassert(win->scrollDragId == 7 && self->y == before);
+    TestSimulateMouseUp(win, track);
+    utassert(win->scrollDragId == 0 && self->y > 0);
+    TestAppFree(app);
+}
+
 void TestScrollbar() {
+    OnlyThePrimaryButtonDragsOrJumps();
     TestSuite("scrollbar");
     AScrollableFlexItemShrinksBelowItsContent();
     max_height_scrollable_scrolls_to_its_last_row();

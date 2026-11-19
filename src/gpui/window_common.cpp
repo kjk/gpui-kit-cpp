@@ -3017,12 +3017,14 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in,
     // with_unset_drag_pos: the release ends the scrollbar drag wherever it
     // landed. The release itself may carry a final displacement without an
     // intervening move, so invert it before dropping the capture.
-    if (!canceled && (win->scrollDragId || win->scrollDragInput)) {
-        (void)ScrollbarDrag(win, in.x, in.y, true);
+    if (in.button == MouseButton::Left || canceled) {
+        if (!canceled && (win->scrollDragId || win->scrollDragInput)) {
+            (void)ScrollbarDrag(win, in.x, in.y, true);
+        }
+        win->scrollDragId = 0;
+        win->scrollDragGrab = 0;
+        win->scrollDragInput = nullptr;
     }
-    win->scrollDragId = 0;
-    win->scrollDragGrab = 0;
-    win->scrollDragInput = nullptr;
     WindowSelectionRelease(win);
     if (!canceled && win->onMouseUp.IsValid()) {
         ListenerCall(win->app, win, win->onMouseUp, &in);

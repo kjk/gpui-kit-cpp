@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1650d9ed0e7b48db7a91ff0bb99e3f759fba8ec0",
+  sha: "837ae570e5465c0e9b46e1999e1dc0e2fb232737",
   date: "2026-11-19",
-  subject: "button: expose expanded accessibility state (#4035)",
+  subject: "scrollbar: Only drag or jump the track on the primary button (#4038)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",
