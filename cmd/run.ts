@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1820f15730e4205f313364e4297068218d0caeff",
+  sha: "8746b8cb22270abdec5b29d95e69e189a66fb321",
   date: "2026-11-14",
-  subject: "tooltip: Fix switching_tooltips_animates_the_width under GPUI Fast (#3975)",
+  subject: "locales: Add Japanese (ja) (#3976)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

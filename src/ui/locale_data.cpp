@@ -11,61 +11,66 @@ namespace gpui {
 
 namespace component {
 
-extern const char* const kLocaleNames[] = {"en",    "pt-BR", "ru", "zh-CN",
-                                           "zh-HK", "zh-TW", "it", "fr"};
-extern const int kLocaleCount = 8;
+extern const char* const kLocaleNames[] = {
+    "en", "ja", "pt-BR", "ru", "zh-CN", "zh-HK", "zh-TW", "it", "fr"};
+extern const int kLocaleCount = 9;
 
 static const char* const kV_Attachment_Remove[] = {
-    "Remove", "Remover", "Удалить", "移除", "移除", "移除", nullptr, nullptr};
+    "Remove", "削除", "Remover", "Удалить", "移除",
+    "移除",   "移除", nullptr,   nullptr};
 static const char* const kV_Attachment_Retry[] = {
-    "Retry", "Tentar de novo", "Повторить", "重试",
-    "重試",  "重試",           nullptr,     nullptr};
+    "Retry", "再試行", "Tentar de novo", "Повторить", "重试",
+    "重試",  "重試",   nullptr,          nullptr};
 static const char* const kV_Calendar_month_April[] = {
-    "April", "Abril", "Апрель", "四月", "四月", "四月", "Aprile", "Avril"};
+    "April", "4月",  "Abril",  "Апрель", "四月",
+    "四月",  "四月", "Aprile", "Avril"};
 static const char* const kV_Calendar_month_August[] = {
-    "August", "Agosto", "Август", "八月", "八月", "八月", "Agosto", "Août"};
+    "August", "8月",  "Agosto", "Август", "八月",
+    "八月",   "八月", "Agosto", "Août"};
 static const char* const kV_Calendar_month_December[] = {
-    "December", "Dezembro", "Декабрь",  "十二月",
-    "十二月",   "十二月",   "Dicembre", "Décembre"};
+    "December", "12月",   "Dezembro", "Декабрь", "十二月",
+    "十二月",   "十二月", "Dicembre", "Décembre"};
 static const char* const kV_Calendar_month_February[] = {
-    "February", "Fevereiro", "Февраль",  "二月",
-    "二月",     "二月",      "Febbraio", "Février"};
+    "February", "2月",  "Fevereiro", "Февраль", "二月",
+    "二月",     "二月", "Febbraio",  "Février"};
 static const char* const kV_Calendar_month_January[] = {
-    "January", "Janeiro", "Январь",  "一月",
-    "一月",    "一月",    "Gennaio", "Janvier"};
+    "January", "1月",  "Janeiro", "Январь", "一月",
+    "一月",    "一月", "Gennaio", "Janvier"};
 static const char* const kV_Calendar_month_July[] = {
-    "July", "Julho", "Июль", "七月", "七月", "七月", "Luglio", "Juillet"};
+    "July", "7月",  "Julho",  "Июль",   "七月",
+    "七月", "七月", "Luglio", "Juillet"};
 static const char* const kV_Calendar_month_June[] = {
-    "June", "Junho", "Июнь", "六月", "六月", "六月", "Giugno", "Juin"};
+    "June", "6月", "Junho", "Июнь", "六月", "六月", "六月", "Giugno", "Juin"};
 static const char* const kV_Calendar_month_March[] = {
-    "March", "Março", "Март", "三月", "三月", "三月", "Marzo", "Mars"};
+    "March", "3月", "Março", "Март", "三月", "三月", "三月", "Marzo", "Mars"};
 static const char* const kV_Calendar_month_May[] = {
-    "May", "Maio", "Май", "五月", "五月", "五月", "Maggio", "Mai"};
+    "May", "5月", "Maio", "Май", "五月", "五月", "五月", "Maggio", "Mai"};
 static const char* const kV_Calendar_month_November[] = {
-    "November", "Novembro", "Ноябрь",   "十一月",
-    "十一月",   "十一月",   "Novembre", "Novembre"};
+    "November", "11月",   "Novembro", "Ноябрь",  "十一月",
+    "十一月",   "十一月", "Novembre", "Novembre"};
 static const char* const kV_Calendar_month_October[] = {
-    "October", "Outubro", "Октябрь", "十月",
-    "十月",    "十月",    "Ottobre", "Octobre"};
+    "October", "10月", "Outubro", "Октябрь", "十月",
+    "十月",    "十月", "Ottobre", "Octobre"};
 static const char* const kV_Calendar_month_September[] = {
-    "September", "Setembro", "Сентябрь",  "九月",
-    "九月",      "九月",     "Settembre", "Septembre"};
-static const char* const kV_Calendar_week_0[] = {"Su", "Do", "Вс", "日",
+    "September", "9月",  "Setembro",  "Сентябрь", "九月",
+    "九月",      "九月", "Settembre", "Septembre"};
+static const char* const kV_Calendar_week_0[] = {"Su", "日", "Do", "Вс", "日",
                                                  "日", "日", "Do", "Di"};
-static const char* const kV_Calendar_week_1[] = {"Mo", "Se", "Пн", "一",
+static const char* const kV_Calendar_week_1[] = {"Mo", "月", "Se", "Пн", "一",
                                                  "一", "一", "Lu", "Lu"};
-static const char* const kV_Calendar_week_2[] = {"Tu", "Te", "Вт", "二",
+static const char* const kV_Calendar_week_2[] = {"Tu", "火", "Te", "Вт", "二",
                                                  "二", "二", "Ma", "Ma"};
-static const char* const kV_Calendar_week_3[] = {"We", "Qa", "Ср", "三",
+static const char* const kV_Calendar_week_3[] = {"We", "水", "Qa", "Ср", "三",
                                                  "三", "三", "Me", "Me"};
-static const char* const kV_Calendar_week_4[] = {"Th", "Qi", "Чт", "四",
+static const char* const kV_Calendar_week_4[] = {"Th", "木", "Qi", "Чт", "四",
                                                  "四", "四", "Gi", "Je"};
-static const char* const kV_Calendar_week_5[] = {"Fr", "Sx", "Пт", "五",
+static const char* const kV_Calendar_week_5[] = {"Fr", "金", "Sx", "Пт", "五",
                                                  "五", "五", "Ve", "Ve"};
-static const char* const kV_Calendar_week_6[] = {"Sa", "Sá", "Сб", "六",
+static const char* const kV_Calendar_week_6[] = {"Sa", "土", "Sá", "Сб", "六",
                                                  "六", "六", "Sa", "Sa"};
 static const char* const kV_Carousel_go_to_slide[] = {
     "Go to slide %{current}",
+    "スライド %{current} へ移動",
     "Ir para o slide %{current}",
     "Перейти к слайду %{current}",
     "前往第 %{current} 张",
@@ -74,25 +79,29 @@ static const char* const kV_Carousel_go_to_slide[] = {
     nullptr,
     nullptr};
 static const char* const kV_Carousel_label[] = {
-    "Carousel", "Carrossel", "Карусель", "轮播",
-    "輪播",     "輪播",      nullptr,    nullptr};
+    "Carousel", "カルーセル", "Carrossel", "Карусель", "轮播",
+    "輪播",     "輪播",       nullptr,     nullptr};
 static const char* const kV_Carousel_next[] = {
-    "Next slide", "Próximo slide", "Следующий слайд", "下一张",
-    "下一張",     "下一張",        nullptr,           nullptr};
-static const char* const kV_Carousel_pagination[] = {"Carousel pagination",
-                                                     "Páginas do carrossel",
-                                                     "Страницы карусели",
-                                                     "轮播分页",
-                                                     "輪播分頁",
-                                                     "輪播分頁",
-                                                     nullptr,
-                                                     nullptr};
+    "Next slide",      "次のスライド", "Próximo slide",
+    "Следующий слайд", "下一张",       "下一張",
+    "下一張",          nullptr,        nullptr};
+static const char* const kV_Carousel_pagination[] = {
+    "Carousel pagination",
+    "カルーセルのページネーション",
+    "Páginas do carrossel",
+    "Страницы карусели",
+    "轮播分页",
+    "輪播分頁",
+    "輪播分頁",
+    nullptr,
+    nullptr};
 static const char* const kV_Carousel_previous[] = {
-    "Previous slide", "Slide anterior", "Предыдущий слайд",
-    "上一张",         "上一張",         "上一張",
-    nullptr,          nullptr};
+    "Previous slide",   "前のスライド", "Slide anterior",
+    "Предыдущий слайд", "上一张",       "上一張",
+    "上一張",           nullptr,        nullptr};
 static const char* const kV_Carousel_slide[] = {
     "Slide %{current} of %{total}",
+    "スライド %{current}/%{total}",
     "Slide %{current} de %{total}",
     "Слайд %{current} из %{total}",
     "第 %{current} 张，共 %{total} 张",
@@ -100,41 +109,47 @@ static const char* const kV_Carousel_slide[] = {
     "第 %{current} 張，共 %{total} 張",
     nullptr,
     nullptr};
-static const char* const kV_Chart_close[] = {"Close", "Fechamento", "Закрытие",
-                                             "收盘",  "收市",       "收盤",
-                                             nullptr, nullptr};
-static const char* const kV_Chart_high[] = {
-    "High", "Máxima", "Максимум", "最高", "最高", "最高", nullptr, nullptr};
-static const char* const kV_Chart_low[] = {
-    "Low", "Mínima", "Минимум", "最低", "最低", "最低", nullptr, nullptr};
-static const char* const kV_Chart_open[] = {
-    "Open", "Abertura", "Открытие", "开盘", "開市", "開盤", nullptr, nullptr};
+static const char* const kV_Chart_close[] = {"Close",    "終値",  "Fechamento",
+                                             "Закрытие", "收盘",  "收市",
+                                             "收盤",     nullptr, nullptr};
+static const char* const kV_Chart_high[] = {"High",     "高値",  "Máxima",
+                                            "Максимум", "最高",  "最高",
+                                            "最高",     nullptr, nullptr};
+static const char* const kV_Chart_low[] = {"Low",     "安値",  "Mínima",
+                                           "Минимум", "最低",  "最低",
+                                           "最低",    nullptr, nullptr};
+static const char* const kV_Chart_open[] = {"Open",     "始値",  "Abertura",
+                                            "Открытие", "开盘",  "開市",
+                                            "開盤",     nullptr, nullptr};
 static const char* const kV_ColorPicker_Alpha[] = {
-    "Alpha",  "Opacidade", "Непрозрачность", "透明度",
-    "透明度", "透明度",    "Alfa",           nullptr};
+    "Alpha",  "アルファ", "Opacidade", "Непрозрачность", "透明度",
+    "透明度", "透明度",   "Alfa",      nullptr};
 static const char* const kV_ColorPicker_HSLA[] = {
-    "HSLA", "HSLA", "HSLA", "HSLA", "HSLA", "HSLA", "HSLA", nullptr};
+    "HSLA", "HSLA", "HSLA", "HSLA", "HSLA", "HSLA", "HSLA", "HSLA", nullptr};
 static const char* const kV_ColorPicker_Hue[] = {
-    "Hue", "Matiz", "Оттенок", "色相", "色相", "色相", "Tonalità", nullptr};
+    "Hue",  "色相", "Matiz",    "Оттенок", "色相",
+    "色相", "色相", "Tonalità", nullptr};
 static const char* const kV_ColorPicker_Lightness[] = {
-    "Lightness", "Luminosidade", "Светлота",   "亮度",
-    "亮度",      "亮度",         "Luminosità", nullptr};
+    "Lightness", "明度", "Luminosidade", "Светлота", "亮度",
+    "亮度",      "亮度", "Luminosità",   nullptr};
 static const char* const kV_ColorPicker_Palette[] = {
-    "Palette", "Paleta", "Палитра",   "调色板",
-    "調色板",  "調色盤", "Tavolozza", nullptr};
+    "Palette", "パレット", "Paleta",    "Палитра", "调色板",
+    "調色板",  "調色盤",   "Tavolozza", nullptr};
 static const char* const kV_ColorPicker_Saturation[] = {
-    "Saturation", "Saturação", "Насыщенность", "饱和度",
-    "飽和度",     "飽和度",    "Saturazione",  nullptr};
+    "Saturation", "彩度",   "Saturação",   "Насыщенность", "饱和度",
+    "飽和度",     "飽和度", "Saturazione", nullptr};
 static const char* const kV_ComboBox_empty[] = {
-    "No results", "Nada encontrado", "Ничего не найдено", "暂无数据",
-    "暫無數據",   "沒有結果",        "Nessun risultato",  nullptr};
+    "No results",        "結果はありません", "Nada encontrado",
+    "Ничего не найдено", "暂无数据",         "暫無數據",
+    "沒有結果",          "Nessun risultato", nullptr};
 static const char* const kV_ComboBox_placeholder[] = {
-    "Please select", "Escolha", "Выберите",  "请选择",
-    "請選擇",        "請選擇",  "Seleziona", nullptr};
+    "Please select", "選択してください", "Escolha",   "Выберите", "请选择",
+    "請選擇",        "請選擇",           "Seleziona", nullptr};
 static const char* const kV_ComboBox_search_placeholder[] = {
-    "Search...", "Buscar…", "Поиск…",   "搜索...",
+    "Search...", "検索...", "Buscar…",  "Поиск…", "搜索...",
     "搜索...",   "搜尋...", "Cerca...", nullptr};
 static const char* const kV_Command_empty[] = {"No results found.",
+                                               "結果はありません。",
                                                "Nada encontrado.",
                                                "Ничего не найдено.",
                                                "未找到结果。",
@@ -144,6 +159,7 @@ static const char* const kV_Command_empty[] = {"No results found.",
                                                nullptr};
 static const char* const kV_Command_placeholder[] = {
     "Type a command or search...",
+    "コマンドを入力、または検索...",
     "Digite um comando ou busque…",
     "Введите команду или запрос…",
     "输入命令或搜索...",
@@ -152,23 +168,31 @@ static const char* const kV_Command_placeholder[] = {
     "Digita un comando o cerca...",
     nullptr};
 static const char* const kV_DatePicker_placeholder[] = {
-    "Select date",    "Escolha uma data",
-    "Выберите дату",  "选择日期",
-    "選擇日期",       "選取日期",
-    "Seleziona data", "Sélectionner une date"};
+    "Select date",   "日付を選択",     "Escolha uma data",
+    "Выберите дату", "选择日期",       "選擇日期",
+    "選取日期",      "Seleziona data", "Sélectionner une date"};
 static const char* const kV_DatePicker_time[] = {
-    "Time", "Hora", "Время", "时间", "時間", nullptr, nullptr, nullptr};
+    "Time", "時刻", "Hora", "Время", "时间", "時間", nullptr, nullptr, nullptr};
 static const char* const kV_Dialog_cancel[] = {
-    "Cancel", "Cancelar", "Отмена", "取消", "取消", "取消", "Annulla", nullptr};
-static const char* const kV_Dialog_ok[] = {"OK",   "OK",   "ОК", "确定",
+    "Cancel", "キャンセル", "Cancelar", "Отмена", "取消",
+    "取消",   "取消",       "Annulla",  nullptr};
+static const char* const kV_Dialog_ok[] = {"OK",   "OK",   "OK", "ОК",   "确定",
                                            "確定", "確定", "OK", nullptr};
 static const char* const kV_Diff_AcceptBoth[] = {
-    "Accept Both",  "Aceitar as duas", "Принять оба", "保留双方更改",
-    "保留雙方變更", nullptr,           nullptr,       nullptr};
-static const char* const kV_Diff_AcceptCurrent[] = {
-    "Accept Current", "Aceitar a atual", "Принять текущее", "采用当前更改",
-    "採用目前變更",   nullptr,           nullptr,           nullptr};
+    "Accept Both",  "両方の変更を取り込む", "Aceitar as duas", "Принять оба",
+    "保留双方更改", "保留雙方變更",         nullptr,           nullptr,
+    nullptr};
+static const char* const kV_Diff_AcceptCurrent[] = {"Accept Current",
+                                                    "現在の変更を取り込む",
+                                                    "Aceitar a atual",
+                                                    "Принять текущее",
+                                                    "采用当前更改",
+                                                    "採用目前變更",
+                                                    nullptr,
+                                                    nullptr,
+                                                    nullptr};
 static const char* const kV_Diff_AcceptIncoming[] = {"Accept Incoming",
+                                                     "入力側の変更を取り込む",
                                                      "Aceitar a que chega",
                                                      "Принять входящее",
                                                      "采用传入的更改",
@@ -177,6 +201,7 @@ static const char* const kV_Diff_AcceptIncoming[] = {"Accept Incoming",
                                                      nullptr,
                                                      nullptr};
 static const char* const kV_Diff_AcceptedBoth[] = {"Accepted both changes",
+                                                   "両方の変更を取り込みました",
                                                    "As duas aceitas",
                                                    "Приняты оба изменения",
                                                    "已保留双方更改",
@@ -186,6 +211,7 @@ static const char* const kV_Diff_AcceptedBoth[] = {"Accepted both changes",
                                                    nullptr};
 static const char* const kV_Diff_AcceptedCurrent[] = {
     "Accepted current change",
+    "現在の変更を取り込みました",
     "Atual aceita",
     "Принято текущее изменение",
     "已采用当前更改",
@@ -195,6 +221,7 @@ static const char* const kV_Diff_AcceptedCurrent[] = {
     nullptr};
 static const char* const kV_Diff_AcceptedIncoming[] = {
     "Accepted incoming change",
+    "入力側の変更を取り込みました",
     "A que chega foi aceita",
     "Принято входящее изменение",
     "已采用传入的更改",
@@ -204,6 +231,7 @@ static const char* const kV_Diff_AcceptedIncoming[] = {
     nullptr};
 static const char* const kV_Diff_AddAnnotation[] = {
     "Add annotation to line %{line}",
+    "%{line} 行目に注釈を追加",
     "Anotar a linha %{line}",
     "Добавить примечание к строке %{line}",
     "为第 %{line} 行添加批注",
@@ -212,10 +240,12 @@ static const char* const kV_Diff_AddAnnotation[] = {
     nullptr,
     nullptr};
 static const char* const kV_Diff_AddedFile[] = {
-    "Added file", "Arquivo novo", "Файл добавлен", "新增文件",
-    "新增檔案",   nullptr,        nullptr,         nullptr};
+    "Added file", "追加されたファイル", "Arquivo novo", "Файл добавлен",
+    "新增文件",   "新增檔案",           nullptr,        nullptr,
+    nullptr};
 static const char* const kV_Diff_AddedLine[] = {
     "%{side} line %{line}, added",
+    "%{side} %{line} 行目、追加",
     "%{side} linha %{line}, adicionada",
     "%{side} строка %{line}, добавлена",
     "%{side}第 %{line} 行，新增",
@@ -224,17 +254,21 @@ static const char* const kV_Diff_AddedLine[] = {
     nullptr,
     nullptr};
 static const char* const kV_Diff_BaseChange[] = {
-    "Common ancestor", "Ancestral comum", "Общий предок", "共同祖先",
-    "共同祖先",        nullptr,           nullptr,        nullptr};
-static const char* const kV_Diff_BinaryChanges[] = {"Binary file changed",
-                                                    "Arquivo binário alterado",
-                                                    "Двоичный файл изменён",
-                                                    "二进制文件已变更",
-                                                    "二進位檔案已變更",
-                                                    nullptr,
-                                                    nullptr,
-                                                    nullptr};
+    "Common ancestor", "共通の祖先", "Ancestral comum",
+    "Общий предок",    "共同祖先",   "共同祖先",
+    nullptr,           nullptr,      nullptr};
+static const char* const kV_Diff_BinaryChanges[] = {
+    "Binary file changed",
+    "バイナリ ファイルが変更されました",
+    "Arquivo binário alterado",
+    "Двоичный файл изменён",
+    "二进制文件已变更",
+    "二進位檔案已變更",
+    nullptr,
+    nullptr,
+    nullptr};
 static const char* const kV_Diff_CollapseFile[] = {"Collapse %{name}",
+                                                   "%{name} を折りたたむ",
                                                    "Recolher %{name}",
                                                    "Свернуть %{name}",
                                                    "收起 %{name}",
@@ -243,27 +277,25 @@ static const char* const kV_Diff_CollapseFile[] = {"Collapse %{name}",
                                                    nullptr,
                                                    nullptr};
 static const char* const kV_Diff_ConflictedFile[] = {
-    "Conflicts", "Conflitos", "Конфликты", "有冲突",
-    "有衝突",    nullptr,     nullptr,     nullptr};
+    "Conflicts", "競合",  "Conflitos", "Конфликты", "有冲突",
+    "有衝突",    nullptr, nullptr,     nullptr};
 static const char* const kV_Diff_CopiedFile[] = {
-    "Copied", "Copiado", "Скопирован", "已复制",
-    "已複製", nullptr,   nullptr,      nullptr};
-static const char* const kV_Diff_CurrentChange[] = {"Current change",
-                                                    "Alteração atual",
-                                                    "Текущее изменение",
-                                                    "当前更改",
-                                                    "目前變更",
-                                                    nullptr,
-                                                    nullptr,
-                                                    nullptr};
+    "Copied", "コピー済み", "Copiado", "Скопирован", "已复制",
+    "已複製", nullptr,      nullptr,   nullptr};
+static const char* const kV_Diff_CurrentChange[] = {
+    "Current change", "現在の変更", "Alteração atual", "Текущее изменение",
+    "当前更改",       "目前變更",   nullptr,           nullptr,
+    nullptr};
 static const char* const kV_Diff_DeletedFile[] = {
-    "Deleted file", "Arquivo apagado", "Файл удалён", "已删除文件",
-    "已刪除檔案",   nullptr,           nullptr,       nullptr};
+    "Deleted file", "削除されたファイル", "Arquivo apagado", "Файл удалён",
+    "已删除文件",   "已刪除檔案",         nullptr,           nullptr,
+    nullptr};
 static const char* const kV_Diff_EmptyFile[] = {
-    "Empty file", "Arquivo vazio", "Пустой файл", "空文件",
-    "空檔案",     nullptr,         nullptr,       nullptr};
+    "Empty file", "空のファイル", "Arquivo vazio", "Пустой файл", "空文件",
+    "空檔案",     nullptr,        nullptr,         nullptr};
 static const char* const kV_Diff_ExpandAbove[] = {
     "Show %{count} lines above",
+    "上の %{count} 行を表示",
     "Mostrar %{count} linhas acima",
     "Показать строки выше: %{count}",
     "显示上方 %{count} 行",
@@ -273,6 +305,7 @@ static const char* const kV_Diff_ExpandAbove[] = {
     nullptr};
 static const char* const kV_Diff_ExpandBelow[] = {
     "Show %{count} lines below",
+    "下の %{count} 行を表示",
     "Mostrar %{count} linhas abaixo",
     "Показать строки ниже: %{count}",
     "显示下方 %{count} 行",
@@ -281,6 +314,7 @@ static const char* const kV_Diff_ExpandBelow[] = {
     nullptr,
     nullptr};
 static const char* const kV_Diff_ExpandFile[] = {"Expand %{name}",
+                                                 "%{name} を展開",
                                                  "Expandir %{name}",
                                                  "Развернуть %{name}",
                                                  "展开 %{name}",
@@ -290,6 +324,7 @@ static const char* const kV_Diff_ExpandFile[] = {"Expand %{name}",
                                                  nullptr};
 static const char* const kV_Diff_ExpandLines[] = {
     "Expand %{count} unchanged lines",
+    "変更されていない %{count} 行を展開",
     "Expandir %{count} linhas sem mudança",
     "Развернуть неизменённые строки: %{count}",
     "展开 %{count} 行未变更内容",
@@ -299,6 +334,7 @@ static const char* const kV_Diff_ExpandLines[] = {
     nullptr};
 static const char* const kV_Diff_HiddenLines[] = {
     "%{count} lines not in patch",
+    "パッチに含まれない %{count} 行",
     "%{count} linhas fora do patch",
     "Строк вне патча: %{count}",
     "patch 中未包含 %{count} 行",
@@ -307,6 +343,7 @@ static const char* const kV_Diff_HiddenLines[] = {
     nullptr,
     nullptr};
 static const char* const kV_Diff_IncomingChange[] = {"Incoming change",
+                                                     "入力側の変更",
                                                      "Alteração que chega",
                                                      "Входящее изменение",
                                                      "传入的更改",
@@ -315,13 +352,14 @@ static const char* const kV_Diff_IncomingChange[] = {"Incoming change",
                                                      nullptr,
                                                      nullptr};
 static const char* const kV_Diff_Modified[] = {
-    "Modified", "Alterado", "Изменённая", "新版",
-    "新版",     nullptr,    nullptr,      nullptr};
+    "Modified", "変更済み", "Alterado", "Изменённая", "新版",
+    "新版",     nullptr,    nullptr,    nullptr};
 static const char* const kV_Diff_NoChanges[] = {
-    "No changes", "Sem alterações", "Изменений нет", "没有变更",
-    "沒有變更",   nullptr,          nullptr,         nullptr};
+    "No changes", "変更なし", "Sem alterações", "Изменений нет", "没有变更",
+    "沒有變更",   nullptr,    nullptr,          nullptr};
 static const char* const kV_Diff_NoNewline[] = {
     "No newline at end of file",
+    "ファイル末尾に改行がありません",
     "Sem quebra de linha no fim do arquivo",
     "Нет перевода строки в конце файла",
     "文件末尾没有换行",
@@ -331,6 +369,7 @@ static const char* const kV_Diff_NoNewline[] = {
     nullptr};
 static const char* const kV_Diff_NoTextChanges[] = {
     "No text changes in this patch",
+    "このパッチにはテキストの変更がありません",
     "Nenhuma mudança de texto neste patch",
     "В этом патче нет изменений текста",
     "此 patch 没有文本变更",
@@ -339,10 +378,11 @@ static const char* const kV_Diff_NoTextChanges[] = {
     nullptr,
     nullptr};
 static const char* const kV_Diff_Original[] = {
-    "Original", "Original", "Исходная", "原版",
-    "原版",     nullptr,    nullptr,    nullptr};
+    "Original", "オリジナル", "Original", "Исходная", "原版",
+    "原版",     nullptr,      nullptr,    nullptr};
 static const char* const kV_Diff_RemovedLine[] = {
     "%{side} line %{line}, removed",
+    "%{side} %{line} 行目、削除",
     "%{side} linha %{line}, removida",
     "%{side} строка %{line}, удалена",
     "%{side}第 %{line} 行，删除",
@@ -351,10 +391,11 @@ static const char* const kV_Diff_RemovedLine[] = {
     nullptr,
     nullptr};
 static const char* const kV_Diff_RenamedFile[] = {
-    "Renamed",    "Renomeado", "Переименован", "已重命名",
-    "已重新命名", nullptr,     nullptr,        nullptr};
+    "Renamed",    "名前変更済み", "Renomeado", "Переименован", "已重命名",
+    "已重新命名", nullptr,        nullptr,     nullptr};
 static const char* const kV_Diff_SelectLine[] = {
     "Select %{side} line %{line}",
+    "%{side} %{line} 行目を選択",
     "Selecionar %{side} linha %{line}",
     "Выбрать: %{side} строка %{line}",
     "选择%{side}第 %{line} 行",
@@ -363,6 +404,7 @@ static const char* const kV_Diff_SelectLine[] = {
     nullptr,
     nullptr};
 static const char* const kV_Diff_SourceLine[] = {"%{side} line %{line}",
+                                                 "%{side} %{line} 行目",
                                                  "%{side} linha %{line}",
                                                  "%{side} строка %{line}",
                                                  "%{side}第 %{line} 行",
@@ -372,6 +414,7 @@ static const char* const kV_Diff_SourceLine[] = {"%{side} line %{line}",
                                                  nullptr};
 static const char* const kV_Diff_UnchangedLines[] = {
     "%{count} unchanged lines",
+    "変更されていない %{count} 行",
     "%{count} linhas sem mudança",
     "Неизменённых строк: %{count}",
     "%{count} 行未变更内容",
@@ -380,8 +423,10 @@ static const char* const kV_Diff_UnchangedLines[] = {
     nullptr,
     nullptr};
 static const char* const kV_Diff_UndoResolution[] = {
-    "Undo", "Desfazer", "Отменить", "撤销", "復原", nullptr, nullptr, nullptr};
+    "Undo", "元に戻す", "Desfazer", "Отменить", "撤销",
+    "復原", nullptr,    nullptr,    nullptr};
 static const char* const kV_Diff_Viewer[] = {"Diff for %{name}",
+                                             "%{name} の差分",
                                              "Diff de %{name}",
                                              "Изменения в %{name}",
                                              "%{name} 的差异",
@@ -391,6 +436,7 @@ static const char* const kV_Diff_Viewer[] = {"Diff for %{name}",
                                              nullptr};
 static const char* const kV_Diff_ViewerFiles[] = {
     "Diff for %{count} files",
+    "%{count} 個のファイルの差分",
     "Diff de %{count} arquivos",
     "Изменения в файлах: %{count}",
     "%{count} 个文件的差异",
@@ -398,16 +444,18 @@ static const char* const kV_Diff_ViewerFiles[] = {
     nullptr,
     nullptr,
     nullptr};
-static const char* const kV_Dock_Close[] = {
-    "Close", "Fechar", "Закрыть", "关闭", "關閉", "關閉", "Chiudi", nullptr};
+static const char* const kV_Dock_Close[] = {"Close",   "閉じる", "Fechar",
+                                            "Закрыть", "关闭",   "關閉",
+                                            "關閉",    "Chiudi", nullptr};
 static const char* const kV_Dock_Collapse[] = {
-    "Collapse", "Recolher", "Свернуть", "隐藏",
-    "隱藏",     "收合",     "Nascondi", nullptr};
+    "Collapse", "折りたたむ", "Recolher", "Свернуть", "隐藏",
+    "隱藏",     "收合",       "Nascondi", nullptr};
 static const char* const kV_Dock_Expand[] = {
-    "Expand", "Expandir", "Развернуть", "展开",
-    "展開",   "展開",     "Espandi",    nullptr};
+    "Expand", "展開", "Expandir", "Развернуть", "展开",
+    "展開",   "展開", "Espandi",  nullptr};
 static const char* const kV_Dock_Unavailable_Panel[] = {
     "This panel isn’t available in this version.",
+    "このパネルはこのバージョンでは利用できません。",
     "Este painel não está disponível nesta versão.",
     "Эта панель недоступна в текущей версии.",
     "当前版本无法显示该面板。",
@@ -416,27 +464,32 @@ static const char* const kV_Dock_Unavailable_Panel[] = {
     "Questo pannello non è disponibile in questa versione.",
     nullptr};
 static const char* const kV_Dock_Unnamed[] = {
-    "Unnamed", "Sem nome", "Без названия", "未命名",
-    "未命名",  "未命名",   "Senza nome",   nullptr};
-static const char* const kV_Dock_Zoom_In[] = {"Zoom In", "Ampliar", "Увеличить",
-                                              "放大",    "放大",    "放大",
-                                              "Zoom In", nullptr};
+    "Unnamed", "名前なし", "Sem nome",   "Без названия", "未命名",
+    "未命名",  "未命名",   "Senza nome", nullptr};
+static const char* const kV_Dock_Zoom_In[] = {"Zoom In",   "最大化",  "Ampliar",
+                                              "Увеличить", "放大",    "放大",
+                                              "放大",      "Zoom In", nullptr};
 static const char* const kV_Dock_Zoom_Out[] = {
-    "Zoom Out", "Reduzir", "Уменьшить", "缩小",
-    "縮小",     "縮小",    "Zoom Out",  nullptr};
+    "Zoom Out", "最大化解除", "Reduzir",  "Уменьшить", "缩小",
+    "縮小",     "縮小",       "Zoom Out", nullptr};
 static const char* const kV_DropdownButton_more_options[] = {
-    "More options", "Mais opções", "Другие действия", "更多选项",
-    "更多選項",     "更多選項",    nullptr,           nullptr};
-static const char* const kV_Input_Clear[] = {
-    "Clear", "Limpar", "Очистить", "清除", "清除", "清除", nullptr, nullptr};
-static const char* const kV_Input_Copy[] = {
-    "Copy", "Copiar", "Скопировать", "复制", "複製", "複製", nullptr, nullptr};
-static const char* const kV_Input_Cut[] = {
-    "Cut", "Recortar", "Вырезать", "剪切", "剪切", "剪下", nullptr, nullptr};
+    "More options", "その他のオプション", "Mais opções", "Другие действия",
+    "更多选项",     "更多選項",           "更多選項",    nullptr,
+    nullptr};
+static const char* const kV_Input_Clear[] = {"Clear",    "クリア", "Limpar",
+                                             "Очистить", "清除",   "清除",
+                                             "清除",     nullptr,  nullptr};
+static const char* const kV_Input_Copy[] = {"Copy",        "コピー", "Copiar",
+                                            "Скопировать", "复制",   "複製",
+                                            "複製",        nullptr,  nullptr};
+static const char* const kV_Input_Cut[] = {"Cut",      "切り取り", "Recortar",
+                                           "Вырезать", "剪切",     "剪切",
+                                           "剪下",     nullptr,    nullptr};
 static const char* const kV_Input_Decrement[] = {
-    "Decrement", "Diminuir", "Уменьшить", "减少",
-    "減少",      "減少",     nullptr,     nullptr};
+    "Decrement", "減らす", "Diminuir", "Уменьшить", "减少",
+    "減少",      "減少",   nullptr,    nullptr};
 static const char* const kV_Input_Go_to_Definition[] = {"Go to Definition",
+                                                        "定義へ移動",
                                                         "Ir para a definição",
                                                         "Перейти к определению",
                                                         "跳转到定义",
@@ -445,24 +498,27 @@ static const char* const kV_Input_Go_to_Definition[] = {"Go to Definition",
                                                         nullptr,
                                                         nullptr};
 static const char* const kV_Input_Hide_Password[] = {
-    "Hide password", "Esconder senha", "Скрыть пароль", "隐藏密码",
-    "隱藏密碼",      "隱藏密碼",       nullptr,         nullptr};
+    "Hide password", "パスワードを非表示", "Esconder senha", "Скрыть пароль",
+    "隐藏密码",      "隱藏密碼",           "隱藏密碼",       nullptr,
+    nullptr};
 static const char* const kV_Input_Increment[] = {
-    "Increment", "Aumentar", "Увеличить", "增加",
-    "增加",      "增加",     nullptr,     nullptr};
-static const char* const kV_Input_Paste[] = {
-    "Paste", "Colar", "Вставить", "粘贴", "貼上", "貼上", nullptr, nullptr};
+    "Increment", "増やす", "Aumentar", "Увеличить", "增加",
+    "增加",      "增加",   nullptr,    nullptr};
+static const char* const kV_Input_Paste[] = {"Paste",    "貼り付け", "Colar",
+                                             "Вставить", "粘贴",     "貼上",
+                                             "貼上",     nullptr,    nullptr};
 static const char* const kV_Input_Replace[] = {
-    "Replace", "Substituir", "Заменить", "替换",
-    "替換",    "取代",       nullptr,    nullptr};
+    "Replace", "置換", "Substituir", "Заменить", "替换",
+    "替換",    "取代", nullptr,      nullptr};
 static const char* const kV_Input_Replace_All[] = {
-    "Replace All", "Substituir tudo", "Заменить все", "全部替换",
-    "全部替換",    "全部取代",        nullptr,        nullptr};
+    "Replace All", "すべて置換", "Substituir tudo", "Заменить все", "全部替换",
+    "全部替換",    "全部取代",   nullptr,           nullptr};
 static const char* const kV_Input_Select_All[] = {
-    "Select All", "Selecionar tudo", "Выбрать все", "全选", "全選",
-    "全選",       nullptr,           nullptr};
+    "Select All", "すべて選択", "Selecionar tudo", "Выбрать все", "全选",
+    "全選",       "全選",       nullptr,           nullptr};
 static const char* const kV_Input_Show_Code_Actions[] = {
     "Show Code Actions",
+    "コード アクションの表示",
     "Mostrar ações de código",
     "Показать действия с кодом",
     "显示代码操作",
@@ -471,19 +527,21 @@ static const char* const kV_Input_Show_Code_Actions[] = {
     nullptr,
     nullptr};
 static const char* const kV_Input_Show_Password[] = {
-    "Show password", "Mostrar senha", "Показать пароль", "显示密码",
-    "顯示密碼",      "顯示密碼",      nullptr,           nullptr};
+    "Show password", "パスワードを表示", "Mostrar senha", "Показать пароль",
+    "显示密码",      "顯示密碼",         "顯示密碼",      nullptr,
+    nullptr};
 static const char* const kV_List_search_placeholder[] = {
-    "Search...", "Buscar…", "Поиск…",     "搜索...",
+    "Search...", "検索...", "Buscar…",    "Поиск…", "搜索...",
     "搜索...",   "搜尋...", "Ricerca...", nullptr};
-static const char* const kV_Pagination_next[] = {"Next",   "Próxima", "Вперёд",
-                                                 "下一页", "下一頁",  "下一頁",
-                                                 nullptr,  nullptr};
+static const char* const kV_Pagination_next[] = {"Next",   "次へ",   "Próxima",
+                                                 "Вперёд", "下一页", "下一頁",
+                                                 "下一頁", nullptr,  nullptr};
 static const char* const kV_Pagination_previous[] = {
-    "Previous", "Anterior", "Назад", "上一页",
-    "上一頁",   "上一頁",   nullptr, nullptr};
+    "Previous", "前へ",   "Anterior", "Назад", "上一页",
+    "上一頁",   "上一頁", nullptr,    nullptr};
 static const char* const kV_Questionnaire_error_optional[] = {
     "Choose an answer or skip this question.",
+    "回答を選択するか、この質問をスキップしてください。",
     "Escolha uma resposta ou pule esta pergunta.",
     "Выберите ответ или пропустите этот вопрос.",
     "请选择一个答案，或跳过此题。",
@@ -493,6 +551,7 @@ static const char* const kV_Questionnaire_error_optional[] = {
     nullptr};
 static const char* const kV_Questionnaire_error_required[] = {
     "Choose an answer to continue.",
+    "続行するには回答を選択してください。",
     "Escolha uma resposta para continuar.",
     "Выберите ответ, чтобы продолжить.",
     "请选择一个答案后继续。",
@@ -501,12 +560,14 @@ static const char* const kV_Questionnaire_error_required[] = {
     nullptr,
     nullptr};
 static const char* const kV_Questionnaire_next[] = {
-    "Next", "Próxima", "Далее", "下一题", "下一題", "下一題", nullptr, nullptr};
+    "Next",   "次へ",   "Próxima", "Далее", "下一题",
+    "下一題", "下一題", nullptr,   nullptr};
 static const char* const kV_Questionnaire_previous[] = {
-    "Previous", "Anterior", "Назад", "上一题",
-    "上一題",   "上一題",   nullptr, nullptr};
+    "Previous", "前へ",   "Anterior", "Назад", "上一题",
+    "上一題",   "上一題", nullptr,    nullptr};
 static const char* const kV_Questionnaire_progress[] = {
     "Question %{current} of %{total}",
+    "質問 %{current}/%{total}",
     "Pergunta %{current} de %{total}",
     "Вопрос %{current} из %{total}",
     "第 %{current} 题，共 %{total} 题",
@@ -515,17 +576,20 @@ static const char* const kV_Questionnaire_progress[] = {
     nullptr,
     nullptr};
 static const char* const kV_Questionnaire_skip[] = {
-    "Skip", "Pular", "Пропустить", "跳过", "跳過", "跳過", nullptr, nullptr};
+    "Skip", "スキップ", "Pular", "Пропустить", "跳过",
+    "跳過", "跳過",     nullptr, nullptr};
 static const char* const kV_Questionnaire_submit[] = {
-    "Submit", "Enviar", "Отправить", "提交", "提交", "提交", nullptr, nullptr};
+    "Submit", "送信", "Enviar", "Отправить", "提交",
+    "提交",   "提交", nullptr,  nullptr};
 static const char* const kV_Select_placeholder[] = {
-    "Please select", "Escolha", "Выберите",  "请选择",
-    "請選擇",        "請選擇",  "Seleziona", nullptr};
+    "Please select", "選択してください", "Escolha",   "Выберите", "请选择",
+    "請選擇",        "請選擇",           "Seleziona", nullptr};
 static const char* const kV_Settings_Reset_All[] = {
-    "Reset All", "Restaurar tudo", "Сбросить все",  "重置全部",
-    "重置全部",  "全部重設",       "Resetta Tutto", nullptr};
+    "Reset All", "すべてリセット", "Restaurar tudo", "Сбросить все", "重置全部",
+    "重置全部",  "全部重設",       "Resetta Tutto",  nullptr};
 static const char* const kV_Settings_no_results[] = {
     "No matching settings",
+    "一致する設定がありません",
     "Nenhuma configuração encontrada",
     "Подходящих настроек нет",
     "没有匹配的设置",
@@ -535,6 +599,7 @@ static const char* const kV_Settings_no_results[] = {
     nullptr};
 static const char* const kV_Settings_no_results_description[] = {
     "Try a different keyword.",
+    "別のキーワードをお試しください。",
     "Tente outra palavra-chave.",
     "Попробуйте другое ключевое слово.",
     "请尝试其他关键词。",
@@ -543,16 +608,17 @@ static const char* const kV_Settings_no_results_description[] = {
     "Prova con un'altra parola chiave.",
     nullptr};
 static const char* const kV_Settings_search_placeholder[] = {
-    "Search...", "Buscar…", "Поиск…",     "搜索...",
+    "Search...", "検索...", "Buscar…",    "Поиск…", "搜索...",
     "搜索...",   "搜尋...", "Ricerca...", nullptr};
 static const char* const kV_Speech_Start[] = {
-    "Dictate",  "Ditar",    "Диктовать", "语音输入",
-    "語音輸入", "語音輸入", nullptr,     nullptr};
+    "Dictate",  "音声入力", "Ditar", "Диктовать", "语音输入",
+    "語音輸入", "語音輸入", nullptr, nullptr};
 static const char* const kV_Speech_Stop[] = {
-    "Stop dictation", "Parar o ditado", "Остановить диктовку",
-    "停止语音输入",   "停止語音輸入",   "停止語音輸入",
-    nullptr,          nullptr};
+    "Stop dictation",      "音声入力を停止", "Parar o ditado",
+    "Остановить диктовку", "停止语音输入",   "停止語音輸入",
+    "停止語音輸入",        nullptr,          nullptr};
 static const char* const kV_Speech_Unavailable[] = {"Dictation unavailable",
+                                                    "音声入力は利用できません",
                                                     "Ditado indisponível",
                                                     "Диктовка недоступна",
                                                     "语音输入不可用",
@@ -561,6 +627,7 @@ static const char* const kV_Speech_Unavailable[] = {"Dictation unavailable",
                                                     nullptr,
                                                     nullptr};
 static const char* const kV_Table_SortBy[] = {"Sort by %{column}",
+                                              "%{column} で並べ替え",
                                               "Ordenar por %{column}",
                                               "Сортировать по: %{column}",
                                               "按 %{column} 排序",

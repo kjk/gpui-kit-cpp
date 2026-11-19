@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1820f15730e4205f313364e4297068218d0caeff` (2026-11-14,
-tooltip: Fix switching_tooltips_animates_the_width under GPUI Fast (#3975)).
-Explicitly invalidate the headless tooltip test window before drawing each
-animation sample, matching the upstream refresh.
+Processed through `8746b8cb22270abdec5b29d95e69e189a66fb321` (2026-11-14,
+locales: Add Japanese (ja) (#3976)).
+Generate the Japanese component translations from the upstream catalog and
+verify lookup for translated attachment commands.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
