@@ -1192,6 +1192,7 @@ void TextViewState::SelectAll(Window* window, App*) {
     if (s && WindowSelectionHasEntity(window, self)) {
         selectAllAnchor = s->anchor;
         selectAllCursor = s->cursor;
+        selectAllScope = s->scope;
     }
 }
 
@@ -6889,7 +6890,7 @@ AccessibilityDocumentText TextViewState::AccessibilityText(Window* window) {
     bool all = selected && selectAllAnchor >= 0 &&
                selected->anchor == selectAllAnchor &&
                selected->cursor == selectAllCursor &&
-               WindowSelectionHasEntity(window, self);
+               selected->scope == selectAllScope;
     return {value, accessibilityLines.els, len(accessibilityLines), all};
 }
 
@@ -8229,6 +8230,7 @@ void TextView::PrepareInheritedColor(PaintCtx*, El* element, Rgba inherited,
     El* resolved = view->IntoEl();
     element->first = resolved->first;
     element->last = resolved->last;
+    IdsCollectChildren(element);
     element->style.color = resolved->style.color;
     element->style.hasColor = resolved->style.hasColor;
     element->lifecycle = resolved->lifecycle;

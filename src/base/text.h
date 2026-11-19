@@ -1053,6 +1053,7 @@ struct TextViewState {
     // window's selection is still that one. -1 when there is none.
     int selectAllAnchor = -1;
     int selectAllCursor = -1;
+    int selectAllScope = 0;
     // Borrowed slices of renderedIndex, rebuilt lazily for accessibility.
     Vec<Str> accessibilityLines;
     uint64_t accessibilityLineRevision = UINT64_MAX;

@@ -263,18 +263,25 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
         user->Child(IconEl(a, IconName::ChevronsUpDown, 16));
     }
 
-    El* sidebar = component::Sidebar::New(cx, StrL("sidebar-story"))
-                      ->WithSide(self->rightSide ? Side::Right : Side::Left)
-                      ->Collapsible(collapsible)
-                      ->Collapsed(self->collapsed)
-                      ->W(220)
-                      ->Header(component::SidebarHeader::New(cx)->Child(header))
-                      ->Footer(component::SidebarFooter::New(cx)->Child(user))
-                      ->Child(component::SidebarGroup::New(cx, StrL("Platform"))
-                                  ->Child(platform))
-                      ->Child(component::SidebarGroup::New(cx, StrL("Projects"))
-                                  ->Child(projects))
-                      ->IntoEl();
+    El* sidebar =
+        component::Sidebar::New(cx, StrL("sidebar-story"))
+            ->WithSide(self->rightSide ? Side::Right : Side::Left)
+            ->Collapsible(collapsible)
+            ->Collapsed(self->collapsed)
+            ->W(220)
+            ->Header(component::SidebarHeader::New(cx)->Child(header))
+            ->Footer(component::SidebarFooter::New(cx)->Child(user))
+            ->Child(component::SidebarGroup::New(cx, StrL("Platform"))
+                        ->Child(platform))
+            ->Child(component::SidebarGroup::New(cx, StrL("Projects"))
+                        ->Suffix(component::Button::New(cx, StrL("new-project"))
+                                     ->Ghost()
+                                     ->WithSize(UiSize::XSmall)
+                                     ->Icon(IconName::Plus)
+                                     ->Tooltip(StrL("New Project"))
+                                     ->IntoEl())
+                        ->Child(projects))
+            ->IntoEl();
     if (self->rightSide) {
         frame->FlexRowReverse();
     }

@@ -1275,7 +1275,8 @@ static void TextViewPublishesItsRenderedBodyToAccessibility() {
     TestDraw(win);
     const AccessibilityNode* last = document();
     utassert(last && WindowAccessibilityTextSelection(*last, &selected));
-    utassert(selected.start == 0 && selected.end == 5);
+    utassert(last && selected.start == 0 &&
+             selected.end == len(WindowAccessibilityTextValue(*last)));
     utassert(last && !(last->actions & AccessibilityActionSetValue));
     TestAppFree(app);
 }

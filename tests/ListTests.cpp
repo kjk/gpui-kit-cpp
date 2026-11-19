@@ -747,7 +747,7 @@ static void TheInputOffersAListAndStillAcceptsFreeText() {
     InputReplaceAll(&self->input, app, win, StrL("programmatic"));
     TestRunUntilParked(app);
     utassert(self->searches == 0);
-    InputSetValue(&self->input, {});
+    InputSetValue(&self->input, Str{});
     TestSimulateClick(win, {20, self->field.CenterY()});
     TestSimulateInput(win, StrL("cpu"));
     TestRunUntilParked(app);
