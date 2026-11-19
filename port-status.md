@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c0992262c9fd13591b64862543d8d427ec68cefe` (2026-11-18,
-input: Stop Ctrl+Delete at whitespace and line breaks (#4034)).
-Stop forward word deletion at a whitespace run or a CR, LF, or CRLF. Preserve
-macOS Option+Delete and masked-field word behavior.
+Processed through `1650d9ed0e7b48db7a91ff0bb99e3f759fba8ec0` (2026-11-19,
+button: expose expanded accessibility state (#4035)).
+Add Button::AriaExpanded to expose an optional disclosure state through the
+accessibility tree, independently of the visual Open state.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

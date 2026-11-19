@@ -181,6 +181,8 @@ struct Button {
     bool hasAccessibilityRole = false;
     bool accessibilityToggled = false;
     bool hasAccessibilityToggled = false;
+    bool accessibilityExpanded = false;
+    bool hasAccessibilityExpanded = false;
     El* extra = nullptr;
     ArenaVec<El*> children;
     // Size::Size(px), when the caller gave one instead of a Size.
@@ -276,6 +278,8 @@ struct Button {
     Button* Role(AccessibilityRole role);
     // Accessibility state only; Selected controls the visual state.
     Button* Toggled(bool v = true);
+    // Optional expanded state for the disclosure this button controls.
+    Button* AriaExpanded(bool expanded);
     Button* OnClick(Listener l);
     Button* OnHover(Listener l);
     Button* OnClickAction(uint32_t action, int64_t arg = 0);

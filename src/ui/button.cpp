@@ -388,6 +388,11 @@ Button* Button::Toggled(bool v) {
     hasAccessibilityToggled = true;
     return this;
 }
+Button* Button::AriaExpanded(bool expanded) {
+    accessibilityExpanded = expanded;
+    hasAccessibilityExpanded = true;
+    return this;
+}
 Button* Button::HoverGroup(bool v) {
     hoverGroup = v;
     return this;
@@ -752,6 +757,9 @@ El* Button::IntoEl() {
     if (hasAccessibilityToggled) {
         e->AriaToggled(accessibilityToggled ? AccessibilityToggled::True
                                             : AccessibilityToggled::False);
+    }
+    if (hasAccessibilityExpanded) {
+        e->AriaExpanded(accessibilityExpanded);
     }
     if (accessibilityLabel.s) {
         e->AriaLabel(accessibilityLabel);

@@ -1200,7 +1200,27 @@ static void AMixedCheckboxUsesTheDashAndRequestsChecked() {
     TestAppFree(app);
 }
 
+static void ButtonExposesOptionalDisclosureState() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    for (int pass = 0; pass < 3; pass++) {
+        auto* button = component::Button::New(&f.cx, StrL("details"))
+                           ->Label(StrL("Details"))
+                           ->Open(pass != 2);
+        if (pass > 0) button->AriaExpanded(pass == 2);
+        AccessibilityCollect(button->IntoEl(), &f.win->accessibility);
+        const AccessibilityNode* node =
+            RoleNode(f.win->accessibility, AccessibilityRole::Button);
+        utassert(node && (node->info.hasExpanded != 0) == (pass > 0));
+        if (node && pass > 0) {
+            utassert((node->info.expanded != 0) == (pass == 2));
+        }
+    }
+    FreeAccessibilityFrame(&f);
+}
+
 void TestAccessibility() {
+    ButtonExposesOptionalDisclosureState();
     AMixedCheckboxUsesTheDashAndRequestsChecked();
     TestSuite("accessibility");
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
