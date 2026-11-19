@@ -30,6 +30,14 @@ Slider* Slider::Disabled(bool v) {
     disabled = v;
     return this;
 }
+Slider* Slider::TabStop(bool v) {
+    tabStop = v;
+    return this;
+}
+Slider* Slider::TabIndex(int v) {
+    tabIndex = v;
+    return this;
+}
 Slider* Slider::W(float px) {
     width = px;
     return this;
@@ -97,18 +105,39 @@ El* Slider::IntoEl() {
     Background fillBg = barColor;
     Rgba thumbBorder = RgbaOpacity(barColor, 0.5f);
     SliderState* bind = disabled ? nullptr : state;
+    El* root = gpui::Slider::New(cx, state, axis, 0, accessibilityLabel)
+                   ->Id(id.s ? id : StrL("slider"))
+                   ->AriaDisabled(disabled);
+    bool focused = false;
+    if (cx->win && state) {
+        FocusHandle* focus =
+            ElementState<FocusHandle>(cx, root->id, StrL("slider-focus"));
+        if (!focus->IsValid()) *focus = FocusHandleNew(cx);
+        focused = FocusHandleIsFocused(cx->win, *focus);
+        if (!disabled || focused) {
+            root->TrackFocus(*focus)
+                ->FocusOnPress(!disabled)
+                ->TabIndex(tabIndex)
+                ->TabStop(tabStop && !disabled)
+                ->FocusRing(false);
+        }
+    }
+    // Disabled sliders keep their semantic value and a focused slider's
+    // place in Tab order, while the runtime has no value binding to step.
+    if (disabled) root->slider = nullptr;
 
     // The ring shows while the pointer is over the thumb, and stays while the
     // thumb is dragged: dragging moves the thumb under the pointer, so hover
     // alone drops out for a frame on every move and the ring would flicker.
     // A drag here is the window holding the slider's own state, which is what
     // `ThumbInteraction::pressed` stands for upstream.
-    auto ThumbRing = [&](El* thumb, int thumbId, Rgba color) -> El* {
+    auto ThumbRing = [&](El* thumb, int thumbId, bool start) -> El* {
         if (!thumb) {
             return thumb;
         }
-        bool active = cx->win &&
-                      (cx->win->hoverId == thumbId || (bind && bind->dragging));
+        bool active = (focused && !start) ||
+                      (cx->win && cx->win->hoverId == thumbId) ||
+                      (bind && bind->dragging && bind->dragStart == start);
         // spring_control: a click presses and releases faster than the ring
         // finishes growing, so it is sprung to decelerate through the
         // reversal. Critically damped, so it never grows past the width the
@@ -131,7 +160,7 @@ El* Slider::IntoEl() {
                         ->W(kThumb + grown * 2.f)
                         ->H(kThumb + grown * 2.f)
                         ->Radius(th.radiusFull)
-                        ->Bg(RgbaOpacity(color, kRingOpacity * progress)));
+                        ->Bg(RgbaOpacity(th.ring, kRingOpacity * progress)));
     };
 
     if (axis == Axis::Vertical) {
@@ -139,12 +168,6 @@ El* Slider::IntoEl() {
         // bottom of the track.
         int vid = HashClickId(id.s ? id : StrL("slider-v"));
         El* vtrack = SliderTrack::New(cx, bind, axis)->W(kH)->H(w)->Click(vid);
-        // Focusable, so the arrows can reach it: `on_a11y_action(Increment |
-        // Decrement)` is what they stand in for, and a track that cannot take
-        // focus has no way to hear them.
-        if (!disabled) {
-            vtrack->FocusId(vid);
-        }
         vtrack->Child(SliderIndicator::New(cx, bind)
                           ->Absolute()
                           ->Left(mid)
@@ -177,16 +200,9 @@ El* Slider::IntoEl() {
                                         ->Border(1, thumbBorder)
                                         ->Click(thumbId)
                                         ->BindSlider(bind, axis),
-                                    thumbId, thumbBorder));
+                                    thumbId, range && i == 0));
         }
-        El* root = gpui::Slider::New(cx, state, axis, 0, accessibilityLabel)
-                       ->Id(id.s ? id : StrL("slider"))
-                       ->AriaDisabled(disabled)
-                       ->AriaOrientation(AccessibilityOrientation::Vertical)
-                       ->W(kH)
-                       ->H(w)
-                       ->Child(vtrack);
-        return root;
+        return root->W(kH)->H(w)->Child(vtrack);
     }
 
     int tid = HashClickId(id.s ? id : StrL("slider"));
@@ -199,9 +215,6 @@ El* Slider::IntoEl() {
         track->W(kFill);
     } else {
         track->W(w);
-    }
-    if (!disabled) {
-        track->FocusId(tid);
     }
     El* rail =
         SliderIndicator::New(cx, bind)->Absolute()->Top(mid)->Left(0)->H(kBar);
@@ -250,14 +263,9 @@ El* Slider::IntoEl() {
         // the binding is what keeps a press on it starting the drag, since a
         // hit rect of its own would otherwise shadow the track's.
         thumb->Click(thumbId)->BindSlider(bind, axis);
-        track->Child(ThumbRing(thumb, thumbId, thumbBorder));
+        track->Child(ThumbRing(thumb, thumbId, range && i == 0));
     }
-    El* root = gpui::Slider::New(cx, state, axis, 0, accessibilityLabel)
-                   ->Id(id.s ? id : StrL("slider"))
-                   ->AriaDisabled(disabled)
-                   ->AriaOrientation(AccessibilityOrientation::Horizontal)
-                   ->H(kH)
-                   ->Child(track);
+    root->H(kH)->Child(track);
     return fill ? root->W(kFill) : root->W(w);
 }
 

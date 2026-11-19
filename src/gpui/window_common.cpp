@@ -1014,7 +1014,7 @@ static void SetMouseDown(Window* win, bool down) {
     PlatSetMouseCapture(win, down);
 }
 
-static bool SliderKeyStep(Window* win, int key, bool ctrl, bool alt);
+static bool SliderKeyStep(Window* win, int key);
 static bool SemanticKeyStep(Window* win, int key, bool ctrl, bool alt);
 static bool PageScrollBy(Window* win, int dir);
 
@@ -1118,7 +1118,8 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     }
     // The focused slider's arrows, before anything else looks at them: an
     // element bound to a SliderState is a slider whatever else it is.
-    if (!held && !eaten && SliderKeyStep(win, key, ctrl, alt)) {
+    if (!held && !eaten && !shift && !ctrl && !alt && !platform && !function &&
+        SliderKeyStep(win, key)) {
         win->eatChar = true;
         return true;
     }
@@ -1450,6 +1451,15 @@ static void SliderEmit(Window* win, SliderState* s, SliderEventKind kind) {
     ListenerCall(win->app, win, s->onChange, &ev);
 }
 
+static void SliderEmitStep(Window* win, const SliderState* s) {
+    Listener listener = s->onChange;
+    if (!listener.IsValid()) return;
+    SliderEvent ev = {SliderEventKind::Change, s->value};
+    ListenerCall(win->app, win, listener, &ev);
+    ev.kind = SliderEventKind::Release;
+    ListenerCall(win->app, win, listener, &ev);
+}
+
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId) {
     if (!nodeId) {
@@ -1589,7 +1599,7 @@ bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
                                  dir * SliderAccessibilityStep(node.slider))) {
                 return false;
             }
-            SliderEmit(win, node.slider, SliderEventKind::Change);
+            SliderEmitStep(win, node.slider);
         }
         AppInvalidate(win);
         return true;
@@ -2201,28 +2211,25 @@ static void SliderRelease(Window* win) {
     }
 }
 
-// slider.rs's `on_a11y_action(Increment | Decrement)`, on the keyboard. There
-// is no accessibility layer in this tree for the role and the aria values to
-// live in, and the half that is reachable is the half a keyboard user needs:
-// the arrows over the focused track, stepping by the slider's own step. Which
-// end of a range moves is the one the last press took, which is what a reader
-// who just dragged one of them expects to keep moving.
-static bool SliderKeyStep(Window* win, int key, bool ctrl, bool alt) {
-    if (ctrl || alt || !win->focusId) {
+// The focused slider's keys step the end thumb using the same grid and
+// change/release events as assistive technology.
+static bool SliderKeyStep(Window* win, int key) {
+    if (!win->focusId) {
         return false;
     }
     for (int i = 0; i < win->paint.hits.len; i++) {
         const HitRect& hr = win->paint.hits[i];
-        if (hr.id != win->focusId || !hr.slider) {
+        if (hr.focusId != win->focusId || !hr.slider) {
             continue;
         }
         SliderState* s = hr.slider;
-        SliderValue before = s->value;
-        if (!SliderKeyMove(s, key, s->value.range && s->dragStart)) {
+        bool moved = false;
+        if (!SliderKeyMove(s, key, false, hr.sliderAxis, LayoutIsRtl(win->app),
+                           &moved)) {
             return false;
         }
-        if (s->value.lo != before.lo || s->value.hi != before.hi) {
-            SliderEmit(win, s, SliderEventKind::Change);
+        if (moved) {
+            SliderEmitStep(win, s);
         }
         // The keystroke was the slider's whether or not it could move: an
         // arrow on a slider at its limit is not also a walk of the focus.

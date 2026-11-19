@@ -22,6 +22,8 @@ struct Slider {
     // "remaining capacity" readings.
     bool reverse = false;
     bool disabled = false;
+    bool tabStop = true;
+    int tabIndex = 0;
     // vertical(): the track runs bottom-to-top, and `width` is its length.
     Axis axis = Axis::Horizontal;
     // The track's length along its axis. kFill is Rust's `w_full()` inside a
@@ -46,6 +48,8 @@ struct Slider {
     Slider* Vertical(bool v = true);
     Slider* WithAxis(Axis v);
     Slider* Disabled(bool v = true);
+    Slider* TabStop(bool v = true);
+    Slider* TabIndex(int v);
     Slider* W(float px);
     // w_full(): the track fills the box it is given.
     Slider* WFill();
@@ -54,7 +58,7 @@ struct Slider {
     // base slider's existing Role::Slider node.
     Slider* AccessibilityLabel(Str s);
     // cx.subscribe(&state, ..): the view hears SliderEvent::Change while the
-    // slider moves and Release when the button comes back up.
+    // slider moves and Release when a pointer or keyboard gesture ends.
     Slider* OnChange(Listener fn);
     El* IntoEl();
 };

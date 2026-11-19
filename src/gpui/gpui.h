@@ -6647,7 +6647,9 @@ bool SliderMoveTo(SliderState* s, float want, bool isStart);
 // the accessibility layer: the arrows step (SliderStepBy), Page Up / Page Down
 // move a tenth of the range and Home / End go to its ends, as an HTML range
 // input does. Answers whether `key` is one of those, moved or not.
-bool SliderKeyMove(SliderState* s, int key, bool isStart);
+bool SliderKeyMove(SliderState* s, int key, bool isStart,
+                   Axis axis = Axis::Horizontal, bool rtl = false,
+                   bool* moved = nullptr);
 
 struct Overlay {
     int kind = 0; // 0 none, 1 dialog, 2 sheet

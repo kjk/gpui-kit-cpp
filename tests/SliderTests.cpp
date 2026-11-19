@@ -473,12 +473,14 @@ static void SteppingLeavesAnInvalidValueOrRangeAlone() {
 
 struct AccessibilitySliderView {
     SliderState slider = SliderStateNew(0, 100, SliderSingle(99));
-    int changes = 0;
+    int events = 0;
+    SliderEventKind previous = {};
     SliderEvent last = {};
 
     static void Changed(AccessibilitySliderView* self, Ctx*,
                         const SliderEvent* ev) {
-        self->changes++;
+        self->events++;
+        self->previous = self->last.kind;
         self->last = *ev;
     }
 
@@ -506,16 +508,19 @@ static void AccessibilityStepsReportMovesAndKeepRanges() {
                                           AccessibilityAction::Increment);
     };
     utassert(increment());
-    utassert(self->changes == 1 && self->slider.value.End() == 100);
-    utassert(self->last.kind == SliderEventKind::Change);
-    utassert(!increment() && self->changes == 1);
+    utassert(self->events == 2 && self->slider.value.End() == 100);
+    utassert(self->previous == SliderEventKind::Change &&
+             self->last.kind == SliderEventKind::Release);
+    utassert(!increment() && self->events == 2);
     utassert(
         WindowAccessibilityPerform(win, id, AccessibilityAction::Decrement));
-    utassert(self->changes == 2 && self->slider.value.End() == 99);
+    utassert(self->events == 4 && self->slider.value.End() == 99);
+    utassert(self->previous == SliderEventKind::Change &&
+             self->last.kind == SliderEventKind::Release);
 
     SliderSetValue(&self->slider, SliderRange(20, 60));
     utassert(increment());
-    utassert(self->changes == 3 && self->last.value.range);
+    utassert(self->events == 6 && self->last.value.range);
     utassert(self->last.value.Start() == 20 && self->last.value.End() == 61);
 
     SliderSetValue(&self->slider, SliderSingle(NAN));
@@ -523,7 +528,7 @@ static void AccessibilityStepsReportMovesAndKeepRanges() {
     SliderSetValue(&self->slider, SliderRange(60, 20));
     utassert(!increment() && self->slider.value.Start() == 60 &&
              self->slider.value.End() == 20);
-    utassert(self->changes == 3);
+    utassert(self->events == 6);
 
     SliderSetValue(&self->slider, SliderSingle(33));
     SliderSetStep(&self->slider, 0);
@@ -533,6 +538,120 @@ static void AccessibilityStepsReportMovesAndKeepRanges() {
              node->info.numericValueStep == 1);
     utassert(increment() && self->slider.value.End() == 34);
     TestAppFree(app);
+}
+
+struct KeyboardSliderView {
+    SliderState slider = SliderStateNew(0, 100, SliderSingle(50));
+    SliderEvent events[2] = {};
+    int count = 0;
+    bool disabled = false;
+    bool tabStop = true;
+    int tabIndex = 0;
+
+    static void OnStep(KeyboardSliderView* self, Ctx*, const SliderEvent* ev) {
+        if (self->count < (int)dimof(self->events)) {
+            self->events[self->count] = *ev;
+        }
+        self->count++;
+    }
+
+    static El* Render(KeyboardSliderView* self, Ctx* cx) {
+        return Div(cx->a)
+            ->FlexCol()
+            ->Child(component::Slider::New(cx, StrL("keyboard-slider"),
+                                           &self->slider)
+                        ->W(150)
+                        ->Disabled(self->disabled)
+                        ->TabStop(self->tabStop)
+                        ->TabIndex(self->tabIndex)
+                        ->OnChange(Listen(cx, &KeyboardSliderView::OnStep))
+                        ->IntoEl())
+            ->Child(component::Button::New(cx, StrL("next"))
+                        ->Label(StrL("Next"))
+                        ->IntoEl());
+    }
+};
+
+static int SliderFocusId(Window* win) {
+    for (const AccessibilityNode& node : win->accessibility) {
+        if (node.info.role == AccessibilityRole::Slider) return node.focusId;
+    }
+    return 0;
+}
+
+// base and component slider.rs keyboard and Tab regressions.
+static void AFocusedSliderStepsOnKeysAndReportsEachStep() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<KeyboardSliderView>(app);
+    auto* self = view.Get(app);
+    SliderSetStep(&self->slider, 5);
+    Window* win = TestWindowOpen(app, view, 300, 200, 1);
+    int focus = SliderFocusId(win);
+    utassert(focus != 0);
+    TestSimulateKeystrokes(win, "tab");
+    utassert(win->focusId == focus);
+
+    auto key = [&](const char* stroke, float value, int expectsEvents = 2) {
+        self->count = 0;
+        TestSimulateKeystrokes(win, stroke);
+        utassertnear(self->slider.value.End(), value);
+        utassert(self->count == expectsEvents);
+        if (expectsEvents) {
+            utassert(self->events[0].kind == SliderEventKind::Change);
+            utassert(self->events[1].kind == SliderEventKind::Release);
+            utassertnear(self->events[0].value.End(), value);
+            utassertnear(self->events[1].value.End(), value);
+        }
+    };
+    key("right", 55);
+    key("left", 50);
+    key("up", 55);
+    key("down", 50);
+    key("pageup", 100);
+    key("pagedown", 50);
+    key("home", 0);
+    key("end", 100);
+    key("end", 100, 0);
+    key("ctrl-left shift-home", 100, 0);
+
+    self->disabled = true;
+    TestDraw(win);
+    utassert(SliderFocusId(win) == focus && win->focusId == focus);
+    key("home", 100, 0);
+    TestSimulateKeystrokes(win, "tab");
+    utassert(win->focusId != focus && win->focusId != 0);
+    TestSimulateKeystrokes(win, "shift-tab");
+    utassert(win->focusId != focus && win->focusId != 0);
+    key("home", 100, 0);
+
+    self->disabled = false;
+    self->tabStop = false;
+    TestDraw(win);
+    TestSimulateKeystrokes(win, "shift-tab");
+    utassert(win->focusId != focus);
+    self->tabStop = true;
+    self->tabIndex = -1;
+    TestDraw(win);
+    TestSimulateKeystrokes(win, "shift-tab");
+    utassert(win->focusId == focus);
+    SliderSetValue(&self->slider, SliderRange(20, 60));
+    key("left", 55);
+    utassertnear(self->slider.value.Start(), 20.f);
+    TestAppFree(app);
+}
+
+static void LeftAndRightFollowTheHorizontalLayoutDirection() {
+    SliderState slider = SliderStateNew(0, 100, SliderSingle(50));
+    SliderSetStep(&slider, 5);
+    utassert(SliderKeyMove(&slider, KeyRight, false, Axis::Horizontal, true));
+    utassertnear(slider.value.End(), 45.f);
+    utassert(SliderKeyMove(&slider, KeyLeft, false, Axis::Horizontal, true));
+    utassertnear(slider.value.End(), 50.f);
+    utassert(SliderKeyMove(&slider, KeyUp, false, Axis::Horizontal, true));
+    utassertnear(slider.value.End(), 55.f);
+    utassert(SliderKeyMove(&slider, KeyRight, false, Axis::Vertical, true));
+    utassertnear(slider.value.End(), 60.f);
 }
 
 void TestSlider() {
@@ -562,4 +681,6 @@ void TestSlider() {
     AContinuousSliderStepsByAHundredthOfItsRange();
     SteppingLeavesAnInvalidValueOrRangeAlone();
     AccessibilityStepsReportMovesAndKeepRanges();
+    AFocusedSliderStepsOnKeysAndReportsEachStep();
+    LeftAndRightFollowTheHorizontalLayoutDirection();
 }

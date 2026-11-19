@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `afb8a613b219c5e15aa2d3dc07a1537b623356f9` (2026-11-12,
-title_bar: Keep a control's click when the press moves a pixel (#3918)).
-C++ native window movement already starts from a caption hit and leaves
-controls on the client input path. Exercise the two hit paths and a one-pixel
-button press and release in the headless window.
+Processed through `1b0a3756419a0a092ad74181289f1648e627f16a` (2026-11-12,
+slider: Add the keyboard shortcuts the guide lists (#3919)).
+Use the slider step grid for arrow, Page Up, Page Down, Home and End keys.
+Report Change and Release for keyboard and accessibility adjustments, expose
+themed Tab order configuration, and draw focus on the end thumb.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

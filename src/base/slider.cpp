@@ -246,36 +246,47 @@ bool SliderMoveTo(SliderState* s, float want, bool isStart) {
     return true;
 }
 
-bool SliderKeyMove(SliderState* s, int key, bool isStart) {
+bool SliderKeyMove(SliderState* s, int key, bool isStart, Axis axis, bool rtl,
+                   bool* moved) {
     if (!s) {
         return false;
     }
-    float from = isStart ? s->value.Start() : s->value.End();
-    float page = (s->max - s->min) / 10.f;
+    float step = SliderAccessibilityStep(s);
+    float range = s->max - s->min;
+    float horizontal = AxisIsHorizontal(axis) && rtl ? -step : step;
+    constexpr float kPageSteps = 10.f;
+    float delta = 0;
     switch (key) {
         case KeyRight:
+            delta = horizontal;
+            break;
         case KeyUp:
-            SliderStepBy(s, 1, isStart);
-            return true;
+            delta = step;
+            break;
         case KeyLeft:
+            delta = -horizontal;
+            break;
         case KeyDown:
-            SliderStepBy(s, -1, isStart);
-            return true;
+            delta = -step;
+            break;
         case KeyPageUp:
-            SliderMoveTo(s, from + page, isStart);
-            return true;
+            delta = step * kPageSteps;
+            break;
         case KeyPageDown:
-            SliderMoveTo(s, from - page, isStart);
-            return true;
+            delta = -step * kPageSteps;
+            break;
         case KeyHome:
-            SliderMoveTo(s, s->min, isStart);
-            return true;
+            delta = -range;
+            break;
         case KeyEnd:
-            SliderMoveTo(s, s->max, isStart);
-            return true;
+            delta = range;
+            break;
         default:
             return false;
     }
+    bool changed = SliderStepThumb(s, isStart, delta);
+    if (moved) *moved = changed;
+    return true;
 }
 
 bool SliderHandleRelease(SliderState* s) {
@@ -303,6 +314,7 @@ El* Slider::New(Ctx* cx, SliderState* state, Axis axis, int clickId,
     }
     if (state) {
         e->slider = state;
+        e->sliderAxis = axis;
         e->AriaNumericValue(state->value.End())
             ->AriaMinNumericValue(state->min)
             ->AriaMaxNumericValue(state->max)
