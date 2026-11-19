@@ -70,6 +70,11 @@ TooltipRequest& TooltipRequest::Placement(gpui::Placement value) {
     return WithPlacement(value);
 }
 
+TooltipRequest& TooltipRequest::WithOffset(float value) {
+    offset = value;
+    return *this;
+}
+
 TooltipRequest& TooltipRequest::WithShowDelay(int ms) {
     hasShowDelay = true;
     showDelayMs = ms;
@@ -320,7 +325,8 @@ El* TooltipOverlay::Render(TooltipOverlay* self, Ctx* cx) {
                                                    self->rendererData)
                                   : Div(cx->a)->Child(view);
     TooltipPositioner* positioner =
-        TooltipPositioner::New(cx, self->content.triggerBounds);
+        TooltipPositioner::New(cx, self->content.triggerBounds)
+            ->Offset(self->content.offset);
     if (self->content.hasPreferredPlacement) {
         positioner->Placement(self->content.preferredPlacement);
     }
@@ -338,6 +344,11 @@ TooltipPositioner* TooltipPositioner::New(Ctx* cx, Bounds triggerBounds) {
 
 TooltipPositioner* TooltipPositioner::Placement(gpui::Placement value) {
     positioner->Placement(value);
+    return this;
+}
+
+TooltipPositioner* TooltipPositioner::Offset(float value) {
+    positioner->Offset(value);
     return this;
 }
 

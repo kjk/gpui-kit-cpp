@@ -70,6 +70,7 @@ struct TooltipRequest {
     Bounds triggerBounds = {};
     gpui::Placement preferredPlacement = gpui::Placement::Top;
     bool hasPreferredPlacement = false;
+    float offset = 0;
     // with_show_delay: None uses TooltipDefaults. Zero shows at once.
     bool hasShowDelay = false;
     int showDelayMs = 0;
@@ -81,6 +82,7 @@ struct TooltipRequest {
     // with_placement. Placement remains the old name.
     TooltipRequest& WithPlacement(gpui::Placement value);
     TooltipRequest& Placement(gpui::Placement value);
+    TooltipRequest& WithOffset(float value);
     TooltipRequest& WithShowDelay(int ms);
 };
 
@@ -122,6 +124,7 @@ struct TooltipPositioner {
 
     static TooltipPositioner* New(Ctx* cx, Bounds triggerBounds);
     TooltipPositioner* Placement(gpui::Placement value);
+    TooltipPositioner* Offset(float value);
     TooltipPositioner* Child(El* child);
     El* IntoEl();
 };

@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `957ae8b55f1d02ea0f322951a9fa3b3f0cbbb282` (2026-11-09,
-number_input: Add stepper option (#3748)).
-Base composition and themed NumberInput can omit both step buttons. The editor
-still steps with Up and Down and retains its accessible increment and
-decrement actions.
+Processed through `7ad1ad981a59417dc24e5d9dc6d1d27b2c7e31be` (2026-11-10,
+base: Allow tooltip requests to set the anchor offset (#3874)).
+Tooltip requests can set a gap from their trigger. The side positioner uses
+that gap when measuring, flipping and clamping the popup.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

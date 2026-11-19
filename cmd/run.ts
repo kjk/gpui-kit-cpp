@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "957ae8b55f1d02ea0f322951a9fa3b3f0cbbb282",
-  date: "2026-11-09",
-  subject: "number_input: Add stepper option (#3748)",
+  sha: "7ad1ad981a59417dc24e5d9dc6d1d27b2c7e31be",
+  date: "2026-11-10",
+  subject: "base: Allow tooltip requests to set the anchor offset (#3874)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

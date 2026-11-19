@@ -222,6 +222,55 @@ static void TooltipOverlayOwnsRequestsTransitionsAndPositioning() {
     ArenaDelete(a);
 }
 
+// crates/base/src/tooltip.rs: request offsets reach the measured popup.
+static void TooltipRequestOffsetAffectsPopupBounds() {
+    struct PlacementCase {
+        Bounds trigger;
+        Placement placement;
+        float offset;
+        Point expected;
+    };
+    const PlacementCase cases[] = {
+        {{100, 100, 40, 20}, Placement::Top, 0, {100, 76}},
+        {{100, 100, 40, 20}, Placement::Top, 4, {100, 72}},
+        {{100, 100, 40, 20}, Placement::Bottom, 8, {100, 128}},
+        {{100, 100, 40, 20}, Placement::Left, 4, {56, 98}},
+        {{100, 100, 40, 20}, Placement::Right, 8, {148, 98}},
+        {{100, 4, 40, 20}, Placement::Top, 4, {100, 28}},
+        {{100, 376, 40, 20}, Placement::Bottom, 4, {100, 348}},
+        {{0, 100, 20, 20}, Placement::Top, 8, {4, 68}},
+    };
+    struct Host {
+        static El* Render(Host*, Ctx* cx) { return Div(cx->a)->SizeFull(); }
+    };
+    App* app = TestAppNew();
+    Window* win = TestWindowOpen(app, EntityNew<Host>(app), 500, 400);
+    auto entity = EntityNew<TooltipOverlay>(app);
+    win->tooltip = entity.id;
+    auto* overlay = entity.Get(app);
+    overlay->enabled = true;
+    Ctx cx = {app, win, win->frameArena, entity.id};
+    auto build = [](Ctx* frame, void* output) -> El* {
+        return Div(frame->a)->W(40)->H(24)->BoundsOut((Bounds*)output);
+    };
+    Bounds actual = {};
+    for (const PlacementCase& test : cases) {
+        actual = {};
+        auto request = TooltipRequest::New(test.trigger, build, &actual);
+        request.WithPlacement(test.placement).WithShowDelay(0);
+        if (test.offset != 0) {
+            request.WithOffset(test.offset);
+        }
+        overlay->RequestShow(request, win, &cx);
+        TestDraw(win);
+        utassertnear(actual.x, test.expected.x);
+        utassertnear(actual.y, test.expected.y);
+        utassertnear(actual.w, 40.f);
+        utassertnear(actual.h, 24.f);
+    }
+    TestAppFree(app);
+}
+
 static void TooltipDelayOwnsAndCancelsPendingText() {
     App app;
     Window* win = new Window();
@@ -1185,6 +1234,7 @@ void TestPopup() {
     PopoverOwnsOpenCallbacksAndOutsideDismissal();
     EnterInPopoverContentActivatesTheChild();
     TooltipOverlayOwnsRequestsTransitionsAndPositioning();
+    TooltipRequestOffsetAffectsPopupBounds();
     TooltipDelayOwnsAndCancelsPendingText();
     ShowDelayFollowsDefaultsAndRequestOverride();
     DisabledTooltipOverlayIgnoresEveryShowPath();
