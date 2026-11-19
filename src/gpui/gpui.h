@@ -5882,6 +5882,7 @@ struct InputState {
     // row whose box is lastBounds: the hit test and the caret walk that row's
     // text runs and chips rather than one shaped run.
     bool chipLine = false;
+    bool revealSingleLineCaret = false;
     // input_bounds: the whole field, what a press outside the run maps against.
     Bounds inputBounds = {};
     // revealed_viewport: the fully visible part of the window this field

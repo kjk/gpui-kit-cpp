@@ -1931,6 +1931,47 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
     }
 }
 
+static float SingleLineTokenCaretX(PaintCtx* ctx, const InputState* s,
+                                   int cursor);
+
+struct SingleLineCaret {
+    int logical = 0;
+    int displayed = 0;
+};
+
+static void InputSingleLinePrepaint(PaintCtx* ctx, El* row, void* data) {
+    InputState* s = row->input;
+    El* text = row->first;
+    if (!text || !s || row->w <= 0) return;
+    auto* cursor = (SingleLineCaret*)data;
+    float caretWidth = base::PlatCaretWidth();
+    s->contentW = cursor ? text->w + caretWidth : 0.f;
+    float maxScroll = std::max(0.f, s->contentW - row->w);
+    s->scrollX = std::min(s->scrollX, maxScroll);
+    if (s->revealSingleLineCaret && cursor && maxScroll > 0) {
+        float x = 0, y = 0, h = 0;
+        if (s->chipLine) {
+            x = SingleLineTokenCaretX(ctx, s, cursor->logical);
+        } else {
+            TextPointAt(ctx, text->text, text->laidFont, 0, false,
+                        cursor->displayed, &x, &y, &h, ElTextWeight(text),
+                        text->style.lineHeight);
+        }
+        if (x < s->scrollX) {
+            s->scrollX = x;
+        } else if (x + caretWidth > s->scrollX + row->w) {
+            s->scrollX = x + caretWidth - row->w;
+        }
+        s->scrollX = std::min(std::max(s->scrollX, 0.f), maxScroll);
+    }
+    s->revealSingleLineCaret = false;
+    // Aligned text uses its natural alignment while it fits. Long content
+    // scrolls from the leading edge of the row.
+    if (maxScroll > 0) {
+        text->PaintOffset(row->x - text->x - s->scrollX, 0);
+    }
+}
+
 El* Input::New(Ctx* cx, InputState* state) {
     return New(cx, state, InputEditorStyle{});
 }
@@ -1961,8 +2002,11 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
                   ->ItemsCenter()
                   ->H(kFill)
                   ->MinH(lineH)
+                  ->MinW(0)
+                  ->ClipX()
                   ->Flex1()
                   ->BindInput(state);
+    row->prePaint = &InputSingleLinePrepaint;
     if (style.align == 1) {
         row->W(kFill)->JustifyCenter();
     } else if (style.align == 2) {
@@ -1993,6 +2037,9 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
         cursor = mark.end;
         sel = SelectionAt(mark.end);
     }
+    auto* geometry = ArenaNew<SingleLineCaret>(a);
+    row->customUser = geometry;
+    geometry->logical = cursor;
     if (masked) {
         cursor = MaskedOffset(text, cursor);
         sel.start = MaskedOffset(text, sel.start);
@@ -2010,8 +2057,11 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
         MeasureTokenWidths(cx, state, style, font, lineH, 0);
         state->chipLine = true;
         state->lastFont = font;
-        El* line = Div(a)->FlexRow()->ItemsCenter()->Shrink0()->BoundsOut(
-            &state->lastBounds);
+        El* line = Div(a)->FlexRow()->ItemsCenter()->Shrink0();
+        line->customUser = state;
+        line->customPaint = [](PaintCtx*, El* el, void* user) {
+            ((InputState*)user)->lastBounds = el->Bounds();
+        };
         AppendTokenPieces(line, cx, state, style, font, lineMult, lineH, run, 0,
                           sel, caret, cursor);
         return row->Child(line);
@@ -2022,10 +2072,12 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     if (!masked) {
         shown = ShowTabs(a, cx->win ? &cx->win->paint : nullptr, state, run);
     }
+    geometry->displayed = MapTab(shown, cursor);
     El* el = TextEl(a, shown.text)
                  ->Font(font)
                  ->LineHeight(lineMult)
                  ->Fg(style.foreground)
+                 ->Shrink(0)
                  ->BindInputText(state);
     // A single-line field is one row, so the whole document is its slice.
     // A masked one is not searched: what it holds is not what it shows.
@@ -5312,6 +5364,10 @@ void InputScrollToCursor(InputState* s, InputMoveDir dir) {
     if (!s) {
         return;
     }
+    if (InputIsSingleLine(s)) {
+        s->revealSingleLineCaret = true;
+        return;
+    }
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
     // offset_to_display_row: the soft-wrap row, with the caret's line-end
     // affinity, projected through a closed fold.
@@ -5388,6 +5444,9 @@ bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
                         float dy, TouchPhase phase, bool precise) {
     if (!s) {
         return false;
+    }
+    if (InputIsSingleLine(s) && fabsf(dy) >= fabsf(dx)) {
+        dx = 0;
     }
     float oldX = s->scrollX;
     float oldY = s->scrollY;
@@ -6863,8 +6922,8 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     // element.rs layout_cursors follows the caret on the frame an edit moved
     // it. The edge is cursor_surrounding_padding — the same one resize reveal
     // uses — and reveal_row keeps the whole visual row inside even when that
-    // padding is larger than the viewport. Only the vertical half: the
-    // caret's x is last frame's until it paints.
+    // padding is larger than the viewport. The new single-line advance is
+    // available after shaping in prepaint.
     if (InputIsMultiLine(s)) {
         float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
         float y = InputOffsetDisplayY(s, InputCursor(s), lineH);
@@ -6875,6 +6934,8 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
             InputClampScrollY(s, s->viewH);
         }
         s->scrollX = wasX;
+    } else {
+        s->revealSingleLineCaret = true;
     }
     highlightChange.Finish();
     if (!s->holdEditBatch) {
@@ -7238,6 +7299,8 @@ static void ResetSelection(InputState* s) {
     s->cursorLineEndAffinity = false;
     if (InputIsSingleLine(s)) {
         s->selectedRange = SelectionAt(len(InputValue(s)));
+        s->scrollX = 0;
+        s->revealSingleLineCaret = false;
     } else {
         s->selectedRange = {};
     }
@@ -8839,6 +8902,14 @@ static float WrapRowX(PaintCtx* ctx, const InputState* s, Str line,
         }
     }
     return x;
+}
+
+static float SingleLineTokenCaretX(PaintCtx* ctx, const InputState* s,
+                                   int cursor) {
+    Str text = InputValue(s);
+    WrapRowSpan row;
+    row.hi = len(text);
+    return WrapRowX(ctx, s, text, row, cursor);
 }
 
 // closest_index_for_x within the row: a byte offset into the line. A press on
@@ -12085,9 +12156,7 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
             return false;
         }
         if (s->chipLine) {
-            WrapRowSpan r;
-            r.hi = len(text);
-            float x = WrapRowX(ctx, s, text, r, offset);
+            float x = SingleLineTokenCaretX(ctx, s, offset);
             *out = {b.x + x, b.y + (b.h - lineH) * 0.5f};
             return true;
         }

@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "fae0aa1efb554304973409c7c03a9896e26add98",
+  sha: "4594350df33ea1496d412dd665d0a2b90c5954bb",
   date: "2026-11-14",
-  subject: "diff: Keep split columns on screen beside a long line (#3958)",
+  subject: "input: Reveal the caret after a long single-line paste (#3967)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

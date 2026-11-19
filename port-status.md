@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `fae0aa1efb554304973409c7c03a9896e26add98` (2026-11-14,
-diff: Keep split columns on screen beside a long line (#3958)).
-Keep split columns and gutters fixed while their clipped code shares a
-horizontal scroll offset. Port the split geometry regression with headless
-wheel input.
+Processed through `4594350df33ea1496d412dd665d0a2b90c5954bb` (2026-11-14,
+input: Reveal the caret after a long single-line paste (#3967)).
+Reveal the single-line caret from freshly shaped text on the first frame
+after paste. Programmatic value replacement keeps the beginning in view.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

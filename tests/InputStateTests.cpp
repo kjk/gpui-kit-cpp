@@ -11224,6 +11224,25 @@ static void MultiCursorPasteDistributesLines() {
     InputViewFree(&view);
 }
 
+// state.rs test_paste_reveals_caret_single_line.
+static void LongPasteRevealsTheSingleLineCaret() {
+    InputView view = InputViewBuild();
+    char value[500];
+    memset(value, 'x', sizeof(value));
+    TestWriteToClipboard(Str(value, (int)sizeof(value)));
+    ViewAct(view, InputAction::Paste);
+    TestDraw(view.win);
+    auto* s = view.input;
+    utassert(InputCursor(s) == (int)sizeof(value));
+    utassert(s->scrollX > 0.f);
+    Bounds caret = {};
+    int end = InputCursor(s);
+    utassert(InputRangeToBounds(s, view.win, {end, end}, &caret));
+    utassert(caret.x >= s->inputBounds.x);
+    utassert(caret.x <= s->inputBounds.x + s->inputBounds.w);
+    InputViewFree(&view);
+}
+
 // state.rs test_paste_without_text_leaves_the_selection_alone: an image-only
 // clipboard must not replace the selection with nothing. The test platform's
 // clipboard holds text, so the image arrives the way Paste hands a
@@ -11334,6 +11353,7 @@ static void RunWindowTestsD() {
     BuildColumnarSelection();
     ColumnarSelectionKeepsWidthOverShortRows();
     MultiCursorPasteDistributesLines();
+    LongPasteRevealsTheSingleLineCaret();
     PasteWithoutTextLeavesTheSelectionAlone();
     PasteTargetTracksEditsAndSelections();
 }
