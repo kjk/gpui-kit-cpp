@@ -2561,24 +2561,54 @@ void DiffState::CollapseUnchanged(Ctx* cx) {
     if (cx) Notify(cx);
 }
 
-void DiffState::SetFileCollapsed(Str path, bool collapse, Ctx* cx) {
-    int file = FileIx(this, path);
-    if (file < 0) return;
-    bool was = Collapsed(this, files[file]->path);
-    if (collapse == was) return;
-    if (collapse)
-        VecAppend(collapsed, StrDup(files[file]->path));
-    else {
-        for (int i = 0; i < len(collapsed); i++) {
-            if (StrEq(collapsed[i], files[file]->path)) {
-                StrFree(collapsed[i]);
-                VecRemoveAt(collapsed, i);
-                break;
-            }
+static bool UpdateFileCollapsed(DiffState* state, Str path, bool collapse) {
+    auto& collapsed = state->collapsed;
+    for (int i = 0; i < len(collapsed); i++) {
+        if (!StrEq(collapsed[i], path)) continue;
+        if (collapse) return false;
+        StrFree(collapsed[i]);
+        VecRemoveAt(collapsed, i);
+        return true;
+    }
+    if (!collapse) return false;
+    VecAppend(collapsed, StrDup(path));
+    return true;
+}
+
+void DiffState::SetFilesCollapsed(const Str* paths, int count, bool collapse,
+                                  Ctx* cx) {
+    bool changed = false;
+    for (int i = 0; i < count; i++) {
+        int file = FileIx(this, paths[i]);
+        if (file >= 0) {
+            changed |= UpdateFileCollapsed(this, files[file]->path, collapse);
         }
     }
-    Rebuild(this, false);
-    if (cx) Notify(cx);
+    if (changed) {
+        Rebuild(this, false);
+        if (cx) Notify(cx);
+    }
+}
+
+void DiffState::SetAllFilesCollapsed(bool collapse, Ctx* cx) {
+    bool changed = false;
+    if (collapse) {
+        for (int i = 0; i < len(files); i++) {
+            changed |= UpdateFileCollapsed(this, files[i]->path, true);
+        }
+    } else if (len(collapsed)) {
+        for (int i = 0; i < len(collapsed); i++) StrFree(collapsed[i]);
+        VecClear(collapsed);
+        changed = true;
+    }
+    if (changed) {
+        Rebuild(this, false);
+        if (cx) Notify(cx);
+    }
+}
+
+void DiffState::SetFileCollapsed(Str path, bool collapse, Ctx* cx) {
+    SetFilesCollapsed(&path, 1, collapse, cx);
 }
 
 bool DiffState::ConflictResolution(Str path, int ix,
@@ -2766,14 +2796,7 @@ void DiffState::ScrollToLine(DiffLinePosition position, Ctx* cx) {
     if (files[FileIx(this, position.path)]
             ->LineIndex(position.side, position.line) < 0)
         return;
-    if (Collapsed(this, position.path)) {
-        for (int i = 0; i < len(collapsed); i++) {
-            if (StrEq(collapsed[i], position.path)) {
-                StrFree(collapsed[i]);
-                VecRemoveAt(collapsed, i);
-                break;
-            }
-        }
+    if (UpdateFileCollapsed(this, position.path, false)) {
         Rebuild(this, false);
     }
     int row = SourceRow(this, position);

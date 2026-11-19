@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6e508b5e58994de79a9bf88e29565984d8a530de` (2026-11-12,
-label: Expose a label's text to assistive technology (#3937)).
-Expose each nonempty, unmasked Label as static text with its full value. Shell
-labels take the element key and the Windows and Linux bridges surface the
-value as the name.
+Processed through `b003decbf7ab0067f0ab7b4931ca5995d11f4282` (2026-11-12,
+diff: Collapse or expand many files in one rebuild (#3935)).
+Add batch collapse and expand operations to DiffState. A bulk request rebuilds
+the row projection once and preserves the existing programmatic event
+behavior.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

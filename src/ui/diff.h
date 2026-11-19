@@ -511,6 +511,10 @@ struct DiffState {
                                   int ix) const;
     void ExpandUnchanged(Ctx* cx);
     void CollapseUnchanged(Ctx* cx);
+    // Update the requested paths in one rebuild without emitting a user event.
+    void SetFilesCollapsed(const Str* paths, int count, bool collapsed,
+                           Ctx* cx);
+    void SetAllFilesCollapsed(bool collapsed, Ctx* cx);
     void SetFileCollapsed(Str path, bool collapsed, Ctx* cx);
     bool ConflictResolution(Str path, int ix,
                             DiffConflictResolution* out) const;

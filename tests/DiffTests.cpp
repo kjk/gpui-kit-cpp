@@ -1272,11 +1272,48 @@ static void GutterMarkersActivateWithoutSelectingLines() {
     TestAppFree(app);
 }
 
+// diff/review_tests.rs: all_files_collapse_and_expand_together.
+static void AllFilesCollapseAndExpandTogether() {
+    DiffFix fix;
+    const char* patch =
+        "diff --git a/first.txt b/first.txt\n--- a/first.txt\n+++ b/first.txt\n"
+        "@@ -1 +1 @@\n-one\n+ONE\n"
+        "diff --git a/second.txt b/second.txt\n--- a/second.txt\n+++ "
+        "b/second.txt\n"
+        "@@ -1 +1 @@\n-two\n+TWO\n";
+    utassert(fix.Load(patch));
+    DiffState* state = fix.state;
+    Str first = StrL("first.txt"), second = StrL("second.txt");
+    state->SetAllFilesCollapsed(true, &fix.cx);
+    utassert(state->IsFileCollapsed(first));
+    utassert(state->IsFileCollapsed(second));
+    utassert(state->RowCount() == 2);
+    if (state->RowCount() == 2) {
+        utassert(state->Rows()[0].kind == DiffRowKind::File);
+        utassert(state->Rows()[1].kind == DiffRowKind::File);
+    }
+    state->SetAllFilesCollapsed(false, &fix.cx);
+    utassert(!state->IsFileCollapsed(first));
+    utassert(!state->IsFileCollapsed(second));
+    utassert(CodeRows(state, 0) > 0 && CodeRows(state, 1) > 0);
+
+    state->SetFileCollapsed(first, true, &fix.cx);
+    state->SetAllFilesCollapsed(true, &fix.cx);
+    utassert(state->IsFileCollapsed(second));
+    state->SetAllFilesCollapsed(false, &fix.cx);
+    Str subset[] = {second, StrL("missing.txt"), second};
+    state->SetFilesCollapsed(subset, dimof(subset), true, &fix.cx);
+    utassert(!state->IsFileCollapsed(first));
+    utassert(state->IsFileCollapsed(second));
+    utassert(len(state->emitted) == 0);
+}
+
 void TestDiff() {
     TestParser();
     TestTruncatedHunks();
     TestConflictsAndLanguage();
     TestInlineAndRows();
+    AllFilesCollapseAndExpandTogether();
     AnApplicationHighlighterStylesEachHunkSide();
     NextChangeWrapsOnceTheListIsScrolledToItsEnd();
     NextChangeMovesPastAChangeAlreadyOnScreen();
