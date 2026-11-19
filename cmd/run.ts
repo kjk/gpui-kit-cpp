@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f6a56119c27da0ec79cb67e292f224eb5186eb82",
+  sha: "fae0aa1efb554304973409c7c03a9896e26add98",
   date: "2026-11-14",
-  subject: "theme: Add a `list.highlight.foreground` color for search match highlights (#3960)",
+  subject: "diff: Keep split columns on screen beside a long line (#3958)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

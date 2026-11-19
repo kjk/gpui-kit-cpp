@@ -2390,6 +2390,7 @@ void DiffState::SetFiles(DiffFile** next, int count, Ctx* cx) {
     for (int i = 0; i < len(files); i++) delete files[i];
     VecClear(files);
     for (int i = 0; i < count; i++) VecAppend(files, next[i]);
+    splitCodeFont = 0;
     for (int i = len(collapsed) - 1; i >= 0; i--) {
         if (FileIx(this, collapsed[i]) < 0) {
             StrFree(collapsed[i]);
@@ -3384,6 +3385,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
             int width = file->lineNumberDigits * 8 + 12;
             box->Child(Div(cx->a)
                            ->W((float)width)
+                           ->Shrink(0)
                            ->Child(TextEl(cx->a, fmt("%d", number))
                                        ->Fg(theme.mutedFg)));
         }
@@ -3410,16 +3412,25 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
             box->Child(TextEl(cx->a, side == DiffSide::Original ? StrL("-")
                                                                 : StrL("+"))
                            ->Fg(side == DiffSide::Original ? theme.danger
-                                                           : theme.success));
+                                                           : theme.success)
+                           ->Shrink(0));
         }
         if (diff->changeIndicator == DiffChangeIndicator::Bars && changed) {
-            box->Child(Div(cx->a)->W(3)->H(24)->Bg(
+            box->Child(Div(cx->a)->W(3)->H(24)->Shrink(0)->Bg(
                 side == DiffSide::Original ? theme.danger : theme.success));
         }
-        box->Child(CodeText(
-            cx, state, row.file, file, side, line,
-            diff->syntaxHighlight && SideOf(file, side)->lines[line].text.len <=
-                                         state->syntaxMaxLineLength));
+        El* source = CodeText(cx, state, row.file, file, side, line,
+                              diff->syntaxHighlight &&
+                                  len(SideOf(file, side)->lines[line].text) <=
+                                      state->syntaxMaxLineLength);
+        if (split && !diff->softWrap) {
+            // The gutters stay inside their columns as the code moves.
+            source->Shrink(0)->PaintOffset(-state->splitScrollX, 0);
+            box->Child(Div(cx->a)->FlexRow()->Flex1()->MinW(0)->ClipX()->Child(
+                source));
+        } else {
+            box->Child(source);
+        }
         // Annotation content shares the uniform row. Rust remeasures the row
         // when the comment's height changes; see port-status.md.
         if (present && diff->annotationContent && diff->annotations) {
@@ -3645,6 +3656,58 @@ Diff* Diff::OnLineHover(void (*fn)(Ctx*, const DiffLinePosition*, bool, void*),
     return this;
 }
 
+static void MeasureSplitCode(Ctx* cx, DiffState* state, float font) {
+    // Shape the widest candidates once per file set and font size, as the
+    // Rust viewer does. Rank by decoded character count for our mono font.
+    struct Candidate {
+        int characters;
+        Str text;
+    };
+    Candidate candidates[8] = {};
+    state->splitNumberDigits = 0;
+    for (const DiffFile* file : state->files) {
+        if (file->IsSingleColumn()) continue;
+        state->splitNumberDigits =
+            IMax(state->splitNumberDigits, file->lineNumberDigits);
+        for (const DiffFileSide* side : {&file->original, &file->modified}) {
+            for (const DiffSourceLine& line : side->lines) {
+                int count = Utf8CharCount(line.display);
+                for (int i = 0; i < 8; i++) {
+                    if (count <= candidates[i].characters) continue;
+                    for (int j = 7; j > i; j--)
+                        candidates[j] = candidates[j - 1];
+                    candidates[i] = {count, line.display};
+                    break;
+                }
+            }
+        }
+    }
+    state->splitCodeWidth = 0;
+    for (const auto& candidate : candidates) {
+        if (!candidate.characters) break;
+        float width = MeasureText(&cx->win->paint, candidate.text, font, 0,
+                                  false, kFontMono)
+                          .w;
+        state->splitCodeWidth = std::max(state->splitCodeWidth, width);
+    }
+    state->splitCodeFont = font;
+}
+
+static void RecordSplitScrollRange(PaintCtx* paint, El* box, void* data) {
+    auto* state = (DiffState*)data;
+    float max = std::max(0.f, box->contentW - box->w);
+    if (state->splitScrollX > max) {
+        state->splitScrollX = max;
+        AppInvalidate(paint->window);
+    }
+}
+
+static void OnSplitScroll(DiffState* state, Ctx* cx, const ScrollEvent* event) {
+    if (state->splitScrollX == event->offsetX) return;
+    state->splitScrollX = event->offsetX;
+    Notify(cx);
+}
+
 El* Diff::IntoEl() {
     DiffInitKeys();
     DiffState* st = state.Get(cx);
@@ -3669,12 +3732,43 @@ El* Diff::IntoEl() {
                    ->Handle(&st->listScroll)
                    ->Row(&RenderRow, this)
                    ->IntoEl();
-    root->Child(ScrollBounce::New(cx, StrL("diff-bounce"),
-                                  VirtualListScrollbar(&st->listScroll), rows)
-                    ->IntoEl()
-                    ->Flex1()
-                    ->MinH(0)
-                    ->H(kFill));
+    El* body = ScrollBounce::New(cx, StrL("diff-bounce"),
+                                 VirtualListScrollbar(&st->listScroll), rows)
+                   ->IntoEl()
+                   ->Flex1()
+                   ->MinH(0)
+                   ->H(kFill);
+    if (st->mode == DiffMode::Split && !softWrap) {
+        float font = ThemeFontSize(cx->app);
+        if (cx->win && st->splitCodeFont != font)
+            MeasureSplitCode(cx, st, font);
+        float columnContent = st->splitCodeWidth + 16;
+        if (lineNumber)
+            columnContent += (float)(st->splitNumberDigits * 8 + 12);
+        if (gutterMarkerContent && gutterMarkerCount > 0) columnContent += 24;
+        if (changeIndicator == DiffChangeIndicator::Signs)
+            columnContent += font;
+        if (changeIndicator == DiffChangeIndicator::Bars) columnContent += 3;
+
+        Scrollbar::Apply(cx, root, StrL("diff-horizontal"), 0, st->splitScrollX,
+                         ListenTo(state, &OnSplitScroll),
+                         ScrollAxis::Horizontal);
+        root->prePaint = &RecordSplitScrollRange;
+        root->customUser = st;
+        // The overflow is the widest line's excess over the narrower column.
+        // An empty spacer contributes that width without widening the list.
+        root->Child(Div(a)
+                        ->Absolute()
+                        ->Top(0)
+                        ->LeftRel(std::max(splitRatio, 1.f - splitRatio))
+                        ->W(st->splitNumberDigits ? columnContent : 0)
+                        ->H(1));
+        // Out-of-flow children stay pinned to the scroll viewport.
+        body->Absolute()->Inset0()->SizeFull();
+    } else {
+        st->splitScrollX = 0;
+    }
+    root->Child(body);
     return root;
 }
 

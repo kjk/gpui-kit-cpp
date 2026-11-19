@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f6a56119c27da0ec79cb67e292f224eb5186eb82` (2026-11-14,
-theme: Add a `list.highlight.foreground` color for search match highlights
-(#3960)).
-Read list.highlight.foreground for search spans, defaulting to the theme blue.
-Generate both default palettes and expose the token in Story theme colors.
+Processed through `fae0aa1efb554304973409c7c03a9896e26add98` (2026-11-14,
+diff: Keep split columns on screen beside a long line (#3958)).
+Keep split columns and gutters fixed while their clipped code shares a
+horizontal scroll offset. Port the split geometry regression with headless
+wheel input.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
@@ -434,12 +434,12 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   highlighter is prepared there too, once per hunk side, rather than on
   the background executor. A rebuild keeps the
   scroll index rather than the source line that was at the top. Soft wrap
-  is stored and not applied. The viewer's body is a vertical list, so
-  the horizontal `ScrollableMask` that keeps a vertical wheel on the
-  rows is not applied. The split ratio divides the viewport width. Rust
-  also reserves room for the widest unwrapped line. The gutter marker
-  lane is one row square inside the fill-width row. Rust adds that lane
-  to its measured content width. The add-annotation
+  is stored and not applied. The split columns use the runtime's horizontal
+  scrollbar around the vertical list. Their source clips inside fixed
+  gutters, and the scroll range is estimated from the widest lines ranked
+  by UTF-8 scalar count. Unified rows keep their existing vertical list.
+  The gutter marker lane is one row square inside the fill-width row.
+  The add-annotation
   button inset is not
   applied because that button is not painted. Annotation content is
   painted inside the uniform row, which does not grow with the comment.

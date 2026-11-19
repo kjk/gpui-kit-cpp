@@ -444,6 +444,10 @@ struct DiffState {
     Vec<int> rowFileBase;
     int scrollItem = 0;
     VirtualListScrollHandle listScroll = {};
+    float splitScrollX = 0;
+    float splitCodeWidth = 0;
+    float splitCodeFont = 0;
+    int splitNumberDigits = 0;
     FocusHandle focus = {};
     bool hasSelection = false;
     DiffLineRange selected = {};

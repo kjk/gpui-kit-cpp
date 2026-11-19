@@ -837,6 +837,72 @@ static void TestDiffListFillsItsHeight() {
     TestAppFree(app);
 }
 
+struct WideSplitView {
+    Entity<DiffState> state;
+    DiffGutterMarker markers[2];
+    Bounds gutters[2];
+
+    static El* Marker(Ctx* cx, const DiffGutterMarker* marker, void* data) {
+        auto* self = (WideSplitView*)data;
+        int side = marker->Position().side == DiffSide::Original ? 0 : 1;
+        El* box = Div(cx->a)->W(12)->H(12);
+        box->prePaint = [](PaintCtx*, El* el, void* result) {
+            *(Bounds*)result = el->Bounds();
+        };
+        box->customUser = &self->gutters[side];
+        return box;
+    }
+
+    static El* Render(WideSplitView* self, Ctx* cx) {
+        return Diff::New(cx, self->state)
+            ->GutterMarkers(self->markers, 2)
+            ->RenderGutterMarker(&Marker, self)
+            ->IntoEl();
+    }
+};
+
+// diff/scroll_tests.rs split_columns_keep_half_the_viewport_beside_a_long_line.
+static void SplitColumnsKeepTheirGuttersWhileCodeScrolls() {
+    App* app = TestAppNew();
+    Init(app);
+    auto view = EntityNew<WideSplitView>(app);
+    auto* self = view.Get(app);
+    self->state = EntityNew<DiffState>(app);
+    auto* state = self->state.Get(app);
+    state->Bind(app, self->state);
+    char line[1001];
+    memset(line, 'w', sizeof(line) - 1);
+    line[sizeof(line) - 1] = '\0';
+    Vec<DiffFile*> files;
+    DiffParseError error = {};
+    TempStr patch =
+        fmt("--- a/long.txt\n+++ b/long.txt\n@@ -1 +1 @@\n-%s\n+short\n",
+            Str(line));
+    utassert(DiffFile::Parse(patch, &files, &error));
+    state->SetFiles(files.els, len(files), nullptr);
+    VecReset(files);
+    state->WithMode(DiffMode::Split);
+    self->markers[0] = DiffGutterMarker::New(
+        StrL("original"),
+        DiffLinePosition::New(StrL("long.txt"), DiffSide::Original, 1));
+    self->markers[1] = DiffGutterMarker::New(
+        StrL("modified"),
+        DiffLinePosition::New(StrL("long.txt"), DiffSide::Modified, 1));
+
+    Window* win = TestWindowOpen(app, view, 400, 200, 1);
+    TestDraw(win);
+    Bounds a = self->gutters[0], b = self->gutters[1];
+    utassert(a.w > 0 && b.w > 0);
+    utassert(a.x >= 0 && a.x < 200);
+    utassert(b.x >= 200 && b.x < 400);
+    TestSimulateScrollWheel(win, Point{100, 48}, Point{-200, 0});
+    TestDraw(win);
+    utassert(state->splitScrollX > 0);
+    utassertnear(self->gutters[0].x, a.x);
+    utassertnear(self->gutters[1].x, b.x);
+    TestAppFree(app);
+}
+
 // diff/scroll_tests.rs. A 300-line patch, every line changed, in a 400×200
 // window. The scroll extent is the whole patch, not the rows painted so far.
 struct LongDiffView {
@@ -1323,6 +1389,7 @@ void TestDiff() {
     ModeSwitchAtTheTopKeepsTheFileHeaderInView();
     SplitRatioSizesTheRenderedColumns();
     TheWheelScrollsPastTheRowsRenderedSoFar();
+    SplitColumnsKeepTheirGuttersWhileCodeScrolls();
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();
     GutterMarkersActivateWithoutSelectingLines();
 }
