@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `837ae570e5465c0e9b46e1999e1dc0e2fb232737` (2026-11-19,
-scrollbar: Only drag or jump the track on the primary button (#4038)).
-Preserve scrollbar capture during secondary button releases. The existing non-
-primary press path already dispatches through to content.
+Processed through `c42fa127344bacfe4fd78f3071651223eeb6a7c2` (2026-11-19,
+docs: Translate the missing sections of the zh-CN List guide (#4045)).
+Upstream documentation translates the zh-CN List guide. This repository does
+not carry the Rust documentation site.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

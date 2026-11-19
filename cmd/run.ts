@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "837ae570e5465c0e9b46e1999e1dc0e2fb232737",
+  sha: "c42fa127344bacfe4fd78f3071651223eeb6a7c2",
   date: "2026-11-19",
-  subject: "scrollbar: Only drag or jump the track on the primary button (#4038)",
+  subject: "docs: Translate the missing sections of the zh-CN List guide (#4045)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",
