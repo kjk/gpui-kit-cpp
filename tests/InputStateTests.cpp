@@ -7580,6 +7580,46 @@ static void UndoManagerSingleLineReturnCommitsTheTypingSession() {
     InputViewFree(&view);
 }
 
+// state.rs test_cursor_moves_and_deletes_whole_graphemes.
+static void CursorMovesSelectsAndDeletesWholeGraphemes() {
+    const Str clusters[] = {
+        StrL("a"),
+        StrL("\u267b\ufe0f"),
+        StrL("\U0001f980"),
+        StrL("\U0001f469\u200d\U0001f4bb"),
+        StrL("\U0001f1fa\U0001f1f8"),
+        StrL("e\u0301"),
+        StrL("b"),
+    };
+    InputView view = InputViewBuild();
+    StrBuilder text;
+    Vec<int> offsets;
+    VecAppend(offsets, 0);
+    for (Str cluster : clusters) {
+        text.Append(cluster);
+        VecAppend(offsets, len(text));
+    }
+    InputSetValue(view.input, Str(text.els, len(text)));
+    InputFocus(view.input, view.app, view.win);
+    view.input->selectedRange = SelectionAt(0);
+    TestDraw(view.win);
+    for (int i = 1; i < len(offsets); i++) {
+        TestSimulateKeystrokes(view.win, "right");
+        utassert(InputCursor(view.input) == offsets[i]);
+    }
+    for (int i = len(offsets) - 2; i >= 0; i--) {
+        TestSimulateKeystrokes(view.win, "left");
+        utassert(InputCursor(view.input) == offsets[i]);
+    }
+    view.input->selectedRange = SelectionAt(offsets[4]);
+    TestSimulateKeystrokes(view.win, "shift-left");
+    utassert(StrEq(InputSelectedValue(view.input), clusters[3]));
+    view.input->selectedRange = SelectionAt(offsets[4]);
+    TestSimulateKeystrokes(view.win, "backspace delete");
+    utassert(ViewValueIs(view, "a\u267b\ufe0f\U0001f980e\u0301b"));
+    InputViewFree(&view);
+}
+
 // state.rs test_textarea_secondary_enter_does_not_insert_newline.
 static void TextareaSecondaryEnterSubmitsWithoutInsertingNewline() {
     struct SecondaryEnterProbe {
@@ -8686,6 +8726,7 @@ static void RunWindowTestsB() {
     UndoManagerSingleLineReturnCommitsTheTypingSession();
     UndoManagerSubmitOnEnterCommitsTheTextareaSession();
     TextareaSecondaryEnterSubmitsWithoutInsertingNewline();
+    CursorMovesSelectsAndDeletesWholeGraphemes();
     UndoManagerBlurCommitsTheTypingSession();
     UndoManagerKeepsRapidLinesInDistinctTransactions();
     UndoManagerCoalescesLongUnicodeTypingWithoutATimer();

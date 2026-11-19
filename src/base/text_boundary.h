@@ -24,6 +24,11 @@ uint32_t CharLowerSimple(uint32_t c);
 // clip_offset_left: into the string, then back to a character boundary.
 int Utf8ClipLeft(Str s, int off);
 
+// Unicode 17 extended grapheme boundaries, as used for caret movement in
+// crates/base/src/input/base/rope_ext.rs. Offsets are UTF-8 byte positions.
+int TextPreviousGraphemeBoundary(Str text, int offset);
+int TextNextGraphemeBoundary(Str text, int offset);
+
 // word_range_at: the byte range of the word around `off`
 // — a run of word characters, or the run of spaces when the offset is in
 // one, or the single character otherwise. False when there is nothing there.

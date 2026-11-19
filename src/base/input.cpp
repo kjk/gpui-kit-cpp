@@ -4711,11 +4711,13 @@ static int InputCursorBoundary(const InputState* s, int offset, Bias bias) {
 }
 
 int InputPreviousBoundary(const InputState* s, int offset) {
-    return InputCursorBoundary(s, offset > 0 ? offset - 1 : 0, Bias::Left);
+    return InputCursorBoundary(
+        s, TextPreviousGraphemeBoundary(InputValue(s), offset), Bias::Left);
 }
 
 int InputNextBoundary(const InputState* s, int offset) {
-    return InputCursorBoundary(s, offset + 1, Bias::Right);
+    return InputCursorBoundary(
+        s, TextNextGraphemeBoundary(InputValue(s), offset), Bias::Right);
 }
 
 // The visual row the caret is on, as a range of the logical line holding it:

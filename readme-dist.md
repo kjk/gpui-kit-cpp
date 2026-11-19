@@ -153,6 +153,14 @@ parsers need no libraries at all.
 
 No other dependencies, no nested build system, no STL containers.
 
+## Unicode grapheme data
+
+The grapheme property tables come from unicode-segmentation 1.13.3.
+
+```text
+<unicode-segmentation-license>
+```
+
 ## This copy
 
 Amalgamated from gpui-kit-cpp [`<checkin-sha1>`](https://github.com/kjk/gpui-kit-cpp/commit/<checkin-sha1>).

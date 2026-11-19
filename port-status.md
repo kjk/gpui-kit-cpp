@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `dec6aeff846a4c81b91ff704bbb38978bdfabdeb` (2026-11-10,
-diff: Add `split_ratio` to size the Split columns (#3883)).
-Diff can set the original column share in split mode. The ratio partitions the
-C++ list viewport and follows the upstream default and input clamping.
+Processed through `d739ad29e80da18e60f30a8c32b02296db61d361` (2026-11-10,
+input: Move the caret and delete by grapheme cluster (#3887)).
+Caret movement, selection and character deletion use the Unicode 17 extended
+grapheme boundaries that the pinned unicode-segmentation crate uses. Inline
+token and CRLF boundary handling remain part of editor movement.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 

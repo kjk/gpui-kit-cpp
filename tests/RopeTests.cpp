@@ -195,6 +195,52 @@ static void TabSizeCountsAndBuildsIndent() {
     ArenaDelete(arena);
 }
 
+static void GraphemeBoundariesAcrossLongText() {
+    const Str clusters[] = {
+        StrL("\U0001f469\U0001f3fd\u200d\U0001f4bb"),
+        StrL("\U0001f1fa\U0001f1f8"),
+        StrL("\u0915\u094d\u0915"),
+        StrL("\u1100\u1161\u11a8"),
+        StrL("\u0600a"),
+        StrL("\u0915\u0903"),
+        StrL("e\u0301"),
+        StrL("\r\n"),
+    };
+    Arena* arena = ArenaNew();
+    StrBuilder text(arena);
+    Vec<int> boundaries;
+    VecAppend(boundaries, 0);
+    auto append = [&](Str cluster) {
+        text.Append(cluster);
+        VecAppend(boundaries, len(text));
+    };
+    for (int i = 0; i < 1500; i++) {
+        append(StrL("x"));
+    }
+    append(clusters[0]);
+    for (int i = 0; i < 200; i++) {
+        append(clusters[1]);
+    }
+    for (int i = 2; i < (int)(sizeof(clusters) / sizeof(clusters[0])); i++) {
+        append(clusters[i]);
+    }
+    Str document = text.TakeStr();
+    for (int i = 0; i + 1 < len(boundaries); i++) {
+        int start = boundaries[i];
+        int end = boundaries[i + 1];
+        utassert(TextNextGraphemeBoundary(document, start) == end);
+        utassert(TextPreviousGraphemeBoundary(document, end) == start);
+        for (int inside = start + 1; inside < end; inside++) {
+            utassert(TextPreviousGraphemeBoundary(document, inside) == start);
+            utassert(TextNextGraphemeBoundary(document, inside) == end);
+        }
+    }
+    utassert(TextPreviousGraphemeBoundary(document, 0) == 0);
+    utassert(TextNextGraphemeBoundary(document, len(document)) ==
+             len(document));
+    ArenaDelete(arena);
+}
+
 void TestRope() {
     TestSuite("rope_ext");
     SliceLine();
@@ -205,6 +251,7 @@ void TestRope() {
     CharAt();
     Utf16Conversion();
     ClipOffset();
+    GraphemeBoundariesAcrossLongText();
     CharIndexToOffset();
     SourceRopeFacadesIterateAndDescribeEdits();
     TabSizeCountsAndBuildsIndent();

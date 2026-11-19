@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "dec6aeff846a4c81b91ff704bbb38978bdfabdeb",
+  sha: "d739ad29e80da18e60f30a8c32b02296db61d361",
   date: "2026-11-10",
-  subject: "diff: Add `split_ratio` to size the Split columns (#3883)",
+  subject: "input: Move the caret and delete by grapheme cluster (#3887)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

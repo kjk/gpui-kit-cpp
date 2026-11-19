@@ -1,6 +1,146 @@
 #include "base/text_boundary.h"
+#include "base/grapheme_data.h"
 
 namespace gpui {
+
+template <typename Kind, size_t N>
+static Kind GraphemeRangeKind(const GraphemeRange<Kind> (&ranges)[N],
+                              uint32_t code) {
+    int first = 0;
+    int last = (int)N;
+    while (first < last) {
+        int mid = first + (last - first) / 2;
+        const auto& range = ranges[mid];
+        if (code < range.first) {
+            last = mid;
+        } else if (code > range.last) {
+            first = mid + 1;
+        } else {
+            return range.kind;
+        }
+    }
+    return Kind::Other;
+}
+
+static GraphemeCategory GraphemeCategoryOf(uint32_t code) {
+    using Cat = GraphemeCategory;
+    if (code < 0x80) {
+        if (code == '\r') return Cat::Cr;
+        if (code == '\n') return Cat::Lf;
+        return code < 0x20 || code == 0x7f ? Cat::Control : Cat::Other;
+    }
+    if (code >= 0xac00 && code <= 0xd7a3) {
+        return (code - 0xac00) % 28 == 0 ? Cat::Lv : Cat::Lvt;
+    }
+    return GraphemeRangeKind(kGraphemeRanges, code);
+}
+
+static GraphemeCategory GraphemeCategoryAt(Str text, int offset) {
+    uint32_t code = 0;
+    Utf8At(text, offset, &code);
+    return GraphemeCategoryOf(code);
+}
+
+static bool GraphemeControl(GraphemeCategory value) {
+    using Cat = GraphemeCategory;
+    return value == Cat::Control || value == Cat::Cr || value == Cat::Lf;
+}
+
+// GB9c looks back through an Indic linking sequence.
+static bool GraphemeFollowsIndicLinker(Str text, int offset) {
+    bool hasLinker = false;
+    while (offset > 0) {
+        offset = Utf8Prev(text, offset);
+        uint32_t code = 0;
+        Utf8At(text, offset, &code);
+        IndicBreakCategory kind = GraphemeRangeKind(kIndicBreakRanges, code);
+        if (kind == IndicBreakCategory::Linker) {
+            hasLinker = true;
+        } else if (kind != IndicBreakCategory::Extend) {
+            return hasLinker &&
+                   GraphemeCategoryOf(code) == GraphemeCategory::IndicConsonant;
+        }
+    }
+    return false;
+}
+
+// GB11 looks left from the ZWJ for its pictograph.
+static bool GraphemeZwjFollowsPictograph(Str text, int offset) {
+    while (offset > 0) {
+        offset = Utf8Prev(text, offset);
+        GraphemeCategory kind = GraphemeCategoryAt(text, offset);
+        if (kind != GraphemeCategory::Extend) {
+            return kind == GraphemeCategory::ExtendedPictographic;
+        }
+    }
+    return false;
+}
+
+static bool GraphemeOddRegionalPrefix(Str text, int offset) {
+    bool odd = false;
+    while (offset > 0) {
+        offset = Utf8Prev(text, offset);
+        if (GraphemeCategoryAt(text, offset) !=
+            GraphemeCategory::RegionalIndicator) {
+            break;
+        }
+        odd = !odd;
+    }
+    return odd;
+}
+
+// UAX #29 revision 47, extended grapheme clusters. Evaluate pair rules
+// first and inspect earlier code points only for the contextual rules.
+static bool GraphemeBreakAt(Str text, int offset) {
+    if (offset <= 0 || offset >= len(text)) return true;
+    using Cat = GraphemeCategory;
+    int leftOffset = Utf8Prev(text, offset);
+    Cat left = GraphemeCategoryAt(text, leftOffset);
+    Cat right = GraphemeCategoryAt(text, offset);
+    if (left == Cat::Cr && right == Cat::Lf) return false;
+    if (GraphemeControl(left) || GraphemeControl(right)) return true;
+    if (left == Cat::L && (right == Cat::L || right == Cat::V ||
+                           right == Cat::Lv || right == Cat::Lvt))
+        return false;
+    if ((left == Cat::Lv || left == Cat::V) &&
+        (right == Cat::V || right == Cat::T))
+        return false;
+    if ((left == Cat::Lvt || left == Cat::T) && right == Cat::T) return false;
+    if (right == Cat::Extend || right == Cat::Zwj ||
+        right == Cat::SpacingMark || left == Cat::Prepend)
+        return false;
+    if (right == Cat::IndicConsonant) {
+        return !GraphemeFollowsIndicLinker(text, offset);
+    }
+    if (left == Cat::Zwj && right == Cat::ExtendedPictographic) {
+        return !GraphemeZwjFollowsPictograph(text, leftOffset);
+    }
+    if (left == Cat::RegionalIndicator && right == Cat::RegionalIndicator) {
+        return !GraphemeOddRegionalPrefix(text, offset);
+    }
+    return true;
+}
+
+int TextPreviousGraphemeBoundary(Str text, int offset) {
+    offset = std::min(std::max(offset, 0), len(text));
+    while (!Utf8IsCharBoundary(text, offset)) {
+        offset++;
+    }
+    do {
+        offset = Utf8Prev(text, offset);
+    } while (!GraphemeBreakAt(text, offset));
+    return offset;
+}
+
+int TextNextGraphemeBoundary(Str text, int offset) {
+    offset = Utf8ClipLeft(text, offset);
+    while (offset < len(text)) {
+        uint32_t code = 0;
+        offset += Utf8At(text, offset, &code);
+        if (GraphemeBreakAt(text, offset)) break;
+    }
+    return offset;
+}
 
 // crates/base/src/text_boundary.rs. Two characters join into one word only
 // when they are the same kind and that kind is Word or Whitespace, so a double

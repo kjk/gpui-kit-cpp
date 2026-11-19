@@ -1275,6 +1275,8 @@ function writeDistReadme(sha: string): string {
     }
     text = text.replaceAll(placeholder, version);
   }
+  const graphemeLicense = readFileSync(join(root, "src/base/grapheme-license.txt"), "utf8").trim();
+  text = text.replace("<unicode-segmentation-license>", graphemeLicense);
   const abs = join(root, distRepoDir, "readme.md");
   writeFileSync(abs, text, "utf8");
   return srcRel(abs);
