@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a3f473e855ae8041351ed962bc5186a885c3d612` (2026-11-19,
-table: Stop set_selected_* from scrolling the selection into view (#4046)).
-Programmatic table selection keeps both scroll offsets. Pointer and keyboard
-selections retain reveal behavior, and the Story Go to cell actions reveal
-explicitly.
+Processed through `9bcad2367f095d85b4e1f64ca4b47eec1d13e1f5` (2026-11-19,
+website: Correct Firefox canvas size in web examples (#4047)).
+The C++ browser host already sizes the backing canvas from CSS bounds times
+devicePixelRatio, independent of ResizeObserver device-pixel reports, with
+pointer coordinates in CSS pixels.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

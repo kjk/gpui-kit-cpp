@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a3f473e855ae8041351ed962bc5186a885c3d612",
+  sha: "9bcad2367f095d85b4e1f64ca4b47eec1d13e1f5",
   date: "2026-11-19",
-  subject: "table: Stop set_selected_* from scrolling the selection into view (#4046)",
+  subject: "website: Correct Firefox canvas size in web examples (#4047)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",
