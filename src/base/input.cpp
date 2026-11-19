@@ -12185,6 +12185,84 @@ bool InputImeCandidateBounds(const InputState* s, Window* win, Selection range,
     return true;
 }
 
+// The layout hit returns the nearest caret, which can be on either side
+// of a glyph. Check the glyph at that caret and the one immediately before it.
+static int InputCharacterInVisualRow(PaintCtx* ctx, const InputState* s,
+                                     Str line, WrapRowSpan row, float x) {
+    if (row.lo >= row.hi) {
+        return -1;
+    }
+    int at = WrapRowIndexAt(ctx, s, line, row, x);
+    auto covers = [&](int lo, int hi) {
+        float left = WrapRowX(ctx, s, line, row, lo);
+        float right = WrapRowX(ctx, s, line, row, hi);
+        return x >= std::min(left, right) && x < std::max(left, right);
+    };
+    int next = TextNextGraphemeBoundary(line, at);
+    if (at < row.hi && covers(at, std::min(next, row.hi))) {
+        return at;
+    }
+    int previous = TextPreviousGraphemeBoundary(line, at);
+    if (at > row.lo && covers(std::max(previous, row.lo), at)) {
+        return std::max(previous, row.lo);
+    }
+    return -1;
+}
+
+int InputCharacterIndexForPoint(const InputState* s, Window* win, Point at) {
+    if (!s || !win || !s->inputBounds.Contains(at) || s->lastLineH <= 0) {
+        return -1;
+    }
+    Str text = InputValue(s);
+    PaintCtx* ctx = &win->paint;
+    if (InputIsSingleLine(s)) {
+        const Bounds& bounds = s->lastBounds;
+        if (at.y < bounds.y || at.y >= bounds.y + s->lastLineH) {
+            return -1;
+        }
+        Str line = s->masked ? InputMaskedText(GetTempArena(), text) : text;
+        WrapRowSpan row;
+        row.hi = len(line);
+        int hit = InputCharacterInVisualRow(ctx, s, line, row, at.x - bounds.x);
+        if (hit < 0) {
+            return -1;
+        }
+        if (s->masked) {
+            int chars = hit / 3;
+            hit = 0;
+            for (int i = 0; i < chars && hit < len(text); i++) {
+                uint32_t cp = 0;
+                int n = Utf8At(text, hit, &cp);
+                hit += n > 0 ? n : 1;
+            }
+        }
+        return Utf8OffsetToUtf16(text, InputCursorBoundary(s, hit, Bias::Left));
+    }
+    const InputPaintedRows* painted = LastPaintedRows(s, win);
+    if (!painted || painted->docVersion != s->docVersion) {
+        return -1;
+    }
+    for (int i = 0; i < painted->geometry.nRows; i++) {
+        const RangeDecorationRow& row = painted->geometry.rows[i];
+        const El* run = row.text;
+        if (!run || at.y < run->y || at.y >= run->y + s->lastLineH) {
+            continue;
+        }
+        Str line(text.s + row.lineStart, row.lineLen);
+        WrapRowSpan span;
+        span.lineStart = row.lineStart;
+        span.lo = row.start - row.lineStart;
+        span.hi = span.lo + row.len;
+        int hit = InputCharacterInVisualRow(ctx, s, line, span, at.x - run->x);
+        if (hit < 0) {
+            return -1;
+        }
+        int source = InputCursorBoundary(s, row.lineStart + hit, Bias::Left);
+        return Utf8OffsetToUtf16(text, source);
+    }
+    return -1;
+}
+
 bool InputTextOriginOffset(const InputState* s, float* out) {
     if (!s || !out || s->textOriginOffset < 0.f) {
         return false;

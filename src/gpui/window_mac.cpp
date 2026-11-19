@@ -1049,8 +1049,15 @@ static gpui::Str TextInputString(id string) {
 }
 
 - (NSUInteger)characterIndexForPoint:(NSPoint)point {
-    (void)point;
-    return NSNotFound;
+    gpui::InputState* in = [self gpuiInput];
+    if (!in || ![self window]) {
+        return NSNotFound;
+    }
+    NSPoint inWindow = [[self window] convertPointFromScreen:point];
+    NSPoint local = [self convertPoint:inWindow fromView:nil];
+    int hit = gpui::InputCharacterIndexForPoint(
+        in, win, {(float)local.x, (float)local.y});
+    return hit >= 0 ? (NSUInteger)hit : NSNotFound;
 }
 
 - (void)keyUp:(NSEvent*)event {

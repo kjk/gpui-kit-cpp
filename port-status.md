@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c6e3c8c25c27370af5e3942271674a3cc8f57f4b` (2026-11-12,
-input: restrict multiline IME candidate bounds to the matching row (#3939)).
-Use the requested text row for native IME candidate bounds on Windows and
-macOS. A collapsed range keeps a one-pixel anchor on that row.
+Processed through `5caff4e45285e5b6e16d07b40483b1790047d3a6` (2026-11-12,
+input: Hit-test `character_index_for_point` past the gutter and on every line
+(#3921)).
+Hit-test the painted input row below its actual window position and past its
+gutter. The AppKit text input client returns the corresponding UTF-16
+character index.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

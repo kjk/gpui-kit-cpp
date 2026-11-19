@@ -13763,6 +13763,36 @@ static void ImeCandidateBoundsStayOnTheMatchingRow() {
     InputViewFree(&view);
 }
 
+// input/base/state.rs:
+// character_index_for_point_finds_each_letter_where_it_is_drawn.
+static void CharacterIndexForPointFindsEachDrawnLetter() {
+    InputView view = InputViewBuildEditor([](InputState* s, App*) {
+        InputSetValue(s, StrL("Teh quick\nbrown fox\njumps"));
+    });
+    int letters[] = {0, 5, 8, 10, 14, 18, 20, 24};
+    for (bool gutter : {true, false}) {
+        InputSetLineNumber(view.input, gutter, view.app, view.win);
+        TestDraw(view.win);
+        for (int i : letters) {
+            Bounds bounds;
+            utassert(InputImeCandidateBounds(view.input, view.win, {i, i + 1},
+                                             &bounds));
+            Point middle = {bounds.x + bounds.w * 0.5f,
+                            bounds.y + bounds.h * 0.5f};
+            utassert(
+                InputCharacterIndexForPoint(view.input, view.win, middle) == i);
+        }
+    }
+    InputSetValue(view.input, StrL("a\xf0\x9f\x98\x80"
+                                   "b\nsecond"));
+    TestDraw(view.win);
+    Bounds bounds;
+    utassert(InputImeCandidateBounds(view.input, view.win, {5, 6}, &bounds));
+    Point middle = {bounds.x + bounds.w * 0.5f, bounds.y + bounds.h * 0.5f};
+    utassert(InputCharacterIndexForPoint(view.input, view.win, middle) == 3);
+    InputViewFree(&view);
+}
+
 void TestInputState() {
     LaterHighlightLayerWinsOverEarlierOne();
     DecorationColorIsStableAcrossCompositions();
@@ -13782,6 +13812,7 @@ void TestInputState() {
     FocusedInputAsksItsScrollContainerToRevealIt();
     AFocusedInputReportsAMovedCaretToThePlatform();
     ImeCandidateBoundsStayOnTheMatchingRow();
+    CharacterIndexForPointFindsEachDrawnLetter();
     TapAsksForTheVirtualKeyboard();
     AccessibilityActionsRecheckLiveEditability();
     AccessibilitySetValuePreservesExactEditorText();

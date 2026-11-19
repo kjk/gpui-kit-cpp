@@ -209,6 +209,9 @@ bool InputRangeToBounds(const InputState* s, Window* win, Selection range,
 // at least one pixel of width, including at a collapsed line-end caret.
 bool InputImeCandidateBounds(const InputState* s, Window* win, Selection range,
                              Bounds* out);
+// NSTextInputClient's character_index_for_point. The point is in window
+// coordinates and the result is a UTF-16 offset, or -1 outside a glyph.
+int InputCharacterIndexForPoint(const InputState* s, Window* win, Point at);
 // Horizontal distance from the content area's left edge to unscrolled,
 // left-aligned source text in the last multiline layout. Includes the
 // gutter and its gaps. False before the first layout.

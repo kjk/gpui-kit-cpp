@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c6e3c8c25c27370af5e3942271674a3cc8f57f4b",
+  sha: "5caff4e45285e5b6e16d07b40483b1790047d3a6",
   date: "2026-11-12",
-  subject: "input: restrict multiline IME candidate bounds to the matching row (#3939)",
+  subject: "input: Hit-test `character_index_for_point` past the gutter and on every line (#3921)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",
