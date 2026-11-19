@@ -1293,7 +1293,7 @@ static void PaintIndicator(PaintCtx* ctx, El* e, void* user) {
 
 El* SpeechIndicator::IntoEl() {
     const SpeechState* s = state.Get(cx->app);
-    bool reduced = MotionReduced();
+    bool reduced = MotionReduced(cx->app);
     IndicatorPaint* paint = ArenaNew<IndicatorPaint>(a);
     if (reduced) {
         for (int i = 0; i < kSpeechIndicatorBars; i++) {
@@ -1852,7 +1852,7 @@ El* SpeechWaveform::IntoEl() {
     float gap = roundf(bar * kWaveformGapRatio);
     const SpeechState* s = state.Get(cx->app);
     bool capturing = s && SpeechStatusIsCapturing(s->Status());
-    bool animate = capturing && !MotionReduced();
+    bool animate = capturing && !MotionReduced(cx->app);
 
     WaveformPaint* paint = ArenaNew<WaveformPaint>(a);
     paint->bar = bar;
@@ -1879,7 +1879,7 @@ El* SpeechWaveform::IntoEl() {
         LiquidPaint* water = ArenaNew<LiquidPaint>(a);
         water->state = state;
         water->animate = animate;
-        water->reduced = MotionReduced();
+        water->reduced = MotionReduced(cx->app);
         float line = height * 0.1f;
         water->line = line < 2.f ? 2.f : line;
         water->color = paint->color;

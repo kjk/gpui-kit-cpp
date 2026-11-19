@@ -1217,6 +1217,7 @@ struct ScrollbarMotion {
 // thumb slides it in from the nearest edge as it fades. Reduced motion zeroes
 // every duration, which is how a policy with no motion arrives here.
 ScrollbarMotion ScrollbarMotionFor(ScrollbarMode mode);
+ScrollbarMotion ScrollbarMotionFor(ScrollbarMode mode, bool reduced);
 
 // What `VisibilityAnimation::sample` answers: how much of the bar is there,
 // how far along its slide it is, and whether it is still moving.

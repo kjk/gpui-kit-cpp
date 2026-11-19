@@ -1509,6 +1509,68 @@ static void AFalseFlagSetBeforeTheFirstReadingIsKept() {
     MotionResetReduceForTest();
 }
 
+// crates/base/src/reduce_motion.rs
+static void ExplicitAppMotionChoicesSurviveSystemReadingsAndCanBeCleared() {
+    MotionResetReduceForTest();
+    App* app = TestAppNew();
+    App other;
+    ApplyReduceMotionPreference(false);
+    SetReduceMotionPreference(ReduceMotionPreference::Allow, app);
+    SetReduceMotionPreference(ReduceMotionPreference::System, &other);
+    ApplyReduceMotionPreference(true);
+    utassert(!MotionReduced(app));
+    utassert(MotionReduced(&other));
+
+    SetReduceMotionPreference(ReduceMotionPreference::System, app);
+    utassert(MotionReduced(app));
+    SetReduceMotionPreference(ReduceMotionPreference::System, app);
+    ApplyReduceMotionPreference(false);
+    utassert(!MotionReduced(app));
+    SetReduceMotionPreference(ReduceMotionPreference::Reduce, app);
+    ApplyReduceMotionPreference(false);
+    utassert(MotionReduced(app));
+    utassert(!MotionReduced(&other));
+
+    MotionSetReduced(false, app);
+    ApplyReduceMotionPreference(true);
+    utassert(!MotionReduced(app));
+    utassert(MotionReduced(&other));
+    SetReduceMotionPreference(ReduceMotionPreference::System, app);
+    utassert(MotionReduced(app));
+    SetReduceMotionPreference(ReduceMotionPreference::Reduce, app);
+    ApplyReduceMotionPreference(false);
+    utassert(MotionReduced(app));
+    AppGlobalClear(&other);
+    TestAppFree(app);
+    MotionResetReduceForTest();
+}
+
+static void ClearingMotionPreferenceKeepsTheFlagUntilTheFirstReading() {
+    MotionResetReduceForTest();
+    App* app = TestAppNew();
+    SetReduceMotionPreference(ReduceMotionPreference::Reduce, app);
+    SetReduceMotionPreference(ReduceMotionPreference::System, app);
+    utassert(MotionReduced(app));
+    ApplyReduceMotionPreference(false);
+    utassert(!MotionReduced(app));
+    TestAppFree(app);
+    MotionResetReduceForTest();
+}
+
+static void ClearingTheProcessMotionOverrideResumesTheCachedPreference() {
+    MotionResetReduceForTest();
+    App* app = TestAppNew();
+    MotionSetReduced(false);
+    ApplyReduceMotionPreference(true);
+    utassert(!MotionReduced());
+    SetReduceMotionPreference(ReduceMotionPreference::System);
+    utassert(MotionReduced());
+    ApplyReduceMotionPreference(false);
+    utassert(!MotionReduced());
+    TestAppFree(app);
+    MotionResetReduceForTest();
+}
+
 void TestMotion() {
     TestSuite("motion");
     TheEasingsAreTheCurvesRustNames();
@@ -1571,4 +1633,7 @@ void TestMotion() {
     TheSystemDrivesTheFlagUntilTheApplicationSetsIt();
     AFlagTheApplicationSetBeforeTheFirstReadingIsKept();
     AFalseFlagSetBeforeTheFirstReadingIsKept();
+    ExplicitAppMotionChoicesSurviveSystemReadingsAndCanBeCleared();
+    ClearingMotionPreferenceKeepsTheFlagUntilTheFirstReading();
+    ClearingTheProcessMotionOverrideResumesTheCachedPreference();
 }

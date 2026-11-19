@@ -1198,7 +1198,8 @@ struct TextViewState {
                           double now);
     // StreamFadeTracker::frame: every unfinished segment sampled at `now`
     // into `out` (arena-owned), the finished ones dropped. Returns how many.
-    int StreamFadeFrame(Arena* a, double now, StreamFadeRange** out);
+    int StreamFadeFrame(Arena* a, double now, StreamFadeRange** out,
+                        const App* app = nullptr);
     static void OnAction(TextViewState* self, Ctx* cx,
                          const ActionEvent* event);
     static void OnScroll(TextViewState* self, Ctx* cx,

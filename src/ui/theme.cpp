@@ -1332,7 +1332,7 @@ void ThemeSyncBase(App* app) {
     base.scrollbar.mode = ScrollbarModeNow(app);
     // scrollbar_motion: idle is 2s and exit is 500ms. Enter and expand are
     // 300ms. Reduced motion zeros enter, exit and expand; the hold stays.
-    base.scrollbar.motion = ScrollbarMotionFor(base.scrollbar.mode);
+    base.scrollbar.motion = ScrollbarMotionFor(base.scrollbar.mode, false);
     // plot_motion: the plot hover motion this design system projects onto
     // Base. A pointer chases the cursor across neighbouring data, so it has
     // to arrive well within the time the cursor takes to reach the next

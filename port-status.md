@@ -16,16 +16,20 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1f3dcb4a0c86879a135666bfd49ca25d51e20d0d` (2026-11-10,
-input: Keep auto-grow Textarea from scrolling at fractional scales (#3882)).
-Textarea rounds its row height requirement up to the device pixel grid and
-ignores overflow that rounds to the viewport height. Overflow past the row cap
-remains scrollable.
+Processed through `e07f5bf3d36ffd1f0625d981beb59f6fb06b39ec` (2026-11-10,
+motion: Add an explicit reduced-motion preference (#3881)).
+Applications can explicitly reduce or allow motion and later resume the cached
+system preference. System readings continue during an override, and headless
+tests skip platform queries.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
 ## Known gaps vs Rust
 
+- **The legacy C++ reduced-motion setter treats same-value writes as explicit.**
+  Calls without an app set a process default. Applications can set their own
+  preference and resume the shared platform reading
+  (`src/base/motion.h`).
 - **List continuations share the first paragraph's text column in C++.**
   The fixed marker column belongs to the entire item. Rust reserves a
   minimum marker width for the first paragraph and applies a separate

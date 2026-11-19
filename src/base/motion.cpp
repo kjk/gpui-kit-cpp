@@ -378,16 +378,36 @@ float MotionSample(const Motion& m, float progress) {
 }
 
 static bool gReduced = false;
-static bool gHasApplied = false;
-static bool gApplied = false;
+static bool gHasSystemMotionPreference = false;
+static bool gSystemMotionPreference = false;
 static bool gOverride = false;
 static bool gFollowing = false;
 
-bool MotionReduced() {
+struct AppReduceMotion {
+    bool overridden = false;
+    bool reduced = false;
+};
+
+bool MotionReduced(const App* app) {
+    if (const auto* motion = AppGlobalGet<AppReduceMotion>(app)) {
+        if (motion->overridden || !gHasSystemMotionPreference) {
+            return motion->reduced;
+        }
+        return gSystemMotionPreference;
+    }
     return gReduced;
 }
 
-void MotionSetReduced(bool on) {
+void MotionSetReduced(bool on, App* app) {
+    bool changed = app && MotionReduced(app) != on;
+    if (auto* motion = AppGlobalEnsure<AppReduceMotion>(app)) {
+        motion->reduced = on;
+        motion->overridden = true;
+        if (changed) {
+            Notify(app, nullptr);
+        }
+        return;
+    }
     gReduced = on;
     // An explicit choice, including the same value the flag already holds.
     // The system reading must not put it back.
@@ -396,25 +416,23 @@ void MotionSetReduced(bool on) {
 
 void MotionResetReduceForTest() {
     gReduced = false;
-    gHasApplied = false;
-    gApplied = false;
+    gHasSystemMotionPreference = false;
+    gSystemMotionPreference = false;
     gOverride = false;
 }
 
 void ApplyReduceMotionPreference(bool reduce) {
-    if (gOverride) {
-        return;
+    gHasSystemMotionPreference = true;
+    gSystemMotionPreference = reduce;
+    if (!gOverride) {
+        gReduced = reduce;
     }
-    bool applied = gHasApplied ? gApplied : false;
-    if (gReduced != applied) {
-        return;
-    }
-    gReduced = reduce;
-    gHasApplied = true;
-    gApplied = reduce;
 }
 
 void ApplySystemReduceMotion() {
+    if (TestPlatformNow(nullptr)) {
+        return;
+    }
     bool reduce = false;
     if (PlatReduceMotionKnown(&reduce)) {
         ApplyReduceMotionPreference(reduce);
@@ -422,6 +440,27 @@ void ApplySystemReduceMotion() {
     if (!gFollowing) {
         gFollowing = true;
         PlatReduceMotionFollow(&ApplyReduceMotionPreference);
+    }
+}
+
+void SetReduceMotionPreference(ReduceMotionPreference preference, App* app) {
+    if (preference != ReduceMotionPreference::System) {
+        MotionSetReduced(preference == ReduceMotionPreference::Reduce, app);
+        return;
+    }
+    bool current = MotionReduced(app);
+    if (auto* motion = AppGlobalEnsure<AppReduceMotion>(app)) {
+        motion->overridden = false;
+        motion->reduced = current;
+    } else {
+        gOverride = false;
+        if (gHasSystemMotionPreference) {
+            gReduced = gSystemMotionPreference;
+        }
+    }
+    ApplySystemReduceMotion();
+    if (app && MotionReduced(app) != current) {
+        Notify(app, nullptr);
     }
 }
 
@@ -522,7 +561,7 @@ TimingSample AnimateKeyframesSample(Ctx* cx, uint32_t key, const Timing& timing,
         st->init = true;
         st->startedAt = now;
     }
-    if (MotionReduced()) {
+    if (MotionReduced(cx ? cx->app : nullptr)) {
         // A keyframe playback under reduced motion shows its end state and
         // asks for nothing.
         *reduced = true;
@@ -630,7 +669,7 @@ PresenceSample Presence::Sample(Ctx* cx) const {
         return PresenceStable(present);
     }
     PresenceSample s = PresenceAdvance(st, present, transition, MotionNow(cx),
-                                       MotionReduced());
+                                       MotionReduced(cx ? cx->app : nullptr));
     if (s.status == MotionStatus::Delayed ||
         s.status == MotionStatus::Running) {
         MotionWantsFrame(cx);
@@ -848,8 +887,8 @@ float SpringValue(Ctx* cx, uint32_t key, float target, const Spring& s) {
     if (!st) {
         return target;
     }
-    SpringStep step =
-        SpringAdvance(st, target, s, MotionNow(cx), MotionReduced());
+    SpringStep step = SpringAdvance(st, target, s, MotionNow(cx),
+                                    MotionReduced(cx ? cx->app : nullptr));
     if (step.running) {
         MotionWantsFrame(cx);
     }

@@ -601,7 +601,7 @@ bool ScrollBounceOwnedWheel(ScrollOverscroll* over, OngoingScroll* lock,
     }
     float before = handle.Offset().y;
     bool changed = false;
-    if (!enabled || MotionReduced() || !ev->precise) {
+    if (!enabled || MotionReduced(cx->app) || !ev->precise) {
         bool displaced = over->Offset() != 0;
         over->Reset();
         Point next = handle.Offset();
@@ -635,7 +635,7 @@ bool ScrollBounceOwnedWheel(ScrollOverscroll* over, OngoingScroll* lock,
 float ScrollBounceOwnedOffset(ScrollOverscroll* over, Window* win, bool enabled,
                               float maxExtent) {
     if (!over) return 0;
-    if (!enabled || MotionReduced() || maxExtent <= 0) {
+    if (!enabled || MotionReduced(win ? win->app : nullptr) || maxExtent <= 0) {
         bool was = over->Offset() != 0;
         over->Reset();
         if (was && win) AppRequestAnim(win, true);
@@ -793,7 +793,7 @@ El* ScrollBounce::IntoEl() {
     }
     // Child-owned mode with the bounce off is just the child. The owned
     // wheel still scrolls, and only skips the stretch.
-    if (!scrollWheel && (!enabled || MotionReduced())) {
+    if (!scrollWheel && (!enabled || MotionReduced(cx->app))) {
         return Div(cx->a)->PathClick(id)->Child(child);
     }
     Entity<ScrollBounceState> st =
@@ -809,7 +809,7 @@ El* ScrollBounce::IntoEl() {
         s->win = cx->win;
         s->scrollWheel = scrollWheel;
         s->enabled = enabled;
-        if (!enabled || MotionReduced()) {
+        if (!enabled || MotionReduced(cx->app)) {
             s->overscroll.Reset();
             s->physics.Reset();
             s->physics.motion = motion;
@@ -821,7 +821,8 @@ El* ScrollBounce::IntoEl() {
             if (s->overscroll.Step(now) && cx->win) {
                 AppRequestAnim(cx->win, true);
             }
-            offset = enabled && !MotionReduced() ? s->overscroll.Offset() : 0;
+            offset =
+                enabled && !MotionReduced(cx->app) ? s->overscroll.Offset() : 0;
         } else {
             float dt = s->sampledAt > 0 ? (float)(now - s->sampledAt) : 0;
             s->sampledAt = now;

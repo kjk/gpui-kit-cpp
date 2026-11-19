@@ -236,7 +236,7 @@ El* AccordionItem::IntoEl() {
     // dips below 0. Reduced motion reopens straight to full progress,
     // which needs the reveal's height from a mounted frame.
     // Base's panel renders while open whatever keep_mounted says.
-    if (open || progress != 0.f || MotionReduced()) {
+    if (open || progress != 0.f || MotionReduced(cx->app)) {
         it->KeepMounted(true)
             ->Panel(MotionReveal::New(cx, StrL("content"), progress, panel));
     }

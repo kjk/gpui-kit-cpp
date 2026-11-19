@@ -227,7 +227,7 @@ El* NavStack::IntoEl() {
     NavTransit transit = s->transit;
     bool hasTransit = s->hasTransit;
 
-    bool immediate = MotionReduced() || !hasTransition ||
+    bool immediate = MotionReduced(cx->app) || !hasTransition ||
                      (hasTransit && transit.motion == NavMotion::Immediate);
     motion::Transition timing =
         immediate ? motion::Transition::New(0) : transition;

@@ -66,7 +66,7 @@ El* Spinner::IntoEl() {
     // repeat is not otherwise gated: the indeterminate progress bar decides
     // for itself too, and a `with_animation` entrance still plays.
     float turn = 0;
-    if (!MotionReduced()) {
+    if (!MotionReduced(cx->app)) {
         turn = MotionRepeat(cx, MotionId(StrL("spinner"), id),
                             speed > 0 ? speed : kSpinnerPeriodMs, ease);
     }

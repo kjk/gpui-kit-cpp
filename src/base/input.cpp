@@ -5384,7 +5384,7 @@ bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
     float oldX = s->scrollX;
     float oldY = s->scrollY;
     bool overflowsV = InputOverflowsVertically(s);
-    bool reduced = MotionReduced();
+    bool reduced = MotionReduced(app);
     if (!precise || !s->scrollBounce || reduced || !overflowsV) {
         ScrollOverscroll* over = s->overscroll;
         if (over && over->Offset() != 0) {
@@ -5435,7 +5435,8 @@ bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
 
 float InputBouncePaint(InputState* s, Window* win) {
     if (!s || !s->overscroll) return 0;
-    if (!s->scrollBounce || MotionReduced() || !InputOverflowsVertically(s)) {
+    if (!s->scrollBounce || MotionReduced(win ? win->app : nullptr) ||
+        !InputOverflowsVertically(s)) {
         s->overscroll->Reset();
         return 0;
     }

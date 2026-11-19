@@ -1342,7 +1342,13 @@ void ScrollFadeClear() {
     VecReset(gScrollFades);
 }
 
-ScrollbarMotion ScrollbarMotionFor(ScrollbarMode mode) {
+static void ReduceScrollbarMotion(ScrollbarMotion* motion) {
+    motion->enter = 0;
+    motion->exit = 0;
+    motion->expand = 0;
+}
+
+ScrollbarMotion ScrollbarMotionFor(ScrollbarMode mode, bool reduced) {
     ScrollbarMotion m;
     m.idle = 2.f;
     m.enter = 0.3f;
@@ -1352,14 +1358,14 @@ ScrollbarMotion ScrollbarMotionFor(ScrollbarMode mode) {
     m.thumbHoverEntrance = mode == ScrollbarMode::Hover
                                ? ScrollbarEntrance::SlideAndFade
                                : ScrollbarEntrance::Fade;
-    if (MotionReduced()) {
-        // A motionless policy adopts its target outright, which is what a
-        // zero duration means to every transition below.
-        m.enter = 0;
-        m.exit = 0;
-        m.expand = 0;
+    if (reduced) {
+        ReduceScrollbarMotion(&m);
     }
     return m;
+}
+
+ScrollbarMotion ScrollbarMotionFor(ScrollbarMode mode) {
+    return ScrollbarMotionFor(mode, MotionReduced());
 }
 
 // `VisibilityAnimation::sample`. Entering, the opacity is linear and the
@@ -8765,7 +8771,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         if (img) {
             bool wantsAnimation = false;
             int frameIndex =
-                ImageFrameIndex(img, MotionReduced(), &wantsAnimation);
+                ImageFrameIndex(img, MotionReduced(ctx->app), &wantsAnimation);
             if (wantsAnimation) {
                 ctx->wantsAnimFrame = true;
             }
@@ -8957,8 +8963,12 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         }
     }
     bool dragging = ctx->scrollDragId != 0 && ctx->scrollDragId == e->scrollId;
-    ScrollbarMotion barMotion =
-        e->scrollThemeSet ? e->scrollMotion : ScrollbarMotionFor(barMode);
+    ScrollbarMotion barMotion = e->scrollThemeSet
+                                    ? e->scrollMotion
+                                    : ScrollbarMotionFor(barMode, false);
+    if (MotionReduced(ctx->app)) {
+        ReduceScrollbarMotion(&barMotion);
+    }
     float trackW = ScrollbarTrackWidth(e);
     if (trackW < 0) trackW = 0;
     // Same split as the ScrollRect above: a textarea's range is the field's

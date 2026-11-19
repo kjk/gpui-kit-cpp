@@ -43,7 +43,7 @@ MarkerContent* MarkerContent::Child(El* e) {
 }
 
 El* MarkerContent::IntoEl() {
-    bool animate = shimmer && !MotionReduced();
+    bool animate = shimmer && !MotionReduced(cx->app);
     bool hasText = false;
     for (int i = 0; i < children.len; i++) {
         if (children[i].isText) {

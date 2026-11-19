@@ -462,16 +462,22 @@ inline float MotionProgress(const Motion& m, float elapsedMs) {
 // Transition::sample: the curve at that fraction.
 float MotionSample(const Motion& m, float progress);
 
-// cx.reduce_motion(). Rust reads the platform's setting; so does this, on the
-// two platforms that have one to read (Windows' client-area animation and
-// macOS' reduce-motion switch). A value that is transitioning when it goes on
-// adopts its target on the next frame rather than finishing the curve.
-bool MotionReduced();
-// For a caller that wants to decide for itself — the story's settings menu,
-// and the tests. Once this is called, ApplySystemReduceMotion leaves the
-// flag alone until apply_system_reduce_motion is asked to follow the system
-// again.
-void MotionSetReduced(bool on);
+// The application's effective preference. Without an App, use the process
+// default for callers that do not render through an application.
+bool MotionReduced(const App* app = nullptr);
+// An explicit value, even if the flag is already the same.
+void MotionSetReduced(bool on, App* app = nullptr);
+
+enum class ReduceMotionPreference : uint8_t {
+    System,
+    Reduce,
+    Allow
+};
+
+// System releases the override and resumes the latest platform reading.
+// With no reading yet, it keeps the current value until a reading arrives.
+void SetReduceMotionPreference(ReduceMotionPreference preference,
+                               App* app = nullptr);
 // Restores Base's initial false and clears the last applied reading, so a
 // test can drive ApplyReduceMotionPreference from a clean flag.
 void MotionResetReduceForTest();
@@ -635,7 +641,7 @@ struct Sequence {
         };
         if (!state->init) start(0, from, now);
 
-        if (MotionReduced()) {
+        if (MotionReduced(cx ? cx->app : nullptr)) {
             start(last, steps[last].target, now);
             out.value = steps[last].target;
             out.step = last;
@@ -920,8 +926,8 @@ inline void SpringSeed(Ctx* cx, uint32_t key, float from) {
 template <typename T>
 MotionStep<T> SampleMotionState(Ctx* cx, MotionState<T>* st, T target,
                                 const Motion& m) {
-    MotionStep<T> step =
-        MotionAdvance(st, target, m, MotionNow(cx), MotionReduced());
+    MotionStep<T> step = MotionAdvance(st, target, m, MotionNow(cx),
+                                       MotionReduced(cx ? cx->app : nullptr));
     if (step.running) {
         MotionWantsFrame(cx);
     }

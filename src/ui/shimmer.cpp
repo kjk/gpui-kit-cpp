@@ -247,7 +247,7 @@ El* ShimmerText::IntoEl() {
     }
     El* run = TextEl(a, text);
     container->Child(run);
-    if (MotionReduced()) {
+    if (MotionReduced(cx->app)) {
         // Reduced motion keeps the text visible and asks for no frames.
         return container;
     }

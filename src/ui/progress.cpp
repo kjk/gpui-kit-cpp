@@ -79,7 +79,7 @@ El* Progress::IntoEl() {
                         ->H(h)
                         ->Radius(th.radiusFull)
                         ->Bg(th.tokens.progress);
-    if (loading && MotionReduced()) {
+    if (loading && MotionReduced(cx->app)) {
         // Reduced motion: the bar says the same thing standing still, in the
         // middle of the track. A spinner keeps spinning under this setting —
         // a still spinner says the wrong thing — but an indeterminate bar

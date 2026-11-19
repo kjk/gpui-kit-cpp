@@ -691,7 +691,7 @@ El* Dialog::IntoEl(WinSize size) {
     DialogMount* mount = gDialogMount;
     bool mounted = mount && mount->bound;
     bool closing = mounted && mount->closing;
-    bool reduce = MotionReduced();
+    bool reduce = MotionReduced(cx->app);
     float exitMs = 0;
     if (!reduce) {
         if (entrance == DialogEntrance::SlideDown) {

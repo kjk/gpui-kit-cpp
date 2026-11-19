@@ -7275,13 +7275,13 @@ void TextViewState::RecordStreamFade(const RenderedIndex* prev,
     }
 }
 
-int TextViewState::StreamFadeFrame(Arena* a, double now,
-                                   StreamFadeRange** out) {
+int TextViewState::StreamFadeFrame(Arena* a, double now, StreamFadeRange** out,
+                                   const App* app) {
     *out = nullptr;
     if (len(fadeSegments) == 0) {
         return 0;
     }
-    if (MotionReduced() || motion.streamFadeMs <= 0) {
+    if (MotionReduced(app) || motion.streamFadeMs <= 0) {
         VecClear(fadeSegments);
         return 0;
     }
@@ -8273,7 +8273,7 @@ El* TextView::IntoEl() {
         rangeHighlights = managed->rangeHighlights;
         RevealFrame(managed);
         StreamFadeRange* fades = nullptr;
-        nStreamFades = managed->StreamFadeFrame(a, now, &fades);
+        nStreamFades = managed->StreamFadeFrame(a, now, &fades, cx->app);
         streamFades = fades;
         // A streamed fade repaints at about 30 fps on a timer, not at the
         // display's refresh rate; the frame the tick paints arms the next

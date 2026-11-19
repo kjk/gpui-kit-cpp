@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1f3dcb4a0c86879a135666bfd49ca25d51e20d0d",
+  sha: "e07f5bf3d36ffd1f0625d981beb59f6fb06b39ec",
   date: "2026-11-10",
-  subject: "input: Keep auto-grow Textarea from scrolling at fractional scales (#3882)",
+  subject: "motion: Add an explicit reduced-motion preference (#3881)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

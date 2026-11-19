@@ -1256,7 +1256,7 @@ static void ScheduleConfirm(QuestionnaireState* s, int ix, Ctx* cx) {
     int64_t packed = ((int64_t)s->pendingConfirmGen << 32) | (uint32_t)ix;
     Listener confirm =
         ListenTo(s->self, &QuestionnaireState::OnPendingConfirm, packed);
-    if (MotionReduced()) {
+    if (MotionReduced(cx->app)) {
         WindowPost(cx->win, confirm);
     } else {
         s->pendingConfirmTimer =
