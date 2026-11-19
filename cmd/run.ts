@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6f7f4d96982c476fc0cb3491c6c4d775371554f1",
+  sha: "856f8ebd275b4cb6dfaa21e76047d07c0f58438e",
   date: "2026-11-13",
-  subject: "clipboard: Add a visible label to the copy button (#3910)",
+  subject: "chore: Fix `redundant_clone` lints reported by Rust 1.100 (#3954)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

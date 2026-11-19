@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6f7f4d96982c476fc0cb3491c6c4d775371554f1` (2026-11-13,
-clipboard: Add a visible label to the copy button (#3910)).
-Add visible Clipboard labels and use them as the accessible name unless the
-caller supplies a separate name. Update the default Story scenario.
+Processed through `856f8ebd275b4cb6dfaa21e76047d07c0f58438e` (2026-11-13,
+chore: Fix `redundant_clone` lints reported by Rust 1.100 (#3954)).
+The Rust changes remove redundant cloning and make one clone test drop the
+original before its assertions. The equivalent C++ paths already use their
+local views or values.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
