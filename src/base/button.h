@@ -42,6 +42,7 @@ struct Button {
     static El* New(Ctx* cx, Str id, bool disabled = false,
                    Listener onClick = {}, bool focusable = true,
                    const ButtonStyles* styles = nullptr, bool selected = false);
+    static bool IsDisabled(const El* button);
 };
 } // namespace gpui
 #endif // GPUI_BASE_BUTTON_H_

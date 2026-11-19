@@ -385,6 +385,58 @@ static void AnEdgeRefinementLeavesTheOtherEdgesAlone() {
     utassert(c.box->style.borderB == 3);
 }
 
+// button.rs: disabled_button_ignores_hover_and_active_styles and
+// is_disabled_reports_the_disabled_state.
+static void ADisabledButtonIgnoresPointerStyles() {
+    App app;
+    Arena* arena = ArenaNew();
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Ctx cx{&app, win, arena, {}};
+    Rgba base = Rgb(255, 0, 0), hover = Rgb(0, 255, 0), active = Rgb(0, 0, 255);
+    Str group = StrL("group");
+    auto color = [&](bool disabled, bool held, bool own) {
+        El* button = Button::New(&cx, StrL("probe"), disabled)
+                         ->Click(7)
+                         ->W(40)
+                         ->H(40)
+                         ->Fg(base)
+                         ->Hover(StateStyle().Fg(hover))
+                         ->Active(StateStyle().Fg(active))
+                         ->GroupHover(StateStyle().Fg(hover), group)
+                         ->GroupActive(StateStyle().Fg(active), group)
+                         ->HoverBg(hover)
+                         ->ActiveBg(active);
+        utassert(Button::IsDisabled(button) == disabled);
+        El* box = Div(arena)->Group(group)->W(80)->H(60)->Child(button);
+        win->paint.hoverId = own ? 7 : 0;
+        win->paint.activeId = own && held ? 7 : 0;
+        win->paint.mouseX = 10;
+        win->paint.mouseY = 10;
+        win->mouseDown = held;
+        win->pressedX = 10;
+        win->pressedY = 10;
+        win->prevNamedGroupCount = 1;
+        win->prevNamedGroups[0] = {1, 0, 0, 0, 80, 60};
+        LayoutEl(&win->paint, box, 0, 0, 80, 60, 16, base);
+        if (disabled) {
+            utassert(!button->style.hasHoverBg && !button->style.hasActiveBg);
+        }
+        return button->style.color;
+    };
+    utassert(Same(color(true, false, true), base));
+    utassert(Same(color(true, true, true), base));
+    utassert(Same(color(false, false, true), hover));
+    utassert(Same(color(false, true, true), active));
+    utassert(Same(color(false, true, false), active));
+    utassert(Same(color(true, true, false), base));
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(arena);
+}
+
 void TestStateStyle() {
     TestSuite("state_style");
     TheHeldBoxPaintsItsPressedFill();
@@ -403,6 +455,7 @@ void TestStateStyle() {
     AResolvedStyleGoesOntoTheElement();
     AStateWinsOverWhatIsChainedAfterIt();
     AHoverRefinementHoldsOnlyWhileHovered();
+    ADisabledButtonIgnoresPointerStyles();
     ADragOverRefinementNeedsTheRightKind();
     AnEdgeRefinementLeavesTheOtherEdgesAlone();
 }

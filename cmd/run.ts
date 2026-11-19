@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "5caff4e45285e5b6e16d07b40483b1790047d3a6",
+  sha: "dba44862300191b470276157a7d87173d9b49b05",
   date: "2026-11-12",
-  subject: "input: Hit-test `character_index_for_point` past the gutter and on every line (#3921)",
+  subject: "button: Ignore hover and active styles while a base Button is disabled (#3943)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

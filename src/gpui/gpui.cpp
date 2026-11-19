@@ -2543,6 +2543,16 @@ El* El::GroupHover(const StateStyle& s, Str name) {
     return this;
 }
 
+El* El::GroupActive(const StateStyle& s, Str name) {
+    if (!s.set || len(name) == 0) return this;
+    ElStyleStates* states = EnsureStyleStates();
+    StateStyle* active = ArenaNew<StateStyle>(arena);
+    *active = s;
+    states->groupActive = active;
+    states->groupActiveName = ArenaStrDup(arena, name);
+    return this;
+}
+
 El* El::GroupHoverBg(Background c) {
     style.groupHoverBg = c;
     style.hasGroupHoverBg = true;
@@ -4616,13 +4626,9 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
     // Both need a click id of their own, for the same reason HoverBg does:
     // without one the element would match a hoverId of 0, which is what
     // "nothing is hovered" is spelled as.
-    if (states && states->hoverSet && e->clickId && ctx &&
+    if (!e->buttonDisabled && states && states->hoverSet && e->clickId && ctx &&
         e->clickId == ctx->hoverId) {
         StyleApplyFields(&e->style, states->hover, states->hoverSet);
-    }
-    if (states && states->activeSet && e->clickId && ctx &&
-        e->clickId == ctx->activeId) {
-        StyleApplyFields(&e->style, states->active, states->activeSet);
     }
     if (states && states->focusSet && e->style.focusId && ctx &&
         e->style.focusId == ctx->focusId) {
@@ -4640,7 +4646,7 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
     int namedMark = ctx ? ctx->namedGroupDepth : 0;
     if (groups && states && ctx && ctx->window) {
         Str hoverName = ArenaStrGet(e->arena, states->groupHoverName);
-        if (states->groupHoverSet && len(hoverName)) {
+        if (!e->buttonDisabled && states->groupHoverSet && len(hoverName)) {
             for (int i = ctx->namedGroupDepth - 1; i >= 0; i--) {
                 if (!StrEq(ctx->namedGroups[i].name, hoverName)) continue;
                 if (ctx->namedGroups[i].hovered) {
@@ -4650,23 +4656,41 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
                 break;
             }
         }
+        if (!e->buttonDisabled && states->groupActive) {
+            Str activeName = ArenaStrGet(e->arena, states->groupActiveName);
+            for (int i = ctx->namedGroupDepth - 1; i >= 0; i--) {
+                if (!StrEq(ctx->namedGroups[i].name, activeName)) continue;
+                if (ctx->namedGroups[i].active) {
+                    const StateStyle& style = *states->groupActive;
+                    StyleApplyFields(&e->style, style.style, style.set);
+                }
+                break;
+            }
+        }
         Str groupName = ArenaStrGet(e->arena, states->groupName);
         if (len(groupName) && ctx->namedGroupDepth < kNamedGroupCap) {
             Window* win = ctx->window;
             uint32_t idHash = GroupIdHash(e->id);
-            bool hovered = false;
+            NamedGroupFrame frame{groupName};
             for (int i = 0; i < win->prevNamedGroupCount; i++) {
                 const NamedGroupBound& was = win->prevNamedGroups[i];
                 bool same = idHash ? was.idHash == idHash
                                    : was.idHash == 0 && was.path == path;
                 if (!same) continue;
                 Bounds box = {was.x, was.y, was.w, was.h};
-                hovered = box.w > 0 && box.h > 0 &&
-                          box.Contains({ctx->mouseX, ctx->mouseY});
+                if (box.w > 0 && box.h > 0) {
+                    frame.hovered = box.Contains({ctx->mouseX, ctx->mouseY});
+                    frame.active = win->mouseDown &&
+                                   box.Contains({win->pressedX, win->pressedY});
+                }
                 break;
             }
-            ctx->namedGroups[ctx->namedGroupDepth++] = {groupName, hovered};
+            ctx->namedGroups[ctx->namedGroupDepth++] = frame;
         }
+    }
+    if (!e->buttonDisabled && states && states->activeSet && e->clickId &&
+        ctx && e->clickId == ctx->activeId) {
+        StyleApplyFields(&e->style, states->active, states->activeSet);
     }
     StyleOverrideApply(e);
     if (e->lifecycle && e->lifecycle->prepareStyle) {
@@ -4674,6 +4698,14 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg,
     }
     if (e->kind == ElKind::Image) {
         ResolveImageReplacement(ctx, e);
+    }
+    if (e->buttonDisabled) {
+        e->style.hasHoverBg = false;
+        e->style.hasHoverFg = false;
+        e->style.hasActiveBg = false;
+        e->style.hasGroupHoverBg = false;
+        e->style.groupHoverBorder = false;
+        e->style.groupHoverVisible = false;
     }
 
     // An explicit size is in DIPs at a 16 px rem and scales with the

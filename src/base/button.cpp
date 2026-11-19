@@ -48,6 +48,7 @@ El* Button::New(Ctx* cx, Str id, bool disabled, Listener onClick,
                 ->SuppressTextSelection()
                 ->Role(AccessibilityRole::Button)
                 ->AriaDisabled(disabled);
+    e->buttonDisabled = disabled;
     ApplyStyles(e, styles, selected, disabled);
     if (disabled) {
         // A focused button that disables itself has to stay in the focus
@@ -68,4 +69,9 @@ El* Button::New(Ctx* cx, Str id, bool disabled, Listener onClick,
     }
     return e;
 }
+
+bool Button::IsDisabled(const El* button) {
+    return button && button->buttonDisabled;
+}
+
 } // namespace gpui

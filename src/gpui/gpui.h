@@ -2639,6 +2639,8 @@ struct ElStyleStates {
     // on Style.
     ArenaStr groupName = kArenaStrNone;
     ArenaStr groupHoverName = kArenaStrNone;
+    ArenaStr groupActiveName = kArenaStrNone;
+    const struct StateStyle* groupActive = nullptr;
 };
 
 struct Selection;
@@ -3001,6 +3003,8 @@ struct El {
     // El::PathId: the click id is the path rather than a number the caller
     // picked. An explicit Click(v) clears it and wins.
     unsigned int clickFromPath : 1 = false;
+    // Base Button disables visual pointer refinements with its behavior.
+    unsigned int buttonDisabled : 1 = false;
     // The same rule for the scroll handle and an explicit ScrollId(v).
     unsigned int scrollFromPath : 1 = false;
     // El::StopClick — see HitRect::stopClick.
@@ -3435,6 +3439,8 @@ struct El {
     // bounds, so a size change reaches layout once the group has been laid
     // out. An empty name matches nothing.
     El* GroupHover(const struct StateStyle& s, Str name);
+    // Applied while a press that started inside the named group is held.
+    El* GroupActive(const struct StateStyle& s, Str name);
     El* GroupHoverVisible();
     // The other half of `group_hover`: a fill rather than a visibility, for a
     // strip that lights when the pointer is in the box around it.
@@ -3980,6 +3986,7 @@ struct NamedGroupBound {
 struct NamedGroupFrame {
     Str name = {};
     bool hovered = false;
+    bool active = false;
 };
 
 struct PaintCtx {

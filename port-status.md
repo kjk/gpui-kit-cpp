@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5caff4e45285e5b6e16d07b40483b1790047d3a6` (2026-11-12,
-input: Hit-test `character_index_for_point` past the gutter and on every line
-(#3921)).
-Hit-test the painted input row below its actual window position and past its
-gutter. The AppKit text input client returns the corresponding UTF-16
-character index.
+Processed through `dba44862300191b470276157a7d87173d9b49b05` (2026-11-12,
+button: Ignore hover and active styles while a base Button is disabled
+(#3943)).
+Suppress pointer style refinements for disabled Base buttons. Named groups
+track the press origin alongside hover so enabled buttons can still refine
+group-active styling.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
