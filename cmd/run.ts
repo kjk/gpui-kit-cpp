@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "604655e142a56968191b725ed40562c733be4aa1",
+  sha: "8e612899af9bbda0a56ce8fe62579ea03eae9d5d",
   date: "2026-11-15",
-  subject: "sidebar: Add `suffix` to SidebarGroup for header actions (#3982)",
+  subject: "webview: Redraw after releasing the composition surface (#3986)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

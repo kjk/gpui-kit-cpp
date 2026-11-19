@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `604655e142a56968191b725ed40562c733be4aa1` (2026-11-15,
-sidebar: Add `suffix` to SidebarGroup for header actions (#3982)).
-Add a fixed suffix slot at the logical end of the expanded sidebar group
-header. Keep it visible while the label ellipsizes.
+Processed through `8e612899af9bbda0a56ce8fe62579ea03eae9d5d` (2026-11-15,
+webview: Redraw after releasing the composition surface (#3986)).
+Invalidate the GPUI frame after hiding or dropping a webview, so the old
+native-child hit blocker no longer intercepts pointer events.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

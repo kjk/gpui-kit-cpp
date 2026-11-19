@@ -7,6 +7,8 @@
 
 namespace gpui {
 
+static bool AppHasWindow(App* app, Window* win);
+
 struct WebViewHandleState {
     int refs = 1;
     wry::WebView* raw = nullptr;
@@ -58,6 +60,10 @@ WebView::~WebView() {
         wry::WebViewFocusParent(raw);
         wry::WebViewSetVisible(raw, false);
     }
+    // The last frame can still contain the webview's mouse blocker.
+    if (visible && AppHasWindow(app, window)) {
+        AppInvalidate(window);
+    }
 }
 
 void WebView::OnWindowMouseDown(WebView* self, Ctx* cx,
@@ -100,6 +106,8 @@ Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
     }
     void* window = PlatWindowHandle(cx->win);
     if (!window) {
+        self->visible = false;
+        self->nativeShown = false;
         logf(
             "webview: this window has no OS handle to parent a webview into\n");
         return handle;
@@ -131,9 +139,13 @@ void WebViewShow(WebView* self) {
     if (!raw) {
         return;
     }
+    bool changed = !self->visible;
     wry::WebViewSetVisible(raw, true);
     self->visible = true;
     self->nativeShown = true;
+    if (changed && AppHasWindow(self->app, self->window)) {
+        AppInvalidate(self->window);
+    }
 }
 
 void WebViewHide(WebView* self) {
@@ -141,10 +153,14 @@ void WebViewHide(WebView* self) {
     if (!raw) {
         return;
     }
+    bool changed = self->visible;
     wry::WebViewFocusParent(raw);
     wry::WebViewSetVisible(raw, false);
     self->visible = false;
     self->nativeShown = false;
+    if (changed && AppHasWindow(self->app, self->window)) {
+        AppInvalidate(self->window);
+    }
 }
 
 bool WebViewVisible(const WebView* self) {
@@ -380,7 +396,7 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx) {
     }
     // `HitboxBehavior::BlockMouse`: the native view covers this box, so
     // GPUI content under it must not take the press.
-    e->StopMouseDown();
+    if (self->visible) e->StopMouseDown();
     e->customPaint = PaintWebView;
     e->customUser = self;
     return e;

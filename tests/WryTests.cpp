@@ -12,8 +12,53 @@ static void AssignWebViewHandle(WebViewHandle* to, const WebViewHandle* from) {
     *to = *from;
 }
 
+struct WebViewReleaseProbe {
+    Entity<WebView> web;
+    int clicks = 0;
+
+    static void Click(WebViewReleaseProbe* self, Ctx*, const ClickEvent*) {
+        self->clicks++;
+    }
+
+    static El* Render(WebViewReleaseProbe* self, Ctx* cx) {
+        if (!self->web.IsValid()) {
+            self->web = EntityNewState<WebView>(cx->app);
+            auto* web = self->web.Get(cx);
+            web->app = cx->app;
+            web->window = cx->win;
+        }
+        return Div(cx->a)
+            ->SizeFull()
+            ->Child(Div(cx->a)
+                        ->PathClick(StrL("under-webview"))
+                        ->W(80)
+                        ->H(50)
+                        ->OnClick(Listen(cx, &Click)))
+            ->Child(WebViewEl(self->web, cx)->Absolute()->Inset0());
+    }
+};
+
+static void DroppingAWebViewRefreshesThePointerTarget() {
+    App* app = TestAppNew();
+    auto view = EntityNew<WebViewReleaseProbe>(app);
+    Window* win = TestWindowOpen(app, view, 240, 120, 1);
+    auto* self = view.Get(app);
+    TestSimulateClick(win, {20, 20});
+    utassert(self->clicks == 0);
+    TestFlushEffects(app);
+    utassert(win->invalidations == 0);
+
+    EntityDrop(app, self->web.id);
+    utassert(win->invalidations > 0);
+    TestFlushEffects(app);
+    TestSimulateClick(win, {20, 20});
+    utassert(self->clicks == 1);
+    TestAppFree(app);
+}
+
 void TestWryUri() {
     TestSuite("wry_uri");
+    DroppingAWebViewRefreshesThePointerTarget();
 
     // gpui-webview's owned raw handle is copyable even when empty. A real
     // handle follows the same operations while retaining the shared native
