@@ -1207,6 +1207,70 @@ static void EnterInPopoverContentActivatesTheChild() {
     TestAppFree(app);
 }
 
+struct NestedPopoverView {
+    Entity<PopoverState> outer = {};
+    Entity<PopoverState> inner = {};
+
+    static El* Render(NestedPopoverView* self, Ctx* cx) {
+        if (!self->outer.IsValid()) {
+            self->outer = EntityNewState<PopoverState>(cx->app);
+            self->inner = EntityNewState<PopoverState>(cx->app);
+        }
+        El* outerContent = nullptr;
+        if (PopoverIsOpen(cx, self->outer)) {
+            El* innerContent = PopoverIsOpen(cx, self->inner)
+                                   ? Div(cx->a)->W(120)->H(120)
+                                   : nullptr;
+            El* inner = gpui::Popover::New(cx, StrL("inner"), self->inner)
+                            ->Trigger(Div(cx->a)->W(20)->H(20))
+                            ->Content(innerContent)
+                            ->IntoEl();
+            outerContent = Div(cx->a)->W(40)->H(40)->Child(inner);
+        }
+        return gpui::Popover::New(cx, StrL("outer"), self->outer)
+            ->Trigger(Div(cx->a)->W(40)->H(40))
+            ->Content(outerContent)
+            ->IntoEl();
+    }
+};
+
+static Bounds PopoverSurfaceBounds(Window* win, Entity<PopoverState> state) {
+    int focus = state.Get(win->app)->focus.id;
+    for (const HitRect& hit : win->paint.hits) {
+        if (hit.focusId == focus) return hit.bounds;
+    }
+    return {};
+}
+
+// popover.rs a_press_in_a_nested_popup_keeps_the_popover_open.
+static void APressInANestedPopupKeepsThePopoverOpen() {
+    App* app = TestAppNew();
+    auto view = EntityNew<NestedPopoverView>(app);
+    Window* win = TestWindowOpen(app, view, 600, 400, 1);
+    NestedPopoverView* self = view.Get(app);
+    TestDraw(win);
+    TestSimulateClick(win, {20, 10});
+    TestDraw(win);
+    Bounds outer = PopoverSurfaceBounds(win, self->outer);
+    utassert(outer.w == 40);
+    TestSimulateClick(win, {outer.x + 10, outer.y + 10});
+    TestDraw(win);
+    Bounds inner = PopoverSurfaceBounds(win, self->inner);
+    utassert(inner.w == 120);
+    Point innerOnly = {inner.Right() - 2, inner.y + 2};
+    utassert(!outer.Contains(innerOnly));
+    TestSimulateClick(win, innerOnly);
+    TestDraw(win);
+    utassert(PopoverSurfaceBounds(win, self->outer).w == 40);
+    utassert(PopoverSurfaceBounds(win, self->inner).w == 120);
+
+    TestSimulateClick(win, {300, 300});
+    TestDraw(win);
+    utassert(!self->outer.Get(app)->open);
+    utassert(!self->inner.Get(app)->open);
+    TestAppFree(app);
+}
+
 void TestPopup() {
     TestSuite("popup");
     APressDismissesTheTooltipUntilThePointerLeaves();
@@ -1233,6 +1297,7 @@ void TestPopup() {
     ClosingAPopoverBlursWhenNothingWasFocused();
     PopoverOwnsOpenCallbacksAndOutsideDismissal();
     EnterInPopoverContentActivatesTheChild();
+    APressInANestedPopupKeepsThePopoverOpen();
     TooltipOverlayOwnsRequestsTransitionsAndPositioning();
     TooltipRequestOffsetAffectsPopupBounds();
     TooltipDelayOwnsAndCancelsPendingText();

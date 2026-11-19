@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "e42b4023f4471f986eab5fd053bd00166b1beae5",
+  sha: "78c4dad37c1645ea4d3a732eab90c911a7c36565",
   date: "2026-11-11",
-  subject: "tabs: Add roving keyboard navigation to Tabs (#3900)",
+  subject: "popover: Keep a popover open on a press in a popup opened from inside it (#3909)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

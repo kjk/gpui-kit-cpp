@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e42b4023f4471f986eab5fd053bd00166b1beae5` (2026-11-11,
-tabs: Add roving keyboard navigation to Tabs (#3900)).
-Tabs now provide one keyboard stop with manual activation, disabled-tab
-skipping, Home and End, vertical navigation and right-to-left movement. Stable
-element paths carry focus through controlled selection updates, including
-styled tab strips.
+Processed through `78c4dad37c1645ea4d3a732eab90c911a7c36565` (2026-11-11,
+popover: Keep a popover open on a press in a popup opened from inside it
+(#3909)).
+Keep popovers open for presses in a descendant popup using the rendered
+element ancestry, including deferred menus.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

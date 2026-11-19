@@ -3536,7 +3536,15 @@ El* ChartEl(Arena* a, const float* ys, int n, Rgba stroke, Rgba fillTop,
 
 // ─── paint / window ───────────────────────────────────────────────────────
 
+struct PaintDismissScope {
+    int focusId = 0;
+    const PaintDismissScope* parent = nullptr;
+};
+
 struct HitRect {
+    // Outside-press listeners that enclose the deferred popup containing
+    // this hit. These ancestors still own the popup through mouse occlusion.
+    const PaintDismissScope* popupDismissScope = nullptr;
     // FocusHandle: what a press on this box focuses. Until handles existed
     // this was always `id` — every focusable box derived both numbers from
     // one name — and a box tracking a handle is the first case where the two
@@ -4013,7 +4021,13 @@ struct PaintCtx {
     Vec<HitRect> hits;
     bool hasLinkTooltipHits = false;
     // Deferred/fixed roots gathered during the normal paint walk.
-    Vec<El*> deferredPaint;
+    struct DeferredPaint {
+        El* element;
+        const PaintDismissScope* dismissScope;
+    };
+    Vec<DeferredPaint> deferredPaint;
+    const PaintDismissScope* dismissScope = nullptr;
+    const PaintDismissScope* popupDismissScope = nullptr;
     Vec<ScrollRect> scrolls;
     Vec<TextHit> texts;
     // Markdown table cells painted this frame, innermost last while painting.

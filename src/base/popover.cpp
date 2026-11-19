@@ -161,6 +161,16 @@ void PopoverDismissOnMouseDown(PopoverState* self, Ctx* cx,
     if (!self->open) {
         return;
     }
+    // A nested popup can extend beyond this surface. Deferred painting
+    // preserves the element ancestry even when the popup occludes mouse
+    // dispatch to its ancestors, so a press on its menu stays inside.
+    if (cx->win && self->focus.IsValid()) {
+        const HitRect* hit = HitTestRect(&cx->win->paint, ev->x, ev->y);
+        const auto* scope = hit ? hit->popupDismissScope : nullptr;
+        for (; scope; scope = scope->parent) {
+            if (scope->focusId == self->focus.id) return;
+        }
+    }
     PopoverSetOpenFocused(self, cx, false);
     PopoverReportDismiss(self, cx, ev->x, ev->y, ev->button, ev->clickCount,
                          ev->modifiers);

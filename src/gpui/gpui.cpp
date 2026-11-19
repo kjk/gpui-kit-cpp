@@ -7899,36 +7899,40 @@ static void PaintCaret(PaintCtx* ctx, El* e, float font) {
 void PaintEl(PaintCtx* ctx, El* e) {
     VecClear(ctx->deferredPaint);
     PaintElNode(ctx, e, true);
-    Vec<El*>& overlays = ctx->deferredPaint;
+    auto& overlays = ctx->deferredPaint;
     // Paint and hit records follow the same layer/z order with scene on or
     // off. The scene keeps each overlay as one context under the root.
     for (int i = 1; i < overlays.len; i++) {
-        El* item = overlays[i];
+        PaintCtx::DeferredPaint entry = overlays[i];
+        El* item = entry.element;
         int layer = item->style.deferredLayer ? item->style.deferredLayer
                                               : kPaintLayerPopup;
         int at = i;
         while (at > 0) {
-            El* prev = overlays[at - 1];
+            El* prev = overlays[at - 1].element;
             int prevLayer = prev->style.deferredLayer
                                 ? prev->style.deferredLayer
                                 : kPaintLayerPopup;
             if (prevLayer < layer || (prevLayer == layer &&
                                       prev->style.zIndex <= item->style.zIndex))
                 break;
-            overlays[at] = prev;
+            overlays[at] = overlays[at - 1];
             at--;
         }
-        overlays[at] = item;
+        overlays[at] = entry;
     }
-    for (El* overlay : overlays) {
+    for (const auto& entry : overlays) {
+        El* overlay = entry.element;
         ctx->paintLayer = overlay->style.deferredLayer
                               ? overlay->style.deferredLayer
                               : kPaintLayerPopup;
         int parent = scene::ContextPush(ctx, ctx->paintLayer);
+        ctx->dismissScope = entry.dismissScope;
         PaintElNode(ctx, overlay, false);
         scene::ContextPop(ctx, parent);
     }
     VecClear(overlays);
+    ctx->dismissScope = nullptr;
     ctx->paintLayer = kPaintLayerTree;
 }
 
@@ -8101,8 +8105,20 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         return;
     }
     if (skipOverlay && IsOverlay(e)) {
-        VecAppend(ctx->deferredPaint, e);
+        VecAppend(ctx->deferredPaint,
+                  PaintCtx::DeferredPaint{e, ctx->dismissScope});
         return;
+    }
+    const PaintDismissScope* outerDismissScope = ctx->dismissScope;
+    const PaintDismissScope* outerPopupDismissScope = ctx->popupDismissScope;
+    if (e->style.deferred) {
+        ctx->popupDismissScope = ctx->dismissScope;
+    }
+    if (e->style.focusId && e->onMouseDownOut.IsValid()) {
+        auto* scope = ArenaNew<PaintDismissScope>(e->arena);
+        scope->focusId = e->style.focusId;
+        scope->parent = ctx->dismissScope;
+        ctx->dismissScope = scope;
     }
     int z = e->style.zIndex;
     if (scene::CurrentContext(ctx) == 0 && z == 0) z = ctx->paintLayer;
@@ -8177,6 +8193,8 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         ctx->window->textSelectionScopes.len--;
     }
     ctx->groupHovered = prevGroup;
+    ctx->dismissScope = outerDismissScope;
+    ctx->popupDismissScope = outerPopupDismissScope;
     scene::ContextPop(ctx, parentContext);
 }
 
@@ -8289,6 +8307,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->stopMouseDown || e->suppressTextSelection || e->scrollMaskAxes;
     if (hasHitbox) {
         HitRect hr;
+        hr.popupDismissScope = ctx->popupDismissScope;
         hr.id = e->clickId;
         hr.focusId = e->style.focusId;
         hr.pathId = e->pathId;
