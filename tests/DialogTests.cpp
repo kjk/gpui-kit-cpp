@@ -1266,7 +1266,48 @@ static void ADialogTakesAnAccessibleName() {
     AppGlobalClear(&app);
 }
 
+static void TheThemedDialogStaysInsideTheVisibleWindowFrame() {
+    App app = {};
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    win->opts.clientTitleBar = true;
+    win->clientInset = 20;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Edges pad = component::WindowPaddings(win);
+    const float width = 480;
+    const float height = 360;
+    El* roots[] = {
+        component::Dialog::New(&cx)->Open(true)->IntoEl({width, height}),
+        component::AlertDialog::New(&cx)->Open(true)->IntoEl({width, height}),
+    };
+    for (El* host : roots) {
+        LayoutDialogHost(&app, win, arena, host, width, height);
+        const El* backdrop = host->first;
+        utassertnear(host->x, pad.left);
+        utassertnear(host->y, pad.top);
+        utassertnear(host->w, width - pad.left - pad.right);
+        utassertnear(host->h, height - pad.top - pad.bottom);
+        utassert(backdrop);
+        if (backdrop) {
+            utassertnear(backdrop->x, host->x);
+            utassertnear(backdrop->y, host->y);
+            utassertnear(backdrop->w, host->w);
+            utassertnear(backdrop->h, host->h);
+        }
+    }
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestDialog() {
+    TheThemedDialogStaysInsideTheVisibleWindowFrame();
     TestSuite("dialog");
     ADialogTakesAnAccessibleName();
     ButtonPropsMergeWithWhatTheDialogAlreadyCarries();

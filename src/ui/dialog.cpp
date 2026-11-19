@@ -844,6 +844,9 @@ El* Dialog::IntoEl(WinSize size) {
                    ->Popup(popup)
                    ->IntoEl();
     }
+    // The host shares the visible frame with its fixed backdrop and popup.
+    // The area reserved for shadows stays outside the dialog layer.
+    host->Top(windowPadding.top)->Left(windowPadding.left)->W(viewW)->H(viewH);
     // The layer fades with the surface. An entrance that is not animated
     // leaves the layer opaque.
     if (mounted) {

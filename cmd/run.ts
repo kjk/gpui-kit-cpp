@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "390a485aba2e8ab92754a23b84eecedf4155b562",
+  sha: "3fe533adb93b0751d92ae4c7098d364a57772826",
   date: "2026-11-19",
-  subject: "docs: Say the List search input needs searchable(true) (#4048)",
+  subject: "dialog: Keep the backdrop inside the client frame (#4049)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

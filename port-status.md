@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `390a485aba2e8ab92754a23b84eecedf4155b562` (2026-11-19,
-docs: Say the List search input needs searchable(true) (#4048)).
-Upstream List documentation clarifies that the search field is opt-in. Native
-List::Searchable already defaults to false and StockSearch remains available
-for a custom search control.
+Processed through `3fe533adb93b0751d92ae4c7098d364a57772826` (2026-11-19,
+dialog: Keep the backdrop inside the client frame (#4049)).
+Bound the dialog and alert-dialog hosts to the visible client frame, matching
+the existing fixed backdrop and popup bounds.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
