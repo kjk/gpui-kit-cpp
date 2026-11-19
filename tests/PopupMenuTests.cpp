@@ -1537,13 +1537,14 @@ static void ALongLabelWrapsAtTheMaxWidth() {
 // menu.rs a_scrollable_menu_opens_on_its_checked_item.
 struct ScrollableOptionsMenu {
     int checked = -1;
+    int count = 48;
     Entity<PopupMenuState> menu = {};
 
     static El* Render(ScrollableOptionsMenu* self, Ctx* cx) {
         PopupMenu* menu =
             PopupMenu::New(cx, StrL("options"))->Scrollable(true)->MaxH(160);
         self->menu = menu->state;
-        for (int ix = 0; ix < 48; ix++) {
+        for (int ix = 0; ix < self->count; ix++) {
             menu->MenuWithCheck(fmt("Option %d", ix), ix == self->checked);
         }
         return Div(cx->a)->SizeFull()->Pad(16)->Child(menu->IntoEl());
@@ -1603,9 +1604,36 @@ static void AScrollableMenuOpensOnItsCheckedItem() {
     TestAppFree(app);
 }
 
+// menu/popup_menu.rs scrollable_menu_that_fits_has_nothing_to_scroll.
+static void AShortScrollableMenuHasNoScrollRange() {
+    App* app = TestAppNew();
+    Entity<ScrollableOptionsMenu> root = EntityNew<ScrollableOptionsMenu>(app);
+    root.Get(app)->count = 3;
+    Window* win = TestWindowOpen(app, root);
+    TestDraw(win);
+    PopupMenuState* menu = root.Get(app)->menu.Get(app);
+    utassert(menu && len(menu->itemBounds) == 3);
+    if (menu && len(menu->itemBounds) == 3) {
+        Point middle = {menu->scrollBounds.CenterX(), menu->scrollBounds
+                                                          .CenterY()};
+        float top = MenuItemTop(menu, 0);
+        TestSimulateScrollWheel(win, middle, {0, -72});
+        TestDraw(win);
+        utassert(menu->scrollY == 0.f);
+        utassertnear(MenuItemTop(menu, 0), top);
+        utassert(MenuItemVisible(menu, 2));
+        for (const ScrollRect& scroll : win->paint.scrolls) {
+            if (scroll.bounds.Contains(middle))
+                utassert(scroll.contentH <= scroll.bounds.h);
+        }
+    }
+    TestAppFree(app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     AScrollableMenuOpensOnItsCheckedItem();
+    AShortScrollableMenuHasNoScrollRange();
     ACheckedMenuItemReportsItsCheck();
     ASubmenuWithRoomOpensOnTheRight();
     ASubmenuByTheWindowEdgeOpensOnTheLeft();

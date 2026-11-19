@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5e79668b70e6f2c201ef899794517e61ae7b1d08` (2026-11-17,
-text: Select a wrapped row's first character (#4012)).
-Selection projection uses each character range on its painted row. A
-regression checks that dragging across one wrapped row includes its first
-character in either direction, including after a hard break.
+Processed through `c9767b228c95f7189f4e110c6086e684e8c97ba1` (2026-11-17,
+menu: Stop a scrollable menu that fits from showing a scrollbar (#4014)).
+Popup menus measure their outer box directly. A short scrollable menu has zero
+vertical scroll range, retains its row positions after wheel input and keeps
+all items visible.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 
