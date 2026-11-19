@@ -16,16 +16,21 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0a2a64339c1821e9914e4c19603c0e543f618f7d` (2026-11-10,
-input: expose the editor text origin offset (#3765)).
-The editor exposes the horizontal text origin from its most recent layout. The
-reader describes the actual gutter, independent of frame padding, scrolling
-and alignment.
+Processed through `fe2e4bcf1c5e94038bdc1253397ffcc6291fb8d9` (2026-11-10,
+text: Number a list item once when a paragraph follows its sub-list (#3876)).
+The C++ list item already renders all of its blocks in one body beside one
+marker. A layout regression checks that a paragraph following a nested list
+shares the continuation column and no second ordinal is drawn.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
 ## Known gaps vs Rust
 
+- **List continuations share the first paragraph's text column in C++.**
+  The fixed marker column belongs to the entire item. Rust reserves a
+  minimum marker width for the first paragraph and applies a separate
+  continuation indent, so the two origins can differ
+  (`src/base/text.cpp`).
 - **Empty editor placeholders use the unindented layout.** The C++ text
   origin reader reports zero there. A populated code editor reports its
   laid-out gutter, including the 6 DIP gap with line numbers hidden

@@ -9139,6 +9139,42 @@ static void DrawStyledBlocks(Window* win, Entity<StyledBlocksView> view,
     LayoutEl(&win->paint, *root, 0, 0, 800, 400, th.fontSize, th.foreground);
 }
 
+static int CountListMarker(El* el, Str marker) {
+    int count = StrEq(el->text, marker) ? 1 : 0;
+    for (El* child = el->first; child; child = child->next) {
+        count += CountListMarker(child, marker);
+    }
+    return count;
+}
+
+// crates/kit/tests/integration/painted_text.rs
+static void ParagraphAfterSublistUsesTheSameItemMarker() {
+    constexpr const char* markdown =
+        "1. Prepare:\n"
+        "   - check\n"
+        "\n"
+        "   Then tag.\n"
+        "2. Publish.\n"
+        "\n"
+        "   Then announce.\n";
+    TswView v = TswOpen(markdown, TswContainer::Window);
+    El* root = EntityRender(v.app, v.win, v.win->frameArena, v.root.id);
+    const RuntimeStyle& theme = RuntimeStyleNow(v.app);
+    LayoutEl(&v.win->paint, root, 0, 0, 600, 500, theme.fontSize,
+             theme.foreground);
+    El* first = StreamTextEl(root, StrL("Prepare:"));
+    El* afterList = StreamTextEl(root, StrL("Then tag."));
+    El* afterParagraph = StreamTextEl(root, StrL("Then announce."));
+    utassert(first && afterList && afterParagraph);
+    utassert(CountListMarker(root, StrL("1.")) == 1);
+    utassert(CountListMarker(root, StrL("2.")) == 1);
+    if (first && afterList && afterParagraph) {
+        utassertnear(afterList->x, afterParagraph->x);
+        utassertnear(afterList->x, first->x);
+    }
+    TswClose(&v);
+}
+
 // list_and_blockquote_view_refinements_keep_unspecified_style_properties
 static void ListAndBlockquoteViewRefinementsKeepUnspecifiedStyleProperties() {
     App* app = TestAppNew();
@@ -10210,6 +10246,7 @@ void TestTextView() {
     FadesInlineCodeStyleBackgroundAndBorder();
     ListAndBlockquoteRefinementsStayExplicitOnAnInvertedSurface();
     ListAndBlockquoteViewRefinementsKeepUnspecifiedStyleProperties();
+    ParagraphAfterSublistUsesTheSameItemMarker();
     BlockquoteTypographyReachesNestedTableMeasurement();
     BlockSurfaceTypographyReachesNestedTableMeasurement();
     ArenaDelete(a);
