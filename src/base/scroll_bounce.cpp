@@ -298,9 +298,10 @@ bool ScrollOverscroll::Packet(float dy, gpui::TouchPhase phase, float extent,
 }
 
 void ScrollOverscroll::TouchPhase(gpui::TouchPhase phase, double now) {
-    if (phase == gpui::TouchPhase::Moved) return;
     OverscrollFollow(this, now);
-    touched = true;
+    if (phase != gpui::TouchPhase::Moved) {
+        touched = true;
+    }
 }
 
 bool ScrollOverscroll::Step(double now) {

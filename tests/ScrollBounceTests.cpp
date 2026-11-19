@@ -650,6 +650,24 @@ static void ASwipeThatTouchesSidewaysStillBounces() {
 }
 #endif
 
+static void ASwipeThatLeadsSidewaysPastTheGapStillBounces() {
+    ScrollOverscroll over;
+    OverRoom room{30};
+    // Rust sends sideways moves every 8 ms for twice the 250 ms gesture gap.
+    constexpr int lead = 2 * 250 / 8;
+    over.TouchPhase(TouchPhase::Started, 0);
+    for (int n = 1; n <= lead; n++) {
+        over.TouchPhase(TouchPhase::Moved, 0.008 * n);
+    }
+    bool stretched = false;
+    for (int n = 1; n <= 10 && !stretched; n++) {
+        stretched = over.Packet(-40, TouchPhase::Moved, 400, 0.008 * (lead + n),
+                                OverUseRoom, &room);
+    }
+    utassert(over.touched);
+    utassert(stretched);
+}
+
 void TestScrollBounce() {
     TestSuite("scroll_bounce");
     ResistanceAndReversePreserveUnconsumedDistance();
@@ -680,6 +698,7 @@ void TestScrollBounce() {
     MomentumBackIntoTheTextScrollsWhileTheEdgeReturns();
     FractionalWheelInputKeepsScrollingDeepInALongList();
     ANewPreciseGestureTakesOverWithoutJumping();
+    ASwipeThatLeadsSidewaysPastTheGapStillBounces();
 #if GPUI_OS_MAC
     ASmoothScrollingWheelStopsAtTheEdge();
     AWheelAfterAPauseStopsAtTheEdge();

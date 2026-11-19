@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "e36451269751415a5cd23bd1b982b3c96b9aa19d",
+  sha: "8dfdd49de27c0726dd052fb2cfd2b0807d17980b",
   date: "2026-11-08",
-  subject: "editor_host: Keep the caret's visual line at soft wraps (#3842)",
+  subject: "overscroll: Keep the stream alive through sideways packets (#3790)",
   crates: {
     "gpui-kit": "0.9.0",
     "gpui-base": "0.9.0",

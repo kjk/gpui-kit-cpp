@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e36451269751415a5cd23bd1b982b3c96b9aa19d` (2026-11-08,
-editor_host: Keep the caret's visual line at soft wraps (#3842)).
-An editor host can preserve the caret side at a soft wrap from hit testing
-through placement. Keyed mixed paragraphs now report their text fragments and
-inline objects.
+Processed through `8dfdd49de27c0726dd052fb2cfd2b0807d17980b` (2026-11-08,
+overscroll: Keep the stream alive through sideways packets (#3790)).
+Sideways packets refresh an overscroll gesture so a turn into vertical motion
+still stretches at the edge.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
