@@ -66,6 +66,7 @@ struct TooltipRequest {
     TooltipBuilder build = nullptr;
     LinkTooltipFn buildLink = nullptr;
     EntityId linkOwner = {};
+    Bounds linkRendering = {};
     void* buildData = nullptr;
     Bounds triggerBounds = {};
     gpui::Placement preferredPlacement = gpui::Placement::Top;

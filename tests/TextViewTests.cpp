@@ -10196,6 +10196,7 @@ static void TaskCheckboxesWithoutAHandlerAreNotInteractive() {
 struct LinkTooltipTestView {
     Entity<TextViewState> text;
     bool covered = true;
+    bool twice = false;
     Bounds preview = {};
 
     static El* BuildPreview(Ctx* cx, Str url, void* data) {
@@ -10210,11 +10211,13 @@ struct LinkTooltipTestView {
 
     static El* Render(LinkTooltipTestView* self, Ctx* cx) {
         self->preview = {};
-        El* root = Div(cx->a)->W(160);
-        root->Child(TextView::New(cx, self->text)
-                        ->LinkTooltip(BuildPreview, self)
-                        ->IntoEl()
-                        ->W(160));
+        El* root = Div(cx->a)->FlexCol()->W(160);
+        for (int i = 0; i < (self->twice ? 2 : 1); i++) {
+            root->Child(TextView::New(cx, self->text)
+                            ->LinkTooltip(BuildPreview, self)
+                            ->IntoEl()
+                            ->W(160));
+        }
         if (self->covered) {
             root->Child(Div(cx->a)->Absolute()->Inset0()->StopMouseDown());
         }
@@ -10275,6 +10278,44 @@ static void LinkTooltipFollowsThePointerAndClearsOnExit() {
     TestSimulateMouseMove(win, {200, start.y});
     TestDraw(win);
     utassert(self->preview.w == 0);
+    TestAppFree(app);
+}
+
+// text_view.rs link_tooltip_shows_on_one_of_two_renderings_of_a_document.
+static void ALinkTooltipTracksOneRenderingOfASharedDocument() {
+    App* app = TestAppNew();
+    auto view = EntityNew<LinkTooltipTestView>(app);
+    auto* self = view.Get(app);
+    self->text = TextViewState::Markdown(
+        app, StrL("[preview](file:///tmp/report.json)"));
+    self->covered = false;
+    self->twice = true;
+    Window* win = TestWindowOpen(app, view, 640, 320, 1);
+    Bounds first, second;
+    for (const HitRect& hit : win->paint.hits) {
+        if (!hit.linkTooltip) continue;
+        if (first.w == 0)
+            first = hit.bounds;
+        else if (hit.bounds.y > first.y) {
+            second = hit.bounds;
+            break;
+        }
+    }
+    utassert(first.w > 0 && second.w > 0);
+    TestSimulateMouseMove(win, {first.CenterX(), first.CenterY()});
+    TestDraw(win);
+    TestDraw(win);
+    utassert(self->preview.w == 180 && !win->animFrame);
+    TestSimulateMouseMove(win, {second.CenterX(), second.CenterY()});
+    TestDraw(win);
+    TestDraw(win);
+    utassert(self->preview.w == 180 && !win->animFrame);
+    const TooltipOverlay* overlay = Entity<TooltipOverlay>{win->tooltip}
+                                        .Get(app);
+    utassert(overlay && overlay->content.linkRendering
+                            .Contains({second.CenterX(), second.CenterY()}));
+    utassert(overlay && !overlay->content.linkRendering
+                             .Contains({first.CenterX(), first.CenterY()}));
     TestAppFree(app);
 }
 
@@ -10378,6 +10419,7 @@ void TestTextView() {
     WrappedWholeLeafCaretsKeepTheirLine();
     WrappedMixedLeafCaretsKeepTheirLine();
     LinkTooltipFollowsThePointerAndClearsOnExit();
+    ALinkTooltipTracksOneRenderingOfASharedDocument();
     TextViewRewritesLinksOnEachFrame();
     RekeyingClonedLeavesPreservesEachIdentity();
     GeometryIsAnImmutableSnapshot();

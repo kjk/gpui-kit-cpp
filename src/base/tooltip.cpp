@@ -425,10 +425,15 @@ void TooltipUpdateLinkAtPointer(Window* win) {
     }
     Ctx cx = TooltipContext(win, win->tooltip);
     Bounds anchor = {win->mouseX, win->mouseY, 0, 0};
+    Bounds rendering =
+        target->rendering ? target->rendering->Bounds() : hit->bounds;
     TooltipRequest& current = overlay->content;
+    const Bounds& old = current.linkRendering;
     if (overlay->hasContent && current.buildLink == target->build &&
         current.linkOwner == target->owner &&
-        current.buildData == target->data && StrEq(current.text, target->url)) {
+        current.buildData == target->data && StrEq(current.text, target->url) &&
+        old.x == rendering.x && old.y == rendering.y && old.w == rendering.w &&
+        old.h == rendering.h) {
         TooltipCancelHide(win, overlay);
         if (current.triggerBounds.x != anchor.x || current.triggerBounds
                                                            .y != anchor.y) {
@@ -440,6 +445,7 @@ void TooltipUpdateLinkAtPointer(Window* win) {
     TooltipRequest request = TooltipRequest::Text(anchor, target->url);
     request.buildLink = target->build;
     request.linkOwner = target->owner;
+    request.linkRendering = rendering;
     request.buildData = target->data;
     overlay->RequestShow(request.WithShowDelay(0), win, &cx);
     WindowRequestAnimationFrame(win);

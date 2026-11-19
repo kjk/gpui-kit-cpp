@@ -1435,6 +1435,7 @@ struct TextView {
     void* linkHookData = nullptr;
     LinkTooltipFn linkTooltip = nullptr;
     void* linkTooltipData = nullptr;
+    const El* tooltipRendering = nullptr;
     // Rust stores plugins in a Vec and offers them in registration order.
     ArenaVec<MdPlugin> plugins{};
     // node.rs min_w_16: the floor a table column shrinks to. Above the floor

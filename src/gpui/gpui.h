@@ -2684,6 +2684,7 @@ struct LinkTooltipTarget {
     LinkTooltipFn build;
     void* data;
     EntityId owner;
+    const El* rendering = nullptr;
 };
 
 struct El {

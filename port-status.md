@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `000b0a06f662960147b83ce1f5b292766c527ef7` (2026-11-14,
-input: Report a preedit kept by unmark_text as a change (#3965)).
-Report one change and edit notification when unmark retains a changed preedit.
-An unchanged or cancelled preedit produces no notification.
+Processed through `92431cddeba443172904f032bd499f95bae8d8d5` (2026-11-14,
+text: Key the link tooltip target by rendering (#3964)).
+Include the rendered TextView bounds in link tooltip identity so two copies of
+a document do not share an active target. Per-word hit rectangles in one
+rendering retain one target.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

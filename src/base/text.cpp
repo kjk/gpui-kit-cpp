@@ -8369,6 +8369,8 @@ El* TextView::IntoEl() {
     // `.text_color(text_view_style.foreground())` on the root: every block
     // below names no colour of its own, so this is what they inherit.
     El* root = Div(a)->FlexCol()->W(kFill);
+    tooltipRendering = root;
+    if (inheritedBuilder) inheritedBuilder->tooltipRendering = root;
     if (LayoutIsRtl(cx->app)) root->TextRight();
     if (textViewStyle.foreground.a) {
         root->Fg(textViewStyle.foreground);
@@ -8563,7 +8565,8 @@ void TextView::BindViewLink(El* element, Str href) {
     }
     if (linkTooltip) {
         auto* target = ArenaNew<LinkTooltipTarget>(a);
-        *target = {href, linkTooltip, linkTooltipData, cx->self};
+        *target = {href, linkTooltip, linkTooltipData, cx->self,
+                   tooltipRendering};
         if (!element->lifecycle) {
             element->lifecycle = ArenaNew<ElLifecycle>(a);
         }
