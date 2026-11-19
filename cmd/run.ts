@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4379eebf26149a8ddea85d2fd3ec11ff82208437",
+  sha: "90418cad1a6d95c2931abc2ddbcb7938b4cea977",
   date: "2026-11-15",
-  subject: "table: Don't redraw a striped table every frame when its rows don't fill it (#3978)",
+  subject: "input: Keep the tab indicator inside its tab (#3983)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

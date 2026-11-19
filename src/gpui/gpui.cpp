@@ -3505,6 +3505,7 @@ int WhitespaceMarksVisit(Str s, float spaceMarkW, WhitespaceRectsFn rects,
         WhitespaceMark m;
         m.off = i;
         m.tab = c == '\t';
+        m.tabWidth = m.tab ? r.w : 0.f;
         // (start_x + end_x).half() - space.width.half() for a space; start_x
         // for a tab.
         m.x = m.tab ? r.x : r.x + r.w * 0.5f - spaceMarkW * 0.5f;
@@ -3584,8 +3585,15 @@ static void WhitespacePaintMark(void* ud, const WhitespaceMark* m) {
     float font = m->tab ? p->font : p->font * 0.5f;
     Str mark = m->tab ? StrL("\xE2\x86\x92") : StrL("\xE2\x80\xA2");
     float mult = m->h > 0 && font > 0 ? m->h / font : 0.f;
-    DrawTextAt(p->ctx, mark, p->x + m->x, p->y + m->y, 0, m->h, font, p->color,
-               false, false, -1.f, p->weight, mult);
+    float x = p->x + m->x;
+    float y = p->y + m->y;
+    if (m->tab) {
+        if (m->tabWidth <= 0.f) return;
+        CanvasPushClip(p->ctx, x, y, m->tabWidth, m->h);
+    }
+    DrawTextAt(p->ctx, mark, x, y, 0, m->h, font, p->color, false, false, -1.f,
+               p->weight, mult);
+    if (m->tab) CanvasPopClip(p->ctx);
 }
 
 // show_whitespaces over a painted run: LineLayout::paint's second half.

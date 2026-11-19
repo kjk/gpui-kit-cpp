@@ -5140,6 +5140,10 @@ static void WhitespaceMarksFollowTheShapedGlyphs() {
         utassertnear(marks[1].x, 31.5f + 1.75f - 1.f);
         utassert(marks[2].off == 8 && marks[2].tab);
         utassertnear(marks[2].x, 42.f);
+        // element.rs a_tab_indicator_is_clipped_to_its_tab: the mask ends
+        // at the shaped advance, independent of the indicator glyph.
+        utassertnear(marks[2].tabWidth, 28.f);
+        utassertnear(marks[1].tabWidth, 0.f);
         // The wrapped line's space, on the second row from its own start.
         utassert(marks[3].off == 10 && !marks[3].tab);
         utassertnear(marks[3].x, 7.f + 1.75f - 1.f);

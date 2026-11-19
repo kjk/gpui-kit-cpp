@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4379eebf26149a8ddea85d2fd3ec11ff82208437` (2026-11-15,
-table: Don't redraw a striped table every frame when its rows don't fill it
-(#3978)).
-Keep the existing real-row virtual range separate from stripe filler rows.
-Verify a short striped table settles without repeated window invalidation.
+Processed through `90418cad1a6d95c2931abc2ddbcb7938b4cea977` (2026-11-15,
+input: Keep the tab indicator inside its tab (#3983)).
+Clip each tab indicator to its shaped advance. Verify the whitespace-mark
+geometry retains that exact tab width.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

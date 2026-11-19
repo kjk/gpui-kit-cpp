@@ -1425,6 +1425,7 @@ struct WhitespaceMark {
     float x = 0;
     float y = 0;
     float h = 0;
+    float tabWidth = 0;
     bool tab = false;
 };
 // Where the bytes [lo, hi) of the run landed: TextLayoutRangeRects.
