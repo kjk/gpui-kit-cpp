@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b28405e5d9487d495fc383db3461c53ea650fd18",
+  sha: "b9e15969c5e14b435b631228d26ad20780c292ea",
   date: "2026-11-11",
-  subject: "tag: Remove hover style that never shows (#3893)",
+  subject: "input: Expose a multi-line input's text to screen readers (#3894)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

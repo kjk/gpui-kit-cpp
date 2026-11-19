@@ -550,7 +550,7 @@ static void SingleLineRangesUseTheCurrentFrameGeometry() {
             WindowAccessibilityTextRangeBounds(win, *node, {0, 3}, &first));
         utassert(WindowAccessibilityTextRangeBounds(win, *node, {6, 8}, &last));
         utassert(first.w > 0 && first.h > 0 && last.x > first.Right());
-#if GPUI_OS_WIN
+#if GPUI_OS_WINDOWS
         utassert(AccessibilityWinSmokeTest(win, node->id));
 #endif
         InputSetValue(&state->input, StrL("Éé AB"));
@@ -565,6 +565,49 @@ static void SingleLineRangesUseTheCurrentFrameGeometry() {
     node = RoleNode(win->accessibility, AccessibilityRole::TextInput);
     utassert(node && !WindowAccessibilityTextValue(*node).s);
     TestAppFree(app);
+}
+
+// input/base/a11y_text.rs: logical lines include their break, a final break
+// leaves a caret line, and the native range owns the original document text.
+static void MultilineAccessibilityKeepsLineBreaksAndSelection() {
+    Str text = StrL("ab\ncd\r\né\n");
+    const Selection lines[] = {{0, 3}, {3, 7}, {7, 10}, {10, 10}};
+    for (int i = 0; i < 4; ++i) {
+        Selection range = {};
+        utassert(AccessibilityTextLineRange(text, i, &range));
+        utassert(range.start == lines[i].start && range.end == lines[i].end);
+        Selection at = AccessibilityTextLineAt(text, lines[i].start);
+        utassert(at.start == range.start && at.end == range.end);
+    }
+    Selection missing;
+    utassert(!AccessibilityTextLineRange(text, 4, &missing));
+    Selection empty = AccessibilityTextLineAt(StrL(""), 0);
+    utassert(empty.start == 0 && empty.end == 0);
+    Selection newline = AccessibilityTextLineAt(text, 6);
+    utassert(newline.start == 3 && newline.end == 7);
+
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    InputState input;
+    input.kind = InputKind::Textarea;
+    InputSetValue(&input, StrL("one\ntwó\n"));
+    InputSetSelectedRangeWithDirection(&input, &f.app, f.win, 1, 6, true);
+    El* field = component::Textarea::New(&f.cx, StrL("multiline"), &input)
+                    ->Rows(3)
+                    ->IntoEl();
+    AccessibilityCollect(field, &f.win->accessibility);
+    const AccessibilityNode* node =
+        RoleNode(f.win->accessibility, AccessibilityRole::MultilineTextInput);
+    utassert(node != nullptr);
+    if (node) {
+        utassert(StrEq(WindowAccessibilityTextValue(*node), "one\ntwó\n"));
+        utassert(InputCursor(node->input) == 1);
+        utassert(node->input->selectedRange.end == 6);
+#if GPUI_OS_WINDOWS
+        utassert(AccessibilityWinSmokeTest(f.win, node->id));
+#endif
+    }
+    FreeAccessibilityFrame(&f);
 }
 
 // crates/base/src/a11y_disabled.rs
@@ -1073,4 +1116,5 @@ void TestAccessibility() {
     ClearButtonIsNamed();
     InputContentTypesAndSecretsProjectSafely();
     SingleLineRangesUseTheCurrentFrameGeometry();
+    MultilineAccessibilityKeepsLineBreaksAndSelection();
 }

@@ -1551,6 +1551,13 @@ static bool SentenceEnd(uint32_t cp) {
 
 static void TextGranularRange(Str text, int offset, uint32_t granularity,
                               int* lo, int* hi) {
+    if (granularity == 3) {
+        Selection line =
+            AccessibilityTextLineAt(text, Utf8ByteForCharacter(text, offset));
+        *lo = Utf8CharacterForByte(text, line.start);
+        *hi = Utf8CharacterForByte(text, line.end);
+        return;
+    }
     int count = Utf8CharCount(text);
     if (count <= 0) {
         *lo = 0;
@@ -1580,18 +1587,6 @@ static void TextGranularRange(Str text, int offset, uint32_t granularity,
         while (*hi < count && TextSpace(Utf8CodepointForCharacter(text, *hi))) {
             (*hi)++;
         }
-        return;
-    }
-    if (granularity == 3) {
-        *lo = probe;
-        while (*lo > 0 && Utf8CodepointForCharacter(text, *lo - 1) != '\n') {
-            (*lo)--;
-        }
-        *hi = probe;
-        while (*hi < count && Utf8CodepointForCharacter(text, *hi) != '\n') {
-            (*hi)++;
-        }
-        if (*hi < count) (*hi)++;
         return;
     }
     if (granularity == 4) {

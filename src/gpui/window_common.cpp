@@ -1477,6 +1477,25 @@ Str WindowAccessibilityTextValue(const AccessibilityNode& node) {
     return text.s ? text : StrL("");
 }
 
+Selection AccessibilityTextLineAt(Str text, int offset) {
+    offset = RopeClipOffset(text, offset, Bias::Left);
+    int first = offset;
+    while (first > 0 && text.s[first - 1] != '\n') {
+        first--;
+    }
+    int end = offset;
+    while (end < len(text) && text.s[end] != '\n') {
+        end++;
+    }
+    return {first, end < len(text) ? end + 1 : end};
+}
+
+bool AccessibilityTextLineRange(Str text, int row, Selection* out) {
+    if (!out || row < 0 || row >= RopeLinesLen(text)) return false;
+    *out = AccessibilityTextLineAt(text, RopeLineStartOffset(text, row));
+    return true;
+}
+
 bool WindowAccessibilityTextRangeBounds(Window* win,
                                         const AccessibilityNode& node,
                                         Selection range, Bounds* out) {

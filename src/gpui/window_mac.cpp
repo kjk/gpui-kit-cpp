@@ -412,6 +412,39 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     NSInteger length = [self accessibilityNumberOfCharacters];
     return NSMakeRange(0, (NSUInteger)length);
 }
+- (NSInteger)accessibilityLineForIndex:(NSInteger)index {
+    const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
+    gpui::Str text =
+        node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
+    if (!text.s || index < 0 ||
+        index > gpui::RopeOffsetToOffsetUtf16(text, len(text))) {
+        return NSNotFound;
+    }
+    int offset = gpui::RopeOffsetUtf16ToOffset(text, (int)index);
+    return gpui::RopeOffsetToPoint(text, offset).row;
+}
+- (NSInteger)accessibilityInsertionPointLineNumber {
+    const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
+    gpui::Str text =
+        node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
+    return text.s
+               ? gpui::RopeOffsetToPoint(text, gpui::InputCursor(node->input))
+                     .row
+               : NSNotFound;
+}
+- (NSRange)accessibilityRangeForLine:(NSInteger)line {
+    const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
+    gpui::Str text =
+        node ? gpui::WindowAccessibilityTextValue(*node) : gpui::Str{};
+    gpui::Selection range;
+    if (!text.s || line < 0 || line > INT32_MAX ||
+        !gpui::AccessibilityTextLineRange(text, (int)line, &range)) {
+        return NSMakeRange(NSNotFound, 0);
+    }
+    int start = gpui::RopeOffsetToOffsetUtf16(text, range.start);
+    int end = gpui::RopeOffsetToOffsetUtf16(text, range.end);
+    return NSMakeRange((NSUInteger)start, (NSUInteger)(end - start));
+}
 - (NSString*)accessibilityStringForRange:(NSRange)range {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
     gpui::Str text =

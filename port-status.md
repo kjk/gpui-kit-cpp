@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b28405e5d9487d495fc383db3461c53ea650fd18` (2026-11-11, tag:
-Remove hover style that never shows (#3893)).
-Reviewed the Tag hover removal. The C++ Tag already renders a display-only
-element with no hover opacity, so the Rust change needs no widget patch.
+Processed through `b9e15969c5e14b435b631228d26ad20780c292ea` (2026-11-11,
+input: Expose a multi-line input's text to screen readers (#3894)).
+Added shared logical text-line ranges to the native multiline accessibility
+providers. Line queries retain LF and CRLF and address the empty line after a
+final break. The C++ providers expose the original text and selection directly
+without AccessKit node chunks.
 The current update target is
 `f8243df95b9158d9b6d842348dcfcd0481a85c2c`.
 

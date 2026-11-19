@@ -8315,6 +8315,10 @@ int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId);
 // A null string means the input does not expose its text. An exposed empty
 // field still has a caret and supports text queries.
 Str WindowAccessibilityTextValue(const AccessibilityNode& node);
+// Logical lines retain their newline, including CRLF. A final newline leaves
+// an empty last line for a caret at the end of the document.
+Selection AccessibilityTextLineAt(Str text, int offset);
+bool AccessibilityTextLineRange(Str text, int row, Selection* out);
 bool WindowAccessibilityTextRangeBounds(Window* win,
                                         const AccessibilityNode& node,
                                         Selection range, Bounds* out);

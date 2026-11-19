@@ -1755,7 +1755,7 @@ static bool AccessibilityWideSpace(wchar_t ch) {
     return ch == L' ' || ch == L'\t' || ch == L'\r' || ch == L'\n';
 }
 
-static void AccessibilityUnitBounds(BSTR text, int length, int at,
+static void AccessibilityUnitBounds(Str source, BSTR text, int length, int at,
                                     TextUnit unit, int* lo, int* hi) {
     at = std::max(0, std::min(at, length));
     *lo = at;
@@ -1768,15 +1768,10 @@ static void AccessibilityUnitBounds(BSTR text, int length, int at,
             (*hi)++;
         }
     } else if (unit == TextUnit_Line) {
-        while (*lo > 0 && text[*lo - 1] != L'\n') {
-            (*lo)--;
-        }
-        while (*hi < length && text[*hi] != L'\n') {
-            (*hi)++;
-        }
-        if (*hi < length) {
-            (*hi)++;
-        }
+        Selection line = AccessibilityTextLineAt(
+            source, RopeOffsetUtf16ToOffset(source, at));
+        *lo = RopeOffsetToOffsetUtf16(source, line.start);
+        *hi = RopeOffsetToOffsetUtf16(source, line.end);
     } else {
         *lo = 0;
         *hi = length;
@@ -1805,8 +1800,8 @@ HRESULT WinTextRange::ExpandToEnclosingUnit(TextUnit unit) {
     if (HRESULT hr = ClampedText(&text); FAILED(hr)) {
         return hr;
     }
-    AccessibilityUnitBounds(text, (int)SysStringLen(text), start, unit, &start,
-                            &end);
+    AccessibilityUnitBounds(value, text, (int)SysStringLen(text), start, unit,
+                            &start, &end);
     SysFreeString(text);
     return S_OK;
 }
@@ -1989,7 +1984,8 @@ HRESULT WinTextRange::MoveEndpointByUnit(TextPatternRangeEndpoint endpoint,
             int lo = 0;
             int hi = 0;
             int probe = direction < 0 ? std::max(0, *value - 1) : *value;
-            AccessibilityUnitBounds(text, length, probe, unit, &lo, &hi);
+            AccessibilityUnitBounds(valueText, text, length, probe, unit, &lo,
+                                    &hi);
             int next = direction < 0 ? lo : hi;
             if (next == *value) {
                 break;
