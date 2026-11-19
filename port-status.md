@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8358c37a662edc7c7a7935801d1585e470049a86` (2026-11-11,
-tooltip: Show one tooltip when a component tooltip sits inside a native
-`.tooltip()` (#3914)).
-Verified the component and native tooltip overlays share one visible slot. The
-C++ request path clears the other overlay directly. A nested-trigger
-regression exercises the handoff in both directions.
+Processed through `7f0a3505592cd1f500b129ebb9b6cbae174cc355` (2026-11-11,
+table: Add `TableRow::hover` so a row can take a style under the pointer
+(#3912)).
+Table rows accept an optional hover refinement. Both body examples in the
+Table story use the theme hover background.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

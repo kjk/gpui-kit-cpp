@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8358c37a662edc7c7a7935801d1585e470049a86",
+  sha: "7f0a3505592cd1f500b129ebb9b6cbae174cc355",
   date: "2026-11-11",
-  subject: "tooltip: Show one tooltip when a component tooltip sits inside a native `.tooltip()` (#3914)",
+  subject: "table: Add `TableRow::hover` so a row can take a style under the pointer (#3912)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

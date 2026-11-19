@@ -350,11 +350,13 @@ struct TableRow {
     UiSize size = UiSize::Medium;
     bool hasBg = false;
     Background bg = {};
+    StateStyle* hoverStyle = nullptr;
     ArenaVec<TableCellEl*> cells;
     ElRefiner refiner = {};
 
     static TableRow* New(Ctx* cx);
     TableRow* Bg(Background c);
+    TableRow* Hover(const StateStyle& style);
     TableRow* Child(TableCellEl* c);
     El* IntoEl();
 };

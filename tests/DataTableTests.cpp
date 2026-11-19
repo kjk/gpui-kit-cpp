@@ -2284,7 +2284,23 @@ static void RightFixedColumnsStayPutWhileScrolling() {
     TestAppFree(app);
 }
 
+static void AThemedTableRowKeepsItsOptionalHoverStyle() {
+    TestSuite("table rows");
+    App app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, nullptr, a};
+    auto* row = component::TableRow::New(&cx);
+    utassert(row->hoverStyle == nullptr);
+    El* styled = row->Hover(StateStyle{}.Opacity(0.5f))->IntoEl();
+    const ElStyleStates* states = styled->StyleStates();
+    utassert(states && (states->hoverSet & StyleFieldOpacity));
+    utassert(states && TestNear(states->hover.opacity, 0.5f));
+    ArenaDelete(a);
+    AppGlobalClear(&app);
+}
+
 void TestDataTable() {
+    AThemedTableRowKeepsItsOptionalHoverStyle();
     ResizingAColumnFollowsThePointer();
     AFittedColumnHoldsItsContentOnWholeDevicePixels();
     AFitStaysWithinTheColumnAndEmitsOnlyOnAChange();

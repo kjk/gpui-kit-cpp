@@ -71,6 +71,8 @@ El* TableStory::Render(TableStory* self, Ctx* cx) {
             ->Child(TextHead(cx, StrL("Amount"))->TextRight())
             ->Child(TextHead(cx, StrL("Date"))->TextRight())));
     component::TableGroup* body = component::TableBody::New(cx);
+    StateStyle hover;
+    hover.Bg(th.tokens.tableHover);
     for (int i = 0; i < nInvoices; i++) {
         const Invoice& inv = kInvoices[i];
         // The method cell is one string with a newline in it upstream, which
@@ -83,6 +85,7 @@ El* TableStory::Render(TableStory* self, Ctx* cx) {
         }
         method->Child(methodCol);
         body->Child(component::TableRow::New(cx)
+                        ->Hover(hover)
                         ->Child(TextCell(cx, Str(inv.id))->W(150))
                         ->Child(component::TableCell::New(cx)
                                     ->Child(StatusTag(cx, Str(inv.status))))
@@ -126,6 +129,7 @@ El* TableStory::Render(TableStory* self, Ctx* cx) {
         method->Child(methodCol);
         component::TableRow* row =
             component::TableRow::New(cx)
+                ->Hover(hover)
                 ->Child(TextCell(cx, Str(inv.id))->W(100))
                 ->Child(method)
                 ->Child(TextCell(cx, Str(inv.amount))->TextRight())

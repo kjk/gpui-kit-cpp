@@ -221,6 +221,11 @@ TableRow* TableRow::Bg(Background c) {
     hasBg = true;
     return this;
 }
+TableRow* TableRow::Hover(const StateStyle& style) {
+    if (!hoverStyle) hoverStyle = ArenaNew<StateStyle>(a);
+    *hoverStyle = style;
+    return this;
+}
 TableRow* TableRow::Child(TableCellEl* c) {
     cells.Append(a, c);
     return this;
@@ -241,6 +246,7 @@ El* TableRow::IntoEl() {
     if (ix > 0) {
         row->BorderT(1, th.tableRowBorder);
     }
+    if (hoverStyle) row->Hover(*hoverStyle);
     for (int i = 0; i < cells.len; i++) {
         cells[i]->ix = i;
         cells[i]->size = size;
