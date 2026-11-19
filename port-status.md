@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8d564832e2fd630a2d57f548fa70e18dbe677722` (2026-11-11,
-dialog: Offset a stacked dialog by open dialogs only (#3897)).
-The dialog layer keeps its slot for identity and computes its visual stack
-offset from open dialogs beneath it. A replacement keeps the same rendered
-bounds while its predecessor exits and after it unmounts.
+Processed through `5880706c54f0378f03e1364c2291b2887f46f589` (2026-11-11,
+text: Lay out a paragraph of several images inline (#3898)).
+Paragraphs consisting of multiple images now use inline image sizing. Unloaded
+images reserve compact squares and adjacent images and linked images can share
+a line.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

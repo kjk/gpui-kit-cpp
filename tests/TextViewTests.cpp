@@ -4583,6 +4583,39 @@ static void InlineImageBeforeItLoadsKeepsACompactSquare() {
 // inline_flow.rs inline_image_wider_than_the_wrap_is_narrowed_to_it.
 // A 200x60 picture at a 100px wrap is a 100x30 fragment, and the flow is
 // no wider than the wrap.
+static void SeveralImagesShareAnInlineFlow() {
+    InlineImageHost host;
+    if (!InlineImageOpen(&host)) {
+        InlineImageClose(&host);
+        utassert(false);
+        return;
+    }
+    auto draw = [&](Str source) {
+        auto state = TextViewState::Markdown(&host.app, source);
+        El* view = TextView::New(&host.cx, state)->IntoEl();
+        LayoutEl(&host.win->paint, view, 0, 0, 400, 400, 16, Rgba{});
+        return FindImageEl(view);
+    };
+    El* single = draw(StrL("![a](missing-a.png)"));
+    utassert(single && !single->imageUnsized);
+    for (Str source : {
+             StrL("![a](missing-a.png)![b](missing-b.png)"),
+             StrL("[![a](missing-a.png)](https://example.test/a)"
+                  "[![b](missing-b.png)](https://example.test/b)"),
+         }) {
+        El* first = draw(source);
+        El* second = first ? FindImageEl(first->next) : nullptr;
+        utassert(first && first->imageUnsized);
+        utassert(second && second->imageUnsized);
+        if (first && second) {
+            utassertnear(second->y, first->y);
+            utassertnear(second->x, first->x + first->w);
+            utassert(first->w > 0 && second->w > 0);
+        }
+    }
+    InlineImageClose(&host);
+}
+
 static void InlineImageWiderThanTheWrapIsNarrowedToIt() {
     Size measured = InlineImageExtent(Size{200, 60}, 20, 100);
     utassert(measured.w == 100 && measured.h == 30);
@@ -10170,6 +10203,7 @@ void TestTextView() {
     TestMarkdownImage(a);
     InlineImageWithoutExplicitSizeIsDrawnAtItsIntrinsicSize();
     InlineImageBeforeItLoadsKeepsACompactSquare();
+    SeveralImagesShareAnInlineFlow();
     InlineImageWiderThanTheWrapIsNarrowedToIt();
 #if GPUI_MARKDOWN_FULL
     TestMarkdownReferenceImages(a);

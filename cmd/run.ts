@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8d564832e2fd630a2d57f548fa70e18dbe677722",
+  sha: "5880706c54f0378f03e1364c2291b2887f46f589",
   date: "2026-11-11",
-  subject: "dialog: Offset a stacked dialog by open dialogs only (#3897)",
+  subject: "text: Lay out a paragraph of several images inline (#3898)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

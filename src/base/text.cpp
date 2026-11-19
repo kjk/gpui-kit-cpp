@@ -3945,9 +3945,13 @@ static bool IsPlainRun(MdRun* r) {
     return true;
 }
 
-static bool InlineHasText(const MdNode* node) {
+static bool InlineImageFlow(const MdNode* node) {
+    bool hasImage = false;
     for (const MdRun* r = node->runFirst; r; r = r->next) {
-        if (r->hasCustom || (len(r->imgSrc) == 0 && len(r->text) > 0)) {
+        if (len(r->imgSrc) > 0) {
+            if (hasImage || node->hasEditorKey) return true;
+            hasImage = true;
+        } else if (r->hasCustom || len(r->text) > 0) {
             return true;
         }
     }
@@ -4583,10 +4587,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // trailing space rather than the row carrying a gap: a gap would put a
     // space between an emphasis run and the punctuation after it ("**bold**:"
     // reads as "bold :") and would loosen wrapped-line leading.
-    // should_render_inline_flow: a paragraph that mixes words with a picture
-    // lays the picture out as part of the line. One that is a picture and
-    // nothing else is a block, and keeps the picture's own size.
-    bool inFlow = InlineHasText(n);
+    // Pictures share an inline flow with words and with one another. A
+    // standalone picture outside the editor keeps the block image sizing.
+    bool inFlow = InlineImageFlow(n);
     El* col = Div(a)->FlexCol()->W(kFill);
     El* row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
     HostFlow* hostFlow = nullptr;
@@ -5385,7 +5388,7 @@ static float CellContentWidth(TextView* tv, MdNode* cell, bool head) {
     PaintCtx* paint = tv->cx && tv->cx->win ? &tv->cx->win->paint : nullptr;
     float line = 0;
     float widest = 0;
-    bool inFlow = InlineHasText(cell);
+    bool inFlow = InlineImageFlow(cell);
     for (MdRun* run = cell->runFirst; run; run = run->next) {
         if (len(run->imgSrc) > 0) {
             if (run->imgW > 0) {
