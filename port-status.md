@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6808964c3a5e0ef970e47b696e8a800575cb21a7` (2026-11-10,
-base: Add global right-to-left layout direction (#3886)).
-Ports per-App layout direction, locale defaults for all six targets, logical
-layout and control interaction, and the gallery toggle and Arabic form. The
-browser uses the preferred navigator language; the Rust sys-locale dependency
-does not enable its browser feature. The JavaScript gallery records direction
-as infrastructure, as upstream does.
+Processed through `e3d1238227c6dfc8156ec9554600ee6cb0f534a0` (2026-11-11,
+native_menu: Detect SVG data when the 256-byte sniff splits a character
+(#3890)).
+Added a regression for native menu SVG icon assets with a Korean title
+crossing byte 256. The C++ menu rasterizer resolves an extensionless asset and
+parses its complete markup, so it already avoids the fixed-size UTF-8 sniff.
 The current update target is
 `f8243df95b9158d9b6d842348dcfcd0481a85c2c`.
 

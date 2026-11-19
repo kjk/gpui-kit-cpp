@@ -10,6 +10,33 @@
 
 using namespace gpui::component;
 
+static bool NativeMenuSvgAsset(void* user, Str path, Vec<uint8_t>* out) {
+    if (!StrEq(path, "native-menu-utf8-icon")) return false;
+    Str svg = *(Str*)user;
+    VecResize(*out, len(svg));
+    memcpy(out->els, svg.s, (size_t)len(svg));
+    return true;
+}
+
+// native_menu/mod.rs: the old 256-byte sniff bisected the Korean letter.
+// Our resolver parses the full SVG asset, including extensionless paths.
+static void SvgIconResolvesAcrossTheOldSniffBoundary() {
+    char bytes[384];
+    Str start = StrL("<svg viewBox=\"0 0 24 24\"><title>");
+    Str end = StrL("가</title><path d=\"M4 12h16\"/></svg>");
+    memcpy(bytes, start.s, (size_t)len(start));
+    memset(bytes + len(start), 'a', (size_t)(255 - len(start)));
+    memcpy(bytes + 255, end.s, (size_t)len(end));
+    Str icon(bytes, 255 + len(end));
+    int source = AssetsAddSource(&icon, &NativeMenuSvgAsset, nullptr);
+    utassert(source != 0);
+    int length = 0;
+    utassert(SvgDrawOpsFor(StrL("native-menu-utf8-icon"), &length) != nullptr);
+    utassert(length > 0);
+    AssetsRemoveSource(source);
+    SvgCacheClear();
+}
+
 // test_native_menu_builder_accepts_icon: the row carries what it was built
 // with, icon included.
 static void ARowCarriesWhatItWasBuiltWith() {
@@ -295,6 +322,7 @@ static void OnlyALaterPressDismissesTheMenu() {
 
 void TestNativeMenu() {
     TestSuite("native_menu");
+    SvgIconResolvesAcrossTheOldSniffBoundary();
     ARowCarriesWhatItWasBuiltWith();
     IconDataReplacesThePathAndTravelsWithTheRow();
     EveryRowAddedIsKept();

@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6808964c3a5e0ef970e47b696e8a800575cb21a7",
-  date: "2026-11-10",
-  subject: "base: Add global right-to-left layout direction (#3886)",
+  sha: "e3d1238227c6dfc8156ec9554600ee6cb0f534a0",
+  date: "2026-11-11",
+  subject: "native_menu: Detect SVG data when the 256-byte sniff splits a character (#3890)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",
