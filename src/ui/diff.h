@@ -559,6 +559,7 @@ struct Diff {
     DiffChangeIndicator changeIndicator = DiffChangeIndicator::Signs;
     bool changeBackground = true;
     bool softWrap = false;
+    float splitRatio = 0.5f;
     // Application slots. A null function leaves the default header or no
     // annotation. `user` is the closure environment for the frame.
     const DiffAnnotation* annotations = nullptr;
@@ -594,6 +595,8 @@ struct Diff {
     Diff* ChangeIndicator(DiffChangeIndicator v);
     Diff* ChangeBackground(bool v);
     Diff* SoftWrap(bool v);
+    // Share of the viewport used by the original column in split mode.
+    Diff* SplitRatio(float ratio);
     Diff* Annotations(const DiffAnnotation* items, int count);
     Diff* RenderAnnotation(El* (*fn)(Ctx*, const DiffAnnotation*, void*),
                            void* user);

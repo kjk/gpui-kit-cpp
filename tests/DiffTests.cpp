@@ -4,6 +4,8 @@
 
 #include "Test.h"
 
+#include <math.h>
+
 using namespace gpui;
 using namespace gpui::component;
 
@@ -940,6 +942,49 @@ static void ModeSwitchAtTheTopKeepsTheFileHeaderInView() {
     TestAppFree(app);
 }
 
+static const El* FindSplitCells(const El* el) {
+    const El* first = el->first;
+    const El* last = el->last;
+    if (first && first != last && first->style.widthFrac > 0 &&
+        last->style.widthFrac > 0) {
+        return el;
+    }
+    for (const El* child = first; child; child = child->next) {
+        if (const El* row = FindSplitCells(child)) {
+            return row;
+        }
+    }
+    return nullptr;
+}
+
+static void SplitRatioSizesTheRenderedColumns() {
+    DiffFix fix;
+    utassert(fix
+                 .Load("--- a/split.txt\n+++ b/split.txt\n"
+                       "@@ -1 +1 @@\n-old\n+new\n"));
+    fix.state->SetMode(DiffMode::Split, &fix.cx);
+    PaintCtx paint = {};
+    paint.viewW = 400;
+    paint.viewH = 200;
+    auto check = [&](Diff* viewer, float expected) {
+        El* root = viewer->IntoEl();
+        LayoutEl(&paint, root, 0, 0, paint.viewW, paint.viewH, 14, Rgba{});
+        const El* row = FindSplitCells(root);
+        utassert(row);
+        if (row) {
+            utassertnear(row->first->w, 400 * expected);
+            utassertnear(row->last->w, 400 * (1.f - expected));
+        }
+    };
+    check(Diff::New(&fix.cx, fix.entity), 0.5f);
+    const float ratios[] = {0.65f, -1.f, 2.f, NAN, HUGE_VALF};
+    const float expected[] = {0.65f, 0.1f, 0.9f, 0.5f, 0.5f};
+    for (int i = 0; i < (int)(sizeof(ratios) / sizeof(ratios[0])); i++) {
+        check(Diff::New(&fix.cx, fix.entity)->SplitRatio(ratios[i]),
+              expected[i]);
+    }
+}
+
 struct HighlightCalls {
     int n = 0;
     char language[8][32];
@@ -1239,6 +1284,7 @@ void TestDiff() {
     TestDiffListFillsItsHeight();
     TheWholePatchKeepsItsHeightAfterTheFirstLayout();
     ModeSwitchAtTheTopKeepsTheFileHeaderInView();
+    SplitRatioSizesTheRenderedColumns();
     TheWheelScrollsPastTheRowsRenderedSoFar();
     DecorationsCoverTheirRangeAndTheLastSuppliedWins();
     GutterMarkersActivateWithoutSelectingLines();

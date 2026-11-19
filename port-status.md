@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `de9d2235fa3dac0e99e685823752bb300b23e74a` (2026-11-10,
-diff: Keep the file header in view when switching modes at the top (#3884)).
-The Diff list already retains a zero scroll offset across mode changes. A
-regression covers the first header with the long-line fixture. The renderer
-still uses uniform rows, as recorded below.
+Processed through `dec6aeff846a4c81b91ff704bbb38978bdfabdeb` (2026-11-10,
+diff: Add `split_ratio` to size the Split columns (#3883)).
+Diff can set the original column share in split mode. The ratio partitions the
+C++ list viewport and follows the upstream default and input clamping.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
@@ -426,9 +425,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   scroll index rather than the source line that was at the top. Soft wrap
   is stored and not applied. The viewer's body is a vertical list, so
   the horizontal `ScrollableMask` that keeps a vertical wheel on the
-  rows is not applied. The gutter marker lane is one row square inside
-  that fill-width row; Rust adds the same width to the measured content
-  width, and this list does not measure code width. The add-annotation
+  rows is not applied. The split ratio divides the viewport width. Rust
+  also reserves room for the widest unwrapped line. The gutter marker
+  lane is one row square inside the fill-width row. Rust adds that lane
+  to its measured content width. The add-annotation
   button inset is not
   applied because that button is not painted. Annotation content is
   painted inside the uniform row, which does not grow with the comment.

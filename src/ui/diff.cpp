@@ -11,6 +11,8 @@
 #include "ui/virtual_list.h"
 #include "base/scroll_bounce.h"
 
+#include <math.h>
+
 namespace gpui {
 namespace component {
 
@@ -3413,9 +3415,17 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
     if (split) {
         El* both = Div(cx->a)->FlexRow()->W(kFill);
         both->Child(cell(DiffSide::Original, row.original, row.changed,
-                         row.original >= 0, nullptr, nullptr, false));
+                         row.original >= 0, nullptr, nullptr, false)
+                        ->WFrac(diff->splitRatio)
+                        ->FlexNone()
+                        ->MinW(0)
+                        ->ClipX());
         both->Child(cell(DiffSide::Modified, row.modified, row.changed,
-                         row.modified >= 0, nullptr, nullptr, false));
+                         row.modified >= 0, nullptr, nullptr, false)
+                        ->WFrac(1.f - diff->splitRatio)
+                        ->FlexNone()
+                        ->MinW(0)
+                        ->ClipX());
         return both;
     }
     DiffSide side = row.modified >= 0 ? DiffSide::Modified : DiffSide::Original;
@@ -3519,6 +3529,10 @@ Diff* Diff::ChangeBackground(bool v) {
 }
 Diff* Diff::SoftWrap(bool v) {
     softWrap = v;
+    return this;
+}
+Diff* Diff::SplitRatio(float ratio) {
+    splitRatio = isfinite(ratio) ? std::min(std::max(ratio, 0.1f), 0.9f) : 0.5f;
     return this;
 }
 Diff* Diff::Annotations(const DiffAnnotation* items, int count) {
