@@ -16,13 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d699f8609352322bc3d0919d4f68830a88eead22` (2026-11-12,
-markdown: Look up MathJax in `website/node_modules` instead of the removed
-`docs/` directory (#3923)).
-Use the optional MathJax installation under website/node_modules or the
-configured GPUI_MATHJAX_ROOT. Cache path-based formula images on desktop and
-preserve the existing text fallback while rendering or when MathJax is
-unavailable.
+Processed through `70dc27d817997b9f935ad7640ad89ccadc4e0513` (2026-11-12,
+button: Keep a right or middle press from focusing a `Button` (#3924)).
+The C++ dispatcher already leaves button focus unchanged on right and middle
+presses. Verify both presses still reach a parent mouse-down listener.
 The current update target is
 `85156303ae309925bdefa63250ca9f38b17c270b`.
 

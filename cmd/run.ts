@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d699f8609352322bc3d0919d4f68830a88eead22",
+  sha: "70dc27d817997b9f935ad7640ad89ccadc4e0513",
   date: "2026-11-12",
-  subject: "markdown: Look up MathJax in `website/node_modules` instead of the removed `docs/` directory (#3923)",
+  subject: "button: Keep a right or middle press from focusing a `Button` (#3924)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

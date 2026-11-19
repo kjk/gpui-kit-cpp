@@ -371,8 +371,51 @@ static void TheCheckMarkAsksTheIconResolverForItsPath() {
     MotionSetReduced(wasReduced);
 }
 
+struct ButtonSecondaryPressView {
+    FocusHandle button;
+    int parentPresses = 0;
+
+    static void OnPress(ButtonSecondaryPressView* self, Ctx*,
+                        const MouseDownEvent* ev) {
+        if (ev->button == MouseButton::Right ||
+            ev->button == MouseButton::Middle) {
+            self->parentPresses++;
+        }
+    }
+
+    static El* Render(ButtonSecondaryPressView* self, Ctx* cx) {
+        if (!self->button.IsValid()) self->button = FocusHandleNew(cx);
+        return Div(cx->a)
+            ->W(100)
+            ->H(100)
+            ->OnMouseDown(Listen(cx, &ButtonSecondaryPressView::OnPress))
+            ->Child(component::Button::New(cx, StrL("non-left"))
+                        ->TrackFocus(self->button)
+                        ->IntoEl()
+                        ->SizeFull());
+    }
+};
+
+// button/button.rs non_left_press_does_not_focus_button.
+static void NonLeftPressDoesNotFocusButton() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<ButtonSecondaryPressView>(app);
+    Window* win = TestWindowOpen(app, view, 200, 100, 1);
+    auto* self = view.Get(app);
+    const MouseButton buttons[] = {MouseButton::Right, MouseButton::Middle};
+    for (MouseButton button : buttons) {
+        TestSimulateMouseDown(win, {10, 10}, button);
+        TestSimulateMouseUp(win, {10, 10}, button);
+        utassert(!FocusHandleIsFocused(win, self->button));
+    }
+    utassert(self->parentPresses == 2);
+    TestAppFree(app);
+}
+
 void TestClick() {
     TestSuite("click");
+    NonLeftPressDoesNotFocusButton();
     AReleaseOnTheElementThatTookThePressIsAClick();
     APressThatSlidOffIsNoClick();
     OnlyTheButtonThatWentDownMakesTheClick();
