@@ -19,11 +19,12 @@ struct ToggleStyles {
 // leaves every pixel to the caller. `onChange` is handed the value the
 // activation produces — `!pressed` — which a
 // `void On(T*, Ctx*, const ClickEvent*, int64_t next)` reads as a bool. A
-// disabled toggle keeps its element id but takes neither focus nor the click.
+// disabled toggle keeps its focus position and ignores activation.
 struct Toggle {
     static El* New(Ctx* cx, Str id, bool pressed = false, bool disabled = false,
                    Listener onChange = {}, const ToggleStyles* styles = nullptr,
-                   const StateStyle* instance = nullptr);
+                   const StateStyle* instance = nullptr, int tabIndex = 0,
+                   bool tabStop = true, FocusHandle focus = {});
 };
 } // namespace gpui
 #endif // GPUI_BASE_TOGGLE_H_

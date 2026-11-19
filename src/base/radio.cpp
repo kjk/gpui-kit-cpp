@@ -1,4 +1,5 @@
 #include "base/radio.h"
+#include "base/button.h"
 
 namespace gpui {
 
@@ -13,7 +14,8 @@ RadioStyles& RadioStyles::Disabled(const StateStyle& style) {
 }
 
 El* Radio::New(Ctx* cx, Str id, bool checked, bool disabled, Listener onChange,
-               const RadioStyles* styles, const StateStyle* instance) {
+               const RadioStyles* styles, const StateStyle* instance,
+               int tabIndex, bool tabStop, FocusHandle focus) {
     Arena* a = cx->a;
     El* e = Div(a)
                 ->PathClick(id)
@@ -30,10 +32,10 @@ El* Radio::New(Ctx* cx, Str id, bool checked, bool disabled, Listener onChange,
         };
         ElRefine(e, StateStyleResolve(base, states, 2));
     }
+    ControlFocus(e, focus, id, tabIndex, tabStop, disabled, cx->win);
     if (disabled) {
         return e;
     }
-    e->PathId(id);
     if (!checked && onChange.IsValid()) {
         e->OnClick(ListenerFill(onChange, true));
     }

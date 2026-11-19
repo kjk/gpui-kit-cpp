@@ -81,9 +81,8 @@ El* Checkbox::New(Ctx* cx, Str id, CheckboxState state, bool disabled,
                   int tabIndex, bool tabStop, FocusHandle focus,
                   AccessibilityRole role) {
     Arena* a = cx->a;
-    // `div().id(id)` is unconditional in Rust; `track_focus` and `on_click`
-    // both hang off `when(!disabled)`. The id is the fold of the name down
-    // from the root, so a checkbox named among its siblings is still its own.
+    // The path id is unconditional. A focused handle can still anchor Tab
+    // traversal when activation just disabled the control.
     AccessibilityToggled toggled =
         state == CheckboxState::Indeterminate ? AccessibilityToggled::Mixed
         : state == CheckboxState::Checked     ? AccessibilityToggled::True
@@ -97,10 +96,10 @@ El* Checkbox::New(Ctx* cx, Str id, CheckboxState state, bool disabled,
         e->AriaLabel(accessibilityLabel);
     }
     RefineCheckbox(e, state, disabled, styles, instance);
+    ControlFocus(e, focus, id, tabIndex, tabStop, disabled, cx->win);
     if (disabled) {
         return e;
     }
-    ControlFocus(e, focus, id, tabIndex, tabStop);
     if (onChange.IsValid()) {
         e->OnClick(ListenerFill(onChange, (int64_t)CheckboxActivated(state)));
     }

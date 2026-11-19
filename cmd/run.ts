@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f45cfeede9aac977cd8896fd63448f86e6a655c0",
+  sha: "b45e70e5815ab2f6a010618291e45ec53a8ed870",
   date: "2026-11-09",
-  subject: "table: Skip per-row cross-axis measure and add a frame benchmark (#3868)",
+  subject: "base: Preserve Tab exit when focused selection controls become disabled (#3872)",
   crates: {
     "gpui-kit": "0.9.1",
     "gpui-base": "0.9.1",

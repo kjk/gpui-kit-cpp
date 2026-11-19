@@ -22,13 +22,19 @@ El* ControlBox(Arena* a, Str id) {
         ->PathClick(id);
 }
 
-El* ControlFocus(El* e, FocusHandle focus, Str id, int tabIndex, bool tabStop) {
+El* ControlFocus(El* e, FocusHandle focus, Str id, int tabIndex, bool tabStop,
+                 bool disabled, Window* window) {
     if (focus.IsValid()) {
+        if (disabled && !FocusHandleIsFocused(window, focus)) {
+            return e;
+        }
         e->TrackFocus(focus);
     } else {
+        // A path handle resolves during layout, after the primitive builds.
+        // Keep the slot so a focused control can still find its neighbors.
         e->PathId(id);
     }
-    return e->TabIndex(tabIndex)->TabStop(tabStop);
+    return e->TabIndex(tabIndex)->TabStop(tabStop && !disabled);
 }
 
 El* Button::New(Ctx* cx, Str id, bool disabled, Listener onClick,

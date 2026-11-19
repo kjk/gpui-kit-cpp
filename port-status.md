@@ -16,16 +16,21 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f45cfeede9aac977cd8896fd63448f86e6a655c0` (2026-11-09,
-table: Skip per-row cross-axis measure and add a frame benchmark (#3868)).
-DataTable already builds its visible rows without measuring a sample item
-across each row. The headless frame benchmark now covers DataTable and the
-uniform-list baseline at 20 and 2000 rows.
+Processed through `b45e70e5815ab2f6a010618291e45ec53a8ed870` (2026-11-09,
+base: Preserve Tab exit when focused selection controls become disabled
+(#3872)).
+A focused checkbox, radio, switch, or toggle keeps its location in the focus
+order if activation disables it. Tab leaves in either direction and skips the
+disabled control on return.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
 ## Known gaps vs Rust
 
+- **Disabled selection controls retain path-based focus positions.** Their
+  derived IDs resolve during layout, so C++ keeps their place in the focus
+  order with Tab stops off. Explicit handles on disabled controls are kept
+  only while focused (`src/base/button.cpp`).
 - **The table frame benchmark measures arena use.** Its memory column
   reports bytes used to build the frame in C++ (`bench/TableFrameBench.cpp`).
   The Rust benchmark reports total allocation calls and bytes.

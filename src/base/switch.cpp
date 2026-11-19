@@ -66,12 +66,12 @@ El* Switch::New(Ctx* cx, Str id, bool checked, bool disabled, Listener onChange,
         e->AriaLabel(accessibilityLabel);
     }
     RefineSwitch(e, checked, disabled, styles, instance);
+    ControlFocus(e, focus, id, tabIndex, tabStop, disabled, cx->win);
     if (disabled) {
         // Rust takes the left-button press and stops it here so an enclosing
         // row does not activate when its disabled switch is pressed.
         return e->StopMouseDown();
     }
-    ControlFocus(e, focus, id, tabIndex, tabStop);
     if (onChange.IsValid()) {
         e->OnClick(ListenerFill(onChange, !checked));
     }

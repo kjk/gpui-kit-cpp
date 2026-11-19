@@ -14,7 +14,8 @@ ToggleStyles& ToggleStyles::Disabled(const StateStyle& style) {
 }
 
 El* Toggle::New(Ctx* cx, Str id, bool pressed, bool disabled, Listener onChange,
-                const ToggleStyles* styles, const StateStyle* instance) {
+                const ToggleStyles* styles, const StateStyle* instance,
+                int tabIndex, bool tabStop, FocusHandle focus) {
     Arena* a = cx->a;
     // Button's neutral control geometry: a fixed-size toggle centers
     // ordinary content without themed padding.
@@ -31,10 +32,10 @@ El* Toggle::New(Ctx* cx, Str id, bool pressed, bool disabled, Listener onChange,
         };
         ElRefine(e, StateStyleResolve(base, states, 2));
     }
+    ControlFocus(e, focus, id, tabIndex, tabStop, disabled, cx->win);
     if (disabled) {
         return e->StopMouseDown();
     }
-    e->PathId(id);
     if (onChange.IsValid()) {
         e->OnClick(ListenerFill(onChange, !pressed));
     }

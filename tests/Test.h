@@ -91,6 +91,7 @@ void TestTextBoundary();
 void TestTextView();
 void TestSyntax();
 void TestSlider();
+void TestSelectionFocus();
 void TestPagination();
 void TestNumberInput();
 void TestOtpInput();

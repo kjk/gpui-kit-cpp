@@ -20,12 +20,13 @@ struct RadioStyles {
 // the caller's; activating an unchecked radio asks for `true` through
 // `onChange`. Picking the one that is already picked is not an activation, so
 // a checked radio takes focus but no click — which is what the accessibility
-// test pins by refusing it the Click action. A disabled radio keeps its
-// element id and takes neither.
+// test pins by refusing it the Click action. Disabling a focused radio
+// preserves its position in the focus order.
 struct Radio {
     static El* New(Ctx* cx, Str id, bool checked = false, bool disabled = false,
                    Listener onChange = {}, const RadioStyles* styles = nullptr,
-                   const StateStyle* instance = nullptr);
+                   const StateStyle* instance = nullptr, int tabIndex = 0,
+                   bool tabStop = true, FocusHandle focus = {});
 };
 } // namespace gpui
 #endif // GPUI_BASE_RADIO_H_
