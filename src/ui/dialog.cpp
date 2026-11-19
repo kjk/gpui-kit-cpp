@@ -1,4 +1,5 @@
 #include "ui/i18n.h"
+#include "base/layout_direction.h"
 #include "ui/dialog.h"
 #include "base/motion.h"
 #include "base/focus_trap.h"
@@ -282,9 +283,9 @@ DialogFooter* DialogFooter::New(Ctx* cx) {
     DialogFooter* part = ArenaNew<DialogFooter>(cx->a);
     float radius = ThemeNow(cx->app).radiusLg;
     part->root = Div(cx->a)
-                     ->FlexRow()
+                     ->FlexRowDir(cx->app)
                      ->Gap(Rems(cx, 0.5f))
-                     ->JustifyEnd()
+                     ->JustifyFlexEnd()
                      ->LineHeight(1.25f)
                      ->Corners(0, 0, radius, radius);
     return part;
@@ -531,7 +532,7 @@ El* Dialog::Header() {
         El* line = text;
         if (ic) {
             line = Div(a)
-                       ->FlexRow()
+                       ->FlexRowDir(cx->app)
                        ->Gap(Rems(cx, 0.5f))
                        ->ItemsCenter()
                        ->Child(ic)
@@ -569,7 +570,7 @@ El* Dialog::Actions() {
     if (footerVertical) {
         row->FlexCol();
     } else {
-        row->FlexRow()->JustifyEnd();
+        row->FlexRowDir(cx->app)->JustifyFlexEnd();
     }
     if (footerMuted) {
         row->Bg(th.tokens.muted);
@@ -674,7 +675,7 @@ El* Dialog::IntoEl(WinSize size) {
                                   ->Ghost()
                                   ->Icon(IconName::Close))
                     ->IntoEl();
-        x->Absolute()->Top(8)->Right(8)->W(kAuto)->H(kAuto);
+        x->Absolute()->Top(8)->InsetE(8, cx->app)->W(kAuto)->H(kAuto);
         panel->Child(x);
     }
     // Fixed, not absolute: Rust hangs the dialog off the window Root, so it

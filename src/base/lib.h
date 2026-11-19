@@ -38,6 +38,7 @@
 #include "base/input_lsp.h"
 #include "base/input_rope.h"
 #include "base/input_keys.h"
+#include "base/layout_direction.h"
 #include "base/link.h"
 #include "base/list_settings.h"
 #include "base/measure.h"

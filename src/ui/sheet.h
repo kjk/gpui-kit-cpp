@@ -17,6 +17,8 @@ enum class SheetPlacement : uint8_t {
     Bottom
 };
 
+SheetPlacement SheetPhysicalPlacement(SheetPlacement placement, const App* app);
+
 struct Sheet : SlotBuilder<Sheet> {
     Str title = {};
     El* titleEl = nullptr;

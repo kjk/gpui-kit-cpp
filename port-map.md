@@ -53,6 +53,7 @@ These do not:
 | `base/calendar`, `base/date_picker` | `base/calendar*`, `base/date_picker*` | payload enums are tagged POD values; `CalendarState` is an emitting entity; label/item closures become function tables |
 | `base/dock/*` | `base/dock*` | one Base dock family |
 | `base/input/*` | `base/input*`, `base/input_keys*` | one Base input family |
+| `base/layout_direction` | `base/layout_direction*`, `gpui::El` | per-App direction and platform locale detection, with logical style methods on El |
 | `ui/table/data_table` | `ui/data_table.h`, `ui/table*` | canonical UI include; behaviour delegates to `base/data_table*` |
 | `ui/list/*` | `ui/list*` | themed surface over shared `base/list*` |
 | `ui/menu/popup_menu` | `ui/popup_menu.h`, `ui/menu*` | canonical UI include over `base/popup_menu*` |

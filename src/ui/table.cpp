@@ -1,4 +1,5 @@
 #include "ui/table.h"
+#include "base/layout_direction.h"
 #include "base/list_settings.h"
 #include "base/scroll_bounce.h"
 #include "ui/i18n.h"
@@ -177,7 +178,7 @@ El* TableCellEl::IntoEl() {
     Str id = StrDup(a, fmt(head ? "head-%d" : "cell-%d", ix));
     El* e = head ? gpui::TableHead::New(cx, id, ix + 1)
                  : gpui::TableCell::New(cx, id, ix + 1);
-    e->FlexRow()->ItemsCenter();
+    e->FlexRowDir(cx->app)->ItemsCenter();
     // `.when(self.style.size.width.is_none(), ..)`: a cell the caller sized
     // keeps that width and shrinks from it like any flex item; one that was
     // not sized starts from the whole row and shares it with its siblings,
@@ -199,7 +200,7 @@ El* TableCellEl::IntoEl() {
     if (align == TableAlign::Center) {
         e->JustifyCenter();
     } else if (align == TableAlign::Right) {
-        e->JustifyEnd();
+        e->JustifyFlexEnd();
     }
     refiner.Apply(e);
     for (El* c : children) {
@@ -228,7 +229,8 @@ TableRow* TableRow::Child(TableCellEl* c) {
 El* TableRow::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     Str rowId = ElementIdNamed(a, StrL("row"), (uint64_t)ix);
-    El* row = gpui::TableRow::New(cx, rowId, ix + 1)->W(kFill)->FlexRow();
+    El* row =
+        gpui::TableRow::New(cx, rowId, ix + 1)->W(kFill)->FlexRowDir(cx->app);
     if (hasBg) {
         row->Bg(bg);
     }
@@ -1271,7 +1273,9 @@ El* DataTable::BuildEl() {
         if (col.center) {
             th_->TextCenter();
         } else if (col.right) {
-            th_->TextRight();
+            th_->TextEnd(cx->app);
+        } else if (LayoutIsRtl(cx->app)) {
+            th_->TextStart(cx->app);
         }
         if (s) {
             // The box a drop position is worked out against, which Rust reads
@@ -1307,7 +1311,9 @@ El* DataTable::BuildEl() {
         if (col.center) {
             content->TextCenter();
         } else if (col.right) {
-            content->TextRight();
+            content->TextEnd(cx->app);
+        } else if (LayoutIsRtl(cx->app)) {
+            content->TextStart(cx->app);
         }
         El* customHead = hasDelegate && delegate.renderTh
                              ? delegate.renderTh(cx, data, c)
@@ -1604,7 +1610,9 @@ El* DataTable::BuildEl() {
             if (columns[c].center) {
                 td->TextCenter();
             } else if (columns[c].right) {
-                td->TextRight();
+                td->TextEnd(cx->app);
+            } else if (LayoutIsRtl(cx->app)) {
+                td->TextStart(cx->app);
             }
             if (s && TableSelectedCol(s) == c) {
                 td->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));

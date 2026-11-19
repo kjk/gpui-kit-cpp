@@ -131,9 +131,10 @@ void SliderUpdateThumbPos(SliderState* s) {
 
 // The press as a fraction of the track: along x for a horizontal slider, and
 // up from the bottom for a vertical one.
-static float PctAt(const SliderState* s, Axis axis, Point pos) {
-    float inner = AxisIsHorizontal(axis) ? pos.x - s->bounds.x
-                                         : s->bounds.Bottom() - pos.y;
+static float PctAt(const SliderState* s, Axis axis, Point pos, bool rtl) {
+    float inner = AxisIsHorizontal(axis)
+                      ? (rtl ? s->bounds.Right() - pos.x : pos.x - s->bounds.x)
+                      : s->bounds.Bottom() - pos.y;
     float total = AxisIsHorizontal(axis) ? s->bounds.w : s->bounds.h;
     if (total <= 0) {
         return 0;
@@ -141,12 +142,12 @@ static float PctAt(const SliderState* s, Axis axis, Point pos) {
     return ClampF(inner, 0.f, total) / total;
 }
 
-bool SliderIsStartAt(const SliderState* s, Axis axis, Point pos) {
+bool SliderIsStartAt(const SliderState* s, Axis axis, Point pos, bool rtl) {
     if (!s->value.range) {
         return false;
     }
     float center = (s->pctHi - s->pctLo) * 0.5f + s->pctLo;
-    return PctAt(s, axis, pos) < center;
+    return PctAt(s, axis, pos, rtl) < center;
 }
 
 static bool SliderIsStep(float step) {
@@ -190,10 +191,10 @@ bool SliderStepThumb(SliderState* s, bool isStart, float delta) {
     return true;
 }
 
-bool SliderUpdateByPosition(SliderState* s, Axis axis, Point pos,
-                            bool isStart) {
+bool SliderUpdateByPosition(SliderState* s, Axis axis, Point pos, bool isStart,
+                            bool rtl) {
     s->dragging = true;
-    float pct = PctAt(s, axis, pos);
+    float pct = PctAt(s, axis, pos, rtl);
     pct = isStart ? ClampF(pct, 0.f, s->pctHi) : ClampF(pct, s->pctLo, 1.f);
 
     float value = SliderPctToValue(s, pct);

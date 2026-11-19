@@ -1,4 +1,5 @@
 #include "ui/progress.h"
+#include "base/layout_direction.h"
 #include "base/motion.h"
 #include "gpui/paint.h"
 
@@ -75,6 +76,7 @@ Progress* Progress::AccessibilityLabel(Str s) {
 
 El* Progress::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
+    bool rtl = LayoutIsRtl(cx->app);
     El* indicator = gpui::ProgressIndicator::New(cx)
                         ->H(h)
                         ->Radius(th.radiusFull)
@@ -102,8 +104,8 @@ El* Progress::IntoEl() {
             ->Top(0)
             ->Left(0)
             ->Right(0)
-            ->LeftRel(start)
-            ->RightRel(end);
+            ->LeftRel(rtl ? end : start)
+            ->RightRel(rtl ? start : end);
     } else {
         // The indicator is a fraction of the track, the way Rust spells
         // w(relative(value / 100.)) — so it works whether the bar has a fixed
@@ -117,6 +119,7 @@ El* Progress::IntoEl() {
                                    loading, accessibilityLabel)
                    ->W(w);
     return root->Child(gpui::ProgressTrack::New(cx)
+                           ->FlexRowDir(cx->app)
                            ->W(w)
                            ->H(h)
                            ->Radius(th.radiusFull)

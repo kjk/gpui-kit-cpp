@@ -52,6 +52,7 @@ struct Popup {
     // only if Content then has something to place.
     bool askFrame = false;
     Window* win = nullptr;
+    App* app = nullptr;
 
     static Popup* New(Ctx* cx, Str id, El* trigger,
                       PopupAnchor anchor = PopupAnchor::TopLeft);

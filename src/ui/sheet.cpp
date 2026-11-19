@@ -1,4 +1,5 @@
 #include "ui/sheet.h"
+#include "base/layout_direction.h"
 #include "base/actions.h"
 #include "base/motion.h"
 #include "ui/button.h"
@@ -7,6 +8,15 @@
 namespace gpui {
 
 namespace component {
+
+SheetPlacement SheetPhysicalPlacement(SheetPlacement placement,
+                                      const App* app) {
+    if (LayoutIsRtl(app)) {
+        if (placement == SheetPlacement::Left) return SheetPlacement::Right;
+        if (placement == SheetPlacement::Right) return SheetPlacement::Left;
+    }
+    return placement;
+}
 
 // sheet.rs: the surface takes 0.15 s to slide in.
 static const float kSheetMotionMs = 150.f;
@@ -120,7 +130,7 @@ El* Sheet::IntoEl(WinSize win) {
     // whichever way the sheet came in from.
     float delta = MotionAppear(cx, MotionId(StrL("sheet")), kSheetMotionMs);
     float off = -100.f + delta * 100.f;
-    switch (placement) {
+    switch (SheetPhysicalPlacement(placement, cx->app)) {
         case SheetPlacement::Left:
             surface->Top(marginTop)->Left(off)->BorderR(1, th.border);
             break;
@@ -137,11 +147,11 @@ El* Sheet::IntoEl(WinSize win) {
             break;
     }
     El* head = Div(a)
-                   ->FlexRow()
+                   ->FlexRowDir(cx->app)
                    ->W(kFill)
                    ->Shrink0()
-                   ->PadL(Rems(cx, 1.f))
-                   ->PadR(Rems(cx, 0.75f))
+                   ->PadS(Rems(cx, 1.f), cx->app)
+                   ->PadE(Rems(cx, 0.75f), cx->app)
                    ->PadY(Rems(cx, 0.5f))
                    ->ItemsCenter()
                    ->JustifyBetween();
@@ -172,8 +182,8 @@ El* Sheet::IntoEl(WinSize win) {
                        ->Flex1()
                        ->MinH(0)
                        ->ClipY()
-                       ->PadL(bodyPadL)
-                       ->PadR(bodyPadR)
+                       ->PadS(bodyPadL, cx->app)
+                       ->PadE(bodyPadR, cx->app)
                        ->Child(bodyColumn);
         if (scrollId) {
             pane->ScrollY(scrollY)->ScrollId(scrollId)->OnScroll(onScroll);
@@ -182,7 +192,7 @@ El* Sheet::IntoEl(WinSize win) {
     }
     if (footer) {
         surface->Child(Div(a)
-                           ->FlexRow()
+                           ->FlexRowDir(cx->app)
                            ->W(kFill)
                            ->Shrink0()
                            ->PadX(Rems(cx, 1.f))

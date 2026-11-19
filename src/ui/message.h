@@ -19,6 +19,8 @@ enum class MessageAlignment : uint8_t {
     End
 };
 
+bool MessageAlignedRight(MessageAlignment alignment, const App* app);
+
 // What MessageGroup and BubbleGroup render: the children stacked in a
 // column half a rem apart, with the caller's style over it.
 El* MessageGroupColumn(Ctx* cx, const ArenaVec<El*>& children,

@@ -1,4 +1,5 @@
 #include "ui/attachment.h"
+#include "base/layout_direction.h"
 #include "ui/button.h"
 #include "ui/i18n.h"
 #include "ui/progress.h"
@@ -428,7 +429,7 @@ El* AttachmentContent::IntoEl() {
                 retryPending = false;
                 column->Child(
                     Div(a)
-                        ->FlexRow()
+                        ->FlexRowDir(cx->app)
                         ->ItemsCenter()
                         ->MaxW(kFill)
                         ->MinW(0)
@@ -469,7 +470,7 @@ AttachmentActions* AttachmentActions::LayoutForAxis(Axis axis) {
 El* AttachmentActions::IntoEl() {
     El* row = Div(a)->Flex()->Shrink0()->ItemsCenter()->Gap(Rems(cx, 0.25f));
     if (verticalLayout) {
-        row->Absolute()->Top(Rems(cx, 0.75f))->Right(Rems(cx, 0.75f));
+        row->Absolute()->Top(Rems(cx, 0.75f))->InsetE(Rems(cx, 0.75f), cx->app);
     }
     // The actions cluster owns its presses: an action, or the gap between
     // actions, must not also arm the whole-card click layer below.
@@ -710,13 +711,13 @@ El* Attachment::IntoEl() {
         card->ItemsCenter()
             ->H(metrics.height)
             ->Gap(metrics.gap)
-            ->PadL(metrics.paddingStart)
-            ->PadR(metrics.paddingEnd);
+            ->PadS(metrics.paddingStart, cx->app)
+            ->PadE(metrics.paddingEnd, cx->app);
         if (hasContent) {
             card->W(metrics.chipWidth);
         }
         if (!hasContent && !hasMedia) {
-            card->PadL(metrics.paddingEnd);
+            card->PadS(metrics.paddingEnd, cx->app);
         }
     } else if (flush) {
         // An image tile: a square the media fills edge to edge.
@@ -763,7 +764,7 @@ El* Attachment::IntoEl() {
     }
     // The remove control rides outside the card, so the card gets a hover
     // group and room for the overhang.
-    El* corner = Div(a)->Absolute()->Top(0)->Right(0);
+    El* corner = Div(a)->Absolute()->Top(0)->InsetE(0, cx->app);
     if (!IsMobile()) {
         corner->GroupHoverVisible();
     }
@@ -773,7 +774,7 @@ El* Attachment::IntoEl() {
         ->MinW(0)
         ->Group()
         ->PadT(kRemoveOverhang)
-        ->PadR(kRemoveOverhang)
+        ->PadE(kRemoveOverhang, cx->app)
         ->Child(card)
         ->Child(corner->Child(RemoveButton(cx, id, onRemove)));
 }
@@ -852,7 +853,7 @@ El* AttachmentGroup::IntoEl() {
     int scrollId = (int)IdFoldName(cx->path, id);
 
     El* row = Div(a)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->ItemsCenter()
                   ->PathId(id)
                   ->W(kFill)

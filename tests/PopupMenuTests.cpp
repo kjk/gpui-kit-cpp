@@ -761,6 +761,24 @@ struct FocusRecordingMenu {
     }
 };
 
+static void RightToLeftContextMenuAnchorsAtThePointer() {
+    App* app = TestAppNew();
+    LayoutDirectionSetGlobal(app, LayoutDirection::Rtl);
+    auto view = EntityNew<FocusRecordingMenu>(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestDraw(win);
+    PopupMenuState* menu = view.Get(app)->menu.Get(app);
+    RightClickAt(win, {280, 70});
+    utassert(menu->open);
+    utassertnear(menu->bounds.Right(), 280.f);
+    TestSimulateKeystrokes(win, "escape");
+    TestDraw(win);
+    RightClickAt(win, {24, 70});
+    utassert(menu->open);
+    utassertnear(menu->bounds.x, kPopupWindowMargin);
+    TestAppFree(app);
+}
+
 static void MenuTakesFocusBeforeItsFirstFrame() {
     App* app = TestAppNew();
     Entity<FocusRecordingMenu> view = EntityNew<FocusRecordingMenu>(app);
@@ -1609,6 +1627,7 @@ void TestPopupMenu() {
     LongPressOnTextInAContextMenuTriggerSelects();
     LongPressOnBlankSpaceInATextTriggerOpensTheMenu();
     NestedContextMenuUsesTheInnermostRightClick();
+    RightToLeftContextMenuAnchorsAtThePointer();
     MenuTakesFocusBeforeItsFirstFrame();
     HoveringAwayFromAKeyboardEnteredSubmenuRefocusesItsParent();
     KeyboardConfirmDispatchesAMenuActionInContext();

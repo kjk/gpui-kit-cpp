@@ -2,6 +2,7 @@
 
 #include "base/global_state.h"
 #include "base/input_keys.h"
+#include "base/layout_direction.h"
 #include "base/scroll_bounce.h"
 #include "base/scrollable_mask.h"
 #include "base/scrollbar.h"
@@ -8287,6 +8288,7 @@ El* TextView::IntoEl() {
     // `.text_color(text_view_style.foreground())` on the root: every block
     // below names no colour of its own, so this is what they inherit.
     El* root = Div(a)->FlexCol()->W(kFill);
+    if (LayoutIsRtl(cx->app)) root->TextRight();
     if (textViewStyle.foreground.a) {
         root->Fg(textViewStyle.foreground);
     }

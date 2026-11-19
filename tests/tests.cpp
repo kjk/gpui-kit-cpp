@@ -134,6 +134,7 @@ int GpuiMain(int argc, char** argv) {
     TestAppMenu();
     TestI18n();
     TestLayoutReuse();
+    TestLayoutDirection();
     TestImageCache();
     TestRoot();
     TestSankey();

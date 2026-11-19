@@ -1,5 +1,6 @@
 #include "ui/i18n.h"
 #include "ui/input.h"
+#include "base/layout_direction.h"
 #include "ui/button.h"
 #include "ui/highlighter.h"
 #include "ui/native_menu.h"
@@ -1050,9 +1051,9 @@ El* Input::IntoEl() {
     editor.selection = RgbaOpacity(th.selection, 0.4f);
     editor.fontSize = font;
     editor.mask = masked;
-    editor.align = align == InputAlign::Center  ? 1
-                   : align == InputAlign::Right ? 2
-                                                : 0;
+    bool alignRight = align == InputAlign::Right ||
+                      (align == InputAlign::Start && LayoutIsRtl(cx->app));
+    editor.align = align == InputAlign::Center ? 1 : alignRight ? 2 : 0;
     if (disabled) {
         editor.foreground = th.mutedFg;
     }
@@ -1077,7 +1078,7 @@ El* Input::IntoEl() {
     // one focus registration.
     El* field = InputBase::New(cx, id, !disabled, AccessibilityRole::None)
                     ->BindInput(disabled ? nullptr : state)
-                    ->FlexRow()
+                    ->FlexRowDir(cx->app)
                     ->W(col ? kFill : width)
                     ->H(h)
                     ->PadX(padX)
@@ -2264,7 +2265,7 @@ El* InputGroupText::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // h_flex().gap_2().text_sm() in the muted foreground.
     El* row = Div(a)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->Gap(Rems(cx, 0.5f))
                   ->ItemsCenter()
                   ->Font(14)
@@ -2322,7 +2323,7 @@ El* InputGroupAddon::RenderInGroup(bool disabled) {
     // text size, muted, and the text cursor.
     El* row = Div(a)
                   ->Id(id)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->Gap(Rems(cx, 0.5f))
                   ->ItemsCenter()
                   ->Shrink0()
@@ -2335,17 +2336,19 @@ El* InputGroupAddon::RenderInGroup(bool disabled) {
     row->PadY(compact ? 0.f : Rems(cx, 0.375f));
     switch (alignment) {
         case InputGroupAddonAlignment::InlineStart:
-            row->PadL(Rems(cx, 0.375f));
+            row->PadS(Rems(cx, 0.375f), cx->app);
             break;
         case InputGroupAddonAlignment::InlineEnd:
-            row->PadR(Rems(cx, 0.375f));
+            row->PadE(Rems(cx, 0.375f), cx->app);
             break;
         // Block addons share the control's horizontal inset.
         case InputGroupAddonAlignment::BlockStart:
-            row->W(kFill)->JustifyStart()->PadX(inputPx)->PadT(Rems(cx, 0.5f));
+            row->W(kFill)->JustifyFlexStart()->PadX(inputPx)->PadT(
+                Rems(cx, 0.5f));
             break;
         case InputGroupAddonAlignment::BlockEnd:
-            row->W(kFill)->JustifyStart()->PadX(inputPx)->PadB(Rems(cx, 0.5f));
+            row->W(kFill)->JustifyFlexStart()->PadX(inputPx)->PadB(
+                Rems(cx, 0.5f));
             break;
     }
     refiner.Apply(row);
@@ -2543,7 +2546,7 @@ El* InputGroup::IntoEl() {
         frame->OnMouseDown(ListenTo(host, &InputGroupHost::OnDown));
     }
 
-    El* row = Div(a)->FlexRow()->W(kFill)->ItemsCenter();
+    El* row = Div(a)->FlexRowDir(cx->app)->W(kFill)->ItemsCenter();
     if (!multiline && !blockStart && !blockEnd) {
         row->H(kFill);
     }
@@ -2564,10 +2567,10 @@ El* InputGroup::IntoEl() {
         // horizontal inset — pl_2 / pr_2 in place of input_px on that side —
         // and the caller's own style still wins.
         if (inlineStart) {
-            controlEl->PadL(Rems(cx, 0.5f));
+            controlEl->PadS(Rems(cx, 0.5f), cx->app);
         }
         if (inlineEnd) {
-            controlEl->PadR(Rems(cx, 0.5f));
+            controlEl->PadE(Rems(cx, 0.5f), cx->app);
         }
         controlStyle.Apply(controlEl);
         row->Child(controlEl);

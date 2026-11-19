@@ -1,4 +1,5 @@
 #include "ui/touch_selection.h"
+#include "base/layout_direction.h"
 #include "ui/button.h"
 #include "ui/i18n.h"
 #include "ui/popover.h"
@@ -35,7 +36,8 @@ El* EditMenu::IntoEl() {
                                         .Foreground(th.popoverFg)
                                         .Hover(th.accent)
                                         .Active(th.accent);
-    El* row = Div(a)->FlexRow()->ItemsStretch()->ClipX()->ClipY()->Id(id);
+    El* row =
+        Div(a)->FlexRowDir(cx->app)->ItemsStretch()->ClipX()->ClipY()->Id(id);
     PopoverSurface(cx, row)->Radius(radius);
     int last = items.len > 0 ? items.len - 1 : 0;
     for (int i = 0; i < items.len; i++) {

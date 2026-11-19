@@ -63,6 +63,7 @@ struct Positioner {
     float offset = 0;
     float margin = 4;
     bool occlude = false;
+    bool rtl = false;
     PositionerOnPositionFn onPosition = nullptr;
     void* onPositionUser = nullptr;
     ArenaVec<El*> children;

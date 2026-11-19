@@ -10,6 +10,7 @@ void BaseInit(App* app) {
     BaseGlobalStateInit(app);
     (void)PanelRegistryGlobal(app);
     FocusTrapInit(app);
+    LayoutDirectionInit(app);
     ApplySystemReduceMotion();
 
     DialogInitKeys();

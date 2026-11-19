@@ -1,4 +1,5 @@
 #include "base/popup.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -60,6 +61,7 @@ Popup* Popup::New(Ctx* cx, Str id, El* trigger, PopupAnchor anchor) {
     p->contentReady = state && state->captured;
     p->askFrame = state && !state->captured;
     p->win = cx->win;
+    p->app = cx->app;
     if (p->askFrame) {
         state->captured = true;
     }
@@ -118,7 +120,7 @@ Popup* Popup::Content(El* content) {
     // Positioner::corner is out of flow and deferred; in-flow content would
     // grow its trigger's page and paint below later siblings.
     if (!content->style.absolute) {
-        PopupPlaceContent(content, anchor, offset);
+        PopupPlaceContent(content, LogicalAnchor(anchor, app), offset);
     }
     if (onPosition) {
         // Positioner::on_position, which Rust's Popup wraps with the trigger

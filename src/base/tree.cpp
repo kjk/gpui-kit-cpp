@@ -1,5 +1,6 @@
 #include "base/tree.h"
 #include "base/actions.h"
+#include "base/layout_direction.h"
 #include "gpui/keymap.h"
 
 namespace gpui {
@@ -531,6 +532,12 @@ void TreeOnAction(TreeState* self, Ctx* cx, const ActionEvent* ev) {
         return;
     }
     TreeAction act = TreeActionOf(ev->action);
+    if (LayoutIsRtl(cx->app)) {
+        if (act == TreeAction::Collapse)
+            act = TreeAction::Expand;
+        else if (act == TreeAction::Expand)
+            act = TreeAction::Collapse;
+    }
     if (act == TreeAction::None) {
         const_cast<ActionEvent*>(ev)->propagate = true;
         return;

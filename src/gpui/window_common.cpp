@@ -18,6 +18,7 @@
 #include "base/global_state.h"
 #include "base/actions.h"
 #include "base/input.h"
+#include "base/layout_direction.h"
 #include "base/theme.h"
 #include "base/scrollable_mask.h"
 #include "base/text_selection.h"
@@ -1602,8 +1603,9 @@ static void SliderPress(Window* win, const HitRect* hit, Point at) {
     if (s->bounds.w <= 0 || s->bounds.h <= 0) {
         SliderSetBounds(s, hit->bounds);
     }
-    s->dragStart = SliderIsStartAt(s, hit->sliderAxis, at);
-    if (SliderUpdateByPosition(s, hit->sliderAxis, at, s->dragStart)) {
+    bool rtl = LayoutIsRtl(win->app);
+    s->dragStart = SliderIsStartAt(s, hit->sliderAxis, at, rtl);
+    if (SliderUpdateByPosition(s, hit->sliderAxis, at, s->dragStart, rtl)) {
         SliderEmit(win, s, SliderEventKind::Change);
     }
     AppInvalidate(win);
@@ -2120,7 +2122,8 @@ static bool ScrollbarDrag(Window* win, float x, float y,
 
 static void SliderDrag(Window* win, const HitRect* hit, Point at) {
     SliderState* s = hit->slider;
-    if (SliderUpdateByPosition(s, hit->sliderAxis, at, s->dragStart)) {
+    if (SliderUpdateByPosition(s, hit->sliderAxis, at, s->dragStart,
+                               LayoutIsRtl(win->app))) {
         SliderEmit(win, s, SliderEventKind::Change);
         AppInvalidate(win);
     }
@@ -2538,8 +2541,8 @@ static bool SliderTouchDrag(Window* win, const TouchDragEvent& touch,
         }
         win->touchSlider = s;
         win->touchSliderAxis = hit->sliderAxis;
-        win->touchSliderStart =
-            SliderIsStartAt(s, hit->sliderAxis, touch.startPosition);
+        win->touchSliderStart = SliderIsStartAt(
+            s, hit->sliderAxis, touch.startPosition, LayoutIsRtl(win->app));
         s->dragStart = win->touchSliderStart;
     }
     SliderState* s = win->touchSlider;
@@ -2553,7 +2556,8 @@ static bool SliderTouchDrag(Window* win, const TouchDragEvent& touch,
     if (touch.phase == TouchPhase::Started ||
         touch.phase == TouchPhase::Moved) {
         if (SliderUpdateByPosition(s, win->touchSliderAxis, touch.position,
-                                   win->touchSliderStart)) {
+                                   win->touchSliderStart,
+                                   LayoutIsRtl(win->app))) {
             SliderEmit(win, s, SliderEventKind::Change);
         }
     } else {

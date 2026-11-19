@@ -1,4 +1,5 @@
 #include "ui/slider.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -214,6 +215,12 @@ El* Slider::IntoEl() {
     // Reversed, the filled part is what is left beyond the thumb.
     float fillFrom = reverse ? hi : low;
     float fillTo = reverse ? 1.f : hi;
+    bool rtl = LayoutIsRtl(cx->app);
+    if (rtl) {
+        float start = 1.f - fillTo;
+        fillTo = 1.f - fillFrom;
+        fillFrom = start;
+    }
     El* bar2 = Div(a)->Absolute()->Top(mid)->H(kBar);
     bar2->Radius(th.radiusFull)->Bg(fillBg);
     if (fill) {
@@ -224,6 +231,7 @@ El* Slider::IntoEl() {
     track->Child(bar2);
     for (int i = 0; i < (range ? 2 : 1); i++) {
         float at = (range && i == 0) ? low : hi;
+        if (rtl) at = 1.f - at;
         El* thumb = SliderThumb::New(cx)
                         ->Absolute()
                         ->Top((kH - kThumb) * 0.5f)

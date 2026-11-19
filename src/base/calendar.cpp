@@ -1,4 +1,5 @@
 #include "base/calendar.h"
+#include "base/layout_direction.h"
 #include "base/date_picker.h"
 
 namespace gpui {
@@ -501,7 +502,7 @@ static El* CalSlot(Ctx* cx, const CalendarOpts& o, Str id,
 static El* CalMonthGrid(Ctx* cx, const CalendarOpts& o, int year, int month) {
     Arena* a = cx->a;
     El* panel = Div(a)->FlexCol();
-    El* header = Div(a)->FlexRow();
+    El* header = Div(a)->FlexRowDir(cx->app);
     for (int i = 0; i < 7; i++) {
         CalendarItemState st;
         st.kind = CalendarItemKind::Weekday;
@@ -524,7 +525,7 @@ static El* CalMonthGrid(Ctx* cx, const CalendarOpts& o, int year, int month) {
     El* week = nullptr;
     for (int i = 0; i < cells; i++) {
         if (i % 7 == 0) {
-            week = Div(a)->FlexRow();
+            week = Div(a)->FlexRowDir(cx->app);
             panel->Child(week);
         }
         LocalDate date = DateAddDays(first, i);
@@ -571,7 +572,8 @@ El* Calendar::New(Ctx* cx, Str id, const CalendarOpts& o) {
     // The header: an arrow either side of the month and year the calendar is
     // looking at. An arrow that has nowhere to go is disabled rather than
     // absent, so the header keeps its shape.
-    El* nav = Div(a)->FlexRow()->W(kFill)->JustifyBetween()->ItemsCenter();
+    El* nav =
+        Div(a)->FlexRowDir(cx->app)->W(kFill)->JustifyBetween()->ItemsCenter();
     bool canPrev =
         o.view == CalendarView::Day ||
         (o.view == CalendarView::Year && o.yearPageStart > o.yearMin);
@@ -655,7 +657,7 @@ El* Calendar::New(Ctx* cx, Str id, const CalendarOpts& o) {
                    ->JustifyCenter());
     root->Child(nav);
 
-    El* body = Div(a)->FlexRow()->W(kFill);
+    El* body = Div(a)->FlexRowDir(cx->app)->W(kFill);
     if (o.view == CalendarView::Day) {
         // `h_flex().justify_around()`: the months sit side by side with the
         // space shared out around them.

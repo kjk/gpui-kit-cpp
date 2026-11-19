@@ -1,4 +1,5 @@
 #include "ui/sidebar.h"
+#include "base/layout_direction.h"
 #include "base/motion.h"
 #include "base/scroll_bounce.h"
 #include "ui/button.h"
@@ -7,6 +8,13 @@
 namespace gpui {
 
 namespace component {
+
+static Side SidebarPhysicalSide(Side side, const App* app) {
+    if (!LayoutIsRtl(app)) {
+        return side;
+    }
+    return SideIsLeft(side) ? Side::Right : Side::Left;
+}
 
 // sidebar/mod.rs: SIDEBAR_TRANSITION_DURATION.
 static const float kSidebarMotionMs = 200.f;
@@ -175,7 +183,7 @@ El* SidebarMenuItem::IntoEl(Str id) {
     IdScope scope(cx, id);
     El* root = Div(a)->Id(id)->FlexCol()->W(kFill);
     El* row = Div(a)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->W(kFill)
                   ->Shrink0()
                   // p_2 / gap_x_2
@@ -216,11 +224,14 @@ El* SidebarMenuItem::IntoEl(Str id) {
         }
     } else {
         row->H(Rems(cx, 1.75f)); // h_7
-        El* mid =
-            Div(a)->FlexRow()->Flex1()->Gap(Rems(cx, 0.5f))->JustifyBetween();
+        El* mid = Div(a)
+                      ->FlexRowDir(cx->app)
+                      ->Flex1()
+                      ->Gap(Rems(cx, 0.5f))
+                      ->JustifyBetween();
         // refine_style(&self.label_style) on the label's own box. The text
         // takes the row's colour unless the refinement names one.
-        El* labelBox = Div(a)->FlexRow()->Flex1();
+        El* labelBox = Div(a)->FlexRowDir(cx->app)->Flex1();
         StyleApplyFields(&labelBox->style, labelStyle, labelStyleSet);
         Rgba labelFg =
             (labelStyleSet & StyleFieldColor) ? labelStyle.color : fg;
@@ -235,7 +246,7 @@ El* SidebarMenuItem::IntoEl(Str id) {
             row->Child(
                 Button::New(cx, StrL("caret"))
                     ->Icon(isOpen ? IconName::ChevronDown
-                                  : IconName::ChevronRight)
+                                  : DirectionalChevron(cx->app, true))
                     ->Ghost()
                     ->WithSize(UiSize::XSmall)
                     // The caret is icon-only, so assistive tech needs the
@@ -271,15 +282,16 @@ El* SidebarMenuItem::IntoEl(Str id) {
                       ->FlexCol()
                       ->Gap(Rems(cx, 0.25f))
                       ->PadY(Rems(cx, 0.125f))
-                      ->PadL(Rems(cx, 0.625f))
-                      ->BorderL(1, th.sidebarBorder);
+                      ->PadS(Rems(cx, 0.625f), cx->app)
+                      ->BorderS(1, th.sidebarBorder, cx->app);
         for (int i = 0; i < children.len; i++) {
             children[i]->collapsed = collapsed;
             sub->Child(children[i]->IntoEl(StrDup(a, fmt("%d", i))));
         }
         // ml_3p5: the rule down the submenu sits in from the parent's edge,
         // under the icon column rather than beside it.
-        root->Child(Div(a)->PadL(Rems(cx, 0.875f))->W(kFill)->Child(sub));
+        root->Child(
+            Div(a)->PadS(Rems(cx, 0.875f), cx->app)->W(kFill)->Child(sub));
     }
     return root;
 }
@@ -338,7 +350,7 @@ El* SidebarGroup::IntoEl(Str id) {
     El* col = Div(a)->FlexCol()->W(kFill);
     if (!collapsed && label.s) {
         col->Child(Div(a)
-                       ->FlexRow()
+                       ->FlexRowDir(cx->app)
                        ->Shrink0()
                        // h_8 / px_2
                        ->H(Rems(cx, 2.f))
@@ -363,7 +375,7 @@ static El* SidebarBand(Ctx* cx, const ArenaVec<El*>& children, bool selected,
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     El* row = Div(a)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->W(kFill)
                   // gap_2 / p_2
                   ->Gap(Rems(cx, 0.5f))
@@ -392,7 +404,7 @@ El* SidebarHeader::IntoEl() {
 El* SidebarFooter::IntoEl() {
     // Footer's Styled/InteractiveElement implementation belongs to `base`,
     // which the themed outer row wraps as one child upstream.
-    El* base = Div(a)->FlexRow()->Gap(Rems(cx, 0.5f))->W(kFill);
+    El* base = Div(a)->FlexRowDir(cx->app)->Gap(Rems(cx, 0.5f))->W(kFill);
     StyleApplyFields(&base->style, style, styleSet);
     refiner.Apply(base);
     for (int i = 0; i < len(children); i++) {
@@ -433,11 +445,13 @@ SidebarToggleButton* SidebarToggleButton::AccessibilityLabel(Str v) {
 El* SidebarToggleButton::IntoEl() {
     IconName icon;
     if (collapsed) {
-        icon = SideIsLeft(side) ? IconName::PanelLeftOpen
-                                : IconName::PanelRightOpen;
+        icon = SideIsLeft(SidebarPhysicalSide(side, cx->app))
+                   ? IconName::PanelLeftOpen
+                   : IconName::PanelRightOpen;
     } else {
-        icon = SideIsLeft(side) ? IconName::PanelLeftClose
-                                : IconName::PanelRightClose;
+        icon = SideIsLeft(SidebarPhysicalSide(side, cx->app))
+                   ? IconName::PanelLeftClose
+                   : IconName::PanelRightClose;
     }
     Button* btn = Button::New(cx, StrL("collapse"))
                       ->Icon(icon)
@@ -567,8 +581,9 @@ El* Sidebar::IntoEl() {
     float expandedWidth = (styleSet & StyleFieldWidth)
                               ? (style.width > 0 ? style.width : 0.f)
                               : width;
+    Side physicalSide = SidebarPhysicalSide(side, cx->app);
     SidebarLayout layout =
-        SidebarLayoutFor(collapsible, collapsed, expandedWidth, side);
+        SidebarLayoutFor(collapsible, collapsed, expandedWidth, physicalSide);
     bool iconCollapsed = layout.iconCollapsed;
     // EffectTransition::width over SIDEBAR_TRANSITION_DURATION: the box around
     // the sidebar takes the width and clips, while the sidebar inside keeps
@@ -603,7 +618,7 @@ El* Sidebar::IntoEl() {
                    ->ClipY()
                    ->Bg(th.sidebar)
                    ->Fg(th.sidebarFg);
-    if (SideIsLeft(side)) {
+    if (SideIsLeft(physicalSide)) {
         root->BorderR(1, th.sidebarBorder);
     } else {
         root->BorderL(1, th.sidebarBorder);
@@ -628,7 +643,7 @@ El* Sidebar::IntoEl() {
         root->Gap(r2);
     }
     if (header) {
-        El* box = Div(a)->FlexRow()->W(kFill)->Gap(r2);
+        El* box = Div(a)->FlexRowDir(cx->app)->W(kFill)->Gap(r2);
         if (iconCollapsed) {
             box->PadT(r2)->PadX(r2);
         } else {
@@ -683,7 +698,8 @@ El* Sidebar::IntoEl() {
     body->Child(viewport);
     root->Child(body);
     if (footer) {
-        El* box = Div(a)->FlexRow()->W(kFill)->PadX(iconCollapsed ? r2 : r3);
+        El* box = Div(a)->FlexRowDir(cx->app)->W(kFill)->PadX(
+            iconCollapsed ? r2 : r3);
         if (iconCollapsed) {
             box->PadT(r2);
         }
@@ -696,7 +712,7 @@ El* Sidebar::IntoEl() {
     }
     if (layout.wrapper == SidebarWrapperKind::Static) {
         return Div(a)
-            ->FlexRow()
+            ->FlexRowDir(cx->app)
             ->W(layout.wrapperWidth)
             ->H(kFill)
             ->Shrink0()
@@ -705,7 +721,8 @@ El* Sidebar::IntoEl() {
     // sidebar_wrapper: a clipping box of the animated width, with the sidebar
     // pinned to whichever end it slides from. At rest it is exactly the
     // sidebar's own width, so nothing moves that was not moving anyway.
-    El* wrapper = Div(a)->FlexRow()->W(wrapW)->H(kFill)->Shrink0()->ClipX();
+    El* wrapper =
+        Div(a)->FlexRowDir(cx->app)->W(wrapW)->H(kFill)->Shrink0()->ClipX();
     if (layout.alignChildToEnd) {
         wrapper->JustifyEnd();
     }

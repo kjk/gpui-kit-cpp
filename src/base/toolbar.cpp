@@ -1,4 +1,5 @@
 #include "base/toolbar.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -51,6 +52,9 @@ void ToolbarState::OnKeyDown(ToolbarState* self, Ctx* cx, const KeyEvent* ev) {
     // with the focused control.
     int back = self->axis == Axis::Vertical ? KeyUp : KeyLeft;
     int forwardKey = self->axis == Axis::Vertical ? KeyDown : KeyRight;
+    if (self->axis == Axis::Horizontal && LayoutIsRtl(cx->app)) {
+        std::swap(back, forwardKey);
+    }
     bool forward = false;
     if (ev->vk == back) {
         forward = false;

@@ -1,4 +1,5 @@
 #include "ui/i18n.h"
+#include "base/layout_direction.h"
 #include "ui/lib.h"
 #include "ui/command.h"
 #include "ui/input.h"
@@ -829,7 +830,7 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
     if (len(item->label) > 0) {
         line->AriaLabel(item->label);
     }
-    line->FlexRow()
+    line->FlexRowDir(cx->app)
         ->W(kFill)
         ->ItemsCenter()
         ->Gap(Rems(cx, 0.5f))
@@ -843,7 +844,7 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
         line->Child(item->content(cx, item));
     } else {
         El* content = Div(a)
-                          ->FlexRow()
+                          ->FlexRowDir(cx->app)
                           ->Flex1()
                           ->Gap(Rems(cx, 0.5f))
                           ->ItemsCenter()

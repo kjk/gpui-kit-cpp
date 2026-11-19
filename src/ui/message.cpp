@@ -1,9 +1,14 @@
 #include "ui/message.h"
+#include "base/layout_direction.h"
 #include "ui/bubble.h"
 
 namespace gpui {
 
 namespace component {
+
+bool MessageAlignedRight(MessageAlignment alignment, const App* app) {
+    return (alignment == MessageAlignment::End) != LayoutIsRtl(app);
+}
 
 El* MessageGroupColumn(Ctx* cx, const ArenaVec<El*>& children,
                        const Style& style, uint32_t styleSet) {
@@ -24,7 +29,7 @@ El* MessageGroup::IntoEl() {
 El* MessageAvatar::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     El* slot = Div(a)
-                   ->FlexRow()
+                   ->FlexRowDir(cx->app)
                    ->ItemsCenter()
                    ->MinW(Rems(cx, 2))
                    ->FlexNone()
@@ -49,7 +54,7 @@ El* MessageMetaRow(Ctx* cx, bool contentInset, bool hasContentInset,
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     El* row = Div(a)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->ItemsCenter()
                   ->MaxW(kFill)
                   ->MinW(0)
@@ -87,7 +92,7 @@ El* MessageContent::IntoEl() {
     El* column = Div(a)->FlexCol()->W(kFill)->MaxW(kFill)->MinW(0)->Gap(
         Rems(cx, 0.625f));
     column->ItemsStart();
-    if (alignment == MessageAlignment::End) {
+    if (MessageAlignedRight(alignment, cx->app)) {
         column->ItemsEnd();
     }
     if (styleSet) {
@@ -143,12 +148,13 @@ Message* Message::Footer(MessageFooter* value) {
 El* Message::IntoEl() {
     bool hasAvatar = avatar != nullptr;
     bool hasGhostBubble = content && content->hasGhostBubble;
+    bool right = MessageAlignedRight(alignment, cx->app);
 
     // No text size or line height here: the header and footer set their own,
     // and content typography belongs to the bubble or the caller.
     El* root = Div(a)->FlexCol()->W(kFill)->MinW(0)->Gap(Rems(cx, 0.625f));
     root->ItemsStart();
-    if (alignment == MessageAlignment::End) {
+    if (right) {
         root->ItemsEnd();
     }
     if (styleSet) {
@@ -159,7 +165,7 @@ El* Message::IntoEl() {
     // sits flush with the content's bottom edge, whatever the footer holds.
     El* row =
         Div(a)->FlexRow()->W(kFill)->MinW(0)->ItemsEnd()->Gap(Rems(cx, 0.5f));
-    if (alignment == MessageAlignment::End) {
+    if (right) {
         row->FlexRowReverse();
     }
     if (avatar) {
@@ -167,7 +173,7 @@ El* Message::IntoEl() {
     }
     El* stack = Div(a)->FlexCol()->W(kFill)->MinW(0)->Gap(Rems(cx, 0.625f));
     stack->ItemsStart();
-    if (alignment == MessageAlignment::End) {
+    if (right) {
         stack->ItemsEnd();
     }
     if (stackStyleSet) {
@@ -188,10 +194,10 @@ El* Message::IntoEl() {
         // Align the footer with the content column: the avatar's shared
         // `size-8` baseline plus the row gap, rems(2.5).
         if (hasAvatar && alignment == MessageAlignment::Start) {
-            el->MarginL(Rems(cx, 2.5f));
+            el->MarginS(Rems(cx, 2.5f), cx->app);
         }
         if (hasAvatar && alignment == MessageAlignment::End) {
-            el->MarginR(Rems(cx, 2.5f));
+            el->MarginE(Rems(cx, 2.5f), cx->app);
         }
         root->Child(el);
     }

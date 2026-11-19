@@ -1,4 +1,5 @@
 #include "ui/avatar.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -303,11 +304,11 @@ El* AvatarGroup::IntoEl() {
                        ->WithSize(size)
                        ->IntoEl()
                        ->Absolute()
-                       ->Left(chipLeft));
+                       ->InsetS(chipLeft, cx->app));
     }
     for (int i = shown - 1; i >= 0; i--) {
-        box->Child(avatars[i]->WithSize(size)->IntoEl()->Absolute()->Left(
-            (float)i * step));
+        box->Child(avatars[i]->WithSize(size)->IntoEl()->Absolute()->InsetS(
+            (float)i * step, cx->app));
     }
     return box;
 }

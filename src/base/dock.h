@@ -626,6 +626,7 @@ int DockPanelByName(const DockState* s, Str name);
 // Which Dock a node is in — the side whose tree it hangs under, or Center for
 // the area's own item. What a click on a collapsed dock's tab needs to know.
 DockPlacement DockPlacementOfNode(const DockState* s, int node);
+DockPlacement DockPhysicalPlacement(DockPlacement placement, const App* app);
 
 // Panel::visible: how many of a group's panels are shown, and the index of
 // the one that is active — a hidden panel sitting at `activeIx` falls back to

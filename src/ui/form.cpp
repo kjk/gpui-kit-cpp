@@ -1,4 +1,5 @@
 #include "ui/form.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -199,7 +200,7 @@ static El* FieldRender(Ctx* cx, const Field& fld, const FieldProps& props) {
 
     El* head = Div(a)->W(kFill)->Gap(inner);
     if (props.horizontal) {
-        head->FlexRow();
+        head->FlexRowDir(cx->app);
         if (fld.align == FieldAlign::Start) {
             head->ItemsStart();
         } else if (fld.align == FieldAlign::End) {
@@ -212,7 +213,8 @@ static El* FieldRender(Ctx* cx, const Field& fld, const FieldProps& props) {
     }
     bool hasLabel = fld.labelIndent;
     if (hasLabel) {
-        El* label = Div(a)->FlexRow()->Gap(Rems(cx, 0.25f))->ItemsCenter();
+        El* label =
+            Div(a)->FlexRowDir(cx->app)->Gap(Rems(cx, 0.25f))->ItemsCenter();
         if (props.horizontal) {
             label->W(lw);
             label->style.flexShrink = 0;
@@ -242,7 +244,7 @@ static El* FieldRender(Ctx* cx, const Field& fld, const FieldProps& props) {
 
     // Rust always adds the description row, so a field without one is
     // still a half-gap taller.
-    El* desc = Div(a)->FlexRow()->W(kFill)->Gap(inner);
+    El* desc = Div(a)->FlexRowDir(cx->app)->W(kFill)->Gap(inner);
     if (fld.description.IsSet()) {
         // Horizontal, the description lines up under the control.
         if (props.horizontal && hasLabel) {
@@ -302,7 +304,11 @@ El* Form::IntoEl() {
             inRow = 0;
         }
         if (!row) {
-            row = Div(a)->FlexRow()->W(kFill)->Gap(formGap * 3.f)->ItemsStart();
+            row = Div(a)
+                      ->FlexRowDir(cx->app)
+                      ->W(kFill)
+                      ->Gap(formGap * 3.f)
+                      ->ItemsStart();
             col->Child(row);
             inRow = 0;
         }
@@ -322,8 +328,12 @@ El* Form::IntoEl() {
         }
     }
     if (footer) {
-        col->Child(
-            Div(a)->FlexRow()->W(kFill)->MinW(0)->JustifyEnd()->Child(footer));
+        col->Child(Div(a)
+                       ->FlexRowDir(cx->app)
+                       ->W(kFill)
+                       ->MinW(0)
+                       ->JustifyFlexEnd()
+                       ->Child(footer));
     }
     return col;
 }

@@ -1,4 +1,5 @@
 #include "ui/i18n.h"
+#include "base/layout_direction.h"
 #include "ui/select.h"
 #include "ui/button.h"
 
@@ -508,7 +509,7 @@ El* Select::IntoEl() {
     // need something to fold against.
     El* box = Div(a)
                   ->Id(id)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->W(width)
                   ->H(h)
                   ->PadX(padX)

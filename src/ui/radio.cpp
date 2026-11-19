@@ -1,4 +1,5 @@
 #include "ui/radio.h"
+#include "base/layout_direction.h"
 #include "ui/checkbox.h"
 
 namespace gpui {
@@ -114,7 +115,7 @@ El* RadioGroup::IntoEl() {
     El* base = Div(cx->a)->Gap(Rems(cx, 0.75f));
     group->Child(base);
     if (horizontal) {
-        base->FlexRow()->W(kFill)->FlexWrap();
+        base->FlexRowDir(cx->app)->W(kFill)->FlexWrap();
     } else {
         base->FlexCol();
     }

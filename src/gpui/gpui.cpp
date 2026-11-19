@@ -973,6 +973,16 @@ El* El::JustifyStart() {
     style.justify = Justify::Start;
     return this;
 }
+El* El::JustifyFlexStart() {
+    style.display = Display::Flex;
+    style.justify = Justify::FlexStart;
+    return this;
+}
+El* El::JustifyFlexEnd() {
+    style.display = Display::Flex;
+    style.justify = Justify::FlexEnd;
+    return this;
+}
 El* El::Bg(Background c) {
     style.bg = c;
     style.hasBg = true;
@@ -4044,6 +4054,10 @@ static taffy::AlignContent ToTaffyJustify(Justify j) {
             return taffy::AlignContent{K::SpaceEvenly};
         case Justify::Start:
             return taffy::AlignContent{K::Start};
+        case Justify::FlexStart:
+            return taffy::AlignContent{K::FlexStart};
+        case Justify::FlexEnd:
+            return taffy::AlignContent{K::FlexEnd};
         default:
             // Unset is normal, not start: a grid's normal stretches its
             // auto tracks and a reversed flex line packs at its far end,

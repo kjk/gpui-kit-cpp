@@ -74,7 +74,8 @@ struct AnyInputState {
 enum class InputAlign : uint8_t {
     Left,
     Center,
-    Right
+    Right,
+    Start
 };
 
 // crates/ui/src/input/content_type.rs. The role projection below uses the
@@ -199,7 +200,7 @@ struct Input : InputFieldHooks<Input> {
     El* prefix = nullptr;
     El* suffix = nullptr;
     UiSize size = UiSize::Medium;
-    InputAlign align = InputAlign::Left;
+    InputAlign align = InputAlign::Start;
     bool disabled = false;
     bool cleanable = false;
     // A masked input draws bullets; mask_toggle adds the eye that flips it.

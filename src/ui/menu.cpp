@@ -1,6 +1,9 @@
 #include "ui/menu.h"
+#include "base/layout_direction.h"
 #include "base/actions.h"
 #include "base/focus_trap.h"
+#include "base/popup.h"
+#include "base/positioner.h"
 #include "base/scrollable_mask.h"
 #include "base/text_selection.h"
 #include "gpui/keymap.h"
@@ -406,21 +409,26 @@ El* PopupMenu::IntoEl() {
     float gap = Rems(cx, 0.25f);
     float kbdPadX = Rems(cx, 0.25f);
     float kbdMinW = Rems(cx, 1.25f);
-    // Open a submenu on the left only when, placed at this menu's right
-    // edge, it would pass the window. Its width is the one it will be drawn
-    // at, or this menu's own when the selected row is not a submenu.
+    // A submenu opens toward the end edge, then flips if it would leave
+    // the viewport. Use its last width or the measured menu width.
     if (s && cx->win) {
         float selfW = s->bounds.w > 0 ? s->bounds.w : menuW;
         float subW = selfW;
         int ix = s->selected >= 0 ? s->selected : s->openSubmenu;
         if (ix >= 0 && ix < items.len && items[ix].submenu) {
-            float childW = PopupMenuWidth(cx, items[ix].submenu);
+            PopupMenu* child = items[ix].submenu;
+            PopupMenuState* childState = child->state.Get(cx);
+            float childW = childState && childState->bounds.w > 0
+                               ? childState->bounds.w
+                               : PopupMenuWidth(cx, child);
             if (childW > 0) {
                 subW = childW;
             }
         }
         float winW = WindowSize(cx->win).dipW;
-        s->side = (s->bounds.Right() + subW > winW) ? Side::Left : Side::Right;
+        bool openLeft = LayoutIsRtl(cx->app) ? s->bounds.x >= subW
+                                             : s->bounds.Right() + subW > winW;
+        s->side = openLeft ? Side::Left : Side::Right;
     }
     // 1.25rem / 1.625rem: 20px / 26px at the default 16px rem.
     float itemH = Rems(cx, size == UiSize::Small ? 1.25f : 1.625f);
@@ -591,7 +599,7 @@ El* PopupMenu::IntoEl() {
                                   ? (it.checked ? AccessibilityToggled::True
                                                 : AccessibilityToggled::False)
                                   : AccessibilityToggled::Unset)
-                ->FlexRow()
+                ->FlexRowDir(cx->app)
                 ->W(kFill)
                 ->MinH(itemH)
                 ->PadX(Rems(cx, 0.5f))
@@ -612,7 +620,8 @@ El* PopupMenu::IntoEl() {
         // gutter keeps its width so the labels still line up.
         bool muted = it.disabled || it.kind == MenuItemKind::Label;
         Rgba fg = muted ? th.mutedFg : th.foreground;
-        El* left = Div(a)->FlexRow()->Flex1()->Gap(gap)->ItemsCenter();
+        El* left =
+            Div(a)->FlexRowDir(cx->app)->Flex1()->Gap(gap)->ItemsCenter();
         if (leftGutter) {
             // The gutter is the icon's, or the check's, or empty — but it is
             // always the same width, so the labels line up.
@@ -684,7 +693,8 @@ El* PopupMenu::IntoEl() {
             row->Child(IconEl(a, IconName::Check, icon)->Fg(fg));
         }
         if (it.submenu) {
-            row->Child(IconEl(a, IconName::ChevronRight, icon)->Fg(th.mutedFg));
+            row->Child(IconEl(a, DirectionalChevron(cx->app, true), icon)
+                           ->Fg(th.mutedFg));
         }
         if (it.kind != PopupMenuItem::Label) {
             if (it.submenu) {
@@ -836,7 +846,7 @@ El* DropdownMenu::IntoEl() {
             el->AnchorBelow(gap);
         }
         el->Deferred();
-        if (anchorRight) {
+        if (anchorRight != LayoutIsRtl(cx->app)) {
             el->Right(0);
         } else {
             el->Left(0);
@@ -899,6 +909,7 @@ static void ContextMenuOpenAt(ContextMenuState* self, Ctx* cx, float x, float y,
         return;
     }
     self->position = {x - el.x, y - el.y};
+    self->windowPosition = {x, y};
     self->open = true;
     menu->x = self->position.x;
     menu->y = self->position.y;
@@ -953,6 +964,19 @@ void ContextMenuState::OnLongPress(ContextMenuState* self, Ctx* cx,
                       ev->el);
 }
 
+void ContextMenuState::OnMouseUpOut(ContextMenuState* self, Ctx* cx,
+                                    const MouseUpEvent* ev) {
+    // An RTL menu ends at the opening pointer. Its right edge is excluded
+    // from hit testing, so the stationary release must leave it open.
+    if (ev->button == MouseButton::Right && ev->x == self->windowPosition.x &&
+        ev->y == self->windowPosition.y) {
+        return;
+    }
+    if (PopupMenuState* menu = self->menu.Get(cx)) {
+        PopupMenuState::OnPressOutside(menu, cx, ev);
+    }
+}
+
 ContextMenu* ContextMenuExt::Wrap(Ctx* cx, Str id, El* child, PopupMenu* menu) {
     return ContextMenu::New(cx, id)->Child(child)->Menu(menu);
 }
@@ -978,6 +1002,18 @@ El* ContextMenu::IntoEl() {
         ->OnMouseDown(ListenTo(state, &ContextMenuState::OnMouseDown))
         ->OnLongPress(ListenTo(state, &ContextMenuState::OnLongPress));
     if (st->open) {
+        if (LayoutIsRtl(cx->app)) {
+            El* content = menu->IntoEl()->OnMouseUpOut(
+                ListenTo(state, &ContextMenuState::OnMouseUpOut));
+            El* positioned =
+                Positioner::Corner(cx, LogicalAnchor(Anchor::TopLeft, cx->app),
+                                   context->windowPosition)
+                    ->Margin(kPopupWindowMargin)
+                    ->Child(content)
+                    ->IntoEl();
+            box->Child(positioned->Deferred());
+            return box;
+        }
         // Absolute insets are inside the border. The pointer is on the
         // border box, so a bordered trigger (a Button) would otherwise open
         // the menu one border-width away and the opening release would land
@@ -1099,7 +1135,7 @@ El* AppMenuBar::IntoEl() {
     El* bar = Div(a)
                   ->Id(id)
                   ->Role(AccessibilityRole::MenuBar)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->ItemsCenter()
                   ->Gap(2)
                   ->H(28)
@@ -1131,7 +1167,7 @@ El* AppMenuBar::IntoEl() {
                        ->Role(AccessibilityRole::MenuItem)
                        ->AriaLabel(items[i].title)
                        ->AriaSelected(isOpen)
-                       ->FlexRow()
+                       ->FlexRowDir(cx->app)
                        // A small Button: h_6.
                        ->H(Rems(cx, 1.5f))
                        ->PadX(8)

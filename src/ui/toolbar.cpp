@@ -1,4 +1,5 @@
 #include "ui/toolbar.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -95,7 +96,7 @@ Toolbar* Toolbar::WithSize(UiSize value) {
 
 El* Toolbar::IntoEl() {
     gpui::Toolbar* bar = gpui::Toolbar::New(cx, id)->Disabled(disabled);
-    El* root = bar->root->FlexRow()->ItemsCenter()->Shrink0();
+    El* root = bar->root->FlexRowDir(cx->app)->ItemsCenter()->Shrink0();
     switch (size.kind) {
         case UiSize::Kind::XSmall:
             // min_h_7 p_1 gap_1 text_xs

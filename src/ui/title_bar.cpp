@@ -1,4 +1,5 @@
 #include "ui/title_bar.h"
+#include "base/layout_direction.h"
 #include "ui/window_border.h"
 
 namespace gpui {
@@ -51,7 +52,7 @@ static El* WindowControls(Ctx* cx, Listener onClose) {
     }
     bool maximized = win && win->maximized;
     return Div(a)
-        ->FlexRow()
+        ->FlexRowDir(cx->app)
         ->H(kFill)
         ->ItemsCenter()
         ->Shrink0()
@@ -74,24 +75,28 @@ TitleBar* TitleBar::New(Ctx* cx) {
     Rgba mixed = RgbaMix(th.titleBar, th.background, 0.55f);
     Corners corners = WindowCornerRadii(cx->win, cx->app);
     t->content = Div(a)
-                     ->FlexRow()
+                     ->FlexRowDir(cx->app)
                      ->H(kFill)
                      ->Flex1()
                      ->MinW(0)
                      ->ItemsCenter()
                      ->JustifyBetween();
     t->bar = Div(a)
-                 ->FlexRow()
+                 ->FlexRowDir(cx->app)
                  ->W(kFill)
                  ->H(kTitleBarHeight)
                  ->Shrink0()
-                 ->PadL(TitleBarLeftPad())
                  ->ItemsCenter()
                  ->Bg(mixed)
                  ->Corners(corners.tl, corners.tr, 0, 0)
                  ->BorderB(1, th.titleBarBorder)
                  ->Click(ClickWinCaption)
                  ->Child(t->content);
+    if (PlatSecondaryIsCommand()) {
+        t->bar->PadL(TitleBarLeftPad());
+    } else {
+        t->bar->PadS(TitleBarLeftPad(), cx->app);
+    }
     return t;
 }
 

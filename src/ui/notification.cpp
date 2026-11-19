@@ -1,4 +1,5 @@
 #include "ui/notification.h"
+#include "base/layout_direction.h"
 #include "base/motion.h"
 #include "sys/notify.h"
 #include "ui/alert.h"
@@ -841,7 +842,8 @@ El* NotificationList::IntoEl() {
             continue;
         }
         const Notification& item = s->items[itemIx];
-        Anchor anchor = item.hasPlacement ? item.placement : settings.placement;
+        Anchor anchor = LogicalAnchor(
+            item.hasPlacement ? item.placement : settings.placement, cx->app);
         int aix = (int)anchor;
         if (aix < 0 || aix >= 8) {
             continue;
@@ -984,7 +986,7 @@ El* NotificationList::IntoEl() {
             El* card = gpui::Toast::New(cx, StrL("notification"))
                            ->TransitionStatus(entry.status)
                            ->IntoEl()
-                           ->FlexRow()
+                           ->FlexRowDir(cx->app)
                            ->Group()
                            ->W(kFill)
                            // gap_3 / py_3p5 / px_4
@@ -1026,13 +1028,13 @@ El* NotificationList::IntoEl() {
                 card->Child(Div(a)
                                 ->Absolute()
                                 ->Top(18)
-                                ->Left(Rems(cx, 1.f))
+                                ->InsetS(Rems(cx, 1.f), cx->app)
                                 ->Child(IconEl(a, iconName, Rems(cx, 1.f))
                                             ->Fg(iconFg)));
             }
             El* body = Div(a)->FlexCol()->Flex1()->ClipX()->ClipY();
             if (hasIcon) {
-                body->PadL(Rems(cx, 1.5f)); // pl_6
+                body->PadS(Rems(cx, 1.5f), cx->app); // pl_6
             }
             if (len(item.title) > 0) {
                 body->Child(TextEl(a, item.title)
@@ -1059,9 +1061,10 @@ El* NotificationList::IntoEl() {
             if (item.action.IsValid()) {
                 El* action = EntityRender(cx->app, cx->win, a, item.action);
                 if (action) {
-                    // The source's generated small action has mr_3p5 so it
+                    // The source's generated small action has me_3p5 so it
                     // stays clear of the hover-only close control.
-                    card->Child(Div(a)->PadR(Rems(cx, 0.875f))->Child(action));
+                    card->Child(
+                        Div(a)->PadE(Rems(cx, 0.875f), cx->app)->Child(action));
                 }
             }
             El* closeButton = component::Button::New(cx, StrL("close"))
@@ -1076,7 +1079,7 @@ El* NotificationList::IntoEl() {
                             ->Absolute()
                             // top_1 / right_1
                             ->Top(Rems(cx, 0.25f))
-                            ->Right(Rems(cx, 0.25f))
+                            ->InsetE(Rems(cx, 0.25f), cx->app)
                             ->GroupHoverVisible()
                             ->Child(closeButton));
             layer->Child(Div(a)

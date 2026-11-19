@@ -193,9 +193,9 @@ static void TheResolvedAlignmentFollowsTheVariantUnlessSet() {
                 ->Alignment(align)
                 ->Content(MarkerContent::New(&cx)->Child(TextEl(a, StrL("x"))))
                 ->IntoEl();
-        utassert(
-            row->style.justify ==
-            (align == MarkerAlignment::Start ? Justify::Start : Justify::End));
+        utassert(row->style.justify == (align == MarkerAlignment::Start
+                                            ? Justify::FlexStart
+                                            : Justify::FlexEnd));
         int rules = 0;
         for (El* child = row->first; child; child = child->next) {
             if (child->style.height == 1) {

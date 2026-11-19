@@ -1,4 +1,5 @@
 #include "ui/accordion.h"
+#include "base/layout_direction.h"
 #include "base/motion.h"
 
 namespace gpui {
@@ -178,7 +179,7 @@ El* AccordionItem::IntoEl() {
         onToggle);
     // AccordionTrigger: h_flex justify_between gap_3 font_medium, and the
     // open one paints its title in foreground.
-    trig->FlexRow()
+    trig->FlexRowDir(cx->app)
         ->ItemsCenter()
         ->JustifyBetween()
         ->Gap(Rems(cx, 0.75f))
@@ -192,7 +193,7 @@ El* AccordionItem::IntoEl() {
     AccordionRefine(trig, titleStyle);
     // flex_1 min_w_0: the title column gives before the chevron does.
     El* left = Div(a)
-                   ->FlexRow()
+                   ->FlexRowDir(cx->app)
                    ->ItemsCenter()
                    ->Gap(AccordionTitleGap(cx, size))
                    ->Flex1()

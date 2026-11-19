@@ -1,4 +1,5 @@
 #include "ui/checkbox.h"
+#include "base/layout_direction.h"
 #include "base/motion.h"
 
 namespace gpui {
@@ -26,7 +27,7 @@ El* ChoiceRow(Ctx* cx, El* row, const ChoiceFields& f) {
     row->TabIndex(f.tabIndex)
         ->TabStop(f.tabStop && !f.disabled)
         ->FocusRing(f.focusRing)
-        ->FlexRow()
+        ->FlexRowDir(cx->app)
         ->ItemsStart()
         ->Gap(Rems(cx, 0.5f));
     Str name = f.accessibilityLabel.s ? f.accessibilityLabel : f.label;

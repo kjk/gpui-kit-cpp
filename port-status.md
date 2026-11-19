@@ -16,14 +16,15 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ab7bd640021e062094cb4fd1e15fc6b465ec6a47` (2026-11-10,
-text: Add TextView::link to replace or drop links (#3743)).
-TextView can rewrite or remove links during rendering. The callback receives
-resolved Markdown destinations and titles, and click and tooltip handlers use
-the rendered destination. The Base showcase includes the upstream record-link
-example.
+Processed through `6808964c3a5e0ef970e47b696e8a800575cb21a7` (2026-11-10,
+base: Add global right-to-left layout direction (#3886)).
+Ports per-App layout direction, locale defaults for all six targets, logical
+layout and control interaction, and the gallery toggle and Arabic form. The
+browser uses the preferred navigator language; the Rust sys-locale dependency
+does not enable its browser feature. The JavaScript gallery records direction
+as infrastructure, as upstream does.
 The current update target is
-`390a485aba2e8ab92754a23b84eecedf4155b562`.
+`f8243df95b9158d9b6d842348dcfcd0481a85c2c`.
 
 ## Known gaps vs Rust
 

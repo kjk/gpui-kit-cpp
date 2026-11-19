@@ -1,4 +1,5 @@
 #include "ui/description_list.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -198,7 +199,7 @@ El* DescriptionList::IntoEl() {
     int itemAt = 0;
     for (int rowIx = 0; rowIx < rows; rowIx++) {
         int count = rowCounts ? rowCounts[rowIx] : 0;
-        El* row = Div(a)->FlexRow()->ItemsCenter();
+        El* row = Div(a)->FlexRowDir(cx->app)->ItemsCenter();
         bool last = rowIx == rows - 1;
         if (bordered && !last) {
             row->BorderB(1, th.border);
@@ -221,7 +222,8 @@ El* DescriptionList::IntoEl() {
                            ->Flex1Rel()
                            ->BasisFrac((float)it.span / (float)columns)
                            ->ClipX();
-            cell = vertical ? cell->FlexCol() : cell->FlexRow()->H(kFill);
+            cell = vertical ? cell->FlexCol()
+                            : cell->FlexRowDir(cx->app)->H(kFill);
             El* label = Div(a)
                             ->PadX(padX)
                             ->PadY(padY)
@@ -238,9 +240,9 @@ El* DescriptionList::IntoEl() {
                 if (vertical) {
                     label->BorderB(1, th.border);
                 } else {
-                    label->BorderR(1, th.border);
+                    label->BorderE(1, th.border, cx->app);
                     if (k != 0) {
-                        label->BorderL(1, th.border);
+                        label->BorderS(1, th.border, cx->app);
                     }
                 }
             }

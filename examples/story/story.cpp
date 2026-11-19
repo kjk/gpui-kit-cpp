@@ -134,6 +134,8 @@ static const StoryInfo kMeta[StoryCount] = {
     {"kbd", "Kbd", "A tag style to display keyboard shortcuts"},
     {"label", "Label",
      "Display concise text with hierarchy, highlighting, and masking."},
+    {"layout-direction", "Layout Direction",
+     "Right-to-left layout follows one global direction for the whole app."},
     {"list", "List", "A list displays a series of items."},
     {"menu", "Menu", "Popup menu and context menu"},
     {"marker", "Marker",
@@ -951,6 +953,7 @@ STORY_ACTION(ActToggleAppMenuBar, "story::ToggleAppMenuBar")
 // The two rows Rust's menu does not have, and so the two actions it does not
 // declare.
 STORY_ACTION(ActToggleReduceMotion, "story::ToggleReduceMotion")
+STORY_ACTION(ActToggleRightToLeft, "story::ToggleRightToLeft")
 STORY_ACTION(ActToggleFocusRing, "story::ToggleFocusRing")
 
 // language_menu(): the three the Rust story offers. The names are the
@@ -989,6 +992,7 @@ enum class ApKind : uint8_t {
     Fps,
     MenuBar,
     Reduce,
+    Direction,
     Ring
 };
 
@@ -1031,6 +1035,7 @@ static const ApRow kAppearance[] = {
     // application whose layout clips its containers; a gallery is where you
     // can see what the two look like side by side.
     {ApKind::Ring, "Focus Ring", 0},
+    {ApKind::Direction, "Right to Left", 0},
 };
 
 static const int kAppearanceRows = (int)(sizeof(kAppearance) / sizeof(ApRow));
@@ -1052,6 +1057,8 @@ static bool ApChecked(const StoryApp* app, Ctx* cx, const ApRow& r) {
             return app->appMenuBar;
         case ApKind::Reduce:
             return MotionReduced();
+        case ApKind::Direction:
+            return LayoutIsRtl(cx->app);
         case ApKind::Ring:
             return ThemeFocusRing(cx->app);
         default:
@@ -1078,6 +1085,8 @@ static uint32_t ApAction(ApKind kind) {
             return ActToggleAppMenuBar();
         case ApKind::Reduce:
             return ActToggleReduceMotion();
+        case ApKind::Direction:
+            return ActToggleRightToLeft();
         case ApKind::Ring:
             return ActToggleFocusRing();
         default:
@@ -1495,6 +1504,12 @@ static void OnToggleReduceMotionAction(StoryApp*, Ctx* cx, const ActionEvent*) {
     Notify(cx);
 }
 
+static void OnToggleRightToLeftAction(StoryApp*, Ctx* cx, const ActionEvent*) {
+    LayoutDirectionSetGlobal(cx->app, LayoutIsRtl(cx->app)
+                                          ? LayoutDirection::Ltr
+                                          : LayoutDirection::Rtl);
+}
+
 static void OnToggleFocusRingAction(StoryApp*, Ctx* cx, const ActionEvent*) {
     ThemeSetFocusRing(cx->app, !ThemeFocusRing(cx->app));
     Notify(cx);
@@ -1539,6 +1554,8 @@ static El* StoryBindMenuActions(El* root, Ctx* cx) {
                    Listen(cx, &OnToggleListActiveHighlightAction))
         ->OnAction(ActToggleFpsMonitor(), Listen(cx, &OnToggleFpsMonitorAction))
         ->OnAction(ActToggleAppMenuBar(), Listen(cx, &OnToggleAppMenuBarAction))
+        ->OnAction(ActToggleRightToLeft(),
+                   Listen(cx, &OnToggleRightToLeftAction))
         ->OnAction(ActToggleReduceMotion(),
                    Listen(cx, &OnToggleReduceMotionAction))
         ->OnAction(ActToggleFocusRing(), Listen(cx, &OnToggleFocusRingAction));
@@ -2042,6 +2059,13 @@ static void StoryHostSetTheme(App* app, bool dark) {
 
 int GpuiMain(int argc, char** argv) {
     App* app = AppNew();
+    if (const char* direction = getenv("GPUI_KIT_RTL")) {
+        Str value(direction);
+        bool rtl =
+            StrEq(value, "1") || StrEq(value, "true") || StrEq(value, "yes");
+        LayoutDirectionSetGlobal(
+            app, rtl ? LayoutDirection::Rtl : LayoutDirection::Ltr);
+    }
     component::Init(app);
     AppSetHostThemeHandler(app, &StoryHostSetTheme);
     // cx.set_app_identity(..): what the platform calls the application when it

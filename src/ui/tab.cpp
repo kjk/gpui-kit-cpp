@@ -1,4 +1,5 @@
 #include "ui/i18n.h"
+#include "base/layout_direction.h"
 #include "ui/tab.h"
 #include "ui/styled.h"
 #include "base/dock.h"
@@ -748,6 +749,7 @@ struct TabBarScrollState {
     float contentW = 0;
     float geomScroll = 0;
     bool hasStrip = false;
+    bool rtl = false;
 
     ~TabBarScrollState() {
         VecReset(clicks);
@@ -790,14 +792,16 @@ struct TabBarScrollState {
         TabRevealBox view;
         view.left = self->viewport.x;
         view.right = self->viewport.x + self->viewport.w;
-        bool hasPrev = ix > 0;
-        bool hasNext = ix + 1 < self->tabs.len;
+        int left = self->rtl ? ix + 1 : ix - 1;
+        int right = self->rtl ? ix - 1 : ix + 1;
+        bool hasPrev = left >= 0 && left < self->tabs.len;
+        bool hasNext = right >= 0 && right < self->tabs.len;
         float to = TabRevealOffset(
             -scrollX, maxScroll, view, Unscrolled(self->tabs[ix], scrollX),
             hasPrev,
-            hasPrev ? Unscrolled(self->tabs[ix - 1], scrollX) : TabRevealBox{},
+            hasPrev ? Unscrolled(self->tabs[left], scrollX) : TabRevealBox{},
             hasNext,
-            hasNext ? Unscrolled(self->tabs[ix + 1], scrollX) : TabRevealBox{},
+            hasNext ? Unscrolled(self->tabs[right], scrollX) : TabRevealBox{},
             self->peek);
 
         float current = -scrollX;
@@ -887,12 +891,14 @@ El* TabBar::IntoEl() {
         TabInnerRadius(variant, size, th.radius, th.radius * 1.5f);
     float font = UiFontPx(size);
     bool folder = variant == TabVariant::Folder;
+    bool rtl = LayoutIsRtl(cx->app);
+    bool hasEnd = suffix || menu;
     FolderTabMetrics folderM =
         folder ? FolderTabMetricsFor(size, th.radius, th.radiusLg)
                : FolderTabMetrics{};
 
     El* bar = gpui::Tabs::New(cx, id)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->ItemsCenter()
                   ->W(width)
                   ->H(h)
@@ -972,6 +978,7 @@ El* TabBar::IntoEl() {
             }
         }
         scrollState->peek = TabRevealPeek(size);
+        scrollState->rtl = rtl;
         VecResize(scrollState->tabs, items.len);
         VecResize(scrollState->clicks, items.len);
         for (int c = 0; c < scrollState->clicks.len; c++) {
@@ -1055,9 +1062,15 @@ El* TabBar::IntoEl() {
             folderHovered = hover->ix;
         }
     }
-    int i = -1;
-    for (const component::Tab& item : items) {
-        i++;
+    // Keep the physical strip left-to-right so ScrollX uses the same origin.
+    // The paint callbacks already record bounds by logical tab index.
+    if (rtl && hasEnd && lastEmptySpace) {
+        strip->Child(Div(a)->Shrink0()->MlAuto()->Child(lastEmptySpace));
+    }
+    for (int order = 0; order < items.len; ++order) {
+        int i = rtl ? items.len - 1 - order : order;
+        const component::Tab& item = items[i];
+        bool pushEnd = rtl && !hasEnd && order == 0;
         bool on = selected >= 0 ? i == selected : item.selected;
         // While the indicator is drawn it alone carries the selected box,
         // including once the spring has arrived. The label keeps the colour
@@ -1082,7 +1095,7 @@ El* TabBar::IntoEl() {
                                  item.disabled ? Listener{} : click, on,
                                  item.ariaLabel.s ? item.ariaLabel : item.label,
                                  i + 1, items.len)
-                      ->FlexRow()
+                      ->FlexRowDir(cx->app)
                       ->ItemsCenter()
                       ->JustifyCenter()
                       ->Shrink0()
@@ -1106,10 +1119,10 @@ El* TabBar::IntoEl() {
         } else {
             if (st.borderL > 0 &&
                 !(i == 0 && variant == TabVariant::Tab && !item.tabBarPrefix)) {
-                tab->BorderL(st.borderL, st.borderColor);
+                tab->BorderS(st.borderL, st.borderColor, cx->app);
             }
             if (st.borderR > 0) {
-                tab->BorderR(st.borderR, st.borderColor);
+                tab->BorderE(st.borderR, st.borderColor, cx->app);
             }
             if (st.borderB > 0) {
                 tab->BorderB(st.borderB, st.borderColor);
@@ -1129,7 +1142,7 @@ El* TabBar::IntoEl() {
         // The inner box is what carries the padding, the label and — for
         // Segmented — the background of the selected tab.
         El* inner = Div(a)
-                        ->FlexRow()
+                        ->FlexRowDir(cx->app)
                         ->LineHeight(1.25f)
                         ->ItemsCenter()
                         ->JustifyCenter()
@@ -1218,12 +1231,12 @@ El* TabBar::IntoEl() {
                            ->Absolute()
                            ->W(1)
                            ->H(folderM.separatorHeight)
-                           ->Right(-(kFolderTabGap / 2.f))
+                           ->InsetE(-(kFolderTabGap / 2.f), cx->app)
                            ->Top(sepTop)
                            ->Bg(th.border));
         }
         if (folder && item.prefix && item.icon == IconName::None) {
-            inner->PadL(4);
+            inner->PadS(4, cx->app);
         }
         if (item.prefix) {
             El* prefixWrap = Div(a)->Child(item.prefix);
@@ -1262,6 +1275,7 @@ El* TabBar::IntoEl() {
                 host->customPaint = &RecordTabBound;
                 host->customUser = &scrollState->tabs[i];
             }
+            if (pushEnd) host->MlAuto();
             strip->Child(host);
         } else {
             if (scrollState && i < scrollState->tabs.len) {
@@ -1276,10 +1290,11 @@ El* TabBar::IntoEl() {
                 tab->customUser = indicator;
                 tab->prePaint = &TabIndicatorPrePaint;
             }
+            if (pushEnd) tab->MlAuto();
             strip->Child(tab);
         }
     }
-    if ((suffix || menu) && lastEmptySpace) {
+    if (!rtl && hasEnd && lastEmptySpace) {
         strip->Child(lastEmptySpace);
     }
     if (showIndicator) {

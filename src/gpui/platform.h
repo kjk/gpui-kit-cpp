@@ -23,6 +23,9 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
 // filled — and each backend call finds no surface bound and draws nothing.
 void WindowDrawFrameHeadless(Window* win, float dipW, float dipH);
 
+// Primary locale preferred by the platform or browser.
+TempStr PlatPreferredLocaleTemp();
+
 // cx.reduce_motion(): whether the desktop has asked for less animation.
 // Windows and macOS each have a switch to read; Linux answers through the
 // XDG desktop portal asynchronously (PlatReduceMotionKnown is then false).

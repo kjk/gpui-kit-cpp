@@ -1,4 +1,5 @@
 #include "ui/switch.h"
+#include "base/layout_direction.h"
 #include "base/motion.h"
 
 namespace gpui {
@@ -166,7 +167,7 @@ El* Switch::IntoEl() {
     // The thumb keeps its own colour in every state; only the track fades.
     El* thumbEl = SwitchThumb::New(cx, checked, disabled, &thumbStyles)
                       ->Absolute()
-                      ->Left(inset + x)
+                      ->InsetS(inset + x, cx->app)
                       ->Top(inset)
                       ->W(thumb)
                       ->H(thumb)
@@ -186,7 +187,7 @@ El* Switch::IntoEl() {
     El* root =
         gpui::Switch::New(cx, id, checked, disabled, onClick, &rootStyles,
                           nullptr, name, tabIndex, tabStop, focus)
-            ->FlexRow()
+            ->FlexRowDir(cx->app)
             ->ItemsCenter()
             ->Gap(Rems(cx, 0.5f));
     root->Child(track);

@@ -17,13 +17,13 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "ab7bd640021e062094cb4fd1e15fc6b465ec6a47";
+const pinnedGpuiComponent = "6808964c3a5e0ef970e47b696e8a800575cb21a7";
 
 const baseModules = `
 accordion actions a11y_disabled alert_dialog animation async_util auto_scroll avatar button
 calendar checkbox collapsible color_picker combobox component_traits
 date_picker dialog dock element_ext event focus_trap geometry global_state grid_layout
-history hover_card index_path input link list_settings macos_accessibility
+history hover_card index_path input layout_direction link list_settings macos_accessibility
 measure motion nav_stack number_input observe otp_input overscroll pagination plot popover popup positioner
 progress questionnaire radio radio_group resizable scrollbar scrollable_mask select selectable_text
 reduce_motion root scroll_bounce sheet slider state_style styled switch table tabs test_support
@@ -223,8 +223,10 @@ const testTargets: Record<string, string[]> = {
   "base/hover_card": ["tests/HoverCardTests.cpp"],
   "ui/hover_card": ["tests/HoverCardTests.cpp"],
   "base/index_path": ["tests/IndexPathTests.cpp"],
+  "base/layout_direction": ["tests/LayoutDirectionTests.cpp"],
   "base/input": [
     "tests/InputStateTests.cpp",
+    "tests/LayoutDirectionTests.cpp",
     "tests/TextBoundaryTests.cpp",
     "tests/TextSelectionTests.cpp",
     "tests/FoldMapTests.cpp",
@@ -346,6 +348,7 @@ const testTargets: Record<string, string[]> = {
   "ui/spinner": ["tests/MotionTests.cpp"],
   "ui/switch": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/tab": ["tests/TabTests.cpp", "tests/AccessibilityTests.cpp"],
+  "ui/sheet": ["tests/SheetTests.cpp", "tests/LayoutDirectionTests.cpp"],
   "ui/table": ["tests/DataTableTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/text": ["tests/TextViewTests.cpp", "tests/MarkdownTests.cpp"],
   "ui/theme": [
@@ -378,6 +381,14 @@ const declarationMappings: Record<string, DeclarationMapping> = {
     targets: ["src/gpui/gpui.h"],
   },
   "base/lib.rs::fn init": { spellings: ["BaseInit"] },
+  "base/layout_direction.rs::trait LogicalStyledExt": {
+    spellings: ["FlexRowDir", "PadS", "PadE", "MarginS", "MarginE", "InsetS", "InsetE", "TextStart", "TextEnd"],
+    targets: ["src/gpui/gpui.h", "src/base/layout_direction.cpp"],
+  },
+  "base/popup.rs::fn logical_anchor": {
+    spellings: ["LogicalAnchor"],
+    targets: ["src/base/layout_direction.h", "src/base/layout_direction.cpp"],
+  },
   "base/questionnaire/keyboard.rs::fn handle_key_down": {
     spellings: ["QuestionnaireHandleKeyDown"],
   },
@@ -646,14 +657,14 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 614, sha256: "f953d47e1716b2de56924e2568e4b1b0d91b29b64ff35b3522feeaaa104759c3" },
-    "pub-use": { count: 176, sha256: "7bfc3e1f707f7fb7bbf0b5c016cbaed3f8e04544a9628ccae801e27fe99655f6" },
-    test: { count: 1666, sha256: "3029fd252d03ac7ec78e1801c7bb1ff89952e57b2d095f87b0b613970f72c1f2" },
+    declaration: { count: 617, sha256: "910201185b17939237f34f8c1847139671df801b97107f51f443b2f7dcb29d50" },
+    "pub-use": { count: 177, sha256: "7b436bed08c738858e019ba1b09ebd62c68f5594d5e5e4757d5063ebfecf2a6f" },
+    test: { count: 1677, sha256: "39267d0b6f3fbc0d11ce4eb8778d91296725bfc3c1e7b07dba14d7759331a7ce" },
   },
   ui: {
     declaration: { count: 478, sha256: "3534c842a12b080cba2b62c17bbac5c222159098d08d963baa1e59f46ab7d3ef" },
     "pub-use": { count: 172, sha256: "a0d73ef7b2afa88bbb0c2edbdb0305f7fed92aae28ac30e01769c39932adab5f" },
-    test: { count: 836, sha256: "186ba48b39d9c4b796061dbb4a17dea82c9f6315df3ae26d6dfc6a82d416c7ff" },
+    test: { count: 840, sha256: "3b4a439d1c9ff4595650916554fc48c29f012437d9564be54e2cb4ad0c319725" },
   },
 };
 

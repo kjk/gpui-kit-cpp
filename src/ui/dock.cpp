@@ -1,4 +1,5 @@
 #include "ui/i18n.h"
+#include "base/layout_direction.h"
 #include "ui/dock.h"
 #include "ui/resizable.h"
 #include "ui/menu.h"
@@ -185,22 +186,32 @@ static El* ToggleButton(const DockTabGroup* g, DockPlacement p, IconName icon,
 static El* RenderToggles(const DockTabGroup* g, bool trailing) {
     Arena* a = g->cx->a;
     DockState* s = g->state.Get(g->cx);
-    El* row =
-        Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(Rems(g->cx, 0.25f));
+    El* row = Div(a)
+                  ->FlexRowDir(g->cx->app)
+                  ->ItemsCenter()
+                  ->Shrink0()
+                  ->Gap(Rems(g->cx, 0.25f));
     if (trailing) {
         if (DockGroupHasToggle(g, DockPlacement::Right)) {
-            row->Child(ToggleButton(
-                g, DockPlacement::Right,
-                s->right.open ? IconName::PanelRight : IconName::PanelRightOpen,
-                s->right.open));
+            row->Child(
+                ToggleButton(g, DockPlacement::Right,
+                             LayoutIsRtl(g->cx->app)
+                                 ? (s->right.open ? IconName::PanelLeft
+                                                  : IconName::PanelLeftOpen)
+                                 : (s->right.open ? IconName::PanelRight
+                                                  : IconName::PanelRightOpen),
+                             s->right.open));
         }
         return row;
     }
     if (DockGroupHasToggle(g, DockPlacement::Left)) {
-        row->Child(ToggleButton(
-            g, DockPlacement::Left,
-            s->left.open ? IconName::PanelLeft : IconName::PanelLeftOpen,
-            s->left.open));
+        row->Child(ToggleButton(g, DockPlacement::Left,
+                                LayoutIsRtl(g->cx->app)
+                                    ? (s->left.open ? IconName::PanelRight
+                                                    : IconName::PanelRightOpen)
+                                    : (s->left.open ? IconName::PanelLeft
+                                                    : IconName::PanelLeftOpen),
+                                s->left.open));
     }
     if (DockGroupHasToggle(g, DockPlacement::Bottom)) {
         row->Child(ToggleButton(
@@ -223,7 +234,8 @@ static El* RenderTools(const DockTabGroup* g) {
     Ctx* cx = g->cx;
     Arena* a = cx->a;
     DockState* s = g->state.Get(cx);
-    El* row = Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(Rems(cx, 0.25f));
+    El* row = Div(a)->FlexRowDir(cx->app)->ItemsCenter()->Shrink0()->Gap(
+        Rems(cx, 0.25f));
     int activeIx = DockGroupActiveIx(g);
     if (g->collapsed || activeIx < 0) {
         return row;
@@ -312,14 +324,14 @@ static El* RenderTitleRow(const DockTabGroup* g) {
     TitleStyle titleStyle;
     bool hasTitleStyle = PanelTitleStyle(cx, def, &titleStyle);
     El* row = Div(a)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->ItemsCenter()
                   ->JustifyBetween()
                   ->W(kFill)
                   ->H(30)
                   ->PadY(Rems(cx, 0.5f))
-                  ->PadL(Rems(cx, leading ? 0.5f : 0.75f))
-                  ->PadR(Rems(cx, 0.5f));
+                  ->PadS(Rems(cx, leading ? 0.5f : 0.75f), cx->app)
+                  ->PadE(Rems(cx, 0.5f), cx->app);
     if (hasTitleStyle) {
         row->Bg(titleStyle.background)->Fg(titleStyle.foreground);
     }
@@ -344,8 +356,8 @@ static El* RenderTitleRow(const DockTabGroup* g) {
             row->Child(suffix->Shrink0());
         }
     }
-    El* tools =
-        Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(Rems(cx, 0.25f));
+    El* tools = Div(a)->FlexRowDir(cx->app)->ItemsCenter()->Shrink0()->Gap(
+        Rems(cx, 0.25f));
     tools->Child(RenderTools(g));
     if (trailing) {
         tools->Child(RenderToggles(g, true));
@@ -373,7 +385,7 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
     }
 
     El* bar = Div(a)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->ItemsCenter()
                   ->W(kFill)
                   ->H(kDockTabBarH)
@@ -385,7 +397,7 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
     // TabBar::track_scroll: a row of tabs wider than the bar scrolls sideways
     // rather than being squeezed, and the wheel over it moves it.
     El* strip = DockBindTabStrip(g, Div(a)
-                                        ->FlexRow()
+                                        ->FlexRowDir(cx->app)
                                         ->ItemsCenter()
                                         ->Flex1()
                                         ->H(kFill)
@@ -404,7 +416,7 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
         // A tab keeps its own width: a row too wide for the bar scrolls
         // rather than squeezing its labels.
         El* tab = Div(a)
-                      ->FlexRow()
+                      ->FlexRowDir(cx->app)
                       ->ItemsCenter()
                       ->Shrink0()
                       ->Gap(4)
@@ -412,7 +424,7 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
                       ->H(kFill)
                       ->Bg(on ? th.tabActiveBg : th.tabBar);
         if (i > 0) {
-            tab->BorderL(1, th.border);
+            tab->BorderS(1, th.border, cx->app);
         }
         DockBindTab(g, i, tab);
         // `.drag_over::<DragPanel>(|this, ..| this.border_l_2()
@@ -462,7 +474,7 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
             // matches the label's 12px leading padding. Offset the label's
             // own 12px right padding and the tab's 4px gap so the
             // text-to-icon distance is also 12px.
-            close->MarginL(-8)->MarginR(Rems(cx, 0.5f));
+            close->MarginS(-8, cx->app)->MarginE(Rems(cx, 0.5f), cx->app);
             tab->Child(DockBindClose(g, i, close));
         }
         strip->Child(tab);
@@ -546,6 +558,11 @@ static ResizeHandle* SkinDockResizeHandle(Ctx* cx, const DockCtx* d) {
         case DockPlacement::Center:
             break;
     }
+    DockPlacement physical = DockPhysicalPlacement(d->placement, cx->app);
+    if (physical != d->placement) {
+        edge = physical == DockPlacement::Left ? HandleEdge::Trailing
+                                               : HandleEdge::Leading;
+    }
     // `gpui::` — `component::resize_handle` is the same band with the
     // divider already on it, and an unqualified call is ambiguous.
     ResizeHandle* h = gpui::resize_handle(cx, id, axis)
@@ -562,7 +579,8 @@ static ResizeHandle* SkinDockResizeHandle(Ctx* cx, const DockCtx* d) {
 // dragging that strip up is how it opens again.
 static El* SkinDock(Ctx* cx, void*, const DockCtx* d, El* content) {
     El* handle = SkinDockResizeHandle(cx, d)->IntoEl();
-    return Div(cx->a)->FlexRow()->SizeFull()->Child(content)->Child(handle);
+    return Div(cx->a)->FlexRowDir(cx->app)->SizeFull()->Child(content)->Child(
+        handle);
 }
 
 static El* SkinDropIndicator(Ctx* cx, void*, Bounds) {

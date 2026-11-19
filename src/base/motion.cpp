@@ -404,7 +404,7 @@ void MotionSetReduced(bool on, App* app) {
         motion->reduced = on;
         motion->overridden = true;
         if (changed) {
-            Notify(app, nullptr);
+            AppRefreshWindows(app);
         }
         return;
     }
@@ -460,7 +460,7 @@ void SetReduceMotionPreference(ReduceMotionPreference preference, App* app) {
     }
     ApplySystemReduceMotion();
     if (app && MotionReduced(app) != current) {
-        Notify(app, nullptr);
+        AppRefreshWindows(app);
     }
 }
 

@@ -241,7 +241,7 @@ static void ThemedPartsAndAlertDefaultsMatchTheSource() {
     utassert(description->style.fontSize == 14 && description->style.hasColor);
     El* footer = component::DialogFooter::New(&cx)->IntoEl();
     utassert(footer->style.dir == FlexDir::Row &&
-             footer->style.justify == Justify::End);
+             footer->style.justify == Justify::FlexEnd);
     component::DialogClose* close = component::DialogClose::New(&cx);
     utassert(close->semantic.IsCancel() && !close->semantic.IsAction());
     utassert(close->slot->clickAction == action::Cancel());

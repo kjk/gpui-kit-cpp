@@ -8,6 +8,7 @@
 #include "base/input.h"
 #include "base/element_ext.h"
 #include "base/global_state.h"
+#include "base/layout_direction.h"
 #include "base/motion.h"
 #include "base/number_input.h"
 #include "base/scroll_bounce.h"
@@ -9891,6 +9892,29 @@ static void ActivateSelectedToken(InputState* s, App* app, Window* win) {
     }
 }
 
+static InputAction MirrorVisualInputAction(InputAction action) {
+    switch (action) {
+        case InputAction::MoveLeft:
+            return InputAction::MoveRight;
+        case InputAction::MoveRight:
+            return InputAction::MoveLeft;
+        case InputAction::MoveToPreviousWord:
+            return InputAction::MoveToNextWord;
+        case InputAction::MoveToNextWord:
+            return InputAction::MoveToPreviousWord;
+        case InputAction::SelectLeft:
+            return InputAction::SelectRight;
+        case InputAction::SelectRight:
+            return InputAction::SelectLeft;
+        case InputAction::SelectToPreviousWordStart:
+            return InputAction::SelectToNextWordEnd;
+        case InputAction::SelectToNextWordEnd:
+            return InputAction::SelectToPreviousWordStart;
+        default:
+            return action;
+    }
+}
+
 bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                   bool shift, bool secondary) {
     if (!s) {
@@ -9901,6 +9925,9 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
     // first, if it drew one, and then the editor's.
     if (InputRouteOverlayAction(s, app, win, action)) {
         return true;
+    }
+    if (s->mode.kind != LayoutModeKind::CodeEditor && LayoutIsRtl(app)) {
+        action = MirrorVisualInputAction(action);
     }
     Str t = InputValue(s);
     switch (action) {

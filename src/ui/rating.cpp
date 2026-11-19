@@ -1,4 +1,5 @@
 #include "ui/rating.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -89,7 +90,7 @@ El* Rating::IntoEl() {
     int hovered = s ? s->hoveredValue : 0;
     Rgba activeC = hasColor ? color : th.yellow;
 
-    El* row = Div(a)->Id(id)->FlexRow()->ItemsCenter();
+    El* row = Div(a)->Id(id)->FlexRowDir(cx->app)->ItemsCenter();
     for (int i = 1; i <= max; i++) {
         bool filled = i <= shown;
         // A hovered star and everything before it previews the value the

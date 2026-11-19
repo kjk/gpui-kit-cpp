@@ -1,4 +1,5 @@
 #include "base/positioner.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -45,6 +46,7 @@ Positioner* Positioner::Side(Ctx* cx, Bounds trigger) {
     p->a = cx->a;
     p->strategy = Strategy::Side;
     p->trigger = trigger;
+    p->rtl = LayoutIsRtl(cx->app);
     return p;
 }
 
@@ -148,7 +150,15 @@ El* Positioner::IntoEl() {
     s.positionerTrigger = trigger;
     s.positionerPoint = point;
     s.positionerPlacement = hasPlacement ? (int8_t)placement : (int8_t)-1;
-    s.positionerAlign = (uint8_t)align;
+    // A side flip preserves the axis. Only top/bottom alignment is
+    // horizontal, while the requested side stays physical.
+    gpui::Align actualAlign = align;
+    if (rtl && (!hasPlacement || placement == gpui::Placement::Top ||
+                placement == gpui::Placement::Bottom)) {
+        if (align == gpui::Align::Start) actualAlign = gpui::Align::End;
+        if (align == gpui::Align::End) actualAlign = gpui::Align::Start;
+    }
+    s.positionerAlign = (uint8_t)actualAlign;
     s.anchor = anchor;
     s.anchorGap = offset;
     s.anchorMargin = margin > 0 ? margin : 0;

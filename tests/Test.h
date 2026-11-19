@@ -160,6 +160,7 @@ void TestNativeMenu();
 void TestAppMenu();
 void TestI18n();
 void TestLayoutReuse();
+void TestLayoutDirection();
 void TestImageCache();
 void TestRoot();
 void TestSankey();

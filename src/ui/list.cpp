@@ -1,4 +1,5 @@
 #include "ui/i18n.h"
+#include "base/layout_direction.h"
 #include "ui/list.h"
 #include "base/list_settings.h"
 #include "ui/input.h"
@@ -52,7 +53,7 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
                   ->Role(AccessibilityRole::ListItem)
                   ->AriaSelected(selected)
                   ->AriaDisabled(disabled)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->W(kFill)
                   ->PadX(Rems(cx, 0.75f)) // px_3
                   ->PadY(Rems(cx, 0.25f)) // py_1
@@ -96,9 +97,12 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
     // `h_flex().w_full().justify_between().gap_x_1()`: the children take
     // the row, beside the check slot when the item has a check icon --
     // `div().w_5()`, holding the small muted mark once it is confirmed.
-    El* content =
-        Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween()->Gap(
-            Rems(cx, 0.25f));
+    El* content = Div(a)
+                      ->FlexRowDir(cx->app)
+                      ->W(kFill)
+                      ->ItemsCenter()
+                      ->JustifyBetween()
+                      ->Gap(Rems(cx, 0.25f));
     El* children = Div(a)->W(kFill);
     if (child) {
         children->Child(child);
@@ -106,7 +110,7 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
     content->Child(children);
     if (checkIcon != IconName::None) {
         El* slot = Div(a)
-                       ->FlexRow()
+                       ->FlexRowDir(cx->app)
                        ->W(Rems(cx, 1.25f))
                        ->ItemsCenter()
                        ->JustifyCenter()

@@ -24,10 +24,10 @@ El* BubbleContent::IntoEl() {
         surface->ClipX()->ClipY();
     }
     if (hasAlignment) {
-        if (alignment == MessageAlignment::Start) {
-            surface->SelfStart();
-        } else {
+        if (MessageAlignedRight(alignment, cx->app)) {
             surface->SelfEnd();
+        } else {
+            surface->SelfStart();
         }
     }
     switch (variant) {
@@ -139,10 +139,10 @@ El* BubbleReactions::IntoEl() {
     } else {
         pill->Bottom(-Rems(cx, 1.25f));
     }
-    if (alignment == MessageAlignment::Start) {
-        pill->Left(Rems(cx, 0.75f));
-    } else {
+    if (MessageAlignedRight(alignment, cx->app)) {
         pill->Right(Rems(cx, 0.75f));
+    } else {
+        pill->Left(Rems(cx, 0.75f));
     }
     if (styleSet) {
         pill->Refine(style, styleSet);
@@ -229,10 +229,10 @@ El* Bubble::IntoEl() {
         // `self_start().mr_auto()` / `self_end().ml_auto()`. There are no
         // auto margins here; align-self alone puts the box at the edge of a
         // column, which is every composition this component ships in.
-        if (alignment == MessageAlignment::Start) {
-            root->SelfStart();
-        } else {
+        if (MessageAlignedRight(alignment, cx->app)) {
             root->SelfEnd();
+        } else {
+            root->SelfStart();
         }
     }
     if (styleSet) {

@@ -1,4 +1,5 @@
 #include "ui/i18n.h"
+#include "base/layout_direction.h"
 #include "ui/setting.h"
 #include "base/input_keys.h"
 #include "base/scroll_bounce.h"
@@ -1022,7 +1023,7 @@ static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
         return line;
     }
     if (layout == Axis::Horizontal) {
-        line->FlexRow()->ItemsCenter()->JustifyBetween();
+        line->FlexRowDir(cx->app)->ItemsCenter()->JustifyBetween();
     } else {
         line->FlexCol();
     }
@@ -1194,8 +1195,10 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
                    ->Pad(Rems(cx, 1.f))
                    ->Gap(Rems(cx, 0.75f))
                    ->BorderB(1, th.border);
-    El* titleRow = Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween();
-    El* titleCell = Div(a)->FlexRow()->ItemsCenter()->Gap(Rems(cx, 0.25f));
+    El* titleRow =
+        Div(a)->FlexRowDir(cx->app)->W(kFill)->ItemsCenter()->JustifyBetween();
+    El* titleCell =
+        Div(a)->FlexRowDir(cx->app)->ItemsCenter()->Gap(Rems(cx, 0.25f));
     // page.rs puts the title in the header with no styling of its own,
     // so it is the page's own text and not a heading.
     titleCell->Child(TextEl(a, p.title)->Fg(th.foreground));

@@ -43,6 +43,7 @@ enum {
     StoryInputGroup,
     StoryKbd,
     StoryLabel,
+    StoryLayoutDirection,
     StoryList,
     StoryMenu,
     StoryMarker,

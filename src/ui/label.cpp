@@ -1,4 +1,5 @@
 #include "ui/label.h"
+#include "base/layout_direction.h"
 #include "base/text_boundary.h"
 
 namespace gpui {
@@ -321,6 +322,8 @@ El* Label::IntoEl() {
         root->JustifyCenter()->TextCenter();
     } else if (align == 2) {
         root->JustifyEnd()->TextRight();
+    } else if (LayoutIsRtl(cx->app)) {
+        root->JustifyEnd()->TextStart(cx->app);
     }
     return root->Child(styled);
 }

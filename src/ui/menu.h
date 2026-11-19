@@ -182,12 +182,15 @@ struct ContextMenuState {
     // keeps the focus to give back (PopupMenuState::previousFocus).
     bool open = false;
     Point position = {};
+    Point windowPosition = {};
     FocusHandle triggerFocus = {};
 
     static void OnMouseDown(ContextMenuState* self, Ctx* cx,
                             const MouseDownEvent* ev);
     static void OnLongPress(ContextMenuState* self, Ctx* cx,
                             const LongPressEvent* ev);
+    static void OnMouseUpOut(ContextMenuState* self, Ctx* cx,
+                             const MouseUpEvent* ev);
 };
 
 // context_menu.rs: an element whose right press opens a menu where the

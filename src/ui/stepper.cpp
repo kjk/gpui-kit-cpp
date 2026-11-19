@@ -1,4 +1,5 @@
 #include "ui/stepper.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -68,27 +69,30 @@ StepperItem* StepperItem::Disabled(bool v) {
 
 // StepperSeparator: absolutely placed, so the line runs from one indicator to
 // the next whatever the content under them is as wide as.
-static El* StepperSep(Arena* a, const Theme& th, UiSize size, Axis layout,
+static El* StepperSep(Ctx* cx, const Theme& th, UiSize size, Axis layout,
                       bool textCenter, bool checked) {
     float icon = StepperIconPx(size);
     float wide = StepperSepPx(size);
-    El* sep = Div(a)->Absolute()->Bg(checked ? th.primary : th.border);
+    El* sep = Div(cx->a)->Absolute()->Bg(checked ? th.primary : th.border);
     if (layout == Axis::Horizontal) {
         sep->H(wide)->Top(icon * 0.5f);
         if (!textCenter) {
-            sep->Left(icon + kStepperGap)->Right(kStepperGap);
+            sep->InsetS(icon + kStepperGap, cx->app)
+                ->InsetE(kStepperGap, cx->app);
         } else {
             // Centered steps put the indicator in the middle of the step, so
             // the line spans from this middle to the next one.
             // `mx(..)` with `left(relative(0.5)).right(relative(-0.5))`:
             // the pixels are margins, the insets pure fractions.
-            sep->MarginL(icon * 0.5f + kStepperGap)
-                ->MarginR(icon * 0.5f + kStepperGap)
-                ->LeftRel(0.5f)
-                ->RightRel(-0.5f);
+            sep->MarginX(icon * 0.5f + kStepperGap);
+            if (LayoutIsRtl(cx->app)) {
+                sep->RightRel(0.5f)->LeftRel(-0.5f);
+            } else {
+                sep->LeftRel(0.5f)->RightRel(-0.5f);
+            }
         }
     } else {
-        sep->W(wide)->Left((icon - wide) * 0.5f);
+        sep->W(wide)->InsetS((icon - wide) * 0.5f, cx->app);
         sep->Top(icon + kStepperGap)->Bottom(kStepperGap);
     }
     return sep;
@@ -129,7 +133,7 @@ static El* StepperTrigger(Arena* a, const Theme& th, StepperItem* it) {
     if (it->layout == Axis::Horizontal) {
         trig->FlexCol()->Gap(Rems(it->cx, 0.25f));
     } else {
-        trig->FlexRow()->Gap(Rems(it->cx, 0.5f));
+        trig->FlexRowDir(it->cx->app)->Gap(Rems(it->cx, 0.5f));
     }
     trig->ItemsStart();
     if (it->textCenter) {
@@ -151,7 +155,7 @@ El* StepperItem::IntoEl() {
                    ->AriaPositionInSet(step + 1)
                    ->AriaDisabled(disabled);
     if (layout == Axis::Horizontal) {
-        root->FlexRow();
+        root->FlexRowDir(cx->app);
     } else {
         root->FlexCol();
     }
@@ -173,7 +177,7 @@ El* StepperItem::IntoEl() {
     if (!isLast) {
         // is_passed: the connector behind a step that is already done.
         root->Child(
-            StepperSep(a, th, size, layout, textCenter, step < checkedStep));
+            StepperSep(cx, th, size, layout, textCenter, step < checkedStep));
     }
     return root;
 }
@@ -232,7 +236,7 @@ Stepper* Stepper::OnClick(Listener fn) {
 El* Stepper::IntoEl() {
     El* root = Div(a)->W(width);
     if (layout == Axis::Horizontal) {
-        root->FlexRow();
+        root->FlexRowDir(cx->app);
     } else {
         root->FlexCol();
     }

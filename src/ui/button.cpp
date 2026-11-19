@@ -1,4 +1,5 @@
 #include "ui/button.h"
+#include "base/layout_direction.h"
 #include "ui/i18n.h"
 #include "ui/icon.h"
 #include "ui/menu.h"
@@ -733,14 +734,18 @@ El* Button::IntoEl() {
     if (hasFocus) {
         e->TrackFocus(focus);
     }
-    e = e->H(h > 0 ? h : kAuto)
+    bool rtl = LayoutIsRtl(cx->app);
+    e = e->FlexRowDir(cx->app)
+            ->H(h > 0 ? h : kAuto)
             ->PadX(padX)
             ->ItemsCenter()
             ->JustifyCenter()
             ->LineHeight(1.25f)
             ->Gap(gap)
-            ->Corners(cornerTL ? rounding : 0.f, cornerTR ? rounding : 0.f,
-                      cornerBR ? rounding : 0.f, cornerBL ? rounding : 0.f);
+            ->Corners((rtl ? cornerTR : cornerTL) ? rounding : 0.f,
+                      (rtl ? cornerTL : cornerTR) ? rounding : 0.f,
+                      (rtl ? cornerBL : cornerBR) ? rounding : 0.f,
+                      (rtl ? cornerBR : cornerBL) ? rounding : 0.f);
     if (accessibilityId.s) {
         e->AccessibilityId(accessibilityId);
     }
@@ -787,10 +792,10 @@ El* Button::IntoEl() {
                 e->BorderB(borderW, bd);
             }
             if (edgeL) {
-                e->BorderL(borderW, bd);
+                e->BorderS(borderW, bd, cx->app);
             }
             if (edgeR) {
-                e->BorderR(borderW, bd);
+                e->BorderE(borderW, bd, cx->app);
             }
         } else {
             e->Border(borderW, bd);
@@ -1017,15 +1022,16 @@ El* Toggle::IntoEl() {
         instance.Border(1, th.border);
         instance.Bg(th.tokens.background);
     } else if (variant == ToggleVariant::Outline) {
-        if (edgeL) instance.BorderL(1, th.border);
-        if (edgeR) instance.BorderR(1, th.border);
+        bool rtl = LayoutIsRtl(cx->app);
+        if (rtl ? edgeR : edgeL) instance.BorderL(1, th.border);
+        if (rtl ? edgeL : edgeR) instance.BorderR(1, th.border);
         if (edgeT) instance.BorderT(1, th.border);
         if (edgeB) instance.BorderB(1, th.border);
         instance.Bg(th.tokens.background);
     }
     El* root = gpui::Toggle::New(cx, id, checked, disabled, onClick, &styles,
                                  &instance)
-                   ->FlexRow()
+                   ->FlexRowDir(cx->app)
                    ->LineHeight(1.25f)
                    ->ItemsCenter()
                    ->JustifyCenter();
@@ -1048,9 +1054,12 @@ El* Toggle::IntoEl() {
         pad = Rems(cx, 0.75f);
         font = 16.f;
     }
+    bool rtl = LayoutIsRtl(cx->app);
     root->MinW(h)->H(h)->PadX(pad)->Corners(
-        cornerTL ? th.radius : 0.f, cornerTR ? th.radius : 0.f,
-        cornerBR ? th.radius : 0.f, cornerBL ? th.radius : 0.f);
+        (rtl ? cornerTR : cornerTL) ? th.radius : 0.f,
+        (rtl ? cornerTL : cornerTR) ? th.radius : 0.f,
+        (rtl ? cornerBL : cornerBR) ? th.radius : 0.f,
+        (rtl ? cornerBR : cornerBL) ? th.radius : 0.f);
     if (width != kAuto) root->W(width);
     // Always register hover. GPUI refreshes a cached hover style only while
     // one is present, so a checked toggle that skipped it kept the accent
@@ -1169,7 +1178,7 @@ El* ToggleGroup::IntoEl() {
     }
 
     El* root = gpui::ToggleGroup::New(cx, id, Axis::Horizontal);
-    El* row = Div(a)->FlexRow()->ItemsCenter();
+    El* row = Div(a)->FlexRowDir(cx->app)->ItemsCenter();
     if (!segmented) row->Gap(Rems(cx, 0.5f));
     int n = items.len;
     for (int i = 0; i < n; i++) {
@@ -1279,7 +1288,7 @@ El* DropdownButton::IntoEl() {
     bool menuOpen = menuState && menuState->open;
 
     IdScope scope(cx, id);
-    El* row = Div(a)->Id(id)->FlexRow()->ItemsCenter();
+    El* row = Div(a)->Id(id)->FlexRowDir(cx->app)->ItemsCenter();
     if (isGhost) {
         // div().group(HALVES_GROUP): the row is what a half's group_hover is
         // resolved against.
@@ -1467,7 +1476,7 @@ El* ButtonGroup::IntoEl() {
         // so a vertical group's buttons stay as wide as their own labels.
         box->FlexCol()->JustifyCenter();
     } else {
-        box->FlexRow()->ItemsCenter();
+        box->FlexRowDir(cx->app)->ItemsCenter();
     }
     for (int i = 0; i < children.len; i++) {
         Button* b = children[i];

@@ -1,4 +1,5 @@
 #include "ui/marker.h"
+#include "base/layout_direction.h"
 #include "ui/spinner.h"
 #include "base/motion.h"
 #include <math.h>
@@ -60,13 +61,13 @@ El* MarkerContent::IntoEl() {
     }
     switch (alignment) {
         case MarkerAlignment::Start:
-            content->TextLeft();
+            content->TextStart(cx->app);
             break;
         case MarkerAlignment::Center:
             content->TextCenter();
             break;
         case MarkerAlignment::End:
-            content->TextRight();
+            content->TextEnd(cx->app);
             break;
     }
     if (styleSet) {
@@ -192,7 +193,7 @@ El* Marker::IntoEl() {
 
     // h_flex().w_full().min_h(rems(1.)).gap_2().text_sm().line_height(1.5)
     El* row = Div(a)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->ItemsCenter()
                   ->W(kFill)
                   ->MinH(Rems(cx, 1))
@@ -203,13 +204,13 @@ El* Marker::IntoEl() {
     MarkerAlignment align = ResolvedAlignment();
     switch (align) {
         case MarkerAlignment::Start:
-            row->JustifyStart()->TextLeft();
+            row->JustifyFlexStart()->TextStart(cx->app);
             break;
         case MarkerAlignment::Center:
             row->JustifyCenter()->TextCenter();
             break;
         case MarkerAlignment::End:
-            row->JustifyEnd()->TextRight();
+            row->JustifyFlexEnd()->TextEnd(cx->app);
             break;
     }
     if (variant == MarkerVariant::Border) {
@@ -221,7 +222,7 @@ El* Marker::IntoEl() {
                        ->Flex1()
                        ->MinW(0)
                        ->H(1)
-                       ->MarginR(Rems(cx, 0.25f))
+                       ->MarginE(Rems(cx, 0.25f), cx->app)
                        ->Bg(th.border);
         if (separatorStyleSet) {
             rule->Refine(separatorStyle, separatorStyleSet);
@@ -256,7 +257,7 @@ El* Marker::IntoEl() {
                        ->Flex1()
                        ->MinW(0)
                        ->H(1)
-                       ->MarginL(Rems(cx, 0.25f))
+                       ->MarginS(Rems(cx, 0.25f), cx->app)
                        ->Bg(th.border);
         if (separatorStyleSet) {
             rule->Refine(separatorStyle, separatorStyleSet);

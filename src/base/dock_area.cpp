@@ -780,7 +780,7 @@ El* DockArea::New(Ctx* cx, Str id, Entity<DockState> state,
     // one stacks them down the window instead, which is what every renderer
     // that is not the themed skin used to get, because the row lived in the
     // skin's frame and a bare hook is a bare `Div`.
-    box->Id(id)->FlexRow()->SizeFull()->ClipX()->ClipY();
+    box->Id(id)->FlexRowDir(cx->app)->SizeFull()->ClipX()->ClipY();
     box->BoundsOut(&s->bounds);
 
     // ToggleZoom: one panel over the whole area, and nothing else rendered.

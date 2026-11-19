@@ -218,6 +218,22 @@ static void ArrowKeysRoveFocusAcrossItems() {
     TestAppFree(r.app);
 }
 
+// toolbar.rs: arrow_keys_follow_global_rtl_direction.
+static void ArrowKeysFollowRightToLeftDirection() {
+    Rove r = RoveOpen(3);
+    RoveView* v = r.View();
+    LayoutDirectionSetGlobal(r.app, LayoutDirection::Rtl);
+    TestSimulateKeystrokes(r.win, "left");
+    utassert(r.Focused(v->items[1]));
+    TestSimulateKeystrokes(r.win, "left");
+    utassert(r.Focused(v->items[2]));
+    TestSimulateKeystrokes(r.win, "right");
+    utassert(r.Focused(v->items[1]));
+    TestSimulateKeystrokes(r.win, "right right");
+    utassert(r.Focused(v->items[2]));
+    TestAppFree(r.app);
+}
+
 // toolbar.rs: a_vertical_toolbar_roves_with_up_and_down.
 static void AVerticalToolbarRovesWithUpAndDown() {
     Rove r = RoveOpen(3, false, Axis::Vertical);
@@ -424,6 +440,7 @@ void TestToolbar() {
     TestSuite("toolbar");
     BaseToolbarBuilders();
     ArrowKeysRoveFocusAcrossItems();
+    ArrowKeysFollowRightToLeftDirection();
     AVerticalToolbarRovesWithUpAndDown();
     ArrowKeysWrapAmongManyPageStops();
     AToolbarWithOneItemKeepsFocusOnIt();

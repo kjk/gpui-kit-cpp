@@ -1,4 +1,5 @@
 #include "ui/popover.h"
+#include "base/layout_direction.h"
 #include "ui/button.h"
 #include "base/actions.h"
 
@@ -319,7 +320,7 @@ El* Popover::IntoEl() {
     }
     if (surface && arrow) {
         arrowState = ArenaNew<PopoverArrowState>(a);
-        arrowState->anchor = anchor;
+        arrowState->anchor = LogicalAnchor(anchor, cx->app);
         arrowState->size = arrowSize;
         arrowState->radius = th.radius;
         // The background the caller's style set, falling back to the

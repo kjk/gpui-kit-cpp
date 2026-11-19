@@ -1,4 +1,5 @@
 #include "ui/badge.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -74,11 +75,11 @@ El* Badge::IntoEl() {
                    ->Bg(bg)
                    ->Fg(Rgb(0xff, 0xff, 0xff));
     if (kind == BadgeKind::Dot) {
-        mark->Top(0)->Right(0)->W(6)->H(6)->Radius(3);
+        mark->Top(0)->InsetE(0, cx->app)->W(6)->H(6)->Radius(3);
     } else if (kind == BadgeKind::Icon) {
         // The ring in the page's own background is what separates the glyph
         // from whatever it sits on.
-        mark->Right(0)
+        mark->InsetE(0, cx->app)
             ->Bottom(0)
             ->W(box)
             ->H(box)
@@ -102,7 +103,7 @@ El* Badge::IntoEl() {
         }
         // py_0p5 / px_0p5 / min_w_3p5 are rems; text_size(px(10.)) is not.
         mark->Top(top)
-            ->Right(-step * (float)len(txt))
+            ->InsetE(-step * (float)len(txt), cx->app)
             ->Pad(Rems(cx, 0.125f))
             ->MinW(Rems(cx, 0.875f))
             ->Radius(7)

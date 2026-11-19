@@ -1,4 +1,5 @@
 #include "base/dock.h"
+#include "base/layout_direction.h"
 
 #include "base/resizable.h"
 
@@ -1256,6 +1257,14 @@ void DockToggleSide(DockState* s, Ctx* cx, DockPlacement p) {
     DockEmit(s, cx);
 }
 
+DockPlacement DockPhysicalPlacement(DockPlacement placement, const App* app) {
+    if (LayoutIsRtl(app)) {
+        if (placement == DockPlacement::Left) return DockPlacement::Right;
+        if (placement == DockPlacement::Right) return DockPlacement::Left;
+    }
+    return placement;
+}
+
 void DockResizeSide(DockState* s, Ctx* cx, DockPlacement p, float x, float y) {
     DockSide* side = DockSideOf(s, p);
     if (!side) {
@@ -1271,8 +1280,10 @@ void DockResizeSide(DockState* s, Ctx* cx, DockPlacement p, float x, float y) {
             ? s->right.size
             : 0;
     float opposite = p == DockPlacement::Left ? rightSize : leftSize;
-    DockSizing sizing =
-        DockSizing::New(p).WithAreaBounds(b).WithOppositeDockSize(opposite);
+    DockPlacement physical = DockPhysicalPlacement(p, cx ? cx->app : nullptr);
+    DockSizing sizing = DockSizing::New(physical)
+                            .WithAreaBounds(b)
+                            .WithOppositeDockSize(opposite);
     // A collapsible bottom dock follows the pointer below the minimum down to
     // its closed strip, so closing it by drag is one continuous motion. That
     // size is only shown, and DockEndSideResize settles it on release. A

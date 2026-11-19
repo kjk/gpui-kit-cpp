@@ -1,4 +1,5 @@
 #include "ui/status_bar.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -44,13 +45,17 @@ El* StatusBar::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // `region()`: h_flex().overflow_hidden().items_center().gap_2().
     auto region = [&]() {
-        return Div(a)->FlexRow()->ClipX()->ClipY()->ItemsCenter()->Gap(
-            Rems(cx, 0.5f));
+        return Div(a)
+            ->FlexRowDir(cx->app)
+            ->ClipX()
+            ->ClipY()
+            ->ItemsCenter()
+            ->Gap(Rems(cx, 0.5f));
     };
     bool hasLeft = left.len > 0;
     bool hasRight = right.len > 0;
     El* bar = Div(a)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->W(kFill)
                   ->Shrink0()
                   ->ItemsCenter()
@@ -70,7 +75,7 @@ El* StatusBar::IntoEl() {
     if (hasLeft && hasRight) {
         mid->JustifyCenter();
     } else if (hasLeft) {
-        mid->JustifyEnd();
+        mid->JustifyFlexEnd();
     }
     for (int i = 0; i < center.len; i++) {
         mid->Child(center[i]);

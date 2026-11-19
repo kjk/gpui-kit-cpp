@@ -1,4 +1,5 @@
 #include "ui/root.h"
+#include "base/layout_direction.h"
 #include "ui/dialog.h"
 #include "ui/window_border.h"
 #include "ui/global_state.h"
@@ -72,8 +73,9 @@ El* WindowStateLayers(Ctx* cx) {
     // on its own edge.
     if (wl->notifications.IsValid()) {
         El* list = NotificationList::New(cx, wl->notifications)->IntoEl();
-        Edges in = RootNotificationInsets(wl->hasSheet, wl->sheet.placement,
-                                          wl->sheet.size);
+        Edges in = RootNotificationInsets(
+            wl->hasSheet, SheetPhysicalPlacement(wl->sheet.placement, cx->app),
+            wl->sheet.size);
         // Keep toasts out from under the system bars and the keyboard.
         // The sheet still pushes them off its own edge, inside that area.
         Edges safe = WindowSafeInsets(cx->win);
@@ -200,6 +202,9 @@ static void WindowStateStyle(void*, El* surface, Ctx* cx) {
     surface->Bg(th.tokens.background)
         ->Fg(th.foreground)
         ->Corners(corners.tl, corners.tr, corners.br, corners.bl);
+    if (LayoutIsRtl(cx->app)) {
+        surface->TextStart(cx->app);
+    }
 }
 
 static El* WindowStateDecorate(void*, El* surface, const Root*, Ctx* cx) {

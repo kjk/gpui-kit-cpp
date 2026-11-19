@@ -1071,7 +1071,9 @@ enum class Justify : uint8_t {
     // Nothing named: gpui's `justify_content: None`. Taffy reads it as
     // flex-start in a flex container — the far end of a reversed one — and
     // as `normal` in a grid, which stretches its auto tracks to fill it.
-    Normal
+    Normal,
+    FlexStart,
+    FlexEnd
 };
 // gpui's Overflow, per axis: `overflow_hidden` clips and
 // `overflow_x_scroll` / `overflow_y_scroll` scroll.
@@ -3018,6 +3020,7 @@ struct El {
     El* FlexRow();
     El* FlexCol();
     El* FlexRowReverse();
+    El* FlexRowDir(const App* app);
     El* FlexColReverse();
     El* FlexWrap();
     El* Grow(float g = 1);
@@ -3093,6 +3096,8 @@ struct El {
     El* PadY(float v);
     El* PadL(float v);
     El* PadR(float v);
+    El* PadS(float v, const App* app);
+    El* PadE(float v, const App* app);
     El* PadT(float v);
     El* PadB(float v);
     El* Margin(float v);
@@ -3100,6 +3105,8 @@ struct El {
     El* MarginY(float v);
     El* MarginL(float v);
     El* MarginR(float v);
+    El* MarginS(float v, const App* app);
+    El* MarginE(float v, const App* app);
     El* MarginT(float v);
     El* MarginB(float v);
     // ml_auto(): the left margin takes whatever the line leaves over, which
@@ -3118,17 +3125,23 @@ struct El {
     El* JustifyCenter();
     El* JustifyEnd();
     El* JustifyStart();
+    El* JustifyFlexStart();
+    El* JustifyFlexEnd();
     El* Bg(Background c);
     El* Border(float width, Rgba c);
     El* BorderT(float width, Rgba c);
     El* BorderB(float width, Rgba c);
     El* BorderL(float width, Rgba c);
     El* BorderR(float width, Rgba c);
+    El* BorderS(float width, Rgba c, const App* app);
+    El* BorderE(float width, Rgba c, const App* app);
     El* Shadows(const BoxShadow* values, int count);
     El* Radius(float r);
     // rounded_tl / rounded_tr / rounded_br / rounded_bl, as one call. A corner
     // left at 0 is square, which is what `rounded_none` does to all four.
     El* Corners(float tl, float tr, float br, float bl);
+    El* RadiusS(float radius, const App* app);
+    El* RadiusE(float radius, const App* app);
     El* Fg(Rgba c);
     El* Font(float px);
     El* LineHeight(float mult);
@@ -3141,6 +3154,8 @@ struct El {
     El* TextLeft() { return TextAlignment(TextAlign::Left); }
     El* TextCenter() { return TextAlignment(TextAlign::Center); }
     El* TextRight() { return TextAlignment(TextAlign::Right); }
+    El* TextStart(const App* app);
+    El* TextEnd(const App* app);
     El* Truncate();
     El* ClipY();
     El* ScrollY(float off);
@@ -3330,6 +3345,8 @@ struct El {
     El* Left(float v);
     El* Bottom(float v);
     El* Right(float v);
+    El* InsetS(float v, const App* app);
+    El* InsetE(float v, const App* app);
     // Styled::inset_0: top, right, bottom and left all 0.
     El* Inset0();
     El* LeftRel(float frac);
@@ -6592,10 +6609,12 @@ float SliderSnapToStep(float value, float min, float max, float step);
 // update_value_by_position. `isStart` moves the low end of a range. Rust ends
 // this with `cx.emit(SliderEvent::Change)`; the window here raises the event
 // instead, so this returns whether the value actually moved.
-bool SliderUpdateByPosition(SliderState* s, Axis axis, Point pos, bool isStart);
+bool SliderUpdateByPosition(SliderState* s, Axis axis, Point pos, bool isStart,
+                            bool rtl = false);
 // Which end of a range a press at `pos` takes, by the midpoint between the two
 // thumbs — the `is_start` arm of SliderTrack's mouse-down handler.
-bool SliderIsStartAt(const SliderState* s, Axis axis, Point pos);
+bool SliderIsStartAt(const SliderState* s, Axis axis, Point pos,
+                     bool rtl = false);
 // handle_release: true when a Release event is due.
 bool SliderHandleRelease(SliderState* s);
 // accessibility_step and step_thumb. The window emits Change when the thumb

@@ -1,6 +1,7 @@
 #include "ui/i18n.h"
 #include "ui/time.h"
 #include "ui/button.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -141,9 +142,8 @@ static El* ThemedCalendarItem(void* user, Ctx* cx, El* item,
             bool on = !st.disabled;
             item->Radius(th.radius)
                 ->Child(IconEl(a,
-                               st.kind == CalendarItemKind::Previous
-                                   ? IconName::ChevronLeft
-                                   : IconName::ChevronRight,
+                               DirectionalChevron(
+                                   cx->app, st.kind == CalendarItemKind::Next),
                                Rems(cx, 1))
                             ->Fg(on ? th.foreground : th.mutedFg));
             if (on) {

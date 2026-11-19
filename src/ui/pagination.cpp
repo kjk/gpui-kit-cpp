@@ -1,4 +1,5 @@
 #include "ui/i18n.h"
+#include "base/layout_direction.h"
 #include "ui/pagination.h"
 #include "ui/button.h"
 #include "ui/menu.h"
@@ -89,7 +90,7 @@ El* Pagination::IntoEl() {
     st.visiblePages = visiblePages;
     st.disabled = disabled;
     El* row = gpui::Pagination::New(cx, base)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   // px_2 / py_2 / gap_1
                   ->PadX(Rems(cx, 0.5f))
                   ->PadY(Rems(cx, 0.5f))
@@ -111,13 +112,15 @@ El* Pagination::IntoEl() {
                        ->WithSize(size)
                        ->Disabled(disabled || !hasNext);
     if (compact) {
-        prev->Icon(IconName::ChevronLeft);
-        next->Icon(IconName::ChevronRight);
+        prev->Icon(DirectionalChevron(cx->app, false));
+        next->Icon(DirectionalChevron(cx->app, true));
     } else {
         // The nav content is a row of [label, icon], reversed for Previous:
         // the chevron leads the word going back and follows it going on.
-        prev->Icon(IconName::ChevronLeft)->Label(Tr("Pagination.previous"));
-        next->Label(Tr("Pagination.next"))->IconRight(IconName::ChevronRight);
+        prev->Icon(DirectionalChevron(cx->app, false))
+            ->Label(Tr("Pagination.previous"));
+        next->Label(Tr("Pagination.next"))
+            ->IconRight(DirectionalChevron(cx->app, true));
     }
     if (hasPrev && onChange.IsValid()) {
         prev->OnClick(ListenerArg(onChange, (int64_t)prevPage));

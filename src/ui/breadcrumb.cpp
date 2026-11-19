@@ -1,4 +1,5 @@
 #include "ui/breadcrumb.h"
+#include "base/layout_direction.h"
 
 namespace gpui {
 
@@ -62,12 +63,13 @@ Breadcrumb* Breadcrumb::Child(Str label) {
 
 El* Breadcrumb::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    El* row =
-        Div(a)->FlexRow()->ItemsCenter()->Gap(Rems(cx, 0.375f)); // gap_1p5
+    El* row = Div(a)->FlexRowDir(cx->app)->ItemsCenter()->Gap(
+        Rems(cx, 0.375f)); // gap_1p5
     for (int i = 0; i < items.len; i++) {
         if (i) {
-            row->Child(IconEl(a, IconName::ChevronRight, Rems(cx, 0.875f))
-                           ->Fg(th.mutedFg));
+            row->Child(
+                IconEl(a, DirectionalChevron(cx->app, true), Rems(cx, 0.875f))
+                    ->Fg(th.mutedFg));
         }
         BreadcrumbItem* it = items[i];
         it->ix = i;

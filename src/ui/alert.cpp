@@ -1,4 +1,5 @@
 #include "ui/alert.h"
+#include "base/layout_direction.h"
 #include "ui/text.h"
 
 namespace gpui {
@@ -130,7 +131,7 @@ El* Alert::IntoEl() {
     // top instead. text_sm whatever the size is.
     El* row = Div(a)
                   ->Role(AccessibilityRole::Alert)
-                  ->FlexRow()
+                  ->FlexRowDir(cx->app)
                   ->W(kFill)
                   ->Gap(gap)
                   ->PadX(padX)
@@ -145,7 +146,7 @@ El* Alert::IntoEl() {
     } else {
         row->ItemsStart()->Radius(radius);
     }
-    El* inner = Div(a)->FlexRow()->Flex1()->Gap(gap)->ClipX();
+    El* inner = Div(a)->FlexRowDir(cx->app)->Flex1()->Gap(gap)->ClipX();
     if (banner) {
         inner->ItemsCenter();
     }
