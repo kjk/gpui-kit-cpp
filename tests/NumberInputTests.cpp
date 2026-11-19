@@ -280,6 +280,7 @@ struct NumberInputStepperProbe {
     bool showStepper = true;
     bool hasDecrement = false;
     bool hasIncrement = false;
+    Bounds incrementBounds = {};
 
     static El* Render(NumberInputStepperProbe* self, Ctx* cx) {
         auto* input = component::NumberInput::New(cx, &self->input);
@@ -288,7 +289,11 @@ struct NumberInputStepperProbe {
         }
         El* el = input->IntoEl();
         self->hasDecrement = FindNamed(el, "decrement") != nullptr;
-        self->hasIncrement = FindNamed(el, "increment") != nullptr;
+        El* increment = FindNamed(el, "increment");
+        self->hasIncrement = increment != nullptr;
+        if (increment) {
+            increment->BoundsOut(&self->incrementBounds);
+        }
         return el;
     }
 };
@@ -314,6 +319,38 @@ static void HiddenStepperKeepsKeyboardStepping() {
     TestAppFree(app);
 }
 
+// crates/component/src/input/number_input.rs::interaction_tests
+static void StepButtonKeepsTheEditorFocused() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto view = EntityNew<NumberInputStepperProbe>(app);
+    auto* probe = view.Get(app);
+    InputSetValue(&probe->input, StrL("3"));
+    Window* win = TestWindowOpen(app, view);
+    InputFocus(&probe->input, app, win);
+    TestDraw(win);
+    int tracked = 0;
+    for (const FocusRect& rect : win->focusEls) {
+        tracked += rect.id == probe->input.focus.id;
+    }
+    utassert(tracked == 1);
+
+    Point center = {probe->incrementBounds.CenterX(), probe->incrementBounds
+                                                          .CenterY()};
+    TestSimulateMouseMove(win, center);
+    TestSimulateMouseDown(win, center);
+    utassert(probe->input.focused &&
+             FocusHandleIsFocused(win, probe->input.focus));
+    utassert(StrEqI(InputValue(&probe->input), "3"));
+    TestSimulateMouseUp(win, center);
+    utassert(probe->input.focused &&
+             FocusHandleIsFocused(win, probe->input.focus));
+    utassert(StrEqI(InputValue(&probe->input), "4"));
+    TestSimulateKeystrokes(win, "up up down");
+    utassert(StrEqI(InputValue(&probe->input), "5"));
+    TestAppFree(app);
+}
+
 void TestNumberInput() {
     TestSuite("number_input");
     TwoSpinbuttonsHaveTwoIncrements();
@@ -325,4 +362,5 @@ void TestNumberInput() {
     ApplyStepValidatesAndFallsBackToTheStepEvent();
     ThemedDefaultUsesOneSharedSemanticStep();
     HiddenStepperKeepsKeyboardStepping();
+    StepButtonKeepsTheEditorFocused();
 }

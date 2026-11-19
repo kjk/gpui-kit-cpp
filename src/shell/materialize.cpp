@@ -2849,8 +2849,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         element = NumberInput::Compose(cx, nativeId, state, behavior.disabled,
                                        decrementButton, editor, incrementButton,
                                        behavior.controlsRight, ordinary);
-        element->TrackFocus(state->focus)
-            ->OnAccessibilityDecrement(decrement)
+        element->OnAccessibilityDecrement(decrement)
             ->OnAccessibilityIncrement(increment)
             ->OnKeyDown(Listen(cx, &ScriptView::OnNumberKey, (int64_t)key));
         double numeric = 0;

@@ -229,6 +229,16 @@ El* NumberInput::New(Ctx* cx, Str id, InputState* state) {
     return New(cx, id);
 }
 
+static void FocusNumberInputEditor(void*, Ctx* cx, const MouseDownEvent* ev,
+                                   int64_t arg) {
+    InputState* state = (InputState*)(intptr_t)arg;
+    if (!ev->IsFocusing() || WindowDefaultPrevented(cx->win)) {
+        return;
+    }
+    InputFocus(state, cx);
+    WindowPreventDefault(cx);
+}
+
 El* NumberInput::Compose(Ctx* cx, Str id, InputState* state, bool disabled,
                          El* decrement, El* input, El* increment,
                          bool controlsRight, El* children, bool stepper) {
@@ -239,6 +249,12 @@ El* NumberInput::Compose(Ctx* cx, Str id, InputState* state, bool disabled,
                    ->ItemsCenter()
                    ->W(kFill)
                    ->H(kFill);
+    if (state && !disabled) {
+        // The editor owns the handle. Frame presses can focus it without
+        // registering a second focus target for accessibility.
+        root->OnMouseDown(
+            Listen(cx, &FocusNumberInputEditor, (int64_t)(intptr_t)state));
+    }
     NumberInputText* text = NumberInputText::New(cx)->Child(input);
     if (children) {
         text->Child(children);

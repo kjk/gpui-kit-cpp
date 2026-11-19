@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2e170f195f4e71ab75e4fb1b676710d4f2a8147f` (2026-11-10,
-input: Report a disabled input as disabled to assistive technology (#3877)).
-InputBase already uses its interactive flag to mark disabled text inputs in
-the accessibility tree. The Base control regression now checks both input
-states.
+Processed through `7641538edce301f88637db6723a538bda27f651d` (2026-11-10,
+number_input: Stop the frame from claiming the editor's focus (#3875)).
+The number input frame forwards a primary press to its editor. The editor owns
+the focus handle and keeps it during step-button clicks. The shell
+materializer no longer registers that handle a second time.
 The current update target is
 `390a485aba2e8ab92754a23b84eecedf4155b562`.
 
