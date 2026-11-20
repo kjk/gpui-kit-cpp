@@ -557,6 +557,8 @@ static bool PressedButton(MouseButton* out) {
   @public
     gpui::Window* win;
     __strong NSString* textContentType;
+    // The drag over the view carries text or a link, not files.
+    BOOL textDrag;
 }
 @end
 
@@ -670,6 +672,32 @@ static gpui::Str TextInputString(id string) {
     return out;
 }
 
+// Not in Rust: a drag of text or a link (a browser's image) and no files is
+// an ExternalText drag. Returns false when it has neither.
+- (bool)textDrop:(id<NSDraggingInfo>)sender at:(NSPoint)p {
+    NSPasteboard* pb = [sender draggingPasteboard];
+    NSString* text = [pb stringForType:NSPasteboardTypeString];
+    NSString* url = nil;
+    NSArray<NSURL*>* urls =
+        [pb readObjectsForClasses:@[ [NSURL class] ] options:nil];
+    for (NSURL* u in urls) {
+        if (![u isFileURL]) {
+            url = [u absoluteString];
+            break;
+        }
+    }
+    const char* t = text.UTF8String;
+    const char* u = url.UTF8String;
+    if ((!t || !t[0]) && (!u || !u[0])) {
+        return false;
+    }
+    gpui::PlatformInput in = gpui::InputTextDrop(
+        gpui::FileDropPhase::Entered, (float)p.x, (float)p.y,
+        t ? gpui::Str(t) : gpui::Str{}, u ? gpui::Str(u) : gpui::Str{});
+    gpui::WindowDispatchInput(win, &in);
+    return true;
+}
+
 - (void)fileDrop:(id<NSDraggingInfo>)sender phase:(gpui::FileDropPhase)phase {
     if (!win) {
         return;
@@ -678,6 +706,10 @@ static gpui::Str TextInputString(id string) {
     gpui::Str paths = {};
     if (phase == gpui::FileDropPhase::Entered) {
         paths = [self fileDropPaths:sender];
+        textDrag = gpui::len(paths) == 0 && [self textDrop:sender at:p];
+        if (textDrag) {
+            return;
+        }
     }
     gpui::PlatformInput in =
         gpui::InputFileDrop(phase, (float)p.x, (float)p.y, paths);
@@ -685,13 +717,22 @@ static gpui::Str TextInputString(id string) {
     gpui::StrFree(paths);
 }
 
+// Files are always offered a copy, as in Rust; text only over a taker.
+- (NSDragOperation)dropOperation {
+    if (!textDrag) {
+        return NSDragOperationCopy;
+    }
+    bool taken = win && win->fileDrop && win->dragOverId != 0;
+    return taken ? NSDragOperationCopy : NSDragOperationNone;
+}
+
 - (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
     [self fileDrop:sender phase:gpui::FileDropPhase::Entered];
-    return NSDragOperationCopy;
+    return [self dropOperation];
 }
 - (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
     [self fileDrop:sender phase:gpui::FileDropPhase::Pending];
-    return NSDragOperationCopy;
+    return [self dropOperation];
 }
 - (void)draggingExited:(id<NSDraggingInfo>)sender {
     [self fileDrop:sender phase:gpui::FileDropPhase::Exited];
@@ -2482,6 +2523,189 @@ bool PlatWindowPrompt(Window* win, PromptRequest* req) {
     return true;
 }
 
+// ─── drag out (no Rust twin) ─────────────────────────────────────────────────
+
+} // namespace gpui
+
+// The source of a drag out, and the delegate writing the image's promised
+// file. The request holds it (CFBridgingRetain) until the session ends; the
+// promise provider keeps it as userInfo until the file is written.
+@interface GpuiDragSource
+    : NSObject <NSDraggingSource, NSFilePromiseProviderDelegate> {
+  @public
+    gpui::DragOutRequest* req;
+    __strong NSData* png;
+    __strong NSString* pngName;
+}
+@end
+
+@implementation GpuiDragSource
+- (NSDragOperation)draggingSession:(NSDraggingSession*)session
+    sourceOperationMaskForDraggingContext:(NSDraggingContext)context {
+    (void)session, (void)context;
+    return NSDragOperationCopy;
+}
+- (void)draggingSession:(NSDraggingSession*)session
+           endedAtPoint:(NSPoint)point
+              operation:(NSDragOperation)op {
+    (void)session, (void)point;
+    gpui::DragOutResult result = gpui::DragOutResult::Canceled;
+    if (op & NSDragOperationMove) {
+        result = gpui::DragOutResult::Moved;
+    } else if (op & NSDragOperationCopy) {
+        result = gpui::DragOutResult::Copied;
+    } else if (op & NSDragOperationLink) {
+        result = gpui::DragOutResult::Linked;
+    }
+    gpui::DragOutRequest* r = req;
+    req = nullptr;
+    if (!r) {
+        return;
+    }
+    void* plat = r->plat;
+    r->plat = nullptr;
+    gpui::DragOutFinish(r, result);
+    if (plat) {
+        CFBridgingRelease(plat);
+    }
+}
+- (NSString*)filePromiseProvider:(NSFilePromiseProvider*)provider
+                 fileNameForType:(NSString*)fileType {
+    (void)provider, (void)fileType;
+    return pngName;
+}
+- (void)filePromiseProvider:(NSFilePromiseProvider*)provider
+          writePromiseToURL:(NSURL*)url
+          completionHandler:(void (^)(NSError* error))done {
+    (void)provider;
+    NSError* err = nil;
+    [png writeToURL:url options:NSDataWritingAtomic error:&err];
+    done(err);
+}
+@end
+
+namespace gpui {
+
+// The image scaled into the preview's size, on white with a 1px border.
+static NSImage* DragOutPreviewImage(NSImage* img, const DragOutPreview& p) {
+    NSSize size = NSMakeSize(p.w, p.h);
+    return [NSImage
+         imageWithSize:size
+               flipped:NO
+        drawingHandler:^BOOL(NSRect r) {
+          [[NSColor whiteColor] setFill];
+          NSRectFill(r);
+          [img drawInRect:r
+                 fromRect:NSZeroRect
+                operation:NSCompositingOperationSourceOver
+                 fraction:1];
+          [[NSColor colorWithCalibratedWhite:60.0 / 255.0 alpha:1] setFill];
+          NSFrameRect(r);
+          return YES;
+        }];
+}
+
+// One dragging item per payload: the text, each file, the promised image.
+// The first carries the preview under the pointer; files show their icons.
+static NSArray<NSDraggingItem*>* DragOutItems(const DragOutData& d,
+                                              GpuiDragSource* src, NSPoint at) {
+    NSMutableArray<NSDraggingItem*>* items = [NSMutableArray array];
+    DragOutFormat formats[3];
+    int n = DragOutFormats(d, formats);
+    for (int i = 0; i < n; i++) {
+        if (formats[i] == DragOutFormat::Text) {
+            NSPasteboardItem* pi = [[NSPasteboardItem alloc] init];
+            [pi setString:PromptNSString(d.text)
+                  forType:NSPasteboardTypeString];
+            NSDraggingItem* item =
+                [[NSDraggingItem alloc] initWithPasteboardWriter:pi];
+            [item setDraggingFrame:NSMakeRect(at.x, at.y, 1, 1) contents:nil];
+            [items addObject:item];
+        } else if (formats[i] == DragOutFormat::Paths) {
+            const float kIconSize = 32;
+            Str rest = d.paths;
+            while (len(rest) > 0) {
+                int k = 0;
+                while (k < len(rest) && rest.s[k] != '\n') {
+                    k++;
+                }
+                Str line(rest.s, k);
+                int skip = k < len(rest) ? k + 1 : k;
+                rest = Str(rest.s + skip, len(rest) - skip);
+                if (len(line) == 0) {
+                    continue;
+                }
+                NSString* path = PromptNSString(line);
+                NSURL* url = [NSURL fileURLWithPath:path];
+                NSDraggingItem* item =
+                    [[NSDraggingItem alloc] initWithPasteboardWriter:url];
+                NSRect frame =
+                    NSMakeRect(at.x - kIconSize / 2, at.y - kIconSize / 2,
+                               kIconSize, kIconSize);
+                [item setDraggingFrame:frame
+                              contents:[[NSWorkspace sharedWorkspace]
+                                           iconForFile:path]];
+                [items addObject:item];
+            }
+        } else {
+            NSFilePromiseProvider* prov =
+                [[NSFilePromiseProvider alloc] initWithFileType:@"public.png"
+                                                       delegate:src];
+            prov.userInfo = src;
+            NSDraggingItem* item =
+                [[NSDraggingItem alloc] initWithPasteboardWriter:prov];
+            NSImage* img = [[NSImage alloc] initWithData:src->png];
+            DragOutPreview p = img ? DragOutPreviewSize(d, (int)img.size.width,
+                                                        (int)img.size.height, 1)
+                                   : DragOutPreview{};
+            if (p.w > 0) {
+                // The view is flipped: hotY is down from the top.
+                NSRect frame =
+                    NSMakeRect(at.x - p.hotX, at.y - p.hotY, p.w, p.h);
+                [item setDraggingFrame:frame
+                              contents:DragOutPreviewImage(img, p)];
+            } else {
+                [item setDraggingFrame:NSMakeRect(at.x, at.y, 1, 1)
+                              contents:nil];
+            }
+            // The preview goes first, under the pointer.
+            [items insertObject:item atIndex:0];
+        }
+    }
+    return items;
+}
+
+// AppKit's session needs the mouse event that started the drag, so this runs
+// from the handler of the press or move rather than from the queue.
+bool PlatStartDragOut(Window* win, DragOutRequest* req) {
+    GpuiView* view = win && win->plat ? win->plat->view : nil;
+    NSEvent* ev = [NSApp currentEvent];
+    if (!view || !ev) {
+        return false;
+    }
+    NSEventType t = [ev type];
+    if (t != NSEventTypeLeftMouseDown && t != NSEventTypeLeftMouseDragged) {
+        return false;
+    }
+    GpuiDragSource* src = [[GpuiDragSource alloc] init];
+    src->req = req;
+    if (req->data.imageBytes && req->data.imageBytesLen > 0) {
+        src->png = [NSData dataWithBytes:req->data.imageBytes
+                                  length:(NSUInteger)req->data.imageBytesLen];
+        src->pngName = PromptNSString(DragOutImageName(req->data));
+    }
+    NSPoint at = [view convertPoint:[ev locationInWindow] fromView:nil];
+    NSArray<NSDraggingItem*>* items = DragOutItems(req->data, src, at);
+    if ([items count] == 0) {
+        return false;
+    }
+    req->plat = (void*)CFBridgingRetain(src);
+    NSDraggingSession* session =
+        [view beginDraggingSessionWithItems:items event:ev source:src];
+    session.animatesToStartingPositionsOnCancelOrFail = YES;
+    return true;
+}
+
 // The UTTypes of `exts`, or nil for none. Looked up by name: UTType lives in
 // UniformTypeIdentifiers, which AppKit loads and this library does not link.
 static NSArray* PanelContentTypes(const Vec<Str>& exts) {
@@ -2802,7 +3026,9 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         }
         GpuiView* view = [[GpuiView alloc] initWithFrame:frame];
         view->win = win;
-        [view registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
+        [view registerForDraggedTypes:@[
+            NSPasteboardTypeFileURL, NSPasteboardTypeURL, NSPasteboardTypeString
+        ]];
         GpuiWindowDelegate* del = [[GpuiWindowDelegate alloc] init];
         del->win = win;
 

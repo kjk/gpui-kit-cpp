@@ -132,5 +132,11 @@ bool TestPendingPrompt(Str* message, Str* detail);
 // or no such button (Rust panics).
 bool TestSimulatePromptAnswer(Str response);
 
+// The test platform keeps a WindowStartDragOut for the test to end (no Rust
+// twin). TestPendingDragOut: its payload, borrowed; false for none.
+bool TestPendingDragOut(DragOutData* out);
+// Ends it as the drop target did, then runs until parked. False for none.
+bool TestFinishDragOut(DragOutResult result);
+
 } // namespace gpui
 #endif // GPUI_GPUI_TEST_APP_H_

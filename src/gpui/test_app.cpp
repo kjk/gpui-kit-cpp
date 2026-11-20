@@ -124,6 +124,55 @@ bool TestSimulatePromptAnswer(Str response) {
     return true;
 }
 
+// The drag out a test has not finished yet: one at a time, as on a desktop.
+static DragOutRequest* gTestDragOut = nullptr;
+
+static void TestDragOutDrop() {
+    DragOutRequest* req = gTestDragOut;
+    gTestDragOut = nullptr;
+    if (req) {
+        if (req->win && req->win->dragOut == req) {
+            req->win->dragOut = nullptr;
+        }
+        req->win = nullptr;
+        DragOutFinish(req, DragOutResult::Canceled);
+    }
+}
+
+bool TestPlatformOn() {
+    return gTestPlatform.on;
+}
+
+bool TestPlatformDragOut(DragOutRequest* req) {
+    if (!gTestPlatform.on || !req || gTestDragOut) {
+        return false;
+    }
+    gTestDragOut = req;
+    return true;
+}
+
+bool TestPendingDragOut(DragOutData* out) {
+    if (!gTestDragOut) {
+        return false;
+    }
+    if (out) {
+        *out = gTestDragOut->data;
+    }
+    return true;
+}
+
+bool TestFinishDragOut(DragOutResult result) {
+    DragOutRequest* req = gTestDragOut;
+    if (!req) {
+        return false;
+    }
+    gTestDragOut = nullptr;
+    App* app = req->app;
+    DragOutFinish(req, result);
+    TestRunUntilParked(app);
+    return true;
+}
+
 RenderImage* TestMakeSizedImage(PaintApp* paint, int width, int height) {
     if (width <= 0 || height <= 0 || height > INT32_MAX / 4 / width) {
         return nullptr;
@@ -153,6 +202,7 @@ App* TestAppNew() {
     }
     StrFree(gTestPlatform.clipboard);
     TestPromptsDrop();
+    TestDragOutDrop();
     gTestPlatform = TestPlatform{};
     gTestPlatform.on = true;
     gTestPlatform.now = kTestClockStart;
@@ -161,6 +211,7 @@ App* TestAppNew() {
 
 void TestAppFree(App* app) {
     TestPromptsDrop();
+    TestDragOutDrop();
     AppFreeHeadless(app);
     StrFree(gTestPlatform.clipboard);
     gTestPlatform = TestPlatform{};

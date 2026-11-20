@@ -187,6 +187,7 @@ void TestListSettings();
 void TestStateStyle();
 void TestClick();
 void TestFileDrop();
+void TestDragOut();
 void TestPinch();
 void TestGesture();
 void TestCursorImage();

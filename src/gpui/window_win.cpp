@@ -14,6 +14,7 @@
 #include <imm.h>
 #include <ole2.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <shobjidl.h>
 #include <uiautomation.h>
 #include <wincodec.h>
@@ -687,10 +688,103 @@ static void ConfigureDwmDarkMode(HWND hwnd) {
 
 static Str ClipboardReadPaths(Arena* a, HANDLE handle);
 
-// IDropTarget for a file drag onto the window. gpui-pre-windows does the
-// same: CF_HDROP on enter, then pending / leave / drop as FileDropEvent.
+// The next line of newline-separated `rest`, which moves past it.
+static Str NextLine(Str* rest) {
+    int i = 0;
+    while (i < len(*rest) && rest->s[i] != '\n') {
+        i++;
+    }
+    Str line(rest->s, i);
+    if (i > 0 && line.s[i - 1] == '\r') {
+        line.len--;
+    }
+    int skip = i < len(*rest) ? i + 1 : i;
+    *rest = Str(rest->s + skip, len(*rest) - skip);
+    return line;
+}
+
+// A registered clipboard format's id, by name.
+static CLIPFORMAT ClipFormat(const WCHAR* name) {
+    return (CLIPFORMAT)RegisterClipboardFormatW(name);
+}
+
+// One HGLOBAL format of a dropped data object as UTF-8, from `a`; `wide`
+// says whether it holds UTF-16 or ANSI. Empty when it is not there.
+static Str DataObjectReadText(Arena* a, IDataObject* data, CLIPFORMAT cf,
+                              bool wide) {
+    FORMATETC fmt = {cf, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    STGMEDIUM medium = {};
+    if (!cf || FAILED(data->GetData(&fmt, &medium))) {
+        return {};
+    }
+    Str out = {};
+    const void* p = medium.hGlobal ? GlobalLock(medium.hGlobal) : nullptr;
+    SIZE_T size = p ? GlobalSize(medium.hGlobal) : 0;
+    if (p && wide) {
+        // Not trusted to be terminated: stop at the first NUL or the end.
+        const auto* w = (const WCHAR*)p;
+        int n = 0;
+        int maxChars = (int)(size / sizeof(WCHAR));
+        while (n < maxChars && w[n]) {
+            n++;
+        }
+        int bytes =
+            WideCharToMultiByte(CP_UTF8, 0, w, n, nullptr, 0, nullptr, nullptr);
+        char* buf = bytes > 0 ? (char*)Alloc(a, bytes + 1) : nullptr;
+        if (buf) {
+            WideCharToMultiByte(CP_UTF8, 0, w, n, buf, bytes, nullptr, nullptr);
+            buf[bytes] = 0;
+            out = Str(buf, bytes);
+        }
+    } else if (p) {
+        const auto* s = (const char*)p;
+        int n = 0;
+        while (n < (int)size && s[n]) {
+            n++;
+        }
+        char* buf = n > 0 ? (char*)Alloc(a, n + 1) : nullptr;
+        if (buf) {
+            memcpy(buf, s, (size_t)n);
+            buf[n] = 0;
+            out = Str(buf, n);
+        }
+    }
+    if (p) {
+        GlobalUnlock(medium.hGlobal);
+    }
+    ReleaseStgMedium(&medium);
+    return out;
+}
+
+// What an ExternalText drag carries: the text, and the link a browser puts
+// beside it ("UniformResourceLocatorW", or the ANSI one).
+static void DataObjectReadTextDrag(Arena* a, IDataObject* data, Str* text,
+                                   Str* url) {
+    *text = DataObjectReadText(a, data, CF_UNICODETEXT, true);
+    if (len(*text) == 0) {
+        *text = DataObjectReadText(a, data, CF_TEXT, false);
+    }
+    *url = DataObjectReadText(a, data, ClipFormat(L"UniformResourceLocatorW"),
+                              true);
+    if (len(*url) == 0) {
+        *url = DataObjectReadText(a, data,
+                                  ClipFormat(L"UniformResourceLocator"), false);
+    }
+}
+
+// IDropTarget for a drag onto the window. gpui-pre-windows does the same for
+// files: CF_HDROP on enter, then pending / leave / drop as FileDropEvent.
+// Not in Rust: text and links are an ExternalText drag, shown as refused
+// unless an element under the pointer takes it.
 struct FileDropTarget : ComObject<IDropTarget> {
+    enum class Kind : uint8_t {
+        None,
+        Paths,
+        Text
+    };
     Window* win = nullptr;
+    Kind kind = Kind::None;
+    DWORD lastEffect = DROPEFFECT_NONE;
 
     explicit FileDropTarget(Window* w) : win(w) {}
 
@@ -703,49 +797,81 @@ struct FileDropTarget : ComObject<IDropTarget> {
         *y = PxToDip(&win->paint, (int)pt.y);
     }
 
+    // Files are always offered a copy, as in Rust; text only over a taker.
+    DWORD Effect() {
+        if (kind == Kind::Paths) {
+            return DROPEFFECT_COPY;
+        }
+        bool taken =
+            kind == Kind::Text && win && win->fileDrop && win->dragOverId != 0;
+        return taken ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+    }
+
     HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL pt,
                                         DWORD* effect) override {
+        kind = Kind::None;
+        lastEffect = DROPEFFECT_NONE;
         if (effect) {
             *effect = DROPEFFECT_NONE;
         }
         if (!win || !data) {
             return S_OK;
         }
-        FORMATETC fmt = {CF_HDROP, nullptr, DVASPECT_CONTENT, -1,
-                         TYMED_HGLOBAL};
-        if (data->QueryGetData(&fmt) != S_OK) {
-            return S_OK;
-        }
-        STGMEDIUM medium = {};
-        if (FAILED(data->GetData(&fmt, &medium))) {
-            return S_OK;
-        }
         Arena* a = ArenaNew();
-        Str paths = ClipboardReadPaths(a, medium.hGlobal);
-        ReleaseStgMedium(&medium);
         float x = 0, y = 0;
         At(pt, &x, &y);
-        PlatformInput in = InputFileDrop(FileDropPhase::Entered, x, y, paths);
-        WindowDispatchInput(win, &in);
+        FORMATETC fmt = {CF_HDROP, nullptr, DVASPECT_CONTENT, -1,
+                         TYMED_HGLOBAL};
+        STGMEDIUM medium = {};
+        if (data->QueryGetData(&fmt) == S_OK &&
+            SUCCEEDED(data->GetData(&fmt, &medium))) {
+            Str paths = ClipboardReadPaths(a, medium.hGlobal);
+            ReleaseStgMedium(&medium);
+            PlatformInput in =
+                InputFileDrop(FileDropPhase::Entered, x, y, paths);
+            kind = Kind::Paths;
+            WindowDispatchInput(win, &in);
+        } else {
+            Str text = {}, url = {};
+            DataObjectReadTextDrag(a, data, &text, &url);
+            if (len(text) > 0 || len(url) > 0) {
+                PlatformInput in =
+                    InputTextDrop(FileDropPhase::Entered, x, y, text, url);
+                kind = Kind::Text;
+                WindowDispatchInput(win, &in);
+            }
+        }
         ArenaDelete(a);
+        lastEffect = Effect();
         if (effect) {
-            *effect = DROPEFFECT_COPY;
+            *effect = lastEffect;
         }
         return S_OK;
     }
-    // A drag moving over the window, or let go on it: the paths came with
+    // A drag moving over the window, or let go on it: the payload came with
     // DragEnter, so only the position goes with the phase.
     HRESULT DispatchAt(FileDropPhase phase, POINTL pt, DWORD* effect) {
         if (effect) {
-            *effect = DROPEFFECT_COPY;
+            *effect = DROPEFFECT_NONE;
         }
-        if (!win) {
+        if (!win || kind == Kind::None) {
             return S_OK;
         }
+        // The drop lands where the last move said it could.
+        DWORD dropEffect = lastEffect;
         float x = 0, y = 0;
         At(pt, &x, &y);
         PlatformInput in = InputFileDrop(phase, x, y, {});
         WindowDispatchInput(win, &in);
+        if (phase == FileDropPhase::Submit) {
+            kind = Kind::None;
+        } else {
+            lastEffect = Effect();
+            dropEffect = lastEffect;
+        }
+        if (effect) {
+            *effect = dropEffect;
+        }
         return S_OK;
     }
     HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL pt,
@@ -753,11 +879,12 @@ struct FileDropTarget : ComObject<IDropTarget> {
         return DispatchAt(FileDropPhase::Pending, pt, effect);
     }
     HRESULT STDMETHODCALLTYPE DragLeave() override {
-        if (win) {
+        if (win && kind != Kind::None) {
             PlatformInput in = InputFileDrop(FileDropPhase::Exited, win->mouseX,
                                              win->mouseY, {});
             WindowDispatchInput(win, &in);
         }
+        kind = Kind::None;
         return S_OK;
     }
     HRESULT STDMETHODCALLTYPE Drop(IDataObject*, DWORD, POINTL pt,
@@ -765,6 +892,515 @@ struct FileDropTarget : ComObject<IDropTarget> {
         return DispatchAt(FileDropPhase::Submit, pt, effect);
     }
 };
+
+// ─── drag out (no Rust twin) ─────────────────────────────────────────────────
+
+static HGLOBAL GlobalFromBytes(const void* p, size_t n) {
+    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, n > 0 ? n : 1);
+    void* dst = h ? GlobalLock(h) : nullptr;
+    if (!dst) {
+        if (h) {
+            GlobalFree(h);
+        }
+        return nullptr;
+    }
+    if (n > 0) {
+        memcpy(dst, p, n);
+    }
+    GlobalUnlock(h);
+    return h;
+}
+
+// UTF-8 into `dst` as UTF-16 with its NUL; returns the chars written,
+// NUL included. `dst` null: how many it takes.
+static int WideInto(Str s, WCHAR* dst, int room) {
+    int n = len(s) > 0 ? MultiByteToWideChar(CP_UTF8, 0, s.s, len(s), dst,
+                                             dst ? room - 1 : 0)
+                       : 0;
+    if (dst) {
+        dst[n] = 0;
+    }
+    return n + 1;
+}
+
+static HGLOBAL GlobalFromText(Str text) {
+    int n = WideInto(text, nullptr, 0);
+    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, (size_t)n * sizeof(WCHAR));
+    auto* w = h ? (WCHAR*)GlobalLock(h) : nullptr;
+    if (!w) {
+        if (h) {
+            GlobalFree(h);
+        }
+        return nullptr;
+    }
+    WideInto(text, w, n);
+    GlobalUnlock(h);
+    return h;
+}
+
+// CF_HDROP: DROPFILES, then each path and its NUL, then one more NUL.
+static HGLOBAL GlobalFromPaths(Str paths) {
+    int chars = 1;
+    for (Str rest = paths; len(rest) > 0;) {
+        Str line = NextLine(&rest);
+        if (len(line) > 0) {
+            chars += WideInto(line, nullptr, 0);
+        }
+    }
+    size_t size = sizeof(DROPFILES) + (size_t)chars * sizeof(WCHAR);
+    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, size);
+    auto* df = h ? (DROPFILES*)GlobalLock(h) : nullptr;
+    if (!df) {
+        if (h) {
+            GlobalFree(h);
+        }
+        return nullptr;
+    }
+    df->pFiles = sizeof(DROPFILES);
+    df->fWide = TRUE;
+    auto* w = (WCHAR*)(df + 1);
+    int at = 0;
+    for (Str rest = paths; len(rest) > 0;) {
+        Str line = NextLine(&rest);
+        if (len(line) > 0) {
+            at += WideInto(line, w + at, chars - at);
+        }
+    }
+    w[at] = 0;
+    GlobalUnlock(h);
+    return h;
+}
+
+// CFSTR_FILEDESCRIPTORW for the one virtual file the image becomes.
+static HGLOBAL GlobalFromFileDescriptor(Str name, int size) {
+    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT,
+                            sizeof(FILEGROUPDESCRIPTORW));
+    auto* fgd = h ? (FILEGROUPDESCRIPTORW*)GlobalLock(h) : nullptr;
+    if (!fgd) {
+        if (h) {
+            GlobalFree(h);
+        }
+        return nullptr;
+    }
+    fgd->cItems = 1;
+    fgd->fgd[0].dwFlags = FD_FILESIZE | FD_ATTRIBUTES;
+    fgd->fgd[0].dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
+    fgd->fgd[0].nFileSizeLow = (DWORD)size;
+    WideInto(name, fgd->fgd[0].cFileName, MAX_PATH);
+    GlobalUnlock(h);
+    return h;
+}
+
+struct DragOutFormatEnum : ComObject<IEnumFORMATETC> {
+    static const int kMax = 6;
+    FORMATETC fmts[kMax] = {};
+    ULONG n = 0;
+    ULONG at = 0;
+
+    HRESULT STDMETHODCALLTYPE Next(ULONG want, FORMATETC* out,
+                                   ULONG* got) override {
+        if (!out) {
+            return E_POINTER;
+        }
+        ULONG k = 0;
+        while (k < want && at < n) {
+            out[k++] = fmts[at++];
+        }
+        if (got) {
+            *got = k;
+        }
+        return k == want ? S_OK : S_FALSE;
+    }
+    HRESULT STDMETHODCALLTYPE Skip(ULONG k) override {
+        at = std::min(n, at + k);
+        return at < n ? S_OK : S_FALSE;
+    }
+    HRESULT STDMETHODCALLTYPE Reset() override {
+        at = 0;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE Clone(IEnumFORMATETC** out) override {
+        if (!out) {
+            return E_POINTER;
+        }
+        auto* e = new DragOutFormatEnum();
+        memcpy(e->fmts, fmts, sizeof(fmts));
+        e->n = n;
+        e->at = at;
+        *out = e;
+        return S_OK;
+    }
+};
+
+// The data a drag out hands DoDragDrop. It owns copies: a target in another
+// process may read it after the drag is over.
+struct DragOutDataObject : ComObject<IDataObject> {
+    Str text = {};
+    Str paths = {};
+    Str imageName = {};
+    uint8_t* image = nullptr;
+    int imageLen = 0;
+    CLIPFORMAT cfDescriptor = 0;
+    CLIPFORMAT cfContents = 0;
+    CLIPFORMAT cfDropEffect = 0;
+    FORMATETC fmts[DragOutFormatEnum::kMax] = {};
+    ULONG n = 0;
+
+    ~DragOutDataObject() override {
+        StrFree(text);
+        StrFree(paths);
+        StrFree(imageName);
+        delete[] image;
+    }
+
+    void Add(CLIPFORMAT cf, LONG lindex, DWORD tymed) {
+        fmts[n++] = {cf, nullptr, DVASPECT_CONTENT, lindex, tymed};
+    }
+
+    const FORMATETC* Find(const FORMATETC* want) const {
+        for (ULONG i = 0; want && i < n; i++) {
+            const FORMATETC& f = fmts[i];
+            if (want->cfFormat != f.cfFormat || !(want->tymed & f.tymed)) {
+                continue;
+            }
+            if (f.lindex >= 0 && want->lindex != f.lindex) {
+                continue;
+            }
+            return &f;
+        }
+        return nullptr;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetData(FORMATETC* want,
+                                      STGMEDIUM* out) override {
+        if (!want || !out) {
+            return E_POINTER;
+        }
+        const FORMATETC* f = Find(want);
+        if (!f) {
+            return DV_E_FORMATETC;
+        }
+        *out = {};
+        CLIPFORMAT cf = f->cfFormat;
+        if (cf == cfContents && (want->tymed & TYMED_ISTREAM)) {
+            IStream* stream = nullptr;
+            if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, &stream))) {
+                return E_OUTOFMEMORY;
+            }
+            stream->Write(image, (ULONG)imageLen, nullptr);
+            LARGE_INTEGER zero = {};
+            stream->Seek(zero, STREAM_SEEK_SET, nullptr);
+            out->tymed = TYMED_ISTREAM;
+            out->pstm = stream;
+            return S_OK;
+        }
+        HGLOBAL h = nullptr;
+        DWORD copyEffect = DROPEFFECT_COPY;
+        if (cf == CF_UNICODETEXT) {
+            h = GlobalFromText(text);
+        } else if (cf == CF_HDROP) {
+            h = GlobalFromPaths(paths);
+        } else if (cf == cfDescriptor) {
+            h = GlobalFromFileDescriptor(imageName, imageLen);
+        } else if (cf == cfContents) {
+            h = GlobalFromBytes(image, (size_t)imageLen);
+        } else if (cf == cfDropEffect) {
+            h = GlobalFromBytes(&copyEffect, sizeof(copyEffect));
+        }
+        if (!h) {
+            return E_OUTOFMEMORY;
+        }
+        out->tymed = TYMED_HGLOBAL;
+        out->hGlobal = h;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetDataHere(FORMATETC*, STGMEDIUM*) override {
+        return E_NOTIMPL;
+    }
+    HRESULT STDMETHODCALLTYPE QueryGetData(FORMATETC* want) override {
+        return Find(want) ? S_OK : DV_E_FORMATETC;
+    }
+    HRESULT STDMETHODCALLTYPE GetCanonicalFormatEtc(FORMATETC*,
+                                                    FORMATETC* out) override {
+        if (out) {
+            out->ptd = nullptr;
+        }
+        return E_NOTIMPL;
+    }
+    HRESULT STDMETHODCALLTYPE SetData(FORMATETC*, STGMEDIUM*, BOOL) override {
+        return E_NOTIMPL;
+    }
+    HRESULT STDMETHODCALLTYPE EnumFormatEtc(DWORD dir,
+                                            IEnumFORMATETC** out) override {
+        if (!out) {
+            return E_POINTER;
+        }
+        *out = nullptr;
+        if (dir != DATADIR_GET) {
+            return E_NOTIMPL;
+        }
+        auto* e = new DragOutFormatEnum();
+        memcpy(e->fmts, fmts, sizeof(fmts));
+        e->n = n;
+        *out = e;
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DAdvise(FORMATETC*, DWORD, IAdviseSink*,
+                                      DWORD*) override {
+        return OLE_E_ADVISENOTSUPPORTED;
+    }
+    HRESULT STDMETHODCALLTYPE DUnadvise(DWORD) override {
+        return OLE_E_ADVISENOTSUPPORTED;
+    }
+    HRESULT STDMETHODCALLTYPE EnumDAdvise(IEnumSTATDATA**) override {
+        return OLE_E_ADVISENOTSUPPORTED;
+    }
+};
+
+IDataObject* DragOutDataObjectNew(const DragOutData& data) {
+    DragOutFormat formats[3];
+    int nf = DragOutFormats(data, formats);
+    if (nf == 0) {
+        return nullptr;
+    }
+    auto* obj = new DragOutDataObject();
+    for (int i = 0; i < nf; i++) {
+        switch (formats[i]) {
+            case DragOutFormat::Text:
+                obj->text = StrDup(data.text);
+                obj->Add(CF_UNICODETEXT, -1, TYMED_HGLOBAL);
+                break;
+            case DragOutFormat::Paths:
+                obj->paths = StrDup(data.paths);
+                obj->Add(CF_HDROP, -1, TYMED_HGLOBAL);
+                break;
+            case DragOutFormat::ImageFile:
+                obj->imageName = StrDup(DragOutImageName(data));
+                obj->imageLen = data.imageBytesLen;
+                obj->image = new uint8_t[data.imageBytesLen];
+                memcpy(obj->image, data.imageBytes, (size_t)data.imageBytesLen);
+                obj->cfDescriptor = ClipFormat(CFSTR_FILEDESCRIPTORW);
+                obj->cfContents = ClipFormat(CFSTR_FILECONTENTS);
+                obj->Add(obj->cfDescriptor, -1, TYMED_HGLOBAL);
+                obj->Add(obj->cfContents, 0, TYMED_ISTREAM | TYMED_HGLOBAL);
+                break;
+        }
+    }
+    // Files are copied, not moved, by Explorer.
+    if (len(obj->paths) > 0 || obj->image) {
+        obj->cfDropEffect = ClipFormat(CFSTR_PREFERREDDROPEFFECT);
+        obj->Add(obj->cfDropEffect, -1, TYMED_HGLOBAL);
+    }
+    return obj;
+}
+
+// The drop source. With a preview it draws the image list under the
+// pointer itself (IDragSourceHelper shows nothing for a data object that
+// does not store its private formats), else OLE's cursors show.
+struct DragOutSource : ComObject<IDropSource> {
+    bool imageDrag = false;
+
+    HRESULT STDMETHODCALLTYPE QueryContinueDrag(BOOL escape,
+                                                DWORD keys) override {
+        if (escape) {
+            return DRAGDROP_S_CANCEL;
+        }
+        if (!(keys & MK_LBUTTON)) {
+            return DRAGDROP_S_DROP;
+        }
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GiveFeedback(DWORD) override {
+        if (!imageDrag) {
+            return DRAGDROP_S_USEDEFAULTCURSORS;
+        }
+        POINT pt = {};
+        GetCursorPos(&pt);
+        ImageList_DragMove(pt.x, pt.y);
+        return S_OK;
+    }
+};
+
+// The preview as a one-image list, or null: the PNG decoded with WIC,
+// scaled, on white with its border.
+static HIMAGELIST DragOutPreviewList(const DragOutData& data, float scale,
+                                     POINT* hot) {
+    if (!data.imageBytes || data.imageBytesLen <= 0 ||
+        data.previewMaxEdge <= 0) {
+        return nullptr;
+    }
+    IWICImagingFactory* wic = nullptr;
+    IWICStream* stream = nullptr;
+    IWICBitmapDecoder* dec = nullptr;
+    IWICBitmapFrameDecode* frame = nullptr;
+    IWICFormatConverter* conv = nullptr;
+    IWICBitmapScaler* scaler = nullptr;
+    HIMAGELIST list = nullptr;
+    UINT w = 0, h = 0;
+    DragOutPreview p;
+    HRESULT hr =
+        CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                         __uuidof(IWICImagingFactory), (void**)&wic);
+    if (SUCCEEDED(hr)) {
+        hr = wic->CreateStream(&stream);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = stream->InitializeFromMemory((BYTE*)data.imageBytes,
+                                          (DWORD)data.imageBytesLen);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = wic->CreateDecoderFromStream(stream, nullptr,
+                                          WICDecodeMetadataCacheOnDemand, &dec);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = dec->GetFrame(0, &frame);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = frame->GetSize(&w, &h);
+    }
+    if (SUCCEEDED(hr)) {
+        p = DragOutPreviewSize(data, (int)w, (int)h, scale);
+        hr = p.w > 0 ? wic->CreateFormatConverter(&conv) : E_FAIL;
+    }
+    if (SUCCEEDED(hr)) {
+        hr = conv->Initialize(frame, GUID_WICPixelFormat32bppPBGRA,
+                              WICBitmapDitherTypeNone, nullptr, 0,
+                              WICBitmapPaletteTypeCustom);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = wic->CreateBitmapScaler(&scaler);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = scaler->Initialize(conv, (UINT)p.w, (UINT)p.h,
+                                WICBitmapInterpolationModeHighQualityCubic);
+    }
+    void* bits = nullptr;
+    HBITMAP bmp = nullptr;
+    if (SUCCEEDED(hr)) {
+        BITMAPINFO bmi = {};
+        bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth = p.w;
+        bmi.bmiHeader.biHeight = -p.h; // top-down
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB;
+        bmp =
+            CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        hr = bmp && bits ? S_OK : E_OUTOFMEMORY;
+    }
+    UINT stride = (UINT)p.w * 4;
+    if (SUCCEEDED(hr)) {
+        hr = scaler
+                 ->CopyPixels(nullptr, stride, stride * (UINT)p.h, (BYTE*)bits);
+    }
+    if (SUCCEEDED(hr)) {
+        DragOutPreviewFrame((uint8_t*)bits, p.w, p.h, (int)stride);
+        list = ImageList_Create(p.w, p.h, ILC_COLOR32, 1, 1);
+        if (list && ImageList_Add(list, bmp, nullptr) < 0) {
+            ImageList_Destroy(list);
+            list = nullptr;
+        }
+        hot->x = p.hotX;
+        hot->y = p.hotY;
+    }
+    if (bmp) {
+        DeleteObject(bmp);
+    }
+    IUnknown* objs[] = {scaler, conv, frame, dec, stream, wic};
+    for (IUnknown* o : objs) {
+        if (o) {
+            o->Release();
+        }
+    }
+    return list;
+}
+
+// The last drag's data. DoDragDrop marshals it for targets in other
+// processes and never releases the stub's references, so it is disconnected
+// -- but only at the next drag or exit: Explorer reads CFSTR_FILECONTENTS
+// after Drop returns.
+static IDataObject* gLastDragOut = nullptr;
+
+void DragOutDisconnectLast() {
+    if (!gLastDragOut) {
+        return;
+    }
+    CoDisconnectObject(gLastDragOut, 0);
+    gLastDragOut->Release();
+    gLastDragOut = nullptr;
+}
+
+static bool PrimaryButtonDown() {
+    int vk = GetSystemMetrics(SM_SWAPBUTTON) ? VK_RBUTTON : VK_LBUTTON;
+    return (GetAsyncKeyState(vk) & 0x8000) != 0;
+}
+
+static DragOutResult DragOutResultOf(HRESULT hr, DWORD effect) {
+    if (hr != DRAGDROP_S_DROP) {
+        return DragOutResult::Canceled;
+    }
+    if (effect & DROPEFFECT_MOVE) {
+        return DragOutResult::Moved;
+    }
+    if (effect & DROPEFFECT_COPY) {
+        return DragOutResult::Copied;
+    }
+    if (effect & DROPEFFECT_LINK) {
+        return DragOutResult::Linked;
+    }
+    return DragOutResult::Canceled;
+}
+
+// Run from the main-thread queue: DoDragDrop has a loop of its own, which
+// must not run inside the dispatch of the move that started it.
+static void DragOutRun(DragOutRequest* req) {
+    Window* win = req->win;
+    HWND hwnd = win && win->plat ? win->plat->hwnd : nullptr;
+    // The button came up before the queue got here: OLE would wait in its
+    // loop for the next input to notice.
+    if (!hwnd || !PrimaryButtonDown()) {
+        DragOutFinish(req, DragOutResult::Canceled);
+        return;
+    }
+    IDataObject* data = DragOutDataObjectNew(req->data);
+    if (!data) {
+        DragOutFinish(req, DragOutResult::Canceled);
+        return;
+    }
+    POINT hot = {};
+    HIMAGELIST list = DragOutPreviewList(req->data, HostDpi(hwnd) / 96.f, &hot);
+    auto* src = new DragOutSource();
+    if (list && ImageList_BeginDrag(list, 0, hot.x, hot.y)) {
+        POINT pt = {};
+        GetCursorPos(&pt);
+        // The desktop, so the preview is not clipped to this window.
+        src->imageDrag = ImageList_DragEnter(GetDesktopWindow(), pt.x, pt.y);
+        if (!src->imageDrag) {
+            ImageList_EndDrag();
+        }
+    }
+    DWORD effect = DROPEFFECT_NONE;
+    HRESULT hr = DoDragDrop(data, src, DROPEFFECT_COPY, &effect);
+    if (src->imageDrag) {
+        ImageList_DragLeave(GetDesktopWindow());
+        ImageList_EndDrag();
+    }
+    if (list) {
+        ImageList_Destroy(list);
+    }
+    src->Release();
+    DragOutDisconnectLast();
+    gLastDragOut = data;
+    DragOutFinish(req, DragOutResultOf(hr, effect));
+}
+
+bool PlatStartDragOut(Window* win, DragOutRequest* req) {
+    if (!win || !win->plat || !win->plat->hwnd) {
+        return false;
+    }
+    ExecPost(MkFunc0(DragOutRun, req));
+    return true;
+}
 
 static void RegisterFileDrop(Window* win, HWND hwnd) {
     if (!win || !win->plat || win->plat->fileDrop) {
@@ -2628,6 +3264,7 @@ bool PlatInit(App* app) {
 void PlatShutdown(App* app) {
     (void)app;
     WakeShutdown();
+    DragOutDisconnectLast();
     OleUninitialize();
     CoUninitialize();
 }

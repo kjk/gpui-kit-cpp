@@ -603,6 +603,11 @@ struct DropEvent {
     // this call. A desktop drop is a filesystem path; a page drop is the
     // file's name, which is all the browser will say.
     Str externalPaths = {};
+    // Set for an "ExternalText" drop (no Rust twin): text or a link dragged
+    // in from another application, a browser's image for one. UTF-8,
+    // borrowed for this call; either may be empty.
+    Str externalText = {};
+    Str externalUrl = {};
 };
 
 // GPUI's PinchEvent: a pinch-to-zoom gesture, typically on a trackpad, with
@@ -659,6 +664,11 @@ struct GestureEvent {
 // carries the paths; Pending is the pointer moving; Submit is the drop;
 // Exited is the drag leaving without a drop. The window turns it into an
 // ExternalPaths drag, which is what gpui's dispatch_event does.
+//
+// Not in Rust: a drag carrying no files but text or a URL is an
+// "ExternalText" drag, taken with OnDrop(StrL("ExternalText"), ...). Unlike
+// ExternalPaths, the OS shows it refused unless an element under the pointer
+// takes that kind. Windows and macOS report it.
 enum class FileDropPhase : uint8_t {
     Entered,
     Pending,
@@ -673,6 +683,9 @@ struct FileDropEvent {
     // Newline-separated UTF-8 paths. Only Entered reads them. Borrowed for
     // the dispatch; the window copies them.
     Str paths = {};
+    // An ExternalText drag's payload, read like `paths`.
+    Str text = {};
+    Str url = {};
 };
 
 // The pointer left the window. GPUI's MouseExitEvent is a MouseMoveEvent in
@@ -7382,6 +7395,8 @@ struct App {
 struct PlatWindow;
 // One pending window.prompt (gpui/platform.h).
 struct PromptRequest;
+// The WindowStartDragOut in flight (gpui/platform.h).
+struct DragOutRequest;
 
 // crates/base/src/text_selection.rs WindowSelectionState, one per window.
 struct WindowSelection;
@@ -7618,6 +7633,9 @@ struct Window {
     // DropEvent points here for the listener.
     bool fileDrop = false;
     Str fileDropPaths = {};
+    // The ExternalText drag's text and URL, owned the same way.
+    Str fileDropText = {};
+    Str fileDropUrl = {};
     // AnyDrag::cursor_offset: where inside the dragged element the press
     // landed, so whatever is drawn under the pointer sits where the element
     // was rather than jumping its corner to the cursor.
@@ -7708,6 +7726,8 @@ struct Window {
     EntityId prompt = {};
     // Native prompts (and the test platform's) not yet answered.
     Vec<PromptRequest*> nativePrompts;
+    // WindowStartDragOut's drag, until the platform finishes it.
+    DragOutRequest* dragOut = nullptr;
     Overlay overlay = {};
     InspectorState inspector = {};
     MenuState menu = {};
@@ -8631,6 +8651,58 @@ bool WindowHasActivePrompt(const Window* win);
 // cx.set_prompt_builder(fallback_prompt_renderer) / reset_prompt_builder():
 // always draw the fallback, even where a native dialog exists.
 void AppSetFallbackPrompts(App* app, bool always);
+
+// ─── drag out of the window (no Rust twin) ──────────────────────────────────
+
+// What an OS drag started from the window carries. Borrowed for the call;
+// WindowStartDragOut copies it. Any mix of the three payloads may be set.
+struct DragOutData {
+    // UTF-8 text: CF_UNICODETEXT, NSPasteboardTypeString.
+    Str text = {};
+    // An encoded image (PNG). A file manager makes it a file named
+    // `imageName` ("image.png" when empty): a virtual file on Windows
+    // (CFSTR_FILEDESCRIPTOR / CFSTR_FILECONTENTS), a file promise on macOS.
+    const uint8_t* imageBytes = nullptr;
+    int imageBytesLen = 0;
+    Str imageName = {};
+    // Newline-separated UTF-8 paths of existing files: CF_HDROP, file URLs.
+    Str paths = {};
+    // The picture under the pointer: the image scaled so its longer edge is
+    // at most this many dips, on white, with a 1px border. 0 (or no image):
+    // the OS's own drag feedback.
+    float previewMaxEdge = 0;
+    // Where the pointer holds the preview, as fractions of its size.
+    float previewHotX = 0.5f;
+    float previewHotY = 0.5f;
+};
+
+// How the drag ended: the drop effect the target chose, or none.
+enum class DragOutResult : uint8_t {
+    Copied,
+    Moved,
+    Linked,
+    Canceled,
+    // No drag out on this platform, or another drag was in flight.
+    Unsupported
+};
+
+struct DragOutEndEvent {
+    DragOutResult result = DragOutResult::Canceled;
+};
+
+// Starts an OS drag out of the window, offering copy, from a handler of the
+// press or move that began it (the left button is down). Returns at once:
+// Windows runs DoDragDrop from the main-thread queue, as it has a modal loop
+// of its own; macOS begins an NSDraggingSession. `onEnd` runs once, later,
+// with a DragOutEndEvent, unless the window closed first. The release that
+// ends the drag goes to the drop target, so the window then sends itself the
+// mouse up of the press. False (and Unsupported) when nothing can be dragged:
+// an empty payload, another drag in flight, Linux, wasm, iOS, Android.
+bool WindowStartDragOut(Window* win, const DragOutData& data,
+                        Listener onEnd = {});
+// Whether WindowStartDragOut can start one here: Windows, macOS and the
+// test platform. An app asks before it lets a press become a drag out.
+bool AppCanDragOut(App* app);
 
 int AppRun(App* app);
 Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts);

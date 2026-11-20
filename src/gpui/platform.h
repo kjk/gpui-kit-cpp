@@ -9,6 +9,10 @@
 
 #include "gpui/gpui.h"
 
+#if GPUI_OS_WINDOWS
+struct IDataObject;
+#endif
+
 namespace gpui {
 
 // ─── called by the platform window ───────────────────────────────────────
@@ -73,6 +77,75 @@ inline void PlatPromptAbort(Window* win, PromptRequest* req) {
 // The test platform's prompt queue (gpui/test_app.h): true when a test app
 // is installed and has taken `req`.
 bool TestPlatformPrompt(PromptRequest* req);
+
+// One WindowStartDragOut, its payload copied to the heap (`data` points into
+// the copies). A platform that takes it calls DragOutFinish exactly once.
+struct DragOutRequest {
+    App* app = nullptr;
+    // Null once the window has closed.
+    Window* win = nullptr;
+    Listener onEnd = {};
+    DragOutData data = {};
+    // The platform's drag (macOS: the retained source object).
+    void* plat = nullptr;
+};
+// Runs `onEnd`, sends the window the mouse up the drag ate, and frees `req`.
+void DragOutFinish(DragOutRequest* req, DragOutResult result);
+
+// What a drag out offers, in the order a platform lists it.
+enum class DragOutFormat : uint8_t {
+    Text,
+    Paths,
+    ImageFile
+};
+// Fills `out` (room for 3) with the formats `data` has; returns how many.
+int DragOutFormats(const DragOutData& data, DragOutFormat* out);
+// The image's virtual file name: imageName, or "image.png".
+Str DragOutImageName(const DragOutData& data);
+
+// The drag preview of an image of imgW x imgH pixels, `scale` pixels per
+// dip: its size and the pointer's place on it, in pixels. Zero size: none.
+struct DragOutPreview {
+    int w = 0;
+    int h = 0;
+    int hotX = 0;
+    int hotY = 0;
+};
+DragOutPreview DragOutPreviewSize(const DragOutData& data, int imgW, int imgH,
+                                  float scale);
+// Composites premultiplied BGRA (or RGBA) pixels over white and draws the
+// preview's 1px border, in place; `stride` is in bytes.
+void DragOutPreviewFrame(uint8_t* px, int w, int h, int stride);
+
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC
+// False when the platform cannot start it; the caller then finishes it.
+bool PlatStartDragOut(Window* win, DragOutRequest* req);
+inline bool PlatCanDragOut() {
+    return true;
+}
+#else
+inline bool PlatStartDragOut(Window* win, DragOutRequest* req) {
+    (void)win, (void)req;
+    return false;
+}
+inline bool PlatCanDragOut() {
+    return false;
+}
+#endif
+// The test platform is installed (gpui/test_app.h).
+bool TestPlatformOn();
+// The test platform's drag out (gpui/test_app.h): true when a test app is
+// installed and has taken `req`.
+bool TestPlatformDragOut(DragOutRequest* req);
+
+#if GPUI_OS_WINDOWS
+// The IDataObject a Windows drag out hands DoDragDrop, with one reference;
+// exposed for tests. Null for an empty payload.
+::IDataObject* DragOutDataObjectNew(const DragOutData& data);
+// Drop targets in other processes may read the last drag's data after
+// DoDragDrop returns, so it stays connected until the next drag or exit.
+void DragOutDisconnectLast();
+#endif
 
 // Primary locale preferred by the platform or browser.
 TempStr PlatPreferredLocaleTemp();
@@ -168,6 +241,9 @@ PlatformInput InputTouchDrag(TouchPhase phase, Point start, Point position);
 PlatformInput InputLongPress(TouchPhase phase, Point start, Point position);
 // PlatformInput::FileDrop. `paths` is read only for Entered.
 PlatformInput InputFileDrop(FileDropPhase phase, float x, float y, Str paths);
+// The same for an ExternalText drag: `text` and `url` are read for Entered.
+PlatformInput InputTextDrop(FileDropPhase phase, float x, float y, Str text,
+                            Str url);
 PlatformInput InputPinch(float x, float y, float delta, Modifiers modifiers,
                          TouchPhase phase);
 PlatformInput InputGesture(const GestureEvent& ev);

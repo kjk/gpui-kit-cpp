@@ -3141,6 +3141,8 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in,
             DropEvent ev = {win->activeDrag, in.x, in.y, target->bounds};
             if (win->fileDrop) {
                 ev.externalPaths = win->fileDropPaths;
+                ev.externalText = win->fileDropText;
+                ev.externalUrl = win->fileDropUrl;
             }
             ListenerCall(win->app, win, target->onDrop, &ev);
         }
@@ -4017,6 +4019,9 @@ PlatformInput InputLongPress(TouchPhase phase, Point start, Point position) {
 PlatformInput InputFileDrop(FileDropPhase phase, float x, float y, Str paths) {
     PlatformInput in = {};
     in.kind = PlatformInputKind::FileDrop;
+    // `= {}` initializes the union's first member only: the payload past it
+    // would be whatever was on the stack.
+    in.fileDrop = FileDropEvent{};
     in.fileDrop.phase = phase;
     in.fileDrop.x = x;
     in.fileDrop.y = y;
@@ -4024,14 +4029,29 @@ PlatformInput InputFileDrop(FileDropPhase phase, float x, float y, Str paths) {
     return in;
 }
 
-static void FileDropStore(Window* win, Str paths) {
-    StrFree(win->fileDropPaths);
-    win->fileDropPaths = paths.s && len(paths) > 0 ? StrDup(paths) : Str{};
+PlatformInput InputTextDrop(FileDropPhase phase, float x, float y, Str text,
+                            Str url) {
+    PlatformInput in = InputFileDrop(phase, x, y, {});
+    in.fileDrop.text = text;
+    in.fileDrop.url = url;
+    return in;
+}
+
+static void FileDropSet(Str* dst, Str src) {
+    StrFree(*dst);
+    *dst = src.s && len(src) > 0 ? StrDup(src) : Str{};
+}
+
+static void FileDropStore(Window* win, const FileDropEvent& in) {
+    FileDropSet(&win->fileDropPaths, in.paths);
+    FileDropSet(&win->fileDropText, in.text);
+    FileDropSet(&win->fileDropUrl, in.url);
 }
 
 static void FileDropClear(Window* win) {
-    StrFree(win->fileDropPaths);
-    win->fileDropPaths = {};
+    FileDropSet(&win->fileDropPaths, {});
+    FileDropSet(&win->fileDropText, {});
+    FileDropSet(&win->fileDropUrl, {});
     // Only a file drag that was installed takes the press state back with
     // it. An Exited after a refused Entered (Windows sends DragLeave either
     // way) must not turn an in-app drag's pressedMoved back into a click.
@@ -4059,8 +4079,11 @@ static void DispatchFileDrop(Window* win, const FileDropEvent& in) {
         if (win->activeDrag.IsValid() && !win->fileDrop) {
             return;
         }
-        FileDropStore(win, in.paths);
-        win->activeDrag.kind = StrL("ExternalPaths");
+        FileDropStore(win, in);
+        // Not in Rust: no files but text or a link is an ExternalText drag.
+        bool text = len(in.paths) <= 0 && (len(in.text) > 0 || len(in.url) > 0);
+        win->activeDrag
+            .kind = text ? StrL("ExternalText") : StrL("ExternalPaths");
         win->activeDrag.ix = 0;
         win->activeDrag.data = nullptr;
         win->fileDrop = true;
@@ -4880,10 +4903,16 @@ Window::~Window() {
     scene::Free(&paint);
     StrFree(fileDropPaths);
     fileDropPaths = {};
+    StrFree(fileDropText);
+    fileDropText = {};
+    StrFree(fileDropUrl);
+    fileDropUrl = {};
     // A test that builds a Window by hand and deletes it never reaches the
     // teardown that frees these; a window that did, freed them already.
     LayoutRowCachesFree(this);
 }
+
+static void DragOutWindowClosed(Window* win);
 
 void WindowClosed(Window* win) {
     if (!win) {
@@ -4891,6 +4920,7 @@ void WindowClosed(Window* win) {
     }
     // Before anything is torn down: the answers run listeners.
     PromptsWindowClosed(win);
+    DragOutWindowClosed(win);
     // The focused field outlives the window it was focused in — it belongs to
     // a view, and the app may still hold that view — so the two let go of
     // each other here rather than leaving a pointer either way.
@@ -5917,6 +5947,169 @@ TempStr PathDropRepeatedExtTemp(Str path) {
         return StrDupTemp(path);
     }
     return StrDupTemp(Str(path.s, len(path) - len(third) - 1));
+}
+
+} // namespace gpui
+
+// ─── drag out of the window (no Rust twin) ──────────────────────────────────
+
+namespace gpui {
+
+int DragOutFormats(const DragOutData& data, DragOutFormat* out) {
+    int n = 0;
+    if (len(data.text) > 0) {
+        out[n++] = DragOutFormat::Text;
+    }
+    if (len(data.paths) > 0) {
+        out[n++] = DragOutFormat::Paths;
+    }
+    if (data.imageBytes && data.imageBytesLen > 0) {
+        out[n++] = DragOutFormat::ImageFile;
+    }
+    return n;
+}
+
+Str DragOutImageName(const DragOutData& data) {
+    return len(data.imageName) > 0 ? data.imageName : StrL("image.png");
+}
+
+// The image as it is when it fits, else scaled down to the longest edge.
+DragOutPreview DragOutPreviewSize(const DragOutData& data, int imgW, int imgH,
+                                  float scale) {
+    DragOutPreview p;
+    int maxEdge = (int)lroundf(data.previewMaxEdge * (scale > 0 ? scale : 1));
+    // Smaller than this is a speck, not a preview.
+    const int kMinPreviewEdge = 16;
+    if (maxEdge < kMinPreviewEdge || imgW <= 0 || imgH <= 0) {
+        return p;
+    }
+    p.w = imgW;
+    p.h = imgH;
+    int longest = std::max(imgW, imgH);
+    if (longest > maxEdge) {
+        p.w = std::max(1, (int)((int64_t)imgW * maxEdge / longest));
+        p.h = std::max(1, (int)((int64_t)imgH * maxEdge / longest));
+    }
+    float hx = ClampF(data.previewHotX, 0, 1);
+    float hy = ClampF(data.previewHotY, 0, 1);
+    p.hotX = std::min(p.w - 1, (int)((float)p.w * hx));
+    p.hotY = std::min(p.h - 1, (int)((float)p.h * hy));
+    return p;
+}
+
+void DragOutPreviewFrame(uint8_t* px, int w, int h, int stride) {
+    // A dark grey frame keeps a light image visible over a light window.
+    const uint8_t kBorder = 60;
+    for (int y = 0; y < h; y++) {
+        uint8_t* row = px + (size_t)y * (size_t)stride;
+        for (int x = 0; x < w; x++) {
+            uint8_t* c = row + (size_t)x * 4;
+            bool edge = x == 0 || y == 0 || x == w - 1 || y == h - 1;
+            if (edge) {
+                c[0] = c[1] = c[2] = kBorder;
+                c[3] = 255;
+                continue;
+            }
+            // premultiplied over white: c + (255 - a)
+            int under = 255 - c[3];
+            c[0] = (uint8_t)std::min(255, c[0] + under);
+            c[1] = (uint8_t)std::min(255, c[1] + under);
+            c[2] = (uint8_t)std::min(255, c[2] + under);
+            c[3] = 255;
+        }
+    }
+}
+
+static void DragOutRequestFree(DragOutRequest* req) {
+    StrFree(req->data.text);
+    StrFree(req->data.paths);
+    StrFree(req->data.imageName);
+    delete[] req->data.imageBytes;
+    delete req;
+}
+
+static void DragOutEnd(App* app, Window* win, Listener onEnd,
+                       DragOutResult result) {
+    DragOutEndEvent ev;
+    ev.result = result;
+    if (onEnd.IsValid()) {
+        ListenerCall(app, win, onEnd, &ev);
+    }
+}
+
+void DragOutFinish(DragOutRequest* req, DragOutResult result) {
+    if (!req) {
+        return;
+    }
+    Window* win = req->win;
+    if (win && win->dragOut == req) {
+        win->dragOut = nullptr;
+    }
+    // The release went to the drop target: the press this window saw begin
+    // ends here.
+    if (win && win->mouseDown) {
+        PlatformInput up =
+            InputMouseUp(MouseButton::Left, win->mouseX, win->mouseY, {},
+                         WindowCurrentClickCount(win));
+        WindowDispatchInput(win, &up);
+    }
+    if (win) {
+        DragOutEnd(req->app, win, req->onEnd, result);
+        AppInvalidate(win);
+    }
+    DragOutRequestFree(req);
+}
+
+static void DragOutWindowClosed(Window* win) {
+    DragOutRequest* req = win ? win->dragOut : nullptr;
+    if (!req) {
+        return;
+    }
+    win->dragOut = nullptr;
+    req->win = nullptr;
+}
+
+static Str DragOutDup(Str s) {
+    return len(s) > 0 ? StrDup(s) : Str{};
+}
+
+bool AppCanDragOut(App* app) {
+    return app && (TestPlatformOn() || PlatCanDragOut());
+}
+
+bool WindowStartDragOut(Window* win, const DragOutData& data, Listener onEnd) {
+    if (!win || !win->app) {
+        return false;
+    }
+    DragOutFormat formats[3];
+    if (DragOutFormats(data, formats) == 0 || win->dragOut) {
+        DragOutEnd(win->app, win, onEnd, DragOutResult::Unsupported);
+        return false;
+    }
+    auto* req = new DragOutRequest();
+    req->app = win->app;
+    req->win = win;
+    req->onEnd = onEnd;
+    req->data = data;
+    req->data.text = DragOutDup(data.text);
+    req->data.paths = DragOutDup(data.paths);
+    req->data.imageName = DragOutDup(data.imageName);
+    req->data.imageBytes = nullptr;
+    req->data.imageBytesLen = 0;
+    if (data.imageBytes && data.imageBytesLen > 0) {
+        auto* bytes = new uint8_t[data.imageBytesLen];
+        memcpy(bytes, data.imageBytes, (size_t)data.imageBytesLen);
+        req->data.imageBytes = bytes;
+        req->data.imageBytesLen = data.imageBytesLen;
+    }
+    win->dragOut = req;
+    if (TestPlatformDragOut(req) || PlatStartDragOut(win, req)) {
+        return true;
+    }
+    win->dragOut = nullptr;
+    DragOutRequestFree(req);
+    DragOutEnd(win->app, win, onEnd, DragOutResult::Unsupported);
+    return false;
 }
 
 } // namespace gpui

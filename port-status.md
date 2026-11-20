@@ -82,6 +82,29 @@ The current update target is
   `CursorKind` shows), wasm a CSS `url()` cursor. The window also resolves
   the cursor after every frame, as Rust does, not only on a move
   (`src/gpui/window_*.cpp`).
+- **`WindowStartDragOut` (drag out of the window) has no Rust twin.** It
+  offers copy of text, an encoded image (a virtual file named
+  `imageName`) and/or file paths, with an optional preview (the image
+  scaled to `previewMaxEdge`, on white, framed), and reports
+  `DragOutResult` through a listener, then sends the window the mouse up
+  the drag ate. Windows runs `DoDragDrop` from the main-thread queue with
+  its own `IDataObject` (`CF_UNICODETEXT`, `CF_HDROP`,
+  `CFSTR_FILEDESCRIPTORW` + `CFSTR_FILECONTENTS`, Preferred DropEffect) and
+  draws the preview with `ImageList_BeginDrag`; the last data object stays
+  connected until the next drag or exit, for targets that read it late.
+  macOS begins an `NSDraggingSession` (`NSPasteboardTypeString`, file URLs,
+  an `NSFilePromiseProvider` for the image; no raw PNG pasteboard type).
+  Linux (XDND source), wasm, iOS and Android answer `Unsupported`
+  (`src/gpui/window_common.cpp`, `window_win.cpp`, `window_mac.cpp`).
+- **An `ExternalText` drag has no Rust twin.** A drag carrying no files but
+  text or a link (a browser's image) arrives as drag kind `ExternalText`,
+  with `DropEvent::externalText` / `externalUrl` (Windows: `CF_UNICODETEXT`
+  or `CF_TEXT`, `UniformResourceLocatorW` or `UniformResourceLocator`;
+  macOS: `NSPasteboardTypeString`, the first non-file URL). Unlike
+  `ExternalPaths` (always offered copy, as Rust does) the OS shows it as
+  refused unless an element under the pointer takes `ExternalText`. Linux
+  and wasm do not report it. Windows no longer shows a copy cursor for a
+  drag that has neither files nor text.
 
 - **Oversized inline code uses one wrapped box.** Each line shapes inside
   one pair of insets. The span shares its background and border across the
