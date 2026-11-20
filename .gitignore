@@ -32,5 +32,4 @@ gpui-kit.d.ts
 .claude/worktrees/
 /gpui-perf.txt
 /implicit-state-machines.md
-/.DS_Store
-/src/.DS_Store
+.DS_Store
