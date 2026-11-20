@@ -513,9 +513,15 @@ El* MenuStory::Render(MenuStory* self, Ctx* cx) {
         "Long menus constrain their height while short menus stay compact.");
     StorySectionBody(scrollSection)->MaxW(640);
     El* scrollContent = SectionRow(cx);
-    const int counts[] = {100, 5};
-    for (int i = 0; i < 2; i++) {
-        int count = counts[i];
+    const struct {
+        int count;
+        Str label;
+    } menus[] = {
+        {100, StrL("Scrollable Menu (100 items)")},
+        {5, StrL("Scrollable Menu (5 items)")},
+    };
+    for (int i = 0; i < dimof(menus); i++) {
+        int count = menus[i].count;
         scrollContent->Child(
             component::DropdownMenu::New(
                 cx, StoryFmt(cx, "scrollable-dropdown-%d", count))
@@ -523,8 +529,7 @@ El* MenuStory::Render(MenuStory* self, Ctx* cx) {
                     component::Button::New(
                         cx, StoryFmt(cx, "dropdown-menu-scrollable-%d", i + 1))
                         ->Outline()
-                        ->Label(
-                            StoryFmt(cx, "Scrollable Menu (%d items)", count))
+                        ->Label(menus[i].label)
                         ->IntoEl())
                 ->Menu(ScrollableMenu(self, cx, count))
                 ->AnchorRight()

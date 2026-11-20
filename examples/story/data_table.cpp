@@ -330,8 +330,12 @@ static component::PopupMenu* DtContextMenu(Ctx* cx, void* data, int row,
                                            component::PopupMenu* menu) {
     (void)data;
     menu->Menu(StoryFmt(cx, "Selected Row: %d", row))->Separator();
-    for (int i = 0; i < kNSizes; i++) {
-        menu->Menu(StoryFmt(cx, "Size %s", kSizeLabels[i]));
+    static const Str kContextSizeLabels[kNSizes] = {
+        StrL("Size 48px"),  StrL("Size Large"),  StrL("Size Medium"),
+        StrL("Size Small"), StrL("Size XSmall"),
+    };
+    for (Str label : kContextSizeLabels) {
+        menu->Menu(label);
     }
     PopupMenuState* st = menu->state.Get(cx);
     if (st) {

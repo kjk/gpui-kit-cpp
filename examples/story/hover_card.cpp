@@ -154,15 +154,22 @@ El* HoverCardStory::Render(HoverCardStory*, Ctx* cx) {
     struct AnchorBtn {
         const char* id;
         const char* label;
+        const char* content;
         component::HoverCardAnchor anchor;
     };
     static const AnchorBtn kAnchors[2][3] = {
-        {{"tl", "Top Left", component::HoverCardAnchor::TopLeft},
-         {"tc", "Top Center", component::HoverCardAnchor::TopCenter},
-         {"tr", "Top Right", component::HoverCardAnchor::TopRight}},
-        {{"bl", "Bottom Left", component::HoverCardAnchor::BottomLeft},
-         {"bc", "Bottom Center", component::HoverCardAnchor::BottomCenter},
-         {"br", "Bottom Right", component::HoverCardAnchor::BottomRight}},
+        {{"tl", "Top Left", "Positioned at Top Left",
+          component::HoverCardAnchor::TopLeft},
+         {"tc", "Top Center", "Positioned at Top Center",
+          component::HoverCardAnchor::TopCenter},
+         {"tr", "Top Right", "Positioned at Top Right",
+          component::HoverCardAnchor::TopRight}},
+        {{"bl", "Bottom Left", "Positioned at Bottom Left",
+          component::HoverCardAnchor::BottomLeft},
+         {"bc", "Bottom Center", "Positioned at Bottom Center",
+          component::HoverCardAnchor::BottomCenter},
+         {"br", "Bottom Right", "Positioned at Bottom Right",
+          component::HoverCardAnchor::BottomRight}},
     };
     for (int r = 0; r < 2; r++) {
         El* row = Div(a)->FlexRow()->Gap(16)->ItemsCenter();
@@ -176,10 +183,8 @@ El* HoverCardStory::Render(HoverCardStory*, Ctx* cx) {
                                   ->Label(Str(kAnchors[r][i].label))
                                   ->Outline()
                                   ->IntoEl())
-                    ->Content(
-                        on ? PlainCard(cx, StoryFmt(cx, "Positioned at %s",
-                                                    kAnchors[r][i].label))
-                           : nullptr)
+                    ->Content(on ? PlainCard(cx, Str(kAnchors[r][i].content))
+                                 : nullptr)
                     ->IntoEl());
         }
         posCol->Child(row);

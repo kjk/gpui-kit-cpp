@@ -347,11 +347,11 @@ El* SheetStory::Render(SheetStory* self, Ctx* cx) {
         if (self->open == SheetScrollable) {
             // One block of text repeated a hundred and fifty times, so the
             // lines sit on their own leading and nothing else.
-            body->Gap(0);
+            StrBuilder text(a);
             for (int i = 0; i < 150; i++) {
-                body->Child(StoryTxt(cx, StrL("This is a scrollable sheet."),
-                                     16, th.foreground));
+                text.Append(StrL("This is a scrollable sheet.\n"));
             }
+            body->Child(StoryTxt(cx, text.TakeStr(), 16, th.foreground));
         } else {
             body->Child(
                 component::Input::New(cx, StrL("sheet-name"), &self->nameInput)

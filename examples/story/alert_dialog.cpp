@@ -149,6 +149,7 @@ static component::AlertDialog* Alert(AlertDialogStory* self, Ctx* cx) {
                 ->Title(StrL("Discard unsaved changes?"))
                 ->Description(StrL("Your edits since the last save will be "
                                    "permanently lost."))
+                ->CancelText(StrL("Cancel"))
                 ->OkText(StrL("Discard"))
                 ->OkVariant(component::ButtonVariant::Danger)
                 ->FooterStretch()
@@ -184,6 +185,7 @@ static component::AlertDialog* Alert(AlertDialogStory* self, Ctx* cx) {
                 ->Description(
                     StrL("This will permanently delete your account and all "
                          "associated data. This action cannot be undone."))
+                ->CancelText(StrL("Cancel"))
                 ->OkText(StrL("Delete"))
                 ->OkVariant(component::ButtonVariant::Danger, true)
                 ->FooterStretch();
