@@ -213,6 +213,7 @@ void TestButtonGroup();
 void TestIcon();
 void TestKeyedState();
 void TestWindowExt();
+void TestWindowFrame();
 void TestToolbar();
 void TestDescriptionList();
 void TestLabel();

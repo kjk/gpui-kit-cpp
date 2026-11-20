@@ -44,6 +44,35 @@ The current update target is
   touch lasts (`GID_BEGIN`..`GID_END`) its pinches and gestures go to the
   elements where it began (`WindowGestureBegin`). Other platforms report none
   (`src/gpui/window_win.cpp`, `src/gpui/window_common.cpp`).
+- **Window frame and placement differ from `WindowOptions` / `Window`.**
+  Bounds are `ScreenBounds` in the platform's own unit (device pixels on
+  Windows and X11, points on macOS), not logical `Pixels`, and are the outer
+  frame: `WindowFrameBounds` (`bounds()`), `WindowContentBounds`,
+  `WindowSetFrameBounds` (Rust has only `resize()`), `WindowFrameForContent`,
+  `WindowDisplayBounds` / `WindowDisplayVisibleBounds` (`PlatformDisplay`
+  `bounds()` / `visible_bounds()`). `WinOpts` adds to `kind`, `focus`,
+  `show`, `is_minimizable`, `window_min_size` and `window_bounds` things Rust
+  lacks: `parent` (Rust's Dialog takes `GetActiveWindow()`), `frameless`
+  (no frame at all), `utility` (tool caption), `maximizable`, `activatable`
+  (`WS_EX_NOACTIVATE`; on macOS a frameless window that can be key) and
+  `maxSize`. `WindowKind` has no `AnchoredPopup` / `LayerShell`. A Dialog
+  keeps its Windows caption style (`WS_OVERLAPPED`, no
+  `WS_EX_DLGMODALFRAME`), holds its parent only while shown
+  (`WindowSetVisible`), and on release activates the parent if it was the
+  active window; macOS bounces clicks and keys from the parent with a local
+  event monitor and X11 grabs pointer and keyboard (one dialog at a time on
+  both). `WindowActivateInApp` (never takes the focus from another
+  application), `WindowIsEnabled`, `WindowSetFrameAppearance`,
+  `WindowOnBoundsChanged`'s `MoveResizeEnded` (`WM_EXITSIZEMOVE`; macOS ends
+  a live resize or polls the button after a move, X11 polls the button),
+  `WindowSendNativeKey` (macOS test support) have no Rust twin. X11 hides
+  the window manager settling a requested frame from the bounds observer
+  (within 4 px, 8 configures, or the user taking over). Observers are one
+  per window, and `AppOnWindowClosed` one per app, plain functions rather
+  than subscriptions. A scrollbar over a `ClickWinCaption` area is not
+  caption. The Windows class icon is resource 1, as Rust's `load_icon`.
+  wasm, iOS and Android answer empty bounds
+  (`window_frame_unsupported.cpp`; `src/gpui/window_*.cpp`).
 - **`on_open_urls` is macOS only** and takes a plain function, not a
   closure (`AppOnOpenUrls`, `src/gpui/window_mac.cpp`).
 - **`WindowCapturePngTemp` has no Rust twin.** A PNG of a window as drawn,
