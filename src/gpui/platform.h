@@ -170,6 +170,23 @@ PlatformInput InputLongPress(TouchPhase phase, Point start, Point position);
 PlatformInput InputFileDrop(FileDropPhase phase, float x, float y, Str paths);
 PlatformInput InputPinch(float x, float y, float delta, Modifiers modifiers,
                          TouchPhase phase);
+PlatformInput InputGesture(const GestureEvent& ev);
+
+// The touch a platform's gestures belong to began at (x, y) or ended. While
+// it lasts, its pinches and gestures go to the elements where it began.
+void WindowGestureBegin(Window* win, float x, float y);
+void WindowGestureEnd(Window* win);
+// True when an element under (x, y) takes GestureEvent (El::OnGesture).
+bool WindowWantsGestures(Window* win, float x, float y);
+
+// A touch zoom reports the distance between the fingers; PinchEvent wants
+// deltas that add up to the scale since it began: (distance - last) / first.
+struct TouchZoom {
+    float first = 0;
+    float last = 0;
+};
+// A change without a Started starts one and answers 0.
+float TouchZoomDelta(TouchZoom* z, float distance, TouchPhase phase);
 
 // text/uri-list, the payload an X11 file drag offers, as newline-separated
 // filesystem paths. file URIs are percent-decoded; any other scheme is

@@ -2614,6 +2614,11 @@ El* El::OnPinch(Listener fn) {
     lifecycle->onPinch = fn;
     return this;
 }
+El* El::OnGesture(Listener fn) {
+    if (!lifecycle) lifecycle = ArenaNew<ElLifecycle>(arena);
+    lifecycle->onGesture = fn;
+    return this;
+}
 
 El* El::OnClickAction(uint32_t action, int64_t arg) {
     clickAction = action;
@@ -8576,7 +8581,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->onMouseDownOut.IsValid() || e->onMouseUpOut.IsValid() ||
         e->onScrollWheel.IsValid() ||
         (e->lifecycle &&
-         (e->lifecycle->onPinch.IsValid() || e->lifecycle->cursorImage)) ||
+         (e->lifecycle->onPinch.IsValid() ||
+          e->lifecycle->onGesture.IsValid() || e->lifecycle->cursorImage)) ||
         e->drag.IsValid() || e->onDrop.IsValid() ||
         e->cursor != CursorKind::Arrow || e->slider || e->stopMouseDown ||
         e->suppressTextSelection || e->keepTextSelection ||
@@ -8615,6 +8621,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.onMouseUpOut = e->onMouseUpOut;
         hr.onScrollWheel = e->onScrollWheel;
         hr.onPinch = e->lifecycle ? e->lifecycle->onPinch : Listener{};
+        hr.onGesture = e->lifecycle ? e->lifecycle->onGesture : Listener{};
         hr.dropKind = e->dropKind;
         hr.onDrop = e->onDrop;
         hr.cursor = e->cursor;

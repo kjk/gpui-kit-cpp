@@ -27,9 +27,23 @@ The current update target is
 
 ## Known gaps vs Rust
 
-- **Only macOS reports pinch.** `PinchEvent` comes from `magnifyWithEvent:`.
-  Rust's Windows DirectManipulation source is not ported; Linux and wasm
-  report none either (`src/gpui/window_mac.cpp`).
+- **Pinch comes from macOS and Windows touch screens.** macOS reports
+  `magnifyWithEvent:`; Windows reports a touch-screen zoom (`WM_GESTURE`
+  `GID_ZOOM`), with deltas that add up to the scale since the pinch began.
+  Rust's Windows source is DirectManipulation, for precision touchpads only
+  (pinch and two-finger scroll with inertia); it is not ported, so a touchpad
+  pinch stays Windows' Ctrl+wheel and its scroll the wheel. Linux and wasm
+  report none (`src/gpui/window_mac.cpp`, `src/gpui/window_win.cpp`).
+- **`GestureEvent` / `El::OnGesture` have no Rust twin.** The Windows window
+  reports touch-screen gestures from `WM_GESTURE`: Pan (with the system's
+  inertia), Rotate, TwoFingerTap, PressAndTap. A touch on an element with
+  `OnGesture` gets every gesture (`GC_ALLGESTURES`), a one-finger pan and
+  rotation included, and none of its single-finger `WM_POINTER` scrolling;
+  elsewhere a one-finger vertical drag scrolls through `WM_POINTER` as before
+  and a pan nobody takes (two fingers) scrolls as a precise wheel. While a
+  touch lasts (`GID_BEGIN`..`GID_END`) its pinches and gestures go to the
+  elements where it began (`WindowGestureBegin`). Other platforms report none
+  (`src/gpui/window_win.cpp`, `src/gpui/window_common.cpp`).
 - **`on_open_urls` is macOS only** and takes a plain function, not a
   closure (`AppOnOpenUrls`, `src/gpui/window_mac.cpp`).
 - **`WindowCapturePngTemp` has no Rust twin.** A PNG of a window as drawn,

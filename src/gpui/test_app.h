@@ -102,6 +102,8 @@ void TestSimulateScrollWheel(Window* win, Point position, Point delta,
 void TestSimulatePinch(Window* win, Point position, float delta,
                        TouchPhase phase = TouchPhase::Moved,
                        Modifiers modifiers = {});
+// A GestureEvent, which has no Rust twin.
+void TestSimulateGesture(Window* win, const GestureEvent& ev);
 
 // cx.dispatch_action(action): to whatever has the focus, the way a key bound
 // to it would — the focused field first, then the element chain out from the

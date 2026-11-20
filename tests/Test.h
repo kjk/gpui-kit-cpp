@@ -188,6 +188,7 @@ void TestStateStyle();
 void TestClick();
 void TestFileDrop();
 void TestPinch();
+void TestGesture();
 void TestCursorImage();
 void TestPrompts();
 void TestPathPrompts();

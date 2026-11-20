@@ -497,6 +497,10 @@ void TestSimulatePinch(Window* win, Point position, float delta,
     Simulate(win, InputPinch(position.x, position.y, delta, modifiers, phase));
 }
 
+void TestSimulateGesture(Window* win, const GestureEvent& ev) {
+    Simulate(win, InputGesture(ev));
+}
+
 void TestSimulateClick(Window* win, Point position, Modifiers modifiers) {
     TestSimulateMouseDown(win, position, MouseButton::Left, modifiers);
     TestSimulateMouseUp(win, position, MouseButton::Left, modifiers);

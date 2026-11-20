@@ -3571,11 +3571,20 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
 
 static void DispatchFileDrop(Window* win, const FileDropEvent& in);
 
+// Where a platform gesture is hit-tested: where its touch began, so a pan
+// or a pinch that wanders off the element (or a pan's inertia that carries
+// past the window) stays with it.
+static Point GestureHitPoint(Window* win, float x, float y) {
+    return win->gestureAnchored ? win->gestureAnchor : Point{x, y};
+}
+
 // dispatch_mouse_event for a PinchEvent: the element chain under its center,
-// innermost first, until a handler clears `propagate`
+// innermost first, until a handler clears `propagate`. A touch-screen pinch
+// uses the point its touch began at.
 static void DispatchPinch(Window* win, const PinchEvent& in) {
     Vec<int> chain;
-    HitChain(win, in.x, in.y, &chain);
+    Point at = GestureHitPoint(win, in.x, in.y);
+    HitChain(win, at.x, at.y, &chain);
     for (int k = 0; k < len(chain); k++) {
         const HitRect& hr = win->paint.hits[chain[k]];
         if (!hr.onPinch.IsValid()) {
@@ -3590,6 +3599,87 @@ static void DispatchPinch(Window* win, const PinchEvent& in) {
     }
     VecReset(chain);
     AppInvalidate(win);
+}
+
+// A GestureEvent goes the way a PinchEvent does. A pan no handler kept
+// scrolls the box where it began, as a precise wheel.
+static void DispatchGesture(Window* win, const GestureEvent& in) {
+    Vec<int> chain;
+    Point at = GestureHitPoint(win, in.x, in.y);
+    HitChain(win, at.x, at.y, &chain);
+    bool taken = false;
+    for (int k = 0; k < len(chain); k++) {
+        const HitRect& hr = win->paint.hits[chain[k]];
+        if (!hr.onGesture.IsValid()) {
+            continue;
+        }
+        GestureEvent ev = in;
+        ev.propagate = true;
+        ListenerCall(win->app, win, hr.onGesture, &ev);
+        if (!ev.propagate) {
+            taken = true;
+            break;
+        }
+    }
+    VecReset(chain);
+    if (!taken && in.kind == GestureKind::Pan) {
+        ScrollWheelEvent wheel = {};
+        wheel.x = at.x;
+        wheel.y = at.y;
+        wheel.deltaX = in.dx;
+        wheel.deltaY = in.dy;
+        wheel.precise = true;
+        wheel.modifiers = in.modifiers;
+        wheel.phase = in.phase;
+        DispatchScrollWheel(win, wheel);
+        return;
+    }
+    AppInvalidate(win);
+}
+
+void WindowGestureBegin(Window* win, float x, float y) {
+    if (!win) {
+        return;
+    }
+    win->gestureAnchored = true;
+    win->gestureAnchor = {x, y};
+}
+
+void WindowGestureEnd(Window* win) {
+    if (win) {
+        win->gestureAnchored = false;
+    }
+}
+
+bool WindowWantsGestures(Window* win, float x, float y) {
+    if (!win) {
+        return false;
+    }
+    Vec<int> chain;
+    HitChain(win, x, y, &chain);
+    bool wants = false;
+    for (int k = 0; k < len(chain); k++) {
+        if (win->paint.hits[chain[k]].onGesture.IsValid()) {
+            wants = true;
+            break;
+        }
+    }
+    VecReset(chain);
+    return wants;
+}
+
+float TouchZoomDelta(TouchZoom* z, float distance, TouchPhase phase) {
+    if (phase == TouchPhase::Started || z->first <= 0) {
+        z->first = distance;
+        z->last = distance;
+        return 0;
+    }
+    float delta = (distance - z->last) / z->first;
+    z->last = distance;
+    if (phase == TouchPhase::Ended || phase == TouchPhase::Cancelled) {
+        *z = {};
+    }
+    return delta;
 }
 
 void WindowDispatchInput(Window* win, const PlatformInput* input) {
@@ -3816,6 +3906,9 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
         case PlatformInputKind::Pinch:
             DispatchPinch(win, input->pinch);
             break;
+        case PlatformInputKind::Gesture:
+            DispatchGesture(win, input->gesture);
+            break;
     }
 }
 
@@ -3878,6 +3971,13 @@ PlatformInput InputPinch(float x, float y, float delta, Modifiers modifiers,
     in.pinch.delta = delta;
     in.pinch.modifiers = modifiers;
     in.pinch.phase = phase;
+    return in;
+}
+
+PlatformInput InputGesture(const GestureEvent& ev) {
+    PlatformInput in = {};
+    in.kind = PlatformInputKind::Gesture;
+    in.gesture = ev;
     return in;
 }
 

@@ -43,11 +43,16 @@ struct PlatWindow {
     // A finger on the glass (WM_POINTER, PT_TOUCH). Windows also turns it into
     // mouse messages, which keep taps, press-and-hold and drags of scrollbars
     // and sliders working; a vertical drag over content scrolls it instead.
+    // Only the primary finger is followed; a second one makes it a gesture.
     bool touchDown = false;
     bool touchScroll = false;
     float touchStartX = 0;
     float touchStartY = 0;
     float touchLastY = 0;
+    // WM_GESTURE: the zoom in progress, and where the pan was last.
+    TouchZoom zoom = {};
+    float panX = 0;
+    float panY = 0;
     LONG_PTR windowedStyle = 0;
     WINDOWPLACEMENT windowedPlacement = {sizeof(WINDOWPLACEMENT)};
     bool fullScreen = false;
@@ -431,17 +436,38 @@ static void TouchEmitScroll(Window* win, TouchPhase phase, float dy) {
     WindowDispatchInput(win, &in);
 }
 
-// WM_POINTERDOWN / UPDATE / UP of a finger. The messages still go on to
-// DefWindowProc, which makes the mouse messages out of them.
-static void TouchPointer(Window* win, UINT msg, LPARAM lParam) {
+// A screen point (a pointer or gesture message) in window dips.
+static Point ScreenToDips(Window* win, int sx, int sy) {
     PlatWindow* p = win->plat;
-    POINT pt = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
+    POINT pt = {sx, sy};
     ScreenToClient(p->hwnd, &pt);
     win->paint.dpi = HostDpi(p->hwnd);
-    float x = PxToDip(&win->paint, pt.x);
-    float y = PxToDip(&win->paint, pt.y);
+    return {PxToDip(&win->paint, pt.x), PxToDip(&win->paint, pt.y)};
+}
+
+// WM_POINTERDOWN / UPDATE / UP of a finger. The messages still go on to
+// DefWindowProc, which makes the mouse messages (and the gestures) out of
+// them.
+static void TouchPointer(Window* win, UINT msg, WPARAM wParam, LPARAM lParam) {
+    PlatWindow* p = win->plat;
+    Point at = ScreenToDips(win, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+    float x = at.x;
+    float y = at.y;
+    if (!IS_POINTER_PRIMARY_WPARAM(wParam)) {
+        // a second finger: a pinch or a two-finger pan, WM_GESTURE's
+        if (msg == WM_POINTERDOWN && p->touchDown) {
+            if (p->touchScroll) {
+                TouchEmitScroll(win, TouchPhase::Ended, 0.f);
+            }
+            p->touchDown = false;
+            p->touchScroll = false;
+        }
+        return;
+    }
     if (msg == WM_POINTERDOWN) {
-        p->touchDown = true;
+        // an element that takes gestures gets every one, the pan included,
+        // as WM_GESTURE (GestureNotify)
+        p->touchDown = !WindowWantsGestures(win, x, y);
         p->touchScroll = false;
         p->touchStartX = x;
         p->touchStartY = y;
@@ -487,6 +513,137 @@ static void TouchPointer(Window* win, UINT msg, LPARAM lParam) {
 // Mouse messages made from a finger that is scrolling.
 static bool IsTouchScrollMouse(Window* win) {
     return win->plat->touchScroll && IsMouseFromTouch();
+}
+
+// WM_GESTURENOTIFY, as a finger first lands. A touch on an element that takes
+// gestures gets all of them, a one-finger pan either way and rotation
+// included. Anywhere else Windows' defaults apply, minus the one-finger pan:
+// a vertical drag scrolls through TouchPointer and a sideways one stays a
+// mouse drag. Set every time, since the last touch may have changed it.
+static void GestureNotify(Window* win, LPARAM lParam) {
+    auto* gn = (GESTURENOTIFYSTRUCT*)lParam;
+    HWND hwnd = win->plat->hwnd;
+    Point at = ScreenToDips(win, gn->ptsLocation.x, gn->ptsLocation.y);
+    if (WindowWantsGestures(win, at.x, at.y)) {
+        GESTURECONFIG all = {0, GC_ALLGESTURES, 0};
+        SetGestureConfig(hwnd, 0, 1, &all, sizeof(GESTURECONFIG));
+        return;
+    }
+    DWORD panWant = GC_PAN | GC_PAN_WITH_GUTTER | GC_PAN_WITH_INERTIA;
+    DWORD panBlock = GC_PAN_WITH_SINGLE_FINGER_VERTICALLY |
+                     GC_PAN_WITH_SINGLE_FINGER_HORIZONTALLY;
+    GESTURECONFIG gcs[] = {
+        {GID_ZOOM, GC_ZOOM, 0},
+        {GID_PAN, panWant, panBlock},
+        {GID_ROTATE, 0, GC_ROTATE},
+        {GID_TWOFINGERTAP, GC_TWOFINGERTAP, 0},
+        {GID_PRESSANDTAP, GC_PRESSANDTAP, 0},
+    };
+    SetGestureConfig(hwnd, 0, sizeof(gcs) / sizeof(gcs[0]), gcs,
+                     sizeof(GESTURECONFIG));
+}
+
+// GF_BEGIN / GF_END. A tap is one message with both: it is over.
+static TouchPhase GesturePhase(DWORD flags) {
+    if (flags & GF_END) {
+        return TouchPhase::Ended;
+    }
+    return (flags & GF_BEGIN) ? TouchPhase::Started : TouchPhase::Moved;
+}
+
+static void DispatchTouchPinch(Window* win, Point at, float delta,
+                               TouchPhase phase) {
+    PlatformInput in = InputPinch(at.x, at.y, delta, ModsNow(), phase);
+    WindowDispatchInput(win, &in);
+}
+
+// GID_ZOOM: the distance between the fingers, as PinchEvent deltas. A zoom
+// whose begin went elsewhere starts here.
+static void TouchZoomPinch(Window* win, float distance, TouchPhase phase,
+                           Point at) {
+    TouchZoom* z = &win->plat->zoom;
+    bool ending = phase == TouchPhase::Ended || phase == TouchPhase::Cancelled;
+    if (phase == TouchPhase::Started || z->first <= 0) {
+        TouchZoomDelta(z, distance, TouchPhase::Started);
+        DispatchTouchPinch(win, at, 0, TouchPhase::Started);
+        if (ending) {
+            *z = {};
+            DispatchTouchPinch(win, at, 0, phase);
+        }
+        return;
+    }
+    float delta = TouchZoomDelta(z, distance, phase);
+    if (!ending) {
+        DispatchTouchPinch(win, at, delta, TouchPhase::Moved);
+        return;
+    }
+    if (delta != 0) {
+        DispatchTouchPinch(win, at, delta, TouchPhase::Moved);
+    }
+    DispatchTouchPinch(win, at, 0, phase);
+}
+
+// WM_GESTURE. A zoom is a PinchEvent, everything else a GestureEvent. True
+// when it was handled; GID_BEGIN and GID_END must reach DefWindowProc.
+static bool TouchGesture(Window* win, LPARAM lParam) {
+    HGESTUREINFO hgi = (HGESTUREINFO)lParam;
+    GESTUREINFO gi = {};
+    gi.cbSize = sizeof(GESTUREINFO);
+    if (!GetGestureInfo(hgi, &gi)) {
+        return false;
+    }
+    PlatWindow* p = win->plat;
+    Point at = ScreenToDips(win, gi.ptsLocation.x, gi.ptsLocation.y);
+    if (gi.dwID == GID_BEGIN) {
+        WindowGestureBegin(win, at.x, at.y);
+        return false;
+    }
+    if (gi.dwID == GID_END) {
+        WindowGestureEnd(win);
+        return false;
+    }
+    uint32_t arg = (uint32_t)gi.ullArguments;
+    GestureEvent ev = {};
+    ev.phase = GesturePhase(gi.dwFlags);
+    ev.x = at.x;
+    ev.y = at.y;
+    ev.modifiers = ModsNow();
+    switch (gi.dwID) {
+        case GID_ZOOM:
+            TouchZoomPinch(win, (float)arg, ev.phase, at);
+            CloseGestureInfoHandle(hgi);
+            return true;
+        case GID_PAN:
+            ev.kind = GestureKind::Pan;
+            if (ev.phase != TouchPhase::Started) {
+                ev.dx = at.x - p->panX;
+                ev.dy = at.y - p->panY;
+            }
+            p->panX = at.x;
+            p->panY = at.y;
+            ev.inertia = (gi.dwFlags & GF_INERTIA) != 0;
+            break;
+        case GID_ROTATE:
+            // the begin carries the fingers' angle, the rest the turn since
+            ev.kind = GestureKind::Rotate;
+            if (ev.phase != TouchPhase::Started) {
+                ev.angle = (float)GID_ROTATE_ANGLE_FROM_ARGUMENT(arg);
+            }
+            break;
+        case GID_TWOFINGERTAP:
+            ev.kind = GestureKind::TwoFingerTap;
+            ev.phase = TouchPhase::Ended;
+            break;
+        case GID_PRESSANDTAP:
+            ev.kind = GestureKind::PressAndTap;
+            break;
+        default:
+            return false;
+    }
+    PlatformInput in = InputGesture(ev);
+    WindowDispatchInput(win, &in);
+    CloseGestureInfoHandle(hgi);
+    return true;
 }
 
 static void MouseExited(Window* win) {
@@ -886,7 +1043,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         case WM_POINTERUPDATE:
         case WM_POINTERUP:
             if (IsTouchPointer(wParam)) {
-                TouchPointer(win, msg, lParam);
+                TouchPointer(win, msg, wParam, lParam);
+            }
+            break;
+        case WM_GESTURENOTIFY:
+            GestureNotify(win, lParam);
+            break;
+        case WM_GESTURE:
+            if (TouchGesture(win, lParam)) {
+                return 0;
             }
             break;
         case WM_MOUSEMOVE: {

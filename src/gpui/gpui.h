@@ -428,8 +428,9 @@ struct KeyedSlot {
 //   * `Point<Pixels>` is `x` and `y`. There is a `Point` above, but an
 //     event's position is read a component at a time, and flattening it
 //     spares every handler a `.position`.
-// What is missing outright: touch and pressure, which none of these three
-// windows report. Pinch is macOS only (PinchEvent below).
+// What is missing outright: pressure, which none of these three windows
+// report. Pinch comes from macOS and from Windows touch screens (PinchEvent
+// below); the other touch gestures only from Windows (GestureEvent).
 
 enum class MouseButton : uint8_t {
     Left,
@@ -606,16 +607,51 @@ struct DropEvent {
 
 // GPUI's PinchEvent: a pinch-to-zoom gesture, typically on a trackpad, with
 // (x, y) its center. `delta` is this event's zoom change: positive zooms in,
-// 0.1 is 10% bigger. Only the macOS window reports it; Rust's Windows
-// DirectManipulation source is not ported. `propagate` is cx.propagate(), as
-// for ScrollWheelEvent: an `El::OnPinch` handler that clears it keeps the
-// gesture from the elements behind.
+// 0.1 is 10% bigger. The deltas of one gesture add up: 1 + their sum is the
+// scale since it started. The macOS window reports a trackpad pinch, the
+// Windows one a touch-screen pinch (WM_GESTURE); Rust's Windows
+// DirectManipulation (touchpad) source is not ported. `propagate` is
+// cx.propagate(), as for ScrollWheelEvent: an `El::OnPinch` handler that
+// clears it keeps the gesture from the elements behind.
 struct PinchEvent {
     float x = 0;
     float y = 0;
     float delta = 0;
     Modifiers modifiers = {};
     TouchPhase phase = TouchPhase::Moved;
+    bool propagate = true;
+};
+
+// A touch-screen gesture with no Rust twin; only the Windows window reports
+// them (WM_GESTURE). Pan is one or two fingers dragging; Rotate is two fingers
+// turning; TwoFingerTap is both fingers tapping at once (one Ended event);
+// PressAndTap is a second finger tapping beside one held down.
+enum class GestureKind : uint8_t {
+    Pan,
+    Rotate,
+    TwoFingerTap,
+    PressAndTap
+};
+
+// A gesture goes to the element chain where its touch began, innermost first,
+// until a handler clears `propagate`. A Pan nobody takes scrolls, as a
+// precise ScrollWheelEvent. Windows asks for every gesture (rotation, a
+// one-finger pan sideways) only for a touch that lands on an element with
+// El::OnGesture; elsewhere a one-finger drag stays a mouse drag.
+struct GestureEvent {
+    GestureKind kind = GestureKind::Pan;
+    TouchPhase phase = TouchPhase::Moved;
+    // Where the gesture is now: the finger, or the center of two.
+    float x = 0;
+    float y = 0;
+    // Pan: how far the finger moved since the last event, in dips.
+    float dx = 0;
+    float dy = 0;
+    // Rotate: radians turned since it started, counterclockwise positive.
+    float angle = 0;
+    // Pan: the finger has lifted and this is the system's inertia.
+    bool inertia = false;
+    Modifiers modifiers = {};
     bool propagate = true;
 };
 
@@ -695,7 +731,8 @@ enum class PlatformInputKind : uint8_t {
     TouchDrag,
     LongPress,
     FileDrop,
-    Pinch
+    Pinch,
+    Gesture
 };
 
 struct PlatformInput {
@@ -710,6 +747,7 @@ struct PlatformInput {
         LongPressEvent longPress;
         FileDropEvent fileDrop;
         PinchEvent pinch;
+        GestureEvent gesture;
     };
 };
 
@@ -2711,6 +2749,8 @@ struct ElLifecycle {
     const LinkTooltipTarget* linkTooltip = nullptr;
     // on_pinch: rare, so here rather than in El
     Listener onPinch;
+    // El::OnGesture, the same way
+    Listener onGesture;
     // El::CustomCursor, the same way
     CursorImage* cursorImage = nullptr;
     const TextHighlight* highlights = nullptr;
@@ -3551,6 +3591,9 @@ struct El {
     El* OnScrollWheel(Listener fn);
     // div().on_pinch(..): a pinch gesture over this element (PinchEvent)
     El* OnPinch(Listener fn);
+    // A touch gesture that began over this element (GestureEvent). No Rust
+    // twin.
+    El* OnGesture(Listener fn);
     El* TabIndex(int v);
     El* TabStop(bool v);
     // Opt into the component focus appearance. FocusId / TrackFocus alone do
@@ -3708,6 +3751,7 @@ struct HitRect {
     Listener onScrollWheel;
     // El::OnPinch, the same way
     Listener onPinch;
+    Listener onGesture;
     Str dropKind = {};
     Listener onDrop;
     CursorKind cursor = CursorKind::Arrow;
@@ -7635,6 +7679,10 @@ struct Window {
     // on_long_press) and so takes its moves and its release. Only good while
     // it is still `input`, the field the press focused.
     InputState* longPressInput = nullptr;
+    // WindowGestureBegin/End: the touch that platform gestures belong to.
+    // Its pinches and gestures go to the elements where it began.
+    bool gestureAnchored = false;
+    Point gestureAnchor = {};
     // WindowTouch*: a host-owned iOS/Android view feeds raw touches here.
     TouchHostKind touchHost = TouchHostKind::None;
     // SliderState::touch_drag: the slider a live TouchDrag was claimed by,

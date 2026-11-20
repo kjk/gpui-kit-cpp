@@ -162,6 +162,7 @@ int GpuiMain(int argc, char** argv) {
     TestClick();
     TestFileDrop();
     TestPinch();
+    TestGesture();
     TestCursorImage();
     TestPrompts();
     TestPathPrompts();
