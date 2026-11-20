@@ -23,6 +23,10 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
 // filled — and each backend call finds no surface bound and draws nothing.
 void WindowDrawFrameHeadless(Window* win, float dipW, float dipH);
 
+// WindowCapturePngTemp's success answer; `scale` is device pixels per DIP.
+TempStr WindowCaptureOkTemp(int pxW, int pxH, float scale, int windows,
+                            int webviews);
+
 // Primary locale preferred by the platform or browser.
 TempStr PlatPreferredLocaleTemp();
 // sys_locale::get_locales: every locale the user prefers, most preferred

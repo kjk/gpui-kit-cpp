@@ -2037,6 +2037,85 @@ float WindowScaleFactor(Window*) {
     return 1;
 }
 
+// A window's last frame (its back buffer) and where it is on the root window.
+static bool CaptureFrameRect(Window* w, int* x, int* y) {
+    PlatWindow* pw = w ? w->plat : nullptr;
+    if (!gDpy || !pw || !pw->back) {
+        return false;
+    }
+    XWindowAttributes attrs = {};
+    if (!XGetWindowAttributes(gDpy, pw->xwin, &attrs) ||
+        attrs.map_state != IsViewable) {
+        return false;
+    }
+    XWindow child = 0;
+    return XTranslateCoordinates(gDpy, pw->xwin, gRoot, 0, 0, x, y, &child);
+}
+
+// The frames the app drew, without window manager decorations. With
+// `allWindows` the app's other windows go over `win` in creation order, not
+// z-order. WebKitGTK webviews are not in the frames.
+TempStr WindowCapturePngTemp(Window* win, Str path, bool allWindows) {
+    int mainX = 0;
+    int mainY = 0;
+    if (!CaptureFrameRect(win, &mainX, &mainY)) {
+        return StrL("ERR no-window");
+    }
+    if (len(path) == 0) {
+        return StrL("ERR no-path");
+    }
+    Vec<Window*> wins;
+    VecAppend(wins, win);
+    if (allWindows) {
+        for (int i = 0; i < len(win->app->windows); i++) {
+            Window* w = win->app->windows[i];
+            if (w != win) {
+                VecAppend(wins, w);
+            }
+        }
+    }
+
+    // each frame's origin, and the union of all of them
+    Vec<Point> origins;
+    int x0 = mainX;
+    int y0 = mainY;
+    int x1 = mainX + win->plat->pxW;
+    int y1 = mainY + win->plat->pxH;
+    Vec<Window*> shots;
+    for (int i = 0; i < len(wins); i++) {
+        int x = 0;
+        int y = 0;
+        if (!CaptureFrameRect(wins[i], &x, &y)) {
+            continue;
+        }
+        PlatWindow* pw = wins[i]->plat;
+        x0 = std::min(x0, x);
+        y0 = std::min(y0, y);
+        x1 = std::max(x1, x + pw->pxW);
+        y1 = std::max(y1, y + pw->pxH);
+        VecAppend(shots, wins[i]);
+        VecAppend(origins, Point{(float)x, (float)y});
+    }
+
+    int w = x1 - x0;
+    int h = y1 - y0;
+    cairo_surface_t* out = cairo_image_surface_create(CAIRO_FORMAT_RGB24, w, h);
+    cairo_t* cr = cairo_create(out);
+    for (int i = 0; i < len(shots); i++) {
+        cairo_set_source_surface(cr, shots[i]->plat->back, origins[i].x - x0,
+                                 origins[i].y - y0);
+        cairo_paint(cr);
+    }
+    cairo_destroy(cr);
+    cairo_surface_flush(out);
+    cairo_status_t st = cairo_surface_write_to_png(out, StrDupTemp(path).s);
+    cairo_surface_destroy(out);
+    if (st != CAIRO_STATUS_SUCCESS) {
+        return StrL("ERR write");
+    }
+    return WindowCaptureOkTemp(w, h, 1, len(shots), 0);
+}
+
 void AppActivate(Window* win) {
     if (!win || !win->plat) {
         return;

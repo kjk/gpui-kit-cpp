@@ -15,6 +15,7 @@
 #include <shellapi.h>
 #include <shobjidl.h>
 #include <uiautomation.h>
+#include <wincodec.h>
 #include <math.h>
 
 namespace gpui {
@@ -1050,6 +1051,200 @@ bool WindowClientDecorated(Window* win) {
 
 float WindowScaleFactor(Window* win) {
     return win && win->paint.dpi > 0 ? win->paint.dpi / 96.f : 1.f;
+}
+
+// --- WindowCapturePngTemp ---------------------------------------------------
+//
+// PrintWindow with PW_RENDERFULLCONTENT reads what DWM composes: the flip
+// chain's last frame and child windows such as WebView2's.
+
+constexpr UINT kPwClientOnly = 0x1;
+constexpr UINT kPwRenderFullContent = 0x2;
+
+// One window to capture and its screen rect in physical pixels.
+struct CaptureShot {
+    HWND hwnd;
+    RECT r;
+    bool clientOnly;
+};
+
+struct CaptureEnum {
+    HWND main;
+    DWORD pid;
+    Vec<CaptureShot>* shots;
+};
+
+static bool CaptureShotFor(HWND hwnd, bool clientOnly, CaptureShot* out) {
+    RECT r = {};
+    if (clientOnly) {
+        GetClientRect(hwnd, &r);
+        MapWindowPoints(hwnd, nullptr, (POINT*)&r, 2);
+    } else {
+        GetWindowRect(hwnd, &r);
+    }
+    if (r.right <= r.left || r.bottom <= r.top) {
+        return false;
+    }
+    *out = {hwnd, r, clientOnly};
+    return true;
+}
+
+// The process's other visible top-level windows, top of the z-order first.
+static BOOL CALLBACK CaptureEnumProc(HWND hwnd, LPARAM lp) {
+    auto* e = (CaptureEnum*)lp;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (hwnd == e->main || pid != e->pid || !IsWindowVisible(hwnd) ||
+        IsIconic(hwnd)) {
+        return TRUE;
+    }
+    CaptureShot shot = {};
+    if (CaptureShotFor(hwnd, false, &shot)) {
+        VecAppend(*e->shots, shot);
+    }
+    return TRUE;
+}
+
+static bool CaptureWritePng(Str path, const void* bits, int w, int h) {
+    IWICImagingFactory* wic = nullptr;
+    IWICStream* stream = nullptr;
+    IWICBitmapEncoder* enc = nullptr;
+    IWICBitmapFrameEncode* frame = nullptr;
+    HRESULT hr =
+        CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER,
+                         __uuidof(IWICImagingFactory), (void**)&wic);
+    if (SUCCEEDED(hr)) {
+        hr = wic->CreateStream(&stream);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = stream->InitializeFromFilename(ToCWstrTemp(path), GENERIC_WRITE);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = wic->CreateEncoder(GUID_ContainerFormatPng, nullptr, &enc);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = enc->Initialize(stream, WICBitmapEncoderNoCache);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = enc->CreateNewFrame(&frame, nullptr);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = frame->Initialize(nullptr);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = frame->SetSize((UINT)w, (UINT)h);
+    }
+    WICPixelFormatGUID pixFmt = GUID_WICPixelFormat32bppBGRA;
+    if (SUCCEEDED(hr)) {
+        hr = frame->SetPixelFormat(&pixFmt);
+    }
+    if (SUCCEEDED(hr) && !IsEqualGUID(pixFmt, GUID_WICPixelFormat32bppBGRA)) {
+        hr = E_FAIL;
+    }
+    UINT stride = (UINT)w * 4;
+    if (SUCCEEDED(hr)) {
+        hr = frame->WritePixels((UINT)h, stride, stride * (UINT)h, (BYTE*)bits);
+    }
+    if (SUCCEEDED(hr)) {
+        hr = frame->Commit();
+    }
+    if (SUCCEEDED(hr)) {
+        hr = enc->Commit();
+    }
+    if (frame) {
+        frame->Release();
+    }
+    if (enc) {
+        enc->Release();
+    }
+    if (stream) {
+        stream->Release();
+    }
+    if (wic) {
+        wic->Release();
+    }
+    return SUCCEEDED(hr);
+}
+
+// `win`'s client area; other windows with their frame.
+TempStr WindowCapturePngTemp(Window* win, Str path, bool allWindows) {
+    HWND main = Hwnd(win);
+    if (!main || IsIconic(main)) {
+        return StrL("ERR no-window");
+    }
+    if (len(path) == 0) {
+        return StrL("ERR no-path");
+    }
+
+    // back to front: `win` first, then the others bottom-up
+    Vec<CaptureShot> shots;
+    CaptureShot mainShot = {};
+    if (!CaptureShotFor(main, true, &mainShot)) {
+        return StrL("ERR empty");
+    }
+    VecAppend(shots, mainShot);
+    if (allWindows) {
+        Vec<CaptureShot> others;
+        CaptureEnum e = {main, GetCurrentProcessId(), &others};
+        EnumWindows(CaptureEnumProc, (LPARAM)&e);
+        for (int i = len(others) - 1; i >= 0; i--) {
+            VecAppend(shots, others[i]);
+        }
+    }
+    RECT total = shots[0].r;
+    for (int i = 1; i < len(shots); i++) {
+        UnionRect(&total, &total, &shots[i].r);
+    }
+    int w = total.right - total.left;
+    int h = total.bottom - total.top;
+
+    void* bits = nullptr;
+    HBITMAP canvas = WinDib32New(w, h, &bits);
+    if (!canvas) {
+        return StrL("ERR alloc");
+    }
+    HDC canvasDc = CreateCompatibleDC(nullptr);
+    HGDIOBJ canvasOld = SelectObject(canvasDc, canvas);
+    int captured = 0;
+    for (int i = 0; i < len(shots); i++) {
+        const CaptureShot& s = shots[i];
+        int sw = s.r.right - s.r.left;
+        int sh = s.r.bottom - s.r.top;
+        void* shotBits = nullptr;
+        HBITMAP bmp = WinDib32New(sw, sh, &shotBits);
+        if (!bmp) {
+            continue;
+        }
+        HDC dc = CreateCompatibleDC(nullptr);
+        HGDIOBJ old = SelectObject(dc, bmp);
+        UINT flags = kPwRenderFullContent | (s.clientOnly ? kPwClientOnly : 0);
+        if (PrintWindow(s.hwnd, dc, flags)) {
+            BitBlt(canvasDc, s.r.left - total.left, s.r.top - total.top, sw, sh,
+                   dc, 0, 0, SRCCOPY);
+            captured++;
+        }
+        SelectObject(dc, old);
+        DeleteDC(dc);
+        DeleteObject(bmp);
+    }
+    GdiFlush();
+    SelectObject(canvasDc, canvasOld);
+    DeleteDC(canvasDc);
+
+    // GDI leaves alpha undefined; the capture is opaque
+    auto* px = (uint8_t*)bits;
+    for (int i = 0; i < w * h; i++) {
+        px[i * 4 + 3] = 0xff;
+    }
+    bool ok = captured > 0 && CaptureWritePng(path, bits, w, h);
+    DeleteObject(canvas);
+    if (captured == 0) {
+        return StrL("ERR empty");
+    }
+    if (!ok) {
+        return StrL("ERR write");
+    }
+    return WindowCaptureOkTemp(w, h, WindowScaleFactor(win), captured, 0);
 }
 
 void AppActivate(Window* win) {

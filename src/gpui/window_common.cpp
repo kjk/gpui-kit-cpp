@@ -5404,4 +5404,12 @@ float WheelNotchPixels(const App* app) {
     return kWheelScrollLines * RuntimeStyleNow(app).fontSize * kLineHeight;
 }
 
+// Webview snapshots arrive after the call returns, so any webview means the
+// PNG is still pending.
+TempStr WindowCaptureOkTemp(int pxW, int pxH, float scale, int windows,
+                            int webviews) {
+    return fmt("OK w=%d h=%d scale=%g windows=%d webviews=%d pending=%d", pxW,
+               pxH, (double)scale, windows, webviews, webviews > 0 ? 1 : 0);
+}
+
 } // namespace gpui

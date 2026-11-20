@@ -8790,6 +8790,20 @@ void AppActivate(Window* win);
 // devicePixelRatio in a browser, DPI / 96 on Windows; 1 on X11, which draws
 // in device pixels.
 float WindowScaleFactor(Window* win);
+// Not in Rust: writes a PNG of `win` as the app drew it, read back from the
+// app's own windows, so it needs no screen-recording permission. With
+// `allWindows` the app's other visible windows are composed in where they
+// are on screen. Answers "OK w=.. h=.. scale=.. windows=.. webviews=..
+// pending=.." or "ERR <reason>"; pending=1 means webview snapshots are still
+// coming and the file appears once they are drawn in (macOS).
+#if GPUI_OS_WASM
+inline TempStr WindowCapturePngTemp(Window* win, Str path, bool allWindows) {
+    (void)win, (void)path, (void)allWindows;
+    return StrL("ERR unsupported");
+}
+#else
+TempStr WindowCapturePngTemp(Window* win, Str path, bool allWindows);
+#endif
 void AppMinimize(Window* win);
 void AppToggleMaximize(Window* win);
 // Enter or leave native fullscreen mode without changing application chrome.

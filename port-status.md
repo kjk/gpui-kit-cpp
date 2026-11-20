@@ -32,6 +32,11 @@ The current update target is
   report none either (`src/gpui/window_mac.cpp`).
 - **`on_open_urls` is macOS only** and takes a plain function, not a
   closure (`AppOnOpenUrls`, `src/gpui/window_mac.cpp`).
+- **`WindowCapturePngTemp` has no Rust twin.** A PNG of a window as drawn,
+  for test automation without screen-recording permission: macOS
+  `cacheDisplayInRect:` plus WKWebView snapshots, Windows `PrintWindow`,
+  Linux the cairo back buffer (no WebKitGTK views, app windows in creation
+  order). wasm answers "ERR unsupported" (`src/gpui/window_*.cpp`).
 
 - **Oversized inline code uses one wrapped box.** Each line shapes inside
   one pair of insets. The span shares its background and border across the

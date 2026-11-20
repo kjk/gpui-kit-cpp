@@ -222,10 +222,33 @@ static void LocaleListKeepsOrderWithoutRepeats() {
     utassert(base::StrEq(out.TakeStr(), StrL("de-DE\nen-US\nde")));
 }
 
+// Not in Rust. A test window has no native window to read back, so the
+// capture refuses instead of writing a blank PNG.
+struct CaptureTestView {
+    static El* Render(CaptureTestView*, Ctx* cx) {
+        return Div(cx->a)->SizeFull();
+    }
+};
+
+static void CaptureNeedsANativeWindow() {
+    utassert(base::StrStartsWith(
+        WindowCapturePngTemp(nullptr, StrL("x.png"), false), StrL("ERR ")));
+    App* app = TestAppNew();
+    auto view = EntityNew<CaptureTestView>(app);
+    Window* win = TestWindowOpen(app, view, 200, 100, 1);
+    Str res = WindowCapturePngTemp(win, StrL("x.png"), true);
+    utassert(base::StrStartsWith(res, StrL("ERR ")));
+    TestAppFree(app);
+    utassert(base::StrEq(WindowCaptureOkTemp(400, 200, 2, 1, 1),
+                         StrL("OK w=400 h=200 scale=2 windows=1 webviews=1 "
+                              "pending=1")));
+}
+
 void TestAppGlobals() {
     TestSuite("app globals");
     OpenUrlsReachTheHandler();
     LocaleListKeepsOrderWithoutRepeats();
+    CaptureNeedsANativeWindow();
     GlobalsBelongToOneApp();
     ReplacingAndRemovingReleaseOwnership();
     BaseInitializationIsIdempotentAndIsolated();
