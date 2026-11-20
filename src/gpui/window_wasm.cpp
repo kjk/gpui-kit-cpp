@@ -862,6 +862,15 @@ bool WindowClientDecorated(Window* win) {
 // A tab cannot raise itself either — only the browser decides which one is
 // in front, and window.focus() is ignored for anything but a popup a script
 // opened.
+EM_JS(double, GpJsDevicePixelRatio, (), {
+    const dpr = globalThis.devicePixelRatio;
+    return typeof dpr == "number" && dpr > 0 ? dpr : 1;
+});
+
+float WindowScaleFactor(Window*) {
+    return (float)GpJsDevicePixelRatio();
+}
+
 void AppActivate(Window* win) {
     (void)win;
 }

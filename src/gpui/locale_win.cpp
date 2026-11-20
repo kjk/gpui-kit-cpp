@@ -2,7 +2,7 @@
 
 namespace gpui {
 
-TempStr PlatPreferredLocaleTemp() {
+TempStr PlatPreferredLocalesTemp() {
     ULONG languages = 0;
     ULONG size = 0;
     if (!GetUserPreferredUILanguages(MUI_LANGUAGE_NAME, &languages, nullptr,
@@ -17,10 +17,17 @@ TempStr PlatPreferredLocaleTemp() {
         languages == 0) {
         return {};
     }
-    char locale[256] = {};
-    int n = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, names, -1,
-                                locale, sizeof(locale), nullptr, nullptr);
-    return n > 1 ? StrDupTemp(Str(locale, n - 1)) : Str{};
+    // a double-NUL-terminated list
+    StrBuilder out(GetTempArena());
+    for (const WCHAR* name = names; *name; name += wcslen(name) + 1) {
+        char locale[256] = {};
+        int n = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, name, -1,
+                                    locale, sizeof(locale), nullptr, nullptr);
+        if (n > 1) {
+            PlatLocaleListAdd(&out, Str(locale, n - 1));
+        }
+    }
+    return out.TakeStr();
 }
 
 } // namespace gpui

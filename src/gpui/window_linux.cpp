@@ -2033,6 +2033,10 @@ bool WindowClientDecorated(Window* win) {
     return !framed;
 }
 
+float WindowScaleFactor(Window*) {
+    return 1;
+}
+
 void AppActivate(Window* win) {
     if (!win || !win->plat) {
         return;

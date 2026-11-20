@@ -1435,6 +1435,14 @@ bool WindowClientDecorated(Window* win) {
     return win && (win->opts.clientTitleBar || win->opts.borderless);
 }
 
+float WindowScaleFactor(Window* win) {
+    if (!win || !win->plat || !win->plat->window) {
+        return 1;
+    }
+    float scale = (float)[win->plat->window backingScaleFactor];
+    return scale > 0 ? scale : 1;
+}
+
 void AppActivate(Window* win) {
     if (!win || !win->plat) {
         return;

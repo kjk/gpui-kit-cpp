@@ -1048,6 +1048,10 @@ bool WindowClientDecorated(Window* win) {
     return win && (win->opts.clientTitleBar || win->opts.borderless);
 }
 
+float WindowScaleFactor(Window* win) {
+    return win && win->paint.dpi > 0 ? win->paint.dpi / 96.f : 1.f;
+}
+
 void AppActivate(Window* win) {
     HWND hwnd = Hwnd(win);
     if (!hwnd) {

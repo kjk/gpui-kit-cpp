@@ -4,7 +4,8 @@
 
 namespace gpui {
 
-TempStr PlatPreferredLocaleTemp() {
+// one: Android's system properties name a single locale
+TempStr PlatPreferredLocalesTemp() {
     const char* keys[] = {"persist.sys.locale", "persist.sys.language",
                           "ro.product.locale", "ro.product.locale.language"};
     char locale[PROP_VALUE_MAX] = {};

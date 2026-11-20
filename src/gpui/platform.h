@@ -25,6 +25,11 @@ void WindowDrawFrameHeadless(Window* win, float dipW, float dipH);
 
 // Primary locale preferred by the platform or browser.
 TempStr PlatPreferredLocaleTemp();
+// sys_locale::get_locales: every locale the user prefers, most preferred
+// first, one a line, in the platform's spelling ("de_DE.UTF-8" from $LANG).
+TempStr PlatPreferredLocalesTemp();
+// One more line of that list, unless it is empty or already there.
+void PlatLocaleListAdd(StrBuilder* out, Str locale);
 
 #if GPUI_OS_WINDOWS || GPUI_OS_MAC
 bool PlatAutoHideScrollbars();

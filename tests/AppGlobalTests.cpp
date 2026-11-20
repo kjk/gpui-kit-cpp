@@ -211,9 +211,21 @@ static void OpenUrlsReachTheHandler() {
     utassert(gOpenedUrls == 2);
 }
 
+// sys_locale::get_locales: one a line, each once, empty ones skipped
+static void LocaleListKeepsOrderWithoutRepeats() {
+    StrBuilder out(GetTempArena());
+    PlatLocaleListAdd(&out, StrL("de-DE"));
+    PlatLocaleListAdd(&out, StrL(""));
+    PlatLocaleListAdd(&out, StrL("en-US"));
+    PlatLocaleListAdd(&out, StrL("de-DE"));
+    PlatLocaleListAdd(&out, StrL("de"));
+    utassert(base::StrEq(out.TakeStr(), StrL("de-DE\nen-US\nde")));
+}
+
 void TestAppGlobals() {
     TestSuite("app globals");
     OpenUrlsReachTheHandler();
+    LocaleListKeepsOrderWithoutRepeats();
     GlobalsBelongToOneApp();
     ReplacingAndRemovingReleaseOwnership();
     BaseInitializationIsIdempotentAndIsolated();

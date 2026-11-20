@@ -8786,6 +8786,10 @@ void AppMenuClear(App* app);
 // and the application with it, restoring it if it was minimized. What a
 // click on a system notification asks for.
 void AppActivate(Window* win);
+// window.scale_factor(): device pixels per DIP. The backing scale on macOS,
+// devicePixelRatio in a browser, DPI / 96 on Windows; 1 on X11, which draws
+// in device pixels.
+float WindowScaleFactor(Window* win);
 void AppMinimize(Window* win);
 void AppToggleMaximize(Window* win);
 // Enter or leave native fullscreen mode without changing application chrome.
