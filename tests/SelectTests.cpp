@@ -832,7 +832,7 @@ static void SelectMenuKeepsItsOpeningSideAndHoldsHeightAbove() {
         auto* view = host.Get(app);
         view->select = component::SelectState::New(app);
         view->bottom = bottom;
-        for (int i = 0; i < (int)dimof(view->items); i++) {
+        for (int i = 0; i < dimofi(view->items); i++) {
             view->items[i].title = i == 0 ? StrL("Unique") : StrL("Option");
         }
         Window* win = TestWindowOpen(app, host, 400, 420, 1);

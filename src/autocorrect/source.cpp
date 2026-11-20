@@ -310,11 +310,10 @@ static const char* const kObjcIgnoreMethods[] = {"NSRegularExpression",
 
 static int ObjcIgnoreString(Str s, int i) {
     static const char* const kArgs[] = {"WithPattern", "WithKey"};
-    int n =
-        MatchWordThenString(s, i, kObjcIgnoreMethods,
-                            (int)dimof(kObjcIgnoreMethods), '(', ObjcString);
+    int n = MatchWordThenString(s, i, kObjcIgnoreMethods,
+                                dimofi(kObjcIgnoreMethods), '(', ObjcString);
     return n > 0 ? n
-                 : MatchWordThenString(s, i, kArgs, (int)dimof(kArgs), ':',
+                 : MatchWordThenString(s, i, kArgs, dimofi(kArgs), ':',
                                        ObjcString);
 }
 
@@ -551,11 +550,10 @@ static int SwiftString(Str s, int i) {
 }
 static int SwiftIgnoreString(Str s, int i) {
     static const char* const kArgs[] = {"pattern", "key"};
-    int n =
-        MatchWordThenString(s, i, kObjcIgnoreMethods,
-                            (int)dimof(kObjcIgnoreMethods), '(', SwiftString);
+    int n = MatchWordThenString(s, i, kObjcIgnoreMethods,
+                                dimofi(kObjcIgnoreMethods), '(', SwiftString);
     return n > 0 ? n
-                 : MatchWordThenString(s, i, kArgs, (int)dimof(kArgs), ':',
+                 : MatchWordThenString(s, i, kArgs, dimofi(kArgs), ':',
                                        SwiftString);
 }
 
@@ -933,7 +931,7 @@ void ScanPhp(Results* res, Str raw) {
             i += 2;
             continue;
         }
-        if (!ScanAltAt(&run, kAlts, (int)dimof(kAlts), &i)) {
+        if (!ScanAltAt(&run, kAlts, dimofi(kAlts), &i)) {
             i++;
         }
     }

@@ -2857,7 +2857,7 @@ uint8_t FontFamilyIntern(Str name) {
             return (uint8_t)i;
         }
     }
-    if (gFontFamilyCount >= (int)dimof(gFontFamilies)) {
+    if (gFontFamilyCount >= dimofi(gFontFamilies)) {
         return 0;
     }
     gFontFamilies[gFontFamilyCount] = StrDup(name);
@@ -6668,7 +6668,7 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
 static Bounds* TextRangeRectsFull(TextLayout* layout, Str text, int lo, int hi,
                                   Bounds (&stack)[32], int* count) {
     Bounds* rects = stack;
-    int capacity = (int)dimof(stack);
+    int capacity = dimofi(stack);
     // A returned rect covers at least one byte in the requested range.
     int bytes = std::min(hi, len(text)) - std::max(lo, 0);
     int maxRects = std::min(bytes, INT32_MAX / (int)sizeof(Bounds));

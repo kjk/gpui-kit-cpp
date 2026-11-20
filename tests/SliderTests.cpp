@@ -549,7 +549,7 @@ struct KeyboardSliderView {
     int tabIndex = 0;
 
     static void OnStep(KeyboardSliderView* self, Ctx*, const SliderEvent* ev) {
-        if (self->count < (int)dimof(self->events)) {
+        if (self->count < dimofi(self->events)) {
             self->events[self->count] = *ev;
         }
         self->count++;

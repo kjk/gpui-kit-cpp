@@ -543,8 +543,8 @@ static void BuildMathSvg(MathJaxJob* job) {
     options.inheritEnvironment = true;
     shell::ProcessOutput output;
     Str error = {};
-    if (shell::ProcessRunBounded(StrL("node"), args, (int)dimof(args),
-                                 &job->cancel, &output, &error, &options) &&
+    if (shell::ProcessRunBounded(StrL("node"), args, dimofi(args), &job->cancel,
+                                 &output, &error, &options) &&
         output.code == 0 && output.out.s) {
         char* end = nullptr;
         job->width = strtof(output.out.s, &end);

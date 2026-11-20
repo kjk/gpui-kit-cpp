@@ -7471,11 +7471,11 @@ static void CaretMenusFlipWhenTheyDoNotFitBelow() {
             CompletionItem items[4];
             for (auto& item : items) item.label = StrL("Completion item");
             InputPresentCompletionItems(&s.p->input, 0, StrL(""), items,
-                                        (int)dimof(items));
+                                        dimofi(items));
         } else {
             CodeActionItem items[4];
             for (auto& item : items) item.title = StrL("Code action");
-            InputPresentCodeActions(&s.p->input, items, (int)dimof(items));
+            InputPresentCodeActions(&s.p->input, items, dimofi(items));
         }
         TestDraw(s.win);
         Bounds popup = MenuHitBounds(

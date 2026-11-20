@@ -732,7 +732,7 @@ static Str ThemeResolvedSystemUIFont(const Str* installed, int n) {
         ".ZedMono",     ".ZedSans",  "Helvetica", "Segoe UI",    "Ubuntu",
         "Adwaita Sans", "Cantarell", "Noto Sans", "DejaVu Sans", "Arial",
     };
-    for (int i = 0; i < (int)dimof(kFallbacks); i++) {
+    for (int i = 0; i < dimofi(kFallbacks); i++) {
         Str key = Str(kFallbacks[i]);
         if (ThemeFontNameLoads(ThemeFontNameWithFallbacks(key), installed, n)) {
             return key;

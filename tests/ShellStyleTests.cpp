@@ -138,7 +138,7 @@ static void EveryDeclaredStyleIsAccepted() {
         }
     }
     utassert(refused == 0);
-    utassert(behaviors == (int)dimof(kNullaryBehaviors));
+    utassert(behaviors == dimofi(kNullaryBehaviors));
 
     // Style.rs PARAM_STYLES: bg, shadow and the length/colour methods. Each
     // is bound and accepts a value of the type its declaration names.

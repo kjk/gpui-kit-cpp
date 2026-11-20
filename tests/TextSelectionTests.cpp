@@ -2514,7 +2514,7 @@ struct HighlightedSelectableView {
             ->H(32)
             ->Child(SelectableText::New(cx, StrL("local"), StrL("π alpha beta"))
                         ->Font(16)
-                        ->Highlights(highlights, (int)dimof(highlights))
+                        ->Highlights(highlights, dimofi(highlights))
                         ->IntoEl())
             ->Child(TextSelectionLayer::New(cx));
     }

@@ -22,7 +22,7 @@
 namespace gpui {
 
 static ParagraphBidi ParagraphBidiClass(uint32_t scalar) {
-    int lo = 0, hi = (int)dimof(kParagraphBidiRanges);
+    int lo = 0, hi = dimofi(kParagraphBidiRanges);
     while (lo < hi) {
         int mid = lo + (hi - lo) / 2;
         const auto& range = kParagraphBidiRanges[mid];
@@ -9546,7 +9546,7 @@ static int WrapRowFragments(const InputState* s, Str line, WrapRowSpan r,
 static float WrapRowX(PaintCtx* ctx, const InputState* s, Str line,
                       WrapRowSpan r, int local) {
     WrapFragment frags[64];
-    int n = WrapRowFragments(s, line, r, frags, (int)dimof(frags));
+    int n = WrapRowFragments(s, line, r, frags, dimofi(frags));
     float x = r.x;
     for (int i = 0; i < n; i++) {
         const WrapFragment& f = frags[i];
@@ -9612,7 +9612,7 @@ static int WrapRowIndexAt(PaintCtx* ctx, const InputState* s, Str line,
         return r.lo;
     }
     WrapFragment frags[64];
-    int n = WrapRowFragments(s, line, r, frags, (int)dimof(frags));
+    int n = WrapRowFragments(s, line, r, frags, dimofi(frags));
     float at = r.x;
     float font = WrapFontOf(s);
     for (int i = 0; i < n; i++) {

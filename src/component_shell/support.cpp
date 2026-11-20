@@ -183,7 +183,7 @@ bool CardAnchorArgument(PayloadBuild* build, const char* component,
                        "literal",
                        Str(component)));
     }
-    for (int i = 0; i < (int)dimof(kCardAnchorLiterals); i++) {
+    for (int i = 0; i < dimofi(kCardAnchorLiterals); i++) {
         if (!StrEq(args[0].string, kCardAnchorLiterals[i])) continue;
         *out = (gpui::Anchor)i;
         return true;

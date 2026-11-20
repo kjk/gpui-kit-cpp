@@ -6405,7 +6405,7 @@ static const HtmlEntity kHtmlEntities[2125] = {
 
 Str HtmlNamedCharRef(Str name) {
     int lo = 0;
-    int hi = (int)dimof(kHtmlEntities) - 1;
+    int hi = dimofi(kHtmlEntities) - 1;
     while (lo <= hi) {
         int mid = (lo + hi) / 2;
         const char* candidate = kHtmlEntityNames + kHtmlEntities[mid].nameOff;
@@ -6422,7 +6422,7 @@ Str HtmlNamedCharRef(Str name) {
 }
 
 int HtmlNamedCharRefCount() {
-    return (int)dimof(kHtmlEntities);
+    return dimofi(kHtmlEntities);
 }
 
 void HtmlNamedCharRefAt(int i, Str* name, Str* value) {

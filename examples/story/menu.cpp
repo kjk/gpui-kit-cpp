@@ -520,7 +520,7 @@ El* MenuStory::Render(MenuStory* self, Ctx* cx) {
         {100, StrL("Scrollable Menu (100 items)")},
         {5, StrL("Scrollable Menu (5 items)")},
     };
-    for (int i = 0; i < (int)dimof(menus); i++) {
+    for (int i = 0; i < dimofi(menus); i++) {
         int count = menus[i].count;
         scrollContent->Child(
             component::DropdownMenu::New(

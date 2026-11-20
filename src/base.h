@@ -90,6 +90,9 @@ char (&DimofSizeHelper(T (&array)[N]) noexcept)[N];
 #ifndef dimof
 #define dimof(array) (sizeof(::base::DimofSizeHelper(array)))
 #endif
+#ifndef dimofi
+#define dimofi(array) ((int)sizeof(::base::DimofSizeHelper(array)))
+#endif
 
 enum : uint16_t {
     kMaxPath = 1024
@@ -135,7 +138,7 @@ void Panic(const char* msg);
 
 using TempStr = Str;
 
-#define StrL(lit) ::base::Str{(char*)(lit), (int)dimof(lit) - 1}
+#define StrL(lit) ::base::Str{(char*)(lit), dimofi(lit) - 1}
 
 TempStr AllocStrTemp(int size);
 TempStr StrDupTemp(Str s);

@@ -1752,7 +1752,7 @@ static void addRawStr(Fmt& fmt, int off, size_t n) {
     if (n == 0) {
         return;
     }
-    if (fmt.nInst >= (int)dimof(fmt.instructions)) {
+    if (fmt.nInst >= dimofi(fmt.instructions)) {
         fmt.isOk = false;
         return;
     }
@@ -1784,7 +1784,7 @@ static int parseArgDefBrace(Fmt& fmt, int off) {
         fmt.isOk = false;
         return off;
     }
-    if (fmt.nInst >= (int)dimof(fmt.instructions)) {
+    if (fmt.nInst >= dimofi(fmt.instructions)) {
         fmt.isOk = false;
         return off;
     }
@@ -1896,7 +1896,7 @@ static int parseArgDefPerc(Fmt& fmt, int off) {
     char conv = (off < len(f)) ? f.s[off] : 0;
     off++;
 
-    if (fmt.nInst >= (int)dimof(fmt.instructions)) {
+    if (fmt.nInst >= dimofi(fmt.instructions)) {
         fmt.isOk = false;
         return off;
     }
@@ -2012,7 +2012,7 @@ static bool appendConv(Fmt& fmt, const char* spec, ...) {
     va_start(args, spec);
     va_list retry;
     va_copy(retry, args);
-    Str bufS(fmt.buf, (int)dimof(fmt.buf));
+    Str bufS(fmt.buf, dimofi(fmt.buf));
     int n = VsnprintfUtf8(bufS, spec, args);
     va_end(args);
     fmt.buf[dimof(fmt.buf) - 1] = 0;
@@ -2122,7 +2122,7 @@ static bool evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
     char fbuf[64];
     int k = 0;
     fbuf[k++] = '%';
-    for (int j = 0; j < inst.fwpLen && k < (int)dimof(fbuf) - 5; j++) {
+    for (int j = 0; j < inst.fwpLen && k < dimofi(fbuf) - 5; j++) {
         fbuf[k++] = fmt.format.s[inst.fwpOff + j];
     }
     bool wideInt =

@@ -6962,7 +6962,7 @@ static void TextViewParseRetire(TextViewState* s, TextViewParse* p) {
     if (!p) {
         return;
     }
-    const int n = (int)dimof(s->retiredParses);
+    const int n = dimofi(s->retiredParses);
     TextViewParseFree(s->retiredParses[n - 1]);
     for (int i = n - 1; i > 0; i--) {
         s->retiredParses[i] = s->retiredParses[i - 1];

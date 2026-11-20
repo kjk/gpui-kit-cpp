@@ -273,7 +273,7 @@ uint32_t CharLowerSimple(uint32_t c) {
         return c >= 'A' && c <= 'Z' ? c + 0x20 : c;
     }
     int lo = 0;
-    int hi = (int)dimof(kLowercaseRanges);
+    int hi = dimofi(kLowercaseRanges);
     while (lo < hi) {
         int mid = lo + (hi - lo) / 2;
         const LowercaseRange& range = kLowercaseRanges[mid];

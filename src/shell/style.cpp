@@ -1396,11 +1396,11 @@ static bool ApplyOtherParam(El* e, Str name, const Bridged& value,
         }
         BoxShadow stack[32];
         int count = 0;
-        if (value.shadowCount > (int)dimof(stack)) {
+        if (value.shadowCount > dimofi(stack)) {
             ShellErrorSet(error, StrL("shadow list is too large"));
             return false;
         }
-        if (!BridgedAsShadows(value, stack, (int)dimof(stack), &count, error))
+        if (!BridgedAsShadows(value, stack, dimofi(stack), &count, error))
             return false;
         if (e) e->Shadows(count > 0 ? stack : nullptr, count);
     } else if (StrEq(name, StrL("text_color"))) {
