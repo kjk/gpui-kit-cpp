@@ -3531,6 +3531,27 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
 
 static void DispatchFileDrop(Window* win, const FileDropEvent& in);
 
+// dispatch_mouse_event for a PinchEvent: the element chain under its center,
+// innermost first, until a handler clears `propagate`
+static void DispatchPinch(Window* win, const PinchEvent& in) {
+    Vec<int> chain;
+    HitChain(win, in.x, in.y, &chain);
+    for (int k = 0; k < len(chain); k++) {
+        const HitRect& hr = win->paint.hits[chain[k]];
+        if (!hr.onPinch.IsValid()) {
+            continue;
+        }
+        PinchEvent ev = in;
+        ev.propagate = true;
+        ListenerCall(win->app, win, hr.onPinch, &ev);
+        if (!ev.propagate) {
+            break;
+        }
+    }
+    VecReset(chain);
+    AppInvalidate(win);
+}
+
 void WindowDispatchInput(Window* win, const PlatformInput* input) {
     if (!win || !input) {
         return;
@@ -3752,6 +3773,9 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
         case PlatformInputKind::FileDrop:
             DispatchFileDrop(win, input->fileDrop);
             break;
+        case PlatformInputKind::Pinch:
+            DispatchPinch(win, input->pinch);
+            break;
     }
 }
 
@@ -3802,6 +3826,18 @@ PlatformInput InputMouseExited(float x, float y, bool pressed,
     in.mouseExited.pressed = pressed;
     in.mouseExited.pressedButton = pressedButton;
     in.mouseExited.modifiers = modifiers;
+    return in;
+}
+
+PlatformInput InputPinch(float x, float y, float delta, Modifiers modifiers,
+                         TouchPhase phase) {
+    PlatformInput in = {};
+    in.kind = PlatformInputKind::Pinch;
+    in.pinch.x = x;
+    in.pinch.y = y;
+    in.pinch.delta = delta;
+    in.pinch.modifiers = modifiers;
+    in.pinch.phase = phase;
     return in;
 }
 
@@ -4975,6 +5011,18 @@ void AppSetHostThemeHandler(App* app, void (*handler)(App*, bool dark)) {
 void AppHostSetTheme(App* app, bool dark) {
     if (app && app->hostThemeHandler) {
         app->hostThemeHandler(app, dark);
+    }
+}
+
+void AppOnOpenUrls(App* app, OpenUrlsFn fn) {
+    if (app) {
+        app->onOpenUrls = fn;
+    }
+}
+
+void AppOpenUrls(App* app, const Str* urls, int n) {
+    if (app && app->onOpenUrls && n > 0) {
+        app->onOpenUrls(app, urls, n);
     }
 }
 

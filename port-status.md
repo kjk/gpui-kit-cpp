@@ -27,6 +27,12 @@ The current update target is
 
 ## Known gaps vs Rust
 
+- **Only macOS reports pinch.** `PinchEvent` comes from `magnifyWithEvent:`.
+  Rust's Windows DirectManipulation source is not ported; Linux and wasm
+  report none either (`src/gpui/window_mac.cpp`).
+- **`on_open_urls` is macOS only** and takes a plain function, not a
+  closure (`AppOnOpenUrls`, `src/gpui/window_mac.cpp`).
+
 - **Oversized inline code uses one wrapped box.** Each line shapes inside
   one pair of insets. The span shares its background and border across the
   lines, and the flex row can move the entire box below preceding prose.
@@ -233,8 +239,8 @@ The current update target is
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
 - **`on_pinch` is accepted and never delivered.** The callback name is
-  recognized so a script can pass a handler. There is no `PinchEvent`, and
-  materialize does not bind one (`src/shell/runtime.cpp`).
+  recognized so a script can pass a handler. gpui has `PinchEvent` and
+  `El::OnPinch`, but materialize does not bind one (`src/shell/runtime.cpp`).
 - **`fs.stat` does not follow a symlink.** Rust follows a link that stays
   inside the grant. Here `stat` refuses a symlink and a Windows junction,
   and `lstat` describes the link. POSIX `atime` and `birthtime` stay 0;

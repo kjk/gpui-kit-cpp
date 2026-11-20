@@ -112,6 +112,8 @@ PlatformInput InputTouchDrag(TouchPhase phase, Point start, Point position);
 PlatformInput InputLongPress(TouchPhase phase, Point start, Point position);
 // PlatformInput::FileDrop. `paths` is read only for Entered.
 PlatformInput InputFileDrop(FileDropPhase phase, float x, float y, Str paths);
+PlatformInput InputPinch(float x, float y, float delta, Modifiers modifiers,
+                         TouchPhase phase);
 
 // text/uri-list, the payload an X11 file drag offers, as newline-separated
 // filesystem paths. file URIs are percent-decoded; any other scheme is

@@ -2603,6 +2603,11 @@ El* El::OnScrollWheel(Listener fn) {
     onScrollWheel = fn;
     return this;
 }
+El* El::OnPinch(Listener fn) {
+    if (!lifecycle) lifecycle = ArenaNew<ElLifecycle>(arena);
+    lifecycle->onPinch = fn;
+    return this;
+}
 
 El* El::OnClickAction(uint32_t action, int64_t arg) {
     clickAction = action;
@@ -8563,9 +8568,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->onMouseDown.IsValid() || e->onMouseUp.IsValid() ||
         e->onLongPress.IsValid() || e->onDragMove.IsValid() ||
         e->onMouseDownOut.IsValid() || e->onMouseUpOut.IsValid() ||
-        e->onScrollWheel.IsValid() || e->drag.IsValid() ||
-        e->onDrop.IsValid() || e->cursor != CursorKind::Arrow || e->slider ||
-        e->stopMouseDown || e->suppressTextSelection || e->keepTextSelection ||
+        e->onScrollWheel.IsValid() ||
+        (e->lifecycle && e->lifecycle->onPinch.IsValid()) ||
+        e->drag.IsValid() || e->onDrop.IsValid() ||
+        e->cursor != CursorKind::Arrow || e->slider || e->stopMouseDown ||
+        e->suppressTextSelection || e->keepTextSelection ||
         e->textHoverCursor || e->scrollMaskAxes;
     if (hasHitbox) {
         HitRect hr;
@@ -8600,6 +8607,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.onMouseDownOut = e->onMouseDownOut;
         hr.onMouseUpOut = e->onMouseUpOut;
         hr.onScrollWheel = e->onScrollWheel;
+        hr.onPinch = e->lifecycle ? e->lifecycle->onPinch : Listener{};
         hr.dropKind = e->dropKind;
         hr.onDrop = e->onDrop;
         hr.cursor = e->cursor;

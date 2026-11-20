@@ -431,6 +431,11 @@ void TestSimulateScrollWheel(Window* win, Point position, Point delta,
                                    true, modifiers, TouchPhase::Moved));
 }
 
+void TestSimulatePinch(Window* win, Point position, float delta,
+                       TouchPhase phase, Modifiers modifiers) {
+    Simulate(win, InputPinch(position.x, position.y, delta, modifiers, phase));
+}
+
 void TestSimulateClick(Window* win, Point position, Modifiers modifiers) {
     TestSimulateMouseDown(win, position, MouseButton::Left, modifiers);
     TestSimulateMouseUp(win, position, MouseButton::Left, modifiers);

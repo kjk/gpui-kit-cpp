@@ -428,8 +428,8 @@ struct KeyedSlot {
 //   * `Point<Pixels>` is `x` and `y`. There is a `Point` above, but an
 //     event's position is read a component at a time, and flattening it
 //     spares every handler a `.position`.
-// What is missing outright: touch, pinch and pressure, which none of these
-// three windows report.
+// What is missing outright: touch and pressure, which none of these three
+// windows report. Pinch is macOS only (PinchEvent below).
 
 enum class MouseButton : uint8_t {
     Left,
@@ -604,6 +604,21 @@ struct DropEvent {
     Str externalPaths = {};
 };
 
+// GPUI's PinchEvent: a pinch-to-zoom gesture, typically on a trackpad, with
+// (x, y) its center. `delta` is this event's zoom change: positive zooms in,
+// 0.1 is 10% bigger. Only the macOS window reports it; Rust's Windows
+// DirectManipulation source is not ported. `propagate` is cx.propagate(), as
+// for ScrollWheelEvent: an `El::OnPinch` handler that clears it keeps the
+// gesture from the elements behind.
+struct PinchEvent {
+    float x = 0;
+    float y = 0;
+    float delta = 0;
+    Modifiers modifiers = {};
+    TouchPhase phase = TouchPhase::Moved;
+    bool propagate = true;
+};
+
 // FileDropEvent from the platform: files dragged onto the window. Entered
 // carries the paths; Pending is the pointer moving; Submit is the drop;
 // Exited is the drag leaving without a drop. The window turns it into an
@@ -679,7 +694,8 @@ enum class PlatformInputKind : uint8_t {
     ScrollWheel,
     TouchDrag,
     LongPress,
-    FileDrop
+    FileDrop,
+    Pinch
 };
 
 struct PlatformInput {
@@ -693,6 +709,7 @@ struct PlatformInput {
         TouchDragEvent touchDrag;
         LongPressEvent longPress;
         FileDropEvent fileDrop;
+        PinchEvent pinch;
     };
 };
 
@@ -2680,6 +2697,8 @@ struct ElLifecycle {
     void (*afterPaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* user = nullptr;
     const LinkTooltipTarget* linkTooltip = nullptr;
+    // on_pinch: rare, so here rather than in El
+    Listener onPinch;
     const TextHighlight* highlights = nullptr;
     int highlightCount = 0;
     TextFontRanges fontRanges;
@@ -3513,6 +3532,8 @@ struct El {
     // the pointer takes it. A handler that leaves `propagate` set lets the
     // scroll carry on, which is `cx.propagate()`.
     El* OnScrollWheel(Listener fn);
+    // div().on_pinch(..): a pinch gesture over this element (PinchEvent)
+    El* OnPinch(Listener fn);
     El* TabIndex(int v);
     El* TabStop(bool v);
     // Opt into the component focus appearance. FocusId / TrackFocus alone do
@@ -3668,6 +3689,8 @@ struct HitRect {
     // El::OnScrollWheel, carried through the hit test so the wheel can walk
     // the same chain a press does.
     Listener onScrollWheel;
+    // El::OnPinch, the same way
+    Listener onPinch;
     Str dropKind = {};
     Listener onDrop;
     CursorKind cursor = CursorKind::Arrow;
@@ -7266,6 +7289,7 @@ struct App {
     // An embedding host may request a theme mode while the app is running.
     // The app layer carries the callback; a platform never names src/ui.
     void (*hostThemeHandler)(App*, bool dark) = nullptr;
+    void (*onOpenUrls)(App*, const Str* urls, int n) = nullptr;
     // Entity store; see Entity.h. Slots are recycled, so a handle carries a
     // generation and goes stale instead of dangling.
     Vec<EntitySlot> entities;
@@ -8641,6 +8665,12 @@ void AppRefreshWindows(App* app);
 // choose how to apply it; the browser platform has no theme dependency.
 void AppSetHostThemeHandler(App* app, void (*handler)(App*, bool dark));
 void AppHostSetTheme(App* app, bool dark);
+// cx.on_open_urls: the platform asks the application to open URLs, a file as
+// a file:// URL. On macOS that is Finder's Open With, `open -a` and a drop on
+// the Dock icon. `urls` is borrowed for the call. Only macOS calls it.
+using OpenUrlsFn = void (*)(App* app, const Str* urls, int n);
+void AppOnOpenUrls(App* app, OpenUrlsFn fn);
+void AppOpenUrls(App* app, const Str* urls, int n);
 // A teardown belonging to a layer above this one, run by AppFree once the
 // windows are gone. The theme registry's arena is what asked for it: it lives
 // in src/ui, which gpui cannot name, and a process-wide table has to be given

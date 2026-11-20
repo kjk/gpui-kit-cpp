@@ -193,8 +193,27 @@ static void ADragFromACellIsClampedToIt() {
     utassert(outC.x == inside.x && outC.y == inside.y);
 }
 
+static int gOpenedUrls = 0;
+
+static void CountOpenedUrls(App*, const Str* urls, int n) {
+    utassert(n == 2 && base::StrEq(urls[1], StrL("file:///tmp/b.pdf")));
+    gOpenedUrls += n;
+}
+
+// cx.on_open_urls: what the platform hands over reaches the app's handler
+static void OpenUrlsReachTheHandler() {
+    App app;
+    Str urls[] = {StrL("file:///tmp/a.pdf"), StrL("file:///tmp/b.pdf")};
+    AppOpenUrls(&app, urls, 2);
+    utassert(gOpenedUrls == 0);
+    AppOnOpenUrls(&app, CountOpenedUrls);
+    AppOpenUrls(&app, urls, 2);
+    utassert(gOpenedUrls == 2);
+}
+
 void TestAppGlobals() {
     TestSuite("app globals");
+    OpenUrlsReachTheHandler();
     GlobalsBelongToOneApp();
     ReplacingAndRemovingReleaseOwnership();
     BaseInitializationIsIdempotentAndIsolated();

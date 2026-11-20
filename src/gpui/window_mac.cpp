@@ -863,6 +863,22 @@ static gpui::Str TextInputString(id string) {
     gpui::WindowDispatchInput(win, &in);
 }
 
+// GPUI's NSEventType::Magnify: a trackpad pinch
+- (void)magnifyWithEvent:(NSEvent*)event {
+    NSPoint p = [self gpuiPoint:event];
+    gpui::TouchPhase phase = gpui::TouchPhase::Moved;
+    NSEventPhase ph = [event phase];
+    if (ph & (NSEventPhaseMayBegin | NSEventPhaseBegan)) {
+        phase = gpui::TouchPhase::Started;
+    } else if (ph & NSEventPhaseEnded) {
+        phase = gpui::TouchPhase::Ended;
+    }
+    gpui::PlatformInput in =
+        gpui::InputPinch((float)p.x, (float)p.y, (float)[event magnification],
+                         gpui::ModsOf(event), phase);
+    gpui::WindowDispatchInput(win, &in);
+}
+
 - (void)keyDown:(NSEvent*)event {
     // The keys are the window's, as they have always been. The *text* half
     // goes to the input method when a field has the keyboard: that is what
@@ -1929,6 +1945,8 @@ int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
 namespace gpui {
 
 static App* gRunningApp = nullptr;
+// the App PlatInit made, for what arrives before AppRun (open URLs)
+static App* gPlatApp = nullptr;
 static GpuiAppMenuTarget* gAppMenuTarget = nil;
 
 } // namespace gpui
@@ -1947,6 +1965,20 @@ static GpuiAppMenuTarget* gAppMenuTarget = nil;
         gpui::AppQuitAll(gpui::gRunningApp);
     }
     return NSTerminateCancel;
+}
+
+// GPUI's open_urls: documents and URLs the system hands the application
+- (void)application:(NSApplication*)application
+           openURLs:(NSArray<NSURL*>*)urls {
+    (void)application;
+    gpui::Vec<gpui::Str> strs;
+    for (NSURL* url in urls) {
+        const char* s = url.absoluteString.UTF8String;
+        if (s) {
+            gpui::VecAppend(strs, gpui::Str((char*)s));
+        }
+    }
+    gpui::AppOpenUrls(gpui::gPlatApp, strs.els, gpui::len(strs));
 }
 @end
 
@@ -2221,10 +2253,16 @@ static void UpdateImePosition(Window* win) {
 }
 
 bool PlatInit(App* app) {
-    (void)app;
+    gPlatApp = app;
     PlatInstallImePositionUpdate(UpdateImePosition);
     @autoreleasepool {
         [NSApplication sharedApplication];
+        // AppKit turns automatic termination back on at the end of launch
+        // while it counts no windows. A process that is never frontmost (one
+        // under lldb) then exits with status 0.
+        NSProcessInfo* info = [NSProcessInfo processInfo];
+        info.automaticTerminationSupportEnabled = NO;
+        [info disableAutomaticTermination:@"gpui"];
         // Regular, not accessory: the examples run straight from a terminal
         // with no bundle, and this is what gives them a Dock tile and focus.
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
