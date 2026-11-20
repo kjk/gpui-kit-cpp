@@ -1231,7 +1231,7 @@ const distDirs = ["examples", "gpui_shell", "assets", "web"];
 // showcase` writes out/, `-compare` clones .work/gpui-component, and a -wasm
 // build may install .emsdk/. None of that is the snapshot, and the publish
 // step commits whatever git reports, so it has to be ignored over there too.
-const distGitignore = `${[".work/", "out/", ".emsdk/", "*.obj", "*.exe", "*.pdb", "*.ilk", "*.exp", "*.lib"].join("\n")}\n`;
+const distGitignore = `${[".work/", "out/", ".emsdk/", "*.obj", "*.exe", "*.pdb", "*.ilk", "*.exp", "*.lib", ".DS_Store"].join("\n")}\n`;
 
 function copyDistExtras(): void {
   const abs = join(root, distRepoDir);
