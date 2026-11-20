@@ -37,6 +37,13 @@ The current update target is
   `cacheDisplayInRect:` plus WKWebView snapshots, Windows `PrintWindow`,
   Linux the cairo back buffer (no WebKitGTK views, app windows in creation
   order). wasm answers "ERR unsupported" (`src/gpui/window_*.cpp`).
+- **`CursorImage` / `El::CustomCursor` have no Rust twin.** A pointer made
+  from premultiplied RGBA pixels, owned and freed by the caller: Windows
+  `CreateIconIndirect`, macOS `NSCursor initWithImage:hotSpot:`, X11
+  libXcursor (soft dependency; without it, and on iOS/Android, the element's
+  `CursorKind` shows), wasm a CSS `url()` cursor. The window also resolves
+  the cursor after every frame, as Rust does, not only on a move
+  (`src/gpui/window_*.cpp`).
 
 - **Oversized inline code uses one wrapped box.** Each line shapes inside
   one pair of insets. The span shares its background and border across the

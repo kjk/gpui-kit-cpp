@@ -409,6 +409,8 @@ int WindowFlushImeCoordinates(Window* win) {
     return n;
 }
 
+static void UpdateCursor(Window* win, float x, float y);
+
 static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
                       float dipH, bool headless) {
     if (!win) {
@@ -742,6 +744,10 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // overlay it opened is cancelled here, once this frame's hits exist.
     TooltipDismissRemoved(win);
     TooltipUpdateLinkAtPointer(win);
+    // A shape the element under a resting pointer changed shows now.
+    if (win->pointerInWindow) {
+        UpdateCursor(win, win->mouseX, win->mouseY);
+    }
 
     // A picture is still on its way: this frame asked image.h for it and got
     // nothing. Nothing else need be keeping the window awake, so arm the
@@ -2345,6 +2351,84 @@ static bool SemanticKeyStep(Window* win, int key, bool ctrl, bool alt) {
 // behind; a few DIPs of slack is what a mouse gives a firm click.
 static const float kDragThreshold = 4.f;
 
+static void WindowApplyCursor(Window* win, CursorKind kind, CursorImage* img) {
+    if (kind == win->cursor && img == win->cursorImage) {
+        return;
+    }
+    win->cursor = kind;
+    win->cursorImage = img;
+    PlatSetCursor(win, kind);
+}
+
+// The hand over a symbol a secondary-hover found a definition for, which
+// is the hitbox `hover_definition_hitbox` inserts. The bounds are last
+// frame's, measured where the symbol was painted.
+static bool HoverDefAt(Window* win, float x, float y) {
+    for (int i = 0; i < win->paint.inputs.len; i++) {
+        InputState* f = win->paint.inputs[i];
+        if (f->hoverDef.locations.len > 0 && f->hoverDef.bounds
+                                                 .Contains({x, y})) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The shape the pointer at (x, y) asks for, from the last frame's hit rects.
+// Called on every move and after every frame: Rust resets the cursor style
+// each frame, so a shape changed under a resting pointer shows at once.
+static void UpdateCursor(Window* win, float x, float y) {
+    if (HoverDefAt(win, x, y)) {
+        WindowApplyCursor(win, CursorKind::Pointer, nullptr);
+        return;
+    }
+    // An I-beam over anything selectable, the way every text view does it.
+    // TextHitOffsetAt only answers for text that asked to be Selectable().
+    // Anything else, the element under the pointer says what shape it wants —
+    // and a drag keeps the shape it started with, so a column edge stays a
+    // resize cursor while the pointer runs off it.
+    CursorKind want = CursorKind::Arrow;
+    CursorImage* wantImage = nullptr;
+    const HitRect* under = HitRectById(win, win->pressedId);
+    if (!under || !win->mouseDown) {
+        under = HitTestRect(&win->paint, x, y);
+    }
+    // An element that named a shape of its own wins over the I-beam: a link
+    // inside a selectable TextView asks for the hand, and in GPUI the
+    // cursor_pointer the link pushes is the innermost one and so the one that
+    // takes. A control that suppresses selection (a button, a menu row) keeps
+    // the arrow rather than inheriting the I-beam of text behind it. Anything
+    // that named nothing leaves the selectable text on this stacking layer
+    // to say — not the page under a popup.
+    const HitRect* cursorHit = under;
+    if (under && under->cursor == CursorKind::Arrow && !under->cursorImage &&
+        !under->textHoverCursor && !under->suppressTextSelection) {
+        for (int i = under->parent; i >= 0; i = win->paint.hits[i].parent) {
+            const HitRect& parent = win->paint.hits[i];
+            if (parent.textHoverCursor) {
+                cursorHit = &parent;
+                break;
+            }
+        }
+    }
+    bool selecting = win->mouseDown && win->sel &&
+                     win->sel->gesture.selecting &&
+                     win->sel->gesture.didHitText;
+    if (selecting) {
+        want = CursorKind::IBeam;
+    } else if (cursorHit &&
+               (cursorHit->cursor != CursorKind::Arrow ||
+                cursorHit->cursorImage || cursorHit->textHoverCursor ||
+                cursorHit->suppressTextSelection)) {
+        want = cursorHit->cursor;
+        wantImage = cursorHit->cursorImage;
+    } else if (TextHitOffsetIn(&win->paint, x, y, false, -1, nullptr,
+                               under ? under->paintLayer : 0) >= 0) {
+        want = CursorKind::IBeam;
+    }
+    WindowApplyCursor(win, want, wantImage);
+}
+
 static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
     float x = in.x;
     float y = in.y;
@@ -2371,66 +2455,12 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
     }
     win->mouseModifiers = in.modifiers;
     win->modifiers = in.modifiers;
-    // The hand over a symbol a secondary-hover found a definition for, which
-    // is the hitbox `hover_definition_hitbox` inserts. The bounds are last
-    // frame's, measured where the symbol was painted.
-    for (int i = 0; i < win->paint.inputs.len; i++) {
-        InputState* f = win->paint.inputs[i];
-        if (f->hoverDef.locations.len > 0 && f->hoverDef.bounds
-                                                 .Contains({x, y})) {
-            if (win->cursor != CursorKind::Pointer) {
-                win->cursor = CursorKind::Pointer;
-                PlatSetCursor(win, CursorKind::Pointer);
-            }
-            AppInvalidate(win);
-            return;
-        }
+    if (HoverDefAt(win, x, y)) {
+        WindowApplyCursor(win, CursorKind::Pointer, nullptr);
+        AppInvalidate(win);
+        return;
     }
-    // An I-beam over anything selectable, the way every text view does it.
-    // TextHitOffsetAt only answers for text that asked to be Selectable().
-    // Anything else, the element under the pointer says what shape it wants —
-    // and a drag keeps the shape it started with, so a column edge stays a
-    // resize cursor while the pointer runs off it.
-    CursorKind want = CursorKind::Arrow;
-    const HitRect* under = HitRectById(win, win->pressedId);
-    if (!under || !win->mouseDown) {
-        under = HitTestRect(&win->paint, x, y);
-    }
-    // An element that named a shape of its own wins over the I-beam: a link
-    // inside a selectable TextView asks for the hand, and in GPUI the
-    // cursor_pointer the link pushes is the innermost one and so the one that
-    // takes. A control that suppresses selection (a button, a menu row) keeps
-    // the arrow rather than inheriting the I-beam of text behind it. Anything
-    // that named nothing leaves the selectable text on this stacking layer
-    // to say — not the page under a popup.
-    const HitRect* cursorHit = under;
-    if (under && under->cursor == CursorKind::Arrow &&
-        !under->textHoverCursor && !under->suppressTextSelection) {
-        for (int i = under->parent; i >= 0; i = win->paint.hits[i].parent) {
-            const HitRect& parent = win->paint.hits[i];
-            if (parent.textHoverCursor) {
-                cursorHit = &parent;
-                break;
-            }
-        }
-    }
-    bool selecting = win->mouseDown && win->sel &&
-                     win->sel->gesture.selecting &&
-                     win->sel->gesture.didHitText;
-    if (selecting) {
-        want = CursorKind::IBeam;
-    } else if (cursorHit && (cursorHit->cursor != CursorKind::Arrow ||
-                             cursorHit->textHoverCursor ||
-                             cursorHit->suppressTextSelection)) {
-        want = cursorHit->cursor;
-    } else if (TextHitOffsetIn(&win->paint, x, y, false, -1, nullptr,
-                               under ? under->paintLayer : 0) >= 0) {
-        want = CursorKind::IBeam;
-    }
-    if (want != win->cursor) {
-        win->cursor = want;
-        PlatSetCursor(win, want);
-    }
+    UpdateCursor(win, x, y);
     int id = HitTest(&win->paint, x, y);
     if (id != win->hoverId) {
         // div().on_hover(..): the element the pointer left hears false and the
@@ -5204,6 +5234,53 @@ void WindowSetCursorVisible(Window* win, bool visible) {
     }
     win->cursorHidden = !visible;
     PlatSetCursor(win, win->cursor);
+}
+
+CursorImage* CursorImageNew(App* app, const uint8_t* rgba, int w, int h,
+                            int hotX, int hotY) {
+    if (!app || !rgba || w <= 0 || h <= 0) {
+        return nullptr;
+    }
+    size_t size = (size_t)w * (size_t)h * 4;
+    CursorImage* img = new CursorImage();
+    img->app = app;
+    img->rgba = (uint8_t*)malloc(size);
+    if (!img->rgba) {
+        delete img;
+        return nullptr;
+    }
+    memcpy(img->rgba, rgba, size);
+    img->w = w;
+    img->h = h;
+    img->hotX = std::max(0, std::min(hotX, w - 1));
+    img->hotY = std::max(0, std::min(hotY, h - 1));
+    return img;
+}
+
+// No window may keep showing or hit-testing a freed image: each one showing
+// it goes back to its CursorKind before the OS cursor is destroyed.
+void CursorImageFree(CursorImage* img) {
+    if (!img) {
+        return;
+    }
+    App* app = img->app;
+    for (int i = 0; i < len(app->windows); i++) {
+        Window* win = app->windows[i];
+        for (int j = 0; j < len(win->paint.hits); j++) {
+            if (win->paint.hits[j].cursorImage == img) {
+                win->paint.hits[j].cursorImage = nullptr;
+            }
+        }
+        if (win->cursorImage == img) {
+            win->cursorImage = nullptr;
+            PlatSetCursor(win, win->cursor);
+        }
+    }
+    if (img->plat && img->platFree) {
+        img->platFree(img->plat);
+    }
+    free(img->rgba);
+    delete img;
 }
 
 // ─── the application menu bar ──────────────────────────────────────────────

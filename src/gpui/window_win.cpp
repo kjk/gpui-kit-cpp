@@ -1450,12 +1450,74 @@ void PlatSetMouseCapture(Window* win, bool capture) {
     }
 }
 
+static void CursorImageDestroy(void* plat) {
+    DestroyCursor((HCURSOR)plat);
+}
+
+// A 32-bit top-down DIB carries the alpha; CreateIconIndirect still wants a
+// mask, and an all-zero one leaves the color bitmap in charge.
+static HCURSOR CursorImageHandle(CursorImage* img) {
+    if (!img || img->plat) {
+        return img ? (HCURSOR)img->plat : nullptr;
+    }
+    BITMAPINFO bmi = {};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = img->w;
+    bmi.bmiHeader.biHeight = -img->h;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HBITMAP color =
+        CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!color || !bits) {
+        if (color) DeleteObject(color);
+        return nullptr;
+    }
+    int n = img->w * img->h;
+    uint8_t* d = (uint8_t*)bits;
+    for (int i = 0; i < n; i++) {
+        const uint8_t* s = img->rgba + i * 4;
+        d[i * 4 + 0] = s[2];
+        d[i * 4 + 1] = s[1];
+        d[i * 4 + 2] = s[0];
+        d[i * 4 + 3] = s[3];
+    }
+    int maskStride = ((img->w + 15) / 16) * 2;
+    uint8_t* maskBits = (uint8_t*)calloc((size_t)maskStride * img->h, 1);
+    HBITMAP mask =
+        maskBits ? CreateBitmap(img->w, img->h, 1, 1, maskBits) : nullptr;
+    free(maskBits);
+    HCURSOR cursor = nullptr;
+    if (mask) {
+        ICONINFO ii = {};
+        ii.fIcon = FALSE;
+        ii.xHotspot = (DWORD)img->hotX;
+        ii.yHotspot = (DWORD)img->hotY;
+        ii.hbmMask = mask;
+        ii.hbmColor = color;
+        cursor = (HCURSOR)CreateIconIndirect(&ii);
+        DeleteObject(mask);
+    }
+    DeleteObject(color);
+    if (cursor) {
+        img->plat = cursor;
+        img->platFree = CursorImageDestroy;
+    }
+    return cursor;
+}
+
 void PlatSetCursor(Window* win, CursorKind kind) {
     if (!win || !win->plat) {
         return;
     }
     if (win->cursorHidden) {
         SetCursor(nullptr);
+        return;
+    }
+    if (HCURSOR image = CursorImageHandle(win->cursorImage)) {
+        win->plat->cursor = image;
+        SetCursor(image);
         return;
     }
     // gpui's Windows backend, platform/windows/util.rs load_cursor: the

@@ -1059,6 +1059,17 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
       "alsa not found: speech input will have no microphone. Install it with: bash cmd/ubuntu-install-deps.sh",
     );
   }
+  // libXcursor makes CursorImage's ARGB cursors, a soft dependency too:
+  // without libxcursor-dev an element's CursorKind shows instead.
+  const xcursor = Bun.spawnSync(["pkg-config", "--exists", "xcursor"], { stdout: "pipe", stderr: "pipe" });
+  if ((xcursor.exitCode ?? 1) === 0) {
+    cflags.push(...pkgConfig(["xcursor"], "--cflags", fail), "-DGPUI_HAVE_XCURSOR=1");
+    libs.push(...pkgConfig(["xcursor"], "--libs", fail));
+  } else {
+    console.log(
+      "xcursor not found: image cursors will be stand-in shapes. Install it with: bash cmd/ubuntu-install-deps.sh",
+    );
+  }
   linuxDepsMemo = { cflags, libs };
   return linuxDepsMemo;
 }

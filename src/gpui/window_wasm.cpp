@@ -152,6 +152,61 @@ EM_JS(void, GpJsSetCursor, (int kind), {
     }
 });
 
+// A CursorImage as a CSS url() cursor, made once per image and kept in
+// __gpui.cursorImages by id. CSS takes straight alpha in CSS pixels, so the
+// premultiplied device pixels are unpremultiplied and drawn at 1/dpr.
+EM_JS(void, GpJsSetCursorImage,
+      (int id, const uint8_t* rgba, int w, int h, int hotX, int hotY,
+       int kind), {
+    const g = globalThis.__gpui;
+    const c = g.canvas;
+    if (!c) {
+        return;
+    }
+    g.cursorImages = g.cursorImages || {};
+    let css = g.cursorImages[id];
+    if (!css) {
+        const src = document.createElement("canvas");
+        src.width = w;
+        src.height = h;
+        const data = new ImageData(w, h);
+        for (let i = 0; i < w * h * 4; i += 4) {
+            const a = HEAPU8[rgba + i + 3];
+            const k = a ? 255 / a : 0;
+            data.data[i] = Math.min(255, Math.round(HEAPU8[rgba + i] * k));
+            data.data[i + 1] = Math.min(255, Math.round(HEAPU8[rgba + i + 1] * k));
+            data.data[i + 2] = Math.min(255, Math.round(HEAPU8[rgba + i + 2] * k));
+            data.data[i + 3] = a;
+        }
+        src.getContext("2d").putImageData(data, 0, 0);
+        const dpr = globalThis.devicePixelRatio || 1;
+        let out = src;
+        if (dpr !== 1) {
+            out = document.createElement("canvas");
+            out.width = Math.max(1, Math.round(w / dpr));
+            out.height = Math.max(1, Math.round(h / dpr));
+            out.getContext("2d").drawImage(src, 0, 0, out.width, out.height);
+        }
+        css = "url(" + out.toDataURL("image/png") + ") " +
+              Math.round(hotX / dpr) + " " + Math.round(hotY / dpr);
+        g.cursorImages[id] = css;
+    }
+    const names = [
+        "default", "text", "pointer", "col-resize", "row-resize", "crosshair",
+        "grabbing", "grab", "w-resize", "e-resize", "ew-resize", "n-resize",
+        "s-resize", "ns-resize", "nwse-resize", "nesw-resize", "vertical-text",
+        "not-allowed", "alias", "copy", "context-menu"
+    ];
+    c.style.cursor = css + ", " + (names[kind] || "default");
+});
+
+EM_JS(void, GpJsCursorImageFree, (int id), {
+    const g = globalThis.__gpui;
+    if (g && g.cursorImages) {
+        delete g.cursorImages[id];
+    }
+});
+
 EM_JS(void, GpJsOpenUrl, (const char* s, int len), {
     globalThis.open(globalThis.__gpui.str(s, len), "_blank", "noopener");
 });
@@ -935,7 +990,22 @@ void PlatSetTimer(Window* win, int ms) {
     win->plat->nextTick = ms > 0 ? TimeNow() + ms / 1000.0 : 0;
 }
 
+static void CursorImageFreeJs(void* plat) {
+    GpJsCursorImageFree((int)(intptr_t)plat);
+}
+
 void PlatSetCursor(Window* win, CursorKind kind) {
+    CursorImage* img = win && !win->cursorHidden ? win->cursorImage : nullptr;
+    if (img) {
+        static int nextId = 1;
+        if (!img->plat) {
+            img->plat = (void*)(intptr_t)nextId++;
+            img->platFree = CursorImageFreeJs;
+        }
+        GpJsSetCursorImage((int)(intptr_t)img->plat, img->rgba, img->w, img->h,
+                           img->hotX, img->hotY, (int)kind);
+        return;
+    }
     GpJsSetCursor(win && win->cursorHidden ? (int)CursorKind::Count
                                            : (int)kind);
 }

@@ -2054,6 +2054,12 @@ El* El::Cursor(CursorKind c) {
     cursor = c;
     return this;
 }
+El* El::CustomCursor(CursorImage* img) {
+    if (!img && !lifecycle) return this;
+    if (!lifecycle) lifecycle = ArenaNew<ElLifecycle>(arena);
+    lifecycle->cursorImage = img;
+    return this;
+}
 El* El::BindSlider(SliderState* s, Axis axis) {
     slider = s;
     sliderAxis = axis;
@@ -8569,7 +8575,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->onLongPress.IsValid() || e->onDragMove.IsValid() ||
         e->onMouseDownOut.IsValid() || e->onMouseUpOut.IsValid() ||
         e->onScrollWheel.IsValid() ||
-        (e->lifecycle && e->lifecycle->onPinch.IsValid()) ||
+        (e->lifecycle &&
+         (e->lifecycle->onPinch.IsValid() || e->lifecycle->cursorImage)) ||
         e->drag.IsValid() || e->onDrop.IsValid() ||
         e->cursor != CursorKind::Arrow || e->slider || e->stopMouseDown ||
         e->suppressTextSelection || e->keepTextSelection ||
@@ -8611,6 +8618,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.dropKind = e->dropKind;
         hr.onDrop = e->onDrop;
         hr.cursor = e->cursor;
+        hr.cursorImage = e->lifecycle ? e->lifecycle->cursorImage : nullptr;
         hr.slider = e->slider;
         hr.sliderAxis = e->sliderAxis;
         hr.input = e->input;

@@ -28,6 +28,10 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+#if defined(GPUI_HAVE_XCURSOR) && GPUI_HAVE_XCURSOR
+#include <X11/Xcursor/Xcursor.h>
+#endif
+
 namespace gpui {
 
 // X11's `Window` is an unsigned long and its `Display` is a struct; inside
@@ -858,9 +862,57 @@ void PlatSetMouseCapture(Window* win, bool capture) {
     XFlush(gDpy);
 }
 
+#if defined(GPUI_HAVE_XCURSOR) && GPUI_HAVE_XCURSOR
+static void CursorImageFreeX(void* plat) {
+    if (gDpy) {
+        XFreeCursor(gDpy, (::Cursor)(uintptr_t)plat);
+    }
+}
+
+// libXcursor makes an ARGB cursor (XRender) where the server has one; it
+// takes premultiplied ARGB words.
+static ::Cursor CursorImageX(CursorImage* img) {
+    if (!img || img->plat) {
+        return img ? (::Cursor)(uintptr_t)img->plat : 0;
+    }
+    XcursorImage* xi = XcursorImageCreate(img->w, img->h);
+    if (!xi) {
+        return 0;
+    }
+    xi->xhot = (XcursorDim)img->hotX;
+    xi->yhot = (XcursorDim)img->hotY;
+    int n = img->w * img->h;
+    for (int i = 0; i < n; i++) {
+        const uint8_t* p = img->rgba + i * 4;
+        xi->pixels[i] = ((XcursorPixel)p[3] << 24) |
+                        ((XcursorPixel)p[0] << 16) | ((XcursorPixel)p[1] << 8) |
+                        p[2];
+    }
+    ::Cursor cursor = XcursorImageLoadCursor(gDpy, xi);
+    XcursorImageDestroy(xi);
+    if (cursor) {
+        img->plat = (void*)(uintptr_t)cursor;
+        img->platFree = CursorImageFreeX;
+    }
+    return cursor;
+}
+#else
+// No libXcursor at build time: the element's CursorKind shows.
+static ::Cursor CursorImageX(CursorImage*) {
+    return 0;
+}
+#endif
+
 void PlatSetCursor(Window* win, CursorKind kind) {
     if (!win || !win->plat || !gDpy) {
         return;
+    }
+    if (!win->cursorHidden) {
+        if (::Cursor image = CursorImageX(win->cursorImage)) {
+            XDefineCursor(gDpy, win->plat->xwin, image);
+            XFlush(gDpy);
+            return;
+        }
     }
     if (win->cursorHidden) {
         static ::Cursor hidden = 0;

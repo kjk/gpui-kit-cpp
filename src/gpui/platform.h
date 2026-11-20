@@ -272,7 +272,23 @@ inline void PlatAddLoopSource(PlatLoopPrepare prepare,
     (void)prepare, (void)dispatch;
 }
 #endif
-// Ask the OS for a pointer shape. Only called when it changes.
+// CursorImageNew's pixels and the OS cursor made from them. The platform
+// makes `plat` the first time a window shows the image (`platScale` is the
+// scale it was made for) and sets `platFree`, which CursorImageFree calls.
+struct CursorImage {
+    App* app = nullptr;
+    uint8_t* rgba = nullptr;
+    int w = 0;
+    int h = 0;
+    int hotX = 0;
+    int hotY = 0;
+    void* plat = nullptr;
+    float platScale = 0;
+    void (*platFree)(void* plat) = nullptr;
+};
+
+// Ask the OS for a pointer shape. Only called when it changes. The platform
+// shows win->cursorImage instead when it is set and can draw it.
 void PlatSetCursor(Window* win, CursorKind kind);
 // GPUI holds the pointer for the length of a press, so a drag that leaves the
 // window still delivers its moves and, above all, its release. Windows has

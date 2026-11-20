@@ -887,6 +887,18 @@ enum class CursorKind : uint8_t {
     Count
 };
 
+// Not in Rust: a pointer shape made from pixels, for one CursorKind has no
+// name for (El::CustomCursor). `rgba` is w*h premultiplied RGBA, top row
+// first, in device pixels; (hotX, hotY) is the hot spot in those pixels. The
+// pixels are copied. The caller owns the image: CursorImageFree it before
+// AppFree, and name it in no element after; a window showing it goes back to
+// its CursorKind. Windows, macOS, X11 with libXcursor and the browser draw
+// it; elsewhere the element's CursorKind shows.
+struct CursorImage;
+CursorImage* CursorImageNew(App* app, const uint8_t* rgba, int w, int h,
+                            int hotX, int hotY);
+void CursorImageFree(CursorImage* img);
+
 // Fired by a window timer; GPUI does this with cx.spawn + Timer::after.
 struct TickEvent {
     int ms = 0;
@@ -2699,6 +2711,8 @@ struct ElLifecycle {
     const LinkTooltipTarget* linkTooltip = nullptr;
     // on_pinch: rare, so here rather than in El
     Listener onPinch;
+    // El::CustomCursor, the same way
+    CursorImage* cursorImage = nullptr;
     const TextHighlight* highlights = nullptr;
     int highlightCount = 0;
     TextFontRanges fontRanges;
@@ -3362,6 +3376,9 @@ struct El {
     El* ReportLineSpan(float lineHeight);
     El* LineClamp(float cap, Listener onChange = {});
     El* Cursor(CursorKind c);
+    // Not in Rust: the pointer over this element is `img` (CursorImageNew).
+    // Cursor(kind) stays the shape where the platform cannot draw an image.
+    El* CustomCursor(CursorImage* img);
     El* BindSlider(SliderState* s, Axis axis = Axis::Horizontal);
     El* BindSliderBounds(SliderState* s);
     El* BindInput(InputState* s);
@@ -3694,6 +3711,8 @@ struct HitRect {
     Str dropKind = {};
     Listener onDrop;
     CursorKind cursor = CursorKind::Arrow;
+    // El::CustomCursor; wins over `cursor` where the platform can draw it.
+    CursorImage* cursorImage = nullptr;
     // El::Tip. The overlay reads it when the pointer arrives, so it has to
     // survive the hit test rather than only the paint that drew it.
     Str tooltip = {};
@@ -7457,6 +7476,8 @@ struct Window {
     Modifiers mouseModifiers = {};
     // What the pointer looks like right now; the OS is only told on a change.
     CursorKind cursor = CursorKind::Arrow;
+    // The image shown in place of `cursor`, when the element asked for one.
+    CursorImage* cursorImage = nullptr;
     bool cursorHidden = false;
     bool maximized = false;
     // iconified (Windows), miniaturized (macOS), _NET_WM_STATE_HIDDEN (X11);

@@ -11,6 +11,7 @@
 #   build-essential, clang, lld, pkg-config  — the C++ toolchain
 #   gdb, lldb, valgrind                      — debuggers
 #   libx11-dev, libxext-dev                  — the X11 window
+#   libxcursor-dev                           — image cursors (window_linux.cpp)
 #   libcairo2-dev, libpango1.0-dev           — the 2D backend (Paint_linux.cpp)
 #   libgdk-pixbuf-2.0-dev                    — JPEG/GIF/WebP decode (Paint_linux.cpp)
 #   libcurl4-openssl-dev                     — the HTTP client (sys/http_linux.cpp)
@@ -28,7 +29,7 @@
 # CJK fonts, no bun, no rustup. That is what CI runs, so the compile
 # dependencies have one source of truth.
 #
-# libcurl, WebKitGTK and ALSA are soft dependencies: cmd/build.ts compiles without
+# libcurl, libXcursor, WebKitGTK and ALSA are soft dependencies: cmd/build.ts compiles without
 # either. --without-webkit leaves WebKitGTK (and the GTK 3 it pulls in) out,
 # which is how CI keeps the build without a webview compiling too.
 
@@ -73,6 +74,7 @@ $SUDO apt-get install $APT_FLAGS --no-install-recommends \
   pkg-config \
   libx11-dev \
   libxext-dev \
+  libxcursor-dev \
   libcairo2-dev \
   libpango1.0-dev \
   libgdk-pixbuf-2.0-dev \

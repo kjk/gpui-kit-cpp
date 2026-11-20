@@ -188,6 +188,7 @@ void TestStateStyle();
 void TestClick();
 void TestFileDrop();
 void TestPinch();
+void TestCursorImage();
 void TestVec();
 void TestElementId();
 void TestHoverCard();

@@ -1749,6 +1749,54 @@ void PlatSetMouseCapture(Window* win, bool capture) {
     (void)capture;
 }
 
+static void CursorImageRelease(void* plat) {
+    CFBridgingRelease(plat);
+}
+
+// The pixels are device pixels; the image is sized in points for the
+// window's backing scale, so a scale change makes a new cursor.
+static NSCursor* CursorImageCursor(CursorImage* img, float scale) {
+    if (!img) {
+        return nil;
+    }
+    if (img->plat && img->platScale == scale) {
+        return (__bridge NSCursor*)img->plat;
+    }
+    if (img->plat) {
+        img->platFree(img->plat);
+        img->plat = nullptr;
+    }
+    NSBitmapImageRep* rep =
+        [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nullptr
+                                                pixelsWide:img->w
+                                                pixelsHigh:img->h
+                                             bitsPerSample:8
+                                           samplesPerPixel:4
+                                                  hasAlpha:YES
+                                                  isPlanar:NO
+                                            colorSpaceName:NSDeviceRGBColorSpace
+                                              bitmapFormat:(NSBitmapFormat)0
+                                               bytesPerRow:img->w * 4
+                                              bitsPerPixel:32];
+    if (!rep || ![rep bitmapData]) {
+        return nil;
+    }
+    memcpy([rep bitmapData], img->rgba, (size_t)img->w * (size_t)img->h * 4);
+    NSImage* image = [[NSImage alloc]
+        initWithSize:NSMakeSize(img->w / scale, img->h / scale)];
+    [image addRepresentation:rep];
+    NSCursor* cursor = [[NSCursor alloc]
+        initWithImage:image
+              hotSpot:NSMakePoint(img->hotX / scale, img->hotY / scale)];
+    if (!cursor) {
+        return nil;
+    }
+    img->plat = (void*)CFBridgingRetain(cursor);
+    img->platScale = scale;
+    img->platFree = CursorImageRelease;
+    return cursor;
+}
+
 void PlatSetCursor(Window* win, CursorKind kind) {
     static bool hidden = false;
     bool wantHidden = win && win->cursorHidden;
@@ -1761,6 +1809,11 @@ void PlatSetCursor(Window* win, CursorKind kind) {
         }
     }
     if (wantHidden) {
+        return;
+    }
+    if (NSCursor* image = CursorImageCursor(win ? win->cursorImage : nullptr,
+                                            WindowScaleFactor(win))) {
+        [image set];
         return;
     }
     if (kind == CursorKind::IBeam) {
