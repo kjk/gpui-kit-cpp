@@ -10988,6 +10988,17 @@ static bool AccessibilityNameFromContents(AccessibilityRole role) {
     }
 }
 
+// The window keeps its nodes until the next frame and assistive technology
+// reads them in between, but an element's strings may belong to its state
+// (an input's placeholder), which the app can replace before then.
+static void AccessibilityInfoOwnStrings(Arena* a, AccessibilityInfo* info) {
+    info->authorId = StrDup(a, info->authorId);
+    info->label = StrDup(a, info->label);
+    info->description = StrDup(a, info->description);
+    info->value = StrDup(a, info->value);
+    info->placeholder = StrDup(a, info->placeholder);
+}
+
 static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
                                      int semanticParent, uint32_t* nextId) {
     if (!e || !out || !nextId) {
@@ -11000,6 +11011,7 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         node.parent = semanticParent;
         node.bounds = e->Bounds();
         node.info = e->accessibility;
+        AccessibilityInfoOwnStrings(e->arena, &node.info);
         AccessibilityDocumentText document;
         if (e->lifecycle && e->lifecycle->accessibilityDocument) {
             document = e->lifecycle->accessibilityDocument(

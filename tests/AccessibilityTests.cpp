@@ -1281,6 +1281,30 @@ static void TextViewPublishesItsRenderedBodyToAccessibility() {
     TestAppFree(app);
 }
 
+// Assistive technology reads the tree between frames, after the app may have
+// replaced the strings an element borrowed from its state.
+static void TheTreeOutlivesTheStringsItWasBuiltFrom() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    InputState state;
+    InputSetPlaceholder(&state, StrL("Search"));
+    El* field =
+        component::Input::New(&f.cx, StrL("query"), &state)->W(240)->IntoEl();
+    IdsCollect(field);
+    AccessibilityCollect(field, &f.win->accessibility);
+    const AccessibilityNode* node =
+        RoleNode(f.win->accessibility, AccessibilityRole::TextInput);
+    utassert(node != nullptr);
+    const char* own = state.placeholder.s;
+    utassert(node->info.placeholder.s != own);
+    utassert(node->info.label.s != own);
+    InputSetPlaceholder(&state, StrL("Find"));
+    utassert(base::StrEq(node->info.placeholder, StrL("Search")));
+    utassert(base::StrEq(node->info.label, StrL("Search")));
+    InputSetPlaceholder(&state, {});
+    FreeAccessibilityFrame(&f);
+}
+
 void TestAccessibility() {
     TextViewPublishesItsRenderedBodyToAccessibility();
     ButtonExposesOptionalDisclosureState();
@@ -1309,6 +1333,7 @@ void TestAccessibility() {
     MaskToggleIsNamedForTheActionItTakes();
     MaskedInputIsAPasswordField();
     ClearButtonIsNamed();
+    TheTreeOutlivesTheStringsItWasBuiltFrom();
     InputContentTypesAndSecretsProjectSafely();
     SingleLineRangesUseTheCurrentFrameGeometry();
     MultilineAccessibilityKeepsLineBreaksAndSelection();
