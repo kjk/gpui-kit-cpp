@@ -27,6 +27,53 @@ void WindowDrawFrameHeadless(Window* win, float dipW, float dipH);
 TempStr WindowCaptureOkTemp(int pxW, int pxH, float scale, int windows,
                             int webviews);
 
+// One WindowPrompt, with its strings on the heap. A platform that takes it
+// calls PromptFinish exactly once, which answers (unless the window's close
+// already answered -1) and frees it.
+struct PromptRequest {
+    App* app = nullptr;
+    // Null once the window has closed.
+    Window* win = nullptr;
+    Listener onAnswer = {};
+    PromptLevel level = PromptLevel::Info;
+    Str message = {};
+    Str detail = {};
+    PromptButton* answers = nullptr;
+    int n = 0;
+    PromptOptions opts = {};
+    bool answered = false;
+    // The platform's dialog (macOS: the retained NSAlert).
+    void* plat = nullptr;
+};
+void PromptFinish(PromptRequest* req, int ix);
+// The window is closing: every prompt still pending answers -1, as Rust's
+// receivers are canceled when the window drops them.
+void PromptsWindowClosed(Window* win);
+
+// PlatformWindow::prompt: false when the platform has no dialog of its own,
+// and the fallback renderer draws it instead. PlatPromptAbort takes down a
+// dialog whose window is closing; it then reaches PromptFinish as usual.
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC
+bool PlatWindowPrompt(Window* win, PromptRequest* req);
+#else
+inline bool PlatWindowPrompt(Window* win, PromptRequest* req) {
+    (void)win, (void)req;
+    return false;
+}
+#endif
+#if GPUI_OS_MAC
+void PlatPromptAbort(Window* win, PromptRequest* req);
+#else
+// Windows destroys a task dialog with its owner, which ends its loop.
+inline void PlatPromptAbort(Window* win, PromptRequest* req) {
+    (void)win, (void)req;
+}
+#endif
+
+// The test platform's prompt queue (gpui/test_app.h): true when a test app
+// is installed and has taken `req`.
+bool TestPlatformPrompt(PromptRequest* req);
+
 // Primary locale preferred by the platform or browser.
 TempStr PlatPreferredLocaleTemp();
 // sys_locale::get_locales: every locale the user prefers, most preferred

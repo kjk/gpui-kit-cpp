@@ -37,6 +37,19 @@ The current update target is
   `cacheDisplayInRect:` plus WKWebView snapshots, Windows `PrintWindow`,
   Linux the cairo back buffer (no WebKitGTK views, app windows in creation
   order). wasm answers "ERR unsupported" (`src/gpui/window_*.cpp`).
+- **`WindowPrompt` (`window.prompt`) answers through a listener**, not a
+  oneshot receiver; a canceled receiver is `PromptResponse::ix == -1`.
+  A prompt still pending when its window closes answers -1 (macOS ends the
+  sheet; Windows destroys the task dialog with its owner).
+  Windows runs `TaskDialogIndirect` from the main-thread queue, not a
+  dialog thread; it is centered on its
+  window (`TDF_POSITION_RELATIVE_TO_WINDOW`) and needs the application's
+  common-controls v6 manifest (the examples have none and draw the
+  fallback). macOS is Rust's sheet `NSAlert`. Linux, wasm, iOS and Android
+  draw the fallback renderer. `PromptOptions` (title, default button, RTL)
+  has no Rust twin. `set_prompt_builder` takes only the fallback
+  (`AppSetFallbackPrompts`); the fallback does not suppress mouse-down-out
+  listeners under it (`src/gpui/window_*.cpp`).
 - **`CursorImage` / `El::CustomCursor` have no Rust twin.** A pointer made
   from premultiplied RGBA pixels, owned and freed by the caller: Windows
   `CreateIconIndirect`, macOS `NSCursor initWithImage:hotSpot:`, X11

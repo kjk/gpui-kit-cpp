@@ -9,6 +9,7 @@
 #include "sys/clock.h"
 #include "sys/executor.h"
 
+#include <commctrl.h>
 #include <dwmapi.h>
 #include <imm.h>
 #include <ole2.h>
@@ -1855,6 +1856,148 @@ void OpenPath(Str path) {
     }
     ShellExecuteW(nullptr, L"open", ToCWstrTemp(path), nullptr, nullptr,
                   SW_SHOWNORMAL);
+}
+
+// ─── window.prompt (gpui_windows window.rs prompt, dialog.rs) ───────────────
+
+using TaskDialogIndirectFn = HRESULT(WINAPI*)(const TASKDIALOGCONFIG*, int*,
+                                              int*, BOOL*);
+
+// comctl32 v6 has it, and only an application manifest gets v6; without one
+// the prompt is the fallback renderer's.
+static TaskDialogIndirectFn TaskDialogIndirectProc() {
+    static bool looked = false;
+    static TaskDialogIndirectFn fn = nullptr;
+    if (!looked) {
+        looked = true;
+        if (HMODULE m = LoadLibraryW(L"comctl32.dll")) {
+            fn = (TaskDialogIndirectFn)(void*)GetProcAddress(
+                m, "TaskDialogIndirect");
+        }
+    }
+    return fn;
+}
+
+// task_dialog_callback: Esc, the close box and WM_CLOSE answer IDCANCEL,
+// which is only allowed when the prompt offered a Cancel button.
+static HRESULT CALLBACK PromptDialogCallback(HWND, UINT msg, WPARAM wp, LPARAM,
+                                             LONG_PTR hasCancel) {
+    if (msg == TDN_BUTTON_CLICKED && wp == IDCANCEL && !hasCancel) {
+        return S_FALSE;
+    }
+    return S_OK;
+}
+
+// On the heap: the dialog's loop draws frames, which reset the temp arena.
+static WCHAR* PromptWideDup(Str s) {
+    int n = len(s) > 0
+                ? MultiByteToWideChar(CP_UTF8, 0, s.s, len(s), nullptr, 0)
+                : 0;
+    n = n > 0 ? n : 0;
+    WCHAR* res = new WCHAR[n + 1];
+    if (n > 0) {
+        MultiByteToWideChar(CP_UTF8, 0, s.s, len(s), res, n);
+    }
+    res[n] = 0;
+    return res;
+}
+
+static HWND PromptOwner(PromptRequest* req) {
+    for (int i = 0; req->app && i < len(req->app->windows); i++) {
+        Window* w = req->app->windows[i];
+        if (w == req->win && w->plat) {
+            return w->plat->hwnd;
+        }
+    }
+    return nullptr;
+}
+
+// Run from the main-thread queue rather than inside the listener that asked:
+// TaskDialogIndirect runs a modal loop until it is answered.
+static void PromptRun(PromptRequest* req) {
+    HWND owner = PromptOwner(req);
+    TaskDialogIndirectFn taskDialog = TaskDialogIndirectProc();
+    if (!owner || !taskDialog) {
+        PromptFinish(req, -1);
+        return;
+    }
+    TASKDIALOGCONFIG config = {};
+    config.cbSize = sizeof(config);
+    config.hwndParent = owner;
+    // Not in Rust: centered on its window, as a macOS sheet is.
+    DWORD flags =
+        TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW;
+    if (req->opts.rtl) {
+        flags |= TDF_RTL_LAYOUT;
+    }
+    config.dwFlags = (TASKDIALOG_FLAGS)flags;
+    const WCHAR* levelTitle = L"Info";
+    config.pszMainIcon = TD_INFORMATION_ICON;
+    if (req->level == PromptLevel::Warning) {
+        levelTitle = L"Warning";
+        config.pszMainIcon = TD_WARNING_ICON;
+    } else if (req->level == PromptLevel::Critical) {
+        levelTitle = L"Critical";
+        config.pszMainIcon = TD_ERROR_ICON;
+    }
+    WCHAR* title =
+        len(req->opts.title) > 0 ? PromptWideDup(req->opts.title) : nullptr;
+    config.pszWindowTitle = title ? title : levelTitle;
+    WCHAR* instruction = PromptWideDup(req->message);
+    config.pszMainInstruction = instruction;
+    WCHAR* content =
+        len(req->detail) > 0 ? PromptWideDup(req->detail) : nullptr;
+    config.pszContent = content;
+
+    // Other buttons count down from -1: the low positive ids are the
+    // dialog's own (IDOK, IDCANCEL, ...).
+    int n = req->n;
+    TASKDIALOG_BUTTON* buttons = new TASKDIALOG_BUTTON[n > 0 ? n : 1];
+    bool hasCancel = false;
+    for (int i = 0; i < n; i++) {
+        const PromptButton& b = req->answers[i];
+        int id = -i - 1;
+        if (b.kind == PromptButton::Kind::Ok) {
+            id = IDOK;
+        } else if (b.kind == PromptButton::Kind::Cancel) {
+            id = IDCANCEL;
+            hasCancel = true;
+        }
+        buttons[i].nButtonID = id;
+        buttons[i].pszButtonText = PromptWideDup(b.label);
+    }
+    config.cButtons = (UINT)n;
+    config.pButtons = buttons;
+    if (req->opts.defaultIx > 0 && req->opts.defaultIx < n) {
+        config.nDefaultButton = buttons[req->opts.defaultIx].nButtonID;
+    }
+    config.pfCallback = PromptDialogCallback;
+    config.lpCallbackData = hasCancel ? 1 : 0;
+
+    int pressed = 0;
+    HRESULT hr = taskDialog(&config, &pressed, nullptr, nullptr);
+    int ix = -1;
+    for (int i = 0; SUCCEEDED(hr) && i < n && ix < 0; i++) {
+        if (buttons[i].nButtonID == pressed) {
+            ix = i;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        delete[] buttons[i].pszButtonText;
+    }
+    delete[] buttons;
+    delete[] title;
+    delete[] instruction;
+    delete[] content;
+    PromptFinish(req, ix);
+}
+
+bool PlatWindowPrompt(Window* win, PromptRequest* req) {
+    if (!win || !win->plat || !win->plat->hwnd || !TaskDialogIndirectProc()) {
+        return false;
+    }
+    ExecPost(MkFunc0(PromptRun, req));
+    return true;
 }
 
 // cx.prompt_for_paths. The shell's own dialog, which is IFileOpenDialog on

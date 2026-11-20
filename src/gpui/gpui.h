@@ -7326,6 +7326,8 @@ struct App {
     // like GPUI's loading_assets HashMap; an entity ImageCache on the window
     // stack intercepts Resource lookups.
     ImageStore* images = nullptr;
+    // cx.set_prompt_builder(fallback_prompt_renderer) is in force.
+    bool fallbackPrompts = false;
 
     App() = default;
 };
@@ -7334,6 +7336,8 @@ struct App {
 // and the view it renders. GPUI's `Window`.
 // The OS window: an HWND wrapper on Windows, an X11 Window on Linux.
 struct PlatWindow;
+// One pending window.prompt (gpui/platform.h).
+struct PromptRequest;
 
 // crates/base/src/text_selection.rs WindowSelectionState, one per window.
 struct WindowSelection;
@@ -7652,6 +7656,10 @@ struct Window {
     // (El::rootTooltip) shows there, with the root's look; every other one
     // shows in `tooltip`.
     EntityId rootTooltip = {};
+    // Window::prompt: the fallback prompt drawn over everything, or none.
+    EntityId prompt = {};
+    // Native prompts (and the test platform's) not yet answered.
+    Vec<PromptRequest*> nativePrompts;
     Overlay overlay = {};
     InspectorState inspector = {};
     MenuState menu = {};
@@ -8476,6 +8484,67 @@ struct PathPrompt {
 // here wants the answer where it asked, which is what the platform dialogs do
 // anyway — they run their own loop until the user is done.
 TempStr PromptForPathTemp(Window* win, const PathPrompt& opts);
+
+// ─── prompts (crates/gpui/src/window/prompts.rs, platform.rs) ───────────────
+
+// What kind of prompt styling to show.
+enum class PromptLevel : uint8_t {
+    Info,
+    Warning,
+    Critical
+};
+
+// One answer a prompt offers. A Cancel button is what Escape (and closing
+// the dialog) picks; a prompt without one cannot be dismissed that way.
+struct PromptButton {
+    enum class Kind : uint8_t {
+        Ok,
+        Cancel,
+        Other
+    };
+    Kind kind = Kind::Other;
+    Str label = {};
+
+    static PromptButton New(Str label) { return {Kind::Other, label}; }
+    static PromptButton Ok(Str label) { return {Kind::Ok, label}; }
+    static PromptButton Cancel(Str label) { return {Kind::Cancel, label}; }
+    // From<&str>: "ok" and "cancel", in any case, are the OK and Cancel
+    // buttons labeled "OK" and "Cancel"; anything else is an Other.
+    static PromptButton From(Str value);
+    bool IsCancel() const { return kind == Kind::Cancel; }
+};
+
+// The answer: the index of the button picked. -1 when the prompt went away
+// without one (a newer prompt replaced it, its window closed, the native
+// dialog failed), which Rust's receiver sees as Canceled.
+struct PromptResponse {
+    int ix = -1;
+};
+
+// Not in Rust: native-dialog details its prompt has no parameter for.
+struct PromptOptions {
+    // The dialog's title bar (Windows). Empty: the level's name, as Rust.
+    Str title = {};
+    // The answer Enter picks (Windows, macOS). Rust's is the first.
+    int defaultIx = 0;
+    // Right-to-left dialog layout (Windows).
+    bool rtl = false;
+};
+
+// window.prompt(level, message, detail, answers): a TaskDialog on Windows, a
+// sheet NSAlert on macOS, elsewhere (and where the native one is missing)
+// the fallback renderer drawn over the window. Returns at once; `onAnswer`
+// runs later on the main thread with a PromptResponse, once. An empty
+// `detail` is None. The strings are copied.
+void WindowPrompt(Window* win, PromptLevel level, Str message, Str detail,
+                  const PromptButton* answers, int n, Listener onAnswer,
+                  const PromptOptions* opts = nullptr);
+// window.has_active_prompt(): a fallback prompt is drawn in this window.
+// Native dialogs do not count.
+bool WindowHasActivePrompt(const Window* win);
+// cx.set_prompt_builder(fallback_prompt_renderer) / reset_prompt_builder():
+// always draw the fallback, even where a native dialog exists.
+void AppSetFallbackPrompts(App* app, bool always);
 
 int AppRun(App* app);
 Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts);

@@ -65,6 +65,65 @@ double TestClockNow() {
     return gTestPlatform.now;
 }
 
+// TestPlatform::prompts.multiple_choice: prompts waiting for a test's answer,
+// oldest first. Freed unanswered with the test app, as Rust drops them.
+static Vec<PromptRequest*> gTestPrompts;
+
+static void TestPromptsDrop() {
+    for (int i = 0; i < len(gTestPrompts); i++) {
+        PromptRequest* req = gTestPrompts[i];
+        req->app = nullptr;
+        PromptFinish(req, -1);
+    }
+    VecReset(gTestPrompts);
+}
+
+bool TestPlatformPrompt(PromptRequest* req) {
+    if (!gTestPlatform.on || !req) {
+        return false;
+    }
+    VecAppend(gTestPrompts, req);
+    return true;
+}
+
+bool TestHasPendingPrompt() {
+    return len(gTestPrompts) > 0;
+}
+
+bool TestPendingPrompt(Str* message, Str* detail) {
+    if (len(gTestPrompts) == 0) {
+        return false;
+    }
+    if (message) {
+        *message = gTestPrompts[0]->message;
+    }
+    if (detail) {
+        *detail = gTestPrompts[0]->detail;
+    }
+    return true;
+}
+
+bool TestSimulatePromptAnswer(Str response) {
+    if (len(gTestPrompts) == 0) {
+        return false;
+    }
+    PromptRequest* req = gTestPrompts[0];
+    int ix = -1;
+    for (int i = 0; i < req->n && ix < 0; i++) {
+        if (StrEq(req->answers[i].label, response)) {
+            ix = i;
+        }
+    }
+    if (ix < 0) {
+        return false;
+    }
+    VecRemoveAt(gTestPrompts, 0);
+    App* app = req->app;
+    PromptFinish(req, ix);
+    TestRunUntilParked(app);
+    return true;
+}
+
 RenderImage* TestMakeSizedImage(PaintApp* paint, int width, int height) {
     if (width <= 0 || height <= 0 || height > INT32_MAX / 4 / width) {
         return nullptr;
@@ -93,6 +152,7 @@ App* TestAppNew() {
         return nullptr;
     }
     StrFree(gTestPlatform.clipboard);
+    TestPromptsDrop();
     gTestPlatform = TestPlatform{};
     gTestPlatform.on = true;
     gTestPlatform.now = kTestClockStart;
@@ -100,6 +160,7 @@ App* TestAppNew() {
 }
 
 void TestAppFree(App* app) {
+    TestPromptsDrop();
     AppFreeHeadless(app);
     StrFree(gTestPlatform.clipboard);
     gTestPlatform = TestPlatform{};

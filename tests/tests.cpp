@@ -163,6 +163,7 @@ int GpuiMain(int argc, char** argv) {
     TestFileDrop();
     TestPinch();
     TestCursorImage();
+    TestPrompts();
     TestVec();
     TestElementId();
     TestHoverCard();

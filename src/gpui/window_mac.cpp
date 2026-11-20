@@ -2376,6 +2376,111 @@ void OpenPath(Str path) {
     }
 }
 
+// ─── window.prompt (gpui_macos window.rs prompt) ────────────────────────────
+
+static NSString* PromptNSString(Str s) {
+    NSString* res = [[NSString alloc] initWithBytes:s.s ? s.s : ""
+                                             length:(NSUInteger)len(s)
+                                           encoding:NSUTF8StringEncoding];
+    return res ? res : @"";
+}
+
+static NSWindow* PromptSheetParent(PromptRequest* req) {
+    for (int i = 0; req->app && i < len(req->app->windows); i++) {
+        Window* w = req->app->windows[i];
+        if (w == req->win && w->plat) {
+            return w->plat->window;
+        }
+    }
+    return nil;
+}
+
+// NSAlert's first button keeps Return and Cancel keeps Escape, but keyboard
+// focus (and so Space) starts on Cancel, which leaves the middle button of
+// "Save / Don't Save / Cancel" unreachable. Rust moves the initial focus to
+// the last non-cancel button after the first.
+static void PromptRun(PromptRequest* req) {
+    NSWindow* parent = PromptSheetParent(req);
+    if (!parent) {
+        PromptFinish(req, -1);
+        return;
+    }
+    int focusIx = -1;
+    for (int i = req->n - 1; i > 0 && focusIx < 0; i--) {
+        if (!req->answers[i].IsCancel()) {
+            focusIx = i;
+        }
+    }
+    NSAlert* alert = [[NSAlert alloc] init];
+    NSAlertStyle style = NSAlertStyleInformational;
+    if (req->level == PromptLevel::Warning) {
+        style = NSAlertStyleWarning;
+    } else if (req->level == PromptLevel::Critical) {
+        style = NSAlertStyleCritical;
+    }
+    [alert setAlertStyle:style];
+    [alert setMessageText:PromptNSString(req->message)];
+    if (len(req->detail) > 0) {
+        [alert setInformativeText:PromptNSString(req->detail)];
+    }
+    // Not in Rust: PromptOptions::defaultIx takes Return off the first button.
+    int defaultIx = req->opts.defaultIx;
+    NSButton* focusButton = nil;
+    NSButton* first = nil;
+    for (int i = 0; i < req->n; i++) {
+        NSButton* button =
+            [alert addButtonWithTitle:PromptNSString(req->answers[i].label)];
+        [button setTag:i];
+        if (i == 0) {
+            first = button;
+        }
+        if (req->answers[i].IsCancel()) {
+            [button setKeyEquivalent:@"\x1b"];
+        } else if (i == focusIx) {
+            focusButton = button;
+        }
+        if (defaultIx > 0 && i == defaultIx) {
+            [button setKeyEquivalent:@"\r"];
+        }
+    }
+    if (defaultIx > 0 && defaultIx < req->n && first &&
+        [[first keyEquivalent] isEqualToString:@"\r"]) {
+        [first setKeyEquivalent:@""];
+    }
+    if (focusButton) {
+        [[alert window] setInitialFirstResponder:focusButton];
+    }
+    // Retained until the sheet ends, so a closing window can end it.
+    req->plat = (__bridge_retained void*)alert;
+    [alert beginSheetModalForWindow:parent
+                  completionHandler:^(NSModalResponse answer) {
+                    NSAlert* done = (__bridge_transfer NSAlert*)req->plat;
+                    req->plat = nullptr;
+                    (void)done;
+                    PromptFinish(req, (int)answer);
+                  }];
+}
+
+// Rust's closed flag keeps a sheet off a closed window; one already up is
+// ended here, and its completion frees the request.
+void PlatPromptAbort(Window* win, PromptRequest* req) {
+    if (!req || !req->plat || !win || !win->plat || !win->plat->window) {
+        return;
+    }
+    NSAlert* alert = (__bridge NSAlert*)req->plat;
+    [win->plat->window endSheet:[alert window] returnCode:NSModalResponseAbort];
+}
+
+// The sheet starts from the main-thread queue, as Rust spawns it on the
+// foreground executor, so a listener never begins a modal session.
+bool PlatWindowPrompt(Window* win, PromptRequest* req) {
+    if (!win || !win->plat || !win->plat->window) {
+        return false;
+    }
+    ExecPost(MkFunc0(PromptRun, req));
+    return true;
+}
+
 // cx.prompt_for_paths. NSOpenPanel, run modally: it takes over the loop until
 // the user is done, which is what the other two platforms' dialogs do too.
 TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {

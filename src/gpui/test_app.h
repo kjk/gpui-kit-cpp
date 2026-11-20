@@ -119,5 +119,16 @@ Str TestReadFromClipboard(Arena* a);
 // window.focus(&handle): focus moves to it and the window redraws.
 void TestFocus(Window* win, FocusHandle handle);
 
+// The test platform keeps each window.prompt for the test to answer, as
+// Rust's does, unless AppSetFallbackPrompts draws it in the window instead.
+// cx.has_pending_prompt(): one is waiting.
+bool TestHasPendingPrompt();
+// cx.pending_prompt(): the oldest one's message and detail; false for none.
+bool TestPendingPrompt(Str* message, Str* detail);
+// cx.simulate_prompt_answer(response): answer the oldest one with the button
+// labeled `response`, then run until parked. False when there is no prompt
+// or no such button (Rust panics).
+bool TestSimulatePromptAnswer(Str response);
+
 } // namespace gpui
 #endif // GPUI_GPUI_TEST_APP_H_

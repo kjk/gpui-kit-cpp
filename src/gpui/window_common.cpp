@@ -618,7 +618,17 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     VecClear(win->debugViewRoots);
     win->hasRovingTabs = false;
     El* root = EntityRender(win->app, win, win->frameArena, win->root);
-    if (win->tooltip.IsValid()) {
+    // Rust draws the prompt in place of a drag or a tooltip.
+    El* prompt = win->prompt.IsValid()
+                     ? EntityRender(win->app, win, win->frameArena, win->prompt)
+                     : nullptr;
+    if (prompt) {
+        if (root) {
+            root->Child(prompt);
+        } else {
+            root = prompt;
+        }
+    } else if (win->tooltip.IsValid()) {
         El* tooltip =
             EntityRender(win->app, win, win->frameArena, win->tooltip);
         if (tooltip) {
@@ -4779,6 +4789,8 @@ void WindowClosed(Window* win) {
     if (!win) {
         return;
     }
+    // Before anything is torn down: the answers run listeners.
+    PromptsWindowClosed(win);
     // The focused field outlives the window it was focused in — it belongs to
     // a view, and the app may still hold that view — so the two let go of
     // each other here rather than leaving a pointer either way.
@@ -5487,6 +5499,254 @@ TempStr WindowCaptureOkTemp(int pxW, int pxH, float scale, int windows,
                             int webviews) {
     return fmt("OK w=%d h=%d scale=%g windows=%d webviews=%d pending=%d", pxW,
                pxH, (double)scale, windows, webviews, webviews > 0 ? 1 : 0);
+}
+
+// ─── prompts (window/prompts.rs, Window::prompt) ────────────────────────────
+
+PromptButton PromptButton::From(Str value) {
+    if (StrEqI(value, StrL("ok"))) {
+        return Ok(StrL("OK"));
+    }
+    if (StrEqI(value, StrL("cancel"))) {
+        return Cancel(StrL("Cancel"));
+    }
+    return New(value);
+}
+
+static void PromptRequestFree(PromptRequest* req) {
+    if (!req) {
+        return;
+    }
+    StrFree(req->message);
+    StrFree(req->detail);
+    StrFree(req->opts.title);
+    for (int i = 0; i < req->n; i++) {
+        StrFree(req->answers[i].label);
+    }
+    delete[] req->answers;
+    delete req;
+}
+
+// The listener hears once: from the button, or -1 from the window's close.
+static void PromptAnswer(PromptRequest* req, int ix) {
+    if (req->answered) {
+        return;
+    }
+    req->answered = true;
+    bool live = false;
+    for (int i = 0; req->app && i < len(req->app->windows); i++) {
+        live = live || req->app->windows[i] == req->win;
+    }
+    if (!live) {
+        return;
+    }
+    PromptResponse resp;
+    resp.ix = ix >= 0 && ix < req->n ? ix : -1;
+    ListenerCall(req->app, req->win, req->onAnswer, &resp);
+    if (req->win->running) {
+        AppInvalidate(req->win);
+    }
+}
+
+static void PromptForget(PromptRequest* req) {
+    Window* win = req->win;
+    for (int i = 0; win && i < len(win->nativePrompts); i++) {
+        if (win->nativePrompts[i] == req) {
+            VecRemoveAt(win->nativePrompts, i);
+            break;
+        }
+    }
+}
+
+void PromptFinish(PromptRequest* req, int ix) {
+    if (!req) {
+        return;
+    }
+    PromptForget(req);
+    PromptAnswer(req, ix);
+    PromptRequestFree(req);
+}
+
+// FallbackPromptRenderer: drawn over the window when the platform has no
+// dialog of its own. Owns its request until a button answers it.
+struct FallbackPrompt {
+    PromptRequest* req = nullptr;
+    FocusHandle focus = {};
+    FocusHandle previousFocus = {};
+
+    ~FallbackPrompt() { PromptRequestFree(req); }
+
+    static El* Render(FallbackPrompt* self, Ctx* cx);
+    static void OnPick(FallbackPrompt* self, Ctx* cx, const ClickEvent*,
+                       int64_t ix);
+};
+
+// opaque_grey(0.5, 0.6) behind the prompt, opaque_grey(0.2, 0.5) button
+// borders, white() surface; Rust's default text color is black.
+static const Rgba kPromptBackdrop = {128, 128, 128, 153};
+static const Rgba kPromptButtonBorder = {51, 51, 51, 128};
+static const Rgba kPromptSurface = {255, 255, 255, 255};
+static const Rgba kPromptText = {0, 0, 0, 255};
+
+El* FallbackPrompt::Render(FallbackPrompt* self, Ctx* cx) {
+    PromptRequest* req = self->req;
+    if (!req) {
+        return nullptr;
+    }
+    Arena* a = cx->a;
+    // text_sm, w_72, p_3, rounded_lg, mb_2, mt_1, rounded_xs in rems
+    float rem = WindowRemSize(cx->win);
+    float textSm = rem * 0.875f;
+
+    El* prompt = Div(a)
+                     ->TrackFocus(self->focus)
+                     ->W(rem * 18)
+                     ->Bg(kPromptSurface)
+                     ->Radius(rem * 0.5f)
+                     ->Pad(rem * 0.75f)
+                     ->Fg(kPromptText)
+                     ->FlexCol();
+    prompt->Child(Div(a)->FlexRow()->JustifyAround()->Child(
+        TextEl(a, req->message)->Wrap()));
+    if (len(req->detail) > 0) {
+        prompt
+            ->Child(Div(a)
+                        ->FlexRow()
+                        ->JustifyAround()
+                        ->MarginB(rem * 0.5f)
+                        ->Child(TextEl(a, req->detail)->Font(textSm)->Wrap()));
+    }
+    for (int i = 0; i < req->n; i++) {
+        prompt->Child(
+            Div(a)
+                ->FlexRow()
+                ->JustifyAround()
+                ->Border(1, kPromptButtonBorder)
+                ->MarginT(rem * 0.25f)
+                ->Radius(rem * 0.125f)
+                ->Cursor(CursorKind::Pointer)
+                ->Click(i + 1)
+                ->OnClick(Listen(cx, &FallbackPrompt::OnPick, i))
+                ->Child(TextEl(a, req->answers[i].label)->Font(textSm)));
+    }
+
+    WinSize sz = WindowSize(cx->win);
+    El* centered =
+        Div(a)->Absolute()->Inset0()->FlexCol()->JustifyAround()->Child(
+            Div(a)->FlexRow()->JustifyAround()->Child(prompt));
+    return Div(a)
+        ->Fixed()
+        ->Top(0)
+        ->Left(0)
+        ->W(sz.dipW)
+        ->H(sz.dipH)
+        ->DeferredLayer(kPaintLayerTooltip)
+        ->Child(Div(a)->Absolute()->Inset0()->Bg(kPromptBackdrop))
+        ->Child(centered);
+}
+
+void FallbackPrompt::OnPick(FallbackPrompt* self, Ctx* cx, const ClickEvent*,
+                            int64_t ix) {
+    Window* win = cx->win;
+    PromptRequest* req = self->req;
+    FocusHandle previous = self->previousFocus;
+    self->req = nullptr;
+    // window.prompt.take(); the view goes with it
+    if (win && win->prompt == cx->self) {
+        win->prompt = {};
+    }
+    EntityDrop(cx->app, cx->self);
+    if (win) {
+        FocusHandleRestore(win, previous);
+        AppInvalidate(win);
+    }
+    PromptFinish(req, (int)ix);
+}
+
+static void PromptShowFallback(Window* win, PromptRequest* req) {
+    // A newer prompt drops the one before it, and its receiver is canceled.
+    if (FallbackPrompt* old =
+            (FallbackPrompt*)EntityGet(win->app, win->prompt)) {
+        PromptRequest* oldReq = old->req;
+        old->req = nullptr;
+        EntityDrop(win->app, win->prompt);
+        win->prompt = {};
+        PromptFinish(oldReq, -1);
+    }
+    Entity<FallbackPrompt> view = EntityNew<FallbackPrompt>(win->app);
+    FallbackPrompt* p = view.Get(win->app);
+    p->req = req;
+    p->focus = FocusHandleNew(win->app);
+    p->previousFocus = WindowFocused(win);
+    win->prompt = view.id;
+    FocusHandleFocus(win, p->focus);
+    AppInvalidate(win);
+}
+
+void WindowPrompt(Window* win, PromptLevel level, Str message, Str detail,
+                  const PromptButton* answers, int n, Listener onAnswer,
+                  const PromptOptions* opts) {
+    if (!win || !win->app) {
+        return;
+    }
+    auto* req = new PromptRequest();
+    req->app = win->app;
+    req->win = win;
+    req->onAnswer = onAnswer;
+    req->level = level;
+    req->message = StrDup(message);
+    req->detail = len(detail) > 0 ? StrDup(detail) : Str{};
+    req->n = n > 0 ? n : 0;
+    req->answers = new PromptButton[req->n > 0 ? req->n : 1];
+    for (int i = 0; i < req->n; i++) {
+        req->answers[i].kind = answers[i].kind;
+        req->answers[i].label = StrDup(answers[i].label);
+    }
+    if (opts) {
+        req->opts = *opts;
+        req->opts.title = len(opts->title) > 0 ? StrDup(opts->title) : Str{};
+    }
+
+    // PromptBuilder::Default asks the platform first; Custom always draws.
+    if (!win->app->fallbackPrompts) {
+        if (TestPlatformPrompt(req) || PlatWindowPrompt(win, req)) {
+            VecAppend(win->nativePrompts, req);
+            return;
+        }
+    }
+    PromptShowFallback(win, req);
+}
+
+void PromptsWindowClosed(Window* win) {
+    if (!win || !win->app) {
+        return;
+    }
+    if (FallbackPrompt* p = (FallbackPrompt*)EntityGet(win->app, win->prompt)) {
+        PromptRequest* req = p->req;
+        p->req = nullptr;
+        EntityDrop(win->app, win->prompt);
+        win->prompt = {};
+        PromptFinish(req, -1);
+    }
+    // The platform frees each one when its dialog comes down; by then it
+    // has answered and is no longer this window's.
+    while (len(win->nativePrompts) > 0) {
+        PromptRequest* req = win->nativePrompts[len(win->nativePrompts) - 1];
+        VecRemoveAt(win->nativePrompts, len(win->nativePrompts) - 1);
+        PromptAnswer(req, -1);
+        req->win = nullptr;
+        PlatPromptAbort(win, req);
+    }
+}
+
+bool WindowHasActivePrompt(const Window* win) {
+    return win && win->prompt.IsValid();
+}
+
+void AppSetFallbackPrompts(App* app, bool always) {
+    if (app) {
+        app->fallbackPrompts = always;
+    }
 }
 
 } // namespace gpui
