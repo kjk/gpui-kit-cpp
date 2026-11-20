@@ -1074,7 +1074,18 @@ void OpenPath(Str) {}
 // asked for one, so this says so rather than pretending.
 TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     (void)win;
-    (void)opts;
+    if (opts.filters.chosen) {
+        *opts.filters.chosen = -1;
+    }
+    return {};
+}
+
+// cx.prompt_for_new_path: a page has no save dialog that answers a path.
+TempStr PromptForNewPathTemp(Window* win, const NewPathPrompt& opts) {
+    (void)win;
+    if (opts.filters.chosen) {
+        *opts.filters.chosen = -1;
+    }
     return {};
 }
 

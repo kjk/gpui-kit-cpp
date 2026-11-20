@@ -19,6 +19,7 @@
 // one-file dist (see wry_mac.cpp).
 #import <WebKit/WKWebView.h>
 #import <objc/runtime.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 #include <time.h>
 
@@ -2481,8 +2482,34 @@ bool PlatWindowPrompt(Window* win, PromptRequest* req) {
     return true;
 }
 
+// The UTTypes of `exts`, or nil for none. Looked up by name: UTType lives in
+// UniformTypeIdentifiers, which AppKit loads and this library does not link.
+static NSArray* PanelContentTypes(const Vec<Str>& exts) {
+    Class cls = NSClassFromString(@"UTType");
+    if (!cls || len(exts) == 0) {
+        return nil;
+    }
+    NSMutableArray* types = [NSMutableArray array];
+    for (int i = 0; i < len(exts); i++) {
+        UTType* t = [cls typeWithFilenameExtension:PromptNSString(exts[i])];
+        if (t) {
+            [types addObject:t];
+        }
+    }
+    return [types count] > 0 ? types : nil;
+}
+
+static void PanelSetDirectory(NSSavePanel* panel, Str dir) {
+    if (len(dir) > 0) {
+        [panel setDirectoryURL:[NSURL fileURLWithPath:PromptNSString(dir)
+                                          isDirectory:YES]];
+    }
+}
+
 // cx.prompt_for_paths. NSOpenPanel, run modally: it takes over the loop until
 // the user is done, which is what the other two platforms' dialogs do too.
+// An open panel has no file type menu: it shows what any of the filters
+// takes, everything when one of them takes any file, and never says which.
 TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     (void)win;
     NSOpenPanel* panel = [NSOpenPanel openPanel];
@@ -2490,13 +2517,20 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     [panel setCanChooseDirectories:opts.directories ? YES : NO];
     [panel setAllowsMultipleSelection:opts.multiple ? YES : NO];
     if (len(opts.title) > 0) {
-        NSString* t =
-            [[NSString alloc] initWithBytes:opts.title.s
-                                     length:(NSUInteger)len(opts.title)
-                                   encoding:NSUTF8StringEncoding];
-        if (t) {
-            [panel setMessage:t];
-        }
+        [panel setMessage:PromptNSString(opts.title)];
+    }
+    PanelSetDirectory(panel, opts.directory);
+    Vec<Str> exts;
+    bool any = opts.filters.count == 0;
+    for (int32_t i = 0; i < opts.filters.count && !any; i++) {
+        any = !PathPatternExts(opts.filters.items[i].patterns, &exts);
+    }
+    NSArray* types = any ? nil : PanelContentTypes(exts);
+    if (types) {
+        [panel setAllowedContentTypes:types];
+    }
+    if (opts.filters.chosen) {
+        *opts.filters.chosen = -1;
     }
     if ([panel runModal] != NSModalResponseOK) {
         return {};
@@ -2520,6 +2554,61 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
         return {};
     }
     return StrDupTemp(Str(paths.els, len(paths)));
+}
+
+// cx.prompt_for_new_path: NSSavePanel, run modally like the open panel
+// (Rust begins it with a completion handler). A save panel has no file type
+// menu either: it takes the extensions of the filter shown first, or the
+// default extension, adds the first to a name typed without one and asks
+// before overwriting. Another extension typed is kept.
+TempStr PromptForNewPathTemp(Window* win, const NewPathPrompt& opts) {
+    (void)win;
+    NSSavePanel* panel = [NSSavePanel savePanel];
+    if (!panel) {
+        return {};
+    }
+    PanelSetDirectory(panel, opts.directory);
+    if (len(opts.suggestedName) > 0) {
+        [panel setNameFieldStringValue:PromptNSString(opts.suggestedName)];
+    }
+    if (len(opts.title) > 0) {
+        [panel setMessage:PromptNSString(opts.title)];
+    }
+    Vec<Str> exts;
+    const PathFilters& filters = opts.filters;
+    if (filters.index >= 0 && filters.index < filters.count) {
+        PathPatternExts(filters.items[filters.index].patterns, &exts);
+    }
+    Str ext = opts.defaultExt;
+    if (len(ext) > 0 && ext.s[0] == '.') {
+        ext = Str(ext.s + 1, len(ext) - 1);
+    }
+    if (len(exts) == 0 && len(ext) > 0) {
+        VecAppend(exts, ext);
+    }
+    NSArray* types = PanelContentTypes(exts);
+    if (types) {
+        [panel setAllowedContentTypes:types];
+        [panel setAllowsOtherFileTypes:YES];
+    }
+    if (filters.chosen) {
+        *filters.chosen = -1;
+    }
+    if ([panel runModal] != NSModalResponseOK) {
+        return {};
+    }
+    NSURL* url = [panel URL];
+    const char* chosen =
+        url && [url isFileURL] ? [[url path] UTF8String] : nullptr;
+    if (!chosen || !*chosen) {
+        return {};
+    }
+    TempStr path = StrDupTemp(Str(chosen));
+    NSOperatingSystemVersion sequoia = {15, 0, 0};
+    if ([[NSProcessInfo processInfo] isOperatingSystemAtLeastVersion:sequoia]) {
+        path = PathDropRepeatedExtTemp(path);
+    }
+    return PathWithDefaultExtTemp(path, ext);
 }
 
 void PlatClipboardSetText(Window* win, Str text) {

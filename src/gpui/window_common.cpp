@@ -5749,4 +5749,74 @@ void AppSetFallbackPrompts(App* app, bool always) {
     }
 }
 
+// ─── path prompts ───────────────────────────────────────────────────────────
+
+bool PathPatternExts(Str patterns, Vec<Str>* exts) {
+    int start = len(*exts);
+    int n = len(patterns);
+    for (int i = 0; i <= n;) {
+        int end = i;
+        while (end < n && patterns.s[end] != ';') {
+            end++;
+        }
+        Str pat = StrTrimAscii(Str(patterns.s + i, end - i));
+        i = end + 1;
+        if (StrEq(pat, "*") || StrEq(pat, "*.*")) {
+            VecResize(*exts, start);
+            return false;
+        }
+        if (len(pat) > 2 && StrStartsWith(pat, "*.")) {
+            VecAppend(*exts, Str(pat.s + 2, len(pat) - 2));
+        }
+    }
+    return true;
+}
+
+// The file name part: after the last '/' (or '\\', a Windows path).
+static Str PathFileName(Str path) {
+    int i = len(path);
+    while (i > 0 && path.s[i - 1] != '/' && path.s[i - 1] != '\\') {
+        i--;
+    }
+    return Str(path.s + i, len(path) - i);
+}
+
+TempStr PathWithDefaultExtTemp(Str path, Str ext) {
+    if (len(ext) > 0 && ext.s[0] == '.') {
+        ext = Str(ext.s + 1, len(ext) - 1);
+    }
+    Str name = PathFileName(path);
+    // a leading dot is a hidden file's name, not an extension
+    bool hasExt =
+        len(name) > 1 && StrFind(Str(name.s + 1, len(name) - 1), ".") >= 0;
+    if (len(ext) == 0 || len(name) == 0 || hasExt) {
+        return StrDupTemp(path);
+    }
+    return fmt("%s.%s", path, ext);
+}
+
+TempStr PathDropRepeatedExtTemp(Str path) {
+    Str name = PathFileName(path);
+    int dots[2] = {};
+    int n = 0;
+    for (int i = 0; i < len(name); i++) {
+        if (name.s[i] != '.') {
+            continue;
+        }
+        if (n == 2) {
+            return StrDupTemp(path);
+        }
+        dots[n++] = i;
+    }
+    if (n != 2) {
+        return StrDupTemp(path);
+    }
+    Str second(name.s + dots[0] + 1, dots[1] - dots[0] - 1);
+    Str third(name.s + dots[1] + 1, len(name) - dots[1] - 1);
+    if (!StrStartsWith(second, third)) {
+        return StrDupTemp(path);
+    }
+    return StrDupTemp(Str(path.s, len(path) - len(third) - 1));
+}
+
 } // namespace gpui

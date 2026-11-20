@@ -190,6 +190,7 @@ void TestFileDrop();
 void TestPinch();
 void TestCursorImage();
 void TestPrompts();
+void TestPathPrompts();
 void TestVec();
 void TestElementId();
 void TestHoverCard();

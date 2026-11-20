@@ -8463,6 +8463,23 @@ void OpenUrl(Str url);
 // can do anything about.
 void OpenPath(Str path);
 
+// One file type of an open or save prompt: the name it is listed under and
+// its patterns, ';'-separated ("*.pdf;*.xps", "*.*" for any). No Rust twin.
+struct PathFilter {
+    Str name = {};
+    Str patterns = {};
+};
+
+// The file types a prompt offers. No Rust twin: Rust's prompts have none.
+// `index` is the one shown first; `chosen`, when set, gets the one the user
+// left selected, or -1 where the platform does not say (only Windows does).
+struct PathFilters {
+    const PathFilter* items = nullptr;
+    int32_t count = 0;
+    int32_t index = 0;
+    int32_t* chosen = nullptr;
+};
+
 // PathPromptOptions: what the desktop's own open dialog may be pointed at.
 struct PathPrompt {
     // Whether a file, a directory, or either may be chosen. Both false is a
@@ -8474,6 +8491,21 @@ struct PathPrompt {
     bool multiple = false;
     // The dialog's title. Rust calls it `prompt`.
     Str title = {};
+    // Not in Rust: file types, the folder it opens in and the name it shows.
+    PathFilters filters = {};
+    Str directory = {};
+    Str fileName = {};
+};
+
+// prompt_for_new_path(directory, suggested_name), plus what an application's
+// Save As needs and Rust's has not: a title, file types and an extension
+// added to a name typed without one ("pdf" or ".pdf").
+struct NewPathPrompt {
+    Str directory = {};
+    Str suggestedName = {};
+    Str title = {};
+    PathFilters filters = {};
+    Str defaultExt = {};
 };
 
 // cx.prompt_for_paths, with no task: the chosen path is returned in the temp
@@ -8484,6 +8516,12 @@ struct PathPrompt {
 // here wants the answer where it asked, which is what the platform dialogs do
 // anyway — they run their own loop until the user is done.
 TempStr PromptForPathTemp(Window* win, const PathPrompt& opts);
+
+// cx.prompt_for_new_path, with no task, answered like PromptForPathTemp: the
+// path to save to, or empty when cancelled or there is no dialog (wasm, a
+// Linux session with neither zenity nor kdialog). Windows is IFileSaveDialog,
+// macOS NSSavePanel, Linux zenity --save or kdialog --getsavefilename.
+TempStr PromptForNewPathTemp(Window* win, const NewPathPrompt& opts);
 
 // ─── prompts (crates/gpui/src/window/prompts.rs, platform.rs) ───────────────
 

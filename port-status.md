@@ -50,6 +50,17 @@ The current update target is
   has no Rust twin. `set_prompt_builder` takes only the fallback
   (`AppSetFallbackPrompts`); the fallback does not suppress mouse-down-out
   listeners under it (`src/gpui/window_*.cpp`).
+- **`PromptForPathTemp` / `PromptForNewPathTemp` (`prompt_for_paths`,
+  `prompt_for_new_path`) are synchronous** and answer a temp path, not a
+  receiver. Ours, no Rust twin: file types (`PathFilters`, with the initial
+  one and the one chosen), a start folder and name for open prompts, a save
+  title and default extension. Windows has them all (IFileOpenDialog /
+  IFileSaveDialog; only it reports the chosen type). macOS panels have no
+  type menu: open takes the union of the types (anything when one is `*.*`),
+  save the first type's or the default extension. Linux uses zenity/kdialog,
+  not the XDG portal; the first filter listed is the initial one, and the
+  default extension is added after the overwrite question. wasm answers
+  empty; iOS and Android have neither (`src/gpui/window_*.cpp`).
 - **`CursorImage` / `El::CustomCursor` have no Rust twin.** A pointer made
   from premultiplied RGBA pixels, owned and freed by the caller: Windows
   `CreateIconIndirect`, macOS `NSCursor initWithImage:hotSpot:`, X11

@@ -1236,16 +1236,62 @@ void OpenPath(Str path) {
     StrFree(value);
 }
 
-// cx.prompt_for_paths. X11 has no file dialog of its own and this tree has no
-// toolkit to borrow one from, so it asks the desktop's: zenity on GTK
-// desktops, kdialog on KDE, whichever is on the PATH. A session with neither
-// answers nothing, which is what a caller has to be ready for anyway — the
-// user can always cancel.
-TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
-    (void)win;
-    TempStr title =
-        StrDupTemp(len(opts.title) < 255 ? opts.title : Str(opts.title.s, 255));
-    bool dirs = opts.directories && !opts.files;
+// One helper's command line, built in the temp arena before the fork.
+struct DialogArgv {
+    static constexpr int kMax = 64;
+    const char* argv[kMax + 1] = {};
+    int n = 0;
+
+    void Add(const char* arg) {
+        if (n < kMax) {
+            argv[n++] = arg;
+        }
+    }
+    void Add(Str arg) { Add(StrDupTemp(arg).s); }
+};
+
+// The filters in the order the dialog lists them: the one to show first
+// leads, as zenity and kdialog select the first.
+static int32_t DialogFilterAt(const PathFilters& filters, int32_t i) {
+    int32_t first =
+        filters.index >= 0 && filters.index < filters.count ? filters.index : 0;
+    if (i == 0) {
+        return first;
+    }
+    return i <= first ? i - 1 : i;
+}
+
+// zenity's --file-filter "NAME | *.pdf *.xps" each, and kdialog's one
+// "*.pdf *.xps|NAME" a line.
+static void DialogAddFilters(DialogArgv* zenity, StrBuilder* kdialog,
+                             const PathFilters& filters) {
+    for (int32_t i = 0; i < filters.count; i++) {
+        const PathFilter& f = filters.items[DialogFilterAt(filters, i)];
+        TempStr pats =
+            StrDupTemp(StrReplaceAll(f.patterns, StrL(";"), StrL(" ")));
+        zenity->Add(fmt("--file-filter=%s | %s", f.name, pats));
+        if (len(*kdialog) > 0) {
+            kdialog->AppendChar('\n');
+        }
+        kdialog->Append(fmt("%s|%s", pats, f.name));
+    }
+}
+
+// Where the dialog starts: the folder with a trailing '/', so zenity opens
+// it rather than selecting it, then the name.
+static TempStr DialogStartTemp(Str dir, Str name) {
+    if (len(dir) == 0) {
+        return len(name) > 0 ? StrDupTemp(name) : TempStr{};
+    }
+    bool slash = dir.s[len(dir) - 1] == '/';
+    return fmt("%s%s%s", dir, slash ? StrL("") : StrL("/"), name);
+}
+
+// Runs zenity, or kdialog when zenity is not on the PATH (the exec that fails
+// falls through to the next), and answers what it printed without the
+// trailing newline: nothing when the user cancelled.
+static TempStr RunPathDialogTemp(DialogArgv* zenity, DialogArgv* kdialog,
+                                 int cap) {
     int fds[2] = {-1, -1};
     if (pipe(fds) != 0) {
         return {};
@@ -1255,28 +1301,8 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
         dup2(fds[1], STDOUT_FILENO);
         close(fds[0]);
         close(fds[1]);
-        // Two spellings of the same question. Whichever is there runs; the
-        // exec that fails falls through to the next.
-        if (dirs) {
-            execlp("zenity", "zenity", "--file-selection", "--directory",
-                   title ? "--title" : (char*)nullptr,
-                   title ? title.s : (char*)nullptr, (char*)nullptr);
-            execlp("kdialog", "kdialog", "--getexistingdirectory", ".",
-                   (char*)nullptr);
-        } else if (opts.multiple) {
-            // a path a line, as PromptForPathTemp answers several
-            execlp("zenity", "zenity", "--file-selection", "--multiple",
-                   "--separator=\n", title ? "--title" : (char*)nullptr,
-                   title ? title.s : (char*)nullptr, (char*)nullptr);
-            execlp("kdialog", "kdialog", "--getopenfilename", ".", "--multiple",
-                   "--separate-output", (char*)nullptr);
-        } else {
-            execlp("zenity", "zenity", "--file-selection",
-                   title ? "--title" : (char*)nullptr,
-                   title ? title.s : (char*)nullptr, (char*)nullptr);
-            execlp("kdialog", "kdialog", "--getopenfilename", ".",
-                   (char*)nullptr);
-        }
+        execvp("zenity", (char* const*)zenity->argv);
+        execvp("kdialog", (char* const*)kdialog->argv);
         _exit(127);
     }
     close(fds[1]);
@@ -1284,8 +1310,7 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
         close(fds[0]);
         return {};
     }
-    TempStr result =
-        AllocStrTemp(opts.multiple ? kMaxPath * 64 - 1 : kMaxPath - 1);
+    TempStr result = AllocStrTemp(cap);
     if (!result.s) {
         close(fds[0]);
         int st = 0;
@@ -1306,14 +1331,100 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     close(fds[0]);
     int st = 0;
     waitpid(pid, &st, 0);
-    // The helper prints the path and a newline, and nothing at all when the
-    // user cancelled.
     while (n > 0 && (result.s[n - 1] == '\n' || result.s[n - 1] == '\r')) {
         n--;
     }
     result.s[n] = 0;
     result.len = n;
     return result;
+}
+
+// cx.prompt_for_paths. X11 has no file dialog of its own and this tree has no
+// toolkit to borrow one from, so it asks the desktop's: zenity on GTK
+// desktops, kdialog on KDE, whichever is on the PATH. A session with neither
+// answers nothing, which is what a caller has to be ready for anyway — the
+// user can always cancel. Neither says which filter was left selected.
+TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
+    (void)win;
+    if (opts.filters.chosen) {
+        *opts.filters.chosen = -1;
+    }
+    bool dirs = opts.directories && !opts.files;
+    TempStr start =
+        DialogStartTemp(opts.directory, dirs ? Str{} : opts.fileName);
+    DialogArgv zenity;
+    DialogArgv kdialog;
+    zenity.Add("zenity");
+    zenity.Add("--file-selection");
+    kdialog.Add("kdialog");
+    if (len(opts.title) > 0) {
+        zenity.Add(fmt("--title=%s", opts.title));
+        kdialog.Add("--title");
+        kdialog.Add(opts.title);
+    }
+    if (len(start) > 0) {
+        zenity.Add(fmt("--filename=%s", start));
+    }
+    if (dirs) {
+        zenity.Add("--directory");
+        kdialog.Add("--getexistingdirectory");
+        kdialog.Add(len(start) > 0 ? Str(start) : StrL("."));
+        return RunPathDialogTemp(&zenity, &kdialog, kMaxPath - 1);
+    }
+    if (opts.multiple) {
+        // a path a line, as PromptForPathTemp answers several
+        zenity.Add("--multiple");
+        zenity.Add("--separator=\n");
+        kdialog.Add("--multiple");
+        kdialog.Add("--separate-output");
+    }
+    kdialog.Add("--getopenfilename");
+    kdialog.Add(len(start) > 0 ? Str(start) : StrL("."));
+    StrBuilder kfilter;
+    DialogAddFilters(&zenity, &kfilter, opts.filters);
+    if (len(kfilter) > 0) {
+        kdialog.Add(Str(kfilter.els, len(kfilter)));
+    }
+    int cap = opts.multiple ? kMaxPath * 64 - 1 : kMaxPath - 1;
+    return RunPathDialogTemp(&zenity, &kdialog, cap);
+}
+
+// cx.prompt_for_new_path. Rust asks the XDG desktop portal; this asks zenity
+// or kdialog, as PromptForPathTemp does. Both ask before overwriting the name
+// as typed; the default extension is added after that question.
+TempStr PromptForNewPathTemp(Window* win, const NewPathPrompt& opts) {
+    (void)win;
+    if (opts.filters.chosen) {
+        *opts.filters.chosen = -1;
+    }
+    TempStr start = DialogStartTemp(opts.directory, opts.suggestedName);
+    DialogArgv zenity;
+    DialogArgv kdialog;
+    zenity.Add("zenity");
+    zenity.Add("--file-selection");
+    zenity.Add("--save");
+    zenity.Add("--confirm-overwrite");
+    kdialog.Add("kdialog");
+    // Rust's portal request is titled "Save File"
+    Str title = len(opts.title) > 0 ? opts.title : StrL("Save File");
+    zenity.Add(fmt("--title=%s", title));
+    kdialog.Add("--title");
+    kdialog.Add(title);
+    if (len(start) > 0) {
+        zenity.Add(fmt("--filename=%s", start));
+    }
+    kdialog.Add("--getsavefilename");
+    kdialog.Add(len(start) > 0 ? Str(start) : StrL("."));
+    StrBuilder kfilter;
+    DialogAddFilters(&zenity, &kfilter, opts.filters);
+    if (len(kfilter) > 0) {
+        kdialog.Add(Str(kfilter.els, len(kfilter)));
+    }
+    TempStr path = RunPathDialogTemp(&zenity, &kdialog, kMaxPath - 1);
+    if (len(path) == 0) {
+        return {};
+    }
+    return PathWithDefaultExtTemp(path, opts.defaultExt);
 }
 
 void PlatClipboardSetText(Window* win, Str text) {

@@ -2000,6 +2000,93 @@ bool PlatWindowPrompt(Window* win, PromptRequest* req) {
     return true;
 }
 
+// The wide strings a file dialog points at, on the heap until it is done:
+// its loop draws frames, which reset the temp arena.
+struct FileDialogStrs {
+    Vec<WCHAR*> strs;
+    Vec<COMDLG_FILTERSPEC> specs;
+
+    WCHAR* Dup(Str s) {
+        WCHAR* w = PromptWideDup(s);
+        VecAppend(strs, w);
+        return w;
+    }
+    ~FileDialogStrs() {
+        for (int i = 0; i < len(strs); i++) {
+            delete[] strs[i];
+        }
+    }
+};
+
+// What the open and save dialogs share: title, starting folder and name, and
+// the file types (SetFileTypeIndex is 1-based).
+static void FileDialogSetup(IFileDialog* dlg, FileDialogStrs* strs, Str title,
+                            Str dir, Str name, const PathFilters& filters) {
+    if (len(title) > 0) {
+        dlg->SetTitle(strs->Dup(title));
+    }
+    if (len(dir) > 0) {
+        // Rust canonicalizes it first; a folder the shell cannot parse is
+        // left to the dialog's own choice, as Rust logs and goes on
+        IShellItem* folder = nullptr;
+        if (SUCCEEDED(SHCreateItemFromParsingName(strs->Dup(dir), nullptr,
+                                                  IID_PPV_ARGS(&folder))) &&
+            folder) {
+            dlg->SetFolder(folder);
+            folder->Release();
+        }
+    }
+    if (len(name) > 0) {
+        dlg->SetFileName(strs->Dup(name));
+    }
+    for (int32_t i = 0; i < filters.count; i++) {
+        COMDLG_FILTERSPEC spec{};
+        spec.pszName = strs->Dup(filters.items[i].name);
+        spec.pszSpec = strs->Dup(filters.items[i].patterns);
+        VecAppend(strs->specs, spec);
+    }
+    if (len(strs->specs) > 0) {
+        dlg->SetFileTypes((UINT)len(strs->specs), strs->specs.els);
+        int32_t ix = filters.index;
+        ix = ix >= 0 && ix < filters.count ? ix : 0;
+        dlg->SetFileTypeIndex((UINT)ix + 1);
+    }
+}
+
+// The file type left selected, 0-based, into `filters.chosen`.
+static void FileDialogChosen(IFileDialog* dlg, const PathFilters& filters,
+                             bool ok) {
+    if (!filters.chosen) {
+        return;
+    }
+    UINT ix = 0;
+    bool known = ok && filters.count > 0 &&
+                 SUCCEEDED(dlg->GetFileTypeIndex(&ix)) && ix > 0;
+    *filters.chosen = known ? (int32_t)ix - 1 : -1;
+}
+
+// An item's file system path, appended to `paths` a path a line.
+static void AppendShellItemPath(IShellItem* item, StrBuilder* paths) {
+    PWSTR wide = nullptr;
+    if (!item || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &wide)) ||
+        !wide) {
+        return;
+    }
+    int n =
+        WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+    if (n > 1) {
+        TempStr path = AllocStrTemp(n - 1);
+        if (path.s && WideCharToMultiByte(CP_UTF8, 0, wide, -1, path.s, n,
+                                          nullptr, nullptr) == n) {
+            if (len(*paths) > 0) {
+                paths->AppendChar('\n');
+            }
+            paths->Append(path);
+        }
+    }
+    CoTaskMemFree(wide);
+}
+
 // cx.prompt_for_paths. The shell's own dialog, which is IFileOpenDialog on
 // everything this runs on; COM is already up (apartment threaded) because the
 // drag-and-drop registration needs it. The dialog runs its own loop, so this
@@ -2026,11 +2113,12 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
         flags |= FOS_ALLOWMULTISELECT;
     }
     dlg->SetOptions(flags | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
-    if (len(opts.title) > 0) {
-        dlg->SetTitle(ToCWstrTemp(opts.title));
-    }
+    FileDialogStrs strs;
+    FileDialogSetup(dlg, &strs, opts.title, opts.directory, opts.fileName,
+                    opts.filters);
     HWND owner = win && win->plat ? win->plat->hwnd : nullptr;
     hr = dlg->Show(owner);
+    FileDialogChosen(dlg, opts.filters, SUCCEEDED(hr));
     TempStr result;
     if (SUCCEEDED(hr)) {
         IShellItemArray* items = nullptr;
@@ -2047,25 +2135,7 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
             if (items && FAILED(items->GetItemAt(i, &one))) {
                 continue;
             }
-            PWSTR wide = nullptr;
-            if (one &&
-                SUCCEEDED(one->GetDisplayName(SIGDN_FILESYSPATH, &wide)) &&
-                wide) {
-                int n = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0,
-                                            nullptr, nullptr);
-                if (n > 1) {
-                    TempStr path = AllocStrTemp(n - 1);
-                    if (path.s &&
-                        WideCharToMultiByte(CP_UTF8, 0, wide, -1, path.s, n,
-                                            nullptr, nullptr) == n) {
-                        if (len(paths) > 0) {
-                            paths.AppendChar('\n');
-                        }
-                        paths.Append(path);
-                    }
-                }
-                CoTaskMemFree(wide);
-            }
+            AppendShellItemPath(one, &paths);
             if (items && one) {
                 one->Release();
             }
@@ -2078,6 +2148,56 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
         }
         if (len(paths) > 0) {
             result = StrDupTemp(Str(paths.els, len(paths)));
+        }
+    }
+    dlg->Release();
+    return result;
+}
+
+// cx.prompt_for_new_path: IFileSaveDialog, as Rust's file_save_dialog. Rust
+// offers only "All files"; the file types and the default extension here are
+// ours. The dialog asks before overwriting (FOS_OVERWRITEPROMPT, on by
+// default) and adds the selected type's extension, or the default one, to a
+// name typed without one.
+TempStr PromptForNewPathTemp(Window* win, const NewPathPrompt& opts) {
+    IFileSaveDialog* dlg = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_FileSaveDialog, nullptr,
+                                  CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg));
+    if (FAILED(hr) || !dlg) {
+        return {};
+    }
+    DWORD flags = 0;
+    dlg->GetOptions(&flags);
+    dlg->SetOptions(flags | FOS_OVERWRITEPROMPT | FOS_FORCEFILESYSTEM |
+                    FOS_PATHMUSTEXIST);
+    FileDialogStrs strs;
+    PathFilters filters = opts.filters;
+    PathFilter all{StrL("All files"), StrL("*.*")};
+    if (filters.count == 0) {
+        filters.items = &all;
+        filters.count = 1;
+        filters.index = 0;
+    }
+    FileDialogSetup(dlg, &strs, opts.title, opts.directory, opts.suggestedName,
+                    filters);
+    Str ext = opts.defaultExt;
+    if (len(ext) > 0 && ext.s[0] == '.') {
+        ext = Str(ext.s + 1, len(ext) - 1);
+    }
+    if (len(ext) > 0) {
+        dlg->SetDefaultExtension(strs.Dup(ext));
+    }
+    HWND owner = win && win->plat ? win->plat->hwnd : nullptr;
+    hr = dlg->Show(owner);
+    FileDialogChosen(dlg, opts.filters, SUCCEEDED(hr));
+    TempStr result;
+    IShellItem* item = nullptr;
+    if (SUCCEEDED(hr) && SUCCEEDED(dlg->GetResult(&item)) && item) {
+        StrBuilder path;
+        AppendShellItemPath(item, &path);
+        item->Release();
+        if (len(path) > 0) {
+            result = StrDupTemp(Str(path.els, len(path)));
         }
     }
     dlg->Release();

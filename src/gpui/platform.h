@@ -507,5 +507,18 @@ inline void PlatSetMenuBarVisible(bool visible) {
 // AppSetMenus built and the row's action is dispatched to the front window.
 void AppMenuChosen(int id);
 
+// ─── path prompts (PathFilter, NewPathPrompt) ──────────────────────────────
+
+// Appends the extensions `patterns` names ("*.pdf;*.xps": "pdf", "xps"), as
+// slices of it. False, with nothing appended, when a pattern takes any file
+// ("*", "*.*"). A pattern that is a whole name ("read.me") adds nothing.
+bool PathPatternExts(Str patterns, Vec<Str>* exts);
+// `path` with "." + `ext` added when its file name has no extension.
+TempStr PathWithDefaultExtTemp(Str path, Str ext);
+// Rust's macOS Sequoia workaround (zed#16969): the save panel sometimes adds
+// an extension again, "a.sql" becoming "a.sql.s"; a name of three parts whose
+// second starts with its third loses the third.
+TempStr PathDropRepeatedExtTemp(Str path);
+
 } // namespace gpui
 #endif // GPUI_GPUI_PLATFORM_H_
