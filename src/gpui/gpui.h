@@ -7234,6 +7234,59 @@ struct Tiling {
     bool AllTiled() const { return top && bottom && left && right; }
 };
 
+// gpui::WindowKind, without AnchoredPopup and LayerShell.
+enum class WindowKind : uint8_t {
+    Normal,
+    // Above every other window, never in the taskbar.
+    PopUp,
+    // Above its parent window.
+    Floating,
+    // Above its parent window, which takes no input while it is shown.
+    Dialog,
+};
+
+// A rectangle in screen coordinates, in the unit the platform places windows
+// in: device pixels on Windows and X11, points on macOS. The origin is the
+// top left of the primary display and y grows down. Rust's window bounds are
+// logical pixels; see port-status.md.
+struct ScreenBounds {
+    int x = 0;
+    int y = 0;
+    int w = 0;
+    int h = 0;
+
+    bool IsEmpty() const { return w <= 0 || h <= 0; }
+    bool operator==(const ScreenBounds& o) const {
+        return x == o.x && y == o.y && w == o.w && h == o.h;
+    }
+    bool operator!=(const ScreenBounds& o) const { return !(*this == o); }
+};
+
+// `r` moved into `area`, the way Windows keeps a window on a monitor: with
+// `fully` it is moved until it is entirely inside (as far as it fits), else
+// only until some of it is. An empty `area` leaves it where it is.
+ScreenBounds ScreenBoundsShiftInto(ScreenBounds r, ScreenBounds area,
+                                   bool fully);
+// A rectangle of `size`'s w and h, centered on `over`.
+ScreenBounds ScreenBoundsCentered(ScreenBounds size, ScreenBounds over);
+
+// What WindowOnBoundsChanged reports.
+enum class WindowBoundsEvent : uint8_t {
+    // Moved or sized, by the user or by the program.
+    Changed,
+    // The user let go of a move or a resize (WM_EXITSIZEMOVE).
+    MoveResizeEnded,
+};
+using WindowBoundsFn = void (*)(void* data, Window* win, WindowBoundsEvent ev);
+using WindowActivationFn = void (*)(void* data, Window* win, bool active);
+
+// How the native frame (caption, border) is drawn.
+enum class FrameAppearance : uint8_t {
+    System,
+    Light,
+    Dark,
+};
+
 struct WinOpts {
     bool borderless = false;
     // The view draws the title bar. Cocoa keeps its traffic-light controls
@@ -7260,6 +7313,42 @@ struct WinOpts {
     bool transparent = false;
     bool anim = false;
     int timerMs = 500;
+    // GPUI's WindowOptions::kind. Floating and Dialog stay above `parent`;
+    // a Dialog also keeps it from taking input while the dialog is shown.
+    WindowKind kind = WindowKind::Normal;
+    // The window a Floating or Dialog one belongs to: it stays above it,
+    // goes with it when it is minimized and has no taskbar entry of its own.
+    // Rust takes the active window for a Dialog; here the caller names it.
+    Window* parent = nullptr;
+    // No native frame at all: no caption, border or resize band (WS_POPUP,
+    // NSWindowStyleMaskBorderless, no X11 decorations). Unlike `borderless`,
+    // which keeps the frame and draws the caption in the view.
+    bool frameless = false;
+    // A tool window's frame: the small caption and no taskbar button on
+    // Windows (WS_EX_TOOLWINDOW), NSWindowStyleMaskUtilityWindow on macOS,
+    // _NET_WM_WINDOW_TYPE_UTILITY on X11.
+    bool utility = false;
+    // WindowOptions::is_minimizable, and its maximize twin. A captioned
+    // window without either has only the close box.
+    bool minimizable = true;
+    bool maximizable = true;
+    // WindowOptions::focus and ::show: whether the window is activated as
+    // it is shown, and whether it is shown at all. One opened hidden is
+    // shown with WindowSetVisible.
+    bool focus = true;
+    bool show = true;
+    // False: the window never becomes the active one; showing or clicking it
+    // leaves the active window active (WS_EX_NOACTIVATE). True lets a
+    // frameless window on macOS take keys at all.
+    bool activatable = true;
+    // WindowOptions::window_bounds, as the outer frame in screen units.
+    // Empty: centered in the primary display's work area at dipW x dipH.
+    ScreenBounds bounds = {};
+    // WindowOptions::window_min_size, and a maximum Rust does not have: the
+    // content size in DIPs the user can size the window to. A 0 side is
+    // unbounded.
+    Size minSize = {};
+    Size maxSize = {};
 };
 
 // gpui::FrameTiming. One drawn frame, as measured by the window itself, so the
@@ -7366,6 +7455,9 @@ struct App {
     // The app layer carries the callback; a platform never names src/ui.
     void (*hostThemeHandler)(App*, bool dark) = nullptr;
     void (*onOpenUrls)(App*, const Str* urls, int n) = nullptr;
+    // AppOnWindowClosed.
+    void (*onWindowClosed)(void* data, Window* win) = nullptr;
+    void* onWindowClosedData = nullptr;
     // Entity store; see Entity.h. Slots are recycled, so a handle carries a
     // generation and goes stale instead of dangling.
     Vec<EntitySlot> entities;
@@ -7561,6 +7653,13 @@ struct Window {
     bool running = true;
     WindowShouldCloseFn shouldClose = nullptr;
     void* shouldCloseData = nullptr;
+    // WindowOnBoundsChanged / WindowOnActivationChanged.
+    WindowBoundsFn onBounds = nullptr;
+    void* onBoundsData = nullptr;
+    WindowActivationFn onActivation = nullptr;
+    void* onActivationData = nullptr;
+    // The parent a shown Dialog keeps from taking input; null otherwise.
+    Window* modalParent = nullptr;
     bool anim = false;
     // window.request_animation_frame(): one more frame after this one, asked
     // for while the frame is being built and cleared as the next one starts,
@@ -9034,6 +9133,65 @@ void AppMenuClear(App* app);
 // and the application with it, restoring it if it was minimized. What a
 // click on a system notification asks for.
 void AppActivate(Window* win);
+
+// ─── window frame and placement ───────────────────────────────────────────
+// Native windows on Windows, macOS and X11; elsewhere (one browser canvas, a
+// host-owned mobile view) the getters answer empty and the rest do nothing.
+
+// Window::bounds(): the outer frame, in screen units. Empty before the
+// platform has made the window.
+ScreenBounds WindowFrameBounds(Window* win);
+// The client area, in the same coordinates.
+ScreenBounds WindowContentBounds(Window* win);
+// Moves and sizes the outer frame. Rust has only resize() for the content.
+void WindowSetFrameBounds(Window* win, ScreenBounds outer);
+// The outer frame a window opened with `opts` has around a client area of
+// `content` (screen units), with the client at `content`'s place; frame
+// metrics are those of the display `nearby` is on (the primary one for null).
+ScreenBounds WindowFrameForContent(Window* nearby, const WinOpts& opts,
+                                   ScreenBounds content);
+// PlatformDisplay::bounds() and ::visible_bounds() (the work area, clear of
+// the taskbar, dock and panels) of the display `win` is on; the primary
+// display for null.
+ScreenBounds WindowDisplayBounds(Window* win);
+ScreenBounds WindowDisplayVisibleBounds(Window* win);
+// Shows or hides the window without closing it. `activate` (WinOpts::focus)
+// makes it the active window as it is shown. A Dialog takes its parent's
+// input while shown and gives it back while hidden.
+void WindowSetVisible(Window* win, bool visible, bool activate);
+bool WindowIsVisible(Window* win);
+// Makes `win` the active window when this application already has the
+// active one, and does nothing otherwise: unlike AppActivate it never takes
+// the focus from another application.
+void WindowActivateInApp(Window* win);
+// is_window_active, asked of the platform now rather than as last notified.
+bool WindowIsActive(Window* win);
+// WinOpts::parent after the window was opened. Floating and Dialog only.
+void WindowSetParent(Window* win, Window* parent);
+// WinOpts::minSize / maxSize after the window was opened.
+void WindowSetMinSize(Window* win, Size content);
+void WindowSetMaxSize(Window* win, Size content);
+// False while a Dialog keeps the window from taking input.
+bool WindowIsEnabled(Window* win);
+// Draws the native caption light or dark whatever the system's setting
+// (DWMWA_USE_IMMERSIVE_DARK_MODE, NSWindow.appearance, _GTK_THEME_VARIANT).
+void WindowSetFrameAppearance(Window* win, FrameAppearance appearance);
+// observe_window_bounds: called on every move or resize and when the user
+// lets go of one. One observer per window; null removes it.
+void WindowOnBoundsChanged(Window* win, WindowBoundsFn fn, void* data);
+// observe_window_activation: called each time the platform says the window
+// became or stopped being the active one.
+void WindowOnActivationChanged(Window* win, WindowActivationFn fn, void* data);
+// cx.on_window_closed: called as any window of the app goes, however it was
+// closed (the close box, AppQuit, its owner being destroyed). One observer.
+void AppOnWindowClosed(App* app, void (*fn)(void* data, Window* win),
+                       void* data);
+#if GPUI_OS_MAC
+// Test support: sends a key down and up through AppKit's event path
+// (NSApp sendEvent), as a real keystroke arrives. `macKeyCode` is a virtual
+// key code; 0 types the letter a.
+void WindowSendNativeKey(Window* win, int macKeyCode);
+#endif
 // window.scale_factor(): device pixels per DIP. The backing scale on macOS,
 // devicePixelRatio in a browser, DPI / 96 on Windows; 1 on X11, which draws
 // in device pixels.

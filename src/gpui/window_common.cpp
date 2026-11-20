@@ -3072,7 +3072,7 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     // here at all, so on that platform this is only the empty half.
     bool caption = id == ClickWinCaption ||
                    (id == 0 && win->opts.clientTitleBar && y < kCaptionH);
-    if (in.clickCount == 2 && caption) {
+    if (in.clickCount == 2 && caption && win->opts.maximizable) {
         AppToggleMaximize(win);
     }
     AppInvalidate(win);
@@ -4770,6 +4770,12 @@ int WindowChromeHit(Window* win, float x, float y) {
         return 0;
     }
     int id = HitTest(&win->paint, x, y);
+    // A scrollbar drawn over a drag area is hit before it, as its hitbox is
+    // later in paint order than the area's in Rust.
+    bool horizontal = false;
+    if (id == ClickWinCaption && ScrollbarAt(&win->paint, x, y, &horizontal)) {
+        return 0;
+    }
     if (id == ClickWinMin || id == ClickWinMax || id == ClickWinClose ||
         id == ClickWinCaption) {
         return id;
@@ -4921,6 +4927,21 @@ void WindowClosed(Window* win) {
     // Before anything is torn down: the answers run listeners.
     PromptsWindowClosed(win);
     DragOutWindowClosed(win);
+    if (win->app->onWindowClosed) {
+        win->app->onWindowClosed(win->app->onWindowClosedData, win);
+    }
+    // A dialog gives its parent back; windows that named this one as their
+    // parent no longer have one.
+    WindowModalRelease(win);
+    for (int i = 0; i < win->app->windows.len; i++) {
+        Window* other = win->app->windows[i];
+        if (other->opts.parent == win) {
+            other->opts.parent = nullptr;
+        }
+        if (other->modalParent == win) {
+            other->modalParent = nullptr;
+        }
+    }
     // The focused field outlives the window it was focused in — it belongs to
     // a view, and the app may still hold that view — so the two let go of
     // each other here rather than leaving a pointer either way.
@@ -4965,6 +4986,141 @@ void WindowOnShouldClose(Window* win, WindowShouldCloseFn fn, void* data) {
     }
     win->shouldClose = fn;
     win->shouldCloseData = data;
+}
+
+// ─── window frame: the shared half ────────────────────────────────────────
+
+// ng's (and SumatraPDF's) ShiftRectToWorkArea, which is what Windows does
+// with a window restored onto a monitor that is not there any more.
+ScreenBounds ScreenBoundsShiftInto(ScreenBounds r, ScreenBounds area,
+                                   bool fully) {
+    if (area.IsEmpty()) {
+        return r;
+    }
+    int areaRight = area.x + area.w;
+    int areaBottom = area.y + area.h;
+    if (r.y + r.h <= area.y || (fully && r.y < area.y)) {
+        r.y = area.y;
+    } else if (r.y >= areaBottom || (fully && r.y + r.h > areaBottom)) {
+        r.y = areaBottom - r.h;
+    }
+    if (r.x + r.w <= area.x || (fully && r.x < area.x)) {
+        r.x = area.x;
+    } else if (r.x >= areaRight || (fully && r.x + r.w > areaRight)) {
+        r.x = areaRight - r.w;
+    }
+    return r;
+}
+
+ScreenBounds ScreenBoundsCentered(ScreenBounds size, ScreenBounds over) {
+    return {over.x + (over.w - size.w) / 2, over.y + (over.h - size.h) / 2,
+            size.w, size.h};
+}
+
+void WindowSetVisible(Window* win, bool visible, bool activate) {
+    if (!win || !win->plat) {
+        return;
+    }
+    if (visible) {
+        WindowModalTake(win);
+    } else {
+        WindowModalRelease(win);
+    }
+    PlatWindowShow(win, visible, activate);
+}
+
+static bool WindowKeepsParent(const Window* win) {
+    return win->opts.kind == WindowKind::Floating ||
+           win->opts.kind == WindowKind::Dialog;
+}
+
+void WindowSetParent(Window* win, Window* parent) {
+    if (!win || win->opts.parent == parent) {
+        return;
+    }
+    // A shown dialog moves its hold to the new parent.
+    bool held = win->modalParent != nullptr;
+    WindowModalRelease(win);
+    win->opts.parent = parent;
+    if (win->plat && WindowKeepsParent(win)) {
+        PlatWindowSetParent(win, parent);
+    }
+    if (held) {
+        WindowModalTake(win);
+    }
+}
+
+bool WindowIsEnabled(Window* win) {
+    if (!win) {
+        return false;
+    }
+    for (int i = 0; i < win->app->windows.len; i++) {
+        if (win->app->windows[i]->modalParent == win) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void WindowModalTake(Window* dlg) {
+    if (!dlg || dlg->opts.kind != WindowKind::Dialog || dlg->modalParent) {
+        return;
+    }
+    Window* parent = dlg->opts.parent;
+    if (!parent || !parent->plat) {
+        return;
+    }
+    dlg->modalParent = parent;
+    PlatWindowSetModal(dlg, parent, true);
+}
+
+void WindowModalRelease(Window* dlg) {
+    Window* parent = dlg ? dlg->modalParent : nullptr;
+    if (!parent) {
+        return;
+    }
+    dlg->modalParent = nullptr;
+    // Another dialog still holds it.
+    if (!WindowIsEnabled(parent) || !parent->plat) {
+        return;
+    }
+    // Read before the parent is enabled: enabling it can move the activation.
+    bool wasActive = dlg->plat && WindowIsActive(dlg);
+    PlatWindowSetModal(dlg, parent, false);
+    if (wasActive) {
+        WindowActivateInApp(parent);
+    }
+}
+
+void WindowOnBoundsChanged(Window* win, WindowBoundsFn fn, void* data) {
+    if (!win) {
+        return;
+    }
+    win->onBounds = fn;
+    win->onBoundsData = data;
+}
+
+void WindowOnActivationChanged(Window* win, WindowActivationFn fn, void* data) {
+    if (!win) {
+        return;
+    }
+    win->onActivation = fn;
+    win->onActivationData = data;
+}
+
+void AppOnWindowClosed(App* app, void (*fn)(void* data, Window* win),
+                       void* data) {
+    if (!app) {
+        return;
+    }
+    app->onWindowClosed = fn;
+    app->onWindowClosedData = data;
+}
+
+void WindowBoundsNotify(Window* win, WindowBoundsEvent ev) {
+    if (win && win->onBounds) {
+        win->onBounds(win->onBoundsData, win, ev);
+    }
 }
 
 // A picture arrived. image.h answered nothing for it while it was on its way,

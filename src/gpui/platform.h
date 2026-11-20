@@ -344,6 +344,44 @@ bool WindowGeomRequested(int* x, int* y, int* w, int* h);
 // `__scene=off|on`. Returns the argument count that is left.
 int GpuiTakeRuntimeArgs(int argc, char** argv);
 
+// ─── window frame (gpui.h's WindowFrameBounds and the rest) ───────────────
+
+// Native windows to frame, place, own and make modal. Elsewhere
+// window_frame_unsupported.cpp answers for the public functions.
+#if GPUI_OS_WINDOWS || GPUI_OS_MAC || GPUI_OS_LINUX
+#define GPUI_WINDOW_FRAME_UNSUPPORTED 0
+// Show or hide the native window; WindowSetVisible has done the modal part.
+void PlatWindowShow(Window* win, bool visible, bool activate);
+// Attach `win` above `parent`, or detach it for null.
+void PlatWindowSetParent(Window* win, Window* parent);
+// The dialog `dlg` takes (`on`) or gives back the input of `parent`.
+void PlatWindowSetModal(Window* dlg, Window* parent, bool on);
+#else
+#define GPUI_WINDOW_FRAME_UNSUPPORTED 1
+inline void PlatWindowShow(Window* win, bool visible, bool activate) {
+    (void)win, (void)visible, (void)activate;
+}
+inline void PlatWindowSetParent(Window* win, Window* parent) {
+    (void)win, (void)parent;
+}
+inline void PlatWindowSetModal(Window* dlg, Window* parent, bool on) {
+    (void)dlg, (void)parent, (void)on;
+}
+#endif
+// A Dialog that is being shown takes its parent's input; one being hidden
+// or closed gives it back, and the parent is activated if the dialog was the
+// active window. The platform calls the release before its window goes, so
+// the system never hands the activation to another application.
+void WindowModalTake(Window* dlg);
+void WindowModalRelease(Window* dlg);
+// The platform reporting a move, resize or the end of one.
+void WindowBoundsNotify(Window* win, WindowBoundsEvent ev);
+// Whether the platform draws a caption for a window opened with `opts`: not
+// frameless, nor one whose caption the view draws.
+inline bool WindowOptsTitled(const WinOpts& opts) {
+    return !opts.frameless && !opts.borderless && !opts.clientTitleBar;
+}
+
 // ─── implemented per platform ────────────────────────────────────────────
 
 // Process-wide setup: DPI awareness and the window class on Windows, the X11

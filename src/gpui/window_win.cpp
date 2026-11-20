@@ -61,6 +61,8 @@ struct PlatWindow {
     // extended style, so each call applies the pair.
     int opacity = 100;
     bool clickThrough = false;
+    // WindowSetFrameAppearance; System follows the system's setting.
+    FrameAppearance frameAppearance = FrameAppearance::System;
 };
 
 static HWND Hwnd(Window* win) {
@@ -265,6 +267,125 @@ static int BorderYPx() {
 // the same thing here.
 static bool ClientDecorated(Window* win) {
     return win->opts.clientTitleBar || win->opts.borderless;
+}
+
+// The window styles for `opts`. The defaults are WS_OVERLAPPEDWINDOW.
+static DWORD WinStyle(const WinOpts& opts) {
+    DWORD style = 0;
+    if (opts.clientTitleBar || opts.borderless) {
+        // No caption, but every other part of a normal frame: the thick
+        // frame keeps the resize borders, the drop shadow, snapping and the
+        // minimize / maximize animations. WM_NCCALCSIZE then pulls the
+        // client area up over the band the caption would have used. The
+        // thick frame stays whether or not the window is resizable.
+        style = WS_OVERLAPPEDWINDOW & ~WS_CAPTION;
+        style |= WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+        return style | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+    } else if (opts.frameless || opts.kind == WindowKind::PopUp) {
+        style = WS_POPUP;
+    } else {
+        // A tool window's caption is a popup's, as dialog templates have it.
+        style = WS_CAPTION | WS_SYSMENU | (opts.utility ? WS_POPUP : 0);
+        if (opts.minimizable) {
+            style |= WS_MINIMIZEBOX;
+        }
+        if (opts.maximizable) {
+            style |= WS_MAXIMIZEBOX;
+        }
+    }
+    if (opts.resizable) {
+        style |= WS_THICKFRAME;
+    }
+    // A webview is a child window; the swap chain must not draw over it.
+    return style | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+}
+
+static DWORD WinExStyle(const WinOpts& opts) {
+    // WS_EX_NOREDIRECTIONBITMAP: see WindowOpen.
+    DWORD ex = WS_EX_NOREDIRECTIONBITMAP;
+    if (opts.utility) {
+        ex |= WS_EX_TOOLWINDOW;
+    }
+    if (opts.kind == WindowKind::PopUp) {
+        ex |= WS_EX_TOOLWINDOW | WS_EX_TOPMOST;
+    }
+    if (!opts.activatable) {
+        ex |= WS_EX_NOACTIVATE;
+    }
+    return ex;
+}
+
+using AdjustForDpiFn = BOOL(WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+
+// AdjustWindowRectExForDpi where Windows has it (1607 on).
+static void AdjustRect(RECT* r, DWORD style, DWORD ex, UINT dpi) {
+    static AdjustForDpiFn adjust = nullptr;
+    static bool looked = false;
+    if (!looked) {
+        looked = true;
+        HMODULE user = GetModuleHandleW(L"user32.dll");
+        adjust = user ? (AdjustForDpiFn)GetProcAddress(
+                            user, "AdjustWindowRectExForDpi")
+                      : nullptr;
+    }
+    if (adjust) {
+        adjust(r, style, FALSE, ex, dpi);
+        return;
+    }
+    AdjustWindowRectEx(r, style, FALSE, ex);
+}
+
+// The monitor's own dpi, which frame metrics follow; GPUI_DPI changes what
+// the window draws at, not its frame.
+static UINT FrameDpi(HWND hwnd) {
+    HMODULE user = GetModuleHandleW(L"user32.dll");
+    if (hwnd) {
+        auto forWindow =
+            user ? (GetDpiForWindowFn)GetProcAddress(user, "GetDpiForWindow")
+                 : nullptr;
+        if (forWindow) {
+            return forWindow(hwnd);
+        }
+    }
+    auto forSystem =
+        user ? (GetDpiForSystemFn)GetProcAddress(user, "GetDpiForSystem")
+             : nullptr;
+    return forSystem ? forSystem() : 96;
+}
+
+// WinOpts::minSize / maxSize as the outer sizes WM_GETMINMAXINFO wants.
+static void ApplyMinMaxSize(Window* win, HWND hwnd, MINMAXINFO* mmi) {
+    const Size& mn = win->opts.minSize;
+    const Size& mx = win->opts.maxSize;
+    bool hasMin = mn.w > 0 && mn.h > 0;
+    bool hasMax = mx.w > 0 || mx.h > 0;
+    if (!hasMin && !hasMax) {
+        return;
+    }
+    float dpi = HostDpi(hwnd);
+    DWORD style = (DWORD)GetWindowLongPtrW(hwnd, GWL_STYLE);
+    DWORD ex = (DWORD)GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    UINT frameDpi = FrameDpi(hwnd);
+    auto outer = [&](Size content) {
+        RECT r = {0, 0, (LONG)lroundf(content.w * dpi / 96.f),
+                  (LONG)lroundf(content.h * dpi / 96.f)};
+        AdjustRect(&r, style, ex, frameDpi);
+        return r;
+    };
+    if (hasMin) {
+        RECT r = outer(mn);
+        mmi->ptMinTrackSize.x = r.right - r.left;
+        mmi->ptMinTrackSize.y = r.bottom - r.top;
+    }
+    if (hasMax) {
+        RECT r = outer(mx);
+        if (mx.w > 0) {
+            mmi->ptMaxTrackSize.x = r.right - r.left;
+        }
+        if (mx.h > 0) {
+            mmi->ptMaxTrackSize.y = r.bottom - r.top;
+        }
+    }
 }
 
 static bool ShiftDown() {
@@ -681,7 +802,13 @@ static bool SystemIsDarkMode() {
 // util.rs `configure_dwm_dark_mode`, called where Rust calls it: once as the
 // window is created, and again on every ImmersiveColorSet.
 static void ConfigureDwmDarkMode(HWND hwnd) {
-    BOOL dark = SystemIsDarkMode() ? TRUE : FALSE;
+    Window* win = (Window*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    FrameAppearance appearance =
+        win && win->plat ? win->plat->frameAppearance : FrameAppearance::System;
+    bool isDark = appearance == FrameAppearance::System
+                      ? SystemIsDarkMode()
+                      : appearance == FrameAppearance::Dark;
+    BOOL dark = isDark ? TRUE : FALSE;
     DwmSetWindowAttribute(hwnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &dark,
                           sizeof(dark));
 }
@@ -1528,6 +1655,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             WindowSetActive(win, LOWORD(wParam) != WA_INACTIVE);
             break;
         case WM_MOUSEACTIVATE:
+            // WinOpts::activatable false: a click leaves the active window
+            // active, so the press is not one that activated anything.
+            if (!win->opts.activatable) {
+                return MA_NOACTIVATE;
+            }
             // The press that follows is the one that activated the window —
             // when it is a client-area press. A caption or border click
             // never reaches MouseDown, so arming for it would hand
@@ -1535,6 +1667,32 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             if (LOWORD(lParam) == HTCLIENT) {
                 win->plat->firstMouse = true;
             }
+            break;
+        case WM_NCLBUTTONDBLCLK:
+            // A caption double click maximizes even a window with no
+            // maximize box (a frameless one moved by its body).
+            if (wParam == HTCAPTION && !win->opts.maximizable) {
+                return 0;
+            }
+            break;
+        case WM_GETMINMAXINFO: {
+            LRESULT res = DefWindowProcW(hwnd, msg, wParam, lParam);
+            ApplyMinMaxSize(win, hwnd, (MINMAXINFO*)lParam);
+            return res;
+        }
+        case WM_WINDOWPOSCHANGED: {
+            auto* wp = (const WINDOWPOS*)lParam;
+            bool moved = (wp->flags & SWP_NOMOVE) == 0;
+            bool sized = (wp->flags & SWP_NOSIZE) == 0;
+            // DefWindowProc turns it into WM_MOVE and WM_SIZE, which paint.
+            LRESULT res = DefWindowProcW(hwnd, msg, wParam, lParam);
+            if (moved || sized || (wp->flags & SWP_SHOWWINDOW)) {
+                WindowBoundsNotify(win, WindowBoundsEvent::Changed);
+            }
+            return res;
+        }
+        case WM_EXITSIZEMOVE:
+            WindowBoundsNotify(win, WindowBoundsEvent::MoveResizeEnded);
             break;
         case WM_RBUTTONDOWN:
             MouseDown(win, MouseButton::Right, lParam);
@@ -1807,6 +1965,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             if (!WindowShouldClose(win)) {
                 return 0;
             }
+            // Before DefWindowProc destroys it: a parent still disabled
+            // then would hand the activation to another application.
+            WindowModalRelease(win);
             break;
         case WM_DESTROY: {
             RevokeFileDrop(win, hwnd);
@@ -1834,6 +1995,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
 void AppQuit(Window* win) {
     HWND hwnd = Hwnd(win);
     if (hwnd) {
+        WindowModalRelease(win);
         DestroyWindow(hwnd);
     }
 }
@@ -2058,6 +2220,153 @@ void AppActivate(Window* win) {
         ShowWindow(hwnd, SW_RESTORE);
     }
     SetForegroundWindow(hwnd);
+}
+
+// ─── window frame and placement ───────────────────────────────────────────
+
+static ScreenBounds FromRECT(const RECT& r) {
+    return {r.left, r.top, r.right - r.left, r.bottom - r.top};
+}
+
+ScreenBounds WindowFrameBounds(Window* win) {
+    HWND hwnd = Hwnd(win);
+    RECT r = {};
+    if (!hwnd || !GetWindowRect(hwnd, &r)) {
+        return {};
+    }
+    return FromRECT(r);
+}
+
+ScreenBounds WindowContentBounds(Window* win) {
+    HWND hwnd = Hwnd(win);
+    RECT r = {};
+    if (!hwnd || !GetClientRect(hwnd, &r)) {
+        return {};
+    }
+    POINT origin = {0, 0};
+    ClientToScreen(hwnd, &origin);
+    return {origin.x, origin.y, r.right, r.bottom};
+}
+
+void WindowSetFrameBounds(Window* win, ScreenBounds outer) {
+    HWND hwnd = Hwnd(win);
+    if (!hwnd || outer.IsEmpty()) {
+        return;
+    }
+    SetWindowPos(hwnd, nullptr, outer.x, outer.y, outer.w, outer.h,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+ScreenBounds WindowFrameForContent(Window* nearby, const WinOpts& opts,
+                                   ScreenBounds content) {
+    RECT r = {content.x, content.y, content.x + content.w,
+              content.y + content.h};
+    AdjustRect(&r, WinStyle(opts), WinExStyle(opts), FrameDpi(Hwnd(nearby)));
+    return FromRECT(r);
+}
+
+static bool MonitorRects(Window* win, RECT* monitor, RECT* work) {
+    HWND hwnd = Hwnd(win);
+    HMONITOR mon = hwnd ? MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST)
+                        : MonitorFromPoint({0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO mi = {sizeof(mi)};
+    if (!mon || !GetMonitorInfoW(mon, &mi)) {
+        return false;
+    }
+    *monitor = mi.rcMonitor;
+    *work = mi.rcWork;
+    return true;
+}
+
+ScreenBounds WindowDisplayBounds(Window* win) {
+    RECT monitor = {}, work = {};
+    if (!MonitorRects(win, &monitor, &work)) {
+        return {0, 0, GetSystemMetrics(SM_CXSCREEN),
+                GetSystemMetrics(SM_CYSCREEN)};
+    }
+    return FromRECT(monitor);
+}
+
+ScreenBounds WindowDisplayVisibleBounds(Window* win) {
+    RECT monitor = {}, work = {};
+    if (!MonitorRects(win, &monitor, &work)) {
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+    }
+    return FromRECT(work);
+}
+
+void PlatWindowShow(Window* win, bool visible, bool activate) {
+    HWND hwnd = Hwnd(win);
+    if (!hwnd) {
+        return;
+    }
+    if (!visible) {
+        ShowWindow(hwnd, SW_HIDE);
+        return;
+    }
+    activate = activate && win->opts.activatable;
+    ShowWindow(hwnd, activate ? SW_SHOW : SW_SHOWNOACTIVATE);
+    InvalidateRect(hwnd, nullptr, FALSE);
+}
+
+bool WindowIsVisible(Window* win) {
+    HWND hwnd = Hwnd(win);
+    return hwnd && IsWindowVisible(hwnd);
+}
+
+// SetActiveWindow only changes which of this thread's windows is the active
+// one; with none active the application is not the foreground one.
+void WindowActivateInApp(Window* win) {
+    HWND hwnd = Hwnd(win);
+    HWND active = GetActiveWindow();
+    if (hwnd && active && active != hwnd) {
+        SetActiveWindow(hwnd);
+    }
+}
+
+// The active window of this thread: what gets the keys while the program is
+// the foreground one. platform's is_active.
+bool WindowIsActive(Window* win) {
+    HWND hwnd = Hwnd(win);
+    return hwnd && GetActiveWindow() == hwnd;
+}
+
+void PlatWindowSetParent(Window* win, Window* parent) {
+    HWND hwnd = Hwnd(win);
+    if (!hwnd) {
+        return;
+    }
+    // GWLP_HWNDPARENT of a top-level window sets its owner.
+    SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, (LONG_PTR)Hwnd(parent));
+}
+
+void PlatWindowSetModal(Window* dlg, Window* parent, bool on) {
+    (void)dlg;
+    HWND hwnd = Hwnd(parent);
+    if (hwnd) {
+        EnableWindow(hwnd, on ? FALSE : TRUE);
+    }
+}
+
+void WindowSetMinSize(Window* win, Size content) {
+    if (win) {
+        win->opts.minSize = content;
+    }
+}
+
+void WindowSetMaxSize(Window* win, Size content) {
+    if (win) {
+        win->opts.maxSize = content;
+    }
+}
+
+void WindowSetFrameAppearance(Window* win, FrameAppearance appearance) {
+    HWND hwnd = Hwnd(win);
+    if (!hwnd || win->plat->frameAppearance == appearance) {
+        return;
+    }
+    win->plat->frameAppearance = appearance;
+    ConfigureDwmDarkMode(hwnd);
 }
 
 void AppMinimize(Window* win) {
@@ -3253,6 +3562,15 @@ bool PlatInit(App* app) {
         // arrow on every move; WM_SETCURSOR above owns it.
         wc.hCursor = nullptr;
         wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+        // platform.rs load_icon: the executable's icon resource 1, which
+        // captions, Alt+Tab and the taskbar show. None in a binary without.
+        HINSTANCE module = GetModuleHandleW(nullptr);
+        wc.hIcon = (HICON)LoadImageW(module, MAKEINTRESOURCEW(1), IMAGE_ICON, 0,
+                                     0, LR_DEFAULTSIZE | LR_SHARED);
+        wc.hIconSm =
+            (HICON)LoadImageW(module, MAKEINTRESOURCEW(1), IMAGE_ICON,
+                              GetSystemMetrics(SM_CXSMICON),
+                              GetSystemMetrics(SM_CYSMICON), LR_SHARED);
         wc.lpszClassName = kWndClass;
         RegisterClassExW(&wc);
         registered = true;
@@ -3276,44 +3594,47 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     }
     win->plat = new PlatWindow();
 
-    DWORD style = WS_OVERLAPPEDWINDOW;
-    if (!opts.resizable) {
-        style &= ~WS_THICKFRAME;
+    DWORD style = WinStyle(opts);
+    DWORD ex = WinExStyle(opts);
+    int x = 0;
+    int y = 0;
+    int pxW = 0;
+    int pxH = 0;
+    if (!opts.bounds.IsEmpty()) {
+        x = opts.bounds.x;
+        y = opts.bounds.y;
+        pxW = opts.bounds.w;
+        pxH = opts.bounds.h;
+    } else {
+        // Bounds::centered: the primary display's visible bounds — the work
+        // area clear of the taskbar — is what the window is centred in and
+        // clamped to, not the whole display.
+        RECT wa = {0, 0, GetSystemMetrics(SM_CXSCREEN),
+                   GetSystemMetrics(SM_CYSCREEN)};
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+        int sx = wa.right - wa.left;
+        int sy = wa.bottom - wa.top;
+        float scale = SystemDpi() / 96.f;
+        WindowClampToDisplay(&dipW, &dipH, (int)((float)sx / scale),
+                             (int)((float)sy / scale));
+        RECT wr = {0, 0, (LONG)lroundf((float)dipW * scale),
+                   (LONG)lroundf((float)dipH * scale)};
+        AdjustWindowRectEx(&wr, style, FALSE, ex);
+        pxW = wr.right - wr.left;
+        pxH = wr.bottom - wr.top;
+        x = wa.left + (sx - pxW) / 2;
+        y = wa.top + (sy - pxH) / 2;
     }
-    if (ClientDecorated(win)) {
-        // No caption, but every other part of a normal frame: the thick
-        // frame keeps the resize borders, the drop shadow, snapping and the
-        // minimize / maximize animations. WM_NCCALCSIZE above then pulls the
-        // client area up over the band the caption would have used. A window
-        // that is not resizable keeps the rest and drops the thick frame.
-        style = WS_OVERLAPPEDWINDOW & ~WS_CAPTION;
-        style |= WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
-        if (opts.resizable) {
-            style |= WS_THICKFRAME;
-        }
-    }
-    // Bounds::centered: the primary display's visible bounds — the work area
-    // clear of the taskbar — is what the window is centred in and clamped
-    // to, not the whole display.
-    RECT wa = {0, 0, GetSystemMetrics(SM_CXSCREEN),
-               GetSystemMetrics(SM_CYSCREEN)};
-    SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
-    int sx = wa.right - wa.left;
-    int sy = wa.bottom - wa.top;
-    float scale = SystemDpi() / 96.f;
-    WindowClampToDisplay(&dipW, &dipH, (int)((float)sx / scale),
-                         (int)((float)sy / scale));
-    RECT wr = {0, 0, (LONG)lroundf((float)dipW * scale),
-               (LONG)lroundf((float)dipH * scale)};
-    AdjustWindowRectEx(&wr, style, FALSE, 0);
-    int pxW = wr.right - wr.left;
-    int pxH = wr.bottom - wr.top;
-    int x = wa.left + (sx - pxW) / 2;
-    int y = wa.top + (sy - pxH) / 2;
     // -gpui-window: open where the caller asked instead of centred at the
     // caller's size. The numbers are the outer window rect, so they are the
     // same ones MoveWindow and GetWindowRect use.
     WindowGeomRequested(&x, &y, &pxW, &pxH);
+    // A top-level window's "parent" is its owner: it stays above it, is
+    // minimized with it and has no taskbar button.
+    HWND owner = nullptr;
+    if (opts.kind == WindowKind::Floating || opts.kind == WindowKind::Dialog) {
+        owner = Hwnd(opts.parent);
+    }
 
     // WS_EX_NOREDIRECTIONBITMAP, the way GPUI's window.rs creates its windows:
     // without it the window keeps a GDI redirection surface the system fills
@@ -3322,9 +3643,9 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     // a click could show, and reliably did over RDP. Every frame here goes
     // through the flip-model swap chain, so nothing ever draws on the surface
     // this drops.
-    HWND hwnd = CreateWindowExW(
-        WS_EX_NOREDIRECTIONBITMAP, kWndClass, ToCWstrTemp(title), style, x, y,
-        pxW, pxH, nullptr, nullptr, GetModuleHandleW(nullptr), win);
+    HWND hwnd =
+        CreateWindowExW(ex, kWndClass, ToCWstrTemp(title), style, x, y, pxW,
+                        pxH, owner, nullptr, GetModuleHandleW(nullptr), win);
     if (!hwnd) {
         delete win->plat;
         win->plat = nullptr;
@@ -3341,8 +3662,12 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
                      SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
                          SWP_NOACTIVATE);
     }
-    ShowWindow(hwnd, SW_SHOW);
-    UpdateWindow(hwnd);
+    if (opts.show) {
+        WindowModalTake(win);
+        bool activate = opts.focus && opts.activatable;
+        ShowWindow(hwnd, activate ? SW_SHOW : SW_SHOWNOACTIVATE);
+        UpdateWindow(hwnd);
+    }
     return win;
 }
 

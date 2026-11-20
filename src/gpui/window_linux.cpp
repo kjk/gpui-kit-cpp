@@ -75,6 +75,18 @@ struct PlatWindow {
     bool xdndDrop = false;
     int xdndX = 0;
     int xdndY = 0;
+    // The outer frame last seen, to tell a ConfigureNotify that moved or
+    // sized the window from one that did not.
+    ScreenBounds lastFrame = {};
+    // WindowSetFrameBounds asked for `requested`; a window manager can land
+    // it a few pixels off, which is not a move to report. `settling` lasts
+    // until the frame is there, the user takes over, or 8 configures pass.
+    ScreenBounds requested = {};
+    bool settling = false;
+    int settleCount = 0;
+    // A move or resize reported with a button down; the end is reported once
+    // the button is up.
+    bool moveEndPending = false;
 };
 
 // One display per process. GPUI's App is a singleton in practice, and an X
@@ -340,6 +352,29 @@ static void SetUndecorated(XWindow xwin) {
     hints.decorations = 0;
     XChangeProperty(gDpy, xwin, aMotifWmHints, aMotifWmHints, 32,
                     PropModeReplace, (unsigned char*)&hints, 5);
+}
+
+// _NET_WM_WINDOW_TYPE and the initial _NET_WM_STATE for a window's kind.
+static void SetWindowType(XWindow xwin, const WinOpts& opts) {
+    const char* type = nullptr;
+    if (opts.kind == WindowKind::Dialog) {
+        type = "_NET_WM_WINDOW_TYPE_DIALOG";
+    } else if (opts.utility) {
+        type = "_NET_WM_WINDOW_TYPE_UTILITY";
+    }
+    if (type) {
+        Atom typeProp = XInternAtom(gDpy, "_NET_WM_WINDOW_TYPE", False);
+        Atom value = XInternAtom(gDpy, type, False);
+        XChangeProperty(gDpy, xwin, typeProp, XA_ATOM, 32, PropModeReplace,
+                        (unsigned char*)&value, 1);
+    }
+    if (opts.kind == WindowKind::PopUp) {
+        Atom states[2] = {
+            XInternAtom(gDpy, "_NET_WM_STATE_ABOVE", False),
+            XInternAtom(gDpy, "_NET_WM_STATE_SKIP_TASKBAR", False)};
+        XChangeProperty(gDpy, xwin, aNetWmState, XA_ATOM, 32, PropModeReplace,
+                        (unsigned char*)states, 2);
+    }
 }
 
 // ─── input translation ────────────────────────────────────────────────────
@@ -1666,6 +1701,8 @@ static void DestroyPlatWindow(Window* win) {
     if (!pw) {
         return;
     }
+    // While the PlatWindow is still there to give the grab back.
+    WindowModalRelease(win);
     if (pw->back) {
         cairo_surface_destroy(pw->back);
     }
@@ -1954,6 +1991,128 @@ static void OnXdndClient(Window* win, const XClientMessageEvent* ev) {
     }
 }
 
+// ─── window frame ─────────────────────────────────────────────────────────
+
+// What a decorated window adds before its window manager has said
+// (_NET_FRAME_EXTENTS), and the last extents one did report: WSLg's frame is
+// far from the guess, so the next window starts from what it saw.
+constexpr int kTitleGuess = 28;
+constexpr int kBorderGuess = 1;
+struct FrameExtentsPx {
+    int left = 0;
+    int right = 0;
+    int top = 0;
+    int bottom = 0;
+};
+static FrameExtentsPx gSeenExtents = {};
+
+// The extents the manager reports for `xwin`; zero until it has set them.
+static FrameExtentsPx ReadFrameExtents(XWindow xwin) {
+    FrameExtentsPx e;
+    Atom type = 0;
+    int format = 0;
+    unsigned long n = 0, after = 0;
+    unsigned char* data = nullptr;
+    if (!xwin || XGetWindowProperty(gDpy, xwin, aNetFrameExtents, 0, 4, False,
+                                    XA_CARDINAL, &type, &format, &n, &after,
+                                    &data) != Success) {
+        return e;
+    }
+    if (data && format == 32 && n >= 4) {
+        auto* v = (long*)data;
+        e = {(int)v[0], (int)v[1], (int)v[2], (int)v[3]};
+        if (e.top > 0 || e.left > 0) {
+            gSeenExtents = e;
+        }
+    }
+    if (data) {
+        XFree(data);
+    }
+    return e;
+}
+
+// The extents to place a window by: its own once known, else what another
+// window showed, else the guess. None for a window without a frame.
+static FrameExtentsPx PlacementExtents(const WinOpts& opts, XWindow xwin) {
+    if (!WindowOptsTitled(opts)) {
+        return {};
+    }
+    FrameExtentsPx e = ReadFrameExtents(xwin);
+    if (e.top > 0 || e.left > 0) {
+        return e;
+    }
+    if (gSeenExtents.top > 0 || gSeenExtents.left > 0) {
+        return gSeenExtents;
+    }
+    return {kBorderGuess, kBorderGuess, kTitleGuess, kBorderGuess};
+}
+
+static bool PointerButtonsDown() {
+    XWindow root = 0, child = 0;
+    int rx = 0, ry = 0, wx = 0, wy = 0;
+    unsigned mask = 0;
+    if (!XQueryPointer(gDpy, gRoot, &root, &child, &rx, &ry, &wx, &wy, &mask)) {
+        return false;
+    }
+    return (mask & (Button1Mask | Button2Mask | Button3Mask)) != 0;
+}
+
+static bool FrameNear(ScreenBounds a, ScreenBounds b) {
+    auto near4 = [](int x, int y) { return x - y < 4 && y - x < 4; };
+    return near4(a.x, b.x) && near4(a.y, b.y) && near4(a.w, b.w) &&
+           near4(a.h, b.h);
+}
+
+// A ConfigureNotify: report a move or resize, unless it is the window
+// manager settling a frame the program asked for.
+static void FrameConfigured(Window* win) {
+    PlatWindow* pw = win->plat;
+    ScreenBounds now = WindowFrameBounds(win);
+    if (now.IsEmpty() || now == pw->lastFrame) {
+        return;
+    }
+    pw->lastFrame = now;
+    bool down = PointerButtonsDown();
+    if (pw->settling) {
+        if (FrameNear(now, pw->requested)) {
+            pw->settling = false;
+            return;
+        }
+        if (!down && ++pw->settleCount <= 8) {
+            return;
+        }
+        pw->settling = false;
+        if (!down) {
+            return;
+        }
+    }
+    WindowBoundsNotify(win, WindowBoundsEvent::Changed);
+    if (down) {
+        pw->moveEndPending = true;
+    }
+}
+
+// Reports the end of moves whose button has come up; true while one waits.
+static bool PollMoveEnds(App* app) {
+    bool waiting = false;
+    for (int i = 0; i < app->windows.len; i++) {
+        Window* w = app->windows[i];
+        if (!w->plat || !w->plat->moveEndPending) {
+            continue;
+        }
+        if (PointerButtonsDown()) {
+            waiting = true;
+            continue;
+        }
+        w->plat->moveEndPending = false;
+        WindowBoundsNotify(w, WindowBoundsEvent::MoveResizeEnded);
+    }
+    return waiting;
+}
+
+// How often a pending move end is polled for.
+constexpr int kMoveEndPollMs = 50;
+
 static void HandleEvent(App* app, XEvent* ev) {
     if (ev->type == SelectionRequest) {
         OnSelectionRequest(&ev->xselectionrequest);
@@ -1985,6 +2144,7 @@ static void HandleEvent(App* app, XEvent* ev) {
                 pw->pxH = ev->xconfigure.height;
                 win->dirty = true;
             }
+            FrameConfigured(win);
             break;
         case PropertyNotify:
             if (ev->xproperty.atom == aNetAllowedActions) {
@@ -2295,6 +2455,240 @@ void AppMinimize(Window* win) {
         XIconifyWindow(gDpy, win->plat->xwin, gScreen);
         XFlush(gDpy);
     }
+}
+
+// ─── window frame and placement ───────────────────────────────────────────
+
+static XWindow XwinOf(Window* win) {
+    return win && win->plat ? win->plat->xwin : 0;
+}
+
+// The X window is the client area; the manager's frame is around it.
+ScreenBounds WindowContentBounds(Window* win) {
+    XWindow xwin = XwinOf(win);
+    XWindowAttributes attr = {};
+    if (!xwin || !XGetWindowAttributes(gDpy, xwin, &attr)) {
+        return {};
+    }
+    int x = 0, y = 0;
+    XWindow child = 0;
+    if (!XTranslateCoordinates(gDpy, xwin, gRoot, 0, 0, &x, &y, &child)) {
+        return {};
+    }
+    return {x, y, attr.width, attr.height};
+}
+
+ScreenBounds WindowFrameBounds(Window* win) {
+    ScreenBounds c = WindowContentBounds(win);
+    if (c.IsEmpty()) {
+        return {};
+    }
+    FrameExtentsPx e = ReadFrameExtents(XwinOf(win));
+    return {c.x - e.left, c.y - e.top, c.w + e.left + e.right,
+            c.h + e.top + e.bottom};
+}
+
+void WindowSetFrameBounds(Window* win, ScreenBounds outer) {
+    XWindow xwin = XwinOf(win);
+    if (!xwin || outer.IsEmpty()) {
+        return;
+    }
+    FrameExtentsPx e = PlacementExtents(win->opts, xwin);
+    int w = std::max(outer.w - e.left - e.right, 1);
+    int h = std::max(outer.h - e.top - e.bottom, 1);
+    win->plat->requested = outer;
+    win->plat->settling = true;
+    win->plat->settleCount = 0;
+    XMoveResizeWindow(gDpy, xwin, outer.x + e.left, outer.y + e.top,
+                      (unsigned)w, (unsigned)h);
+    XFlush(gDpy);
+}
+
+ScreenBounds WindowFrameForContent(Window* nearby, const WinOpts& opts,
+                                   ScreenBounds content) {
+    (void)nearby;
+    FrameExtentsPx e = PlacementExtents(opts, 0);
+    return {content.x - e.left, content.y - e.top, content.w + e.left + e.right,
+            content.h + e.top + e.bottom};
+}
+
+static void X11WorkArea(int* x, int* y, int* w, int* h);
+
+// One X screen: _NET_WORKAREA is not per monitor.
+ScreenBounds WindowDisplayBounds(Window* win) {
+    (void)win;
+    if (!gDpy) {
+        return {};
+    }
+    return {0, 0, DisplayWidth(gDpy, gScreen), DisplayHeight(gDpy, gScreen)};
+}
+
+ScreenBounds WindowDisplayVisibleBounds(Window* win) {
+    (void)win;
+    if (!gDpy) {
+        return {};
+    }
+    ScreenBounds r;
+    X11WorkArea(&r.x, &r.y, &r.w, &r.h);
+    return r;
+}
+
+static bool XwinViewable(XWindow xwin);
+
+void PlatWindowShow(Window* win, bool visible, bool activate) {
+    XWindow xwin = XwinOf(win);
+    if (!xwin) {
+        return;
+    }
+    if (!visible) {
+        XUnmapWindow(gDpy, xwin);
+        XFlush(gDpy);
+        return;
+    }
+    // Focus can go only to a viewable window (BadMatch otherwise); one being
+    // mapped is focused by the window manager, as it takes input.
+    bool viewable = XwinViewable(xwin);
+    XMapRaised(gDpy, xwin);
+    if (viewable && activate && win->opts.activatable) {
+        XSetInputFocus(gDpy, xwin, RevertToParent, CurrentTime);
+    }
+    XFlush(gDpy);
+}
+
+bool WindowIsVisible(Window* win) {
+    XWindow xwin = XwinOf(win);
+    XWindowAttributes attr = {};
+    if (!xwin || !XGetWindowAttributes(gDpy, xwin, &attr)) {
+        return false;
+    }
+    return attr.map_state != IsUnmapped;
+}
+
+static bool XwinViewable(XWindow xwin) {
+    XWindowAttributes attr = {};
+    return xwin && XGetWindowAttributes(gDpy, xwin, &attr) &&
+           attr.map_state == IsViewable;
+}
+
+static XWindow FocusedXwin() {
+    XWindow focus = 0;
+    int revert = 0;
+    XGetInputFocus(gDpy, &focus, &revert);
+    return focus;
+}
+
+// Only when one of this application's windows has the focus.
+void WindowActivateInApp(Window* win) {
+    XWindow xwin = XwinOf(win);
+    XWindow focus = xwin ? FocusedXwin() : 0;
+    if (!focus || focus == xwin || !FindWindow(win->app, focus) ||
+        !XwinViewable(xwin)) {
+        return;
+    }
+    XRaiseWindow(gDpy, xwin);
+    XSetInputFocus(gDpy, xwin, RevertToParent, CurrentTime);
+    XFlush(gDpy);
+}
+
+bool WindowIsActive(Window* win) {
+    XWindow xwin = XwinOf(win);
+    return xwin && FocusedXwin() == xwin;
+}
+
+void PlatWindowSetParent(Window* win, Window* parent) {
+    XWindow xwin = XwinOf(win);
+    XWindow p = XwinOf(parent);
+    if (!xwin) {
+        return;
+    }
+    if (p) {
+        XSetTransientForHint(gDpy, xwin, p);
+    } else {
+        XDeleteProperty(gDpy, xwin, XA_WM_TRANSIENT_FOR);
+    }
+    XFlush(gDpy);
+}
+
+// The dialog takes the pointer and the keyboard. One grab at a time.
+static XWindow gModalGrab = 0;
+
+void PlatWindowSetModal(Window* dlg, Window* parent, bool on) {
+    (void)parent;
+    if (gModalGrab) {
+        XUngrabPointer(gDpy, CurrentTime);
+        XUngrabKeyboard(gDpy, CurrentTime);
+        gModalGrab = 0;
+    }
+    XWindow xwin = XwinOf(dlg);
+    if (on && xwin) {
+        unsigned mask = ButtonPressMask | ButtonReleaseMask | PointerMotionMask;
+        if (XGrabPointer(gDpy, xwin, True, mask, GrabModeAsync, GrabModeAsync,
+                         0, 0, CurrentTime) == GrabSuccess) {
+            XGrabKeyboard(gDpy, xwin, True, GrabModeAsync, GrabModeAsync,
+                          CurrentTime);
+            gModalGrab = xwin;
+        }
+    }
+    XFlush(gDpy);
+}
+
+// WM_NORMAL_HINTS keeps the other hints the window has.
+static void UpdateSizeHints(Window* win) {
+    XWindow xwin = XwinOf(win);
+    if (!xwin || !win->opts.resizable) {
+        return;
+    }
+    XSizeHints hints = {};
+    long supplied = 0;
+    XGetWMNormalHints(gDpy, xwin, &hints, &supplied);
+    const Size& mn = win->opts.minSize;
+    const Size& mx = win->opts.maxSize;
+    hints.flags &= ~(PMinSize | PMaxSize);
+    if (mn.w > 0 && mn.h > 0) {
+        hints.flags |= PMinSize;
+        hints.min_width = (int)mn.w;
+        hints.min_height = (int)mn.h;
+    }
+    if (mx.w > 0 || mx.h > 0) {
+        constexpr int kUnbounded = 1 << 20;
+        hints.flags |= PMaxSize;
+        hints.max_width = mx.w > 0 ? (int)mx.w : kUnbounded;
+        hints.max_height = mx.h > 0 ? (int)mx.h : kUnbounded;
+    }
+    XSetWMNormalHints(gDpy, xwin, &hints);
+    XFlush(gDpy);
+}
+
+void WindowSetMinSize(Window* win, Size content) {
+    if (win) {
+        win->opts.minSize = content;
+        UpdateSizeHints(win);
+    }
+}
+
+void WindowSetMaxSize(Window* win, Size content) {
+    if (win) {
+        win->opts.maxSize = content;
+        UpdateSizeHints(win);
+    }
+}
+
+// GTK's own hint, which Mutter and other GTK-aware managers read.
+void WindowSetFrameAppearance(Window* win, FrameAppearance appearance) {
+    XWindow xwin = XwinOf(win);
+    if (!xwin) {
+        return;
+    }
+    Atom prop = XInternAtom(gDpy, "_GTK_THEME_VARIANT", False);
+    if (appearance == FrameAppearance::System) {
+        XDeleteProperty(gDpy, xwin, prop);
+    } else {
+        Str v =
+            appearance == FrameAppearance::Dark ? StrL("dark") : StrL("light");
+        XChangeProperty(gDpy, xwin, prop, aUtf8String, 8, PropModeReplace,
+                        (unsigned char*)v.s, len(v));
+    }
+    XFlush(gDpy);
 }
 
 void AppToggleMaximize(Window* win) {
@@ -2677,12 +3071,22 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     X11WorkArea(&wx, &wy, &sw, &sh);
     WindowClampToDisplay(&dipW, &dipH, sw, sh);
 
+    int x = wx + (sw - dipW) / 2;
+    int y = wy + (sh - dipH) / 2;
+    // WindowOptions::window_bounds is the outer frame; X11 places the client
+    // inside the manager's frame.
+    bool placed = !opts.bounds.IsEmpty();
+    if (placed) {
+        FrameExtentsPx e = PlacementExtents(opts, 0);
+        x = opts.bounds.x + e.left;
+        y = opts.bounds.y + e.top;
+        dipW = std::max(opts.bounds.w - e.left - e.right, 1);
+        dipH = std::max(opts.bounds.h - e.top - e.bottom, 1);
+    }
+
     auto* pw = new PlatWindow();
     pw->pxW = dipW;
     pw->pxH = dipH;
-
-    int x = wx + (sw - dipW) / 2;
-    int y = wy + (sh - dipH) / 2;
 
     XSetWindowAttributes attrs = {};
     attrs.background_pixel = BlackPixel(gDpy, gScreen);
@@ -2704,17 +3108,44 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     Atom xdndVersion = 5;
     XChangeProperty(gDpy, pw->xwin, aXdndAware, XA_ATOM, 32, PropModeReplace,
                     (unsigned char*)&xdndVersion, 1);
-    if (opts.borderless || opts.clientTitleBar) {
+    if (opts.borderless || opts.clientTitleBar || opts.frameless ||
+        opts.kind == WindowKind::PopUp) {
         SetUndecorated(pw->xwin);
     }
     // WindowOptions::is_resizable == false. The edge band also refuses the
     // grab; the hints stop the window manager from resizing it another way.
-    if (!opts.resizable) {
+    // A placed window asks to be left where it was put.
+    if (!opts.resizable || placed) {
         XSizeHints hints = {};
-        hints.flags = PMinSize | PMaxSize;
-        hints.min_width = hints.max_width = dipW;
-        hints.min_height = hints.max_height = dipH;
+        if (!opts.resizable) {
+            hints.flags = PMinSize | PMaxSize;
+            hints.min_width = hints.max_width = dipW;
+            hints.min_height = hints.max_height = dipH;
+        }
+        if (placed) {
+            hints.flags |= USPosition | USSize;
+            hints.x = x;
+            hints.y = y;
+            hints.width = dipW;
+            hints.height = dipH;
+        }
         XSetWMNormalHints(gDpy, pw->xwin, &hints);
+    }
+    SetWindowType(pw->xwin, opts);
+    bool keepsParent =
+        opts.kind == WindowKind::Floating || opts.kind == WindowKind::Dialog;
+    if (keepsParent && opts.parent && opts.parent->plat) {
+        XSetTransientForHint(gDpy, pw->xwin, opts.parent->plat->xwin);
+    }
+    if (!opts.activatable) {
+        // ICCCM: a window that takes no input is never given the focus.
+        XWMHints* wm = XAllocWMHints();
+        if (wm) {
+            wm->flags = InputHint;
+            wm->input = False;
+            XSetWMHints(gDpy, pw->xwin, wm);
+            XFree(wm);
+        }
     }
     AppSetTitle(win, title);
 
@@ -2749,7 +3180,17 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         }
     }
 
-    XMapWindow(gDpy, pw->xwin);
+    WindowSetMinSize(win, opts.minSize);
+    WindowSetMaxSize(win, opts.maxSize);
+    if (opts.show) {
+        WindowModalTake(win);
+        XMapWindow(gDpy, pw->xwin);
+    }
+    if (placed) {
+        // Again once mapped: a manager that placed it by its own policy
+        // moves it where it was asked to be.
+        WindowSetFrameBounds(win, opts.bounds);
+    }
     ReadWindowButtonSupport(pw);
     XFlush(gDpy);
     PlatSetTimer(win, WindowTimerMs(win));
@@ -2775,10 +3216,14 @@ int AppRun(App* app) {
         }
 
         RunLoopRedrawDirty<PlatWindow>(app, Redraw);
+        bool moveEndWaiting = PollMoveEnds(app);
 
         // Sleep until the next tick, or until X has something to say.
         bool anyDirty = false;
         double waitS = RunLoopWaitFor<PlatWindow>(app, &anyDirty);
+        if (moveEndWaiting && waitS > kMoveEndPollMs / 1000.0) {
+            waitS = kMoveEndPollMs / 1000.0;
+        }
         bool idle = !anyDirty && XPending(gDpy) == 0 && ExecQueued() == 0;
         PlatPollFd* extra = nullptr;
         int extraTimeoutMs = -1;

@@ -438,7 +438,15 @@ bool WindowIsTouchPress(Ctx* cx) {
 }
 
 void WindowSetActive(Window* win, bool active) {
-    if (!win || win->active == active) {
+    if (!win) {
+        return;
+    }
+    // Every notification, even one that changes nothing here: `active` starts
+    // out true, so a window's first activation would otherwise go unheard.
+    if (win->onActivation) {
+        win->onActivation(win->onActivationData, win, active);
+    }
+    if (win->active == active) {
         return;
     }
     win->active = active;

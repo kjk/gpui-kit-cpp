@@ -27,6 +27,21 @@
 @class GpuiWindowDelegate;
 @class GpuiAccessibilityElement;
 
+// WinOpts::frameless with ::activatable: AppKit lets a borderless window
+// become key only when its class says so. Never main: the parent stays the
+// main window, as a tool palette leaves it.
+@interface GpuiKeyableWindow : NSWindow
+@end
+
+@implementation GpuiKeyableWindow
+- (BOOL)canBecomeKeyWindow {
+    return YES;
+}
+- (BOOL)canBecomeMainWindow {
+    return NO;
+}
+@end
+
 namespace gpui {
 
 struct PlatWindow {
@@ -46,6 +61,14 @@ struct PlatWindow {
     // Shown only after the first paint. Ordering front at creation puts an
     // empty window on screen for as long as the caller spends before AppRun.
     bool ordered = false;
+    // WinOpts::show false, or WindowSetVisible(false): the first paint does
+    // not order it front. `activateOnShow` is how the first paint shows it.
+    bool hidden = false;
+    bool activateOnShow = true;
+    // A move with the button down: polled until the button is let go, which
+    // is the end of the move (AppKit says when a live resize ends, not a
+    // move).
+    NSTimer* moveEndPoll = nil;
     // Whether the window's class has been taught accessibilityHitTest:. Rust
     // installs it once, when the Root view is created; a Root here is built
     // every frame, so the window remembers instead.
@@ -1160,6 +1183,8 @@ static gpui::Str TextInputString(id string) {
     __attribute__((objc_precise_lifetime)) GpuiWindowDelegate* keepAlive = self;
     gpui::PlatWindow* plat = win ? win->plat : nullptr;
     if (plat) {
+        [plat->moveEndPoll invalidate];
+        plat->moveEndPoll = nil;
         for (GpuiAccessibilityElement* element in
              [plat->accessibilityElements allValues]) {
             element->gpuiWindow = nullptr;
@@ -1187,6 +1212,38 @@ static gpui::Str TextInputString(id string) {
 - (void)windowDidResize:(NSNotification*)note {
     (void)note;
     gpui::AppInvalidate(win);
+    gpui::WindowBoundsNotify(win, gpui::WindowBoundsEvent::Changed);
+}
+
+- (void)windowDidEndLiveResize:(NSNotification*)note {
+    (void)note;
+    gpui::WindowBoundsNotify(win, gpui::WindowBoundsEvent::MoveResizeEnded);
+}
+
+- (void)windowDidMove:(NSNotification*)note {
+    (void)note;
+    gpui::WindowBoundsNotify(win, gpui::WindowBoundsEvent::Changed);
+    gpui::PlatWindow* pw = win ? win->plat : nullptr;
+    if (!pw || pw->moveEndPoll || [NSEvent pressedMouseButtons] == 0) {
+        return;
+    }
+    gpui::Window* w = win;
+    pw->moveEndPoll = [NSTimer
+        scheduledTimerWithTimeInterval:0.05
+                               repeats:YES
+                                 block:^(NSTimer* timer) {
+                                   if ([NSEvent pressedMouseButtons] != 0) {
+                                       return;
+                                   }
+                                   [timer invalidate];
+                                   if (!w->plat) {
+                                       return;
+                                   }
+                                   w->plat->moveEndPoll = nil;
+                                   gpui::WindowBoundsNotify(
+                                       w, gpui::WindowBoundsEvent::
+                                              MoveResizeEnded);
+                                 }];
 }
 
 - (void)windowDidMiniaturize:(NSNotification*)note {
@@ -1445,13 +1502,43 @@ bool WindowMacKeyDown(Window* win, NSEvent* event) {
 
 // ─── drawing ──────────────────────────────────────────────────────────────
 
-static void OrderFrontOnce(PlatWindow* pw) {
-    if (!pw || pw->ordered) {
+// A Floating or Dialog window goes above its parent as it is shown.
+static void AttachToParent(Window* win) {
+    bool keeps = win->opts.kind == WindowKind::Floating ||
+                 win->opts.kind == WindowKind::Dialog;
+    Window* parent = win->opts.parent;
+    if (!keeps || !parent || !parent->plat) {
+        return;
+    }
+    NSWindow* w = win->plat->window;
+    NSWindow* p = parent->plat->window;
+    if (w.parentWindow != p) {
+        [w.parentWindow removeChildWindow:w];
+        [p addChildWindow:w ordered:NSWindowAbove];
+    }
+}
+
+static void OrderFront(Window* win, bool activate) {
+    PlatWindow* pw = win->plat;
+    AttachToParent(win);
+    if (!activate || !win->opts.activatable) {
+        [pw->window orderFront:nil];
+        return;
+    }
+    [pw->window makeFirstResponder:pw->view];
+    [pw->window makeKeyAndOrderFront:nil];
+}
+
+static void OrderFrontOnce(Window* win) {
+    PlatWindow* pw = win->plat;
+    if (!pw || pw->ordered || pw->hidden) {
         return;
     }
     pw->ordered = true;
-    [pw->window makeKeyAndOrderFront:nil];
-    [NSApp activateIgnoringOtherApps:YES];
+    OrderFront(win, pw->activateOnShow);
+    if (pw->activateOnShow && win->opts.activatable) {
+        [NSApp activateIgnoringOtherApps:YES];
+    }
 }
 
 static void Redraw(Window* win) {
@@ -1462,13 +1549,14 @@ static void Redraw(Window* win) {
     win->dirty = false;
     win->maximized = [pw->window isZoomed] ? true : false;
     [pw->view display];
-    OrderFrontOnce(pw);
+    OrderFrontOnce(win);
 }
 
 // ─── window commands ──────────────────────────────────────────────────────
 
 void AppQuit(Window* win) {
     if (win && win->plat && win->plat->window) {
+        WindowModalRelease(win);
         // windowWillClose is what calls WindowClosed.
         [win->plat->window close];
     }
@@ -1702,7 +1790,9 @@ void AppActivate(Window* win) {
     if ([win->plat->window isMiniaturized]) {
         [win->plat->window deminiaturize:nil];
     }
+    win->plat->hidden = false;
     if (!win->plat->ordered) {
+        win->plat->activateOnShow = true;
         Redraw(win);
         return;
     }
@@ -1714,6 +1804,253 @@ void AppMinimize(Window* win) {
     if (win && win->plat) {
         [win->plat->window miniaturize:nil];
     }
+}
+
+// ─── window frame and placement ───────────────────────────────────────────
+//
+// AppKit's screen coordinates grow up from the bottom of the primary display;
+// ScreenBounds grow down from its top.
+
+static NSWindow* NsWindowOf(Window* win) {
+    return win && win->plat ? win->plat->window : nil;
+}
+
+// The screen whose origin is (0, 0): its top is y = 0 in screen bounds.
+static CGFloat FlipHeight() {
+    for (NSScreen* screen in [NSScreen screens]) {
+        if (screen.frame.origin.x == 0 && screen.frame.origin.y == 0) {
+            return screen.frame.size.height;
+        }
+    }
+    NSScreen* screen = [NSScreen mainScreen];
+    return screen ? screen.frame.size.height : 0;
+}
+
+static ScreenBounds FromMac(NSRect r) {
+    CGFloat h = FlipHeight();
+    return {(int)r.origin.x, (int)(h - (r.origin.y + r.size.height)),
+            (int)r.size.width, (int)r.size.height};
+}
+
+static NSRect ToMac(ScreenBounds r) {
+    CGFloat h = FlipHeight();
+    return NSMakeRect(r.x, h - (r.y + r.h), r.w, r.h);
+}
+
+static NSScreen* ScreenOf(Window* win) {
+    NSWindow* w = NsWindowOf(win);
+    if (w && w.screen) {
+        return w.screen;
+    }
+    NSArray<NSScreen*>* screens = [NSScreen screens];
+    return screens.count > 0 ? screens[0] : [NSScreen mainScreen];
+}
+
+ScreenBounds WindowFrameBounds(Window* win) {
+    NSWindow* w = NsWindowOf(win);
+    return w ? FromMac(w.frame) : ScreenBounds{};
+}
+
+ScreenBounds WindowContentBounds(Window* win) {
+    NSWindow* w = NsWindowOf(win);
+    return w ? FromMac([w contentRectForFrameRect:w.frame]) : ScreenBounds{};
+}
+
+void WindowSetFrameBounds(Window* win, ScreenBounds outer) {
+    NSWindow* w = NsWindowOf(win);
+    if (!w || outer.IsEmpty()) {
+        return;
+    }
+    [w setFrame:ToMac(outer) display:YES];
+}
+
+static NSWindowStyleMask FrameStyleMask(const WinOpts& opts) {
+    if (opts.frameless || opts.kind == WindowKind::PopUp || opts.borderless) {
+        return NSWindowStyleMaskBorderless;
+    }
+    NSWindowStyleMask mask =
+        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable;
+    if (opts.resizable) {
+        mask |= NSWindowStyleMaskResizable;
+    }
+    if (opts.utility) {
+        mask |= NSWindowStyleMaskUtilityWindow;
+    } else if (opts.minimizable) {
+        mask |= NSWindowStyleMaskMiniaturizable;
+    }
+    if (opts.clientTitleBar) {
+        mask |= NSWindowStyleMaskFullSizeContentView;
+    }
+    return mask;
+}
+
+// AppKit frames have no side borders; the title bar is on top.
+ScreenBounds WindowFrameForContent(Window* nearby, const WinOpts& opts,
+                                   ScreenBounds content) {
+    (void)nearby;
+    NSRect c = NSMakeRect(0, 0, content.w, content.h);
+    NSRect f =
+        [NSWindow frameRectForContentRect:c styleMask:FrameStyleMask(opts)];
+    int dw = (int)(f.size.width - c.size.width);
+    int dh = (int)(f.size.height - c.size.height);
+    return {content.x - dw / 2, content.y - dh, content.w + dw, content.h + dh};
+}
+
+ScreenBounds WindowDisplayBounds(Window* win) {
+    NSScreen* screen = ScreenOf(win);
+    return screen ? FromMac(screen.frame) : ScreenBounds{};
+}
+
+ScreenBounds WindowDisplayVisibleBounds(Window* win) {
+    NSScreen* screen = ScreenOf(win);
+    return screen ? FromMac(screen.visibleFrame) : ScreenBounds{};
+}
+
+void PlatWindowShow(Window* win, bool visible, bool activate) {
+    PlatWindow* pw = win ? win->plat : nullptr;
+    if (!pw) {
+        return;
+    }
+    pw->hidden = !visible;
+    if (!visible) {
+        [pw->window orderOut:nil];
+        return;
+    }
+    if (!pw->ordered) {
+        // The first paint orders it front.
+        pw->activateOnShow = activate;
+        AppInvalidate(win);
+        return;
+    }
+    OrderFront(win, activate);
+    AppInvalidate(win);
+}
+
+bool WindowIsVisible(Window* win) {
+    NSWindow* w = NsWindowOf(win);
+    if (!w) {
+        return false;
+    }
+    // Not on screen yet, but on its way with the first paint.
+    return w.isVisible || (!win->plat->ordered && !win->plat->hidden);
+}
+
+// The key window changes only while the application is the active one.
+void WindowActivateInApp(Window* win) {
+    NSWindow* w = NsWindowOf(win);
+    if (w && NSApp.isActive && !w.isKeyWindow) {
+        [w makeKeyWindow];
+    }
+}
+
+bool WindowIsActive(Window* win) {
+    NSWindow* w = NsWindowOf(win);
+    return w && w.isKeyWindow;
+}
+
+void PlatWindowSetParent(Window* win, Window* parent) {
+    NSWindow* w = NsWindowOf(win);
+    if (!w) {
+        return;
+    }
+    NSWindow* p = NsWindowOf(parent);
+    if (w.parentWindow && w.parentWindow != p) {
+        [w.parentWindow removeChildWindow:w];
+    }
+    // A hidden one is attached when it is shown.
+    if (p && w.isVisible) {
+        AttachToParent(win);
+    }
+}
+
+// Clicks and keys aimed at the parent bring the dialog forward instead.
+// One dialog at a time holds a monitor, as one modal session would.
+static id gModalMonitor = nil;
+
+void PlatWindowSetModal(Window* dlg, Window* parent, bool on) {
+    if (gModalMonitor) {
+        [NSEvent removeMonitor:gModalMonitor];
+        gModalMonitor = nil;
+    }
+    NSWindow* tool = NsWindowOf(dlg);
+    NSWindow* p = NsWindowOf(parent);
+    if (!on || !tool || !p) {
+        return;
+    }
+    NSEventMask mask = NSEventMaskLeftMouseDown | NSEventMaskRightMouseDown |
+                       NSEventMaskOtherMouseDown | NSEventMaskKeyDown;
+    gModalMonitor = [NSEvent
+        addLocalMonitorForEventsMatchingMask:mask
+                                     handler:^NSEvent*(NSEvent* event) {
+                                       if (event.window == p) {
+                                           [tool makeKeyAndOrderFront:nil];
+                                           return nil;
+                                       }
+                                       return event;
+                                     }];
+}
+
+void WindowSetMinSize(Window* win, Size content) {
+    if (!win) {
+        return;
+    }
+    win->opts.minSize = content;
+    NSWindow* w = NsWindowOf(win);
+    if (w && content.w > 0 && content.h > 0) {
+        [w setContentMinSize:NSMakeSize(content.w, content.h)];
+    }
+}
+
+void WindowSetMaxSize(Window* win, Size content) {
+    if (!win) {
+        return;
+    }
+    win->opts.maxSize = content;
+    NSWindow* w = NsWindowOf(win);
+    if (w) {
+        // FLT_MAX is AppKit's own "unbounded".
+        CGFloat dx = content.w > 0 ? content.w : FLT_MAX;
+        CGFloat dy = content.h > 0 ? content.h : FLT_MAX;
+        [w setContentMaxSize:NSMakeSize(dx, dy)];
+    }
+}
+
+void WindowSetFrameAppearance(Window* win, FrameAppearance appearance) {
+    NSWindow* w = NsWindowOf(win);
+    if (!w) {
+        return;
+    }
+    NSAppearance* a = nil;
+    if (appearance == FrameAppearance::Dark) {
+        a = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+    } else if (appearance == FrameAppearance::Light) {
+        a = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+    }
+    [w setAppearance:a];
+}
+
+void WindowSendNativeKey(Window* win, int macKeyCode) {
+    PlatWindow* pw = win ? win->plat : nullptr;
+    if (!pw) {
+        return;
+    }
+    NSWindow* w = pw->window;
+    [w makeFirstResponder:pw->view];
+    NSString* chars = macKeyCode == 0 ? @"a" : @"";
+    auto event = ^(NSEventType type, NSString* text) {
+      return [NSEvent keyEventWithType:type
+                              location:NSZeroPoint
+                         modifierFlags:0
+                             timestamp:[NSProcessInfo processInfo].systemUptime
+                          windowNumber:w.windowNumber
+                               context:nil
+                            characters:text
+           charactersIgnoringModifiers:chars
+                             isARepeat:NO
+                               keyCode:(unsigned short)macKeyCode];
+    };
+    [NSApp sendEvent:event(NSEventTypeKeyDown, chars)];
+    [NSApp sendEvent:event(NSEventTypeKeyUp, @"")];
 }
 
 void AppToggleMaximize(Window* win) {
@@ -2980,9 +3317,11 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         return nullptr;
     }
     @autoreleasepool {
-        NSWindowStyleMask style = NSWindowStyleMaskTitled |
-                                  NSWindowStyleMaskClosable |
-                                  NSWindowStyleMaskMiniaturizable;
+        NSWindowStyleMask style =
+            NSWindowStyleMaskTitled | NSWindowStyleMaskClosable;
+        if (opts.minimizable) {
+            style |= NSWindowStyleMaskMiniaturizable;
+        }
         if (opts.resizable) {
             style |= NSWindowStyleMaskResizable;
         }
@@ -3002,14 +3341,37 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         NSRect screen = [[NSScreen mainScreen] visibleFrame];
         WindowClampToDisplay(&dipW, &dipH, (int)screen.size.width,
                              (int)screen.size.height);
+        bool frameless = opts.frameless || opts.kind == WindowKind::PopUp;
+        if (frameless) {
+            style = NSWindowStyleMaskBorderless;
+            if (opts.resizable) {
+                style |= NSWindowStyleMaskResizable;
+            }
+        }
         NSRect frame = NSMakeRect(0, 0, dipW, dipH);
+        Class cls = frameless && opts.activatable ? [GpuiKeyableWindow class]
+                                                  : [NSWindow class];
         NSWindow* window =
-            [[NSWindow alloc] initWithContentRect:frame
-                                        styleMask:style
-                                          backing:NSBackingStoreBuffered
-                                            defer:NO];
+            [[cls alloc] initWithContentRect:frame
+                                   styleMask:style
+                                     backing:NSBackingStoreBuffered
+                                       defer:NO];
         if (!window) {
             return nullptr;
+        }
+        if (opts.utility && !frameless) {
+            // Set after init, the way it is accepted on an NSWindow.
+            [window setStyleMask:(style & ~NSWindowStyleMaskMiniaturizable) |
+                                 NSWindowStyleMaskUtilityWindow];
+        }
+        if (frameless) {
+            [window setHasShadow:YES];
+            [window setMovableByWindowBackground:NO];
+        }
+        if (opts.kind == WindowKind::PopUp) {
+            [window setLevel:NSPopUpMenuWindowLevel];
+        } else if (opts.kind == WindowKind::Floating && !opts.parent) {
+            [window setLevel:NSFloatingWindowLevel];
         }
         // Every colour the portable paint API accepts is an 8-bit sRGB
         // value.  Leaving AppKit to infer the window space on an EDR display
@@ -3043,7 +3405,22 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         [window setAcceptsMouseMovedEvents:YES];
         [window setReleasedWhenClosed:NO];
         [window setDelegate:del];
-        [window center];
+        if (opts.bounds.IsEmpty()) {
+            [window center];
+        } else {
+            WindowSetFrameBounds(win, opts.bounds);
+        }
+        if (opts.minSize.w > 0 || opts.minSize.h > 0) {
+            WindowSetMinSize(win, opts.minSize);
+        }
+        if (opts.maxSize.w > 0 || opts.maxSize.h > 0) {
+            WindowSetMaxSize(win, opts.maxSize);
+        }
+        pw->hidden = !opts.show;
+        pw->activateOnShow = opts.focus;
+        if (opts.show) {
+            WindowModalTake(win);
+        }
 
         AppSetTitle(win, title);
         // Shown from Redraw, after the first paint. Order front here and the
