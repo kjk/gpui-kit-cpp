@@ -65,6 +65,10 @@ struct PlatWindow {
     // not order it front. `activateOnShow` is how the first paint shows it.
     bool hidden = false;
     bool activateOnShow = true;
+    // Painted at least once: a hidden window that has drawn its content is
+    // shown at once by WindowSetVisible, not at a next paint that may be a
+    // while off (a caller minimizing it before then would do nothing).
+    bool painted = false;
     // A move with the button down: polled until the button is let go, which
     // is the end of the move (AppKit says when a live resize ends, not a
     // move).
@@ -1549,6 +1553,7 @@ static void Redraw(Window* win) {
     win->dirty = false;
     win->maximized = [pw->window isZoomed] ? true : false;
     [pw->view display];
+    pw->painted = true;
     OrderFrontOnce(win);
 }
 
@@ -1917,8 +1922,12 @@ void PlatWindowShow(Window* win, bool visible, bool activate) {
         return;
     }
     if (!pw->ordered) {
-        // The first paint orders it front.
         pw->activateOnShow = activate;
+        if (pw->painted) {
+            OrderFrontOnce(win);
+            return;
+        }
+        // The first paint orders it front.
         AppInvalidate(win);
         return;
     }
