@@ -248,6 +248,8 @@ PlatformInput InputPinch(float x, float y, float delta, Modifiers modifiers,
                          TouchPhase phase);
 PlatformInput InputGesture(const GestureEvent& ev);
 PlatformInput InputTouch(const TouchEvent& ev);
+// Whether a handler kept the live contact `pointerId` (TouchEvent).
+bool WindowTouchKept(Window* win, uint32_t pointerId);
 
 // The touch a platform's gestures belong to began at (x, y) or ended. While
 // it lasts, its pinches and gestures go to the elements where it began.

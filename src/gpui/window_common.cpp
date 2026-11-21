@@ -3788,6 +3788,10 @@ static TouchCapture* TouchCaptureFind(Window* win, uint32_t pointerId) {
     return nullptr;
 }
 
+bool WindowTouchKept(Window* win, uint32_t pointerId) {
+    return win && TouchCaptureFind(win, pointerId);
+}
+
 // A Started goes to the chain under it until a handler clears `propagate`;
 // that handler keeps the contact. The rest go to it alone, or nowhere.
 static void DispatchTouch(Window* win, const TouchEvent& in) {

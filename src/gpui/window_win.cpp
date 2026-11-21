@@ -642,14 +642,25 @@ static void TouchPointer(Window* win, UINT msg, WPARAM wParam, LPARAM lParam) {
     p->touchLastY = y;
 }
 
+// Whether a pen contact is its eraser end, or the pen held upside down.
+static bool PenIsEraser(UINT32 id) {
+    POINTER_PEN_INFO info = {};
+    if (!GetPointerPenInfo(id, &info)) {
+        return false;
+    }
+    return (info.penFlags & (PEN_FLAG_INVERTED | PEN_FLAG_ERASER)) != 0;
+}
+
 // WM_POINTER* of a finger or a pen as a TouchEvent. A pen that hovers
-// without touching is not a contact.
-static void PointerTouchEvent(Window* win, UINT msg, WPARAM wParam,
+// without touching is not a contact. True for a pen contact a handler kept:
+// the message must not reach DefWindowProc, which would make mouse messages
+// of it too.
+static bool PointerTouchEvent(Window* win, UINT msg, WPARAM wParam,
                               LPARAM lParam) {
     UINT32 id = GET_POINTERID_WPARAM(wParam);
     POINTER_INPUT_TYPE type = PT_POINTER;
     if (!GetPointerType(id, &type) || (type != PT_TOUCH && type != PT_PEN)) {
-        return;
+        return false;
     }
     TouchEvent ev = {};
     ev.phase = TouchPhase::Moved;
@@ -661,7 +672,7 @@ static void PointerTouchEvent(Window* win, UINT msg, WPARAM wParam,
     } else if (msg == WM_POINTERCAPTURECHANGED) {
         ev.phase = TouchPhase::Cancelled;
     } else if (!IS_POINTER_INCONTACT_WPARAM(wParam)) {
-        return;
+        return false;
     }
     if (msg != WM_POINTERCAPTURECHANGED) {
         Point at =
@@ -671,10 +682,17 @@ static void PointerTouchEvent(Window* win, UINT msg, WPARAM wParam,
     }
     ev.pointerId = id;
     ev.pen = type == PT_PEN;
+    ev.eraser = ev.pen && PenIsEraser(id);
     ev.primary = IS_POINTER_PRIMARY_WPARAM(wParam);
     ev.modifiers = ModsNow();
+    // an end lets go of the contact as it is dispatched
+    bool kept = WindowTouchKept(win, id);
     PlatformInput in = InputTouch(ev);
     WindowDispatchInput(win, &in);
+    if (ev.phase == TouchPhase::Started) {
+        kept = WindowTouchKept(win, id);
+    }
+    return ev.pen && kept;
 }
 
 // Mouse messages made from a finger that is scrolling.
@@ -1971,7 +1989,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         case WM_POINTERDOWN:
         case WM_POINTERUPDATE:
         case WM_POINTERUP:
-            PointerTouchEvent(win, msg, wParam, lParam);
+            if (PointerTouchEvent(win, msg, wParam, lParam)) {
+                return 0;
+            }
             if (IsTouchPointer(wParam)) {
                 TouchPointer(win, msg, wParam, lParam);
             }

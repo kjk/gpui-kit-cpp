@@ -239,6 +239,33 @@ static void TouchStaysWithItsTaker() {
     TestAppFree(app);
 }
 
+// The Windows window lets a pen contact reach DefWindowProc, which makes
+// mouse messages of it, only while no handler keeps it.
+static void KeptTouchIsKnownUntilItEnds() {
+    App* app = TestAppNew();
+    auto view = EntityNew<TouchView>(app);
+    Window* win = TestWindowOpen(app, view, 400, 300, 1);
+    TouchView* self = view.Get(app);
+
+    TouchEvent pen = MkTouch(TouchPhase::Started, 3, {50, 50});
+    pen.pen = true;
+    pen.eraser = true;
+    utassert(!WindowTouchKept(win, 3));
+    TestSimulateTouch(win, pen);
+    utassert(WindowTouchKept(win, 3));
+    utassert(self->last.pen && self->last.eraser);
+    pen.phase = TouchPhase::Ended;
+    TestSimulateTouch(win, pen);
+    utassert(!WindowTouchKept(win, 3));
+
+    // one the outer box sees but lets propagate is nobody's
+    pen.phase = TouchPhase::Started;
+    pen.x = 350;
+    TestSimulateTouch(win, pen);
+    utassert(self->outer == 1 && !WindowTouchKept(win, 3));
+    TestAppFree(app);
+}
+
 void TestGesture() {
     TestSuite("gesture");
     GesturesGoInnermostFirst();
@@ -246,4 +273,5 @@ void TestGesture() {
     AnUntakenPanScrolls();
     TouchZoomDeltasAddUpToTheScale();
     TouchStaysWithItsTaker();
+    KeptTouchIsKnownUntilItEnds();
 }

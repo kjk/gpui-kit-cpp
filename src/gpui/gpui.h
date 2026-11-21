@@ -666,8 +666,9 @@ struct GestureEvent {
 // WM_POINTER*. Started goes to the element chain under it, innermost first;
 // the handler that clears `propagate` keeps that contact's Moved and its
 // Ended or Cancelled wherever it goes. The same finger still makes the
-// gestures and mouse messages it always did. No Rust twin; other platforms
-// report none.
+// gestures and mouse messages it always did; a kept pen contact makes no
+// mouse messages, so its handler is the pen's only reader. No Rust twin;
+// other platforms report none.
 struct TouchEvent {
     TouchPhase phase = TouchPhase::Started;
     // Tells simultaneous contacts apart; reused once a contact lifts.
@@ -676,6 +677,8 @@ struct TouchEvent {
     float x = 0;
     float y = 0;
     bool pen = false;
+    // A pen's eraser end, or the pen held upside down.
+    bool eraser = false;
     // The first contact of a touch; a second finger is not primary.
     bool primary = true;
     Modifiers modifiers = {};

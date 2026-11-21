@@ -50,7 +50,9 @@ The current update target is
   mouse messages it makes. A contact's Started walks the chain under it; the
   handler that clears `propagate` keeps the contact until it ends, so a long
   press or a drag handle can be timed and followed alongside `OnGesture`.
-  Other platforms report none (`src/gpui/window_win.cpp`,
+  A kept pen contact makes no mouse messages (no press-and-hold right click
+  or promotion delay), and `eraser` marks the pen's eraser end. Other
+  platforms report none (`src/gpui/window_win.cpp`,
   `src/gpui/window_common.cpp`).
 - **Window frame and placement differ from `WindowOptions` / `Window`.**
   Bounds are `ScreenBounds` in the platform's own unit (device pixels on
