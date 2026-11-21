@@ -1158,8 +1158,17 @@ static gpui::Str TextInputString(id string) {
 // NSApplication asks the key window before the main menu, and this view
 // used to return NO without offering the event on — the custom event loop
 // never asked the menu a second time, so Quit never ran.
+// ⌃Tab and ⌃⇧Tab the menu bar doesn't take are the application's: AppKit
+// would use them to move the focus between its own views and never deliver
+// them as keys (an application's next / previous tab).
 - (BOOL)performKeyEquivalent:(NSEvent*)event {
     if ([[NSApp mainMenu] performKeyEquivalent:event]) {
+        return YES;
+    }
+    constexpr unsigned short kTabKeyCode = 48; // kVK_Tab
+    bool ctrl = ([event modifierFlags] & NSEventModifierFlagControl) != 0;
+    if (ctrl && [event keyCode] == kTabKeyCode) {
+        [self keyDown:event];
         return YES;
     }
     return NO;
