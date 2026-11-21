@@ -1094,6 +1094,13 @@ void PlatClipboardSetText(Window* win, Str text) {
     GpJsClipboardWrite(text.s, len(text));
 }
 
+bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
+    (void)win;
+    (void)png;
+    (void)pngLen;
+    return false;
+}
+
 Str PlatClipboardGetText(Arena* a, Window* win) {
     (void)win;
     if (!gInPasteEvent) {

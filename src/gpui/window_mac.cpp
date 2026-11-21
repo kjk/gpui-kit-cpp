@@ -3205,6 +3205,25 @@ void WindowSetTextContentType(Window* win, Str value) {
     [win->plat->view setContentType:content];
 }
 
+// PNG and TIFF both: AppKit apps read TIFF, the others PNG
+bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
+    (void)win;
+    NSData* data = [NSData dataWithBytes:png length:(NSUInteger)pngLen];
+    NSImage* image = [[NSImage alloc] initWithData:data];
+    if (!image) {
+        return false;
+    }
+    NSPasteboard* pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    [pb declareTypes:@[ NSPasteboardTypePNG, NSPasteboardTypeTIFF ] owner:nil];
+    [pb setData:data forType:NSPasteboardTypePNG];
+    NSData* tiff = [image TIFFRepresentation];
+    if (tiff) {
+        [pb setData:tiff forType:NSPasteboardTypeTIFF];
+    }
+    return true;
+}
+
 Str PlatClipboardGetText(Arena* a, Window* win) {
     (void)win;
     NSPasteboard* pb = [NSPasteboard generalPasteboard];
@@ -3226,6 +3245,26 @@ ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
             out.imageBytes = bytes;
             out.imageBytesLen = len;
         }
+    }
+    // files copied in Finder
+    NSArray* urls =
+        [pb readObjectsForClasses:@[ [NSURL class] ]
+                          options:@{
+                              NSPasteboardURLReadingFileURLsOnlyKey : @YES
+                          }];
+    if (urls.count > 0) {
+        StrBuilder paths(a);
+        for (NSURL* url in urls) {
+            const char* path = url.fileSystemRepresentation;
+            if (!path || !*path) {
+                continue;
+            }
+            if (len(paths) > 0) {
+                paths.AppendChar('\n');
+            }
+            paths.Append(Str(path));
+        }
+        out.externalPaths = paths.TakeStr();
     }
     return out;
 }

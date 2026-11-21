@@ -8593,6 +8593,10 @@ void AppFree(App* app);
 
 // Put UTF-8 text on the system clipboard.
 void ClipboardSetText(Window* win, Str text);
+// Put a PNG image on the system clipboard, replacing what is there. False
+// where the platform can't (Windows and the web for now) or the bytes are
+// empty.
+bool ClipboardSetImage(Window* win, const uint8_t* png, int pngLen);
 // Read every clipboard representation this port exposes in one snapshot.
 // The returned views belong to `a`.
 ClipboardItem ClipboardGetItem(Arena* a, Window* win);

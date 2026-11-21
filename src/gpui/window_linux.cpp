@@ -98,6 +98,9 @@ static int gScreen = 0;
 static XWindow gRoot = 0;
 static XIM gXim = nullptr;
 static Str gClipboard = {};
+// what ClipboardSetImage put there, served as image/png. Owning the selection
+// with one clears the other.
+static Str gClipboardPng = {};
 
 static Atom aWmDeleteWindow, aWmProtocols, aNetWmName, aUtf8String;
 static Atom aNetWmState, aNetWmStateMaxVert, aNetWmStateMaxHorz;
@@ -1469,9 +1472,32 @@ void PlatClipboardSetText(Window* win, Str text) {
     if (gClipboard.s) {
         StrFree(gClipboard);
     }
+    if (gClipboardPng.s) {
+        StrFree(gClipboardPng);
+        gClipboardPng = {};
+    }
     gClipboard = StrDup(text);
     XSetSelectionOwner(gDpy, aClipboard, win->plat->xwin, CurrentTime);
     XFlush(gDpy);
+}
+
+// Served in one property, without INCR: with BIG-REQUESTS (every current X
+// server) that holds images of many megabytes.
+bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
+    if (!win || !win->plat || !gDpy) {
+        return false;
+    }
+    if (gClipboard.s) {
+        StrFree(gClipboard);
+        gClipboard = {};
+    }
+    if (gClipboardPng.s) {
+        StrFree(gClipboardPng);
+    }
+    gClipboardPng = StrDup(Str((const char*)png, pngLen));
+    XSetSelectionOwner(gDpy, aClipboard, win->plat->xwin, CurrentTime);
+    XFlush(gDpy);
+    return true;
 }
 
 struct ClipboardTargets {
@@ -1652,6 +1678,11 @@ ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     XWindow xwin = win->plat->xwin;
     if (XGetSelectionOwner(gDpy, aClipboard) == xwin) {
         out.text = StrDup(a, gClipboard);
+        if (gClipboardPng.s) {
+            Str image = StrDup(a, gClipboardPng);
+            out.imageBytes = (const uint8_t*)image.s;
+            out.imageBytesLen = len(image);
+        }
         return out;
     }
     ClipboardTargets targets = ReadClipboardTargets(xwin);
@@ -1679,9 +1710,14 @@ static void OnSelectionRequest(XSelectionRequestEvent* req) {
 
     Atom prop = req->property ? req->property : req->target;
     if (req->target == aTargets) {
-        Atom targets[2] = {aTargets, aUtf8String};
+        Atom targets[2] = {aTargets, gClipboardPng.s ? aImagePng : aUtf8String};
         XChangeProperty(gDpy, req->requestor, prop, XA_ATOM, 32,
                         PropModeReplace, (unsigned char*)targets, 2);
+        resp.xselection.property = prop;
+    } else if (req->target == aImagePng && gClipboardPng.s) {
+        XChangeProperty(gDpy, req->requestor, prop, aImagePng, 8,
+                        PropModeReplace, (unsigned char*)gClipboardPng.s,
+                        len(gClipboardPng));
         resp.xselection.property = prop;
     } else if ((req->target == aUtf8String || req->target == XA_STRING) &&
                gClipboard.s) {

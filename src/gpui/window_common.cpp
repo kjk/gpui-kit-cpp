@@ -841,6 +841,13 @@ void ClipboardSetText(Window* win, Str text) {
     PlatClipboardSetText(win, text);
 }
 
+bool ClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
+    if (!png || pngLen <= 0) {
+        return false;
+    }
+    return PlatClipboardSetImage(win, png, pngLen);
+}
+
 Str ClipboardGetText(Arena* a, Window* win) {
     ClipboardItem simulated;
     if (TestPlatformClipboardRead(a, &simulated)) {

@@ -415,6 +415,7 @@ void PlatWake(App* app);
 // GetText and GetItem answer from the test platform's clipboard when it is
 // installed, drop an empty write, and otherwise call these.
 void PlatClipboardSetText(Window* win, Str text);
+bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen);
 Str PlatClipboardGetText(Arena* a, Window* win);
 ClipboardItem PlatClipboardGetItem(Arena* a, Window* win);
 #endif

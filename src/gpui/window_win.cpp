@@ -3353,6 +3353,14 @@ void PlatClipboardSetText(Window* win, Str text) {
     }
 }
 
+// TODO: CF_DIB and the registered "PNG" format
+bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
+    (void)win;
+    (void)png;
+    (void)pngLen;
+    return false;
+}
+
 Str PlatClipboardGetText(Arena* a, Window* win) {
     if (!OpenClipboard(Hwnd(win))) {
         return {};
