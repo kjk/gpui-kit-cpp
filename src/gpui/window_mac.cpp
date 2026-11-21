@@ -1268,6 +1268,8 @@ static gpui::Str TextInputString(id string) {
     (void)note;
     if (win) {
         win->minimized = true;
+        gpui::WindowBoundsNotify(win,
+                                 gpui::WindowBoundsEvent::MinimizedChanged);
     }
 }
 
@@ -1275,6 +1277,8 @@ static gpui::Str TextInputString(id string) {
     (void)note;
     if (win) {
         win->minimized = false;
+        gpui::WindowBoundsNotify(win,
+                                 gpui::WindowBoundsEvent::MinimizedChanged);
         gpui::AppInvalidate(win);
     }
 }

@@ -7340,6 +7340,10 @@ enum class WindowBoundsEvent : uint8_t {
     Changed,
     // The user let go of a move or a resize (WM_EXITSIZEMOVE).
     MoveResizeEnded,
+    // Minimized or brought back; AppIsMinimized says which (macOS). Timers
+    // of a minimized window run late, so an app that pauses work while
+    // minimized learns it here rather than by polling.
+    MinimizedChanged,
 };
 using WindowBoundsFn = void (*)(void* data, Window* win, WindowBoundsEvent ev);
 using WindowActivationFn = void (*)(void* data, Window* win, bool active);
