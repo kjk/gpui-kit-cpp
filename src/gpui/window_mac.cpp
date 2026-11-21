@@ -90,6 +90,7 @@ double TimeNow() {
 // Defined below, once NSEvent is in scope for the whole file.
 bool WindowMacKeyDown(Window* win, NSEvent* event);
 void WindowMacKeyUp(Window* win, NSEvent* event);
+void WindowMacFlagsChanged(Window* win, NSEvent* event);
 
 } // namespace gpui
 
@@ -1154,6 +1155,10 @@ static gpui::Str TextInputString(id string) {
     gpui::WindowMacKeyUp(win, event);
 }
 
+- (void)flagsChanged:(NSEvent*)event {
+    gpui::WindowMacFlagsChanged(win, event);
+}
+
 // Command chords belong to the menu bar first: ⌘Q is Quit, not a letter.
 // NSApplication asks the key window before the main menu, and this view
 // used to return NO without offering the event on — the custom event loop
@@ -1437,6 +1442,49 @@ void WindowMacKeyUp(Window* win, NSEvent* event) {
                 (mods & NSEventModifierFlagControl) != 0,
                 (mods & NSEventModifierFlagOption) != 0,
                 (mods & NSEventModifierFlagCommand) != 0, function);
+}
+
+// Shift, Control or Option pressed or released on its own: AppKit reports it
+// as a change of the modifier flags, Windows and X11 as a key, which is what
+// this makes it (an application that acts when Control is let go). Command
+// has no key code of its own here.
+void WindowMacFlagsChanged(Window* win, NSEvent* event) {
+    if (!win) {
+        return;
+    }
+    // kVK_Shift / kVK_RightShift, kVK_Control / ..., kVK_Option / ...
+    int key = 0;
+    NSEventModifierFlags flag = 0;
+    switch ([event keyCode]) {
+        case 56:
+        case 60:
+            key = KeyShift;
+            flag = NSEventModifierFlagShift;
+            break;
+        case 59:
+        case 62:
+            key = KeyControl;
+            flag = NSEventModifierFlagControl;
+            break;
+        case 58:
+        case 61:
+            key = KeyAlt;
+            flag = NSEventModifierFlagOption;
+            break;
+        default:
+            return;
+    }
+    NSEventModifierFlags mods = [event modifierFlags];
+    bool shift = (mods & NSEventModifierFlagShift) != 0;
+    bool ctrl = (mods & NSEventModifierFlagControl) != 0;
+    bool alt = (mods & NSEventModifierFlagOption) != 0;
+    bool platform = (mods & NSEventModifierFlagCommand) != 0;
+    if ((mods & flag) != 0) {
+        WindowKeyDown(win, key, shift, ctrl, alt, platform, false,
+                      KeyDownFlags{});
+        return;
+    }
+    WindowKeyUp(win, key, shift, ctrl, alt, platform, false);
 }
 
 // True when the caller should hand the event to the input method for its
