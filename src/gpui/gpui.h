@@ -2791,6 +2791,17 @@ struct AccessibilityDocumentSource {
     void* data = nullptr;
     uint64_t textRevision = 0;
     uint64_t selectionRevision = 0;
+    // Optional parts (a PDF's pages): children of the node after its element
+    // children, enumerated on demand instead of an El each per frame. The
+    // count stays the same while textRevision does. Returned strings stay
+    // valid until the next call into the source.
+    int (*partCount)(void* data) = nullptr;
+    Str (*partName)(void* data, int part) = nullptr;
+    Str (*partText)(void* data, int part) = nullptr;
+    // Window coordinates, like AccessibilityNode::bounds; false when none.
+    bool (*partBounds)(void* data, int part, Bounds* out) = nullptr;
+    // The part's UTF-8 range in text, for UIA RangeFromChild.
+    bool (*partRange)(void* data, int part, int* start, int* end) = nullptr;
 };
 
 struct ElLifecycle {
@@ -8964,6 +8975,14 @@ int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId);
 Str WindowAccessibilityTextValue(const AccessibilityNode& node);
 // Whether the node has text, without asking a document source for it.
 bool WindowAccessibilityHasText(const AccessibilityNode& node);
+// A document source's parts; 0 when it has none.
+int WindowAccessibilityPartCount(const AccessibilityNode& node);
+Str WindowAccessibilityPartName(const AccessibilityNode& node, int part);
+Str WindowAccessibilityPartText(const AccessibilityNode& node, int part);
+bool WindowAccessibilityPartBounds(const AccessibilityNode& node, int part,
+                                   Bounds* out);
+bool WindowAccessibilityPartRange(const AccessibilityNode& node, int part,
+                                  Selection* out);
 bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
                                       Selection* out);
 int WindowAccessibilityTextCaret(const AccessibilityNode& node);

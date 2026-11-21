@@ -1642,6 +1642,49 @@ bool WindowAccessibilityHasText(const AccessibilityNode& node) {
     return node.document.text || WindowAccessibilityTextValue(node).s;
 }
 
+int WindowAccessibilityPartCount(const AccessibilityNode& node) {
+    const AccessibilityDocumentSource& d = node.document;
+    return d.partCount ? std::max(0, d.partCount(d.data)) : 0;
+}
+
+static bool AccessibilityPartValid(const AccessibilityNode& node, int part) {
+    return part >= 0 && part < WindowAccessibilityPartCount(node);
+}
+
+Str WindowAccessibilityPartName(const AccessibilityNode& node, int part) {
+    const AccessibilityDocumentSource& d = node.document;
+    if (!d.partName || !AccessibilityPartValid(node, part)) return {};
+    return d.partName(d.data, part);
+}
+
+Str WindowAccessibilityPartText(const AccessibilityNode& node, int part) {
+    const AccessibilityDocumentSource& d = node.document;
+    if (!d.partText || !AccessibilityPartValid(node, part)) return {};
+    Str text = d.partText(d.data, part);
+    return text.s ? text : StrL("");
+}
+
+bool WindowAccessibilityPartBounds(const AccessibilityNode& node, int part,
+                                   Bounds* out) {
+    const AccessibilityDocumentSource& d = node.document;
+    if (!out || !d.partBounds || !AccessibilityPartValid(node, part)) {
+        return false;
+    }
+    return d.partBounds(d.data, part, out);
+}
+
+bool WindowAccessibilityPartRange(const AccessibilityNode& node, int part,
+                                  Selection* out) {
+    const AccessibilityDocumentSource& d = node.document;
+    if (!out || !d.partRange || !AccessibilityPartValid(node, part)) {
+        return false;
+    }
+    int start = 0, end = 0;
+    if (!d.partRange(d.data, part, &start, &end)) return false;
+    *out = {start, end};
+    return true;
+}
+
 bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
                                       Selection* out) {
     if (!out) return false;

@@ -9,6 +9,7 @@ namespace gpui {
 // Internal conformance probe implemented beside the UIA provider, not part of
 // the published header surface.
 bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId);
+bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId);
 } // namespace gpui
 #endif
 
@@ -1358,6 +1359,89 @@ static void ADocumentSourceIsReadOnDemand() {
     FreeAccessibilityFrame(&f);
 }
 
+// Local, no Rust counterpart: a document's pages are parts enumerated on
+// demand, not elements collected each frame.
+struct PagedDocument {
+    Str pages[3] = {StrL("one"), StrL("two"), StrL("three")};
+    Str text = StrL("one\ntwo\nthree");
+    int starts[3] = {0, 4, 8};
+    int partReads = 0;
+};
+
+static Str PagedDocumentText(void* data) {
+    return ((PagedDocument*)data)->text;
+}
+
+static int PagedDocumentPartCount(void*) {
+    return 3;
+}
+
+static Str PagedDocumentPartName(void*, int part) {
+    static const Str kNames[3] = {StrL("Page 1"), StrL("Page 2"),
+                                  StrL("Page 3")};
+    return kNames[part];
+}
+
+static Str PagedDocumentPartText(void* data, int part) {
+    auto* doc = (PagedDocument*)data;
+    doc->partReads++;
+    return doc->pages[part];
+}
+
+static bool PagedDocumentPartBounds(void*, int part, Bounds* out) {
+    *out = {10, 10 + 100.f * (float)part, 80, 90};
+    return true;
+}
+
+static bool PagedDocumentPartRange(void* data, int part, int* start, int* end) {
+    auto* doc = (PagedDocument*)data;
+    *start = doc->starts[part];
+    *end = *start + len(doc->pages[part]);
+    return true;
+}
+
+static void ADocumentSourceEnumeratesItsPartsOnDemand() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    PagedDocument doc;
+    AccessibilityDocumentSource source;
+    source.text = &PagedDocumentText;
+    source.data = &doc;
+    source.partCount = &PagedDocumentPartCount;
+    source.partName = &PagedDocumentPartName;
+    source.partText = &PagedDocumentPartText;
+    source.partBounds = &PagedDocumentPartBounds;
+    source.partRange = &PagedDocumentPartRange;
+    El* overlay =
+        Div(f.arena)->Role(AccessibilityRole::Button)->AriaLabel(StrL("x"));
+    El* e = Div(f.arena)
+                ->AriaLabel(StrL("doc.pdf"))
+                ->AccessibilityDocument(source)
+                ->Child(overlay);
+    AccessibilityCollect(e, &f.win->accessibility);
+    utassert(len(f.win->accessibility) == 2);
+    AccessibilityNode* node = &f.win->accessibility[0];
+    utassert(node->info.role == AccessibilityRole::Document);
+    // the parts are not nodes and their text is not read until asked
+    utassert(doc.partReads == 0);
+    utassert(WindowAccessibilityPartCount(*node) == 3);
+    utassert(StrEq(WindowAccessibilityPartName(*node, 1), StrL("Page 2")));
+    utassert(!WindowAccessibilityPartName(*node, 3).s);
+    utassert(StrEq(WindowAccessibilityPartText(*node, 2), StrL("three")));
+    utassert(doc.partReads == 1);
+    Bounds b;
+    utassert(WindowAccessibilityPartBounds(*node, 1, &b) && b.y == 110);
+    Selection range;
+    utassert(WindowAccessibilityPartRange(*node, 1, &range));
+    utassert(range.start == 4 && range.end == 7);
+#if GPUI_OS_WINDOWS
+    // the document covers its pages; the overlay is off them
+    node->bounds = {0, 0, 100, 400};
+    f.win->accessibility[1].bounds = {90, 390, 5, 5};
+    utassert(AccessibilityWinPartsSmokeTest(f.win, node->id));
+#endif
+    FreeAccessibilityFrame(&f);
+}
+
 void TestAccessibility() {
     TextViewPublishesItsRenderedBodyToAccessibility();
     ButtonExposesOptionalDisclosureState();
@@ -1391,4 +1475,5 @@ void TestAccessibility() {
     SingleLineRangesUseTheCurrentFrameGeometry();
     MultilineAccessibilityKeepsLineBreaksAndSelection();
     ADocumentSourceIsReadOnDemand();
+    ADocumentSourceEnumeratesItsPartsOnDemand();
 }

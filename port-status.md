@@ -235,6 +235,13 @@ The current update target is
   Windows raises UIA TextChanged / TextSelectionChanged on a revision change;
   macOS and Linux read the same text but announce only the tree change
   (`src/gpui/accessibility_win.cpp`).
+- **A document's parts are enumerated on demand.** Local addition: an
+  `AccessibilityDocumentSource` may list parts (a PDF's pages) with a name,
+  text, bounds and text range each, read only when asked, so a large
+  document adds no El per page per frame. Windows exposes them as UIA
+  children after the node's element children (Custom control, read-only
+  Value, hit testing, `RangeFromChild`); macOS and Linux do not expose them
+  yet (`src/gpui/accessibility_win.cpp`).
 - **Fitted text does not contribute its max-content width.** A
   shrink-to-fit bubble around a TextView sizes to its padding and list
   markers. A run is width 100%, and that percentage does not fall back
