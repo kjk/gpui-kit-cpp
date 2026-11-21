@@ -242,8 +242,12 @@ The current update target is
   text, bounds and text range each, read only when asked, so a large
   document adds no El per page per frame. Windows exposes them as UIA
   children after the node's element children (Custom control, read-only
-  Value, hit testing, `RangeFromChild`); macOS and Linux do not expose them
-  yet (`src/gpui/accessibility_win.cpp`).
+  Value, hit testing, `RangeFromChild`). Linux exposes them as AT-SPI
+  children at `.../n<id>/p<part>` (page role, read-only Text of the part's
+  own text, Component extents, hit testing); AT-SPI has no
+  `RangeFromChild`, so the part range is unused there. macOS does not expose
+  them yet (`src/gpui/accessibility_win.cpp`,
+  `src/gpui/accessibility_linux.cpp`).
 - **Fitted text does not contribute its max-content width.** A
   shrink-to-fit bubble around a TextView sizes to its padding and list
   markers. A run is width 100%, and that percentage does not fall back

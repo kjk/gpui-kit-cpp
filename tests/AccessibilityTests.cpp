@@ -12,6 +12,12 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId);
 bool AccessibilityWinPartsSmokeTest(Window* win, uint32_t nodeId);
 } // namespace gpui
 #endif
+#if GPUI_OS_LINUX
+namespace gpui {
+// Drives the AT-SPI handlers over a socketpair; beside the adapter too.
+bool AccessibilityLinuxPartsSmokeTest(Window* win, uint32_t nodeId);
+} // namespace gpui
+#endif
 
 struct AccessibilityFrame {
     App app;
@@ -1433,11 +1439,14 @@ static void ADocumentSourceEnumeratesItsPartsOnDemand() {
     Selection range;
     utassert(WindowAccessibilityPartRange(*node, 1, &range));
     utassert(range.start == 4 && range.end == 7);
-#if GPUI_OS_WINDOWS
     // the document covers its pages; the overlay is off them
     node->bounds = {0, 0, 100, 400};
     f.win->accessibility[1].bounds = {90, 390, 5, 5};
+#if GPUI_OS_WINDOWS
     utassert(AccessibilityWinPartsSmokeTest(f.win, node->id));
+#endif
+#if GPUI_OS_LINUX
+    utassert(AccessibilityLinuxPartsSmokeTest(f.win, node->id));
 #endif
     FreeAccessibilityFrame(&f);
 }
