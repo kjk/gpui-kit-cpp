@@ -9271,6 +9271,10 @@ bool AppHasMenuBar();
 // label or checked state changes, which is how the checked appearance and
 // theme rows keep up; the platform replaces the bar wholesale.
 void AppSetMenus(App* app, const MenuDef* menus, int n);
+// Whether macOS adds its own Enter Full Screen row to a menu named View. An
+// application with a full screen of its own turns it off. Call before
+// AppSetMenus; ignored elsewhere.
+void AppSetOsFullScreenMenuItem(bool shown);
 // Show or hide the OS menu bar. macOS only; ignored everywhere else. Hiding
 // it leaves the menus installed, so a shortcut still reaches its row.
 void AppSetMenuBarVisible(bool visible);

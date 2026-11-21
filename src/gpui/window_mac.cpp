@@ -2810,6 +2810,12 @@ bool PlatHasAppMenu() {
     return true;
 }
 
+void PlatSetOsFullScreenMenuItem(bool shown) {
+    [[NSUserDefaults standardUserDefaults]
+        setBool:(shown ? YES : NO)
+         forKey:@"NSFullScreenMenuItemEverywhere"];
+}
+
 void PlatSetMenuBarVisible(bool visible) {
     [NSMenu setMenuBarVisible:visible ? YES : NO];
 }
@@ -3553,6 +3559,10 @@ bool PlatInit(App* app) {
             gAppDelegate = [[GpuiAppDelegate alloc] init];
         }
         [NSApp setDelegate:gAppDelegate];
+        // AppKit would merge an application's windows into tabs of its own
+        // and add rows for them to the View and Window menus, ⌃Tab among
+        // them, which an application with tabs of its own then never gets.
+        [NSWindow setAllowsAutomaticWindowTabbing:NO];
         [NSApp finishLaunching];
         // finishLaunching's menu is empty when we are not a bundled app.
         // ⌘Q and the application menu's Quit row both call terminate:, which

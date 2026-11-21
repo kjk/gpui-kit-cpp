@@ -636,6 +636,9 @@ void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n);
 // draws its own bar.
 void PlatSetMenuBarVisible(bool visible);
 
+// AppSetOsFullScreenMenuItem.
+void PlatSetOsFullScreenMenuItem(bool shown);
+
 // The three where the application draws its own bar: nothing to install.
 #if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_WASM
 inline bool PlatHasAppMenu() {
@@ -646,6 +649,9 @@ inline void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
 }
 inline void PlatSetMenuBarVisible(bool visible) {
     (void)visible;
+}
+inline void PlatSetOsFullScreenMenuItem(bool shown) {
+    (void)shown;
 }
 #endif
 

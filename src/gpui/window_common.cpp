@@ -5890,6 +5890,10 @@ bool AppHasMenuBar() {
     return PlatHasAppMenu();
 }
 
+void AppSetOsFullScreenMenuItem(bool shown) {
+    PlatSetOsFullScreenMenuItem(shown);
+}
+
 void AppSetMenus(App* app, const MenuDef* menus, int n) {
     if (!app) {
         return;
