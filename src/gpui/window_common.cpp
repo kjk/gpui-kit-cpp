@@ -5836,6 +5836,11 @@ static PlatMenuItem* AppMenuToPlat(AppMenuState* state, Arena* a,
     for (int i = 0; i < n; i++) {
         const MenuRow& r = rows[i];
         PlatMenuItem& p = out[i];
+        if (r.role != MenuRole::None) {
+            p.role = r.role;
+            p.label = StrDup(a, r.label).s;
+            continue;
+        }
         if (r.separator || len(r.label) <= 0) {
             p.separator = true;
             continue;

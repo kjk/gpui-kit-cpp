@@ -2558,6 +2558,69 @@ static NSEventModifierFlags KeyEquivalentMask(const Modifiers& mods) {
     return mask;
 }
 
+// A MenuRole row: AppKit's own action, sent up the responder chain (the key
+// window, then NSApp), with the shortcut every Mac application gives it.
+static NSMenuItem* RoleMenuItem(const PlatMenuItem& it) {
+    NSString* label = it.label && it.label[0]
+                          ? [NSString stringWithUTF8String:it.label]
+                          : nil;
+    NSString* app = [[NSProcessInfo processInfo] processName];
+    SEL action = nil;
+    NSString* key = @"";
+    NSEventModifierFlags mods = NSEventModifierFlagCommand;
+    switch (it.role) {
+        case MenuRole::Services: {
+            NSMenuItem* item =
+                [[NSMenuItem alloc] initWithTitle:(label ? label : @"Services")
+                                           action:nil
+                                    keyEquivalent:@""];
+            NSMenu* services = [[NSMenu alloc] init];
+            [item setSubmenu:services];
+            [NSApp setServicesMenu:services];
+            return item;
+        }
+        case MenuRole::Hide:
+            if (!label) {
+                label = [@"Hide " stringByAppendingString:app];
+            }
+            action = @selector(hide:);
+            key = @"h";
+            break;
+        case MenuRole::HideOthers:
+            label = label ? label : @"Hide Others";
+            action = @selector(hideOtherApplications:);
+            key = @"h";
+            mods |= NSEventModifierFlagOption;
+            break;
+        case MenuRole::ShowAll:
+            label = label ? label : @"Show All";
+            action = @selector(unhideAllApplications:);
+            break;
+        case MenuRole::Minimize:
+            label = label ? label : @"Minimize";
+            action = @selector(performMiniaturize:);
+            key = @"m";
+            break;
+        case MenuRole::Zoom:
+            label = label ? label : @"Zoom";
+            action = @selector(performZoom:);
+            break;
+        case MenuRole::BringAllToFront:
+            label = label ? label : @"Bring All to Front";
+            action = @selector(arrangeInFront:);
+            break;
+        case MenuRole::None:
+            return nil;
+    }
+    NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:label
+                                                  action:action
+                                           keyEquivalent:key];
+    if ([key length] > 0) {
+        [item setKeyEquivalentModifierMask:mods];
+    }
+    return item;
+}
+
 // `target` and `sel` are what a chosen row reports to: a popup menu answers
 // into the variable its tracking loop is waiting on, and the application menu
 // bar, which outlives every tracking loop, dispatches the row's action.
@@ -2571,6 +2634,13 @@ static NSMenu* BuildMenu(Window* win, const PlatMenuItem* items, int n,
         const PlatMenuItem& it = items[i];
         if (it.separator) {
             [menu addItem:[NSMenuItem separatorItem]];
+            continue;
+        }
+        if (it.role != MenuRole::None) {
+            NSMenuItem* item = RoleMenuItem(it);
+            if (item) {
+                [menu addItem:item];
+            }
             continue;
         }
         NSString* label =

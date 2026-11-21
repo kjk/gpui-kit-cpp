@@ -574,6 +574,7 @@ struct PlatMenuItem {
     // would have reached the same action never goes through the menu at all.
     const char* key = nullptr;
     Modifiers keyMods = {};
+    MenuRole role = MenuRole::None;
 };
 
 // Whether this platform has a popup menu of its own. False sends the caller

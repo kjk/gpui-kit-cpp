@@ -9220,6 +9220,20 @@ inline WindowButtonSupport WindowGetButtonSupport(Window*) {
 // the platforms without one ignore it, which is where component::AppMenuBar
 // comes in — the same menus drawn into the window.
 
+// A row the OS menu bar provides and runs itself, with the OS's own shortcut
+// (macOS: Hide ⌘H, Minimize ⌘M). Menus drawn into a window leave it out. An
+// empty label takes the OS's.
+enum class MenuRole : uint8_t {
+    None,
+    Services,
+    Hide,
+    HideOthers,
+    ShowAll,
+    Minimize,
+    Zoom,
+    BringAllToFront,
+};
+
 // gpui::MenuItem. A row with no label is a separator, and a row with rows
 // under it opens onto them rather than doing anything itself.
 struct MenuRow {
@@ -9237,6 +9251,7 @@ struct MenuRow {
     // A stroke ("cmd-q") shown beside the row. Null asks the keymap for the
     // chord bound to this action and argument.
     const char* stroke = nullptr;
+    MenuRole role = MenuRole::None;
 };
 
 // gpui::Menu: one menu of the bar, which is a name and its rows.

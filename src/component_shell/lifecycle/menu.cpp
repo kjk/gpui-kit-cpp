@@ -246,6 +246,10 @@ static component::PopupMenu* PopupFor(Ctx* cx, Str id, const MenuRow* rows,
     component::PopupMenu* popup = component::PopupMenu::New(cx, id);
     for (int i = 0; i < n; i++) {
         const MenuRow& row = rows[i];
+        // the OS menu bar's own rows: nothing here can run them
+        if (row.role != MenuRole::None) {
+            continue;
+        }
         if (row.separator) {
             popup->Separator();
         } else if (row.submenu) {
