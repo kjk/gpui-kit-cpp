@@ -298,10 +298,53 @@ static void TestDragOutDataObject() {
 }
 #endif
 
+// ClipboardSetPaths on the test platform's clipboard, and a drag out of files
+// that may be moved
+static void TestDragOutPaths() {
+    App* app = TestAppNew();
+    auto view = EntityNew<DragOutView>(app);
+    Window* win = TestWindowOpen(app, view, 400, 300, 1);
+    DragOutView* self = view.Get(app);
+    Arena* a = ArenaNew();
+
+    utassert(!ClipboardHasPaths(win));
+    utassert(!ClipboardSetPaths(win, {}, false));
+    utassert(ClipboardSetPaths(win, StrL("/a/one.txt\n/b/two"), true));
+    utassert(ClipboardHasPaths(win));
+    ClipboardItem item = ClipboardGetItem(a, win);
+    utassert(base::StrEq(item.externalPaths, StrL("/a/one.txt\n/b/two")));
+    utassert(item.externalPathsCut && len(item.text) == 0);
+    utassert(ClipboardSetPaths(win, StrL("/a/one.txt"), false));
+    item = ClipboardGetItem(a, win);
+    utassert(!item.externalPathsCut);
+    ClipboardClear(win);
+    utassert(!ClipboardHasPaths(win));
+    utassert(ClipboardGetItem(a, win).IsEmpty());
+    ClipboardSetText(win, StrL("x"));
+    utassert(!ClipboardHasPaths(win));
+
+    PlatformInput down =
+        InputMouseDown(MouseButton::Left, 50, 50, {}, 1, false);
+    WindowDispatchInput(win, &down);
+    DragOutData d;
+    d.paths = StrL("/a/one.txt");
+    d.allowMove = true;
+    utassert(WindowStartDragOut(win, d, ListenTo(view, &DragOutView::OnEnd)));
+    DragOutData got;
+    utassert(TestPendingDragOut(&got));
+    utassert(got.allowMove && !got.allowLink);
+    utassert(TestFinishDragOut(DragOutResult::Moved));
+    utassert(self->last == DragOutResult::Moved);
+
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
 void TestDragOut() {
     TestSuite("drag out");
     TestDragOutShared();
     TestDragOutWindow();
+    TestDragOutPaths();
 #if GPUI_OS_WINDOWS
     TestDragOutDataObject();
 #endif

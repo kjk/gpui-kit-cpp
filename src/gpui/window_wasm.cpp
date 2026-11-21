@@ -1108,6 +1108,20 @@ bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
     return false;
 }
 
+bool PlatClipboardSetPaths(Window* win, Str paths, bool cut) {
+    (void)win, (void)paths, (void)cut;
+    return false;
+}
+
+bool PlatClipboardHasPaths(Window* win) {
+    (void)win;
+    return false;
+}
+
+void PlatClipboardClear(Window* win) {
+    (void)win;
+}
+
 Str PlatClipboardGetText(Arena* a, Window* win) {
     (void)win;
     if (!gInPasteEvent) {

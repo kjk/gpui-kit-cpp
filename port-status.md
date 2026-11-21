@@ -123,8 +123,19 @@ The current update target is
   connected until the next drag or exit, for targets that read it late.
   macOS begins an `NSDraggingSession` (`NSPasteboardTypeString`, file URLs,
   an `NSFilePromiseProvider` for the image; no raw PNG pasteboard type).
-  Linux (XDND source), wasm, iOS and Android answer `Unsupported`
-  (`src/gpui/window_common.cpp`, `window_win.cpp`, `window_mac.cpp`).
+  `allowMove` / `allowLink` offer those effects too. Files alone go out on
+  Windows as the shell's own data object (`SHCreateDataObject` plus
+  `CF_HDROP`) through `SHDoDragDrop` with the shell's drag image, as
+  Explorer's do. Linux (XDND source), wasm, iOS and Android answer
+  `Unsupported` (`src/gpui/window_common.cpp`, `window_win.cpp`,
+  `window_mac.cpp`).
+- **`ClipboardSetPaths` / `ClipboardHasPaths` / `ClipboardClear` have no Rust
+  twin.** Files for a file manager to paste, copied or cut, and
+  `ClipboardItem::externalPathsCut` reading which. Windows `CF_HDROP` plus
+  Preferred DropEffect; Linux serves `text/uri-list` and
+  `x-special/gnome-copied-files`; macOS writes file URLs and marks a cut with
+  the private type `org.gpui.cut-paths`, which Finder ignores. wasm answers
+  false (`src/gpui/window_*.cpp`).
 - **An `ExternalText` drag has no Rust twin.** A drag carrying no files but
   text or a link (a browser's image) arrives as drag kind `ExternalText`,
   with `DropEvent::externalText` / `externalUrl` (Windows: `CF_UNICODETEXT`

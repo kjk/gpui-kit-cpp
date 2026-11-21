@@ -1478,6 +1478,92 @@ static DragOutResult DragOutResultOf(HRESULT hr, DWORD effect) {
     return DragOutResult::Canceled;
 }
 
+static DWORD DragOutEffects(const DragOutData& d) {
+    DWORD effects = DROPEFFECT_COPY;
+    if (d.allowMove) {
+        effects |= DROPEFFECT_MOVE;
+    }
+    if (d.allowLink) {
+        effects |= DROPEFFECT_LINK;
+    }
+    return effects;
+}
+
+// Files alone go out as the shell's own data object, as Explorer's do: a
+// target gets the item formats it asks for and IDragSourceHelper can store
+// the drag image in it.
+static IDataObject* ShellPathsDataObject(Str paths) {
+    Vec<PIDLIST_ABSOLUTE> pidls;
+    bool ok = true;
+    for (Str rest = paths; ok && len(rest) > 0;) {
+        Str line = NextLine(&rest);
+        if (len(line) == 0) {
+            continue;
+        }
+        PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(ToCWstrTemp(line));
+        ok = pidl != nullptr;
+        if (ok) {
+            VecAppend(pidls, pidl);
+        }
+    }
+    IDataObject* obj = nullptr;
+    if (ok && len(pidls) > 0) {
+        HRESULT hr = SHCreateDataObject(nullptr, (UINT)len(pidls),
+                                        (PCUITEMID_CHILD_ARRAY)pidls.els,
+                                        nullptr, IID_IDataObject, (void**)&obj);
+        if (FAILED(hr)) {
+            obj = nullptr;
+        }
+    }
+    for (int i = 0; i < len(pidls); i++) {
+        ILFree(pidls[i]);
+    }
+    if (!obj) {
+        return nullptr;
+    }
+    FORMATETC fmt = {CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    STGMEDIUM medium = {};
+    medium.tymed = TYMED_HGLOBAL;
+    medium.hGlobal = GlobalFromPaths(paths);
+    if (!medium.hGlobal || FAILED(obj->SetData(&fmt, &medium, TRUE))) {
+        if (medium.hGlobal) {
+            GlobalFree(medium.hGlobal);
+        }
+        obj->Release();
+        return nullptr;
+    }
+    return obj;
+}
+
+// The shell's drag image of the files and SHDoDragDrop's drop source, which
+// shows it and the drop descriptions.
+static bool DragOutShellPaths(DragOutRequest* req, HWND hwnd) {
+    const DragOutData& d = req->data;
+    if (len(d.paths) == 0 || len(d.text) > 0 || d.imageBytesLen > 0) {
+        return false;
+    }
+    IDataObject* data = ShellPathsDataObject(d.paths);
+    if (!data) {
+        return false;
+    }
+    IDragSourceHelper2* helper = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_DragDropHelper, nullptr,
+                                   CLSCTX_INPROC_SERVER,
+                                   IID_PPV_ARGS(&helper)))) {
+        helper->SetFlags(DSH_ALLOWDROPDESCRIPTIONTEXT);
+        POINT pt = {};
+        GetCursorPos(&pt);
+        ScreenToClient(hwnd, &pt);
+        helper->InitializeFromWindow(hwnd, &pt, data);
+        helper->Release();
+    }
+    DWORD effect = DROPEFFECT_NONE;
+    HRESULT hr = SHDoDragDrop(hwnd, data, nullptr, DragOutEffects(d), &effect);
+    data->Release();
+    DragOutFinish(req, DragOutResultOf(hr, effect));
+    return true;
+}
+
 // Run from the main-thread queue: DoDragDrop has a loop of its own, which
 // must not run inside the dispatch of the move that started it.
 static void DragOutRun(DragOutRequest* req) {
@@ -1487,6 +1573,9 @@ static void DragOutRun(DragOutRequest* req) {
     // loop for the next input to notice.
     if (!hwnd || !PrimaryButtonDown()) {
         DragOutFinish(req, DragOutResult::Canceled);
+        return;
+    }
+    if (DragOutShellPaths(req, hwnd)) {
         return;
     }
     IDataObject* data = DragOutDataObjectNew(req->data);
@@ -1507,7 +1596,7 @@ static void DragOutRun(DragOutRequest* req) {
         }
     }
     DWORD effect = DROPEFFECT_NONE;
-    HRESULT hr = DoDragDrop(data, src, DROPEFFECT_COPY, &effect);
+    HRESULT hr = DoDragDrop(data, src, DragOutEffects(req->data), &effect);
     if (src->imageDrag) {
         ImageList_DragLeave(GetDesktopWindow());
         ImageList_EndDrag();
@@ -3315,42 +3404,72 @@ TempStr PromptForNewPathTemp(Window* win, const NewPathPrompt& opts) {
     return result;
 }
 
-void PlatClipboardSetText(Window* win, Str text) {
-    WCHAR* w = ToCWstrTemp(text);
-    int wn = (int)wcslen(w);
-    HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, (SIZE_T)(wn + 1) * sizeof(WCHAR));
-    if (!h) {
-        return;
-    }
-    auto* dst = (WCHAR*)GlobalLock(h);
-    if (!dst) {
-        GlobalFree(h);
-        return;
-    }
-    memcpy(dst, w, (size_t)(wn + 1) * sizeof(WCHAR));
-    GlobalUnlock(h);
-    // OpenClipboard often fails right after TrackPopupMenu or while OLE
-    // holds the clipboard; retry and fall back to a null owner.
-    HWND hwnd = Hwnd(win);
-    bool ok = false;
-    for (int i = 0; i < 16 && !ok; i++) {
+// Puts the handles on the clipboard in place of what is there; it owns those it
+// took and the caller frees the rest. OpenClipboard often fails right after
+// TrackPopupMenu or while OLE holds the clipboard; retry and fall back to a
+// null owner.
+static bool ClipboardPut(HWND hwnd, const UINT* formats, HGLOBAL* hs, int n) {
+    for (int i = 0; i < 16; i++) {
         HWND owner = (i < 8 && hwnd) ? hwnd : nullptr;
         if (!OpenClipboard(owner)) {
             Sleep(8);
             continue;
         }
         EmptyClipboard();
-        if (SetClipboardData(CF_UNICODETEXT, h)) {
-            ok = true;
-            h = nullptr;
+        bool ok = true;
+        for (int k = 0; k < n; k++) {
+            if (hs[k] && SetClipboardData(formats[k], hs[k])) {
+                hs[k] = nullptr;
+            } else if (k == 0) {
+                ok = false;
+                break;
+            }
         }
         CloseClipboard();
-        if (!ok) {
-            Sleep(8);
+        if (ok) {
+            return true;
+        }
+        Sleep(8);
+    }
+    return false;
+}
+
+static void GlobalsFree(HGLOBAL* hs, int n) {
+    for (int k = 0; k < n; k++) {
+        if (hs[k]) {
+            GlobalFree(hs[k]);
         }
     }
-    if (h) {
-        GlobalFree(h);
+}
+
+void PlatClipboardSetText(Window* win, Str text) {
+    UINT formats[1] = {CF_UNICODETEXT};
+    HGLOBAL hs[1] = {GlobalFromText(text)};
+    if (hs[0]) {
+        ClipboardPut(Hwnd(win), formats, hs, 1);
+    }
+    GlobalsFree(hs, 1);
+}
+
+bool PlatClipboardSetPaths(Window* win, Str paths, bool cut) {
+    DWORD effect = cut ? DROPEFFECT_MOVE : DROPEFFECT_COPY;
+    UINT formats[2] = {CF_HDROP, ClipFormat(CFSTR_PREFERREDDROPEFFECT)};
+    HGLOBAL hs[2] = {GlobalFromPaths(paths),
+                     GlobalFromBytes(&effect, sizeof(effect))};
+    bool ok = hs[0] && ClipboardPut(Hwnd(win), formats, hs, 2);
+    GlobalsFree(hs, 2);
+    return ok;
+}
+
+bool PlatClipboardHasPaths(Window* win) {
+    (void)win;
+    return IsClipboardFormatAvailable(CF_HDROP) != FALSE;
+}
+
+void PlatClipboardClear(Window* win) {
+    if (OpenClipboard(Hwnd(win))) {
+        EmptyClipboard();
+        CloseClipboard();
     }
 }
 
@@ -3470,6 +3589,13 @@ ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
     if (!dib) dib = GetClipboardData(CF_DIB);
     ClipboardReadDib(a, dib, &out);
     out.externalPaths = ClipboardReadPaths(a, GetClipboardData(CF_HDROP));
+    HANDLE effect = GetClipboardData(ClipFormat(CFSTR_PREFERREDDROPEFFECT));
+    auto* preferred = effect ? (const DWORD*)GlobalLock(effect) : nullptr;
+    if (preferred) {
+        out.externalPathsCut =
+            len(out.externalPaths) > 0 && (*preferred & DROPEFFECT_MOVE) != 0;
+        GlobalUnlock(effect);
+    }
     CloseClipboard();
     return out;
 }

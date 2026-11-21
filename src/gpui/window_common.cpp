@@ -877,6 +877,31 @@ bool ClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
     return PlatClipboardSetImage(win, png, pngLen);
 }
 
+bool ClipboardSetPaths(Window* win, Str paths, bool cut) {
+    if (TestPlatformClipboardWritePaths(paths, cut)) {
+        return len(paths) > 0;
+    }
+    if (len(paths) <= 0) {
+        return false;
+    }
+    return PlatClipboardSetPaths(win, paths, cut);
+}
+
+bool ClipboardHasPaths(Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(GetTempArena(), &simulated)) {
+        return simulated.HasExternalPaths();
+    }
+    return PlatClipboardHasPaths(win);
+}
+
+void ClipboardClear(Window* win) {
+    if (TestPlatformClipboardWrite(Str{})) {
+        return;
+    }
+    PlatClipboardClear(win);
+}
+
 Str ClipboardGetText(Arena* a, Window* win) {
     ClipboardItem simulated;
     if (TestPlatformClipboardRead(a, &simulated)) {

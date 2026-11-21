@@ -2900,14 +2900,24 @@ bool PlatWindowPrompt(Window* win, PromptRequest* req) {
 - (NSDragOperation)draggingSession:(NSDraggingSession*)session
     sourceOperationMaskForDraggingContext:(NSDraggingContext)context {
     (void)session, (void)context;
-    return NSDragOperationCopy;
+    NSDragOperation ops = NSDragOperationCopy;
+    if (req && req->data.allowMove) {
+        ops |= NSDragOperationMove | NSDragOperationGeneric;
+    }
+    if (req && req->data.allowLink) {
+        ops |= NSDragOperationLink;
+    }
+    return ops;
 }
 - (void)draggingSession:(NSDraggingSession*)session
            endedAtPoint:(NSPoint)point
               operation:(NSDragOperation)op {
     (void)session, (void)point;
     gpui::DragOutResult result = gpui::DragOutResult::Canceled;
-    if (op & NSDragOperationMove) {
+    // Finder answers a move with Generic as well as Move; a copy has neither
+    bool moved = req && req->data.allowMove &&
+                 (op & (NSDragOperationMove | NSDragOperationGeneric));
+    if (moved) {
         result = gpui::DragOutResult::Moved;
     } else if (op & NSDragOperationCopy) {
         result = gpui::DragOutResult::Copied;
@@ -3267,6 +3277,52 @@ bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
     return true;
 }
 
+// marks files ClipboardSetPaths put there as cut; Finder has no such thing
+static NSString* const kCutPathsType = @"org.gpui.cut-paths";
+
+bool PlatClipboardSetPaths(Window* win, Str paths, bool cut) {
+    (void)win;
+    NSMutableArray<NSURL*>* urls = [NSMutableArray array];
+    for (Str rest = paths; len(rest) > 0;) {
+        int k = 0;
+        while (k < len(rest) && rest.s[k] != '\n') {
+            k++;
+        }
+        Str line(rest.s, k);
+        int skip = k < len(rest) ? k + 1 : k;
+        rest = Str(rest.s + skip, len(rest) - skip);
+        if (len(line) > 0) {
+            [urls addObject:[NSURL fileURLWithPath:PromptNSString(line)]];
+        }
+    }
+    if (urls.count == 0) {
+        return false;
+    }
+    NSPasteboard* pb = [NSPasteboard generalPasteboard];
+    [pb clearContents];
+    if (![pb writeObjects:urls]) {
+        return false;
+    }
+    if (cut) {
+        [pb.pasteboardItems.firstObject setString:@"cut" forType:kCutPathsType];
+    }
+    return true;
+}
+
+bool PlatClipboardHasPaths(Window* win) {
+    (void)win;
+    return [[NSPasteboard generalPasteboard]
+        canReadObjectForClasses:@[ [NSURL class] ]
+                        options:@{
+                            NSPasteboardURLReadingFileURLsOnlyKey : @YES
+                        }];
+}
+
+void PlatClipboardClear(Window* win) {
+    (void)win;
+    [[NSPasteboard generalPasteboard] clearContents];
+}
+
 Str PlatClipboardGetText(Arena* a, Window* win) {
     (void)win;
     NSPasteboard* pb = [NSPasteboard generalPasteboard];
@@ -3308,6 +3364,8 @@ ClipboardItem PlatClipboardGetItem(Arena* a, Window* win) {
             paths.Append(Str(path));
         }
         out.externalPaths = paths.TakeStr();
+        out.externalPathsCut =
+            [pb.pasteboardItems.firstObject stringForType:kCutPathsType] != nil;
     }
     return out;
 }

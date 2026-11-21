@@ -416,6 +416,9 @@ void PlatWake(App* app);
 // installed, drop an empty write, and otherwise call these.
 void PlatClipboardSetText(Window* win, Str text);
 bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen);
+bool PlatClipboardSetPaths(Window* win, Str paths, bool cut);
+bool PlatClipboardHasPaths(Window* win);
+void PlatClipboardClear(Window* win);
 // AppWindowAppearance's platform half. PlatWatchWindowAppearance starts
 // telling AppWindowAppearanceChanged about changes, where the platform has to
 // ask for that (macOS); it is called once, when an observer is installed.

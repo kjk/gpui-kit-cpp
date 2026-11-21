@@ -17,6 +17,9 @@ struct TestPlatform {
     bool on = false;
     double now = 0;
     Str clipboard = {};
+    // ClipboardSetPaths' files, in place of the text
+    Str clipboardPaths = {};
+    bool clipboardCut = false;
 };
 
 static TestPlatform gTestPlatform;
@@ -44,7 +47,22 @@ bool TestPlatformClipboardWrite(Str text) {
         return false;
     }
     StrFree(gTestPlatform.clipboard);
+    StrFree(gTestPlatform.clipboardPaths);
+    gTestPlatform.clipboardPaths = {};
+    gTestPlatform.clipboardCut = false;
     gTestPlatform.clipboard = len(text) > 0 ? StrDup(text) : Str{};
+    return true;
+}
+
+bool TestPlatformClipboardWritePaths(Str paths, bool cut) {
+    if (!gTestPlatform.on) {
+        return false;
+    }
+    StrFree(gTestPlatform.clipboard);
+    StrFree(gTestPlatform.clipboardPaths);
+    gTestPlatform.clipboard = {};
+    gTestPlatform.clipboardPaths = len(paths) > 0 ? StrDup(paths) : Str{};
+    gTestPlatform.clipboardCut = cut && len(paths) > 0;
     return true;
 }
 
@@ -56,6 +74,10 @@ bool TestPlatformClipboardRead(Arena* a, ClipboardItem* out) {
         *out = ClipboardItem{};
         if (len(gTestPlatform.clipboard) > 0) {
             out->text = StrDup(a, gTestPlatform.clipboard);
+        }
+        if (len(gTestPlatform.clipboardPaths) > 0) {
+            out->externalPaths = StrDup(a, gTestPlatform.clipboardPaths);
+            out->externalPathsCut = gTestPlatform.clipboardCut;
         }
     }
     return true;
@@ -201,6 +223,7 @@ App* TestAppNew() {
         return nullptr;
     }
     StrFree(gTestPlatform.clipboard);
+    StrFree(gTestPlatform.clipboardPaths);
     TestPromptsDrop();
     TestDragOutDrop();
     gTestPlatform = TestPlatform{};
@@ -214,6 +237,7 @@ void TestAppFree(App* app) {
     TestDragOutDrop();
     AppFreeHeadless(app);
     StrFree(gTestPlatform.clipboard);
+    StrFree(gTestPlatform.clipboardPaths);
     gTestPlatform = TestPlatform{};
     if (gTestExecWasRunning) {
         ExecInit();

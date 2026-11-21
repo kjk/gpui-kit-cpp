@@ -33,12 +33,14 @@ struct KeyChord;
 // borrowed from the Arena passed to ClipboardGetItem: text is UTF-8, image is
 // an encoded image stream accepted by ImageSource::FromImage, and external
 // paths are UTF-8 separated by newlines. A platform fills every representation
-// it can read from one clipboard snapshot.
+// it can read from one clipboard snapshot. externalPathsCut: the files were
+// cut, so a paste moves them (ClipboardSetPaths).
 struct ClipboardItem {
     Str text = {};
     const uint8_t* imageBytes = nullptr;
     int imageBytesLen = 0;
     Str externalPaths = {};
+    bool externalPathsCut = false;
 
     bool HasImage() const { return imageBytes && imageBytesLen > 0; }
     bool HasExternalPaths() const { return len(externalPaths) > 0; }
@@ -8596,6 +8598,7 @@ double TimeNow();
 // before.
 bool TestPlatformNow(double* out);
 bool TestPlatformClipboardWrite(Str text);
+bool TestPlatformClipboardWritePaths(Str paths, bool cut);
 bool TestPlatformClipboardRead(Arena* a, ClipboardItem* out);
 
 App* AppNew();
@@ -8613,6 +8616,16 @@ ClipboardItem ClipboardGetItem(Arena* a, Window* win);
 // Take it back off. The result is arena-allocated and empty when the
 // clipboard holds no text.
 Str ClipboardGetText(Arena* a, Window* win);
+// Files for a file manager to paste (no Rust twin): newline-separated UTF-8
+// paths of existing files. `cut` asks the paster to move them: Preferred
+// DropEffect on Windows, x-special/gnome-copied-files on Linux, a private
+// type on macOS that only gpui apps read (Finder sees a copy). False where the
+// platform can't (the web) or there are no paths.
+bool ClipboardSetPaths(Window* win, Str paths, bool cut);
+// Whether the clipboard holds files, without reading them or anything else.
+bool ClipboardHasPaths(Window* win);
+// Empty the clipboard, as a paste of cut files does once they moved.
+void ClipboardClear(Window* win);
 // cx.read_from_clipboard_async(): the real read, for a platform whose
 // ClipboardGetItem cannot see the system clipboard outside a paste event —
 // the web, where the read is a permission-gated promise. Starts it and
@@ -8787,6 +8800,10 @@ struct DragOutData {
     // Where the pointer holds the preview, as fractions of its size.
     float previewHotX = 0.5f;
     float previewHotY = 0.5f;
+    // Effects offered besides copy: a target that moves the files reports
+    // Moved, and the files are then gone from where they were.
+    bool allowMove = false;
+    bool allowLink = false;
 };
 
 // How the drag ended: the drop effect the target chose, or none.
@@ -8803,14 +8820,15 @@ struct DragOutEndEvent {
     DragOutResult result = DragOutResult::Canceled;
 };
 
-// Starts an OS drag out of the window, offering copy, from a handler of the
-// press or move that began it (the left button is down). Returns at once:
-// Windows runs DoDragDrop from the main-thread queue, as it has a modal loop
-// of its own; macOS begins an NSDraggingSession. `onEnd` runs once, later,
-// with a DragOutEndEvent, unless the window closed first. The release that
-// ends the drag goes to the drop target, so the window then sends itself the
-// mouse up of the press. False (and Unsupported) when nothing can be dragged:
-// an empty payload, another drag in flight, Linux, wasm, iOS, Android.
+// Starts an OS drag out of the window, offering copy and what DragOutData
+// allows, from a handler of the press or move that began it (the left button
+// is down). Returns at once: Windows runs DoDragDrop from the main-thread
+// queue, as it has a modal loop of its own; macOS begins an
+// NSDraggingSession. `onEnd` runs once, later, with a DragOutEndEvent, unless
+// the window closed first. The release that ends the drag goes to the drop
+// target, so the window then sends itself the mouse up of the press. False
+// (and Unsupported) when nothing can be dragged: an empty payload, another
+// drag in flight, Linux, wasm, iOS, Android.
 bool WindowStartDragOut(Window* win, const DragOutData& data,
                         Listener onEnd = {});
 // Whether WindowStartDragOut can start one here: Windows, macOS and the
@@ -8821,12 +8839,13 @@ int AppRun(App* app);
 Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts);
 void AppSetTitle(Window* win, Str title);
 void AppRequestAnim(Window* win, bool on);
-// One more frame, rather than every frame. Safe to call from inside a render.
+// One more frame, rather than every frame. Safe to call from inside a
+// render.
 void WindowRequestAnimationFrame(Window* win);
-// invalidate_character_coordinates: the caret moved, so the next frame tells
-// the platform where the IME panel goes. WindowFlushImeCoordinates runs the
-// ones still waiting and answers how many, which is simulate_next_frame's
-// count when the caret is the only thing that asked.
+// invalidate_character_coordinates: the caret moved, so the next frame
+// tells the platform where the IME panel goes. WindowFlushImeCoordinates
+// runs the ones still waiting and answers how many, which is
+// simulate_next_frame's count when the caret is the only thing that asked.
 void WindowInvalidateCharacterCoordinates(Window* win);
 int WindowFlushImeCoordinates(Window* win);
 // window.request_virtual_keyboard: a user gesture asks the platform to
@@ -8857,8 +8876,8 @@ inline float FontPx(const Ctx* cx, float px) {
 void WindowRequestAutoscroll(Window* win, Bounds bounds);
 bool WindowTakeAutoscroll(Window* win, Bounds* out);
 // window.last_input_was_keyboard(): whether the last input was a key press
-// rather than the pointer. What focus_visible reads, so a control focused by
-// a click does not show the focus a Tab to it would.
+// rather than the pointer. What focus_visible reads, so a control focused
+// by a click does not show the focus a Tab to it would.
 bool WindowLastInputWasKeyboard(const Window* win);
 
 // Collect focusable click targets from last paint for Tab cycling.
@@ -8870,7 +8889,8 @@ void IdsCollectChildren(El* e);
 void AccessibilityCollect(El* root, Vec<AccessibilityNode>* out);
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId);
-// Where node `nodeId` sits in `win->accessibility`; -1 when it is not there.
+// Where node `nodeId` sits in `win->accessibility`; -1 when it is not
+// there.
 int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId);
 // A null string means the input does not expose its text. An exposed empty
 // field still has a caret and supports text queries.
@@ -8878,8 +8898,8 @@ Str WindowAccessibilityTextValue(const AccessibilityNode& node);
 bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
                                       Selection* out);
 int WindowAccessibilityTextCaret(const AccessibilityNode& node);
-// Logical lines retain their newline, including CRLF. A final newline leaves
-// an empty last line for a caret at the end of the document.
+// Logical lines retain their newline, including CRLF. A final newline
+// leaves an empty last line for a caret at the end of the document.
 Selection AccessibilityTextLineAt(Str text, int offset);
 bool AccessibilityTextLineRange(Str text, int row, Selection* out);
 bool WindowAccessibilityTextRangeBounds(Window* win,
@@ -8887,8 +8907,8 @@ bool WindowAccessibilityTextRangeBounds(Window* win,
                                         Selection range, Bounds* out);
 bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
                                 AccessibilityAction action, Str value = {});
-// RangeValue::SetValue needs an absolute numeric setter rather than a run of
-// Increment actions. Only a live, enabled slider node accepts it.
+// RangeValue::SetValue needs an absolute numeric setter rather than a run
+// of Increment actions. Only a live, enabled slider node accepts it.
 bool WindowAccessibilitySetNumericValue(Window* win, uint32_t nodeId,
                                         float value);
 int FocusNext(Window* win, int trapId, bool backward);
@@ -8897,18 +8917,19 @@ int FocusNext(Window* win, int trapId, bool backward);
 int FocusNextFrom(const Window* win, int fromId, int trapId, bool backward);
 // Move the focus. Everything that focuses goes through here, so the
 // generation a keystroke is stamped with counts every move.
-// FocusHandle — crates/gpui. In GPUI a focus handle is a refcounted key into
-// the window's slotmap, made with `cx.focus_handle()`, owned by whatever holds
-// the state, and attached to a box with `div().track_focus(&handle)`. It has
-// nothing to do with the element's name: a state that wants focus asks for a
-// handle and keeps it, and the element tree picks it up again each frame.
+// FocusHandle — crates/gpui. In GPUI a focus handle is a refcounted key
+// into the window's slotmap, made with `cx.focus_handle()`, owned by
+// whatever holds the state, and attached to a box with
+// `div().track_focus(&handle)`. It has nothing to do with the element's
+// name: a state that wants focus asks for a handle and keeps it, and the
+// element tree picks it up again each frame.
 //
-// The port used to derive a focus id from an element's name — sometimes with
-// an arithmetic twist to keep it clear of that name's *click* id, which is
-// what `HashClickId(id) * 31 + 1` in the popover was. A handle is that done
-// properly. Handles are allocated below -1000 and hashed element ids are
-// positive, so the two spaces cannot meet by construction; the window chrome
-// keeps -1..-4.
+// The port used to derive a focus id from an element's name — sometimes
+// with an arithmetic twist to keep it clear of that name's *click* id,
+// which is what `HashClickId(id) * 31 + 1` in the popover was. A handle is
+// that done properly. Handles are allocated below -1000 and hashed element
+// ids are positive, so the two spaces cannot meet by construction; the
+// window chrome keeps -1..-4.
 //
 // There is no refcount and nothing is given back: an int is cheap, and the
 // state that owns the handle is what keeps it meaningful.
@@ -8918,9 +8939,9 @@ FocusHandle FocusHandleNew(App* app);
 FocusHandle FocusHandleNew(Ctx* cx);
 // handle.is_focused(window) / handle.focus(window) / window.focused(cx).
 bool FocusHandleIsFocused(const Window* win, FocusHandle h);
-// handle.contains(&other, window): `inner` is `outer`, or an element tracking
-// `inner` sat inside one tracking `outer` in the last collected frame (or in
-// the trap it hosts).
+// handle.contains(&other, window): `inner` is `outer`, or an element
+// tracking `inner` sat inside one tracking `outer` in the last collected
+// frame (or in the trap it hosts).
 bool FocusHandleContains(const Window* win, FocusHandle outer,
                          FocusHandle inner);
 // contains_focused: the handle, or anything inside the box tracking it.
@@ -8934,9 +8955,9 @@ bool FocusHandleRestore(Window* win, FocusHandle h);
 // focused handle and the focus moves anywhere else, nowhere included. GPUI
 // tests the last entry of the previous and current focus paths, which is
 // the handle itself rather than anything inside it. The event is the handle
-// that lost the focus. It runs inside WindowSetFocusId, after the move, so it
-// sees where the focus went; GPUI runs it from the effect cycle after the
-// move, which reads the same. A listener whose view has gone is swept.
+// that lost the focus. It runs inside WindowSetFocusId, after the move, so
+// it sees where the focus went; GPUI runs it from the effect cycle after
+// the move, which reads the same. A listener whose view has gone is swept.
 Subscription WindowOnBlur(Window* win, FocusHandle h, Listener handler);
 void WindowUnsubscribeBlur(Window* win, Subscription sub);
 
@@ -8948,30 +8969,33 @@ int WindowFocusedId(const Window* win);
 bool WindowFocusContains(const Window* win, int outer, int inner);
 // FocusHandle::contains_focused: focus is on this element, inside its
 // subtree, or inside the trap it hosts — which is also how a container that
-// is not itself focusable asks whether what it opened still holds the focus.
+// is not itself focusable asks whether what it opened still holds the
+// focus.
 bool WindowFocusWithin(const Window* win, int id);
-// `previous.focus(window, cx)` on a handle a widget stashed. An element that
-// is no longer on screen is a handle whose view has gone, which Rust treats as
-// nothing to do; answers whether focus moved.
+// `previous.focus(window, cx)` on a handle a widget stashed. An element
+// that is no longer on screen is a handle whose view has gone, which Rust
+// treats as nothing to do; answers whether focus moved.
 bool WindowRestoreFocus(Window* win, int id);
 // Resolve the highest-precedence binding for `action` against the key
-// contexts over an arbitrary focus handle in the previously collected frame.
-// The handle need not be focused or a tab stop. Popup triggers use this to
-// paint context-scoped shortcut hints on the first frame their menu opens.
+// contexts over an arbitrary focus handle in the previously collected
+// frame. The handle need not be focused or a tab stop. Popup triggers use
+// this to paint context-scoped shortcut hints on the first frame their menu
+// opens.
 bool WindowBindingForActionAtFocus(Window* win, uint32_t action,
                                    FocusHandle focus, KeyChord* out);
-// The action a keystroke resolves to for whatever has focus, and the handlers
-// it is then offered to. Answers true when one of them kept it — Rust's
-// `dispatch_action` plus the `cx.propagate()` that decides how far it goes.
+// The action a keystroke resolves to for whatever has focus, and the
+// handlers it is then offered to. Answers true when one of them kept it —
+// Rust's `dispatch_action` plus the `cx.propagate()` that decides how far
+// it goes.
 bool WindowDispatchKeyAction(Window* win, int vk, bool shift, bool ctrl,
                              bool alt, bool platform = false,
                              bool function = false);
 // The action half on its own: the chord resolved against the contexts over
 // the focused element, with no handler run. The matcher is stateful — a
-// sequence half-finished is held on it — so a keystroke may only be resolved
-// once, which is why the window does it here and hands the answer on rather
-// than asking twice. `pending` comes back true when the chord began a
-// sequence and belongs to nobody else.
+// sequence half-finished is held on it — so a keystroke may only be
+// resolved once, which is why the window does it here and hands the answer
+// on rather than asking twice. `pending` comes back true when the chord
+// began a sequence and belongs to nobody else.
 uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
                                 bool alt, bool platform, bool function,
                                 int64_t* arg, bool* pending);
@@ -9006,17 +9030,18 @@ bool WindowDispatchKeyUpEvent(Window* win, KeyEvent* ev);
 // first, before the focused field or the keymap hears the key. Answers true
 // when one of them stopped propagating.
 bool WindowDispatchKeyCaptureEvent(Window* win, KeyEvent* ev);
-// cx.on_action: a handler that belongs to the application rather than to any
-// element. Tried after the focused element's chain has passed on the action,
-// which is where Rust's App-level handlers sit too. A plain function pointer,
-// since these are the framework's own and have no view to update.
+// cx.on_action: a handler that belongs to the application rather than to
+// any element. Tried after the focused element's chain has passed on the
+// action, which is where Rust's App-level handlers sit too. A plain
+// function pointer, since these are the framework's own and have no view to
+// update.
 using ActionFn = void (*)(Window* win, ActionEvent* ev);
 void AppOnAction(uint32_t action, ActionFn fn);
 void AppQuit(Window* win);
 // cx.quit(): the application ends, not just this window. AppQuit closes the
-// window it names and the loop ends when the last one has gone, which is the
-// same thing while there is only one — a Quit row with two windows open is
-// where the two part company.
+// window it names and the loop ends when the last one has gone, which is
+// the same thing while there is only one — a Quit row with two windows open
+// is where the two part company.
 void AppQuitAll(App* app);
 void AppInvalidate(Window* win);
 // cx.refresh_windows(): every window this app owns repaints. What a change
@@ -9026,9 +9051,10 @@ void AppRefreshWindows(App* app);
 // choose how to apply it; the browser platform has no theme dependency.
 void AppSetHostThemeHandler(App* app, void (*handler)(App*, bool dark));
 void AppHostSetTheme(App* app, bool dark);
-// cx.on_open_urls: the platform asks the application to open URLs, a file as
-// a file:// URL. On macOS that is Finder's Open With, `open -a` and a drop on
-// the Dock icon. `urls` is borrowed for the call. Only macOS calls it.
+// cx.on_open_urls: the platform asks the application to open URLs, a file
+// as a file:// URL. On macOS that is Finder's Open With, `open -a` and a
+// drop on the Dock icon. `urls` is borrowed for the call. Only macOS calls
+// it.
 using OpenUrlsFn = void (*)(App* app, const Str* urls, int n);
 void AppOnOpenUrls(App* app, OpenUrlsFn fn);
 // cx.window_appearance(). macOS and Windows answer; Linux and the web
@@ -9041,10 +9067,10 @@ using WindowAppearanceFn = void (*)(App* app, WindowAppearance appearance);
 void AppOnWindowAppearanceChanged(App* app, WindowAppearanceFn fn);
 void AppOpenUrls(App* app, const Str* urls, int n);
 // A teardown belonging to a layer above this one, run by AppFree once the
-// windows are gone. The theme registry's arena is what asked for it: it lives
-// in src/ui, which gpui cannot name, and a process-wide table has to be given
-// back somewhere or every ASan run reports it. Registering the same function
-// twice registers it once.
+// windows are gone. The theme registry's arena is what asked for it: it
+// lives in src/ui, which gpui cannot name, and a process-wide table has to
+// be given back somewhere or every ASan run reports it. Registering the
+// same function twice registers it once.
 void AppOnShutdown(void (*fn)());
 // window.window_decorations(): whether the frame around this window is ours
 // to draw. Windows and the browser answer what the window was opened with;
@@ -9090,17 +9116,17 @@ inline WindowButtonSupport WindowGetButtonSupport(Window*) {
 
 // ─── the application menu bar ────────────────────────────────────────────
 //
-// cx.set_menus(app_menus()). The menus of the application itself, as opposed
-// to the ones an element opens: on macOS they are the bar at the top of the
-// screen, which belongs to the front application and not to any of its
-// windows. A row carries an action, the way Rust's `MenuItem::action`
-// does, so choosing it runs the same handler the chord
+// cx.set_menus(app_menus()). The menus of the application itself, as
+// opposed to the ones an element opens: on macOS they are the bar at the
+// top of the screen, which belongs to the front application and not to any
+// of its windows. A row carries an action, the way Rust's
+// `MenuItem::action` does, so choosing it runs the same handler the chord
 // bound to it reaches. The shortcut beside the label is the binding of that
 // action and argument, unless the row names a stroke of its own.
 //
 // Nothing else has a menu bar of its own to install into. The call is not
-// conditional for that: an application says what its menus are once, and the
-// platforms without one ignore it, which is where component::AppMenuBar
+// conditional for that: an application says what its menus are once, and
+// the platforms without one ignore it, which is where component::AppMenuBar
 // comes in — the same menus drawn into the window.
 
 // gpui::MenuItem. A row with no label is a separator, and a row with rows
@@ -9131,9 +9157,9 @@ struct MenuDef {
     bool disabled = false;
 };
 
-// Whether the menus set below reach an OS menu bar. An application asks so it
-// can decide whether to draw its own as well — which is what the story does,
-// and what Rust decides with `cfg!(target_os = "macos")`.
+// Whether the menus set below reach an OS menu bar. An application asks so
+// it can decide whether to draw its own as well — which is what the story
+// does, and what Rust decides with `cfg!(target_os = "macos")`.
 bool AppHasMenuBar();
 // Install these menus as the application's. Called again whenever a row's
 // label or checked state changes, which is how the checked appearance and
@@ -9147,8 +9173,8 @@ void AppSetMenuBarVisible(bool visible);
 // preorder, from 1 — so it is worth being able to ask.
 bool AppMenuRowForId(int id, uint32_t* action, int64_t* arg);
 bool AppMenuRowForId(const App* app, int id, uint32_t* action, int64_t* arg);
-// Drops the menu model owned by this App. AppFree calls it before globals are
-// destroyed so the platform callback cannot retain a stale App pointer.
+// Drops the menu model owned by this App. AppFree calls it before globals
+// are destroyed so the platform callback cannot retain a stale App pointer.
 void AppMenuClear(App* app);
 
 // window.activate_window() / cx.activate(true): bring this window forward
@@ -9156,9 +9182,10 @@ void AppMenuClear(App* app);
 // click on a system notification asks for.
 void AppActivate(Window* win);
 
-// ─── window frame and placement ───────────────────────────────────────────
-// Native windows on Windows, macOS and X11; elsewhere (one browser canvas, a
-// host-owned mobile view) the getters answer empty and the rest do nothing.
+// ─── window frame and placement
+// ─────────────────────────────────────────── Native windows on Windows,
+// macOS and X11; elsewhere (one browser canvas, a host-owned mobile view)
+// the getters answer empty and the rest do nothing.
 
 // Window::bounds(): the outer frame, in screen units. Empty before the
 // platform has made the window.
@@ -9169,7 +9196,8 @@ ScreenBounds WindowContentBounds(Window* win);
 void WindowSetFrameBounds(Window* win, ScreenBounds outer);
 // The outer frame a window opened with `opts` has around a client area of
 // `content` (screen units), with the client at `content`'s place; frame
-// metrics are those of the display `nearby` is on (the primary one for null).
+// metrics are those of the display `nearby` is on (the primary one for
+// null).
 ScreenBounds WindowFrameForContent(Window* nearby, const WinOpts& opts,
                                    ScreenBounds content);
 // PlatformDisplay::bounds() and ::visible_bounds() (the work area, clear of
@@ -9234,26 +9262,28 @@ TempStr WindowCapturePngTemp(Window* win, Str path, bool allWindows);
 #endif
 void AppMinimize(Window* win);
 void AppToggleMaximize(Window* win);
-// Enter or leave native fullscreen mode without changing application chrome.
+// Enter or leave native fullscreen mode without changing application
+// chrome.
 void WindowSetFullScreen(Window* win, bool fullScreen);
-// How solid the whole window is, frame and content alike: 100 is opaque, and
-// anything under 20 is taken as 20 so a window cannot be made to vanish.
-// Windows makes the window layered, macOS sets its alpha, X11 sets
+// How solid the whole window is, frame and content alike: 100 is opaque,
+// and anything under 20 is taken as 20 so a window cannot be made to
+// vanish. Windows makes the window layered, macOS sets its alpha, X11 sets
 // _NET_WM_WINDOW_OPACITY, which only a compositing window manager applies.
 // A browser tab has no such thing.
 void AppWindowSetOpacity(Window* win, int percent);
-// The mouse acts on whatever is under the window, which still draws. Nothing
-// in the window can be clicked while it is on, so the way back is a global
-// hotkey or a timer, not a control in the window. Windows and macOS; X11
-// would need the shape extension and does nothing, nor does a browser tab.
+// The mouse acts on whatever is under the window, which still draws.
+// Nothing in the window can be clicked while it is on, so the way back is a
+// global hotkey or a timer, not a control in the window. Windows and macOS;
+// X11 would need the shape extension and does nothing, nor does a browser
+// tab.
 void AppWindowSetClickThrough(Window* win, bool on);
 // Whether the window was opened with WinOpts::transparent and the platform
 // could honor it.
 bool WindowIsTransparent(const Window* win);
 // Hide or restore the pointer without changing the element-selected shape.
 void WindowSetCursorVisible(Window* win, bool visible);
-// Called for a window-manager close request. Returning false keeps the window
-// open; AppQuit remains the unconditional programmatic close.
+// Called for a window-manager close request. Returning false keeps the
+// window open; AppQuit remains the unconditional programmatic close.
 void WindowOnShouldClose(Window* win, WindowShouldCloseFn fn, void* data);
 void AppClose(Window* win);
 void AppDrag(Window* win);
