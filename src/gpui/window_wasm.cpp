@@ -1062,7 +1062,7 @@ bool PlatReduceMotion() {
 }
 
 void OpenUrl(Str url) {
-    if (url.s && len(url) > 0) {
+    if (url.s && len(url) > 0 && !OpenExternalHooked(url, false)) {
         GpJsOpenUrl(url.s, len(url));
     }
 }

@@ -2750,7 +2750,7 @@ bool PlatReduceMotion() {
 }
 
 void OpenUrl(Str url) {
-    if (!url.s || len(url) <= 0) {
+    if (!url.s || len(url) <= 0 || OpenExternalHooked(url, false)) {
         return;
     }
     NSString* s = [[NSString alloc] initWithBytes:url.s
@@ -2763,7 +2763,7 @@ void OpenUrl(Str url) {
 }
 
 void OpenPath(Str path) {
-    if (!path.s || len(path) <= 0) {
+    if (!path.s || len(path) <= 0 || OpenExternalHooked(path, true)) {
         return;
     }
     NSString* s = [[NSString alloc] initWithBytes:path.s

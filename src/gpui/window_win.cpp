@@ -3053,7 +3053,7 @@ bool PlatReduceMotion() {
 }
 
 void OpenUrl(Str url) {
-    if (!url.s || len(url) <= 0) {
+    if (!url.s || len(url) <= 0 || OpenExternalHooked(url, false)) {
         return;
     }
     ShellExecuteW(nullptr, L"open", ToCWstrTemp(url), nullptr, nullptr,
@@ -3061,7 +3061,7 @@ void OpenUrl(Str url) {
 }
 
 void OpenPath(Str path) {
-    if (!path.s || len(path) <= 0) {
+    if (!path.s || len(path) <= 0 || OpenExternalHooked(path, true)) {
         return;
     }
     ShellExecuteW(nullptr, L"open", ToCWstrTemp(path), nullptr, nullptr,

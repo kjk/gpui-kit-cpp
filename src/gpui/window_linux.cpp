@@ -1258,7 +1258,7 @@ static void XdgOpen(const char* target) {
 }
 
 void OpenUrl(Str url) {
-    if (!url.s || len(url) <= 0) {
+    if (!url.s || len(url) <= 0 || OpenExternalHooked(url, false)) {
         return;
     }
     TempStr value = StrDupTemp(len(url) < 1023 ? url : Str(url.s, 1023));
@@ -1266,7 +1266,7 @@ void OpenUrl(Str url) {
 }
 
 void OpenPath(Str path) {
-    if (!path.s || len(path) <= 0) {
+    if (!path.s || len(path) <= 0 || OpenExternalHooked(path, true)) {
         return;
     }
     // The whole path. A file name past 1023 bytes is still the file the

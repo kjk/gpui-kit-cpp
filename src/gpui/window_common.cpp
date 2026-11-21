@@ -870,6 +870,16 @@ void AppWindowAppearanceChanged(App* app) {
     app->onWindowAppearance(app, now);
 }
 
+static OpenExternalHookFn gOpenExternalHook = nullptr;
+
+void SetOpenExternalHook(OpenExternalHookFn fn) {
+    gOpenExternalHook = fn;
+}
+
+bool OpenExternalHooked(Str urlOrPath, bool isPath) {
+    return gOpenExternalHook && gOpenExternalHook(urlOrPath, isPath);
+}
+
 bool ClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
     if (!png || pngLen <= 0) {
         return false;

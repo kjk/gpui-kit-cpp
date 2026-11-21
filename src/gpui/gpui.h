@@ -8656,6 +8656,13 @@ void OpenUrl(Str url);
 // path exists. A desktop that refuses to start is not something a caller
 // can do anything about.
 void OpenPath(Str path);
+// Asked first by OpenUrl and OpenPath: true keeps the link or path from being
+// handed to the desktop (an app's test mode, which mustn't open a browser in
+// front of whoever uses the computer). One hook; null removes it.
+using OpenExternalHookFn = bool (*)(Str urlOrPath, bool isPath);
+void SetOpenExternalHook(OpenExternalHookFn fn);
+// what each platform's OpenUrl / OpenPath start with
+bool OpenExternalHooked(Str urlOrPath, bool isPath);
 
 // One file type of an open or save prompt: the name it is listed under and
 // its patterns, ';'-separated ("*.pdf;*.xps", "*.*" for any). No Rust twin.
