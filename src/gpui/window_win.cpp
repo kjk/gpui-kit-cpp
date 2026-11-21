@@ -41,6 +41,9 @@ struct PlatWindow {
     // WM_MOUSEACTIVATE said this next press is the one that activated the
     // window: MouseDownEvent::first_mouse.
     bool firstMouse = false;
+    // The held press came from a Windows message, not from WindowDispatchInput
+    // alone (a test driving input).
+    bool osPress = false;
     // A finger on the glass (WM_POINTER, PT_TOUCH). Windows also turns it into
     // mouse messages, which keep taps, press-and-hold and drags of scrollbars
     // and sliders working; a vertical drag over content scrolls it instead.
@@ -503,12 +506,14 @@ static void MouseDown(Window* win, MouseButton button, LPARAM lParam) {
     float y = PxToDip(&win->paint, GET_Y_LPARAM(lParam));
     bool first = win->plat->firstMouse;
     win->plat->firstMouse = false;
+    win->plat->osPress = true;
     PlatformInput in = InputMouseDown(
         button, x, y, ModsNow(), WindowClickCount(win, x, y, button), first);
     WindowDispatchInput(win, &in);
 }
 
 static void MouseUp(Window* win, MouseButton button, LPARAM lParam) {
+    win->plat->osPress = false;
     float x = PxToDip(&win->paint, GET_X_LPARAM(lParam));
     float y = PxToDip(&win->paint, GET_Y_LPARAM(lParam));
     PlatformInput in =
@@ -517,6 +522,11 @@ static void MouseUp(Window* win, MouseButton button, LPARAM lParam) {
 }
 
 static void MouseMove(Window* win, float x, float y) {
+    // a synthesized press has no button down in the key state, so a real move
+    // (e.g. from SetCursorPos) would cancel it
+    if (win->mouseDown && !win->plat->osPress) {
+        return;
+    }
     MouseButton pressed = MouseButton::Left;
     bool any = PressedButton(&pressed);
     PlatformInput in = InputMouseMove(x, y, any, pressed, ModsNow());
