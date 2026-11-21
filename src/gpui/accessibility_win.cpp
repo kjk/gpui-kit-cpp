@@ -220,7 +220,7 @@ static bool AccessibilitySelectionContainerRole(AccessibilityRole role) {
 }
 
 static bool AccessibilityTextPattern(const AccessibilityNode& node) {
-    return WindowAccessibilityTextValue(node).s != nullptr;
+    return WindowAccessibilityHasText(node);
 }
 
 static bool AccessibilityInvokePattern(const AccessibilityNode& node) {
@@ -267,11 +267,20 @@ static float DipScale(const Window* win) {
     HRESULT STDMETHODCALLTYPE get_FragmentRoot(                                \
         IRawElementProviderFragmentRoot** out) override;
 
+// A document source's revisions as last announced, to tell a text change
+// from a selection change.
+struct WinDocumentRevision {
+    uint32_t id = 0;
+    uint64_t text = 0;
+    uint64_t selection = 0;
+};
+
 struct WinAccessibility
     : ComObject<IRawElementProviderSimple, IRawElementProviderFragment,
                 IRawElementProviderFragmentRoot> {
     Window* win = nullptr;
     HWND hwnd = nullptr;
+    Vec<WinDocumentRevision> documents;
 
     WinAccessibility(Window* window, HWND handle) : win(window), hwnd(handle) {}
 
@@ -2089,11 +2098,17 @@ HRESULT WinTextRange::GetChildren(SAFEARRAY** out) {
     return AccessibilityEmptyProviderArray(out);
 }
 
+static void AccessibilityDocumentsChanged(WinAccessibility* root,
+                                          bool listening);
+
 WinAccessibility* AccessibilityWinNew(Window* win, void* hwnd) {
     if (!win || !hwnd) {
         return nullptr;
     }
-    return new WinAccessibility(win, (HWND)hwnd);
+    auto* accessibility = new WinAccessibility(win, (HWND)hwnd);
+    // The tree may have been collected before there was a provider to tell.
+    AccessibilityDocumentsChanged(accessibility, false);
+    return accessibility;
 }
 
 void AccessibilityWinClose(WinAccessibility* accessibility) {
@@ -2115,13 +2130,63 @@ intptr_t AccessibilityWinGetObject(WinAccessibility* accessibility,
         static_cast<IRawElementProviderSimple*>(accessibility));
 }
 
+static void AccessibilityRaiseNodeEvent(WinAccessibility* root, int index,
+                                        EVENTID event) {
+    IRawElementProviderFragment* fragment = root->NewNode(index);
+    IRawElementProviderSimple* provider = nullptr;
+    if (fragment) {
+        fragment->QueryInterface(__uuidof(IRawElementProviderSimple),
+                                 (void**)&provider);
+        fragment->Release();
+    }
+    if (provider) {
+        UiaRaiseAutomationEvent(provider, event);
+        provider->Release();
+    }
+}
+
+// A screen reader follows a document's selection and edits by these events,
+// not by a structure change. A document first seen is announced by that. The
+// revisions are recorded while no one listens, so a listener that registers
+// later hears the next change.
+static void AccessibilityDocumentsChanged(WinAccessibility* root,
+                                          bool listening) {
+    Vec<WinDocumentRevision> now;
+    const Vec<AccessibilityNode>& nodes = root->win->accessibility;
+    for (int i = 0; i < len(nodes); i++) {
+        const AccessibilityNode& node = nodes[i];
+        if (!node.document.text) continue;
+        WinDocumentRevision seen = {node.id, node.document.textRevision,
+                                    node.document.selectionRevision};
+        VecAppend(now, seen);
+        for (const WinDocumentRevision& before : root->documents) {
+            if (!listening) break;
+            if (before.id != seen.id) continue;
+            if (before.text != seen.text) {
+                AccessibilityRaiseNodeEvent(root, i,
+                                            UIA_Text_TextChangedEventId);
+            }
+            if (before.selection != seen.selection) {
+                AccessibilityRaiseNodeEvent(
+                    root, i, UIA_Text_TextSelectionChangedEventId);
+            }
+            break;
+        }
+    }
+    root->documents = now;
+}
+
 void AccessibilityWinTreeChanged(WinAccessibility* accessibility) {
-    if (!accessibility || !accessibility->win || !UiaClientsAreListening()) {
+    if (!accessibility || !accessibility->win) {
         return;
     }
-    UiaRaiseStructureChangedEvent(
-        static_cast<IRawElementProviderSimple*>(accessibility),
-        StructureChangeType_ChildrenInvalidated, nullptr, 0);
+    bool listening = UiaClientsAreListening();
+    if (listening) {
+        UiaRaiseStructureChangedEvent(
+            static_cast<IRawElementProviderSimple*>(accessibility),
+            StructureChangeType_ChildrenInvalidated, nullptr, 0);
+    }
+    AccessibilityDocumentsChanged(accessibility, listening);
 }
 
 void AccessibilityWinFocusChanged(WinAccessibility* accessibility,
@@ -2134,18 +2199,8 @@ void AccessibilityWinFocusChanged(WinAccessibility* accessibility,
         if (accessibility->win->accessibility[i].focusId != focusId) {
             continue;
         }
-        IRawElementProviderFragment* fragment = accessibility->NewNode(i);
-        IRawElementProviderSimple* provider = nullptr;
-        if (fragment) {
-            fragment->QueryInterface(__uuidof(IRawElementProviderSimple),
-                                     (void**)&provider);
-            fragment->Release();
-        }
-        if (provider) {
-            UiaRaiseAutomationEvent(provider,
+        AccessibilityRaiseNodeEvent(accessibility, i,
                                     UIA_AutomationFocusChangedEventId);
-            provider->Release();
-        }
         break;
     }
 }

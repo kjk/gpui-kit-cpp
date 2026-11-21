@@ -2778,6 +2778,21 @@ struct AccessibilityDocumentText {
     bool selectAll = false;
 };
 
+// A read-only document too large to copy into every frame's semantic tree
+// (El::AccessibilityDocument). The platform bridge asks for its text and
+// selection only when assistive technology reads them, on the UI thread and
+// possibly after the frame that set them, so the callbacks must check that
+// `data` is still alive. The text must stay the same, at the same address,
+// while textRevision does; a change of either revision is announced.
+struct AccessibilityDocumentSource {
+    Str (*text)(void* data) = nullptr;
+    // UTF-8 offsets into text; false when nothing is selected.
+    bool (*selection)(void* data, int* start, int* end) = nullptr;
+    void* data = nullptr;
+    uint64_t textRevision = 0;
+    uint64_t selectionRevision = 0;
+};
+
 struct ElLifecycle {
     void (*prepareStyle)(PaintCtx* ctx, El* e, Rgba inherited,
                          void* user) = nullptr;
@@ -2797,6 +2812,7 @@ struct ElLifecycle {
     TextFontRanges fontRanges;
     AccessibilityDocumentText (*accessibilityDocument)(void*) = nullptr;
     void* accessibilityDocumentData = nullptr;
+    const AccessibilityDocumentSource* documentSource = nullptr;
     bool auxiliaryClick = false;
     bool auxiliaryRightClick = false;
 };
@@ -3364,6 +3380,9 @@ struct El {
     El* Role(AccessibilityRole role);
     El* AccessibilityId(Str authorId);
     El* AriaLabel(Str label);
+    // A Document role whose text is read on demand; see
+    // AccessibilityDocumentSource. Local: Rust apps hand AccessKit the text.
+    El* AccessibilityDocument(const AccessibilityDocumentSource& source);
     // aria_description: what the element is, beyond its name.
     El* AriaDescription(Str description);
     El* AriaValue(Str value);
@@ -3862,6 +3881,7 @@ struct AccessibilityNode {
     // UTF-8 offsets for a read-only document's whole-text selection.
     int textSelectionStart = -1;
     int textSelectionEnd = -1;
+    AccessibilityDocumentSource document = {};
 };
 
 // A scrolled box the frame painted, and the scrollbar drawn down its right
@@ -8942,6 +8962,8 @@ int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId);
 // A null string means the input does not expose its text. An exposed empty
 // field still has a caret and supports text queries.
 Str WindowAccessibilityTextValue(const AccessibilityNode& node);
+// Whether the node has text, without asking a document source for it.
+bool WindowAccessibilityHasText(const AccessibilityNode& node);
 bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
                                       Selection* out);
 int WindowAccessibilityTextCaret(const AccessibilityNode& node);

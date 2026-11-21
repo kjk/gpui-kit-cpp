@@ -818,7 +818,7 @@ static void PutInterfaces(DbusWriter* body, const LinuxAccessible& object) {
         if (ActionCount(node)) PutString(body, kAction);
         if (node.info.hasNumericValue) PutString(body, kValue);
         if (IsSelectionRole(node.info.role)) PutString(body, kSelection);
-        if (WindowAccessibilityTextValue(node).s) PutString(body, kText);
+        if (WindowAccessibilityHasText(node)) PutString(body, kText);
         if (node.input && (node.actions & AccessibilityActionSetValue)) {
             PutString(body, kEditableText);
         }

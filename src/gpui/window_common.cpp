@@ -334,6 +334,8 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(node.focusId);
         GPUI_A11Y_HASH(node.textSelectionStart);
         GPUI_A11Y_HASH(node.textSelectionEnd);
+        GPUI_A11Y_HASH(node.document.textRevision);
+        GPUI_A11Y_HASH(node.document.selectionRevision);
         GPUI_A11Y_HASH(info.role);
         hash = AccessibilityHashStr(hash, info.authorId);
         hash = AccessibilityHashStr(hash, info.label);
@@ -1621,6 +1623,10 @@ int WindowAccessibilityNodeIndex(const Window* win, uint32_t nodeId) {
 }
 
 Str WindowAccessibilityTextValue(const AccessibilityNode& node) {
+    if (node.document.text) {
+        Str text = node.document.text(node.document.data);
+        return text.s ? text : StrL("");
+    }
     if (node.info.role == AccessibilityRole::Document) return node.info.value;
     if (!node.input || !node.info.value.s ||
         !AccessibilityRoleTakesText(node.info.role) ||
@@ -1632,9 +1638,23 @@ Str WindowAccessibilityTextValue(const AccessibilityNode& node) {
     return text.s ? text : StrL("");
 }
 
+bool WindowAccessibilityHasText(const AccessibilityNode& node) {
+    return node.document.text || WindowAccessibilityTextValue(node).s;
+}
+
 bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
                                       Selection* out) {
-    if (!out || !WindowAccessibilityTextValue(node).s) return false;
+    if (!out) return false;
+    if (node.document.text) {
+        int start = 0, end = 0;
+        if (!node.document.selection ||
+            !node.document.selection(node.document.data, &start, &end)) {
+            return false;
+        }
+        *out = {start, end};
+        return true;
+    }
+    if (!WindowAccessibilityTextValue(node).s) return false;
     if (node.input) {
         *out = node.input->selectedRange;
         return true;
@@ -1646,6 +1666,12 @@ bool WindowAccessibilityTextSelection(const AccessibilityNode& node,
 
 int WindowAccessibilityTextCaret(const AccessibilityNode& node) {
     if (node.input) return InputCursor(node.input);
+    Selection selection;
+    if (node.document.text) {
+        return WindowAccessibilityTextSelection(node, &selection)
+                   ? selection.end
+                   : 0;
+    }
     return std::max(0, node.textSelectionEnd);
 }
 

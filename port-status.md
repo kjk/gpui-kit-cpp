@@ -228,6 +228,13 @@ The current update target is
   (WM_GETOBJECT); macOS and Linux always collect; wasm never; a headless
   test window always does. An idle frame otherwise paid that walk and its
   hash for nobody (`src/gpui/window_common.cpp`).
+- **A document's text can be read on demand.** Local addition for large
+  read-only documents (a PDF viewer's pages): `El::AccessibilityDocument`
+  gives a Document node text and selection callbacks that the bridge calls
+  only when a client reads them, plus revisions that enter the tree hash.
+  Windows raises UIA TextChanged / TextSelectionChanged on a revision change;
+  macOS and Linux read the same text but announce only the tree change
+  (`src/gpui/accessibility_win.cpp`).
 - **Fitted text does not contribute its max-content width.** A
   shrink-to-fit bubble around a TextView sizes to its padding and list
   markers. A run is width 100%, and that percentage does not fall back

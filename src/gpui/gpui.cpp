@@ -1755,6 +1755,14 @@ El* El::AriaLabel(Str label) {
     accessibility.label = label;
     return this;
 }
+El* El::AccessibilityDocument(const AccessibilityDocumentSource& source) {
+    if (!lifecycle) lifecycle = ArenaNew<ElLifecycle>(arena);
+    auto* copy = ArenaNew<AccessibilityDocumentSource>(arena);
+    *copy = source;
+    lifecycle->documentSource = copy;
+    accessibility.role = AccessibilityRole::Document;
+    return this;
+}
 El* El::AriaValue(Str value) {
     accessibility.value = value;
     return this;
@@ -11030,6 +11038,9 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
                     node.textSelectionEnd = len(document.text);
                 }
             }
+        }
+        if (e->lifecycle && e->lifecycle->documentSource) {
+            node.document = *e->lifecycle->documentSource;
         }
         if (!node.info.label.s &&
             AccessibilityNameFromContents(node.info.role)) {

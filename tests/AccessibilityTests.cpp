@@ -1305,6 +1305,59 @@ static void TheTreeOutlivesTheStringsItWasBuiltFrom() {
     FreeAccessibilityFrame(&f);
 }
 
+// Local, no Rust counterpart: a document source is read only when asked.
+struct SourcedDocument {
+    Str text;
+    int reads = 0;
+    int selectionStart = -1;
+    int selectionEnd = -1;
+};
+
+static Str SourcedDocumentText(void* data) {
+    auto* doc = (SourcedDocument*)data;
+    doc->reads++;
+    return doc->text;
+}
+
+static bool SourcedDocumentSelection(void* data, int* start, int* end) {
+    auto* doc = (SourcedDocument*)data;
+    *start = doc->selectionStart;
+    *end = doc->selectionEnd;
+    return doc->selectionStart >= 0;
+}
+
+static void ADocumentSourceIsReadOnDemand() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    SourcedDocument doc;
+    doc.text = StrL("Hello world");
+    AccessibilityDocumentSource source;
+    source.text = &SourcedDocumentText;
+    source.selection = &SourcedDocumentSelection;
+    source.data = &doc;
+    source.selectionRevision = 7;
+    El* e = Div(f.arena)
+                ->W(100)
+                ->H(100)
+                ->AriaLabel(StrL("doc.pdf"))
+                ->AccessibilityDocument(source);
+    AccessibilityCollect(e, &f.win->accessibility);
+    const AccessibilityNode* node =
+        RoleNode(f.win->accessibility, AccessibilityRole::Document);
+    utassert(node && node->document.selectionRevision == 7);
+    utassert(node && WindowAccessibilityHasText(*node) && doc.reads == 0);
+    utassert(node && StrEq(node->info.label, StrL("doc.pdf")));
+    utassert(node && StrEq(WindowAccessibilityTextValue(*node), doc.text));
+    utassert(doc.reads == 1);
+    Selection selected;
+    utassert(node && !WindowAccessibilityTextSelection(*node, &selected));
+    doc.selectionStart = 6;
+    doc.selectionEnd = 11;
+    utassert(node && WindowAccessibilityTextSelection(*node, &selected));
+    utassert(selected.start == 6 && selected.end == 11);
+    utassert(node && WindowAccessibilityTextCaret(*node) == 11);
+    FreeAccessibilityFrame(&f);
+}
+
 void TestAccessibility() {
     TextViewPublishesItsRenderedBodyToAccessibility();
     ButtonExposesOptionalDisclosureState();
@@ -1337,4 +1390,5 @@ void TestAccessibility() {
     InputContentTypesAndSecretsProjectSafely();
     SingleLineRangesUseTheCurrentFrameGeometry();
     MultilineAccessibilityKeepsLineBreaksAndSelection();
+    ADocumentSourceIsReadOnDemand();
 }
