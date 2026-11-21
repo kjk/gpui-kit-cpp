@@ -875,7 +875,8 @@ static void CurvesBuiltWithoutStopsOrJumpsSampleLinearly() {
 
 static float TestNaN() {
     volatile float zero = 0.f;
-    return zero / zero;
+    float z = zero;
+    return z / zero;
 }
 
 static float TestInf() {

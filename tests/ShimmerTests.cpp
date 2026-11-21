@@ -60,7 +60,8 @@ static void TheBuilderCarriesTimingSpreadAndDirection() {
     // A quiet NaN, built through a volatile so the compiler does not fold
     // the division and warn about it.
     volatile float zero = 0.f;
-    float nan = zero / zero;
+    float z = zero;
+    float nan = z / zero;
     utassert(ShimmerStyle::New().Spread(nan).spread == ShimmerSpread());
     utassert(ShimmerStyle::New().Spread(ShimmerSpread::Absolute(0.f)).spread ==
              ShimmerSpread::Absolute(1.f));
