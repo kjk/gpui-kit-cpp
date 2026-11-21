@@ -65,7 +65,9 @@ The current update target is
   application), `WindowIsEnabled`, `WindowSetFrameAppearance`,
   `WindowOnBoundsChanged`'s `MoveResizeEnded` (`WM_EXITSIZEMOVE`; macOS ends
   a live resize or polls the button after a move, X11 polls the button),
-  `WindowSendNativeKey` (macOS test support) have no Rust twin. X11 hides
+  `WindowSendNativeKey` (macOS test support) and `WindowAtPoint` (the app's
+  window on top at a point, where a drag released outside its window lands)
+  have no Rust twin. X11 hides
   the window manager settling a requested frame from the bounds observer
   (within 4 px, 8 configures, or the user taking over). Observers are one
   per window, and `AppOnWindowClosed` one per app, plain functions rather

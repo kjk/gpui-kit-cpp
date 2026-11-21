@@ -2395,6 +2395,36 @@ ScreenBounds WindowDisplayVisibleBounds(Window* win) {
     return FromRECT(work);
 }
 
+// Client pixels are DIPs times the scale. WindowFromPoint answers the
+// topmost window there of any program, a child window (WebView2) included.
+Window* WindowAtPoint(Window* win, Point pt, Point* out) {
+    HWND hwnd = Hwnd(win);
+    if (!hwnd) {
+        return nullptr;
+    }
+    float scale = WindowScaleFactor(win);
+    POINT sp = {(LONG)lroundf(pt.x * scale), (LONG)lroundf(pt.y * scale)};
+    ClientToScreen(hwnd, &sp);
+    HWND hit = WindowFromPoint(sp);
+    HWND root = hit ? GetAncestor(hit, GA_ROOT) : nullptr;
+    if (!root) {
+        return nullptr;
+    }
+    for (Window* w : win->app->windows) {
+        if (Hwnd(w) != root) {
+            continue;
+        }
+        POINT cp = sp;
+        ScreenToClient(root, &cp);
+        float s = WindowScaleFactor(w);
+        if (out) {
+            *out = {(float)cp.x / s, (float)cp.y / s};
+        }
+        return w;
+    }
+    return nullptr;
+}
+
 void PlatWindowShow(Window* win, bool visible, bool activate) {
     HWND hwnd = Hwnd(win);
     if (!hwnd) {

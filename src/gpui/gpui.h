@@ -9212,6 +9212,12 @@ ScreenBounds WindowFrameForContent(Window* nearby, const WinOpts& opts,
 // display for null.
 ScreenBounds WindowDisplayBounds(Window* win);
 ScreenBounds WindowDisplayVisibleBounds(Window* win);
+// Not in Rust: the window of `win`'s app on top at `pt`, a point of `win` in
+// DIPs as mouse events give it (outside `win` too), and in `*out` that point
+// in the found window's DIPs (on its frame, it is outside the client area).
+// Null when what is there is not the app's: the desktop or another
+// application's window. Where a drag released outside its window lands.
+Window* WindowAtPoint(Window* win, Point pt, Point* out);
 // Shows or hides the window without closing it. `activate` (WinOpts::focus)
 // makes it the active window as it is shown. A Dialog takes its parent's
 // input while shown and gives it back while hidden.

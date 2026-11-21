@@ -160,6 +160,10 @@ static void HeadlessFrameIsEmpty() {
     WindowActivateInApp(win);
     utassert(!WindowIsActive(win));
     WindowSetMinSize(win, {100, 50});
+    // Nothing on screen to find, not even `win` itself.
+    Point out = {-1, -1};
+    utassert(WindowAtPoint(win, {10, 10}, &out) == nullptr);
+    utassert(out.x == -1 && out.y == -1);
     TestAppFree(app);
 }
 

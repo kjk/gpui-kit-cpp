@@ -2685,6 +2685,62 @@ ScreenBounds WindowDisplayVisibleBounds(Window* win) {
     return r;
 }
 
+// The root's child holding `xwin`: the manager's frame around it, or the
+// window itself when there is no manager.
+static XWindow TopLevelOf(XWindow xwin) {
+    while (xwin) {
+        XWindow root = 0, parent = 0;
+        XWindow* kids = nullptr;
+        unsigned n = 0;
+        if (!XQueryTree(gDpy, xwin, &root, &parent, &kids, &n)) {
+            return 0;
+        }
+        if (kids) {
+            XFree(kids);
+        }
+        if (parent == root) {
+            return xwin;
+        }
+        xwin = parent;
+    }
+    return 0;
+}
+
+// X11 draws in device pixels with a scale of 1, so DIPs are pixels. Asked of
+// the root, XTranslateCoordinates names its topmost mapped child there.
+Window* WindowAtPoint(Window* win, Point pt, Point* out) {
+    XWindow xwin = XwinOf(win);
+    if (!xwin) {
+        return nullptr;
+    }
+    int ox = 0, oy = 0;
+    XWindow child = 0;
+    XTranslateCoordinates(gDpy, xwin, gRoot, 0, 0, &ox, &oy, &child);
+    float sx = (float)ox + pt.x;
+    float sy = (float)oy + pt.y;
+    int rx = 0, ry = 0;
+    child = 0;
+    XTranslateCoordinates(gDpy, gRoot, gRoot, (int)floorf(sx), (int)floorf(sy),
+                          &rx, &ry, &child);
+    if (!child) {
+        return nullptr;
+    }
+    for (Window* other : win->app->windows) {
+        XWindow oxwin = XwinOf(other);
+        if (!oxwin || TopLevelOf(oxwin) != child) {
+            continue;
+        }
+        if (out) {
+            int cx = 0, cy = 0;
+            XWindow unused = 0;
+            XTranslateCoordinates(gDpy, oxwin, gRoot, 0, 0, &cx, &cy, &unused);
+            *out = {sx - (float)cx, sy - (float)cy};
+        }
+        return other;
+    }
+    return nullptr;
+}
+
 static bool XwinViewable(XWindow xwin);
 
 void PlatWindowShow(Window* win, bool visible, bool activate) {

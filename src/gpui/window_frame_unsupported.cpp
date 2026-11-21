@@ -33,6 +33,21 @@ ScreenBounds WindowDisplayVisibleBounds(Window*) {
     return {};
 }
 
+// The one surface has nothing of the app beside or above it.
+Window* WindowAtPoint(Window* win, Point pt, Point* out) {
+    if (!win || !win->plat) {
+        return nullptr;
+    }
+    WinSize ws = WindowSize(win);
+    if (pt.x < 0 || pt.y < 0 || pt.x >= ws.dipW || pt.y >= ws.dipH) {
+        return nullptr;
+    }
+    if (out) {
+        *out = pt;
+    }
+    return win;
+}
+
 bool WindowIsVisible(Window* win) {
     return win && win->plat;
 }

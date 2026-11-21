@@ -1911,6 +1911,43 @@ ScreenBounds WindowDisplayVisibleBounds(Window* win) {
     return screen ? FromMac(screen.visibleFrame) : ScreenBounds{};
 }
 
+// DIPs are the content view's points, from its top left.
+static NSPoint ViewToScreen(NSWindow* w, Point pt) {
+    NSView* v = w.contentView;
+    CGFloat y = v.isFlipped ? pt.y : v.bounds.size.height - pt.y;
+    NSPoint inWin = [v convertPoint:NSMakePoint(pt.x, y) toView:nil];
+    return [w convertPointToScreen:inWin];
+}
+
+static Point ScreenToView(NSWindow* w, NSPoint sp) {
+    NSView* v = w.contentView;
+    NSPoint p = [v convertPoint:[w convertPointFromScreen:sp] fromView:nil];
+    CGFloat y = v.isFlipped ? p.y : v.bounds.size.height - p.y;
+    return {(float)p.x, (float)y};
+}
+
+// windowNumberAtPoint answers the topmost window there of any application.
+Window* WindowAtPoint(Window* win, Point pt, Point* out) {
+    NSWindow* w = NsWindowOf(win);
+    if (!w) {
+        return nullptr;
+    }
+    NSPoint sp = ViewToScreen(w, pt);
+    NSInteger num =
+        [NSWindow windowNumberAtPoint:sp belowWindowWithWindowNumber:0];
+    for (Window* other : win->app->windows) {
+        NSWindow* ow = NsWindowOf(other);
+        if (!ow || ow.windowNumber != num) {
+            continue;
+        }
+        if (out) {
+            *out = ScreenToView(ow, sp);
+        }
+        return other;
+    }
+    return nullptr;
+}
+
 void PlatWindowShow(Window* win, bool visible, bool activate) {
     PlatWindow* pw = win ? win->plat : nullptr;
     if (!pw) {
