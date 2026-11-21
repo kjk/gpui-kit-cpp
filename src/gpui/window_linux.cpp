@@ -32,6 +32,10 @@
 #include <X11/Xcursor/Xcursor.h>
 #endif
 
+#if defined(GPUI_HAVE_XI) && GPUI_HAVE_XI
+#include <X11/extensions/XInput2.h>
+#endif
+
 namespace gpui {
 
 // X11's `Window` is an unsigned long and its `Display` is a struct; inside
@@ -104,6 +108,10 @@ static Str gClipboardPng = {};
 // what ClipboardSetPaths put there: the paths, also served as text
 static Str gClipboardPaths = {};
 static bool gClipboardCut = false;
+// The pen contact under way; set only with XInput2 (GPUI_HAVE_XI).
+static PenContact gPen;
+// A touch is making the left button's press, moves and release.
+static bool gTouchEmulating = false;
 
 static Atom aWmDeleteWindow, aWmProtocols, aNetWmName, aUtf8String;
 static Atom aNetWmState, aNetWmStateMaxVert, aNetWmStateMaxHorz;
@@ -893,6 +901,10 @@ void PlatSetMouseCapture(Window* win, bool capture) {
     if (!capture) {
         XUngrabPointer(gDpy, CurrentTime);
         XFlush(gDpy);
+        return;
+    }
+    // A touch stays with the window it began in; a grab would take it.
+    if (gTouchEmulating) {
         return;
     }
     // owner_events True keeps the ordinary delivery for events inside the
@@ -2264,7 +2276,249 @@ static bool PollMoveEnds(App* app) {
 // How often a pending move end is polled for.
 constexpr int kMoveEndPollMs = 50;
 
+static void HandleEvent(App* app, XEvent* ev);
+
+// ─── touch and pen (XInput2) ──────────────────────────────────────────────
+//
+// A window selects XI 2.2 touch events from the master devices, so the
+// server sends it touches instead of the pointer events it emulates from
+// them. Each touch becomes a TouchEvent; the one the server marks as
+// emulating the pointer also becomes the core press, moves and release the
+// server would have sent, so a touch nobody keeps acts as it did before.
+// A pen is the core pointer events of a tablet's slave device; the window
+// also selects that device's XI2 presses to tell a pen's tip apart (see
+// PenContact).
+
+#if defined(GPUI_HAVE_XI) && GPUI_HAVE_XI
+
+// TouchEvent ids of pens, apart from the server's touch ids
+constexpr uint32_t kPenPointerIdBase = 0x80000000u;
+constexpr int kMaxPens = 16;
+
+struct XiPen {
+    int deviceId = 0;
+    bool eraser = false;
+};
+
+static int gXiOpcode = -1;
+static bool gXiTouch = false;
+static XiPen gXiPens[kMaxPens];
+static int gXiPenCount = 0;
+
+// The tablet pens and erasers among the slave pointers.
+static void XiScanPens() {
+    gXiPenCount = 0;
+    Atom pressure = XInternAtom(gDpy, "Abs Pressure", True);
+    int n = 0;
+    XIDeviceInfo* devs = XIQueryDevice(gDpy, XIAllDevices, &n);
+    for (int i = 0; devs && i < n && gXiPenCount < kMaxPens; i++) {
+        XIDeviceInfo* d = &devs[i];
+        if (d->use != XISlavePointer || !d->enabled) {
+            continue;
+        }
+        bool hasTouch = false;
+        bool hasPressure = false;
+        for (int k = 0; k < d->num_classes; k++) {
+            XIAnyClassInfo* c = d->classes[k];
+            if (c->type == XITouchClass) {
+                hasTouch = true;
+            }
+            if (c->type == XIValuatorClass && pressure != None &&
+                ((XIValuatorClassInfo*)c)->label == pressure) {
+                hasPressure = true;
+            }
+        }
+        PenTool tool = PenToolOf(Str(d->name), hasTouch, hasPressure);
+        if (tool == PenTool::NotPen) {
+            continue;
+        }
+        gXiPens[gXiPenCount++] = {d->deviceid, tool == PenTool::Eraser};
+    }
+    if (devs) {
+        XIFreeDeviceInfo(devs);
+    }
+}
+
+// Touches from the masters and the pens' presses. `old` are pens selected
+// before a rescan, deselected unless still there.
+static void XiSelect(XWindow xwin, const XiPen* old, int nOld) {
+    if (gXiOpcode < 0) {
+        return;
+    }
+    unsigned char bits[1 + kMaxPens * 2][XIMaskLen(XI_LASTEVENT)] = {};
+    XIEventMask masks[1 + kMaxPens * 2] = {};
+    int n = 0;
+    if (gXiTouch) {
+        XISetMask(bits[n], XI_TouchBegin);
+        XISetMask(bits[n], XI_TouchUpdate);
+        XISetMask(bits[n], XI_TouchEnd);
+        masks[n] = {XIAllMasterDevices, (int)sizeof(bits[n]), bits[n]};
+        n++;
+    }
+    for (int i = 0; i < nOld; i++) {
+        bool kept = false;
+        for (int k = 0; k < gXiPenCount; k++) {
+            kept = kept || gXiPens[k].deviceId == old[i].deviceId;
+        }
+        if (!kept) {
+            masks[n] = {old[i].deviceId, (int)sizeof(bits[n]), bits[n]};
+            n++;
+        }
+    }
+    for (int i = 0; i < gXiPenCount; i++) {
+        XISetMask(bits[n], XI_ButtonPress);
+        masks[n] = {gXiPens[i].deviceId, (int)sizeof(bits[n]), bits[n]};
+        n++;
+    }
+    if (n > 0) {
+        XISelectEvents(gDpy, xwin, masks, n);
+    }
+}
+
+static void XiInit() {
+    int event = 0;
+    int error = 0;
+    if (!XQueryExtension(gDpy, "XInputExtension", &gXiOpcode, &event, &error)) {
+        gXiOpcode = -1;
+        return;
+    }
+    int major = 2;
+    int minor = 2;
+    if (XIQueryVersion(gDpy, &major, &minor) != Success) {
+        gXiOpcode = -1;
+        return;
+    }
+    gXiTouch = major > 2 || minor >= 2;
+    // libinput adds a tablet's tool as a device once it first comes near
+    unsigned char bits[XIMaskLen(XI_LASTEVENT)] = {};
+    XISetMask(bits, XI_HierarchyChanged);
+    XIEventMask mask = {XIAllDevices, (int)sizeof(bits), bits};
+    XISelectEvents(gDpy, gRoot, &mask, 1);
+    XiScanPens();
+}
+
+static void XiRescan(App* app) {
+    XiPen old[kMaxPens];
+    int nOld = gXiPenCount;
+    memcpy(old, gXiPens, sizeof(old));
+    XiScanPens();
+    for (int i = 0; i < len(app->windows); i++) {
+        Window* w = app->windows[i];
+        if (w->plat) {
+            XiSelect(w->plat->xwin, old, nOld);
+        }
+    }
+}
+
+// A core button or motion event at the touch `de`. XMotionEvent matches
+// XButtonEvent up to `state`; its is_hint (NotifyNormal) is 0.
+static void XiCoreEvent(App* app, const XIDeviceEvent* de, int type,
+                        unsigned state) {
+    XEvent e = {};
+    XButtonEvent* b = &e.xbutton;
+    b->type = type;
+    b->display = gDpy;
+    b->window = de->event;
+    b->root = de->root;
+    b->subwindow = de->child;
+    b->time = de->time;
+    b->x = (int)de->event_x;
+    b->y = (int)de->event_y;
+    b->x_root = (int)de->root_x;
+    b->y_root = (int)de->root_y;
+    b->state = state;
+    b->same_screen = True;
+    if (type == MotionNotify) {
+        e.xmotion.is_hint = NotifyNormal;
+        e.xmotion.same_screen = True;
+    } else {
+        b->button = Button1;
+    }
+    HandleEvent(app, &e);
+}
+
+// The core events the server would have made of the touch emulating the
+// pointer: a move to it and the left button's press, moves and release.
+static void XiEmulatePointer(App* app, const XIDeviceEvent* de) {
+    unsigned state = (unsigned)de->mods.effective;
+    if (de->evtype == XI_TouchEnd) {
+        gTouchEmulating = false;
+        XiCoreEvent(app, de, ButtonRelease, state | Button1Mask);
+        return;
+    }
+    if (de->evtype == XI_TouchUpdate) {
+        XiCoreEvent(app, de, MotionNotify, state | Button1Mask);
+        return;
+    }
+    XiCoreEvent(app, de, MotionNotify, state);
+    gTouchEmulating = true;
+    XiCoreEvent(app, de, ButtonPress, state);
+}
+
+static void XiTouch(App* app, const XIDeviceEvent* de) {
+    Window* win = FindWindow(app, de->event);
+    bool emulating = (de->flags & XITouchEmulatingPointer) != 0;
+    if (win) {
+        TouchEvent t = {};
+        t.phase = de->evtype == XI_TouchBegin ? TouchPhase::Started
+                  : de->evtype == XI_TouchEnd ? TouchPhase::Ended
+                                              : TouchPhase::Moved;
+        t.pointerId = (uint32_t)de->detail;
+        t.x = (float)de->event_x;
+        t.y = (float)de->event_y;
+        // the server emulates the pointer with the first finger only
+        t.primary = emulating;
+        t.modifiers = ModsOf((unsigned)de->mods.effective);
+        PlatformInput in = InputTouch(t);
+        WindowDispatchInput(win, &in);
+    }
+    if (emulating) {
+        XiEmulatePointer(app, de);
+    }
+}
+
+static void HandleXi(App* app, XEvent* ev) {
+    XGenericEventCookie* cookie = &ev->xcookie;
+    if (cookie->extension != gXiOpcode || !XGetEventData(gDpy, cookie)) {
+        return;
+    }
+    auto* de = (XIDeviceEvent*)cookie->data;
+    switch (cookie->evtype) {
+        case XI_HierarchyChanged:
+            XiRescan(app);
+            break;
+        case XI_ButtonPress:
+            for (int i = 0; i < gXiPenCount && de->detail == Button1; i++) {
+                if (gXiPens[i].deviceId == de->deviceid) {
+                    PenContactTip(&gPen, kPenPointerIdBase + de->deviceid,
+                                  gXiPens[i].eraser, (uint32_t)de->time);
+                }
+            }
+            break;
+        case XI_TouchBegin:
+        case XI_TouchUpdate:
+        case XI_TouchEnd:
+            XiTouch(app, de);
+            break;
+        default:
+            break;
+    }
+    XFreeEventData(gDpy, cookie);
+}
+
+#else
+
+static void XiInit() {}
+static void XiSelect(XWindow, const void*, int) {}
+static void HandleXi(App*, XEvent*) {}
+
+#endif
+
 static void HandleEvent(App* app, XEvent* ev) {
+    if (ev->type == GenericEvent) {
+        HandleXi(app, ev);
+        return;
+    }
     if (ev->type == SelectionRequest) {
         OnSelectionRequest(&ev->xselectionrequest);
         return;
@@ -2317,6 +2571,12 @@ static void HandleEvent(App* app, XEvent* ev) {
             OnKeyRelease(win, &ev->xkey);
             break;
         case MotionNotify: {
+            if (PenContactCore(win, &gPen, TouchPhase::Moved,
+                               (uint32_t)ev->xmotion.time, (float)ev->xmotion.x,
+                               (float)ev->xmotion.y,
+                               ModsOf(ev->xmotion.state))) {
+                break;
+            }
             MouseButton held = MouseButton::Left;
             bool any = PressedButton(ev->xmotion.state, &held);
             PlatformInput in =
@@ -2380,6 +2640,10 @@ static void HandleEvent(App* app, XEvent* ev) {
             if (b != Button1) {
                 break;
             }
+            if (PenContactCore(win, &gPen, TouchPhase::Started,
+                               (uint32_t)ev->xbutton.time, x, y, mods)) {
+                break;
+            }
             // Before the chrome, because the chrome needs the answer: the
             // caption drags on the first press and zooms on the second, and
             // handing the drag to the window manager first would swallow it.
@@ -2422,6 +2686,13 @@ static void HandleEvent(App* app, XEvent* ev) {
         case ButtonRelease: {
             MouseButton button = MouseButton::Left;
             if (!ButtonOf(ev->xbutton.button, &button)) {
+                break;
+            }
+            if (button == MouseButton::Left &&
+                PenContactCore(win, &gPen, TouchPhase::Ended,
+                               (uint32_t)ev->xbutton.time, (float)ev->xbutton.x,
+                               (float)ev->xbutton.y,
+                               ModsOf(ev->xbutton.state))) {
                 break;
             }
             PlatformInput in = InputMouseUp(
@@ -3163,6 +3434,7 @@ bool PlatInit(App* app) {
     aImageTiff = XInternAtom(gDpy, "image/tiff", False);
     aGnomeCopiedFiles =
         XInternAtom(gDpy, "x-special/gnome-copied-files", False);
+    XiInit();
     const char* accessibilityBus = getenv("AT_SPI_BUS_ADDRESS");
     if (accessibilityBus && *accessibilityBus) {
         AccessibilityLinuxInit(app, Str(accessibilityBus));
@@ -3312,6 +3584,7 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         return nullptr;
     }
     win->plat = pw;
+    XiSelect(pw->xwin, nullptr, 0);
 
     XSetWMProtocols(gDpy, pw->xwin, &aWmDeleteWindow, 1);
     // Xdnd version 5. A file manager will not offer a drop without this.

@@ -3887,6 +3887,94 @@ float TouchZoomDelta(TouchZoom* z, float distance, TouchPhase phase) {
     return delta;
 }
 
+static bool DeviceNameAlnum(char c) {
+    return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
+           (c >= 'A' && c <= 'Z');
+}
+
+static char DeviceNameLower(char c) {
+    return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+}
+
+// Whether `word`, lowercase, is one of the words of `s`, any case.
+static bool HasWordNoCase(Str s, const char* word) {
+    int n = (int)strlen(word);
+    int i = 0;
+    while (i < len(s)) {
+        while (i < len(s) && !DeviceNameAlnum(s.s[i])) {
+            i++;
+        }
+        int start = i;
+        while (i < len(s) && DeviceNameAlnum(s.s[i])) {
+            i++;
+        }
+        if (i - start != n) {
+            continue;
+        }
+        bool same = true;
+        for (int k = 0; k < n && same; k++) {
+            same = DeviceNameLower(s.s[start + k]) == word[k];
+        }
+        if (same) {
+            return true;
+        }
+    }
+    return false;
+}
+
+PenTool PenToolOf(Str deviceName, bool hasTouch, bool hasPressure) {
+    if (hasTouch) {
+        return PenTool::NotPen;
+    }
+    bool eraser = HasWordNoCase(deviceName, "eraser");
+    // "pen" alone is not enough: a tablet called "... Pen" names its puck
+    // "... Pen Mouse (0x..)", which has no pressure
+    if (!hasPressure && !eraser && !HasWordNoCase(deviceName, "stylus")) {
+        return PenTool::NotPen;
+    }
+    return eraser ? PenTool::Eraser : PenTool::Pen;
+}
+
+void PenContactTip(PenContact* pc, uint32_t pointerId, bool eraser,
+                   uint32_t time) {
+    pc->pending = true;
+    pc->pointerId = pointerId;
+    pc->eraser = eraser;
+    pc->time = time;
+}
+
+bool PenContactCore(Window* win, PenContact* pc, TouchPhase phase,
+                    uint32_t time, float x, float y, Modifiers mods) {
+    if (phase == TouchPhase::Started) {
+        // a tip whose core press went elsewhere must not claim a mouse's
+        bool pen = pc->pending && pc->time == time;
+        pc->pending = false;
+        if (!pen) {
+            return false;
+        }
+    } else if (!pc->down) {
+        return false;
+    }
+    TouchEvent ev = {};
+    ev.phase = phase;
+    ev.pointerId = pc->pointerId;
+    ev.x = x;
+    ev.y = y;
+    ev.pen = true;
+    ev.eraser = pc->eraser;
+    ev.modifiers = mods;
+    PlatformInput in = InputTouch(ev);
+    WindowDispatchInput(win, &in);
+    if (phase == TouchPhase::Started) {
+        pc->down = WindowTouchKept(win, pc->pointerId);
+        return pc->down;
+    }
+    if (phase == TouchPhase::Ended || phase == TouchPhase::Cancelled) {
+        pc->down = false;
+    }
+    return true;
+}
+
 void WindowDispatchInput(Window* win, const PlatformInput* input) {
     if (!win || !input) {
         return;

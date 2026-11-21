@@ -267,6 +267,39 @@ struct TouchZoom {
 // A change without a Started starts one and answers 0.
 float TouchZoomDelta(TouchZoom* z, float distance, TouchPhase phase);
 
+// XInput2 lists a tablet's pen and eraser as slave pointers of their own:
+// xf86-input-libinput's "<tablet> Pen (0x..)" / "<tablet> Eraser (0x..)",
+// wacom's "<tablet> stylus" / "<tablet> eraser", Xwayland's
+// "xwayland-tablet stylus" / "xwayland-tablet eraser". A pen axis means a
+// pressure valuator ("Abs Pressure"); a touch screen, which may have one
+// too, is not a pen.
+enum class PenTool : uint8_t {
+    NotPen,
+    Pen,
+    Eraser
+};
+PenTool PenToolOf(Str deviceName, bool hasTouch, bool hasPressure);
+
+// The X11 pen contact. XInput2 reports the tip press on the pen's slave
+// device just before the core press made of it, with the same time; the
+// core events that follow, which an implicit grab keeps on the window,
+// carry the contact. PenContactTip marks the press to come.
+struct PenContact {
+    bool pending = false;
+    bool eraser = false;
+    // a handler kept the contact: its core events are not mouse input
+    bool down = false;
+    uint32_t pointerId = 0;
+    uint32_t time = 0;
+};
+void PenContactTip(PenContact* pc, uint32_t pointerId, bool eraser,
+                   uint32_t time);
+// A core left press (Started, with its time), move or left release as the
+// pen's TouchEvent. True when it belongs to a kept contact: it must not
+// become mouse input.
+bool PenContactCore(Window* win, PenContact* pc, TouchPhase phase,
+                    uint32_t time, float x, float y, Modifiers mods);
+
 // text/uri-list, the payload an X11 file drag offers, as newline-separated
 // filesystem paths. file URIs are percent-decoded; any other scheme is
 // skipped. The result lives in `a`.

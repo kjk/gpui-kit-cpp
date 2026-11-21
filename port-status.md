@@ -51,9 +51,20 @@ The current update target is
   handler that clears `propagate` keeps the contact until it ends, so a long
   press or a drag handle can be timed and followed alongside `OnGesture`.
   A kept pen contact makes no mouse messages (no press-and-hold right click
-  or promotion delay), and `eraser` marks the pen's eraser end. Other
-  platforms report none (`src/gpui/window_win.cpp`,
-  `src/gpui/window_common.cpp`).
+  or promotion delay), and `eraser` marks the pen's eraser end. The X11
+  window, built with libXi (`GPUI_HAVE_XI`), selects XI 2.2 touch events,
+  so the server sends it touches instead of the pointer events it emulates
+  from them; it reports every finger and makes the core press, moves and
+  release the server would have made of the first one (`primary`), so a
+  touch acts as a mouse as before. It reports no Cancelled and no
+  gestures, and a touch that begins under a pointer grab (a modal dialog)
+  is only a mouse. A pen is a tablet's slave pointer (`PenToolOf`: a
+  pressure valuator, or a "stylus" / "eraser" device; libinput, wacom and
+  Xwayland name them so); its XI2 tip press marks the core left press of
+  the same time as the contact, whose moves and release follow it and,
+  when kept, make no mouse input (`PenContact`). Barrel buttons stay mouse
+  buttons. Other platforms report none (`src/gpui/window_win.cpp`,
+  `src/gpui/window_linux.cpp`, `src/gpui/window_common.cpp`).
 - **Window frame and placement differ from `WindowOptions` / `Window`.**
   Bounds are `ScreenBounds` in the platform's own unit (device pixels on
   Windows and X11, points on macOS), not logical `Pixels`, and are the outer

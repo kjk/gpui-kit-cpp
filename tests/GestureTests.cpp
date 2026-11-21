@@ -266,6 +266,74 @@ static void KeptTouchIsKnownUntilItEnds() {
     TestAppFree(app);
 }
 
+// The X11 window's tablet devices, by the names and axes XInput2 lists.
+static void PenToolsByDevice() {
+    utassert(PenToolOf(StrL("Wacom Intuos S Pen (0x1)"), false, true) ==
+             PenTool::Pen);
+    utassert(PenToolOf(StrL("Wacom Intuos S Eraser (0x2)"), false, true) ==
+             PenTool::Eraser);
+    utassert(PenToolOf(StrL("Wacom Intuos Pen stylus"), false, false) ==
+             PenTool::Pen);
+    utassert(PenToolOf(StrL("Wacom Intuos Pen eraser"), false, false) ==
+             PenTool::Eraser);
+    utassert(PenToolOf(StrL("xwayland-tablet stylus"), false, true) ==
+             PenTool::Pen);
+    utassert(PenToolOf(StrL("xwayland-tablet eraser"), false, true) ==
+             PenTool::Eraser);
+    // a puck, a touch screen and a mouse are not pens
+    utassert(PenToolOf(StrL("Wacom Intuos Pen Mouse (0x3)"), false, false) ==
+             PenTool::NotPen);
+    utassert(PenToolOf(StrL("ELAN Touchscreen"), true, true) ==
+             PenTool::NotPen);
+    utassert(PenToolOf(StrL("xwayland-pointer:17"), false, false) ==
+             PenTool::NotPen);
+    // "stylus" inside a word is not one
+    utassert(PenToolOf(StrL("Nostylus Mouse"), false, false) ==
+             PenTool::NotPen);
+}
+
+// The X11 pen: a tip marked on the slave device makes the core press of
+// the same time a TouchEvent; a kept contact eats its core events.
+static void PenContactTakesItsCorePress() {
+    App* app = TestAppNew();
+    auto view = EntityNew<TouchView>(app);
+    Window* win = TestWindowOpen(app, view, 400, 300, 1);
+    TouchView* self = view.Get(app);
+    Modifiers none = {};
+    PenContact pc = {};
+
+    // no tip: a mouse press
+    utassert(!PenContactCore(win, &pc, TouchPhase::Started, 10, 50, 50, none));
+    utassert(self->inner == 0);
+
+    // a tip whose core press has another time is not this one's
+    PenContactTip(&pc, 0x80000005u, false, 20);
+    utassert(!PenContactCore(win, &pc, TouchPhase::Started, 21, 50, 50, none));
+    utassert(self->inner == 0 && !pc.pending);
+
+    PenContactTip(&pc, 0x80000005u, true, 30);
+    utassert(PenContactCore(win, &pc, TouchPhase::Started, 30, 50, 50, none));
+    utassert(self->inner == 1 && self->last.pen && self->last.eraser);
+    utassert(self->last.pointerId == 0x80000005u);
+    utassert(PenContactCore(win, &pc, TouchPhase::Moved, 31, 300, 200, none));
+    utassert(self->inner == 2 && self->last.x == 300);
+    utassert(PenContactCore(win, &pc, TouchPhase::Ended, 32, 300, 200, none));
+    utassert(self->last.phase == TouchPhase::Ended);
+    utassert(!WindowTouchKept(win, 0x80000005u));
+    // after the release the pointer is a mouse again
+    utassert(!PenContactCore(win, &pc, TouchPhase::Moved, 33, 60, 60, none));
+    utassert(self->inner == 3);
+
+    // nobody keeps it: the core events stay mouse input
+    PenContactTip(&pc, 0x80000006u, false, 40);
+    utassert(
+        !PenContactCore(win, &pc, TouchPhase::Started, 40, 350, 250, none));
+    utassert(self->outer == 1);
+    utassert(!PenContactCore(win, &pc, TouchPhase::Moved, 41, 340, 250, none));
+    utassert(self->outer == 1);
+    TestAppFree(app);
+}
+
 void TestGesture() {
     TestSuite("gesture");
     GesturesGoInnermostFirst();
@@ -274,4 +342,6 @@ void TestGesture() {
     TouchZoomDeltasAddUpToTheScale();
     TouchStaysWithItsTaker();
     KeptTouchIsKnownUntilItEnds();
+    PenToolsByDevice();
+    PenContactTakesItsCorePress();
 }

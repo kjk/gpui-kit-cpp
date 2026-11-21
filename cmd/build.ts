@@ -1070,6 +1070,15 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
       "xcursor not found: image cursors will be stand-in shapes. Install it with: bash cmd/ubuntu-install-deps.sh",
     );
   }
+  // libXi (XInput2) reports touch-screen and pen contacts as TouchEvent, a
+  // soft dependency: without libxi-dev a touch or a pen is only a mouse.
+  const xi = Bun.spawnSync(["pkg-config", "--exists", "xi"], { stdout: "pipe", stderr: "pipe" });
+  if ((xi.exitCode ?? 1) === 0) {
+    cflags.push(...pkgConfig(["xi"], "--cflags", fail), "-DGPUI_HAVE_XI=1");
+    libs.push(...pkgConfig(["xi"], "--libs", fail));
+  } else {
+    console.log("xi not found: touch and pen will be mouse input. Install it with: bash cmd/ubuntu-install-deps.sh");
+  }
   linuxDepsMemo = { cflags, libs };
   return linuxDepsMemo;
 }

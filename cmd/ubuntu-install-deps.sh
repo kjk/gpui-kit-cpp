@@ -12,6 +12,7 @@
 #   gdb, lldb, valgrind                      — debuggers
 #   libx11-dev, libxext-dev                  — the X11 window
 #   libxcursor-dev                           — image cursors (window_linux.cpp)
+#   libxi-dev                                — touch and pen (window_linux.cpp)
 #   libcairo2-dev, libpango1.0-dev           — the 2D backend (Paint_linux.cpp)
 #   libgdk-pixbuf-2.0-dev                    — JPEG/GIF/WebP decode (Paint_linux.cpp)
 #   libcurl4-openssl-dev                     — the HTTP client (sys/http_linux.cpp)
@@ -75,6 +76,7 @@ $SUDO apt-get install $APT_FLAGS --no-install-recommends \
   libx11-dev \
   libxext-dev \
   libxcursor-dev \
+  libxi-dev \
   libcairo2-dev \
   libpango1.0-dev \
   libgdk-pixbuf-2.0-dev \

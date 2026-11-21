@@ -663,12 +663,12 @@ struct GestureEvent {
 };
 
 // A raw touch-screen finger or pen contact, which Windows reports as
-// WM_POINTER*. Started goes to the element chain under it, innermost first;
-// the handler that clears `propagate` keeps that contact's Moved and its
-// Ended or Cancelled wherever it goes. The same finger still makes the
-// gestures and mouse messages it always did; a kept pen contact makes no
-// mouse messages, so its handler is the pen's only reader. No Rust twin;
-// other platforms report none.
+// WM_POINTER* and X11 from XInput2. Started goes to the element chain under
+// it, innermost first; the handler that clears `propagate` keeps that
+// contact's Moved and its Ended or Cancelled wherever it goes. The same
+// finger still makes the gestures and mouse messages it always did; a kept
+// pen contact makes no mouse messages, so its handler is the pen's only
+// reader. No Rust twin; other platforms report none.
 struct TouchEvent {
     TouchPhase phase = TouchPhase::Started;
     // Tells simultaneous contacts apart; reused once a contact lifts.
