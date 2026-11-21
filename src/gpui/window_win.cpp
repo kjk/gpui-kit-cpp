@@ -642,6 +642,41 @@ static void TouchPointer(Window* win, UINT msg, WPARAM wParam, LPARAM lParam) {
     p->touchLastY = y;
 }
 
+// WM_POINTER* of a finger or a pen as a TouchEvent. A pen that hovers
+// without touching is not a contact.
+static void PointerTouchEvent(Window* win, UINT msg, WPARAM wParam,
+                              LPARAM lParam) {
+    UINT32 id = GET_POINTERID_WPARAM(wParam);
+    POINTER_INPUT_TYPE type = PT_POINTER;
+    if (!GetPointerType(id, &type) || (type != PT_TOUCH && type != PT_PEN)) {
+        return;
+    }
+    TouchEvent ev = {};
+    ev.phase = TouchPhase::Moved;
+    if (msg == WM_POINTERDOWN) {
+        ev.phase = TouchPhase::Started;
+    } else if (msg == WM_POINTERUP) {
+        bool canceled = IS_POINTER_CANCELED_WPARAM(wParam);
+        ev.phase = canceled ? TouchPhase::Cancelled : TouchPhase::Ended;
+    } else if (msg == WM_POINTERCAPTURECHANGED) {
+        ev.phase = TouchPhase::Cancelled;
+    } else if (!IS_POINTER_INCONTACT_WPARAM(wParam)) {
+        return;
+    }
+    if (msg != WM_POINTERCAPTURECHANGED) {
+        Point at =
+            ScreenToDips(win, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+        ev.x = at.x;
+        ev.y = at.y;
+    }
+    ev.pointerId = id;
+    ev.pen = type == PT_PEN;
+    ev.primary = IS_POINTER_PRIMARY_WPARAM(wParam);
+    ev.modifiers = ModsNow();
+    PlatformInput in = InputTouch(ev);
+    WindowDispatchInput(win, &in);
+}
+
 // Mouse messages made from a finger that is scrolling.
 static bool IsTouchScrollMouse(Window* win) {
     return win->plat->touchScroll && IsMouseFromTouch();
@@ -1936,9 +1971,13 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
         case WM_POINTERDOWN:
         case WM_POINTERUPDATE:
         case WM_POINTERUP:
+            PointerTouchEvent(win, msg, wParam, lParam);
             if (IsTouchPointer(wParam)) {
                 TouchPointer(win, msg, wParam, lParam);
             }
+            break;
+        case WM_POINTERCAPTURECHANGED:
+            PointerTouchEvent(win, msg, wParam, lParam);
             break;
         case WM_GESTURENOTIFY:
             GestureNotify(win, lParam);

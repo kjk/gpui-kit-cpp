@@ -3710,6 +3710,65 @@ static void DispatchGesture(Window* win, const GestureEvent& in) {
     AppInvalidate(win);
 }
 
+static TouchCapture* TouchCaptureFind(Window* win, uint32_t pointerId) {
+    for (TouchCapture& c : win->touchCaptures) {
+        if (c.listener.IsValid() && c.pointerId == pointerId) {
+            return &c;
+        }
+    }
+    return nullptr;
+}
+
+// A Started goes to the chain under it until a handler clears `propagate`;
+// that handler keeps the contact. The rest go to it alone, or nowhere.
+static void DispatchTouch(Window* win, const TouchEvent& in) {
+    TouchCapture* held = TouchCaptureFind(win, in.pointerId);
+    if (in.phase != TouchPhase::Started) {
+        if (!held) {
+            return;
+        }
+        Listener l = held->listener;
+        if (in.phase == TouchPhase::Ended ||
+            in.phase == TouchPhase::Cancelled) {
+            *held = {};
+        }
+        TouchEvent ev = in;
+        ListenerCall(win->app, win, l, &ev);
+        AppInvalidate(win);
+        return;
+    }
+    // a Started for a contact still held means its end went missing
+    if (held) {
+        *held = {};
+    }
+    Vec<int> chain;
+    HitChain(win, in.x, in.y, &chain);
+    for (int k = 0; k < len(chain); k++) {
+        Listener l = win->paint.hits[chain[k]].onTouch;
+        if (!l.IsValid()) {
+            continue;
+        }
+        TouchEvent ev = in;
+        ev.propagate = true;
+        ListenerCall(win->app, win, l, &ev);
+        if (ev.propagate) {
+            continue;
+        }
+        TouchCapture* slot = TouchCaptureFind(win, in.pointerId);
+        for (TouchCapture& c : win->touchCaptures) {
+            if (!slot && !c.listener.IsValid()) {
+                slot = &c;
+            }
+        }
+        if (slot) {
+            *slot = {in.pointerId, l};
+        }
+        break;
+    }
+    VecReset(chain);
+    AppInvalidate(win);
+}
+
 void WindowGestureBegin(Window* win, float x, float y) {
     if (!win) {
         return;
@@ -3982,6 +4041,9 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
         case PlatformInputKind::Gesture:
             DispatchGesture(win, input->gesture);
             break;
+        case PlatformInputKind::Touch:
+            DispatchTouch(win, input->touch);
+            break;
     }
 }
 
@@ -4051,6 +4113,13 @@ PlatformInput InputGesture(const GestureEvent& ev) {
     PlatformInput in = {};
     in.kind = PlatformInputKind::Gesture;
     in.gesture = ev;
+    return in;
+}
+
+PlatformInput InputTouch(const TouchEvent& ev) {
+    PlatformInput in = {};
+    in.kind = PlatformInputKind::Touch;
+    in.touch = ev;
     return in;
 }
 

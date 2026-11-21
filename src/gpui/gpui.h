@@ -662,6 +662,26 @@ struct GestureEvent {
     bool propagate = true;
 };
 
+// A raw touch-screen finger or pen contact, which Windows reports as
+// WM_POINTER*. Started goes to the element chain under it, innermost first;
+// the handler that clears `propagate` keeps that contact's Moved and its
+// Ended or Cancelled wherever it goes. The same finger still makes the
+// gestures and mouse messages it always did. No Rust twin; other platforms
+// report none.
+struct TouchEvent {
+    TouchPhase phase = TouchPhase::Started;
+    // Tells simultaneous contacts apart; reused once a contact lifts.
+    uint32_t pointerId = 0;
+    // Window dips.
+    float x = 0;
+    float y = 0;
+    bool pen = false;
+    // The first contact of a touch; a second finger is not primary.
+    bool primary = true;
+    Modifiers modifiers = {};
+    bool propagate = true;
+};
+
 // FileDropEvent from the platform: files dragged onto the window. Entered
 // carries the paths; Pending is the pointer moving; Submit is the drop;
 // Exited is the drag leaving without a drop. The window turns it into an
@@ -747,7 +767,8 @@ enum class PlatformInputKind : uint8_t {
     LongPress,
     FileDrop,
     Pinch,
-    Gesture
+    Gesture,
+    Touch
 };
 
 struct PlatformInput {
@@ -763,6 +784,7 @@ struct PlatformInput {
         FileDropEvent fileDrop;
         PinchEvent pinch;
         GestureEvent gesture;
+        TouchEvent touch;
     };
 };
 
@@ -2766,6 +2788,8 @@ struct ElLifecycle {
     Listener onPinch;
     // El::OnGesture, the same way
     Listener onGesture;
+    // El::OnTouch, the same way
+    Listener onTouch;
     // El::CustomCursor, the same way
     CursorImage* cursorImage = nullptr;
     const TextHighlight* highlights = nullptr;
@@ -3609,6 +3633,9 @@ struct El {
     // A touch gesture that began over this element (GestureEvent). No Rust
     // twin.
     El* OnGesture(Listener fn);
+    // Raw touch and pen contacts that begin over this element (TouchEvent).
+    // No Rust twin.
+    El* OnTouch(Listener fn);
     El* TabIndex(int v);
     El* TabStop(bool v);
     // Opt into the component focus appearance. FocusId / TrackFocus alone do
@@ -3767,6 +3794,7 @@ struct HitRect {
     // El::OnPinch, the same way
     Listener onPinch;
     Listener onGesture;
+    Listener onTouch;
     Str dropKind = {};
     Listener onDrop;
     CursorKind cursor = CursorKind::Arrow;
@@ -7505,6 +7533,16 @@ struct DragOutRequest;
 // crates/base/src/text_selection.rs WindowSelectionState, one per window.
 struct WindowSelection;
 
+// The element that took a contact's Started, by its listener: the tree is
+// rebuilt every frame, the listener's entity is not.
+struct TouchCapture {
+    uint32_t pointerId = 0;
+    Listener listener = {};
+};
+
+// Contacts tracked at once; Windows reports up to 10 fingers.
+static constexpr int kTouchCaptureMax = 10;
+
 // One live cx.on_blur: `handler` runs when `focusId` held the focus and the
 // focus moves off it.
 struct WindowBlurSub {
@@ -7812,6 +7850,8 @@ struct Window {
     // Its pinches and gestures go to the elements where it began.
     bool gestureAnchored = false;
     Point gestureAnchor = {};
+    // TouchEvent: the listener that took each live contact's Started.
+    TouchCapture touchCaptures[kTouchCaptureMax] = {};
     // WindowTouch*: a host-owned iOS/Android view feeds raw touches here.
     TouchHostKind touchHost = TouchHostKind::None;
     // SliderState::touch_drag: the slider a live TouchDrag was claimed by,

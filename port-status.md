@@ -44,6 +44,14 @@ The current update target is
   touch lasts (`GID_BEGIN`..`GID_END`) its pinches and gestures go to the
   elements where it began (`WindowGestureBegin`). Other platforms report none
   (`src/gpui/window_win.cpp`, `src/gpui/window_common.cpp`).
+- **`TouchEvent` / `El::OnTouch` have no Rust twin.** The Windows window
+  reports each touch-screen finger and pen contact from `WM_POINTER*` (down,
+  in-contact moves, up, canceled, capture lost) as well as the gestures and
+  mouse messages it makes. A contact's Started walks the chain under it; the
+  handler that clears `propagate` keeps the contact until it ends, so a long
+  press or a drag handle can be timed and followed alongside `OnGesture`.
+  Other platforms report none (`src/gpui/window_win.cpp`,
+  `src/gpui/window_common.cpp`).
 - **Window frame and placement differ from `WindowOptions` / `Window`.**
   Bounds are `ScreenBounds` in the platform's own unit (device pixels on
   Windows and X11, points on macOS), not logical `Pixels`, and are the outer

@@ -1,7 +1,8 @@
-/* GestureEvent and El::OnGesture, which have no Rust twin, and the touch
-   pinch arithmetic. The Windows window turns WM_GESTURE into these; this
-   drives the shared half: dispatch to the chain where the touch began, a
-   pan nobody takes scrolling, and the zoom distance as PinchEvent deltas. */
+/* GestureEvent and El::OnGesture, TouchEvent and El::OnTouch, which have
+   no Rust twin, and the touch pinch arithmetic. The Windows window turns
+   WM_GESTURE and WM_POINTER into these; this drives the shared half:
+   dispatch to the chain where the touch began, a pan nobody takes
+   scrolling, and the zoom distance as PinchEvent deltas. */
 
 #include "Test.h"
 
@@ -170,10 +171,79 @@ static void TouchZoomDeltasAddUpToTheScale() {
     utassertnear(TouchZoomDelta(&z, 40, TouchPhase::Moved), -0.5f);
 }
 
+struct TouchView {
+    int inner = 0;
+    int outer = 0;
+    TouchEvent last = {};
+    bool innerTakes = true;
+
+    static void OnInner(TouchView* self, Ctx*, const TouchEvent* ev) {
+        self->inner++;
+        self->last = *ev;
+        const_cast<TouchEvent*>(ev)->propagate = !self->innerTakes;
+    }
+
+    static void OnOuter(TouchView* self, Ctx*, const TouchEvent*) {
+        self->outer++;
+    }
+
+    static El* Render(TouchView*, Ctx* cx) {
+        El* inner = Div(cx->a)->W(100)->H(100)->OnTouch(
+            Listen(cx, &TouchView::OnInner));
+        return Div(cx->a)
+            ->SizeFull()
+            ->OnTouch(Listen(cx, &TouchView::OnOuter))
+            ->Child(inner);
+    }
+};
+
+static TouchEvent MkTouch(TouchPhase phase, uint32_t id, Point at) {
+    TouchEvent ev = {};
+    ev.phase = phase;
+    ev.pointerId = id;
+    ev.x = at.x;
+    ev.y = at.y;
+    return ev;
+}
+
+// The element that takes a contact's Started keeps its moves and its end,
+// wherever they go; another contact is hit-tested on its own.
+static void TouchStaysWithItsTaker() {
+    App* app = TestAppNew();
+    auto view = EntityNew<TouchView>(app);
+    Window* win = TestWindowOpen(app, view, 400, 300, 1);
+    TouchView* self = view.Get(app);
+
+    TestSimulateTouch(win, MkTouch(TouchPhase::Started, 7, {50, 50}));
+    TestSimulateTouch(win, MkTouch(TouchPhase::Moved, 7, {300, 200}));
+    utassert(self->inner == 2 && self->outer == 0);
+    utassert(self->last.phase == TouchPhase::Moved);
+    utassert(self->last.x == 300 && self->last.pointerId == 7);
+
+    // a second finger outside the inner box goes to the outer one, which
+    // leaves `propagate` set and so keeps nothing
+    TestSimulateTouch(win, MkTouch(TouchPhase::Started, 8, {350, 250}));
+    TestSimulateTouch(win, MkTouch(TouchPhase::Moved, 8, {340, 250}));
+    utassert(self->outer == 1);
+
+    TestSimulateTouch(win, MkTouch(TouchPhase::Ended, 7, {300, 200}));
+    utassert(self->inner == 3 && self->last.phase == TouchPhase::Ended);
+    // after the end the contact belongs to nobody
+    TestSimulateTouch(win, MkTouch(TouchPhase::Moved, 7, {50, 50}));
+    utassert(self->inner == 3 && self->outer == 1);
+
+    // an inner handler that lets it propagate hands the Started on
+    self->innerTakes = false;
+    TestSimulateTouch(win, MkTouch(TouchPhase::Started, 9, {50, 50}));
+    utassert(self->inner == 4 && self->outer == 2);
+    TestAppFree(app);
+}
+
 void TestGesture() {
     TestSuite("gesture");
     GesturesGoInnermostFirst();
     GesturesStayWhereTheTouchBegan();
     AnUntakenPanScrolls();
     TouchZoomDeltasAddUpToTheScale();
+    TouchStaysWithItsTaker();
 }

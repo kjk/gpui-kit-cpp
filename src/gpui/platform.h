@@ -247,6 +247,7 @@ PlatformInput InputTextDrop(FileDropPhase phase, float x, float y, Str text,
 PlatformInput InputPinch(float x, float y, float delta, Modifiers modifiers,
                          TouchPhase phase);
 PlatformInput InputGesture(const GestureEvent& ev);
+PlatformInput InputTouch(const TouchEvent& ev);
 
 // The touch a platform's gestures belong to began at (x, y) or ended. While
 // it lasts, its pinches and gestures go to the elements where it began.

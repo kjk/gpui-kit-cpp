@@ -104,6 +104,8 @@ void TestSimulatePinch(Window* win, Point position, float delta,
                        Modifiers modifiers = {});
 // A GestureEvent, which has no Rust twin.
 void TestSimulateGesture(Window* win, const GestureEvent& ev);
+// A TouchEvent, which has no Rust twin.
+void TestSimulateTouch(Window* win, const TouchEvent& ev);
 
 // cx.dispatch_action(action): to whatever has the focus, the way a key bound
 // to it would — the focused field first, then the element chain out from the

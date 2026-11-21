@@ -576,6 +576,10 @@ void TestSimulateGesture(Window* win, const GestureEvent& ev) {
     Simulate(win, InputGesture(ev));
 }
 
+void TestSimulateTouch(Window* win, const TouchEvent& ev) {
+    Simulate(win, InputTouch(ev));
+}
+
 void TestSimulateClick(Window* win, Point position, Modifiers modifiers) {
     TestSimulateMouseDown(win, position, MouseButton::Left, modifiers);
     TestSimulateMouseUp(win, position, MouseButton::Left, modifiers);
