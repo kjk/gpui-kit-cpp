@@ -5891,6 +5891,16 @@ bool AppHasMenuBar() {
     return PlatHasAppMenu();
 }
 
+static bool gAppActivates = true;
+
+void AppSetActivates(bool activates) {
+    gAppActivates = activates;
+}
+
+bool AppActivates() {
+    return gAppActivates;
+}
+
 void AppSetOsFullScreenMenuItem(bool shown) {
     PlatSetOsFullScreenMenuItem(shown);
 }

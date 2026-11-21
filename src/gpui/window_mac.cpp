@@ -1597,7 +1597,7 @@ static void OrderFrontOnce(Window* win) {
     }
     pw->ordered = true;
     OrderFront(win, pw->activateOnShow);
-    if (pw->activateOnShow && win->opts.activatable) {
+    if (pw->activateOnShow && win->opts.activatable && AppActivates()) {
         [NSApp activateIgnoringOtherApps:YES];
     }
 }
@@ -1858,7 +1858,9 @@ void AppActivate(Window* win) {
         Redraw(win);
         return;
     }
-    [NSApp activateIgnoringOtherApps:YES];
+    if (AppActivates()) {
+        [NSApp activateIgnoringOtherApps:YES];
+    }
     [win->plat->window makeKeyAndOrderFront:nil];
 }
 
@@ -3625,7 +3627,9 @@ bool PlatInit(App* app) {
         // ⌘Q and the application menu's Quit row both call terminate:, which
         // the delegate turns into AppQuitAll.
         InstallDefaultAppMenu();
-        [NSApp activateIgnoringOtherApps:YES];
+        if (AppActivates()) {
+            [NSApp activateIgnoringOtherApps:YES];
+        }
     }
     return true;
 }

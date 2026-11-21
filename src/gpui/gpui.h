@@ -9278,6 +9278,12 @@ void AppSetOsFullScreenMenuItem(bool shown);
 // Show or hide the OS menu bar. macOS only; ignored everywhere else. Hiding
 // it leaves the menus installed, so a shortcut still reaches its row.
 void AppSetMenuBarVisible(bool visible);
+// False: the application never brings itself to the front (macOS): its
+// windows come on screen without taking the keyboard from the application
+// in front, as for one a test drives while someone works. Call before
+// AppNew. True by default; ignored elsewhere.
+void AppSetActivates(bool activates);
+bool AppActivates();
 // What row `id` names, `id` being what a platform menu answers with. The
 // numbering is the contract between the two halves — the selectable rows in
 // preorder, from 1 — so it is worth being able to ask.
