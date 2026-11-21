@@ -9610,7 +9610,9 @@ static void InlineCodeRefinementsStayExplicitOnAnInvertedSurface() {
     TextViewStyle plain = TextViewStyle::Default();
     utassert(plain.InlineCodeStyleFields() == 0);
     // Computed at runtime: a constant 1e20*1e20 is a C4056 overflow.
-    volatile float big = 1.0e20f;
+    // One read of the volatile: two in one expression is unsequenced.
+    volatile float bigSource = 1.0e20f;
+    float big = bigSource;
     float inf = big * big;
     float bad[] = {inf, inf - inf, 0.f, -1.f};
     for (float size : bad) {
