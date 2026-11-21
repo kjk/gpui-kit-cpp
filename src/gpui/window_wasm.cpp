@@ -1094,6 +1094,13 @@ void PlatClipboardSetText(Window* win, Str text) {
     GpJsClipboardWrite(text.s, len(text));
 }
 
+// TODO: the web's prefers-color-scheme, Linux's XDG portal color-scheme
+WindowAppearance PlatWindowAppearance() {
+    return WindowAppearance::Light;
+}
+
+void PlatWatchWindowAppearance() {}
+
 bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
     (void)win;
     (void)png;

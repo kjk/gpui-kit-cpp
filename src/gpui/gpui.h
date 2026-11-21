@@ -7448,6 +7448,13 @@ bool AppGlobalRemove(App* app) {
     return AppGlobalRemoveRaw(app, AppGlobalKey<T>());
 }
 
+// GPUI's WindowAppearance: whether the system asks apps for light or dark.
+// The vibrant variants are not ported.
+enum class WindowAppearance : uint8_t {
+    Light,
+    Dark
+};
+
 struct App {
     PaintApp* paint = nullptr;
     Vec<Window*> windows;
@@ -7455,6 +7462,9 @@ struct App {
     // The app layer carries the callback; a platform never names src/ui.
     void (*hostThemeHandler)(App*, bool dark) = nullptr;
     void (*onOpenUrls)(App*, const Str* urls, int n) = nullptr;
+    // AppOnWindowAppearanceChanged, and the appearance it was last told of
+    void (*onWindowAppearance)(App*, WindowAppearance) = nullptr;
+    WindowAppearance lastWindowAppearance = WindowAppearance::Light;
     // AppOnWindowClosed.
     void (*onWindowClosed)(void* data, Window* win) = nullptr;
     void* onWindowClosedData = nullptr;
@@ -9021,6 +9031,14 @@ void AppHostSetTheme(App* app, bool dark);
 // the Dock icon. `urls` is borrowed for the call. Only macOS calls it.
 using OpenUrlsFn = void (*)(App* app, const Str* urls, int n);
 void AppOnOpenUrls(App* app, OpenUrlsFn fn);
+// cx.window_appearance(). macOS and Windows answer; Linux and the web
+// answer Light for now.
+WindowAppearance AppWindowAppearance(App* app);
+// cx.observe_window_appearance, for the whole app: called on the UI thread
+// when the system switches between light and dark. One observer. Only macOS
+// and Windows call it.
+using WindowAppearanceFn = void (*)(App* app, WindowAppearance appearance);
+void AppOnWindowAppearanceChanged(App* app, WindowAppearanceFn fn);
 void AppOpenUrls(App* app, const Str* urls, int n);
 // A teardown belonging to a layer above this one, run by AppFree once the
 // windows are gone. The theme registry's arena is what asked for it: it lives

@@ -416,6 +416,14 @@ void PlatWake(App* app);
 // installed, drop an empty write, and otherwise call these.
 void PlatClipboardSetText(Window* win, Str text);
 bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen);
+// AppWindowAppearance's platform half. PlatWatchWindowAppearance starts
+// telling AppWindowAppearanceChanged about changes, where the platform has to
+// ask for that (macOS); it is called once, when an observer is installed.
+WindowAppearance PlatWindowAppearance();
+void PlatWatchWindowAppearance();
+// a platform calls it when the system may have switched: tells the observer
+// if the appearance is not the one it was last told of
+void AppWindowAppearanceChanged(App* app);
 Str PlatClipboardGetText(Arena* a, Window* win);
 ClipboardItem PlatClipboardGetItem(Arena* a, Window* win);
 #endif

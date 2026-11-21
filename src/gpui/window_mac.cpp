@@ -2634,6 +2634,26 @@ static GpuiAppMenuTarget* gAppMenuTarget = nil;
 
 static GpuiAppDelegate* gAppDelegate = nil;
 
+// KVO on NSApp's effectiveAppearance: AppKit changes it on the main thread as
+// the system switches between light and dark
+@interface GpuiAppearanceObserver : NSObject
+@end
+
+@implementation GpuiAppearanceObserver
+- (void)observeValueForKeyPath:(NSString*)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary*)change
+                       context:(void*)context {
+    (void)keyPath;
+    (void)object;
+    (void)change;
+    (void)context;
+    gpui::AppWindowAppearanceChanged(gpui::gPlatApp);
+}
+@end
+
+static GpuiAppearanceObserver* gAppearanceObserver = nil;
+
 namespace gpui {
 
 static void InstallDefaultAppMenu() {
@@ -3206,6 +3226,29 @@ void WindowSetTextContentType(Window* win, Str value) {
 }
 
 // PNG and TIFF both: AppKit apps read TIFF, the others PNG
+// window_appearance: NSApp's effective appearance, which follows the system
+// unless the app set one of its own
+WindowAppearance PlatWindowAppearance() {
+    NSAppearance* a = [NSApp effectiveAppearance];
+    NSAppearanceName best = [a bestMatchFromAppearancesWithNames:@[
+        NSAppearanceNameAqua, NSAppearanceNameDarkAqua
+    ]];
+    return [best isEqualToString:NSAppearanceNameDarkAqua]
+               ? WindowAppearance::Dark
+               : WindowAppearance::Light;
+}
+
+void PlatWatchWindowAppearance() {
+    if (gAppearanceObserver) {
+        return;
+    }
+    gAppearanceObserver = [[GpuiAppearanceObserver alloc] init];
+    [NSApp addObserver:gAppearanceObserver
+            forKeyPath:@"effectiveAppearance"
+               options:0
+               context:nullptr];
+}
+
 bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
     (void)win;
     NSData* data = [NSData dataWithBytes:png length:(NSUInteger)pngLen];

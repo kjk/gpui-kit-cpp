@@ -1792,6 +1792,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             if (wParam == 0 && lParam &&
                 wcscmp((const wchar_t*)lParam, L"ImmersiveColorSet") == 0) {
                 ConfigureDwmDarkMode(hwnd);
+                AppWindowAppearanceChanged(win ? win->app : nullptr);
             }
             return 0;
         case WM_SIZE:
@@ -3354,6 +3355,14 @@ void PlatClipboardSetText(Window* win, Str text) {
 }
 
 // TODO: CF_DIB and the registered "PNG" format
+WindowAppearance PlatWindowAppearance() {
+    return SystemIsDarkMode() ? WindowAppearance::Dark
+                              : WindowAppearance::Light;
+}
+
+// WM_SETTINGCHANGE's ImmersiveColorSet arrives on its own
+void PlatWatchWindowAppearance() {}
+
 bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
     (void)win;
     (void)png;

@@ -841,6 +841,35 @@ void ClipboardSetText(Window* win, Str text) {
     PlatClipboardSetText(win, text);
 }
 
+WindowAppearance AppWindowAppearance(App* app) {
+    (void)app;
+    return PlatWindowAppearance();
+}
+
+void AppOnWindowAppearanceChanged(App* app, WindowAppearanceFn fn) {
+    if (!app) {
+        return;
+    }
+    bool first = !app->onWindowAppearance;
+    app->onWindowAppearance = fn;
+    app->lastWindowAppearance = PlatWindowAppearance();
+    if (first && fn) {
+        PlatWatchWindowAppearance();
+    }
+}
+
+void AppWindowAppearanceChanged(App* app) {
+    if (!app || !app->onWindowAppearance) {
+        return;
+    }
+    WindowAppearance now = PlatWindowAppearance();
+    if (now == app->lastWindowAppearance) {
+        return;
+    }
+    app->lastWindowAppearance = now;
+    app->onWindowAppearance(app, now);
+}
+
 bool ClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
     if (!png || pngLen <= 0) {
         return false;

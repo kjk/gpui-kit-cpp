@@ -1483,6 +1483,13 @@ void PlatClipboardSetText(Window* win, Str text) {
 
 // Served in one property, without INCR: with BIG-REQUESTS (every current X
 // server) that holds images of many megabytes.
+// TODO: the web's prefers-color-scheme, Linux's XDG portal color-scheme
+WindowAppearance PlatWindowAppearance() {
+    return WindowAppearance::Light;
+}
+
+void PlatWatchWindowAppearance() {}
+
 bool PlatClipboardSetImage(Window* win, const uint8_t* png, int pngLen) {
     if (!win || !win->plat || !gDpy) {
         return false;
