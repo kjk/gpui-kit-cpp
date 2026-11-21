@@ -5853,16 +5853,10 @@ static PlatMenuItem* AppMenuToPlat(AppMenuState* state, Arena* a,
             p.submenuN = r.submenuN;
             continue;
         }
-        // A row that cannot be chosen is not numbered, so it cannot be
-        // reported either — which is what leaving its id at zero says.
-        if (r.disabled) {
-            continue;
-        }
-        VecAppend(state->rows, AppMenuBinding{r.action, r.arg});
-        p.id = state->rows.len;
         // The shortcut beside the label. A row may name it; otherwise it is
         // the binding of this action and argument. The menu bar matches the
-        // chord itself, and what it fires is the row.
+        // chord itself, and what it fires is the row. A disabled row shows
+        // it too, greyed, as a Mac menu does.
         KeyChord chord = {};
         bool haveKey = false;
         if (r.stroke && r.stroke[0]) {
@@ -5882,6 +5876,13 @@ static PlatMenuItem* AppMenuToPlat(AppMenuState* state, Arena* a,
                 p.keyMods.function = chord.function;
             }
         }
+        // A row that cannot be chosen is not numbered, so it cannot be
+        // reported either — which is what leaving its id at zero says.
+        if (r.disabled) {
+            continue;
+        }
+        VecAppend(state->rows, AppMenuBinding{r.action, r.arg});
+        p.id = state->rows.len;
     }
     return out;
 }
