@@ -753,6 +753,8 @@ static const char* AtspiRoleName(uint32_t role) {
             return "table row";
         case 91:
             return "tree item";
+        case 94:
+            return "document text";
         case 98:
             return "list box";
         default:
