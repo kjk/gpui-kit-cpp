@@ -7,14 +7,14 @@
 //   bun cmd/mobile-build.ts -ios
 //   bun cmd/mobile-build.ts -android -dbg -clean
 
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { androidNdkVersion, androidSdkRoots, isPinnedNdk } from "./android-install-deps.ts";
 import { defaultBuildFlags, ensureAmalgam, formatCmd } from "./build.ts";
 
 const root = resolve(import.meta.dir, "..");
 process.chdir(root);
 
-const androidNdkVersion = "30.0.16248370";
 const androidApi = 24;
 type MobilePlatform = "android" | "ios";
 
@@ -62,25 +62,17 @@ function isFile(path: string): boolean {
 }
 
 function androidNdkRoot(): string {
-  const sdkRoots = [
-    process.env.ANDROID_HOME,
-    process.env.ANDROID_SDK_ROOT,
-    process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, "Android", "Sdk") : undefined,
-  ].filter((value): value is string => !!value);
   const candidates = [
     process.env.ANDROID_NDK_HOME,
     process.env.ANDROID_NDK_ROOT,
-    ...sdkRoots.map((sdk) => join(sdk, "ndk", androidNdkVersion)),
+    ...androidSdkRoots().map((sdk) => join(sdk, "ndk", androidNdkVersion)),
   ].filter((value): value is string => !!value);
   for (const candidate of candidates) {
-    const properties = join(candidate, "source.properties");
-    if (isFile(properties) && readFileSync(properties, "utf8").includes(`Pkg.Revision = ${androidNdkVersion}`)) {
+    if (isPinnedNdk(candidate)) {
       return resolve(candidate);
     }
   }
-  die(
-    `Android NDK ${androidNdkVersion} is not installed. Run powershell -ExecutionPolicy Bypass -File cmd/android-install-deps.ps1`,
-  );
+  die(`Android NDK ${androidNdkVersion} is not installed. Run bun cmd/android-install-deps.ts`);
 }
 
 function androidTools(): { cxx: string; cc: string; ar: string; target: string } {

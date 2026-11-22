@@ -50,7 +50,7 @@ bun cmd/run.ts -rel -compare story
 bun cmd/build-no-amalgam.ts -rel
 bun cmd/build-no-amalgam.ts -clang -rel   # Windows: clang-cl
 # arm64 static libraries for externally hosted mobile applications
-powershell -ExecutionPolicy Bypass -File cmd/android-install-deps.ps1
+bun cmd/android-install-deps.ts
 bun cmd/mobile-build.ts -android -rel
 bun cmd/mobile-build.ts -ios -rel         # macOS + Xcode only
 bun cmd/mac-build.ts -ios -rel            # from a Windows/Linux checkout

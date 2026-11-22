@@ -73,10 +73,9 @@ jobs:
 
       - name: Install Android NDK
         if: matrix.name == 'windows'
-        shell: powershell
         run: |
-          powershell -ExecutionPolicy Bypass -File cmd/android-install-deps.ps1
-          powershell -ExecutionPolicy Bypass -File cmd/android-install-deps.ps1 -Check
+          bun cmd/android-install-deps.ts
+          bun cmd/android-install-deps.ts -check
 
       - name: Cross-compile Android library
         if: matrix.name == 'windows'

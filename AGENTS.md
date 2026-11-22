@@ -47,7 +47,7 @@ including its [crates.md](.claude/skills/update-port/crates.md).
    - macOS: clang++, Cocoa, Core Graphics, ImageIO, Core Text, IOKit,
      CoreServices/FSEvents, NSURLSession, AudioToolbox, AVFoundation, Speech.
    - iOS: Xcode iPhoneOS SDK, UIKit host. Android: pinned NDK from
-     `cmd/android-install-deps.ps1`, API 24+. Both build static libraries;
+     `cmd/android-install-deps.ts`, API 24+. Both build static libraries;
      the application owns lifecycle and embeds the surface.
    **QuickJS-NG is the sole vendored-source exception:** pinned in `cmd/run.ts`,
    checkout only in `.work/quickjs-ng`, reduced by `bun cmd/update-quickjs.ts`
@@ -157,7 +157,7 @@ lifecycle; platform windows call it. Examples never name an OS API: implement
 
 `bun cmd/mobile-build.ts -android` builds arm64-v8a `libgpui.a` at API 24.
 On Windows install/verify the pinned, checksum-checked NDK with
-`powershell -ExecutionPolicy Bypass -File cmd/android-install-deps.ps1`.
+`bun cmd/android-install-deps.ts`.
 It installs beside Android Studio NDKs; honors `ANDROID_NDK_HOME`,
 `ANDROID_NDK_ROOT`, `ANDROID_HOME`, `ANDROID_SDK_ROOT`.
 `bun cmd/mobile-build.ts -ios` builds arm64 iOS 15 using
@@ -488,3 +488,4 @@ trees; the manual publication command checks all examples against the snapshot.
 - `cmd/vec-log.ts`: instrument Vec/ArenaVec and analyze capacity needs.
 - `cmd/svg-to-bytecode.ts`: assets/icons to gpui/asset_icons.cpp.
 - `cmd/crlf-to-lf.ts`: normalize line endings after scripted edits.
+- `cmd/gen-compile-commands.ts`: compile_commands.json for clangd.

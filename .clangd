@@ -7,7 +7,7 @@
 # For best results on Windows:
 #   1. Install "C++ Clang Compiler for Windows" via VS Installer (clang-cl)
 #   2. Open this folder in VS Code with clangd extension, or use clangd in Zed
-#   3. Optionally run: powershell -File cmd/gen-compile-commands.ps1
+#   3. Optionally run: bun cmd/gen-compile-commands.ts
 
 CompileFlags:
   # All sources in this tree are C++. Without this, clangd treats .h as C

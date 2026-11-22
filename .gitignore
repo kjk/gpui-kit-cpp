@@ -33,7 +33,7 @@ gpui-kit.d.ts
 /gpui-perf.txt
 /implicit-state-machines.md
 .DS_Store
-# Generated for clangd by cmd/gen-compile-commands.ps1.
+# Generated for clangd by cmd/gen-compile-commands.ts.
 /compile_commands.json
 # Left in the working directory by shell tests run from the repo root.
 /shell_open_path_test/
