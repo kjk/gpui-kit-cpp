@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a9d53719f109a8c6b89cfc9733e90e127fe3be52` (2026-11-20, diff:
-Report the character under the pointer so a diff can host links (#4042)).
-A diff reports the character under the pointer (DiffPointerPosition) so a host
-can resolve links in its lines.
+Processed through `8d9ec375192e03edc95641004d15be61f8f55626` (2026-11-20, diff:
+Show parts of a file for reference at their own line numbers (#4043)).
+DiffFile::Excerpts shows parts of a file for reference, each at its own line
+numbers; Unchanged is one part at line 1.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 

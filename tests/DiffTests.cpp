@@ -1518,6 +1518,32 @@ static void AllFilesCollapseAndExpandTogether() {
     utassert(len(state->emitted) == 0);
 }
 
+// diff/conflict.rs excerpts_keep_each_parts_line_numbers.
+static void ExcerptsKeepEachPartsLineNumbers() {
+    DiffExcerpt parts[3];
+    parts[0].first = 40;
+    parts[0].text = StrL("fn a() {\n}\n");
+    parts[1].first = 90;
+    parts[1].text = StrL("fn b() {}");
+    parts[2].first = 120;
+    parts[2].text = StrL("fn c() {}\n");
+    DiffFile* file = DiffFile::Excerpts(StrL("src/lib.rs"), parts, 3);
+    utassert(file->Status() == DiffFileStatus::Unchanged);
+    int count = file->LinesCount(DiffSide::Modified);
+    utassert(count == 4);
+    int want[] = {40, 41, 90, 120};
+    for (int ix = 0; ix < count && ix < 4; ix++)
+        utassert(file->LineNumber(DiffSide::Modified, ix) == want[ix]);
+    utassert(file->LineIndex(DiffSide::Modified, 90) == 2);
+    utassert(file->LineIndex(DiffSide::Modified, 60) < 0);
+    // A part without a final newline does not swallow the next one.
+    Arena* a = ArenaNew();
+    utassert(StrEq(file->TextForLines(a, DiffSide::Modified, 90, 120),
+                   "fn b() {}\nfn c() {}\n"));
+    ArenaDelete(a);
+    delete file;
+}
+
 // diff/pointer_tests.rs Host: a diff with an underlined, transparent span
 // highlight and every pointer handler, recording what each heard.
 struct PointerHost {
@@ -1733,6 +1759,7 @@ void TestDiff() {
     TestParser();
     TestTruncatedHunks();
     TestConflictsAndLanguage();
+    ExcerptsKeepEachPartsLineNumbers();
     TestInlineAndRows();
     AllFilesCollapseAndExpandTogether();
     AnApplicationHighlighterStylesEachHunkSide();

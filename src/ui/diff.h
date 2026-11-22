@@ -335,6 +335,13 @@ struct DiffRun {
     int end = 0;
 };
 
+// One part for DiffFile::Excerpts: Rust's `(first line, text)` tuple. The
+// text's first line is file line `first`.
+struct DiffExcerpt {
+    int first = 1;
+    Str text = {};
+};
+
 // Immutable parsed file. Strings live in `arena`. Not stored in a Vec:
 // the state holds DiffFile*.
 struct DiffFile {
@@ -367,7 +374,14 @@ struct DiffFile {
     static bool ParseWith(Str patch, DiffParseOptions options,
                           Vec<DiffFile*>* out, DiffParseError* error);
     bool IsTruncated() const;
+    // A file shown in full, for reference, without changes. It appears as a
+    // single column in every display mode.
     static DiffFile* Unchanged(Str path, Str text);
+    // Parts of a file shown for reference, without changes, each keeping
+    // its own line numbers, in file order without overlap. A first line
+    // below 1 is clamped to 1. Like Unchanged it is a single column in
+    // every display mode; the lines between the parts are simply not there.
+    static DiffFile* Excerpts(Str path, const DiffExcerpt* parts, int count);
     static DiffFile* ParseConflicts(Str path, Str text, DiffParseError* error);
     DiffFile* WithLanguage(Str language);
     Str Language() const;

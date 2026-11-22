@@ -1400,6 +1400,13 @@ static void LineRanges(Str text, Vec<int>* start, Vec<int>* end) {
 }
 
 DiffFile* DiffFile::Unchanged(Str path, Str text) {
+    DiffExcerpt whole;
+    whole.first = 1;
+    whole.text = text;
+    return Excerpts(path, &whole, 1);
+}
+
+DiffFile* DiffFile::Excerpts(Str path, const DiffExcerpt* parts, int count) {
     DiffFile* file = AllocFile();
     file->status = DiffFileStatus::Unchanged;
     file->modified.hasPath = true;
@@ -1407,12 +1414,30 @@ DiffFile* DiffFile::Unchanged(Str path, Str text) {
     file->original.hasPath = true;
     file->original.path = file->modified.path;
     file->path = file->modified.path;
-    file->modified.source = Own(file->arena, text);
+    StrBuilder source;
+    Vec<int> numbers;
     Vec<int> starts;
     Vec<int> ends;
-    LineRanges(text, &starts, &ends);
+    // Parts come in file order without overlap; Rust debug-asserts it.
+    for (int p = 0; p < count; p++) {
+        // A part cut off mid-line must not run into the next one.
+        if (len(source) && source.els[len(source) - 1] != '\n')
+            source.AppendChar('\n');
+        int offset = len(source);
+        int first = IMax(parts[p].first, 1);
+        Vec<int> partStarts;
+        Vec<int> partEnds;
+        LineRanges(parts[p].text, &partStarts, &partEnds);
+        for (int i = 0; i < len(partStarts); i++) {
+            VecAppend(numbers, first + i);
+            VecAppend(starts, offset + partStarts[i]);
+            VecAppend(ends, offset + partEnds[i]);
+        }
+        source.Append(parts[p].text);
+    }
+    file->modified.source = Own(file->arena, Str(source.els, len(source)));
     for (int i = 0; i < len(starts); i++) {
-        FinishLine(file, &file->modified, file->modified.source, i + 1,
+        FinishLine(file, &file->modified, file->modified.source, numbers[i],
                    starts[i], ends[i]);
         DiffLinePair pair;
         pair.original = -1;
