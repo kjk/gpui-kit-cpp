@@ -69,6 +69,10 @@
 #endif
 
 #define GPUI_OS_POSIX (!GPUI_OS_WINDOWS)
+// Apple kernels answer process CPU and resident size through Mach's
+// task_info; Linux and Android through getrusage and procfs. Read by
+// base_mem_posix.cpp's PlatSelfUsage.
+#define GPUI_HAVE_MACH_TASK_INFO (GPUI_OS_MAC || GPUI_OS_IOS)
 
 #if GPUI_OS_WINDOWS
 #define NOMINMAX

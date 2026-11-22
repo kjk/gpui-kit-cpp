@@ -1,15 +1,21 @@
 /* Virtual memory on a host that has it: mmap reserves address space without
    backing it and mprotect is the commit, which is the split base.cpp's Arena
-   is written against. Linux and macOS both; wasm has no such split and
-   answers for itself in Base_wasm.cpp.
+   is written against. Linux, macOS, iOS and Android; wasm has no such split
+   and answers for itself in base_wasm.cpp. Also what else a hosted POSIX
+   process can say about itself: its directory and its own CPU and memory.
 
    The rest of the POSIX platform layer — strings, directories, threads, the
-   clock — is in Base_posix.cpp and is shared with wasm. */
+   clock — is in base_posix.cpp and is shared with wasm. */
 
 #include "base.h"
 
+#include <stdio.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <unistd.h>
+#if GPUI_HAVE_MACH_TASK_INFO
+#include <mach/mach.h>
+#endif
 
 namespace base {
 
@@ -67,5 +73,76 @@ void PlatMemRelease(void* base, uint64_t size) {
         munmap(base, (size_t)size);
     }
 }
+
+// The executable's directory: empty on iOS, which reports no executable
+// path; on Android it is the directory of the app_process binary.
+void PlatGetExeDir(char* out, int cap) {
+    PlatExeDirFromExePath(out, cap);
+}
+
+#if GPUI_HAVE_MACH_TASK_INFO
+bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
+    // task_info answers both halves for this process: TASK_BASIC_INFO carries
+    // the resident size, TASK_THREAD_TIMES_INFO the CPU split. The basic info
+    // struct also has user/system time, but only for terminated threads, so
+    // the live threads have to be added back.
+    mach_msg_type_number_t count = TASK_BASIC_INFO_COUNT;
+    task_basic_info_data_t basic = {};
+    if (task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t)&basic,
+                  &count) != KERN_SUCCESS) {
+        return false;
+    }
+    if (memBytes) {
+        *memBytes = (uint64_t)basic.resident_size;
+    }
+    if (cpu100ns) {
+        uint64_t us = (uint64_t)basic.user_time.seconds * 1000000ull +
+                      (uint64_t)basic.user_time.microseconds +
+                      (uint64_t)basic.system_time.seconds * 1000000ull +
+                      (uint64_t)basic.system_time.microseconds;
+        count = TASK_THREAD_TIMES_INFO_COUNT;
+        task_thread_times_info_data_t threads = {};
+        if (task_info(mach_task_self(), TASK_THREAD_TIMES_INFO,
+                      (task_info_t)&threads, &count) == KERN_SUCCESS) {
+            us += (uint64_t)threads.user_time.seconds * 1000000ull +
+                  (uint64_t)threads.user_time.microseconds +
+                  (uint64_t)threads.system_time.seconds * 1000000ull +
+                  (uint64_t)threads.system_time.microseconds;
+        }
+        *cpu100ns = us * 10ull;
+    }
+    return true;
+}
+#else
+bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
+    // getrusage gives the CPU time; the resident set only comes out of
+    // /proc/self/statm, whose second field is pages.
+    struct rusage ru = {};
+    if (getrusage(RUSAGE_SELF, &ru) != 0) {
+        return false;
+    }
+    if (cpu100ns) {
+        uint64_t us = (uint64_t)ru.ru_utime.tv_sec * 1000000ull +
+                      (uint64_t)ru.ru_utime.tv_usec +
+                      (uint64_t)ru.ru_stime.tv_sec * 1000000ull +
+                      (uint64_t)ru.ru_stime.tv_usec;
+        *cpu100ns = us * 10ull;
+    }
+    if (memBytes) {
+        *memBytes = 0;
+        FILE* f = fopen("/proc/self/statm", "rb");
+        if (f) {
+            unsigned long total = 0, resident = 0;
+            if (fscanf(f, "%lu %lu", &total, &resident) == 2) {
+                long page = sysconf(_SC_PAGESIZE);
+                *memBytes =
+                    (uint64_t)resident * (uint64_t)(page > 0 ? page : 4096);
+            }
+            fclose(f);
+        }
+    }
+    return true;
+}
+#endif
 
 } // namespace base

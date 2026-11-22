@@ -11,9 +11,6 @@ namespace gpui {
 
 static thread_local char gLastError[512];
 
-// each platform's client; HttpSend notes its failure for HttpLastError
-bool HttpSendPlatform(const HttpReq& req, HttpRsp* out);
-
 bool HttpSend(const HttpReq& req, HttpRsp* out) {
     bool ok = HttpSendPlatform(req, out);
     Str why = !ok && out ? out->error : Str{};

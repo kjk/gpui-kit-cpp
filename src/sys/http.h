@@ -142,6 +142,12 @@ int HttpWaitMs(const HttpReq& req);
 // has no blocking client, so there is no streaming there either.
 bool HttpSend(const HttpReq& req, HttpRsp* out);
 
+// The blocking client HttpSend calls: http_win.cpp (WinHTTP), http_mac.cpp
+// (NSURLSession), http_linux.cpp (libcurl) and http_wasm.cpp. iOS and
+// Android have none in this library; the host adapter defines it, as it
+// supplies drawing and windows, or linking the app fails here.
+bool HttpSendPlatform(const HttpReq& req, HttpRsp* out);
+
 // The proxy every later HttpSend goes through. Empty: the platform's default,
 // as before (on Windows the machine's WinHTTP proxy). "system": the user's
 // own proxy settings (on Windows the ones of Internet Options, which is what

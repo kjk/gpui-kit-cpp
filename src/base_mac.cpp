@@ -107,43 +107,6 @@ static bool DisclaimSpeechResponsibility(int argc, char** argv, int* status) {
     return false;
 }
 
-void PlatGetExeDir(char* out, int cap) {
-    PlatExeDirFromExePath(out, cap);
-}
-
-bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
-    // task_info answers both halves for this process: TASK_BASIC_INFO carries
-    // the resident size, TASK_THREAD_TIMES_INFO the CPU split. The basic info
-    // struct also has user/system time, but only for terminated threads, so
-    // the live threads have to be added back.
-    mach_msg_type_number_t count = TASK_BASIC_INFO_COUNT;
-    task_basic_info_data_t basic = {};
-    if (task_info(mach_task_self(), TASK_BASIC_INFO, (task_info_t)&basic,
-                  &count) != KERN_SUCCESS) {
-        return false;
-    }
-    if (memBytes) {
-        *memBytes = (uint64_t)basic.resident_size;
-    }
-    if (cpu100ns) {
-        uint64_t us = (uint64_t)basic.user_time.seconds * 1000000ull +
-                      (uint64_t)basic.user_time.microseconds +
-                      (uint64_t)basic.system_time.seconds * 1000000ull +
-                      (uint64_t)basic.system_time.microseconds;
-        count = TASK_THREAD_TIMES_INFO_COUNT;
-        task_thread_times_info_data_t threads = {};
-        if (task_info(mach_task_self(), TASK_THREAD_TIMES_INFO,
-                      (task_info_t)&threads, &count) == KERN_SUCCESS) {
-            us += (uint64_t)threads.user_time.seconds * 1000000ull +
-                  (uint64_t)threads.user_time.microseconds +
-                  (uint64_t)threads.system_time.seconds * 1000000ull +
-                  (uint64_t)threads.system_time.microseconds;
-        }
-        *cpu100ns = us * 10ull;
-    }
-    return true;
-}
-
 const PlatFacts kPlatFacts = {
     .secondaryIsCommand = true,
     .wordDeleteStopsAtWhitespace = false,
