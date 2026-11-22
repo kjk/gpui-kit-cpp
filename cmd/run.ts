@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "da0850fb837b0514bb6835c091846a0c62ad8cae",
+  sha: "a1ccaf1abc5d6b0ab460259ac9160b2793bb479e",
   date: "2026-11-22",
-  subject: "kit: Make the Linux X11 backend optional (#4060)",
+  subject: "input: Align paste tests with single-line tab normalization (#4079)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

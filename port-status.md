@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `da0850fb837b0514bb6835c091846a0c62ad8cae` (2026-11-22, kit:
-Make the Linux X11 backend optional (#4060)).
-Upstream made the Linux X11 backend a default Cargo feature of the kit. Only
-Cargo features and docs change; this tree has one X11 backend and no Wayland,
-so nothing is ported.
+Processed through `a1ccaf1abc5d6b0ab460259ac9160b2793bb479e` (2026-11-22,
+input: Align paste tests with single-line tab normalization (#4079)).
+Upstream aligned three crates/kit paste tests with single-line tab
+normalization. None of them has a port in tests/; the behavior landed with
+7f199f39.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 
