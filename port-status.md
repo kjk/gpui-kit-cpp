@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8d9ec375192e03edc95641004d15be61f8f55626` (2026-11-20, diff:
-Show parts of a file for reference at their own line numbers (#4043)).
-DiffFile::Excerpts shows parts of a file for reference, each at its own line
-numbers; Unchanged is one part at line 1.
+Processed through `cce326189c8ba34820ee3b6664c258166b3f4ca9` (2026-11-20, text:
+Wrap each line of an inline flow without rescanning the rest of its paragraph
+(#4058)).
+Upstream wraps each line of an inline flow from what is on it. Inline flows
+here are flex-wrap rows of word elements laid out by taffy, with no flow line
+wrapper to change, so nothing is ported.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 
