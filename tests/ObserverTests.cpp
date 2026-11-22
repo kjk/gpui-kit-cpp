@@ -149,6 +149,38 @@ static void ANotifyNamesTheWindowsThatRenderedIt() {
     EntityDropAll(&app);
 }
 
+// A destructor may create entities, enough to move the slot array, and
+// while it runs its own handle is already stale (Rust's EntityMap takes the
+// entity out before dropping it).
+struct Spawner {
+    static App* app;
+    static EntityId self;
+    static bool sawSelf;
+    ~Spawner() {
+        sawSelf = EntityGet(app, self) != nullptr;
+        for (int i = 0; i < 200; i++) {
+            EntityNewState<Model>(app);
+        }
+    }
+};
+App* Spawner::app = nullptr;
+EntityId Spawner::self = {};
+bool Spawner::sawSelf = true;
+
+static void ADestructorMayCreateEntities() {
+    App app;
+    Spawner::app = &app;
+    Entity<Spawner> spawner = EntityNewState<Spawner>(&app);
+    Entity<Model> other = EntityNewState<Model>(&app);
+    other.Get(&app)->value = 7;
+    Spawner::self = spawner.id;
+    EntityDrop(&app, spawner.id);
+    utassert(!Spawner::sawSelf);
+    utassert(spawner.Get(&app) == nullptr);
+    utassert(other.Get(&app) && other.Get(&app)->value == 7);
+    EntityDropAll(&app);
+}
+
 void TestObservers() {
     TestSuite("observers");
     AnObserverHearsTheEntityThatNotified();
@@ -156,4 +188,5 @@ void TestObservers() {
     AnObservationCanBeGivenUp();
     AnObserverThatWentAwayIsSwept();
     ANotifyNamesTheWindowsThatRenderedIt();
+    ADestructorMayCreateEntities();
 }

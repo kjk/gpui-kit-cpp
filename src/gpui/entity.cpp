@@ -142,9 +142,12 @@ void EntityDrop(App* app, EntityId id) {
     if (s.gen != id.gen || !s.ptr) {
         return;
     }
-    if (s.drop) {
-        s.drop(s.ptr);
-    }
+    // Retire the slot before the destructor runs, as Rust's EntityMap takes
+    // the entity out before dropping it: the destructor may create entities,
+    // which can move app->entities, and handles to this one must already be
+    // stale while it runs.
+    void* ptr = s.ptr;
+    DropFn drop = s.drop;
     s.ptr = nullptr;
     s.render = nullptr;
     s.drop = nullptr;
@@ -154,20 +157,28 @@ void EntityDrop(App* app, EntityId id) {
         s.gen = 1;
     }
     VecAppend(app->freeSlots, id.index);
+    if (drop) {
+        drop(ptr);
+    }
 }
 
 void EntityDropAll(App* app) {
     if (!app) {
         return;
     }
-    for (int i = 0; i < app->entities.len; i++) {
+    // len(app->entities) is re-read each pass: a destructor may create an
+    // entity, which is then dropped too. The slot is cleared before its
+    // destructor runs, since that can also move the array.
+    for (int i = 0; i < len(app->entities); i++) {
         EntitySlot& s = app->entities[i];
-        if (s.ptr && s.drop) {
-            s.drop(s.ptr);
-        }
+        void* ptr = s.ptr;
+        DropFn drop = s.drop;
         s.ptr = nullptr;
         s.render = nullptr;
         s.drop = nullptr;
+        if (ptr && drop) {
+            drop(ptr);
+        }
     }
     VecReset(app->entities);
     VecReset(app->freeSlots);
