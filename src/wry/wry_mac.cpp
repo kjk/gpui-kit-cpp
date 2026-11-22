@@ -933,6 +933,23 @@ static void SetTrafficLightInset(NSWindow* window, Position position) {
 
 // ─── the webview ─────────────────────────────────────────────────────────
 
+// Until the page paints, WKWebView is white. The caller's color is what
+// shows through, the way WebView2’s default background does.
+static void ApplyWebViewBackground(WKWebView* view, Rgba color) {
+    if (!view) {
+        return;
+    }
+    NSColor* c = [NSColor colorWithCalibratedRed:color.r / 255.0
+                                           green:color.g / 255.0
+                                            blue:color.b / 255.0
+                                           alpha:color.a / 255.0];
+    if (@available(macOS 12.0, *)) {
+        view.underPageBackgroundColor = c;
+    }
+    view.wantsLayer = YES;
+    view.layer.backgroundColor = c.CGColor;
+}
+
 WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
                     bool asChild) {
     if (!parentWindow || !attrs) {
@@ -1030,7 +1047,9 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
             [preferences setValue:@(policy) forKey:@"inactiveSchedulingPolicy"];
         }
     }
-    if (attrs->transparent) {
+    if (attrs->transparent || attrs->hasBackgroundColor) {
+        // The default white ground shows through until the page paints.
+        // A caller-supplied color replaces it; see ApplyWebViewBackground.
         [config setValue:@NO forKey:@"drawsBackground"];
     }
     [preferences setValue:@YES forKey:@"allowsPictureInPictureMediaPlayback"];
@@ -1152,6 +1171,9 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
     // Into the window. Rust makes the webview the window's content view when
     // it is not a child; here it is a subview either way — see the top of
     // this file.
+    if (attrs->hasBackgroundColor) {
+        ApplyWebViewBackground(wv->webview, attrs->backgroundColor);
+    }
     [parentView addSubview:wv->webview];
     if (!asChild) {
         wv->webview.frame = parentView.bounds;
@@ -1420,11 +1442,11 @@ bool WebViewMatchPageScale(WebView*, float) {
 
 void WebViewSetPageClick(WebView*, WebViewPageClick, void*) {}
 
-// `set_background_color` is the iOS half of the crate; on macOS the colour
-// comes from the page, and the only knob is the transparency attribute,
-// which is set on the configuration before the webview exists.
-bool WebViewSetBackgroundColor(WebView*, Rgba) {
-    // Rust's macOS arm is an intentional no-op but still returns Ok(()).
+bool WebViewSetBackgroundColor(WebView* wv, Rgba color) {
+    if (!wv || !wv->webview) {
+        return false;
+    }
+    ApplyWebViewBackground(wv->webview, color);
     return true;
 }
 
