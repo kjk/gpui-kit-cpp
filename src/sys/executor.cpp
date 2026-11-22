@@ -12,6 +12,7 @@
    belongs to whoever spawned it, and `done` is where it gets freed. */
 
 #include "sys/executor.h"
+#include "sys/clock.h"
 
 namespace gpui {
 
@@ -22,6 +23,9 @@ namespace gpui {
 struct MainTask {
     Func0 f = {};
 };
+
+// how long one drain runs tasks before it lets the loop take its events
+constexpr double kMainTaskBudgetS = 0.010;
 
 static Mutex gMainLock;
 static Vec<MainTask> gMainQueue;
@@ -112,10 +116,37 @@ int ExecDrain() {
     gMainQueue.cap = 0;
     gMainLock.Unlock();
 
-    for (int i = 0; i < len(batch); i++) {
-        batch[i].f.Call();
+    // zed#43678: a burst of slow tasks (finished renders, search hits) must
+    // not hold back input and painting. Past the budget the rest go back in
+    // front of the queue and the loop is woken for them after its events.
+    double start = ClockMonotonicSecondsSinceStart();
+    int n = 0;
+    while (n < len(batch)) {
+        batch[n++].f.Call();
+        if (ClockMonotonicSecondsSinceStart() - start >= kMainTaskBudgetS) {
+            break;
+        }
     }
-    int n = len(batch);
+    if (n < len(batch)) {
+        gMainLock.Lock();
+        Vec<MainTask> rest;
+        for (int i = n; i < len(batch); i++) {
+            VecAppend(rest, batch[i]);
+        }
+        for (int i = 0; i < len(gMainQueue); i++) {
+            VecAppend(rest, gMainQueue[i]);
+        }
+        VecReset(gMainQueue);
+        gMainQueue.els = rest.els;
+        gMainQueue.len = len(rest);
+        gMainQueue.cap = rest.cap;
+        rest.els = nullptr;
+        rest.len = 0;
+        rest.cap = 0;
+        Func0 wake = gWake;
+        gMainLock.Unlock();
+        wake.Call();
+    }
     VecReset(batch);
     return n;
 }

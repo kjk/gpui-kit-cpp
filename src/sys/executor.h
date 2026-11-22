@@ -77,10 +77,11 @@ void ExecPost(Func0 f);
 // right here — faster, and a stack trace that says who asked.
 void ExecPostNow(Func0 f);
 
-// Runs everything queued and answers how many that was. The event loop calls
-// it once a pass; nothing else needs to. Anything posted by a task running
-// inside it waits for the next call rather than extending this one, which is
-// the same rule WindowTimerTick follows.
+// Runs what is queued and answers how many ran. The event loop calls it once
+// a pass; nothing else needs to. Anything posted by a task running inside it
+// waits for the next call rather than extending this one, which is the same
+// rule WindowTimerTick follows. After 10 ms it stops, wakes the loop and
+// leaves the rest first in line for the next call.
 int ExecDrain();
 // How many are waiting. An event loop about to block checks this: something
 // queued is a reason not to.

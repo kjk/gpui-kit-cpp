@@ -117,6 +117,43 @@ static void APostMadeWhileDrainingWaitsForTheNextPass() {
     utassert(gRan == 1);
 }
 
+// A burst of slow tasks doesn't hold the loop: a drain stops once 10 ms
+// have passed, the rest run on the next pass, before anything posted since.
+// Each task spins for longer than the budget, so exactly one runs per pass
+// however the threads are scheduled.
+static void SpinPastBudget() {
+    double start = ClockMonotonicSecondsSinceStart();
+    while (ClockMonotonicSecondsSinceStart() - start < 0.011) {
+    }
+    Note1();
+}
+
+static int gWakes = 0;
+static void CountWake() {
+    gWakes++;
+}
+
+static void ADrainStopsAfterItsBudget() {
+    Reset();
+    gWakes = 0;
+    ExecSetWake(MkFunc0Void(CountWake));
+    ExecPost(MkFunc0Void(SpinPastBudget));
+    ExecPost(MkFunc0Void(SpinPastBudget));
+    ExecPost(MkFunc0Void(Note2));
+    int wakes = gWakes;
+    utassert(ExecDrain() == 1);
+    utassert(gOrderN == 1);
+    utassert(ExecQueued() == 2);
+    // the loop is woken for what is left, or it would sleep on it
+    utassert(gWakes > wakes);
+    ExecPost(MkFunc0Void(Note3));
+    utassert(ExecDrain() == 1);
+    utassert(ExecDrain() == 2);
+    utassert(gOrderN == 4);
+    utassert(gOrder[1] == 1 && gOrder[2] == 2 && gOrder[3] == 3);
+    ExecSetWake(Func0{});
+}
+
 static void SpawnedWork() {
     gLock.Lock();
     gWorkerThread = PlatThreadId();
@@ -252,6 +289,7 @@ void TestExecutor() {
     PostsRunInTheOrderTheyWereMade();
     APostCarriesCapturedState();
     APostMadeWhileDrainingWaitsForTheNextPass();
+    ADrainStopsAfterItsBudget();
     ASpawnRunsElsewhereAndReportsBack();
     EveryJobRuns();
     AJobThatHasNotStartedCanBeCalledOff();
