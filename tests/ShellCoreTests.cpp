@@ -5018,6 +5018,102 @@ static void ShellPluginManifestsDiscoverAuthorizeAndUnload() {
     ShellErrorClear(&error);
 }
 
+static void HostPing(HostCall* call) {
+    call->result.SetString(StrL("pong"));
+}
+
+static void HostQuote(HostCall* call) {
+    call->result.SetString(StrL("AAPL"));
+}
+
+// plugin.rs a_plugin_can_import_every_manager_host_module: the manifest asks
+// for nothing, and the plugin still imports both modules the manager holds.
+static void APluginCanImportEveryManagerHostModule() {
+#if GPUI_OS_WASM
+    // Discovery and installation require hosted filesystem roots.
+    return;
+#endif
+    const Str container = StrL("shell_plugin_host_module_test");
+    const Str pluginDir = StrL("shell_plugin_host_module_test/host-module");
+    const Str dataDir = StrL("shell_plugin_host_module_data_test");
+    utassert(ShellFixtureFs(FsOperation::MakeDirectory, StrL("."), pluginDir,
+                            {}, true));
+    utassert(ShellFixtureFs(FsOperation::MakeDirectory, StrL("."), dataDir, {},
+                            true));
+    utassert(ShellFixtureFs(
+        FsOperation::Write, pluginDir, Str(kShellManifestFile),
+        StrL("{\"id\":\"com.example.host-module\",\"name\":\"Host "
+             "module\",\"entry\":\"main.js\"}")));
+    utassert(ShellFixtureFs(
+        FsOperation::Write, pluginDir, StrL("main.js"),
+        StrL("import { div, View } from \"gpui-kit\";\n"
+             "import { ping } from \"vibex\";\n"
+             "import { quote } from \"market\";\n"
+             "export default class Panel extends View {\n"
+             "  render(cx) { return div().child(ping()).child(quote()); }\n"
+             "}\n")));
+
+    App app;
+    Window window;
+    window.app = &app;
+    component::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    HostModule* ping = HostModule::New(StrL("vibex"))
+                           ->Function(StrL("ping"), MkFunc1Void(HostPing));
+    HostModule* quote = HostModule::New(StrL("market"))
+                            ->Function(StrL("quote"), MkFunc1Void(HostQuote));
+    {
+        // One call per module is the whole builder: there is no plural form.
+        PluginManager manager(container);
+        manager.DataHome(dataDir);
+        HostError hostError;
+        utassert(manager.WithHostModule(ping, &hostError));
+        utassert(manager.WithHostModule(quote, &hostError));
+        const Vec<PluginDiscovery>& discovered = manager.Discover();
+        bool allOk = len(discovered) == 1;
+        for (int i = 0; i < len(discovered); i++)
+            allOk = allOk && discovered[i].manifest != nullptr;
+        utassert(allOk);
+        // A plugin must be able to import every manager host module.
+        utassert(manager.Load(runtime, StrL("com.example.host-module"), nullptr,
+                              nullptr, &window, &app, &error));
+        utassert(!error.message.s);
+        utassert(manager.Unload(StrL("com.example.host-module"), &app));
+    }
+    ping->Release();
+    quote->Release();
+
+    // A runtime-owned name is refused where the host still holds the error.
+    {
+        PluginManager manager(container);
+        HostModule* reserved = HostModule::New(StrL("path"));
+        HostError hostError;
+        utassert(!manager.WithHostModule(reserved, &hostError));
+        utassert(hostError.IsSet());
+        hostError.Clear();
+        reserved->Release();
+    }
+
+    runtime->Release();
+    AppGlobalClear(&app);
+    ShellErrorClear(&error);
+    utassert(ShellFixtureFs(FsOperation::RemoveFile, pluginDir,
+                            Str(kShellManifestFile)));
+    utassert(
+        ShellFixtureFs(FsOperation::RemoveFile, pluginDir, StrL("main.js")));
+    utassert(ShellFixtureFs(FsOperation::RemoveDirectory, container,
+                            StrL("host-module")));
+    utassert(
+        ShellFixtureFs(FsOperation::RemoveDirectory, StrL("."), container));
+    ShellFixtureFs(FsOperation::RemoveDirectory, dataDir,
+                   StrL("gpui-shell/plugins/com.example.host-module"));
+    ShellFixtureFs(FsOperation::RemoveDirectory, dataDir,
+                   StrL("gpui-shell/plugins"));
+    ShellFixtureFs(FsOperation::RemoveDirectory, dataDir, StrL("gpui-shell"));
+    ShellFixtureFs(FsOperation::RemoveDirectory, StrL("."), dataDir);
+}
+
 // ── templates ────────────────────────────────────────────────────────────
 // Ported from crates/shell/src/tests/template.rs. `template(build)` is a
 // description recorded once and filled per call: the body runs a single time
@@ -7047,6 +7143,7 @@ void TestShellCore() {
     ShellDockPanelsPersistAndChromeRunsInLayoutScope();
     AnExecuteStringOtherThanTheWildcardIsRefused();
     ShellPluginManifestsDiscoverAuthorizeAndUnload();
+    APluginCanImportEveryManagerHostModule();
     ShellDefaultEnvironmentStaysPlain();
     ShellTextCodingAndProcessSurface();
     ShellLongTypeErrorStaysWhole();

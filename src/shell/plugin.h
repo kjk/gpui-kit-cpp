@@ -2,6 +2,7 @@
 #define GPUI_SHELL_PLUGIN_H_
 
 #include "shell/assets.h"
+#include "shell/host_modules.h"
 #include "shell/root.h"
 
 namespace gpui::shell {
@@ -103,6 +104,14 @@ class PluginManager {
 
     PluginManager& AddDirectory(Str directory);
     PluginManager& DataHome(Str directory);
+    // `with_host_module`: one HostModule every plugin this manager loads may
+    // import. Repeated calls accumulate. Host modules are host-granted API,
+    // not a manifest permission: each is installed into every loaded
+    // plugin's own Policy whatever its manifest declares, so one manager's
+    // modules are not reachable from a plugin another manager loaded. The
+    // name is validated here, where the host still holds the error; false
+    // leaves the manager unchanged. The manager retains the module.
+    bool WithHostModule(HostModule* module, HostError* error = nullptr);
     const Vec<PluginDiscovery>& Discover();
     bool Load(ShellRuntime* runtime, Str id, PluginAuthorizeFn authorize,
               void* authorizeData, Window* window, App* app,
@@ -116,6 +125,10 @@ class PluginManager {
     Str dataHome;
     Vec<PluginDiscovery> catalog;
     Vec<Plugin*> loaded;
+    // `host_modules`: per manager rather than global, because the host chose
+    // this list, so the list is the grant. A host that needs a different set
+    // per plugin builds one manager per set. Retained.
+    Vec<HostModule*> hostModules;
     bool discovered = false;
 
     void ClearCatalog();

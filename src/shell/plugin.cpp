@@ -1101,6 +1101,8 @@ static void FreePlugin(Plugin* plugin, App* app) {
 PluginManager::~PluginManager() {
     for (int i = 0; i < len(loaded); i++) FreePlugin(loaded[i], loaded[i]->app);
     VecReset(loaded);
+    for (int i = 0; i < len(hostModules); i++) hostModules[i]->Release();
+    VecReset(hostModules);
     ClearCatalog();
     StrVecFree(&directories);
     StrFree(dataHome);
@@ -1115,6 +1117,17 @@ PluginManager& PluginManager::DataHome(Str directory) {
     StrFree(dataHome);
     dataHome = StrDup(directory);
     return *this;
+}
+
+bool PluginManager::WithHostModule(HostModule* module, HostError* error) {
+    if (error) error->Clear();
+    if (!module) {
+        if (error) error->Set(StrL("HostModule is null"));
+        return false;
+    }
+    if (!module->Validate(error)) return false;
+    VecAppend(hostModules, module->Retain());
+    return true;
 }
 
 void PluginManager::ClearCatalog() {
@@ -1249,6 +1262,20 @@ bool PluginManager::Load(ShellRuntime* runtime, Str id,
     // what a dock layout needs to keep two plugins' panels of the same name
     // apart.
     PolicySetApplication(policy, id);
+    // Host modules come from the manager, not from the manifest: they are the
+    // host's own API, so every plugin this manager loads gets all of them
+    // whether or not its manifest asks for anything.
+    for (int i = 0; i < len(hostModules); i++) {
+        HostError hostError;
+        if (!PolicyAddHostModule(policy, hostModules[i], &hostError)) {
+            SetError(error, hostError.message);
+            hostError.Clear();
+            PolicyClearHostModules(policy);
+            PolicyRelease(policy);
+            ArenaDelete(scratch);
+            return false;
+        }
+    }
     Str store = Join(scratch, data, StrL("store.json"));
     if (capabilities.HasStorage()) {
         Str storageError;
@@ -1260,6 +1287,7 @@ bool PluginManager::Load(ShellRuntime* runtime, Str id,
     ViewType* type = runtime->LoadApp(selected->root, selected->manifest->entry,
                                       policy, error);
     if (!type) {
+        PolicyClearHostModules(policy);
         PolicyRelease(policy);
         ArenaDelete(scratch);
         return false;
@@ -1271,6 +1299,7 @@ bool PluginManager::Load(ShellRuntime* runtime, Str id,
         runtime->Instantiate(state->type, window, app, policy, error, view.id);
     if (!state->object) {
         EntityDrop(app, view.id);
+        PolicyClearHostModules(policy);
         PolicyRelease(policy);
         ArenaDelete(scratch);
         return false;

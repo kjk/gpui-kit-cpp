@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7b1770d30419ab3dc4df46b3b05a1ea854fb0386",
+  sha: "38db332574cc8fa7d0eafe4ffb9c1be2d96c3402",
   date: "2026-11-22",
-  subject: "input: Hand the theme foreground to the input's text (#4051)",
+  subject: "shell: Add PluginManager::with_host_module (#3948)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

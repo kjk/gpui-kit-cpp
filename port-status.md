@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7b1770d30419ab3dc4df46b3b05a1ea854fb0386` (2026-11-22,
-input: Hand the theme foreground to the input's text (#4051)).
-The themed Input frame hands the theme foreground (or the caller's text color)
-down before the caller's refinement, so a prefix or suffix inherits it without
-a Root above.
+Processed through `38db332574cc8fa7d0eafe4ffb9c1be2d96c3402` (2026-11-22,
+shell: Add PluginManager::with_host_module (#3948)).
+PluginManager::WithHostModule registers a host module that every plugin the
+manager loads can import; Load adds each one to the plugin's policy.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 
