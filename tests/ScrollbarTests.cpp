@@ -1115,6 +1115,9 @@ void TestScrollbar() {
     HoveringAnElementOverAHoverScrollbarDoesNotRevealIt();
 }
 
+// The window the fade state lives in; a bare one, nothing renders into it.
+static Window* gFadeWin = nullptr;
+
 // The timing a styled layer projects, which is what these assert against.
 static const float kEnter = 0.3f;
 static const float kExit = 0.5f;
@@ -1122,35 +1125,41 @@ static const float kExit = 0.5f;
 static void VisibilityUsesDirectionSpecificCurvesAndDurations() {
     const int id = 9001;
     double start = 1000.0;
-    ScrollbarVisibilitySet(id, false, ScrollbarEntrance::Fade, 0, 0, start);
+    ScrollbarVisibilitySet(gFadeWin, id, false, ScrollbarEntrance::Fade, 0, 0,
+                           start);
 
-    ScrollbarVisibilitySet(id, true, ScrollbarEntrance::SlideAndFade, kEnter,
-                           kExit, start);
-    utassert(ScrollbarVisibilityAt(id, start).opacity == 0.f);
+    ScrollbarVisibilitySet(gFadeWin, id, true, ScrollbarEntrance::SlideAndFade,
+                           kEnter, kExit, start);
+    utassert(ScrollbarVisibilityAt(gFadeWin, id, start).opacity == 0.f);
     // ease-out must advance quickly
-    utassert(ScrollbarVisibilityAt(id, start + kEnter / 2).position > 0.5f);
+    utassert(ScrollbarVisibilityAt(gFadeWin, id, start + kEnter / 2)
+                 .position > 0.5f);
 
-    ScrollbarVisibility entered = ScrollbarVisibilityAt(id, start + kEnter);
+    ScrollbarVisibility entered =
+        ScrollbarVisibilityAt(gFadeWin, id, start + kEnter);
     utassert(entered.opacity == 1.f);
     utassert(entered.position == 1.f);
 
-    ScrollbarVisibilitySet(id, false, ScrollbarEntrance::SlideAndFade, kEnter,
-                           kExit, start + kEnter);
+    ScrollbarVisibilitySet(gFadeWin, id, false, ScrollbarEntrance::SlideAndFade,
+                           kEnter, kExit, start + kEnter);
     // ease-in must remain visible early in the exit
-    float exiting = ScrollbarVisibilityAt(id, start + kEnter + kExit / 2)
-                        .opacity;
+    float exiting =
+        ScrollbarVisibilityAt(gFadeWin, id, start + kEnter + kExit / 2).opacity;
     utassert(exiting > 0.5f);
-    utassert(ScrollbarVisibilityAt(id, start + kEnter + kExit).opacity == 0.f);
+    utassert(ScrollbarVisibilityAt(gFadeWin, id, start + kEnter + kExit)
+                 .opacity == 0.f);
 }
 
 static void EntranceFadesLinearlyWhilePositionEasesOut() {
     const int id = 9002;
     double start = 2000.0;
-    ScrollbarVisibilitySet(id, false, ScrollbarEntrance::Fade, 0, 0, start);
-    ScrollbarVisibilitySet(id, true, ScrollbarEntrance::SlideAndFade, kEnter,
-                           kExit, start);
+    ScrollbarVisibilitySet(gFadeWin, id, false, ScrollbarEntrance::Fade, 0, 0,
+                           start);
+    ScrollbarVisibilitySet(gFadeWin, id, true, ScrollbarEntrance::SlideAndFade,
+                           kEnter, kExit, start);
 
-    ScrollbarVisibility halfway = ScrollbarVisibilityAt(id, start + kEnter / 2);
+    ScrollbarVisibility halfway =
+        ScrollbarVisibilityAt(gFadeWin, id, start + kEnter / 2);
     utassert(TestNear(halfway.opacity, 0.5f));
     utassert(halfway.position > halfway.opacity);
 }
@@ -1160,11 +1169,13 @@ static void EntranceFadesLinearlyWhilePositionEasesOut() {
 static void AFadeEntranceDoesNotSlide() {
     const int id = 9003;
     double start = 3000.0;
-    ScrollbarVisibilitySet(id, false, ScrollbarEntrance::Fade, 0, 0, start);
-    ScrollbarVisibilitySet(id, true, ScrollbarEntrance::Fade, kEnter, kExit,
+    ScrollbarVisibilitySet(gFadeWin, id, false, ScrollbarEntrance::Fade, 0, 0,
                            start);
+    ScrollbarVisibilitySet(gFadeWin, id, true, ScrollbarEntrance::Fade, kEnter,
+                           kExit, start);
 
-    ScrollbarVisibility halfway = ScrollbarVisibilityAt(id, start + kEnter / 2);
+    ScrollbarVisibility halfway =
+        ScrollbarVisibilityAt(gFadeWin, id, start + kEnter / 2);
     utassert(halfway.position == 1.f);
     utassert(halfway.opacity < 1.f);
 }
@@ -1183,19 +1194,20 @@ static void SlideMovesTowardTheNearestEdge() {
 static void AReversalStartsFromTheCurrentProgress() {
     const int id = 9004;
     double start = 4000.0;
-    ScrollbarVisibilitySet(id, false, ScrollbarEntrance::Fade, 0, 0, start);
-    ScrollbarVisibilitySet(id, true, ScrollbarEntrance::SlideAndFade, kEnter,
-                           kExit, start);
+    ScrollbarVisibilitySet(gFadeWin, id, false, ScrollbarEntrance::Fade, 0, 0,
+                           start);
+    ScrollbarVisibilitySet(gFadeWin, id, true, ScrollbarEntrance::SlideAndFade,
+                           kEnter, kExit, start);
 
     double at = start + 0.06;
-    ScrollbarVisibility before = ScrollbarVisibilityAt(id, at);
-    ScrollbarVisibilitySet(id, false, ScrollbarEntrance::SlideAndFade, kEnter,
-                           kExit, at);
-    ScrollbarVisibility reversed = ScrollbarVisibilityAt(id, at);
+    ScrollbarVisibility before = ScrollbarVisibilityAt(gFadeWin, id, at);
+    ScrollbarVisibilitySet(gFadeWin, id, false, ScrollbarEntrance::SlideAndFade,
+                           kEnter, kExit, at);
+    ScrollbarVisibility reversed = ScrollbarVisibilityAt(gFadeWin, id, at);
     utassert(TestNear(reversed.opacity, before.opacity));
     utassert(TestNear(reversed.position, before.position));
 
-    ScrollbarVisibility after = ScrollbarVisibilityAt(id, at + 0.01);
+    ScrollbarVisibility after = ScrollbarVisibilityAt(gFadeWin, id, at + 0.01);
     utassert(after.opacity < before.opacity);
     utassert(after.position < before.position);
 }
@@ -1205,13 +1217,14 @@ static void AReversalStartsFromTheCurrentProgress() {
 static void MotionlessSnaps() {
     const int id = 9005;
     double start = 5000.0;
-    ScrollbarVisibilitySet(id, false, ScrollbarEntrance::Fade, 0, 0, start);
-    ScrollbarVisibilitySet(id, true, ScrollbarEntrance::SlideAndFade, kEnter,
-                           kExit, start);
-    ScrollbarVisibilitySet(id, true, ScrollbarEntrance::Fade, 0, 0,
+    ScrollbarVisibilitySet(gFadeWin, id, false, ScrollbarEntrance::Fade, 0, 0,
+                           start);
+    ScrollbarVisibilitySet(gFadeWin, id, true, ScrollbarEntrance::SlideAndFade,
+                           kEnter, kExit, start);
+    ScrollbarVisibilitySet(gFadeWin, id, true, ScrollbarEntrance::Fade, 0, 0,
                            start + 0.05);
 
-    ScrollbarVisibility now = ScrollbarVisibilityAt(id, start + 0.05);
+    ScrollbarVisibility now = ScrollbarVisibilityAt(gFadeWin, id, start + 0.05);
     utassert(now.opacity == 1.f);
     utassert(now.position == 1.f);
     utassert(!now.running);
@@ -1380,14 +1393,37 @@ static void StyleBuildersAndPrepaintMatchTheSourceGeometry() {
     utassert(compatibility == ScrollAxis::Both);
 }
 
+// Each window remembers its own bars, and forgets one no frame has asked
+// about for a while.
+static void FadeStateIsPerWindowAndSwept() {
+    const int id = 9100;
+    Window other;
+    double start = 6000.0;
+    ScrollbarVisibilitySet(gFadeWin, id, true, ScrollbarEntrance::Fade, 0, 0,
+                           start);
+    utassert(ScrollbarVisibilityAt(gFadeWin, id, start).opacity == 1.f);
+    utassert(ScrollbarVisibilityAt(&other, id, start).opacity == 0.f);
+
+    int before = len(*gFadeWin->scrollFades);
+    gFadeWin->frameSeq += 1000;
+    WindowScrollFadeSweep(gFadeWin);
+    utassert(len(*gFadeWin->scrollFades) == 0 && before > 0);
+    WindowScrollFadeFree(&other);
+}
+
 void TestScrollbarMotion() {
     TestSuite("scrollbar_motion");
+    gFadeWin = new Window();
     VisibilityUsesDirectionSpecificCurvesAndDurations();
     EntranceFadesLinearlyWhilePositionEasesOut();
     AFadeEntranceDoesNotSlide();
     SlideMovesTowardTheNearestEdge();
     AReversalStartsFromTheCurrentProgress();
     MotionlessSnaps();
+    FadeStateIsPerWindowAndSwept();
+    WindowScrollFadeFree(gFadeWin);
+    delete gFadeWin;
+    gFadeWin = nullptr;
     HoverModeIsTheOneThatSlides();
     MotionBuildersAreImmutable();
     HandlePreservesTheSourceOperations();

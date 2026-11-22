@@ -750,6 +750,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // is GPUI's element state going with the element. Something that comes
     // back on screen starts its entrance again rather than resuming one.
     WindowMotionSweep(win);
+    WindowScrollFadeSweep(win);
     // So is what an element kept in frame-scoped keyed state.
     WindowKeyedSweep(win);
     // A trigger that was not painted has no hover-leave to send. The
@@ -5520,13 +5521,13 @@ static void AppRelease(App* app, bool platform) {
         VecReset(w->scrollbarOccluded);
         WindowKeyedFree(w);
         WindowMotionFree(w);
+        WindowScrollFadeFree(w);
         delete w;
     }
     VecReset(app->windows);
     ImageStoreFree(app->images);
     app->images = nullptr;
     LayoutScratchFree();
-    ScrollFadeClear();
     StyleOverrideClearAll();
     AppMenuClear(app);
     AppRunShutdownFns();

@@ -1313,6 +1313,8 @@ static void TransitionSettle(ScalarTransition* tr, float target, double now) {
 
 struct ScrollFade {
     int id = 0;
+    // The window's frameSeq when this bar was last painted or asked about.
+    uint64_t frame = 0;
     float y = 0;
     float x = 0;
     // last_scroll_time: TimeNow() when the offset last changed, or when the
@@ -1332,24 +1334,60 @@ struct ScrollFade {
     bool widthXSet = false;
 };
 
-static Vec<ScrollFade> gScrollFades;
+// A bar no frame has asked about for this many frames is gone; the same
+// retention the virtual-row layout caches use.
+static constexpr uint64_t kScrollFadeKeepFrames = 240;
 
-static ScrollFade* ScrollFadeFor(int id, float y, float x) {
-    for (int i = 0; i < len(gScrollFades); i++) {
-        if (gScrollFades[i].id == id) {
-            return &gScrollFades[i];
+static ScrollFade* ScrollFadeFor(Window* win, int id, float y, float x) {
+    if (!win) {
+        // Nothing to remember it in: a fresh state each time.
+        static ScrollFade scratch;
+        scratch = ScrollFade();
+        scratch.id = id;
+        scratch.y = y;
+        scratch.x = x;
+        return &scratch;
+    }
+    if (!win->scrollFades) {
+        win->scrollFades = new Vec<ScrollFade>();
+    }
+    Vec<ScrollFade>& fades = *win->scrollFades;
+    for (int i = 0; i < len(fades); i++) {
+        if (fades[i].id == id) {
+            fades[i].frame = win->frameSeq;
+            return &fades[i];
         }
     }
     ScrollFade f;
     f.id = id;
     f.y = y;
     f.x = x;
-    VecAppend(gScrollFades, f);
-    return &gScrollFades[len(gScrollFades) - 1];
+    f.frame = win->frameSeq;
+    VecAppend(fades, f);
+    return &fades[len(fades) - 1];
 }
 
-void ScrollFadeClear() {
-    VecReset(gScrollFades);
+void WindowScrollFadeSweep(Window* win) {
+    if (!win || !win->scrollFades) {
+        return;
+    }
+    Vec<ScrollFade>& fades = *win->scrollFades;
+    int keep = 0;
+    for (int i = 0; i < len(fades); i++) {
+        if (fades[i].frame + kScrollFadeKeepFrames >= win->frameSeq) {
+            fades[keep++] = fades[i];
+        }
+    }
+    fades.len = keep;
+}
+
+void WindowScrollFadeFree(Window* win) {
+    if (!win || !win->scrollFades) {
+        return;
+    }
+    VecReset(*win->scrollFades);
+    delete win->scrollFades;
+    win->scrollFades = nullptr;
 }
 
 static void ReduceScrollbarMotion(ScrollbarMotion* motion) {
@@ -1427,15 +1465,16 @@ static void VisibilitySetVisible(ScrollFade* f, bool visible,
     f->entrance = entrance;
 }
 
-void ScrollbarVisibilitySet(int scrollId, bool visible,
+void ScrollbarVisibilitySet(Window* win, int scrollId, bool visible,
                             ScrollbarEntrance entrance, float enter, float exit,
                             double now) {
-    ScrollFade* f = ScrollFadeFor(scrollId, 0, 0);
+    ScrollFade* f = ScrollFadeFor(win, scrollId, 0, 0);
     VisibilitySetVisible(f, visible, entrance, enter, exit, now);
 }
 
-ScrollbarVisibility ScrollbarVisibilityAt(int scrollId, double now) {
-    return VisibilitySample(ScrollFadeFor(scrollId, 0, 0), now);
+ScrollbarVisibility ScrollbarVisibilityAt(Window* win, int scrollId,
+                                          double now) {
+    return VisibilitySample(ScrollFadeFor(win, scrollId, 0, 0), now);
 }
 
 float ScrollbarSlideOffset(float trackWidth, float position) {
@@ -9374,7 +9413,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // runs down. It holds the bar up in hover mode, and in scrolling mode
         // only while the bar is already up — `hover_keeps_visible`.
         double now = TimeNow();
-        ScrollFade* f = ScrollFadeFor(e->scrollId, logicalScrollY, e->scrollX);
+        ScrollFade* f =
+            ScrollFadeFor(ctx->window, e->scrollId, logicalScrollY, e->scrollX);
         bool wasVisible = f->opacity.target > 0.f;
         if (f->y != logicalScrollY || f->x != e->scrollX || dragging ||
             ScrollbarHoverKeepsVisible(barMode, onBand, wasVisible)) {
@@ -9420,10 +9460,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // style_for_normal / style_for_hovered_bar / style_for_hovered_thumb /
     // style_for_active. Hovering the track keeps the normal thumb style;
     // hovering the thumb or dragging selects its own full style tuple.
-    ScrollFade* barState =
-        e->scrollId != 0
-            ? ScrollFadeFor(e->scrollId, logicalScrollY, e->scrollX)
-            : nullptr;
+    ScrollFade* barState = e->scrollId != 0
+                               ? ScrollFadeFor(ctx->window, e->scrollId,
+                                               logicalScrollY, e->scrollX)
+                               : nullptr;
     // The thumb's radius is `theme.radius`, clamped to half the thumb — a
     // wider thumb rounds more, which is what `clamp_thumb_radius` says.
     const RuntimeStyle& barTheme = RuntimeStyleNow(ctx->app);

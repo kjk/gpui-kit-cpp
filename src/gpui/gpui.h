@@ -1340,17 +1340,19 @@ struct ScrollbarVisibility {
 // These are the seam tests/ScrollbarTests.cpp drives the curves through —
 // `now` is the clock rather than TimeNow(), so a test can step it — and
 // nothing else needs them: a frame reaches the same state through paint.
-void ScrollbarVisibilitySet(int scrollId, bool visible,
+void ScrollbarVisibilitySet(Window* win, int scrollId, bool visible,
                             ScrollbarEntrance entrance, float enter, float exit,
                             double now);
-ScrollbarVisibility ScrollbarVisibilityAt(int scrollId, double now);
+ScrollbarVisibility ScrollbarVisibilityAt(Window* win, int scrollId,
+                                          double now);
 // `visibility_translation`: how far off its edge the bar is drawn at that
 // point in the slide. Zero once it has arrived.
 float ScrollbarSlideOffset(float trackWidth, float position);
 
-// Drops what the Scrolling bars remember. The app's own teardown; a caller
-// has no reason to.
-void ScrollFadeClear();
+// What a window's Scrolling bars remember, per scroll id. The sweep drops a
+// bar no frame has painted for a while; the free is the window's teardown.
+void WindowScrollFadeSweep(Window* win);
+void WindowScrollFadeFree(Window* win);
 
 enum class IconName : uint8_t {
     None = 0,
@@ -7589,6 +7591,8 @@ struct WindowBlurSub {
     Listener handler = {};
 };
 
+struct ScrollFade;
+
 struct Window {
     App* app = nullptr;
     PlatWindow* plat = nullptr;
@@ -7956,6 +7960,9 @@ struct Window {
     // ever drawn and is what a collector cursors on.
     FrameTiming frameTrace[kFrameTraceCap] = {};
     uint64_t frameSeq = 0;
+    // The Scrolling bars' fade and slide state, keyed by scroll id; owned,
+    // see WindowScrollFadeFree.
+    Vec<ScrollFade>* scrollFades = nullptr;
     // AppInvalidate calls since the last recorded frame; the next frame takes
     // them as its `invalidations` and zeroes it.
     uint64_t invalidations = 0;
