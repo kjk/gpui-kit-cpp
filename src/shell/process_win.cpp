@@ -129,6 +129,69 @@ static WCHAR* ResolveExecutable(Str command, Str* error) {
     return result;
 }
 
+// CreateProcessW runs a .bat or .cmd through cmd.exe, which reads its
+// command line with its own rules: the MSVCRT quoting below does not stop
+// `&`, `|`, `<`, `>`, `^`, `%` or a quote from ending an argument and
+// running something else, so `process.run("npm", ["x&calc"])` would run
+// calc past the exact-name execute grant ("BatBadBut"). Rust's std refuses
+// batch arguments it cannot pass safely; so does this, with a smaller set
+// it can.
+static bool IsBatchFile(const WCHAR* path) {
+    size_t n = wcslen(path);
+    if (n < 4) return false;
+    const WCHAR* ext = path + n - 4;
+    return _wcsicmp(ext, L".bat") == 0 || _wcsicmp(ext, L".cmd") == 0;
+}
+
+static bool BatchArgumentIsSafe(Str argument) {
+    for (int i = 0; i < len(argument); i++) {
+        switch (argument.s[i]) {
+            case '"':
+            case '%':
+            case '!':
+            case '&':
+            case '|':
+            case '<':
+            case '>':
+            case '^':
+            case '(':
+            case ')':
+            case '\r':
+            case '\n':
+            case '\0':
+                return false;
+            default:
+                break;
+        }
+    }
+    return true;
+}
+
+// Fails with an error naming the argument when `executable` is a batch file
+// and one of `args` (or the command itself) is not safe to hand to cmd.exe.
+static bool CheckBatchArguments(const WCHAR* executable, Str command,
+                                const Str* args, int count, Str* error) {
+    if (!IsBatchFile(executable)) return true;
+    if (!BatchArgumentIsSafe(command)) {
+        ErrorOutSet(error, fmt("running `%s` failed: a batch file's name may "
+                               "not contain cmd.exe metacharacters",
+                               command));
+        return false;
+    }
+    for (int i = 0; i < count; i++) {
+        if (!BatchArgumentIsSafe(args[i])) {
+            ErrorOutSet(error,
+                        fmt("running `%s` failed: argument %d contains a "
+                            "character cmd.exe would interpret (\" %% ! & | "
+                            "< > ^ ( ) or a line break), which a batch file "
+                            "cannot be passed safely",
+                            command, i + 1));
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool NeedsQuotes(const WCHAR* value) {
     if (!value[0]) return true;
     for (const WCHAR* at = value; *at; at++) {
@@ -271,6 +334,10 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     ErrorOutClear(error);
     WCHAR* executable = ResolveExecutable(command, error);
     if (!executable) return false;
+    if (!CheckBatchArguments(executable, command, args, count, error)) {
+        Free(nullptr, executable);
+        return false;
+    }
     Vec<WCHAR> commandLine;
     Str executableUtf8 = command;
     bool ok = AppendArgument(&commandLine, executableUtf8);
@@ -616,6 +683,10 @@ bool ProcessStreamStart(Str command, const Str* args, int count,
     ErrorOutClear(error);
     WCHAR* executable = ResolveExecutable(command, error);
     if (!executable) return false;
+    if (!CheckBatchArguments(executable, command, args, count, error)) {
+        Free(nullptr, executable);
+        return false;
+    }
     Vec<WCHAR> commandLine;
     bool built = AppendArgument(&commandLine, command);
     for (int i = 0; built && i < count; i++)

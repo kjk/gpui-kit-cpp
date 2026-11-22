@@ -3692,6 +3692,42 @@ static void ShellStorageWritesRevisionsInOrderAndFlushes() {
     PolicyUpdateDefaultCapabilities(denied);
 }
 
+// A batch file runs through cmd.exe, which would read `&` in an argument
+// as a second command. Rust's std refuses such arguments; so does this.
+static void ShellProcessRefusesUnsafeBatchArguments() {
+#if GPUI_OS_WINDOWS
+    char dir[MAX_PATH] = {};
+    GetTempPathA(MAX_PATH, dir);
+    TempStr script = fmt("%sgpui_batch_args_test.cmd", Str(dir));
+    FILE* f = fopen(script.s, "wb");
+    utassert(f != nullptr);
+    if (!f) return;
+    fputs("@echo arg=%1\n", f);
+    fclose(f);
+
+    ProcessOutput output;
+    Str processError;
+    Str safe[] = {StrL("hello-world")};
+    utassert(
+        ProcessRunBounded(script, safe, 1, nullptr, &output, &processError));
+    utassert(!processError && output.code == 0);
+    utassert(StrEq(StrTrimAscii(output.out), StrL("arg=hello-world")));
+    output.Free();
+
+    for (const char* bad :
+         {"x&calc", "a|b", "100%", "\"q\"", "a^b", "line\nbreak"}) {
+        Str args[] = {Str(bad)};
+        utassert(!ProcessRunBounded(script, args, 1, nullptr, &output,
+                                    &processError));
+        utassert(processError.s != nullptr);
+        output.Free();
+        StrFree(processError);
+        processError = {};
+    }
+    remove(script.s);
+#endif
+}
+
 static void ShellProcessRunIsBoundedAndPromiseBased() {
 #if GPUI_OS_WINDOWS
     Str args[] = {StrL("/D"), StrL("/C"),
@@ -6994,6 +7030,7 @@ void TestShellCore() {
     ShellSchedulerResumesPromisesInTaskScope();
     ShellStorageAndAuthorityFreeModulesWork();
     ShellStorageWritesRevisionsInOrderAndFlushes();
+    ShellProcessRefusesUnsafeBatchArguments();
     ShellProcessRunIsBoundedAndPromiseBased();
     ShellFilesystemUsesGrantedHandleRelativePaths();
     ShellAssetsStayInsideTheApplicationRoot();
