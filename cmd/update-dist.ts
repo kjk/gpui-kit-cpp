@@ -1224,7 +1224,7 @@ function syncDistRepo(): void {
 // Each directory is emptied before it is written, so a file deleted here is
 // deleted there too rather than lingering as something that no longer
 // compiles.
-const distScripts = ["build.ts", "run.ts", "winapi.ts", "mac-window-place.m"];
+const distScripts = ["build.ts", "run.ts", "winapi.ts", "mac-window-place.m", "ubuntu-install-deps.sh"];
 const distDirs = ["examples", "gpui_shell", "assets", "web"];
 
 // The snapshot is a working checkout, not just the generated sources: `bun run.ts -rel

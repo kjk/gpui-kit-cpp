@@ -92,6 +92,9 @@ export function scriptPath(name: string): string {
   return isDist ? name : `cmd/${name}`;
 }
 
+/** The Linux setup command, spelled for this tree. */
+const installDeps = `bash ${scriptPath("ubuntu-install-deps.sh")}`;
+
 // ─── size reporting ───────────────────────────────────────────────────────
 
 export type SizeEntry = {
@@ -830,7 +833,7 @@ function findUnixToolchain(plat: "linux" | "mac", clang: boolean, fail: (msg: st
   if (plat === "mac") {
     fail("clang++ not found. Install the command line tools: xcode-select --install");
   }
-  fail(`No C++ compiler found (looked for ${order.join(", ")}). Run: bash cmd/ubuntu-install-deps.sh`);
+  fail(`No C++ compiler found (looked for ${order.join(", ")}). Run: ${installDeps}`);
 }
 
 // --- wasm ----------------------------------------------------------------
@@ -1004,7 +1007,7 @@ function pkgConfig(names: string[], kind: "--cflags" | "--libs", fail: (msg: str
   const r = Bun.spawnSync(["pkg-config", kind, ...names], { stdout: "pipe", stderr: "pipe" });
   if ((r.exitCode ?? 1) !== 0) {
     const err = decode(r.stderr).trim();
-    fail(`${err}\npkg-config ${kind} ${names.join(" ")} failed. Run: bash cmd/ubuntu-install-deps.sh`);
+    fail(`${err}\npkg-config ${kind} ${names.join(" ")} failed. Run: ${installDeps}`);
   }
   return decode(r.stdout)
     .trim()
@@ -1031,7 +1034,7 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
     cflags.push(...pkgConfig(["libcurl"], "--cflags", fail), "-DGPUI_HAVE_CURL=1");
     libs.push(...pkgConfig(["libcurl"], "--libs", fail));
   } else {
-    console.log("libcurl not found: remote images will not load. Install it with: bash cmd/ubuntu-install-deps.sh");
+    console.log(`libcurl not found: remote images will not load. Install it with: ${installDeps}`);
   }
   // WebKitGTK is wry/wry_linux.cpp's webview, and the second soft dependency,
   // found the same way: without libwebkit2gtk-4.1-dev the tree still builds
@@ -1044,7 +1047,7 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
     cflags.push(...pkgConfig(["webkit2gtk-4.1"], "--cflags", fail), "-DGPUI_HAVE_WEBKITGTK=1");
     libs.push(...pkgConfig(["webkit2gtk-4.1"], "--libs", fail));
   } else {
-    console.log("webkit2gtk-4.1 not found: webviews will be empty. Install it with: bash cmd/ubuntu-install-deps.sh");
+    console.log(`webkit2gtk-4.1 not found: webviews will be empty. Install it with: ${installDeps}`);
   }
   // ALSA is sys/audio_input_linux.cpp's microphone, and the third soft
   // dependency: without libasound2-dev the tree still builds and speech input
@@ -1055,9 +1058,7 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
     cflags.push(...pkgConfig(["alsa"], "--cflags", fail), "-DGPUI_HAVE_ALSA=1");
     libs.push(...pkgConfig(["alsa"], "--libs", fail));
   } else {
-    console.log(
-      "alsa not found: speech input will have no microphone. Install it with: bash cmd/ubuntu-install-deps.sh",
-    );
+    console.log(`alsa not found: speech input will have no microphone. Install it with: ${installDeps}`);
   }
   // libXcursor makes CursorImage's ARGB cursors, a soft dependency too:
   // without libxcursor-dev an element's CursorKind shows instead.
@@ -1066,9 +1067,7 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
     cflags.push(...pkgConfig(["xcursor"], "--cflags", fail), "-DGPUI_HAVE_XCURSOR=1");
     libs.push(...pkgConfig(["xcursor"], "--libs", fail));
   } else {
-    console.log(
-      "xcursor not found: image cursors will be stand-in shapes. Install it with: bash cmd/ubuntu-install-deps.sh",
-    );
+    console.log(`xcursor not found: image cursors will be stand-in shapes. Install it with: ${installDeps}`);
   }
   // libXi (XInput2) reports touch-screen and pen contacts as TouchEvent, a
   // soft dependency: without libxi-dev a touch or a pen is only a mouse.
@@ -1077,7 +1076,7 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
     cflags.push(...pkgConfig(["xi"], "--cflags", fail), "-DGPUI_HAVE_XI=1");
     libs.push(...pkgConfig(["xi"], "--libs", fail));
   } else {
-    console.log("xi not found: touch and pen will be mouse input. Install it with: bash cmd/ubuntu-install-deps.sh");
+    console.log(`xi not found: touch and pen will be mouse input. Install it with: ${installDeps}`);
   }
   linuxDepsMemo = { cflags, libs };
   return linuxDepsMemo;

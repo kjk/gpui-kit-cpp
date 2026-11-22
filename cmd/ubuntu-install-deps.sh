@@ -36,6 +36,10 @@
 
 set -euo pipefail
 
+# Where the scripts sit, as a reader types them from the checkout's root:
+# cmd/ here, the root itself in gpui-kit-cpp-dist (which carries gpui.h there).
+if [ -f "$(dirname "$0")/gpui.h" ]; then CMD=""; else CMD="cmd/"; fi
+
 BUILD_ONLY=0
 WEBKIT=1
 for arg in "$@"; do
@@ -44,7 +48,7 @@ for arg in "$@"; do
   --without-webkit | -without-webkit) WEBKIT=0 ;;
   *)
     echo "unknown option: $arg" >&2
-    echo "usage: bash cmd/ubuntu-install-deps.sh [--build-only] [--without-webkit]" >&2
+    echo "usage: bash ${CMD}ubuntu-install-deps.sh [--build-only] [--without-webkit]" >&2
     exit 1
     ;;
   esac
@@ -104,7 +108,7 @@ if [ "$BUILD_ONLY" = "1" ]; then
   "${CXX:-g++}" --version | head -1 || true
   pkg-config --modversion x11 cairo pangocairo | tr '\n' ' ' && echo "(x11 cairo pangocairo)"
   echo ""
-  echo "Done (--build-only). Compile with: bun cmd/build.ts -rel -all"
+  echo "Done (--build-only). Compile with: bun ${CMD}build.ts -rel -all"
   exit 0
 fi
 
@@ -120,7 +124,7 @@ $SUDO apt-get install $APT_FLAGS --no-install-recommends fonts-noto-cjk ||
 
 echo "==> lldb (optional)"
 $SUDO apt-get install $APT_FLAGS --no-install-recommends lldb ||
-  echo "lldb is unavailable on this release; gdb is installed and is what cmd/run.ts -gdb uses."
+  echo "lldb is unavailable on this release; gdb is installed and is what ${CMD}run.ts -gdb uses."
 
 if command -v bun >/dev/null 2>&1; then
   echo "==> bun already installed ($(bun --version))"
@@ -152,5 +156,5 @@ command -v cargo >/dev/null 2>&1 && echo "$(cargo --version)"
 
 echo ""
 echo "Done. Open a new shell (or 'source ~/.bashrc') so bun and cargo are on PATH, then:"
-echo "  bun cmd/build.ts -rel hello_world"
-echo "  bun cmd/run.ts -rel system_monitor"
+echo "  bun ${CMD}build.ts -rel hello_world"
+echo "  bun ${CMD}run.ts -rel system_monitor"

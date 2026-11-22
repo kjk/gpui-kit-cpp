@@ -452,7 +452,7 @@ const debuggerHelp: Record<DebuggerKind, string> = {
       ? "Install gdb:\n  brew install gdb\n" +
         "It also has to be code-signed to control another process; lldb needs none of that,\n" +
         "so prefer -lldb on macOS."
-      : "Install gdb:\n  sudo apt install gdb\n  (or: bash cmd/ubuntu-install-deps.sh)",
+      : `Install gdb:\n  sudo apt install gdb\n  (or: bash ${scriptPath("ubuntu-install-deps.sh")})`,
   lldb:
     process.platform === "darwin"
       ? "lldb ships with the Xcode command line tools:\n  xcode-select --install"

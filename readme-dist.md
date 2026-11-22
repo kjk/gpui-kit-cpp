@@ -83,7 +83,9 @@ gpui_shell/           command-line JavaScript application host
 examples/            every example, including story/ and showcase/
 assets/              icons, images and documents the examples load at runtime
 web/shell.html       the page a -wasm build is served in
-build.ts, run.ts     the source repo's own build and run scripts
+build.ts, run.ts     the source repo's own build and run scripts, with
+                     winapi.ts and mac-window-place.m, which they use
+ubuntu-install-deps.sh  the Linux packages a build needs
 ```
 
 `out/` is where builds land. Nothing else is generated in place.
