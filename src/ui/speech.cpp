@@ -776,7 +776,7 @@ static void Defer(Entity<SpeechState> state, App* app, SpeechDeferredOp* op) {
     if (DrainStillPosted(s, app)) {
         return;
     }
-    Window* win = len(app->windows) > 0 ? app->windows[0] : nullptr;
+    Window* win = AppFirstOpenWindow(app);
     if (win) {
         s->drainPosted = true;
         s->drainWin = win;
@@ -1000,8 +1000,8 @@ void SpeechState::Stop(Ctx* cx) {
     // The timeout is a window's timer, which is the clock this tree has: the
     // window the stop came from, or any window of the application.
     Window* win = cx->win;
-    if (!win && len(cx->app->windows) > 0) {
-        win = cx->app->windows[0];
+    if (!win) {
+        win = AppFirstOpenWindow(cx->app);
     }
     CancelStopTimer(this);
     if (win) {

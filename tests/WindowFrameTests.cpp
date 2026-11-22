@@ -167,6 +167,40 @@ static void HeadlessFrameIsEmpty() {
     TestAppFree(app);
 }
 
+// A closed window lets go of what it drew with once the close has unwound,
+// takes no more posted work, and is not the window a fallback picks.
+struct CloseProbe {
+    int posted = 0;
+    static El* Render(CloseProbe*, Ctx* cx) {
+        return Div(cx->a)->Child(TextEl(cx->a, StrL("closing")));
+    }
+    static void OnPost(CloseProbe* self, Ctx*, const void*) { self->posted++; }
+};
+
+static void AClosedWindowReleasesItsResources() {
+    App* app = TestAppNew();
+    Entity<CloseProbe> view = EntityNew<CloseProbe>(app);
+    Window* first = TestWindowOpen(app, view, 300, 200);
+    Window* second = TestWindowOpen(app, view, 300, 200);
+    TestDraw(first);
+    TestDraw(second);
+    utassert(first->frameArena && first->layout);
+    utassert(len(first->rendered) > 0);
+
+    WindowClosed(first);
+    // Not yet: the close may be unwinding out of this window's own handler.
+    utassert(first->frameArena != nullptr);
+    utassert(len(first->rendered) == 0);
+    utassert(AppFirstOpenWindow(app) == second);
+
+    WindowPost(first, ListenTo(view, &CloseProbe::OnPost));
+    WindowPost(second, ListenTo(view, &CloseProbe::OnPost));
+    TestRunUntilParked(app);
+    utassert(first->frameArena == nullptr && first->layout == nullptr);
+    utassert(view.Get(app)->posted == 1);
+    TestAppFree(app);
+}
+
 void TestWindowFrame() {
     TestSuite("window_frame");
     ShiftIntoKeepsVisibleRect();
@@ -177,4 +211,5 @@ void TestWindowFrame() {
     BoundsObserver();
     DialogHoldsParent();
     HeadlessFrameIsEmpty();
+    AClosedWindowReleasesItsResources();
 }

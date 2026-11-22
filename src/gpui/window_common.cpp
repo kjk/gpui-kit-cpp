@@ -5185,6 +5185,19 @@ bool AppAnyWindowOpen(App* app) {
     return false;
 }
 
+Window* AppFirstOpenWindow(App* app) {
+    if (!app) {
+        return nullptr;
+    }
+    for (int i = 0; i < len(app->windows); i++) {
+        Window* w = app->windows[i];
+        if (w && !w->closed) {
+            return w;
+        }
+    }
+    return nullptr;
+}
+
 // A field and the window it is focused in point at each other, and either one
 // can be destroyed first. ~InputState clears the window's half; this clears
 // the field's, so neither order leaves a dangling pointer.
@@ -5200,6 +5213,8 @@ bool AppAnyWindowOpen(App* app) {
 // The `focusWin == this` test matters: a field that has since been focused in
 // another window is still listed here, and its live registration is that
 // other window's to clear, not ours.
+static void ReapForget(Window* w);
+
 Window::~Window() {
     if (input && input->focusWin == this) {
         input->focusWin = nullptr;
@@ -5221,6 +5236,64 @@ Window::~Window() {
     // A test that builds a Window by hand and deletes it never reaches the
     // teardown that frees these; a window that did, freed them already.
     LayoutRowCachesFree(this);
+    WindowScrollFadeFree(this);
+    if (closeReapPending) {
+        ReapForget(this);
+    }
+}
+
+// What a window holds for drawing: its frame arena and everything cached
+// across frames. Idempotent, so a window released when it closed is
+// released again by AppRelease harmlessly.
+static void WindowReleaseResources(Window* w) {
+    if (w->frameArena) {
+        ArenaDelete(w->frameArena);
+        w->frameArena = nullptr;
+    }
+    TextMeasClear(&w->paint);
+    LayoutCacheFree(w->layout);
+    w->layout = nullptr;
+    LayoutRowCachesFree(w);
+    WindowSelectionFree(w);
+    PaintTargetFree(&w->paint);
+    VecReset(w->timers);
+    VecReset(w->rendered);
+    VecReset(w->imageCacheStack);
+    VecReset(w->plotAppearScopes);
+    VecReset(w->debugViewRoots);
+    VecReset(w->debugHoveredPaths);
+    VecReset(w->scrollbarOccluded);
+    WindowKeyedFree(w);
+    WindowMotionFree(w);
+    WindowScrollFadeFree(w);
+}
+
+// A closed window's resources, released once the close has unwound: on
+// Windows WM_DESTROY arrives inside the click handler that closed it, with
+// that window's element tree (in its frame arena) still on the stack. The
+// Window itself stays in app->windows, small and inert, since platform code
+// can still hold the pointer. The queue holds windows rather than the post
+// holding one: a Window deleted first (AppRelease, a test's own) takes itself
+// out in ~Window, so the post never reaches freed memory.
+static Vec<Window*> gWindowsToReap;
+
+static void ReapClosedWindows() {
+    while (len(gWindowsToReap) > 0) {
+        Window* w = gWindowsToReap[len(gWindowsToReap) - 1];
+        gWindowsToReap.len--;
+        w->closeReapPending = false;
+        WindowReleaseResources(w);
+    }
+    VecReset(gWindowsToReap);
+}
+
+static void ReapForget(Window* w) {
+    for (int i = 0; i < len(gWindowsToReap); i++) {
+        if (gWindowsToReap[i] == w) {
+            VecRemoveAt(gWindowsToReap, i);
+            return;
+        }
+    }
 }
 
 static void DragOutWindowClosed(Window* win);
@@ -5278,6 +5351,19 @@ void WindowClosed(Window* win) {
     // No OS window is active any more; a menu choice looking for the active
     // window must not land on this one.
     win->active = false;
+    // A notify must not count this window as one that shows the entity, and
+    // no timer of its fires again. len, not VecReset: a timer handler that
+    // closed the window may be inside WindowTimerTick's walk.
+    win->closed = true;
+    win->rendered.len = 0;
+    win->timers.len = 0;
+    if (!win->closeReapPending) {
+        win->closeReapPending = true;
+        if (len(gWindowsToReap) == 0) {
+            ExecPost(MkFunc0Void(ReapClosedWindows));
+        }
+        VecAppend(gWindowsToReap, win);
+    }
 }
 
 bool WindowShouldClose(Window* win) {
@@ -5504,24 +5590,7 @@ static void AppRelease(App* app, bool platform) {
     EntityDropAll(app);
     for (int i = 0; i < app->windows.len; i++) {
         Window* w = app->windows[i];
-        if (w->frameArena) {
-            ArenaDelete(w->frameArena);
-        }
-        TextMeasClear(&w->paint);
-        LayoutCacheFree(w->layout);
-        w->layout = nullptr;
-        LayoutRowCachesFree(w);
-        WindowSelectionFree(w);
-        PaintTargetFree(&w->paint);
-        VecReset(w->timers);
-        VecReset(w->imageCacheStack);
-        VecReset(w->plotAppearScopes);
-        VecReset(w->debugViewRoots);
-        VecReset(w->debugHoveredPaths);
-        VecReset(w->scrollbarOccluded);
-        WindowKeyedFree(w);
-        WindowMotionFree(w);
-        WindowScrollFadeFree(w);
+        WindowReleaseResources(w);
         delete w;
     }
     VecReset(app->windows);
@@ -6083,8 +6152,9 @@ void AppMenuChosen(int id) {
             break;
         }
     }
-    if (!win && gAppMenuApp->windows.len > 0) {
-        win = gAppMenuApp->windows[0];
+    if (!win) {
+        // Not a closed one kept in the list.
+        win = AppFirstOpenWindow(gAppMenuApp);
     }
     if (!win) {
         return;

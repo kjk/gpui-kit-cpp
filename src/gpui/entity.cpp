@@ -601,7 +601,9 @@ static bool WindowIsLive(App* app, Window* win) {
     }
     for (int i = 0; i < app->windows.len; i++) {
         if (app->windows[i] == win) {
-            return true;
+            // A closed window stays in the list but takes no more work, as a
+            // Rust WindowHandle::update on a closed window fails.
+            return !win->closed;
         }
     }
     return false;

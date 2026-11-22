@@ -7953,6 +7953,11 @@ struct Window {
     // Set while WindowTimerTick walks `timers`: a cancel then marks the entry
     // (id 0) for the tick's sweep instead of shifting the array under it.
     bool timersTicking = false;
+    // Set by WindowClosed, never cleared: the OS window is gone. The Window
+    // stays in app->windows (platform code may still hold it), inert.
+    bool closed = false;
+    // WindowClosed has queued the release of this window's resources.
+    bool closeReapPending = false;
     // Which InputState had focus last frame, so the runtime can start and stop
     // its caret without every app wiring that up.
     InputState* prevInput = nullptr;
@@ -8691,6 +8696,9 @@ bool TestPlatformClipboardRead(Arena* a, ClipboardItem* out);
 
 App* AppNew();
 void AppFree(App* app);
+// The first of the app's windows that has not been closed, or null. A closed
+// window stays in app->windows; this is the one to fall back on.
+Window* AppFirstOpenWindow(App* app);
 
 // Put UTF-8 text on the system clipboard.
 void ClipboardSetText(Window* win, Str text);
