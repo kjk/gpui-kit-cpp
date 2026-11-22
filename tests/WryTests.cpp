@@ -56,9 +56,21 @@ static void DroppingAWebViewRefreshesThePointerTarget() {
     TestAppFree(app);
 }
 
+// crates/webview/src/composition.rs
+// fractional_document_covers_the_clip_without_moving_its_top_edge. Rust's
+// frame is bottom-up, where the top edge is origin.y + height; a wry rect is
+// top-left, where it is origin.y.
+static void FractionalDocumentCoversTheClipWithoutMovingItsTopEdge() {
+    Bounds frame = WebViewDocumentFrame({-4.5f, 5.f, 200.25f, 140.5f});
+    utassert(frame.w == 201.f && frame.h == 141.f);
+    utassert(frame.x == -4.5f);
+    utassert(frame.y == 5.f);
+}
+
 void TestWryUri() {
     TestSuite("wry_uri");
     DroppingAWebViewRefreshesThePointerTarget();
+    FractionalDocumentCoversTheClipWithoutMovingItsTopEdge();
 
     // gpui-webview's owned raw handle is copyable even when empty. A real
     // handle follows the same operations while retaining the shared native

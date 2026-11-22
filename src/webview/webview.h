@@ -164,6 +164,22 @@ WebViewHandle WebViewGetHandle(const WebView* self);
     moves the OS control to wherever layout put it. */
 El* WebViewEl(Entity<WebView> view, Ctx* cx);
 
+// macOS WebKit truncates a WKWebView's size to whole points, which leaves a
+// strip of background along the right or bottom edge at fractional sizes
+// (`composition.rs`). Only there is the frame handed to wry rounded.
+#if GPUI_OS_MAC
+#define GPUI_WEBVIEW_WHOLE_POINT_FRAME 1
+#else
+#define GPUI_WEBVIEW_WHOLE_POINT_FRAME 0
+#endif
+
+/** `composition::document_frame`: the document box with its width and
+    height rounded up to whole points, its left and top edges in place so
+    the page does not shift. The clip and hit box stay the unrounded box.
+    Rust works in the container's bottom-up coordinates and so moves the
+    origin down by the growth; a wry rect is top-left, so the origin stays. */
+Bounds WebViewDocumentFrame(Bounds document);
+
 } // namespace gpui
 
 #endif // GPUI_WEBVIEW_WEBVIEW_H_

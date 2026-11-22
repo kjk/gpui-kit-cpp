@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b7f8f156d881f2e7d4435f0c7628730f4d3fab2b",
-  date: "2026-11-21",
-  subject: "text: Keep the text of a paragraph with inline code between frames (#4063)",
+  sha: "1539e07abd38589626697f0b24e3d6bf46f5df71",
+  date: "2026-11-22",
+  subject: "webview: Fix gaps at fractional viewport sizes on macOS (#4065)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

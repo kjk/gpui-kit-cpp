@@ -307,6 +307,12 @@ static bool BoundsSame(Bounds a, Bounds b) {
     return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
 }
 
+// WebKit truncates the view size to whole points. Expand the child, not the
+// clip, and keep its top edge fixed.
+Bounds WebViewDocumentFrame(Bounds document) {
+    return {document.x, document.y, ceilf(document.w), ceilf(document.h)};
+}
+
 static void HideNative(WebView* self, wry::WebView* raw) {
     if (!self->nativeShown) {
         return;
@@ -362,9 +368,13 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
         // then multiplies by GDK's factor. `WebViewSetBounds` on Linux
         // already does that conversion for the X11 child, so doing it here
         // would double it.
+        Bounds frame = document;
+#if GPUI_WEBVIEW_WHOLE_POINT_FRAME
+        frame = WebViewDocumentFrame(document);
+#endif
         wry::Rect r;
-        r.position = wry::LogicalPosition(document.x, document.y);
-        r.size = wry::LogicalSize(document.w, document.h);
+        r.position = wry::LogicalPosition(frame.x, frame.y);
+        r.size = wry::LogicalSize(frame.w, frame.h);
         if (!wry::WebViewSetBounds(raw, r)) {
             if (!self->geometryFailed) {
                 self->geometryFailed = true;

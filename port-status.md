@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b7f8f156d881f2e7d4435f0c7628730f4d3fab2b` (2026-11-21, text:
-Keep the text of a paragraph with inline code between frames (#4063)).
-Upstream keeps the merged text of a paragraph with inline code between frames.
-The parse cache here already keeps each paragraph's runs, and inline flows
-build from those, so only the comment naming the missing cache changes.
+Processed through `1539e07abd38589626697f0b24e3d6bf46f5df71` (2026-11-22,
+webview: Fix gaps at fractional viewport sizes on macOS (#4065)).
+On macOS a webview's width and height round up to whole points so no strip of
+background shows at fractional sizes (WebViewDocumentFrame); the top edge stays
+put.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 
@@ -672,7 +672,9 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   and covers overlays in that box. It is hidden only when the clip
   misses it entirely, or the application hides it. A failed geometry
   update is logged once, until a later update succeeds. The hit box
-  is already the masked intersection.
+  is already the masked intersection. The macOS whole-point rounding
+  (`WebViewDocumentFrame`) is applied to the wry rect, whose origin is
+  the top left, rather than to a composition child.
 - **Linux webview bounds stay logical.** Upstream `device_bounds` passes
   physical pixels because lb-wry then scales by GDK. `WebViewSetBounds`
   in `wry_linux.cpp` already multiplies a logical rect by that factor
