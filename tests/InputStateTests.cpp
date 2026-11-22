@@ -117,6 +117,16 @@ static void MaskedInputRedactsImeText() {
     utassert(start == 1 && end == 4);
 }
 
+// state.rs test_text_length_utf16. "🙂" is 2 UTF-16 units and 4 bytes; "й"
+// is 1 UTF-16 unit and 2 bytes.
+static void TextLengthUtf16() {
+    InputState s;
+    InputDefaultValue(&s, StrL("🙂 й"));
+    utassert(InputTextLengthUtf16(&s) == 4);
+    InputReplaceTextInRange(&s, nullptr, nullptr, nullptr, StrL("ab"));
+    utassert(InputTextLengthUtf16(&s) == 6);
+}
+
 static bool ConfigEq(const TextInputConfiguration& a,
                      const TextInputConfiguration& b) {
     return a.inputAction == b.inputAction && a.autocorrect == b.autocorrect &&
@@ -14526,6 +14536,7 @@ void TestInputState() {
     MaskedRedoRestoresActualCursor();
     AMaskedValueStaysInTheField();
     MaskedInputRedactsImeText();
+    TextLengthUtf16();
     RevealingAPasswordKeepsTextAssistanceDisabled();
     TextInputConfigurationFollowsTheInput();
     AFocusedFieldGoingTakesItsRegistrationWithIt();

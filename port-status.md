@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3724f2519634811739589858c3e2a976cd5769c6` (2026-11-22, icon:
-Warn once when an icon path does not load (#4075)).
-A debug build warns once per path when an icon's SVG cannot be loaded
-(WarnMissingIcon), and hello_world shows a button with an icon.
+Processed through `1c7e7f7c6c8d6585da909804496614da01bb8663` (2026-11-23,
+input: Report the document length so the iOS keyboard shows (#4082)).
+InputTextLengthUtf16 reports the document length in UTF-16 units, the answer an
+iOS host's text-input adapter needs before the keyboard shows.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 

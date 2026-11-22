@@ -6463,6 +6463,12 @@ void InputSetSelectedTextRangeUtf16(InputState* s, App* app, Window* win,
 TempStr InputTextForRangeUtf16Temp(const InputState* s, int startUtf16,
                                    int endUtf16, int* adjustedStart,
                                    int* adjustedEnd);
+// EntityInputHandler::text_length_utf16: the whole document's length in
+// UTF-16 units. A platform uses it to learn the handler has a document at
+// all — iOS only makes the view first responder, and so only shows the
+// on-screen keyboard, when it can tell the document's range — so a mobile
+// host's text-input adapter answers with it.
+int InputTextLengthUtf16(const InputState* s);
 // selection.rs: what a double and a triple click take.
 void InputSelectWord(InputState* s, App* app, Window* win, int offset);
 void InputSelectLine(InputState* s, App* app, Window* win, int offset);

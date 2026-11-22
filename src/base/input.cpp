@@ -6473,6 +6473,11 @@ TempStr InputTextForRangeUtf16Temp(const InputState* s, int startUtf16,
     return StrDupTemp(Str(text.s + a, b - a));
 }
 
+int InputTextLengthUtf16(const InputState* s) {
+    Str text = s ? InputValue(s) : Str{};
+    return RopeOffsetToOffsetUtf16(text, len(text));
+}
+
 // selection.rs: what a double and a triple click take.
 void InputSelectWord(InputState* s, App* app, Window* win, int offset) {
     int a = 0;

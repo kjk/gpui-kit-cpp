@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3724f2519634811739589858c3e2a976cd5769c6",
-  date: "2026-11-22",
-  subject: "icon: Warn once when an icon path does not load (#4075)",
+  sha: "1c7e7f7c6c8d6585da909804496614da01bb8663",
+  date: "2026-11-23",
+  subject: "input: Report the document length so the iOS keyboard shows (#4082)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",
