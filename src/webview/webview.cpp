@@ -313,6 +313,42 @@ Bounds WebViewDocumentFrame(Bounds document) {
     return {document.x, document.y, ceilf(document.w), ceilf(document.h)};
 }
 
+// dpi's `to_physical::<i32>`: rounds half away from zero.
+static int32_t ToPhysicalPx(double logical, double scale) {
+    double v = logical * scale;
+    return (int32_t)(v < 0 ? v - 0.5 : v + 0.5);
+}
+
+bool WebViewWindowGeometry(Bounds document, Bounds visible, double scale,
+                           wry::Rect* bounds, int32_t clip[4]) {
+    int32_t originX = ToPhysicalPx(document.x, scale);
+    int32_t originY = ToPhysicalPx(document.y, scale);
+    int32_t width = ToPhysicalPx(document.w, scale);
+    int32_t height = ToPhysicalPx(document.h, scale);
+    int32_t startX = ToPhysicalPx(visible.x, scale);
+    int32_t startY = ToPhysicalPx(visible.y, scale);
+    int32_t endX = ToPhysicalPx(visible.x + visible.w, scale);
+    int32_t endY = ToPhysicalPx(visible.y + visible.h, scale);
+    auto clamp = [](int32_t v, int32_t hi) {
+        return std::min(std::max(v, 0), hi);
+    };
+    // Wry rounds the window origin and extent independently. For a fully
+    // visible far edge, use that extent instead of subtracting two rounded
+    // positions.
+    clip[0] = clamp(startX - originX, width);
+    clip[1] = clamp(startY - originY, height);
+    clip[2] = visible.x + visible.w >= document.x + document.w
+                  ? width
+                  : clamp(endX - originX, width);
+    clip[3] = visible.y + visible.h >= document.y + document.h
+                  ? height
+                  : clamp(endY - originY, height);
+    bounds->position = wry::PhysicalPosition(originX, originY);
+    bounds->size = wry::PhysicalSize(width, height);
+    return clip[0] != 0 || clip[1] != 0 || clip[2] != width ||
+           clip[3] != height;
+}
+
 static void HideNative(WebView* self, wry::WebView* raw) {
     if (!self->nativeShown) {
         return;
@@ -328,9 +364,38 @@ static void HideNative(WebView* self, wry::WebView* raw) {
 // same frame reads the webview's bounds.
 //
 // `set_geometry`: the content mask is the clip. An empty clip hides the
-// native view and leaves the page loaded. A partial clip keeps the full
-// document bounds, so the native view extends past its container. There
-// is no composition surface to clip it without resizing the page.
+// native view and leaves the page loaded. On Windows a partial clip is a
+// window region on wry's host window. Elsewhere it keeps the full document
+// bounds, so the native view extends past its container: there is no
+// composition surface to clip it without resizing the page.
+static bool ApplyGeometry(WebView* self, wry::WebView* raw, Bounds document,
+                          Bounds visible) {
+#if GPUI_WEBVIEW_NATIVE_CLIP
+    if (!BoundsSame(visible, document)) {
+        return WebViewNativeClipSet(self, raw, document, visible);
+    }
+    // `set_bounds` drops the region before taking the full document bounds.
+    if (!WebViewNativeClipClear(self, raw)) {
+        return false;
+    }
+#else
+    (void)self;
+    (void)visible;
+#endif
+    // Logical DIPs. Upstream Linux passes device pixels because lb-wry
+    // then multiplies by GDK's factor. `WebViewSetBounds` on Linux
+    // already does that conversion for the X11 child, so doing it here
+    // would double it.
+    Bounds frame = document;
+#if GPUI_WEBVIEW_WHOLE_POINT_FRAME
+    frame = WebViewDocumentFrame(document);
+#endif
+    wry::Rect r;
+    r.position = wry::LogicalPosition(frame.x, frame.y);
+    r.size = wry::LogicalSize(frame.w, frame.h);
+    return wry::WebViewSetBounds(raw, r);
+}
+
 static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
     WebView* self = (WebView*)user;
     Bounds document = e->Bounds();
@@ -362,20 +427,11 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
         HideNative(self, raw);
         return;
     }
-    bool same = self->hasApplied && BoundsSame(self->applied, document);
+    bool same = self->hasApplied && BoundsSame(self->applied, document) &&
+                BoundsSame(self->appliedVisible, visible) &&
+                self->appliedScale == gpuiScale;
     if (!same || self->geometryFailed) {
-        // Logical DIPs. Upstream Linux passes device pixels because lb-wry
-        // then multiplies by GDK's factor. `WebViewSetBounds` on Linux
-        // already does that conversion for the X11 child, so doing it here
-        // would double it.
-        Bounds frame = document;
-#if GPUI_WEBVIEW_WHOLE_POINT_FRAME
-        frame = WebViewDocumentFrame(document);
-#endif
-        wry::Rect r;
-        r.position = wry::LogicalPosition(frame.x, frame.y);
-        r.size = wry::LogicalSize(frame.w, frame.h);
-        if (!wry::WebViewSetBounds(raw, r)) {
+        if (!ApplyGeometry(self, raw, document, visible)) {
             if (!self->geometryFailed) {
                 self->geometryFailed = true;
                 logf("WebView geometry update failed\n");
@@ -384,6 +440,8 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
             return;
         }
         self->applied = document;
+        self->appliedVisible = visible;
+        self->appliedScale = gpuiScale;
         self->hasApplied = true;
         self->geometryFailed = false;
     }

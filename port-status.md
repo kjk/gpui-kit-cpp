@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `38db332574cc8fa7d0eafe4ffb9c1be2d96c3402` (2026-11-22,
-shell: Add PluginManager::with_host_module (#3948)).
-PluginManager::WithHostModule registers a host module that every plugin the
-manager loads can import; Load adds each one to the plugin's policy.
+Processed through `ed9756a3c1642d7cedd00d253e446a3f61b4f697` (2026-11-22,
+webview: Clip partially visible WebViews on Windows (#4066)).
+On Windows a partly visible webview keeps its full document bounds in device
+pixels and is clipped with a window region on wry's host window
+(WebViewWindowGeometry, WebViewNativeClipSet); a fully visible one clears the
+region.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 
@@ -666,9 +668,11 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `gpui-fast` feature is a no-op; composition is not optional. This
   tree has one engine and parents the webview on the window
   (`src/webview/webview.cpp`). Without that container, a content mask
-  cannot clip the page without resizing it. A partial clip keeps the
-  full document bounds, so the native view extends past its container
-  and covers overlays in that box. It is hidden only when the clip
+  cannot clip the page without resizing it, except on Windows, where
+  (as upstream `windows.rs`) a window region on wry's host HWND clips
+  it. Elsewhere a partial clip keeps the full document bounds, so the
+  native view extends past its container and covers overlays in that
+  box. It is hidden only when the clip
   misses it entirely, or the application hides it. A failed geometry
   update is logged once, until a later update succeeds. The hit box
   is already the masked intersection. The macOS whole-point rounding

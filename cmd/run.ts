@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "38db332574cc8fa7d0eafe4ffb9c1be2d96c3402",
+  sha: "ed9756a3c1642d7cedd00d253e446a3f61b4f697",
   date: "2026-11-22",
-  subject: "shell: Add PluginManager::with_host_module (#3948)",
+  subject: "webview: Clip partially visible WebViews on Windows (#4066)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

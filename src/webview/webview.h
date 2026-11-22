@@ -80,9 +80,16 @@ struct WebView {
     // Where the element last was, which is the box the OS control is moved
     // to. Rust keeps this too, filled by the `canvas` in its render.
     Bounds bounds = {};
-    // The box already handed to wry, so an unchanged frame moves nothing.
+    // The box already handed to wry, so an unchanged frame moves nothing,
+    // with the visible part of it and the GPUI scale it was applied at.
     Bounds applied = {};
+    Bounds appliedVisible = {};
+    float appliedScale = 0;
     bool hasApplied = false;
+    // `windows::NativeClip`: the region last set on wry's host window, as
+    // left, top, right, bottom in its device pixels. Windows only.
+    int32_t clip[4] = {};
+    bool hasClip = false;
     // Linux `scale_factor`: the GPUI scale the page zoom was last matched
     // to. Other platforms share the window scale and skip the zoom.
     float pageScale = 0;
@@ -179,6 +186,34 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx);
     Rust works in the container's bottom-up coordinates and so moves the
     origin down by the growth; a wry rect is top-left, so the origin stays. */
 Bounds WebViewDocumentFrame(Bounds document);
+
+// Windows clips a partially visible webview with a window region on wry's
+// host window (`windows.rs`). Elsewhere a partial clip keeps the full
+// document bounds and the native view extends past its container.
+#if GPUI_OS_WINDOWS
+#define GPUI_WEBVIEW_NATIVE_CLIP 1
+#else
+#define GPUI_WEBVIEW_NATIVE_CLIP 0
+#endif
+
+/** `windows::window_geometry`: the device-pixel rect for wry's host window
+    and, when part of the document is hidden, the region (left, top, right,
+    bottom) local to that window that keeps only `visible`. wry rounds the
+    window origin and extent independently, so a fully visible far edge
+    uses that extent rather than the difference of two rounded positions.
+    Returns false, leaving `clip` unspecified, when nothing is hidden. */
+bool WebViewWindowGeometry(Bounds document, Bounds visible, double scale,
+                           wry::Rect* bounds, int32_t clip[4]);
+
+#if GPUI_WEBVIEW_NATIVE_CLIP
+/** `NativeClip::set_geometry`: full document bounds in device pixels, then
+    the region that clips them to `visible`. False when the host window,
+    its DPI or the region could not be had. */
+bool WebViewNativeClipSet(WebView* self, wry::WebView* raw, Bounds document,
+                          Bounds visible);
+/** `NativeClip::clear`: drop the region, if one was set. */
+bool WebViewNativeClipClear(WebView* self, wry::WebView* raw);
+#endif
 
 } // namespace gpui
 

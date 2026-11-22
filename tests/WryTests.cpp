@@ -67,10 +67,26 @@ static void FractionalDocumentCoversTheClipWithoutMovingItsTopEdge() {
     utassert(frame.y == 5.f);
 }
 
+// crates/webview/src/windows.rs
+// fractional_dpi_keeps_the_document_size_and_fully_visible_edge. The
+// geometry is portable, so it is checked on every target.
+static void FractionalDpiKeepsTheDocumentSizeAndFullyVisibleEdge() {
+    Bounds document = {0.5f, 0.5f, 80.5f, 40.5f};
+    Bounds visible = {10.5f, 0.5f, 70.5f, 30.f};
+    wry::Rect bounds;
+    int32_t clip[4] = {};
+    utassert(WebViewWindowGeometry(document, visible, 1.25, &bounds, clip));
+    utassert(!bounds.size.logical && bounds.size.width == 101 &&
+             bounds.size.height == 51);
+    utassert(clip[0] == 12 && clip[1] == 0 && clip[2] == 101 && clip[3] == 37);
+    utassert(!WebViewWindowGeometry(document, document, 1.25, &bounds, clip));
+}
+
 void TestWryUri() {
     TestSuite("wry_uri");
     DroppingAWebViewRefreshesThePointerTarget();
     FractionalDocumentCoversTheClipWithoutMovingItsTopEdge();
+    FractionalDpiKeepsTheDocumentSizeAndFullyVisibleEdge();
 
     // gpui-webview's owned raw handle is copyable even when empty. A real
     // handle follows the same operations while retaining the shared native
