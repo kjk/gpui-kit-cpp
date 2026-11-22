@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cce326189c8ba34820ee3b6664c258166b3f4ca9` (2026-11-20, text:
-Wrap each line of an inline flow without rescanning the rest of its paragraph
-(#4058)).
-Upstream wraps each line of an inline flow from what is on it. Inline flows
-here are flex-wrap rows of word elements laid out by taffy, with no flow line
-wrapper to change, so nothing is ported.
+Processed through `401fc33f66d31391d7d61eb927636d13bf492064` (2026-11-20,
+text_selection: Clear the press latch after mouse-down dispatch (#4054)).
+Upstream clears the text-selection press latch after mouse-down dispatch. A
+press here always runs once on the window's single selection and clears it, so
+only the test is ported.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 

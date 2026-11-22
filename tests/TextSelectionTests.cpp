@@ -2705,6 +2705,57 @@ static void TripleClickBesideAShortLineSelectsThatLine() {
     TestAppFree(app);
 }
 
+struct SelectableTextsView {
+    static El* Render(SelectableTextsView*, Ctx* cx) {
+        return Div(cx->a)
+            ->SizeFull()
+            ->FlexCol()
+            ->Child(TextSelectionLayer::New(cx))
+            ->Child(SelectableText::New(cx, StrL("t0"), StrL("one two three"))
+                        ->Font(16)
+                        ->IntoEl())
+            ->Child(SelectableText::New(cx, StrL("t1"), StrL("four five six"))
+                        ->Font(16)
+                        ->IntoEl());
+    }
+};
+
+// Rust's painted_position: where the character `index` of the painted run
+// `text` begins, on the run's first line.
+static Point PaintedPosition(Window* win, const char* text, int index) {
+    for (const TextHit& h : win->paint.texts) {
+        if (!StrEq(h.text, Str(text))) continue;
+        float w = MeasureText(&win->paint, Str((char*)text, index), h.font, 0)
+                      .w;
+        return {h.bounds.x + w + 0.5f, h.bounds.y + h.font * 0.5f};
+    }
+    utassert(false);
+    return {};
+}
+
+// text_selection.rs
+// a_press_without_a_release_does_not_keep_a_stale_selection. Rust latched
+// prepare_for_mouse_down across selection layers until the release, so a
+// release stopped by a child or lost outside the window left the next press
+// keeping the old selection. Here one press clears once per dispatch, with
+// no latch to leave behind.
+static void APressWithoutAReleaseDoesNotKeepAStaleSelection() {
+    App* app = TestAppNew();
+    auto view = EntityNew<SelectableTextsView>(app);
+    Window* win = TestWindowOpen(app, view, 300, 200, 1);
+    utassert(WindowSelectedIs(win, app, ""));
+
+    TestSimulateMouseDown(win, PaintedPosition(win, "one two three", 0));
+    TestSimulateMouseMove(win, PaintedPosition(win, "one two three", 7), true);
+    utassert(WindowSelectedIs(win, app, "one two"));
+
+    Point p = PaintedPosition(win, "four five six", 2);
+    TestSimulateMouseDown(win, p);
+    TestSimulateMouseUp(win, p);
+    utassert(WindowSelectedIs(win, app, ""));
+    TestAppFree(app);
+}
+
 struct OwnedSelectableDragView {
     int renders = 0;
 
@@ -2874,6 +2925,7 @@ void TestTextSelection() {
     ShiftClickExtendsFromTheAnchor();
     TwoClicksTakeTheWordAndThreeTheLine();
     TripleClickBesideAShortLineSelectsThatLine();
+    APressWithoutAReleaseDoesNotKeepAStaleSelection();
     ALongPressTakesAWordAndKeepsDragging();
     AHostFingerSwipeEmitsPhasedScroll();
     AHostLongPressTimerSelectsAWord();

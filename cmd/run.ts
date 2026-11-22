@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cce326189c8ba34820ee3b6664c258166b3f4ca9",
+  sha: "401fc33f66d31391d7d61eb927636d13bf492064",
   date: "2026-11-20",
-  subject: "text: Wrap each line of an inline flow without rescanning the rest of its paragraph (#4058)",
+  subject: "text_selection: Clear the press latch after mouse-down dispatch (#4054)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",
