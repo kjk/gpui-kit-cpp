@@ -21,14 +21,21 @@ struct Example {
                         ->Font(16)
                         ->IntoEl()
                         ->Fg(th.foreground))
-            ->Child(ButtonEl(cx->a, 0, StrL("Let's Go!"), BtnKind::Primary)
-                        ->OnClick(Listen(cx, &Example::OnGo)));
+            ->Child(component::Button::New(cx, StrL("ok"))
+                        ->Primary()
+                        ->Icon(IconName::Check)
+                        ->Label(StrL("Let's Go!"))
+                        ->OnClick(Listen(cx, &Example::OnGo))
+                        ->IntoEl());
     }
 };
 
 int GpuiMain(int argc, char** argv) {
     (void)argc;
     (void)argv;
+    // Rust adds `.with_assets(gpui_kit::assets::Assets)` here so its icons
+    // load. The lucide set is compiled into the runtime (asset_icons.cpp),
+    // so the check icon needs no asset root.
     App* app = AppNew();
     component::Init(app);
     ThemeSet(app, ThemeMode::Light);

@@ -1,4 +1,6 @@
 #include "ui/icon.h"
+#include "gpui/assets.h"
+#include "gpui/asset_icons.h"
 
 namespace gpui {
 
@@ -78,6 +80,39 @@ Str ResolveIconPath(Str path, const App* app, Arena* a) {
     return IconPathResolve(path, app, a);
 }
 
+// The paths already checked. Rust keeps a thread-local set; the port keeps
+// it on the App, which is the only thread icons are built on.
+struct IconCheckedPaths {
+    Vec<Str> paths;
+    ~IconCheckedPaths() { StrVecFree(&paths); }
+};
+
+bool WarnMissingIcon(Str path, App* app) {
+    if (len(path) == 0 || !app) {
+        return false;
+    }
+    IconCheckedPaths* checked = AppGlobalEnsure<IconCheckedPaths>(app);
+    for (Str seen : checked->paths) {
+        if (StrEq(seen, path)) {
+            return false;
+        }
+    }
+    VecAppend(checked->paths, StrDup(path));
+    int builtIn = 0;
+    if (AssetIconForPath(path, &builtIn) || AssetsExists(path)) {
+        return false;
+    }
+    // The port's counterpart of `.with_assets(gpui_kit::assets::Assets)` is
+    // an asset root (AssetsAddRoot / AssetsAddDefaultRoots) or an
+    // application source (AssetsAddSource).
+    logf(
+        "icon `%s` renders blank: the asset source does not load it. Add the "
+        "assets directory with AssetsAddDefaultRoots or AssetsAddRoot, or "
+        "make your own AssetsAddSource serve this path.\n",
+        path);
+    return true;
+}
+
 El* Icon::IntoEl() {
     El* e = hasSize ? IconEl(a, name, size) : IconEl(a, name);
     if (source == IconSource::Data) {
@@ -88,6 +123,9 @@ El* Icon::IntoEl() {
         Str drawn = path.s ? path : e->iconPath;
         if (cx && cx->app) {
             drawn = ResolveIconPath(drawn, cx->app, a);
+#if defined(DEBUG)
+            WarnMissingIcon(drawn, cx->app);
+#endif
         }
         if (drawn.s) {
             e->iconPath = drawn;

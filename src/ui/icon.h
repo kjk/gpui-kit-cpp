@@ -76,6 +76,13 @@ void SetIconResolver(App* app, IconPathResolveFn fn, void* user);
 // resolve_icon_path: the path to draw, or `path` when the hook declines
 // or none is set. The replacement is copied into `a`.
 Str ResolveIconPath(Str path, const App* app, Arena* a);
+// warn_missing_icon: log once per path, per app, when no asset source loads
+// `path` -- an icon with nothing behind it draws blank and says nothing.
+// The lucide set is compiled in (asset_icons.cpp), so this only fires for a
+// path outside it that no asset root or source serves. Icon::IntoEl calls
+// it in debug builds only, after the resolver; it is defined in every build
+// so the check can be tested. Answers whether it warned.
+bool WarnMissingIcon(Str path, App* app);
 
 } // namespace component
 } // namespace gpui

@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a1ccaf1abc5d6b0ab460259ac9160b2793bb479e",
+  sha: "3724f2519634811739589858c3e2a976cd5769c6",
   date: "2026-11-22",
-  subject: "input: Align paste tests with single-line tab normalization (#4079)",
+  subject: "icon: Warn once when an icon path does not load (#4075)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",

@@ -220,6 +220,22 @@ static void IconResolverReplacesThePathToDraw() {
     ArenaDelete(a);
 }
 
+// warn_missing_icon (upstream has no test): once per path, and never for an
+// icon the compiled-in set or an asset root serves.
+static void AMissingIconPathIsReportedOnce() {
+    App* app = TestAppNew();
+    utassert(app);
+    if (!app) {
+        return;
+    }
+    utassert(!component::WarnMissingIcon(IconNamePath(IconName::Check), app));
+    Str missing = StrL("icons/warn-missing-icon-test.svg");
+    utassert(component::WarnMissingIcon(missing, app));
+    utassert(!component::WarnMissingIcon(missing, app));
+    utassert(!component::WarnMissingIcon(Str{}, app));
+    TestAppFree(app);
+}
+
 void TestIcon() {
     TestSuite("icon");
     DefaultSizeAndColorAreInherited();
@@ -228,4 +244,5 @@ void TestIcon() {
     ADataIconKeepsItsBytesSizeColourAndTransform();
     PinnedIconAdditionsHaveExactAssetPaths();
     IconResolverReplacesThePathToDraw();
+    AMissingIconPathIsReportedOnce();
 }

@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a1ccaf1abc5d6b0ab460259ac9160b2793bb479e` (2026-11-22,
-input: Align paste tests with single-line tab normalization (#4079)).
-Upstream aligned three crates/kit paste tests with single-line tab
-normalization. None of them has a port in tests/; the behavior landed with
-7f199f39.
+Processed through `3724f2519634811739589858c3e2a976cd5769c6` (2026-11-22, icon:
+Warn once when an icon path does not load (#4075)).
+A debug build warns once per path when an icon's SVG cannot be loaded
+(WarnMissingIcon), and hello_world shows a button with an icon.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 
