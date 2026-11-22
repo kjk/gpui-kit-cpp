@@ -151,8 +151,9 @@ its `vcvars64.bat` is read for the environment, so a plain shell builds.
 toolset instead.
 
 **Linux** needs g++ (or clang++), pkg-config and the X11 / cairo / pango dev
-packages. libcurl (remote images) and WebKitGTK 4.1 (the webview) are used
-when installed and skipped when not. On Ubuntu or Debian:
+packages. libcurl (remote images), WebKitGTK 4.1 (the webview), ALSA (the
+speech microphone), libXcursor (image cursors) and libXi (touch and pen) are
+used when installed and skipped when not. On Ubuntu or Debian:
 
 ```
 bash cmd/ubuntu-install-deps.sh

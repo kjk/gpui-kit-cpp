@@ -18,7 +18,8 @@ First install [bun](https://bun.sh/), then a compiler:
 - **Windows** — Visual Studio 2026; the free Community edition is fine, and
   2022 works too. `build.ts` finds it with vswhere, so no developer prompt.
 - **Linux** — `g++` or `clang++`, plus `pkg-config`, X11, cairo, pangocairo and gdk-pixbuf.
-  Optional: libcurl (remote images) and WebKitGTK 4.1 (the webview).
+  Optional: libcurl (remote images), WebKitGTK 4.1 (the webview), ALSA (the
+  speech microphone), libXcursor (image cursors) and libXi (touch and pen).
 - **macOS** — the Xcode command line tools (`xcode-select --install`).
 
 Then:
@@ -95,13 +96,15 @@ C11. The platform halves are already
 inside `gpui.cpp` behind `GPUI_OS_*`
 guards, so the same source set builds on all four:
 
-- **Windows** — `cl /std:c++20 /EHsc /utf-8 /DUNICODE /D_UNICODE`, static CRT;
+- **Windows** — `cl /std:c++20 /EHs-c- /GR- /D_HAS_EXCEPTIONS=0 /utf-8 /DUNICODE /D_UNICODE`, static CRT;
   link `d2d1.lib d3d11.lib dxgi.lib dcomp.lib dwrite.lib windowscodecs.lib`
   beside the usual user32/gdi32/ole32/shell32 set (see `build.ts`).
 - **Linux** — `g++ -std=c++20` with `pkg-config --cflags --libs x11 cairo pangocairo gdk-pixbuf-2.0`.
   Add `libcurl` and `-DGPUI_HAVE_CURL=1` for remote images,
   `webkit2gtk-4.1` and `-DGPUI_HAVE_WEBKITGTK=1` for the webview, and
-  `alsa` and `-DGPUI_HAVE_ALSA=1` for the speech microphone.
+  `alsa` and `-DGPUI_HAVE_ALSA=1` for the speech microphone, `xcursor` and
+  `-DGPUI_HAVE_XCURSOR=1` for image cursors, and `xi` and `-DGPUI_HAVE_XI=1`
+  for touch and pen input.
 - **macOS** — `clang++ -std=c++20 -x objective-c++` with the Cocoa, CoreText,
   IOKit, AudioToolbox, AVFoundation and Speech frameworks. The file is
   Objective-C++ because the mac half is.

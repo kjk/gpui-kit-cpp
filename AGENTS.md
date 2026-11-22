@@ -43,7 +43,8 @@ including its [crates.md](.claude/skills/update-port/crates.md).
      for the latter two.
    - Linux: g++/clang++, system X11, cairo, Pango, gdk-pixbuf via `pkg-config`.
      Soft dependencies: libcurl (remote images), `webkit2gtk-4.1` (webview),
-     `alsa` (microphone). Build without them; unavailable features stay empty.
+     `alsa` (microphone), `xcursor` (image cursors), `xi` (touch and pen).
+     Build without them; unavailable features stay empty.
    - macOS: clang++, Cocoa, Core Graphics, ImageIO, Core Text, IOKit,
      CoreServices/FSEvents, NSURLSession, AudioToolbox, AVFoundation, Speech.
    - iOS: Xcode iPhoneOS SDK, UIKit host. Android: pinned NDK from
