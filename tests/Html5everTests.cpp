@@ -51,6 +51,34 @@ static void TestNamedCharacterReferences(Arena* a) {
     utassert(base::StrContains(data, StrL("½")));
 }
 
+// markup5ever decodes a name without its `;` only for the legacy names
+// (`&amp`, `&not`), and then the longest one that matches.
+static void TestLegacyReferencesWithoutSemicolon(Arena* a) {
+    auto textOf = [&](Str html) {
+        Node* doc = ParseFragment(a, html);
+        Node* p = ElementChild(a, doc, StrL("p"));
+        Node* text = p ? NodeFirst(a, p) : nullptr;
+        return text ? NodeData(a, text) : Str{};
+    };
+    utassert(base::StrEq(textOf(StrL("<p>&hellip;</p>")), StrL("…")));
+    utassert(base::StrEq(textOf(StrL("<p>&hellip</p>")), StrL("&hellip")));
+    utassert(base::StrEq(textOf(StrL("<p>&apos</p>")), StrL("&apos")));
+    utassert(base::StrEq(textOf(StrL("<p>a&amp b</p>")), StrL("a& b")));
+    utassert(base::StrEq(textOf(StrL("<p>&notit;</p>")), StrL("¬it;")));
+}
+
+// A doctype split across chunks is held until its `>` arrives.
+static void TestDoctypeSplitAcrossChunks(Arena* a) {
+    Parser* parser = ParserNew(a);
+    ParserProcess(parser, StrL("<!DOCTYPE ht"));
+    ParserProcess(parser, StrL("ml><p>x</p>"));
+    Node* doc = ParserFinish(parser);
+    Node* first = doc ? NodeFirst(a, doc) : nullptr;
+    utassert(first && first->kind == NodeKind::Doctype);
+    utassert(first && base::StrEq(NodeName(a, first), StrL("html")));
+    utassert(!base::StrContains(Serialize(a, doc), StrL("ml&gt;")));
+}
+
 static void TestDocumentAndImpliedEnds(Arena* a) {
     Node* doc = ParseDocument(a, StrL("<!doctype html><p>one<p>two"));
     utassert(NodeFirst(a, doc) && NodeFirst(a, doc)->kind == NodeKind::Doctype);
@@ -135,6 +163,8 @@ void TestHtml5ever() {
     TestIncrementalAndScriptPause(a);
 #if GPUI_HTML5EVER_FULL
     TestNamedCharacterReferences(a);
+    TestLegacyReferencesWithoutSemicolon(a);
+    TestDoctypeSplitAcrossChunks(a);
     TestDocumentAndImpliedEnds(a);
     TestTableModes(a);
     TestForeignContent(a);

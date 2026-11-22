@@ -43,8 +43,9 @@ the caller can run the script (or not) and `ParserResumeAfterCurrentScript`
 continues. This tree never executes HTML scripts itself. Exact-error mode
 reports tokenizer errors as tokens rather than preserving html5ever's Rust log
 strings. The named-reference table is the 2125-name WHATWG set (base's
-`HtmlNamedCharRef`, which markdown decodes with too); numeric references are
-complete.
+`HtmlNamedCharRef`, which markdown decodes with too). As in markup5ever, a
+name without its `;` decodes only if it is one of the 106 legacy names
+(`&amp`, `&not`, ...); numeric references are complete.
 
 ## Mini and standalone builds
 

@@ -146,6 +146,36 @@ static uint32_t NumericEntity(Str value, int radix) {
     return cp;
 }
 
+// markup5ever's NAMED_ENTITIES entries without a trailing `;`: the names
+// HTML still decodes when the semicolon is missing.
+static const char* const kLegacyCharRefs[] = {
+    "AElig",  "AMP",    "Aacute", "Acirc",  "Agrave", "Aring",  "Atilde",
+    "Auml",   "COPY",   "Ccedil", "ETH",    "Eacute", "Ecirc",  "Egrave",
+    "Euml",   "GT",     "Iacute", "Icirc",  "Igrave", "Iuml",   "LT",
+    "Ntilde", "Oacute", "Ocirc",  "Ograve", "Oslash", "Otilde", "Ouml",
+    "QUOT",   "REG",    "THORN",  "Uacute", "Ucirc",  "Ugrave", "Uuml",
+    "Yacute", "aacute", "acirc",  "acute",  "aelig",  "agrave", "amp",
+    "aring",  "atilde", "auml",   "brvbar", "ccedil", "cedil",  "cent",
+    "copy",   "curren", "deg",    "divide", "eacute", "ecirc",  "egrave",
+    "eth",    "euml",   "frac12", "frac14", "frac34", "gt",     "iacute",
+    "icirc",  "iexcl",  "igrave", "iquest", "iuml",   "laquo",  "lt",
+    "macr",   "micro",  "middot", "nbsp",   "not",    "ntilde", "oacute",
+    "ocirc",  "ograve", "ordf",   "ordm",   "oslash", "otilde", "ouml",
+    "para",   "plusmn", "pound",  "quot",   "raquo",  "reg",    "sect",
+    "shy",    "sup1",   "sup2",   "sup3",   "szlig",  "thorn",  "times",
+    "uacute", "ucirc",  "ugrave", "uml",    "uuml",   "yacute", "yen",
+    "yuml",
+};
+
+static bool IsLegacyCharRef(Str name) {
+    for (const char* legacy : kLegacyCharRefs) {
+        if (StrEq(name, Str(legacy))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static ArenaStr Decode(Arena* a, Str value, bool attribute) {
     bool needsDecode = false;
     for (int i = 0; i < len(value); i++) {
@@ -192,10 +222,18 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
                (IsAlpha(value.s[end]) || IsDigit(value.s[end]))) {
             end++;
         }
+        // The longest name the table knows that is either followed by `;`
+        // or one of the legacy names that may stand without it: markup5ever
+        // lists `&amp` and `&amp;` but only `&hellip;`.
         int matched = -1;
         Str decoded = {};
         for (int n = end - i; n > 0; n--) {
-            decoded = HtmlNamedCharRef(Str(value.s + i, n));
+            Str name(value.s + i, n);
+            bool hasSemi = i + n < len(value) && value.s[i + n] == ';';
+            if (!hasSemi && !IsLegacyCharRef(name)) {
+                continue;
+            }
+            decoded = HtmlNamedCharRef(name);
             if (decoded.s) {
                 matched = n;
                 break;
@@ -439,6 +477,9 @@ static void TokenizeRun(Scanner* s) {
             while (s->at < len(s->source) && s->source.s[s->at] != '>') {
                 s->at++;
             }
+            // A chunk that ends before the `>` holds half a doctype; emitting
+            // it would name the doctype `ht` and make `ml>` text.
+            if (s->at >= len(s->source) && NeedMore(s, tokenStart)) return;
             Str body = StrTrimAscii(Str(s->source.s + start, s->at - start));
             if (s->at < len(s->source)) s->at++;
             Token token;
