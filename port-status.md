@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4373234ff46df3a3227972788a41dc6603d352ce` (2026-11-20,
-input: Redact IME surrounding text for masked inputs (#4059)).
-A masked input answers the input method's text-for-range query with mask
-characters, one per UTF-16 unit, through the new InputTextForRangeUtf16Temp
-seam; macOS reads the query through it.
+Processed through `b7f8f156d881f2e7d4435f0c7628730f4d3fab2b` (2026-11-21, text:
+Keep the text of a paragraph with inline code between frames (#4063)).
+Upstream keeps the merged text of a paragraph with inline code between frames.
+The parse cache here already keeps each paragraph's runs, and inline flows
+build from those, so only the comment naming the missing cache changes.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 
