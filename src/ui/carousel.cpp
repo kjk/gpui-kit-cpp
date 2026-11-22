@@ -1261,8 +1261,11 @@ El* CarouselItem::IntoEl() {
     CarouselState* snapshot = state.Get(cx);
     int count = snapshot ? snapshot->itemCount : 0;
     Axis axis = snapshot ? snapshot->axis : Axis::Horizontal;
-    Str label = accessibilityLabel.s ? accessibilityLabel
-                                     : fmt("Slide %d of %d", index + 1, count);
+    TrArg slideArgs[] = {{"current", fmt("%d", index + 1)},
+                         {"total", fmt("%d", count)}};
+    Str label = accessibilityLabel.s
+                    ? accessibilityLabel
+                    : TrFmtTemp("Carousel.slide", slideArgs, 2);
     Point loopOff = snapshot ? snapshot->LoopItemOffset(index) : Point{};
     El* root = Div(a)
                    ->Id(id)
@@ -1397,7 +1400,8 @@ CarouselPagination* CarouselPagination::Refine(const Style& value,
 El* CarouselPagination::IntoEl() {
     El* root = Div(a)
                    ->Role(AccessibilityRole::Group)
-                   ->AriaLabel(accessibilityLabel)
+                   ->AriaLabel(accessibilityLabel.s ? accessibilityLabel
+                                                    : Tr("Carousel.pagination"))
                    ->FlexRow()
                    ->ItemsCenter()
                    ->JustifyCenter()
@@ -1438,8 +1442,10 @@ El* CarouselPaginationItem::IntoEl() {
     CarouselState* snapshot = state.Get(cx);
     bool disabled = !snapshot || index < 0 || index >= snapshot->itemCount;
     bool selected = snapshot && snapshot->selectedIndex == index;
-    Str label = accessibilityLabel.s ? accessibilityLabel
-                                     : fmt("Go to slide %d", index + 1);
+    TrArg goArgs[] = {{"current", fmt("%d", index + 1)}};
+    Str label = accessibilityLabel.s
+                    ? accessibilityLabel
+                    : TrFmtTemp("Carousel.go_to_slide", goArgs, 1);
     Button* button = Button::New(cx, id)
                          ->Compact()
                          ->WithSize(size)

@@ -33,6 +33,14 @@ struct LocaleRow {
 // t!(key). The string this key has in the locale in force.
 Str Tr(const char* key);
 
+// t!(key, name = value, ...): Tr(key) with each `%{name}` replaced by its
+// value. A placeholder no argument names is left as it is.
+struct TrArg {
+    const char* name;
+    Str value;
+};
+TempStr TrFmtTemp(const char* key, const TrArg* args, int nArgs);
+
 // rust_i18n::set_locale. Names one of the locales the catalogue carries;
 // anything else is ignored and the locale stays as it was, which is what
 // keeps a typo from blanking every label. Answers whether it took.

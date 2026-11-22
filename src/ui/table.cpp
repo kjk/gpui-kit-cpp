@@ -585,14 +585,9 @@ static Str TableColumnLabel(const TableColumn& column) {
 
 // t!("Table.SortBy", column = name). The catalogue keeps rust_i18n's
 // %{column} placeholder; the column's own name fills it.
-static TempStr SortByLabel(Str column) {
-    Str t = Tr("Table.SortBy");
-    int at = StrFind(t, "%{column}");
-    if (at < 0) {
-        return fmt("%s", t);
-    }
-    return fmt("%s%s%s", Str(t.s, at), column,
-               Str(t.s + at + 9, len(t) - at - 9));
+static TempStr SortByLabelTemp(Str column) {
+    TrArg args[] = {{"column", column}};
+    return TrFmtTemp("Table.SortBy", args, 1);
 }
 
 static El* TableColumnPadding(El* element, const TableColumn& column) {
@@ -1362,7 +1357,7 @@ El* DataTable::BuildEl() {
             // are what a screen reader and a UI test use to find it.
             El* icon = SortIcon(cx, th, TableSortOf(s, c));
             icon->Role(AccessibilityRole::Button)
-                ->AriaLabel(SortByLabel(colLabel));
+                ->AriaLabel(SortByLabelTemp(colLabel));
             BindPathClick(icon,
                           ElementIdNamed(a, StrL("icon-sort"), (uint64_t)c),
                           ListenerArg(sortClick, c));

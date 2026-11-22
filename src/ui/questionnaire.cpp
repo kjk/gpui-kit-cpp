@@ -378,23 +378,9 @@ El* Questionnaire::IntoEl() {
 // t!("Questionnaire.progress", current = .., total = ..): the catalogue keeps
 // rust_i18n's `%{name}` placeholders, filled in here.
 static Str ProgressLabel(Arena* a, int current, int total) {
-    Str pattern = Tr("Questionnaire.progress");
-    StrBuilder out;
-    int i = 0;
-    while (i < len(pattern)) {
-        Str rest = Str(pattern.s + i, len(pattern) - i);
-        if (StrStartsWith(rest, "%{current}")) {
-            out.Append(fmt("%d", current));
-            i += 10;
-        } else if (StrStartsWith(rest, "%{total}")) {
-            out.Append(fmt("%d", total));
-            i += 8;
-        } else {
-            out.AppendChar(pattern.s[i]);
-            i++;
-        }
-    }
-    return StrDup(a, Str(out.els, len(out)));
+    TrArg args[] = {{"current", fmt("%d", current)},
+                    {"total", fmt("%d", total)}};
+    return StrDup(a, TrFmtTemp("Questionnaire.progress", args, 2));
 }
 
 QuestionnaireProgress* QuestionnaireProgress::New(

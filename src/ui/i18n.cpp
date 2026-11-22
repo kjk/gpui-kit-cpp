@@ -100,5 +100,32 @@ Str Tr(const char* key) {
     return v ? Str(v) : Str(key);
 }
 
+TempStr TrFmtTemp(const char* key, const TrArg* args, int nArgs) {
+    Str pattern = Tr(key);
+    StrBuilder out(GetTempArena());
+    int i = 0;
+    while (i < len(pattern)) {
+        bool replaced = false;
+        if (pattern.s[i] == '%' && i + 1 < len(pattern) &&
+            pattern.s[i + 1] == '{') {
+            Str rest = Str(pattern.s + i + 2, len(pattern) - i - 2);
+            for (int a = 0; a < nArgs && !replaced; a++) {
+                Str name = Str(args[a].name);
+                if (StrStartsWith(rest, name) && len(rest) > len(name) &&
+                    rest.s[len(name)] == '}') {
+                    out.Append(args[a].value);
+                    i += 2 + len(name) + 1;
+                    replaced = true;
+                }
+            }
+        }
+        if (!replaced) {
+            out.AppendChar(pattern.s[i]);
+            i++;
+        }
+    }
+    return Str(out.els, len(out));
+}
+
 } // namespace component
 } // namespace gpui

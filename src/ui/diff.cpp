@@ -3059,12 +3059,9 @@ static Rgba Tint(Rgba c, uint8_t a) {
     return c;
 }
 
-static TempStr TrNum(const char* key, int count) {
-    Str t = Tr(key);
-    int at = StrFind(t, "%{count}");
-    if (at < 0) return fmt("%s", t);
-    return fmt("%s%d%s", Str(t.s, at), count,
-               Str(t.s + at + 8, t.len - at - 8));
+static TempStr TrCountTemp(const char* key, int count) {
+    TrArg args[] = {{"count", fmt("%d", count)}};
+    return TrFmtTemp(key, args, 1);
 }
 
 static void OnToggleFile(DiffState* self, Ctx* cx, const ClickEvent*,
@@ -3371,7 +3368,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                 ->H(24)
                 ->PadX(12)
                 ->Bg(Tint(theme.muted, 60))
-                ->Child(TextEl(cx->a, TrNum("Diff.HiddenLines", hidden))
+                ->Child(TextEl(cx->a, TrCountTemp("Diff.HiddenLines", hidden))
                             ->Fg(theme.mutedFg));
         }
         return Div(cx->a)
@@ -3394,7 +3391,7 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
                 ->Ghost()
                 ->WithSize(UiSize::XSmall)
                 ->Icon(IconName::ChevronsUpDown)
-                ->Label(TrNum("Diff.UnchangedLines", count))
+                ->Label(TrCountTemp("Diff.UnchangedLines", count))
                 ->OnClick(ListenTo(diff->state, &OnExpand, base))
                 ->IntoEl());
         return fold;

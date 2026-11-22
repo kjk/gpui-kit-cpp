@@ -94,6 +94,20 @@ static void TheRowsAreSorted() {
     utassert(LocaleRowAt(-1) == nullptr && LocaleRowAt(n) == nullptr);
 }
 
+// t!(key, name = value): each %{name} replaced, whatever order the locale
+// puts them in; a placeholder no argument names stays.
+static void PlaceholdersAreFilledInTheLocaleInForce() {
+    TrArg args[] = {{"current", StrL("2")}, {"total", StrL("5")}};
+    utassert(LocaleSet(StrL("en")));
+    utassert(StrEq(TrFmtTemp("Carousel.slide", args, 2), StrL("Slide 2 of 5")));
+    utassert(StrEq(TrFmtTemp("Carousel.slide", args, 1),
+                   StrL("Slide 2 of %{total}")));
+    utassert(LocaleSet(StrL("ja")));
+    utassert(StrEq(TrFmtTemp("Carousel.slide", args, 2),
+                   StrL("スライド 2/5")));
+    utassert(LocaleSet(StrL("en")));
+}
+
 void TestI18n() {
     TestSuite("i18n");
     TheCatalogueLeadsWithEnglish();
@@ -101,4 +115,5 @@ void TestI18n() {
     AKeyAnswersInTheLocaleInForce();
     AnUnknownKeyAnswersWithItself();
     TheRowsAreSorted();
+    PlaceholdersAreFilledInTheLocaleInForce();
 }

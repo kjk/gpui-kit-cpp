@@ -155,7 +155,8 @@ struct Carousel {
     Ctx* cx = nullptr;
     Str id = {};
     Entity<CarouselState> state = {};
-    Str accessibilityLabel = StrL("Carousel");
+    // Empty: Tr("Carousel.label") at render, in the locale then in force.
+    Str accessibilityLabel = {};
     bool focusRingEnabled = true;
     ArenaVec<El*> children;
     Style style = {};
@@ -242,7 +243,8 @@ struct CarouselNext : CarouselControl {
 struct CarouselPagination {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
-    Str accessibilityLabel = StrL("Carousel pagination");
+    // Empty: Tr("Carousel.pagination") at render.
+    Str accessibilityLabel = {};
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
