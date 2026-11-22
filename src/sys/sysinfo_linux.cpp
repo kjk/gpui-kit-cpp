@@ -35,14 +35,23 @@ void SysStateInit(SysState* s) {
 }
 
 void SysRefreshCpu(SysState* s) {
-    TempStr buf = ReadBoundedFileTemp(StrL("/proc/stat"), 511);
-    if (!buf) {
+    // Only the aggregate first line. The whole file is several KB (a line per
+    // core plus `intr`, which grows with the interrupt count), more than
+    // ReadBoundedFileTemp's refusal limit is meant for.
+    FILE* f = fopen("/proc/stat", "rb");
+    if (!f) {
+        return;
+    }
+    char line[512];
+    bool got = fgets(line, (int)sizeof(line), f) != nullptr;
+    fclose(f);
+    if (!got) {
         return;
     }
     // cpu  user nice system idle iowait irq softirq steal guest guest_nice
     unsigned long long v[10] = {};
     int n = sscanf(
-        buf.s, "cpu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu", &v[0],
+        line, "cpu %llu %llu %llu %llu %llu %llu %llu %llu %llu %llu", &v[0],
         &v[1], &v[2], &v[3], &v[4], &v[5], &v[6], &v[7], &v[8], &v[9]);
     if (n < 4) {
         return;

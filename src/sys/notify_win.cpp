@@ -139,8 +139,7 @@ bool SysNotifyAvailable() {
 void SysNotifySetAppIdentity(Str, Str appName) {
     // The identity is the notification area icon's name here. Windows wants
     // an AppUserModelID for the WinRT toast API, which this does not use.
-    StrCopyZ(gNotify.appName, (int)sizeof(gNotify.appName),
-             appName.s ? appName.s : "");
+    StrCopyCapped(gNotify.appName, (int)sizeof(gNotify.appName), appName);
     if (gNotify.iconAdded) {
         NOTIFYICONDATAW nid;
         FillIconData(&nid);

@@ -80,9 +80,8 @@ bool GpuProbeOpenLocked() {
     return true;
 }
 
-// The engine type an instance name ends with — `3D`, `Copy`, `VideoDecode` —
-// or an empty Str when the name carries none.
-static TempStr EngineOfTemp(const WCHAR* name) {
+// An instance name (`pid_1234_luid_..._engtype_3D`) as ASCII.
+static TempStr InstanceNameTemp(const WCHAR* name) {
     int cap = (int)wcslen(name);
     TempStr buf = AllocStrTemp(cap);
     int n = 0;
@@ -92,10 +91,17 @@ static TempStr EngineOfTemp(const WCHAR* name) {
     }
     buf.s[n] = 0;
     buf.len = n;
+    return buf;
+}
+
+// The engine type an instance name ends with — `3D`, `Copy`, `VideoDecode` —
+// or an empty Str when the name carries none. Points into `whole`.
+static Str EngineOf(Str whole) {
+    int n = len(whole);
     int typeLen = (int)strlen(kEngineType);
     for (int i = n - typeLen; i >= 0; i--) {
-        if (StrEq(Str(buf.s + i, typeLen), Str(kEngineType, typeLen))) {
-            return Str(buf.s + i + typeLen, n - i - typeLen);
+        if (StrEq(Str(whole.s + i, typeLen), Str(kEngineType, typeLen))) {
+            return Str(whole.s + i + typeLen, n - i - typeLen);
         }
     }
     return {};
@@ -146,12 +152,12 @@ float GpuUsagePercentLocked() {
         if (!instance) {
             continue;
         }
-        TempStr whole = EngineOfTemp(instance);
-        Str engine = whole;
-        if (len(engine) == 0) {
+        TempStr whole = InstanceNameTemp(instance);
+        if (!StrStartsWith(whole, Str(gProbe.owner, gProbe.ownerLen))) {
             continue;
         }
-        if (!StrStartsWith(whole, Str(gProbe.owner, gProbe.ownerLen))) {
+        Str engine = EngineOf(whole);
+        if (len(engine) == 0) {
             continue;
         }
         any = true;

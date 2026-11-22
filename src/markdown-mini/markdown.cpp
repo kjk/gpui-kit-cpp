@@ -385,6 +385,9 @@ static void MiniInline(MiniParser* p, Node* parent, Str text) {
                 if (resourceEnd >= 0) {
                     if (at > plain) {
                         MiniText(p, parent, MiniSlice(text, plain, at));
+                        // Emitted; a link that fails to parse must not emit
+                        // it a second time with the text that follows.
+                        plain = at;
                     }
                     if (MiniLink(p, parent, text, at, &after)) {
                         at = after;

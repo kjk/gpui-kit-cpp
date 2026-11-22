@@ -47,6 +47,14 @@ Slider* Slider::OnChange(Listener fn) {
     return this;
 }
 
+// A thumb's click id, derived from its track's. Unsigned so it cannot
+// overflow, and kept in HashClickId's range, never the reserved 0.
+static int ThumbClickId(int track, int thumb) {
+    uint32_t h = (uint32_t)track * 31u + (uint32_t)(thumb + 1);
+    int id = (int)(h & 0x3fffffff);
+    return id == 0 ? 1 : id;
+}
+
 static float Clamp01f(float v) {
     if (v < 0) {
         return 0;
@@ -188,7 +196,7 @@ El* Slider::IntoEl() {
                           ->Bg(fillBg));
         for (int i = 0; i < (range ? 2 : 1); i++) {
             float at = (range && i == 0) ? low : hi;
-            int thumbId = vid * 31 + (i + 1);
+            int thumbId = ThumbClickId(vid, i);
             vtrack->Child(ThumbRing(SliderThumb::New(cx)
                                         ->Absolute()
                                         ->Left((kH - kThumb) * 0.5f)
@@ -258,7 +266,7 @@ El* Slider::IntoEl() {
         } else {
             thumb->Left(w * at - kThumb * 0.5f);
         }
-        int thumbId = HashClickId(id.s ? id : StrL("slider")) * 31 + (i + 1);
+        int thumbId = ThumbClickId(HashClickId(id.s ? id : StrL("slider")), i);
         // The click id is what makes the window report the thumb as hovered;
         // the binding is what keeps a press on it starting the drag, since a
         // hit rect of its own would otherwise shadow the track's.

@@ -164,10 +164,10 @@ El* Pagination::IntoEl() {
                 int64_t first = 0;
                 int64_t end = 0;
                 PaginationEllipsisMenuPages(items[i].from, items[i].to + 1,
-                                            page, &first, &end);
+                                            st.currentPage, &first, &end);
                 for (int64_t p = first; p < end; p++) {
                     menu->MenuWithCheck(StrDup(a, fmt("%lld", (long long)p)),
-                                        p == page);
+                                        p == st.currentPage);
                 }
                 Entity<PaginationMenuState> ment =
                     ElementStateEntity<PaginationMenuState>(
@@ -186,7 +186,7 @@ El* Pagination::IntoEl() {
                                ->IntoEl());
                 continue;
             }
-            bool selected = items[i].page == page;
+            bool selected = items[i].page == st.currentPage;
             // `Button::new(page)`: the page number is the whole name.
             Button* b =
                 Button::New(cx, ElementIdInteger(a, (uint64_t)items[i].page))

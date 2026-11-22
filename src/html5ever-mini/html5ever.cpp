@@ -66,7 +66,12 @@ static ArenaStr Decode(Arena* a, Str value) {
         if (NumericCharRef(value, i, &radix, &digits, &i)) {
             uint32_t cp = 0;
             for (int d = digits; d < i; d++) {
-                cp = cp * (uint32_t)radix + (uint32_t)HexDigitValue(value.s[d]);
+                // Saturate past the Unicode range so a long reference reads
+                // as out of range rather than wrapping to a real character.
+                if (cp <= 0x10ffff) {
+                    cp = cp * (uint32_t)radix +
+                         (uint32_t)HexDigitValue(value.s[d]);
+                }
             }
             if (i == digits) {
                 i = start + 1;

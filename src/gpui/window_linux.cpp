@@ -1868,19 +1868,25 @@ static void DestroyPlatWindow(Window* win) {
     WindowModalRelease(win);
     if (pw->back) {
         cairo_surface_destroy(pw->back);
+        pw->back = nullptr;
     }
     if (pw->surf) {
         cairo_surface_destroy(pw->surf);
+        pw->surf = nullptr;
     }
     if (pw->xic) {
         XDestroyIC(pw->xic);
+        pw->xic = nullptr;
     }
     XWindow xwin = pw->xwin;
     if (xwin) {
         wry::WebViewDetachX11Children((void*)(uintptr_t)xwin);
     }
-    delete pw;
+    // WindowClosed still reaches win->plat (blur stops the caret timer, which
+    // goes through PlatSetTimer), so the PlatWindow outlives it, as on Windows
+    // and macOS.
     WindowClosed(win);
+    delete pw;
     if (xwin) {
         XDestroyWindow(gDpy, xwin);
     }

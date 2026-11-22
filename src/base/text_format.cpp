@@ -192,26 +192,13 @@ static float LengthValue(Str value) {
     return result;
 }
 
-static Str StyleValue(Str style, const char* name) {
-    int nameLen = (int)strlen(name);
-    for (int i = 0; i + nameLen <= len(style); i++) {
-        if (!StrEqI(Str(style.s + i, nameLen), Str(name, nameLen))) continue;
-        int at = i + nameLen;
-        while (at < len(style) && HtmlSpace(style.s[at])) at++;
-        if (at >= len(style) || style.s[at++] != ':') continue;
-        while (at < len(style) && HtmlSpace(style.s[at])) at++;
-        int end = at;
-        while (end < len(style) && style.s[end] != ';') end++;
-        return StrTrimAscii(Str(style.s + at, end - at));
-    }
-    return {};
-}
+static Str StyleDecl(Str css, const char* name);
 
 static float ElementLength(Arena* a, const html5ever::Node* node,
                            const char* name) {
     Str value = html5ever::AttrValue(a, node, Str((char*)name));
     if (!value.s) {
-        value = StyleValue(html5ever::AttrValue(a, node, StrL("style")), name);
+        value = StyleDecl(html5ever::AttrValue(a, node, StrL("style")), name);
     }
     return LengthValue(value);
 }
@@ -486,8 +473,8 @@ static uint8_t AlignValue(Str value) {
 static uint8_t CellAlign(Arena* a, const html5ever::Node* node) {
     Str value = html5ever::AttrValue(a, node, StrL("align"));
     if (!value.s) {
-        value = StyleValue(html5ever::AttrValue(a, node, StrL("style")),
-                           "text-align");
+        value = StyleDecl(html5ever::AttrValue(a, node, StrL("style")),
+                          "text-align");
     }
     return AlignValue(value);
 }
@@ -498,6 +485,8 @@ static int ListStart(Arena* a, const html5ever::Node* node) {
     int result = 0;
     for (int i = 0; i < len(value); i++) {
         if (value.s[i] < '0' || value.s[i] > '9') return 1;
+        // Too large to be a list number: unparsable, like any other junk.
+        if (result > 100000000) return 1;
         result = result * 10 + value.s[i] - '0';
     }
     return result;

@@ -895,9 +895,10 @@ static void DestroyPlatWindow(Window* win) {
         return;
     }
     pw->open = false;
-    delete pw;
     // Clears win->plat and stops the window; the loop then cancels itself.
+    // WindowClosed still reaches win->plat (PlatSetTimer), so free it after.
     WindowClosed(win);
+    delete pw;
     if (gWin == win) {
         gWin = nullptr;
     }

@@ -928,6 +928,14 @@ static void TestHtmlImage(Arena* a) {
     utassert(r != nullptr);
     utassert(r->imgW == 0);
 
+    // html.rs style_attrs: whole property names, the last declaration wins.
+    MdNode* styled = HtmlParse(
+        a, StrL("<img src=\"z.png\" style=\"max-width: 200px; width: 30px; "
+                "width: 40px\">"));
+    MdRun* sr = ImageRunOf(Child(styled, 0));
+    utassert(sr != nullptr);
+    utassert(sr->imgW == 40);
+
     // html.rs drops an image with no src; so does this.
     MdNode* nosrc = HtmlParse(a, StrL("<p><img alt=\"x\"></p>"));
     utassert(ImageRunOf(Child(nosrc, 0)) == nullptr);
