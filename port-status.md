@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ed9756a3c1642d7cedd00d253e446a3f61b4f697` (2026-11-22,
-webview: Clip partially visible WebViews on Windows (#4066)).
-On Windows a partly visible webview keeps its full document bounds in device
-pixels and is clipped with a window region on wry's host window
-(WebViewWindowGeometry, WebViewNativeClipSet); a fully visible one clears the
-region.
+Processed through `da0850fb837b0514bb6835c091846a0c62ad8cae` (2026-11-22, kit:
+Make the Linux X11 backend optional (#4060)).
+Upstream made the Linux X11 backend a default Cargo feature of the kit. Only
+Cargo features and docs change; this tree has one X11 backend and no Wayland,
+so nothing is ported.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 
