@@ -210,7 +210,7 @@ static bool AppendWide(Vec<WCHAR>* out, WCHAR value, int count = 1) {
 static bool AppendArgument(Vec<WCHAR>* out, Str argument) {
     WCHAR* value = WideDup(argument);
     if (!value) return false;
-    if (len(*out) > 0 && !VecAppend(*out, L' ')) {
+    if (len(out) > 0 && !VecAppend(*out, L' ')) {
         Free(nullptr, value);
         return false;
     }

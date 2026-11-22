@@ -1628,7 +1628,7 @@ bool WebViewCookiesForUrl(WebView* wv, Str url, Vec<Cookie>* out) {
     Str domain = FromNSTemp(host);
     Str scheme = FromNSTemp(parsed.scheme.lowercaseString);
     int kept = 0;
-    for (int i = 0; i < len(*out); i++) {
+    for (int i = 0; i < len(out); i++) {
         Cookie cookie = (*out)[i];
         if (MacCookieMatchesUrl(&cookie, scheme, domain))
             (*out)[kept++] = cookie;

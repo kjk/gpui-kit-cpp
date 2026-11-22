@@ -909,9 +909,9 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
         // Adjacent runs of one kind are one run, which keeps a document of a
         // few hundred lines to a few hundred of them.
         int hi = tokStart + len(lx.text);
-        if (len(*runs) > 0 && (*runs)[len(*runs) - 1].hi == tokStart &&
-            (*runs)[len(*runs) - 1].tok == lx.tok) {
-            (*runs)[len(*runs) - 1].hi = hi;
+        if (len(runs) > 0 && (*runs)[len(runs) - 1].hi == tokStart &&
+            (*runs)[len(runs) - 1].tok == lx.tok) {
+            (*runs)[len(runs) - 1].hi = hi;
             continue;
         }
         HlRun run;

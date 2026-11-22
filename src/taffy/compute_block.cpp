@@ -995,7 +995,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
     bool activeMarginSetHasClearance = false;
     bool hasActiveFloats = blockCtx->HasActiveFloats(committedYOffset);
 
-    for (int itemIdx = 0; itemIdx < len(*items); itemIdx++) {
+    for (int itemIdx = 0; itemIdx < len(items); itemIdx++) {
         BlockItem& item = (*items)[itemIdx];
         if (IsOutOfFlow(item.position)) {
             float x = direction == Direction::Ltr

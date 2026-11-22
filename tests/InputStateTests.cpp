@@ -4147,7 +4147,7 @@ static void InlineTokenContentValidatesRanges() {
 
 static int TokenCount(const InputState& s) {
     const Vec<InlineTokenSpan>* spans = InputTokens(&s);
-    return spans ? len(*spans) : 0;
+    return spans ? len(spans) : 0;
 }
 
 static void InlineTokensRespectModeAndContent() {
@@ -5737,7 +5737,7 @@ static void InlineTokenHoverExitKeepsEntryUtf16AfterEdit() {
     InputReplaceTextInRange(view.input, view.app, view.win, &emoji,
                             StrL("abcd"));
     const Vec<InlineTokenSpan>* spans = InputTokens(view.input);
-    utassert(spans && len(*spans) == 1 && (*spans)[0].start == 5 &&
+    utassert(spans && len(spans) == 1 && (*spans)[0].start == 5 &&
              (*spans)[0].end == 7);
     InlineTokenHoverEvent exit;
     utassert(HoverExit(view, 5, bounds, &exit));
@@ -6138,17 +6138,17 @@ static bool ViewContentIsA(const InputView& v, const InputContent& want) {
 
 static int TokenCountA(const InputView& v) {
     const Vec<InlineTokenSpan>* spans = InputTokens(v.input);
-    return spans ? len(*spans) : 0;
+    return spans ? len(spans) : 0;
 }
 
 static bool TokenIsA(const InputView& v, int i, const InlineToken& token) {
     const Vec<InlineTokenSpan>* spans = InputTokens(v.input);
-    return spans && i < len(*spans) && InlineTokenEq((*spans)[i].token, token);
+    return spans && i < len(spans) && InlineTokenEq((*spans)[i].token, token);
 }
 
 static bool TokenRangeIsA(const InputView& v, int i, int start, int end) {
     const Vec<InlineTokenSpan>* spans = InputTokens(v.input);
-    return spans && i < len(*spans) && (*spans)[i].start == start &&
+    return spans && i < len(spans) && (*spans)[i].start == start &&
            (*spans)[i].end == end;
 }
 
@@ -6315,12 +6315,12 @@ static void SettingTokensPreservesTextSelectionAndHistory() {
     ViewAct(view, InputAction::Undo);
     utassert(ViewValueIs(view, "a **b** c"));
     const auto* spans = InputTokens(s);
-    utassert(spans && len(*spans) == 1 && (*spans)[0].start == 2 &&
+    utassert(spans && len(spans) == 1 && (*spans)[0].start == 2 &&
              (*spans)[0].end == 7);
     ViewAct(view, InputAction::Redo);
     utassert(ViewValueIs(view, "za **b** c"));
     spans = InputTokens(s);
-    utassert(spans && len(*spans) == 1 && (*spans)[0].start == 3 &&
+    utassert(spans && len(spans) == 1 && (*spans)[0].start == 3 &&
              (*spans)[0].end == 8);
     InputViewFree(&view);
 }
@@ -6444,7 +6444,7 @@ static Str FortyLines(StrBuilder* b) {
     for (int i = 0; i < 40; i++) {
         b->Append(fmt("line %d\n", i));
     }
-    return Str(b->els, len(*b));
+    return Str(b->els, len(b));
 }
 
 // textarea.rs scrolling_past_the_end_of_a_textarea_does_not_scroll_the_page.
@@ -9223,7 +9223,7 @@ static void SetupCursorsC(const InputView& v, const char* spec) {
 }
 
 static void SortIntsC(Vec<int>* v) {
-    for (int i = 1; i < len(*v); i++) {
+    for (int i = 1; i < len(v); i++) {
         for (int j = i; j > 0 && (*v)[j - 1] > (*v)[j]; j--) {
             int t = (*v)[j];
             (*v)[j] = (*v)[j - 1];

@@ -736,7 +736,7 @@ static bool ForgetTask(ShellRuntimeImpl* impl, uint32_t id,
 // Retires the script callbacks a retained-entity operation handed back.
 static void RetireCallbacks(JSContext* ctx, ShellRuntimeImpl* impl,
                             Vec<shell::CallbackId>* retired) {
-    for (int i = 0; i < len(*retired); i++) {
+    for (int i = 0; i < len(retired); i++) {
         impl->callbacks.RetireId(ctx, (*retired)[i]);
     }
     VecReset(*retired);
@@ -1278,7 +1278,7 @@ static void StorageFlushDone(StorageFlushState* state,
 
 static void WakeStorageWaiters(Vec<shell::StorageWaiter*>* ready,
                                shell::StorageOutcome outcome) {
-    for (int i = 0; i < len(*ready); i++) {
+    for (int i = 0; i < len(ready); i++) {
         shell::StorageWaiter* waiter = (*ready)[i];
         Func1<shell::StorageOutcome> settle = waiter->settle;
         delete waiter;
@@ -1743,12 +1743,12 @@ static TempStr UntagTemp(Str name) {
 }
 
 static void DirectoryName(Str* path) {
-    while (len(*path) > 0 && path->s[len(*path) - 1] != '/' &&
-           path->s[len(*path) - 1] != '\\') {
+    while (len(path) > 0 && path->s[len(path) - 1] != '/' &&
+           path->s[len(path) - 1] != '\\') {
         path->s[--path->len] = 0;
     }
-    while (len(*path) > 1 && (path->s[len(*path) - 1] == '/' ||
-                              path->s[len(*path) - 1] == '\\')) {
+    while (len(path) > 1 &&
+           (path->s[len(path) - 1] == '/' || path->s[len(path) - 1] == '\\')) {
         path->s[--path->len] = 0;
     }
 }
@@ -9156,7 +9156,7 @@ static bool GrantedCommandFromJs(JSContext* ctx, int argc, JSValueConst* argv,
         JS_ThrowTypeError(
             ctx,
             "running `%.*s` is not granted; add it to capabilities.fs.execute",
-            len(*command), command->s);
+            len(command), command->s);
         return false;
     }
     return true;

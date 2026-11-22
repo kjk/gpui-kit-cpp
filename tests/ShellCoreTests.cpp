@@ -3545,7 +3545,7 @@ static void RecordStorageSettlement(StorageTestSettlement* state,
 
 static void SettleStorageTestWaiters(Vec<StorageWaiter*>* ready,
                                      StorageOutcome outcome) {
-    for (int i = 0; i < len(*ready); i++) {
+    for (int i = 0; i < len(ready); i++) {
         StorageWaiter* waiter = (*ready)[i];
         Func1<StorageOutcome> settle = waiter->settle;
         delete waiter;

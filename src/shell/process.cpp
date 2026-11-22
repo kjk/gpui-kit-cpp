@@ -463,7 +463,7 @@ void ProcessEventPushExit(ProcessEventBox* box, ProcessStreamEvent event) {
 bool ProcessCaptureAppend(StrBuilder* out, const char* bytes, int count,
                           Str* error, const char* name) {
     constexpr int kProcessStreamLimit = 8 * 1024 * 1024;
-    if (len(*out) > kProcessStreamLimit - count) {
+    if (len(out) > kProcessStreamLimit - count) {
         ErrorOutSet(error, fmt("child %s exceeded 8 MiB", Str(name)));
         return false;
     }

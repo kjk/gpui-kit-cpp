@@ -272,7 +272,7 @@ struct OofCandRange {
 
 inline void OofAppendRange(Vec<OofCandidate>* pool, OofCandRange* range,
                            const OofCandidates& src) {
-    range->start = len(*pool);
+    range->start = len(pool);
     range->count = len(src.inner);
     for (int i = 0; i < range->count; i++) {
         VecAppend(*pool, src.inner[i]);

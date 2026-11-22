@@ -27,7 +27,7 @@ bool HttpGetNoRedirect(Str url, HttpRsp* out) {
 }
 
 void HttpTrimMediaType(Str* s) {
-    for (int i = 0; i < len(*s); i++) {
+    for (int i = 0; i < len(s); i++) {
         char c = s->s[i];
         if (c == ';' || c == ' ') {
             s->len = i;

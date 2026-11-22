@@ -2610,14 +2610,14 @@ static void ApplyShadowLevel(const JsonValue* obj, const char* key,
         // supplied. Retain the port's one-object shorthand as a partial
         // overlay on the existing first shadow.
         VecClear(*level);
-    } else if (len(*level) == 0) {
+    } else if (len(level) == 0) {
         VecAppend(*level, BoxShadow{});
     }
     const JsonValue* item = v->kind == JsonKind::Array ? v->first : v;
     for (; item; item = v->kind == JsonKind::Array ? item->next : nullptr) {
         if (item->kind != JsonKind::Object) continue;
         if (v->kind == JsonKind::Array) VecAppend(*level, BoxShadow{});
-        BoxShadow* out = v->kind == JsonKind::Array ? &(*level)[len(*level) - 1]
+        BoxShadow* out = v->kind == JsonKind::Array ? &(*level)[len(level) - 1]
                                                     : &(*level)[0];
         ApplyFloatField(item, "x", &out->x);
         ApplyFloatField(item, "y", &out->y);

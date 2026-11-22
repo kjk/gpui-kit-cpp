@@ -6433,7 +6433,7 @@ void AppSetFallbackPrompts(App* app, bool always) {
 // ─── path prompts ───────────────────────────────────────────────────────────
 
 bool PathPatternExts(Str patterns, Vec<Str>* exts) {
-    int start = len(*exts);
+    int start = len(exts);
     int n = len(patterns);
     for (int i = 0; i <= n;) {
         int end = i;

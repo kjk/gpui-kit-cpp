@@ -809,7 +809,7 @@ static bool AddDirectory(BundleTree* tree, Str directory, Str prefix,
                          Str* error) {
     Str canonical;
     if (!Canonical(directory, &canonical, error)) return false;
-    for (int i = 0; i < len(*visited); i++) {
+    for (int i = 0; i < len(visited); i++) {
         if (StrEq(visited->els[i], canonical)) {
             StrFree(canonical);
             return true;

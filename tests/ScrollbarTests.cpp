@@ -1404,10 +1404,10 @@ static void FadeStateIsPerWindowAndSwept() {
     utassert(ScrollbarVisibilityAt(gFadeWin, id, start).opacity == 1.f);
     utassert(ScrollbarVisibilityAt(&other, id, start).opacity == 0.f);
 
-    int before = len(*gFadeWin->scrollFades);
+    int before = len(gFadeWin->scrollFades);
     gFadeWin->frameSeq += 1000;
     WindowScrollFadeSweep(gFadeWin);
-    utassert(len(*gFadeWin->scrollFades) == 0 && before > 0);
+    utassert(len(gFadeWin->scrollFades) == 0 && before > 0);
     WindowScrollFadeFree(&other);
 }
 

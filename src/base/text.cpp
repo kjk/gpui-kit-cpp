@@ -1782,7 +1782,7 @@ static void AddText(MdBuild* b, Str s,
     if (len(s) <= 0) {
         return;
     }
-    int added = segments ? len(*segments) : 0;
+    int added = segments ? len(segments) : 0;
     MdNode* n = b->cur;
     MdRun* r = n->runLast;
     // A different wash is a different run, or two adjacent <mark>s would

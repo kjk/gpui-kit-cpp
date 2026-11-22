@@ -160,7 +160,7 @@ InputContent InputGetContent(const InputState* s) {
     out.text = StrDup(InputValue(s));
     const Vec<InlineTokenSpan>* spans = InputTokens(s);
     if (spans) {
-        for (int i = 0; i < len(*spans); i++) {
+        for (int i = 0; i < len(spans); i++) {
             VecAppend(out.tokens, InlineTokenSpanDup((*spans)[i]));
         }
     }
@@ -244,7 +244,7 @@ void InlineTokenSpansClear(Vec<InlineTokenSpan>* spans) {
     if (!spans) {
         return;
     }
-    for (int i = 0; i < len(*spans); i++) {
+    for (int i = 0; i < len(spans); i++) {
         InlineTokenSpanFree(&(*spans)[i]);
     }
     VecReset(*spans);
@@ -291,7 +291,7 @@ TokenDelta* TokenStoreReplace(Vec<InlineTokenSpan>* spans, int start, int end,
     int shift = newLen - (end - start);
     TokenDelta* delta = new TokenDelta();
     Vec<InlineTokenSpan> kept;
-    for (int i = 0; i < len(*spans); i++) {
+    for (int i = 0; i < len(spans); i++) {
         InlineTokenSpan span = (*spans)[i];
         if (span.start < end && start < span.end) {
             if (start <= span.start && span.end <= end) {
@@ -317,8 +317,8 @@ TokenDelta* TokenStoreReplace(Vec<InlineTokenSpan>* spans, int start, int end,
         VecAppend(*spans, span);
         VecAppend(delta->inserted, InlineTokenSpanDup(inserted[i]));
     }
-    if (nInserted > 0 && len(*spans) > 1) {
-        for (int i = 1; i < len(*spans); i++) {
+    if (nInserted > 0 && len(spans) > 1) {
+        for (int i = 1; i < len(spans); i++) {
             InlineTokenSpan key = (*spans)[i];
             int j = i;
             while (j > 0 && (*spans)[j - 1].start > key.start) {
@@ -414,7 +414,7 @@ const Vec<InlineTokenSpan>* InputTokens(const InputState* s) {
 
 int InputTokenBoundary(const InputState* s, int offset, Bias bias) {
     const Vec<InlineTokenSpan>* spans = InputTokens(s);
-    if (!spans || len(*spans) == 0) {
+    if (!spans || len(spans) == 0) {
         return offset;
     }
     return TokenBoundary(*spans, offset, bias);

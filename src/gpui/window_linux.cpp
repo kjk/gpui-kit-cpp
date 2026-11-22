@@ -1324,7 +1324,7 @@ static void DialogAddFilters(DialogArgv* zenity, StrBuilder* kdialog,
         TempStr pats =
             StrDupTemp(StrReplaceAll(f.patterns, StrL(";"), StrL(" ")));
         zenity->Add(fmt("--file-filter=%s | %s", f.name, pats));
-        if (len(*kdialog) > 0) {
+        if (len(kdialog) > 0) {
             kdialog->AppendChar('\n');
         }
         kdialog->Append(fmt("%s|%s", pats, f.name));

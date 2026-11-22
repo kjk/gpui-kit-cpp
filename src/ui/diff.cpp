@@ -529,13 +529,13 @@ static void Seal(DiffFile* file, DiffFileStatus status, StrBuilder* origSrc,
                  StrBuilder* modSrc, Vec<int>* modNum, Vec<int>* modStart,
                  Vec<int>* modEnd) {
     file->status = status;
-    file->original.source = Own(file->arena, Str(origSrc->els, len(*origSrc)));
-    file->modified.source = Own(file->arena, Str(modSrc->els, len(*modSrc)));
-    for (int i = 0; i < len(*origNum); i++) {
+    file->original.source = Own(file->arena, Str(origSrc->els, len(origSrc)));
+    file->modified.source = Own(file->arena, Str(modSrc->els, len(modSrc)));
+    for (int i = 0; i < len(origNum); i++) {
         FinishLine(file, &file->original, file->original.source, (*origNum)[i],
                    (*origStart)[i], (*origEnd)[i]);
     }
-    for (int i = 0; i < len(*modNum); i++) {
+    for (int i = 0; i < len(modNum); i++) {
         FinishLine(file, &file->modified, file->modified.source, (*modNum)[i],
                    (*modStart)[i], (*modEnd)[i]);
     }
@@ -851,11 +851,11 @@ struct OpenFile {
     const char* oldPrefix = "";
     const char* newPrefix = "";
     void Flush(Vec<int>* deleted, Vec<int>* added) {
-        int n = IMax(len(*deleted), len(*added));
+        int n = IMax(len(deleted), len(added));
         for (int i = 0; i < n; i++) {
             DiffLinePair pair;
-            pair.original = i < len(*deleted) ? (*deleted)[i] : -1;
-            pair.modified = i < len(*added) ? (*added)[i] : -1;
+            pair.original = i < len(deleted) ? (*deleted)[i] : -1;
+            pair.modified = i < len(added) ? (*added)[i] : -1;
             pair.changed = true;
             VecAppend(file->pairs, pair);
         }
@@ -1185,7 +1185,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
     auto dropParsed = [&]() {
         delete open.file;
         open.file = nullptr;
-        for (int f = 0; f < len(*out); f++) delete (*out)[f];
+        for (int f = 0; f < len(out); f++) delete (*out)[f];
         VecClear(*out);
     };
     for (int ix = 0; ix < len(raw);) {
@@ -1373,7 +1373,7 @@ bool DiffFile::ParseWith(Str patch, DiffParseOptions options,
             break;
         }
     }
-    if (len(*out) == 0 && !blank) {
+    if (len(out) == 0 && !blank) {
         *error = Err(1, "expected a unified or Git diff");
         return false;
     }
@@ -1700,8 +1700,8 @@ static void CharTokens(Str text, Vec<Tok>* out) {
 
 static void PushRun(Vec<DiffRun>* runs, int start, int end, Str text,
                     bool mergeSpace) {
-    if (len(*runs)) {
-        DiffRun& last = (*runs)[len(*runs) - 1];
+    if (len(runs)) {
+        DiffRun& last = (*runs)[len(runs) - 1];
         Str gap = Slice(text, last.end, start);
         bool blank = len(gap) == 0;
         if (!blank && mergeSpace) {

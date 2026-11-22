@@ -142,8 +142,8 @@ bool AppAssets::List(Str path, Vec<Str>* out, Str* error) {
     }
     for (int i = 0; i < len(result.entries); i++)
         VecAppend(*out, StrDup(result.entries[i].name));
-    if (len(*out) > 1)
-        qsort(out->els, (size_t)len(*out), sizeof(Str), CompareAssetNames);
+    if (len(out) > 1)
+        qsort(out->els, (size_t)len(out), sizeof(Str), CompareAssetNames);
     result.Free();
     return true;
 }

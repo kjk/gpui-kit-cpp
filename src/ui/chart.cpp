@@ -1063,7 +1063,7 @@ struct PieLabelLayout {
 // time would not settle a run of them.
 static void PieSpreadLabels(ArenaVec<PieLabelLayout>* items, float top,
                             float bottom) {
-    int n = len(*items);
+    int n = len(items);
     if (n <= 0) {
         return;
     }

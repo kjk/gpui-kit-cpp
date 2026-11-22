@@ -49,7 +49,7 @@ static void Base64Decode(Str s, Vec<uint8_t>* out) {
 }
 
 static void PercentDecode(Str s, Vec<uint8_t>* out) {
-    int at = len(*out);
+    int at = len(out);
     uint8_t* dst = VecAppendBlanks(*out, len(s));
     if (!dst) {
         return;
@@ -87,7 +87,7 @@ static bool DataUriBytes(Str src, Vec<uint8_t>* out) {
     } else {
         PercentDecode(payload, out);
     }
-    return len(*out) > 0;
+    return len(out) > 0;
 }
 
 bool ImageSrcIsLocal(Str src) {
@@ -197,7 +197,7 @@ static SrcBytes BytesForSrc(Str src, Vec<uint8_t>* owned,
     // Local sources go through the asset system. A URI goes through the HTTP
     // client, matching GPUI's ImageSource::Resource dispatch.
     Str asset = ImageAssetFor(GetTempArena(), src);
-    if (asset.s && AssetsLoad(asset, owned) && len(*owned) > 0) {
+    if (asset.s && AssetsLoad(asset, owned) && len(owned) > 0) {
         return SrcBytes::Yes;
     }
     VecReset(*owned);
@@ -516,7 +516,7 @@ static int ImageSlotFind(Vec<ImageCacheSlot>* slots, Str src) {
     if (!slots) {
         return -1;
     }
-    for (int i = 0; i < len(*slots); i++) {
+    for (int i = 0; i < len(slots); i++) {
         if ((*slots)[i].tried && base::StrEq((*slots)[i].src, src)) {
             return i;
         }
@@ -550,7 +550,7 @@ static ImageCacheSlot* ImageSlotFor(const ImageLookup& cx, Str src) {
             fresh.pending = true;
             fresh.loadingAt = TimeNow();
             VecAppend(*slots, fresh);
-            hitIx = len(*slots) - 1;
+            hitIx = len(slots) - 1;
         }
         return &(*slots)[hitIx];
     }
@@ -581,7 +581,7 @@ static ImageCacheSlot* ImageSlotFor(const ImageLookup& cx, Str src) {
         fresh.src = StrDup(src);
         fresh.tried = true;
         VecAppend(*slots, fresh);
-        hitIx = len(*slots) - 1;
+        hitIx = len(slots) - 1;
     }
     ImageCacheSlot* slot = &(*slots)[hitIx];
     slot->img = img;

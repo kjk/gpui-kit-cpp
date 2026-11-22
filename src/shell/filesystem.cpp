@@ -23,7 +23,7 @@ void FsResult::Free() {
 
 bool FsReadAppend(StrBuilder* output, const char* bytes, int count, Str root,
                   Str relative, Str* error) {
-    if (len(*output) > kFsMaxReadBytes - count) {
+    if (len(output) > kFsMaxReadBytes - count) {
         ErrorOutSet(error,
                     fmt("`%s/%s` grew over the %d-byte limit for fs.readFile",
                         root, relative, kFsMaxReadBytes));

@@ -2554,7 +2554,7 @@ struct DragDropTarget : ComObject<IDropTarget> {
         DragDropEvent event;
         event.kind = kind;
         event.paths = paths ? paths->els : nullptr;
-        event.pathCount = paths ? len(*paths) : 0;
+        event.pathCount = paths ? len(paths) : 0;
         event.x = point.x;
         event.y = point.y;
         // The pinned Windows implementation ignores this result after
@@ -3965,8 +3965,8 @@ static HRESULT PrepareRequest(WebView* wv, ICoreWebView2WebResourceRequest* req,
     if (FAILED(hr)) {
         return hr;
     }
-    out->headers = len(*headerStore) > 0 ? &(*headerStore)[0] : nullptr;
-    out->headerCount = len(*headerStore);
+    out->headers = len(headerStore) > 0 ? &(*headerStore)[0] : nullptr;
+    out->headerCount = len(headerStore);
 
     IStream* content = nullptr;
     if (SUCCEEDED(req->get_Content(&content)) && content) {
@@ -3989,8 +3989,8 @@ static HRESULT PrepareRequest(WebView* wv, ICoreWebView2WebResourceRequest* req,
             return hr;
         }
     }
-    out->body = len(*bodyStore) > 0 ? &(*bodyStore)[0] : nullptr;
-    out->bodyLen = len(*bodyStore);
+    out->body = len(bodyStore) > 0 ? &(*bodyStore)[0] : nullptr;
+    out->bodyLen = len(bodyStore);
     out->uri = RevertUriWorkAround(uri, Str(wv->httpOrHttps), protocol);
     return S_OK;
 }

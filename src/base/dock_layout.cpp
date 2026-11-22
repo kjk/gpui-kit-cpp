@@ -260,10 +260,10 @@ static bool FindParentRec(PaneNode* node, NodeId id, PaneNode** parent,
 }
 
 static void RemoveAt(Vec<PanelId>* values, int ix) {
-    for (int i = ix; i + 1 < len(*values); i++) {
+    for (int i = ix; i + 1 < len(values); i++) {
         (*values)[i] = (*values)[i + 1];
     }
-    if (len(*values) > 0) {
+    if (len(values) > 0) {
         values->len--;
     }
 }

@@ -1454,7 +1454,7 @@ static WidthRange WrapOneLine(InputState* s, WrapMeasure* wm, int line,
     u.lineStart = start;
     const Vec<InlineTokenSpan>* spans =
         InputTokensVisible(s) ? InputTokens(s) : nullptr;
-    int nSpans = spans ? len(*spans) : 0;
+    int nSpans = spans ? len(spans) : 0;
     if (nSpans > 0) {
         // The first span that ends inside or after the line, and how many
         // start before its end.
@@ -1491,7 +1491,7 @@ static WidthRange WrapOneLine(InputState* s, WrapMeasure* wm, int line,
     *indentOut = 0;
     // Use the first visual row's indentation width for the rows after it:
     // x_for_index of the indent's byte length in that row.
-    if (indentChars > 0 && len(*rows) > 1) {
+    if (indentChars > 0 && len(rows) > 1) {
         int bytes = 0;
         for (int k = 0; k < indentChars && bytes < len(str); k++) {
             uint32_t c = 0;
@@ -1884,7 +1884,7 @@ static void OnTokenChipClick(TokenClick* p) {
     ev.span.start = p->start;
     ev.span.end = p->end;
     if (const Vec<InlineTokenSpan>* spans = InputTokens(p->state)) {
-        for (int i = 0; i < len(*spans); i++) {
+        for (int i = 0; i < len(spans); i++) {
             if ((*spans)[i].start == p->start) {
                 ev.span = (*spans)[i];
                 break;
@@ -2064,7 +2064,7 @@ static void MeasureTokenWidths(Ctx* cx, InputState* state,
     InputWrapMap* m = &state->wrap;
     const Vec<InlineTokenSpan>* spans =
         InputTokensVisible(state) ? InputTokens(state) : nullptr;
-    int n = spans ? len(*spans) : 0;
+    int n = spans ? len(spans) : 0;
     if (n == 0) {
         if (len(m->tokenWidths) > 0) {
             VecClear(m->tokenWidths);
@@ -2166,7 +2166,7 @@ static bool LineHasVisibleTokens(const InputState* state, int start, int end) {
     if (!spans) {
         return false;
     }
-    for (int i = 0; i < len(*spans); i++) {
+    for (int i = 0; i < len(spans); i++) {
         if ((*spans)[i].start < end && start < (*spans)[i].end) {
             return true;
         }
@@ -2308,7 +2308,7 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
     int end = start + len(run);
     int at = start;
     if (spans) {
-        for (int i = 0; i < len(*spans); i++) {
+        for (int i = 0; i < len(spans); i++) {
             const InlineTokenSpan& span = (*spans)[i];
             if (span.end <= start) {
                 continue;
@@ -2668,7 +2668,7 @@ struct RangeDecorationPaint {
 // visual row a one-space newline cell; a wrap boundary gets none.
 static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
                                   Selection range, Vec<RangeCorners>* out) {
-    int before = len(*out);
+    int before = len(out);
     for (int r = 0; r < p->nRows; r++) {
         const RangeDecorationRow& row = p->rows[r];
         if (!row.text || row.text->kind != ElKind::Text) {
@@ -2717,7 +2717,7 @@ static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
         c.bottomRight = {right, top + p->lineH};
         VecAppend(*out, c);
     }
-    return len(*out) - before;
+    return len(out) - before;
 }
 
 // What InputLastRangeCorners and its siblings read: every visual row the
@@ -4937,7 +4937,7 @@ static int FoldFindAt(const Vec<FoldRange>& v, int line) {
 }
 
 static void FoldRemoveAt(Vec<FoldRange>* v, int ix) {
-    for (int i = ix; i + 1 < len(*v); i++) {
+    for (int i = ix; i + 1 < len(v); i++) {
         (*v)[i] = (*v)[i + 1];
     }
     v->len--;
@@ -4946,7 +4946,7 @@ static void FoldRemoveAt(Vec<FoldRange>* v, int ix) {
 // Sorted by startLine. An insertion sort: a document's candidate list is
 // short and arrives nearly sorted, since the scanner walks it in order.
 static void FoldSort(Vec<FoldRange>* v) {
-    for (int i = 1; i < len(*v); i++) {
+    for (int i = 1; i < len(v); i++) {
         FoldRange cur = (*v)[i];
         int j = i - 1;
         for (; j >= 0 && (*v)[j].startLine > cur.startLine; j--) {
@@ -4961,7 +4961,7 @@ static void FoldSort(Vec<FoldRange>* v) {
 // fold at that line, which is the one worth offering.
 static void FoldDedup(Vec<FoldRange>* v) {
     int out = 0;
-    for (int i = 0; i < len(*v); i++) {
+    for (int i = 0; i < len(v); i++) {
         if (out > 0 && (*v)[out - 1].startLine == (*v)[i].startLine) {
             continue;
         }
@@ -5064,7 +5064,7 @@ void FoldMapClearFolds(FoldMap* m) {
 // there; one below the edit keeps its shape and only moves.
 static void FoldShiftForEdit(Vec<FoldRange>* v, int editStartLine,
                              int editEndLine, int lineDelta) {
-    for (int i = len(*v) - 1; i >= 0; i--) {
+    for (int i = len(v) - 1; i >= 0; i--) {
         const FoldRange& r = (*v)[i];
         if (r.startLine <= editEndLine && r.endLine >= editStartLine) {
             FoldRemoveAt(v, i);
@@ -5073,7 +5073,7 @@ static void FoldShiftForEdit(Vec<FoldRange>* v, int editStartLine,
     if (lineDelta == 0) {
         return;
     }
-    for (int i = 0; i < len(*v); i++) {
+    for (int i = 0; i < len(v); i++) {
         FoldRange& r = (*v)[i];
         if (r.startLine > editEndLine) {
             r.startLine = r.startLine + lineDelta;
@@ -8027,7 +8027,7 @@ InlineTokenError InputSetTokens(InputState* s, App* app, Window* win,
         if (splits(cursor.range)) return InlineTokenError::SplitsSelection;
     }
     const Vec<InlineTokenSpan>* old = InputTokens(s);
-    bool same = (old ? len(*old) : 0) == len(content.tokens);
+    bool same = (old ? len(old) : 0) == len(content.tokens);
     for (int i = 0; same && i < len(content.tokens); i++) {
         const auto& before = (*old)[i];
         const auto& after = content.tokens[i];
@@ -8096,7 +8096,7 @@ InlineTokenError InputReplaceRangeWithToken(InputState* s, App* app,
     }
     const Vec<InlineTokenSpan>* spans = InputTokens(s);
     if (spans) {
-        for (int i = 0; i < len(*spans); i++) {
+        for (int i = 0; i < len(spans); i++) {
             const InlineTokenSpan& span = (*spans)[i];
             if (span.start == start && span.end == end &&
                 InlineTokenEq(span.token, token)) {
@@ -9520,7 +9520,7 @@ static int WrapRowFragments(const InputState* s, Str line, WrapRowSpan r,
     int at = r.lo;
     const Vec<InlineTokenSpan>* spans =
         InputTokensVisible(s) ? InputTokens(s) : nullptr;
-    int nSpans = spans ? len(*spans) : 0;
+    int nSpans = spans ? len(spans) : 0;
     const Vec<float>& widths = s->wrap.tokenWidths;
     for (int i = 0; i < nSpans && n + 2 < cap; i++) {
         const InlineTokenSpan& span = (*spans)[i];
@@ -10666,7 +10666,7 @@ static void ActivateSelectedToken(InputState* s, App* app, Window* win) {
     if (sel.start > sel.end) {
         sel = {sel.end, sel.start};
     }
-    for (int i = 0; i < len(*spans); i++) {
+    for (int i = 0; i < len(spans); i++) {
         const InlineTokenSpan& span = (*spans)[i];
         if (span.start != sel.start || span.end != sel.end) {
             continue;

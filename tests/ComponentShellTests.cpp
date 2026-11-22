@@ -5963,7 +5963,7 @@ El* MaterializeEffectMarker(shell::MaterializeRequest* request) {
         return request->Fail(StrL("forced lazy factory failure"));
     if (gEffectBuildCount < 16) {
         snprintf(gEffectBuilds[gEffectBuildCount++], 24, "%.*s",
-                 (int)len(*label), label->s);
+                 (int)len(label), label->s);
     }
     return request
         ->Finish(Div(request->cx->a)->Child(TextEl(request->cx->a, *label)));

@@ -200,7 +200,7 @@ struct MsRows {
 static El* MsRow(void* user, Ctx* cx, int index) {
     Arena* a = cx->a;
     MsRows* rows = (MsRows*)user;
-    if (!rows->list || index < 0 || index >= len(*rows->list)) {
+    if (!rows->list || index < 0 || index >= len(rows->list)) {
         return Div(a);
     }
     const DemoMessage& message = (*rows->list)[index];

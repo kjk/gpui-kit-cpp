@@ -125,6 +125,10 @@ struct Str {
 constexpr int len(Str s) noexcept {
     return s.len;
 }
+// The same through a pointer: len(p) rather than p->len.
+constexpr int len(const Str* s) noexcept {
+    return s->len;
+}
 
 float StrToFloatUnchecked(Str s);
 
@@ -797,6 +801,10 @@ template <typename T>
 inline int len(const Vec<T>& v) {
     return v.len;
 }
+template <typename T>
+inline int len(const Vec<T>* v) {
+    return v->len;
+}
 
 template <typename T>
 auto VecReserve(Arena* arena, T& v, int n) -> decltype(v.els) {
@@ -1224,6 +1232,10 @@ struct ArenaVec {
 template <typename T>
 inline int len(const ArenaVec<T>& v) {
     return v.len;
+}
+template <typename T>
+inline int len(const ArenaVec<T>* v) {
+    return v->len;
 }
 
 struct PointF {

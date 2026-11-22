@@ -3744,7 +3744,7 @@ int TextGlyphBoxes(TextLayout* layout, Str text, Vec<TextGlyphBox>* out) {
     if (!out) {
         return 0;
     }
-    int before = len(*out);
+    int before = len(out);
     if (!layout) {
         return 0;
     }
@@ -3763,8 +3763,8 @@ int TextGlyphBoxes(TextLayout* layout, Str text, Vec<TextGlyphBox>* out) {
             // A line break belongs to the copy range and to no glyph. Other
             // text with no glyph of its own is drawn by the glyph before it.
             bool lineBreak = cp == '\n' || cp == '\r';
-            if (!lineBreak && len(*out) > before) {
-                (*out)[len(*out) - 1].hi = at + bytes;
+            if (!lineBreak && len(out) > before) {
+                (*out)[len(out) - 1].hi = at + bytes;
             }
             at += bytes;
             continue;
@@ -3784,11 +3784,11 @@ int TextGlyphBoxes(TextLayout* layout, Str text, Vec<TextGlyphBox>* out) {
         at += bytes;
     }
     if (lineH > 0) {
-        for (int i = before; i < len(*out); i++) {
+        for (int i = before; i < len(out); i++) {
             (*out)[i].row = (int)floorf(((*out)[i].top / lineH) + 0.5f);
         }
     }
-    return len(*out) - before;
+    return len(out) - before;
 }
 
 int TextRangeBoxes(const TextGlyphBox* glyphs, int n, int lo, int hi,
@@ -3796,7 +3796,7 @@ int TextRangeBoxes(const TextGlyphBox* glyphs, int n, int lo, int hi,
     if (!out) {
         return 0;
     }
-    int before = len(*out);
+    int before = len(out);
     for (int i = 0; i < n; i++) {
         const TextGlyphBox& g = glyphs[i];
         if (g.hi > lo && g.lo < hi) {
@@ -3804,7 +3804,7 @@ int TextRangeBoxes(const TextGlyphBox* glyphs, int n, int lo, int hi,
         }
     }
     TextGlyphBox* hits = out->els + before;
-    int nHits = len(*out) - before;
+    int nHits = len(out) - before;
     // By row, then left to right, which is how right-to-left text that paints
     // in the reverse order of its text joins up.
     for (int i = 1; i < nHits; i++) {
@@ -11139,7 +11139,7 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
             node.actions |= AccessibilityActionSetValue;
         }
         VecAppend(*out, node);
-        childParent = len(*out) - 1;
+        childParent = len(out) - 1;
         if (node.info.value.s) {
             for (int i = 0; i < document.lineCount; i++) {
                 Str line = document.lines[i];

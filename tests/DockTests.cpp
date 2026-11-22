@@ -706,7 +706,7 @@ static void ThePurePaneTreeMatchesTheSourceAlgebra() {
     utassert(tree.FindNode(tabs) != nullptr);
     PaneRef top = tree.Root()->Kind();
     utassert(top.kind == PaneKind::Split);
-    utassert(top.children && len(*top.children) == 2);
+    utassert(top.children && len(top.children) == 2);
     utassert(top.sizeKnown && (*top.sizeKnown)[1]);
     utassertnear((*top.sizes)[1], 240);
 

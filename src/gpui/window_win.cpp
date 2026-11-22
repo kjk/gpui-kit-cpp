@@ -881,15 +881,15 @@ static Str ClipboardReadPaths(Arena* a, HANDLE handle);
 // The next line of newline-separated `rest`, which moves past it.
 static Str NextLine(Str* rest) {
     int i = 0;
-    while (i < len(*rest) && rest->s[i] != '\n') {
+    while (i < len(rest) && rest->s[i] != '\n') {
         i++;
     }
     Str line(rest->s, i);
     if (i > 0 && line.s[i - 1] == '\r') {
         line.len--;
     }
-    int skip = i < len(*rest) ? i + 1 : i;
-    *rest = Str(rest->s + skip, len(*rest) - skip);
+    int skip = i < len(rest) ? i + 1 : i;
+    *rest = Str(rest->s + skip, len(rest) - skip);
     return line;
 }
 
@@ -951,12 +951,12 @@ static Str DataObjectReadText(Arena* a, IDataObject* data, CLIPFORMAT cf,
 static void DataObjectReadTextDrag(Arena* a, IDataObject* data, Str* text,
                                    Str* url) {
     *text = DataObjectReadText(a, data, CF_UNICODETEXT, true);
-    if (len(*text) == 0) {
+    if (len(text) == 0) {
         *text = DataObjectReadText(a, data, CF_TEXT, false);
     }
     *url = DataObjectReadText(a, data, ClipFormat(L"UniformResourceLocatorW"),
                               true);
-    if (len(*url) == 0) {
+    if (len(url) == 0) {
         *url = DataObjectReadText(a, data,
                                   ClipFormat(L"UniformResourceLocator"), false);
     }
@@ -3377,7 +3377,7 @@ static void AppendShellItemPath(IShellItem* item, StrBuilder* paths) {
         TempStr path = AllocStrTemp(n - 1);
         if (path.s && WideCharToMultiByte(CP_UTF8, 0, wide, -1, path.s, n,
                                           nullptr, nullptr) == n) {
-            if (len(*paths) > 0) {
+            if (len(paths) > 0) {
                 paths->AppendChar('\n');
             }
             paths->Append(path);

@@ -14,13 +14,13 @@ Rgba ResizableHandleColor(const base_theme::Theme& theme, bool active) {
 
 template <typename T>
 static void ResizableVecRemove(Vec<T>* values, int ix) {
-    if (!values || ix < 0 || ix >= len(*values)) return;
-    if (ix + 1 < len(*values)) {
+    if (!values || ix < 0 || ix >= len(values)) return;
+    if (ix + 1 < len(values)) {
         memmove(values->els + ix, values->els + ix + 1,
-                (size_t)(len(*values) - ix - 1) * sizeof(T));
+                (size_t)(len(values) - ix - 1) * sizeof(T));
     }
     values->len--;
-    values->els[len(*values)] = T{};
+    values->els[len(values)] = T{};
 }
 
 static float PanelMin(const float* mins, int ix) {

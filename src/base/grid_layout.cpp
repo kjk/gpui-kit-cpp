@@ -504,7 +504,7 @@ static int GridEditStart(const GridArea* items, int n, Str id,
 void GridReflowed(const GridArea* items, int n, int columns,
                   Vec<GridArea>* out) {
     SetAreas(out, items, n);
-    for (int i = 1; i < len(*out); i++) {
+    for (int i = 1; i < len(out); i++) {
         GridArea key = (*out)[i];
         int j = i;
         while (j > 0 && ReadingBefore(key, (*out)[j - 1], false)) {
@@ -513,7 +513,7 @@ void GridReflowed(const GridArea* items, int n, int columns,
         }
         (*out)[j] = key;
     }
-    for (int i = 0; i < len(*out); i++) {
+    for (int i = 0; i < len(out); i++) {
         (*out)[i].locked = false;
     }
     GridLayoutRules rules;
@@ -521,8 +521,8 @@ void GridReflowed(const GridArea* items, int n, int columns,
     rules.hasCompaction = true;
     rules.compaction = Axis::Vertical;
     rules.preventCollision = false;
-    if (len(*out) > 0) {
-        GridNormalize(out->els, len(*out), rules);
+    if (len(out) > 0) {
+        GridNormalize(out->els, len(out), rules);
     }
 }
 

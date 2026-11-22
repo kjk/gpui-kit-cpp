@@ -41,7 +41,7 @@ void CookieListFree(Vec<Cookie>* cookies) {
     if (!cookies) {
         return;
     }
-    for (int i = 0; i < len(*cookies); i++) {
+    for (int i = 0; i < len(cookies); i++) {
         Cookie& cookie = cookies->els[i];
         base::StrFree(cookie.name);
         base::StrFree(cookie.value);
@@ -219,13 +219,13 @@ int CustomProtocolsAppendCopy(Vec<CustomProtocol>* protocols,
                               const CustomProtocol& protocol) {
     CustomProtocol copy = protocol;
     copy.name = StrDup(protocol.name);
-    int index = len(*protocols);
+    int index = len(protocols);
     VecAppend(*protocols, copy);
     return index;
 }
 
 void CustomProtocolsFree(Vec<CustomProtocol>* protocols) {
-    for (int i = 0; i < len(*protocols); i++) {
+    for (int i = 0; i < len(protocols); i++) {
         StrFree((*protocols)[i].name);
     }
     VecReset(*protocols);

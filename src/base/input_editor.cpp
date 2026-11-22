@@ -12,10 +12,10 @@ namespace gpui {
 // order of the rest. False when there is none.
 template <typename T>
 static bool RemoveOwnedById(Vec<T*>* entries, uint64_t id) {
-    for (int i = 0; i < len(*entries); i++) {
+    for (int i = 0; i < len(entries); i++) {
         if ((*entries)[i]->id == id) {
             delete (*entries)[i];
-            for (int k = i; k + 1 < len(*entries); k++) {
+            for (int k = i; k + 1 < len(entries); k++) {
                 (*entries)[k] = (*entries)[k + 1];
             }
             entries->len--;
@@ -2533,7 +2533,7 @@ int FrameOutlinePoints(const RangeCorners* corners, int n, Vec<Point>* out) {
     if (!corners || n <= 0 || !out) {
         return 0;
     }
-    int base = len(*out);
+    int base = len(out);
     // Each row is read as (top_left, bottom_right).
     Point firstTl = corners[0].topLeft, firstBr = corners[0].bottomRight;
     Point lastTl = corners[n - 1].topLeft, lastBr = corners[n - 1].bottomRight;
@@ -2546,7 +2546,7 @@ int FrameOutlinePoints(const RangeCorners* corners, int n, Vec<Point>* out) {
         VecAppend(*out, Point{nextBr.x, curBr.y});
         VecAppend(*out, Point{nextBr.x, nextBr.y});
     }
-    if ((*out)[len(*out) - 1] != lastBr) {
+    if ((*out)[len(out) - 1] != lastBr) {
         VecAppend(*out, lastBr);
     }
     VecAppend(*out, Point{lastTl.x, lastBr.y});
@@ -2557,11 +2557,11 @@ int FrameOutlinePoints(const RangeCorners* corners, int n, Vec<Point>* out) {
         VecAppend(*out, Point{nextTl.x, curTl.y});
         VecAppend(*out, Point{nextTl.x, nextTl.y});
     }
-    if ((*out)[len(*out) - 1] != (*out)[base]) {
+    if ((*out)[len(out) - 1] != (*out)[base]) {
         Point first = (*out)[base];
         VecAppend(*out, first);
     }
-    return len(*out) - base;
+    return len(out) - base;
 }
 
 void PadFrameCorners(RangeCorners* corners, int n, float horizontalPadding) {
@@ -3286,7 +3286,7 @@ static int WrapLineScan(Str text, WrappingIndent indentMode, Vec<int>* ends,
             VecAppend(*ends, at);
         }
     }
-    if (len(*ends) == 0 || (*ends)[len(*ends) - 1] != n) {
+    if (len(ends) == 0 || (*ends)[len(ends) - 1] != n) {
         VecAppend(*ends, n);
     }
     LineBreakOpportunities(text, opportunities);

@@ -409,7 +409,7 @@ bool HostIsIdentifier(Str value) {
 
 static void AppendNames(StrBuilder* out, const HostModule* module,
                         const Vec<Str>* names = nullptr) {
-    int count = names ? len(*names) : module ? module->FunctionCount() : 0;
+    int count = names ? len(names) : module ? module->FunctionCount() : 0;
     if (count == 0) {
         out->Append(StrL("nothing"));
         return;

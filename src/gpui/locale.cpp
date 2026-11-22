@@ -18,8 +18,8 @@ void PlatLocaleListAdd(StrBuilder* out, Str locale) {
         return;
     }
     int start = 0;
-    for (int i = 0; i <= len(*out); i++) {
-        if (i < len(*out) && out->els[i] != '\n') {
+    for (int i = 0; i <= len(out); i++) {
+        if (i < len(out) && out->els[i] != '\n') {
             continue;
         }
         if (StrEq(Str(out->els + start, i - start), locale)) {
@@ -27,7 +27,7 @@ void PlatLocaleListAdd(StrBuilder* out, Str locale) {
         }
         start = i + 1;
     }
-    if (len(*out) > 0) {
+    if (len(out) > 0) {
         out->AppendChar('\n');
     }
     out->Append(locale);
