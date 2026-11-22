@@ -806,18 +806,13 @@ El* SearchableList::IntoEl() {
     }
     if (hasDelegate) {
         int sectionCount = delegate.SectionsCount(cx->app);
-        int total = 0;
-        for (int section = 0; section < sectionCount; section++) {
-            total += delegate.ItemsCount(section);
-        }
-        SearchableListItem* flat =
-            total > 0
-                ? (SearchableListItem*)Alloc(a, total * (int)sizeof(*flat))
-                : nullptr;
+        // On the state, not the frame arena: SearchableListSearch keeps a
+        // pointer to these in s->items, and the next frame reads it (the
+        // trigger's title) after the frame arena has been reset.
+        VecClear(s->delegateItems);
         Str* titles = sectionCount > 0
                           ? (Str*)Alloc(a, sectionCount * (int)sizeof(*titles))
                           : nullptr;
-        int at = 0;
         for (int section = 0; section < sectionCount; section++) {
             titles[section] = delegate.SectionTitle(section);
             int count = delegate.ItemsCount(section);
@@ -829,11 +824,11 @@ El* SearchableList::IntoEl() {
                 }
                 SearchableListItem copy = *source;
                 copy.section = section;
-                flat[at++] = copy;
+                VecAppend(s->delegateItems, copy);
             }
         }
-        items = flat;
-        nItems = at;
+        items = len(s->delegateItems) > 0 ? s->delegateItems.els : nullptr;
+        nItems = len(s->delegateItems);
         sections = titles;
         nSections = sectionCount;
         s->delegate = delegate;

@@ -256,6 +256,10 @@ struct SearchableListState {
     // a static array, not one built on the frame arena.
     const SearchableItem* items = nullptr;
     int nItems = 0;
+    // A delegate's items flattened, which `items` points into when the list
+    // has a delegate: owned here so they outlive the frame, rebuilt each
+    // time the open list renders.
+    Vec<SearchableListItem> delegateItems;
     // on_will_change: how many values the selection will hold. A Select past
     // the limit is dropped rather than applied, and the rows that are not
     // already in it stop answering. 0 is no limit.

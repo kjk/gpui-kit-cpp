@@ -866,8 +866,48 @@ static void SelectMenuKeepsItsOpeningSideAndHoldsHeightAbove() {
     }
 }
 
+// A delegate's items are flattened for the open list. SearchableListSearch
+// keeps a pointer to them that the next frame reads (the trigger's title),
+// so they must not live on the frame arena that frame starts by resetting.
+struct DelegateSelectView {
+    Entity<component::SelectState> select;
+    component::SearchableItem items[3];
+
+    static El* Render(DelegateSelectView* self, Ctx* cx) {
+        return Div(cx->a)->SizeFull()->Child(
+            component::Select::New(cx, StrL("delegate-picker"), self->select)
+                ->Delegate(component::SearchableListDelegate::Items(
+                    self->items, dimof(self->items)))
+                ->W(200)
+                ->IntoEl());
+    }
+};
+
+static void ADelegateSelectKeepsItsItemsAcrossFrames() {
+    App* app = TestAppNew();
+    component::Init(app);
+    auto host = EntityNew<DelegateSelectView>(app);
+    auto* view = host.Get(app);
+    view->select = component::SelectState::New(app);
+    view->items[0].title = StrL("Alpha");
+    view->items[1].title = StrL("Beta");
+    view->items[2].title = StrL("Gamma");
+    Window* win = TestWindowOpen(app, host, 400, 300, 1);
+    auto* state = view->select.Get(app);
+    Ctx cx = {app, win, win->frameArena, view->select.id};
+    state->SetOpen(true, &cx);
+    TestDraw(win);
+    const component::SearchableListState& list = state->state;
+    utassert(list.nItems == 3);
+    utassert(list.items == list.delegateItems.els);
+    TestDraw(win);
+    utassert(list.items && base::StrEq(list.items[1].title, StrL("Beta")));
+    TestAppFree(app);
+}
+
 void TestSelect() {
     SelectMenuKeepsItsOpeningSideAndHoldsHeightAbove();
+    ADelegateSelectKeepsItsItemsAcrossFrames();
     TestSuite("select");
     TheRootProjectsApplicationOwnedAccessibleState();
     SelectAccessibilityValueTracksPlaceholderAndSelection();
