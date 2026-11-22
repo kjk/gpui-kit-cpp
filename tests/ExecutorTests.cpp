@@ -240,6 +240,37 @@ static void AJobThatHasNotStartedCanBeCalledOff() {
     utassert(gDone == 0);
 }
 
+// A burst spawned while one worker sits idle runs side by side, not queued
+// behind that one worker. Run on a fresh pool: one job leaves one idle worker.
+static void ABurstGrowsThePoolPastAnIdleWorker() {
+    if (!ExecHasThreads()) {
+        return;
+    }
+    Reset();
+    utassert(ExecSpawn(MkFunc0Void(Bump)) != 0);
+    utassert(ExecWaitIdle(5000));
+    utassert(ExecWorkerCount() == 1);
+    Reset();
+    for (int i = 0; i < 3; i++) {
+        utassert(ExecSpawn(MkFunc0Void(HoldWorker)) != 0);
+    }
+    // All three start while none is released, which needs three workers.
+    bool together = false;
+    for (int waited = 0; waited < 5000 && !together; waited += 5) {
+        gLock.Lock();
+        together = gRan == 3;
+        gLock.Unlock();
+        if (!together) {
+            PlatSleepMs(5);
+        }
+    }
+    utassert(together);
+    gLock.Lock();
+    gRelease = true;
+    gLock.Unlock();
+    utassert(ExecWaitIdle(10000));
+}
+
 // A test app frees like any App, and freeing one stops the executor; the
 // suites after it run without an App of their own and still post and drain,
 // so TestAppFree leaves the executor running as TestAppNew found it.
@@ -336,6 +367,9 @@ void TestExecutor() {
     utassert(ExecSpawn(MkFunc0Void(Bump)) != 0);
     utassert(ExecWaitIdle(5000));
     utassert(gRan == 1);
+    ExecShutdown();
+    ExecInit();
+    ABurstGrowsThePoolPastAnIdleWorker();
     ExecShutdown();
     ExecInit();
     ATestAppLeavesTheExecutorAsItFoundIt();

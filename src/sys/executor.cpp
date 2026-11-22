@@ -164,7 +164,6 @@ static CondVar gPoolWake;
 static Vec<Job> gJobs;
 static TaskId gNextTaskId = 1;
 static int gWorkers = 0;
-static int gIdle = 0;
 static int gRunning = 0;
 static bool gPoolStop = false;
 
@@ -188,9 +187,7 @@ static void WorkerMain() {
             break;
         }
         if (len(gJobs) == 0) {
-            gIdle++;
             gPoolWake.Wait(&gPoolLock, kWorkerWaitForever);
-            gIdle--;
             continue;
         }
         Job job = gJobs[0];
@@ -280,8 +277,13 @@ TaskId ExecSpawn(Func0 work, Func0 done) {
     }
     // Grow only when there is nobody free to take this. A pool sized to the
     // machine up front would cost eight stacks in every app that never
-    // fetches anything.
-    bool needWorker = gIdle == 0 && gWorkers < kExecMaxWorkers;
+    // fetches anything. "Free" is every worker not inside a job — idle, or
+    // started and not yet waiting — counted against every queued job, not
+    // just this one: an idle count only drops once a woken worker runs, so a
+    // burst spawned while one worker sat idle used to see it free every time
+    // and queue the whole burst behind it.
+    int available = gWorkers - gRunning;
+    bool needWorker = len(gJobs) > available && gWorkers < kExecMaxWorkers;
     if (needWorker) {
         gWorkers++;
     }
