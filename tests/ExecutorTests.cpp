@@ -252,6 +252,38 @@ static void ATestAppLeavesTheExecutorAsItFoundIt() {
     utassert(gRan == 1);
 }
 
+// A timer cancelled from inside a timer handler, here its own, must not
+// make the timer after it skip that tick.
+struct TwoTimers {
+    int a = 0;
+    int b = 0;
+    int aFired = 0;
+    int bFired = 0;
+    static El* Render(TwoTimers*, Ctx* cx) { return Div(cx->a); }
+    static void OnA(TwoTimers* self, Ctx* cx, const TickEvent*) {
+        self->aFired++;
+        WindowCancelTimer(cx->win, self->a);
+    }
+    static void OnB(TwoTimers* self, Ctx*, const TickEvent*) { self->bFired++; }
+};
+
+static void ACancelInsideATickSkipsNoOtherTimer() {
+    App* app = TestAppNew();
+    Entity<TwoTimers> view = EntityNew<TwoTimers>(app);
+    Window* win = TestWindowOpen(app, view, 200, 100);
+    TestDraw(win);
+    TwoTimers* t = view.Get(app);
+    t->a = WindowSetInterval(win, 100, ListenTo(view, &TwoTimers::OnA));
+    t->b = WindowSetInterval(win, 100, ListenTo(view, &TwoTimers::OnB));
+    TestAdvanceClock(app, 150);
+    utassert(t->aFired == 1);
+    utassert(t->bFired == 1);
+    TestAdvanceClock(app, 100);
+    utassert(t->aFired == 1);
+    utassert(t->bFired == 2);
+    TestAppFree(app);
+}
+
 // TimerNextDue: an interval of kTimerGridMinMs or more comes due on a grid of
 // its own length, so intervals that divide each other share a wakeup however
 // far apart they were armed; a late wakeup keeps the cadence rather than
@@ -307,4 +339,5 @@ void TestExecutor() {
     ExecShutdown();
     ExecInit();
     ATestAppLeavesTheExecutorAsItFoundIt();
+    ACancelInsideATickSkipsNoOtherTimer();
 }

@@ -7946,6 +7946,9 @@ struct Window {
     // Armed timers, any number of them.
     Vec<TimerSub> timers;
     int nextTimerId = 1;
+    // Set while WindowTimerTick walks `timers`: a cancel then marks the entry
+    // (id 0) for the tick's sweep instead of shifting the array under it.
+    bool timersTicking = false;
     // Which InputState had focus last frame, so the runtime can start and stop
     // its caret without every app wiring that up.
     InputState* prevInput = nullptr;

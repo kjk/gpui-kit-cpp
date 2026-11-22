@@ -662,6 +662,13 @@ void WindowCancelTimer(Window* win, int id) {
         if (win->timers[i].id != id) {
             continue;
         }
+        if (win->timersTicking) {
+            // WindowTimerTick is walking the array; its sweep removes this.
+            win->timers[i].id = 0;
+            win->timers[i].dueAt = 0;
+            win->timers[i].repeat = false;
+            break;
+        }
         for (int j = i + 1; j < win->timers.len; j++) {
             win->timers[j - 1] = win->timers[j];
         }

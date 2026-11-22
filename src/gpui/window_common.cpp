@@ -5025,9 +5025,11 @@ void WindowTimerTick(Window* win) {
     // A snapshot of the count, so a timer armed by a handler runs next pass
     // rather than inside this one.
     int n = win->timers.len;
+    win->timersTicking = true;
     for (int i = 0; i < n && i < win->timers.len; i++) {
         TimerSub& t = win->timers[i];
-        if (t.dueAt > now) {
+        // id 0: cancelled by an earlier handler in this pass.
+        if (t.id == 0 || t.dueAt > now) {
             continue;
         }
         Listener l = t.l;
@@ -5040,13 +5042,14 @@ void WindowTimerTick(Window* win) {
         TickEvent ev = {ms};
         ListenerCall(win->app, win, l, &ev);
     }
+    win->timersTicking = false;
 
     // Drop the one-shots that fired, and any timer whose view is gone — the
     // lifetime Rust gets from Task being dropped with its entity.
     int keep = 0;
     for (int i = 0; i < win->timers.len; i++) {
         const TimerSub& t = win->timers[i];
-        bool dead = t.dueAt <= 0 ||
+        bool dead = t.id == 0 || t.dueAt <= 0 ||
                     (t.l.view.IsValid() && !EntityGet(win->app, t.l.view));
         if (dead) {
             continue;
