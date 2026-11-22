@@ -85,6 +85,10 @@ struct PaintTarget {
     ID2D1DCRenderTarget* dcRt = nullptr;
     IDXGISwapChain1* swap = nullptr;
     ID2D1DeviceContext* dc = nullptr;
+    // `dc` as its 1.1 self, asked for once (see Dc1); null when this D2D
+    // predates it. Released with `dc`.
+    ID2D1DeviceContext1* dc1 = nullptr;
+    bool dc1Queried = false;
     ID2D1Bitmap1* backBuffer = nullptr;
     HWND hwnd = nullptr;
     int pxW = 0;
@@ -266,6 +270,7 @@ void PaintTargetFree(PaintCtx* ctx) {
     }
     Rel(&ctx->rt->backBuffer);
     Rel(&ctx->rt->scrollStage);
+    Rel(&ctx->rt->dc1);
     Rel(&ctx->rt->dc);
     Rel(&ctx->rt->swap);
     delete ctx->rt;
@@ -1126,14 +1131,19 @@ static ID2D1DeviceContext1* Dc1(PaintCtx* ctx) {
     if (!ctx || !ctx->rt || !ctx->rt->dc) {
         return nullptr;
     }
-    static ID2D1DeviceContext1* cached = nullptr;
-    static ID2D1DeviceContext* forDc = nullptr;
-    if (forDc != ctx->rt->dc) {
-        Rel(&cached);
-        forDc = ctx->rt->dc;
-        forDc->QueryInterface(__uuidof(ID2D1DeviceContext1), (void**)&cached);
+    // Kept on the target rather than in a function static, which held the
+    // last context alive past PaintTargetFree and re-queried on every switch
+    // between two windows.
+    PaintTarget* t = ctx->rt;
+    if (!t->dc1Queried) {
+        t->dc1Queried = true;
+        HRESULT hr = t->dc->QueryInterface(__uuidof(ID2D1DeviceContext1),
+                                           (void**)&t->dc1);
+        if (FAILED(hr)) {
+            t->dc1 = nullptr;
+        }
     }
-    return cached;
+    return t->dc1;
 }
 
 void PathRealize(PaintCtx* ctx, Path* p) {
