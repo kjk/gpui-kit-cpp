@@ -652,6 +652,10 @@ PresenceSample PresenceAdvance(PresenceState* st, bool present,
         value =
             sampled + (target - sampled) * MotionSample(transition, initial);
         status = initialStatus;
+    } else if (st->from == st->target) {
+        // Nothing in flight: a presence first sampled absent recorded 0 -> 0
+        // and is settled, not Exiting until the duration runs out.
+        return PresenceStable(present);
     }
     if (status == MotionStatus::Finished) {
         return PresenceStable(present);

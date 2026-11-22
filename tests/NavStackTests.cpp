@@ -239,6 +239,7 @@ static void TheOutgoingViewIsDroppedOnceItsExitHasRun() {
     double t0 = 100.0;
     f.win->frameNow = t0;
     NavPush(f, f.Page(), NavMotion::Immediate);
+    NavDrawFrame(f, t0);
     NavPush(f, f.Page(), NavMotion::Animated);
 
     NavDrawFrame(f, t0);
@@ -253,6 +254,18 @@ static void TheOutgoingViewIsDroppedOnceItsExitHasRun() {
     // An immediate change is gone after the frame that draws it.
     NavStackPop(f.State(), &f.cx, NavMotion::Immediate);
     NavDrawFrame(f, t0 + 0.260);
+    utassert(!f.State()->hasTransit);
+}
+
+static void APageCoveredBeforeItIsDrawnIsDroppedAtOnce() {
+    NavFixture f;
+    double t0 = 300.0;
+    f.win->frameNow = t0;
+    NavPush(f, f.Page(), NavMotion::Immediate);
+    NavPush(f, f.Page(), NavMotion::Animated);
+
+    // The root was never shown, so it has no exit to run.
+    NavDrawFrame(f, t0);
     utassert(!f.State()->hasTransit);
 }
 
@@ -310,5 +323,6 @@ void TestNavStack() {
     AnImmediateChangeRecordsItsMotionAndSupersedesTheRunningOne();
     ANewOperationReplacesTheRunningTransition();
     TheOutgoingViewIsDroppedOnceItsExitHasRun();
+    APageCoveredBeforeItIsDrawnIsDroppedAtOnce();
     TheItemRendererSeesBothPagesOfAChange();
 }

@@ -1278,6 +1278,39 @@ static void PresenceEntersExitsAndUnmountsOnlyAfterItsExit() {
                  .phase == PresencePhase::Present);
 }
 
+// presence_first_sampled_absent_is_absent_without_a_pending_frame. Sampled
+// through a window, so a request for another frame would show.
+static void PresenceFirstSampledAbsentIsAbsentWithoutAPendingFrame() {
+    App app;
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+    MotionSetReduced(false);
+    motion::Transition policy = motion::Transition::New(100).Ease(EaseLinear);
+
+    win->frameNow = 4.0;
+    win->animFrame = false;
+    PresenceSample absent = Presence::New(StrL("presence-absent"), false)
+                                .Transition(policy)
+                                .Sample(&cx);
+    utassert(absent.phase == PresencePhase::Absent);
+    utassertnear(absent.progress, 0.f);
+    utassert(!absent.ShouldRender());
+    utassert(!win->animFrame);
+
+    PresenceSample entering = Presence::New(StrL("presence-absent"), true)
+                                  .Transition(policy)
+                                  .Sample(&cx);
+    utassert(entering.phase == PresencePhase::Entering);
+    utassertnear(entering.progress, 0.f);
+    utassert(entering.ShouldRender());
+
+    WindowMotionFree(win);
+    delete win;
+    ArenaDelete(arena);
+}
+
 // ─── animate_keyframes and MotionReveal, through a window ─────────────────
 
 // keyed_keyframes_follow_timing_and_stop_after_completion.
@@ -1624,6 +1657,7 @@ void TestMotion() {
     SequenceStepsAdvanceAtTheirBoundaries();
     SequenceHandlesInstantStepsAndReducedMotion();
     PresenceEntersExitsAndUnmountsOnlyAfterItsExit();
+    PresenceFirstSampledAbsentIsAbsentWithoutAPendingFrame();
     KeyedKeyframesFollowTheirTimingAndThenStop();
     AMeasuredRevealClipsToItsProgress();
     TheMotionCoreIsReachableFromTheBaseFacade();

@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f5030e8364366f17a296a2aeba0574b2df15070e` (2026-11-22,
-resizable: Skip hidden panels when resizing (#4064)).
-Resizing transfers size across the handle to the next visible panel and stops
-at the receiver's own maximum; a hidden panel keeps its slot at size 0 and its
-preferred size for when it returns.
+Processed through `144fb7102bf5cbb9144c38010ca62b8b97670ed9` (2026-11-22,
+fix(motion): Report a Presence that starts closed as Absent instead of Running
+(#4062)).
+A Presence first sampled closed reports Absent with no animation frame pending,
+so a nav-stack page covered before it is drawn is dropped at once.
 The current update target is
 `1c7e7f7c6c8d6585da909804496614da01bb8663`.
 

@@ -532,9 +532,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f5030e8364366f17a296a2aeba0574b2df15070e",
+  sha: "144fb7102bf5cbb9144c38010ca62b8b97670ed9",
   date: "2026-11-22",
-  subject: "resizable: Skip hidden panels when resizing (#4064)",
+  subject: "fix(motion): Report a Presence that starts closed as Absent instead of Running (#4062)",
   crates: {
     "gpui-kit": "0.10.0",
     "gpui-base": "0.10.0",
