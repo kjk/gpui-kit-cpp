@@ -38,3 +38,4 @@ gpui-kit.d.ts
 # Left in the working directory by shell tests run from the repo root.
 /shell_open_path_test/
 /shell_proc_cwd/
+/component_shell_app_*/
