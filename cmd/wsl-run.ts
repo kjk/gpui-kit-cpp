@@ -6,8 +6,8 @@
 //   bun cmd/wsl-run.ts -d Ubuntu-24.04 -rel showcase
 //
 // Flags other than -d/--distro go straight to cmd/run.ts. The Linux
-// build writes to the same out/ tree as the Windows one but with no .exe
-// suffix, so the two never collide.
+// build writes to out/linux/<cfg>/, so it never collides with the Windows
+// out/<cfg>/.
 //
 // First time on a fresh distro:
 //   wsl bash cmd/ubuntu-install-deps.sh

@@ -80,7 +80,7 @@ void PlatMemRelease(void* base, uint64_t size) {
 }
 
 // There is no executable and no directory it sits in. Assets are preloaded
-// into MEMFS at the root by the build (see cmd/build-wasm.ts), which is what
+// into MEMFS at the root by the build (see cmd/build.ts), which is what
 // gpui/assets.cpp walks from.
 void PlatGetExeDir(char* out, int cap) {
     StrCopyZ(out, cap, "/");

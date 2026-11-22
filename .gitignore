@@ -1,7 +1,7 @@
 .work/
 out/
 # An emsdk installed inside the checkout rather than beside it; either place
-# is found by cmd/emsdk.ts.
+# is found by emsdkRoots() in cmd/build.ts.
 .emsdk/
 *.bmp
 *.log
@@ -33,3 +33,8 @@ gpui-kit.d.ts
 /gpui-perf.txt
 /implicit-state-machines.md
 .DS_Store
+# Generated for clangd by cmd/gen-compile-commands.ps1.
+/compile_commands.json
+# Left in the working directory by shell tests run from the repo root.
+/shell_open_path_test/
+/shell_proc_cwd/

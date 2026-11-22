@@ -19,19 +19,12 @@
 #>
 param(
     [switch]$Debug,
-    [switch]$Clang,
     [string]$OutFile = ".work\compile_commands.json"
 )
 
 $ErrorActionPreference = "Stop"
-# Hardcode for this known layout; Split-Path above is behaving unexpectedly
-# in this shell environment. TODO: make this robust.
-$root = "C:\Users\kjk\src\gpui-cpp"
-if (-not (Test-Path (Join-Path $root "cmd"))) {
-    # Fallback: try to compute from PSScriptRoot
-    $scriptDir = Split-Path -Parent $PSScriptRoot
-    $root = Split-Path -Parent $scriptDir
-}
+# The repo root is the parent of cmd/.
+$root = Split-Path -Parent $PSScriptRoot
 Write-Host "Debug: root=$root"
 
 $amalgamDir = Join-Path $root ".work"
@@ -62,7 +55,10 @@ if (-not $clangCl) {
 $baseFlags = @(
     "/nologo",
     "/std:c++20",
-    "/EHsc",
+    # build.ts compiles without exceptions or RTTI.
+    "/EHs-c-",
+    "/GR-",
+    "/D_HAS_EXCEPTIONS=0",
     "/utf-8",
     "/I", $amalgamDir,
     	"/DUNICODE",

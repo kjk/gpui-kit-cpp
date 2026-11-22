@@ -85,8 +85,7 @@ the repository's `.clang-tidy` configuration):
 
 ```
 bun cmd/clang-tidy.ts
-bun cmd/clang-tidy.ts -checks=bugprone-*,performance-*
-bun cmd/clang-tidy.ts --host       # only this platform's source files
+bun cmd/clang-tidy.ts -checks=bugprone-*,performance-*   # this platform's sources only
 ```
 
 On Windows the renderer is Direct2D on a D3D11 device; two more renderers

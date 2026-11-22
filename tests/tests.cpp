@@ -2,8 +2,9 @@
    the same amalgam — but the Windows link gives it a console subsystem, so
    printf reaches the terminal that started it.
 
-   Every test here is a port of one in .work/gpui-component at the SHA in
-   cmd/versions.ts. Each file says which Rust module it came from. */
+   Most tests here port one in .work/gpui-component at the pin in
+   cmd/run.ts, and say which Rust module they came from; the few that pin a
+   local runtime contract say so in their header. */
 
 #include "Test.h"
 

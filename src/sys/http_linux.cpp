@@ -4,7 +4,7 @@
    It is a soft dependency, which the other three are not. A machine without
    `libcurl4-openssl-dev` still builds this tree; it just cannot fetch, and a
    remote image renders as its alt text there the way it did before any of
-   this existed. cmd/build-linux.ts defines GPUI_HAVE_CURL when the package
+   this existed. cmd/build.ts defines GPUI_HAVE_CURL when the package
    answers, and cmd/ubuntu-install-deps.sh installs it. */
 
 #include "sys/http.h"

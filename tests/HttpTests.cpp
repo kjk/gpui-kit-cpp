@@ -4,7 +4,7 @@
 
    Nothing here makes a request. A suite that reached the network would fail
    on a machine without one and would be slow on a machine with one, so
-   TestsMain turns fetching off before any of it runs and the check below is
+   GpuiMain turns fetching off before any of it runs and the check below is
    that the switch is honoured. */
 
 #include "Test.h"
